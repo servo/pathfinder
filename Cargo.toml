@@ -1,0 +1,11 @@
+[package]
+name = "pathfinder"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]
+bitflags = "0.7"
+byteorder = "1"
+euclid = "0.10"
+memmap = "0.5"
+
