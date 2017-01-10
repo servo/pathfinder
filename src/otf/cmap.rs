@@ -70,7 +70,6 @@ impl<'a> CmapTable<'a> {
         // Check the mapping table format.
         let format = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
         if format != FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES {
-            println!("bad format, {:?}", format);
             return Err(())
         }
 
@@ -186,7 +185,6 @@ impl<'a> CmapTable<'a> {
 
                 // Otherwise, look up the glyphs individually.
                 for code_offset in start_code_offset..(end_code_offset + 1) {
-                    println!("individual lookup");
                     let mut glyph_id = glyph_ids;
                     try!(glyph_id.jump((id_range_offset as usize + code_offset as usize) * 2));
                     let mut glyph_id = try!(glyph_id.read_u16::<BigEndian>().map_err(drop));
