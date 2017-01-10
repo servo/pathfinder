@@ -8,38 +8,30 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use compute_shader::buffer::Buffer;
+use compute_shader::buffer::{Buffer, BufferData, HostAllocatedData, Protection};
+use compute_shader::device::Device;
+use euclid::{Point2D, Rect, Size2D};
 use otf::glyf::GlyfTable;
 use otf::loca::LocaTable;
 
-pub struct GlyphBuffers {
+pub struct GlyphBufferBuilder {
     pub coordinates: Vec<(i16, i16)>,
     pub operations: Vec<u8>,
     pub descriptors: Vec<GlyphDescriptor>,
-    pub cached_coordinates_buffer: Option<Buffer>,
-    pub cached_operations_buffer: Option<Buffer>,
-    pub cached_descriptors_buffer: Option<Buffer>,
 }
 
-impl GlyphBuffers {
+impl GlyphBufferBuilder {
     #[inline]
-    pub fn new() -> GlyphBuffers {
-        GlyphBuffers {
+    pub fn new() -> GlyphBufferBuilder {
+        GlyphBufferBuilder {
             coordinates: vec![],
             operations: vec![],
             descriptors: vec![],
-            cached_coordinates_buffer: None,
-            cached_operations_buffer: None,
-            cached_descriptors_buffer: None,
         }
     }
 
     pub fn add_glyph(&mut self, glyph_id: u32, loca_table: &LocaTable, glyf_table: &GlyfTable)
                      -> Result<(), ()> {
-        self.cached_coordinates_buffer = None;
-        self.cached_operations_buffer = None;
-        self.cached_descriptors_buffer = None;
-
         let mut point_index = self.coordinates.len() / 2;
         let mut operations = if point_index % 4 == 0 {
             0
@@ -70,8 +62,29 @@ impl GlyphBuffers {
             self.operations.push(operations)
         }
 
+        // TODO(pcwalton): Add a glyph descriptor.
+
         Ok(())
     }
+
+    pub fn finish(&self, device: &mut Device) -> Result<GlyphBuffers, ()> {
+        let coordinates = BufferData::HostAllocated(HostAllocatedData::new(&self.coordinates));
+        let operations = BufferData::HostAllocated(HostAllocatedData::new(&self.operations));
+        let descriptors = BufferData::HostAllocated(HostAllocatedData::new(&self.descriptors));
+        Ok(GlyphBuffers {
+            coordinates: try!(device.create_buffer(Protection::ReadOnly, coordinates)
+                                    .map_err(drop)),
+            operations: try!(device.create_buffer(Protection::ReadOnly, operations).map_err(drop)),
+            descriptors: try!(device.create_buffer(Protection::ReadOnly, descriptors)
+                                    .map_err(drop)),
+        })
+    }
+}
+
+pub struct GlyphBuffers {
+    pub coordinates: Buffer,
+    pub operations: Buffer,
+    pub descriptors: Buffer,
 }
 
 #[repr(C)]
@@ -82,6 +95,15 @@ pub struct GlyphDescriptor {
     pub height: i16,
     pub units_per_em: u16,
     pub point_count: u16,
-    pub index_of_first_point: u32,
+    pub start_point: u32,
+}
+
+impl GlyphDescriptor {
+    #[inline]
+    pub fn pixel_rect(&self, point_size: f32) -> Rect<f32> {
+        let pixels_per_unit = point_size / self.units_per_em as f32;
+        Rect::new(Point2D::new(self.left as f32, self.bottom as f32),
+                  Size2D::new(self.width as f32, self.height as f32)) * pixels_per_unit
+    }
 }
 
