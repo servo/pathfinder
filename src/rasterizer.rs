@@ -8,6 +8,20 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-mod atlas;
-mod buffers;
+use compute_shader::device::Device;
+use compute_shader::queue::Queue;
+
+pub struct Rasterizer {
+    device: Device,
+    queue: Queue,
+}
+
+impl Rasterizer {
+    pub fn new(device: Device, queue: Queue) -> Result<Rasterizer, ()> {
+        Ok(Rasterizer {
+            device: device,
+            queue: queue,
+        })
+    }
+}
 

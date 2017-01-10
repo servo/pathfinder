@@ -9,6 +9,9 @@ byteorder = "1"
 euclid = "0.10"
 memmap = "0.5"
 
+[dependencies.compute-shader]
+git = "https://github.com/pcwalton/compute-shader.git"
+
 [dev-dependencies]
 quickcheck = "0.4"
 

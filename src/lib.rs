@@ -8,18 +8,27 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#![cfg_attr(test, feature(test))]
+
 #[macro_use]
 extern crate bitflags;
 extern crate byteorder;
+extern crate compute_shader;
 extern crate euclid;
+#[cfg(test)]
+extern crate memmap;
 #[cfg(test)]
 #[macro_use]
 extern crate quickcheck;
+#[cfg(test)]
+extern crate test;
 
 pub mod atlas;
 pub mod batch;
+pub mod buffers;
 pub mod charmap;
 pub mod otf;
+pub mod rasterizer;
 mod util;
 
 #[cfg(test)]

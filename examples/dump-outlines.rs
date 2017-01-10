@@ -21,7 +21,7 @@ fn main() {
         let glyf = font.glyf_table().unwrap();
         let head = font.head_table().unwrap();
         let loca = font.loca_table(&head).unwrap();
-        let codepoint_ranges = [CodepointRange::new('A' as u32, 'Z' as u32)];
+        let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
         let glyph_ranges = cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (codepoint, glyph_id) in
                 codepoint_ranges.iter()
