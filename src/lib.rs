@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![feature(iter_min_by)]
-
 #[macro_use]
 extern crate bitflags;
 extern crate byteorder;
@@ -20,6 +18,7 @@ extern crate quickcheck;
 
 pub mod atlas;
 pub mod batch;
+pub mod charmap;
 pub mod otf;
 mod util;
 

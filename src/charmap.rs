@@ -8,58 +8,47 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+/// An inclusive codepoint range.
 #[derive(Clone, Copy, Debug)]
-pub struct GlyphRange {
-    pub start: u16,
-    pub end: u16,
+pub struct CodepointRange {
+    pub start: u32,
+    pub end: u32,
 }
 
-impl GlyphRange {
+impl CodepointRange {
     #[inline]
-    pub fn iter(&self) -> GlyphRangeIter {
-        GlyphRangeIter {
+    pub fn new(start: u32, end: u32) -> CodepointRange {
+        CodepointRange {
+            start: start,
+            end: end,
+        }
+    }
+
+    #[inline]
+    pub fn iter(&self) -> CodepointRangeIter {
+        CodepointRangeIter {
             start: self.start,
             end: self.end,
         }
     }
 }
 
-#[derive(Clone)]
-pub struct GlyphRangeIter {
-    start: u16,
-    end: u16,
+pub struct CodepointRangeIter {
+    start: u32,
+    end: u32,
 }
 
-impl Iterator for GlyphRangeIter {
-    type Item = u16;
+impl Iterator for CodepointRangeIter {
+    type Item = u32;
 
     #[inline]
-    fn next(&mut self) -> Option<u16> {
+    fn next(&mut self) -> Option<u32> {
         if self.start > self.end {
             None
         } else {
             let item = self.start;
             self.start += 1;
             Some(item)
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct FontGlyphRange {
-    pub font_id: u32,
-    pub ranges: Vec<GlyphRange>,
-}
-
-#[derive(Clone)]
-pub struct FontGlyphRanges {
-    pub fonts: Vec<FontGlyphRange>,
-}
-
-impl FontGlyphRanges {
-    pub fn new() -> FontGlyphRanges {
-        FontGlyphRanges {
-            fonts: vec![],
         }
     }
 }
