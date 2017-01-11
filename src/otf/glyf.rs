@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use euclid::Point2D;
+use euclid::{Point2D, Rect, Size2D};
 use otf::FontTable;
 use otf::loca::LocaTable;
 use std::mem;
@@ -33,6 +33,7 @@ pub struct Point {
     pub first_point_in_contour: bool,
 }
 
+/// TODO(pcwalton): Add some caching so we don't keep going to the `loca` table all the time.
 #[derive(Clone, Copy, Debug)]
 pub struct GlyfTable<'a> {
     pub table: FontTable<'a>,
@@ -141,6 +142,19 @@ impl<'a> GlyfTable<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn bounding_rect(&self, loca_table: &LocaTable, glyph_id: u32) -> Result<Rect<i16>, ()> {
+        let mut reader = self.table.bytes;
+        let offset = try!(loca_table.location_of(glyph_id));
+        try!(reader.jump(offset as usize));
+
+        let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(drop));
+        let x_min = try!(reader.read_i16::<BigEndian>().map_err(drop));
+        let y_min = try!(reader.read_i16::<BigEndian>().map_err(drop));
+        let x_max = try!(reader.read_i16::<BigEndian>().map_err(drop));
+        let y_max = try!(reader.read_i16::<BigEndian>().map_err(drop));
+        Ok(Rect::new(Point2D::new(x_min, y_min), Size2D::new(x_max - x_min, y_max - y_min)))
     }
 }
 

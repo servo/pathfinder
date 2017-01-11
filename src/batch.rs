@@ -56,7 +56,6 @@ impl BatchBuilder {
             atlas_y: atlas_origin.y,
             point_size: point_size,
             glyph_index: glyph_index,
-            start_point_in_glyph: descriptor.start_point,
             start_point_in_batch: self.point_count,
             point_count: descriptor.point_count as u32,
         });
@@ -66,7 +65,7 @@ impl BatchBuilder {
         Ok(())
     }
 
-    pub fn finish(&mut self, device: &mut Device) -> Result<Batch, ()> {
+    pub fn finish(&mut self, device: &Device) -> Result<Batch, ()> {
         let indices = BufferData::HostAllocated(HostAllocatedData::new(&self.indices));
         let images = BufferData::HostAllocated(HostAllocatedData::new(&self.images));
         Ok(Batch {
@@ -125,7 +124,6 @@ pub struct ImageDescriptor {
     atlas_y: u32,
     point_size: f32,
     glyph_index: u32,
-    start_point_in_glyph: u32,
     start_point_in_batch: u32,
     point_count: u32,
 }

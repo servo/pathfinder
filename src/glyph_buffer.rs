@@ -12,6 +12,7 @@ use compute_shader::buffer::{Buffer, BufferData, HostAllocatedData, Protection};
 use compute_shader::device::Device;
 use euclid::{Point2D, Rect, Size2D};
 use otf::glyf::GlyfTable;
+use otf::head::HeadTable;
 use otf::loca::LocaTable;
 
 pub struct GlyphBufferBuilder {
@@ -30,9 +31,14 @@ impl GlyphBufferBuilder {
         }
     }
 
-    pub fn add_glyph(&mut self, glyph_id: u32, loca_table: &LocaTable, glyf_table: &GlyfTable)
+    pub fn add_glyph(&mut self,
+                     glyph_id: u32,
+                     head_table: &HeadTable,
+                     loca_table: &LocaTable,
+                     glyf_table: &GlyfTable)
                      -> Result<(), ()> {
         let mut point_index = self.coordinates.len() / 2;
+        let start_point = point_index;
         let mut operations = if point_index % 4 == 0 {
             0
         } else {
@@ -63,11 +69,21 @@ impl GlyphBufferBuilder {
         }
 
         // TODO(pcwalton): Add a glyph descriptor.
+        let bounding_rect = try!(glyf_table.bounding_rect(loca_table, glyph_id));
+        self.descriptors.push(GlyphDescriptor {
+            left: bounding_rect.origin.x,
+            bottom: bounding_rect.origin.y,
+            width: bounding_rect.size.width,
+            height: bounding_rect.size.height,
+            units_per_em: head_table.units_per_em,
+            point_count: (point_index - start_point) as u16,
+            start_point: start_point as u32,
+        });
 
         Ok(())
     }
 
-    pub fn finish(&self, device: &mut Device) -> Result<GlyphBuffers, ()> {
+    pub fn finish(&self, device: &Device) -> Result<GlyphBuffers, ()> {
         let coordinates = BufferData::HostAllocated(HostAllocatedData::new(&self.coordinates));
         let operations = BufferData::HostAllocated(HostAllocatedData::new(&self.operations));
         let descriptors = BufferData::HostAllocated(HostAllocatedData::new(&self.descriptors));
