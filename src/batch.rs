@@ -71,6 +71,7 @@ impl BatchBuilder {
         Ok(Batch {
             indices: try!(device.create_buffer(Protection::ReadOnly, indices).map_err(drop)),
             images: try!(device.create_buffer(Protection::ReadOnly, images).map_err(drop)),
+            point_count: self.point_count,
         })
     }
 }
@@ -78,6 +79,7 @@ impl BatchBuilder {
 pub struct Batch {
     pub indices: Buffer,
     pub images: Buffer,
+    pub point_count: u32,
 }
 
 #[derive(Clone, Copy, Debug)]

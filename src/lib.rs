@@ -26,6 +26,7 @@ extern crate test;
 pub mod atlas;
 pub mod batch;
 pub mod charmap;
+pub mod coverage;
 pub mod glyph_buffer;
 pub mod otf;
 pub mod rasterizer;

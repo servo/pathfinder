@@ -2,16 +2,23 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 extern crate compute_shader;
+extern crate euclid;
 extern crate gl;
 extern crate glfw;
+extern crate lord_drawquaad;
 extern crate memmap;
 extern crate pathfinder;
 
+use compute_shader::buffer;
 use compute_shader::instance::Instance;
-use glfw::{Context, OpenGlProfileHint, WindowHint, WindowMode};
+use compute_shader::texture::ExternalTexture;
+use euclid::{Point2D, Rect, Size2D};
+use gl::types::GLint;
+use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
 use pathfinder::batch::{BatchBuilder, GlyphRange};
 use pathfinder::charmap::CodepointRange;
+use pathfinder::coverage::CoverageBuffer;
 use pathfinder::glyph_buffer::GlyphBufferBuilder;
 use pathfinder::otf::FontData;
 use pathfinder::rasterizer::Rasterizer;
@@ -30,7 +37,7 @@ fn main() {
     glfw.window_hint(WindowHint::OpenGlProfile(OpenGlProfileHint::Core));
     let context = glfw.create_window(WIDTH, HEIGHT, "generate-atlas", WindowMode::Windowed);
 
-    let (mut window, _) = context.expect("Couldn't create a window!");
+    let (mut window, events) = context.expect("Couldn't create a window!");
     window.make_current();
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
 
@@ -59,8 +66,55 @@ fn main() {
         }
     }
 
-    let glyph_buffer = glyph_buffer_builder.finish(&rasterizer.device).unwrap();
+    let glyph_buffers = glyph_buffer_builder.finish(&rasterizer.device).unwrap();
     let batch = batch_builder.finish(&rasterizer.device).unwrap();
-    // TODO(pcwalton): ...
+
+    let atlas_size = Size2D::new(WIDTH, HEIGHT);
+    let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
+
+    let texture = rasterizer.device
+                            .create_texture(buffer::Protection::WriteOnly, &atlas_size)
+                            .unwrap();
+
+    rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), atlas_size),
+                          SHELF_HEIGHT,
+                          &glyph_buffers,
+                          &batch,
+                          &coverage_buffer,
+                          &texture).unwrap().wait().unwrap();
+
+    let draw_context = lord_drawquaad::Context::new();
+
+    let mut gl_texture = 0;
+    unsafe {
+        gl::GenTextures(1, &mut gl_texture);
+        texture.bind_to(&ExternalTexture::Gl(gl_texture)).unwrap();
+
+        gl::BindTexture(gl::TEXTURE_RECTANGLE, gl_texture);
+        gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
+        gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);
+        gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as GLint);
+        gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as GLint);
+    }
+
+    unsafe {
+        gl::ClearColor(1.0, 1.0, 1.0, 1.0);
+        gl::Clear(gl::COLOR_BUFFER_BIT);
+    }
+
+    draw_context.draw(gl_texture);
+    window.swap_buffers();
+
+    while !window.should_close() {
+        glfw.poll_events();
+        for (_, event) in glfw::flush_messages(&events) {
+            match event {
+                WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
+                    window.set_should_close(true)
+                }
+                _ => {}
+            }
+        }
+    }
 }
 

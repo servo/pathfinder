@@ -19,3 +19,6 @@ quickcheck = "0.4"
 [dev-dependencies.glfw]
 git = "https://github.com/bjz/glfw-rs.git"
 
+[dev-dependencies.lord-drawquaad]
+git = "https://github.com/pcwalton/lord-drawquaad.git"
+
