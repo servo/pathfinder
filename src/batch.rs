@@ -18,7 +18,7 @@ const POINTS_PER_SEGMENT: u32 = 32;
 
 pub struct BatchBuilder {
     pub atlas: Atlas,
-    pub indices: Vec<u16>,
+    pub indices: Vec<u32>,
     pub images: Vec<ImageDescriptor>,
     pub point_count: u32,
 }
@@ -46,10 +46,6 @@ impl BatchBuilder {
         // unnecessary.
         let pixel_size = descriptor.pixel_rect(point_size).size.ceil().cast().unwrap();
         let atlas_origin = try!(self.atlas.place(&pixel_size));
-
-        if self.point_count % POINTS_PER_SEGMENT == 0 {
-            self.indices.push(self.images.len() as u16)
-        }
 
         self.images.push(ImageDescriptor {
             atlas_x: atlas_origin.x,
