@@ -10,9 +10,6 @@
 
 #version 410
 
-#define OPERATION_LINE          1
-#define OPERATION_QUAD_CURVE    2
-
 #define CURVE_THRESHOLD         0.333f
 #define CURVE_TOLERANCE         3.0f
 
@@ -54,10 +51,10 @@ void main() {
         // Quadratic curve.
         vec2 dev = vpP0 - 2.0f * vpP1 + vpP2;
         float devSq = dot(dev, dev);
-        if (devSq >= QUAD_CURVE_THRESHOLD) {
+        if (devSq >= CURVE_THRESHOLD) {
             // Inverse square root is likely no slower and may be faster than regular square root
             // (e.g. on x86).
-            lineCount += floor(inversesqrt(inversesqrt(QUAD_CURVE_TOLERANCE * devSq)));
+            lineCount += floor(inversesqrt(inversesqrt(CURVE_TOLERANCE * devSq)));
         }
     }
 

@@ -18,10 +18,13 @@ layout(std140) struct ImageInfo {
     ivec4 extents;
     // The font size in pixels.
     float pointSize;
-}
+};
 
 // The size of the atlas in pixels.
 uniform uvec2 uAtlasSize;
+
+// The number of ems per unit (reciprocal of units per em).
+uniform float uEmsPerUnit;
 
 layout(std140) uniform ubImageInfo {
     ImageInfo uImageInfo[256];
@@ -43,7 +46,7 @@ void main() {
 
     ImageInfo imageInfo = uImageInfo[aImageIndex];
     vec2 glyphPos = vec2(aPosition.x - imageInfo.extents.x, imageInfo.extents.w - aPosition.y);
-    vec2 atlasPos = glyphPos * EMS_PER_UNIT * pointSize + vec2(imageInfo.atlasRect.xy);
+    vec2 atlasPos = glyphPos * uEmsPerUnit * imageInfo.pointSize + vec2(imageInfo.atlasRect.xy);
     gl_Position = vec4(atlasPos, 0.0f, 1.0f);
 }
 

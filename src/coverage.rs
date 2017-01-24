@@ -8,22 +8,22 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use compute_shader::buffer::{Buffer, BufferData, Protection};
+use compute_shader::buffer::Protection;
 use compute_shader::device::Device;
+use compute_shader::texture::{Format, Texture};
 use euclid::size::Size2D;
 use std::mem;
 
 pub struct CoverageBuffer {
-    pub buffer: Buffer,
+    pub texture: Texture,
 }
 
 impl CoverageBuffer {
     pub fn new(device: &Device, size: &Size2D<u32>) -> Result<CoverageBuffer, ()> {
-        let size = size.width as usize * size.height as usize * mem::size_of::<u32>();
-        let buffer = try!(device.create_buffer(Protection::ReadWrite,
-                                               BufferData::Uninitialized(size)).map_err(drop));
+        let texture = try!(device.create_texture(Format::R32F, Protection::ReadWrite, size)
+                                 .map_err(drop));
         Ok(CoverageBuffer {
-            buffer: buffer,
+            texture: texture,
         })
     }
 }

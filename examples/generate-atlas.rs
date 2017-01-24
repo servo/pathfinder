@@ -11,7 +11,7 @@ extern crate pathfinder;
 
 use compute_shader::buffer;
 use compute_shader::instance::Instance;
-use compute_shader::texture::ExternalTexture;
+use compute_shader::texture::{ExternalTexture, Format};
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::GLint;
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
@@ -73,7 +73,7 @@ fn main() {
     let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
 
     let texture = rasterizer.device
-                            .create_texture(buffer::Protection::WriteOnly, &atlas_size)
+                            .create_texture(Format::R8, buffer::Protection::WriteOnly, &atlas_size)
                             .unwrap();
 
     rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), atlas_size),

@@ -39,7 +39,7 @@ void main() {
     // Work out how many lines made up this segment, which line we're working on, and which
     // endpoint of that line we're looking at.
     uint tessPointCount = uint(gl_TessLevelInner[0] + 1.0f);
-    uint tessIndex = uint(round(gl_TessCoord.x * float(tessPointCount - 1)))
+    uint tessIndex = uint(round(gl_TessCoord.x * float(tessPointCount - 1)));
     uint lineCount = tessPointCount / 2, lineIndex = tessIndex / 2, endpoint = tessIndex % 2;
 
     // Compute our endpoints (trivial if this is part of a line, less trivial if this is part of a
@@ -54,11 +54,15 @@ void main() {
         vP1 = mix(mix(vpP0, vpP1, t1), mix(vpP1, vpP2, t0), t1);
     }
 
-    // Compute Y extents.
+    // Compute Y extents and slope.
     vYMinMax = vP0.y <= vP1.y ? vec2(vP0.y, vP1.y) : vec2(vP1.y, vP0.y);
+    vSlope = (vP1.y - vP0.y) / (vP1.x - vP0.x);
+
+    // Forward direction onto the fragment shader.
+    vDirection = vpDirection;
 
     // Compute our final position in atlas space, rounded out to the next pixel.
-    float x = pointIndex == 0 ? floor(vP0.x) : ceil(vP1.x);
+    float x = endpoint == 0 ? floor(vP0.x) : ceil(vP1.x);
     float y = gl_TessCoord.y == 0.0f ? floor(vYMinMax.x) : ceil(vYMinMax.y) + 1.0f;
 
     // Convert atlas space to device space.

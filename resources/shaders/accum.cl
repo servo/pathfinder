@@ -18,10 +18,11 @@ const sampler_t SAMPLER = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_F
 
 __kernel void accum(__write_only image2d_t gTexture,
                     __read_only image2d_t gCoverage,
-                    uint kAtlasWidth,
+                    uint4 kAtlasRect,
                     uint kAtlasShelfHeight) {
     // Determine the boundaries of the column we'll be traversing.
-    uint column = get_global_id(0) % kAtlasWidth, shelfIndex = get_global_id(0) / kAtlasWidth;
+    uint atlasWidth = kAtlasRect.z - kAtlasRect.x;
+    uint column = get_global_id(0) % atlasWidth, shelfIndex = get_global_id(0) / atlasWidth;
     uint firstRow = shelfIndex * kAtlasShelfHeight, lastRow = (shelfIndex + 1) * kAtlasShelfHeight;
 
     // Sweep down the column, accumulating coverage as we go.
@@ -31,7 +32,7 @@ __kernel void accum(__write_only image2d_t gTexture,
         coverage += read_imagef(gCoverage, SAMPLER, coord).r;
 
         uint gray = 255 - convert_uint(clamp(coverage, 0.0f, 1.0f) * 255.0f);
-        write_imageui(gTexture, coord, (uint4)(gray, 255, 255, 255));
+        write_imageui(gTexture, coord + (int2)kAtlasRect.xy, (uint4)(gray, 255, 255, 255));
     }
 }
 
