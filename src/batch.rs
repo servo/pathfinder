@@ -9,18 +9,17 @@
 // except according to those terms.
 
 use atlas::Atlas;
-use compute_shader::buffer::{Buffer, BufferData, HostAllocatedData, Protection};
-use compute_shader::device::Device;
+use gl::types::{GLsizei, GLsizeiptr, GLuint};
+use gl;
 use glyph_buffer::GlyphBufferBuilder;
+use std::mem;
+use std::os::raw::c_void;
 use std::u16;
-
-const POINTS_PER_SEGMENT: u32 = 32;
 
 pub struct BatchBuilder {
     pub atlas: Atlas,
-    pub indices: Vec<u32>,
     pub images: Vec<ImageDescriptor>,
-    pub point_count: u32,
+    pub glyph_indices: Vec<u32>,
 }
 
 impl BatchBuilder {
@@ -29,12 +28,12 @@ impl BatchBuilder {
     pub fn new(available_width: u32, shelf_height: u32) -> BatchBuilder {
         BatchBuilder {
             atlas: Atlas::new(available_width, shelf_height),
-            indices: vec![],
             images: vec![],
-            point_count: 0,
+            glyph_indices: vec![],
         }
     }
 
+    /// FIXME(pcwalton): Support the same glyph drawn at multiple point sizes.
     pub fn add_glyph(&mut self,
                      glyph_buffer_builder: &GlyphBufferBuilder,
                      glyph_index: u32,
@@ -47,35 +46,83 @@ impl BatchBuilder {
         let pixel_size = descriptor.pixel_rect(point_size).size.ceil().cast().unwrap();
         let atlas_origin = try!(self.atlas.place(&pixel_size));
 
-        self.images.push(ImageDescriptor {
+        while self.images.len() < glyph_index as usize + 1 {
+            self.images.push(ImageDescriptor::default())
+        }
+
+        self.images[glyph_index as usize] = ImageDescriptor {
             atlas_x: atlas_origin.x,
             atlas_y: atlas_origin.y,
             point_size: point_size,
             glyph_index: glyph_index,
-            start_point_in_batch: self.point_count,
-            point_count: descriptor.point_count as u32,
-        });
+        };
 
-        self.point_count += descriptor.point_count as u32;
+        self.glyph_indices.push(glyph_index);
 
         Ok(())
     }
 
-    pub fn finish(&mut self, device: &Device) -> Result<Batch, ()> {
-        let indices = BufferData::HostAllocated(HostAllocatedData::new(&self.indices));
-        let images = BufferData::HostAllocated(HostAllocatedData::new(&self.images));
-        Ok(Batch {
-            indices: try!(device.create_buffer(Protection::ReadOnly, indices).map_err(drop)),
-            images: try!(device.create_buffer(Protection::ReadOnly, images).map_err(drop)),
-            point_count: self.point_count,
-        })
+    pub fn finish(&mut self, glyph_buffer_builder: &GlyphBufferBuilder) -> Result<Batch, ()> {
+        self.glyph_indices.sort();
+
+        let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);
+        for &glyph_index in &self.glyph_indices {
+            let first_index = glyph_buffer_builder.descriptors[glyph_index as usize].start_index as
+                usize;
+            let last_index = match glyph_buffer_builder.descriptors.get(glyph_index as usize + 1) {
+                Some(ref descriptor) => descriptor.start_index as usize,
+                None => glyph_buffer_builder.indices.len(),
+            };
+
+            match current_range {
+                Some((current_first, current_last)) if first_index == current_last => {
+                    current_range = Some((current_first, last_index))
+                }
+                Some((current_first, current_last)) => {
+                    counts.push((current_last - current_first) as GLsizei);
+                    start_indices.push(current_first);
+                    current_range = Some((first_index, last_index))
+                }
+                None => current_range = Some((first_index, last_index)),
+            }
+        }
+        if let Some((current_first, current_last)) = current_range {
+            counts.push((current_last - current_first) as GLsizei);
+            start_indices.push(current_first);
+        }
+
+        // TODO(pcwalton): Try using `glMapBuffer` here.
+        unsafe {
+            let mut images = 0;
+            gl::GenBuffers(1, &mut images);
+
+            gl::BindBuffer(gl::UNIFORM_BUFFER, images);
+            gl::BufferData(gl::UNIFORM_BUFFER,
+                           (self.images.len() * mem::size_of::<ImageDescriptor>()) as GLsizeiptr,
+                           self.images.as_ptr() as *const ImageDescriptor as *const c_void,
+                           gl::DYNAMIC_DRAW);
+
+            Ok(Batch {
+                start_indices: start_indices,
+                counts: counts,
+                images: images,
+            })
+        }
     }
 }
 
 pub struct Batch {
-    pub indices: Buffer,
-    pub images: Buffer,
-    pub point_count: u32,
+    pub start_indices: Vec<usize>,
+    pub counts: Vec<GLsizei>,
+    pub images: GLuint,
+}
+
+impl Drop for Batch {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteBuffers(1, &mut self.images);
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -116,13 +163,11 @@ impl Iterator for GlyphRangeIter {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct ImageDescriptor {
     atlas_x: u32,
     atlas_y: u32,
     point_size: f32,
     glyph_index: u32,
-    start_point_in_batch: u32,
-    point_count: u32,
 }
 

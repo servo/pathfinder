@@ -19,14 +19,14 @@ layout(std140) struct GlyphDescriptor {
     ivec4 extents;
     // The number of units per em in this glyph.
     uint unitsPerEm;
-    // The number of points in this glyph.
-    uint pointCount;
-    // The index of the first point.
+    // The index of the first point in the VBO.
     uint startPoint;
+    // The index of the first element in the IBO.
+    uint startIndex;
 };
 
 // Information about the position of each glyph in the atlas.
-layout(std140) struct ImageInfo {
+layout(std140) struct ImageDescriptor {
     // The left/top/right/bottom positions of the glyph in the atlas.
     uvec4 atlasRect;
     // The font size in pixels.
@@ -42,17 +42,17 @@ layout(std140) uniform ubGlyphDescriptors {
     GlyphDescriptor uGlyphs[MAX_GLYPHS];
 };
 
-layout(std140) uniform ubImageInfo {
-    ImageInfo uImageInfo[MAX_GLYPHS];
+layout(std140) uniform ubImageDescriptors {
+    ImageDescriptor uImages[MAX_GLYPHS];
 };
 
 // The position of each vertex in glyph space.
 in ivec2 aPosition;
 
-// Which image the vertex belongs to.
+// Which glyph the vertex belongs to.
 //
 // TODO(pcwalton): See if this is faster as a binary search on the vertex ID.
-in uint aImageIndex;
+in uint aGlyphIndex;
 
 // The vertex ID, passed along onto the TCS.
 flat out uint vVertexID;
@@ -60,13 +60,13 @@ flat out uint vVertexID;
 void main() {
     vVertexID = gl_VertexID;
 
-    ImageInfo imageInfo = uImageInfo[aImageIndex];
-    GlyphDescriptor glyph = uGlyphs[imageInfo.glyphIndex];
+    ImageDescriptor image = uImages[aGlyphIndex];
+    GlyphDescriptor glyph = uGlyphs[aGlyphIndex];
 
     float emsPerUnit = 1.0f / float(glyph.unitsPerEm);
 
-    vec2 glyphPos = vec2(aPosition.x - glyphInfo.extents.x, glyphInfo.extents.w - aPosition.y);
-    vec2 atlasPos = glyphPos * emsPerUnit * imageInfo.pointSize + vec2(imageInfo.atlasRect.xy);
+    vec2 glyphPos = vec2(aPosition.x - glyph.extents.x, glyph.extents.w - aPosition.y);
+    vec2 atlasPos = glyphPos * emsPerUnit * image.pointSize + vec2(image.atlasRect.xy);
 
     gl_Position = vec4(atlasPos, 0.0f, 1.0f);
 }

@@ -14,7 +14,6 @@ use compute_shader::texture::{ExternalTexture, Format, Texture};
 use euclid::size::Size2D;
 use gl::types::{GLint, GLuint};
 use gl;
-use std::mem;
 
 pub struct CoverageBuffer {
     pub texture: Texture,

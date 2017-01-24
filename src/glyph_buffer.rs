@@ -8,8 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use compute_shader::buffer::{Buffer, BufferData, HostAllocatedData, Protection};
-use compute_shader::device::Device;
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLsizeiptr, GLuint};
 use gl;
@@ -19,14 +17,15 @@ use otf::loca::LocaTable;
 use std::mem;
 use std::os::raw::c_void;
 
+static DUMMY_VERTEX: Vertex = Vertex {
+    x: 0,
+    y: 0,
+    glyph_index: 0,
+};
+
 pub struct GlyphBufferBuilder {
-    pub coordinates: Vec<(i16, i16)>,
-
-    /// TODO(pcwalton): Try omitting this and binary search the glyph descriptors in the vertex
-    /// shader. Might or might not help.
-    pub glyph_indices: Vec<u16>,
-
-    pub operations: Vec<u8>,
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u32>,
     pub descriptors: Vec<GlyphDescriptor>,
 }
 
@@ -34,9 +33,8 @@ impl GlyphBufferBuilder {
     #[inline]
     pub fn new() -> GlyphBufferBuilder {
         GlyphBufferBuilder {
-            coordinates: vec![],
-            glyph_indices: vec![],
-            operations: vec![],
+            vertices: vec![DUMMY_VERTEX],
+            indices: vec![],
             descriptors: vec![],
         }
     }
@@ -49,37 +47,30 @@ impl GlyphBufferBuilder {
                      -> Result<(), ()> {
         let glyph_index = self.descriptors.len() as u16;
 
-        let mut point_index = self.coordinates.len() / 2;
+        let mut point_index = self.vertices.len() as u32;
+        let start_index = self.indices.len() as u32;
         let start_point = point_index;
-        let mut operations = if point_index % 4 == 0 {
-            0
-        } else {
-            self.operations.pop().unwrap()
-        };
+        let mut last_point_on_curve = true;
 
         try!(glyf_table.for_each_point(loca_table, glyph_id, |point| {
-            self.coordinates.push((point.position.x, point.position.y));
-            self.glyph_indices.push(glyph_index);
+            self.vertices.push(Vertex {
+                x: point.position.x,
+                y: point.position.y,
+                glyph_index: glyph_index,
+            });
 
-            let operation = if point.first_point_in_contour {
-                0
-            } else if point.on_curve {
-                1
-            } else {
-                2
-            };
-
-            operations |= operation << (point_index % 4 * 2);
+            if !point.first_point_in_contour && point.on_curve {
+                let indices = if last_point_on_curve {
+                    [point_index - 2, 0, point_index - 1]
+                } else {
+                    [point_index - 3, point_index - 2, point_index - 1]
+                };
+                self.indices.extend(indices.iter().cloned());
+            }
 
             point_index += 1;
-            if point_index % 4 == 0 {
-                self.operations.push(operation)
-            }
+            last_point_on_curve = point.on_curve
         }));
-
-        if point_index % 4 != 0 {
-            self.operations.push(operations)
-        }
 
         // Add a glyph descriptor.
         let bounding_rect = try!(glyf_table.bounding_rect(loca_table, glyph_id));
@@ -89,26 +80,33 @@ impl GlyphBufferBuilder {
             right: bounding_rect.max_x() as i32,
             top: bounding_rect.max_y() as i32,
             units_per_em: head_table.units_per_em as u32,
-            point_count: (point_index - start_point) as u32,
             start_point: start_point as u32,
+            start_index: start_index,
             pad: 0,
         });
 
         Ok(())
     }
 
-    pub fn finish(&self, device: &Device) -> Result<GlyphBuffers, ()> {
-        // TODO(pcwalton): Try using `glMapBuffer` here. Requires precomputing contours.
+    pub fn finish(&self) -> Result<GlyphBuffers, ()> {
+        // TODO(pcwalton): Try using `glMapBuffer` here. Requires precomputing contour types and
+        // counts.
         unsafe {
-            let (mut coordinates, mut descriptors) = (0, 0);
-            gl::GenBuffers(1, &mut coordinates);
+            let (mut vertices, mut indices, mut descriptors) = (0, 0, 0);
+            gl::GenBuffers(1, &mut vertices);
+            gl::GenBuffers(1, &mut indices);
             gl::GenBuffers(1, &mut descriptors);
 
-            let length = self.coordinates.len() * mem::size_of::<(i16, i16)>();
-            gl::BindBuffer(gl::ARRAY_BUFFER, coordinates);
+            gl::BindBuffer(gl::ARRAY_BUFFER, vertices);
             gl::BufferData(gl::ARRAY_BUFFER,
-                           length as GLsizeiptr,
-                           self.coordinates.as_ptr() as *const (i16, i16) as *const c_void,
+                           (self.vertices.len() * mem::size_of::<Vertex>()) as GLsizeiptr,
+                           self.vertices.as_ptr() as *const Vertex as *const c_void,
+                           gl::STATIC_DRAW);
+
+            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, indices);
+            gl::BufferData(gl::ELEMENT_ARRAY_BUFFER,
+                           (self.indices.len() * mem::size_of::<u32>()) as GLsizeiptr,
+                           self.indices.as_ptr() as *const u32 as *const c_void,
                            gl::STATIC_DRAW);
 
             let length = self.descriptors.len() * mem::size_of::<GlyphDescriptor>();
@@ -119,7 +117,8 @@ impl GlyphBufferBuilder {
                            gl::STATIC_DRAW);
 
             Ok(GlyphBuffers {
-                coordinates: coordinates,
+                vertices: vertices,
+                indices: indices,
                 descriptors: descriptors,
             })
         }
@@ -127,7 +126,8 @@ impl GlyphBufferBuilder {
 }
 
 pub struct GlyphBuffers {
-    pub coordinates: GLuint,
+    pub vertices: GLuint,
+    pub indices: GLuint,
     pub descriptors: GLuint,
 }
 
@@ -139,8 +139,8 @@ pub struct GlyphDescriptor {
     pub right: i32,
     pub top: i32,
     pub units_per_em: u32,
-    pub point_count: u32,
     pub start_point: u32,
+    pub start_index: u32,
     pub pad: u32,
 }
 
@@ -150,7 +150,17 @@ impl GlyphDescriptor {
         let pixels_per_unit = point_size / self.units_per_em as f32;
         Rect::new(Point2D::new(self.left as f32, self.bottom as f32),
                   Size2D::new((self.right - self.left) as f32,
-                              (self.bottom - self.top) as f32)) * pixels_per_unit
+                              (self.top - self.bottom) as f32)) * pixels_per_unit
     }
+}
+
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct Vertex {
+    x: i16,
+    y: i16,
+    /// TODO(pcwalton): Try omitting this and binary search the glyph descriptors in the vertex
+    /// shader. Might or might not help.
+    glyph_index: u16,
 }
 
