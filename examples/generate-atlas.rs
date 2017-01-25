@@ -13,7 +13,7 @@ use compute_shader::buffer;
 use compute_shader::instance::Instance;
 use compute_shader::texture::{ExternalTexture, Format};
 use euclid::{Point2D, Rect, Size2D};
-use gl::types::GLint;
+use gl::types::{GLint, GLuint};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
 use pathfinder::batch::{BatchBuilder, GlyphRange};
@@ -32,7 +32,7 @@ const SHELF_HEIGHT: u32 = 32;
 
 fn main() {
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
-    glfw.window_hint(WindowHint::ContextVersion(3, 3));
+    glfw.window_hint(WindowHint::ContextVersion(4, 1));
     glfw.window_hint(WindowHint::OpenGlForwardCompat(true));
     glfw.window_hint(WindowHint::OpenGlProfile(OpenGlProfileHint::Core));
     let context = glfw.create_window(WIDTH, HEIGHT, "generate-atlas", WindowMode::Windowed);
@@ -40,6 +40,7 @@ fn main() {
     let (mut window, events) = context.expect("Couldn't create a window!");
     window.make_current();
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
+    let (device_pixel_width, device_pixel_height) = window.get_framebuffer_size();
 
     let instance = Instance::new().unwrap();
     let device = instance.create_device().unwrap();
@@ -48,7 +49,7 @@ fn main() {
     let rasterizer = Rasterizer::new(device, queue).unwrap();
 
     let mut glyph_buffer_builder = GlyphBufferBuilder::new();
-    let mut batch_builder = BatchBuilder::new(WIDTH, SHELF_HEIGHT);
+    let mut batch_builder = BatchBuilder::new(device_pixel_width as GLuint, SHELF_HEIGHT);
 
     let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
     unsafe {
@@ -69,7 +70,7 @@ fn main() {
     let glyph_buffers = glyph_buffer_builder.finish().unwrap();
     let batch = batch_builder.finish(&glyph_buffer_builder).unwrap();
 
-    let atlas_size = Size2D::new(WIDTH, HEIGHT);
+    let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
     let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
 
     let texture = rasterizer.device
@@ -98,6 +99,7 @@ fn main() {
     }
 
     unsafe {
+        gl::Viewport(0, 0, device_pixel_width, device_pixel_height);
         gl::ClearColor(1.0, 1.0, 1.0, 1.0);
         gl::Clear(gl::COLOR_BUFFER_BIT);
     }

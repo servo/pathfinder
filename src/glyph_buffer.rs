@@ -61,9 +61,9 @@ impl GlyphBufferBuilder {
 
             if !point.first_point_in_contour && point.on_curve {
                 let indices = if last_point_on_curve {
-                    [point_index - 2, 0, point_index - 1]
+                    [point_index - 1, 0, point_index]
                 } else {
-                    [point_index - 3, point_index - 2, point_index - 1]
+                    [point_index - 2, point_index - 1, point_index]
                 };
                 self.indices.extend(indices.iter().cloned());
             }
@@ -132,7 +132,7 @@ pub struct GlyphBuffers {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct GlyphDescriptor {
     pub left: i32,
     pub bottom: i32,
@@ -154,7 +154,7 @@ impl GlyphDescriptor {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vertex {
     x: i16,

@@ -10,29 +10,19 @@
 
 #version 410
 
-// FIXME(pcwalton): This should be higher. Dynamically query its maximum possible size, perhaps?
-#define MAX_GLYPHS  256
+#define MAX_GLYPHS  2048
+
+// Accessors to work around Apple driver bugs.
+#define GLYPH_DESCRIPTOR_UNITS_PER_EM(d)    (d).misc.x
+#define IMAGE_DESCRIPTOR_ATLAS_POS(d)       (d).xy
+#define IMAGE_DESCRIPTOR_POINT_SIZE(d)      (d).z
 
 // Information about the metrics of each glyph.
 layout(std140) struct GlyphDescriptor {
-    // The left/top/right/bottom offsets of the glyph from point (0, 0) in glyph space.
+    // The left/bottom/right/top offsets of the glyph from point (0, 0) in glyph space.
     ivec4 extents;
-    // The number of units per em in this glyph.
-    uint unitsPerEm;
-    // The index of the first point in the VBO.
-    uint startPoint;
-    // The index of the first element in the IBO.
-    uint startIndex;
-};
-
-// Information about the position of each glyph in the atlas.
-layout(std140) struct ImageDescriptor {
-    // The left/top/right/bottom positions of the glyph in the atlas.
-    uvec4 atlasRect;
-    // The font size in pixels.
-    float pointSize;
-    // The index of the glyph.
-    uint glyphIndex;
+    // x: Units per em.
+    uvec4 misc;
 };
 
 // The size of the atlas in pixels.
@@ -43,7 +33,7 @@ layout(std140) uniform ubGlyphDescriptors {
 };
 
 layout(std140) uniform ubImageDescriptors {
-    ImageDescriptor uImages[MAX_GLYPHS];
+    uvec4 uImages[MAX_GLYPHS];
 };
 
 // The position of each vertex in glyph space.
@@ -60,13 +50,13 @@ flat out uint vVertexID;
 void main() {
     vVertexID = gl_VertexID;
 
-    ImageDescriptor image = uImages[aGlyphIndex];
+    uvec4 image = uImages[aGlyphIndex];
     GlyphDescriptor glyph = uGlyphs[aGlyphIndex];
 
-    float emsPerUnit = 1.0f / float(glyph.unitsPerEm);
-
     vec2 glyphPos = vec2(aPosition.x - glyph.extents.x, glyph.extents.w - aPosition.y);
-    vec2 atlasPos = glyphPos * emsPerUnit * image.pointSize + vec2(image.atlasRect.xy);
+    float pointSize = float(IMAGE_DESCRIPTOR_POINT_SIZE(image)) / 65536.0f;
+    vec2 glyphPxPos = glyphPos * pointSize / GLYPH_DESCRIPTOR_UNITS_PER_EM(glyph);
+    vec2 atlasPos = glyphPxPos + vec2(IMAGE_DESCRIPTOR_ATLAS_POS(image));
 
     gl_Position = vec4(atlasPos, 0.0f, 1.0f);
 }

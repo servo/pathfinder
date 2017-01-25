@@ -28,7 +28,8 @@ out vec4 oFragColor;
 
 void main() {
     // Compute the X boundaries of this pixel.
-    float xMin = floor(gl_FragCoord.x), xMax = ceil(gl_FragCoord.x);
+    float xMin = floor(gl_FragCoord.x);
+    float xMax = xMin + 1.0f;
 
     // Compute the horizontal span that the line segment covers across this pixel.
     float dX = min(xMax, vP1.x) - max(xMin, vP0.x);

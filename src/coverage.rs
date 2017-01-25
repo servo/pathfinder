@@ -48,6 +48,7 @@ impl CoverageBuffer {
                                      gl::TEXTURE_RECTANGLE,
                                      gl_texture,
                                      0);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
         }
 
         Ok(CoverageBuffer {

@@ -53,7 +53,7 @@ impl BatchBuilder {
         self.images[glyph_index as usize] = ImageDescriptor {
             atlas_x: atlas_origin.x,
             atlas_y: atlas_origin.y,
-            point_size: point_size,
+            point_size: (point_size * 65536.0) as u32,
             glyph_index: glyph_index,
         };
 
@@ -167,7 +167,7 @@ impl Iterator for GlyphRangeIter {
 pub struct ImageDescriptor {
     atlas_x: u32,
     atlas_y: u32,
-    point_size: f32,
+    point_size: u32,
     glyph_index: u32,
 }
 

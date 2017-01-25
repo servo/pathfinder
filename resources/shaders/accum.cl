@@ -31,7 +31,7 @@ __kernel void accum(__write_only image2d_t gTexture,
         int2 coord = (int2)((int)column, (int)row);
         coverage += read_imagef(gCoverage, SAMPLER, coord).r;
 
-        uint gray = 255 - convert_uint(clamp(coverage, 0.0f, 1.0f) * 255.0f);
+        uint gray = convert_uint(clamp(coverage, 0.0f, 1.0f) * 255.0f);
         write_imageui(gTexture, coord + (int2)kAtlasRect.xy, (uint4)(gray, 255, 255, 255));
     }
 }

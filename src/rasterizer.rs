@@ -39,16 +39,17 @@ pub struct Rasterizer {
     accum_program: Program,
     draw_vertex_array: GLuint,
     draw_position_attribute: GLint,
-    draw_image_index_attribute: GLint,
+    draw_glyph_index_attribute: GLint,
     draw_atlas_size_uniform: GLint,
     draw_glyph_descriptors_uniform: GLuint,
-    draw_image_info_uniform: GLuint,
+    draw_image_descriptors_uniform: GLuint,
 }
 
 impl Rasterizer {
     pub fn new(device: Device, queue: Queue) -> Result<Rasterizer, ()> {
-        let (draw_program, draw_position_attribute, draw_image_index_attribute);
-        let (draw_atlas_size_uniform, draw_glyph_descriptors_uniform, draw_image_info_uniform);
+        let (draw_program, draw_position_attribute, draw_glyph_index_attribute);
+        let (draw_glyph_descriptors_uniform, draw_image_descriptors_uniform);
+        let draw_atlas_size_uniform;
         let mut draw_vertex_array = 0;
         unsafe {
             let shaders = [
@@ -83,16 +84,17 @@ impl Rasterizer {
 
             draw_position_attribute =
                 gl::GetAttribLocation(draw_program, b"aPosition\0".as_ptr() as *const GLchar);
-            draw_image_index_attribute =
-                gl::GetAttribLocation(draw_program, b"aImageIndex\0".as_ptr() as *const GLchar);
+            draw_glyph_index_attribute =
+                gl::GetAttribLocation(draw_program, b"aGlyphIndex\0".as_ptr() as *const GLchar);
 
             draw_atlas_size_uniform =
                 gl::GetUniformLocation(draw_program, b"uAtlasSize\0".as_ptr() as *const GLchar);
             draw_glyph_descriptors_uniform =
                 gl::GetUniformBlockIndex(draw_program,
                                          b"ubGlyphDescriptors\0".as_ptr() as *const GLchar);
-            draw_image_info_uniform =
-                gl::GetUniformBlockIndex(draw_program, b"ubImageInfo\0".as_ptr() as *const GLchar);
+            draw_image_descriptors_uniform =
+                gl::GetUniformBlockIndex(draw_program,
+                                         b"ubImageDescriptors\0".as_ptr() as *const GLchar);
         }
 
         // FIXME(pcwalton): Don't panic if this fails to compile; just return an error.
@@ -105,10 +107,10 @@ impl Rasterizer {
             accum_program: accum_program,
             draw_vertex_array: draw_vertex_array,
             draw_position_attribute: draw_position_attribute,
-            draw_image_index_attribute: draw_image_index_attribute,
+            draw_glyph_index_attribute: draw_glyph_index_attribute,
             draw_atlas_size_uniform: draw_atlas_size_uniform,
             draw_glyph_descriptors_uniform: draw_glyph_descriptors_uniform,
-            draw_image_info_uniform: draw_image_info_uniform,
+            draw_image_descriptors_uniform: draw_image_descriptors_uniform,
         })
     }
 
@@ -121,8 +123,15 @@ impl Rasterizer {
                       texture: &Texture)
                       -> Result<Event, ()> {
         unsafe {
-            gl::UseProgram(self.draw_program);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, coverage_buffer.framebuffer);
+            gl::Viewport(0, 0, atlas_rect.size.width as GLint, atlas_rect.size.height as GLint);
+
+            // TODO(pcwalton): Scissor to the atlas rect to clear faster?
+            gl::ClearColor(0.0, 0.0, 0.0, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+
             gl::BindVertexArray(self.draw_vertex_array);
+            gl::UseProgram(self.draw_program);
 
             // Set up the buffer layout.
             gl::BindBuffer(gl::ARRAY_BUFFER, glyph_buffers.vertices);
@@ -131,20 +140,20 @@ impl Rasterizer {
                                      gl::SHORT,
                                      mem::size_of::<Vertex>() as GLint,
                                      0 as *const GLvoid);
-            gl::VertexAttribIPointer(self.draw_image_index_attribute as GLuint,
+            gl::VertexAttribIPointer(self.draw_glyph_index_attribute as GLuint,
                                      1,
                                      gl::UNSIGNED_SHORT,
                                      mem::size_of::<Vertex>() as GLint,
                                      mem::size_of::<(i16, i16)>() as *const GLvoid);
             gl::EnableVertexAttribArray(self.draw_position_attribute as GLuint);
-            gl::EnableVertexAttribArray(self.draw_image_index_attribute as GLuint);
+            gl::EnableVertexAttribArray(self.draw_glyph_index_attribute as GLuint);
 
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, glyph_buffers.indices);
 
             gl::BindBufferBase(gl::UNIFORM_BUFFER, 1, glyph_buffers.descriptors);
             gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, batch.images);
             gl::UniformBlockBinding(self.draw_program, self.draw_glyph_descriptors_uniform, 1);
-            gl::UniformBlockBinding(self.draw_program, self.draw_image_info_uniform, 2);
+            gl::UniformBlockBinding(self.draw_program, self.draw_image_descriptors_uniform, 2);
 
             gl::Uniform2ui(self.draw_atlas_size_uniform,
                            atlas_rect.size.width,
@@ -170,6 +179,16 @@ impl Rasterizer {
                                   gl::UNSIGNED_INT,
                                   batch.start_indices.as_ptr() as *const *const GLvoid,
                                   batch.counts.len() as GLsizei);
+
+            gl::Disable(gl::CULL_FACE);
+            gl::Disable(gl::BLEND);
+
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+
+            // FIXME(pcwalton): We should have some better synchronization here if we're using
+            // OpenCL, but I don't know how to do that portably (i.e. on Mac…) Just using
+            // `glFlush()` seems to work in practice.
+            gl::Flush();
         }
 
         let atlas_rect_uniform = [

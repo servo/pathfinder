@@ -15,9 +15,6 @@
 
 layout(vertices = 1) out;
 
-// The size of the atlas in pixels.
-uniform uvec2 uAtlasSize;
-
 // The vertex ID, passed into this shader.
 flat in uint vVertexID[];
 
@@ -31,25 +28,26 @@ patch out vec2 vpP2;
 patch out float vpDirection;
 
 void main() {
-    vpP0 = gl_in[0].gl_Position.xy;
-    vpP1 = gl_in[1].gl_Position.xy;
-    vpP2 = gl_in[2].gl_Position.xy;
+    vec2 p0 = gl_in[0].gl_Position.xy;
+    vec2 p1 = gl_in[1].gl_Position.xy;
+    vec2 p2 = gl_in[2].gl_Position.xy;
 
     // Compute direction. Flip around if necessary so that p0 is to the left of p2.
-    if (vpP0.x < vpP2.x) {
-        vpDirection = 1.0f;
+    float direction;
+    if (p0.x < p2.x) {
+        direction = 1.0f;
     } else {
-        vpDirection = -1.0f;
-        vec2 tmp = vpP0;
-        vpP0 = vpP2;
-        vpP2 = tmp;
+        direction = -1.0f;
+        vec2 tmp = p0;
+        p0 = p2;
+        p2 = tmp;
     }
 
     // Divide into lines.
     float lineCount = 1.0f;
     if (vVertexID[1] > 0) {
         // Quadratic curve.
-        vec2 dev = vpP0 - 2.0f * vpP1 + vpP2;
+        vec2 dev = p0 - 2.0f * p1 + p2;
         float devSq = dot(dev, dev);
         if (devSq >= CURVE_THRESHOLD) {
             // Inverse square root is likely no slower and may be faster than regular square root
@@ -100,10 +98,19 @@ void main() {
     // so we're in the clear: the rasterizer will always discard the unshaded areas and render only
     // the shaded ones.
 
-    gl_TessLevelInner[0] = vpP0.x == vpP2.x ? 0.0f : lineCount * 2.0f - 1.0f;
-    gl_TessLevelOuter[1] = gl_TessLevelOuter[3] = gl_TessLevelInner[0];
+    float tessLevel = p0.x == p2.x ? 0.0f : (lineCount * 2.0f - 1.0f);
+    gl_TessLevelInner[0] = tessLevel;
+    gl_TessLevelInner[1] = 1.0f;
+    gl_TessLevelOuter[0] = 1.0f;
+    gl_TessLevelOuter[1] = tessLevel;
+    gl_TessLevelOuter[2] = 1.0f;
+    gl_TessLevelOuter[3] = tessLevel;
 
-    // Don't split vertically at all. We only tessellate horizontally.
-    gl_TessLevelInner[1] = gl_TessLevelOuter[0] = gl_TessLevelOuter[2] = 1.0f;
+    // NB: These per-patch outputs must be assigned in this order, or Apple's compiler will
+    // miscompile us.
+    vpP0 = p0;
+    vpP1 = p1;
+    vpP2 = p2;
+    vpDirection = direction;
 }
 

@@ -51,7 +51,7 @@ void main() {
         float t0 = float(lineIndex + 0) / float(lineCount);
         float t1 = float(lineIndex + 1) / float(lineCount);
         vP0 = mix(mix(vpP0, vpP1, t0), mix(vpP1, vpP2, t0), t0);
-        vP1 = mix(mix(vpP0, vpP1, t1), mix(vpP1, vpP2, t0), t1);
+        vP1 = mix(mix(vpP0, vpP1, t1), mix(vpP1, vpP2, t1), t1);
     }
 
     // Compute Y extents and slope.
