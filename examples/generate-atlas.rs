@@ -32,7 +32,7 @@ const SHELF_HEIGHT: u32 = 32;
 
 fn main() {
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
-    glfw.window_hint(WindowHint::ContextVersion(4, 1));
+    glfw.window_hint(WindowHint::ContextVersion(3, 3));
     glfw.window_hint(WindowHint::OpenGlForwardCompat(true));
     glfw.window_hint(WindowHint::OpenGlProfile(OpenGlProfileHint::Core));
     let context = glfw.create_window(WIDTH, HEIGHT, "generate-atlas", WindowMode::Windowed);

@@ -17,7 +17,7 @@
 // To use this shader, set `RasterizerOptions::force_geometry_shader` to true or set the
 // environment variable `PATHFINDER_FORCE_GEOMETRY_SHADER` to 1.
 
-#version 410
+#version 330
 
 #define CURVE_THRESHOLD         0.333f
 #define CURVE_TOLERANCE         3.0f
@@ -39,7 +39,7 @@ layout(triangle_strip, max_vertices = 256) out;
 uniform uvec2 uAtlasSize;
 
 // The vertex ID, passed into this shader.
-flat in uint vVertexID[];
+flat in int vVertexID[];
 
 // The starting point of the segment.
 flat out vec2 vP0;
@@ -69,7 +69,7 @@ void main() {
     }
 
     // Determine how many lines to divide into.
-    uint lineCount = 1;
+    uint lineCount = 1u;
     if (vVertexID[1] > 0) {
         // Quadratic curve.
         vec2 dev = p0 - 2.0f * p1 + p2;
@@ -82,16 +82,16 @@ void main() {
     }
 
     // Divide into lines.
-    for (uint lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+    for (uint lineIndex = 0u; lineIndex < lineCount; lineIndex++) {
         // Compute our endpoints (trivial if this is part of a line, less trivial if this is part
         // of a curve).
         vec2 lP0, lP1;
-        if (lineCount == 1) {
+        if (lineCount == 1u) {
             lP0 = p0;
             lP1 = p2;
         } else {
-            float t0 = float(lineIndex + 0) / float(lineCount);
-            float t1 = float(lineIndex + 1) / float(lineCount);
+            float t0 = float(lineIndex + 0u) / float(lineCount);
+            float t1 = float(lineIndex + 1u) / float(lineCount);
             lP0 = mix(mix(p0, p1, t0), mix(p1, p2, t0), t0);
             lP1 = mix(mix(p0, p1, t1), mix(p1, p2, t1), t1);
         }

@@ -16,7 +16,7 @@
 layout(vertices = 1) out;
 
 // The vertex ID, passed into this shader.
-flat in uint vVertexID[];
+flat in int vVertexID[];
 
 // The starting point of the segment.
 patch out vec2 vpP0;

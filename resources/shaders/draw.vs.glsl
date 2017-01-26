@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#version 410
+#version 330
 
 #define MAX_GLYPHS  2048
 
@@ -45,7 +45,7 @@ in ivec2 aPosition;
 in uint aGlyphIndex;
 
 // The vertex ID, passed along onto the TCS.
-flat out uint vVertexID;
+flat out int vVertexID;
 
 void main() {
     vVertexID = gl_VertexID;

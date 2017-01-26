@@ -17,9 +17,12 @@
 #version 330
 #extension GL_ARB_compute_shader : require
 #extension GL_ARB_explicit_uniform_location : require
+#extension GL_ARB_shader_image_load_store : require
 #extension GL_ARB_shader_storage_buffer_object : require
 
-uniform uimage2DRect uTexture;
+layout(local_size_x = 1024) in;
+
+uniform restrict writeonly uimage2DRect uTexture;
 uniform sampler2DRect uCoverage;
 uniform uvec4 uAtlasRect;
 uniform uint uAtlasShelfHeight;
@@ -29,13 +32,14 @@ void main() {
     uint atlasWidth = uAtlasRect.z - uAtlasRect.x;
     uint column = gl_GlobalInvocationID.x % atlasWidth;
     uint shelfIndex = gl_GlobalInvocationID.x / atlasWidth;
-    uint firstRow = shelfIndex * uAtlasShelfHeight, lastRow = (shelfIndex + 1) * uAtlasShelfHeight;
+    uint firstRow = shelfIndex * uAtlasShelfHeight;
+    uint lastRow = (shelfIndex + 1u) * uAtlasShelfHeight;
 
     // Sweep down the column, accumulating coverage as we go.
     float coverage = 0.0f;
     for (uint row = firstRow; row < lastRow; row++) {
         ivec2 coord = ivec2(column, row);
-        coverage += texelFetch(uCoverage, coord);
+        coverage += texelFetch(uCoverage, coord).r;
 
         uint gray = uint(clamp(coverage, 0.0f, 1.0f) * 255.0f);
         imageStore(uTexture, coord + ivec2(uAtlasRect.xy), uvec4(gray, 255, 255, 255));

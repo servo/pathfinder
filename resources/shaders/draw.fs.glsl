@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#version 410
+#version 330
 
 // The size of the atlas in pixels.
 uniform uvec2 uAtlasSize;
