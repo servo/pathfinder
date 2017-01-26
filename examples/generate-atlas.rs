@@ -47,7 +47,7 @@ fn main() {
     let queue = device.create_queue().unwrap();
 
     let rasterizer_options = RasterizerOptions::from_env().unwrap();
-    let rasterizer = Rasterizer::new(device, queue, rasterizer_options).unwrap();
+    let rasterizer = Rasterizer::new(&instance, device, queue, rasterizer_options).unwrap();
 
     let mut glyph_buffer_builder = GlyphBufferBuilder::new();
     let mut batch_builder = BatchBuilder::new(device_pixel_width as GLuint, SHELF_HEIGHT);

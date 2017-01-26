@@ -11,6 +11,7 @@
 use batch::Batch;
 use compute_shader::device::Device;
 use compute_shader::event::Event;
+use compute_shader::instance::{Instance, ShadingLanguage};
 use compute_shader::program::Program;
 use compute_shader::queue::{Queue, Uniform};
 use compute_shader::texture::Texture;
@@ -25,8 +26,8 @@ use std::mem;
 use std::ptr;
 
 // TODO(pcwalton): Don't force that these be compiled in.
-// TODO(pcwalton): GLSL version.
 static ACCUM_CL_SHADER: &'static str = include_str!("../resources/shaders/accum.cl");
+static ACCUM_COMPUTE_SHADER: &'static str = include_str!("../resources/shaders/accum.cs.glsl");
 
 static DRAW_VERTEX_SHADER: &'static str = include_str!("../resources/shaders/draw.vs.glsl");
 static DRAW_TESS_CONTROL_SHADER: &'static str = include_str!("../resources/shaders/draw.tcs.glsl");
@@ -50,7 +51,7 @@ pub struct Rasterizer {
 }
 
 impl Rasterizer {
-    pub fn new(device: Device, queue: Queue, options: RasterizerOptions)
+    pub fn new(instance: &Instance, device: Device, queue: Queue, options: RasterizerOptions)
                -> Result<Rasterizer, ()> {
         let (draw_program, draw_position_attribute, draw_glyph_index_attribute);
         let (draw_glyph_descriptors_uniform, draw_image_descriptors_uniform);
@@ -111,7 +112,11 @@ impl Rasterizer {
         }
 
         // FIXME(pcwalton): Don't panic if this fails to compile; just return an error.
-        let accum_program = device.create_program(ACCUM_CL_SHADER).unwrap();
+        let accum_source = match instance.shading_language() {
+            ShadingLanguage::Cl => ACCUM_CL_SHADER,
+            ShadingLanguage::Glsl => ACCUM_COMPUTE_SHADER,
+        };
+        let accum_program = device.create_program(accum_source).unwrap();
 
         Ok(Rasterizer {
             device: device,
