@@ -21,7 +21,7 @@ use pathfinder::charmap::CodepointRange;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::glyph_buffer::GlyphBufferBuilder;
 use pathfinder::otf::FontData;
-use pathfinder::rasterizer::Rasterizer;
+use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
 use std::env;
 use std::os::raw::c_void;
 
@@ -46,7 +46,8 @@ fn main() {
     let device = instance.create_device().unwrap();
     let queue = device.create_queue().unwrap();
 
-    let rasterizer = Rasterizer::new(device, queue).unwrap();
+    let rasterizer_options = RasterizerOptions::from_env().unwrap();
+    let rasterizer = Rasterizer::new(device, queue, rasterizer_options).unwrap();
 
     let mut glyph_buffer_builder = GlyphBufferBuilder::new();
     let mut batch_builder = BatchBuilder::new(device_pixel_width as GLuint, SHELF_HEIGHT);

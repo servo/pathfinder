@@ -19,6 +19,8 @@ use euclid::rect::Rect;
 use gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint, GLvoid};
 use gl;
 use glyph_buffer::{GlyphBuffers, Vertex};
+use std::ascii::AsciiExt;
+use std::env;
 use std::mem;
 use std::ptr;
 
@@ -30,6 +32,7 @@ static DRAW_VERTEX_SHADER: &'static str = include_str!("../resources/shaders/dra
 static DRAW_TESS_CONTROL_SHADER: &'static str = include_str!("../resources/shaders/draw.tcs.glsl");
 static DRAW_TESS_EVALUATION_SHADER: &'static str =
     include_str!("../resources/shaders/draw.tes.glsl");
+static DRAW_GEOMETRY_SHADER: &'static str = include_str!("../resources/shaders/draw.gs.glsl");
 static DRAW_FRAGMENT_SHADER: &'static str = include_str!("../resources/shaders/draw.fs.glsl");
 
 pub struct Rasterizer {
@@ -43,33 +46,43 @@ pub struct Rasterizer {
     draw_atlas_size_uniform: GLint,
     draw_glyph_descriptors_uniform: GLuint,
     draw_image_descriptors_uniform: GLuint,
+    options: RasterizerOptions,
 }
 
 impl Rasterizer {
-    pub fn new(device: Device, queue: Queue) -> Result<Rasterizer, ()> {
+    pub fn new(device: Device, queue: Queue, options: RasterizerOptions)
+               -> Result<Rasterizer, ()> {
         let (draw_program, draw_position_attribute, draw_glyph_index_attribute);
         let (draw_glyph_descriptors_uniform, draw_image_descriptors_uniform);
         let draw_atlas_size_uniform;
         let mut draw_vertex_array = 0;
         unsafe {
-            let shaders = [
-                try!(compile_gl_shader(gl::VERTEX_SHADER,
-                                       "Vertex shader",
-                                       DRAW_VERTEX_SHADER)),
-                try!(compile_gl_shader(gl::TESS_CONTROL_SHADER,
-                                       "Tessellation control shader",
-                                       DRAW_TESS_CONTROL_SHADER)),
-                try!(compile_gl_shader(gl::TESS_EVALUATION_SHADER,
-                                       "Tessellation evaluation shader",
-                                       DRAW_TESS_EVALUATION_SHADER)),
-                try!(compile_gl_shader(gl::FRAGMENT_SHADER,
-                                       "Fragment shader",
-                                       DRAW_FRAGMENT_SHADER)),
-            ];
-
             draw_program = gl::CreateProgram();
-            for &shader in &shaders {
-                gl::AttachShader(draw_program, shader);
+
+            let vertex_shader = try!(compile_gl_shader(gl::VERTEX_SHADER,
+                                                       "Vertex shader",
+                                                       DRAW_VERTEX_SHADER));
+            gl::AttachShader(draw_program, vertex_shader);
+            let fragment_shader = try!(compile_gl_shader(gl::FRAGMENT_SHADER,
+                                                         "Fragment shader",
+                                                         DRAW_FRAGMENT_SHADER));
+            gl::AttachShader(draw_program, fragment_shader);
+
+            if options.force_geometry_shader {
+                let geometry_shader = try!(compile_gl_shader(gl::GEOMETRY_SHADER,
+                                                             "Geometry shader",
+                                                             DRAW_GEOMETRY_SHADER));
+                gl::AttachShader(draw_program, geometry_shader);
+            } else {
+                let tess_control_shader = try!(compile_gl_shader(gl::TESS_CONTROL_SHADER,
+                                                                 "Tessellation control shader",
+                                                                 DRAW_TESS_CONTROL_SHADER));
+                gl::AttachShader(draw_program, tess_control_shader);
+                let tess_evaluation_shader =
+                    try!(compile_gl_shader(gl::TESS_EVALUATION_SHADER,
+                                           "Tessellation evaluation shader",
+                                           DRAW_TESS_EVALUATION_SHADER));
+                gl::AttachShader(draw_program, tess_evaluation_shader);
             }
 
             gl::LinkProgram(draw_program);
@@ -111,6 +124,7 @@ impl Rasterizer {
             draw_atlas_size_uniform: draw_atlas_size_uniform,
             draw_glyph_descriptors_uniform: draw_glyph_descriptors_uniform,
             draw_image_descriptors_uniform: draw_image_descriptors_uniform,
+            options: options,
         })
     }
 
@@ -172,9 +186,17 @@ impl Rasterizer {
             gl::FrontFace(gl::CCW);
             gl::Enable(gl::CULL_FACE);
 
+            // If we're using a geometry shader for debugging, we draw fake triangles. Otherwise,
+            // we use patches.
+            let primitive = if self.options.force_geometry_shader {
+                gl::TRIANGLES
+            } else {
+                gl::PATCHES
+            };
+
             // Now draw the glyph ranges.
             debug_assert!(batch.counts.len() == batch.start_indices.len());
-            gl::MultiDrawElements(gl::PATCHES,
+            gl::MultiDrawElements(primitive,
                                   batch.counts.as_ptr(),
                                   gl::UNSIGNED_INT,
                                   batch.start_indices.as_ptr() as *const *const GLvoid,
@@ -250,6 +272,38 @@ fn check_gl_object_status(object: GLuint,
             println!("{} error:\n{}", description, string);
         }
         Err(())
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RasterizerOptions {
+    pub force_geometry_shader: bool,
+}
+
+impl Default for RasterizerOptions {
+    fn default() -> RasterizerOptions {
+        RasterizerOptions {
+            force_geometry_shader: false,
+        }
+    }
+}
+
+impl RasterizerOptions {
+    pub fn from_env() -> Result<RasterizerOptions, ()> {
+        let force_geometry_shader = match env::var("PATHFINDER_FORCE_GEOMETRY_SHADER") {
+            Ok(ref string) if string.eq_ignore_ascii_case("on") ||
+                string.eq_ignore_ascii_case("yes") ||
+                string.eq_ignore_ascii_case("1") => true,
+            Ok(ref string) if string.eq_ignore_ascii_case("off") ||
+                string.eq_ignore_ascii_case("no") ||
+                string.eq_ignore_ascii_case("0") => false,
+            Err(_) => false,
+            Ok(_) => return Err(()),
+        };
+
+        Ok(RasterizerOptions {
+            force_geometry_shader: force_geometry_shader,
+        })
     }
 }
 
