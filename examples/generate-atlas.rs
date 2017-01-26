@@ -20,7 +20,7 @@ use pathfinder::batch::{BatchBuilder, GlyphRange};
 use pathfinder::charmap::CodepointRange;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::glyph_buffer::GlyphBufferBuilder;
-use pathfinder::otf::FontData;
+use pathfinder::otf::Font;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
 use std::env;
 use std::os::raw::c_void;
@@ -54,16 +54,12 @@ fn main() {
 
     let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
     unsafe {
-        let font = FontData::new(file.as_slice());
-        let cmap = font.cmap_table().unwrap();
-        let glyf = font.glyf_table().unwrap();
-        let head = font.head_table().unwrap();
-        let loca = font.loca_table(&head).unwrap();
+        let font = Font::new(file.as_slice()).unwrap();
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
 
-        let glyph_ranges = cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
+        let glyph_ranges = font.cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (glyph_index, glyph_id) in glyph_ranges.iter().flat_map(GlyphRange::iter).enumerate() {
-            glyph_buffer_builder.add_glyph(glyph_id as u32, &head, &loca, &glyf).unwrap();
+            glyph_buffer_builder.add_glyph(&font, glyph_id as u32).unwrap();
             batch_builder.add_glyph(&glyph_buffer_builder, glyph_index as u32, POINT_SIZE).unwrap()
         }
     }

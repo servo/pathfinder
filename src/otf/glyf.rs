@@ -11,6 +11,7 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use euclid::{Point2D, Rect, Size2D};
 use otf::FontTable;
+use otf::head::HeadTable;
 use otf::loca::LocaTable;
 use std::mem;
 use util::Jump;
@@ -47,10 +48,14 @@ impl<'a> GlyfTable<'a> {
         }
     }
 
-    pub fn for_each_point<F>(&self, loca_table: &LocaTable, glyph_id: u32, mut callback: F)
+    pub fn for_each_point<F>(&self,
+                             head_table: &HeadTable,
+                             loca_table: &LocaTable,
+                             glyph_id: u32,
+                             mut callback: F)
                              -> Result<(), ()> where F: FnMut(&Point) {
         let mut reader = self.table.bytes;
-        let offset = try!(loca_table.location_of(glyph_id));
+        let offset = try!(loca_table.location_of(head_table, glyph_id));
         try!(reader.jump(offset as usize));
 
         let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(drop));
@@ -144,9 +149,10 @@ impl<'a> GlyfTable<'a> {
         Ok(())
     }
 
-    pub fn bounding_rect(&self, loca_table: &LocaTable, glyph_id: u32) -> Result<Rect<i16>, ()> {
+    pub fn bounding_rect(&self, head_table: &HeadTable, loca_table: &LocaTable, glyph_id: u32)
+                         -> Result<Rect<i16>, ()> {
         let mut reader = self.table.bytes;
-        let offset = try!(loca_table.location_of(glyph_id));
+        let offset = try!(loca_table.location_of(head_table, glyph_id));
         try!(reader.jump(offset as usize));
 
         let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(drop));

@@ -11,9 +11,7 @@
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLsizeiptr, GLuint};
 use gl;
-use otf::glyf::GlyfTable;
-use otf::head::HeadTable;
-use otf::loca::LocaTable;
+use otf::Font;
 use std::mem;
 use std::os::raw::c_void;
 
@@ -39,12 +37,7 @@ impl GlyphBufferBuilder {
         }
     }
 
-    pub fn add_glyph(&mut self,
-                     glyph_id: u32,
-                     head_table: &HeadTable,
-                     loca_table: &LocaTable,
-                     glyf_table: &GlyfTable)
-                     -> Result<(), ()> {
+    pub fn add_glyph(&mut self, font: &Font, glyph_id: u32) -> Result<(), ()> {
         let glyph_index = self.descriptors.len() as u16;
 
         let mut point_index = self.vertices.len() as u32;
@@ -52,7 +45,10 @@ impl GlyphBufferBuilder {
         let start_point = point_index;
         let mut last_point_on_curve = true;
 
-        try!(glyf_table.for_each_point(loca_table, glyph_id, |point| {
+        let glyf_table = try!(font.glyf.ok_or(()));
+        let loca_table = try!(font.loca.as_ref().ok_or(()));
+
+        try!(glyf_table.for_each_point(&font.head, loca_table, glyph_id, |point| {
             self.vertices.push(Vertex {
                 x: point.position.x,
                 y: point.position.y,
@@ -73,13 +69,13 @@ impl GlyphBufferBuilder {
         }));
 
         // Add a glyph descriptor.
-        let bounding_rect = try!(glyf_table.bounding_rect(loca_table, glyph_id));
+        let bounding_rect = try!(glyf_table.bounding_rect(&font.head, loca_table, glyph_id));
         self.descriptors.push(GlyphDescriptor {
             left: bounding_rect.origin.x as i32,
             bottom: bounding_rect.origin.y as i32,
             right: bounding_rect.max_x() as i32,
             top: bounding_rect.max_y() as i32,
-            units_per_em: head_table.units_per_em as u32,
+            units_per_em: font.head.units_per_em as u32,
             start_point: start_point as u32,
             start_index: start_index,
             pad: 0,

@@ -15,31 +15,27 @@ use util::Jump;
 
 pub struct LocaTable<'a> {
     table: FontTable<'a>,
-    pub long: bool,
 }
 
 impl<'a> LocaTable<'a> {
-    pub fn new(loca_table: FontTable<'a>, head_table: &HeadTable) -> Result<LocaTable<'a>, ()> {
-        let long = match head_table.index_to_loc_format {
-            0 => false,
-            1 => true,
-            _ => return Err(()),
-        };
-
+    pub fn new(loca_table: FontTable<'a>) -> Result<LocaTable<'a>, ()> {
         Ok(LocaTable {
             table: loca_table,
-            long: long,
         })
     }
 
-    pub fn location_of(&self, glyph_id: u32) -> Result<u32, ()> {
+    pub fn location_of(&self, head_table: &HeadTable, glyph_id: u32) -> Result<u32, ()> {
         let mut reader = self.table.bytes;
-        if !self.long {
-            try!(reader.jump(glyph_id as usize * 2));
-            Ok(try!(reader.read_u16::<BigEndian>().map_err(drop)) as u32 * 2)
-        } else {
-            try!(reader.jump(glyph_id as usize * 4));
-            reader.read_u32::<BigEndian>().map_err(drop)
+        match head_table.index_to_loc_format {
+            0 => {
+                try!(reader.jump(glyph_id as usize * 2));
+                Ok(try!(reader.read_u16::<BigEndian>().map_err(drop)) as u32 * 2)
+            }
+            1 => {
+                try!(reader.jump(glyph_id as usize * 4));
+                reader.read_u32::<BigEndian>().map_err(drop)
+            }
+            _ => Err(()),
         }
     }
 }

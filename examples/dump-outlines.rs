@@ -9,20 +9,16 @@ use euclid::Point2D;
 use memmap::{Mmap, Protection};
 use pathfinder::batch::GlyphRange;
 use pathfinder::charmap::CodepointRange;
-use pathfinder::otf::FontData;
+use pathfinder::otf::Font;
 use std::char;
 use std::env;
 
 fn main() {
     let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
     unsafe {
-        let font = FontData::new(file.as_slice());
-        let cmap = font.cmap_table().unwrap();
-        let glyf = font.glyf_table().unwrap();
-        let head = font.head_table().unwrap();
-        let loca = font.loca_table(&head).unwrap();
+        let font = Font::new(file.as_slice()).unwrap();
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
-        let glyph_ranges = cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
+        let glyph_ranges = font.cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (codepoint, glyph_id) in
                 codepoint_ranges.iter()
                                 .flat_map(CodepointRange::iter)
@@ -34,7 +30,10 @@ fn main() {
 
             let mut last_point: Option<Point2D<i16>> = None;
             let mut last_point_was_off_curve = false;
-            glyf.for_each_point(&loca, glyph_id as u32, |point| {
+            font.glyf.as_ref().unwrap().for_each_point(&font.head,
+                                                       font.loca.as_ref().unwrap(),
+                                                       glyph_id as u32,
+                                                       |point| {
                 if point.first_point_in_contour {
                     println!("M {},{}", point.position.x, point.position.y);
                 } else {

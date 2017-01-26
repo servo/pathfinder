@@ -34,14 +34,24 @@ const HEAD: u32 = ((b'h' as u32) << 24) |
                   ((b'e' as u32) << 16) |
                   ((b'a' as u32) << 8)  |
                    (b'd' as u32);
+const HMTX: u32 = ((b'h' as u32) << 24) |
+                  ((b'm' as u32) << 16) |
+                  ((b't' as u32) << 8)  |
+                   (b'x' as u32);
 const LOCA: u32 = ((b'l' as u32) << 24) |
                   ((b'o' as u32) << 16) |
                   ((b'c' as u32) << 8)  |
                    (b'a' as u32);
 
-#[derive(Clone, Copy, Debug)]
-pub struct FontData<'a> {
+pub struct Font<'a> {
     pub bytes: &'a [u8],
+
+    pub cmap: CmapTable<'a>,
+    pub head: HeadTable,
+    pub hmtx: FontTable<'a>,
+
+    pub glyf: Option<GlyfTable<'a>>,
+    pub loca: Option<LocaTable<'a>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -49,16 +59,11 @@ pub struct FontTable<'a> {
     pub bytes: &'a [u8],
 }
 
-impl<'a> FontData<'a> {
+impl<'a> Font<'a> {
     #[inline]
-    pub fn new<'b>(bytes: &'b [u8]) -> FontData<'b> {
-        FontData {
-            bytes: bytes,
-        }
-    }
-
-    fn table(&self, table_id: u32) -> Result<Option<FontTable>, ()> {
-        let mut reader = self.bytes;
+    pub fn new<'b>(bytes: &'b [u8]) -> Result<Font<'b>, ()> {
+        // Read the tables we care about.
+        let mut reader = bytes;
         let sfnt_version = try!(reader.read_u32::<BigEndian>().map_err(drop));
         if sfnt_version != 0x10000 {
             return Err(())
@@ -67,58 +72,52 @@ impl<'a> FontData<'a> {
         let num_tables = try!(reader.read_u16::<BigEndian>().map_err(drop));
         try!(reader.jump(mem::size_of::<u16>() * 3));
 
-        let (mut low, mut high) = (0, num_tables);
-        while low < high {
-            let mut reader = reader;
-            let mid = (low + high) / 2;
-            try!(reader.jump(mid as usize * mem::size_of::<u32>() * 4));
+        let (mut cmap_table, mut head_table, mut hmtx_table) = (None, None, None);
+        let (mut glyf_table, mut loca_table) = (None, None);
 
-            let current_table_id = try!(reader.read_u32::<BigEndian>().map_err(drop));
-            if table_id < current_table_id {
-                high = mid;
-                continue
-            }
-            if table_id > current_table_id {
-                low = mid + 1;
-                continue
-            }
+        for _ in 0..num_tables {
+            let table_id = try!(reader.read_u32::<BigEndian>().map_err(drop));
 
-            // Skip the checksum, and slurp the offset and length.
+            // Skip over the checksum.
             try!(reader.read_u32::<BigEndian>().map_err(drop));
+
             let offset = try!(reader.read_u32::<BigEndian>().map_err(drop)) as usize;
             let length = try!(reader.read_u32::<BigEndian>().map_err(drop)) as usize;
 
-            let end = offset + length;
-            if end > self.bytes.len() {
+            let mut slot = match table_id {
+                CMAP => &mut cmap_table,
+                HEAD => &mut head_table,
+                HMTX => &mut hmtx_table,
+                GLYF => &mut glyf_table,
+                LOCA => &mut loca_table,
+                _ => continue,
+            };
+
+            // Make sure there isn't more than one copy of the table.
+            if slot.is_some() {
                 return Err(())
             }
-            return Ok(Some(FontTable {
-                bytes: &self.bytes[offset..end],
-            }))
+
+            *slot = Some(FontTable {
+                bytes: &bytes[offset..offset + length],
+            })
         }
 
-        Ok(None)
-    }
+        let loca_table = match loca_table {
+            None => None,
+            Some(loca_table) => Some(try!(LocaTable::new(loca_table))),
+        };
 
-    #[inline]
-    pub fn cmap_table(&self) -> Result<CmapTable, ()> {
-        self.table(CMAP).and_then(|table| table.ok_or(()).map(CmapTable::new))
-    }
+        Ok(Font {
+            bytes: bytes,
 
-    #[inline]
-    pub fn glyf_table(&self) -> Result<GlyfTable, ()> {
-        self.table(GLYF).and_then(|table| table.ok_or(()).map(GlyfTable::new))
-    }
+            cmap: CmapTable::new(try!(cmap_table.ok_or(()))),
+            head: try!(HeadTable::new(try!(head_table.ok_or(())))),
+            hmtx: try!(hmtx_table.ok_or(())),
 
-    #[inline]
-    pub fn head_table(&self) -> Result<HeadTable, ()> {
-        self.table(HEAD).and_then(|table| table.ok_or(()).and_then(HeadTable::new))
-    }
-
-    #[inline]
-    pub fn loca_table(&self, head_table: &HeadTable) -> Result<LocaTable, ()> {
-        let loca_table = try!(self.table(LOCA).and_then(|table| table.ok_or(())));
-        LocaTable::new(loca_table, head_table)
+            glyf: glyf_table.map(GlyfTable::new),
+            loca: loca_table,
+        })
     }
 }
 
