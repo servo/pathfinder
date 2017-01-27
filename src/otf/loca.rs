@@ -24,18 +24,31 @@ impl<'a> LocaTable<'a> {
         })
     }
 
-    pub fn location_of(&self, head_table: &HeadTable, glyph_id: u16) -> Result<u32, ()> {
+    pub fn location_of(&self, head_table: &HeadTable, glyph_id: u16) -> Result<Option<u32>, ()> {
         let mut reader = self.table.bytes;
-        match head_table.index_to_loc_format {
+        let (this_location, next_location) = match head_table.index_to_loc_format {
             0 => {
                 try!(reader.jump(glyph_id as usize * 2));
-                Ok(try!(reader.read_u16::<BigEndian>().map_err(drop)) as u32 * 2)
+                let this_location = try!(reader.read_u16::<BigEndian>().map_err(drop)) as u32 * 2;
+                let next_location = match reader.read_u16::<BigEndian>().map_err(drop) {
+                    Ok(next_location) => Ok(next_location as u32 * 2),
+                    Err(_) => Err(()),
+                };
+                (this_location, next_location)
             }
             1 => {
                 try!(reader.jump(glyph_id as usize * 4));
-                reader.read_u32::<BigEndian>().map_err(drop)
+                let this_location = try!(reader.read_u32::<BigEndian>().map_err(drop));
+                let next_location = reader.read_u32::<BigEndian>().map_err(drop);
+                (this_location, next_location)
             }
-            _ => Err(()),
+            _ => return Err(()),
+        };
+
+        if next_location == Ok(this_location) {
+            Ok(None)
+        } else {
+            Ok(Some(this_location))
         }
     }
 }

@@ -55,16 +55,16 @@ fn main() {
     let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
     unsafe {
         let font = Font::new(file.as_slice()).unwrap();
-        let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
+        let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
 
         let glyph_ranges = font.cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
-            glyph_buffer_builder.add_glyph(&font, glyph_id as u32).unwrap();
+            glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
             batch_builder.add_glyph(&glyph_buffer_builder, glyph_index as u32, POINT_SIZE).unwrap()
         }
     }
 
-    let glyph_buffers = glyph_buffer_builder.finish().unwrap();
+    let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
     let batch = batch_builder.finish(&glyph_buffer_builder).unwrap();
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);

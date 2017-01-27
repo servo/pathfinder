@@ -22,21 +22,19 @@ use pathfinder::glyph_buffer::GlyphBufferBuilder;
 use pathfinder::glyph_range::GlyphRanges;
 use pathfinder::otf::Font;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
-use pathfinder::shaper::{self, GlyphPos};
+use pathfinder::shaper;
 use std::env;
 use std::mem;
 use std::os::raw::c_void;
 
-const ATLAS_SIZE: u32 = 1024;
+const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 512;
 const HEIGHT: u32 = 384;
 const UNITS_PER_EM: u32 = 2048;
 
 const INITIAL_POINT_SIZE: f32 = 24.0;
 const MIN_POINT_SIZE: f32 = 6.0;
-const MAX_POINT_SIZE: f32 = 400.0;
-
-static TEXT: &'static str = "Loremipsumdolorsitamet";
+const MAX_POINT_SIZE: f32 = 256.0;
 
 fn main() {
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
@@ -61,13 +59,33 @@ fn main() {
     let codepoint_ranges = CodepointRanges::from_sorted_chars(&chars);
 
     let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
-    let (font, glyph_positions, glyph_ranges);
+    let (font, shaped_glyph_positions, glyph_ranges);
     unsafe {
         font = Font::new(file.as_slice()).unwrap();
         glyph_ranges = font.cmap
                            .glyph_ranges_for_codepoint_ranges(&codepoint_ranges.ranges)
                            .unwrap();
-        glyph_positions = shaper::shape_text(&font, &glyph_ranges, TEXT)
+        shaped_glyph_positions = shaper::shape_text(&font, &glyph_ranges, TEXT)
+    }
+
+    let paragraph_width = (device_pixel_size.width as f32 * UNITS_PER_EM as f32 /
+                           INITIAL_POINT_SIZE) as u32;
+
+    // Do some basic line breaking.
+    let mut glyph_positions = vec![];
+    let line_spacing = UNITS_PER_EM;
+    let (mut current_x, mut current_y) = (0, line_spacing);
+    for glyph_position in &shaped_glyph_positions {
+        if current_x + glyph_position.advance as u32 > paragraph_width {
+            current_x = 0;
+            current_y += line_spacing;
+        }
+        glyph_positions.push(GlyphPos {
+            x: current_x,
+            y: current_y,
+            glyph_id: glyph_position.glyph_id,
+        });
+        current_x += glyph_position.advance as u32;
     }
 
     let renderer = Renderer::new();
@@ -185,7 +203,7 @@ impl Renderer {
 
             gl::VertexAttribPointer(position_attribute as GLuint,
                                     2,
-                                    gl::UNSIGNED_INT,
+                                    gl::INT,
                                     gl::FALSE,
                                     mem::size_of::<Vertex>() as GLsizei,
                                     0 as *const GLvoid);
@@ -261,8 +279,10 @@ impl Renderer {
             batch_builder.add_glyph(&glyph_buffer_builder, glyph_index as u32, point_size).unwrap()
         }
 
-        let glyph_buffer = glyph_buffer_builder.finish().unwrap();
+        let glyph_buffer = glyph_buffer_builder.create_buffers().unwrap();
         let batch = batch_builder.finish(&glyph_buffer_builder).unwrap();
+
+        let pixels_per_unit = point_size as f32 / UNITS_PER_EM as f32;
 
         self.rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), self.atlas_size),
                                    shelf_height,
@@ -280,25 +300,26 @@ impl Renderer {
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.index_buffer);
 
             let (mut vertices, mut indices) = (vec![], vec![]);
-            let mut left_pos = 0;
             for position in glyph_positions {
                 let glyph_index = batch_builder.glyph_index_for(position.glyph_id).unwrap();
+                let glyph_bounds = glyph_buffer_builder.glyph_bounds(glyph_index);
                 let uv_rect = batch_builder.atlas_rect(glyph_index);
                 let (uv_bl, uv_tr) = (uv_rect.origin, uv_rect.bottom_right());
-                let right_pos = left_pos + uv_rect.size.width;
-                let bottom_pos = uv_rect.size.height;
+
+                let left_pos = (position.x as f32 * pixels_per_unit).round() as i32;
+                let top_pos = ((position.y as f32 - glyph_bounds.top as f32)
+                               * pixels_per_unit).round() as i32;
+                let right_pos = left_pos + uv_rect.size.width as i32;
+                let bottom_pos = top_pos + uv_rect.size.height as i32;
 
                 let first_index = vertices.len() as u16;
 
-                vertices.push(Vertex::new(left_pos,  0,          uv_bl.x, uv_tr.y));
-                vertices.push(Vertex::new(right_pos, 0,          uv_tr.x, uv_tr.y));
-                vertices.push(Vertex::new(right_pos, bottom_pos, uv_tr.x, uv_bl.y));
-                vertices.push(Vertex::new(left_pos,  bottom_pos, uv_bl.x, uv_bl.y));
+                vertices.push(Vertex::new(left_pos,  bottom_pos, uv_bl.x, uv_tr.y));
+                vertices.push(Vertex::new(right_pos, bottom_pos, uv_tr.x, uv_tr.y));
+                vertices.push(Vertex::new(right_pos, top_pos,    uv_tr.x, uv_bl.y));
+                vertices.push(Vertex::new(left_pos,  top_pos,    uv_bl.x, uv_bl.y));
 
                 indices.extend([0, 1, 3, 1, 2, 3].iter().map(|index| first_index + index));
-
-                left_pos += ((position.advance as f32 * point_size) /
-                             (UNITS_PER_EM as f32)).ceil() as u32
             }
 
             gl::BufferData(gl::ARRAY_BUFFER,
@@ -316,13 +337,13 @@ impl Renderer {
 
             let matrix = [
                 2.0 / device_pixel_size.width as f32, 0.0,
-                0.0, 2.0 / device_pixel_size.height as f32,
+                0.0, -2.0 / device_pixel_size.height as f32,
             ];
             gl::UniformMatrix2fv(self.transform_uniform, 1, gl::FALSE, matrix.as_ptr());
 
             gl::Uniform2f(self.translation_uniform,
                           -1.0,
-                          1.0 - point_size * 2.0 / (device_pixel_size.height as f32));
+                          1.0);
 
             gl::Viewport(0,
                          0,
@@ -342,14 +363,14 @@ impl Renderer {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 struct Vertex {
-    x: u32,
-    y: u32,
+    x: i32,
+    y: i32,
     u: u32,
     v: u32,
 }
 
 impl Vertex {
-    fn new(x: u32, y: u32, u: u32, v: u32) -> Vertex {
+    fn new(x: i32, y: i32, u: u32, v: u32) -> Vertex {
         Vertex {
             x: x,
             y: y,
@@ -357,6 +378,13 @@ impl Vertex {
             v: v,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct GlyphPos {
+    x: u32,
+    y: u32,
+    glyph_id: u16,
 }
 
 static VERTEX_SHADER: &'static str = "\
@@ -389,5 +417,13 @@ void main() {
     float value = 1.0f - texture(uAtlas, vTexCoord).r;
     oFragColor = vec4(value, value, value, 1.0f);
 }
+";
+
+static TEXT: &'static str = "\
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur scelerisque pellentesque risus quis vehicula. Ut sollicitudin aliquet diam, vel lobortis orci porta in. Sed eu nisi egestas odio tincidunt cursus eget ut lorem. Fusce lacinia ex nec lectus rutrum mollis. Donec in ultrices purus. Integer id suscipit magna. Suspendisse congue pulvinar neque id ultrices. Curabitur nec tellus et est pellentesque posuere. Duis ut metus euismod, feugiat arcu vitae, posuere libero. \
+Curabitur nunc urna, rhoncus vitae scelerisque quis, viverra et odio. Suspendisse accumsan pretium mi, nec fringilla metus condimentum id. Duis dignissim quam eu felis lobortis, eget dignissim lectus fermentum. Nunc et massa id orci pellentesque rutrum. Nam imperdiet quam vel ligula efficitur ultricies vel eu tellus. Maecenas luctus risus a erat euismod ultricies. Pellentesque neque mauris, laoreet vitae finibus quis, molestie ut velit. Donec laoreet justo risus. In id mi sed odio placerat interdum ut vitae erat. Fusce quis mollis mauris, sit amet efficitur libero. \
+In efficitur tortor nulla, sollicitudin sodales mi tempor in. In egestas ultrices fermentum. Quisque mattis egestas nulla. Interdum et malesuada fames ac ante ipsum primis in faucibus. Etiam in tempus sapien, in dignissim arcu. Quisque diam nulla, rhoncus et tempor nec, facilisis porta purus. Nulla ut eros laoreet, placerat dolor ut, interdum orci. Sed posuere eleifend mollis. Integer at nunc ex. Vestibulum aliquet risus quis lacinia convallis. Fusce et metus viverra, varius nulla in, rutrum justo. Interdum et malesuada fames ac ante ipsum primis in faucibus. Praesent non est vel lectus suscipit malesuada id ut nisl. Aenean sem ipsum, tincidunt non orci non, varius consectetur purus. Aenean sed mollis turpis, sit amet vestibulum risus. Nunc ut hendrerit urna, sit amet lacinia arcu. \
+Curabitur laoreet a enim et eleifend. Etiam consectetur pharetra massa, sed elementum quam molestie nec. Integer eu justo lectus. Vestibulum sed vulputate sapien. Curabitur pretium luctus orci et interdum. Quisque ligula nisi, varius id sodales id, volutpat et lorem. Pellentesque ex urna, malesuada at ex non, elementum ultricies nulla. Nunc sodales, turpis at maximus bibendum, neque lorem laoreet felis, eget convallis sem mauris ac quam. Mauris non pretium nulla. Nam semper pulvinar convallis. Suspendisse ultricies odio vitae tortor congue, rutrum finibus nisl malesuada. Interdum et malesuada fames ac ante ipsum primis in faucibus. \
+Vestibulum aliquam et lacus sit amet lobortis. In sed ligula quis urna accumsan vehicula sit amet id magna. Cras mollis orci vitae turpis porta, sed gravida nunc aliquam. Phasellus nec facilisis nunc. Suspendisse volutpat leo felis, in iaculis nisi dignissim et. Phasellus at urna purus. Nullam vitae metus ante. Praesent porttitor libero quis velit fermentum rhoncus. Cras vitae rhoncus nulla. In efficitur risus sapien, sed viverra neque scelerisque at. Morbi fringilla odio massa. Donec tincidunt magna diam, eget congue leo tristique eget. Cras et sapien nulla.\
 ";
 

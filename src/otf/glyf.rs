@@ -9,7 +9,8 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use euclid::{Point2D, Rect, Size2D};
+use euclid::Point2D;
+use glyph_buffer::GlyphBounds;
 use otf::FontTable;
 use otf::head::HeadTable;
 use otf::loca::LocaTable;
@@ -55,8 +56,14 @@ impl<'a> GlyfTable<'a> {
                              mut callback: F)
                              -> Result<(), ()> where F: FnMut(&Point) {
         let mut reader = self.table.bytes;
-        let offset = try!(loca_table.location_of(head_table, glyph_id));
-        try!(reader.jump(offset as usize));
+
+        match try!(loca_table.location_of(head_table, glyph_id)) {
+            None => {
+                // No points.
+                return Ok(())
+            }
+            Some(offset) => try!(reader.jump(offset as usize)),
+        }
 
         let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(drop));
         if number_of_contours < 0 {
@@ -149,18 +156,36 @@ impl<'a> GlyfTable<'a> {
         Ok(())
     }
 
-    pub fn bounding_rect(&self, head_table: &HeadTable, loca_table: &LocaTable, glyph_id: u16)
-                         -> Result<Rect<i16>, ()> {
+    pub fn glyph_bounds(&self, head_table: &HeadTable, loca_table: &LocaTable, glyph_id: u16)
+                        -> Result<GlyphBounds, ()> {
         let mut reader = self.table.bytes;
-        let offset = try!(loca_table.location_of(head_table, glyph_id));
-        try!(reader.jump(offset as usize));
 
-        let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(drop));
+        match try!(loca_table.location_of(head_table, glyph_id)) {
+            None => {
+                // No outlines.
+                return Ok(GlyphBounds {
+                    left: 0,
+                    bottom: 0,
+                    right: 0,
+                    top: 0,
+                })
+            }
+            Some(offset) => try!(reader.jump(offset as usize)),
+        }
+
+        // Skip over the number of contours.
+        try!(reader.read_i16::<BigEndian>().map_err(drop));
+
         let x_min = try!(reader.read_i16::<BigEndian>().map_err(drop));
         let y_min = try!(reader.read_i16::<BigEndian>().map_err(drop));
         let x_max = try!(reader.read_i16::<BigEndian>().map_err(drop));
         let y_max = try!(reader.read_i16::<BigEndian>().map_err(drop));
-        Ok(Rect::new(Point2D::new(x_min, y_min), Size2D::new(x_max - x_min, y_max - y_min)))
+        Ok(GlyphBounds {
+            left: x_min as i32,
+            bottom: y_min as i32,
+            right: x_max as i32,
+            top: y_max as i32,
+        })
     }
 }
 

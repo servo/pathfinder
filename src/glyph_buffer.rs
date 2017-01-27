@@ -69,12 +69,8 @@ impl GlyphBufferBuilder {
         }));
 
         // Add a glyph descriptor.
-        let bounding_rect = try!(glyf_table.bounding_rect(&font.head, loca_table, glyph_id));
         self.descriptors.push(GlyphDescriptor {
-            left: bounding_rect.origin.x as i32,
-            bottom: bounding_rect.origin.y as i32,
-            right: bounding_rect.max_x() as i32,
-            top: bounding_rect.max_y() as i32,
+            bounds: try!(glyf_table.glyph_bounds(&font.head, loca_table, glyph_id)),
             units_per_em: font.head.units_per_em as u32,
             start_point: start_point as u32,
             start_index: start_index,
@@ -84,7 +80,13 @@ impl GlyphBufferBuilder {
         Ok(())
     }
 
-    pub fn finish(&self) -> Result<GlyphBuffers, ()> {
+    /// Returns the glyph rectangle in units.
+    #[inline]
+    pub fn glyph_bounds(&self, glyph_index: u32) -> GlyphBounds {
+        self.descriptors[glyph_index as usize].bounds
+    }
+
+    pub fn create_buffers(&self) -> Result<GlyphBuffers, ()> {
         // TODO(pcwalton): Try using `glMapBuffer` here. Requires precomputing contour types and
         // counts.
         unsafe {
@@ -130,10 +132,7 @@ pub struct GlyphBuffers {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphDescriptor {
-    pub left: i32,
-    pub bottom: i32,
-    pub right: i32,
-    pub top: i32,
+    pub bounds: GlyphBounds,
     pub units_per_em: u32,
     pub start_point: u32,
     pub start_index: u32,
@@ -144,9 +143,9 @@ impl GlyphDescriptor {
     #[inline]
     pub fn pixel_rect(&self, point_size: f32) -> Rect<f32> {
         let pixels_per_unit = point_size / self.units_per_em as f32;
-        Rect::new(Point2D::new(self.left as f32, self.bottom as f32),
-                  Size2D::new((self.right - self.left) as f32,
-                              (self.top - self.bottom) as f32)) * pixels_per_unit
+        Rect::new(Point2D::new(self.bounds.left as f32, self.bounds.bottom as f32),
+                  Size2D::new((self.bounds.right - self.bounds.left) as f32,
+                              (self.bounds.top - self.bounds.bottom) as f32)) * pixels_per_unit
     }
 }
 
@@ -158,5 +157,13 @@ pub struct Vertex {
     /// TODO(pcwalton): Try omitting this and binary search the glyph descriptors in the vertex
     /// shader. Might or might not help.
     glyph_index: u16,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct GlyphBounds {
+    pub left: i32,
+    pub bottom: i32,
+    pub right: i32,
+    pub top: i32,
 }
 
