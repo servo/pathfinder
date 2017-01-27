@@ -18,8 +18,7 @@ use memmap::{Mmap, Protection};
 use pathfinder::batch::BatchBuilder;
 use pathfinder::charmap::CodepointRanges;
 use pathfinder::coverage::CoverageBuffer;
-use pathfinder::glyph_buffer::GlyphBufferBuilder;
-use pathfinder::glyph_range::GlyphRanges;
+use pathfinder::glyph_buffer::{GlyphBufferBuilder, GlyphBuffers};
 use pathfinder::otf::Font;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
 use pathfinder::shaper;
@@ -92,11 +91,20 @@ fn main() {
     let mut point_size = INITIAL_POINT_SIZE;
     let mut dirty = true;
 
+    let mut glyph_buffer_builder = GlyphBufferBuilder::new();
+    let mut glyph_count = 0;
+    for glyph_id in glyph_ranges.iter() {
+        glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
+        glyph_count += 1
+    }
+    let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
+
     while !window.should_close() {
         if dirty {
-            renderer.redraw(&font,
-                            point_size,
-                            &glyph_ranges,
+            renderer.redraw(point_size,
+                            &glyph_buffer_builder,
+                            &glyph_buffers,
+                            glyph_count,
                             &glyph_positions,
                             &device_pixel_size);
             window.swap_buffers();
@@ -263,30 +271,28 @@ impl Renderer {
     }
 
     fn redraw(&self,
-              font: &Font,
               point_size: f32,
-              glyph_ranges: &GlyphRanges,
+              glyph_buffer_builder: &GlyphBufferBuilder,
+              glyph_buffers: &GlyphBuffers,
+              glyph_count: usize,
               glyph_positions: &[GlyphPos],
               device_pixel_size: &Size2D<u32>) {
         // FIXME(pcwalton)
         let shelf_height = (point_size * 2.0).ceil() as u32;
 
-        let mut glyph_buffer_builder = GlyphBufferBuilder::new();
         let mut batch_builder = BatchBuilder::new(device_pixel_size.width, shelf_height);
 
-        for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
-            glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
-            batch_builder.add_glyph(&glyph_buffer_builder, glyph_index as u32, point_size).unwrap()
+        for glyph_index in 0..(glyph_count as u32) {
+            batch_builder.add_glyph(&glyph_buffer_builder, glyph_index, point_size).unwrap()
         }
 
-        let glyph_buffer = glyph_buffer_builder.create_buffers().unwrap();
-        let batch = batch_builder.finish(&glyph_buffer_builder).unwrap();
+        let batch = batch_builder.create_batch(&glyph_buffer_builder).unwrap();
 
         let pixels_per_unit = point_size as f32 / UNITS_PER_EM as f32;
 
         self.rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), self.atlas_size),
                                    shelf_height,
-                                   &glyph_buffer,
+                                   glyph_buffers,
                                    &batch,
                                    &self.coverage_buffer,
                                    &self.compute_texture).unwrap();

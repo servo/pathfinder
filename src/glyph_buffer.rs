@@ -129,6 +129,16 @@ pub struct GlyphBuffers {
     pub descriptors: GLuint,
 }
 
+impl Drop for GlyphBuffers {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteBuffers(1, &mut self.descriptors);
+            gl::DeleteBuffers(1, &mut self.indices);
+            gl::DeleteBuffers(1, &mut self.vertices);
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphDescriptor {

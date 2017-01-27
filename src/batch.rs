@@ -67,7 +67,8 @@ impl BatchBuilder {
         Ok(())
     }
 
-    pub fn finish(&mut self, glyph_buffer_builder: &GlyphBufferBuilder) -> Result<Batch, ()> {
+    pub fn create_batch(&mut self, glyph_buffer_builder: &GlyphBufferBuilder)
+                        -> Result<Batch, ()> {
         self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
 
         let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);
