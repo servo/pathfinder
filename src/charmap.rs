@@ -15,6 +15,11 @@ pub struct CodepointRange {
     pub end: u32,
 }
 
+#[derive(Clone, Debug)]
+pub struct CodepointRanges {
+    pub ranges: Vec<CodepointRange>,
+}
+
 impl CodepointRange {
     #[inline]
     pub fn new(start: u32, end: u32) -> CodepointRange {
@@ -29,6 +34,27 @@ impl CodepointRange {
         CodepointRangeIter {
             start: self.start,
             end: self.end,
+        }
+    }
+}
+
+impl CodepointRanges {
+    pub fn from_sorted_chars(chars: &[char]) -> CodepointRanges {
+        let mut ranges: Vec<CodepointRange> = vec![];
+        for &ch in chars {
+            match ranges.last_mut() {
+                Some(ref mut range) if range.end == ch as u32 => continue,
+                Some(ref mut range) if range.end == ch as u32 + 1 => {
+                    range.end += 1;
+                    continue
+                }
+                _ => {}
+            }
+            ranges.push(CodepointRange::new(ch as u32, ch as u32))
+        }
+
+        CodepointRanges {
+            ranges: ranges,
         }
     }
 }

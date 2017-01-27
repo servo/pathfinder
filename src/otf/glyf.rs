@@ -51,7 +51,7 @@ impl<'a> GlyfTable<'a> {
     pub fn for_each_point<F>(&self,
                              head_table: &HeadTable,
                              loca_table: &LocaTable,
-                             glyph_id: u32,
+                             glyph_id: u16,
                              mut callback: F)
                              -> Result<(), ()> where F: FnMut(&Point) {
         let mut reader = self.table.bytes;
@@ -149,7 +149,7 @@ impl<'a> GlyfTable<'a> {
         Ok(())
     }
 
-    pub fn bounding_rect(&self, head_table: &HeadTable, loca_table: &LocaTable, glyph_id: u32)
+    pub fn bounding_rect(&self, head_table: &HeadTable, loca_table: &LocaTable, glyph_id: u16)
                          -> Result<Rect<i16>, ()> {
         let mut reader = self.table.bytes;
         let offset = try!(loca_table.location_of(head_table, glyph_id));

@@ -12,6 +12,8 @@ use byteorder::{BigEndian, ReadBytesExt};
 use otf::cmap::CmapTable;
 use otf::glyf::GlyfTable;
 use otf::head::HeadTable;
+use otf::hhea::HheaTable;
+use otf::hmtx::HmtxTable;
 use otf::loca::LocaTable;
 use std::mem;
 use std::u16;
@@ -20,6 +22,8 @@ use util::Jump;
 pub mod cmap;
 pub mod glyf;
 pub mod head;
+pub mod hhea;
+pub mod hmtx;
 pub mod loca;
 
 const CMAP: u32 = ((b'c' as u32) << 24) |
@@ -34,6 +38,10 @@ const HEAD: u32 = ((b'h' as u32) << 24) |
                   ((b'e' as u32) << 16) |
                   ((b'a' as u32) << 8)  |
                    (b'd' as u32);
+const HHEA: u32 = ((b'h' as u32) << 24) |
+                  ((b'h' as u32) << 16) |
+                  ((b'e' as u32) << 8)  |
+                   (b'a' as u32);
 const HMTX: u32 = ((b'h' as u32) << 24) |
                   ((b'm' as u32) << 16) |
                   ((b't' as u32) << 8)  |
@@ -48,7 +56,8 @@ pub struct Font<'a> {
 
     pub cmap: CmapTable<'a>,
     pub head: HeadTable,
-    pub hmtx: FontTable<'a>,
+    pub hhea: HheaTable,
+    pub hmtx: HmtxTable<'a>,
 
     pub glyf: Option<GlyfTable<'a>>,
     pub loca: Option<LocaTable<'a>>,
@@ -72,7 +81,8 @@ impl<'a> Font<'a> {
         let num_tables = try!(reader.read_u16::<BigEndian>().map_err(drop));
         try!(reader.jump(mem::size_of::<u16>() * 3));
 
-        let (mut cmap_table, mut head_table, mut hmtx_table) = (None, None, None);
+        let (mut cmap_table, mut head_table) = (None, None);
+        let (mut hhea_table, mut hmtx_table) = (None, None);
         let (mut glyf_table, mut loca_table) = (None, None);
 
         for _ in 0..num_tables {
@@ -87,6 +97,7 @@ impl<'a> Font<'a> {
             let mut slot = match table_id {
                 CMAP => &mut cmap_table,
                 HEAD => &mut head_table,
+                HHEA => &mut hhea_table,
                 HMTX => &mut hmtx_table,
                 GLYF => &mut glyf_table,
                 LOCA => &mut loca_table,
@@ -113,7 +124,8 @@ impl<'a> Font<'a> {
 
             cmap: CmapTable::new(try!(cmap_table.ok_or(()))),
             head: try!(HeadTable::new(try!(head_table.ok_or(())))),
-            hmtx: try!(hmtx_table.ok_or(())),
+            hhea: try!(HheaTable::new(try!(hhea_table.ok_or(())))),
+            hmtx: HmtxTable::new(try!(hmtx_table.ok_or(()))),
 
             glyf: glyf_table.map(GlyfTable::new),
             loca: loca_table,

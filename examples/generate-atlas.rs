@@ -16,7 +16,7 @@ use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLint, GLuint};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
-use pathfinder::batch::{BatchBuilder, GlyphRange};
+use pathfinder::batch::BatchBuilder;
 use pathfinder::charmap::CodepointRange;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::glyph_buffer::GlyphBufferBuilder;
@@ -58,7 +58,7 @@ fn main() {
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
 
         let glyph_ranges = font.cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
-        for (glyph_index, glyph_id) in glyph_ranges.iter().flat_map(GlyphRange::iter).enumerate() {
+        for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
             glyph_buffer_builder.add_glyph(&font, glyph_id as u32).unwrap();
             batch_builder.add_glyph(&glyph_buffer_builder, glyph_index as u32, POINT_SIZE).unwrap()
         }
@@ -93,9 +93,7 @@ fn main() {
         gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);
         gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as GLint);
         gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as GLint);
-    }
 
-    unsafe {
         gl::Viewport(0, 0, device_pixel_width, device_pixel_height);
         gl::ClearColor(1.0, 1.0, 1.0, 1.0);
         gl::Clear(gl::COLOR_BUFFER_BIT);

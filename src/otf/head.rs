@@ -15,6 +15,7 @@ use util::Jump;
 
 const MAGIC_NUMBER: u32 = 0x5f0f3cf5;
 
+#[derive(Clone, Debug)]
 pub struct HeadTable {
     pub units_per_em: u16,
     pub index_to_loc_format: i16,

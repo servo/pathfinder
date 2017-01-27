@@ -24,7 +24,7 @@ impl<'a> LocaTable<'a> {
         })
     }
 
-    pub fn location_of(&self, head_table: &HeadTable, glyph_id: u32) -> Result<u32, ()> {
+    pub fn location_of(&self, head_table: &HeadTable, glyph_id: u16) -> Result<u32, ()> {
         let mut reader = self.table.bytes;
         match head_table.index_to_loc_format {
             0 => {

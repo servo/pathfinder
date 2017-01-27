@@ -29,8 +29,10 @@ pub mod batch;
 pub mod charmap;
 pub mod coverage;
 pub mod glyph_buffer;
+pub mod glyph_range;
 pub mod otf;
 pub mod rasterizer;
+pub mod shaper;
 mod util;
 
 #[cfg(test)]

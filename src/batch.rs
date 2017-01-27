@@ -9,6 +9,7 @@
 // except according to those terms.
 
 use atlas::Atlas;
+use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLsizei, GLsizeiptr, GLuint};
 use gl;
 use glyph_buffer::GlyphBufferBuilder;
@@ -18,8 +19,8 @@ use std::u16;
 
 pub struct BatchBuilder {
     pub atlas: Atlas,
-    pub images: Vec<ImageDescriptor>,
-    pub glyph_indices: Vec<u32>,
+    pub image_descriptors: Vec<ImageDescriptor>,
+    pub image_metadata: Vec<ImageMetadata>,
 }
 
 impl BatchBuilder {
@@ -28,8 +29,8 @@ impl BatchBuilder {
     pub fn new(available_width: u32, shelf_height: u32) -> BatchBuilder {
         BatchBuilder {
             atlas: Atlas::new(available_width, shelf_height),
-            images: vec![],
-            glyph_indices: vec![],
+            image_descriptors: vec![],
+            image_metadata: vec![],
         }
     }
 
@@ -46,27 +47,33 @@ impl BatchBuilder {
         let pixel_size = descriptor.pixel_rect(point_size).size.ceil().cast().unwrap();
         let atlas_origin = try!(self.atlas.place(&pixel_size));
 
-        while self.images.len() < glyph_index as usize + 1 {
-            self.images.push(ImageDescriptor::default())
+        while self.image_descriptors.len() < glyph_index as usize + 1 {
+            self.image_descriptors.push(ImageDescriptor::default())
         }
 
-        self.images[glyph_index as usize] = ImageDescriptor {
+        self.image_descriptors[glyph_index as usize] = ImageDescriptor {
             atlas_x: atlas_origin.x,
             atlas_y: atlas_origin.y,
             point_size: (point_size * 65536.0) as u32,
             glyph_index: glyph_index,
         };
 
-        self.glyph_indices.push(glyph_index);
+        self.image_metadata.push(ImageMetadata {
+            atlas_size: pixel_size,
+            glyph_index: glyph_index,
+            glyph_id: descriptor.glyph_id,
+        });
 
         Ok(())
     }
 
     pub fn finish(&mut self, glyph_buffer_builder: &GlyphBufferBuilder) -> Result<Batch, ()> {
-        self.glyph_indices.sort();
+        self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
 
         let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);
-        for &glyph_index in &self.glyph_indices {
+        for image_metadata in &self.image_metadata {
+            let glyph_index = image_metadata.glyph_index;
+
             let first_index = glyph_buffer_builder.descriptors[glyph_index as usize].start_index as
                 usize;
             let last_index = match glyph_buffer_builder.descriptors.get(glyph_index as usize + 1) {
@@ -96,11 +103,10 @@ impl BatchBuilder {
             let mut images = 0;
             gl::GenBuffers(1, &mut images);
 
+            let length = self.image_descriptors.len() * mem::size_of::<ImageDescriptor>();
+            let ptr = self.image_descriptors.as_ptr() as *const ImageDescriptor as *const c_void;
             gl::BindBuffer(gl::UNIFORM_BUFFER, images);
-            gl::BufferData(gl::UNIFORM_BUFFER,
-                           (self.images.len() * mem::size_of::<ImageDescriptor>()) as GLsizeiptr,
-                           self.images.as_ptr() as *const ImageDescriptor as *const c_void,
-                           gl::DYNAMIC_DRAW);
+            gl::BufferData(gl::UNIFORM_BUFFER, length as GLsizeiptr, ptr, gl::DYNAMIC_DRAW);
 
             Ok(Batch {
                 start_indices: start_indices,
@@ -108,6 +114,21 @@ impl BatchBuilder {
                 images: images,
             })
         }
+    }
+
+    #[inline]
+    pub fn glyph_index_for(&self, glyph_id: u16) -> Option<u32> {
+        match self.image_metadata.binary_search_by(|metadata| metadata.glyph_id.cmp(&glyph_id)) {
+            Ok(glyph_index) => Some(self.image_metadata[glyph_index].glyph_index),
+            Err(_) => None,
+        }
+    }
+
+    #[inline]
+    pub fn atlas_rect(&self, glyph_index: u32) -> Rect<u32> {
+        let descriptor = &self.image_descriptors[glyph_index as usize];
+        let metadata = &self.image_metadata[glyph_index as usize];
+        Rect::new(Point2D::new(descriptor.atlas_x, descriptor.atlas_y), metadata.atlas_size)
     }
 }
 
@@ -125,43 +146,7 @@ impl Drop for Batch {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct GlyphRange {
-    pub start: u16,
-    pub end: u16,
-}
-
-impl GlyphRange {
-    #[inline]
-    pub fn iter(&self) -> GlyphRangeIter {
-        GlyphRangeIter {
-            start: self.start,
-            end: self.end,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct GlyphRangeIter {
-    start: u16,
-    end: u16,
-}
-
-impl Iterator for GlyphRangeIter {
-    type Item = u16;
-
-    #[inline]
-    fn next(&mut self) -> Option<u16> {
-        if self.start > self.end {
-            None
-        } else {
-            let item = self.start;
-            self.start += 1;
-            Some(item)
-        }
-    }
-}
-
+/// Information about each image that we send to the GPU.
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct ImageDescriptor {
@@ -169,5 +154,13 @@ pub struct ImageDescriptor {
     atlas_y: u32,
     point_size: u32,
     glyph_index: u32,
+}
+
+/// Information about each image that we keep around ourselves.
+#[derive(Clone, Copy, Debug)]
+pub struct ImageMetadata {
+    atlas_size: Size2D<u32>,
+    glyph_index: u32,
+    glyph_id: u16,
 }
 

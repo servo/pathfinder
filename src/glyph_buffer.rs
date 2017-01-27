@@ -37,7 +37,7 @@ impl GlyphBufferBuilder {
         }
     }
 
-    pub fn add_glyph(&mut self, font: &Font, glyph_id: u32) -> Result<(), ()> {
+    pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<(), ()> {
         let glyph_index = self.descriptors.len() as u16;
 
         let mut point_index = self.vertices.len() as u32;
@@ -78,7 +78,7 @@ impl GlyphBufferBuilder {
             units_per_em: font.head.units_per_em as u32,
             start_point: start_point as u32,
             start_index: start_index,
-            pad: 0,
+            glyph_id: glyph_id,
         });
 
         Ok(())
@@ -137,7 +137,7 @@ pub struct GlyphDescriptor {
     pub units_per_em: u32,
     pub start_point: u32,
     pub start_index: u32,
-    pub pad: u32,
+    pub glyph_id: u16,
 }
 
 impl GlyphDescriptor {

@@ -8,9 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use batch::GlyphRange;
 use byteorder::{BigEndian, ReadBytesExt};
 use charmap::CodepointRange;
+use glyph_range::{GlyphRange, GlyphRanges, MappedGlyphRange};
 use otf::FontTable;
 use std::cmp;
 use std::mem;
@@ -40,7 +40,7 @@ impl<'a> CmapTable<'a> {
     }
 
     pub fn glyph_ranges_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
-                                             -> Result<Vec<GlyphRange>, ()> {
+                                             -> Result<GlyphRanges, ()> {
         let mut cmap_reader = self.table.bytes;
 
         // Check version.
@@ -96,16 +96,19 @@ impl<'a> CmapTable<'a> {
         try!(glyph_ids.jump(seg_count as usize * mem::size_of::<u16>()));
 
         // Now perform the lookups.
-        let mut glyph_ranges = vec![];
+        let mut glyph_ranges = GlyphRanges::new();
         for codepoint_range in codepoint_ranges {
             let mut codepoint_range = *codepoint_range;
             while codepoint_range.end >= codepoint_range.start {
                 if codepoint_range.start > u16::MAX as u32 {
-                    codepoint_range.start += 1;
-                    glyph_ranges.push(GlyphRange {
-                        start: MISSING_GLYPH,
-                        end: MISSING_GLYPH,
+                    glyph_ranges.ranges.push(MappedGlyphRange {
+                        codepoint_start: codepoint_range.start,
+                        glyphs: GlyphRange {
+                            start: MISSING_GLYPH,
+                            end: MISSING_GLYPH,
+                        },
                     });
+                    codepoint_range.start += 1;
                     continue
                 }
 
@@ -141,11 +144,14 @@ impl<'a> CmapTable<'a> {
                 let segment_index = match segment_index {
                     Some(segment_index) => segment_index,
                     None => {
-                        codepoint_range.start += 1;
-                        glyph_ranges.push(GlyphRange {
-                            start: MISSING_GLYPH,
-                            end: MISSING_GLYPH,
+                        glyph_ranges.ranges.push(MappedGlyphRange {
+                            codepoint_start: codepoint_range.start,
+                            glyphs: GlyphRange {
+                                start: MISSING_GLYPH,
+                                end: MISSING_GLYPH,
+                            },
                         });
+                        codepoint_range.start += 1;
                         continue
                     }
                 };
@@ -176,9 +182,12 @@ impl<'a> CmapTable<'a> {
                     // Microsoft's documentation is contradictory as to whether the code offset or
                     // the actual code is added to the ID delta here. In reality it seems to be the
                     // latter.
-                    glyph_ranges.push(GlyphRange {
-                        start: (start_codepoint_range as i16).wrapping_add(id_delta) as u16,
-                        end: (end_codepoint_range as i16).wrapping_add(id_delta) as u16,
+                    glyph_ranges.ranges.push(MappedGlyphRange {
+                        codepoint_start: start_codepoint_range as u32,
+                        glyphs: GlyphRange {
+                            start: (start_codepoint_range as i16).wrapping_add(id_delta) as u16,
+                            end: (end_codepoint_range as i16).wrapping_add(id_delta) as u16,
+                        },
                     });
                     continue
                 }
@@ -189,15 +198,21 @@ impl<'a> CmapTable<'a> {
                     try!(glyph_id.jump((id_range_offset as usize + code_offset as usize) * 2));
                     let mut glyph_id = try!(glyph_id.read_u16::<BigEndian>().map_err(drop));
                     if glyph_id == 0 {
-                        glyph_ranges.push(GlyphRange {
-                            start: MISSING_GLYPH,
-                            end: MISSING_GLYPH,
+                        glyph_ranges.ranges.push(MappedGlyphRange {
+                            codepoint_start: start_code as u32 + code_offset as u32,
+                            glyphs: GlyphRange {
+                                start: MISSING_GLYPH,
+                                end: MISSING_GLYPH,
+                            },
                         })
                     } else {
                         glyph_id = (glyph_id as i16).wrapping_add(id_delta) as u16;
-                        glyph_ranges.push(GlyphRange {
-                            start: glyph_id,
-                            end: glyph_id,
+                        glyph_ranges.ranges.push(MappedGlyphRange {
+                            codepoint_start: start_code as u32 + code_offset as u32,
+                            glyphs: GlyphRange {
+                                start: glyph_id,
+                                end: glyph_id,
+                            },
                         })
                     }
                 }
