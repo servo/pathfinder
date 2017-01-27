@@ -1,6 +1,9 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+#![feature(alloc_system)]
+
+extern crate alloc_system;
 extern crate compute_shader;
 extern crate euclid;
 extern crate gl;

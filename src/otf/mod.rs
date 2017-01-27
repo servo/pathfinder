@@ -50,6 +50,15 @@ const LOCA: u32 = ((b'l' as u32) << 24) |
                   ((b'o' as u32) << 16) |
                   ((b'c' as u32) << 8)  |
                    (b'a' as u32);
+const TTCF: u32 = ((b't' as u32) << 24) |
+                  ((b't' as u32) << 16) |
+                  ((b'c' as u32) << 8)  |
+                   (b'f' as u32);
+
+static SFNT_VERSIONS: [u32; 2] = [
+    0x10000,
+    ((b't' as u32) << 24) | ((b'r' as u32) << 16) | ((b'u' as u32) << 8) | (b'e' as u32),
+];
 
 pub struct Font<'a> {
     pub bytes: &'a [u8],
@@ -71,10 +80,33 @@ pub struct FontTable<'a> {
 impl<'a> Font<'a> {
     #[inline]
     pub fn new<'b>(bytes: &'b [u8]) -> Result<Font<'b>, ()> {
-        // Read the tables we care about.
+        // Check magic number.
         let mut reader = bytes;
-        let sfnt_version = try!(reader.read_u32::<BigEndian>().map_err(drop));
-        if sfnt_version != 0x10000 {
+        let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        if magic_number == TTCF {
+            // This is a font collection. Read the first font.
+            //
+            // TODO(pcwalton): Provide a mechanism to read others.
+            let major_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
+            let minor_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
+            if (major_version != 1 && major_version != 2) || minor_version != 0 {
+                return Err(())
+            }
+
+            let num_fonts = try!(reader.read_u32::<BigEndian>().map_err(drop));
+            if num_fonts == 0 {
+                return Err(())
+            }
+
+            let table_offset = try!(reader.read_u32::<BigEndian>().map_err(drop));
+            reader = bytes;
+            try!(reader.jump(table_offset as usize));
+
+            magic_number = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        }
+
+        // Check version.
+        if !SFNT_VERSIONS.contains(&magic_number) {
             return Err(())
         }
 

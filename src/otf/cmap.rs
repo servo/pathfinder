@@ -52,20 +52,28 @@ impl<'a> CmapTable<'a> {
 
         // Check platform ID and encoding.
         // TODO(pcwalton): Handle more.
-        // TODO(pcwalton): Search for one that we can handle.
-        let platform_id = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        let encoding_id = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        match (platform_id, encoding_id) {
-            (PLATFORM_ID_UNICODE, _) |
-            (PLATFORM_ID_MICROSOFT, MICROSOFT_ENCODING_ID_UNICODE_BMP) |
-            (PLATFORM_ID_MICROSOFT, MICROSOFT_ENCODING_ID_UNICODE_UCS4) => {}
-            _ => return Err(())
+        let mut table_found = false;
+        for _ in 0..num_tables {
+            let platform_id = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+            let encoding_id = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+            let offset = try!(cmap_reader.read_u32::<BigEndian>().map_err(drop));
+            match (platform_id, encoding_id) {
+                (PLATFORM_ID_UNICODE, _) |
+                (PLATFORM_ID_MICROSOFT, MICROSOFT_ENCODING_ID_UNICODE_BMP) |
+                (PLATFORM_ID_MICROSOFT, MICROSOFT_ENCODING_ID_UNICODE_UCS4) => {
+                    // Move to the mapping table.
+                    cmap_reader = self.table.bytes;
+                    try!(cmap_reader.jump(offset as usize));
+                    table_found = true;
+                    break
+                }
+                _ => {}
+            }
         }
 
-        // Move to the mapping table.
-        let offset = try!(cmap_reader.read_u32::<BigEndian>().map_err(drop));
-        cmap_reader = self.table.bytes;
-        try!(cmap_reader.jump(offset as usize));
+        if !table_found {
+            return Err(())
+        }
 
         // Check the mapping table format.
         let format = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
