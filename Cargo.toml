@@ -11,7 +11,8 @@ gl = "0.6"
 memmap = "0.5"
 
 [dependencies.compute-shader]
-git = "https://github.com/pcwalton/compute-shader.git"
+# git = "https://github.com/pcwalton/compute-shader.git"
+path = "/Users/pcwalton/Source/rust-packages/compute-shader"
 
 [dev-dependencies]
 quickcheck = "0.4"

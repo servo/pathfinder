@@ -10,12 +10,13 @@
 
 use euclid::{Point2D, Rect, Size2D};
 
-/// TODO(pcwalton): Track width of last shelf.
 pub struct Atlas {
     free_rects: Vec<Rect<u32>>,
     available_width: u32,
     shelf_height: u32,
     shelf_count: u32,
+    /// The amount of horizontal space allocated in the last shelf.
+    width_of_last_shelf: u32,
 }
 
 impl Atlas {
@@ -26,6 +27,7 @@ impl Atlas {
             available_width: available_width,
             shelf_height: shelf_height,
             shelf_count: 0,
+            width_of_last_shelf: 0,
         }
     }
 
@@ -46,7 +48,8 @@ impl Atlas {
                 // Make a new shelf.
                 chosen_rect = Rect::new(Point2D::new(0, self.shelf_height * self.shelf_count),
                                         Size2D::new(self.available_width, self.shelf_height));
-                self.shelf_count += 1
+                self.shelf_count += 1;
+                self.width_of_last_shelf = 0
             }
             Some((index, rect)) => {
                 self.free_rects.swap_remove(index);
@@ -70,6 +73,12 @@ impl Atlas {
             self.free_rects.push(free_to_right);
         }
 
+        // Update width of last shelf if necessary.
+        let on_last_shelf = chosen_rect.max_y() >= self.shelf_height * (self.shelf_count - 1);
+        if on_last_shelf && self.width_of_last_shelf < chosen_rect.max_x() {
+            self.width_of_last_shelf = chosen_rect.max_x()
+        }
+
         Ok(chosen_rect.origin)
     }
 
@@ -81,6 +90,17 @@ impl Atlas {
     #[inline]
     pub fn shelf_height(&self) -> u32 {
         self.shelf_height
+    }
+
+    #[inline]
+    pub fn shelf_columns(&self) -> u32 {
+        let full_shelf_count = if self.shelf_count == 0 {
+            0
+        } else {
+            self.shelf_count - 1
+        };
+
+        full_shelf_count * self.available_width + self.width_of_last_shelf
     }
 }
 

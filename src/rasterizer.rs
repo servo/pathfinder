@@ -8,10 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use atlas::Atlas;
 use batch::Batch;
 use compute_shader::device::Device;
-use compute_shader::event::Event;
 use compute_shader::instance::{Instance, ShadingLanguage};
+use compute_shader::profile_event::ProfileEvent;
 use compute_shader::program::Program;
 use compute_shader::queue::{Queue, Uniform};
 use compute_shader::texture::Texture;
@@ -47,7 +48,13 @@ pub struct Rasterizer {
     draw_atlas_size_uniform: GLint,
     draw_glyph_descriptors_uniform: GLuint,
     draw_image_descriptors_uniform: GLuint,
+    draw_query: GLuint,
     options: RasterizerOptions,
+}
+
+pub struct DrawAtlasProfilingEvents {
+    pub draw: GLuint,
+    pub accum: ProfileEvent,
 }
 
 impl Rasterizer {
@@ -56,7 +63,7 @@ impl Rasterizer {
         let (draw_program, draw_position_attribute, draw_glyph_index_attribute);
         let (draw_glyph_descriptors_uniform, draw_image_descriptors_uniform);
         let draw_atlas_size_uniform;
-        let mut draw_vertex_array = 0;
+        let (mut draw_vertex_array, mut draw_query) = (0, 0);
         unsafe {
             draw_program = gl::CreateProgram();
 
@@ -109,6 +116,8 @@ impl Rasterizer {
             draw_image_descriptors_uniform =
                 gl::GetUniformBlockIndex(draw_program,
                                          b"ubImageDescriptors\0".as_ptr() as *const GLchar);
+
+            gl::GenQueries(1, &mut draw_query)
         }
 
         // FIXME(pcwalton): Don't panic if this fails to compile; just return an error.
@@ -129,18 +138,19 @@ impl Rasterizer {
             draw_atlas_size_uniform: draw_atlas_size_uniform,
             draw_glyph_descriptors_uniform: draw_glyph_descriptors_uniform,
             draw_image_descriptors_uniform: draw_image_descriptors_uniform,
+            draw_query: draw_query,
             options: options,
         })
     }
 
     pub fn draw_atlas(&self,
                       atlas_rect: &Rect<u32>,
-                      atlas_shelf_height: u32,
+                      atlas: &Atlas,
                       glyph_buffers: &GlyphBuffers,
                       batch: &Batch,
                       coverage_buffer: &CoverageBuffer,
                       texture: &Texture)
-                      -> Result<Event, ()> {
+                      -> Result<DrawAtlasProfilingEvents, ()> {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, coverage_buffer.framebuffer);
             gl::Viewport(0, 0, atlas_rect.size.width as GLint, atlas_rect.size.height as GLint);
@@ -198,14 +208,15 @@ impl Rasterizer {
             } else {
                 gl::PATCHES
             };
-
             // Now draw the glyph ranges.
             debug_assert!(batch.counts.len() == batch.start_indices.len());
+            gl::BeginQuery(gl::TIME_ELAPSED, self.draw_query);
             gl::MultiDrawElements(primitive,
                                   batch.counts.as_ptr(),
                                   gl::UNSIGNED_INT,
                                   batch.start_indices.as_ptr() as *const *const GLvoid,
                                   batch.counts.len() as GLsizei);
+            gl::EndQuery(gl::TIME_ELAPSED);
 
             gl::Disable(gl::CULL_FACE);
             gl::Disable(gl::BLEND);
@@ -229,15 +240,18 @@ impl Rasterizer {
             (0, Uniform::Texture(texture)),
             (1, Uniform::Texture(&coverage_buffer.texture)),
             (2, Uniform::UVec4(atlas_rect_uniform)),
-            (3, Uniform::U32(atlas_shelf_height)),
+            (3, Uniform::U32(atlas.shelf_height())),
         ];
 
-        let accum_columns = atlas_rect.size.width * (atlas_rect.size.height / atlas_shelf_height);
+        let accum_event = try!(self.queue.submit_compute(&self.accum_program,
+                                                         &[atlas.shelf_columns()],
+                                                         &accum_uniforms,
+                                                         &[]).map_err(drop));
 
-        self.queue.submit_compute(&self.accum_program,
-                                  &[accum_columns],
-                                  &accum_uniforms,
-                                  &[]).map_err(drop)
+        Ok(DrawAtlasProfilingEvents {
+            draw: self.draw_query,
+            accum: accum_event,
+        })
     }
 }
 

@@ -16,18 +16,23 @@
 
 use glyph_range::GlyphRanges;
 use otf::Font;
+use std::cmp;
 
 pub fn shape_text(font: &Font, glyph_ranges: &GlyphRanges, string: &str) -> Vec<GlyphPos> {
+    let mut advance = 0;
     string.chars().map(|ch| {
         let glyph_id = glyph_ranges.glyph_for(ch as u32).unwrap_or(0);
-        let advance = match font.hmtx.metrics_for_glyph(&font.hhea, glyph_id) {
-            Ok(metrics) => metrics.advance_width,
-            Err(_) => 0,
-        };
-        GlyphPos {
+        let metrics = font.hmtx.metrics_for_glyph(&font.hhea, glyph_id);
+
+        let pos = GlyphPos {
             glyph_id: glyph_id,
-            advance: advance,
+            advance: cmp::max(0, advance) as u16,
+        };
+
+        if let Ok(ref metrics) = metrics {
+            advance = metrics.advance_width as i32
         }
+        pos
     }).collect()
 }
 

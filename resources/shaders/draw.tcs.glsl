@@ -98,7 +98,7 @@ void main() {
     // so we're in the clear: the rasterizer will always discard the unshaded areas and render only
     // the shaded ones.
 
-    float tessLevel = p0.x == p2.x ? 0.0f : (lineCount * 2.0f - 1.0f);
+    float tessLevel = min(p0.x == p2.x ? 0.0f : (lineCount * 2.0f - 1.0f), 31.0f);
     gl_TessLevelInner[0] = tessLevel;
     gl_TessLevelInner[1] = 1.0f;
     gl_TessLevelOuter[0] = 1.0f;
