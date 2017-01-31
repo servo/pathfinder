@@ -8,6 +8,7 @@ extern crate compute_shader;
 extern crate euclid;
 extern crate gl;
 extern crate glfw;
+extern crate image;
 extern crate memmap;
 extern crate pathfinder;
 
@@ -29,6 +30,7 @@ use pathfinder::shaper;
 use std::env;
 use std::mem;
 use std::os::raw::c_void;
+use std::path::Path;
 
 const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 640;
@@ -47,6 +49,8 @@ static FPS_BACKGROUND_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.7];
 static FPS_FOREGROUND_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 static TEXT_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 
+static ATLAS_DUMP_FILENAME: &'static str = "lorem-ipsum-atlas.png";
+
 fn main() {
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
     glfw.window_hint(WindowHint::ContextVersion(3, 3));
@@ -56,6 +60,7 @@ fn main() {
 
     let (mut window, events) = context.expect("Couldn't create a window!");
     window.make_current();
+    window.set_key_polling(true);
     window.set_scroll_polling(true);
     window.set_size_polling(true);
     window.set_framebuffer_size_polling(true);
@@ -154,6 +159,10 @@ fn main() {
             match event {
                 WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
                     window.set_should_close(true)
+                }
+                WindowEvent::Key(Key::S, _, Action::Press, _) => {
+                    renderer.take_screenshot();
+                    println!("wrote screenshot to: {}", ATLAS_DUMP_FILENAME);
                 }
                 WindowEvent::Scroll(x, y) => {
                     if window.get_key(Key::LeftAlt) == Action::Press ||
@@ -610,6 +619,36 @@ impl Renderer {
                          self.fps_gl_texture,
                          FPS_DISPLAY_POINT_SIZE,
                          &FPS_FOREGROUND_COLOR);
+    }
+
+    fn take_screenshot(&self) {
+        unsafe {
+            let mut fbo = 0;
+            gl::GenFramebuffers(1, &mut fbo);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
+            gl::FramebufferTexture2D(gl::FRAMEBUFFER,
+                                     gl::COLOR_ATTACHMENT0,
+                                     gl::TEXTURE_RECTANGLE,
+                                     self.main_gl_texture,
+                                     0);
+
+            let length = 4 * self.atlas_size.width as usize * self.atlas_size.height as usize;
+            let mut pixels: Vec<u8> = vec![0; length];
+            gl::ReadPixels(0, 0,
+                           self.atlas_size.width as GLint, self.atlas_size.height as GLint,
+                           gl::RGBA,
+                           gl::UNSIGNED_BYTE,
+                           pixels.as_mut_ptr() as *mut c_void);
+
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::DeleteFramebuffers(1, &mut fbo);
+
+            image::save_buffer(&Path::new(ATLAS_DUMP_FILENAME),
+                               &pixels,
+                               self.atlas_size.width,
+                               self.atlas_size.height,
+                               image::RGBA(8)).unwrap();
+        }
     }
 }
 

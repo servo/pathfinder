@@ -15,6 +15,7 @@ memmap = "0.5"
 path = "/Users/pcwalton/Source/rust-packages/compute-shader"
 
 [dev-dependencies]
+image = "0.12"
 quickcheck = "0.4"
 
 [dev-dependencies.glfw]

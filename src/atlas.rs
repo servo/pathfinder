@@ -32,12 +32,15 @@ impl Atlas {
     }
 
     pub fn place(&mut self, size: &Size2D<u32>) -> Result<Point2D<u32>, ()> {
+        // Add a one-pixel border to prevent bleed.
+        let alloc_size = *size + Size2D::new(2, 2);
+
         let chosen_index_and_rect =
             self.free_rects
                 .iter()
                 .enumerate()
                 .filter(|&(_, rect)| {
-                    size.width <= rect.size.width && size.height <= rect.size.height
+                    alloc_size.width <= rect.size.width && alloc_size.height <= rect.size.height
                 })
                 .min_by(|&(_, a), &(_, b)| area(a).cmp(&area(b)))
                 .map(|(index, rect)| (index, *rect));
@@ -59,16 +62,17 @@ impl Atlas {
 
         // Guillotine to bottom.
         let free_below =
-            Rect::new(Point2D::new(chosen_rect.origin.x, chosen_rect.origin.y + size.height),
-                      Size2D::new(size.width, chosen_rect.size.height - size.height));
+            Rect::new(Point2D::new(chosen_rect.origin.x, chosen_rect.origin.y + alloc_size.height),
+                      Size2D::new(alloc_size.width, chosen_rect.size.height - alloc_size.height));
         if !free_below.is_empty() {
             self.free_rects.push(free_below);
         }
 
         // Guillotine to right.
         let free_to_right =
-            Rect::new(Point2D::new(chosen_rect.origin.x + size.width, chosen_rect.origin.y),
-                      Size2D::new(chosen_rect.size.width - size.width, chosen_rect.size.height));
+            Rect::new(Point2D::new(chosen_rect.origin.x + alloc_size.width, chosen_rect.origin.y),
+                      Size2D::new(chosen_rect.size.width - alloc_size.width,
+                                  chosen_rect.size.height));
         if !free_to_right.is_empty() {
             self.free_rects.push(free_to_right);
         }
@@ -79,7 +83,8 @@ impl Atlas {
             self.width_of_last_shelf = chosen_rect.max_x()
         }
 
-        Ok(chosen_rect.origin)
+        let object_origin = chosen_rect.origin + Point2D::new(1, 1);
+        Ok(object_origin)
     }
 
     #[inline]
