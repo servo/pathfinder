@@ -65,7 +65,7 @@ fn main() {
     }
 
     let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
-    let batch = batch_builder.finish(&glyph_buffer_builder).unwrap();
+    let batch = batch_builder.create_atlas(&glyph_buffer_builder).unwrap();
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
     let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();

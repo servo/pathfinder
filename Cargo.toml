@@ -9,12 +9,14 @@ byteorder = "1"
 euclid = "0.10"
 gl = "0.6"
 memmap = "0.5"
+time = "0.1"
 
 [dependencies.compute-shader]
 # git = "https://github.com/pcwalton/compute-shader.git"
 path = "/Users/pcwalton/Source/rust-packages/compute-shader"
 
 [dev-dependencies]
+bencher = "0.1"
 image = "0.12"
 quickcheck = "0.4"
 
