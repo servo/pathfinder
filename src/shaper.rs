@@ -22,7 +22,7 @@ pub fn shape_text(font: &Font, glyph_ranges: &GlyphRanges, string: &str) -> Vec<
     let mut advance = 0;
     string.chars().map(|ch| {
         let glyph_id = glyph_ranges.glyph_for(ch as u32).unwrap_or(0);
-        let metrics = font.hmtx.metrics_for_glyph(&font.hhea, glyph_id);
+        let metrics = font.metrics_for_glyph(glyph_id);
 
         let pos = GlyphPos {
             glyph_id: glyph_id,

@@ -10,7 +10,7 @@
 
 use atlas::Atlas;
 use euclid::{Point2D, Rect, Size2D};
-use gl::types::{GLsizei, GLsizeiptr, GLuint};
+use gl::types::{GLenum, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use gl;
 use glyph_buffer::GlyphBufferBuilder;
 use std::mem;
@@ -19,8 +19,8 @@ use std::u16;
 
 pub struct BatchBuilder {
     pub atlas: Atlas,
-    pub image_descriptors: Vec<ImageDescriptor>,
-    pub image_metadata: Vec<ImageMetadata>,
+    image_descriptors: Vec<ImageDescriptor>,
+    image_metadata: Vec<ImageMetadata>,
 }
 
 impl BatchBuilder {
@@ -134,9 +134,9 @@ impl BatchBuilder {
 }
 
 pub struct Batch {
-    pub start_indices: Vec<usize>,
-    pub counts: Vec<GLsizei>,
-    pub images: GLuint,
+    start_indices: Vec<usize>,
+    counts: Vec<GLsizei>,
+    images: GLuint,
 }
 
 impl Drop for Batch {
@@ -144,6 +144,22 @@ impl Drop for Batch {
         unsafe {
             gl::DeleteBuffers(1, &mut self.images);
         }
+    }
+}
+
+impl Batch {
+    pub unsafe fn draw(&self, primitive: GLenum) {
+        debug_assert!(self.counts.len() == self.start_indices.len());
+        gl::MultiDrawElements(primitive,
+                              self.counts.as_ptr(),
+                              gl::UNSIGNED_INT,
+                              self.start_indices.as_ptr() as *const *const GLvoid,
+                              self.counts.len() as GLsizei);
+    }
+
+    #[inline]
+    pub fn images(&self) -> GLuint {
+        self.images
     }
 }
 

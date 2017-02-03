@@ -152,7 +152,7 @@ impl Rasterizer {
                       image: &Image)
                       -> Result<DrawAtlasProfilingEvents, ()> {
         unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, coverage_buffer.framebuffer);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, coverage_buffer.framebuffer());
             gl::Viewport(0, 0, atlas_rect.size.width as GLint, atlas_rect.size.height as GLint);
 
             // TODO(pcwalton): Scissor to the atlas rect to clear faster?
@@ -180,7 +180,7 @@ impl Rasterizer {
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, glyph_buffers.indices);
 
             gl::BindBufferBase(gl::UNIFORM_BUFFER, 1, glyph_buffers.descriptors);
-            gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, batch.images);
+            gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, batch.images());
             gl::UniformBlockBinding(self.draw_program, self.draw_glyph_descriptors_uniform, 1);
             gl::UniformBlockBinding(self.draw_program, self.draw_image_descriptors_uniform, 2);
 
@@ -209,13 +209,8 @@ impl Rasterizer {
                 gl::PATCHES
             };
             // Now draw the glyph ranges.
-            debug_assert!(batch.counts.len() == batch.start_indices.len());
             gl::BeginQuery(gl::TIME_ELAPSED, self.draw_query);
-            gl::MultiDrawElements(primitive,
-                                  batch.counts.as_ptr(),
-                                  gl::UNSIGNED_INT,
-                                  batch.start_indices.as_ptr() as *const *const GLvoid,
-                                  batch.counts.len() as GLsizei);
+            batch.draw(primitive);
             gl::EndQuery(gl::TIME_ELAPSED);
 
             gl::Disable(gl::CULL_FACE);
@@ -238,7 +233,7 @@ impl Rasterizer {
 
         let accum_uniforms = [
             (0, Uniform::Image(image)),
-            (1, Uniform::Image(&coverage_buffer.image)),
+            (1, Uniform::Image(coverage_buffer.image())),
             (2, Uniform::UVec4(atlas_rect_uniform)),
             (3, Uniform::U32(atlas.shelf_height())),
         ];

@@ -45,10 +45,7 @@ impl GlyphBufferBuilder {
         let start_point = point_index;
         let mut last_point_on_curve = true;
 
-        let glyf_table = try!(font.glyf.ok_or(()));
-        let loca_table = try!(font.loca.as_ref().ok_or(()));
-
-        try!(glyf_table.for_each_point(&font.head, loca_table, glyph_id, |point| {
+        try!(font.for_each_point(glyph_id, |point| {
             self.vertices.push(Vertex {
                 x: point.position.x,
                 y: point.position.y,
@@ -70,8 +67,8 @@ impl GlyphBufferBuilder {
 
         // Add a glyph descriptor.
         self.descriptors.push(GlyphDescriptor {
-            bounds: try!(glyf_table.glyph_bounds(&font.head, loca_table, glyph_id)),
-            units_per_em: font.head.units_per_em as u32,
+            bounds: try!(font.glyph_bounds(glyph_id)),
+            units_per_em: font.units_per_em() as u32,
             start_point: start_point as u32,
             start_index: start_index,
             glyph_id: glyph_id,

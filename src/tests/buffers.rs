@@ -15,8 +15,7 @@ fn bench_add_glyphs(bencher: &mut Bencher) {
     unsafe {
         let font = Font::new(file.as_slice()).unwrap();
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
-        let glyph_ranges = font.cmap
-                               .glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
+        let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
                                .expect("Couldn't find glyph ranges");
 
         bencher.iter(|| {

@@ -78,7 +78,7 @@ fn main() {
     let (font, shaped_glyph_positions, glyph_ranges);
     unsafe {
         font = Font::new(file.as_slice()).unwrap();
-        glyph_ranges = font.cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
+        glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
         shaped_glyph_positions = shaper::shape_text(&font, &glyph_ranges, TEXT)
     }
 

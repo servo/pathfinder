@@ -9,22 +9,25 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
+use charmap::CodepointRange;
+use glyph_buffer::GlyphBounds;
+use glyph_range::GlyphRanges;
 use otf::cmap::CmapTable;
-use otf::glyf::GlyfTable;
+use otf::glyf::{GlyfTable, Point};
 use otf::head::HeadTable;
 use otf::hhea::HheaTable;
-use otf::hmtx::HmtxTable;
+use otf::hmtx::{HmtxTable, HorizontalMetrics};
 use otf::loca::LocaTable;
 use std::mem;
 use std::u16;
 use util::Jump;
 
-pub mod cmap;
-pub mod glyf;
-pub mod head;
-pub mod hhea;
-pub mod hmtx;
-pub mod loca;
+mod cmap;
+mod glyf;
+mod head;
+mod hhea;
+mod hmtx;
+mod loca;
 
 const CMAP: u32 = ((b'c' as u32) << 24) |
                   ((b'm' as u32) << 16) |
@@ -63,13 +66,13 @@ static SFNT_VERSIONS: [u32; 2] = [
 pub struct Font<'a> {
     pub bytes: &'a [u8],
 
-    pub cmap: CmapTable<'a>,
-    pub head: HeadTable,
-    pub hhea: HheaTable,
-    pub hmtx: HmtxTable<'a>,
+    cmap: CmapTable<'a>,
+    head: HeadTable,
+    hhea: HheaTable,
+    hmtx: HmtxTable<'a>,
 
-    pub glyf: Option<GlyfTable<'a>>,
-    pub loca: Option<LocaTable<'a>>,
+    glyf: Option<GlyfTable<'a>>,
+    loca: Option<LocaTable<'a>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -162,6 +165,46 @@ impl<'a> Font<'a> {
             glyf: glyf_table.map(GlyfTable::new),
             loca: loca_table,
         })
+    }
+
+    #[inline]
+    pub fn glyph_ranges_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
+                                             -> Result<GlyphRanges, ()> {
+        self.cmap.glyph_ranges_for_codepoint_ranges(codepoint_ranges)
+    }
+
+    #[inline]
+    pub fn for_each_point<F>(&self, glyph_id: u16, callback: F) -> Result<(), ()>
+                             where F: FnMut(&Point) {
+        match self.glyf {
+            Some(glyf) => {
+                glyf.for_each_point(&self.head,
+                                    try!(self.loca.as_ref().ok_or(())),
+                                    glyph_id,
+                                    callback)
+            }
+            None => Ok(()),
+        }
+    }
+
+    #[inline]
+    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, ()> {
+        match self.glyf {
+            Some(glyf) => {
+                glyf.glyph_bounds(&self.head, try!(self.loca.as_ref().ok_or(())), glyph_id)
+            }
+            None => Err(()),
+        }
+    }
+
+    #[inline]
+    pub fn units_per_em(&self) -> u16 {
+        self.head.units_per_em
+    }
+
+    #[inline]
+    pub fn metrics_for_glyph(&self, glyph_id: u16) -> Result<HorizontalMetrics, ()> {
+        self.hmtx.metrics_for_glyph(&self.hhea, glyph_id)
     }
 }
 

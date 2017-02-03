@@ -73,8 +73,8 @@ fn main() {
                 let font = Font::new(file.as_slice()).unwrap();
                 let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
 
-                let glyph_ranges = font.cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
-                                            .unwrap();
+                let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
+                                       .unwrap();
                 for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
                     glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
                     batch_builder.add_glyph(&glyph_buffer_builder,

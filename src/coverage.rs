@@ -16,8 +16,8 @@ use gl::types::{GLint, GLuint};
 use gl;
 
 pub struct CoverageBuffer {
-    pub image: Image,
-    pub framebuffer: GLuint,
+    image: Image,
+    framebuffer: GLuint,
 }
 
 impl CoverageBuffer {
@@ -55,6 +55,16 @@ impl CoverageBuffer {
             image: image,
             framebuffer: framebuffer,
         })
+    }
+
+    #[inline]
+    pub fn image(&self) -> &Image {
+        &self.image
+    }
+
+    #[inline]
+    pub fn framebuffer(&self) -> GLuint {
+        self.framebuffer
     }
 }
 
