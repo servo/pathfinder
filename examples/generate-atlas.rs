@@ -43,7 +43,7 @@ fn main() {
     let (device_pixel_width, device_pixel_height) = window.get_framebuffer_size();
 
     let instance = Instance::new().unwrap();
-    let device = instance.create_device().unwrap();
+    let device = instance.open_device().unwrap();
     let queue = device.create_queue().unwrap();
 
     let rasterizer_options = RasterizerOptions::from_env().unwrap();
@@ -80,6 +80,7 @@ fn main() {
                           &batch,
                           &coverage_buffer,
                           &image).unwrap();
+    rasterizer.queue.flush().unwrap();
 
     let draw_context = lord_drawquaad::Context::new();
 

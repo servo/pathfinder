@@ -48,7 +48,7 @@ fn main() {
     let (device_pixel_width, _) = window.get_framebuffer_size();
 
     let instance = Instance::new().unwrap();
-    let device = instance.create_device().unwrap();
+    let device = instance.open_device().unwrap();
     let queue = device.create_queue().unwrap();
 
     let rasterizer_options = RasterizerOptions::from_env().unwrap();

@@ -58,6 +58,11 @@ const TTCF: u32 = ((b't' as u32) << 24) |
                   ((b'c' as u32) << 8)  |
                    (b'f' as u32);
 
+const SFNT: u32 = ((b's' as u32) << 24) |
+                  ((b'f' as u32) << 16) |
+                  ((b'n' as u32) << 8)  |
+                   (b't' as u32);
+
 static SFNT_VERSIONS: [u32; 2] = [
     0x10000,
     ((b't' as u32) << 24) | ((b'r' as u32) << 16) | ((b'u' as u32) << 8) | (b'e' as u32),
@@ -81,32 +86,38 @@ pub struct FontTable<'a> {
 }
 
 impl<'a> Font<'a> {
-    #[inline]
     pub fn new<'b>(bytes: &'b [u8]) -> Result<Font<'b>, ()> {
         // Check magic number.
         let mut reader = bytes;
         let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(drop));
-        if magic_number == TTCF {
-            // This is a font collection. Read the first font.
-            //
-            // TODO(pcwalton): Provide a mechanism to read others.
-            let major_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
-            let minor_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
-            if (major_version != 1 && major_version != 2) || minor_version != 0 {
-                return Err(())
+        match magic_number {
+            TTCF => {
+                // This is a font collection. Read the first font.
+                //
+                // TODO(pcwalton): Provide a mechanism to read others.
+                let major_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
+                let minor_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
+                if (major_version != 1 && major_version != 2) || minor_version != 0 {
+                    return Err(())
+                }
+
+                let num_fonts = try!(reader.read_u32::<BigEndian>().map_err(drop));
+                if num_fonts == 0 {
+                    return Err(())
+                }
+
+                let table_offset = try!(reader.read_u32::<BigEndian>().map_err(drop));
+                Font::from_otf(&bytes[table_offset as usize..])
             }
-
-            let num_fonts = try!(reader.read_u32::<BigEndian>().map_err(drop));
-            if num_fonts == 0 {
-                return Err(())
-            }
-
-            let table_offset = try!(reader.read_u32::<BigEndian>().map_err(drop));
-            reader = bytes;
-            try!(reader.jump(table_offset as usize));
-
-            magic_number = try!(reader.read_u32::<BigEndian>().map_err(drop));
+            magic_number if SFNT_VERSIONS.contains(&magic_number) => Font::from_otf(bytes),
+            0x0100 => Font::from_dfont(bytes),
+            _ => Err(()),
         }
+    }
+
+    pub fn from_otf<'b>(bytes: &'b [u8]) -> Result<Font<'b>, ()> {
+        let mut reader = bytes;
+        let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(drop));
 
         // Check version.
         if !SFNT_VERSIONS.contains(&magic_number) {
@@ -165,6 +176,70 @@ impl<'a> Font<'a> {
             glyf: glyf_table.map(GlyfTable::new),
             loca: loca_table,
         })
+    }
+
+    /// https://github.com/kreativekorp/ksfl/wiki/Macintosh-Resource-File-Format
+    pub fn from_dfont<'b>(bytes: &'b [u8]) -> Result<Font<'b>, ()> {
+        let mut reader = bytes;
+
+        // Read the Mac resource file header.
+        let resource_data_offset = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        let resource_map_offset = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        let resource_data_size = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        let resource_map_size = try!(reader.read_u32::<BigEndian>().map_err(drop));
+
+        // Move to the fields we care about in the resource map.
+        reader = bytes;
+        try!(reader.jump(resource_map_offset as usize + mem::size_of::<u32>() * 5 +
+                         mem::size_of::<u16>() * 2));
+
+        // Read the type list and name list offsets.
+        let type_list_offset = try!(reader.read_u16::<BigEndian>().map_err(drop));
+        let name_list_offset = try!(reader.read_u16::<BigEndian>().map_err(drop));
+
+        // Move to the type list.
+        reader = bytes;
+        try!(reader.jump(resource_map_offset as usize + type_list_offset as usize));
+
+        // Find the 'sfnt' type.
+        let type_count = (try!(reader.read_i16::<BigEndian>().map_err(drop)) + 1) as usize;
+        let mut resource_count_and_list_offset = None;
+        for type_index in 0..type_count {
+            let type_id = try!(reader.read_u32::<BigEndian>().map_err(drop));
+            let resource_count = try!(reader.read_u16::<BigEndian>().map_err(drop));
+            let resource_list_offset = try!(reader.read_u16::<BigEndian>().map_err(drop));
+            if type_id == SFNT {
+                resource_count_and_list_offset = Some((resource_count, resource_list_offset));
+                break
+            }
+        }
+
+        // Unpack the resource count and list offset.
+        let resource_count;
+        match resource_count_and_list_offset {
+            None => return Err(()),
+            Some((count, resource_list_offset)) => {
+                resource_count = count;
+                reader = bytes;
+                try!(reader.jump(resource_map_offset as usize + type_list_offset as usize +
+                                 resource_list_offset as usize));
+            }
+        }
+
+        // Find the font we're interested in.
+        //
+        // TODO(pcwalton): This only gets the first one. Allow the user of this library to select
+        // others.
+        let sfnt_id = try!(reader.read_u16::<BigEndian>().map_err(drop));
+        let sfnt_name_offset = try!(reader.read_u16::<BigEndian>().map_err(drop));
+        let sfnt_data_offset = try!(reader.read_u32::<BigEndian>().map_err(drop)) & 0x00ffffff;
+        let sfnt_ptr = try!(reader.read_u32::<BigEndian>().map_err(drop));
+
+        // Load the resource.
+        reader = bytes;
+        try!(reader.jump(resource_data_offset as usize + sfnt_data_offset as usize));
+        let sfnt_size = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        Font::from_otf(&reader[0..sfnt_size as usize])
     }
 
     #[inline]
