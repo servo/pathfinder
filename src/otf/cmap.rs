@@ -82,12 +82,12 @@ impl<'a> CmapTable<'a> {
         }
 
         // Read the mapping table header.
-        let length = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        let language = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+        let _length = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+        let _language = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
         let seg_count = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop)) / 2;
-        let search_range = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        let entry_selector = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        let range_shift = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+        let _search_range = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+        let _entry_selector = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+        let _range_shift = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
 
         // Set up parallel array pointers.
         //

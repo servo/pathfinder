@@ -13,8 +13,8 @@ extern crate memmap;
 extern crate pathfinder;
 
 use compute_shader::buffer;
+use compute_shader::image::{ExternalImage, Format, Image};
 use compute_shader::instance::Instance;
-use compute_shader::texture::{ExternalTexture, Format, Texture};
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
@@ -227,9 +227,9 @@ struct Renderer {
     atlas_size: Size2D<u32>,
 
     coverage_buffer: CoverageBuffer,
-    main_compute_texture: Texture,
+    main_compute_image: Image,
     main_gl_texture: GLuint,
-    fps_compute_texture: Texture,
+    fps_compute_image: Image,
     fps_gl_texture: GLuint,
 
     query: GLuint,
@@ -332,8 +332,8 @@ impl Renderer {
 
         let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
 
-        let (main_compute_texture, main_gl_texture) = create_texture(&rasterizer, &atlas_size);
-        let (fps_compute_texture, fps_gl_texture) = create_texture(&rasterizer, &atlas_size);
+        let (main_compute_image, main_gl_texture) = create_image(&rasterizer, &atlas_size);
+        let (fps_compute_image, fps_gl_texture) = create_image(&rasterizer, &atlas_size);
 
         let mut query = 0;
         unsafe {
@@ -363,9 +363,9 @@ impl Renderer {
             atlas_size: atlas_size,
 
             coverage_buffer: coverage_buffer,
-            main_compute_texture: main_compute_texture,
+            main_compute_image: main_compute_image,
             main_gl_texture: main_gl_texture,
-            fps_compute_texture: fps_compute_texture,
+            fps_compute_image: fps_compute_image,
             fps_gl_texture: fps_gl_texture,
 
             query: query,
@@ -395,7 +395,7 @@ impl Renderer {
                                                 glyph_buffers,
                                                 &batch,
                                                 &self.coverage_buffer,
-                                                &self.main_compute_texture).unwrap();
+                                                &self.main_compute_image).unwrap();
         self.rasterizer.queue.flush().unwrap();
 
         unsafe {
@@ -547,7 +547,7 @@ impl Renderer {
                                    glyph_buffers,
                                    &batch,
                                    &self.coverage_buffer,
-                                   &self.fps_compute_texture).unwrap();
+                                   &self.fps_compute_image).unwrap();
         
         batch_builder
     }
@@ -702,15 +702,15 @@ fn create_program(vertex_shader_source: &str, fragment_shader_source: &str) -> G
     }
 }
 
-fn create_texture(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Texture, GLuint) {
-    let compute_texture = rasterizer.device.create_texture(Format::R8,
-                                                           buffer::Protection::WriteOnly,
-                                                           &atlas_size).unwrap();
+fn create_image(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Image, GLuint) {
+    let compute_image = rasterizer.device.create_image(Format::R8,
+                                                       buffer::Protection::WriteOnly,
+                                                       &atlas_size).unwrap();
 
     let mut gl_texture = 0;
     unsafe {
         gl::GenTextures(1, &mut gl_texture);
-        compute_texture.bind_to(&ExternalTexture::Gl(gl_texture)).unwrap();
+        compute_image.bind_to(&ExternalImage::GlTexture(gl_texture)).unwrap();
 
         gl::BindTexture(gl::TEXTURE_RECTANGLE, gl_texture);
         gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
@@ -719,7 +719,7 @@ fn create_texture(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Texture
         gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as GLint);
     }
 
-    (compute_texture, gl_texture)
+    (compute_image, gl_texture)
 }
 
 static COMPOSITE_VERTEX_SHADER: &'static str = "\

@@ -16,7 +16,7 @@
 
 const sampler_t SAMPLER = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
-__kernel void accum(__write_only image2d_t gTexture,
+__kernel void accum(__write_only image2d_t gImage,
                     __read_only image2d_t gCoverage,
                     uint4 kAtlasRect,
                     uint kAtlasShelfHeight) {
@@ -32,7 +32,7 @@ __kernel void accum(__write_only image2d_t gTexture,
         coverage += read_imagef(gCoverage, SAMPLER, coord).r;
 
         uint gray = convert_uint(clamp(coverage, 0.0f, 1.0f) * 255.0f);
-        write_imageui(gTexture, coord + (int2)kAtlasRect.xy, (uint4)(gray, 255, 255, 255));
+        write_imageui(gImage, coord + (int2)kAtlasRect.xy, (uint4)(gray, 255, 255, 255));
     }
 }
 

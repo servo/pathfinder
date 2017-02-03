@@ -10,8 +10,8 @@ extern crate memmap;
 extern crate pathfinder;
 
 use compute_shader::buffer;
+use compute_shader::image::{ExternalImage, Format};
 use compute_shader::instance::Instance;
-use compute_shader::texture::{ExternalTexture, Format};
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLint, GLuint};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
@@ -65,28 +65,28 @@ fn main() {
     }
 
     let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
-    let batch = batch_builder.create_batch(buffer_builder).unwrap();
+    let batch = batch_builder.create_batch(&glyph_buffer_builder).unwrap();
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
     let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
 
-    let texture = rasterizer.device
-                            .create_texture(Format::R8, buffer::Protection::WriteOnly, &atlas_size)
-                            .unwrap();
+    let image = rasterizer.device
+                          .create_image(Format::R8, buffer::Protection::WriteOnly, &atlas_size)
+                          .unwrap();
 
     rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), atlas_size),
                           &batch_builder.atlas,
                           &glyph_buffers,
                           &batch,
                           &coverage_buffer,
-                          &texture).unwrap();
+                          &image).unwrap();
 
     let draw_context = lord_drawquaad::Context::new();
 
     let mut gl_texture = 0;
     unsafe {
         gl::GenTextures(1, &mut gl_texture);
-        texture.bind_to(&ExternalTexture::Gl(gl_texture)).unwrap();
+        image.bind_to(&ExternalImage::GlTexture(gl_texture)).unwrap();
 
         gl::BindTexture(gl::TEXTURE_RECTANGLE, gl_texture);
         gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);

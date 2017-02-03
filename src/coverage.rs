@@ -10,26 +10,26 @@
 
 use compute_shader::buffer::Protection;
 use compute_shader::device::Device;
-use compute_shader::texture::{ExternalTexture, Format, Texture};
+use compute_shader::image::{ExternalImage, Format, Image};
 use euclid::size::Size2D;
 use gl::types::{GLint, GLuint};
 use gl;
 
 pub struct CoverageBuffer {
-    pub texture: Texture,
+    pub image: Image,
     pub framebuffer: GLuint,
 }
 
 impl CoverageBuffer {
     pub fn new(device: &Device, size: &Size2D<u32>) -> Result<CoverageBuffer, ()> {
-        let texture = try!(device.create_texture(Format::R32F, Protection::ReadWrite, size)
-                                 .map_err(drop));
+        let image = try!(device.create_image(Format::R32F, Protection::ReadWrite, size)
+                               .map_err(drop));
 
         let mut framebuffer = 0;
         unsafe {
             let mut gl_texture = 0;
             gl::GenTextures(1, &mut gl_texture);
-            try!(texture.bind_to(&ExternalTexture::Gl(gl_texture)).map_err(drop));
+            try!(image.bind_to(&ExternalImage::GlTexture(gl_texture)).map_err(drop));
 
             gl::BindTexture(gl::TEXTURE_RECTANGLE, gl_texture);
             gl::TexParameteri(gl::TEXTURE_RECTANGLE, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
@@ -52,7 +52,7 @@ impl CoverageBuffer {
         }
 
         Ok(CoverageBuffer {
-            texture: texture,
+            image: image,
             framebuffer: framebuffer,
         })
     }

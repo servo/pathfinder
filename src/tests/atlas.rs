@@ -10,9 +10,9 @@ fn place_objects(available_width: u32, objects: Vec<(u32, u32)>) -> (Atlas, Vec<
                                  .map(|&(width, height)| Size2D::new(width, height))
                                  .collect();
 
-    let available_width = cmp::max(available_width,
-                                   objects.iter().map(|object| object.width).max().unwrap_or(0));
-    let shelf_height = objects.iter().map(|object| object.height).max().unwrap_or(0);
+    let available_width = 2 +
+        cmp::max(available_width, objects.iter().map(|object| object.width).max().unwrap_or(0));
+    let shelf_height = objects.iter().map(|object| object.height).max().unwrap_or(0) + 2;
 
     let mut atlas = Atlas::new(available_width, shelf_height);
     let rects = objects.iter()

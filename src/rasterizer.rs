@@ -11,11 +11,11 @@
 use atlas::Atlas;
 use batch::Batch;
 use compute_shader::device::Device;
+use compute_shader::image::Image;
 use compute_shader::instance::{Instance, ShadingLanguage};
 use compute_shader::profile_event::ProfileEvent;
 use compute_shader::program::Program;
 use compute_shader::queue::{Queue, Uniform};
-use compute_shader::texture::Texture;
 use coverage::CoverageBuffer;
 use euclid::rect::Rect;
 use gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint, GLvoid};
@@ -149,7 +149,7 @@ impl Rasterizer {
                       glyph_buffers: &GlyphBuffers,
                       batch: &Batch,
                       coverage_buffer: &CoverageBuffer,
-                      texture: &Texture)
+                      image: &Image)
                       -> Result<DrawAtlasProfilingEvents, ()> {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, coverage_buffer.framebuffer);
@@ -237,8 +237,8 @@ impl Rasterizer {
         ];
 
         let accum_uniforms = [
-            (0, Uniform::Texture(texture)),
-            (1, Uniform::Texture(&coverage_buffer.texture)),
+            (0, Uniform::Image(image)),
+            (1, Uniform::Image(&coverage_buffer.image)),
             (2, Uniform::UVec4(atlas_rect_uniform)),
             (3, Uniform::U32(atlas.shelf_height())),
         ];

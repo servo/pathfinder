@@ -22,7 +22,7 @@
 
 layout(local_size_x = 1024) in;
 
-uniform restrict writeonly uimage2DRect uTexture;
+uniform restrict writeonly uimage2DRect uImage;
 uniform sampler2DRect uCoverage;
 uniform uvec4 uAtlasRect;
 uniform uint uAtlasShelfHeight;
@@ -42,6 +42,6 @@ void main() {
         coverage += texelFetch(uCoverage, coord).r;
 
         uint gray = uint(clamp(coverage, 0.0f, 1.0f) * 255.0f);
-        imageStore(uTexture, coord + ivec2(uAtlasRect.xy), uvec4(gray, 255, 255, 255));
+        imageStore(uImage, coord + ivec2(uAtlasRect.xy), uvec4(gray, 255, 255, 255));
     }
 }

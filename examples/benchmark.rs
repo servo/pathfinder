@@ -13,8 +13,8 @@ extern crate time;
 
 use bencher::stats::{self, Stats};
 use compute_shader::buffer;
+use compute_shader::image::Format;
 use compute_shader::instance::Instance;
-use compute_shader::texture::Format;
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::GLuint;
 use glfw::{Context, OpenGlProfileHint, WindowHint, WindowMode};
@@ -104,11 +104,9 @@ fn main() {
         let atlas_size = Size2D::new(ATLAS_SIZE, ATLAS_SIZE);
         let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
 
-        let texture = rasterizer.device
-                                .create_texture(Format::R8,
-                                                buffer::Protection::WriteOnly,
-                                                &atlas_size)
-                                .unwrap();
+        let image = rasterizer.device
+                              .create_image(Format::R8, buffer::Protection::WriteOnly, &atlas_size)
+                              .unwrap();
 
         let mut results = vec![];
         let start_time = time::precise_time_ns();
@@ -118,7 +116,7 @@ fn main() {
                                                &glyph_buffers,
                                                &batch,
                                                &coverage_buffer,
-                                               &texture).unwrap();
+                                               &image).unwrap();
 
             let mut draw_time = 0u64;
             unsafe {

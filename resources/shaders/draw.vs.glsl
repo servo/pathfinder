@@ -18,7 +18,7 @@
 #define IMAGE_DESCRIPTOR_POINT_SIZE(d)      (d).z
 
 // Information about the metrics of each glyph.
-layout(std140) struct GlyphDescriptor {
+struct GlyphDescriptor {
     // The left/bottom/right/top offsets of the glyph from point (0, 0) in glyph space.
     ivec4 extents;
     // x: Units per em.
