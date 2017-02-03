@@ -162,11 +162,11 @@ impl GlyphDescriptor {
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vertex {
-    x: i16,
-    y: i16,
+    pub x: i16,
+    pub y: i16,
     /// TODO(pcwalton): Try omitting this and binary search the glyph descriptors in the vertex
     /// shader. Might or might not help.
-    glyph_index: u16,
+    pub glyph_index: u16,
 }
 
 #[derive(Copy, Clone, Debug)]

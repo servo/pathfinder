@@ -28,8 +28,12 @@ use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
 use std::env;
 use std::os::raw::c_void;
 
+const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 512;
 const HEIGHT: u32 = 384;
+
+const MIN_TIME_PER_SIZE: u64 = 300_000_000;
+const MAX_TIME_PER_SIZE: u64 = 3_000_000_000;
 
 fn main() {
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
@@ -41,7 +45,7 @@ fn main() {
     let (mut window, _events) = context.expect("Couldn't create a window!");
     window.make_current();
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
-    let (device_pixel_width, device_pixel_height) = window.get_framebuffer_size();
+    let (device_pixel_width, _) = window.get_framebuffer_size();
 
     let instance = Instance::new().unwrap();
     let device = instance.create_device().unwrap();
@@ -54,31 +58,50 @@ fn main() {
         // FIXME(pcwalton)
         let shelf_height = point_size * 2;
 
-        let mut glyph_buffer_builder = GlyphBufferBuilder::new();
-        let mut batch_builder = BatchBuilder::new(device_pixel_width as GLuint, shelf_height);
-
         let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
-        let mut glyph_count = 0;
-        unsafe {
-            let font = Font::new(file.as_slice()).unwrap();
-            let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
 
-            let glyph_ranges = font.cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
-                                        .unwrap();
-            for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
-                glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
-                batch_builder.add_glyph(&glyph_buffer_builder,
-                                        glyph_index as u32,
-                                        point_size as f32)
-                             .unwrap();
-                glyph_count += 1
+        let mut results = vec![];
+        let start = time::precise_time_ns();
+        let mut last_time = start;
+        let (mut glyph_buffer_builder, mut batch_builder, mut glyph_count);
+        let (mut glyph_buffers, mut batch);
+        loop {
+            glyph_buffer_builder = GlyphBufferBuilder::new();
+            batch_builder = BatchBuilder::new(device_pixel_width as GLuint, shelf_height);
+            glyph_count = 0;
+            unsafe {
+                let font = Font::new(file.as_slice()).unwrap();
+                let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
+
+                let glyph_ranges = font.cmap.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
+                                            .unwrap();
+                for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
+                    glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
+                    batch_builder.add_glyph(&glyph_buffer_builder,
+                                            glyph_index as u32,
+                                            point_size as f32)
+                                 .unwrap();
+                    glyph_count += 1
+                }
+
             }
+
+            glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
+            batch = batch_builder.create_batch(&glyph_buffer_builder).unwrap();
+
+            let end = time::precise_time_ns();
+            results.push((end - last_time) as f64);
+            if end - start > MAX_TIME_PER_SIZE {
+                break
+            }
+            last_time = end
         }
 
-        let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
-        let batch = batch_builder.create_batch(&glyph_buffer_builder).unwrap();
+        stats::winsorize(&mut results, 5.0);
+        let time_per_glyph = results.mean() / 1_000.0 / glyph_count as f64;
+        println!("cpu,{}", time_per_glyph);
 
-        let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
+        let atlas_size = Size2D::new(ATLAS_SIZE, ATLAS_SIZE);
         let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
 
         let texture = rasterizer.device
@@ -107,8 +130,8 @@ fn main() {
             results.push(time_per_glyph);
 
             let now = time::precise_time_ns();
-            if (now - start_time > 300_000_000 && results.median_abs_dev_pct() < 1.0) ||
-                now - start_time > 3_000_000_000 {
+            if (now - start_time > MIN_TIME_PER_SIZE && results.median_abs_dev_pct() < 1.0) ||
+                now - start_time > MAX_TIME_PER_SIZE {
                 break
             }
         }

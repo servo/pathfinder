@@ -65,7 +65,7 @@ fn main() {
     }
 
     let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
-    let batch = batch_builder.create_atlas(&glyph_buffer_builder).unwrap();
+    let batch = batch_builder.create_batch(buffer_builder).unwrap();
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
     let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
@@ -75,11 +75,11 @@ fn main() {
                             .unwrap();
 
     rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), atlas_size),
-                          SHELF_HEIGHT,
+                          &batch_builder.atlas,
                           &glyph_buffers,
                           &batch,
                           &coverage_buffer,
-                          &texture).unwrap().wait().unwrap();
+                          &texture).unwrap();
 
     let draw_context = lord_drawquaad::Context::new();
 
