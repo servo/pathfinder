@@ -52,11 +52,11 @@ impl GlyphBufferBuilder {
                 glyph_index: glyph_index,
             });
 
-            if !point.first_point_in_contour && point.on_curve {
-                let indices = if last_point_on_curve {
-                    [point_index - 1, 0, point_index]
-                } else {
+            if point.index_in_contour > 0 && point.on_curve {
+                let indices = if !last_point_on_curve {
                     [point_index - 2, point_index - 1, point_index]
+                } else {
+                    [point_index - 1, 0, point_index]
                 };
                 self.indices.extend(indices.iter().cloned());
             }

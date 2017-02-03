@@ -28,11 +28,11 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Point {
     pub position: Point2D<i16>,
+    pub index_in_contour: u16,
     pub on_curve: bool,
-    pub first_point_in_contour: bool,
 }
 
 /// TODO(pcwalton): Add some caching so we don't keep going to the `loca` table all the time.
@@ -97,7 +97,12 @@ impl<'a> GlyfTable<'a> {
         for _ in 0..number_of_contours {
             let contour_point_count =
                 try!(endpoints_reader.read_u16::<BigEndian>().map_err(drop)) - point_index + 1;
-            let (mut starting_point, mut last_point_was_off_curve) = (Point2D::new(0, 0), false);
+
+            let mut first_on_curve_point = None;
+            let mut initial_off_curve_point = None;
+            let mut last_point_was_off_curve = false;
+            let mut point_index_in_contour = 0;
+
             for contour_point_index in 0..contour_point_count {
                 let flags = Flags::from_bits_truncate(*flag_parser.current);
                 try!(flag_parser.next());
@@ -121,36 +126,63 @@ impl<'a> GlyfTable<'a> {
                 }
 
                 if last_point_was_off_curve && !flags.contains(ON_CURVE) {
+                    let position = position + delta / 2;
+
+                    // An important edge case!
+                    if first_on_curve_point.is_none() {
+                        first_on_curve_point = Some(position)
+                    }
+
                     callback(&Point {
-                        position: position + delta / 2,
+                        position: position,
+                        index_in_contour: point_index_in_contour,
                         on_curve: true,
-                        first_point_in_contour: false,
-                    })
+                    });
+                    point_index_in_contour += 1
                 }
 
                 position = position + delta;
 
-                let first_point_in_contour = contour_point_index == 0;
-                if first_point_in_contour {
-                    starting_point = position
+                if flags.contains(ON_CURVE) && first_on_curve_point.is_none() {
+                    first_on_curve_point = Some(position)
                 }
 
-                callback(&Point {
-                    position: position,
-                    on_curve: flags.contains(ON_CURVE),
-                    first_point_in_contour: first_point_in_contour,
-                });
+                // Sometimes the initial point is an off curve point. In that case, save it so we
+                // can emit it later when closing the path.
+                if !flags.contains(ON_CURVE) && first_on_curve_point.is_none() {
+                    debug_assert!(initial_off_curve_point.is_none());
+                    initial_off_curve_point = Some(position)
+                } else {
+                    callback(&Point {
+                        position: position,
+                        on_curve: flags.contains(ON_CURVE),
+                        index_in_contour: point_index_in_contour,
+                    });
+                    point_index_in_contour += 1
+                }
 
                 last_point_was_off_curve = !flags.contains(ON_CURVE);
-                point_index += 1
+                point_index += 1;
+            }
+
+            // We're about to close the path. Emit the initial off curve point if there was one.
+            if let Some(initial_off_curve_point) = initial_off_curve_point {
+                callback(&Point {
+                    position: initial_off_curve_point,
+                    on_curve: false,
+                    index_in_contour: point_index_in_contour,
+                });
+                point_index_in_contour += 1
             }
 
             // Close the path.
-            callback(&Point {
-                position: starting_point,
-                on_curve: true,
-                first_point_in_contour: false,
-            })
+            if let Some(first_on_curve_point) = first_on_curve_point {
+                callback(&Point {
+                    position: first_on_curve_point,
+                    on_curve: true,
+                    index_in_contour: point_index_in_contour,
+                })
+            }
         }
 
         Ok(())

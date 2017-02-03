@@ -25,10 +25,9 @@ use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
 use std::env;
 use std::os::raw::c_void;
 
-const POINT_SIZE: f32 = 24.0;
+const DEFAULT_POINT_SIZE: f32 = 24.0;
 const WIDTH: u32 = 512;
 const HEIGHT: u32 = 384;
-const SHELF_HEIGHT: u32 = 32;
 
 fn main() {
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
@@ -49,10 +48,19 @@ fn main() {
     let rasterizer_options = RasterizerOptions::from_env().unwrap();
     let rasterizer = Rasterizer::new(&instance, device, queue, rasterizer_options).unwrap();
 
-    let mut glyph_buffer_builder = GlyphBufferBuilder::new();
-    let mut batch_builder = BatchBuilder::new(device_pixel_width as GLuint, SHELF_HEIGHT);
-
     let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
+
+    let point_size = match env::args().nth(2) {
+        None => DEFAULT_POINT_SIZE,
+        Some(point_size) => point_size.parse().unwrap()
+    };
+
+    // FIXME(pcwalton)
+    let shelf_height = (point_size * 2.0).ceil() as u32;
+
+    let mut glyph_buffer_builder = GlyphBufferBuilder::new();
+    let mut batch_builder = BatchBuilder::new(device_pixel_width as GLuint, shelf_height);
+
     unsafe {
         let font = Font::new(file.as_slice()).unwrap();
         let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
@@ -60,7 +68,7 @@ fn main() {
         let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
             glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
-            batch_builder.add_glyph(&glyph_buffer_builder, glyph_index as u32, POINT_SIZE).unwrap()
+            batch_builder.add_glyph(&glyph_buffer_builder, glyph_index as u32, point_size).unwrap()
         }
     }
 
