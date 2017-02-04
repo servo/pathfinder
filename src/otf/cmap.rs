@@ -11,7 +11,7 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use charmap::CodepointRange;
 use glyph_range::{GlyphRange, GlyphRanges, MappedGlyphRange};
-use otf::FontTable;
+use otf::{Error, FontTable};
 use std::cmp;
 use std::mem;
 use std::u16;
@@ -40,30 +40,30 @@ impl<'a> CmapTable<'a> {
     }
 
     pub fn glyph_ranges_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
-                                             -> Result<GlyphRanges, ()> {
+                                             -> Result<GlyphRanges, Error> {
         let mut cmap_reader = self.table.bytes;
 
         // Check version.
-        if try!(cmap_reader.read_u16::<BigEndian>().map_err(drop)) != 0 {
-            return Err(())
+        if try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof)) != 0 {
+            return Err(Error::UnsupportedCmapVersion)
         }
 
-        let num_tables = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+        let num_tables = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
 
         // Check platform ID and encoding.
         // TODO(pcwalton): Handle more.
         let mut table_found = false;
         for _ in 0..num_tables {
-            let platform_id = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-            let encoding_id = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-            let offset = try!(cmap_reader.read_u32::<BigEndian>().map_err(drop));
+            let platform_id = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
+            let encoding_id = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
+            let offset = try!(cmap_reader.read_u32::<BigEndian>().map_err(Error::eof));
             match (platform_id, encoding_id) {
                 (PLATFORM_ID_UNICODE, _) |
                 (PLATFORM_ID_MICROSOFT, MICROSOFT_ENCODING_ID_UNICODE_BMP) |
                 (PLATFORM_ID_MICROSOFT, MICROSOFT_ENCODING_ID_UNICODE_UCS4) => {
                     // Move to the mapping table.
                     cmap_reader = self.table.bytes;
-                    try!(cmap_reader.jump(offset as usize));
+                    try!(cmap_reader.jump(offset as usize).map_err(Error::eof));
                     table_found = true;
                     break
                 }
@@ -72,22 +72,22 @@ impl<'a> CmapTable<'a> {
         }
 
         if !table_found {
-            return Err(())
+            return Err(Error::UnsupportedCmapEncoding)
         }
 
         // Check the mapping table format.
-        let format = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+        let format = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
         if format != FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES {
-            return Err(())
+            return Err(Error::UnsupportedCmapFormat)
         }
 
         // Read the mapping table header.
-        let _length = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        let _language = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        let seg_count = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop)) / 2;
-        let _search_range = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        let _entry_selector = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
-        let _range_shift = try!(cmap_reader.read_u16::<BigEndian>().map_err(drop));
+        let _length = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let _language = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let seg_count = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof)) / 2;
+        let _search_range = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let _entry_selector = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let _range_shift = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
 
         // Set up parallel array pointers.
         //
@@ -95,13 +95,15 @@ impl<'a> CmapTable<'a> {
         // respectively in a few places. I believe this is a mistake, and `startCode` and `endCode`
         // are the correct names.
         let (end_codes, mut start_codes) = (cmap_reader, cmap_reader);
-        try!(start_codes.jump((seg_count as usize + 1) * mem::size_of::<u16>()));
+        try!(start_codes.jump((seg_count as usize + 1) * mem::size_of::<u16>())
+                        .map_err(Error::eof));
         let mut id_deltas = start_codes;
-        try!(id_deltas.jump(seg_count as usize * mem::size_of::<u16>()));
+        try!(id_deltas.jump(seg_count as usize * mem::size_of::<u16>()).map_err(Error::eof));
         let mut id_range_offsets = id_deltas;
-        try!(id_range_offsets.jump(seg_count as usize * mem::size_of::<u16>()));
+        try!(id_range_offsets.jump(seg_count as usize * mem::size_of::<u16>())
+                             .map_err(Error::eof));
         let mut glyph_ids = id_range_offsets;
-        try!(glyph_ids.jump(seg_count as usize * mem::size_of::<u16>()));
+        try!(glyph_ids.jump(seg_count as usize * mem::size_of::<u16>()).map_err(Error::eof));
 
         // Now perform the lookups.
         let mut glyph_ranges = GlyphRanges::new();
@@ -130,16 +132,16 @@ impl<'a> CmapTable<'a> {
                     let mid = (low + high) / 2;
 
                     let mut end_code = end_codes;
-                    try!(end_code.jump(mid as usize * 2));
-                    let end_code = try!(end_code.read_u16::<BigEndian>().map_err(drop));
+                    try!(end_code.jump(mid as usize * 2).map_err(Error::eof));
+                    let end_code = try!(end_code.read_u16::<BigEndian>().map_err(Error::eof));
                     if start_codepoint_range > end_code {
                         low = mid + 1;
                         continue
                     }
 
                     let mut start_code = start_codes;
-                    try!(start_code.jump(mid as usize * 2));
-                    let start_code = try!(start_code.read_u16::<BigEndian>().map_err(drop));
+                    try!(start_code.jump(mid as usize * 2).map_err(Error::eof));
+                    let start_code = try!(start_code.read_u16::<BigEndian>().map_err(Error::eof));
                     if start_codepoint_range < start_code {
                         high = mid;
                         continue
@@ -169,14 +171,15 @@ impl<'a> CmapTable<'a> {
                 let mut end_code = end_codes;
                 let mut id_range_offset = id_range_offsets;
                 let mut id_delta = id_deltas;
-                try!(start_code.jump(segment_index as usize * 2));
-                try!(end_code.jump(segment_index as usize * 2));
-                try!(id_range_offset.jump(segment_index as usize * 2));
-                try!(id_delta.jump(segment_index as usize * 2));
-                let start_code = try!(start_code.read_u16::<BigEndian>().map_err(drop));
-                let end_code = try!(end_code.read_u16::<BigEndian>().map_err(drop));
-                let id_range_offset = try!(id_range_offset.read_u16::<BigEndian>().map_err(drop));
-                let id_delta = try!(id_delta.read_i16::<BigEndian>().map_err(drop));
+                try!(start_code.jump(segment_index as usize * 2).map_err(Error::eof));
+                try!(end_code.jump(segment_index as usize * 2).map_err(Error::eof));
+                try!(id_range_offset.jump(segment_index as usize * 2).map_err(Error::eof));
+                try!(id_delta.jump(segment_index as usize * 2).map_err(Error::eof));
+                let start_code = try!(start_code.read_u16::<BigEndian>().map_err(Error::eof));
+                let end_code = try!(end_code.read_u16::<BigEndian>().map_err(Error::eof));
+                let id_range_offset = try!(id_range_offset.read_u16::<BigEndian>()
+                                                          .map_err(Error::eof));
+                let id_delta = try!(id_delta.read_i16::<BigEndian>().map_err(Error::eof));
 
                 end_codepoint_range = cmp::min(end_codepoint_range, end_code);
                 codepoint_range.start = (end_codepoint_range + 1) as u32;
@@ -203,8 +206,9 @@ impl<'a> CmapTable<'a> {
                 // Otherwise, look up the glyphs individually.
                 for code_offset in start_code_offset..(end_code_offset + 1) {
                     let mut glyph_id = glyph_ids;
-                    try!(glyph_id.jump((id_range_offset as usize + code_offset as usize) * 2));
-                    let mut glyph_id = try!(glyph_id.read_u16::<BigEndian>().map_err(drop));
+                    try!(glyph_id.jump((id_range_offset as usize + code_offset as usize) * 2)
+                                 .map_err(Error::eof));
+                    let mut glyph_id = try!(glyph_id.read_u16::<BigEndian>().map_err(Error::eof));
                     if glyph_id == 0 {
                         glyph_ranges.ranges.push(MappedGlyphRange {
                             codepoint_start: start_code as u32 + code_offset as u32,

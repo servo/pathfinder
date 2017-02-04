@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use otf::FontTable;
+use otf::{Error, FontTable};
 use std::mem;
 use util::Jump;
 
@@ -19,19 +19,19 @@ pub struct HheaTable {
 }
 
 impl HheaTable {
-    pub fn new(table: FontTable) -> Result<HheaTable, ()> {
+    pub fn new(table: FontTable) -> Result<HheaTable, Error> {
         let mut reader = table.bytes;
 
         // Check the version.
-        let major_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
-        let minor_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
+        let major_version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let minor_version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
         if (major_version, minor_version) != (1, 0) {
-            return Err(())
+            return Err(Error::UnsupportedHheaVersion)
         }
 
         // Read the number of `hmtx` entries.
-        try!(reader.jump(mem::size_of::<u16>() * 15));
-        let number_of_h_metrics = try!(reader.read_u16::<BigEndian>().map_err(drop));
+        try!(reader.jump(mem::size_of::<u16>() * 15).map_err(Error::eof));
+        let number_of_h_metrics = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
 
         Ok(HheaTable {
             number_of_h_metrics: number_of_h_metrics,

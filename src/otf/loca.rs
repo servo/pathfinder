@@ -9,8 +9,8 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use otf::FontTable;
 use otf::head::HeadTable;
+use otf::{Error, FontTable};
 use util::Jump;
 
 pub struct LocaTable<'a> {
@@ -18,31 +18,33 @@ pub struct LocaTable<'a> {
 }
 
 impl<'a> LocaTable<'a> {
-    pub fn new(loca_table: FontTable<'a>) -> Result<LocaTable<'a>, ()> {
+    pub fn new(loca_table: FontTable<'a>) -> Result<LocaTable<'a>, Error> {
         Ok(LocaTable {
             table: loca_table,
         })
     }
 
-    pub fn location_of(&self, head_table: &HeadTable, glyph_id: u16) -> Result<Option<u32>, ()> {
+    pub fn location_of(&self, head_table: &HeadTable, glyph_id: u16)
+                       -> Result<Option<u32>, Error> {
         let mut reader = self.table.bytes;
         let (this_location, next_location) = match head_table.index_to_loc_format {
             0 => {
-                try!(reader.jump(glyph_id as usize * 2));
-                let this_location = try!(reader.read_u16::<BigEndian>().map_err(drop)) as u32 * 2;
-                let next_location = match reader.read_u16::<BigEndian>().map_err(drop) {
+                try!(reader.jump(glyph_id as usize * 2).map_err(Error::eof));
+                let this_location =
+                    try!(reader.read_u16::<BigEndian>().map_err(Error::eof)) as u32 * 2;
+                let next_location = match reader.read_u16::<BigEndian>() {
                     Ok(next_location) => Ok(next_location as u32 * 2),
-                    Err(_) => Err(()),
+                    Err(_) => Err(Error::UnexpectedEof),
                 };
                 (this_location, next_location)
             }
             1 => {
-                try!(reader.jump(glyph_id as usize * 4));
-                let this_location = try!(reader.read_u32::<BigEndian>().map_err(drop));
-                let next_location = reader.read_u32::<BigEndian>().map_err(drop);
+                try!(reader.jump(glyph_id as usize * 4).map_err(Error::eof));
+                let this_location = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+                let next_location = reader.read_u32::<BigEndian>().map_err(Error::eof);
                 (this_location, next_location)
             }
-            _ => return Err(()),
+            _ => return Err(Error::UnknownFormat),
         };
 
         if next_location == Ok(this_location) {

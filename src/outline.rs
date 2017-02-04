@@ -11,7 +11,7 @@
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLsizeiptr, GLuint};
 use gl;
-use otf::Font;
+use otf::{self, Font};
 use std::mem;
 use std::os::raw::c_void;
 
@@ -37,7 +37,7 @@ impl OutlineBuilder {
         }
     }
 
-    pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<(), ()> {
+    pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<(), otf::Error> {
         let glyph_index = self.descriptors.len() as u16;
 
         let mut point_index = self.vertices.len() as u32;

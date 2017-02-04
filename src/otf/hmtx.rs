@@ -9,8 +9,8 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use otf::FontTable;
 use otf::hhea::HheaTable;
+use otf::{Error, FontTable};
 use std::mem;
 use util::Jump;
 
@@ -27,23 +27,23 @@ impl<'a> HmtxTable<'a> {
     }
 
     pub fn metrics_for_glyph(&self, hhea_table: &HheaTable, glyph_id: u16)
-                             -> Result<HorizontalMetrics, ()> {
+                             -> Result<HorizontalMetrics, Error> {
         let mut reader = self.table.bytes;
 
         // Read the advance width.
         let advance_width;
         if glyph_id < hhea_table.number_of_h_metrics {
-            try!(reader.jump(mem::size_of::<u16>() * 2 * glyph_id as usize));
-            advance_width = try!(reader.read_u16::<BigEndian>().map_err(drop))
+            try!(reader.jump(mem::size_of::<u16>() * 2 * glyph_id as usize).map_err(Error::eof));
+            advance_width = try!(reader.read_u16::<BigEndian>().map_err(Error::eof))
         } else {
             try!(reader.jump(mem::size_of::<u16>() * 2 *
-                             (hhea_table.number_of_h_metrics - 1) as usize));
-            advance_width = try!(reader.read_u16::<BigEndian>().map_err(drop));
-            try!(reader.jump(mem::size_of::<i16>() * glyph_id as usize));
+                             (hhea_table.number_of_h_metrics - 1) as usize).map_err(Error::eof));
+            advance_width = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+            try!(reader.jump(mem::size_of::<i16>() * glyph_id as usize).map_err(Error::eof));
         }
 
         // Read the left-side bearing.
-        let lsb = try!(reader.read_i16::<BigEndian>().map_err(drop));
+        let lsb = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
 
         Ok(HorizontalMetrics {
             advance_width: advance_width,

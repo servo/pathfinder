@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use otf::FontTable;
+use otf::{Error, FontTable};
 use std::mem;
 use util::Jump;
 
@@ -22,38 +22,38 @@ pub struct HeadTable {
 }
 
 impl HeadTable {
-    pub fn new(table: FontTable) -> Result<HeadTable, ()> {
+    pub fn new(table: FontTable) -> Result<HeadTable, Error> {
         let mut reader = table.bytes;
 
         // Check the version.
-        let major_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
-        let minor_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
+        let major_version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let minor_version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
         if (major_version, minor_version) != (1, 0) {
-            return Err(())
+            return Err(Error::UnsupportedHeadVersion)
         }
 
         // Check the magic number.
-        try!(reader.jump(mem::size_of::<u32>() * 2));
-        let magic_number = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        try!(reader.jump(mem::size_of::<u32>() * 2).map_err(Error::eof));
+        let magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
         if magic_number != MAGIC_NUMBER {
-            return Err(())
+            return Err(Error::UnknownFormat)
         }
 
         // Read the units per em.
-        try!(reader.jump(mem::size_of::<u16>()));
-        let units_per_em = try!(reader.read_u16::<BigEndian>().map_err(drop));
+        try!(reader.jump(mem::size_of::<u16>()).map_err(Error::eof));
+        let units_per_em = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
 
         // Read the index-to-location format.
         try!(reader.jump(mem::size_of::<i64>() * 2 +
                          mem::size_of::<i16>() * 4 + 
                          mem::size_of::<u16>() * 2 +
-                         mem::size_of::<i16>()));
-        let index_to_loc_format = try!(reader.read_i16::<BigEndian>().map_err(drop));
+                         mem::size_of::<i16>()).map_err(Error::eof));
+        let index_to_loc_format = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
 
         // Check the glyph data format.
-        let glyph_data_format = try!(reader.read_i16::<BigEndian>().map_err(drop));
+        let glyph_data_format = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
         if glyph_data_format != 0 {
-            return Err(())
+            return Err(Error::UnsupportedGlyphFormat)
         }
 
         Ok(HeadTable {

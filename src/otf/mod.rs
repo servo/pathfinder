@@ -86,59 +86,59 @@ pub struct FontTable<'a> {
 }
 
 impl<'a> Font<'a> {
-    pub fn new<'b>(bytes: &'b [u8]) -> Result<Font<'b>, ()> {
+    pub fn new<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
         // Check magic number.
         let mut reader = bytes;
-        let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
         match magic_number {
             TTCF => {
                 // This is a font collection. Read the first font.
                 //
                 // TODO(pcwalton): Provide a mechanism to read others.
-                let major_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
-                let minor_version = try!(reader.read_u16::<BigEndian>().map_err(drop));
+                let major_version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+                let minor_version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
                 if (major_version != 1 && major_version != 2) || minor_version != 0 {
-                    return Err(())
+                    return Err(Error::UnsupportedVersion)
                 }
 
-                let num_fonts = try!(reader.read_u32::<BigEndian>().map_err(drop));
+                let num_fonts = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
                 if num_fonts == 0 {
-                    return Err(())
+                    return Err(Error::Failed)
                 }
 
-                let table_offset = try!(reader.read_u32::<BigEndian>().map_err(drop));
+                let table_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
                 Font::from_otf(&bytes[table_offset as usize..])
             }
             magic_number if SFNT_VERSIONS.contains(&magic_number) => Font::from_otf(bytes),
             0x0100 => Font::from_dfont(bytes),
-            _ => Err(()),
+            _ => Err(Error::UnknownFormat),
         }
     }
 
-    pub fn from_otf<'b>(bytes: &'b [u8]) -> Result<Font<'b>, ()> {
+    pub fn from_otf<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
         let mut reader = bytes;
-        let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Check version.
         if !SFNT_VERSIONS.contains(&magic_number) {
-            return Err(())
+            return Err(Error::UnknownFormat)
         }
 
-        let num_tables = try!(reader.read_u16::<BigEndian>().map_err(drop));
-        try!(reader.jump(mem::size_of::<u16>() * 3));
+        let num_tables = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        try!(reader.jump(mem::size_of::<u16>() * 3).map_err(Error::eof));
 
         let (mut cmap_table, mut head_table) = (None, None);
         let (mut hhea_table, mut hmtx_table) = (None, None);
         let (mut glyf_table, mut loca_table) = (None, None);
 
         for _ in 0..num_tables {
-            let table_id = try!(reader.read_u32::<BigEndian>().map_err(drop));
+            let table_id = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
             // Skip over the checksum.
-            try!(reader.read_u32::<BigEndian>().map_err(drop));
+            try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
-            let offset = try!(reader.read_u32::<BigEndian>().map_err(drop)) as usize;
-            let length = try!(reader.read_u32::<BigEndian>().map_err(drop)) as usize;
+            let offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof)) as usize;
+            let length = try!(reader.read_u32::<BigEndian>().map_err(Error::eof)) as usize;
 
             let mut slot = match table_id {
                 CMAP => &mut cmap_table,
@@ -152,7 +152,7 @@ impl<'a> Font<'a> {
 
             // Make sure there isn't more than one copy of the table.
             if slot.is_some() {
-                return Err(())
+                return Err(Error::Failed)
             }
 
             *slot = Some(FontTable {
@@ -168,10 +168,10 @@ impl<'a> Font<'a> {
         Ok(Font {
             bytes: bytes,
 
-            cmap: CmapTable::new(try!(cmap_table.ok_or(()))),
-            head: try!(HeadTable::new(try!(head_table.ok_or(())))),
-            hhea: try!(HheaTable::new(try!(hhea_table.ok_or(())))),
-            hmtx: HmtxTable::new(try!(hmtx_table.ok_or(()))),
+            cmap: CmapTable::new(try!(cmap_table.ok_or(Error::RequiredTableMissing))),
+            head: try!(HeadTable::new(try!(head_table.ok_or(Error::RequiredTableMissing)))),
+            hhea: try!(HheaTable::new(try!(hhea_table.ok_or(Error::RequiredTableMissing)))),
+            hmtx: HmtxTable::new(try!(hmtx_table.ok_or(Error::RequiredTableMissing))),
 
             glyf: glyf_table.map(GlyfTable::new),
             loca: loca_table,
@@ -179,35 +179,36 @@ impl<'a> Font<'a> {
     }
 
     /// https://github.com/kreativekorp/ksfl/wiki/Macintosh-Resource-File-Format
-    pub fn from_dfont<'b>(bytes: &'b [u8]) -> Result<Font<'b>, ()> {
+    pub fn from_dfont<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
         let mut reader = bytes;
 
         // Read the Mac resource file header.
-        let resource_data_offset = try!(reader.read_u32::<BigEndian>().map_err(drop));
-        let resource_map_offset = try!(reader.read_u32::<BigEndian>().map_err(drop));
-        let resource_data_size = try!(reader.read_u32::<BigEndian>().map_err(drop));
-        let resource_map_size = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        let resource_data_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let resource_map_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let resource_data_size = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let resource_map_size = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Move to the fields we care about in the resource map.
         reader = bytes;
         try!(reader.jump(resource_map_offset as usize + mem::size_of::<u32>() * 5 +
-                         mem::size_of::<u16>() * 2));
+                         mem::size_of::<u16>() * 2).map_err(Error::eof));
 
         // Read the type list and name list offsets.
-        let type_list_offset = try!(reader.read_u16::<BigEndian>().map_err(drop));
-        let name_list_offset = try!(reader.read_u16::<BigEndian>().map_err(drop));
+        let type_list_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let name_list_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
 
         // Move to the type list.
         reader = bytes;
-        try!(reader.jump(resource_map_offset as usize + type_list_offset as usize));
+        try!(reader.jump(resource_map_offset as usize + type_list_offset as usize)
+                   .map_err(Error::eof));
 
         // Find the 'sfnt' type.
-        let type_count = (try!(reader.read_i16::<BigEndian>().map_err(drop)) + 1) as usize;
+        let type_count = (try!(reader.read_i16::<BigEndian>().map_err(Error::eof)) + 1) as usize;
         let mut resource_count_and_list_offset = None;
         for type_index in 0..type_count {
-            let type_id = try!(reader.read_u32::<BigEndian>().map_err(drop));
-            let resource_count = try!(reader.read_u16::<BigEndian>().map_err(drop));
-            let resource_list_offset = try!(reader.read_u16::<BigEndian>().map_err(drop));
+            let type_id = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+            let resource_count = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+            let resource_list_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
             if type_id == SFNT {
                 resource_count_and_list_offset = Some((resource_count, resource_list_offset));
                 break
@@ -217,12 +218,12 @@ impl<'a> Font<'a> {
         // Unpack the resource count and list offset.
         let resource_count;
         match resource_count_and_list_offset {
-            None => return Err(()),
+            None => return Err(Error::Failed),
             Some((count, resource_list_offset)) => {
                 resource_count = count;
                 reader = bytes;
                 try!(reader.jump(resource_map_offset as usize + type_list_offset as usize +
-                                 resource_list_offset as usize));
+                                 resource_list_offset as usize).map_err(Error::eof));
             }
         }
 
@@ -230,45 +231,54 @@ impl<'a> Font<'a> {
         //
         // TODO(pcwalton): This only gets the first one. Allow the user of this library to select
         // others.
-        let sfnt_id = try!(reader.read_u16::<BigEndian>().map_err(drop));
-        let sfnt_name_offset = try!(reader.read_u16::<BigEndian>().map_err(drop));
-        let sfnt_data_offset = try!(reader.read_u32::<BigEndian>().map_err(drop)) & 0x00ffffff;
-        let sfnt_ptr = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        let sfnt_id = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let sfnt_name_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let sfnt_data_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof)) &
+            0x00ffffff;
+        let sfnt_ptr = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Load the resource.
         reader = bytes;
-        try!(reader.jump(resource_data_offset as usize + sfnt_data_offset as usize));
-        let sfnt_size = try!(reader.read_u32::<BigEndian>().map_err(drop));
+        try!(reader.jump(resource_data_offset as usize + sfnt_data_offset as usize)
+                   .map_err(Error::eof));
+        let sfnt_size = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
         Font::from_otf(&reader[0..sfnt_size as usize])
     }
 
     #[inline]
     pub fn glyph_ranges_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
-                                             -> Result<GlyphRanges, ()> {
+                                             -> Result<GlyphRanges, Error> {
         self.cmap.glyph_ranges_for_codepoint_ranges(codepoint_ranges)
     }
 
     #[inline]
-    pub fn for_each_point<F>(&self, glyph_id: u16, callback: F) -> Result<(), ()>
+    pub fn for_each_point<F>(&self, glyph_id: u16, callback: F) -> Result<(), Error>
                              where F: FnMut(&Point) {
         match self.glyf {
             Some(glyf) => {
-                glyf.for_each_point(&self.head,
-                                    try!(self.loca.as_ref().ok_or(())),
-                                    glyph_id,
-                                    callback)
+                let loca = match self.loca {
+                    Some(ref loca) => loca,
+                    None => return Err(Error::RequiredTableMissing),
+                };
+
+                glyf.for_each_point(&self.head, loca, glyph_id, callback)
             }
             None => Ok(()),
         }
     }
 
     #[inline]
-    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, ()> {
+    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, Error> {
         match self.glyf {
             Some(glyf) => {
-                glyf.glyph_bounds(&self.head, try!(self.loca.as_ref().ok_or(())), glyph_id)
+                let loca = match self.loca {
+                    Some(ref loca) => loca,
+                    None => return Err(Error::RequiredTableMissing),
+                };
+
+                glyf.glyph_bounds(&self.head, loca, glyph_id)
             }
-            None => Err(()),
+            None => Err(Error::RequiredTableMissing),
         }
     }
 
@@ -278,8 +288,46 @@ impl<'a> Font<'a> {
     }
 
     #[inline]
-    pub fn metrics_for_glyph(&self, glyph_id: u16) -> Result<HorizontalMetrics, ()> {
+    pub fn metrics_for_glyph(&self, glyph_id: u16) -> Result<HorizontalMetrics, Error> {
         self.hmtx.metrics_for_glyph(&self.hhea, glyph_id)
+    }
+}
+
+/// Errors that can occur when parsing OpenType fonts.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Error {
+    /// A miscellaneous error occurred.
+    Failed,
+    /// The file ended unexpectedly.
+    UnexpectedEof,
+    /// The file declared that it was in a version of the format we don't support.
+    UnsupportedVersion,
+    /// The file was of a format we don't support.
+    UnknownFormat,
+    /// The font had a glyph format we don't support.
+    UnsupportedGlyphFormat,
+    /// We don't support the declared version of the font's character map.
+    UnsupportedCmapVersion,
+    /// The font character map has an unsupported platform/encoding ID.
+    UnsupportedCmapEncoding,
+    /// The font character map has an unsupported format.
+    UnsupportedCmapFormat,
+    /// We don't support the declared version of the font header.
+    UnsupportedHeadVersion,
+    /// We don't support the declared version of the font's horizontal metrics.
+    UnsupportedHheaVersion,
+    /// A required table is missing.
+    RequiredTableMissing,
+    /// The glyph is a composite glyph.
+    ///
+    /// TODO(pcwalton): Support these.
+    CompositeGlyph,
+}
+
+impl Error {
+    #[inline]
+    pub fn eof<T>(_: T) -> Error {
+        Error::UnexpectedEof
     }
 }
 
