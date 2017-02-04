@@ -31,6 +31,9 @@ impl RectPacker {
         }
     }
 
+    /// Packs a rectangle of the given size.
+    ///
+    /// Returns the top-left position of the rectangle or an error if there is no space left.
     pub fn pack(&mut self, size: &Size2D<u32>) -> Result<Point2D<u32>, ()> {
         // Add a one-pixel border to prevent bleed.
         let alloc_size = *size + Size2D::new(2, 2);

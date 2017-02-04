@@ -16,6 +16,7 @@ use compute_shader::profile_event::ProfileEvent;
 use compute_shader::program::Program;
 use compute_shader::queue::{Queue, Uniform};
 use coverage::CoverageBuffer;
+use error::{InitError, RasterError};
 use euclid::rect::Rect;
 use gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint, GLvoid};
 use gl;
@@ -58,7 +59,7 @@ pub struct DrawAtlasProfilingEvents {
 
 impl Rasterizer {
     pub fn new(instance: &Instance, device: Device, queue: Queue, options: RasterizerOptions)
-               -> Result<Rasterizer, ()> {
+               -> Result<Rasterizer, InitError> {
         let (draw_program, draw_position_attribute, draw_glyph_index_attribute);
         let (draw_glyph_descriptors_uniform, draw_image_descriptors_uniform);
         let draw_atlas_size_uniform;
@@ -96,9 +97,8 @@ impl Rasterizer {
 
             try!(check_gl_object_status(draw_program,
                                         gl::LINK_STATUS,
-                                        "Program",
                                         gl::GetProgramiv,
-                                        gl::GetProgramInfoLog));
+                                        gl::GetProgramInfoLog).map_err(InitError::LinkFailed));
 
             gl::GenVertexArrays(1, &mut draw_vertex_array);
 
@@ -124,7 +124,9 @@ impl Rasterizer {
             ShadingLanguage::Cl => ACCUM_CL_SHADER,
             ShadingLanguage::Glsl => ACCUM_COMPUTE_SHADER,
         };
-        let accum_program = device.create_program(accum_source).unwrap();
+
+        let accum_program = try!(device.create_program(accum_source)
+                                       .map_err(InitError::ComputeError));
 
         Ok(Rasterizer {
             device: device,
@@ -148,7 +150,7 @@ impl Rasterizer {
                       atlas: &Atlas,
                       outline_buffers: &OutlineBuffers,
                       coverage_buffer: &CoverageBuffer)
-                      -> Result<DrawAtlasProfilingEvents, ()> {
+                      -> Result<DrawAtlasProfilingEvents, RasterError> {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, coverage_buffer.framebuffer());
             gl::Viewport(0, 0, rect.size.width as GLint, rect.size.height as GLint);
@@ -230,7 +232,7 @@ impl Rasterizer {
         let accum_event = try!(self.queue.submit_compute(&self.accum_program,
                                                          &[atlas.shelf_columns],
                                                          &accum_uniforms,
-                                                         &[]).map_err(drop));
+                                                         &[]).map_err(RasterError::ComputeError));
 
         Ok(DrawAtlasProfilingEvents {
             draw: self.draw_query,
@@ -239,26 +241,27 @@ impl Rasterizer {
     }
 }
 
-fn compile_gl_shader(shader_type: GLuint, description: &str, source: &str) -> Result<GLuint, ()> {
+fn compile_gl_shader(shader_type: GLuint, description: &'static str, source: &str)
+                     -> Result<GLuint, InitError> {
     unsafe {
         let shader = gl::CreateShader(shader_type);
         gl::ShaderSource(shader, 1, &(source.as_ptr() as *const GLchar), &(source.len() as GLint));
         gl::CompileShader(shader);
-        try!(check_gl_object_status(shader,
-                                    gl::COMPILE_STATUS,
-                                    description,
-                                    gl::GetShaderiv,
-                                    gl::GetShaderInfoLog));
-        Ok(shader)
+        match check_gl_object_status(shader,
+                                     gl::COMPILE_STATUS,
+                                     gl::GetShaderiv,
+                                     gl::GetShaderInfoLog) {
+            Ok(_) => Ok(shader),
+            Err(info_log) => Err(InitError::CompileFailed(description, info_log)),
+        }
     }
 }
 
 fn check_gl_object_status(object: GLuint,
                           parameter: GLenum,
-                          description: &str,
                           get_status: unsafe fn(GLuint, GLenum, *mut GLint),
                           get_log: unsafe fn(GLuint, GLsizei, *mut GLsizei, *mut GLchar))
-                          -> Result<(), ()> {
+                          -> Result<(), String> {
     unsafe {
         let mut status = 0;
         get_status(object, parameter, &mut status);
@@ -271,10 +274,11 @@ fn check_gl_object_status(object: GLuint,
 
         let mut info_log = vec![0; info_log_length as usize];
         get_log(object, info_log_length, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
-        if let Ok(string) = String::from_utf8(info_log) {
-            println!("{} error:\n{}", description, string);
+
+        match String::from_utf8(info_log) {
+            Ok(string) => Err(string),
+            Err(_) => Err("(not UTF-8)".to_owned()),
         }
-        Err(())
     }
 }
 
@@ -292,7 +296,7 @@ impl Default for RasterizerOptions {
 }
 
 impl RasterizerOptions {
-    pub fn from_env() -> Result<RasterizerOptions, ()> {
+    pub fn from_env() -> Result<RasterizerOptions, InitError> {
         let force_geometry_shader = match env::var("PATHFINDER_FORCE_GEOMETRY_SHADER") {
             Ok(ref string) if string.eq_ignore_ascii_case("on") ||
                 string.eq_ignore_ascii_case("yes") ||
@@ -301,7 +305,7 @@ impl RasterizerOptions {
                 string.eq_ignore_ascii_case("no") ||
                 string.eq_ignore_ascii_case("0") => false,
             Err(_) => false,
-            Ok(_) => return Err(()),
+            Ok(_) => return Err(InitError::InvalidSetting),
         };
 
         Ok(RasterizerOptions {

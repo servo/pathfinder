@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use error::GlError;
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLenum, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use gl;
@@ -34,6 +35,8 @@ impl AtlasBuilder {
         }
     }
 
+    /// Returns an error if there is no space left for the glyph in the atlas.
+    ///
     /// FIXME(pcwalton): Support the same glyph drawn at multiple point sizes.
     pub fn pack_glyph(&mut self,
                       outline_builder: &OutlineBuilder,
@@ -74,7 +77,7 @@ impl AtlasBuilder {
         Ok(())
     }
 
-    pub fn create_atlas(&mut self, outline_builder: &OutlineBuilder) -> Result<Atlas, ()> {
+    pub fn create_atlas(&mut self, outline_builder: &OutlineBuilder) -> Result<Atlas, GlError> {
         self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
 
         let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);

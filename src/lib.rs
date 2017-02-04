@@ -27,6 +27,7 @@ extern crate test;
 pub mod atlas;
 pub mod charmap;
 pub mod coverage;
+pub mod error;
 pub mod glyph_range;
 pub mod otf;
 pub mod outline;

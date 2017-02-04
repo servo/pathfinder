@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use error::GlError;
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLsizeiptr, GLuint};
 use gl;
@@ -95,7 +96,7 @@ impl OutlineBuilder {
         self.descriptors[glyph_index as usize].glyph_id
     }
 
-    pub fn create_buffers(&self) -> Result<OutlineBuffers, ()> {
+    pub fn create_buffers(&self) -> Result<OutlineBuffers, GlError> {
         // TODO(pcwalton): Try using `glMapBuffer` here. Requires precomputing contour types and
         // counts.
         unsafe {
