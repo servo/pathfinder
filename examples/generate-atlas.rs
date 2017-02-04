@@ -16,7 +16,7 @@ use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLint, GLuint};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
-use pathfinder::batch::BatchBuilder;
+use pathfinder::atlas::AtlasBuilder;
 use pathfinder::charmap::CodepointRange;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::glyph_buffer::GlyphBufferBuilder;
@@ -59,7 +59,7 @@ fn main() {
     let shelf_height = (point_size * 2.0).ceil() as u32;
 
     let mut glyph_buffer_builder = GlyphBufferBuilder::new();
-    let mut batch_builder = BatchBuilder::new(device_pixel_width as GLuint, shelf_height);
+    let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
 
     unsafe {
         let font = Font::new(file.as_slice()).unwrap();
@@ -68,12 +68,13 @@ fn main() {
         let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
             glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
-            batch_builder.add_glyph(&glyph_buffer_builder, glyph_index as u32, point_size).unwrap()
+            atlas_builder.pack_glyph(&glyph_buffer_builder, glyph_index as u32, point_size)
+                         .unwrap()
         }
     }
 
     let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
-    let batch = batch_builder.create_batch(&glyph_buffer_builder).unwrap();
+    let atlas = atlas_builder.create_atlas(&glyph_buffer_builder).unwrap();
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
     let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
@@ -82,12 +83,9 @@ fn main() {
                           .create_image(Format::R8, buffer::Protection::WriteOnly, &atlas_size)
                           .unwrap();
 
-    rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), atlas_size),
-                          &batch_builder.atlas,
-                          &glyph_buffers,
-                          &batch,
-                          &coverage_buffer,
-                          &image).unwrap();
+    let rect = Rect::new(Point2D::new(0, 0), atlas_size);
+
+    rasterizer.draw_atlas(&image, &rect, &atlas, &glyph_buffers, &coverage_buffer).unwrap();
     rasterizer.queue.flush().unwrap();
 
     let draw_context = lord_drawquaad::Context::new();

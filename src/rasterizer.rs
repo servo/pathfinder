@@ -9,7 +9,6 @@
 // except according to those terms.
 
 use atlas::Atlas;
-use batch::Batch;
 use compute_shader::device::Device;
 use compute_shader::image::Image;
 use compute_shader::instance::{Instance, ShadingLanguage};
@@ -144,18 +143,17 @@ impl Rasterizer {
     }
 
     pub fn draw_atlas(&self,
-                      atlas_rect: &Rect<u32>,
+                      image: &Image,
+                      rect: &Rect<u32>,
                       atlas: &Atlas,
                       glyph_buffers: &GlyphBuffers,
-                      batch: &Batch,
-                      coverage_buffer: &CoverageBuffer,
-                      image: &Image)
+                      coverage_buffer: &CoverageBuffer)
                       -> Result<DrawAtlasProfilingEvents, ()> {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, coverage_buffer.framebuffer());
-            gl::Viewport(0, 0, atlas_rect.size.width as GLint, atlas_rect.size.height as GLint);
+            gl::Viewport(0, 0, rect.size.width as GLint, rect.size.height as GLint);
 
-            // TODO(pcwalton): Scissor to the atlas rect to clear faster?
+            // TODO(pcwalton): Scissor to the image rect to clear faster?
             gl::ClearColor(0.0, 0.0, 0.0, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
@@ -180,13 +178,11 @@ impl Rasterizer {
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, glyph_buffers.indices);
 
             gl::BindBufferBase(gl::UNIFORM_BUFFER, 1, glyph_buffers.descriptors);
-            gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, batch.images());
+            gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, atlas.images());
             gl::UniformBlockBinding(self.draw_program, self.draw_glyph_descriptors_uniform, 1);
             gl::UniformBlockBinding(self.draw_program, self.draw_image_descriptors_uniform, 2);
 
-            gl::Uniform2ui(self.draw_atlas_size_uniform,
-                           atlas_rect.size.width,
-                           atlas_rect.size.height);
+            gl::Uniform2ui(self.draw_atlas_size_uniform, rect.size.width, rect.size.height);
 
             gl::PatchParameteri(gl::PATCH_VERTICES, 3);
 
@@ -210,7 +206,7 @@ impl Rasterizer {
             };
             // Now draw the glyph ranges.
             gl::BeginQuery(gl::TIME_ELAPSED, self.draw_query);
-            batch.draw(primitive);
+            atlas.draw(primitive);
             gl::EndQuery(gl::TIME_ELAPSED);
 
             gl::Disable(gl::CULL_FACE);
@@ -224,22 +220,15 @@ impl Rasterizer {
             gl::Flush();
         }
 
-        let atlas_rect_uniform = [
-            atlas_rect.origin.x,
-            atlas_rect.origin.y,
-            atlas_rect.max_x(),
-            atlas_rect.max_y()
-        ];
-
         let accum_uniforms = [
             (0, Uniform::Image(image)),
             (1, Uniform::Image(coverage_buffer.image())),
-            (2, Uniform::UVec4(atlas_rect_uniform)),
-            (3, Uniform::U32(atlas.shelf_height())),
+            (2, Uniform::UVec4([rect.origin.x, rect.origin.y, rect.max_x(), rect.max_y()])),
+            (3, Uniform::U32(atlas.shelf_height)),
         ];
 
         let accum_event = try!(self.queue.submit_compute(&self.accum_program,
-                                                         &[atlas.shelf_columns()],
+                                                         &[atlas.shelf_columns],
                                                          &accum_uniforms,
                                                          &[]).map_err(drop));
 

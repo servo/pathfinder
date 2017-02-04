@@ -25,13 +25,13 @@ extern crate quickcheck;
 extern crate test;
 
 pub mod atlas;
-pub mod batch;
 pub mod charmap;
 pub mod coverage;
 pub mod glyph_buffer;
 pub mod glyph_range;
 pub mod otf;
 pub mod rasterizer;
+pub mod rect_packer;
 pub mod shaper;
 mod util;
 

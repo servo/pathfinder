@@ -9,108 +9,188 @@
 // except according to those terms.
 
 use euclid::{Point2D, Rect, Size2D};
+use gl::types::{GLenum, GLsizei, GLsizeiptr, GLuint, GLvoid};
+use gl;
+use glyph_buffer::GlyphBufferBuilder;
+use rect_packer::RectPacker;
+use std::mem;
+use std::os::raw::c_void;
+use std::u16;
+
+pub struct AtlasBuilder {
+    pub rect_packer: RectPacker,
+    image_descriptors: Vec<ImageDescriptor>,
+    image_metadata: Vec<ImageMetadata>,
+}
+
+impl AtlasBuilder {
+    /// FIXME(pcwalton): Including the shelf height here may be a bad API.
+    #[inline]
+    pub fn new(available_width: u32, shelf_height: u32) -> AtlasBuilder {
+        AtlasBuilder {
+            rect_packer: RectPacker::new(available_width, shelf_height),
+            image_descriptors: vec![],
+            image_metadata: vec![],
+        }
+    }
+
+    /// FIXME(pcwalton): Support the same glyph drawn at multiple point sizes.
+    pub fn pack_glyph(&mut self,
+                      glyph_buffer_builder: &GlyphBufferBuilder,
+                      glyph_index: u32,
+                      point_size: f32)
+                      -> Result<(), ()> {
+        // FIXME(pcwalton): I think this will check for negative values and panic, which is
+        // unnecessary.
+        let pixel_size = glyph_buffer_builder.glyph_pixel_bounds(glyph_index, point_size)
+                                             .size
+                                             .ceil()
+                                             .cast()
+                                             .unwrap();
+
+        let glyph_id = glyph_buffer_builder.glyph_id(glyph_index);
+
+        let atlas_origin = try!(self.rect_packer.pack(&pixel_size));
+
+        let glyph_index = self.image_descriptors.len() as u32;
+
+        while self.image_descriptors.len() < glyph_index as usize + 1 {
+            self.image_descriptors.push(ImageDescriptor::default())
+        }
+
+        self.image_descriptors[glyph_index as usize] = ImageDescriptor {
+            atlas_x: atlas_origin.x,
+            atlas_y: atlas_origin.y,
+            point_size: (point_size * 65536.0) as u32,
+            glyph_index: glyph_index,
+        };
+
+        self.image_metadata.push(ImageMetadata {
+            atlas_size: pixel_size,
+            glyph_index: glyph_index,
+            glyph_id: glyph_id,
+        });
+
+        Ok(())
+    }
+
+    pub fn create_atlas(&mut self, glyph_buffer_builder: &GlyphBufferBuilder)
+                        -> Result<Atlas, ()> {
+        self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
+
+        let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);
+        for image_metadata in &self.image_metadata {
+            let glyph_index = image_metadata.glyph_index;
+
+            let first_index = glyph_buffer_builder.descriptors[glyph_index as usize].start_index as
+                usize;
+            let last_index = match glyph_buffer_builder.descriptors.get(glyph_index as usize + 1) {
+                Some(ref descriptor) => descriptor.start_index as usize,
+                None => glyph_buffer_builder.indices.len(),
+            };
+
+            match current_range {
+                Some((current_first, current_last)) if first_index == current_last => {
+                    current_range = Some((current_first, last_index))
+                }
+                Some((current_first, current_last)) => {
+                    counts.push((current_last - current_first) as GLsizei);
+                    start_indices.push(current_first);
+                    current_range = Some((first_index, last_index))
+                }
+                None => current_range = Some((first_index, last_index)),
+            }
+        }
+        if let Some((current_first, current_last)) = current_range {
+            counts.push((current_last - current_first) as GLsizei);
+            start_indices.push(current_first);
+        }
+
+        // TODO(pcwalton): Try using `glMapBuffer` here.
+        unsafe {
+            let mut images = 0;
+            gl::GenBuffers(1, &mut images);
+
+            let length = self.image_descriptors.len() * mem::size_of::<ImageDescriptor>();
+            let ptr = self.image_descriptors.as_ptr() as *const ImageDescriptor as *const c_void;
+            gl::BindBuffer(gl::UNIFORM_BUFFER, images);
+            gl::BufferData(gl::UNIFORM_BUFFER, length as GLsizeiptr, ptr, gl::DYNAMIC_DRAW);
+
+            Ok(Atlas {
+                start_indices: start_indices,
+                counts: counts,
+                images: images,
+
+                shelf_height: self.rect_packer.shelf_height(),
+                shelf_columns: self.rect_packer.shelf_columns(),
+            })
+        }
+    }
+
+    #[inline]
+    pub fn glyph_index_for(&self, glyph_id: u16) -> Option<u32> {
+        match self.image_metadata.binary_search_by(|metadata| metadata.glyph_id.cmp(&glyph_id)) {
+            Ok(glyph_index) => Some(self.image_metadata[glyph_index].glyph_index),
+            Err(_) => None,
+        }
+    }
+
+    #[inline]
+    pub fn atlas_rect(&self, glyph_index: u32) -> Rect<u32> {
+        let descriptor = &self.image_descriptors[glyph_index as usize];
+        let metadata = &self.image_metadata[glyph_index as usize];
+        Rect::new(Point2D::new(descriptor.atlas_x, descriptor.atlas_y), metadata.atlas_size)
+    }
+}
 
 pub struct Atlas {
-    free_rects: Vec<Rect<u32>>,
-    available_width: u32,
-    shelf_height: u32,
-    shelf_count: u32,
-    /// The amount of horizontal space allocated in the last shelf.
-    width_of_last_shelf: u32,
+    start_indices: Vec<usize>,
+    counts: Vec<GLsizei>,
+    images: GLuint,
+
+    pub shelf_height: u32,
+    pub shelf_columns: u32,
+}
+
+impl Drop for Atlas {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteBuffers(1, &mut self.images);
+        }
+    }
 }
 
 impl Atlas {
-    #[inline]
-    pub fn new(available_width: u32, shelf_height: u32) -> Atlas {
-        Atlas {
-            free_rects: vec![],
-            available_width: available_width,
-            shelf_height: shelf_height,
-            shelf_count: 0,
-            width_of_last_shelf: 0,
-        }
-    }
-
-    pub fn place(&mut self, size: &Size2D<u32>) -> Result<Point2D<u32>, ()> {
-        // Add a one-pixel border to prevent bleed.
-        let alloc_size = *size + Size2D::new(2, 2);
-
-        let chosen_index_and_rect =
-            self.free_rects
-                .iter()
-                .enumerate()
-                .filter(|&(_, rect)| {
-                    alloc_size.width <= rect.size.width && alloc_size.height <= rect.size.height
-                })
-                .min_by(|&(_, a), &(_, b)| area(a).cmp(&area(b)))
-                .map(|(index, rect)| (index, *rect));
-
-        let chosen_rect;
-        match chosen_index_and_rect {
-            None => {
-                // Make a new shelf.
-                chosen_rect = Rect::new(Point2D::new(0, self.shelf_height * self.shelf_count),
-                                        Size2D::new(self.available_width, self.shelf_height));
-                self.shelf_count += 1;
-                self.width_of_last_shelf = 0
-            }
-            Some((index, rect)) => {
-                self.free_rects.swap_remove(index);
-                chosen_rect = rect;
-            }
-        }
-
-        // Guillotine to bottom.
-        let free_below =
-            Rect::new(Point2D::new(chosen_rect.origin.x, chosen_rect.origin.y + alloc_size.height),
-                      Size2D::new(alloc_size.width, chosen_rect.size.height - alloc_size.height));
-        if !free_below.is_empty() {
-            self.free_rects.push(free_below);
-        }
-
-        // Guillotine to right.
-        let free_to_right =
-            Rect::new(Point2D::new(chosen_rect.origin.x + alloc_size.width, chosen_rect.origin.y),
-                      Size2D::new(chosen_rect.size.width - alloc_size.width,
-                                  chosen_rect.size.height));
-        if !free_to_right.is_empty() {
-            self.free_rects.push(free_to_right);
-        }
-
-        // Update width of last shelf if necessary.
-        let on_last_shelf = chosen_rect.max_y() >= self.shelf_height * (self.shelf_count - 1);
-        if on_last_shelf && self.width_of_last_shelf < chosen_rect.max_x() {
-            self.width_of_last_shelf = chosen_rect.max_x()
-        }
-
-        let object_origin = chosen_rect.origin + Point2D::new(1, 1);
-        Ok(object_origin)
+    pub unsafe fn draw(&self, primitive: GLenum) {
+        debug_assert!(self.counts.len() == self.start_indices.len());
+        gl::MultiDrawElements(primitive,
+                              self.counts.as_ptr(),
+                              gl::UNSIGNED_INT,
+                              self.start_indices.as_ptr() as *const *const GLvoid,
+                              self.counts.len() as GLsizei);
     }
 
     #[inline]
-    pub fn available_width(&self) -> u32 {
-        self.available_width
-    }
-
-    #[inline]
-    pub fn shelf_height(&self) -> u32 {
-        self.shelf_height
-    }
-
-    #[inline]
-    pub fn shelf_columns(&self) -> u32 {
-        let full_shelf_count = if self.shelf_count == 0 {
-            0
-        } else {
-            self.shelf_count - 1
-        };
-
-        full_shelf_count * self.available_width + self.width_of_last_shelf
+    pub fn images(&self) -> GLuint {
+        self.images
     }
 }
 
-#[inline]
-fn area(rect: &Rect<u32>) -> u32 {
-    rect.size.width * rect.size.height
+/// Information about each image that we send to the GPU.
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct ImageDescriptor {
+    atlas_x: u32,
+    atlas_y: u32,
+    point_size: u32,
+    glyph_index: u32,
+}
+
+/// Information about each image that we keep around ourselves.
+#[derive(Clone, Copy, Debug)]
+pub struct ImageMetadata {
+    atlas_size: Size2D<u32>,
+    glyph_index: u32,
+    glyph_id: u16,
 }
 

@@ -19,7 +19,7 @@ use euclid::{Point2D, Rect, Size2D};
 use gl::types::GLuint;
 use glfw::{Context, OpenGlProfileHint, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
-use pathfinder::batch::BatchBuilder;
+use pathfinder::atlas::AtlasBuilder;
 use pathfinder::charmap::CodepointRange;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::glyph_buffer::GlyphBufferBuilder;
@@ -63,11 +63,12 @@ fn main() {
         let mut results = vec![];
         let start = time::precise_time_ns();
         let mut last_time = start;
-        let (mut glyph_buffer_builder, mut batch_builder, mut glyph_count);
-        let (mut glyph_buffers, mut batch);
+        let (mut glyph_buffer_builder, mut glyph_buffers, mut glyph_count);
+        let (mut atlas_builder, mut atlas);
+
         loop {
             glyph_buffer_builder = GlyphBufferBuilder::new();
-            batch_builder = BatchBuilder::new(device_pixel_width as GLuint, shelf_height);
+            atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
             glyph_count = 0;
             unsafe {
                 let font = Font::new(file.as_slice()).unwrap();
@@ -77,17 +78,16 @@ fn main() {
                                        .unwrap();
                 for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
                     glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
-                    batch_builder.add_glyph(&glyph_buffer_builder,
-                                            glyph_index as u32,
-                                            point_size as f32)
-                                 .unwrap();
+                    atlas_builder.pack_glyph(&glyph_buffer_builder,
+                                             glyph_index as u32,
+                                             point_size as f32).unwrap();
                     glyph_count += 1
                 }
 
             }
 
             glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
-            batch = batch_builder.create_batch(&glyph_buffer_builder).unwrap();
+            atlas = atlas_builder.create_atlas(&glyph_buffer_builder).unwrap();
 
             let end = time::precise_time_ns();
             results.push((end - last_time) as f64);
@@ -108,15 +108,14 @@ fn main() {
                               .create_image(Format::R8, buffer::Protection::WriteOnly, &atlas_size)
                               .unwrap();
 
+        let rect = Rect::new(Point2D::new(0, 0), atlas_size);
+
         let mut results = vec![];
         let start_time = time::precise_time_ns();
         loop {
-            let events = rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), atlas_size),
-                                               &batch_builder.atlas,
-                                               &glyph_buffers,
-                                               &batch,
-                                               &coverage_buffer,
-                                               &image).unwrap();
+            let events =
+                rasterizer.draw_atlas(&image, &rect, &atlas, &glyph_buffers, &coverage_buffer)
+                          .unwrap();
 
             let mut draw_time = 0u64;
             unsafe {

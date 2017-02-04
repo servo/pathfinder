@@ -28,7 +28,7 @@ fn main() {
             let mut last_point: Option<Point2D<i16>> = None;
             let mut last_point_was_off_curve = false;
             font.for_each_point(glyph_id, |point| {
-                if point.first_point_in_contour {
+                if point.index_in_contour == 0 {
                     println!("M {},{}", point.position.x, point.position.y);
                 } else {
                     let last = last_point.unwrap();

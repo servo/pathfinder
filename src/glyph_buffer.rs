@@ -83,6 +83,18 @@ impl GlyphBufferBuilder {
         self.descriptors[glyph_index as usize].bounds
     }
 
+    /// Returns the glyph rectangle in pixels.
+    #[inline]
+    pub fn glyph_pixel_bounds(&self, glyph_index: u32, point_size: f32) -> Rect<f32> {
+        self.descriptors[glyph_index as usize].pixel_rect(point_size)
+    }
+
+    /// Returns the ID of the glyph with the given index.
+    #[inline]
+    pub fn glyph_id(&self, glyph_index: u32) -> u16 {
+        self.descriptors[glyph_index as usize].glyph_id
+    }
+
     pub fn create_buffers(&self) -> Result<GlyphBuffers, ()> {
         // TODO(pcwalton): Try using `glMapBuffer` here. Requires precomputing contour types and
         // counts.
@@ -148,7 +160,7 @@ pub struct GlyphDescriptor {
 
 impl GlyphDescriptor {
     #[inline]
-    pub fn pixel_rect(&self, point_size: f32) -> Rect<f32> {
+    fn pixel_rect(&self, point_size: f32) -> Rect<f32> {
         let pixels_per_unit = point_size / self.units_per_em as f32;
         Rect::new(Point2D::new(self.bounds.left as f32, self.bounds.bottom as f32),
                   Size2D::new((self.bounds.right - self.bounds.left) as f32,

@@ -19,7 +19,7 @@ use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
-use pathfinder::batch::BatchBuilder;
+use pathfinder::atlas::AtlasBuilder;
 use pathfinder::charmap::CodepointRange;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::glyph_buffer::{GlyphBufferBuilder, GlyphBuffers};
@@ -115,7 +115,7 @@ fn main() {
     }
     let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
 
-    let mut fps_batch = renderer.create_fps_batch(&glyph_buffer_builder,
+    let mut fps_atlas = renderer.create_fps_atlas(&glyph_buffer_builder,
                                                   &glyph_buffers,
                                                   glyph_count);
 
@@ -139,7 +139,7 @@ fn main() {
             let timing = renderer.get_timing_in_ms();
 
             renderer.draw_fps(&font,
-                              &mut fps_batch,
+                              &mut fps_atlas,
                               &glyph_buffer_builder,
                               &device_pixel_size,
                               &glyph_ranges,
@@ -384,18 +384,20 @@ impl Renderer {
         // FIXME(pcwalton)
         let shelf_height = (point_size * 2.0).ceil() as u32;
 
-        let mut batch_builder = BatchBuilder::new(ATLAS_SIZE, shelf_height);
+        let mut atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
         for glyph_index in 0..(glyph_count as u32) {
-            batch_builder.add_glyph(&glyph_buffer_builder, glyph_index, point_size).unwrap()
+            atlas_builder.pack_glyph(&glyph_buffer_builder, glyph_index, point_size).unwrap()
         }
-        let batch = batch_builder.create_batch(&glyph_buffer_builder).unwrap();
 
-        let events = self.rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), self.atlas_size),
-                                                &batch_builder.atlas,
+        let atlas = atlas_builder.create_atlas(&glyph_buffer_builder).unwrap();
+
+        let rect = Rect::new(Point2D::new(0, 0), self.atlas_size);
+
+        let events = self.rasterizer.draw_atlas(&self.main_compute_image,
+                                                &rect,
+                                                &atlas,
                                                 glyph_buffers,
-                                                &batch,
-                                                &self.coverage_buffer,
-                                                &self.main_compute_image).unwrap();
+                                                &self.coverage_buffer).unwrap();
         self.rasterizer.queue.flush().unwrap();
 
         unsafe {
@@ -407,7 +409,7 @@ impl Renderer {
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
-        self.draw_glyphs(&mut batch_builder,
+        self.draw_glyphs(&mut atlas_builder,
                          glyph_buffer_builder,
                          glyph_positions,
                          device_pixel_size,
@@ -428,7 +430,7 @@ impl Renderer {
     }
 
     fn draw_glyphs(&self,
-                   batch_builder: &mut BatchBuilder,
+                   atlas_builder: &mut AtlasBuilder,
                    glyph_buffer_builder: &GlyphBufferBuilder,
                    glyph_positions: &[GlyphPos],
                    device_pixel_size: &Size2D<u32>,
@@ -442,7 +444,7 @@ impl Renderer {
             gl::BindBuffer(gl::ARRAY_BUFFER, self.composite_vertex_buffer);
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.composite_index_buffer);
 
-            let vertex_count = self.upload_quads_for_text(batch_builder,
+            let vertex_count = self.upload_quads_for_text(atlas_builder,
                                                           glyph_buffer_builder,
                                                           glyph_positions,
                                                           point_size);
@@ -479,7 +481,7 @@ impl Renderer {
     }
 
     fn upload_quads_for_text(&self,
-                             batch_builder: &mut BatchBuilder,
+                             atlas_builder: &mut AtlasBuilder,
                              glyph_buffer_builder: &GlyphBufferBuilder,
                              glyph_positions: &[GlyphPos],
                              point_size: f32)
@@ -488,12 +490,12 @@ impl Renderer {
 
         let (mut vertices, mut indices) = (vec![], vec![]);
         for position in glyph_positions {
-            let glyph_index = match batch_builder.glyph_index_for(position.glyph_id) {
+            let glyph_index = match atlas_builder.glyph_index_for(position.glyph_id) {
                 None => continue,
                 Some(glyph_index) => glyph_index,
             };
             let glyph_bounds = glyph_buffer_builder.glyph_bounds(glyph_index);
-            let uv_rect = batch_builder.atlas_rect(glyph_index);
+            let uv_rect = atlas_builder.atlas_rect(glyph_index);
             let (uv_bl, uv_tr) = (uv_rect.origin, uv_rect.bottom_right());
 
             let left_pos = (position.x as f32 * pixels_per_unit).round() as i32;
@@ -526,35 +528,36 @@ impl Renderer {
         indices.len()
     }
 
-    fn create_fps_batch(&self,
+    fn create_fps_atlas(&self,
                         glyph_buffer_builder: &GlyphBufferBuilder,
                         glyph_buffers: &GlyphBuffers,
                         glyph_count: usize)
-                        -> BatchBuilder {
+                        -> AtlasBuilder {
         // FIXME(pcwalton)
         let shelf_height = (FPS_DISPLAY_POINT_SIZE * 2.0).ceil() as u32;
 
-        let mut batch_builder = BatchBuilder::new(ATLAS_SIZE, shelf_height);
+        let mut atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
         for glyph_index in 0..(glyph_count as u32) {
-            batch_builder.add_glyph(&glyph_buffer_builder,
-                                    glyph_index,
-                                    FPS_DISPLAY_POINT_SIZE).unwrap()
+            atlas_builder.pack_glyph(&glyph_buffer_builder, glyph_index, FPS_DISPLAY_POINT_SIZE)
+                         .unwrap()
         }
-        let batch = batch_builder.create_batch(&glyph_buffer_builder).unwrap();
 
-        self.rasterizer.draw_atlas(&Rect::new(Point2D::new(0, 0), self.atlas_size),
-                                   &batch_builder.atlas,
+        let atlas = atlas_builder.create_atlas(&glyph_buffer_builder).unwrap();
+
+        let rect = Rect::new(Point2D::new(0, 0), self.atlas_size);
+
+        self.rasterizer.draw_atlas(&self.fps_compute_image,
+                                   &rect,
+                                   &atlas,
                                    glyph_buffers,
-                                   &batch,
-                                   &self.coverage_buffer,
-                                   &self.fps_compute_image).unwrap();
+                                   &self.coverage_buffer).unwrap();
         
-        batch_builder
+        atlas_builder
     }
 
     fn draw_fps(&self,
                 font: &Font,
-                batch_builder: &mut BatchBuilder,
+                atlas_builder: &mut AtlasBuilder,
                 glyph_buffer_builder: &GlyphBufferBuilder,
                 device_pixel_size: &Size2D<u32>,
                 glyph_ranges: &GlyphRanges,
@@ -611,7 +614,7 @@ impl Renderer {
             });
         }
 
-        self.draw_glyphs(batch_builder,
+        self.draw_glyphs(atlas_builder,
                          glyph_buffer_builder,
                          &fps_glyphs,
                          device_pixel_size,
