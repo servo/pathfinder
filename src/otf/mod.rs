@@ -107,16 +107,18 @@ impl<'a> Font<'a> {
                 }
 
                 let table_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
-                Font::from_otf(&bytes[table_offset as usize..])
+                Font::from_otf(&bytes, table_offset)
             }
-            magic_number if SFNT_VERSIONS.contains(&magic_number) => Font::from_otf(bytes),
+            magic_number if SFNT_VERSIONS.contains(&magic_number) => Font::from_otf(bytes, 0),
             0x0100 => Font::from_dfont(bytes),
             _ => Err(Error::UnknownFormat),
         }
     }
 
-    pub fn from_otf<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
+    pub fn from_otf<'b>(bytes: &'b [u8], offset: u32) -> Result<Font<'b>, Error> {
         let mut reader = bytes;
+        try!(reader.jump(offset as usize).map_err(Error::eof));
+
         let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Check version.
@@ -242,7 +244,7 @@ impl<'a> Font<'a> {
         try!(reader.jump(resource_data_offset as usize + sfnt_data_offset as usize)
                    .map_err(Error::eof));
         let sfnt_size = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
-        Font::from_otf(&reader[0..sfnt_size as usize])
+        Font::from_otf(&reader[0..sfnt_size as usize], 0)
     }
 
     #[inline]
