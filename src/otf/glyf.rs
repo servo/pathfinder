@@ -10,10 +10,10 @@
 
 use byteorder::{BigEndian, ReadBytesExt};
 use euclid::Point2D;
-use glyph_buffer::GlyphBounds;
 use otf::FontTable;
 use otf::head::HeadTable;
 use otf::loca::LocaTable;
+use outline::GlyphBounds;
 use std::mem;
 use util::Jump;
 

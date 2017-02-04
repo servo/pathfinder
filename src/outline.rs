@@ -21,16 +21,16 @@ static DUMMY_VERTEX: Vertex = Vertex {
     glyph_index: 0,
 };
 
-pub struct GlyphBufferBuilder {
+pub struct OutlineBuilder {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
     pub descriptors: Vec<GlyphDescriptor>,
 }
 
-impl GlyphBufferBuilder {
+impl OutlineBuilder {
     #[inline]
-    pub fn new() -> GlyphBufferBuilder {
-        GlyphBufferBuilder {
+    pub fn new() -> OutlineBuilder {
+        OutlineBuilder {
             vertices: vec![DUMMY_VERTEX],
             indices: vec![],
             descriptors: vec![],
@@ -95,7 +95,7 @@ impl GlyphBufferBuilder {
         self.descriptors[glyph_index as usize].glyph_id
     }
 
-    pub fn create_buffers(&self) -> Result<GlyphBuffers, ()> {
+    pub fn create_buffers(&self) -> Result<OutlineBuffers, ()> {
         // TODO(pcwalton): Try using `glMapBuffer` here. Requires precomputing contour types and
         // counts.
         unsafe {
@@ -123,7 +123,7 @@ impl GlyphBufferBuilder {
                            self.descriptors.as_ptr() as *const GlyphDescriptor as *const c_void,
                            gl::STATIC_DRAW);
 
-            Ok(GlyphBuffers {
+            Ok(OutlineBuffers {
                 vertices: vertices,
                 indices: indices,
                 descriptors: descriptors,
@@ -132,13 +132,13 @@ impl GlyphBufferBuilder {
     }
 }
 
-pub struct GlyphBuffers {
+pub struct OutlineBuffers {
     pub vertices: GLuint,
     pub indices: GLuint,
     pub descriptors: GLuint,
 }
 
-impl Drop for GlyphBuffers {
+impl Drop for OutlineBuffers {
     fn drop(&mut self) {
         unsafe {
             gl::DeleteBuffers(1, &mut self.descriptors);

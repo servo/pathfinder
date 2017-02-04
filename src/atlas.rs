@@ -11,7 +11,7 @@
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLenum, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use gl;
-use glyph_buffer::GlyphBufferBuilder;
+use outline::OutlineBuilder;
 use rect_packer::RectPacker;
 use std::mem;
 use std::os::raw::c_void;
@@ -36,19 +36,19 @@ impl AtlasBuilder {
 
     /// FIXME(pcwalton): Support the same glyph drawn at multiple point sizes.
     pub fn pack_glyph(&mut self,
-                      glyph_buffer_builder: &GlyphBufferBuilder,
+                      outline_builder: &OutlineBuilder,
                       glyph_index: u32,
                       point_size: f32)
                       -> Result<(), ()> {
         // FIXME(pcwalton): I think this will check for negative values and panic, which is
         // unnecessary.
-        let pixel_size = glyph_buffer_builder.glyph_pixel_bounds(glyph_index, point_size)
-                                             .size
-                                             .ceil()
-                                             .cast()
-                                             .unwrap();
+        let pixel_size = outline_builder.glyph_pixel_bounds(glyph_index, point_size)
+                                        .size
+                                        .ceil()
+                                        .cast()
+                                        .unwrap();
 
-        let glyph_id = glyph_buffer_builder.glyph_id(glyph_index);
+        let glyph_id = outline_builder.glyph_id(glyph_index);
 
         let atlas_origin = try!(self.rect_packer.pack(&pixel_size));
 
@@ -74,19 +74,18 @@ impl AtlasBuilder {
         Ok(())
     }
 
-    pub fn create_atlas(&mut self, glyph_buffer_builder: &GlyphBufferBuilder)
-                        -> Result<Atlas, ()> {
+    pub fn create_atlas(&mut self, outline_builder: &OutlineBuilder) -> Result<Atlas, ()> {
         self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
 
         let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);
         for image_metadata in &self.image_metadata {
             let glyph_index = image_metadata.glyph_index;
 
-            let first_index = glyph_buffer_builder.descriptors[glyph_index as usize].start_index as
-                usize;
-            let last_index = match glyph_buffer_builder.descriptors.get(glyph_index as usize + 1) {
+            let first_index = outline_builder.descriptors[glyph_index as usize]
+                                             .start_index as usize;
+            let last_index = match outline_builder.descriptors.get(glyph_index as usize + 1) {
                 Some(ref descriptor) => descriptor.start_index as usize,
-                None => glyph_buffer_builder.indices.len(),
+                None => outline_builder.indices.len(),
             };
 
             match current_range {

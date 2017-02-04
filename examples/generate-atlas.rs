@@ -19,7 +19,7 @@ use memmap::{Mmap, Protection};
 use pathfinder::atlas::AtlasBuilder;
 use pathfinder::charmap::CodepointRange;
 use pathfinder::coverage::CoverageBuffer;
-use pathfinder::glyph_buffer::GlyphBufferBuilder;
+use pathfinder::outline::OutlineBuilder;
 use pathfinder::otf::Font;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
 use std::env;
@@ -58,7 +58,7 @@ fn main() {
     // FIXME(pcwalton)
     let shelf_height = (point_size * 2.0).ceil() as u32;
 
-    let mut glyph_buffer_builder = GlyphBufferBuilder::new();
+    let mut outline_builder = OutlineBuilder::new();
     let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
 
     unsafe {
@@ -67,14 +67,13 @@ fn main() {
 
         let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
-            glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
-            atlas_builder.pack_glyph(&glyph_buffer_builder, glyph_index as u32, point_size)
-                         .unwrap()
+            outline_builder.add_glyph(&font, glyph_id).unwrap();
+            atlas_builder.pack_glyph(&outline_builder, glyph_index as u32, point_size).unwrap()
         }
     }
 
-    let glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
-    let atlas = atlas_builder.create_atlas(&glyph_buffer_builder).unwrap();
+    let outline_buffers = outline_builder.create_buffers().unwrap();
+    let atlas = atlas_builder.create_atlas(&outline_builder).unwrap();
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
     let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
@@ -85,7 +84,7 @@ fn main() {
 
     let rect = Rect::new(Point2D::new(0, 0), atlas_size);
 
-    rasterizer.draw_atlas(&image, &rect, &atlas, &glyph_buffers, &coverage_buffer).unwrap();
+    rasterizer.draw_atlas(&image, &rect, &atlas, &outline_buffers, &coverage_buffer).unwrap();
     rasterizer.queue.flush().unwrap();
 
     let draw_context = lord_drawquaad::Context::new();

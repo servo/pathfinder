@@ -10,7 +10,6 @@
 
 use byteorder::{BigEndian, ReadBytesExt};
 use charmap::CodepointRange;
-use glyph_buffer::GlyphBounds;
 use glyph_range::GlyphRanges;
 use otf::cmap::CmapTable;
 use otf::glyf::{GlyfTable, Point};
@@ -18,6 +17,7 @@ use otf::head::HeadTable;
 use otf::hhea::HheaTable;
 use otf::hmtx::{HmtxTable, HorizontalMetrics};
 use otf::loca::LocaTable;
+use outline::GlyphBounds;
 use std::mem;
 use std::u16;
 use util::Jump;

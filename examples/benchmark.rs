@@ -22,7 +22,7 @@ use memmap::{Mmap, Protection};
 use pathfinder::atlas::AtlasBuilder;
 use pathfinder::charmap::CodepointRange;
 use pathfinder::coverage::CoverageBuffer;
-use pathfinder::glyph_buffer::GlyphBufferBuilder;
+use pathfinder::outline::OutlineBuilder;
 use pathfinder::otf::Font;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
 use std::env;
@@ -63,11 +63,11 @@ fn main() {
         let mut results = vec![];
         let start = time::precise_time_ns();
         let mut last_time = start;
-        let (mut glyph_buffer_builder, mut glyph_buffers, mut glyph_count);
+        let (mut outline_builder, mut outline_buffers, mut glyph_count);
         let (mut atlas_builder, mut atlas);
 
         loop {
-            glyph_buffer_builder = GlyphBufferBuilder::new();
+            outline_builder = OutlineBuilder::new();
             atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
             glyph_count = 0;
             unsafe {
@@ -77,8 +77,8 @@ fn main() {
                 let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
                                        .unwrap();
                 for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
-                    glyph_buffer_builder.add_glyph(&font, glyph_id).unwrap();
-                    atlas_builder.pack_glyph(&glyph_buffer_builder,
+                    outline_builder.add_glyph(&font, glyph_id).unwrap();
+                    atlas_builder.pack_glyph(&outline_builder,
                                              glyph_index as u32,
                                              point_size as f32).unwrap();
                     glyph_count += 1
@@ -86,8 +86,8 @@ fn main() {
 
             }
 
-            glyph_buffers = glyph_buffer_builder.create_buffers().unwrap();
-            atlas = atlas_builder.create_atlas(&glyph_buffer_builder).unwrap();
+            outline_buffers = outline_builder.create_buffers().unwrap();
+            atlas = atlas_builder.create_atlas(&outline_builder).unwrap();
 
             let end = time::precise_time_ns();
             results.push((end - last_time) as f64);
@@ -114,7 +114,7 @@ fn main() {
         let start_time = time::precise_time_ns();
         loop {
             let events =
-                rasterizer.draw_atlas(&image, &rect, &atlas, &glyph_buffers, &coverage_buffer)
+                rasterizer.draw_atlas(&image, &rect, &atlas, &outline_buffers, &coverage_buffer)
                           .unwrap();
 
             let mut draw_time = 0u64;
