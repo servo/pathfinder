@@ -285,6 +285,12 @@ impl<'a> Font<'a> {
     }
 
     #[inline]
+    pub fn shelf_height(&self, point_size: f32) -> u32 {
+        let pixel_rect = self.head.max_glyph_bounds.pixel_rect(self.head.units_per_em, point_size);
+        pixel_rect.round_out().size.height as u32
+    }
+
+    #[inline]
     pub fn units_per_em(&self) -> u16 {
         self.head.units_per_em
     }

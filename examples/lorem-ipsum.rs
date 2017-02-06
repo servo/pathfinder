@@ -40,7 +40,6 @@ const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 640;
 const HEIGHT: u32 = 480;
 const SCROLL_SPEED: f64 = 6.0;
-const UNITS_PER_EM: u32 = 2048;
 
 const INITIAL_POINT_SIZE: f32 = 24.0;
 const MIN_POINT_SIZE: f32 = 6.0;
@@ -102,12 +101,12 @@ fn main() {
         shaped_glyph_positions = shaper::shape_text(&font, &glyph_ranges, &text)
     }
 
-    let paragraph_width = (device_pixel_size.width as f32 * UNITS_PER_EM as f32 /
+    let paragraph_width = (device_pixel_size.width as f32 * font.units_per_em() as f32 /
                            INITIAL_POINT_SIZE) as u32;
 
     // Do some basic line breaking.
     let mut glyph_positions = vec![];
-    let line_spacing = UNITS_PER_EM;
+    let line_spacing = font.units_per_em() as u32;
     let (mut current_x, mut current_y) = (0, line_spacing);
     for glyph_position in &shaped_glyph_positions {
         current_x += glyph_position.advance as u32;
@@ -136,11 +135,15 @@ fn main() {
 
     let outline_buffers = outline_builder.create_buffers().unwrap();
 
-    let mut fps_atlas = renderer.create_fps_atlas(&outline_builder, &outline_buffers, glyph_count);
+    let mut fps_atlas = renderer.create_fps_atlas(&font,
+                                                  &outline_builder,
+                                                  &outline_buffers,
+                                                  glyph_count);
 
     while !window.should_close() {
         if dirty {
             let events = renderer.redraw(point_size,
+                                         &font,
                                          &outline_builder,
                                          &outline_buffers,
                                          glyph_count,
@@ -232,9 +235,8 @@ struct Renderer {
     composite_translation_uniform: GLint,
     composite_color_uniform: GLint,
 
-    composite_vertex_array: GLuint,
-    composite_vertex_buffer: GLuint,
-    composite_index_buffer: GLuint,
+    main_composite_vertex_array: CompositeVertexArray,
+    fps_composite_vertex_array: CompositeVertexArray,
 
     solid_color_program: GLuint,
     solid_color_color_uniform: GLint,
@@ -245,7 +247,8 @@ struct Renderer {
 
     atlas_size: Size2D<u32>,
 
-    coverage_buffer: CoverageBuffer,
+    main_coverage_buffer: CoverageBuffer,
+    fps_coverage_buffer: CoverageBuffer,
     main_compute_image: Image,
     main_gl_texture: GLuint,
     fps_compute_image: Image,
@@ -266,10 +269,10 @@ impl Renderer {
         let (composite_program, composite_position_attribute, composite_tex_coord_attribute);
         let (composite_atlas_uniform, composite_transform_uniform);
         let (composite_translation_uniform, composite_color_uniform);
+        let (main_composite_vertex_array, fps_composite_vertex_array);
         let (solid_color_program, solid_color_position_attribute, solid_color_color_uniform);
-        let (mut composite_vertex_array, mut solid_color_vertex_array) = (0, 0);
-        let (mut composite_vertex_buffer, mut composite_index_buffer) = (0, 0);
         let (mut solid_color_vertex_buffer, mut solid_color_index_buffer) = (0, 0);
+        let mut solid_color_vertex_array = 0;
         unsafe {
             composite_program = create_program(COMPOSITE_VERTEX_SHADER, COMPOSITE_FRAGMENT_SHADER);
             composite_position_attribute =
@@ -297,29 +300,29 @@ impl Renderer {
 
             gl::UseProgram(composite_program);
 
-            gl::GenVertexArrays(1, &mut composite_vertex_array);
-            gl::BindVertexArray(composite_vertex_array);
+            main_composite_vertex_array = CompositeVertexArray::new();
+            fps_composite_vertex_array = CompositeVertexArray::new();
+            for vertex_array in &[&main_composite_vertex_array, &fps_composite_vertex_array] {
+                gl::BindVertexArray(vertex_array.vertex_array);
 
-            gl::GenBuffers(1, &mut composite_vertex_buffer);
-            gl::GenBuffers(1, &mut composite_index_buffer);
+                gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, vertex_array.index_buffer);
+                gl::BindBuffer(gl::ARRAY_BUFFER, vertex_array.vertex_buffer);
 
-            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, composite_index_buffer);
-            gl::BindBuffer(gl::ARRAY_BUFFER, composite_vertex_buffer);
-
-            gl::VertexAttribPointer(composite_position_attribute as GLuint,
-                                    2,
-                                    gl::INT,
-                                    gl::FALSE,
-                                    mem::size_of::<Vertex>() as GLsizei,
-                                    0 as *const GLvoid);
-            gl::VertexAttribPointer(composite_tex_coord_attribute as GLuint,
-                                    2,
-                                    gl::UNSIGNED_INT,
-                                    gl::FALSE,
-                                    mem::size_of::<Vertex>() as GLsizei,
-                                    (mem::size_of::<f32>() * 2) as *const GLvoid);
-            gl::EnableVertexAttribArray(composite_position_attribute as GLuint);
-            gl::EnableVertexAttribArray(composite_tex_coord_attribute as GLuint);
+                gl::VertexAttribPointer(composite_position_attribute as GLuint,
+                                        2,
+                                        gl::INT,
+                                        gl::FALSE,
+                                        mem::size_of::<Vertex>() as GLsizei,
+                                        0 as *const GLvoid);
+                gl::VertexAttribPointer(composite_tex_coord_attribute as GLuint,
+                                        2,
+                                        gl::UNSIGNED_INT,
+                                        gl::FALSE,
+                                        mem::size_of::<Vertex>() as GLsizei,
+                                        (mem::size_of::<f32>() * 2) as *const GLvoid);
+                gl::EnableVertexAttribArray(composite_position_attribute as GLuint);
+                gl::EnableVertexAttribArray(composite_tex_coord_attribute as GLuint);
+            }
 
             gl::UseProgram(solid_color_program);
 
@@ -349,7 +352,8 @@ impl Renderer {
         // FIXME(pcwalton)
         let atlas_size = Size2D::new(ATLAS_SIZE, ATLAS_SIZE);
 
-        let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
+        let main_coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
+        let fps_coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
 
         let (main_compute_image, main_gl_texture) = create_image(&rasterizer, &atlas_size);
         let (fps_compute_image, fps_gl_texture) = create_image(&rasterizer, &atlas_size);
@@ -368,9 +372,8 @@ impl Renderer {
             composite_translation_uniform: composite_translation_uniform,
             composite_color_uniform: composite_color_uniform,
 
-            composite_vertex_array: composite_vertex_array,
-            composite_vertex_buffer: composite_vertex_buffer,
-            composite_index_buffer: composite_index_buffer,
+            main_composite_vertex_array: main_composite_vertex_array,
+            fps_composite_vertex_array: fps_composite_vertex_array,
 
             solid_color_program: solid_color_program,
             solid_color_color_uniform: solid_color_color_uniform,
@@ -381,7 +384,8 @@ impl Renderer {
 
             atlas_size: atlas_size,
 
-            coverage_buffer: coverage_buffer,
+            main_coverage_buffer: main_coverage_buffer,
+            fps_coverage_buffer: fps_coverage_buffer,
             main_compute_image: main_compute_image,
             main_gl_texture: main_gl_texture,
             fps_compute_image: fps_compute_image,
@@ -393,6 +397,7 @@ impl Renderer {
 
     fn redraw(&self,
               point_size: f32,
+              font: &Font,
               outline_builder: &OutlineBuilder,
               outline_buffers: &OutlineBuffers,
               glyph_count: usize,
@@ -400,9 +405,7 @@ impl Renderer {
               device_pixel_size: &Size2D<u32>,
               translation: &Point2D<i32>)
               -> DrawAtlasProfilingEvents {
-        // FIXME(pcwalton)
-        let shelf_height = (point_size * 2.0).ceil() as u32;
-
+        let shelf_height = font.shelf_height(point_size);
         let mut atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
         for glyph_index in 0..(glyph_count as u32) {
             atlas_builder.pack_glyph(&outline_builder, glyph_index, point_size).unwrap()
@@ -416,7 +419,7 @@ impl Renderer {
                                                 &rect,
                                                 &atlas,
                                                 outline_buffers,
-                                                &self.coverage_buffer).unwrap();
+                                                &self.main_coverage_buffer).unwrap();
         self.rasterizer.queue.flush().unwrap();
 
         unsafe {
@@ -428,8 +431,10 @@ impl Renderer {
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
-        self.draw_glyphs(&mut atlas_builder,
+        self.draw_glyphs(&font,
+                         &mut atlas_builder,
                          outline_builder,
+                         &self.main_composite_vertex_array,
                          glyph_positions,
                          device_pixel_size,
                          translation,
@@ -449,8 +454,10 @@ impl Renderer {
     }
 
     fn draw_glyphs(&self,
+                   font: &Font,
                    atlas_builder: &mut AtlasBuilder,
                    outline_builder: &OutlineBuilder,
+                   vertex_array: &CompositeVertexArray,
                    glyph_positions: &[GlyphPos],
                    device_pixel_size: &Size2D<u32>,
                    translation: &Point2D<i32>,
@@ -459,11 +466,12 @@ impl Renderer {
                    color: &[f32]) {
         unsafe {
             gl::UseProgram(self.composite_program);
-            gl::BindVertexArray(self.composite_vertex_array);
-            gl::BindBuffer(gl::ARRAY_BUFFER, self.composite_vertex_buffer);
-            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, self.composite_index_buffer);
+            gl::BindVertexArray(vertex_array.vertex_array);
+            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_array.vertex_buffer);
+            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, vertex_array.index_buffer);
 
-            let vertex_count = self.upload_quads_for_text(atlas_builder,
+            let vertex_count = self.upload_quads_for_text(font,
+                                                          atlas_builder,
                                                           outline_builder,
                                                           glyph_positions,
                                                           point_size);
@@ -500,12 +508,13 @@ impl Renderer {
     }
 
     fn upload_quads_for_text(&self,
+                             font: &Font,
                              atlas_builder: &mut AtlasBuilder,
                              outline_builder: &OutlineBuilder,
                              glyph_positions: &[GlyphPos],
                              point_size: f32)
                              -> usize {
-        let pixels_per_unit = point_size as f32 / UNITS_PER_EM as f32;
+        let pixels_per_unit = point_size as f32 / font.units_per_em() as f32;
 
         let (mut vertices, mut indices) = (vec![], vec![]);
         for position in glyph_positions {
@@ -548,13 +557,12 @@ impl Renderer {
     }
 
     fn create_fps_atlas(&self,
+                        font: &Font,
                         outline_builder: &OutlineBuilder,
                         outline_buffers: &OutlineBuffers,
                         glyph_count: usize)
                         -> AtlasBuilder {
-        // FIXME(pcwalton)
-        let shelf_height = (FPS_DISPLAY_POINT_SIZE * 2.0).ceil() as u32;
-
+        let shelf_height = font.shelf_height(FPS_DISPLAY_POINT_SIZE);
         let mut atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
         for glyph_index in 0..(glyph_count as u32) {
             atlas_builder.pack_glyph(&outline_builder, glyph_index, FPS_DISPLAY_POINT_SIZE)
@@ -569,7 +577,7 @@ impl Renderer {
                                    &rect,
                                    &atlas,
                                    outline_buffers,
-                                   &self.coverage_buffer).unwrap();
+                                   &self.fps_coverage_buffer).unwrap();
         
         atlas_builder
     }
@@ -633,8 +641,10 @@ impl Renderer {
             });
         }
 
-        self.draw_glyphs(atlas_builder,
+        self.draw_glyphs(font,
+                         atlas_builder,
                          outline_builder,
+                         &self.fps_composite_vertex_array,
                          &fps_glyphs,
                          device_pixel_size,
                          &Point2D::new(FPS_PADDING, device_pixel_size.height as i32 - FPS_PADDING),
@@ -699,6 +709,31 @@ struct GlyphPos {
     x: u32,
     y: u32,
     glyph_id: u16,
+}
+
+#[derive(Debug)]
+struct CompositeVertexArray {
+    vertex_array: GLuint,
+    vertex_buffer: GLuint,
+    index_buffer: GLuint,
+}
+
+impl CompositeVertexArray {
+    fn new() -> CompositeVertexArray {
+        let (mut vertex_array, mut vertex_buffer, mut index_buffer) = (0, 0, 0);
+
+        unsafe {
+            gl::GenVertexArrays(1, &mut vertex_array);
+            gl::GenBuffers(1, &mut vertex_buffer);
+            gl::GenBuffers(1, &mut index_buffer);
+        }
+
+        CompositeVertexArray {
+            vertex_array: vertex_array,
+            vertex_buffer: vertex_buffer,
+            index_buffer: index_buffer,
+        }
+    }
 }
 
 fn create_program(vertex_shader_source: &str, fragment_shader_source: &str) -> GLuint {

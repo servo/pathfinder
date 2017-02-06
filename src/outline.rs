@@ -162,10 +162,7 @@ pub struct GlyphDescriptor {
 impl GlyphDescriptor {
     #[inline]
     fn pixel_rect(&self, point_size: f32) -> Rect<f32> {
-        let pixels_per_unit = point_size / self.units_per_em as f32;
-        Rect::new(Point2D::new(self.bounds.left as f32, self.bounds.bottom as f32),
-                  Size2D::new((self.bounds.right - self.bounds.left) as f32,
-                              (self.bounds.top - self.bounds.bottom) as f32)) * pixels_per_unit
+        self.bounds.pixel_rect(self.units_per_em as u16, point_size)
     }
 }
 
@@ -185,5 +182,15 @@ pub struct GlyphBounds {
     pub bottom: i32,
     pub right: i32,
     pub top: i32,
+}
+
+impl GlyphBounds {
+    #[inline]
+    pub fn pixel_rect(&self, units_per_em: u16, point_size: f32) -> Rect<f32> {
+        let pixels_per_unit = point_size / units_per_em as f32;
+        Rect::new(Point2D::new(self.left as f32, self.bottom as f32),
+                  Size2D::new((self.right - self.left) as f32, (self.top - self.bottom) as f32)) *
+            pixels_per_unit
+    }
 }
 

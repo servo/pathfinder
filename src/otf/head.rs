@@ -10,6 +10,7 @@
 
 use byteorder::{BigEndian, ReadBytesExt};
 use otf::{Error, FontTable};
+use outline::GlyphBounds;
 use std::mem;
 use util::Jump;
 
@@ -19,6 +20,7 @@ const MAGIC_NUMBER: u32 = 0x5f0f3cf5;
 pub struct HeadTable {
     pub units_per_em: u16,
     pub index_to_loc_format: i16,
+    pub max_glyph_bounds: GlyphBounds,
 }
 
 impl HeadTable {
@@ -43,11 +45,21 @@ impl HeadTable {
         try!(reader.jump(mem::size_of::<u16>()).map_err(Error::eof));
         let units_per_em = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
 
+        // Read the maximum bounds.
+        try!(reader.jump(mem::size_of::<i64>() * 2).map_err(Error::eof));
+        let x_min = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let y_min = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let x_max = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let y_max = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let max_glyph_bounds = GlyphBounds {
+            left: x_min as i32,
+            bottom: y_min as i32,
+            right: x_max as i32,
+            top: y_max as i32,
+        };
+
         // Read the index-to-location format.
-        try!(reader.jump(mem::size_of::<i64>() * 2 +
-                         mem::size_of::<i16>() * 4 + 
-                         mem::size_of::<u16>() * 2 +
-                         mem::size_of::<i16>()).map_err(Error::eof));
+        try!(reader.jump(mem::size_of::<u16>() * 2 + mem::size_of::<i16>()).map_err(Error::eof));
         let index_to_loc_format = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
 
         // Check the glyph data format.
@@ -59,6 +71,7 @@ impl HeadTable {
         Ok(HeadTable {
             units_per_em: units_per_em,
             index_to_loc_format: index_to_loc_format,
+            max_glyph_bounds: max_glyph_bounds,
         })
     }
 }
