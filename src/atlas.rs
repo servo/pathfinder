@@ -68,11 +68,16 @@ impl AtlasBuilder {
             glyph_index: glyph_index,
         };
 
-        self.image_metadata.push(ImageMetadata {
-            atlas_size: pixel_size,
+        while self.image_metadata.len() < glyph_index as usize + 1 {
+            self.image_metadata.push(ImageMetadata::default())
+        }
+
+        self.image_metadata[glyph_index as usize] = ImageMetadata {
+            atlas_width: pixel_size.width,
+            atlas_height: pixel_size.height,
             glyph_index: glyph_index,
             glyph_id: glyph_id,
-        });
+        };
 
         Ok(())
     }
@@ -141,7 +146,8 @@ impl AtlasBuilder {
     pub fn atlas_rect(&self, glyph_index: u32) -> Rect<u32> {
         let descriptor = &self.image_descriptors[glyph_index as usize];
         let metadata = &self.image_metadata[glyph_index as usize];
-        Rect::new(Point2D::new(descriptor.atlas_x, descriptor.atlas_y), metadata.atlas_size)
+        Rect::new(Point2D::new(descriptor.atlas_x, descriptor.atlas_y),
+                  Size2D::new(metadata.atlas_width, metadata.atlas_height))
     }
 }
 
@@ -189,9 +195,10 @@ pub struct ImageDescriptor {
 }
 
 /// Information about each image that we keep around ourselves.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct ImageMetadata {
-    atlas_size: Size2D<u32>,
+    atlas_width: u32,
+    atlas_height: u32,
     glyph_index: u32,
     glyph_id: u16,
 }
