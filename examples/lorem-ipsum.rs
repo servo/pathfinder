@@ -20,17 +20,21 @@ use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
 use pathfinder::atlas::AtlasBuilder;
-use pathfinder::charmap::CodepointRange;
+use pathfinder::charmap::CodepointRanges;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::glyph_range::GlyphRanges;
 use pathfinder::otf::Font;
 use pathfinder::outline::{OutlineBuffers, OutlineBuilder};
 use pathfinder::rasterizer::{DrawAtlasProfilingEvents, Rasterizer, RasterizerOptions};
 use pathfinder::shaper;
+use std::char;
 use std::env;
+use std::fs::File;
+use std::io::Read;
 use std::mem;
 use std::os::raw::c_void;
 use std::path::Path;
+use std::process;
 
 const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 640;
@@ -70,16 +74,32 @@ fn main() {
     let (width, height) = window.get_framebuffer_size();
     let mut device_pixel_size = Size2D::new(width as u32, height as u32);
 
-    let mut chars: Vec<char> = TEXT.chars().collect();
-    chars.sort();
-    let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
+    let mut args = env::args();
+    args.next();
+    let font_path = args.next().unwrap_or_else(|| usage());
 
-    let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
+    let mut text = "".to_string();
+    match args.next() {
+        Some(path) => drop(File::open(path).unwrap().read_to_string(&mut text).unwrap()),
+        None => text.push_str(TEXT),
+    }
+    text = text.replace(&['\n', '\r', '\t'][..], " ");
+
+    // Make sure the characters include `[A-Za-z0-9 ./,]`, for the FPS display.
+    let mut chars: Vec<char> = text.chars().collect();
+    chars.extend(" ./,:()".chars());
+    chars.extend(('A' as u32..('Z' as u32 + 1)).flat_map(char::from_u32));
+    chars.extend(('a' as u32..('z' as u32 + 1)).flat_map(char::from_u32));
+    chars.extend(('0' as u32..('9' as u32 + 1)).flat_map(char::from_u32));
+    chars.sort();
+    let codepoint_ranges = CodepointRanges::from_sorted_chars(&chars);
+
+    let file = Mmap::open_path(font_path, Protection::Read).unwrap();
     let (font, shaped_glyph_positions, glyph_ranges);
     unsafe {
         font = Font::new(file.as_slice()).unwrap();
-        glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
-        shaped_glyph_positions = shaper::shape_text(&font, &glyph_ranges, TEXT)
+        glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges.ranges).unwrap();
+        shaped_glyph_positions = shaper::shape_text(&font, &glyph_ranges, &text)
     }
 
     let paragraph_width = (device_pixel_size.width as f32 * UNITS_PER_EM as f32 /
@@ -722,6 +742,11 @@ fn create_image(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Image, GL
     }
 
     (compute_image, gl_texture)
+}
+
+fn usage() -> ! {
+    println!("usage: lorem-ipsum /path/to/font.ttf [/path/to/text.txt]");
+    process::exit(0)
 }
 
 static COMPOSITE_VERTEX_SHADER: &'static str = "\
