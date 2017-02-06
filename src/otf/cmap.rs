@@ -12,6 +12,7 @@ use byteorder::{BigEndian, ReadBytesExt};
 use charmap::CodepointRange;
 use glyph_range::{GlyphRange, GlyphRanges, MappedGlyphRange};
 use otf::{Error, FontTable};
+use std::char;
 use std::cmp;
 use std::mem;
 use std::u16;
@@ -205,10 +206,10 @@ impl<'a> CmapTable<'a> {
 
                 // Otherwise, look up the glyphs individually.
                 for code_offset in start_code_offset..(end_code_offset + 1) {
-                    let mut glyph_id = glyph_ids;
-                    try!(glyph_id.jump((id_range_offset as usize + code_offset as usize) * 2)
-                                 .map_err(Error::eof));
-                    let mut glyph_id = try!(glyph_id.read_u16::<BigEndian>().map_err(Error::eof));
+                    let mut reader = id_range_offsets;
+                    try!(reader.jump(segment_index as usize * 2 + code_offset as usize * 2 +
+                                     id_range_offset as usize).map_err(Error::eof));
+                    let mut glyph_id = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
                     if glyph_id == 0 {
                         glyph_ranges.ranges.push(MappedGlyphRange {
                             codepoint_start: start_code as u32 + code_offset as u32,
