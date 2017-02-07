@@ -24,8 +24,16 @@ patch out vec2 vpP0;
 patch out vec2 vpP1;
 // The endpoint of this segment.
 patch out vec2 vpP2;
-// 1.0 if this segment runs left to right; -1.0 otherwise.
-patch out float vpDirection;
+// x: 1.0 if this segment runs left to right; -1.0 otherwise.
+// y: The tessellation level.
+//
+// This is packed together into a single vec2 to work around an Apple Intel driver bug whereby
+// patch outputs beyond the first 4 are forced to 0.
+//
+// And in case you're wondering why the tessellation level is passed along in a patch out instead
+// of having the TES read it directly, that's another Apple bug workaround, this time in the Radeon
+// driver.
+patch out vec2 vpDirectionTessLevel;
 
 void main() {
     vec2 p0 = gl_in[0].gl_Position.xy;
@@ -111,6 +119,6 @@ void main() {
     vpP0 = p0;
     vpP1 = p1;
     vpP2 = p2;
-    vpDirection = direction;
+    vpDirectionTessLevel = vec2(direction, tessLevel);
 }
 

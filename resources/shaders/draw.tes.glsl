@@ -21,8 +21,16 @@ patch in vec2 vpP0;
 patch in vec2 vpP1;
 // The endpoint of this segment.
 patch in vec2 vpP2;
-// 1.0 if this segment runs left to right; -1.0 otherwise.
-patch in float vpDirection;
+// x: 1.0 if this segment runs left to right; -1.0 otherwise.
+// y: The tessellation level.
+//
+// This is packed together into a single vec2 to work around an Apple Intel driver bug whereby
+// patch outputs beyond the first 4 are forced to 0.
+//
+// And in case you're wondering why the tessellation level is passed along in a patch out instead
+// of having the TES read it directly, that's another Apple bug workaround, this time in the Radeon
+// driver.
+patch in vec2 vpDirectionTessLevel;
 
 // The starting point of the segment.
 flat out vec2 vP0;
@@ -38,7 +46,7 @@ flat out vec2 vYMinMax;
 void main() {
     // Work out how many lines made up this segment, which line we're working on, and which
     // endpoint of that line we're looking at.
-    uint tessPointCount = uint(gl_TessLevelInner[0] + 1.0f);
+    uint tessPointCount = uint(vpDirectionTessLevel.y + 1.0f);
     uint tessIndex = uint(round(gl_TessCoord.x * float(tessPointCount - 1)));
     uint lineCount = tessPointCount / 2, lineIndex = tessIndex / 2, endpoint = tessIndex % 2;
 
@@ -59,7 +67,7 @@ void main() {
     vSlope = (vP1.y - vP0.y) / (vP1.x - vP0.x);
 
     // Forward direction onto the fragment shader.
-    vDirection = vpDirection;
+    vDirection = vpDirectionTessLevel.x;
 
     // Compute our final position in atlas space, rounded out to the next pixel.
     float x = endpoint == 0 ? floor(vP0.x) : ceil(vP1.x);
