@@ -94,31 +94,40 @@ fn main() {
     let codepoint_ranges = CodepointRanges::from_sorted_chars(&chars);
 
     let file = Mmap::open_path(font_path, Protection::Read).unwrap();
-    let (font, shaped_glyph_positions, glyph_ranges);
+    let (font, glyph_ranges);
     unsafe {
         font = Font::new(file.as_slice()).unwrap();
         glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges.ranges).unwrap();
-        shaped_glyph_positions = shaper::shape_text(&font, &glyph_ranges, &text)
     }
-
-    let paragraph_width = (device_pixel_size.width as f32 * font.units_per_em() as f32 /
-                           INITIAL_POINT_SIZE) as u32;
 
     // Do some basic line breaking.
     let mut glyph_positions = vec![];
+    let paragraph_width = (device_pixel_size.width as f32 * font.units_per_em() as f32 /
+                           INITIAL_POINT_SIZE) as u32;
+    let space_advance = font.metrics_for_glyph(glyph_ranges.glyph_for(' ' as u32).unwrap())
+                            .unwrap()
+                            .advance_width as u32;
     let line_spacing = font.units_per_em() as u32;
+
     let (mut current_x, mut current_y) = (0, line_spacing);
-    for glyph_position in &shaped_glyph_positions {
-        current_x += glyph_position.advance as u32;
-        if current_x > paragraph_width {
+    for word in text.split_whitespace() {
+        let shaped_glyph_positions = shaper::shape_text(&font, &glyph_ranges, word);
+        let total_advance: u32 = shaped_glyph_positions.iter().map(|p| p.advance as u32).sum();
+        if current_x + total_advance > paragraph_width {
             current_x = 0;
             current_y += line_spacing;
         }
-        glyph_positions.push(GlyphPos {
-            x: current_x,
-            y: current_y,
-            glyph_id: glyph_position.glyph_id,
-        });
+
+        for glyph_position in &shaped_glyph_positions {
+            glyph_positions.push(GlyphPos {
+                x: current_x,
+                y: current_y,
+                glyph_id: glyph_position.glyph_id,
+            });
+            current_x += glyph_position.advance as u32;
+        }
+
+        current_x += space_advance
     }
 
     let renderer = Renderer::new();
@@ -640,12 +649,12 @@ impl Renderer {
         let mut fps_glyphs = vec![];
         let mut current_x = 0;
         for glyph_pos in &shaper::shape_text(&font, &glyph_ranges, &fps_text) {
-            current_x += glyph_pos.advance as u32;
             fps_glyphs.push(GlyphPos {
                 x: current_x,
                 y: 0,
                 glyph_id: glyph_pos.glyph_id,
             });
+            current_x += glyph_pos.advance as u32;
         }
 
         self.draw_glyphs(font,

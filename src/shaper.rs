@@ -19,20 +19,19 @@ use otf::Font;
 use std::cmp;
 
 pub fn shape_text(font: &Font, glyph_ranges: &GlyphRanges, string: &str) -> Vec<GlyphPos> {
-    let mut advance = 0;
     string.chars().map(|ch| {
         let glyph_id = glyph_ranges.glyph_for(ch as u32).unwrap_or(0);
         let metrics = font.metrics_for_glyph(glyph_id);
 
-        let pos = GlyphPos {
-            glyph_id: glyph_id,
-            advance: cmp::max(0, advance) as u16,
+        let advance = match metrics {
+            Err(_) => 0,
+            Ok(metrics) => metrics.advance_width,
         };
 
-        if let Ok(ref metrics) = metrics {
-            advance = metrics.advance_width as i32
+        GlyphPos {
+            glyph_id: glyph_id,
+            advance: advance,
         }
-        pos
     }).collect()
 }
 
