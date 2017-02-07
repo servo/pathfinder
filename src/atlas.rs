@@ -43,18 +43,12 @@ impl AtlasBuilder {
                       glyph_index: u32,
                       point_size: f32)
                       -> Result<(), ()> {
-        // FIXME(pcwalton): I think this will check for negative values and panic, which is
-        // unnecessary.
-        let pixel_size = outline_builder.glyph_pixel_bounds(glyph_index, point_size)
-                                        .size
-                                        .ceil()
-                                        .cast()
-                                        .unwrap();
+        let pixel_bounds_f = outline_builder.glyph_pixel_bounds_f(glyph_index, point_size);
+        let pixel_bounds_i = outline_builder.glyph_pixel_bounds_i(glyph_index, point_size);
+
+        let atlas_origin = try!(self.rect_packer.pack(&pixel_bounds_i.size().cast().unwrap()));
 
         let glyph_id = outline_builder.glyph_id(glyph_index);
-
-        let atlas_origin = try!(self.rect_packer.pack(&pixel_size));
-
         let glyph_index = self.image_descriptors.len() as u32;
 
         while self.image_descriptors.len() < glyph_index as usize + 1 {
@@ -62,10 +56,10 @@ impl AtlasBuilder {
         }
 
         self.image_descriptors[glyph_index as usize] = ImageDescriptor {
-            atlas_x: atlas_origin.x,
-            atlas_y: atlas_origin.y,
-            point_size: (point_size * 65536.0) as u32,
-            glyph_index: glyph_index,
+            atlas_x: atlas_origin.x as f32 + pixel_bounds_f.left.fract(),
+            atlas_y: atlas_origin.y as f32 + (1.0 - pixel_bounds_f.top.fract()),
+            point_size: point_size,
+            glyph_index: glyph_index as f32,
         };
 
         while self.image_metadata.len() < glyph_index as usize + 1 {
@@ -73,8 +67,6 @@ impl AtlasBuilder {
         }
 
         self.image_metadata[glyph_index as usize] = ImageMetadata {
-            atlas_width: pixel_size.width,
-            atlas_height: pixel_size.height,
             glyph_index: glyph_index,
             glyph_id: glyph_id,
         };
@@ -143,11 +135,9 @@ impl AtlasBuilder {
     }
 
     #[inline]
-    pub fn atlas_rect(&self, glyph_index: u32) -> Rect<u32> {
+    pub fn atlas_origin(&self, glyph_index: u32) -> Point2D<f32> {
         let descriptor = &self.image_descriptors[glyph_index as usize];
-        let metadata = &self.image_metadata[glyph_index as usize];
-        Rect::new(Point2D::new(descriptor.atlas_x, descriptor.atlas_y),
-                  Size2D::new(metadata.atlas_width, metadata.atlas_height))
+        Point2D::new(descriptor.atlas_x, descriptor.atlas_y)
     }
 }
 
@@ -188,17 +178,15 @@ impl Atlas {
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct ImageDescriptor {
-    atlas_x: u32,
-    atlas_y: u32,
-    point_size: u32,
-    glyph_index: u32,
+    atlas_x: f32,
+    atlas_y: f32,
+    point_size: f32,
+    glyph_index: f32,
 }
 
 /// Information about each image that we keep around ourselves.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct ImageMetadata {
-    atlas_width: u32,
-    atlas_height: u32,
     glyph_index: u32,
     glyph_id: u16,
 }

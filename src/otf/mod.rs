@@ -17,7 +17,7 @@ use otf::head::HeadTable;
 use otf::hhea::HheaTable;
 use otf::hmtx::{HmtxTable, HorizontalMetrics};
 use otf::loca::LocaTable;
-use outline::GlyphBounds;
+use outline::GlyphBoundsI;
 use std::mem;
 use std::u16;
 use util::Jump;
@@ -270,7 +270,7 @@ impl<'a> Font<'a> {
     }
 
     #[inline]
-    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, Error> {
+    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBoundsI, Error> {
         match self.glyf {
             Some(glyf) => {
                 let loca = match self.loca {
@@ -286,8 +286,12 @@ impl<'a> Font<'a> {
 
     #[inline]
     pub fn shelf_height(&self, point_size: f32) -> u32 {
-        let pixel_rect = self.head.max_glyph_bounds.pixel_rect(self.head.units_per_em, point_size);
-        pixel_rect.round_out().size.height as u32
+        self.head
+            .max_glyph_bounds
+            .pixel_rect_f(self.head.units_per_em, point_size)
+            .to_i()
+            .size()
+            .height as u32
     }
 
     #[inline]

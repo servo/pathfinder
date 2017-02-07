@@ -522,22 +522,29 @@ impl Renderer {
                 None => continue,
                 Some(glyph_index) => glyph_index,
             };
-            let glyph_bounds = outline_builder.glyph_bounds(glyph_index);
-            let uv_rect = atlas_builder.atlas_rect(glyph_index);
-            let (uv_bl, uv_tr) = (uv_rect.origin, uv_rect.bottom_right());
 
-            let left_pos = (position.x as f32 * pixels_per_unit).round() as i32;
-            let top_pos = ((position.y as f32 - glyph_bounds.top as f32)
-                           * pixels_per_unit).round() as i32;
-            let right_pos = left_pos + uv_rect.size.width as i32;
-            let bottom_pos = top_pos + uv_rect.size.height as i32;
+            let glyph_rect_i = outline_builder.glyph_pixel_bounds_i(glyph_index, point_size);
+
+            let uv_tl: Point2D<u32> = atlas_builder.atlas_origin(glyph_index)
+                                                   .floor()
+                                                   .cast()
+                                                   .unwrap();
+            let uv_br = uv_tl + glyph_rect_i.size().cast().unwrap();
+
+            let bearing_pos = (position.x as f32 * pixels_per_unit).round() as i32;
+            let baseline_pos = (position.y as f32 * pixels_per_unit).round() as i32;
+
+            let left_pos = bearing_pos + glyph_rect_i.left;
+            let top_pos = baseline_pos - glyph_rect_i.top;
+            let right_pos = bearing_pos + glyph_rect_i.right;
+            let bottom_pos = baseline_pos - glyph_rect_i.bottom;
 
             let first_index = vertices.len() as u16;
 
-            vertices.push(Vertex::new(left_pos,  bottom_pos, uv_bl.x, uv_tr.y));
-            vertices.push(Vertex::new(right_pos, bottom_pos, uv_tr.x, uv_tr.y));
-            vertices.push(Vertex::new(right_pos, top_pos,    uv_tr.x, uv_bl.y));
-            vertices.push(Vertex::new(left_pos,  top_pos,    uv_bl.x, uv_bl.y));
+            vertices.push(Vertex::new(left_pos,  top_pos,    uv_tl.x, uv_tl.y));
+            vertices.push(Vertex::new(right_pos, top_pos,    uv_br.x, uv_tl.y));
+            vertices.push(Vertex::new(right_pos, bottom_pos, uv_br.x, uv_br.y));
+            vertices.push(Vertex::new(left_pos,  bottom_pos, uv_tl.x, uv_br.y));
 
             indices.extend(RECT_INDICES.iter().map(|index| first_index + index));
         }

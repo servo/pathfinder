@@ -80,14 +80,20 @@ impl OutlineBuilder {
 
     /// Returns the glyph rectangle in units.
     #[inline]
-    pub fn glyph_bounds(&self, glyph_index: u32) -> GlyphBounds {
+    pub fn glyph_bounds(&self, glyph_index: u32) -> GlyphBoundsI {
         self.descriptors[glyph_index as usize].bounds
     }
 
-    /// Returns the glyph rectangle in pixels.
+    /// Returns the glyph rectangle in fractional pixels.
     #[inline]
-    pub fn glyph_pixel_bounds(&self, glyph_index: u32, point_size: f32) -> Rect<f32> {
-        self.descriptors[glyph_index as usize].pixel_rect(point_size)
+    pub fn glyph_pixel_bounds_f(&self, glyph_index: u32, point_size: f32) -> GlyphBoundsF {
+        self.descriptors[glyph_index as usize].pixel_rect_f(point_size)
+    }
+
+    /// Returns the glyph rectangle, rounded out to the nearest pixel.
+    #[inline]
+    pub fn glyph_pixel_bounds_i(&self, glyph_index: u32, point_size: f32) -> GlyphBoundsI {
+        self.descriptors[glyph_index as usize].pixel_rect_i(point_size)
     }
 
     /// Returns the ID of the glyph with the given index.
@@ -152,7 +158,7 @@ impl Drop for OutlineBuffers {
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphDescriptor {
-    pub bounds: GlyphBounds,
+    pub bounds: GlyphBoundsI,
     pub units_per_em: u32,
     pub start_point: u32,
     pub start_index: u32,
@@ -161,8 +167,13 @@ pub struct GlyphDescriptor {
 
 impl GlyphDescriptor {
     #[inline]
-    fn pixel_rect(&self, point_size: f32) -> Rect<f32> {
-        self.bounds.pixel_rect(self.units_per_em as u16, point_size)
+    fn pixel_rect_f(&self, point_size: f32) -> GlyphBoundsF {
+        self.bounds.pixel_rect_f(self.units_per_em as u16, point_size)
+    }
+
+    #[inline]
+    fn pixel_rect_i(&self, point_size: f32) -> GlyphBoundsI {
+        self.bounds.pixel_rect_f(self.units_per_em as u16, point_size).to_i()
     }
 }
 
@@ -177,20 +188,53 @@ pub struct Vertex {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub struct GlyphBounds {
+pub struct GlyphBoundsF {
+    pub left: f32,
+    pub bottom: f32,
+    pub right: f32,
+    pub top: f32,
+}
+
+impl GlyphBoundsF {
+    #[inline]
+    pub fn to_i(&self) -> GlyphBoundsI {
+        GlyphBoundsI {
+            left: self.left.floor() as i32,
+            bottom: self.bottom.floor() as i32,
+            right: self.right.ceil() as i32,
+            top: self.top.ceil() as i32,
+        }
+    }
+
+    #[inline]
+    pub fn size(&self) -> Size2D<f32> {
+        Size2D::new(self.right - self.left, self.top - self.bottom)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct GlyphBoundsI {
     pub left: i32,
     pub bottom: i32,
     pub right: i32,
     pub top: i32,
 }
 
-impl GlyphBounds {
+impl GlyphBoundsI {
     #[inline]
-    pub fn pixel_rect(&self, units_per_em: u16, point_size: f32) -> Rect<f32> {
+    pub fn pixel_rect_f(&self, units_per_em: u16, point_size: f32) -> GlyphBoundsF {
         let pixels_per_unit = point_size / units_per_em as f32;
-        Rect::new(Point2D::new(self.left as f32, self.bottom as f32),
-                  Size2D::new((self.right - self.left) as f32, (self.top - self.bottom) as f32)) *
-            pixels_per_unit
+        GlyphBoundsF {
+            left: self.left as f32 * pixels_per_unit,
+            bottom: self.bottom as f32 * pixels_per_unit,
+            right: self.right as f32 * pixels_per_unit,
+            top: self.top as f32 * pixels_per_unit,
+        }
+    }
+
+    #[inline]
+    pub fn size(&self) -> Size2D<i32> {
+        Size2D::new(self.right - self.left, self.top - self.bottom)
     }
 }
 

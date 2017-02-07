@@ -33,7 +33,7 @@ layout(std140) uniform ubGlyphDescriptors {
 };
 
 layout(std140) uniform ubImageDescriptors {
-    uvec4 uImages[MAX_GLYPHS];
+    vec4 uImages[MAX_GLYPHS];
 };
 
 // The position of each vertex in glyph space.
@@ -50,13 +50,13 @@ flat out int vVertexID;
 void main() {
     vVertexID = gl_VertexID;
 
-    uvec4 image = uImages[aGlyphIndex];
+    vec4 image = uImages[aGlyphIndex];
     GlyphDescriptor glyph = uGlyphs[aGlyphIndex];
 
     vec2 glyphPos = vec2(aPosition.x - glyph.extents.x, glyph.extents.w - aPosition.y);
-    float pointSize = float(IMAGE_DESCRIPTOR_POINT_SIZE(image)) / 65536.0f;
+    float pointSize = IMAGE_DESCRIPTOR_POINT_SIZE(image);
     vec2 glyphPxPos = glyphPos * pointSize / GLYPH_DESCRIPTOR_UNITS_PER_EM(glyph);
-    vec2 atlasPos = glyphPxPos + vec2(IMAGE_DESCRIPTOR_ATLAS_POS(image));
+    vec2 atlasPos = glyphPxPos + IMAGE_DESCRIPTOR_ATLAS_POS(image);
 
     gl_Position = vec4(atlasPos, 0.0f, 1.0f);
 }
