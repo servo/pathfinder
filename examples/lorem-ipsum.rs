@@ -849,10 +849,37 @@ void main() {
 static RECT_INDICES: [u16; 6] = [0, 1, 3, 1, 2, 3];
 
 static TEXT: &'static str = "\
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur scelerisque pellentesque risus quis vehicula. Ut sollicitudin aliquet diam, vel lobortis orci porta in. Sed eu nisi egestas odio tincidunt cursus eget ut lorem. Fusce lacinia ex nec lectus rutrum mollis. Donec in ultrices purus. Integer id suscipit magna. Suspendisse congue pulvinar neque id ultrices. Curabitur nec tellus et est pellentesque posuere. Duis ut metus euismod, feugiat arcu vitae, posuere libero. \
-Curabitur nunc urna, rhoncus vitae scelerisque quis, viverra et odio. Suspendisse accumsan pretium mi, nec fringilla metus condimentum id. Duis dignissim quam eu felis lobortis, eget dignissim lectus fermentum. Nunc et massa id orci pellentesque rutrum. Nam imperdiet quam vel ligula efficitur ultricies vel eu tellus. Maecenas luctus risus a erat euismod ultricies. Pellentesque neque mauris, laoreet vitae finibus quis, molestie ut velit. Donec laoreet justo risus. In id mi sed odio placerat interdum ut vitae erat. Fusce quis mollis mauris, sit amet efficitur libero. \
-In efficitur tortor nulla, sollicitudin sodales mi tempor in. In egestas ultrices fermentum. Quisque mattis egestas nulla. Interdum et malesuada fames ac ante ipsum primis in faucibus. Etiam in tempus sapien, in dignissim arcu. Quisque diam nulla, rhoncus et tempor nec, facilisis porta purus. Nulla ut eros laoreet, placerat dolor ut, interdum orci. Sed posuere eleifend mollis. Integer at nunc ex. Vestibulum aliquet risus quis lacinia convallis. Fusce et metus viverra, varius nulla in, rutrum justo. Interdum et malesuada fames ac ante ipsum primis in faucibus. Praesent non est vel lectus suscipit malesuada id ut nisl. Aenean sem ipsum, tincidunt non orci non, varius consectetur purus. Aenean sed mollis turpis, sit amet vestibulum risus. Nunc ut hendrerit urna, sit amet lacinia arcu. \
-Curabitur laoreet a enim et eleifend. Etiam consectetur pharetra massa, sed elementum quam molestie nec. Integer eu justo lectus. Vestibulum sed vulputate sapien. Curabitur pretium luctus orci et interdum. Quisque ligula nisi, varius id sodales id, volutpat et lorem. Pellentesque ex urna, malesuada at ex non, elementum ultricies nulla. Nunc sodales, turpis at maximus bibendum, neque lorem laoreet felis, eget convallis sem mauris ac quam. Mauris non pretium nulla. Nam semper pulvinar convallis. Suspendisse ultricies odio vitae tortor congue, rutrum finibus nisl malesuada. Interdum et malesuada fames ac ante ipsum primis in faucibus. \
-Vestibulum aliquam et lacus sit amet lobortis. In sed ligula quis urna accumsan vehicula sit amet id magna. Cras mollis orci vitae turpis porta, sed gravida nunc aliquam. Phasellus nec facilisis nunc. Suspendisse volutpat leo felis, in iaculis nisi dignissim et. Phasellus at urna purus. Nullam vitae metus ante. Praesent porttitor libero quis velit fermentum rhoncus. Cras vitae rhoncus nulla. In efficitur risus sapien, sed viverra neque scelerisque at. Morbi fringilla odio massa. Donec tincidunt magna diam, eget congue leo tristique eget. Cras et sapien nulla.\
-";
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur scelerisque pellentesque risus \
+quis vehicula. Ut sollicitudin aliquet diam, vel lobortis orci porta in. Sed eu nisi egestas odio \
+tincidunt cursus eget ut lorem. Fusce lacinia ex nec lectus rutrum mollis. Donec in ultrices \
+purus. Integer id suscipit magna. Suspendisse congue pulvinar neque id ultrices. Curabitur nec \
+tellus et est pellentesque posuere. Duis ut metus euismod, feugiat arcu vitae, posuere libero. \
+Curabitur nunc urna, rhoncus vitae scelerisque quis, viverra et odio. Suspendisse accumsan \
+pretium mi, nec fringilla metus condimentum id. Duis dignissim quam eu felis lobortis, eget \
+dignissim lectus fermentum. Nunc et massa id orci pellentesque rutrum. Nam imperdiet quam vel \
+ligula efficitur ultricies vel eu tellus. Maecenas luctus risus a erat euismod ultricies. \
+Pellentesque neque mauris, laoreet vitae finibus quis, molestie ut velit. Donec laoreet justo \
+risus. In id mi sed odio placerat interdum ut vitae erat. Fusce quis mollis mauris, sit amet \
+efficitur libero. In efficitur tortor nulla, sollicitudin sodales mi tempor in. In egestas \
+ultrices fermentum. Quisque mattis egestas nulla. Interdum et malesuada fames ac ante ipsum \
+primis in faucibus. Etiam in tempus sapien, in dignissim arcu. Quisque diam nulla, rhoncus et \
+tempor nec, facilisis porta purus. Nulla ut eros laoreet, placerat dolor ut, interdum orci. Sed \
+posuere eleifend mollis. Integer at nunc ex. Vestibulum aliquet risus quis lacinia convallis. \
+Fusce et metus viverra, varius nulla in, rutrum justo. Interdum et malesuada fames ac ante ipsum \
+primis in faucibus. Praesent non est vel lectus suscipit malesuada id ut nisl. Aenean sem ipsum, \
+tincidunt non orci non, varius consectetur purus. Aenean sed mollis turpis, sit amet vestibulum \
+risus. Nunc ut hendrerit urna, sit amet lacinia arcu. Curabitur laoreet a enim et eleifend. Etiam \
+consectetur pharetra massa, sed elementum quam molestie nec. Integer eu justo lectus. Vestibulum \
+sed vulputate sapien. Curabitur pretium luctus orci et interdum. Quisque ligula nisi, varius id \
+sodales id, volutpat et lorem. Pellentesque ex urna, malesuada at ex non, elementum ultricies \
+nulla. Nunc sodales, turpis at maximus bibendum, neque lorem laoreet felis, eget convallis sem \
+mauris ac quam. Mauris non pretium nulla. Nam semper pulvinar convallis. Suspendisse ultricies \
+odio vitae tortor congue, rutrum finibus nisl malesuada. Interdum et malesuada fames ac ante \
+ipsum primis in faucibus. Vestibulum aliquam et lacus sit amet lobortis. In sed ligula quis urna \
+accumsan vehicula sit amet id magna. Cras mollis orci vitae turpis porta, sed gravida nunc \
+aliquam. Phasellus nec facilisis nunc. Suspendisse volutpat leo felis, in iaculis nisi dignissim \
+et. Phasellus at urna purus. Nullam vitae metus ante. Praesent porttitor libero quis velit \
+fermentum rhoncus. Cras vitae rhoncus nulla. In efficitur risus sapien, sed viverra neque \
+scelerisque at. Morbi fringilla odio massa. Donec tincidunt magna diam, eget congue leo tristique \
+eget. Cras et sapien nulla.";
 
