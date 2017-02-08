@@ -297,12 +297,13 @@ impl<'a> Font<'a> {
 
     #[inline]
     pub fn shelf_height(&self, point_size: f32) -> u32 {
+        // Add 2 to account for the border.
         self.head
             .max_glyph_bounds
             .pixel_rect_f(self.head.units_per_em, point_size)
             .to_i()
             .size()
-            .height as u32
+            .height as u32 + 2
     }
 
     #[inline]

@@ -92,7 +92,13 @@ impl<'a> GlyfTable<'a> {
 
     fn for_each_point_in_simple_glyph<F>(&self, mut reader: &[u8], mut callback: F)
                                          -> Result<(), Error> where F: FnMut(&Point) {
+        // Determine how many contours we have.
         let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        if number_of_contours == 0 {
+            return Ok(())
+        }
+
+        // Skip over the rest of the header.
         try!(reader.jump(mem::size_of::<i16>() * 4).map_err(Error::eof));
 
         // Find out how many points we have.

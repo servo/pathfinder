@@ -38,6 +38,11 @@ impl RectPacker {
         // Add a one-pixel border to prevent bleed.
         let alloc_size = *size + Size2D::new(2, 2);
 
+        // If the allocation size is less than our shelf height, we will always fail.
+        if alloc_size.height > self.shelf_height {
+            return Err(())
+        }
+
         let chosen_index_and_rect =
             self.free_rects
                 .iter()
