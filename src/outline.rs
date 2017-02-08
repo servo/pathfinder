@@ -38,7 +38,9 @@ impl OutlineBuilder {
         }
     }
 
-    pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<(), otf::Error> {
+    /// Adds a new glyph to the outline builder. Returns the glyph index, useful for calls to
+    /// `Atlas::pack_glyph()`.
+    pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<u16, otf::Error> {
         let glyph_index = self.descriptors.len() as u16;
 
         let mut point_index = self.vertices.len() as u32;
@@ -75,7 +77,7 @@ impl OutlineBuilder {
             glyph_id: glyph_id,
         });
 
-        Ok(())
+        Ok(glyph_index)
     }
 
     /// Returns the glyph rectangle in units.

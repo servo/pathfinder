@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! OpenType fonts.
+
 use byteorder::{BigEndian, ReadBytesExt};
 use charmap::CodepointRange;
 use glyph_range::GlyphRanges;
@@ -72,6 +74,10 @@ static SFNT_VERSIONS: [u32; 2] = [
     ((b't' as u32) << 24) | ((b'r' as u32) << 16) | ((b'u' as u32) << 8) | (b'e' as u32),
 ];
 
+/// A handle to a font backed by a byte buffer containing the contents of the file (`.ttf`,
+/// `.otf`), etc.
+///
+/// For optimum performance, consider using the `memmap` crate to provide the byte buffer.
 pub struct Font<'a> {
     pub bytes: &'a [u8],
 
@@ -84,12 +90,17 @@ pub struct Font<'a> {
     loca: Option<LocaTable<'a>>,
 }
 
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug)]
 pub struct FontTable<'a> {
     pub bytes: &'a [u8],
 }
 
 impl<'a> Font<'a> {
+    /// Creates a new font from a byte buffer containing the contents of a file (`.ttf`, `.otf`,
+    /// etc.)
+    ///
+    /// Returns the font on success or an error on failure.
     pub fn new<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
         // Check magic number.
         let mut reader = bytes;
@@ -123,7 +134,7 @@ impl<'a> Font<'a> {
         }
     }
 
-    pub fn from_otf<'b>(bytes: &'b [u8], offset: u32) -> Result<Font<'b>, Error> {
+    fn from_otf<'b>(bytes: &'b [u8], offset: u32) -> Result<Font<'b>, Error> {
         let mut reader = bytes;
         try!(reader.jump(offset as usize).map_err(Error::eof));
 
@@ -192,7 +203,7 @@ impl<'a> Font<'a> {
     }
 
     /// https://github.com/kreativekorp/ksfl/wiki/Macintosh-Resource-File-Format
-    pub fn from_dfont<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
+    fn from_dfont<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
         let mut reader = bytes;
 
         // Read the Mac resource file header.
@@ -258,12 +269,18 @@ impl<'a> Font<'a> {
         Font::from_otf(&reader[0..sfnt_size as usize], 0)
     }
 
+    /// Returns the glyph IDs that map to the given ranges of Unicode codepoints.
+    ///
+    /// The returned glyph ranges are in the same order as the codepoints.
     #[inline]
     pub fn glyph_ranges_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
                                              -> Result<GlyphRanges, Error> {
         self.cmap.glyph_ranges_for_codepoint_ranges(codepoint_ranges)
     }
 
+    /// Calls the given callback for each point in the supplied glyph's contour.
+    ///
+    /// This function is the primary method for accessing a glyph's outline.
     #[inline]
     pub fn for_each_point<F>(&self, glyph_id: u16, callback: F) -> Result<(), Error>
                              where F: FnMut(&Point) {
@@ -280,6 +297,7 @@ impl<'a> Font<'a> {
         }
     }
 
+    /// Returns the boundaries of the given glyph in font units.
     #[inline]
     pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBoundsI, Error> {
         match self.glyf {
@@ -295,6 +313,7 @@ impl<'a> Font<'a> {
         }
     }
 
+    /// Returns the minimum shelf height that an atlas containing glyphs from this font will need.
     #[inline]
     pub fn shelf_height(&self, point_size: f32) -> u32 {
         // Add 2 to account for the border.
@@ -306,11 +325,20 @@ impl<'a> Font<'a> {
             .height as u32 + 2
     }
 
+    /// Returns the number of font units per em.
+    ///
+    /// An em is traditionally the width of the lowercase letter "m". A typical point size of a
+    /// font is expressed in number of pixels per em. Thus, in order to convert font units to
+    /// pixels, you can use an expression like `units * font_size / font.units_per_em()`.
     #[inline]
     pub fn units_per_em(&self) -> u16 {
         self.head.units_per_em
     }
 
+    /// Returns the horizontal metrics for the glyph with the given ID.
+    ///
+    /// Horizontal metrics are important for text shaping, as they specify the number of units to
+    /// advance the pen after typesetting a glyph.
     #[inline]
     pub fn metrics_for_glyph(&self, glyph_id: u16) -> Result<HorizontalMetrics, Error> {
         self.hmtx.metrics_for_glyph(&self.hhea, glyph_id)
@@ -351,6 +379,7 @@ pub enum Error {
 }
 
 impl Error {
+    #[doc(hidden)]
     #[inline]
     pub fn eof<T>(_: T) -> Error {
         Error::UnexpectedEof

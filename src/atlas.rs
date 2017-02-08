@@ -8,6 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Atlases, which hold rendered glyphs on the GPU.
+//!
+//! TODO(pcwalton): Make the atlas own the outline builder.
+
 use error::GlError;
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLenum, GLsizei, GLsizeiptr, GLuint, GLvoid};
@@ -18,14 +22,32 @@ use std::mem;
 use std::os::raw::c_void;
 use std::u16;
 
+/// Places glyphs in an atlas.
+///
+/// Atlases are composed of vertically-stacked "shelves" of uniform height. No glyphs may cross
+/// shelves. Therefore, the shelf height must be tall enough to encompass all of the glyphs you
+/// wish to render into the atlas.
+///
+/// Typically, when using Pathfinder, you first create an atlas builder, place all the glyphs into
+/// it, generate the atlas, and then pass that glyph to a rasterizer for rendering on the GPU.
+/// Afterward, you can retrieve the positions of each glyph in the atlas for final composition to
+/// the screen.
 pub struct AtlasBuilder {
-    pub rect_packer: RectPacker,
+    rect_packer: RectPacker,
     image_descriptors: Vec<ImageDescriptor>,
     image_metadata: Vec<ImageMetadata>,
 }
 
 impl AtlasBuilder {
-    /// FIXME(pcwalton): Including the shelf height here may be a bad API.
+    /// Constructs a new atlas builder with the given width in pixels and shelf height.
+    ///
+    /// The width can be any value at least as large as all glyphs in the font. It is recommended
+    /// to keep it fairly large in order to make efficient use of the space: 1024 or 2048 is a good
+    /// choice on modern GPUs.
+    ///
+    /// The shelf height should be the maximum of all minimum shelf heights for all fonts you wish
+    /// to render into the atlas. You can retrive the minimum shelf height for a font with the
+    /// `Font::shelf_height()` method.
     #[inline]
     pub fn new(available_width: u32, shelf_height: u32) -> AtlasBuilder {
         AtlasBuilder {
@@ -35,9 +57,17 @@ impl AtlasBuilder {
         }
     }
 
-    /// Returns an error if there is no space left for the glyph in the atlas.
+    /// Places a glyph rendered in the outline builder into the atlas.
     ///
-    /// FIXME(pcwalton): Support the same glyph drawn at multiple point sizes.
+    /// The outline builder must contain the outlines for the glyph at the given index. Note that
+    /// this is a glyph *index* in the outline builder, not a glyph *ID*. Glyph indices are
+    /// assigned sequentially starting from 0 each time you call `OutlineBuilder::add_glyph()`.
+    ///
+    /// You may not use multiple outline builders in the same 
+    ///
+    /// Returns an error if there is no space left for the glyph.
+    ///
+    /// TODO(pcwalton): Support the same glyph drawn at multiple point sizes.
     pub fn pack_glyph(&mut self,
                       outline_builder: &OutlineBuilder,
                       glyph_index: u32,
@@ -74,6 +104,10 @@ impl AtlasBuilder {
         Ok(())
     }
 
+    /// Creates an atlas by uploading the atlas info to the GPU.
+    ///
+    /// The supplied outline builder must be the same as the outline builder passed to
+    /// `Atlas::pack_glyph()`.
     pub fn create_atlas(&mut self, outline_builder: &OutlineBuilder) -> Result<Atlas, GlError> {
         self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
 

@@ -18,6 +18,12 @@ use glyph_range::GlyphRanges;
 use otf::Font;
 use std::cmp;
 
+/// Shapes the given Unicode text in the given font, returning the proper position for each glyph.
+///
+/// See the description of this module for caveats.
+///
+/// For proper operation, the given `glyph_ranges` must include all the glyphs necessary to render
+/// the string.
 pub fn shape_text(font: &Font, glyph_ranges: &GlyphRanges, string: &str) -> Vec<GlyphPos> {
     string.chars().map(|ch| {
         let glyph_id = glyph_ranges.glyph_for(ch as u32).unwrap_or(0);
@@ -35,9 +41,12 @@ pub fn shape_text(font: &Font, glyph_ranges: &GlyphRanges, string: &str) -> Vec<
     }).collect()
 }
 
+/// The position of a glyph after shaping.
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphPos {
+    /// The glyph ID to emit.
     pub glyph_id: u16,
+    /// The amount to move the cursor forward *after* emitting this glyph.
     pub advance: u16,
 }
 
