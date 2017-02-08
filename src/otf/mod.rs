@@ -58,6 +58,10 @@ const TTCF: u32 = ((b't' as u32) << 24) |
                   ((b'c' as u32) << 8)  |
                    (b'f' as u32);
 
+const OTTO: u32 = ((b'O' as u32) << 24) |
+                  ((b'T' as u32) << 16) |
+                  ((b'T' as u32) << 8)  |
+                   (b'O' as u32);
 const SFNT: u32 = ((b's' as u32) << 24) |
                   ((b'f' as u32) << 16) |
                   ((b'n' as u32) << 8)  |
@@ -111,6 +115,10 @@ impl<'a> Font<'a> {
             }
             magic_number if SFNT_VERSIONS.contains(&magic_number) => Font::from_otf(bytes, 0),
             0x0100 => Font::from_dfont(bytes),
+            OTTO => {
+                // TODO(pcwalton): Support CFF outlines.
+                Err(Error::UnsupportedCffOutlines)
+            }
             _ => Err(Error::UnknownFormat),
         }
     }
@@ -122,7 +130,10 @@ impl<'a> Font<'a> {
         let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Check version.
-        if !SFNT_VERSIONS.contains(&magic_number) {
+        if magic_number == OTTO {
+            // TODO(pcwalton): Support CFF outlines.
+            return Err(Error::UnsupportedCffOutlines)
+        } else if !SFNT_VERSIONS.contains(&magic_number) {
             return Err(Error::UnknownFormat)
         }
 
@@ -316,6 +327,8 @@ pub enum Error {
     UnsupportedVersion,
     /// The file was of a format we don't support.
     UnknownFormat,
+    /// The font has CFF outlines, which we don't yet support.
+    UnsupportedCffOutlines,
     /// The font had a glyph format we don't support.
     UnsupportedGlyphFormat,
     /// We don't support the declared version of the font's character map.

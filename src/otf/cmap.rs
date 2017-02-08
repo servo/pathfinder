@@ -25,6 +25,7 @@ const MICROSOFT_ENCODING_ID_UNICODE_BMP: u16 = 1;
 const MICROSOFT_ENCODING_ID_UNICODE_UCS4: u16 = 10;
 
 const FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES: u16 = 4;
+const FORMAT_SEGMENTED_COVERAGE: u16 = 12;
 
 const MISSING_GLYPH: u16 = 0;
 
@@ -78,10 +79,24 @@ impl<'a> CmapTable<'a> {
 
         // Check the mapping table format.
         let format = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
-        if format != FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES {
-            return Err(Error::UnsupportedCmapFormat)
+        match format {
+            FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES => {
+                self.glyph_ranges_for_codepoint_ranges_segment_mapping_format(cmap_reader,
+                                                                              codepoint_ranges)
+            }
+            FORMAT_SEGMENTED_COVERAGE => {
+                self.glyph_ranges_for_codepoint_ranges_segmented_coverage(cmap_reader,
+                                                                          codepoint_ranges)
+            }
+            _ => Err(Error::UnsupportedCmapFormat),
         }
+    }
 
+    fn glyph_ranges_for_codepoint_ranges_segment_mapping_format(
+            &self,
+            mut cmap_reader: &[u8],
+            codepoint_ranges: &[CodepointRange])
+            -> Result<GlyphRanges, Error> {
         // Read the mapping table header.
         let _length = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
         let _language = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
@@ -234,5 +249,82 @@ impl<'a> CmapTable<'a> {
 
         Ok(glyph_ranges)
     }
+
+    fn glyph_ranges_for_codepoint_ranges_segmented_coverage(&self,
+                                                            mut cmap_reader: &[u8],
+                                                            codepoint_ranges: &[CodepointRange])
+                                                            -> Result<GlyphRanges, Error> {
+        let _reserved = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let _length = try!(cmap_reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let _language = try!(cmap_reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let num_groups = try!(cmap_reader.read_u32::<BigEndian>().map_err(Error::eof));
+
+        // Now perform the lookups.
+        let mut glyph_ranges = GlyphRanges::new();
+        for codepoint_range in codepoint_ranges {
+            let mut codepoint_range = *codepoint_range;
+            while codepoint_range.end >= codepoint_range.start {
+                // Binary search to find the segment.
+                let (mut low, mut high) = (0, num_groups);
+                let mut found_segment = None;
+                while low < high {
+                    let mid = (low + high) / 2;
+
+                    let mut reader = cmap_reader;
+                    try!(reader.jump(mid as usize * mem::size_of::<[u32; 3]>())
+                               .map_err(Error::eof));
+                    let segment = Segment {
+                        start_char_code: try!(reader.read_u32::<BigEndian>().map_err(Error::eof)),
+                        end_char_code: try!(reader.read_u32::<BigEndian>().map_err(Error::eof)),
+                        start_glyph_id: try!(reader.read_u32::<BigEndian>().map_err(Error::eof)),
+                    };
+
+                    if codepoint_range.start < segment.start_char_code {
+                        high = mid
+                    } else if codepoint_range.start > segment.end_char_code {
+                        low = mid + 1
+                    } else {
+                        found_segment = Some(segment);
+                        break
+                    }
+                }
+
+                match found_segment {
+                    None => {
+                        glyph_ranges.ranges.push(MappedGlyphRange {
+                            codepoint_start: codepoint_range.start,
+                            glyphs: GlyphRange {
+                                start: MISSING_GLYPH,
+                                end: MISSING_GLYPH,
+                            },
+                        });
+                        codepoint_range.start += 1
+                    }
+                    Some(segment) => {
+                        let end = cmp::min(codepoint_range.end, segment.end_char_code);
+                        glyph_ranges.ranges.push(MappedGlyphRange {
+                            codepoint_start: codepoint_range.start,
+                            glyphs: GlyphRange {
+                                start: (segment.start_glyph_id + codepoint_range.start -
+                                        segment.start_char_code) as u16,
+                                end: (segment.start_glyph_id + end - segment.start_char_code) as
+                                    u16,
+                            },
+                        });
+                        codepoint_range.start = end + 1
+                    }
+                }
+            }
+        }
+
+        Ok(glyph_ranges)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Segment {
+    start_char_code: u32,
+    end_char_code: u32,
+    start_glyph_id: u32,
 }
 
