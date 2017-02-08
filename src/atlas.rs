@@ -9,14 +9,12 @@
 // except according to those terms.
 
 //! Atlases, which hold rendered glyphs on the GPU.
-//!
-//! TODO(pcwalton): Make the atlas own the outline builder.
 
 use error::GlError;
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLenum, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use gl;
-use outline::OutlineBuilder;
+use outline::Outlines;
 use rect_packer::RectPacker;
 use std::mem;
 use std::os::raw::c_void;
@@ -57,28 +55,25 @@ impl AtlasBuilder {
         }
     }
 
-    /// Places a glyph rendered in the outline builder into the atlas.
+    /// Places a glyph into the atlas.
     ///
-    /// The outline builder must contain the outlines for the glyph at the given index. Note that
-    /// this is a glyph *index* in the outline builder, not a glyph *ID*. Glyph indices are
-    /// assigned sequentially starting from 0 each time you call `OutlineBuilder::add_glyph()`.
-    ///
-    /// You may not use multiple outline builders in the same 
+    /// The glyph is supplied as an *index* into the supplied outline buffer. Note that indices are
+    /// separate from IDs; the indices are returned from each call to
+    /// `OutlineBuilder::add_glyph()`.
     ///
     /// Returns an error if there is no space left for the glyph.
     ///
+    /// TODO(pcwalton): Support multiple outline buffers in the same atlas.
+    ///
     /// TODO(pcwalton): Support the same glyph drawn at multiple point sizes.
-    pub fn pack_glyph(&mut self,
-                      outline_builder: &OutlineBuilder,
-                      glyph_index: u32,
-                      point_size: f32)
+    pub fn pack_glyph(&mut self, outlines: &Outlines, glyph_index: u16, point_size: f32)
                       -> Result<(), ()> {
-        let pixel_bounds_f = outline_builder.glyph_pixel_bounds_f(glyph_index, point_size);
-        let pixel_bounds_i = outline_builder.glyph_pixel_bounds_i(glyph_index, point_size);
+        let subpixel_bounds = outlines.glyph_subpixel_bounds(glyph_index, point_size);
+        let pixel_bounds = outlines.glyph_pixel_bounds(glyph_index, point_size);
 
-        let atlas_origin = try!(self.rect_packer.pack(&pixel_bounds_i.size().cast().unwrap()));
+        let atlas_origin = try!(self.rect_packer.pack(&pixel_bounds.size().cast().unwrap()));
 
-        let glyph_id = outline_builder.glyph_id(glyph_index);
+        let glyph_id = outlines.glyph_id(glyph_index);
         let glyph_index = self.image_descriptors.len() as u32;
 
         while self.image_descriptors.len() < glyph_index as usize + 1 {
@@ -86,8 +81,8 @@ impl AtlasBuilder {
         }
 
         self.image_descriptors[glyph_index as usize] = ImageDescriptor {
-            atlas_x: atlas_origin.x as f32 + pixel_bounds_f.left.fract(),
-            atlas_y: atlas_origin.y as f32 + (1.0 - pixel_bounds_f.top.fract()),
+            atlas_x: atlas_origin.x as f32 + subpixel_bounds.left.fract(),
+            atlas_y: atlas_origin.y as f32 + (1.0 - subpixel_bounds.top.fract()),
             point_size: point_size,
             glyph_index: glyph_index as f32,
         };
@@ -99,44 +94,41 @@ impl AtlasBuilder {
         self.image_metadata[glyph_index as usize] = ImageMetadata {
             glyph_index: glyph_index,
             glyph_id: glyph_id,
+            start_index: outlines.descriptors[glyph_index as usize].start_index(),
+            end_index: match outlines.descriptors.get(glyph_index as usize + 1) {
+                Some(ref descriptor) => descriptor.start_index() as u32,
+                None => outlines.indices_count as u32,
+            },
         };
 
         Ok(())
     }
 
     /// Creates an atlas by uploading the atlas info to the GPU.
-    ///
-    /// The supplied outline builder must be the same as the outline builder passed to
-    /// `Atlas::pack_glyph()`.
-    pub fn create_atlas(&mut self, outline_builder: &OutlineBuilder) -> Result<Atlas, GlError> {
+    pub fn create_atlas(mut self) -> Result<Atlas, GlError> {
         self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
 
         let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);
         for image_metadata in &self.image_metadata {
             let glyph_index = image_metadata.glyph_index;
-
-            let first_index = outline_builder.descriptors[glyph_index as usize]
-                                             .start_index as usize;
-            let last_index = match outline_builder.descriptors.get(glyph_index as usize + 1) {
-                Some(ref descriptor) => descriptor.start_index as usize,
-                None => outline_builder.indices.len(),
-            };
+            let start_index = image_metadata.start_index;
+            let end_index = image_metadata.end_index;
 
             match current_range {
-                Some((current_first, current_last)) if first_index == current_last => {
-                    current_range = Some((current_first, last_index))
+                Some((current_first, current_last)) if start_index == current_last => {
+                    current_range = Some((current_first, end_index))
                 }
                 Some((current_first, current_last)) => {
                     counts.push((current_last - current_first) as GLsizei);
-                    start_indices.push(current_first);
-                    current_range = Some((first_index, last_index))
+                    start_indices.push(current_first as usize);
+                    current_range = Some((start_index, end_index))
                 }
-                None => current_range = Some((first_index, last_index)),
+                None => current_range = Some((start_index, end_index)),
             }
         }
         if let Some((current_first, current_last)) = current_range {
             counts.push((current_last - current_first) as GLsizei);
-            start_indices.push(current_first);
+            start_indices.push(current_first as usize);
         }
 
         // TODO(pcwalton): Try using `glMapBuffer` here.
@@ -150,49 +142,41 @@ impl AtlasBuilder {
             gl::BufferData(gl::UNIFORM_BUFFER, length as GLsizeiptr, ptr, gl::DYNAMIC_DRAW);
 
             Ok(Atlas {
+                images_buffer: images,
+                images: self.image_descriptors,
+
                 start_indices: start_indices,
                 counts: counts,
-                images: images,
 
                 shelf_height: self.rect_packer.shelf_height(),
                 shelf_columns: self.rect_packer.shelf_columns(),
             })
         }
     }
-
-    #[inline]
-    pub fn glyph_index_for(&self, glyph_id: u16) -> Option<u32> {
-        match self.image_metadata.binary_search_by(|metadata| metadata.glyph_id.cmp(&glyph_id)) {
-            Ok(glyph_index) => Some(self.image_metadata[glyph_index].glyph_index),
-            Err(_) => None,
-        }
-    }
-
-    #[inline]
-    pub fn atlas_origin(&self, glyph_index: u32) -> Point2D<f32> {
-        let descriptor = &self.image_descriptors[glyph_index as usize];
-        Point2D::new(descriptor.atlas_x, descriptor.atlas_y)
-    }
 }
 
+/// An atlas holding rendered glyphs on the GPU.
 pub struct Atlas {
+    images_buffer: GLuint,
+    images: Vec<ImageDescriptor>,
+
     start_indices: Vec<usize>,
     counts: Vec<GLsizei>,
-    images: GLuint,
 
-    pub shelf_height: u32,
-    pub shelf_columns: u32,
+    shelf_height: u32,
+    shelf_columns: u32,
 }
 
 impl Drop for Atlas {
     fn drop(&mut self) {
         unsafe {
-            gl::DeleteBuffers(1, &mut self.images);
+            gl::DeleteBuffers(1, &mut self.images_buffer);
         }
     }
 }
 
 impl Atlas {
+    #[doc(hidden)]
     pub unsafe fn draw(&self, primitive: GLenum) {
         debug_assert!(self.counts.len() == self.start_indices.len());
         gl::MultiDrawElements(primitive,
@@ -202,9 +186,31 @@ impl Atlas {
                               self.counts.len() as GLsizei);
     }
 
+    /// Returns the height of each shelf.
     #[inline]
-    pub fn images(&self) -> GLuint {
-        self.images
+    pub fn shelf_height(&self) -> u32 {
+        self.shelf_height
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn shelf_columns(&self) -> u32 {
+        self.shelf_columns
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn images_buffer(&self) -> GLuint {
+        self.images_buffer
+    }
+
+    /// Returns the origin of the glyph with the given index in the atlas.
+    ///
+    /// This is the subpixel origin.
+    #[inline]
+    pub fn atlas_origin(&self, glyph_index: u16) -> Point2D<f32> {
+        let image = &self.images[glyph_index as usize];
+        Point2D::new(image.atlas_x, image.atlas_y)
     }
 }
 
@@ -223,5 +229,7 @@ pub struct ImageDescriptor {
 pub struct ImageMetadata {
     glyph_index: u32,
     glyph_id: u16,
+    start_index: u32,
+    end_index: u32,
 }
 

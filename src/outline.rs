@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Glyph vectors, uploaded in a resolution-independent manner to the GPU.
+
 use error::GlError;
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLsizeiptr, GLuint};
@@ -80,31 +82,7 @@ impl OutlineBuilder {
         Ok(glyph_index)
     }
 
-    /// Returns the glyph rectangle in units.
-    #[inline]
-    pub fn glyph_bounds(&self, glyph_index: u32) -> GlyphBoundsI {
-        self.descriptors[glyph_index as usize].bounds
-    }
-
-    /// Returns the glyph rectangle in fractional pixels.
-    #[inline]
-    pub fn glyph_pixel_bounds_f(&self, glyph_index: u32, point_size: f32) -> GlyphBoundsF {
-        self.descriptors[glyph_index as usize].pixel_rect_f(point_size)
-    }
-
-    /// Returns the glyph rectangle, rounded out to the nearest pixel.
-    #[inline]
-    pub fn glyph_pixel_bounds_i(&self, glyph_index: u32, point_size: f32) -> GlyphBoundsI {
-        self.descriptors[glyph_index as usize].pixel_rect_i(point_size)
-    }
-
-    /// Returns the ID of the glyph with the given index.
-    #[inline]
-    pub fn glyph_id(&self, glyph_index: u32) -> u16 {
-        self.descriptors[glyph_index as usize].glyph_id
-    }
-
-    pub fn create_buffers(&self) -> Result<OutlineBuffers, GlError> {
+    pub fn create_buffers(self) -> Result<Outlines, GlError> {
         // TODO(pcwalton): Try using `glMapBuffer` here. Requires precomputing contour types and
         // counts.
         unsafe {
@@ -132,50 +110,83 @@ impl OutlineBuilder {
                            self.descriptors.as_ptr() as *const GlyphDescriptor as *const c_void,
                            gl::STATIC_DRAW);
 
-            Ok(OutlineBuffers {
-                vertices: vertices,
-                indices: indices,
-                descriptors: descriptors,
+            Ok(Outlines {
+                vertices_buffer: vertices,
+                indices_buffer: indices,
+                descriptors_buffer: descriptors,
+                descriptors: self.descriptors,
+                indices_count: self.indices.len(),
             })
         }
     }
 }
 
-pub struct OutlineBuffers {
-    pub vertices: GLuint,
-    pub indices: GLuint,
-    pub descriptors: GLuint,
+pub struct Outlines {
+    pub vertices_buffer: GLuint,
+    pub indices_buffer: GLuint,
+    pub descriptors_buffer: GLuint,
+    pub descriptors: Vec<GlyphDescriptor>,
+    pub indices_count: usize,
 }
 
-impl Drop for OutlineBuffers {
+impl Drop for Outlines {
     fn drop(&mut self) {
         unsafe {
-            gl::DeleteBuffers(1, &mut self.descriptors);
-            gl::DeleteBuffers(1, &mut self.indices);
-            gl::DeleteBuffers(1, &mut self.vertices);
+            gl::DeleteBuffers(1, &mut self.descriptors_buffer);
+            gl::DeleteBuffers(1, &mut self.indices_buffer);
+            gl::DeleteBuffers(1, &mut self.vertices_buffer);
         }
     }
 }
 
+impl Outlines {
+    /// Returns the glyph rectangle in font units.
+    #[inline]
+    pub fn glyph_bounds(&self, glyph_index: u32) -> GlyphBounds {
+        self.descriptors[glyph_index as usize].bounds
+    }
+
+    /// Returns the glyph rectangle in fractional pixels.
+    #[inline]
+    pub fn glyph_subpixel_bounds(&self, glyph_index: u16, point_size: f32) -> GlyphSubpixelBounds {
+        self.descriptors[glyph_index as usize].subpixel_bounds(point_size)
+    }
+
+    /// Returns the boundaries of the glyph, rounded out to the nearest pixel.
+    #[inline]
+    pub fn glyph_pixel_bounds(&self, glyph_index: u16, point_size: f32) -> GlyphPixelBounds {
+        self.descriptors[glyph_index as usize].subpixel_bounds(point_size).round_out()
+    }
+
+    /// Returns the ID of the glyph with the given index.
+    #[inline]
+    pub fn glyph_id(&self, glyph_index: u16) -> u16 {
+        self.descriptors[glyph_index as usize].glyph_id
+    }
+}
+
+#[doc(hidden)]
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphDescriptor {
-    pub bounds: GlyphBoundsI,
-    pub units_per_em: u32,
-    pub start_point: u32,
-    pub start_index: u32,
-    pub glyph_id: u16,
+    bounds: GlyphBounds,
+    units_per_em: u32,
+    start_point: u32,
+    start_index: u32,
+    glyph_id: u16,
 }
 
 impl GlyphDescriptor {
+    #[doc(hidden)]
     #[inline]
-    fn pixel_rect_f(&self, point_size: f32) -> GlyphBoundsF {
-        self.bounds.pixel_rect_f(self.units_per_em as u16, point_size)
+    pub fn start_index(&self) -> u32 {
+        self.start_index
     }
 
+    #[doc(hidden)]
     #[inline]
-    fn pixel_rect_i(&self, point_size: f32) -> GlyphBoundsI {
-        self.bounds.pixel_rect_f(self.units_per_em as u16, point_size).to_i()
+    fn subpixel_bounds(&self, point_size: f32) -> GlyphSubpixelBounds {
+        self.bounds.subpixel_bounds(self.units_per_em as u16, point_size)
     }
 }
 
@@ -189,18 +200,20 @@ pub struct Vertex {
     pub glyph_index: u16,
 }
 
+/// The boundaries of the glyph in fractional pixels.
 #[derive(Copy, Clone, Debug)]
-pub struct GlyphBoundsF {
+pub struct GlyphSubpixelBounds {
     pub left: f32,
     pub bottom: f32,
     pub right: f32,
     pub top: f32,
 }
 
-impl GlyphBoundsF {
+impl GlyphSubpixelBounds {
+    /// Rounds these bounds out to the nearest pixel.
     #[inline]
-    pub fn to_i(&self) -> GlyphBoundsI {
-        GlyphBoundsI {
+    pub fn round_out(&self) -> GlyphPixelBounds {
+        GlyphPixelBounds {
             left: self.left.floor() as i32,
             bottom: self.bottom.floor() as i32,
             right: self.right.ceil() as i32,
@@ -208,25 +221,43 @@ impl GlyphBoundsF {
         }
     }
 
+    /// Returns the total size of the glyph in fractional pixels.
     #[inline]
     pub fn size(&self) -> Size2D<f32> {
         Size2D::new(self.right - self.left, self.top - self.bottom)
     }
 }
 
+/// The boundaries of the glyph, rounded out to the nearest pixel.
 #[derive(Copy, Clone, Debug)]
-pub struct GlyphBoundsI {
+pub struct GlyphPixelBounds {
     pub left: i32,
     pub bottom: i32,
     pub right: i32,
     pub top: i32,
 }
 
-impl GlyphBoundsI {
+impl GlyphPixelBounds {
+    /// Returns the total size of the glyph in whole pixels.
     #[inline]
-    pub fn pixel_rect_f(&self, units_per_em: u16, point_size: f32) -> GlyphBoundsF {
+    pub fn size(&self) -> Size2D<i32> {
+        Size2D::new(self.right - self.left, self.top - self.bottom)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct GlyphBounds {
+    pub left: i32,
+    pub bottom: i32,
+    pub right: i32,
+    pub top: i32,
+}
+
+impl GlyphBounds {
+    #[inline]
+    pub fn subpixel_bounds(&self, units_per_em: u16, point_size: f32) -> GlyphSubpixelBounds {
         let pixels_per_unit = point_size / units_per_em as f32;
-        GlyphBoundsF {
+        GlyphSubpixelBounds {
             left: self.left as f32 * pixels_per_unit,
             bottom: self.bottom as f32 * pixels_per_unit,
             right: self.right as f32 * pixels_per_unit,
@@ -234,6 +265,7 @@ impl GlyphBoundsI {
         }
     }
 
+    /// Returns the total size of the glyph in font units.
     #[inline]
     pub fn size(&self) -> Size2D<i32> {
         Size2D::new(self.right - self.left, self.top - self.bottom)

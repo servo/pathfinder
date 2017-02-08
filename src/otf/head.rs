@@ -10,7 +10,7 @@
 
 use byteorder::{BigEndian, ReadBytesExt};
 use otf::{Error, FontTable};
-use outline::GlyphBoundsI;
+use outline::GlyphBounds;
 use std::mem;
 use util::Jump;
 
@@ -20,7 +20,7 @@ const MAGIC_NUMBER: u32 = 0x5f0f3cf5;
 pub struct HeadTable {
     pub units_per_em: u16,
     pub index_to_loc_format: i16,
-    pub max_glyph_bounds: GlyphBoundsI,
+    pub max_glyph_bounds: GlyphBounds,
 }
 
 impl HeadTable {
@@ -51,7 +51,7 @@ impl HeadTable {
         let y_min = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
         let x_max = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
         let y_max = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        let max_glyph_bounds = GlyphBoundsI {
+        let max_glyph_bounds = GlyphBounds {
             left: x_min as i32,
             bottom: y_min as i32,
             right: x_max as i32,

@@ -13,7 +13,7 @@ use euclid::Point2D;
 use otf::head::HeadTable;
 use otf::loca::LocaTable;
 use otf::{Error, FontTable};
-use outline::GlyphBoundsI;
+use outline::GlyphBounds;
 use std::mem;
 use std::ops::Mul;
 use util::Jump;
@@ -279,13 +279,13 @@ impl<'a> GlyfTable<'a> {
     }
 
     pub fn glyph_bounds(&self, head_table: &HeadTable, loca_table: &LocaTable, glyph_id: u16)
-                        -> Result<GlyphBoundsI, Error> {
+                        -> Result<GlyphBounds, Error> {
         let mut reader = self.table.bytes;
 
         match try!(loca_table.location_of(head_table, glyph_id)) {
             None => {
                 // No outlines.
-                return Ok(GlyphBoundsI {
+                return Ok(GlyphBounds {
                     left: 0,
                     bottom: 0,
                     right: 0,
@@ -302,7 +302,7 @@ impl<'a> GlyfTable<'a> {
         let y_min = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
         let x_max = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
         let y_max = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        Ok(GlyphBoundsI {
+        Ok(GlyphBounds {
             left: x_min as i32,
             bottom: y_min as i32,
             right: x_max as i32,

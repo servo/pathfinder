@@ -63,12 +63,9 @@ fn main() {
         let mut results = vec![];
         let start = time::precise_time_ns();
         let mut last_time = start;
-        let (mut outline_builder, mut outline_buffers, mut glyph_count);
-        let (mut atlas_builder, mut atlas);
+        let (mut outlines, mut glyph_count, mut atlas);
 
         loop {
-            outline_builder = OutlineBuilder::new();
-            atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
             glyph_count = 0;
             unsafe {
                 let font = Font::new(file.as_slice()).unwrap();
@@ -76,18 +73,20 @@ fn main() {
 
                 let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
                                        .unwrap();
-                for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
+                let mut outline_builder = OutlineBuilder::new();
+                for (_, glyph_id) in glyph_ranges.iter().enumerate() {
                     outline_builder.add_glyph(&font, glyph_id).unwrap();
-                    atlas_builder.pack_glyph(&outline_builder,
-                                             glyph_index as u32,
-                                             point_size as f32).unwrap();
                     glyph_count += 1
                 }
+                outlines = outline_builder.create_buffers().unwrap();
 
+                let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint,
+                                                          shelf_height);
+                for glyph_index in 0..(glyph_count as u16) {
+                    atlas_builder.pack_glyph(&outlines, glyph_index, point_size as f32).unwrap()
+                }
+                atlas = atlas_builder.create_atlas().unwrap();
             }
-
-            outline_buffers = outline_builder.create_buffers().unwrap();
-            atlas = atlas_builder.create_atlas(&outline_builder).unwrap();
 
             let end = time::precise_time_ns();
             results.push((end - last_time) as f64);
@@ -113,9 +112,8 @@ fn main() {
         let mut results = vec![];
         let start_time = time::precise_time_ns();
         loop {
-            let events =
-                rasterizer.draw_atlas(&image, &rect, &atlas, &outline_buffers, &coverage_buffer)
-                          .unwrap();
+            let events = rasterizer.draw_atlas(&image, &rect, &atlas, &outlines, &coverage_buffer)
+                                   .unwrap();
 
             let mut draw_time = 0u64;
             unsafe {

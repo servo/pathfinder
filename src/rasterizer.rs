@@ -20,7 +20,7 @@ use error::{InitError, RasterError};
 use euclid::rect::Rect;
 use gl::types::{GLchar, GLenum, GLint, GLsizei, GLuint, GLvoid};
 use gl;
-use outline::{OutlineBuffers, Vertex};
+use outline::{Outlines, Vertex};
 use std::ascii::AsciiExt;
 use std::env;
 use std::mem;
@@ -148,7 +148,7 @@ impl Rasterizer {
                       image: &Image,
                       rect: &Rect<u32>,
                       atlas: &Atlas,
-                      outline_buffers: &OutlineBuffers,
+                      outlines: &Outlines,
                       coverage_buffer: &CoverageBuffer)
                       -> Result<DrawAtlasProfilingEvents, RasterError> {
         unsafe {
@@ -163,7 +163,7 @@ impl Rasterizer {
             gl::UseProgram(self.draw_program);
 
             // Set up the buffer layout.
-            gl::BindBuffer(gl::ARRAY_BUFFER, outline_buffers.vertices);
+            gl::BindBuffer(gl::ARRAY_BUFFER, outlines.vertices_buffer);
             gl::VertexAttribIPointer(self.draw_position_attribute as GLuint,
                                      2,
                                      gl::SHORT,
@@ -177,10 +177,10 @@ impl Rasterizer {
             gl::EnableVertexAttribArray(self.draw_position_attribute as GLuint);
             gl::EnableVertexAttribArray(self.draw_glyph_index_attribute as GLuint);
 
-            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, outline_buffers.indices);
+            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, outlines.indices_buffer);
 
-            gl::BindBufferBase(gl::UNIFORM_BUFFER, 1, outline_buffers.descriptors);
-            gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, atlas.images());
+            gl::BindBufferBase(gl::UNIFORM_BUFFER, 1, outlines.descriptors_buffer);
+            gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, atlas.images_buffer());
             gl::UniformBlockBinding(self.draw_program, self.draw_glyph_descriptors_uniform, 1);
             gl::UniformBlockBinding(self.draw_program, self.draw_image_descriptors_uniform, 2);
 
@@ -226,11 +226,11 @@ impl Rasterizer {
             (0, Uniform::Image(image)),
             (1, Uniform::Image(coverage_buffer.image())),
             (2, Uniform::UVec4([rect.origin.x, rect.origin.y, rect.max_x(), rect.max_y()])),
-            (3, Uniform::U32(atlas.shelf_height)),
+            (3, Uniform::U32(atlas.shelf_height())),
         ];
 
         let accum_event = try!(self.queue.submit_compute(&self.accum_program,
-                                                         &[atlas.shelf_columns],
+                                                         &[atlas.shelf_columns()],
                                                          &accum_uniforms,
                                                          &[]).map_err(RasterError::ComputeError));
 

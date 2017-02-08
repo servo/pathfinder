@@ -58,22 +58,25 @@ fn main() {
     // FIXME(pcwalton)
     let shelf_height = (point_size * 2.0).ceil() as u32;
 
-    let mut outline_builder = OutlineBuilder::new();
-    let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
 
+    let (outlines, atlas);
     unsafe {
         let font = Font::new(file.as_slice()).unwrap();
         let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
-
         let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
+
+        let mut outline_builder = OutlineBuilder::new();
         for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
             outline_builder.add_glyph(&font, glyph_id).unwrap();
-            atlas_builder.pack_glyph(&outline_builder, glyph_index as u32, point_size).unwrap()
         }
-    }
+        outlines = outline_builder.create_buffers().unwrap();
 
-    let outline_buffers = outline_builder.create_buffers().unwrap();
-    let atlas = atlas_builder.create_atlas(&outline_builder).unwrap();
+        let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
+        for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
+            atlas_builder.pack_glyph(&outlines, glyph_index as u16, point_size).unwrap();
+        }
+        atlas = atlas_builder.create_atlas().unwrap();
+    }
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
     let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
@@ -84,7 +87,7 @@ fn main() {
 
     let rect = Rect::new(Point2D::new(0, 0), atlas_size);
 
-    rasterizer.draw_atlas(&image, &rect, &atlas, &outline_buffers, &coverage_buffer).unwrap();
+    rasterizer.draw_atlas(&image, &rect, &atlas, &outlines, &coverage_buffer).unwrap();
     rasterizer.queue.flush().unwrap();
 
     let draw_context = lord_drawquaad::Context::new();

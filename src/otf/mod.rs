@@ -19,7 +19,7 @@ use otf::head::HeadTable;
 use otf::hhea::HheaTable;
 use otf::hmtx::{HmtxTable, HorizontalMetrics};
 use otf::loca::LocaTable;
-use outline::GlyphBoundsI;
+use outline::GlyphBounds;
 use std::mem;
 use std::u16;
 use util::Jump;
@@ -299,7 +299,7 @@ impl<'a> Font<'a> {
 
     /// Returns the boundaries of the given glyph in font units.
     #[inline]
-    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBoundsI, Error> {
+    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, Error> {
         match self.glyf {
             Some(glyf) => {
                 let loca = match self.loca {
@@ -319,8 +319,8 @@ impl<'a> Font<'a> {
         // Add 2 to account for the border.
         self.head
             .max_glyph_bounds
-            .pixel_rect_f(self.head.units_per_em, point_size)
-            .to_i()
+            .subpixel_bounds(self.head.units_per_em, point_size)
+            .round_out()
             .size()
             .height as u32 + 2
     }
