@@ -81,21 +81,23 @@ fn main() {
     }
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
-    let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
+    let coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
 
-    let image = rasterizer.device
-                          .create_image(Format::R8, buffer::Protection::WriteOnly, &atlas_size)
+    let image = rasterizer.device()
+                          .create_image(Format::R8, buffer::Protection::ReadWrite, &atlas_size)
                           .unwrap();
 
     let rect = Rect::new(Point2D::new(0, 0), atlas_size);
 
     rasterizer.draw_atlas(&image, &rect, &atlas, &outlines, &coverage_buffer).unwrap();
-    rasterizer.queue.flush().unwrap();
+    rasterizer.queue().flush().unwrap();
 
     let draw_context = lord_drawquaad::Context::new();
 
     let mut gl_texture = 0;
     unsafe {
+        gl::MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT | gl::TEXTURE_FETCH_BARRIER_BIT);
+
         gl::GenTextures(1, &mut gl_texture);
         image.bind_to(&ExternalImage::GlTexture(gl_texture)).unwrap();
 

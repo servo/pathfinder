@@ -240,6 +240,7 @@ impl Rasterizer {
             } else {
                 gl::PATCHES
             };
+
             // Now draw the glyph ranges.
             gl::BeginQuery(gl::TIME_ELAPSED, self.draw_query);
             atlas.draw(primitive);
@@ -254,6 +255,7 @@ impl Rasterizer {
             // OpenCL, but I don't know how to do that portably (i.e. on Mac…) Just using
             // `glFlush()` seems to work in practice.
             gl::Flush();
+            gl::MemoryBarrier(gl::ALL_BARRIER_BITS);
         }
 
         let accum_uniforms = [

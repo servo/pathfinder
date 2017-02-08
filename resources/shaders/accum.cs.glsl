@@ -19,13 +19,14 @@
 #extension GL_ARB_explicit_uniform_location : require
 #extension GL_ARB_shader_image_load_store : require
 #extension GL_ARB_shader_storage_buffer_object : require
+#extension GL_ARB_shading_language_420pack : require
 
 layout(local_size_x = 1024) in;
 
-uniform restrict writeonly uimage2DRect uImage;
-uniform sampler2DRect uCoverage;
-uniform uvec4 uAtlasRect;
-uniform uint uAtlasShelfHeight;
+layout(r8, binding = 0) uniform restrict writeonly image2DRect uImage;
+layout(r32f, binding = 1) uniform restrict readonly image2DRect uCoverage;
+layout(location = 2) uniform uvec4 uAtlasRect;
+layout(location = 3) uniform uint uAtlasShelfHeight;
 
 void main() {
     // Determine the boundaries of the column we'll be traversing.
@@ -35,13 +36,15 @@ void main() {
     uint firstRow = shelfIndex * uAtlasShelfHeight;
     uint lastRow = (shelfIndex + 1u) * uAtlasShelfHeight;
 
+    uint atlasHeight = uAtlasRect.w - uAtlasRect.y;
+    if (firstRow >= atlasHeight)
+        return;
+
     // Sweep down the column, accumulating coverage as we go.
     float coverage = 0.0f;
     for (uint row = firstRow; row < lastRow; row++) {
         ivec2 coord = ivec2(column, row);
-        coverage += texelFetch(uCoverage, coord).r;
-
-        uint gray = uint(clamp(coverage, 0.0f, 1.0f) * 255.0f);
-        imageStore(uImage, coord + ivec2(uAtlasRect.xy), uvec4(gray, 255, 255, 255));
+        coverage += imageLoad(uCoverage, coord).r;
+        imageStore(uImage, coord + ivec2(uAtlasRect.xy), vec4(coverage, 0.0, 0.0, 1.0));
     }
 }

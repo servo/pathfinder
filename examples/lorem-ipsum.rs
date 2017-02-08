@@ -17,7 +17,8 @@ use compute_shader::image::{ExternalImage, Format, Image};
 use compute_shader::instance::Instance;
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
-use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
+use glfw::{Action, Context, Key, OpenGlProfileHint, SwapInterval, WindowEvent};
+use glfw::{WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
 use pathfinder::atlas::{Atlas, AtlasBuilder};
 use pathfinder::charmap::{CodepointRanges, GlyphMapping};
@@ -66,6 +67,7 @@ fn main() {
     window.set_scroll_polling(true);
     window.set_size_polling(true);
     window.set_framebuffer_size_polling(true);
+    glfw.set_swap_interval(SwapInterval::Sync(1));
 
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
 
@@ -164,6 +166,7 @@ fn main() {
 
             let mut draw_time = 0u64;
             unsafe {
+                gl::Flush();
                 gl::GetQueryObjectui64v(events.draw, gl::QUERY_RESULT, &mut draw_time);
             }
 
@@ -435,6 +438,8 @@ impl Renderer {
         self.rasterizer.queue().flush().unwrap();
 
         unsafe {
+            gl::MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT | gl::TEXTURE_FETCH_BARRIER_BIT);
+
             gl::Viewport(0,
                          0,
                          device_pixel_size.width as GLint,
@@ -771,7 +776,7 @@ fn create_program(vertex_shader_source: &str, fragment_shader_source: &str) -> G
 
 fn create_image(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Image, GLuint) {
     let compute_image = rasterizer.device().create_image(Format::R8,
-                                                         buffer::Protection::WriteOnly,
+                                                         buffer::Protection::ReadWrite,
                                                          &atlas_size).unwrap();
 
     let mut gl_texture = 0;
