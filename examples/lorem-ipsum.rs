@@ -1,9 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-#![feature(alloc_system)]
-
-extern crate alloc_system;
+extern crate clap;
 extern crate compute_shader;
 extern crate euclid;
 extern crate gl;
@@ -12,9 +10,10 @@ extern crate image;
 extern crate memmap;
 extern crate pathfinder;
 
+use clap::{App, Arg};
 use compute_shader::buffer;
 use compute_shader::image::{ExternalImage, Format, Image};
-use compute_shader::instance::Instance;
+use compute_shader::instance::{Instance, ShadingLanguage};
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use glfw::{Action, Context, Key, OpenGlProfileHint, SwapInterval, WindowEvent};
@@ -28,13 +27,11 @@ use pathfinder::outline::{OutlineBuilder, Outlines};
 use pathfinder::rasterizer::{DrawAtlasProfilingEvents, Rasterizer, RasterizerOptions};
 use pathfinder::shaper;
 use std::char;
-use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::mem;
 use std::os::raw::c_void;
 use std::path::Path;
-use std::process;
 
 const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 640;
@@ -55,6 +52,17 @@ static TEXT_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
 static ATLAS_DUMP_FILENAME: &'static str = "lorem-ipsum-atlas.png";
 
 fn main() {
+    let index_arg = Arg::with_name("index").short("i")
+                                           .long("index")
+                                           .help("Select an index within a font collection")
+                                           .takes_value(true);
+    let font_arg = Arg::with_name("FONT-FILE").help("Select the font file (`.ttf`, `.otf`, etc.)")
+                                              .required(true)
+                                              .index(1);
+    let text_arg = Arg::with_name("TEXT-FILE").help("Select a file containing text to display")
+                                              .index(2);
+    let matches = App::new("lorem-ipsum").arg(index_arg).arg(font_arg).arg(text_arg).get_matches();
+
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
     glfw.window_hint(WindowHint::ContextVersion(3, 3));
     glfw.window_hint(WindowHint::OpenGlForwardCompat(true));
@@ -74,12 +82,8 @@ fn main() {
     let (width, height) = window.get_framebuffer_size();
     let mut device_pixel_size = Size2D::new(width as u32, height as u32);
 
-    let mut args = env::args();
-    args.next();
-    let font_path = args.next().unwrap_or_else(|| usage());
-
     let mut text = "".to_string();
-    match args.next() {
+    match matches.value_of("TEXT-FILE") {
         Some(path) => drop(File::open(path).unwrap().read_to_string(&mut text).unwrap()),
         None => text.push_str(TEXT),
     }
@@ -94,10 +98,15 @@ fn main() {
     chars.sort();
     let codepoint_ranges = CodepointRanges::from_sorted_chars(&chars);
 
-    let file = Mmap::open_path(font_path, Protection::Read).unwrap();
+    let font_index = match matches.value_of("index") {
+        Some(index) => index.parse().unwrap(),
+        None => 0,
+    };
+
+    let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
     let (font, glyph_mapping);
     unsafe {
-        font = Font::new(file.as_slice()).unwrap();
+        font = Font::from_collection_index(file.as_slice(), font_index).unwrap();
         glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges.ranges).unwrap();
     }
 
@@ -270,6 +279,8 @@ struct Renderer {
     fps_gl_texture: GLuint,
 
     query: GLuint,
+
+    shading_language: ShadingLanguage,
 }
 
 impl Renderer {
@@ -378,6 +389,8 @@ impl Renderer {
             gl::GenQueries(1, &mut query);
         }
 
+        let shading_language = instance.shading_language();
+
         Renderer {
             rasterizer: rasterizer,
 
@@ -407,6 +420,8 @@ impl Renderer {
             fps_gl_texture: fps_gl_texture,
 
             query: query,
+
+            shading_language: shading_language,
         }
     }
 
@@ -438,7 +453,10 @@ impl Renderer {
         self.rasterizer.queue().flush().unwrap();
 
         unsafe {
-            gl::MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT | gl::TEXTURE_FETCH_BARRIER_BIT);
+            if self.shading_language == ShadingLanguage::Glsl {
+                gl::MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT |
+                                  gl::TEXTURE_FETCH_BARRIER_BIT);
+            }
 
             gl::Viewport(0,
                          0,
@@ -792,11 +810,6 @@ fn create_image(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Image, GL
     }
 
     (compute_image, gl_texture)
-}
-
-fn usage() -> ! {
-    println!("usage: lorem-ipsum /path/to/font.ttf [/path/to/text.txt]");
-    process::exit(0)
 }
 
 static COMPOSITE_VERTEX_SHADER: &'static str = "\

@@ -1,6 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+extern crate clap;
 extern crate compute_shader;
 extern crate euclid;
 extern crate gl;
@@ -9,9 +10,10 @@ extern crate lord_drawquaad;
 extern crate memmap;
 extern crate pathfinder;
 
+use clap::{App, Arg};
 use compute_shader::buffer;
-use compute_shader::image::{ExternalImage, Format};
-use compute_shader::instance::Instance;
+use compute_shader::image::{Color, ExternalImage, Format};
+use compute_shader::instance::{Instance, ShadingLanguage};
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLint, GLuint};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
@@ -22,7 +24,6 @@ use pathfinder::coverage::CoverageBuffer;
 use pathfinder::outline::OutlineBuilder;
 use pathfinder::otf::Font;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
-use std::env;
 use std::os::raw::c_void;
 
 const DEFAULT_POINT_SIZE: f32 = 24.0;
@@ -30,6 +31,20 @@ const WIDTH: u32 = 512;
 const HEIGHT: u32 = 384;
 
 fn main() {
+    let index_arg = Arg::with_name("index").short("i")
+                                           .long("index")
+                                           .help("Select an index within a font collection")
+                                           .takes_value(true);
+    let font_arg = Arg::with_name("FONT-FILE").help("Select the font file (`.ttf`, `.otf`, etc.)")
+                                              .required(true)
+                                              .index(1);
+    let point_size_arg = Arg::with_name("POINT-SIZE").help("Select the point size")
+                                                     .index(2);
+    let matches = App::new("generate-atlas").arg(index_arg)
+                                            .arg(font_arg)
+                                            .arg(point_size_arg)
+                                            .get_matches();
+
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
     glfw.window_hint(WindowHint::ContextVersion(3, 3));
     glfw.window_hint(WindowHint::OpenGlForwardCompat(true));
@@ -48,22 +63,26 @@ fn main() {
     let rasterizer_options = RasterizerOptions::from_env().unwrap();
     let rasterizer = Rasterizer::new(&instance, device, queue, rasterizer_options).unwrap();
 
-    let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
+    let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
 
-    let point_size = match env::args().nth(2) {
+    let point_size = match matches.value_of("POINT-SIZE") {
+        Some(point_size) => point_size.parse().unwrap(),
         None => DEFAULT_POINT_SIZE,
-        Some(point_size) => point_size.parse().unwrap()
+    };
+
+    let font_index = match matches.value_of("index") {
+        Some(index) => index.parse().unwrap(),
+        None => 0,
     };
 
     // FIXME(pcwalton)
-    let shelf_height = (point_size * 2.0).ceil() as u32;
-
-
     let (outlines, atlas);
     unsafe {
-        let font = Font::new(file.as_slice()).unwrap();
+        let font = Font::from_collection_index(file.as_slice(), font_index).unwrap();
         let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
         let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges).unwrap();
+
+        let shelf_height = font.shelf_height(point_size);
 
         let mut outline_builder = OutlineBuilder::new();
         let mut glyph_count = 0;
@@ -87,6 +106,8 @@ fn main() {
                           .create_image(Format::R8, buffer::Protection::ReadWrite, &atlas_size)
                           .unwrap();
 
+    rasterizer.queue().submit_clear(&image, &Color::UInt(0, 0, 0, 0), &[]).unwrap();
+
     let rect = Rect::new(Point2D::new(0, 0), atlas_size);
 
     rasterizer.draw_atlas(&image, &rect, &atlas, &outlines, &coverage_buffer).unwrap();
@@ -96,7 +117,9 @@ fn main() {
 
     let mut gl_texture = 0;
     unsafe {
-        gl::MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT | gl::TEXTURE_FETCH_BARRIER_BIT);
+        if instance.shading_language() == ShadingLanguage::Glsl {
+            gl::MemoryBarrier(gl::SHADER_IMAGE_ACCESS_BARRIER_BIT | gl::TEXTURE_FETCH_BARRIER_BIT);
+        }
 
         gl::GenTextures(1, &mut gl_texture);
         image.bind_to(&ExternalImage::GlTexture(gl_texture)).unwrap();

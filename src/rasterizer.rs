@@ -43,6 +43,7 @@ static DRAW_FRAGMENT_SHADER: &'static str = include_str!("../resources/shaders/d
 pub struct Rasterizer {
     device: Device,
     queue: Queue,
+    shading_language: ShadingLanguage,
     draw_program: GLuint,
     accum_program: Program,
     draw_vertex_array: GLuint,
@@ -142,7 +143,8 @@ impl Rasterizer {
         }
 
         // FIXME(pcwalton): Don't panic if this fails to compile; just return an error.
-        let accum_source = match instance.shading_language() {
+        let shading_language = instance.shading_language();
+        let accum_source = match shading_language {
             ShadingLanguage::Cl => ACCUM_CL_SHADER,
             ShadingLanguage::Glsl => ACCUM_COMPUTE_SHADER,
         };
@@ -153,6 +155,7 @@ impl Rasterizer {
         Ok(Rasterizer {
             device: device,
             queue: queue,
+            shading_language: shading_language,
             draw_program: draw_program,
             accum_program: accum_program,
             draw_vertex_array: draw_vertex_array,
@@ -255,7 +258,10 @@ impl Rasterizer {
             // OpenCL, but I don't know how to do that portably (i.e. on Mac…) Just using
             // `glFlush()` seems to work in practice.
             gl::Flush();
-            gl::MemoryBarrier(gl::ALL_BARRIER_BITS);
+
+            if self.shading_language == ShadingLanguage::Glsl {
+                gl::MemoryBarrier(gl::ALL_BARRIER_BITS);
+            }
         }
 
         let accum_uniforms = [

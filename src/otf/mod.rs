@@ -96,11 +96,24 @@ pub struct FontTable<'a> {
 }
 
 impl<'a> Font<'a> {
-    /// Creates a new font from a byte buffer containing the contents of a file (`.ttf`, `.otf`,
-    /// etc.)
+    /// Creates a new font from a byte buffer containing the contents of a file or font collection
+    /// (`.ttf`, `.ttc`, `.otf`, etc.)
+    ///
+    /// If this is a `.ttc` or `.dfont` collection, this returns the first font within it. If you
+    /// want to read another one, use the `Font::from_collection_index` API.
     ///
     /// Returns the font on success or an error on failure.
     pub fn new<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
+        Font::from_collection_index(bytes, 0)
+    }
+
+    /// Creates a new font from a single font within a byte buffer containing the contents of a
+    /// file or a font collection (`.ttf`, `.ttc`, `.otf`, etc.)
+    ///
+    /// If this is a `.ttc` or `.dfont` collection, this returns the appropriate font within it.
+    ///
+    /// Returns the font on success or an error on failure.
+    pub fn from_collection_index<'b>(bytes: &'b [u8], index: u32) -> Result<Font<'b>, Error> {
         // Check magic number.
         let mut reader = bytes;
         let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
@@ -116,15 +129,16 @@ impl<'a> Font<'a> {
                 }
 
                 let num_fonts = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
-                if num_fonts == 0 {
-                    return Err(Error::Failed)
+                if index >= num_fonts {
+                    return Err(Error::FontIndexOutOfBounds)
                 }
 
+                try!(reader.jump(index as usize * mem::size_of::<u32>()).map_err(Error::eof));
                 let table_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
                 Font::from_otf(&bytes, table_offset)
             }
             magic_number if SFNT_VERSIONS.contains(&magic_number) => Font::from_otf(bytes, 0),
-            0x0100 => Font::from_dfont(bytes),
+            0x0100 => Font::from_dfont_index(bytes, index),
             OTTO => {
                 // TODO(pcwalton): Support CFF outlines.
                 Err(Error::UnsupportedCffOutlines)
@@ -202,7 +216,7 @@ impl<'a> Font<'a> {
     }
 
     /// https://github.com/kreativekorp/ksfl/wiki/Macintosh-Resource-File-Format
-    fn from_dfont<'b>(bytes: &'b [u8]) -> Result<Font<'b>, Error> {
+    fn from_dfont_index<'b>(bytes: &'b [u8], index: u32) -> Result<Font<'b>, Error> {
         let mut reader = bytes;
 
         // Read the Mac resource file header.
@@ -250,10 +264,14 @@ impl<'a> Font<'a> {
             }
         }
 
+        // Check whether the index is in bounds.
+        if index >= resource_count as u32 + 1 {
+            return Err(Error::FontIndexOutOfBounds)
+        }
+
         // Find the font we're interested in.
-        //
-        // TODO(pcwalton): This only gets the first one. Allow the user of this library to select
-        // others.
+        try!(reader.jump(index as usize * (mem::size_of::<u16>() * 2 + mem::size_of::<u32>() * 2))
+                   .map_err(Error::eof));
         let sfnt_id = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
         let sfnt_name_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
         let sfnt_data_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof)) &
@@ -351,6 +369,8 @@ pub enum Error {
     Failed,
     /// The file ended unexpectedly.
     UnexpectedEof,
+    /// There is no font with this index in this font collection.
+    FontIndexOutOfBounds,
     /// The file declared that it was in a version of the format we don't support.
     UnsupportedVersion,
     /// The file was of a format we don't support.

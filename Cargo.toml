@@ -16,6 +16,7 @@ git = "https://github.com/pcwalton/compute-shader.git"
 
 [dev-dependencies]
 bencher = "0.1"
+clap = "2.20"
 image = "0.12"
 quickcheck = "0.4"
 
