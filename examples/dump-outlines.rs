@@ -17,8 +17,8 @@ fn main() {
     unsafe {
         let font = Font::new(file.as_slice()).unwrap();
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
-        let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
-        for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
+        let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges).unwrap();
+        for (glyph_index, (_, glyph_id)) in glyph_mapping.iter().enumerate() {
             let codepoint = '!' as u32 + glyph_index as u32;
             println!("Glyph {}: codepoint {} '{}':",
                      glyph_id,

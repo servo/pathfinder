@@ -20,9 +20,8 @@ use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
 use pathfinder::atlas::{Atlas, AtlasBuilder};
-use pathfinder::charmap::CodepointRanges;
+use pathfinder::charmap::{CodepointRanges, GlyphMapping};
 use pathfinder::coverage::CoverageBuffer;
-use pathfinder::glyph_range::GlyphRanges;
 use pathfinder::otf::Font;
 use pathfinder::outline::{OutlineBuilder, Outlines};
 use pathfinder::rasterizer::{DrawAtlasProfilingEvents, Rasterizer, RasterizerOptions};
@@ -94,24 +93,24 @@ fn main() {
     let codepoint_ranges = CodepointRanges::from_sorted_chars(&chars);
 
     let file = Mmap::open_path(font_path, Protection::Read).unwrap();
-    let (font, glyph_ranges);
+    let (font, glyph_mapping);
     unsafe {
         font = Font::new(file.as_slice()).unwrap();
-        glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges.ranges).unwrap();
+        glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges.ranges).unwrap();
     }
 
     // Do some basic line breaking.
     let mut glyph_positions = vec![];
     let paragraph_width = (device_pixel_size.width as f32 * font.units_per_em() as f32 /
                            INITIAL_POINT_SIZE) as u32;
-    let space_advance = font.metrics_for_glyph(glyph_ranges.glyph_for(' ' as u32).unwrap())
+    let space_advance = font.metrics_for_glyph(glyph_mapping.glyph_for(' ' as u32).unwrap())
                             .unwrap()
                             .advance_width as u32;
     let line_spacing = font.units_per_em() as u32;
 
     let (mut current_x, mut current_y) = (0, line_spacing);
     for word in text.split_whitespace() {
-        let shaped_glyph_positions = shaper::shape_text(&font, &glyph_ranges, word);
+        let shaped_glyph_positions = shaper::shape_text(&font, &glyph_mapping, word);
         let total_advance: u32 = shaped_glyph_positions.iter().map(|p| p.advance as u32).sum();
         if current_x + total_advance > paragraph_width {
             current_x = 0;
@@ -138,7 +137,7 @@ fn main() {
     let mut outline_builder = OutlineBuilder::new();
     let mut glyph_indices = vec![];
     let mut glyph_count = 0;
-    for glyph_id in glyph_ranges.iter() {
+    for (_, glyph_id) in glyph_mapping.iter() {
         let glyph_index = outline_builder.add_glyph(&font, glyph_id).unwrap();
 
         while glyph_id as usize >= glyph_indices.len() {
@@ -177,7 +176,7 @@ fn main() {
                               &outlines,
                               &device_pixel_size,
                               &glyph_indices,
-                              &glyph_ranges,
+                              &glyph_mapping,
                               draw_time,
                               accum_time,
                               timing,
@@ -597,7 +596,7 @@ impl Renderer {
                 outlines: &Outlines,
                 device_pixel_size: &Size2D<u32>,
                 glyph_indices: &[u16],
-                glyph_ranges: &GlyphRanges,
+                glyph_mapping: &GlyphMapping,
                 draw_time: f64,
                 accum_time: f64,
                 composite_time: f64,
@@ -642,7 +641,7 @@ impl Renderer {
 
         let mut fps_glyphs = vec![];
         let mut current_x = 0;
-        for glyph_pos in &shaper::shape_text(&font, &glyph_ranges, &fps_text) {
+        for glyph_pos in &shaper::shape_text(&font, &glyph_mapping, &fps_text) {
             fps_glyphs.push(GlyphPos {
                 x: current_x,
                 y: 0,

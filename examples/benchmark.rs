@@ -71,10 +71,10 @@ fn main() {
                 let font = Font::new(file.as_slice()).unwrap();
                 let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
 
-                let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
-                                       .unwrap();
+                let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges)
+                                        .unwrap();
                 let mut outline_builder = OutlineBuilder::new();
-                for (_, glyph_id) in glyph_ranges.iter().enumerate() {
+                for (_, glyph_id) in glyph_mapping.iter() {
                     outline_builder.add_glyph(&font, glyph_id).unwrap();
                     glyph_count += 1
                 }

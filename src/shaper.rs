@@ -14,7 +14,7 @@
 //! ligation, or advanced typography features (`GSUB`, `GPOS`, text morphing). Consider HarfBuzz or
 //! the system shaper instead.
 
-use glyph_range::GlyphRanges;
+use charmap::GlyphMapping;
 use otf::Font;
 use std::cmp;
 
@@ -22,11 +22,11 @@ use std::cmp;
 ///
 /// See the description of this module for caveats.
 ///
-/// For proper operation, the given `glyph_ranges` must include all the glyphs necessary to render
+/// For proper operation, the given `glyph_mapping` must include all the glyphs necessary to render
 /// the string.
-pub fn shape_text(font: &Font, glyph_ranges: &GlyphRanges, string: &str) -> Vec<GlyphPos> {
+pub fn shape_text(font: &Font, glyph_mapping: &GlyphMapping, string: &str) -> Vec<GlyphPos> {
     string.chars().map(|ch| {
-        let glyph_id = glyph_ranges.glyph_for(ch as u32).unwrap_or(0);
+        let glyph_id = glyph_mapping.glyph_for(ch as u32).unwrap_or(0);
         let metrics = font.metrics_for_glyph(glyph_id);
 
         let advance = match metrics {

@@ -74,7 +74,7 @@ impl AtlasBuilder {
         let atlas_origin = try!(self.rect_packer.pack(&pixel_bounds.size().cast().unwrap()));
 
         let glyph_id = outlines.glyph_id(glyph_index);
-        let glyph_index = self.image_descriptors.len() as u32;
+        let glyph_index = self.image_descriptors.len() as u16;
 
         while self.image_descriptors.len() < glyph_index as usize + 1 {
             self.image_descriptors.push(ImageDescriptor::default())
@@ -92,12 +92,12 @@ impl AtlasBuilder {
         }
 
         self.image_metadata[glyph_index as usize] = ImageMetadata {
-            glyph_index: glyph_index,
+            glyph_index: glyph_index as u32,
             glyph_id: glyph_id,
-            start_index: outlines.descriptors[glyph_index as usize].start_index(),
-            end_index: match outlines.descriptors.get(glyph_index as usize + 1) {
-                Some(ref descriptor) => descriptor.start_index() as u32,
-                None => outlines.indices_count as u32,
+            start_index: outlines.descriptor(glyph_index).unwrap().start_index(),
+            end_index: match outlines.descriptor(glyph_index + 1) {
+                Some(descriptor) => descriptor.start_index() as u32,
+                None => outlines.indices_count() as u32,
             },
         };
 

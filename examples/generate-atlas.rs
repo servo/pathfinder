@@ -63,17 +63,19 @@ fn main() {
     unsafe {
         let font = Font::new(file.as_slice()).unwrap();
         let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
-        let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges).unwrap();
+        let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges).unwrap();
 
         let mut outline_builder = OutlineBuilder::new();
-        for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
+        let mut glyph_count = 0;
+        for (_, glyph_id) in glyph_mapping.iter() {
             outline_builder.add_glyph(&font, glyph_id).unwrap();
+            glyph_count += 1
         }
         outlines = outline_builder.create_buffers().unwrap();
 
         let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
-        for (glyph_index, glyph_id) in glyph_ranges.iter().enumerate() {
-            atlas_builder.pack_glyph(&outlines, glyph_index as u16, point_size).unwrap();
+        for glyph_index in 0..glyph_count {
+            atlas_builder.pack_glyph(&outlines, glyph_index, point_size).unwrap();
         }
         atlas = atlas_builder.create_atlas().unwrap();
     }

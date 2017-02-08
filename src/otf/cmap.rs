@@ -9,8 +9,7 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use charmap::CodepointRange;
-use glyph_range::{GlyphRange, GlyphRanges, MappedGlyphRange};
+use charmap::{CodepointRange, GlyphMapping, GlyphRange, MappedGlyphRange};
 use otf::{Error, FontTable};
 use std::char;
 use std::cmp;
@@ -41,8 +40,8 @@ impl<'a> CmapTable<'a> {
         }
     }
 
-    pub fn glyph_ranges_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
-                                             -> Result<GlyphRanges, Error> {
+    pub fn glyph_mapping_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
+                                              -> Result<GlyphMapping, Error> {
         let mut cmap_reader = self.table.bytes;
 
         // Check version.
@@ -81,22 +80,22 @@ impl<'a> CmapTable<'a> {
         let format = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
         match format {
             FORMAT_SEGMENT_MAPPING_TO_DELTA_VALUES => {
-                self.glyph_ranges_for_codepoint_ranges_segment_mapping_format(cmap_reader,
-                                                                              codepoint_ranges)
+                self.glyph_mapping_for_codepoint_ranges_segment_mapping_format(cmap_reader,
+                                                                               codepoint_ranges)
             }
             FORMAT_SEGMENTED_COVERAGE => {
-                self.glyph_ranges_for_codepoint_ranges_segmented_coverage(cmap_reader,
-                                                                          codepoint_ranges)
+                self.glyph_mapping_for_codepoint_ranges_segmented_coverage(cmap_reader,
+                                                                           codepoint_ranges)
             }
             _ => Err(Error::UnsupportedCmapFormat),
         }
     }
 
-    fn glyph_ranges_for_codepoint_ranges_segment_mapping_format(
+    fn glyph_mapping_for_codepoint_ranges_segment_mapping_format(
             &self,
             mut cmap_reader: &[u8],
             codepoint_ranges: &[CodepointRange])
-            -> Result<GlyphRanges, Error> {
+            -> Result<GlyphMapping, Error> {
         // Read the mapping table header.
         let _length = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
         let _language = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
@@ -122,12 +121,12 @@ impl<'a> CmapTable<'a> {
         try!(glyph_ids.jump(seg_count as usize * mem::size_of::<u16>()).map_err(Error::eof));
 
         // Now perform the lookups.
-        let mut glyph_ranges = GlyphRanges::new();
+        let mut glyph_mapping = GlyphMapping::new();
         for codepoint_range in codepoint_ranges {
             let mut codepoint_range = *codepoint_range;
             while codepoint_range.end >= codepoint_range.start {
                 if codepoint_range.start > u16::MAX as u32 {
-                    glyph_ranges.ranges.push(MappedGlyphRange {
+                    glyph_mapping.push(MappedGlyphRange {
                         codepoint_start: codepoint_range.start,
                         glyphs: GlyphRange {
                             start: MISSING_GLYPH,
@@ -170,7 +169,7 @@ impl<'a> CmapTable<'a> {
                 let segment_index = match segment_index {
                     Some(segment_index) => segment_index,
                     None => {
-                        glyph_ranges.ranges.push(MappedGlyphRange {
+                        glyph_mapping.push(MappedGlyphRange {
                             codepoint_start: codepoint_range.start,
                             glyphs: GlyphRange {
                                 start: MISSING_GLYPH,
@@ -209,7 +208,7 @@ impl<'a> CmapTable<'a> {
                     // Microsoft's documentation is contradictory as to whether the code offset or
                     // the actual code is added to the ID delta here. In reality it seems to be the
                     // latter.
-                    glyph_ranges.ranges.push(MappedGlyphRange {
+                    glyph_mapping.push(MappedGlyphRange {
                         codepoint_start: start_codepoint_range as u32,
                         glyphs: GlyphRange {
                             start: (start_codepoint_range as i16).wrapping_add(id_delta) as u16,
@@ -226,7 +225,7 @@ impl<'a> CmapTable<'a> {
                                      id_range_offset as usize).map_err(Error::eof));
                     let mut glyph_id = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
                     if glyph_id == 0 {
-                        glyph_ranges.ranges.push(MappedGlyphRange {
+                        glyph_mapping.push(MappedGlyphRange {
                             codepoint_start: start_code as u32 + code_offset as u32,
                             glyphs: GlyphRange {
                                 start: MISSING_GLYPH,
@@ -235,7 +234,7 @@ impl<'a> CmapTable<'a> {
                         })
                     } else {
                         glyph_id = (glyph_id as i16).wrapping_add(id_delta) as u16;
-                        glyph_ranges.ranges.push(MappedGlyphRange {
+                        glyph_mapping.push(MappedGlyphRange {
                             codepoint_start: start_code as u32 + code_offset as u32,
                             glyphs: GlyphRange {
                                 start: glyph_id,
@@ -247,20 +246,20 @@ impl<'a> CmapTable<'a> {
             }
         }
 
-        Ok(glyph_ranges)
+        Ok(glyph_mapping)
     }
 
-    fn glyph_ranges_for_codepoint_ranges_segmented_coverage(&self,
-                                                            mut cmap_reader: &[u8],
-                                                            codepoint_ranges: &[CodepointRange])
-                                                            -> Result<GlyphRanges, Error> {
+    fn glyph_mapping_for_codepoint_ranges_segmented_coverage(&self,
+                                                             mut cmap_reader: &[u8],
+                                                             codepoint_ranges: &[CodepointRange])
+                                                             -> Result<GlyphMapping, Error> {
         let _reserved = try!(cmap_reader.read_u16::<BigEndian>().map_err(Error::eof));
         let _length = try!(cmap_reader.read_u32::<BigEndian>().map_err(Error::eof));
         let _language = try!(cmap_reader.read_u32::<BigEndian>().map_err(Error::eof));
         let num_groups = try!(cmap_reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Now perform the lookups.
-        let mut glyph_ranges = GlyphRanges::new();
+        let mut glyph_mapping = GlyphMapping::new();
         for codepoint_range in codepoint_ranges {
             let mut codepoint_range = *codepoint_range;
             while codepoint_range.end >= codepoint_range.start {
@@ -291,7 +290,7 @@ impl<'a> CmapTable<'a> {
 
                 match found_segment {
                     None => {
-                        glyph_ranges.ranges.push(MappedGlyphRange {
+                        glyph_mapping.push(MappedGlyphRange {
                             codepoint_start: codepoint_range.start,
                             glyphs: GlyphRange {
                                 start: MISSING_GLYPH,
@@ -302,7 +301,7 @@ impl<'a> CmapTable<'a> {
                     }
                     Some(segment) => {
                         let end = cmp::min(codepoint_range.end, segment.end_char_code);
-                        glyph_ranges.ranges.push(MappedGlyphRange {
+                        glyph_mapping.push(MappedGlyphRange {
                             codepoint_start: codepoint_range.start,
                             glyphs: GlyphRange {
                                 start: (segment.start_glyph_id + codepoint_range.start -
@@ -317,7 +316,7 @@ impl<'a> CmapTable<'a> {
             }
         }
 
-        Ok(glyph_ranges)
+        Ok(glyph_mapping)
     }
 }
 

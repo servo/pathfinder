@@ -24,13 +24,15 @@ static DUMMY_VERTEX: Vertex = Vertex {
     glyph_index: 0,
 };
 
+/// Packs up outlines for glyphs into a format that the GPU can process.
 pub struct OutlineBuilder {
-    pub vertices: Vec<Vertex>,
-    pub indices: Vec<u32>,
-    pub descriptors: Vec<GlyphDescriptor>,
+    vertices: Vec<Vertex>,
+    indices: Vec<u32>,
+    descriptors: Vec<GlyphDescriptor>,
 }
 
 impl OutlineBuilder {
+    /// Creates a new empty set of outlines.
     #[inline]
     pub fn new() -> OutlineBuilder {
         OutlineBuilder {
@@ -40,8 +42,8 @@ impl OutlineBuilder {
         }
     }
 
-    /// Adds a new glyph to the outline builder. Returns the glyph index, useful for calls to
-    /// `Atlas::pack_glyph()`.
+    /// Adds a new glyph to the outline builder. Returns the glyph index, which is useful for later
+    /// calls to `Atlas::pack_glyph()`.
     pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<u16, otf::Error> {
         let glyph_index = self.descriptors.len() as u16;
 
@@ -82,6 +84,7 @@ impl OutlineBuilder {
         Ok(glyph_index)
     }
 
+    /// Uploads the outlines to the GPU.
     pub fn create_buffers(self) -> Result<Outlines, GlError> {
         // TODO(pcwalton): Try using `glMapBuffer` here. Requires precomputing contour types and
         // counts.
@@ -121,12 +124,13 @@ impl OutlineBuilder {
     }
 }
 
+/// Resolution-independent glyph vectors uploaded to the GPU.
 pub struct Outlines {
-    pub vertices_buffer: GLuint,
-    pub indices_buffer: GLuint,
-    pub descriptors_buffer: GLuint,
-    pub descriptors: Vec<GlyphDescriptor>,
-    pub indices_count: usize,
+    vertices_buffer: GLuint,
+    indices_buffer: GLuint,
+    descriptors_buffer: GLuint,
+    descriptors: Vec<GlyphDescriptor>,
+    indices_count: usize,
 }
 
 impl Drop for Outlines {
@@ -140,6 +144,36 @@ impl Drop for Outlines {
 }
 
 impl Outlines {
+    #[doc(hidden)]
+    #[inline]
+    pub fn vertices_buffer(&self) -> GLuint {
+        self.vertices_buffer
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn indices_buffer(&self) -> GLuint {
+        self.indices_buffer
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn descriptors_buffer(&self) -> GLuint {
+        self.descriptors_buffer
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn descriptor(&self, glyph_index: u16) -> Option<&GlyphDescriptor> {
+        self.descriptors.get(glyph_index as usize)
+    }
+
+    #[doc(hidden)]
+    #[inline]
+    pub fn indices_count(&self) -> usize {
+        self.indices_count
+    }
+
     /// Returns the glyph rectangle in font units.
     #[inline]
     pub fn glyph_bounds(&self, glyph_index: u32) -> GlyphBounds {
@@ -190,14 +224,13 @@ impl GlyphDescriptor {
     }
 }
 
+#[doc(hidden)]
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Vertex {
-    pub x: i16,
-    pub y: i16,
-    /// TODO(pcwalton): Try omitting this and binary search the glyph descriptors in the vertex
-    /// shader. Might or might not help.
-    pub glyph_index: u16,
+    x: i16,
+    y: i16,
+    glyph_index: u16,
 }
 
 /// The boundaries of the glyph in fractional pixels.
@@ -245,6 +278,7 @@ impl GlyphPixelBounds {
     }
 }
 
+/// The boundaries of a glyph in font units.
 #[derive(Copy, Clone, Debug)]
 pub struct GlyphBounds {
     pub left: i32,
@@ -254,6 +288,8 @@ pub struct GlyphBounds {
 }
 
 impl GlyphBounds {
+    /// Given the units per em of the font and the point size, returns the fractional boundaries of
+    /// this glyph.
     #[inline]
     pub fn subpixel_bounds(&self, units_per_em: u16, point_size: f32) -> GlyphSubpixelBounds {
         let pixels_per_unit = point_size / units_per_em as f32;

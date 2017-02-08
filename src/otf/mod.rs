@@ -11,8 +11,7 @@
 //! OpenType fonts.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use charmap::CodepointRange;
-use glyph_range::GlyphRanges;
+use charmap::{CodepointRange, GlyphMapping};
 use otf::cmap::CmapTable;
 use otf::glyf::{GlyfTable, Point};
 use otf::head::HeadTable;
@@ -273,9 +272,9 @@ impl<'a> Font<'a> {
     ///
     /// The returned glyph ranges are in the same order as the codepoints.
     #[inline]
-    pub fn glyph_ranges_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
-                                             -> Result<GlyphRanges, Error> {
-        self.cmap.glyph_ranges_for_codepoint_ranges(codepoint_ranges)
+    pub fn glyph_mapping_for_codepoint_ranges(&self, codepoint_ranges: &[CodepointRange])
+                                              -> Result<GlyphMapping, Error> {
+        self.cmap.glyph_mapping_for_codepoint_ranges(codepoint_ranges)
     }
 
     /// Calls the given callback for each point in the supplied glyph's contour.

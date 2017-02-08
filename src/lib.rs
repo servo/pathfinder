@@ -8,6 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! A high-performance GPU rasterizer for OpenType fonts.
+//!
+//! Pathfinder rasterizes glyphs from a `.ttf`, `.ttc`, or `.otf` file loaded in memory to an atlas
+//! texture.
+
 #![cfg_attr(test, feature(test))]
 
 #[macro_use]
@@ -28,7 +33,6 @@ pub mod atlas;
 pub mod charmap;
 pub mod coverage;
 pub mod error;
-pub mod glyph_range;
 pub mod otf;
 pub mod outline;
 pub mod rasterizer;
