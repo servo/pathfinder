@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! A GPU rasterizer for glyphs.
+
 use atlas::Atlas;
 use compute_shader::device::Device;
 use compute_shader::image::Image;
@@ -37,9 +39,10 @@ static DRAW_TESS_EVALUATION_SHADER: &'static str =
 static DRAW_GEOMETRY_SHADER: &'static str = include_str!("../resources/shaders/draw.gs.glsl");
 static DRAW_FRAGMENT_SHADER: &'static str = include_str!("../resources/shaders/draw.fs.glsl");
 
+/// A GPU rasterizer for glyphs.
 pub struct Rasterizer {
-    pub device: Device,
-    pub queue: Queue,
+    device: Device,
+    queue: Queue,
     draw_program: GLuint,
     accum_program: Program,
     draw_vertex_array: GLuint,
@@ -52,12 +55,31 @@ pub struct Rasterizer {
     options: RasterizerOptions,
 }
 
+/// Profiling events that can be used to profile Pathfinder's performance.
 pub struct DrawAtlasProfilingEvents {
+    /// An OpenGL timer query object that measures the length of time that Pathfinder took to draw
+    /// the glyph edges.
+    ///
+    /// You can get the results with `gl::GetQueryObjectui64v(..., gl::TIME_ELAPSED, ...)`.
     pub draw: GLuint,
+
+    /// A `compute-shader` profile event that measures the length of time that Pathfinder took to
+    /// perform the accumulation (fill) step.
     pub accum: ProfileEvent,
 }
 
 impl Rasterizer {
+    /// Creates a new rasterizer.
+    ///
+    /// This rasterizer can be used for as many draw calls as you like.
+    ///
+    /// * `instance` is the `compute-shader` instance to use.
+    ///
+    /// * `device` is the compute device to use.
+    ///
+    /// * `queue` is the queue on that compute device to use.
+    ///
+    /// * `options` is a set of options that control the rasterizer's behavior.
     pub fn new(instance: &Instance, device: Device, queue: Queue, options: RasterizerOptions)
                -> Result<Rasterizer, InitError> {
         let (draw_program, draw_position_attribute, draw_glyph_index_attribute);
@@ -144,6 +166,18 @@ impl Rasterizer {
         })
     }
 
+    /// Draws the supplied font atlas into the texture image at the given location.
+    ///
+    /// * `image` is the texture image that this rasterizer will draw into.
+    ///
+    /// * `rect` is the pixel boundaries of the atlas inside that image.
+    ///
+    /// * `atlas` is the glyph atlas to render.
+    ///
+    /// * `outlines` specifies the outlines for the font associated with that atlas.
+    ///
+    /// * `coverage_buffer` is a coverage buffer to use (see `CoverageBuffer`). This can be reused
+    ///   from call to call. It must be at least as large as the atlas.
     pub fn draw_atlas(&self,
                       image: &Image,
                       rect: &Rect<u32>,
@@ -239,6 +273,18 @@ impl Rasterizer {
             accum: accum_event,
         })
     }
+
+    /// Returns the GPU compute device that this rasterizer is using.
+    #[inline]
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
+    /// Returns the GPU compute queue that this rasterizer is using.
+    #[inline]
+    pub fn queue(&self) -> &Queue {
+        &self.queue
+    }
 }
 
 fn compile_gl_shader(shader_type: GLuint, description: &'static str, source: &str)
@@ -282,8 +328,16 @@ fn check_gl_object_status(object: GLuint,
     }
 }
 
+/// Options that control Pathfinder's behavior.
 #[derive(Clone, Copy, Debug)]
 pub struct RasterizerOptions {
+    /// If true, then a geometry shader is used instead of a tessellation shader.
+    ///
+    /// This will probably negatively impact performance. This should be considered a debugging
+    /// feature only.
+    ///
+    /// The default is false. The corresponding environment variable is
+    /// `PATHFINDER_FORCE_GEOMETRY_SHADER`.
     pub force_geometry_shader: bool,
 }
 
@@ -296,6 +350,15 @@ impl Default for RasterizerOptions {
 }
 
 impl RasterizerOptions {
+    /// Takes rasterization options from environment variables.
+    ///
+    /// See the fields of `RasterizerOptions` for info on the settings, including the environment
+    /// variables that control them.
+    ///
+    /// Boolean variables may be set to true by setting the corresponding variable to `"on"`,
+    /// `"yes"`, or `1`; they may be set to false with `"off"`, `"no"`, or `0`.
+    ///
+    /// Environment variables not set cause their associated settings to take on default values.
     pub fn from_env() -> Result<RasterizerOptions, InitError> {
         let force_geometry_shader = match env::var("PATHFINDER_FORCE_GEOMETRY_SHADER") {
             Ok(ref string) if string.eq_ignore_ascii_case("on") ||

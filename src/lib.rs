@@ -36,8 +36,9 @@ pub mod error;
 pub mod otf;
 pub mod outline;
 pub mod rasterizer;
-pub mod rect_packer;
 pub mod shaper;
+
+mod rect_packer;
 mod util;
 
 #[cfg(test)]

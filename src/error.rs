@@ -23,10 +23,23 @@ pub struct GlError(pub GLenum);
 /// An initialization error. This could be an OpenGL error or a shader compilation/link error.
 #[derive(Debug)]
 pub enum InitError {
+    /// An OpenGL error occurred.
     GlError(GlError),
+
+    /// Shader compilation failed.
+    ///
+    /// The first string specifies the type of shader (vertex, fragment, etc.); the second holds
+    /// the error message that the driver returned.
     CompileFailed(&'static str, String),
+
+    /// Shader linking failed.
+    ///
+    /// The string holds the error message that the driver returned.
     LinkFailed(String),
+
+    /// An error occurred setting up GPU compute.
     ComputeError(compute_shader::error::Error),
+
     /// One of the rasterization options had an invalid syntax.
     InvalidSetting,
 }
@@ -34,7 +47,9 @@ pub enum InitError {
 /// A rasterization error. This could be an OpenGL error or a compute error.
 #[derive(Debug)]
 pub enum RasterError {
+    /// An OpenGL error occurred.
     GlError(GlError),
+    /// An error occurred during GPU compute.
     ComputeError(compute_shader::error::Error),
 }
 

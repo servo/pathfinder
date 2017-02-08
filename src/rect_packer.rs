@@ -96,11 +96,6 @@ impl RectPacker {
     }
 
     #[inline]
-    pub fn available_width(&self) -> u32 {
-        self.available_width
-    }
-
-    #[inline]
     pub fn shelf_height(&self) -> u32 {
         self.shelf_height
     }

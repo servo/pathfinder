@@ -11,7 +11,7 @@
 //! Glyph vectors, uploaded in a resolution-independent manner to the GPU.
 
 use error::GlError;
-use euclid::{Point2D, Rect, Size2D};
+use euclid::Size2D;
 use gl::types::{GLsizeiptr, GLuint};
 use gl;
 use otf::{self, Font};

@@ -214,8 +214,9 @@ impl Atlas {
     }
 }
 
-/// Information about each image that we send to the GPU.
+// Information about each image that we send to the GPU.
 #[repr(C)]
+#[doc(hidden)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct ImageDescriptor {
     atlas_x: f32,
@@ -224,7 +225,8 @@ pub struct ImageDescriptor {
     glyph_index: f32,
 }
 
-/// Information about each image that we keep around ourselves.
+// Information about each image that we keep around ourselves.
+#[doc(hidden)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct ImageMetadata {
     glyph_index: u32,

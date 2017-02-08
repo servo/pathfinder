@@ -364,8 +364,8 @@ impl Renderer {
         // FIXME(pcwalton)
         let atlas_size = Size2D::new(ATLAS_SIZE, ATLAS_SIZE);
 
-        let main_coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
-        let fps_coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
+        let main_coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
+        let fps_coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
 
         let (main_compute_image, main_gl_texture) = create_image(&rasterizer, &atlas_size);
         let (fps_compute_image, fps_gl_texture) = create_image(&rasterizer, &atlas_size);
@@ -432,7 +432,7 @@ impl Renderer {
                                                 &atlas,
                                                 outlines,
                                                 &self.main_coverage_buffer).unwrap();
-        self.rasterizer.queue.flush().unwrap();
+        self.rasterizer.queue().flush().unwrap();
 
         unsafe {
             gl::Viewport(0,
@@ -770,9 +770,9 @@ fn create_program(vertex_shader_source: &str, fragment_shader_source: &str) -> G
 }
 
 fn create_image(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Image, GLuint) {
-    let compute_image = rasterizer.device.create_image(Format::R8,
-                                                       buffer::Protection::WriteOnly,
-                                                       &atlas_size).unwrap();
+    let compute_image = rasterizer.device().create_image(Format::R8,
+                                                         buffer::Protection::WriteOnly,
+                                                         &atlas_size).unwrap();
 
     let mut gl_texture = 0;
     unsafe {

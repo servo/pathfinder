@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! An intermediate surface on the GPU used during the rasterization process.
+
 use compute_shader::buffer::Protection;
 use compute_shader::device::Device;
 use compute_shader::image::{ExternalImage, Format, Image};
@@ -16,12 +18,21 @@ use euclid::size::Size2D;
 use gl::types::{GLint, GLuint};
 use gl;
 
+/// An intermediate surface on the GPU used during the rasterization process.
+///
+/// You can reuse this surface from draw operation to draw operation. It only needs to be at least
+/// as large as every atlas you will draw into it.
+///
+/// The GPU memory usage of this buffer is `4 * width * height` bytes.
 pub struct CoverageBuffer {
     image: Image,
     framebuffer: GLuint,
 }
 
 impl CoverageBuffer {
+    /// Creates a new coverage buffer of the given size.
+    ///
+    /// The size must be at least as large as every atlas you will render with it.
     pub fn new(device: &Device, size: &Size2D<u32>) -> Result<CoverageBuffer, InitError> {
         let image = try!(device.create_image(Format::R32F, Protection::ReadWrite, size)
                                .map_err(InitError::ComputeError));
@@ -59,11 +70,13 @@ impl CoverageBuffer {
         })
     }
 
+    #[doc(hidden)]
     #[inline]
     pub fn image(&self) -> &Image {
         &self.image
     }
 
+    #[doc(hidden)]
     #[inline]
     pub fn framebuffer(&self) -> GLuint {
         self.framebuffer

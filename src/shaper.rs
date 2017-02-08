@@ -16,7 +16,6 @@
 
 use charmap::GlyphMapping;
 use otf::Font;
-use std::cmp;
 
 /// Shapes the given Unicode text in the given font, returning the proper position for each glyph.
 ///

@@ -119,7 +119,7 @@ pub struct GlyphMapping {
 impl GlyphRange {
     /// Returns an iterator over every glyph in this range.
     #[inline]
-    pub fn iter(&self) -> GlyphRangeIter {
+    fn iter(&self) -> GlyphRangeIter {
         GlyphRangeIter {
             start: self.start,
             end: self.end,
@@ -192,7 +192,7 @@ impl GlyphMapping {
 }
 
 #[derive(Clone)]
-pub struct GlyphRangeIter {
+struct GlyphRangeIter {
     start: u16,
     end: u16,
 }
