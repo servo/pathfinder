@@ -15,13 +15,13 @@ fn bench_add_glyphs(bencher: &mut Bencher) {
     unsafe {
         let font = Font::new(file.as_slice()).unwrap();
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
-        let glyph_ranges = font.glyph_ranges_for_codepoint_ranges(&codepoint_ranges)
+        let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges)
                                .expect("Couldn't find glyph ranges");
 
         bencher.iter(|| {
             let mut outline_builder = OutlineBuilder::new();
-            for glyph_id in glyph_ranges.iter() {
-                outline_builder.add_glyph(&font, glyph_id).unwrap()
+            for (_, glyph_id) in glyph_mapping.iter() {
+                outline_builder.add_glyph(&font, glyph_id).unwrap();
             }
         });
     }

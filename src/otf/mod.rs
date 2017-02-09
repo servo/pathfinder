@@ -17,6 +17,7 @@ use otf::glyf::{GlyfTable, Point};
 use otf::head::HeadTable;
 use otf::hhea::HheaTable;
 use otf::hmtx::{HmtxTable, HorizontalMetrics};
+use otf::kern::KernTable;
 use otf::loca::LocaTable;
 use outline::GlyphBounds;
 use std::mem;
@@ -28,6 +29,7 @@ mod glyf;
 mod head;
 mod hhea;
 mod hmtx;
+mod kern;
 mod loca;
 
 const CMAP: u32 = ((b'c' as u32) << 24) |
@@ -50,6 +52,10 @@ const HMTX: u32 = ((b'h' as u32) << 24) |
                   ((b'm' as u32) << 16) |
                   ((b't' as u32) << 8)  |
                    (b'x' as u32);
+const KERN: u32 = ((b'k' as u32) << 24) |
+                  ((b'e' as u32) << 16) |
+                  ((b'r' as u32) << 8)  |
+                   (b'n' as u32);
 const LOCA: u32 = ((b'l' as u32) << 24) |
                   ((b'o' as u32) << 16) |
                   ((b'c' as u32) << 8)  |
@@ -87,6 +93,7 @@ pub struct Font<'a> {
 
     glyf: Option<GlyfTable<'a>>,
     loca: Option<LocaTable<'a>>,
+    kern: Option<KernTable<'a>>,
 }
 
 #[doc(hidden)]
@@ -167,6 +174,7 @@ impl<'a> Font<'a> {
         let (mut cmap_table, mut head_table) = (None, None);
         let (mut hhea_table, mut hmtx_table) = (None, None);
         let (mut glyf_table, mut loca_table) = (None, None);
+        let mut kern_table = None;
 
         for _ in 0..num_tables {
             let table_id = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
@@ -184,6 +192,7 @@ impl<'a> Font<'a> {
                 HMTX => &mut hmtx_table,
                 GLYF => &mut glyf_table,
                 LOCA => &mut loca_table,
+                KERN => &mut kern_table,
                 _ => continue,
             };
 
@@ -212,6 +221,7 @@ impl<'a> Font<'a> {
 
             glyf: glyf_table.map(GlyfTable::new),
             loca: loca_table,
+            kern: kern_table.and_then(|table| KernTable::new(table).ok()),
         })
     }
 
@@ -359,6 +369,19 @@ impl<'a> Font<'a> {
     #[inline]
     pub fn metrics_for_glyph(&self, glyph_id: u16) -> Result<HorizontalMetrics, Error> {
         self.hmtx.metrics_for_glyph(&self.hhea, glyph_id)
+    }
+
+    /// Returns the kerning between the given two glyph IDs in font units.
+    ///
+    /// Positive values move glyphs farther apart; negative values move glyphs closer together.
+    ///
+    /// Zero is returned if no kerning is available in the font.
+    #[inline]
+    pub fn kerning_for_glyph_pair(&self, left_glyph_id: u16, right_glyph_id: u16) -> i16 {
+        match self.kern {
+            None => 0,
+            Some(kern) => kern.kerning_for_glyph_pair(left_glyph_id, right_glyph_id).unwrap_or(0),
+        }
     }
 }
 

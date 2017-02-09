@@ -101,9 +101,9 @@ fn main() {
         println!("cpu,{}", time_per_glyph);
 
         let atlas_size = Size2D::new(ATLAS_SIZE, ATLAS_SIZE);
-        let coverage_buffer = CoverageBuffer::new(&rasterizer.device, &atlas_size).unwrap();
+        let coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
 
-        let image = rasterizer.device
+        let image = rasterizer.device()
                               .create_image(Format::R8, buffer::Protection::WriteOnly, &atlas_size)
                               .unwrap();
 

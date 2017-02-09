@@ -24,20 +24,34 @@ use otf::Font;
 /// For proper operation, the given `glyph_mapping` must include all the glyphs necessary to render
 /// the string.
 pub fn shape_text(font: &Font, glyph_mapping: &GlyphMapping, string: &str) -> Vec<GlyphPos> {
-    string.chars().map(|ch| {
-        let glyph_id = glyph_mapping.glyph_for(ch as u32).unwrap_or(0);
-        let metrics = font.metrics_for_glyph(glyph_id);
+    let mut chars = string.chars().peekable();
+    let mut next_glyph_id = None;
+    let mut result = vec![];
 
-        let advance = match metrics {
-            Err(_) => 0,
-            Ok(metrics) => metrics.advance_width,
+    while let Some(ch) = chars.next() {
+        let glyph_id = match next_glyph_id.take() {
+            None => glyph_mapping.glyph_for(ch as u32).unwrap_or(0),
+            Some(next_glyph_id) => next_glyph_id,
         };
 
-        GlyphPos {
+        let mut advance = match font.metrics_for_glyph(glyph_id) {
+            Err(_) => 0,
+            Ok(metrics) => metrics.advance_width as i16,
+        };
+
+        if let Some(&next_char) = chars.peek() {
+            let next_glyph = glyph_mapping.glyph_for(next_char as u32).unwrap_or(0);
+            next_glyph_id = Some(next_glyph);
+            advance += font.kerning_for_glyph_pair(glyph_id, next_glyph)
+        }
+
+        result.push(GlyphPos {
             glyph_id: glyph_id,
             advance: advance,
-        }
-    }).collect()
+        })
+    }
+
+    result
 }
 
 /// The position of a glyph after shaping.
@@ -46,6 +60,6 @@ pub struct GlyphPos {
     /// The glyph ID to emit.
     pub glyph_id: u16,
     /// The amount to move the cursor forward *after* emitting this glyph.
-    pub advance: u16,
+    pub advance: i16,
 }
 
