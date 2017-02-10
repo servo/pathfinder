@@ -20,6 +20,18 @@ features:
 
 * Portability to most GPUs manufactured in the last few years, including integrated GPUs.
 
+## Building
+
+Check out the code and run `cargo build --release`.
+
+Try the demo with `cargo run --release --example lorem-ipsum -- resources/tests/nimbus-sans/NimbusSanL-Regu.ttf`.
+
+As an alternative, debug builds (without the `--release`) build quickly and are typically fast,
+since most of the code runs on GPU.
+
+On Windows, running the demos requires GLFW, which requires CMake to be installed and in your PATH.
+Get it from [cmake.org](https://cmake.org/).
+
 ## Authors
 
 The primary author is Patrick Walton (@pcwalton), with contributions from the Servo development
