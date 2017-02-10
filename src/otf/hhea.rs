@@ -15,6 +15,7 @@ use util::Jump;
 
 #[derive(Clone, Debug)]
 pub struct HheaTable {
+    pub line_gap: i16,
     pub number_of_h_metrics: u16,
 }
 
@@ -29,11 +30,17 @@ impl HheaTable {
             return Err(Error::UnsupportedHheaVersion)
         }
 
+        // Read the height-related metrics.
+        let _ascender = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let _descender = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let line_gap = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+
         // Read the number of `hmtx` entries.
-        try!(reader.jump(mem::size_of::<u16>() * 15).map_err(Error::eof));
+        try!(reader.jump(mem::size_of::<u16>() * 12).map_err(Error::eof));
         let number_of_h_metrics = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
 
         Ok(HheaTable {
+            line_gap: line_gap,
             number_of_h_metrics: number_of_h_metrics,
         })
     }

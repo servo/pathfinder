@@ -117,7 +117,8 @@ fn main() {
     let space_advance = font.metrics_for_glyph(glyph_mapping.glyph_for(' ' as u32).unwrap())
                             .unwrap()
                             .advance_width as u32;
-    let line_spacing = font.units_per_em() as u32;
+    let line_spacing = (font.ascender() as i32 - font.descender() as i32 + font.line_gap() as i32)
+        as u32;
 
     let (mut current_x, mut current_y) = (0, line_spacing);
     for word in text.split_whitespace() {

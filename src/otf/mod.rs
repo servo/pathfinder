@@ -19,6 +19,7 @@ use otf::hhea::HheaTable;
 use otf::hmtx::{HmtxTable, HorizontalMetrics};
 use otf::kern::KernTable;
 use otf::loca::LocaTable;
+use otf::os_2::Os2Table;
 use outline::GlyphBounds;
 use std::mem;
 use std::u16;
@@ -31,6 +32,7 @@ mod hhea;
 mod hmtx;
 mod kern;
 mod loca;
+mod os_2;
 
 const CMAP: u32 = ((b'c' as u32) << 24) |
                   ((b'm' as u32) << 16) |
@@ -60,6 +62,10 @@ const LOCA: u32 = ((b'l' as u32) << 24) |
                   ((b'o' as u32) << 16) |
                   ((b'c' as u32) << 8)  |
                    (b'a' as u32);
+const OS_2: u32 = ((b'O' as u32) << 24) |
+                  ((b'S' as u32) << 16) |
+                  ((b'/' as u32) << 8)  |
+                   (b'2' as u32);
 const TTCF: u32 = ((b't' as u32) << 24) |
                   ((b't' as u32) << 16) |
                   ((b'c' as u32) << 8)  |
@@ -90,6 +96,7 @@ pub struct Font<'a> {
     head: HeadTable,
     hhea: HheaTable,
     hmtx: HmtxTable<'a>,
+    os_2: Os2Table,
 
     glyf: Option<GlyfTable<'a>>,
     loca: Option<LocaTable<'a>>,
@@ -173,8 +180,8 @@ impl<'a> Font<'a> {
 
         let (mut cmap_table, mut head_table) = (None, None);
         let (mut hhea_table, mut hmtx_table) = (None, None);
-        let (mut glyf_table, mut loca_table) = (None, None);
-        let mut kern_table = None;
+        let (mut glyf_table, mut kern_table) = (None, None);
+        let (mut loca_table, mut os_2_table) = (None, None);
 
         for _ in 0..num_tables {
             let table_id = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
@@ -191,8 +198,9 @@ impl<'a> Font<'a> {
                 HHEA => &mut hhea_table,
                 HMTX => &mut hmtx_table,
                 GLYF => &mut glyf_table,
-                LOCA => &mut loca_table,
                 KERN => &mut kern_table,
+                LOCA => &mut loca_table,
+                OS_2 => &mut os_2_table,
                 _ => continue,
             };
 
@@ -218,6 +226,7 @@ impl<'a> Font<'a> {
             head: try!(HeadTable::new(try!(head_table.ok_or(Error::RequiredTableMissing)))),
             hhea: try!(HheaTable::new(try!(hhea_table.ok_or(Error::RequiredTableMissing)))),
             hmtx: HmtxTable::new(try!(hmtx_table.ok_or(Error::RequiredTableMissing))),
+            os_2: try!(Os2Table::new(try!(os_2_table.ok_or(Error::RequiredTableMissing)))),
 
             glyf: glyf_table.map(GlyfTable::new),
             loca: loca_table,
@@ -383,6 +392,33 @@ impl<'a> Font<'a> {
             Some(kern) => kern.kerning_for_glyph_pair(left_glyph_id, right_glyph_id).unwrap_or(0),
         }
     }
+
+    /// Returns the distance from the baseline to the top of the text box in font units.
+    ///
+    /// The following expression computes the baseline-to-baseline height:
+    /// `font.ascender() - font.descender() + font.line_gap()`.
+    #[inline]
+    pub fn ascender(&self) -> i16 {
+        self.os_2.typo_ascender
+    }
+
+    /// Returns the distance from the baseline to the bottom of the text box in font units.
+    ///
+    /// The following expression computes the baseline-to-baseline height:
+    /// `font.ascender() - font.descender() + font.line_gap()`.
+    #[inline]
+    pub fn descender(&self) -> i16 {
+        self.os_2.typo_descender
+    }
+
+    /// Returns the recommended extra gap between lines in font units.
+    ///
+    /// The following expression computes the baseline-to-baseline height:
+    /// `font.ascender() - font.descender() + font.line_gap()`.
+    #[inline]
+    pub fn line_gap(&self) -> i16 {
+        self.os_2.typo_line_gap
+    }
 }
 
 /// Errors that can occur when parsing OpenType fonts.
@@ -412,6 +448,8 @@ pub enum Error {
     UnsupportedHeadVersion,
     /// We don't support the declared version of the font's horizontal metrics.
     UnsupportedHheaVersion,
+    /// We don't support the declared version of the font's OS/2 and Windows table.
+    UnsupportedOs2Version,
     /// A required table is missing.
     RequiredTableMissing,
     /// The glyph is a composite glyph.
