@@ -18,38 +18,24 @@ layout(vertices = 1) out;
 // The vertex ID, passed into this shader.
 flat in int vVertexID[];
 
+// These outputs really should be patch outs, but that causes problems in Apple drivers.
+
 // The starting point of the segment.
-patch out vec2 vpP0;
+out vec2 vpP0[];
 // The control point, if this is a curve. If this is a line, this value must be ignored.
-patch out vec2 vpP1;
+out vec2 vpP1[];
 // The endpoint of this segment.
-patch out vec2 vpP2;
-// x: 1.0 if this segment runs left to right; -1.0 otherwise.
-// y: The tessellation level.
+out vec2 vpP2[];
+// The tessellation level.
 //
-// This is packed together into a single vec2 to work around an Apple Intel driver bug whereby
-// patch outputs beyond the first 4 are forced to 0.
-//
-// And in case you're wondering why the tessellation level is passed along in a patch out instead
-// of having the TES read it directly, that's another Apple bug workaround, this time in the Radeon
-// driver.
-patch out vec2 vpDirectionTessLevel;
+// This is passed along explicitly instead of having the TES read it from `gl_TessLevelInner` in
+// order to work around an Apple bug in the Radeon driver.
+out float vpTessLevel[];
 
 void main() {
     vec2 p0 = gl_in[0].gl_Position.xy;
     vec2 p1 = gl_in[1].gl_Position.xy;
     vec2 p2 = gl_in[2].gl_Position.xy;
-
-    // Compute direction. Flip around if necessary so that p0 is to the left of p2.
-    float direction;
-    if (p0.x < p2.x) {
-        direction = 1.0f;
-    } else {
-        direction = -1.0f;
-        vec2 tmp = p0;
-        p0 = p2;
-        p2 = tmp;
-    }
 
     // Divide into lines.
     float lineCount = 1.0f;
@@ -116,9 +102,9 @@ void main() {
 
     // NB: These per-patch outputs must be assigned in this order, or Apple's compiler will
     // miscompile us.
-    vpP0 = p0;
-    vpP1 = p1;
-    vpP2 = p2;
-    vpDirectionTessLevel = vec2(direction, tessLevel);
+    vpP0[gl_InvocationID] = p0;
+    vpP1[gl_InvocationID] = p1;
+    vpP2[gl_InvocationID] = p2;
+    vpTessLevel[gl_InvocationID] = tessLevel;
 }
 

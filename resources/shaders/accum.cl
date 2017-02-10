@@ -21,9 +21,10 @@ __kernel void accum(__write_only image2d_t gImage,
                     uint4 kAtlasRect,
                     uint kAtlasShelfHeight) {
     // Determine the boundaries of the column we'll be traversing.
-    uint atlasWidth = kAtlasRect.z - kAtlasRect.x;
+    uint atlasWidth = kAtlasRect.z - kAtlasRect.x, atlasHeight = kAtlasRect.w - kAtlasRect.y;
     uint column = get_global_id(0) % atlasWidth, shelfIndex = get_global_id(0) / atlasWidth;
-    uint firstRow = shelfIndex * kAtlasShelfHeight, lastRow = (shelfIndex + 1) * kAtlasShelfHeight;
+    uint firstRow = min(shelfIndex * kAtlasShelfHeight, atlasHeight);
+    uint lastRow = min((shelfIndex + 1) * kAtlasShelfHeight, atlasHeight);
 
     // Sweep down the column, accumulating coverage as we go.
     float coverage = 0.0f;
