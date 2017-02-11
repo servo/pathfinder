@@ -75,7 +75,6 @@ fn main() {
         None => 0,
     };
 
-    // FIXME(pcwalton)
     let (outlines, atlas);
     unsafe {
         let font = Font::from_collection_index(file.as_slice(), font_index).unwrap();
