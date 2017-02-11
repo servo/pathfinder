@@ -110,7 +110,7 @@ fn main() {
     let coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
 
     let image = rasterizer.device()
-                          .create_image(Format::R8, buffer::Protection::ReadWrite, &atlas_size)
+                          .create_image(Format::RGBA8, buffer::Protection::ReadWrite, &atlas_size)
                           .unwrap();
 
     rasterizer.queue().submit_clear(&image, &Color::UInt(0, 0, 0, 0), &[]).unwrap();

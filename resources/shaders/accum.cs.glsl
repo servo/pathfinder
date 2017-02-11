@@ -45,6 +45,6 @@ void main() {
     for (uint row = firstRow; row < lastRow; row++) {
         ivec2 coord = ivec2(column, row);
         coverage += imageLoad(uCoverage, coord).r;
-        imageStore(uImage, coord + ivec2(uAtlasRect.xy), vec4(coverage, 0.0, 0.0, 1.0));
+        imageStore(uImage, coord + ivec2(uAtlasRect.xy), vec4(coverage, coverage, coverage, 1.0));
     }
 }

@@ -33,7 +33,7 @@ __kernel void accum(__write_only image2d_t gImage,
         coverage += read_imagef(gCoverage, SAMPLER, coord).r;
 
         float gray = fabs(coverage);
-        write_imagef(gImage, coord + (int2)kAtlasRect.xy, (float4)(gray, 1.0f, 1.0f, 1.0f));
+        write_imagef(gImage, coord + (int2)kAtlasRect.xy, (float4)(gray, gray, gray, 1.0f));
     }
 }
 
