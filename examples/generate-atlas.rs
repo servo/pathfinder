@@ -24,11 +24,15 @@ use pathfinder::coverage::CoverageBuffer;
 use pathfinder::outline::OutlineBuilder;
 use pathfinder::otf::Font;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
+use std::env;
 use std::os::raw::c_void;
+use std::path::PathBuf;
 
 const DEFAULT_POINT_SIZE: f32 = 24.0;
 const WIDTH: u32 = 512;
 const HEIGHT: u32 = 384;
+
+static SHADER_PATH: &'static str = "resources/shaders/";
 
 fn main() {
     let index_arg = Arg::with_name("index").short("i")
@@ -60,7 +64,11 @@ fn main() {
     let device = instance.open_device().unwrap();
     let queue = device.create_queue().unwrap();
 
-    let rasterizer_options = RasterizerOptions::from_env().unwrap();
+    let mut rasterizer_options = RasterizerOptions::from_env().unwrap();
+    if env::var("PATHFINDER_SHADER_PATH").is_err() {
+        rasterizer_options.shader_path = PathBuf::from(SHADER_PATH)
+    }
+
     let rasterizer = Rasterizer::new(&instance, device, queue, rasterizer_options).unwrap();
 
     let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();

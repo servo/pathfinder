@@ -25,19 +25,20 @@ use gl;
 use outline::{Outlines, Vertex};
 use std::ascii::AsciiExt;
 use std::env;
+use std::fs::File;
+use std::io::Read;
 use std::mem;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
-// TODO(pcwalton): Don't force that these be compiled in.
-static ACCUM_CL_SHADER: &'static str = include_str!("../resources/shaders/accum.cl");
-static ACCUM_COMPUTE_SHADER: &'static str = include_str!("../resources/shaders/accum.cs.glsl");
+static ACCUM_CL_SHADER_FILENAME: &'static str = "accum.cl";
+static ACCUM_COMPUTE_SHADER_FILENAME: &'static str = "accum.cs.glsl";
 
-static DRAW_VERTEX_SHADER: &'static str = include_str!("../resources/shaders/draw.vs.glsl");
-static DRAW_TESS_CONTROL_SHADER: &'static str = include_str!("../resources/shaders/draw.tcs.glsl");
-static DRAW_TESS_EVALUATION_SHADER: &'static str =
-    include_str!("../resources/shaders/draw.tes.glsl");
-static DRAW_GEOMETRY_SHADER: &'static str = include_str!("../resources/shaders/draw.gs.glsl");
-static DRAW_FRAGMENT_SHADER: &'static str = include_str!("../resources/shaders/draw.fs.glsl");
+static DRAW_VERTEX_SHADER_FILENAME: &'static str = "draw.vs.glsl";
+static DRAW_TESS_CONTROL_SHADER_FILENAME: &'static str = "draw.tcs.glsl";
+static DRAW_TESS_EVALUATION_SHADER_FILENAME: &'static str = "draw.tes.glsl";
+static DRAW_GEOMETRY_SHADER_FILENAME: &'static str = "draw.gs.glsl";
+static DRAW_FRAGMENT_SHADER_FILENAME: &'static str = "draw.fs.glsl";
 
 /// A GPU rasterizer for glyphs.
 pub struct Rasterizer {
@@ -92,27 +93,32 @@ impl Rasterizer {
 
             let vertex_shader = try!(compile_gl_shader(gl::VERTEX_SHADER,
                                                        "Vertex shader",
-                                                       DRAW_VERTEX_SHADER));
+                                                       DRAW_VERTEX_SHADER_FILENAME,
+                                                       &options.shader_path));
             gl::AttachShader(draw_program, vertex_shader);
             let fragment_shader = try!(compile_gl_shader(gl::FRAGMENT_SHADER,
                                                          "Fragment shader",
-                                                         DRAW_FRAGMENT_SHADER));
+                                                         DRAW_FRAGMENT_SHADER_FILENAME,
+                                                         &options.shader_path));
             gl::AttachShader(draw_program, fragment_shader);
 
             if options.force_geometry_shader {
                 let geometry_shader = try!(compile_gl_shader(gl::GEOMETRY_SHADER,
                                                              "Geometry shader",
-                                                             DRAW_GEOMETRY_SHADER));
+                                                             DRAW_GEOMETRY_SHADER_FILENAME,
+                                                             &options.shader_path));
                 gl::AttachShader(draw_program, geometry_shader);
             } else {
                 let tess_control_shader = try!(compile_gl_shader(gl::TESS_CONTROL_SHADER,
                                                                  "Tessellation control shader",
-                                                                 DRAW_TESS_CONTROL_SHADER));
+                                                                 DRAW_TESS_CONTROL_SHADER_FILENAME,
+                                                                 &options.shader_path));
                 gl::AttachShader(draw_program, tess_control_shader);
                 let tess_evaluation_shader =
                     try!(compile_gl_shader(gl::TESS_EVALUATION_SHADER,
                                            "Tessellation evaluation shader",
-                                           DRAW_TESS_EVALUATION_SHADER));
+                                           DRAW_TESS_EVALUATION_SHADER_FILENAME,
+                                           &options.shader_path));
                 gl::AttachShader(draw_program, tess_evaluation_shader);
             }
 
@@ -144,12 +150,25 @@ impl Rasterizer {
 
         // FIXME(pcwalton): Don't panic if this fails to compile; just return an error.
         let shading_language = instance.shading_language();
-        let accum_source = match shading_language {
-            ShadingLanguage::Cl => ACCUM_CL_SHADER,
-            ShadingLanguage::Glsl => ACCUM_COMPUTE_SHADER,
+        let accum_filename = match shading_language {
+            ShadingLanguage::Cl => ACCUM_CL_SHADER_FILENAME,
+            ShadingLanguage::Glsl => ACCUM_COMPUTE_SHADER_FILENAME,
         };
 
-        let accum_program = try!(device.create_program(accum_source)
+        let mut accum_path = options.shader_path.to_owned();
+        accum_path.push(accum_filename);
+
+        let mut accum_file = match File::open(&accum_path) {
+            Err(error) => return Err(InitError::ShaderUnreadable(error)),
+            Ok(file) => file,
+        };
+
+        let mut accum_source = String::new();
+        if accum_file.read_to_string(&mut accum_source).is_err() {
+            return Err(InitError::CompileFailed("Compute shader", "Invalid UTF-8".to_string()))
+        }
+
+        let accum_program = try!(device.create_program(&accum_source)
                                        .map_err(InitError::ComputeError));
 
         Ok(Rasterizer {
@@ -296,9 +315,25 @@ impl Rasterizer {
     }
 }
 
-fn compile_gl_shader(shader_type: GLuint, description: &'static str, source: &str)
+fn compile_gl_shader(shader_type: GLuint,
+                     description: &'static str,
+                     filename: &str,
+                     shader_path: &Path)
                      -> Result<GLuint, InitError> {
     unsafe {
+        let mut path = shader_path.to_owned();
+        path.push(filename);
+
+        let mut file = match File::open(&path) {
+            Err(error) => return Err(InitError::ShaderUnreadable(error)),
+            Ok(file) => file,
+        };
+
+        let mut source = String::new();
+        if file.read_to_string(&mut source).is_err() {
+            return Err(InitError::CompileFailed(description, "Invalid UTF-8".to_string()))
+        }
+
         let shader = gl::CreateShader(shader_type);
         gl::ShaderSource(shader, 1, &(source.as_ptr() as *const GLchar), &(source.len() as GLint));
         gl::CompileShader(shader);
@@ -338,8 +373,13 @@ fn check_gl_object_status(object: GLuint,
 }
 
 /// Options that control Pathfinder's behavior.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct RasterizerOptions {
+    /// The path to the shaders.
+    ///
+    /// If not specified, then the current directory is used. This is probably not what you want.
+    /// The corresponding environment variable is `PATHFINDER_SHADER_PATH`.
+    pub shader_path: PathBuf,
     /// If true, then a geometry shader is used instead of a tessellation shader.
     ///
     /// This will probably negatively impact performance. This should be considered a debugging
@@ -353,6 +393,7 @@ pub struct RasterizerOptions {
 impl Default for RasterizerOptions {
     fn default() -> RasterizerOptions {
         RasterizerOptions {
+            shader_path: PathBuf::from("."),
             force_geometry_shader: false,
         }
     }
@@ -369,6 +410,11 @@ impl RasterizerOptions {
     ///
     /// Environment variables not set cause their associated settings to take on default values.
     pub fn from_env() -> Result<RasterizerOptions, InitError> {
+        let shader_path = match env::var("PATHFINDER_SHADER_PATH") {
+            Ok(ref string) => PathBuf::from(string),
+            Err(_) => PathBuf::from("."),
+        };
+
         let force_geometry_shader = match env::var("PATHFINDER_FORCE_GEOMETRY_SHADER") {
             Ok(ref string) if string.eq_ignore_ascii_case("on") ||
                 string.eq_ignore_ascii_case("yes") ||
@@ -381,6 +427,7 @@ impl RasterizerOptions {
         };
 
         Ok(RasterizerOptions {
+            shader_path: shader_path,
             force_geometry_shader: force_geometry_shader,
         })
     }

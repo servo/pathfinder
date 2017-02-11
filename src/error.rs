@@ -12,6 +12,7 @@
 
 use compute_shader;
 use gl::types::GLenum;
+use std::io;
 
 /// An OpenGL error with the given code.
 ///
@@ -25,6 +26,9 @@ pub struct GlError(pub GLenum);
 pub enum InitError {
     /// An OpenGL error occurred.
     GlError(GlError),
+
+    /// A shader could not be loaded.
+    ShaderUnreadable(io::Error),
 
     /// Shader compilation failed.
     ///

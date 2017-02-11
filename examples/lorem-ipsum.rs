@@ -27,11 +27,12 @@ use pathfinder::outline::{OutlineBuilder, Outlines};
 use pathfinder::rasterizer::{DrawAtlasProfilingEvents, Rasterizer, RasterizerOptions};
 use pathfinder::shaper;
 use std::char;
+use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::mem;
 use std::os::raw::c_void;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 640;
@@ -44,6 +45,8 @@ const MAX_POINT_SIZE: f32 = 256.0;
 
 const FPS_DISPLAY_POINT_SIZE: f32 = 24.0;
 const FPS_PADDING: i32 = 6;
+
+static SHADER_PATH: &'static str = "resources/shaders/";
 
 static FPS_BACKGROUND_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.7];
 static FPS_FOREGROUND_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
@@ -290,7 +293,11 @@ impl Renderer {
         let device = instance.open_device().unwrap();
         let queue = device.create_queue().unwrap();
 
-        let rasterizer_options = RasterizerOptions::from_env().unwrap();
+        let mut rasterizer_options = RasterizerOptions::from_env().unwrap();
+        if env::var("PATHFINDER_SHADER_PATH").is_err() {
+            rasterizer_options.shader_path = PathBuf::from(SHADER_PATH)
+        }
+
         let rasterizer = Rasterizer::new(&instance, device, queue, rasterizer_options).unwrap();
 
         let (composite_program, composite_position_attribute, composite_tex_coord_attribute);
