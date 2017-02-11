@@ -32,8 +32,7 @@ use std::u16;
 /// the screen.
 pub struct AtlasBuilder {
     rect_packer: RectPacker,
-    image_descriptors: Vec<ImageDescriptor>,
-    image_metadata: Vec<ImageMetadata>,
+    batch_builders: Vec<BatchBuilder>,
 }
 
 impl AtlasBuilder {
@@ -50,8 +49,7 @@ impl AtlasBuilder {
     pub fn new(available_width: u32, shelf_height: u32) -> AtlasBuilder {
         AtlasBuilder {
             rect_packer: RectPacker::new(available_width, shelf_height),
-            image_descriptors: vec![],
-            image_metadata: vec![],
+            batch_builders: vec![],
         }
     }
 
@@ -61,18 +59,77 @@ impl AtlasBuilder {
     /// separate from IDs; the indices are returned from each call to
     /// `OutlineBuilder::add_glyph()`.
     ///
-    /// Returns an error if there is no space left for the glyph.
-    ///
-    /// TODO(pcwalton): Support multiple outline buffers in the same atlas.
-    ///
-    /// TODO(pcwalton): Support the same glyph drawn at multiple point sizes.
+    /// Returns the subpixel origin of the glyph in the atlas if successful or an error if there is
+    /// no space left for the glyph.
     pub fn pack_glyph(&mut self, outlines: &Outlines, glyph_index: u16, point_size: f32)
-                      -> Result<(), ()> {
-        let subpixel_bounds = outlines.glyph_subpixel_bounds(glyph_index, point_size);
+                      -> Result<Point2D<f32>, ()> {
         let pixel_bounds = outlines.glyph_pixel_bounds(glyph_index, point_size);
-
         let atlas_origin = try!(self.rect_packer.pack(&pixel_bounds.size().cast().unwrap()));
 
+        for batch_builder in &mut self.batch_builders {
+            if let Ok(atlas_origin) = batch_builder.add_glyph(outlines,
+                                                              &atlas_origin,
+                                                              glyph_index,
+                                                              point_size) {
+                return Ok(atlas_origin)
+            }
+        }
+
+        let mut batch_builder = BatchBuilder::new();
+        let atlas_origin = try!(batch_builder.add_glyph(outlines,
+                                                        &atlas_origin,
+                                                        glyph_index,
+                                                        point_size));
+        self.batch_builders.push(batch_builder);
+        Ok(atlas_origin)
+    }
+
+    /// Creates an atlas by uploading the atlas info to the GPU.
+    pub fn create_atlas(mut self) -> Result<Atlas, GlError> {
+        let mut batches = vec![];
+        for batch_builder in self.batch_builders.into_iter() {
+            batches.push(try!(batch_builder.create_batch()))
+        }
+
+        Ok(Atlas {
+            batches: batches,
+            shelf_height: self.rect_packer.shelf_height(),
+            shelf_columns: self.rect_packer.shelf_columns(),
+        })
+    }
+}
+
+struct BatchBuilder {
+    image_descriptors: Vec<ImageDescriptor>,
+    image_metadata: Vec<ImageMetadata>,
+}
+
+impl BatchBuilder {
+    fn new() -> BatchBuilder {
+        BatchBuilder {
+            image_descriptors: vec![],
+            image_metadata: vec![],
+        }
+    }
+
+    fn add_glyph(&mut self,
+                 outlines: &Outlines,
+                 atlas_origin: &Point2D<u32>,
+                 glyph_index: u16,
+                 point_size: f32)
+                 -> Result<Point2D<f32>, ()> {
+        // Check to see if we're already rendering this glyph.
+        if let Some(image_descriptor) = self.image_descriptors.get(glyph_index as usize) {
+            if image_descriptor.point_size == point_size {
+                // Glyph is already present.
+                return Ok(Point2D::new(image_descriptor.atlas_x, image_descriptor.atlas_y))
+            } else {
+                // Glyph is present at a different font size. We need a new batch.
+                return Err(())
+            }
+        }
+
+        let subpixel_bounds = outlines.glyph_subpixel_bounds(glyph_index, point_size);
         let glyph_id = outlines.glyph_id(glyph_index);
         let glyph_index = self.image_descriptors.len() as u16;
 
@@ -80,16 +137,18 @@ impl AtlasBuilder {
             self.image_descriptors.push(ImageDescriptor::default())
         }
 
-        self.image_descriptors[glyph_index as usize] = ImageDescriptor {
-            atlas_x: atlas_origin.x as f32 + subpixel_bounds.left.fract(),
-            atlas_y: atlas_origin.y as f32 + (1.0 - subpixel_bounds.top.fract()),
-            point_size: point_size,
-            glyph_index: glyph_index as f32,
-        };
-
         while self.image_metadata.len() < glyph_index as usize + 1 {
             self.image_metadata.push(ImageMetadata::default())
         }
+
+        let atlas_origin = Point2D::new(atlas_origin.x as f32 + subpixel_bounds.left.fract(),
+                                        atlas_origin.y as f32 + 1.0 - subpixel_bounds.top.fract());
+        self.image_descriptors[glyph_index as usize] = ImageDescriptor {
+            atlas_x: atlas_origin.x,
+            atlas_y: atlas_origin.y,
+            point_size: point_size,
+            glyph_index: glyph_index as f32,
+        };
 
         self.image_metadata[glyph_index as usize] = ImageMetadata {
             glyph_index: glyph_index as u32,
@@ -101,11 +160,11 @@ impl AtlasBuilder {
             },
         };
 
-        Ok(())
+        Ok(atlas_origin)
     }
 
-    /// Creates an atlas by uploading the atlas info to the GPU.
-    pub fn create_atlas(mut self) -> Result<Atlas, GlError> {
+    /// Uploads this batch data to the GPU.
+    fn create_batch(mut self) -> Result<Batch, GlError> {
         self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
 
         let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);
@@ -141,15 +200,10 @@ impl AtlasBuilder {
             gl::BindBuffer(gl::UNIFORM_BUFFER, images);
             gl::BufferData(gl::UNIFORM_BUFFER, length as GLsizeiptr, ptr, gl::DYNAMIC_DRAW);
 
-            Ok(Atlas {
+            Ok(Batch {
                 images_buffer: images,
-                images: self.image_descriptors,
-
                 start_indices: start_indices,
                 counts: counts,
-
-                shelf_height: self.rect_packer.shelf_height(),
-                shelf_columns: self.rect_packer.shelf_columns(),
             })
         }
     }
@@ -157,33 +211,17 @@ impl AtlasBuilder {
 
 /// An atlas holding rendered glyphs on the GPU.
 pub struct Atlas {
-    images_buffer: GLuint,
-    images: Vec<ImageDescriptor>,
-
-    start_indices: Vec<usize>,
-    counts: Vec<GLsizei>,
-
+    batches: Vec<Batch>,
     shelf_height: u32,
     shelf_columns: u32,
-}
-
-impl Drop for Atlas {
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteBuffers(1, &mut self.images_buffer);
-        }
-    }
 }
 
 impl Atlas {
     #[doc(hidden)]
     pub unsafe fn draw(&self, primitive: GLenum) {
-        debug_assert!(self.counts.len() == self.start_indices.len());
-        gl::MultiDrawElements(primitive,
-                              self.counts.as_ptr(),
-                              gl::UNSIGNED_INT,
-                              self.start_indices.as_ptr() as *const *const GLvoid,
-                              self.counts.len() as GLsizei);
+        for batch in &self.batches {
+            batch.draw(primitive)
+        }
     }
 
     /// Returns the height of each shelf.
@@ -197,20 +235,34 @@ impl Atlas {
     pub fn shelf_columns(&self) -> u32 {
         self.shelf_columns
     }
+}
 
-    #[doc(hidden)]
-    #[inline]
-    pub fn images_buffer(&self) -> GLuint {
-        self.images_buffer
+struct Batch {
+    images_buffer: GLuint,
+    start_indices: Vec<usize>,
+    counts: Vec<GLsizei>,
+}
+
+impl Drop for Batch {
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteBuffers(1, &mut self.images_buffer);
+        }
     }
+}
 
-    /// Returns the origin of the glyph with the given index in the atlas.
-    ///
-    /// This is the subpixel origin.
-    #[inline]
-    pub fn atlas_origin(&self, glyph_index: u16) -> Point2D<f32> {
-        let image = &self.images[glyph_index as usize];
-        Point2D::new(image.atlas_x, image.atlas_y)
+impl Batch {
+    unsafe fn draw(&self, primitive: GLenum) {
+        debug_assert!(self.counts.len() == self.start_indices.len());
+
+        // The image descriptors are bound to binding point 2. See `draw.vs.glsl`.
+        gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, self.images_buffer);
+
+        gl::MultiDrawElements(primitive,
+                              self.counts.as_ptr(),
+                              gl::UNSIGNED_INT,
+                              self.start_indices.as_ptr() as *const *const GLvoid,
+                              self.counts.len() as GLsizei);
     }
 }
 

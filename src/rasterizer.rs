@@ -216,8 +216,9 @@ impl Rasterizer {
 
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, outlines.indices_buffer());
 
+            // Don't bind the atlas uniform buffers (binding point 2) here; the batches will do
+            // that on their own.
             gl::BindBufferBase(gl::UNIFORM_BUFFER, 1, outlines.descriptors_buffer());
-            gl::BindBufferBase(gl::UNIFORM_BUFFER, 2, atlas.images_buffer());
             gl::UniformBlockBinding(self.draw_program, self.draw_glyph_descriptors_uniform, 1);
             gl::UniformBlockBinding(self.draw_program, self.draw_image_descriptors_uniform, 2);
 

@@ -83,7 +83,7 @@ fn main() {
                 let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint,
                                                           shelf_height);
                 for glyph_index in 0..(glyph_count as u16) {
-                    atlas_builder.pack_glyph(&outlines, glyph_index, point_size as f32).unwrap()
+                    atlas_builder.pack_glyph(&outlines, glyph_index, point_size as f32).unwrap();
                 }
                 atlas = atlas_builder.create_atlas().unwrap();
             }

@@ -19,7 +19,7 @@ use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use glfw::{Action, Context, Key, OpenGlProfileHint, SwapInterval, WindowEvent};
 use glfw::{WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
-use pathfinder::atlas::{Atlas, AtlasBuilder};
+use pathfinder::atlas::AtlasBuilder;
 use pathfinder::charmap::{CodepointRanges, GlyphMapping};
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::otf::Font;
@@ -161,7 +161,7 @@ fn main() {
     }
 
     let outlines = outline_builder.create_buffers().unwrap();
-    let fps_atlas = renderer.create_fps_atlas(&font, &outlines, glyph_count);
+    let fps_atlas_origins = renderer.create_fps_atlas(&font, &outlines, glyph_count);
 
     while !window.should_close() {
         if dirty {
@@ -185,9 +185,9 @@ fn main() {
             let timing = renderer.get_timing_in_ms();
 
             renderer.draw_fps(&font,
-                              &fps_atlas,
                               &outlines,
                               &device_pixel_size,
+                              &fps_atlas_origins,
                               &glyph_indices,
                               &glyph_mapping,
                               draw_time,
@@ -438,9 +438,9 @@ impl Renderer {
               -> DrawAtlasProfilingEvents {
         let shelf_height = font.shelf_height(point_size);
         let mut atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
-        for glyph_index in 0..(glyph_count as u16) {
+        let atlas_origins: Vec<_> = (0..(glyph_count as u16)).map(|glyph_index| {
             atlas_builder.pack_glyph(&outlines, glyph_index, point_size).unwrap()
-        }
+        }).collect();
 
         let atlas = atlas_builder.create_atlas().unwrap();
 
@@ -468,11 +468,11 @@ impl Renderer {
         }
 
         self.draw_glyphs(&font,
-                         &atlas,
                          outlines,
                          &self.main_composite_vertex_array,
                          glyph_indices,
                          glyph_positions,
+                         &atlas_origins,
                          device_pixel_size,
                          translation,
                          self.main_gl_texture,
@@ -492,11 +492,11 @@ impl Renderer {
 
     fn draw_glyphs(&self,
                    font: &Font,
-                   atlas: &Atlas,
                    outlines: &Outlines,
                    vertex_array: &CompositeVertexArray,
                    glyph_indices: &[u16],
                    glyph_positions: &[GlyphPos],
+                   atlas_origins: &[Point2D<f32>],
                    device_pixel_size: &Size2D<u32>,
                    translation: &Point2D<i32>,
                    texture: GLuint,
@@ -509,10 +509,10 @@ impl Renderer {
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, vertex_array.index_buffer);
 
             let vertex_count = self.upload_quads_for_text(font,
-                                                          atlas,
                                                           outlines,
                                                           glyph_indices,
                                                           glyph_positions,
+                                                          atlas_origins,
                                                           point_size);
 
             gl::ActiveTexture(gl::TEXTURE0);
@@ -548,10 +548,10 @@ impl Renderer {
 
     fn upload_quads_for_text(&self,
                              font: &Font,
-                             atlas: &Atlas,
                              outlines: &Outlines,
                              glyph_indices: &[u16],
                              glyph_positions: &[GlyphPos],
+                             atlas_origins: &[Point2D<f32>],
                              point_size: f32)
                              -> usize {
         let pixels_per_unit = point_size as f32 / font.units_per_em() as f32;
@@ -561,7 +561,7 @@ impl Renderer {
             let glyph_index = glyph_indices[position.glyph_id as usize];
             let glyph_rect_i = outlines.glyph_pixel_bounds(glyph_index, point_size);
 
-            let uv_tl: Point2D<u32> = atlas.atlas_origin(glyph_index).floor().cast().unwrap();
+            let uv_tl: Point2D<u32> = atlas_origins[glyph_index as usize].floor().cast().unwrap();
             let uv_br = uv_tl + glyph_rect_i.size().cast().unwrap();
 
             let bearing_pos = (position.x as f32 * pixels_per_unit).round() as i32;
@@ -596,12 +596,13 @@ impl Renderer {
         indices.len()
     }
 
-    fn create_fps_atlas(&self, font: &Font, outlines: &Outlines, glyph_count: usize) -> Atlas {
+    fn create_fps_atlas(&self, font: &Font, outlines: &Outlines, glyph_count: usize)
+                        -> Vec<Point2D<f32>> {
         let shelf_height = font.shelf_height(FPS_DISPLAY_POINT_SIZE);
         let mut atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
-        for glyph_index in 0..(glyph_count as u16) {
+        let atlas_origins: Vec<_> = (0..(glyph_count as u16)).map(|glyph_index| {
             atlas_builder.pack_glyph(&outlines, glyph_index, FPS_DISPLAY_POINT_SIZE).unwrap()
-        }
+        }).collect();
 
         let atlas = atlas_builder.create_atlas().unwrap();
 
@@ -611,14 +612,14 @@ impl Renderer {
                                    outlines,
                                    &self.fps_coverage_buffer).unwrap();
         
-        atlas
+        atlas_origins
     }
 
     fn draw_fps(&self,
                 font: &Font,
-                atlas: &Atlas,
                 outlines: &Outlines,
                 device_pixel_size: &Size2D<u32>,
+                atlas_origins: &[Point2D<f32>],
                 glyph_indices: &[u16],
                 glyph_mapping: &GlyphMapping,
                 draw_time: f64,
@@ -675,11 +676,11 @@ impl Renderer {
         }
 
         self.draw_glyphs(font,
-                         atlas,
                          outlines,
                          &self.fps_composite_vertex_array,
                          glyph_indices,
                          &fps_glyphs,
+                         atlas_origins,
                          device_pixel_size,
                          &Point2D::new(FPS_PADDING, device_pixel_size.height as i32 - FPS_PADDING),
                          self.fps_gl_texture,
