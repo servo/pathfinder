@@ -55,5 +55,9 @@ pub enum RasterError {
     GlError(GlError),
     /// An error occurred during GPU compute.
     ComputeError(compute_shader::error::Error),
+    /// An destination image with an unsupported format was supplied.
+    ///
+    /// Currently supported formats are R8 and RGBA8.
+    UnsupportedImageFormat,
 }
 

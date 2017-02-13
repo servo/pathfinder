@@ -12,7 +12,7 @@
 
 use atlas::Atlas;
 use compute_shader::device::Device;
-use compute_shader::image::Image;
+use compute_shader::image::{Format, Image};
 use compute_shader::instance::{Instance, ShadingLanguage};
 use compute_shader::profile_event::ProfileEvent;
 use compute_shader::program::Program;
@@ -46,7 +46,8 @@ pub struct Rasterizer {
     queue: Queue,
     shading_language: ShadingLanguage,
     draw_program: GLuint,
-    accum_program: Program,
+    accum_program_r8: Program,
+    accum_program_rgba8: Program,
     draw_vertex_array: GLuint,
     draw_position_attribute: GLint,
     draw_glyph_index_attribute: GLint,
@@ -168,15 +169,21 @@ impl Rasterizer {
             return Err(InitError::CompileFailed("Compute shader", "Invalid UTF-8".to_string()))
         }
 
-        let accum_program = try!(device.create_program(&accum_source)
-                                       .map_err(InitError::ComputeError));
+        let accum_source_r8 = format!("#define IMAGE_FORMAT r8\n{}", accum_source);
+        let accum_source_rgba8 = format!("#define IMAGE_FORMAT rgba8\n{}", accum_source);
+
+        let accum_program_r8 = try!(device.create_program(&accum_source_r8)
+                                          .map_err(InitError::ComputeError));
+        let accum_program_rgba8 = try!(device.create_program(&accum_source_rgba8)
+                                             .map_err(InitError::ComputeError));
 
         Ok(Rasterizer {
             device: device,
             queue: queue,
             shading_language: shading_language,
             draw_program: draw_program,
-            accum_program: accum_program,
+            accum_program_r8: accum_program_r8,
+            accum_program_rgba8: accum_program_rgba8,
             draw_vertex_array: draw_vertex_array,
             draw_position_attribute: draw_position_attribute,
             draw_glyph_index_attribute: draw_glyph_index_attribute,
@@ -291,7 +298,14 @@ impl Rasterizer {
             (3, Uniform::U32(atlas.shelf_height())),
         ];
 
-        let accum_event = try!(self.queue.submit_compute(&self.accum_program,
+        let accum_program = match image.format() {
+            Ok(Format::R8) => &self.accum_program_r8,
+            Ok(Format::RGBA8) => &self.accum_program_rgba8,
+            Ok(_) => return Err(RasterError::UnsupportedImageFormat),
+            Err(err) => return Err(RasterError::ComputeError(err)),
+        };
+
+        let accum_event = try!(self.queue.submit_compute(accum_program,
                                                          &[atlas.shelf_columns()],
                                                          &accum_uniforms,
                                                          &[]).map_err(RasterError::ComputeError));

@@ -23,7 +23,7 @@
 
 layout(local_size_x = 1024) in;
 
-layout(r8, binding = 0) uniform restrict writeonly image2DRect uImage;
+layout(IMAGE_FORMAT, binding = 0) uniform restrict writeonly image2DRect uImage;
 layout(r32f, binding = 1) uniform restrict readonly image2DRect uCoverage;
 layout(location = 2) uniform uvec4 uAtlasRect;
 layout(location = 3) uniform uint uAtlasShelfHeight;
