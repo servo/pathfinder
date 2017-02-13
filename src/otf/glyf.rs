@@ -197,6 +197,17 @@ impl<'a> GlyfTable<'a> {
 
             // We're about to close the path. Emit the initial off curve point if there was one.
             if let Some(initial_off_curve_point) = initial_off_curve_point {
+                if last_point_was_off_curve {
+                    // Another important edge case!
+                    let position = position + (initial_off_curve_point - position) / 2;
+                    callback(&Point {
+                        position: position,
+                        index_in_contour: point_index_in_contour,
+                        on_curve: true,
+                    });
+                    point_index_in_contour += 1
+                }
+
                 callback(&Point {
                     position: initial_off_curve_point,
                     on_curve: false,
