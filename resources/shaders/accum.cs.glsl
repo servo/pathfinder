@@ -14,13 +14,6 @@
 //
 // [1]: https://medium.com/@raphlinus/inside-the-fastest-font-renderer-in-the-world-75ae5270c445
 
-#version 330
-#extension GL_ARB_compute_shader : require
-#extension GL_ARB_explicit_uniform_location : require
-#extension GL_ARB_shader_image_load_store : require
-#extension GL_ARB_shader_storage_buffer_object : require
-#extension GL_ARB_shading_language_420pack : require
-
 layout(local_size_x = 1024) in;
 
 layout(IMAGE_FORMAT, binding = 0) uniform restrict writeonly image2DRect uImage;

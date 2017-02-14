@@ -31,6 +31,8 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::ptr;
 
+static COMPUTE_PREAMBLE_FILENAME: &'static str = "preamble.cs.glsl";
+
 static ACCUM_CL_SHADER_FILENAME: &'static str = "accum.cl";
 static ACCUM_COMPUTE_SHADER_FILENAME: &'static str = "accum.cs.glsl";
 
@@ -158,19 +160,40 @@ impl Rasterizer {
 
         let mut accum_path = options.shader_path.to_owned();
         accum_path.push(accum_filename);
-
         let mut accum_file = match File::open(&accum_path) {
             Err(error) => return Err(InitError::ShaderUnreadable(error)),
             Ok(file) => file,
         };
+
+        let mut compute_preamble_source = String::new();
+        match shading_language {
+            ShadingLanguage::Cl => {}
+            ShadingLanguage::Glsl => {
+                let mut compute_preamble_path = options.shader_path.to_owned();
+                compute_preamble_path.push(COMPUTE_PREAMBLE_FILENAME);
+                let mut compute_preamble_file = match File::open(&compute_preamble_path) {
+                    Err(error) => return Err(InitError::ShaderUnreadable(error)),
+                    Ok(file) => file,
+                };
+
+                if compute_preamble_file.read_to_string(&mut compute_preamble_source).is_err() {
+                    return Err(InitError::CompileFailed("Compute shader",
+                                                        "Invalid UTF-8".to_string()))
+                }
+            }
+        }
 
         let mut accum_source = String::new();
         if accum_file.read_to_string(&mut accum_source).is_err() {
             return Err(InitError::CompileFailed("Compute shader", "Invalid UTF-8".to_string()))
         }
 
-        let accum_source_r8 = format!("#define IMAGE_FORMAT r8\n{}", accum_source);
-        let accum_source_rgba8 = format!("#define IMAGE_FORMAT rgba8\n{}", accum_source);
+        let accum_source_r8 = format!("{}\n#define IMAGE_FORMAT r8\n{}",
+                                      compute_preamble_source,
+                                      accum_source);
+        let accum_source_rgba8 = format!("{}\n#define IMAGE_FORMAT rgba8\n{}",
+                                         compute_preamble_source,
+                                         accum_source);
 
         let accum_program_r8 = try!(device.create_program(&accum_source_r8)
                                           .map_err(InitError::ComputeError));
