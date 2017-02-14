@@ -12,6 +12,7 @@
 
 use byteorder::{BigEndian, ReadBytesExt};
 use charmap::{CodepointRange, GlyphMapping};
+use otf::cff::CffTable;
 use otf::cmap::CmapTable;
 use otf::glyf::{GlyfTable, Point};
 use otf::head::HeadTable;
@@ -25,6 +26,7 @@ use std::mem;
 use std::u16;
 use util::Jump;
 
+mod cff;
 mod cmap;
 mod glyf;
 mod head;
@@ -34,6 +36,10 @@ mod kern;
 mod loca;
 mod os_2;
 
+const CFF:  u32 = ((b'C' as u32) << 24) |
+                  ((b'F' as u32) << 16) |
+                  ((b'F' as u32) << 8)  |
+                   (b' ' as u32);
 const CMAP: u32 = ((b'c' as u32) << 24) |
                   ((b'm' as u32) << 16) |
                   ((b'a' as u32) << 8)  |
@@ -80,9 +86,10 @@ const SFNT: u32 = ((b's' as u32) << 24) |
                   ((b'n' as u32) << 8)  |
                    (b't' as u32);
 
-static SFNT_VERSIONS: [u32; 2] = [
+static SFNT_VERSIONS: [u32; 3] = [
     0x10000,
     ((b't' as u32) << 24) | ((b'r' as u32) << 16) | ((b'u' as u32) << 8) | (b'e' as u32),
+    OTTO,
 ];
 
 /// A handle to a font backed by a byte buffer containing the contents of the file (`.ttf`,
@@ -98,6 +105,7 @@ pub struct Font<'a> {
     hmtx: HmtxTable<'a>,
     os_2: Os2Table,
 
+    cff: Option<CffTable<'a>>,
     glyf: Option<GlyfTable<'a>>,
     loca: Option<LocaTable<'a>>,
     kern: Option<KernTable<'a>>,
@@ -153,10 +161,6 @@ impl<'a> Font<'a> {
             }
             magic_number if SFNT_VERSIONS.contains(&magic_number) => Font::from_otf(bytes, 0),
             0x0100 => Font::from_dfont_index(bytes, index),
-            OTTO => {
-                // TODO(pcwalton): Support CFF outlines.
-                Err(Error::UnsupportedCffOutlines)
-            }
             _ => Err(Error::UnknownFormat),
         }
     }
@@ -168,20 +172,18 @@ impl<'a> Font<'a> {
         let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Check version.
-        if magic_number == OTTO {
-            // TODO(pcwalton): Support CFF outlines.
-            return Err(Error::UnsupportedCffOutlines)
-        } else if !SFNT_VERSIONS.contains(&magic_number) {
+        if !SFNT_VERSIONS.contains(&magic_number) {
             return Err(Error::UnknownFormat)
         }
 
         let num_tables = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
         try!(reader.jump(mem::size_of::<u16>() * 3).map_err(Error::eof));
 
-        let (mut cmap_table, mut head_table) = (None, None);
+        let (mut cff_table, mut cmap_table) = (None, None);
+        let (mut glyf_table, mut head_table) = (None, None);
         let (mut hhea_table, mut hmtx_table) = (None, None);
-        let (mut glyf_table, mut kern_table) = (None, None);
-        let (mut loca_table, mut os_2_table) = (None, None);
+        let (mut kern_table, mut loca_table) = (None, None);
+        let mut os_2_table = None;
 
         for _ in 0..num_tables {
             let table_id = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
@@ -193,6 +195,7 @@ impl<'a> Font<'a> {
             let length = try!(reader.read_u32::<BigEndian>().map_err(Error::eof)) as usize;
 
             let mut slot = match table_id {
+                CFF => &mut cff_table,
                 CMAP => &mut cmap_table,
                 HEAD => &mut head_table,
                 HHEA => &mut hhea_table,
@@ -214,6 +217,11 @@ impl<'a> Font<'a> {
             })
         }
 
+        let cff_table = match cff_table {
+            None => None,
+            Some(cff_table) => Some(try!(CffTable::new(cff_table))),
+        };
+
         let loca_table = match loca_table {
             None => None,
             Some(loca_table) => Some(try!(LocaTable::new(loca_table))),
@@ -228,6 +236,7 @@ impl<'a> Font<'a> {
             hmtx: HmtxTable::new(try!(hmtx_table.ok_or(Error::RequiredTableMissing))),
             os_2: try!(Os2Table::new(try!(os_2_table.ok_or(Error::RequiredTableMissing)))),
 
+            cff: cff_table,
             glyf: glyf_table.map(GlyfTable::new),
             loca: loca_table,
             kern: kern_table.and_then(|table| KernTable::new(table).ok()),
@@ -320,8 +329,8 @@ impl<'a> Font<'a> {
     #[inline]
     pub fn for_each_point<F>(&self, glyph_id: u16, callback: F) -> Result<(), Error>
                              where F: FnMut(&Point) {
-        match self.glyf {
-            Some(glyf) => {
+        match (self.glyf, self.cff) {
+            (Some(glyf), None) => {
                 let loca = match self.loca {
                     Some(ref loca) => loca,
                     None => return Err(Error::RequiredTableMissing),
@@ -329,15 +338,17 @@ impl<'a> Font<'a> {
 
                 glyf.for_each_point(&self.head, loca, glyph_id, callback)
             }
-            None => Ok(()),
+            (None, Some(cff)) => cff.for_each_point(glyph_id, callback),
+            (Some(_), Some(_)) => Err(Error::Failed),
+            (None, None) => Ok(()),
         }
     }
 
     /// Returns the boundaries of the given glyph in font units.
     #[inline]
     pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, Error> {
-        match self.glyf {
-            Some(glyf) => {
+        match (self.glyf, self.cff) {
+            (Some(glyf), None) => {
                 let loca = match self.loca {
                     Some(ref loca) => loca,
                     None => return Err(Error::RequiredTableMissing),
@@ -345,7 +356,9 @@ impl<'a> Font<'a> {
 
                 glyf.glyph_bounds(&self.head, loca, glyph_id)
             }
-            None => Err(Error::RequiredTableMissing),
+            (None, Some(cff)) => cff.glyph_bounds(glyph_id),
+            (Some(_), Some(_)) => Err(Error::Failed),
+            (None, None) => Err(Error::RequiredTableMissing),
         }
     }
 
@@ -434,10 +447,10 @@ pub enum Error {
     UnsupportedVersion,
     /// The file was of a format we don't support.
     UnknownFormat,
-    /// The font has CFF outlines, which we don't yet support.
-    UnsupportedCffOutlines,
     /// The font had a glyph format we don't support.
     UnsupportedGlyphFormat,
+    /// We don't support the declared version of the font's CFF outlines.
+    UnsupportedCffVersion,
     /// We don't support the declared version of the font's character map.
     UnsupportedCmapVersion,
     /// The font character map has an unsupported platform/encoding ID.
@@ -452,10 +465,16 @@ pub enum Error {
     UnsupportedOs2Version,
     /// A required table is missing.
     RequiredTableMissing,
-    /// The glyph is a composite glyph.
-    ///
-    /// TODO(pcwalton): Support these.
-    CompositeGlyph,
+    /// An integer in a CFF DICT was not found.
+    CffIntegerNotFound,
+    /// The CFF Top DICT was not found.
+    CffTopDictNotFound,
+    /// A CFF `Offset` value was formatted incorrectly.
+    CffBadOffset,
+    /// The CFF evaluation stack overflowed.
+    CffStackOverflow,
+    /// An unimplemented CFF CharString operator was encountered.
+    CffUnimplementedOperator,
 }
 
 impl Error {

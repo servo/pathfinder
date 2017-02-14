@@ -279,7 +279,7 @@ impl GlyphPixelBounds {
 }
 
 /// The boundaries of a glyph in font units.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Default, Debug)]
 pub struct GlyphBounds {
     pub left: i32,
     pub bottom: i32,
