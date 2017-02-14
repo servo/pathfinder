@@ -25,6 +25,8 @@ features:
 Check out the code and run `cargo build --release`.
 
 Try the demo with `cargo run --release --example lorem-ipsum -- resources/tests/nimbus-sans/NimbusSanL-Regu.ttf`.
+Use the mouse wheel or touchpad scrolling to move, and do the same while holding Alt or Option to
+zoom.
 
 As an alternative, debug builds (without the `--release`) build quickly and are typically fast,
 since most of the code runs on GPU.
