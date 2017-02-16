@@ -34,6 +34,11 @@ since most of the code runs on GPU.
 On Windows, running the demos requires GLFW, which requires CMake to be installed and in your PATH.
 Get it from [cmake.org](https://cmake.org/).
 
+On Linux, some development packages are needed to compile. On Ubuntu, the following line has been
+reported to suffice to install them:
+
+    sudo apt-get install cmake libgl-dev libx11-dev xrandr-dev
+
 ## Authors
 
 The primary author is Patrick Walton (@pcwalton), with contributions from the Servo development
