@@ -170,29 +170,55 @@ impl<'a> CffTable<'a> {
                 8 => {
                     // |- {dxa dya dxb dyb dxc dyc}+ rrcurveto (8)
                     for chunk in stack.array[0..stack.size as usize].chunks(6) {
+                        add_curve(chunk[0] as i16, chunk[1] as i16,
+                                  chunk[2] as i16, chunk[3] as i16,
+                                  chunk[4] as i16, chunk[5] as i16,
+                                  &mut pos,
+                                  &mut index_in_contour,
+                                  &mut callback)
+                    }
+                    stack.clear()
+                }
+                24 => {
+                    // |- {dxa dya dxb dyb dxc dyc}+ dxd dyd rcurveline (24)
+                    for chunk in stack.array[0..stack.size as usize - 2].chunks(6) {
+                        add_curve(chunk[0] as i16, chunk[1] as i16,
+                                  chunk[2] as i16, chunk[3] as i16,
+                                  chunk[4] as i16, chunk[5] as i16,
+                                  &mut pos,
+                                  &mut index_in_contour,
+                                  &mut callback)
+                    }
+                    pos = pos + Point2D::new(stack.array[stack.size as usize - 2] as i16,
+                                             stack.array[stack.size as usize - 1] as i16);
+                    callback(&Point {
+                        position: pos,
+                        index_in_contour: index_in_contour,
+                        kind: PointKind::OnCurve,
+                    });
+                    index_in_contour += 1;
+                    stack.clear()
+                }
+                25 => {
+                    // |- {dxa dya}+ dxb dyb dxc dyc dxd dyd rlinecurve (25)
+                    for chunk in stack.array[0..stack.size as usize - 6].chunks(2) {
                         pos = pos + Point2D::new(chunk[0] as i16, chunk[1] as i16);
                         callback(&Point {
                             position: pos,
-                            index_in_contour: index_in_contour + 0,
-                            kind: PointKind::FirstCubicControl,
-                        });
-
-                        pos = pos + Point2D::new(chunk[2] as i16, chunk[3] as i16);
-                        callback(&Point {
-                            position: pos,
-                            index_in_contour: index_in_contour + 1,
-                            kind: PointKind::SecondCubicControl,
-                        });
-
-                        pos = pos + Point2D::new(chunk[4] as i16, chunk[5] as i16);
-                        callback(&Point {
-                            position: pos,
-                            index_in_contour: index_in_contour + 2,
+                            index_in_contour: index_in_contour,
                             kind: PointKind::OnCurve,
                         });
-
-                        index_in_contour += 3
+                        index_in_contour += 1;
                     }
+                    add_curve(stack.array[stack.size as usize - 6] as i16,
+                              stack.array[stack.size as usize - 5] as i16,
+                              stack.array[stack.size as usize - 4] as i16,
+                              stack.array[stack.size as usize - 3] as i16,
+                              stack.array[stack.size as usize - 2] as i16,
+                              stack.array[stack.size as usize - 1] as i16,
+                              &mut pos,
+                              &mut index_in_contour,
+                              &mut callback);
                     stack.clear()
                 }
                 30 => {
@@ -210,17 +236,19 @@ impl<'a> CffTable<'a> {
                         };
 
                         if i % 2 == 0 {
-                            process_hvcurveto_v(chunk,
-                                                &mut pos,
-                                                dxyf,
-                                                &mut index_in_contour,
-                                                &mut callback);
+                            add_curve(0, chunk[0] as i16,
+                                      chunk[1] as i16, chunk[2] as i16,
+                                      chunk[3] as i16, dxyf as i16,
+                                      &mut pos,
+                                      &mut index_in_contour,
+                                      &mut callback)
                         } else {
-                            process_hvcurveto_h(chunk,
-                                                &mut pos,
-                                                dxyf,
-                                                &mut index_in_contour,
-                                                &mut callback);
+                            add_curve(chunk[0] as i16, 0,
+                                      chunk[1] as i16, chunk[2] as i16,
+                                      dxyf as i16, chunk[3] as i16,
+                                      &mut pos,
+                                      &mut index_in_contour,
+                                      &mut callback)
                         }
                     }
                     stack.clear()
@@ -240,17 +268,19 @@ impl<'a> CffTable<'a> {
                         };
 
                         if i % 2 == 0 {
-                            process_hvcurveto_h(chunk,
-                                                &mut pos,
-                                                dxyf,
-                                                &mut index_in_contour,
-                                                &mut callback);
+                            add_curve(chunk[0] as i16, 0,
+                                      chunk[1] as i16, chunk[2] as i16,
+                                      dxyf as i16, chunk[3] as i16,
+                                      &mut pos,
+                                      &mut index_in_contour,
+                                      &mut callback)
                         } else {
-                            process_hvcurveto_v(chunk,
-                                                &mut pos,
-                                                dxyf,
-                                                &mut index_in_contour,
-                                                &mut callback);
+                            add_curve(0, chunk[0] as i16,
+                                      chunk[1] as i16, chunk[2] as i16,
+                                      chunk[3] as i16, dxyf as i16,
+                                      &mut pos,
+                                      &mut index_in_contour,
+                                      &mut callback)
                         }
                     }
                     stack.clear()
@@ -268,29 +298,12 @@ impl<'a> CffTable<'a> {
                     for (i, chunk) in stack.array[start..stack.size as usize]
                                            .chunks(4)
                                            .enumerate() {
-                        pos.y += chunk[0] as i16;
-                        callback(&Point {
-                            position: pos,
-                            index_in_contour: index_in_contour,
-                            kind: PointKind::FirstCubicControl,
-                        });
-
-                        pos.x += chunk[1] as i16;
-                        pos.y += chunk[2] as i16;
-                        callback(&Point {
-                            position: pos,
-                            index_in_contour: index_in_contour + 1,
-                            kind: PointKind::SecondCubicControl,
-                        });
-
-                        pos.y += chunk[3] as i16;
-                        callback(&Point {
-                            position: pos,
-                            index_in_contour: index_in_contour + 2,
-                            kind: PointKind::OnCurve,
-                        });
-
-                        index_in_contour += 3
+                        add_curve(0, chunk[0] as i16,
+                                  chunk[1] as i16, chunk[2] as i16,
+                                  0, chunk[3] as i16,
+                                  &mut pos,
+                                  &mut index_in_contour,
+                                  &mut callback)
                     }
                     stack.clear()
                 }
@@ -307,29 +320,12 @@ impl<'a> CffTable<'a> {
                     for (i, chunk) in stack.array[start..stack.size as usize]
                                            .chunks(4)
                                            .enumerate() {
-                        pos.x += chunk[0] as i16;
-                        callback(&Point {
-                            position: pos,
-                            index_in_contour: index_in_contour,
-                            kind: PointKind::FirstCubicControl,
-                        });
-
-                        pos.x += chunk[1] as i16;
-                        pos.y += chunk[2] as i16;
-                        callback(&Point {
-                            position: pos,
-                            index_in_contour: index_in_contour + 1,
-                            kind: PointKind::SecondCubicControl,
-                        });
-
-                        pos.x += chunk[3] as i16;
-                        callback(&Point {
-                            position: pos,
-                            index_in_contour: index_in_contour + 2,
-                            kind: PointKind::OnCurve,
-                        });
-
-                        index_in_contour += 3
+                        add_curve(chunk[0] as i16, 0,
+                                  chunk[1] as i16, chunk[2] as i16,
+                                  chunk[3] as i16, 0,
+                                  &mut pos,
+                                  &mut index_in_contour,
+                                  &mut callback)
                     }
                     stack.clear()
                 }
@@ -357,6 +353,12 @@ impl<'a> CffTable<'a> {
                     stack.clear();
 
                     // Now skip ⌈hint_count / 8⌉ bytes.
+                    let hint_byte_count = (hint_count as usize + 7) / 8;
+                    try!(reader.jump(hint_byte_count).map_err(Error::eof));
+                }
+                20 => {
+                    // Skip ⌈hint_count / 8⌉ bytes.
+                    stack.clear();
                     let hint_byte_count = (hint_count as usize + 7) / 8;
                     try!(reader.jump(hint_byte_count).map_err(Error::eof));
                 }
@@ -562,61 +564,31 @@ fn close_path_if_necessary<F>(pos: &mut Point2D<i16>,
     });
 }
 
-fn process_hvcurveto_h<F>(chunk: &[i32],
-                          pos: &mut Point2D<i16>,
-                          dxf: i32,
-                          index_in_contour: &mut u16,
-                          mut callback: F)
-                          where F: FnMut(&Point) {
-    pos.x += chunk[0] as i16;
+fn add_curve<F>(dx0: i16, dy0: i16,
+                dx1: i16, dy1: i16,
+                dx2: i16, dy2: i16,
+                pos: &mut Point2D<i16>,
+                index_in_contour: &mut u16,
+                mut callback: F)
+                where F: FnMut(&Point) {
+    pos.x += dx0;
+    pos.y += dy0;
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 0,
         kind: PointKind::FirstCubicControl,
     });
 
-    pos.x += chunk[1] as i16;
-    pos.y += chunk[2] as i16;
+    pos.x += dx1;
+    pos.y += dy1;
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 1,
         kind: PointKind::SecondCubicControl,
     });
 
-    pos.x += dxf as i16;
-    pos.y += chunk[3] as i16;
-    callback(&Point {
-        position: *pos,
-        index_in_contour: *index_in_contour + 2,
-        kind: PointKind::OnCurve,
-    });
-
-    *index_in_contour += 3
-}
-
-fn process_hvcurveto_v<F>(chunk: &[i32],
-                          pos: &mut Point2D<i16>,
-                          dyf: i32,
-                          index_in_contour: &mut u16,
-                          mut callback: F)
-                          where F: FnMut(&Point) {
-    pos.y += chunk[0] as i16;
-    callback(&Point {
-        position: *pos,
-        index_in_contour: *index_in_contour + 0,
-        kind: PointKind::FirstCubicControl,
-    });
-
-    pos.x += chunk[1] as i16;
-    pos.y += chunk[2] as i16;
-    callback(&Point {
-        position: *pos,
-        index_in_contour: *index_in_contour + 1,
-        kind: PointKind::SecondCubicControl,
-    });
-
-    pos.x += chunk[3] as i16;
-    pos.y += dyf as i16;
+    pos.x += dx2;
+    pos.y += dy2;
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 2,
