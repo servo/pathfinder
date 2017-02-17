@@ -17,10 +17,13 @@ uniform uvec2 uAtlasSize;
 
 // The starting point of the segment.
 in vec2 vpP0[];
-// The control point, if this is a curve. If this is a line, this value must be ignored.
+// The first control point, if this is a curve. If this is a line, this value must be ignored.
 in vec2 vpP1[];
-// The endpoint of this segment.
+// The second control point, if this is a cubic curve. If this is a quadratic curve or a line, this
+// is equal to `vpP1`.
 in vec2 vpP2[];
+// The endpoint of this segment.
+in vec2 vpP3[];
 // The tessellation level.
 //
 // This is passed along explicitly instead of having the TES read it from `gl_TessLevelInner` in
@@ -40,7 +43,7 @@ flat out vec2 vYMinMax;
 
 void main() {
     // Read in curve points.
-    vec2 cP0 = vpP0[0], cP1 = vpP1[0], cP2 = vpP2[0];
+    vec2 cP0 = vpP0[0], cP1 = vpP1[0], cP2 = vpP2[0], cP3 = vpP3[0];
 
     // Work out how many lines made up this segment, which line we're working on, and which
     // endpoint of that line we're looking at.
@@ -53,12 +56,25 @@ void main() {
     vec2 p0, p1;
     if (lineCount == 1) {
         p0 = cP0;
-        p1 = cP2;
+        p1 = cP3;
     } else {
         float t0 = float(lineIndex + 0) / float(lineCount);
         float t1 = float(lineIndex + 1) / float(lineCount);
-        p0 = mix(mix(cP0, cP1, t0), mix(cP1, cP2, t0), t0);
-        p1 = mix(mix(cP0, cP1, t1), mix(cP1, cP2, t1), t1);
+
+        // These lerps are needed both for quadratic and cubic Béziers.
+        vec2 pP0P1T0 = mix(cP0, cP1, t0), pP0P1T1 = mix(cP0, cP1, t1);
+        vec2 pP2P3T0 = mix(cP2, cP3, t0), pP2P3T1 = mix(cP2, cP3, t1);
+
+        if (cP1 == cP2) {
+            // Quadratic Bézier.
+            p0 = mix(pP0P1T0, pP2P3T0, t0);
+            p1 = mix(pP0P1T1, pP2P3T1, t1);
+        } else {
+            // Cubic Bézier.
+            vec2 pP1P2T0 = mix(cP1, cP2, t0), pP1P2T1 = mix(cP1, cP2, t1);
+            p0 = mix(mix(pP0P1T0, pP1P2T0, t0), mix(pP1P2T0, pP2P3T0, t0), t0);
+            p1 = mix(mix(pP0P1T1, pP1P2T1, t1), mix(pP1P2T1, pP2P3T1, t1), t1);
+        }
     }
 
     // Compute direction. Flip the two points around so that p0 is on the left and p1 is on the

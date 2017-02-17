@@ -10,7 +10,7 @@
 
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use euclid::Point2D;
-use otf::glyf::Point;
+use otf::glyf::{Point, PointKind};
 use otf::head::HeadTable;
 use otf::{Error, FontTable};
 use outline::GlyphBounds;
@@ -112,7 +112,7 @@ impl<'a> CffTable<'a> {
                     callback(&Point {
                         position: pos,
                         index_in_contour: 0,
-                        on_curve: true,
+                        kind: PointKind::OnCurve,
                     });
                     start = pos;
                     index_in_contour = 1;
@@ -125,7 +125,7 @@ impl<'a> CffTable<'a> {
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour,
-                            on_curve: true,
+                            kind: PointKind::OnCurve,
                         });
                         index_in_contour += 1
                     }
@@ -143,7 +143,7 @@ impl<'a> CffTable<'a> {
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour,
-                            on_curve: true,
+                            kind: PointKind::OnCurve,
                         });
                         index_in_contour += 1
                     }
@@ -161,7 +161,7 @@ impl<'a> CffTable<'a> {
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour,
-                            on_curve: true,
+                            kind: PointKind::OnCurve,
                         });
                         index_in_contour += 1
                     }
@@ -174,21 +174,21 @@ impl<'a> CffTable<'a> {
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour + 0,
-                            on_curve: true,
+                            kind: PointKind::FirstCubicControl,
                         });
 
                         pos = pos + Point2D::new(chunk[2] as i16, chunk[3] as i16);
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour + 1,
-                            on_curve: true,
+                            kind: PointKind::SecondCubicControl,
                         });
 
                         pos = pos + Point2D::new(chunk[4] as i16, chunk[5] as i16);
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour + 2,
-                            on_curve: true,
+                            kind: PointKind::OnCurve,
                         });
 
                         index_in_contour += 3
@@ -272,7 +272,7 @@ impl<'a> CffTable<'a> {
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour,
-                            on_curve: true,
+                            kind: PointKind::FirstCubicControl,
                         });
 
                         pos.x += chunk[1] as i16;
@@ -280,14 +280,14 @@ impl<'a> CffTable<'a> {
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour + 1,
-                            on_curve: true,
+                            kind: PointKind::SecondCubicControl,
                         });
 
                         pos.y += chunk[3] as i16;
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour + 2,
-                            on_curve: true,
+                            kind: PointKind::OnCurve,
                         });
 
                         index_in_contour += 3
@@ -311,7 +311,7 @@ impl<'a> CffTable<'a> {
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour,
-                            on_curve: true,
+                            kind: PointKind::FirstCubicControl,
                         });
 
                         pos.x += chunk[1] as i16;
@@ -319,14 +319,14 @@ impl<'a> CffTable<'a> {
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour + 1,
-                            on_curve: true,
+                            kind: PointKind::SecondCubicControl,
                         });
 
                         pos.x += chunk[3] as i16;
                         callback(&Point {
                             position: pos,
                             index_in_contour: index_in_contour + 2,
-                            on_curve: true,
+                            kind: PointKind::OnCurve,
                         });
 
                         index_in_contour += 3
@@ -367,7 +367,7 @@ impl<'a> CffTable<'a> {
                     callback(&Point {
                         position: pos,
                         index_in_contour: 0,
-                        on_curve: true,
+                        kind: PointKind::OnCurve,
                     });
                     start = pos;
                     index_in_contour = 1;
@@ -380,7 +380,7 @@ impl<'a> CffTable<'a> {
                     callback(&Point {
                         position: pos,
                         index_in_contour: 0,
-                        on_curve: true,
+                        kind: PointKind::OnCurve,
                     });
                     start = pos;
                     index_in_contour = 1;
@@ -558,7 +558,7 @@ fn close_path_if_necessary<F>(pos: &mut Point2D<i16>,
     callback(&Point {
         position: *start,
         index_in_contour: index_in_contour,
-        on_curve: true,
+        kind: PointKind::OnCurve,
     });
 }
 
@@ -572,7 +572,7 @@ fn process_hvcurveto_h<F>(chunk: &[i32],
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 0,
-        on_curve: true,
+        kind: PointKind::FirstCubicControl,
     });
 
     pos.x += chunk[1] as i16;
@@ -580,7 +580,7 @@ fn process_hvcurveto_h<F>(chunk: &[i32],
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 1,
-        on_curve: true,
+        kind: PointKind::SecondCubicControl,
     });
 
     pos.x += dxf as i16;
@@ -588,7 +588,7 @@ fn process_hvcurveto_h<F>(chunk: &[i32],
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 2,
-        on_curve: true,
+        kind: PointKind::OnCurve,
     });
 
     *index_in_contour += 3
@@ -604,7 +604,7 @@ fn process_hvcurveto_v<F>(chunk: &[i32],
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 0,
-        on_curve: true,
+        kind: PointKind::FirstCubicControl,
     });
 
     pos.x += chunk[1] as i16;
@@ -612,7 +612,7 @@ fn process_hvcurveto_v<F>(chunk: &[i32],
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 1,
-        on_curve: true,
+        kind: PointKind::SecondCubicControl,
     });
 
     pos.x += chunk[3] as i16;
@@ -620,7 +620,7 @@ fn process_hvcurveto_v<F>(chunk: &[i32],
     callback(&Point {
         position: *pos,
         index_in_contour: *index_in_contour + 2,
-        on_curve: true,
+        kind: PointKind::OnCurve,
     });
 
     *index_in_contour += 3

@@ -14,7 +14,7 @@ use error::GlError;
 use euclid::Size2D;
 use gl::types::{GLsizeiptr, GLuint};
 use gl;
-use otf::{self, Font};
+use otf::{self, Font, PointKind};
 use std::mem;
 use std::os::raw::c_void;
 
@@ -50,7 +50,7 @@ impl OutlineBuilder {
         let mut point_index = self.vertices.len() as u32;
         let start_index = self.indices.len() as u32;
         let start_point = point_index;
-        let mut last_point_on_curve = true;
+        let mut last_point_kind = PointKind::OnCurve;
 
         try!(font.for_each_point(glyph_id, |point| {
             self.vertices.push(Vertex {
@@ -59,17 +59,22 @@ impl OutlineBuilder {
                 glyph_index: glyph_index,
             });
 
-            if point.index_in_contour > 0 && point.on_curve {
-                let indices = if !last_point_on_curve {
-                    [point_index - 2, point_index - 1, point_index]
-                } else {
-                    [point_index - 1, 0, point_index]
+            if point.index_in_contour > 0 && point.kind == PointKind::OnCurve {
+                let indices = match last_point_kind {
+                    PointKind::FirstCubicControl => [0, 0, 0, 0],
+                    PointKind::SecondCubicControl => {
+                        [point_index - 3, point_index - 2, point_index - 1, point_index]
+                    }
+                    PointKind::QuadControl => {
+                        [point_index - 2, point_index - 1, point_index - 1, point_index]
+                    }
+                    PointKind::OnCurve => [point_index - 1, 0, 0, point_index],
                 };
                 self.indices.extend(indices.iter().cloned());
             }
 
             point_index += 1;
-            last_point_on_curve = point.on_curve
+            last_point_kind = point.kind
         }));
 
         // Add a glyph descriptor.

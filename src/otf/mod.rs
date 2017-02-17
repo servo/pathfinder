@@ -10,11 +10,13 @@
 
 //! OpenType fonts.
 
+pub use otf::glyf::{Point, PointKind};
+
 use byteorder::{BigEndian, ReadBytesExt};
 use charmap::{CodepointRange, GlyphMapping};
 use otf::cff::CffTable;
 use otf::cmap::CmapTable;
-use otf::glyf::{GlyfTable, Point};
+use otf::glyf::GlyfTable;
 use otf::head::HeadTable;
 use otf::hhea::HheaTable;
 use otf::hmtx::{HmtxTable, HorizontalMetrics};

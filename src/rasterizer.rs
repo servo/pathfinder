@@ -273,7 +273,7 @@ impl Rasterizer {
 
             gl::Uniform2ui(self.draw_atlas_size_uniform, rect.size.width, rect.size.height);
 
-            gl::PatchParameteri(gl::PATCH_VERTICES, 3);
+            gl::PatchParameteri(gl::PATCH_VERTICES, 4);
 
             // Use blending on our floating point framebuffer to accumulate coverage.
             gl::Enable(gl::BLEND);

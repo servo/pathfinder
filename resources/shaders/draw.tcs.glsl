@@ -22,10 +22,13 @@ flat in int vVertexID[];
 
 // The starting point of the segment.
 out vec2 vpP0[];
-// The control point, if this is a curve. If this is a line, this value must be ignored.
+// The first control point, if this is a curve. If this is a line, this value must be ignored.
 out vec2 vpP1[];
-// The endpoint of this segment.
+// The second control point, if this is a curve. If this is a line, this value must be ignored.
+// If this curve is quadratic, this will be the same as `vpP1`.
 out vec2 vpP2[];
+// The endpoint of this segment.
+out vec2 vpP3[];
 // The tessellation level.
 //
 // This is passed along explicitly instead of having the TES read it from `gl_TessLevelInner` in
@@ -36,15 +39,19 @@ void main() {
     vec2 p0 = gl_in[0].gl_Position.xy;
     vec2 p1 = gl_in[1].gl_Position.xy;
     vec2 p2 = gl_in[2].gl_Position.xy;
+    vec2 p3 = gl_in[3].gl_Position.xy;
 
     // Divide into lines.
     float lineCount = 1.0f;
     if (vVertexID[1] > 0) {
-        // Quadratic curve.
-        vec2 dev = p0 - 2.0f * p1 + p2;
+        // A curve.
+        //
+        // FIXME(pcwalton): Is this formula good for cubic curves?
+        vec2 dev = p0 - 2.0f * mix(p1, p2, 0.5) + p3;
         float devSq = dot(dev, dev);
         if (devSq >= CURVE_THRESHOLD) {
-            // Inverse square root is likely no slower and may be faster than regular square root
+            // Inverse square root is likely no slower and may be faster than regular square
+            // root
             // (e.g. on x86).
             lineCount += floor(inversesqrt(inversesqrt(CURVE_TOLERANCE * devSq)));
         }
@@ -92,7 +99,7 @@ void main() {
     // so we're in the clear: the rasterizer will always discard the unshaded areas and render only
     // the shaded ones.
 
-    float tessLevel = min(p0.x == p2.x ? 0.0f : (lineCount * 2.0f - 1.0f), 31.0f);
+    float tessLevel = min(p0.x == p3.x ? 0.0f : (lineCount * 2.0f - 1.0f), 31.0f);
     gl_TessLevelInner[0] = tessLevel;
     gl_TessLevelInner[1] = 1.0f;
     gl_TessLevelOuter[0] = 1.0f;
@@ -105,6 +112,7 @@ void main() {
     vpP0[gl_InvocationID] = p0;
     vpP1[gl_InvocationID] = p1;
     vpP2[gl_InvocationID] = p2;
+    vpP3[gl_InvocationID] = p3;
     vpTessLevel[gl_InvocationID] = tessLevel;
 }
 

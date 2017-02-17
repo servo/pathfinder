@@ -46,9 +46,30 @@ bitflags! {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Point {
+    /// Where the point is located in glyph space.
     pub position: Point2D<i16>,
+
+    /// The index of the point in this contour.
+    ///
+    /// When iterating over points via `for_each_point`, a value of 0 here indicates that a new
+    /// contour begins.
     pub index_in_contour: u16,
-    pub on_curve: bool,
+
+    /// The kind of point this is.
+    pub kind: PointKind,
+}
+
+/// The type of point.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum PointKind {
+    /// The point is on the curve.
+    OnCurve,
+    /// The point is a quadratic control point.
+    QuadControl,
+    /// The point is the first cubic control point.
+    FirstCubicControl,
+    /// The point is the second cubic control point.
+    SecondCubicControl,
 }
 
 /// TODO(pcwalton): Add some caching so we don't keep going to the `loca` table all the time.
@@ -166,7 +187,7 @@ impl<'a> GlyfTable<'a> {
                     callback(&Point {
                         position: position,
                         index_in_contour: point_index_in_contour,
-                        on_curve: true,
+                        kind: PointKind::OnCurve,
                     });
                     point_index_in_contour += 1
                 }
@@ -185,7 +206,11 @@ impl<'a> GlyfTable<'a> {
                 } else {
                     callback(&Point {
                         position: position,
-                        on_curve: flags.contains(ON_CURVE),
+                        kind: if flags.contains(ON_CURVE) {
+                            PointKind::OnCurve
+                        } else {
+                            PointKind::QuadControl
+                        },
                         index_in_contour: point_index_in_contour,
                     });
                     point_index_in_contour += 1
@@ -203,14 +228,14 @@ impl<'a> GlyfTable<'a> {
                     callback(&Point {
                         position: position,
                         index_in_contour: point_index_in_contour,
-                        on_curve: true,
+                        kind: PointKind::OnCurve,
                     });
                     point_index_in_contour += 1
                 }
 
                 callback(&Point {
                     position: initial_off_curve_point,
-                    on_curve: false,
+                    kind: PointKind::QuadControl,
                     index_in_contour: point_index_in_contour,
                 });
                 point_index_in_contour += 1
@@ -220,7 +245,7 @@ impl<'a> GlyfTable<'a> {
             if let Some(first_on_curve_point) = first_on_curve_point {
                 callback(&Point {
                     position: first_on_curve_point,
-                    on_curve: true,
+                    kind: PointKind::OnCurve,
                     index_in_contour: point_index_in_contour,
                 })
             }
