@@ -15,9 +15,12 @@
 //! control over line spacing. Use Cocoa's `NSLayoutManager`, Pango, etc. for real use.
 
 use charmap::CodepointRanges;
+use error::GlyphStoreCreationError;
 use euclid::Point2D;
 use otf::Font;
+use outline::{OutlineBuilder, Outlines};
 use shaper;
+use std::u16;
 
 pub struct Typesetter {
     pub glyph_positions: Vec<GlyphPosition>,
@@ -79,6 +82,14 @@ impl Typesetter {
     pub fn glyph_positions(&self) -> &[GlyphPosition] {
         &self.glyph_positions
     }
+
+    pub fn create_glyph_store(&self, font: &Font) -> Result<GlyphStore, GlyphStoreCreationError> {
+        let glyph_ids = self.glyph_positions
+                            .iter()
+                            .map(|glyph_position| glyph_position.glyph_id)
+                            .collect();
+        GlyphStore::from_glyph_ids(glyph_ids, font)
+    }
 }
 
 #[repr(C)]
@@ -87,5 +98,62 @@ pub struct GlyphPosition {
     pub x: f32,
     pub y: f32,
     pub glyph_id: u16,
+}
+
+pub struct GlyphStore {
+    pub outlines: Outlines,
+    pub glyph_id_to_glyph_index: Vec<u16>,
+    pub all_glyph_indices: Vec<u16>,
+}
+
+impl GlyphStore {
+    fn from_glyph_ids(mut glyph_ids: Vec<u16>, font: &Font)
+                      -> Result<GlyphStore, GlyphStoreCreationError> {
+        glyph_ids.sort();
+        glyph_ids.dedup();
+
+        let last_glyph_id = match glyph_ids.last() {
+            Some(&id) => id + 1,
+            None => 0,
+        };
+
+        let mut outline_builder = OutlineBuilder::new();
+        let mut glyph_id_to_glyph_index = vec![u16::MAX; last_glyph_id as usize];
+        let mut all_glyph_indices = vec![];
+        for glyph_id in glyph_ids {
+            let glyph_index = try!(outline_builder.add_glyph(font, glyph_id)
+                                                  .map_err(GlyphStoreCreationError::OtfError));
+            glyph_id_to_glyph_index[glyph_id as usize] = glyph_index;
+            all_glyph_indices.push(glyph_index);
+        }
+
+        let outlines = try!(outline_builder.create_buffers()
+                                           .map_err(GlyphStoreCreationError::GlError));
+
+        all_glyph_indices.sort();
+        all_glyph_indices.dedup();
+
+        Ok(GlyphStore {
+            outlines: outlines,
+            glyph_id_to_glyph_index: glyph_id_to_glyph_index,
+            all_glyph_indices: all_glyph_indices,
+        })
+    }
+
+    pub fn from_codepoints(codepoints: &CodepointRanges, font: &Font)
+                           -> Result<GlyphStore, GlyphStoreCreationError> {
+        let mapping = try!(font.glyph_mapping_for_codepoint_ranges(&codepoints.ranges)
+                               .map_err(GlyphStoreCreationError::OtfError));
+        let glyph_ids = mapping.iter().map(|(_, glyph_id)| glyph_id).collect();
+        GlyphStore::from_glyph_ids(glyph_ids, font)
+    }
+
+    #[inline]
+    pub fn glyph_index(&self, glyph_id: u16) -> Option<u16> {
+        match self.glyph_id_to_glyph_index.get(glyph_id as usize) {
+            None | Some(&u16::MAX) => None,
+            Some(&index) => Some(index),
+        }
+    }
 }
 

@@ -49,6 +49,14 @@ impl CodepointRange {
 }
 
 impl CodepointRanges {
+    /// Creates an empty set of codepoint ranges.
+    #[inline]
+    pub fn empty() -> CodepointRanges {
+        CodepointRanges {
+            ranges: vec![],
+        }
+    }
+
     /// Creates codepoint ranges from a sorted array of characters, collapsing duplicates.
     ///
     /// This is useful when creating an atlas from a string. The array can be readily produced with
@@ -141,7 +149,7 @@ impl GlyphMapping {
                     glyph_index: 0,
                 },
                 end: GlyphRangesIndex {
-                    range_index: 0,
+                    range_index: -1,
                     glyph_index: 0,
                 },
                 codepoint: 0,
@@ -152,11 +160,11 @@ impl GlyphMapping {
         GlyphMappingIter {
             start: GlyphRangesIndex {
                 range_index: 0,
-                glyph_index: self.ranges[0].glyphs.start,
+                glyph_index: self.ranges[0].glyphs.start as i32,
             },
             end: GlyphRangesIndex {
-                range_index: (self.ranges.len() - 1) as u16,
-                glyph_index: self.ranges.last().unwrap().glyphs.end,
+                range_index: self.ranges.len() as i32 - 1,
+                glyph_index: self.ranges.last().unwrap().glyphs.end as i32,
             },
             codepoint: self.ranges[0].codepoint_start,
             ranges: &self.ranges,
@@ -221,18 +229,20 @@ impl<'a> Iterator for GlyphMappingIter<'a> {
             return None
         }
 
-        let item = (self.codepoint, self.start.glyph_index);
+        let item = (self.codepoint, self.start.glyph_index as u16);
 
         self.codepoint += 1;
         self.start.glyph_index += 1;
 
-        while self.start.glyph_index > self.ranges[self.start.range_index as usize].glyphs.end {
+        while self.start.glyph_index > self.ranges[self.start.range_index as usize].glyphs.end as
+                i32 {
             self.start.range_index += 1;
             if self.start.range_index > self.end.range_index {
                 break
             }
 
-            self.start.glyph_index = self.ranges[self.start.range_index as usize].glyphs.start;
+            self.start.glyph_index = self.ranges[self.start.range_index as usize].glyphs.start as
+                i32;
             self.codepoint = self.ranges[self.start.range_index as usize].codepoint_start;
         }
 
@@ -242,8 +252,8 @@ impl<'a> Iterator for GlyphMappingIter<'a> {
 
 #[derive(Clone, Copy, Debug)]
 struct GlyphRangesIndex {
-    range_index: u16,
-    glyph_index: u16,
+    range_index: i32,
+    glyph_index: i32,
 }
 
 impl MappedGlyphRange {

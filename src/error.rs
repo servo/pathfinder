@@ -12,6 +12,7 @@
 
 use compute_shader;
 use gl::types::GLenum;
+use otf;
 use std::io;
 
 /// An OpenGL error with the given code.
@@ -61,5 +62,14 @@ pub enum RasterError {
     ///
     /// Currently supported formats are R8 and RGBA8.
     UnsupportedImageFormat,
+}
+
+/// An error in glyph store creation. See `Typesetter::create_glyph_store()`.
+#[derive(Debug)]
+pub enum GlyphStoreCreationError {
+    /// An error occurred when looking up a glyph ID for a character in the font.
+    OtfError(otf::Error),
+    /// An error occurred when uploading the outlines to the GPU.
+    GlError(GlError),
 }
 
