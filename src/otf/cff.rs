@@ -8,10 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
+use byteorder::{BigEndian, ReadBytesExt};
 use euclid::Point2D;
 use otf::glyf::{Point, PointKind};
-use otf::head::HeadTable;
 use otf::{Error, FontTable};
 use outline::GlyphBounds;
 use std::cmp;
@@ -107,7 +106,7 @@ impl<'a> CffTable<'a> {
 
                 4 => {
                     // |- dy1 vmoveto
-                    close_path_if_necessary(&mut pos, &start, index_in_contour, &mut callback);
+                    close_path_if_necessary(&start, index_in_contour, &mut callback);
                     pos.y += stack.array[0] as i16;
                     callback(&Point {
                         position: pos,
@@ -295,9 +294,7 @@ impl<'a> CffTable<'a> {
                         start = 1
                     }
 
-                    for (i, chunk) in stack.array[start..stack.size as usize]
-                                           .chunks(4)
-                                           .enumerate() {
+                    for chunk in stack.array[start..stack.size as usize].chunks(4) {
                         add_curve(0, chunk[0] as i16,
                                   chunk[1] as i16, chunk[2] as i16,
                                   0, chunk[3] as i16,
@@ -317,9 +314,7 @@ impl<'a> CffTable<'a> {
                         start = 1
                     }
 
-                    for (i, chunk) in stack.array[start..stack.size as usize]
-                                           .chunks(4)
-                                           .enumerate() {
+                    for chunk in stack.array[start..stack.size as usize].chunks(4) {
                         add_curve(chunk[0] as i16, 0,
                                   chunk[1] as i16, chunk[2] as i16,
                                   chunk[3] as i16, 0,
@@ -364,7 +359,7 @@ impl<'a> CffTable<'a> {
                 }
                 21 => {
                     // |- dx1 dy1 rmoveto
-                    close_path_if_necessary(&mut pos, &start, index_in_contour, &mut callback);
+                    close_path_if_necessary(&start, index_in_contour, &mut callback);
                     pos = pos + Point2D::new(stack.array[0] as i16, stack.array[1] as i16);
                     callback(&Point {
                         position: pos,
@@ -377,7 +372,7 @@ impl<'a> CffTable<'a> {
                 }
                 22 => {
                     // |- dx1 hmoveto
-                    close_path_if_necessary(&mut pos, &start, index_in_contour, &mut callback);
+                    close_path_if_necessary(&start, index_in_contour, &mut callback);
                     pos.x += stack.array[0] as i16;
                     callback(&Point {
                         position: pos,
@@ -403,7 +398,7 @@ impl<'a> CffTable<'a> {
             }
         }
 
-        close_path_if_necessary(&mut pos, &start, index_in_contour, &mut callback);
+        close_path_if_necessary(&start, index_in_contour, &mut callback);
         Ok(())
     }
 
@@ -411,12 +406,12 @@ impl<'a> CffTable<'a> {
     // TODO(pcwalton): Compute this at the same time as `for_each_point`, perhaps?
     pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, Error> {
         let mut bounds = GlyphBounds::default();
-        self.for_each_point(glyph_id, |point| {
+        try!(self.for_each_point(glyph_id, |point| {
             bounds.left = cmp::min(bounds.left, point.position.x as i32);
             bounds.bottom = cmp::min(bounds.bottom, point.position.y as i32);
             bounds.right = cmp::max(bounds.right, point.position.x as i32);
             bounds.top = cmp::max(bounds.top, point.position.y as i32);
-        });
+        }));
         Ok(bounds)
     }
 }
@@ -547,10 +542,7 @@ impl EvaluationStack {
     }
 }
 
-fn close_path_if_necessary<F>(pos: &mut Point2D<i16>,
-                              start: &Point2D<i16>,
-                              index_in_contour: u16,
-                              mut callback: F)
+fn close_path_if_necessary<F>(start: &Point2D<i16>, index_in_contour: u16, mut callback: F)
                               where F: FnMut(&Point) {
     if index_in_contour == 0 {
         // No path to close.

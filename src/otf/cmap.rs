@@ -11,7 +11,6 @@
 use byteorder::{BigEndian, ReadBytesExt};
 use charmap::{CodepointRange, GlyphMapping, GlyphRange, MappedGlyphRange};
 use otf::{Error, FontTable};
-use std::char;
 use std::cmp;
 use std::mem;
 use std::u16;

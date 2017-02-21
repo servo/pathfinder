@@ -5,10 +5,9 @@ extern crate euclid;
 extern crate memmap;
 extern crate pathfinder;
 
-use euclid::Point2D;
 use memmap::{Mmap, Protection};
 use pathfinder::charmap::CodepointRange;
-use pathfinder::otf::Font;
+use pathfinder::otf::{Font, PointKind};
 use std::char;
 use std::env;
 
@@ -25,28 +24,26 @@ fn main() {
                      codepoint,
                      char::from_u32(codepoint).unwrap_or('?'));
 
-            let mut last_point: Option<Point2D<i16>> = None;
-            let mut last_point_was_off_curve = false;
+            let mut last_point_was_on_curve = false;
             font.for_each_point(glyph_id, |point| {
-                if point.index_in_contour == 0 {
-                    println!("M {},{}", point.position.x, point.position.y);
+                let prefix = if point.index_in_contour == 0 {
+                    "M "
                 } else {
-                    let last = last_point.unwrap();
-                    if point.on_curve {
-                        if last_point_was_off_curve {
-                            println!("Q {},{} {},{}",
-                                     last.x,
-                                     last.y,
-                                     point.position.x,
-                                     point.position.y);
-                        } else {
-                            println!("L {},{}", point.position.x, point.position.y);
-                        }
+                    match point.kind {
+                        PointKind::OnCurve if last_point_was_on_curve => "L ",
+                        PointKind::OnCurve => " ",
+                        PointKind::QuadControl => "Q ",
+                        PointKind::FirstCubicControl => "C ",
+                        PointKind::SecondCubicControl => " ",
                     }
-                }
+                };
 
-                last_point_was_off_curve = !point.on_curve;
-                last_point = Some(point.position);
+                print!("{}{},{}", prefix, point.position.x, point.position.y);
+
+                last_point_was_on_curve = point.kind == PointKind::OnCurve;
+                if last_point_was_on_curve {
+                    println!("")
+                }
             }).unwrap()
         }
     }

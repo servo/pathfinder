@@ -24,7 +24,6 @@ bitflags! {
 
 #[derive(Clone, Copy)]
 pub struct KernTable<'a> {
-    table: FontTable<'a>,
     horizontal_table: &'a [u8],
 }
 
@@ -38,7 +37,7 @@ impl<'a> KernTable<'a> {
 
         let n_tables = try!(kern_reader.read_u16::<BigEndian>().map_err(Error::eof));
         let mut horizontal_table = None;
-        for table_index in 0..n_tables {
+        for _ in 0..n_tables {
             let mut table_reader = kern_reader;
             let _version = try!(table_reader.read_u16::<BigEndian>().map_err(Error::eof));
             let length = try!(table_reader.read_u16::<BigEndian>().map_err(Error::eof));
@@ -58,7 +57,6 @@ impl<'a> KernTable<'a> {
         match horizontal_table {
             Some(horizontal_table) => {
                 Ok(KernTable {
-                    table: table,
                     horizontal_table: horizontal_table,
                 })
             }

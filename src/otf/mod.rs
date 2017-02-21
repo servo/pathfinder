@@ -138,9 +138,9 @@ impl<'a> Font<'a> {
     ///
     /// Returns the font on success or an error on failure.
     pub fn from_collection_index<'b>(bytes: &'b [u8], index: u32) -> Result<Font<'b>, Error> {
-        // Check magic number.
+        // Check the magic number.
         let mut reader = bytes;
-        let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
         match magic_number {
             TTCF => {
                 // This is a font collection. Read the first font.
@@ -171,10 +171,8 @@ impl<'a> Font<'a> {
         let mut reader = bytes;
         try!(reader.jump(offset as usize).map_err(Error::eof));
 
-        let mut magic_number = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
-
-        // Check version.
-        if !SFNT_VERSIONS.contains(&magic_number) {
+        // Check the magic number.
+        if !SFNT_VERSIONS.contains(&try!(reader.read_u32::<BigEndian>().map_err(Error::eof))) {
             return Err(Error::UnknownFormat)
         }
 
@@ -252,8 +250,8 @@ impl<'a> Font<'a> {
         // Read the Mac resource file header.
         let resource_data_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
         let resource_map_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
-        let resource_data_size = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
-        let resource_map_size = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let _resource_data_size = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let _resource_map_size = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Move to the fields we care about in the resource map.
         reader = bytes;
@@ -262,7 +260,7 @@ impl<'a> Font<'a> {
 
         // Read the type list and name list offsets.
         let type_list_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
-        let name_list_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let _name_list_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
 
         // Move to the type list.
         reader = bytes;
@@ -272,7 +270,7 @@ impl<'a> Font<'a> {
         // Find the 'sfnt' type.
         let type_count = (try!(reader.read_i16::<BigEndian>().map_err(Error::eof)) + 1) as usize;
         let mut resource_count_and_list_offset = None;
-        for type_index in 0..type_count {
+        for _ in 0..type_count {
             let type_id = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
             let resource_count = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
             let resource_list_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
@@ -302,11 +300,11 @@ impl<'a> Font<'a> {
         // Find the font we're interested in.
         try!(reader.jump(index as usize * (mem::size_of::<u16>() * 2 + mem::size_of::<u32>() * 2))
                    .map_err(Error::eof));
-        let sfnt_id = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
-        let sfnt_name_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let _sfnt_id = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let _sfnt_name_offset = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
         let sfnt_data_offset = try!(reader.read_u32::<BigEndian>().map_err(Error::eof)) &
             0x00ffffff;
-        let sfnt_ptr = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
+        let _sfnt_ptr = try!(reader.read_u32::<BigEndian>().map_err(Error::eof));
 
         // Load the resource.
         reader = bytes;

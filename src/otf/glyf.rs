@@ -90,7 +90,7 @@ impl<'a> GlyfTable<'a> {
                              head_table: &HeadTable,
                              loca_table: &LocaTable,
                              glyph_id: u16,
-                             mut callback: F)
+                             callback: F)
                              -> Result<(), Error> where F: FnMut(&Point) {
         let mut reader = self.table.bytes;
 
@@ -154,7 +154,7 @@ impl<'a> GlyfTable<'a> {
             let mut last_point_was_off_curve = false;
             let mut point_index_in_contour = 0;
 
-            for contour_point_index in 0..contour_point_count {
+            for _ in 0..contour_point_count {
                 let flags = SimpleFlags::from_bits_truncate(*flag_parser.current);
                 try!(flag_parser.next());
 
@@ -301,9 +301,9 @@ impl<'a> GlyfTable<'a> {
             if let Some(offset) = try!(loca_table.location_of(head_table, glyph_index)) {
                 let mut reader = self.table.bytes;
                 try!(reader.jump(offset as usize).map_err(Error::eof));
-                self.for_each_point_in_simple_glyph(reader, |point| {
+                try!(self.for_each_point_in_simple_glyph(reader, |point| {
                     callback(&transform.transform(&point))
-                });
+                }));
             }
 
             if !flags.contains(MORE_COMPONENTS) {

@@ -51,6 +51,8 @@ pub enum InitError {
 /// A rasterization error. This could be an OpenGL error or a compute error.
 #[derive(Debug)]
 pub enum RasterError {
+    /// No glyphs were supplied.
+    NoGlyphsToDraw,
     /// An OpenGL error occurred.
     GlError(GlError),
     /// An error occurred during GPU compute.

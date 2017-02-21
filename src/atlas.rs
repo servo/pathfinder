@@ -11,7 +11,7 @@
 //! Atlases, which hold rendered glyphs on the GPU.
 
 use error::GlError;
-use euclid::{Point2D, Rect, Size2D};
+use euclid::Point2D;
 use gl::types::{GLenum, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use gl;
 use outline::Outlines;
@@ -61,16 +61,25 @@ impl AtlasBuilder {
     ///
     /// Returns the subpixel origin of the glyph in the atlas if successful or an error if there is
     /// no space left for the glyph.
-    pub fn pack_glyph(&mut self, outlines: &Outlines, glyph_index: u16, point_size: f32)
+    pub fn pack_glyph(&mut self,
+                      outlines: &Outlines,
+                      glyph_index: u16,
+                      point_size: f32,
+                      horizontal_offset: f32)
                       -> Result<Point2D<f32>, ()> {
-        let pixel_bounds = outlines.glyph_pixel_bounds(glyph_index, point_size);
+        let mut subpixel_bounds = outlines.glyph_subpixel_bounds(glyph_index, point_size);
+        subpixel_bounds.left += horizontal_offset;
+        subpixel_bounds.right += horizontal_offset;
+
+        let pixel_bounds = subpixel_bounds.round_out();
         let atlas_origin = try!(self.rect_packer.pack(&pixel_bounds.size().cast().unwrap()));
 
         for batch_builder in &mut self.batch_builders {
             if let Ok(atlas_origin) = batch_builder.add_glyph(outlines,
                                                               &atlas_origin,
                                                               glyph_index,
-                                                              point_size) {
+                                                              point_size,
+                                                              horizontal_offset) {
                 return Ok(atlas_origin)
             }
         }
@@ -79,13 +88,14 @@ impl AtlasBuilder {
         let atlas_origin = try!(batch_builder.add_glyph(outlines,
                                                         &atlas_origin,
                                                         glyph_index,
-                                                        point_size));
+                                                        point_size,
+                                                        horizontal_offset));
         self.batch_builders.push(batch_builder);
         Ok(atlas_origin)
     }
 
     /// Creates an atlas by uploading the atlas info to the GPU.
-    pub fn create_atlas(mut self) -> Result<Atlas, GlError> {
+    pub fn create_atlas(self) -> Result<Atlas, GlError> {
         let mut batches = vec![];
         for batch_builder in self.batch_builders.into_iter() {
             batches.push(try!(batch_builder.create_batch()))
@@ -116,11 +126,14 @@ impl BatchBuilder {
                  outlines: &Outlines,
                  atlas_origin: &Point2D<u32>,
                  glyph_index: u16,
-                 point_size: f32)
+                 point_size: f32,
+                 horizontal_offset: f32)
                  -> Result<Point2D<f32>, ()> {
         // Check to see if we're already rendering this glyph.
-        if let Some(image_descriptor) = self.image_descriptors.get(glyph_index as usize) {
-            if image_descriptor.point_size == point_size {
+        let image_index = glyph_index as usize;
+        if let Some(image_descriptor) = self.image_descriptors.get(image_index) {
+            if image_descriptor.point_size == point_size &&
+                    self.image_metadata[image_index].horizontal_offset == horizontal_offset {
                 // Glyph is already present.
                 return Ok(Point2D::new(image_descriptor.atlas_x, image_descriptor.atlas_y))
             } else {
@@ -131,28 +144,29 @@ impl BatchBuilder {
 
         let subpixel_bounds = outlines.glyph_subpixel_bounds(glyph_index, point_size);
         let glyph_id = outlines.glyph_id(glyph_index);
-        let glyph_index = self.image_descriptors.len() as u16;
 
-        while self.image_descriptors.len() < glyph_index as usize + 1 {
-            self.image_descriptors.push(ImageDescriptor::default())
+        while self.image_descriptors.len() < image_index + 1 {
+            self.image_descriptors.push(ImageDescriptor::default());
+            self.image_metadata.push(ImageMetadata::default());
         }
 
-        while self.image_metadata.len() < glyph_index as usize + 1 {
-            self.image_metadata.push(ImageMetadata::default())
-        }
+        let units_per_em = outlines.glyph_units_per_em(glyph_index) as f32;
+        let horizontal_px_offset = horizontal_offset / units_per_em * point_size;
 
-        let atlas_origin = Point2D::new(atlas_origin.x as f32 + subpixel_bounds.left.fract(),
-                                        atlas_origin.y as f32 + 1.0 - subpixel_bounds.top.fract());
-        self.image_descriptors[glyph_index as usize] = ImageDescriptor {
+        let atlas_origin = Point2D::new(
+            atlas_origin.x as f32 + subpixel_bounds.left.fract() + horizontal_px_offset,
+            atlas_origin.y as f32 + 1.0 - subpixel_bounds.top.fract());
+        self.image_descriptors[image_index] = ImageDescriptor {
             atlas_x: atlas_origin.x,
             atlas_y: atlas_origin.y,
             point_size: point_size,
-            glyph_index: glyph_index as f32,
+            pad: 0.0,
         };
 
-        self.image_metadata[glyph_index as usize] = ImageMetadata {
+        self.image_metadata[image_index] = ImageMetadata {
             glyph_index: glyph_index as u32,
             glyph_id: glyph_id,
+            horizontal_offset: horizontal_offset,
             start_index: outlines.descriptor(glyph_index).unwrap().start_index(),
             end_index: match outlines.descriptor(glyph_index + 1) {
                 Some(descriptor) => descriptor.start_index() as u32,
@@ -164,14 +178,13 @@ impl BatchBuilder {
     }
 
     /// Uploads this batch data to the GPU.
-    fn create_batch(mut self) -> Result<Batch, GlError> {
-        self.image_metadata.sort_by(|a, b| a.glyph_index.cmp(&b.glyph_index));
-
+    fn create_batch(self) -> Result<Batch, GlError> {
         let (mut current_range, mut counts, mut start_indices) = (None, vec![], vec![]);
         for image_metadata in &self.image_metadata {
-            let glyph_index = image_metadata.glyph_index;
-            let start_index = image_metadata.start_index;
-            let end_index = image_metadata.end_index;
+            let (start_index, end_index) = (image_metadata.start_index, image_metadata.end_index);
+            if start_index == 0 {
+                continue
+            }
 
             match current_range {
                 Some((current_first, current_last)) if start_index == current_last => {
@@ -179,7 +192,7 @@ impl BatchBuilder {
                 }
                 Some((current_first, current_last)) => {
                     counts.push((current_last - current_first) as GLsizei);
-                    start_indices.push(current_first as usize);
+                    start_indices.push((current_first as usize) * mem::size_of::<u32>());
                     current_range = Some((start_index, end_index))
                 }
                 None => current_range = Some((start_index, end_index)),
@@ -187,7 +200,7 @@ impl BatchBuilder {
         }
         if let Some((current_first, current_last)) = current_range {
             counts.push((current_last - current_first) as GLsizei);
-            start_indices.push(current_first as usize);
+            start_indices.push((current_first as usize) * mem::size_of::<u32>());
         }
 
         // TODO(pcwalton): Try using `glMapBuffer` here.
@@ -235,6 +248,12 @@ impl Atlas {
     pub fn shelf_columns(&self) -> u32 {
         self.shelf_columns
     }
+
+    /// Returns true if this atlas has no glyphs of nonzero size in it.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.shelf_columns == 0
+    }
 }
 
 struct Batch {
@@ -274,7 +293,7 @@ pub struct ImageDescriptor {
     atlas_x: f32,
     atlas_y: f32,
     point_size: f32,
-    glyph_index: f32,
+    pad: f32,
 }
 
 // Information about each image that we keep around ourselves.
@@ -282,8 +301,9 @@ pub struct ImageDescriptor {
 #[derive(Clone, Copy, Default, Debug)]
 pub struct ImageMetadata {
     glyph_index: u32,
-    glyph_id: u16,
     start_index: u32,
     end_index: u32,
+    horizontal_offset: f32,
+    glyph_id: u16,
 }
 

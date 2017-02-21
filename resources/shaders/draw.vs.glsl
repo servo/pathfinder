@@ -40,8 +40,6 @@ layout(std140) uniform ubImageDescriptors {
 in ivec2 aPosition;
 
 // Which glyph the vertex belongs to.
-//
-// TODO(pcwalton): See if this is faster as a binary search on the vertex ID.
 in uint aGlyphIndex;
 
 // The vertex ID, passed along onto the TCS.

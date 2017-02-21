@@ -237,8 +237,16 @@ impl Rasterizer {
                       outlines: &Outlines,
                       coverage_buffer: &CoverageBuffer)
                       -> Result<DrawAtlasProfilingEvents, RasterError> {
+        if atlas.is_empty() {
+            return Err(RasterError::NoGlyphsToDraw)
+        }
+
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, coverage_buffer.framebuffer());
+
+            // Save the old viewport so we can restore it later.
+            let mut old_viewport: [GLint; 4] = [0; 4];
+            gl::GetIntegerv(gl::VIEWPORT, old_viewport.as_mut_ptr());
             gl::Viewport(0, 0, rect.size.width as GLint, rect.size.height as GLint);
 
             // TODO(pcwalton): Scissor to the image rect to clear faster?
@@ -302,7 +310,9 @@ impl Rasterizer {
             gl::Disable(gl::CULL_FACE);
             gl::Disable(gl::BLEND);
 
+            // Restore our old framebuffer and viewport.
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::Viewport(old_viewport[0], old_viewport[1], old_viewport[2], old_viewport[3]);
 
             // FIXME(pcwalton): We should have some better synchronization here if we're using
             // OpenCL, but I don't know how to do that portably (i.e. on Mac…) Just using

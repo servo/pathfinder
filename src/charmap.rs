@@ -116,17 +116,6 @@ pub struct GlyphMapping {
     ranges: Vec<MappedGlyphRange>,
 }
 
-impl GlyphRange {
-    /// Returns an iterator over every glyph in this range.
-    #[inline]
-    fn iter(&self) -> GlyphRangeIter {
-        GlyphRangeIter {
-            start: self.start,
-            end: self.end,
-        }
-    }
-}
-
 impl GlyphMapping {
     #[doc(hidden)]
     #[inline]

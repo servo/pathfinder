@@ -191,16 +191,16 @@ impl Outlines {
         self.descriptors[glyph_index as usize].subpixel_bounds(point_size)
     }
 
-    /// Returns the boundaries of the glyph, rounded out to the nearest pixel.
-    #[inline]
-    pub fn glyph_pixel_bounds(&self, glyph_index: u16, point_size: f32) -> GlyphPixelBounds {
-        self.descriptors[glyph_index as usize].subpixel_bounds(point_size).round_out()
-    }
-
     /// Returns the ID of the glyph with the given index.
     #[inline]
     pub fn glyph_id(&self, glyph_index: u16) -> u16 {
         self.descriptors[glyph_index as usize].glyph_id
+    }
+
+    /// Returns the units per em for the glyph with the given index.
+    #[inline]
+    pub fn glyph_units_per_em(&self, glyph_index: u16) -> u32 {
+        self.descriptors[glyph_index as usize].units_per_em
     }
 }
 
