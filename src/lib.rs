@@ -95,6 +95,7 @@ pub mod otf;
 pub mod outline;
 pub mod rasterizer;
 pub mod shaper;
+pub mod typesetter;
 
 mod rect_packer;
 mod util;

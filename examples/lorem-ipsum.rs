@@ -20,15 +20,16 @@ use glfw::{Action, Context, Key, OpenGlProfileHint, SwapInterval, WindowEvent};
 use glfw::{WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
 use pathfinder::atlas::AtlasBuilder;
-use pathfinder::charmap::{CodepointRanges, GlyphMapping};
+use pathfinder::charmap::CodepointRanges;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::error::RasterError;
 use pathfinder::otf::Font;
 use pathfinder::outline::{GlyphSubpixelBounds, OutlineBuilder, Outlines};
 use pathfinder::rasterizer::{DrawAtlasProfilingEvents, Rasterizer, RasterizerOptions};
-use pathfinder::shaper;
+use pathfinder::typesetter::{GlyphPosition, Typesetter};
 use std::char;
 use std::env;
+use std::f32;
 use std::fs::File;
 use std::io::Read;
 use std::mem;
@@ -95,6 +96,30 @@ fn main() {
     }
     text = text.replace(&['\n', '\r', '\t'][..], " ");
 
+    let font_index = match matches.value_of("index") {
+        Some(index) => index.parse().unwrap(),
+        None => 0,
+    };
+
+    let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
+    let font = unsafe {
+        Font::from_collection_index(file.as_slice(), font_index).unwrap()
+    };
+
+    let units_per_em = font.units_per_em() as f32;
+    let mut typesetter =
+        Typesetter::new(device_pixel_size.width as f32 * units_per_em / INITIAL_POINT_SIZE,
+                        &font,
+                        units_per_em);
+    typesetter.add_text(&font, font.units_per_em() as f32, &text);
+
+    let renderer = Renderer::new();
+    let mut point_size = INITIAL_POINT_SIZE;
+    let mut translation = Point2D::new(0, 0);
+    let mut dirty = true;
+
+    let mut glyph_ids: Vec<_> = typesetter.glyph_positions.iter().map(|gp| gp.glyph_id).collect();
+
     // Make sure the characters include `[A-Za-z0-9 ./,]`, for the FPS display.
     let mut chars: Vec<char> = text.chars().collect();
     chars.extend(" ./,:()".chars());
@@ -103,58 +128,15 @@ fn main() {
     chars.extend(('0' as u32..('9' as u32 + 1)).flat_map(char::from_u32));
     chars.sort();
     let codepoint_ranges = CodepointRanges::from_sorted_chars(&chars);
+    let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges.ranges).unwrap();
+    glyph_ids.extend(glyph_mapping.iter().map(|(_, glyph_id)| glyph_id));
 
-    let font_index = match matches.value_of("index") {
-        Some(index) => index.parse().unwrap(),
-        None => 0,
-    };
-
-    let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
-    let (font, glyph_mapping);
-    unsafe {
-        font = Font::from_collection_index(file.as_slice(), font_index).unwrap();
-        glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges.ranges).unwrap();
-    }
-
-    // Do some basic line breaking.
-    let mut glyph_positions = vec![];
-    let paragraph_width = (device_pixel_size.width as f32 * font.units_per_em() as f32 /
-                           INITIAL_POINT_SIZE) as u32;
-    let space_advance = font.metrics_for_glyph(glyph_mapping.glyph_for(' ' as u32).unwrap())
-                            .unwrap()
-                            .advance_width as u32;
-    let line_spacing = (font.ascender() as i32 - font.descender() as i32 + font.line_gap() as i32)
-        as u32;
-
-    let (mut current_x, mut current_y) = (0, line_spacing);
-    for word in text.split_whitespace() {
-        let shaped_glyph_positions = shaper::shape_text(&font, &glyph_mapping, word);
-        let total_advance: u32 = shaped_glyph_positions.iter().map(|p| p.advance as u32).sum();
-        if current_x + total_advance > paragraph_width {
-            current_x = 0;
-            current_y += line_spacing;
-        }
-
-        for glyph_position in &shaped_glyph_positions {
-            glyph_positions.push(GlyphPos {
-                x: current_x,
-                y: current_y,
-                glyph_id: glyph_position.glyph_id,
-            });
-            current_x += glyph_position.advance as u32;
-        }
-
-        current_x += space_advance
-    }
-
-    let renderer = Renderer::new();
-    let mut point_size = INITIAL_POINT_SIZE;
-    let mut translation = Point2D::new(0, 0);
-    let mut dirty = true;
+    glyph_ids.sort();
+    glyph_ids.dedup();
 
     let mut outline_builder = OutlineBuilder::new();
     let mut glyph_indices = vec![];
-    for (_, glyph_id) in glyph_mapping.iter() {
+    for glyph_id in glyph_ids {
         let glyph_index = outline_builder.add_glyph(&font, glyph_id).unwrap();
 
         while glyph_id as usize >= glyph_indices.len() {
@@ -171,7 +153,7 @@ fn main() {
                                                 &font,
                                                 &outlines,
                                                 &glyph_indices,
-                                                &glyph_positions,
+                                                &typesetter.glyph_positions,
                                                 &device_pixel_size,
                                                 &translation);
 
@@ -199,7 +181,6 @@ fn main() {
                               &outlines,
                               &device_pixel_size,
                               &glyph_indices,
-                              &glyph_mapping,
                               draw_time,
                               accum_time,
                               timing,
@@ -445,7 +426,7 @@ impl Renderer {
               font: &Font,
               outlines: &Outlines,
               glyph_indices: &[u16],
-              glyph_positions: &[GlyphPos],
+              glyph_positions: &[GlyphPosition],
               device_pixel_size: &Size2D<u32>,
               translation: &Point2D<i32>)
               -> RedrawResult {
@@ -516,7 +497,7 @@ impl Renderer {
                                 font: &Font,
                                 outlines: &Outlines,
                                 glyph_indices: &[u16],
-                                glyph_positions: &[GlyphPos],
+                                glyph_positions: &[GlyphPosition],
                                 device_pixel_size: &Size2D<u32>,
                                 translation: &Point2D<i32>,
                                 point_size: f32)
@@ -563,7 +544,7 @@ impl Renderer {
 
     fn subpixel_for_glyph_if_visible(&self,
                                      font: &Font,
-                                     glyph_position: &GlyphPos,
+                                     glyph_position: &GlyphPosition,
                                      glyph_rect: &GlyphSubpixelBounds,
                                      device_pixel_size: &Size2D<u32>,
                                      translation: &Point2D<i32>,
@@ -598,7 +579,7 @@ impl Renderer {
                    outlines: &Outlines,
                    vertex_array: &CompositeVertexArray,
                    glyph_indices: &[u16],
-                   glyph_positions: &[GlyphPos],
+                   glyph_positions: &[GlyphPosition],
                    cached_glyphs: &[CachedGlyph],
                    device_pixel_size: &Size2D<u32>,
                    translation: &Point2D<i32>,
@@ -657,7 +638,7 @@ impl Renderer {
                              font: &Font,
                              outlines: &Outlines,
                              glyph_indices: &[u16],
-                             glyph_positions: &[GlyphPos],
+                             glyph_positions: &[GlyphPosition],
                              cached_glyphs: &[CachedGlyph],
                              device_pixel_size: &Size2D<u32>,
                              translation: &Point2D<i32>,
@@ -668,7 +649,11 @@ impl Renderer {
 
         let (mut vertices, mut indices) = (vec![], vec![]);
         for glyph_position in glyph_positions {
-            let glyph_index = glyph_indices[glyph_position.glyph_id as usize];
+            let glyph_index = match glyph_indices.get(glyph_position.glyph_id as usize) {
+                Some(&index) => index,
+                None => glyph_indices[0],
+            };
+
             let glyph_rect = outlines.glyph_subpixel_bounds(glyph_index, point_size);
 
             let subpixel = if use_subpixel_positioning {
@@ -735,7 +720,6 @@ impl Renderer {
                 outlines: &Outlines,
                 device_pixel_size: &Size2D<u32>,
                 glyph_indices: &[u16],
-                glyph_mapping: &GlyphMapping,
                 draw_time: f64,
                 accum_time: f64,
                 composite_time: f64,
@@ -779,26 +763,23 @@ impl Renderer {
                                (composite_time * 1000.0) / (glyphs_drawn as f64));
 
         // TODO(pcwalton): Subpixel positioning for the FPS display.
-        let (mut fps_glyph_positions, mut fps_glyph_indices) = (vec![], vec![]);
-        let mut current_x = 0;
-        for glyph_pos in &shaper::shape_text(&font, &glyph_mapping, &fps_text) {
-            fps_glyph_positions.push(GlyphPos {
-                x: current_x,
-                y: 0,
-                glyph_id: glyph_pos.glyph_id,
-            });
-            current_x += glyph_pos.advance as u32;
+        let mut fps_typesetter = Typesetter::new(f32::INFINITY, &font, font.units_per_em() as f32);
+        fps_typesetter.add_text(&font, font.units_per_em() as f32, &fps_text);
 
-            fps_glyph_indices.push(glyph_indices[glyph_pos.glyph_id as usize]);
-        }
+        let mut fps_glyph_indices: Vec<_> =
+            fps_typesetter.glyph_positions.iter().map(|glyph_pos| {
+                match glyph_indices.get(glyph_pos.glyph_id as usize) {
+                    Some(&index) => index,
+                    None => glyph_indices[0],
+                }
+            }).collect();
+        fps_glyph_indices.sort();
+        fps_glyph_indices.dedup();
 
         let shelf_height = font.shelf_height(FPS_DISPLAY_POINT_SIZE);
         let mut fps_atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
 
         let mut fps_glyphs = vec![];
-        fps_glyph_indices.sort();
-        fps_glyph_indices.dedup();
-
         for &fps_glyph_index in &fps_glyph_indices {
             let origin = fps_atlas_builder.pack_glyph(&outlines,
                                                       fps_glyph_index,
@@ -821,14 +802,21 @@ impl Renderer {
                                    &self.fps_coverage_buffer).unwrap();
         self.rasterizer.queue().flush().unwrap();
 
+        let fps_pixels_per_unit = FPS_DISPLAY_POINT_SIZE / font.units_per_em() as f32;
+        let fps_line_spacing = ((font.ascender() as f32 - font.descender() as f32 +
+                                 font.line_gap() as f32) * fps_pixels_per_unit).round() as i32;
+        let fps_origin =
+            Point2D::new(FPS_PADDING,
+                         device_pixel_size.height as i32 - FPS_PADDING - fps_line_spacing);
+
         self.draw_glyphs(font,
                          outlines,
                          &self.fps_composite_vertex_array,
                          glyph_indices,
-                         &fps_glyph_positions,
+                         &fps_typesetter.glyph_positions,
                          &fps_glyphs,
                          device_pixel_size,
-                         &Point2D::new(FPS_PADDING, device_pixel_size.height as i32 - FPS_PADDING),
+                         &fps_origin,
                          self.fps_gl_texture,
                          FPS_DISPLAY_POINT_SIZE,
                          &FPS_FOREGROUND_COLOR,
@@ -884,13 +872,6 @@ impl Vertex {
             v: v,
         }
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct GlyphPos {
-    x: u32,
-    y: u32,
-    glyph_id: u16,
 }
 
 #[derive(Clone, Copy, Debug)]
