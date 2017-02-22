@@ -12,8 +12,9 @@ static TEST_FONT_PATH: &'static str = "resources/tests/nimbus-sans/NimbusSanL-Re
 #[bench]
 fn bench_add_glyphs(bencher: &mut Bencher) {
     let file = Mmap::open_path(TEST_FONT_PATH, Protection::Read).expect("Couldn't open test font");
+    let mut buffer = vec![];
     unsafe {
-        let font = Font::new(file.as_slice()).unwrap();
+        let font = Font::new(file.as_slice(), &mut buffer).unwrap();
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
         let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges)
                                .expect("Couldn't find glyph ranges");

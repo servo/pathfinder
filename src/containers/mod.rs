@@ -13,4 +13,5 @@
 pub mod dfont;
 pub mod otf;
 pub mod ttc;
+pub mod woff;
 

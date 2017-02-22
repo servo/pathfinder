@@ -72,6 +72,7 @@ fn main() {
     let rasterizer = Rasterizer::new(&instance, device, queue, rasterizer_options).unwrap();
 
     let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
+    let mut buffer = vec![];
 
     let point_size = match matches.value_of("POINT-SIZE") {
         Some(point_size) => point_size.parse().unwrap(),
@@ -85,7 +86,7 @@ fn main() {
 
     let (outlines, atlas);
     unsafe {
-        let font = Font::from_collection_index(file.as_slice(), font_index).unwrap();
+        let font = Font::from_collection_index(file.as_slice(), font_index, &mut buffer).unwrap();
         let codepoint_ranges = [CodepointRange::new(' ' as u32, '~' as u32)];
         let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges).unwrap();
 

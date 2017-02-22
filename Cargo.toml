@@ -7,6 +7,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 bitflags = "0.7"
 byteorder = "1"
 euclid = "0.10"
+flate2 = "0.2"
 gl = "0.6"
 memmap = "0.5"
 time = "0.1"

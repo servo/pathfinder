@@ -32,6 +32,31 @@ const OTTO: u32 = ((b'O' as u32) << 24) |
                   ((b'T' as u32) << 8)  |
                    (b'O' as u32);
 
+pub const KNOWN_TABLE_COUNT: usize = 9;
+
+pub static KNOWN_TABLES: [u32; KNOWN_TABLE_COUNT] = [
+    cff::TAG,
+    os_2::TAG,
+    cmap::TAG,
+    glyf::TAG,
+    head::TAG,
+    hhea::TAG,
+    hmtx::TAG,
+    kern::TAG,
+    loca::TAG,
+];
+
+// This must agree with the above.
+const TABLE_INDEX_CFF:  usize = 0;
+const TABLE_INDEX_OS_2: usize = 1;
+const TABLE_INDEX_CMAP: usize = 2;
+const TABLE_INDEX_GLYF: usize = 3;
+const TABLE_INDEX_HEAD: usize = 4;
+const TABLE_INDEX_HHEA: usize = 5;
+const TABLE_INDEX_HMTX: usize = 6;
+const TABLE_INDEX_KERN: usize = 7;
+const TABLE_INDEX_LOCA: usize = 8;
+
 pub static SFNT_VERSIONS: [u32; 3] = [
     0x10000,
     ((b't' as u32) << 24) | ((b'r' as u32) << 16) | ((b'u' as u32) << 8) | (b'e' as u32),
@@ -65,32 +90,18 @@ impl<'a> Font<'a> {
         let num_tables = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
         try!(reader.jump(mem::size_of::<u16>() * 3).map_err(FontError::eof));
 
-        let (mut cff_table, mut cmap_table) = (None, None);
-        let (mut glyf_table, mut head_table) = (None, None);
-        let (mut hhea_table, mut hmtx_table) = (None, None);
-        let (mut kern_table, mut loca_table) = (None, None);
-        let mut os_2_table = None;
-
+        let mut tables = [None; KNOWN_TABLE_COUNT];
         for _ in 0..num_tables {
             let table_id = try!(reader.read_u32::<BigEndian>().map_err(FontError::eof));
-
-            // Skip over the checksum.
-            try!(reader.read_u32::<BigEndian>().map_err(FontError::eof));
-
+            let _checksum = try!(reader.read_u32::<BigEndian>().map_err(FontError::eof));
             let offset = try!(reader.read_u32::<BigEndian>().map_err(FontError::eof)) as usize;
             let length = try!(reader.read_u32::<BigEndian>().map_err(FontError::eof)) as usize;
 
-            let mut slot = match table_id {
-                cff::TAG => &mut cff_table,
-                cmap::TAG => &mut cmap_table,
-                glyf::TAG => &mut glyf_table,
-                head::TAG => &mut head_table,
-                hhea::TAG => &mut hhea_table,
-                hmtx::TAG => &mut hmtx_table,
-                kern::TAG => &mut kern_table,
-                loca::TAG => &mut loca_table,
-                os_2::TAG => &mut os_2_table,
-                _ => continue,
+            // Find the table ID in our list of known IDs, which must be sorted.
+            debug_assert!(KNOWN_TABLES.windows(2).all(|w| w[0] < w[1]));
+            let slot = match KNOWN_TABLES.binary_search(&table_id) {
+                Err(_) => continue,
+                Ok(table_index) => &mut tables[table_index],
             };
 
             // Make sure there isn't more than one copy of the table.
@@ -103,27 +114,37 @@ impl<'a> Font<'a> {
             })
         }
 
-        let cff_table = match cff_table {
+        Font::from_table_list(bytes, &tables)
+    }
+
+    #[doc(hidden)]
+    pub fn from_table_list<'b>(bytes: &'b [u8],
+                               tables: &[Option<FontTable<'b>>; KNOWN_TABLE_COUNT])
+                               -> Result<Font<'b>, FontError> {
+        let cff_table = match tables[TABLE_INDEX_CFF] {
             None => None,
             Some(cff_table) => Some(try!(CffTable::new(cff_table))),
         };
 
-        let loca_table = match loca_table {
+        let loca_table = match tables[TABLE_INDEX_LOCA] {
             None => None,
             Some(loca_table) => Some(try!(LocaTable::new(loca_table))),
         };
 
+        // For brevity below…
+        let missing = FontError::RequiredTableMissing;
+
         let tables = FontTables {
-            cmap: CmapTable::new(try!(cmap_table.ok_or(FontError::RequiredTableMissing))),
-            head: try!(HeadTable::new(try!(head_table.ok_or(FontError::RequiredTableMissing)))),
-            hhea: try!(HheaTable::new(try!(hhea_table.ok_or(FontError::RequiredTableMissing)))),
-            hmtx: HmtxTable::new(try!(hmtx_table.ok_or(FontError::RequiredTableMissing))),
-            os_2: try!(Os2Table::new(try!(os_2_table.ok_or(FontError::RequiredTableMissing)))),
+            cmap: CmapTable::new(try!(tables[TABLE_INDEX_CMAP].ok_or(missing))),
+            head: try!(HeadTable::new(try!(tables[TABLE_INDEX_HEAD].ok_or(missing)))),
+            hhea: try!(HheaTable::new(try!(tables[TABLE_INDEX_HHEA].ok_or(missing)))),
+            hmtx: HmtxTable::new(try!(tables[TABLE_INDEX_HMTX].ok_or(missing))),
+            os_2: try!(Os2Table::new(try!(tables[TABLE_INDEX_OS_2].ok_or(missing)))),
 
             cff: cff_table,
-            glyf: glyf_table.map(GlyfTable::new),
+            glyf: tables[TABLE_INDEX_GLYF].map(GlyfTable::new),
             loca: loca_table,
-            kern: kern_table.and_then(|table| KernTable::new(table).ok()),
+            kern: tables[TABLE_INDEX_KERN].and_then(|table| KernTable::new(table).ok()),
         };
 
         Ok(Font::from_tables(bytes, tables))

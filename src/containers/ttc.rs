@@ -18,10 +18,10 @@ use font::Font;
 use std::mem;
 use util::Jump;
 
-pub const TTCF: u32 = ((b't' as u32) << 24) |
-                       ((b't' as u32) << 16) |
-                       ((b'c' as u32) << 8)  |
-                        (b'f' as u32);
+pub const MAGIC_NUMBER: u32 = ((b't' as u32) << 24) |
+                              ((b't' as u32) << 16) |
+                              ((b'c' as u32) << 8)  |
+                               (b'f' as u32);
 
 impl<'a> Font<'a> {
     /// Creates a new font from a single font within a byte buffer containing the contents of a
@@ -29,7 +29,7 @@ impl<'a> Font<'a> {
     pub fn from_ttc_index<'b>(bytes: &'b [u8], index: u32) -> Result<Font<'b>, FontError> {
         let mut reader = bytes;
         let magic_number = try!(reader.read_u32::<BigEndian>().map_err(FontError::eof));
-        if magic_number != TTCF {
+        if magic_number != MAGIC_NUMBER {
             return Err(FontError::UnknownFormat)
         }
 

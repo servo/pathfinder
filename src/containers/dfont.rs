@@ -18,6 +18,8 @@ use font::Font;
 use std::mem;
 use util::Jump;
 
+pub const MAGIC_NUMBER: u32 = 0x0100;
+
 const SFNT: u32 = ((b's' as u32) << 24) |
                   ((b'f' as u32) << 16) |
                   ((b'n' as u32) << 8)  |

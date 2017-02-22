@@ -13,8 +13,9 @@ use std::env;
 
 fn main() {
     let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
+    let mut buffer = vec![];
     unsafe {
-        let font = Font::new(file.as_slice()).unwrap();
+        let font = Font::new(file.as_slice(), &mut buffer).unwrap();
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
         let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (glyph_index, (_, glyph_id)) in glyph_mapping.iter().enumerate() {

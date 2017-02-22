@@ -102,8 +102,9 @@ fn main() {
     };
 
     let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
+    let mut buffer = vec![];
     let font = unsafe {
-        Font::from_collection_index(file.as_slice(), font_index).unwrap()
+        Font::from_collection_index(file.as_slice(), font_index, &mut buffer).unwrap()
     };
 
     let units_per_em = font.units_per_em() as f32;

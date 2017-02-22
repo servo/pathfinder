@@ -78,6 +78,7 @@ extern crate bitflags;
 extern crate byteorder;
 extern crate compute_shader;
 extern crate euclid;
+extern crate flate2;
 extern crate gl;
 #[cfg(test)]
 extern crate memmap;

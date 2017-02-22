@@ -12,8 +12,10 @@
 
 use byteorder::{BigEndian, ReadBytesExt};
 use charmap::{CodepointRange, GlyphMapping};
+use containers::dfont;
 use containers::otf::{FontTables, SFNT_VERSIONS};
-use containers::ttc::TTCF;
+use containers::ttc;
+use containers::woff;
 use error::FontError;
 use euclid::Point2D;
 use outline::GlyphBounds;
@@ -49,9 +51,12 @@ impl<'a> Font<'a> {
     /// If this is a `.ttc` or `.dfont` collection, this returns the first font within it. If you
     /// want to read another one, use the `Font::from_collection_index` API.
     ///
+    /// The supplied `buffer` is an arbitrary vector that may or may not be used as a temporary
+    /// storage space. Typically you will want to just pass an empty vector here.
+    ///
     /// Returns the font on success or an error on failure.
-    pub fn new<'b>(bytes: &'b [u8]) -> Result<Font<'b>, FontError> {
-        Font::from_collection_index(bytes, 0)
+    pub fn new<'b>(bytes: &'b [u8], buffer: &'b mut Vec<u8>) -> Result<Font<'b>, FontError> {
+        Font::from_collection_index(bytes, 0, buffer)
     }
 
     /// Creates a new font from a single font within a byte buffer containing the contents of a
@@ -59,15 +64,20 @@ impl<'a> Font<'a> {
     ///
     /// If this is a `.ttc` or `.dfont` collection, this returns the appropriate font within it.
     ///
+    /// The supplied `buffer` is an arbitrary vector that may or may not be used as a temporary
+    /// storage space. Typically you will want to just pass an empty vector here.
+    ///
     /// Returns the font on success or an error on failure.
-    pub fn from_collection_index<'b>(bytes: &'b [u8], index: u32) -> Result<Font<'b>, FontError> {
+    pub fn from_collection_index<'b>(bytes: &'b [u8], index: u32, buffer: &'b mut Vec<u8>)
+                                     -> Result<Font<'b>, FontError> {
         // Check the magic number.
         let mut reader = bytes;
         let magic_number = try!(reader.read_u32::<BigEndian>().map_err(FontError::eof));
         match magic_number {
-            TTCF => Font::from_ttc_index(bytes, index),
+            ttc::MAGIC_NUMBER => Font::from_ttc_index(bytes, index),
+            woff::MAGIC_NUMBER => Font::from_woff(bytes, buffer),
+            dfont::MAGIC_NUMBER => Font::from_dfont_index(bytes, index),
             magic_number if SFNT_VERSIONS.contains(&magic_number) => Font::from_otf(bytes, 0),
-            0x0100 => Font::from_dfont_index(bytes, index),
             _ => Err(FontError::UnknownFormat),
         }
     }
