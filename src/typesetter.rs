@@ -17,7 +17,7 @@
 use charmap::CodepointRanges;
 use error::GlyphStoreCreationError;
 use euclid::{Point2D, Rect};
-use otf::Font;
+use font::Font;
 use outline::{OutlineBuilder, Outlines};
 use shaper;
 use std::u16;
@@ -186,7 +186,7 @@ impl GlyphStore {
         let mut all_glyph_indices = vec![];
         for glyph_id in glyph_ids {
             let glyph_index = try!(outline_builder.add_glyph(font, glyph_id)
-                                                  .map_err(GlyphStoreCreationError::OtfError));
+                                                  .map_err(GlyphStoreCreationError::FontError));
             glyph_id_to_glyph_index[glyph_id as usize] = glyph_index;
             all_glyph_indices.push(glyph_index);
         }
@@ -207,7 +207,7 @@ impl GlyphStore {
     pub fn from_codepoints(codepoints: &CodepointRanges, font: &Font)
                            -> Result<GlyphStore, GlyphStoreCreationError> {
         let mapping = try!(font.glyph_mapping_for_codepoint_ranges(&codepoints.ranges)
-                               .map_err(GlyphStoreCreationError::OtfError));
+                               .map_err(GlyphStoreCreationError::FontError));
         let glyph_ids = mapping.iter().map(|(_, glyph_id)| glyph_id).collect();
         GlyphStore::from_glyph_ids(glyph_ids, font)
     }

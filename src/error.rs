@@ -12,8 +12,59 @@
 
 use compute_shader;
 use gl::types::GLenum;
-use otf;
 use std::io;
+
+/// Errors that can occur when parsing OpenType fonts.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum FontError {
+    /// A miscellaneous error occurred.
+    Failed,
+    /// The file ended unexpectedly.
+    UnexpectedEof,
+    /// There is no font with this index in this font collection.
+    FontIndexOutOfBounds,
+    /// The file declared that it was in a version of the format we don't support.
+    UnsupportedVersion,
+    /// The file was of a format we don't support.
+    UnknownFormat,
+    /// The font had a glyph format we don't support.
+    UnsupportedGlyphFormat,
+    /// We don't support the declared version of the font's CFF outlines.
+    UnsupportedCffVersion,
+    /// We don't support the declared version of the font's character map.
+    UnsupportedCmapVersion,
+    /// The font character map has an unsupported platform/encoding ID.
+    UnsupportedCmapEncoding,
+    /// The font character map has an unsupported format.
+    UnsupportedCmapFormat,
+    /// We don't support the declared version of the font header.
+    UnsupportedHeadVersion,
+    /// We don't support the declared version of the font's horizontal metrics.
+    UnsupportedHheaVersion,
+    /// We don't support the declared version of the font's OS/2 and Windows table.
+    UnsupportedOs2Version,
+    /// A required table is missing.
+    RequiredTableMissing,
+    /// An integer in a CFF DICT was not found.
+    CffIntegerNotFound,
+    /// The CFF Top DICT was not found.
+    CffTopDictNotFound,
+    /// A CFF `Offset` value was formatted incorrectly.
+    CffBadOffset,
+    /// The CFF evaluation stack overflowed.
+    CffStackOverflow,
+    /// An unimplemented CFF CharString operator was encountered.
+    CffUnimplementedOperator,
+}
+
+impl FontError {
+    #[doc(hidden)]
+    #[inline]
+    pub fn eof<T>(_: T) -> FontError {
+        FontError::UnexpectedEof
+    }
+}
+
 
 /// An OpenGL error with the given code.
 ///
@@ -68,7 +119,7 @@ pub enum RasterError {
 #[derive(Debug)]
 pub enum GlyphStoreCreationError {
     /// An error occurred when looking up a glyph ID for a character in the font.
-    OtfError(otf::Error),
+    FontError(FontError),
     /// An error occurred when uploading the outlines to the GPU.
     GlError(GlError),
 }

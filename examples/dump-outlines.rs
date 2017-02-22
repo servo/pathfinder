@@ -7,7 +7,7 @@ extern crate pathfinder;
 
 use memmap::{Mmap, Protection};
 use pathfinder::charmap::CodepointRange;
-use pathfinder::otf::{Font, PointKind};
+use pathfinder::font::{Font, PointKind};
 use std::char;
 use std::env;
 

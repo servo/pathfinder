@@ -10,11 +10,11 @@
 
 //! Glyph vectors, uploaded in a resolution-independent manner to the GPU.
 
-use error::GlError;
+use error::{FontError, GlError};
 use euclid::Size2D;
+use font::{Font, PointKind};
 use gl::types::{GLsizeiptr, GLuint};
 use gl;
-use otf::{self, Font, PointKind};
 use std::mem;
 use std::os::raw::c_void;
 
@@ -44,7 +44,7 @@ impl OutlineBuilder {
 
     /// Adds a new glyph to the outline builder. Returns the glyph index, which is useful for later
     /// calls to `Atlas::pack_glyph()`.
-    pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<u16, otf::Error> {
+    pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<u16, FontError> {
         let glyph_index = self.descriptors.len() as u16;
 
         let mut point_index = self.vertices.len() as u32;

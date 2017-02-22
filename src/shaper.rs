@@ -15,7 +15,7 @@
 //! the system shaper instead.
 
 use charmap::GlyphMapping;
-use otf::Font;
+use font::Font;
 
 /// Shapes the given Unicode text in the given font, returning the proper position for each glyph.
 ///

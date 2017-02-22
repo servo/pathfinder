@@ -9,9 +9,15 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use otf::{Error, FontTable};
+use error::FontError;
+use font::FontTable;
 use std::mem;
 use util::Jump;
+
+pub const TAG: u32 = ((b'O' as u32) << 24) |
+                      ((b'S' as u32) << 16) |
+                      ((b'/' as u32) << 8)  |
+                       (b'2' as u32);
 
 #[derive(Clone, Debug)]
 pub struct Os2Table {
@@ -21,27 +27,27 @@ pub struct Os2Table {
 }
 
 impl Os2Table {
-    pub fn new(table: FontTable) -> Result<Os2Table, Error> {
+    pub fn new(table: FontTable) -> Result<Os2Table, FontError> {
         let mut reader = table.bytes;
 
         // We should be compatible with all versions. If this is greater than version 5, follow
         // Postel's law and hope for the best.
-        let version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let version = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
 
         // Skip to the line gap.
-        try!(reader.jump(mem::size_of::<u16>() * 15).map_err(Error::eof));
-        try!(reader.jump(10).map_err(Error::eof));
+        try!(reader.jump(mem::size_of::<u16>() * 15).map_err(FontError::eof));
+        try!(reader.jump(10).map_err(FontError::eof));
         if version == 0 {
-            try!(reader.jump(mem::size_of::<u32>() * 2).map_err(Error::eof));
+            try!(reader.jump(mem::size_of::<u32>() * 2).map_err(FontError::eof));
         } else {
-            try!(reader.jump(mem::size_of::<u32>() * 5).map_err(Error::eof));
+            try!(reader.jump(mem::size_of::<u32>() * 5).map_err(FontError::eof));
         }
-        try!(reader.jump(mem::size_of::<u16>() * 3).map_err(Error::eof));
+        try!(reader.jump(mem::size_of::<u16>() * 3).map_err(FontError::eof));
 
         // Read the line spacing information.
-        let typo_ascender = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        let typo_descender = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        let typo_line_gap = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let typo_ascender = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
+        let typo_descender = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
+        let typo_line_gap = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
 
         Ok(Os2Table {
             typo_ascender: typo_ascender,

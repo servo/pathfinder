@@ -23,7 +23,7 @@ use pathfinder::atlas::AtlasBuilder;
 use pathfinder::charmap::CodepointRanges;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::error::RasterError;
-use pathfinder::otf::Font;
+use pathfinder::font::Font;
 use pathfinder::rasterizer::{DrawAtlasProfilingEvents, Rasterizer, RasterizerOptions};
 use pathfinder::typesetter::{GlyphStore, PositionedGlyph, Typesetter};
 use std::char;

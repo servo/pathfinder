@@ -9,9 +9,15 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use otf::{Error, FontTable};
+use error::FontError;
+use font::FontTable;
 use std::mem;
 use util::Jump;
+
+pub const TAG: u32 = ((b'k' as u32) << 24) |
+                      ((b'e' as u32) << 16) |
+                      ((b'r' as u32) << 8)  |
+                       (b'n' as u32);
 
 bitflags! {
     flags Coverage: u16 {
@@ -28,20 +34,20 @@ pub struct KernTable<'a> {
 }
 
 impl<'a> KernTable<'a> {
-    pub fn new(table: FontTable) -> Result<KernTable, Error> {
+    pub fn new(table: FontTable) -> Result<KernTable, FontError> {
         let mut kern_reader = table.bytes;
-        let version = try!(kern_reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let version = try!(kern_reader.read_u16::<BigEndian>().map_err(FontError::eof));
         if version != 0 {
-            return Err(Error::UnknownFormat)
+            return Err(FontError::UnknownFormat)
         }
 
-        let n_tables = try!(kern_reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let n_tables = try!(kern_reader.read_u16::<BigEndian>().map_err(FontError::eof));
         let mut horizontal_table = None;
         for _ in 0..n_tables {
             let mut table_reader = kern_reader;
-            let _version = try!(table_reader.read_u16::<BigEndian>().map_err(Error::eof));
-            let length = try!(table_reader.read_u16::<BigEndian>().map_err(Error::eof));
-            let coverage = try!(table_reader.read_u16::<BigEndian>().map_err(Error::eof));
+            let _version = try!(table_reader.read_u16::<BigEndian>().map_err(FontError::eof));
+            let length = try!(table_reader.read_u16::<BigEndian>().map_err(FontError::eof));
+            let coverage = try!(table_reader.read_u16::<BigEndian>().map_err(FontError::eof));
             let coverage_flags = Coverage::from_bits_truncate(coverage);
 
             if coverage_flags.contains(HORIZONTAL) && !coverage_flags.contains(MINIMUM) &&
@@ -51,7 +57,7 @@ impl<'a> KernTable<'a> {
                 break
             }
 
-            try!(kern_reader.jump(length as usize).map_err(Error::eof));
+            try!(kern_reader.jump(length as usize).map_err(FontError::eof));
         }
 
         match horizontal_table {
@@ -60,25 +66,25 @@ impl<'a> KernTable<'a> {
                     horizontal_table: horizontal_table,
                 })
             }
-            None => Err(Error::UnknownFormat),
+            None => Err(FontError::UnknownFormat),
         }
     }
 
     pub fn kerning_for_glyph_pair(&self, left_glyph_id: u16, right_glyph_id: u16)
-                                  -> Result<i16, Error> {
+                                  -> Result<i16, FontError> {
         let mut table_reader = self.horizontal_table;
-        let n_pairs = try!(table_reader.read_u16::<BigEndian>().map_err(Error::eof));
-        try!(table_reader.jump(mem::size_of::<[u16; 3]>()).map_err(Error::eof));
+        let n_pairs = try!(table_reader.read_u16::<BigEndian>().map_err(FontError::eof));
+        try!(table_reader.jump(mem::size_of::<[u16; 3]>()).map_err(FontError::eof));
 
         let (mut low, mut high) = (0, n_pairs as u32);
         while low < high {
             let mut reader = table_reader;
             let mid = (low + high) / 2;
 
-            try!(reader.jump(mid as usize * mem::size_of::<[u16; 3]>()).map_err(Error::eof));
-            let left = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
-            let right = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
-            let value = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+            try!(reader.jump(mid as usize * mem::size_of::<[u16; 3]>()).map_err(FontError::eof));
+            let left = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
+            let right = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
+            let value = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
 
             if left_glyph_id < left || (left_glyph_id == left && right_glyph_id < right) {
                 high = mid

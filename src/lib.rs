@@ -91,13 +91,15 @@ pub mod atlas;
 pub mod charmap;
 pub mod coverage;
 pub mod error;
-pub mod otf;
+pub mod font;
 pub mod outline;
 pub mod rasterizer;
 pub mod shaper;
 pub mod typesetter;
 
+mod containers;
 mod rect_packer;
+mod tables;
 mod util;
 
 #[cfg(test)]

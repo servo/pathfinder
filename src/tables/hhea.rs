@@ -9,9 +9,15 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
-use otf::{Error, FontTable};
+use error::FontError;
+use font::FontTable;
 use std::mem;
 use util::Jump;
+
+pub const TAG: u32 = ((b'h' as u32) << 24) |
+                      ((b'h' as u32) << 16) |
+                      ((b'e' as u32) << 8)  |
+                       (b'a' as u32);
 
 #[derive(Clone, Debug)]
 pub struct HheaTable {
@@ -20,24 +26,24 @@ pub struct HheaTable {
 }
 
 impl HheaTable {
-    pub fn new(table: FontTable) -> Result<HheaTable, Error> {
+    pub fn new(table: FontTable) -> Result<HheaTable, FontError> {
         let mut reader = table.bytes;
 
         // Check the version.
-        let major_version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
-        let minor_version = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        let major_version = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
+        let minor_version = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
         if (major_version, minor_version) != (1, 0) {
-            return Err(Error::UnsupportedHheaVersion)
+            return Err(FontError::UnsupportedHheaVersion)
         }
 
         // Read the height-related metrics.
-        let _ascender = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        let _descender = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        let line_gap = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let _ascender = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
+        let _descender = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
+        let line_gap = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
 
         // Read the number of `hmtx` entries.
-        try!(reader.jump(mem::size_of::<u16>() * 12).map_err(Error::eof));
-        let number_of_h_metrics = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+        try!(reader.jump(mem::size_of::<u16>() * 12).map_err(FontError::eof));
+        let number_of_h_metrics = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
 
         Ok(HheaTable {
             line_gap: line_gap,

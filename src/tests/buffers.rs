@@ -2,8 +2,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 use charmap::CodepointRange;
+use font::Font;
 use memmap::{Mmap, Protection};
-use otf::Font;
 use outline::OutlineBuilder;
 use test::Bencher;
 

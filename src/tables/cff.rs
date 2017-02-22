@@ -9,13 +9,18 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
+use error::FontError;
 use euclid::Point2D;
-use otf::glyf::{Point, PointKind};
-use otf::{Error, FontTable};
+use font::{FontTable, Point, PointKind};
 use outline::GlyphBounds;
 use std::cmp;
 use std::u16;
 use util::Jump;
+
+pub const TAG: u32 = ((b'C' as u32) << 24) |
+                      ((b'F' as u32) << 16) |
+                      ((b'F' as u32) << 8)  |
+                       (b' ' as u32);
 
 #[derive(Clone, Copy, Debug)]
 pub struct CffTable<'a> {
@@ -26,19 +31,19 @@ pub struct CffTable<'a> {
 
 impl<'a> CffTable<'a> {
     #[inline]
-    pub fn new(table: FontTable) -> Result<CffTable, Error> {
+    pub fn new(table: FontTable) -> Result<CffTable, FontError> {
         let mut reader = table.bytes;
 
         // Check version.
-        let major = try!(reader.read_u8().map_err(Error::eof));
-        let minor = try!(reader.read_u8().map_err(Error::eof));
+        let major = try!(reader.read_u8().map_err(FontError::eof));
+        let minor = try!(reader.read_u8().map_err(FontError::eof));
         if major != 1 || minor != 0 {
-            return Err(Error::UnsupportedCffVersion)
+            return Err(FontError::UnsupportedCffVersion)
         }
 
         // Skip the header.
-        let hdr_size = try!(reader.read_u8().map_err(Error::eof));
-        try!(reader.jump(hdr_size as usize - 3).map_err(Error::eof));
+        let hdr_size = try!(reader.read_u8().map_err(FontError::eof));
+        try!(reader.jump(hdr_size as usize - 3).map_err(FontError::eof));
 
         // Skip the name INDEX.
         //
@@ -47,7 +52,7 @@ impl<'a> CffTable<'a> {
 
         // Get the top DICT for our font.
         if try!(find_in_index(&mut reader, 0)).is_none() {
-            return Err(Error::CffTopDictNotFound)
+            return Err(FontError::CffTopDictNotFound)
         }
 
         // Find the CharStrings offset within the top DICT.
@@ -67,13 +72,13 @@ impl<'a> CffTable<'a> {
     }
 
     pub fn for_each_point<F>(&self, glyph_id: u16, mut callback: F)
-                             -> Result<(), Error> where F: FnMut(&Point) {
+                             -> Result<(), FontError> where F: FnMut(&Point) {
         let mut reader = self.table.bytes;
-        try!(reader.jump(self.char_strings as usize).map_err(Error::eof));
+        try!(reader.jump(self.char_strings as usize).map_err(FontError::eof));
 
         let char_string_length = match try!(find_in_index(&mut reader, glyph_id)) {
             Some(char_string_length) => char_string_length,
-            None => return Err(Error::UnexpectedEof),
+            None => return Err(FontError::UnexpectedEof),
         };
 
         let mut reader = &reader[0..char_string_length as usize];
@@ -87,20 +92,20 @@ impl<'a> CffTable<'a> {
             match b0 {
                 32...246 => try!(stack.push(b0 as i32 - 139)),
                 247...250 => {
-                    let b1 = try!(reader.read_u8().map_err(Error::eof));
+                    let b1 = try!(reader.read_u8().map_err(FontError::eof));
                     try!(stack.push((b0 as i32 - 247) * 256 + b1 as i32 + 108))
                 }
                 251...254 => {
-                    let b1 = try!(reader.read_u8().map_err(Error::eof));
+                    let b1 = try!(reader.read_u8().map_err(FontError::eof));
                     try!(stack.push((b0 as i32 - 251) * -256 - b1 as i32 - 108))
                 }
                 255 => {
                     // FIXME(pcwalton): Don't truncate the lower 16 bits.
-                    try!(stack.push(try!(reader.read_i32::<BigEndian>().map_err(Error::eof)) >>
+                    try!(stack.push(try!(reader.read_i32::<BigEndian>().map_err(FontError::eof)) >>
                          16))
                 }
                 28 => {
-                    let number = try!(reader.read_i16::<BigEndian>().map_err(Error::eof)) as i32;
+                    let number = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)) as i32;
                     try!(stack.push(number))
                 }
 
@@ -349,13 +354,13 @@ impl<'a> CffTable<'a> {
 
                     // Now skip ⌈hint_count / 8⌉ bytes.
                     let hint_byte_count = (hint_count as usize + 7) / 8;
-                    try!(reader.jump(hint_byte_count).map_err(Error::eof));
+                    try!(reader.jump(hint_byte_count).map_err(FontError::eof));
                 }
                 20 => {
                     // Skip ⌈hint_count / 8⌉ bytes.
                     stack.clear();
                     let hint_byte_count = (hint_count as usize + 7) / 8;
-                    try!(reader.jump(hint_byte_count).map_err(Error::eof));
+                    try!(reader.jump(hint_byte_count).map_err(FontError::eof));
                 }
                 21 => {
                     // |- dx1 dy1 rmoveto
@@ -387,13 +392,13 @@ impl<'a> CffTable<'a> {
                 12 => {
                     // TODO(pcwalton): Support these extended operators.
                     let _operator = (12 << 8) |
-                        (try!(reader.read_u8().map_err(Error::eof)) as u32);
+                        (try!(reader.read_u8().map_err(FontError::eof)) as u32);
                     stack.clear();
-                    return Err(Error::CffUnimplementedOperator)
+                    return Err(FontError::CffUnimplementedOperator)
                 }
                 _ => {
                     stack.clear();
-                    return Err(Error::CffUnimplementedOperator)
+                    return Err(FontError::CffUnimplementedOperator)
                 }
             }
         }
@@ -404,7 +409,7 @@ impl<'a> CffTable<'a> {
 
     // TODO(pcwalton): Do some caching, perhaps?
     // TODO(pcwalton): Compute this at the same time as `for_each_point`, perhaps?
-    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, Error> {
+    pub fn glyph_bounds(&self, glyph_id: u16) -> Result<GlyphBounds, FontError> {
         let mut bounds = GlyphBounds::default();
         try!(self.for_each_point(glyph_id, |point| {
             bounds.left = cmp::min(bounds.left, point.position.x as i32);
@@ -418,17 +423,17 @@ impl<'a> CffTable<'a> {
 
 // Moves the reader to the location of the given element in the index. Returns the length of the
 // element if the element was found or `None` otherwise.
-fn find_in_index(reader: &mut &[u8], index: u16) -> Result<Option<u32>, Error> {
-    let count = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+fn find_in_index(reader: &mut &[u8], index: u16) -> Result<Option<u32>, FontError> {
+    let count = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
     if count == 0 {
         return Ok(None)
     }
 
-    let off_size = try!(reader.read_u8().map_err(Error::eof));
+    let off_size = try!(reader.read_u8().map_err(FontError::eof));
 
     let mut offset_reader = *reader;
     try!(offset_reader.jump(off_size as usize * cmp::min(index, count) as usize)
-                      .map_err(Error::eof));
+                      .map_err(FontError::eof));
     let offset = try!(read_offset(&mut offset_reader, off_size));
 
     let next_offset = if index < count {
@@ -438,49 +443,49 @@ fn find_in_index(reader: &mut &[u8], index: u16) -> Result<Option<u32>, Error> {
     };
 
     try!(reader.jump(off_size as usize * (count as usize + 1) + offset as usize - 1)
-               .map_err(Error::eof));
+               .map_err(FontError::eof));
     return Ok(next_offset)
 }
 
 // Skips over an INDEX by reading the last element in the offset array and seeking the appropriate
 // number of bytes forward.
-fn skip_index(reader: &mut &[u8]) -> Result<(), Error> {
+fn skip_index(reader: &mut &[u8]) -> Result<(), FontError> {
     find_in_index(reader, u16::MAX).map(drop)
 }
 
 // Returns the integer with the given operator.
-fn get_integer_in_dict(reader: &mut &[u8], operator: u16) -> Result<i32, Error> {
+fn get_integer_in_dict(reader: &mut &[u8], operator: u16) -> Result<i32, FontError> {
     let mut last_integer_operand = None;
     loop {
-        let b0 = try!(reader.read_u8().map_err(Error::eof));
+        let b0 = try!(reader.read_u8().map_err(FontError::eof));
         match b0 {
             32...246 => last_integer_operand = Some(b0 as i32 - 139),
             247...250 => {
-                let b1 = try!(reader.read_u8().map_err(Error::eof));
+                let b1 = try!(reader.read_u8().map_err(FontError::eof));
                 last_integer_operand = Some((b0 as i32 - 247) * 256 + b1 as i32 + 108)
             }
             251...254 => {
-                let b1 = try!(reader.read_u8().map_err(Error::eof));
+                let b1 = try!(reader.read_u8().map_err(FontError::eof));
                 last_integer_operand = Some(-(b0 as i32 - 251) * 256 - b1 as i32 - 108)
             }
             28 => {
                 last_integer_operand =
-                    Some(try!(reader.read_i16::<BigEndian>().map_err(Error::eof)) as i32)
+                    Some(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)) as i32)
             }
             29 => {
                 last_integer_operand =
-                    Some(try!(reader.read_i32::<BigEndian>().map_err(Error::eof)) as i32)
+                    Some(try!(reader.read_i32::<BigEndian>().map_err(FontError::eof)) as i32)
             }
             30 => {
                 // TODO(pcwalton): Real numbers.
-                while (try!(reader.read_u8().map_err(Error::eof)) & 0xf) != 0xf {}
+                while (try!(reader.read_u8().map_err(FontError::eof)) & 0xf) != 0xf {}
             }
             12 => {
-                let b1 = try!(reader.read_u8().map_err(Error::eof));
+                let b1 = try!(reader.read_u8().map_err(FontError::eof));
                 if operator == (((b1 as u16) << 8) | (b0 as u16)) {
                     match last_integer_operand {
                         Some(last_integer_operand) => return Ok(last_integer_operand),
-                        None => return Err(Error::CffIntegerNotFound),
+                        None => return Err(FontError::CffIntegerNotFound),
                     }
                 }
                 last_integer_operand = None
@@ -489,7 +494,7 @@ fn get_integer_in_dict(reader: &mut &[u8], operator: u16) -> Result<i32, Error> 
                 if operator == b0 as u16 {
                     match last_integer_operand {
                         Some(last_integer_operand) => return Ok(last_integer_operand),
-                        None => return Err(Error::CffIntegerNotFound),
+                        None => return Err(FontError::CffIntegerNotFound),
                     }
                 }
                 last_integer_operand = None
@@ -499,17 +504,17 @@ fn get_integer_in_dict(reader: &mut &[u8], operator: u16) -> Result<i32, Error> 
 }
 
 // Reads an Offset with the given size.
-fn read_offset(reader: &mut &[u8], size: u8) -> Result<u32, Error> {
+fn read_offset(reader: &mut &[u8], size: u8) -> Result<u32, FontError> {
     match size {
-        1 => Ok(try!(reader.read_u8().map_err(Error::eof)) as u32),
-        2 => Ok(try!(reader.read_u16::<BigEndian>().map_err(Error::eof)) as u32),
+        1 => Ok(try!(reader.read_u8().map_err(FontError::eof)) as u32),
+        2 => Ok(try!(reader.read_u16::<BigEndian>().map_err(FontError::eof)) as u32),
         3 => {
-            let hi = try!(reader.read_u8().map_err(Error::eof)) as u32;
-            let lo = try!(reader.read_u16::<BigEndian>().map_err(Error::eof)) as u32;
+            let hi = try!(reader.read_u8().map_err(FontError::eof)) as u32;
+            let lo = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof)) as u32;
             Ok((hi << 16) | lo)
         }
-        4 => Ok(try!(reader.read_u32::<BigEndian>().map_err(Error::eof))),
-        _ => Err(Error::CffBadOffset),
+        4 => Ok(try!(reader.read_u32::<BigEndian>().map_err(FontError::eof))),
+        _ => Err(FontError::CffBadOffset),
     }
 }
 
@@ -527,13 +532,13 @@ impl EvaluationStack {
         }
     }
 
-    fn push(&mut self, value: i32) -> Result<(), Error> {
+    fn push(&mut self, value: i32) -> Result<(), FontError> {
         if (self.size as usize) < self.array.len() {
             self.array[self.size as usize] = value;
             self.size += 1;
             Ok(())
         } else {
-            Err(Error::CffStackOverflow)
+            Err(FontError::CffStackOverflow)
         }
     }
 

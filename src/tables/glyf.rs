@@ -9,14 +9,20 @@
 // except according to those terms.
 
 use byteorder::{BigEndian, ReadBytesExt};
+use error::FontError;
 use euclid::Point2D;
-use otf::head::HeadTable;
-use otf::loca::LocaTable;
-use otf::{Error, FontTable};
+use font::{FontTable, Point, PointKind};
 use outline::GlyphBounds;
 use std::mem;
 use std::ops::Mul;
+use tables::head::HeadTable;
+use tables::loca::LocaTable;
 use util::Jump;
+
+pub const TAG: u32 = ((b'g' as u32) << 24) |
+                      ((b'l' as u32) << 16) |
+                      ((b'y' as u32) << 8)  |
+                       (b'f' as u32);
 
 const F2DOT14_ZERO: F2Dot14 = F2Dot14(0);
 const F2DOT14_ONE:  F2Dot14 = F2Dot14(0b0100_0000_0000_0000);
@@ -44,34 +50,6 @@ bitflags! {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct Point {
-    /// Where the point is located in glyph space.
-    pub position: Point2D<i16>,
-
-    /// The index of the point in this contour.
-    ///
-    /// When iterating over points via `for_each_point`, a value of 0 here indicates that a new
-    /// contour begins.
-    pub index_in_contour: u16,
-
-    /// The kind of point this is.
-    pub kind: PointKind,
-}
-
-/// The type of point.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum PointKind {
-    /// The point is on the curve.
-    OnCurve,
-    /// The point is a quadratic control point.
-    QuadControl,
-    /// The point is the first cubic control point.
-    FirstCubicControl,
-    /// The point is the second cubic control point.
-    SecondCubicControl,
-}
-
 /// TODO(pcwalton): Add some caching so we don't keep going to the `loca` table all the time.
 #[derive(Clone, Copy, Debug)]
 pub struct GlyfTable<'a> {
@@ -91,7 +69,7 @@ impl<'a> GlyfTable<'a> {
                              loca_table: &LocaTable,
                              glyph_id: u16,
                              callback: F)
-                             -> Result<(), Error> where F: FnMut(&Point) {
+                             -> Result<(), FontError> where F: FnMut(&Point) {
         let mut reader = self.table.bytes;
 
         match try!(loca_table.location_of(head_table, glyph_id)) {
@@ -99,11 +77,11 @@ impl<'a> GlyfTable<'a> {
                 // No points.
                 return Ok(())
             }
-            Some(offset) => try!(reader.jump(offset as usize).map_err(Error::eof)),
+            Some(offset) => try!(reader.jump(offset as usize).map_err(FontError::eof)),
         }
 
         let glyph_start = reader;
-        let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
         if number_of_contours >= 0 {
             self.for_each_point_in_simple_glyph(glyph_start, callback)
         } else {
@@ -112,25 +90,25 @@ impl<'a> GlyfTable<'a> {
     }
 
     fn for_each_point_in_simple_glyph<F>(&self, mut reader: &[u8], mut callback: F)
-                                         -> Result<(), Error> where F: FnMut(&Point) {
+                                         -> Result<(), FontError> where F: FnMut(&Point) {
         // Determine how many contours we have.
-        let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let number_of_contours = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
         if number_of_contours == 0 {
             return Ok(())
         }
 
         // Skip over the rest of the header.
-        try!(reader.jump(mem::size_of::<i16>() * 4).map_err(Error::eof));
+        try!(reader.jump(mem::size_of::<i16>() * 4).map_err(FontError::eof));
 
         // Find out how many points we have.
         let mut endpoints_reader = reader;
         try!(reader.jump(mem::size_of::<u16>() as usize * (number_of_contours as usize - 1))
-                   .map_err(Error::eof));
-        let number_of_points = try!(reader.read_u16::<BigEndian>().map_err(Error::eof)) + 1;
+                   .map_err(FontError::eof));
+        let number_of_points = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof)) + 1;
 
         // Skip over hinting instructions.
-        let instruction_length = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
-        try!(reader.jump(instruction_length as usize).map_err(Error::eof));
+        let instruction_length = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
+        try!(reader.jump(instruction_length as usize).map_err(FontError::eof));
 
         // Find the offsets of the X and Y coordinates.
         let flags_reader = reader;
@@ -140,14 +118,14 @@ impl<'a> GlyfTable<'a> {
         // Set up the streams.
         let mut flag_parser = try!(FlagParser::new(flags_reader));
         let mut x_coordinate_reader = reader;
-        try!(reader.jump(x_coordinate_length as usize).map_err(Error::eof));
+        try!(reader.jump(x_coordinate_length as usize).map_err(FontError::eof));
         let mut y_coordinate_reader = reader;
 
         // Now parse the contours.
         let (mut position, mut point_index) = (Point2D::new(0, 0), 0);
         for _ in 0..number_of_contours {
             let contour_point_count = try!(endpoints_reader.read_u16::<BigEndian>()
-                                                           .map_err(Error::eof)) - point_index + 1;
+                                                           .map_err(FontError::eof)) - point_index + 1;
 
             let mut first_on_curve_point = None;
             let mut initial_off_curve_point = None;
@@ -160,20 +138,20 @@ impl<'a> GlyfTable<'a> {
 
                 let mut delta = Point2D::new(0, 0);
                 if flags.contains(X_SHORT_VECTOR) {
-                    delta.x = try!(x_coordinate_reader.read_u8().map_err(Error::eof)) as i16;
+                    delta.x = try!(x_coordinate_reader.read_u8().map_err(FontError::eof)) as i16;
                     if !flags.contains(THIS_X_IS_SAME) {
                         delta.x = -delta.x
                     }
                 } else if !flags.contains(THIS_X_IS_SAME) {
-                    delta.x = try!(x_coordinate_reader.read_i16::<BigEndian>().map_err(Error::eof))
+                    delta.x = try!(x_coordinate_reader.read_i16::<BigEndian>().map_err(FontError::eof))
                 }
                 if flags.contains(Y_SHORT_VECTOR) {
-                    delta.y = try!(y_coordinate_reader.read_u8().map_err(Error::eof)) as i16;
+                    delta.y = try!(y_coordinate_reader.read_u8().map_err(FontError::eof)) as i16;
                     if !flags.contains(THIS_Y_IS_SAME) {
                         delta.y = -delta.y
                     }
                 } else if !flags.contains(THIS_Y_IS_SAME) {
-                    delta.y = try!(y_coordinate_reader.read_i16::<BigEndian>().map_err(Error::eof))
+                    delta.y = try!(y_coordinate_reader.read_i16::<BigEndian>().map_err(FontError::eof))
                 }
 
                 if last_point_was_off_curve && !flags.contains(ON_CURVE) {
@@ -261,21 +239,21 @@ impl<'a> GlyfTable<'a> {
                                             head_table: &HeadTable,
                                             loca_table: &LocaTable,
                                             mut callback: F)
-                                            -> Result<(), Error> where F: FnMut(&Point) {
-        try!(reader.jump(mem::size_of::<i16>() * 5).map_err(Error::eof));
+                                            -> Result<(), FontError> where F: FnMut(&Point) {
+        try!(reader.jump(mem::size_of::<i16>() * 5).map_err(FontError::eof));
 
         loop {
-            let flags = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+            let flags = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
             let flags = CompositeFlags::from_bits_truncate(flags);
-            let glyph_index = try!(reader.read_u16::<BigEndian>().map_err(Error::eof));
+            let glyph_index = try!(reader.read_u16::<BigEndian>().map_err(FontError::eof));
 
             let (arg0, arg1);
             if flags.contains(ARG_1_AND_2_ARE_WORDS) {
-                arg0 = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-                arg1 = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+                arg0 = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
+                arg1 = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
             } else {
-                arg0 = try!(reader.read_i8().map_err(Error::eof)) as i16;
-                arg1 = try!(reader.read_i8().map_err(Error::eof)) as i16;
+                arg0 = try!(reader.read_i8().map_err(FontError::eof)) as i16;
+                arg1 = try!(reader.read_i8().map_err(FontError::eof)) as i16;
             }
 
             let mut transform = Mat3x2::identity();
@@ -285,22 +263,22 @@ impl<'a> GlyfTable<'a> {
             }
 
             if flags.contains(WE_HAVE_A_SCALE) {
-                let scale = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(Error::eof)));
+                let scale = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
                 transform.m00 = scale;
                 transform.m11 = scale;
             } else if flags.contains(WE_HAVE_AN_X_AND_Y_SCALE) {
-                transform.m00 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(Error::eof)));
-                transform.m11 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(Error::eof)));
+                transform.m00 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
+                transform.m11 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
             } else if flags.contains(WE_HAVE_A_TWO_BY_TWO) {
-                transform.m00 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(Error::eof)));
-                transform.m01 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(Error::eof)));
-                transform.m10 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(Error::eof)));
-                transform.m11 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(Error::eof)));
+                transform.m00 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
+                transform.m01 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
+                transform.m10 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
+                transform.m11 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
             }
 
             if let Some(offset) = try!(loca_table.location_of(head_table, glyph_index)) {
                 let mut reader = self.table.bytes;
-                try!(reader.jump(offset as usize).map_err(Error::eof));
+                try!(reader.jump(offset as usize).map_err(FontError::eof));
                 try!(self.for_each_point_in_simple_glyph(reader, |point| {
                     callback(&transform.transform(&point))
                 }));
@@ -315,7 +293,7 @@ impl<'a> GlyfTable<'a> {
     }
 
     pub fn glyph_bounds(&self, head_table: &HeadTable, loca_table: &LocaTable, glyph_id: u16)
-                        -> Result<GlyphBounds, Error> {
+                        -> Result<GlyphBounds, FontError> {
         let mut reader = self.table.bytes;
 
         match try!(loca_table.location_of(head_table, glyph_id)) {
@@ -328,16 +306,16 @@ impl<'a> GlyfTable<'a> {
                     top: 0,
                 })
             }
-            Some(offset) => try!(reader.jump(offset as usize).map_err(Error::eof)),
+            Some(offset) => try!(reader.jump(offset as usize).map_err(FontError::eof)),
         }
 
         // Skip over the number of contours.
-        try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
 
-        let x_min = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        let y_min = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        let x_max = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
-        let y_max = try!(reader.read_i16::<BigEndian>().map_err(Error::eof));
+        let x_min = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
+        let y_min = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
+        let x_max = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
+        let y_max = try!(reader.read_i16::<BigEndian>().map_err(FontError::eof));
         Ok(GlyphBounds {
             left: x_min as i32,
             bottom: y_min as i32,
@@ -351,14 +329,14 @@ impl<'a> GlyfTable<'a> {
 // of X coordinates and positions the reader at the start of that list.
 #[inline]
 fn calculate_size_of_x_coordinates<'a, 'b>(reader: &'a mut &'b [u8], number_of_points: u16)
-                                           -> Result<u16, Error> {
+                                           -> Result<u16, FontError> {
     let (mut x_coordinate_length, mut points_left) = (0, number_of_points);
     while points_left > 0 {
-        let flags = SimpleFlags::from_bits_truncate(try!(reader.read_u8().map_err(Error::eof)));
+        let flags = SimpleFlags::from_bits_truncate(try!(reader.read_u8().map_err(FontError::eof)));
         let repeat_count = if !flags.contains(REPEAT) {
             1
         } else {
-            try!(reader.read_u8().map_err(Error::eof)) as u16 + 1
+            try!(reader.read_u8().map_err(FontError::eof)) as u16 + 1
         };
 
         if flags.contains(X_SHORT_VECTOR) {
@@ -381,7 +359,7 @@ struct FlagParser<'a> {
 
 impl<'a> FlagParser<'a> {
     #[inline]
-    fn new(buffer: &[u8]) -> Result<FlagParser, Error> {
+    fn new(buffer: &[u8]) -> Result<FlagParser, FontError> {
         let mut parser = FlagParser {
             next: buffer,
             current: &buffer[0],
@@ -392,7 +370,7 @@ impl<'a> FlagParser<'a> {
     }
 
     #[inline]
-    fn next(&mut self) -> Result<(), Error> {
+    fn next(&mut self) -> Result<(), FontError> {
         if self.repeats_left > 0 {
             self.repeats_left -= 1;
             return Ok(())
@@ -400,7 +378,7 @@ impl<'a> FlagParser<'a> {
 
         self.current = match self.next.get(0) {
             Some(value) => value,
-            None => return Err(Error::UnexpectedEof),
+            None => return Err(FontError::UnexpectedEof),
         };
 
         let flags = SimpleFlags::from_bits_truncate(*self.current);
@@ -409,7 +387,7 @@ impl<'a> FlagParser<'a> {
         if flags.contains(REPEAT) {
             self.repeats_left = match self.next.get(0) {
                 Some(&value) => value,
-                None => return Err(Error::UnexpectedEof),
+                None => return Err(FontError::UnexpectedEof),
             };
 
             self.next = &self.next[1..];
