@@ -24,9 +24,8 @@ use pathfinder::charmap::CodepointRanges;
 use pathfinder::coverage::CoverageBuffer;
 use pathfinder::error::RasterError;
 use pathfinder::otf::Font;
-use pathfinder::outline::GlyphSubpixelBounds;
 use pathfinder::rasterizer::{DrawAtlasProfilingEvents, Rasterizer, RasterizerOptions};
-use pathfinder::typesetter::{GlyphPosition, GlyphStore, Typesetter};
+use pathfinder::typesetter::{GlyphStore, PositionedGlyph, Typesetter};
 use std::char;
 use std::env;
 use std::f32;
@@ -41,7 +40,8 @@ const WIDTH: u32 = 640;
 const HEIGHT: u32 = 480;
 const SCROLL_SPEED: f64 = 6.0;
 
-const SUBPIXEL_GRANULARITY: f32 = 0.25;
+const SUBPIXEL_GRANULARITY_COUNT: u8 = 4;
+const SUBPIXEL_GRANULARITY: f32 = 1.0 / SUBPIXEL_GRANULARITY_COUNT as f32;
 
 const INITIAL_POINT_SIZE: f32 = 24.0;
 const MIN_POINT_SIZE: f32 = 6.0;
@@ -133,7 +133,7 @@ fn main() {
             let redraw_result = renderer.redraw(point_size,
                                                 &font,
                                                 &glyph_store,
-                                                &typesetter.glyph_positions,
+                                                &typesetter,
                                                 &device_pixel_size,
                                                 &translation);
 
@@ -404,20 +404,20 @@ impl Renderer {
               point_size: f32,
               font: &Font,
               glyph_store: &GlyphStore,
-              glyph_positions: &[GlyphPosition],
+              typesetter: &Typesetter,
               device_pixel_size: &Size2D<u32>,
               translation: &Point2D<i32>)
               -> RedrawResult {
         let shelf_height = font.shelf_height(point_size);
         let mut atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
 
-        let cached_glyphs = self.determine_visible_glyphs(&mut atlas_builder,
-                                                          font,
-                                                          glyph_store,
-                                                          glyph_positions,
-                                                          device_pixel_size,
-                                                          translation,
-                                                          point_size);
+        let (positioned_glyphs, cached_glyphs) = self.determine_visible_glyphs(&mut atlas_builder,
+                                                                               font,
+                                                                               glyph_store,
+                                                                               typesetter,
+                                                                               device_pixel_size,
+                                                                               translation,
+                                                                               point_size);
 
         let atlas = atlas_builder.create_atlas().unwrap();
         let rect = Rect::new(Point2D::new(0, 0), self.atlas_size);
@@ -449,17 +449,15 @@ impl Renderer {
         }
 
         if events.is_some() {
-            self.draw_glyphs(&font,
-                             glyph_store,
+            self.draw_glyphs(glyph_store,
                              &self.main_composite_vertex_array,
-                             glyph_positions,
+                             &positioned_glyphs,
                              &cached_glyphs,
                              device_pixel_size,
                              translation,
                              self.main_gl_texture,
                              point_size,
-                             &TEXT_COLOR,
-                             true)
+                             &TEXT_COLOR)
         }
 
         RedrawResult {
@@ -472,29 +470,29 @@ impl Renderer {
                                 atlas_builder: &mut AtlasBuilder,
                                 font: &Font,
                                 glyph_store: &GlyphStore,
-                                glyph_positions: &[GlyphPosition],
+                                typesetter: &Typesetter,
                                 device_pixel_size: &Size2D<u32>,
                                 translation: &Point2D<i32>,
                                 point_size: f32)
-                                -> Vec<CachedGlyph> {
-        let mut glyphs = vec![];
-        for glyph_position in glyph_positions {
-            let glyph_index = glyph_store.glyph_index(glyph_position.glyph_id).unwrap();
-            let glyph_rect = glyph_store.outlines.glyph_subpixel_bounds(glyph_index, point_size);
-            if let Some(subpixel) = self.subpixel_for_glyph_if_visible(font,
-                                                                       glyph_position,
-                                                                       &glyph_rect,
-                                                                       device_pixel_size,
-                                                                       translation,
-                                                                       point_size) {
-                glyphs.push((glyph_index, subpixel))
-            }
-        }
+                                -> (Vec<PositionedGlyph>, Vec<CachedGlyph>) {
+        let viewport = Rect::new(-translation.cast().unwrap(), device_pixel_size.cast().unwrap());
+
+        let scale = point_size / font.units_per_em() as f32;
+        let positioned_glyphs = typesetter.positioned_glyphs_in_rect(&viewport,
+                                                                     glyph_store,
+                                                                     font.units_per_em() as f32,
+                                                                     scale,
+                                                                     SUBPIXEL_GRANULARITY);
+
+        let mut glyphs: Vec<_> = positioned_glyphs.iter().map(|positioned_glyph| {
+            (positioned_glyph.glyph_index,
+             (positioned_glyph.subpixel_x / SUBPIXEL_GRANULARITY).round() as u8)
+        }).collect();
 
         glyphs.sort();
         glyphs.dedup();
 
-        glyphs.iter().map(|&(glyph_index, subpixel)| {
+        let cached_glyphs = glyphs.iter().map(|&(glyph_index, subpixel)| {
             let subpixel_offset = (subpixel as f32) / (SUBPIXEL_GRANULARITY as f32);
             let origin = atlas_builder.pack_glyph(&glyph_store.outlines,
                                                   glyph_index,
@@ -506,7 +504,9 @@ impl Renderer {
                 glyph_index: glyph_index,
                 subpixel: subpixel,
             }
-        }).collect()
+        }).collect();
+
+        (positioned_glyphs, cached_glyphs)
     }
 
     fn get_timing_in_ms(&self) -> f64 {
@@ -517,64 +517,26 @@ impl Renderer {
         }
     }
 
-    fn subpixel_for_glyph_if_visible(&self,
-                                     font: &Font,
-                                     glyph_position: &GlyphPosition,
-                                     glyph_rect: &GlyphSubpixelBounds,
-                                     device_pixel_size: &Size2D<u32>,
-                                     translation: &Point2D<i32>,
-                                     point_size: f32)
-                                     -> Option<u8> {
-        let pixels_per_unit = point_size / font.units_per_em() as f32;
-        let viewport: Rect<f32> = Rect::new(Point2D::zero(), device_pixel_size.cast().unwrap());
-        let glyph_size = glyph_rect.size();
-        let glyph_x_pos = glyph_position.x as f32 * pixels_per_unit;
-        let glyph_y_pos = glyph_position.y as f32 * pixels_per_unit - glyph_rect.top as f32;
-        let subpixel_rect = Rect::new(Point2D::new(glyph_x_pos, glyph_y_pos), glyph_size);
-        let subpixel_rect = subpixel_rect.translate(&translation.cast().unwrap());
-        let snapped_x_pos = (subpixel_rect.origin.x / SUBPIXEL_GRANULARITY).round() *
-            SUBPIXEL_GRANULARITY;
-        let snapped_y_pos = (subpixel_rect.origin.y / SUBPIXEL_GRANULARITY).round() *
-            SUBPIXEL_GRANULARITY;
-        let snapped_origin = Point2D::new(snapped_x_pos, snapped_y_pos);
-        if Rect::new(snapped_origin, subpixel_rect.size).intersects(&viewport) {
-            let mut subpixel_fract = snapped_x_pos.fract();
-            if subpixel_fract < 0.0 {
-                subpixel_fract += 1.0
-            }
-
-            Some((subpixel_fract / SUBPIXEL_GRANULARITY).round() as u8)
-        } else {
-            None
-        }
-    }
-
     fn draw_glyphs(&self,
-                   font: &Font,
                    glyph_store: &GlyphStore,
                    vertex_array: &CompositeVertexArray,
-                   glyph_positions: &[GlyphPosition],
+                   positioned_glyphs: &[PositionedGlyph],
                    cached_glyphs: &[CachedGlyph],
                    device_pixel_size: &Size2D<u32>,
                    translation: &Point2D<i32>,
                    texture: GLuint,
                    point_size: f32,
-                   color: &[f32],
-                   use_subpixel_positioning: bool) {
+                   color: &[f32]) {
         unsafe {
             gl::UseProgram(self.composite_program);
             gl::BindVertexArray(vertex_array.vertex_array);
             gl::BindBuffer(gl::ARRAY_BUFFER, vertex_array.vertex_buffer);
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, vertex_array.index_buffer);
 
-            let vertex_count = self.upload_quads_for_text(font,
-                                                          glyph_store,
-                                                          glyph_positions,
+            let vertex_count = self.upload_quads_for_text(glyph_store,
+                                                          positioned_glyphs,
                                                           cached_glyphs,
-                                                          device_pixel_size,
-                                                          translation,
-                                                          point_size,
-                                                          use_subpixel_positioning);
+                                                          point_size);
 
             gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_RECTANGLE, texture);
@@ -608,42 +570,20 @@ impl Renderer {
     }
 
     fn upload_quads_for_text(&self,
-                             font: &Font,
                              glyph_store: &GlyphStore,
-                             glyph_positions: &[GlyphPosition],
+                             positioned_glyphs: &[PositionedGlyph],
                              cached_glyphs: &[CachedGlyph],
-                             device_pixel_size: &Size2D<u32>,
-                             translation: &Point2D<i32>,
-                             point_size: f32,
-                             use_subpixel_positioning: bool)
+                             point_size: f32)
                              -> usize {
-        let pixels_per_granule = point_size / font.units_per_em() as f32 / SUBPIXEL_GRANULARITY;
-
         let (mut vertices, mut indices) = (vec![], vec![]);
-        for glyph_position in glyph_positions {
-            let glyph_index = glyph_store.glyph_index(glyph_position.glyph_id).unwrap();
+        for positioned_glyph in positioned_glyphs {
+            let glyph_index = positioned_glyph.glyph_index;
             let glyph_rect = glyph_store.outlines.glyph_subpixel_bounds(glyph_index, point_size);
 
-            let subpixel = if use_subpixel_positioning {
-                match self.subpixel_for_glyph_if_visible(font,
-                                                         glyph_position,
-                                                         &glyph_rect,
-                                                         device_pixel_size,
-                                                         translation,
-                                                         point_size) {
-                    None => continue,
-                    Some(subpixel) => subpixel,
-                }
-            } else {
-                0
-            };
+            let subpixel = (positioned_glyph.subpixel_x / SUBPIXEL_GRANULARITY).round() as u8;
 
             let glyph_rect_i = glyph_rect.round_out();
-
-            let bearing_pos = (glyph_position.x as f32 * pixels_per_granule).round() *
-                SUBPIXEL_GRANULARITY;
-            let baseline_pos = (glyph_position.y as f32 * pixels_per_granule).round() *
-                SUBPIXEL_GRANULARITY;
+            let glyph_size_i = glyph_rect_i.size();
 
             let cached_glyph_index = cached_glyphs.binary_search_by(|cached_glyph| {
                 (cached_glyph.glyph_index, cached_glyph.subpixel).cmp(&(glyph_index, subpixel))
@@ -652,12 +592,12 @@ impl Renderer {
 
             let uv_tl: Point2D<u32> = Point2D::new(cached_glyph.x,
                                                    cached_glyph.y).floor().cast().unwrap();
-            let uv_br = uv_tl + glyph_rect_i.size().cast().unwrap();
+            let uv_br = uv_tl + glyph_size_i.cast().unwrap();
 
-            let left_pos = bearing_pos + glyph_rect_i.left as f32;
-            let top_pos = baseline_pos - glyph_rect_i.top as f32;
-            let right_pos = bearing_pos + glyph_rect_i.right as f32;
-            let bottom_pos = baseline_pos - glyph_rect_i.bottom as f32;
+            let left_pos = positioned_glyph.bounds.origin.x;
+            let top_pos = positioned_glyph.bounds.origin.y;
+            let right_pos = positioned_glyph.bounds.origin.x + glyph_size_i.width as f32;
+            let bottom_pos = positioned_glyph.bounds.origin.y + glyph_size_i.height as f32;
 
             let first_index = vertices.len() as u16;
 
@@ -738,16 +678,19 @@ impl Renderer {
 
         let mut fps_glyphs = vec![];
         for &fps_glyph_index in &fps_glyph_store.all_glyph_indices {
-            let origin = fps_atlas_builder.pack_glyph(&fps_glyph_store.outlines,
-                                                      fps_glyph_index,
-                                                      FPS_DISPLAY_POINT_SIZE,
-                                                      0.0).unwrap();
-            fps_glyphs.push(CachedGlyph {
-                x: origin.x,
-                y: origin.y,
-                glyph_index: fps_glyph_index,
-                subpixel: 0,
-            })
+            for subpixel in 0..SUBPIXEL_GRANULARITY_COUNT {
+                let subpixel_increment = SUBPIXEL_GRANULARITY * subpixel as f32;
+                let origin = fps_atlas_builder.pack_glyph(&fps_glyph_store.outlines,
+                                                          fps_glyph_index,
+                                                          FPS_DISPLAY_POINT_SIZE,
+                                                          subpixel_increment).unwrap();
+                fps_glyphs.push(CachedGlyph {
+                    x: origin.x,
+                    y: origin.y,
+                    glyph_index: fps_glyph_index,
+                    subpixel: subpixel,
+                })
+            }
         }
 
         let fps_atlas = fps_atlas_builder.create_atlas().unwrap();
@@ -762,21 +705,29 @@ impl Renderer {
         let fps_pixels_per_unit = FPS_DISPLAY_POINT_SIZE / font.units_per_em() as f32;
         let fps_line_spacing = ((font.ascender() as f32 - font.descender() as f32 +
                                  font.line_gap() as f32) * fps_pixels_per_unit).round() as i32;
-        let fps_origin =
-            Point2D::new(FPS_PADDING,
-                         device_pixel_size.height as i32 - FPS_PADDING - fps_line_spacing);
 
-        self.draw_glyphs(font,
-                         &fps_glyph_store,
+        let fps_left = FPS_PADDING;
+        let fps_top = device_pixel_size.height as i32 - FPS_PADDING - fps_line_spacing;
+
+        let fps_viewport = Rect::new(Point2D::zero(), device_pixel_size.cast().unwrap());
+        let fps_scale = FPS_DISPLAY_POINT_SIZE / font.units_per_em() as f32;
+
+        let fps_positioned_glyphs =
+            fps_typesetter.positioned_glyphs_in_rect(&fps_viewport,
+                                                     fps_glyph_store,
+                                                     font.units_per_em() as f32,
+                                                     fps_scale,
+                                                     SUBPIXEL_GRANULARITY);
+
+        self.draw_glyphs(&fps_glyph_store,
                          &self.fps_composite_vertex_array,
-                         &fps_typesetter.glyph_positions,
+                         &fps_positioned_glyphs,
                          &fps_glyphs,
                          device_pixel_size,
-                         &fps_origin,
+                         &Point2D::new(fps_left, fps_top),
                          self.fps_gl_texture,
                          FPS_DISPLAY_POINT_SIZE,
-                         &FPS_FOREGROUND_COLOR,
-                         false);
+                         &FPS_FOREGROUND_COLOR);
     }
 
     fn take_screenshot(&self) {

@@ -16,12 +16,13 @@
 
 use charmap::CodepointRanges;
 use error::GlyphStoreCreationError;
-use euclid::Point2D;
+use euclid::{Point2D, Rect};
 use otf::Font;
 use outline::{OutlineBuilder, Outlines};
 use shaper;
 use std::u16;
 
+#[derive(Clone)]
 pub struct Typesetter {
     pub glyph_positions: Vec<GlyphPosition>,
     page_width: f32,
@@ -90,6 +91,62 @@ impl Typesetter {
                             .collect();
         GlyphStore::from_glyph_ids(glyph_ids, font)
     }
+
+    /// Returns the positions of the glyphs that intersect the given pixel rectangle.
+    ///
+    /// Requires a `GlyphStore` to be created first.
+    pub fn positioned_glyphs_in_rect(&self,
+                                     bounding_rect: &Rect<f32>,
+                                     glyph_store: &GlyphStore,
+                                     point_size: f32,
+                                     scale: f32,
+                                     subpixel_granularity: f32)
+                                     -> Vec<PositionedGlyph> {
+        let subpixel_inv_granularity = 1.0 / subpixel_granularity;
+
+        let mut positioned_glyphs = vec![];
+        for glyph_position in &self.glyph_positions {
+            // If this glyph is not in the glyph store, just skip it.
+            //
+            // TODO(pcwalton): Notify the caller somehow?
+            let glyph_index = match glyph_store.glyph_index(glyph_position.glyph_id) {
+                None => continue,
+                Some(glyph_index) => glyph_index,
+            };
+
+            let mut glyph_subpixel_bounds = glyph_store.outlines.glyph_subpixel_bounds(glyph_index,
+                                                                                       point_size);
+            glyph_subpixel_bounds.scale(scale);
+            let glyph_pixel_bounds = glyph_subpixel_bounds.round_out();
+
+            // Snap the rect to the nearest granule.
+            let glyph_snapped_origin =
+                Point2D::new((glyph_position.x * scale * subpixel_inv_granularity).round() *
+                             subpixel_granularity,
+                             ((glyph_position.y * scale).round() - glyph_pixel_bounds.top as f32));
+            let glyph_snapped_rect = Rect::new(glyph_snapped_origin, glyph_subpixel_bounds.size());
+
+            debug_assert!(glyph_snapped_rect.origin.y == glyph_snapped_rect.origin.y.round());
+
+            if !glyph_snapped_rect.intersects(bounding_rect) {
+                continue
+            }
+
+            let subpixel_x = if glyph_snapped_origin.x >= 0.0 {
+                glyph_snapped_origin.x.fract()
+            } else {
+                1.0 + glyph_snapped_origin.x.fract()
+            };
+
+            positioned_glyphs.push(PositionedGlyph {
+                bounds: glyph_snapped_rect,
+                subpixel_x: subpixel_x,
+                glyph_index: glyph_index,
+            })
+        }
+
+        positioned_glyphs
+    }
 }
 
 #[repr(C)]
@@ -98,6 +155,13 @@ pub struct GlyphPosition {
     pub x: f32,
     pub y: f32,
     pub glyph_id: u16,
+}
+
+impl GlyphPosition {
+    #[inline]
+    pub fn position(&self) -> Point2D<f32> {
+        Point2D::new(self.x, self.y)
+    }
 }
 
 pub struct GlyphStore {
@@ -155,5 +219,12 @@ impl GlyphStore {
             Some(&index) => Some(index),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PositionedGlyph {
+    pub bounds: Rect<f32>,
+    pub subpixel_x: f32,
+    pub glyph_index: u16,
 }
 

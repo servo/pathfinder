@@ -248,6 +248,15 @@ pub struct GlyphSubpixelBounds {
 }
 
 impl GlyphSubpixelBounds {
+    /// Scales the bounds by the given amount.
+    #[inline]
+    pub fn scale(&mut self, factor: f32) {
+        self.left *= factor;
+        self.bottom *= factor;
+        self.right *= factor;
+        self.top *= factor;
+    }
+
     /// Rounds these bounds out to the nearest pixel.
     #[inline]
     pub fn round_out(&self) -> GlyphPixelBounds {
