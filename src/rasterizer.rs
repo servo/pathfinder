@@ -33,8 +33,14 @@ use std::ptr;
 
 static COMPUTE_PREAMBLE_FILENAME: &'static str = "preamble.cs.glsl";
 
-static ACCUM_CL_SHADER_FILENAME: &'static str = "accum.cl";
-static ACCUM_COMPUTE_SHADER_FILENAME: &'static str = "accum.cs.glsl";
+static ACCUM_COMMON_CL_SHADER_FILENAME: &'static str = "accum_common.cl";
+static ACCUM_COMMON_COMPUTE_SHADER_FILENAME: &'static str = "accum_common.cs.glsl";
+
+static ACCUM_GRAY_CL_SHADER_FILENAME: &'static str = "accum_gray.cl";
+static ACCUM_SUBPIXEL_CL_SHADER_FILENAME: &'static str = "accum_subpixel.cl";
+
+static ACCUM_GRAY_COMPUTE_SHADER_FILENAME: &'static str = "accum.cs.glsl";
+static ACCUM_SUBPIXEL_COMPUTE_SHADER_FILENAME: &'static str = "accum.cs.glsl";
 
 static DRAW_VERTEX_SHADER_FILENAME: &'static str = "draw.vs.glsl";
 static DRAW_TESS_CONTROL_SHADER_FILENAME: &'static str = "draw.tcs.glsl";
@@ -48,12 +54,14 @@ pub struct Rasterizer {
     queue: Queue,
     shading_language: ShadingLanguage,
     draw_program: GLuint,
-    accum_program_r8: Program,
-    accum_program_rgba8: Program,
+    accum_program_gray_r8: Program,
+    accum_program_gray_rgba8: Program,
+    accum_program_subpixel_rgba8: Program,
     draw_vertex_array: GLuint,
     draw_position_attribute: GLint,
     draw_glyph_index_attribute: GLint,
     draw_atlas_size_uniform: GLint,
+    draw_subpixel_aa_uniform: GLint,
     draw_glyph_descriptors_uniform: GLuint,
     draw_image_descriptors_uniform: GLuint,
     draw_query: GLuint,
@@ -89,7 +97,7 @@ impl Rasterizer {
                -> Result<Rasterizer, InitError> {
         let (draw_program, draw_position_attribute, draw_glyph_index_attribute);
         let (draw_glyph_descriptors_uniform, draw_image_descriptors_uniform);
-        let draw_atlas_size_uniform;
+        let (draw_atlas_size_uniform, draw_subpixel_aa_uniform);
         let (mut draw_vertex_array, mut draw_query) = (0, 0);
         unsafe {
             draw_program = gl::CreateProgram();
@@ -141,6 +149,8 @@ impl Rasterizer {
 
             draw_atlas_size_uniform =
                 gl::GetUniformLocation(draw_program, b"uAtlasSize\0".as_ptr() as *const GLchar);
+            draw_subpixel_aa_uniform =
+                gl::GetUniformLocation(draw_program, b"uSubpixelAA\0".as_ptr() as *const GLchar);
             draw_glyph_descriptors_uniform =
                 gl::GetUniformBlockIndex(draw_program,
                                          b"ubGlyphDescriptors\0".as_ptr() as *const GLchar);
@@ -152,15 +162,36 @@ impl Rasterizer {
         }
 
         // FIXME(pcwalton): Don't panic if this fails to compile; just return an error.
+        let (accum_filename_common, accum_filename_gray, accum_filename_subpixel);
         let shading_language = instance.shading_language();
-        let accum_filename = match shading_language {
-            ShadingLanguage::Cl => ACCUM_CL_SHADER_FILENAME,
-            ShadingLanguage::Glsl => ACCUM_COMPUTE_SHADER_FILENAME,
-        };
+        match shading_language {
+            ShadingLanguage::Cl => {
+                accum_filename_common = ACCUM_COMMON_CL_SHADER_FILENAME;
+                accum_filename_gray = ACCUM_GRAY_CL_SHADER_FILENAME;
+                accum_filename_subpixel = ACCUM_SUBPIXEL_CL_SHADER_FILENAME;
+            }
+            ShadingLanguage::Glsl => {
+                accum_filename_common = ACCUM_COMMON_COMPUTE_SHADER_FILENAME;
+                accum_filename_gray = ACCUM_GRAY_COMPUTE_SHADER_FILENAME;
+                accum_filename_subpixel = ACCUM_SUBPIXEL_COMPUTE_SHADER_FILENAME;
+            }
+        }
 
-        let mut accum_path = options.shader_path.to_owned();
-        accum_path.push(accum_filename);
-        let mut accum_file = match File::open(&accum_path) {
+        let mut accum_path_common = options.shader_path.to_owned();
+        let mut accum_path_gray = accum_path_common.clone();
+        let mut accum_path_subpixel = accum_path_common.clone();
+        accum_path_common.push(accum_filename_common);
+        accum_path_gray.push(accum_filename_gray);
+        accum_path_subpixel.push(accum_filename_subpixel);
+        let mut accum_file_common = match File::open(&accum_path_common) {
+            Err(error) => return Err(InitError::ShaderUnreadable(error)),
+            Ok(file) => file,
+        };
+        let mut accum_file_gray = match File::open(&accum_path_gray) {
+            Err(error) => return Err(InitError::ShaderUnreadable(error)),
+            Ok(file) => file,
+        };
+        let mut accum_file_subpixel = match File::open(&accum_path_subpixel) {
             Err(error) => return Err(InitError::ShaderUnreadable(error)),
             Ok(file) => file,
         };
@@ -183,34 +214,52 @@ impl Rasterizer {
             }
         }
 
-        let mut accum_source = String::new();
-        if accum_file.read_to_string(&mut accum_source).is_err() {
+        let mut accum_source_common = String::new();
+        let mut accum_source_gray = String::new();
+        let mut accum_source_subpixel = String::new();
+        if accum_file_common.read_to_string(&mut accum_source_common).is_err() {
+            return Err(InitError::CompileFailed("Compute shader", "Invalid UTF-8".to_string()))
+        }
+        if accum_file_gray.read_to_string(&mut accum_source_gray).is_err() {
+            return Err(InitError::CompileFailed("Compute shader", "Invalid UTF-8".to_string()))
+        }
+        if accum_file_subpixel.read_to_string(&mut accum_source_subpixel).is_err() {
             return Err(InitError::CompileFailed("Compute shader", "Invalid UTF-8".to_string()))
         }
 
-        let accum_source_r8 = format!("{}\n#define IMAGE_FORMAT r8\n{}",
-                                      compute_preamble_source,
-                                      accum_source);
-        let accum_source_rgba8 = format!("{}\n#define IMAGE_FORMAT rgba8\n{}",
-                                         compute_preamble_source,
-                                         accum_source);
+        let accum_source_gray_r8 = format!("{}\n#define IMAGE_FORMAT r8\n{}\n{}",
+                                           compute_preamble_source,
+                                           accum_source_common,
+                                           accum_source_gray);
+        let accum_source_gray_rgba8 = format!("{}\n#define IMAGE_FORMAT rgba8\n{}\n{}",
+                                              compute_preamble_source,
+                                              accum_source_common,
+                                              accum_source_gray);
+        let accum_source_subpixel_rgba8 = format!("{}\n#define IMAGE_FORMAT rgba8\n{}\n{}",
+                                                  compute_preamble_source,
+                                                  accum_source_common,
+                                                  accum_source_subpixel);
 
-        let accum_program_r8 = try!(device.create_program(&accum_source_r8)
-                                          .map_err(InitError::ComputeError));
-        let accum_program_rgba8 = try!(device.create_program(&accum_source_rgba8)
-                                             .map_err(InitError::ComputeError));
+        let accum_program_gray_r8 = try!(device.create_program(&accum_source_gray_r8)
+                                               .map_err(InitError::ComputeError));
+        let accum_program_gray_rgba8 = try!(device.create_program(&accum_source_gray_rgba8)
+                                                  .map_err(InitError::ComputeError));
+        let accum_program_subpixel_rgba8 = try!(device.create_program(&accum_source_subpixel_rgba8)
+                                                      .map_err(InitError::ComputeError));
 
         Ok(Rasterizer {
             device: device,
             queue: queue,
             shading_language: shading_language,
             draw_program: draw_program,
-            accum_program_r8: accum_program_r8,
-            accum_program_rgba8: accum_program_rgba8,
+            accum_program_gray_r8: accum_program_gray_r8,
+            accum_program_gray_rgba8: accum_program_gray_rgba8,
+            accum_program_subpixel_rgba8: accum_program_subpixel_rgba8,
             draw_vertex_array: draw_vertex_array,
             draw_position_attribute: draw_position_attribute,
             draw_glyph_index_attribute: draw_glyph_index_attribute,
             draw_atlas_size_uniform: draw_atlas_size_uniform,
+            draw_subpixel_aa_uniform: draw_subpixel_aa_uniform,
             draw_glyph_descriptors_uniform: draw_glyph_descriptors_uniform,
             draw_image_descriptors_uniform: draw_image_descriptors_uniform,
             draw_query: draw_query,
@@ -230,6 +279,8 @@ impl Rasterizer {
     ///
     /// * `coverage_buffer` is a coverage buffer to use (see `CoverageBuffer`). This can be reused
     ///   from call to call. It must be at least as large as the atlas.
+    ///
+    /// Note that, if the atlas is empty, `RasterError::NoGlyphsToDraw` is returned.
     pub fn draw_atlas(&self,
                       image: &Image,
                       rect: &Rect<u32>,
@@ -247,7 +298,14 @@ impl Rasterizer {
             // Save the old viewport so we can restore it later.
             let mut old_viewport: [GLint; 4] = [0; 4];
             gl::GetIntegerv(gl::VIEWPORT, old_viewport.as_mut_ptr());
-            gl::Viewport(0, 0, rect.size.width as GLint, rect.size.height as GLint);
+
+            // Set up our new viewport.
+            let viewport_width = if atlas.uses_subpixel_antialiasing() {
+                rect.size.width * 3
+            } else {
+                rect.size.width
+            };
+            gl::Viewport(0, 0, viewport_width as GLint, rect.size.height as GLint);
 
             // TODO(pcwalton): Scissor to the image rect to clear faster?
             gl::ClearColor(0.0, 0.0, 0.0, 1.0);
@@ -279,7 +337,9 @@ impl Rasterizer {
             gl::UniformBlockBinding(self.draw_program, self.draw_glyph_descriptors_uniform, 1);
             gl::UniformBlockBinding(self.draw_program, self.draw_image_descriptors_uniform, 2);
 
-            gl::Uniform2ui(self.draw_atlas_size_uniform, rect.size.width, rect.size.height);
+            gl::Uniform2ui(self.draw_atlas_size_uniform, viewport_width, rect.size.height);
+            gl::Uniform1i(self.draw_subpixel_aa_uniform,
+                          atlas.uses_subpixel_antialiasing() as GLint);
 
             gl::PatchParameteri(gl::PATCH_VERTICES, 4);
 
@@ -331,11 +391,12 @@ impl Rasterizer {
             (3, Uniform::U32(atlas.shelf_height())),
         ];
 
-        let accum_program = match image.format() {
-            Ok(Format::R8) => &self.accum_program_r8,
-            Ok(Format::RGBA8) => &self.accum_program_rgba8,
-            Ok(_) => return Err(RasterError::UnsupportedImageFormat),
-            Err(err) => return Err(RasterError::ComputeError(err)),
+        let accum_program = match (image.format(), atlas.uses_subpixel_antialiasing()) {
+            (Ok(Format::R8), false) => &self.accum_program_gray_r8,
+            (Ok(Format::RGBA8), false) => &self.accum_program_gray_rgba8,
+            (Ok(Format::RGBA8), true) => &self.accum_program_subpixel_rgba8,
+            (Ok(_), _) => return Err(RasterError::UnsupportedImageFormat),
+            (Err(err), _) => return Err(RasterError::ComputeError(err)),
         };
 
         let accum_event = try!(self.queue.submit_compute(accum_program,

@@ -18,9 +18,9 @@ use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLint, GLuint};
 use glfw::{Action, Context, Key, OpenGlProfileHint, WindowEvent, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
-use pathfinder::atlas::AtlasBuilder;
+use pathfinder::atlas::{AtlasBuilder, AtlasOptions, GlyphRasterizationOptions};
 use pathfinder::charmap::CodepointRange;
-use pathfinder::coverage::CoverageBuffer;
+use pathfinder::coverage::{CoverageBuffer, CoverageBufferOptions};
 use pathfinder::font::Font;
 use pathfinder::outline::OutlineBuilder;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
@@ -39,12 +39,17 @@ fn main() {
                                            .long("index")
                                            .help("Select an index within a font collection")
                                            .takes_value(true);
+    let subpixel_antialiasing_arg =
+        Arg::with_name("subpixel-aa").short("s")
+                                     .long("subpixel-aa")
+                                     .help("Enable subpixel antialiasing");
     let font_arg = Arg::with_name("FONT-FILE").help("Select the font file (`.ttf`, `.otf`, etc.)")
                                               .required(true)
                                               .index(1);
     let point_size_arg = Arg::with_name("POINT-SIZE").help("Select the point size")
                                                      .index(2);
     let matches = App::new("generate-atlas").arg(index_arg)
+                                            .arg(subpixel_antialiasing_arg)
                                             .arg(font_arg)
                                             .arg(point_size_arg)
                                             .get_matches();
@@ -84,6 +89,8 @@ fn main() {
         None => 0,
     };
 
+    let subpixel_aa = matches.is_present("subpixel-aa");
+
     let (outlines, atlas);
     unsafe {
         let font = Font::from_collection_index(file.as_slice(), font_index, &mut buffer).unwrap();
@@ -100,15 +107,29 @@ fn main() {
         }
         outlines = outline_builder.create_buffers().unwrap();
 
-        let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint, shelf_height);
+        let mut atlas_builder = AtlasBuilder::new(&AtlasOptions {
+                                                      available_width: device_pixel_width as u32,
+                                                      shelf_height: shelf_height,
+                                                      subpixel_antialiasing: subpixel_aa,
+                                                  });
         for glyph_index in 0..glyph_count {
-            atlas_builder.pack_glyph(&outlines, glyph_index, point_size, 0.0).unwrap();
+            atlas_builder.pack_glyph(&outlines,
+                                     glyph_index,
+                                     &GlyphRasterizationOptions {
+                                         point_size: point_size,
+                                         ..GlyphRasterizationOptions::default()
+                                     }).unwrap();
         }
         atlas = atlas_builder.create_atlas().unwrap();
     }
 
     let atlas_size = Size2D::new(device_pixel_width as GLuint, device_pixel_height as GLuint);
-    let coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
+    let coverage_buffer = CoverageBuffer::new(rasterizer.device(),
+                                              &CoverageBufferOptions {
+                                                size: atlas_size,
+                                                subpixel_antialiasing: subpixel_aa,
+                                                ..CoverageBufferOptions::default()
+                                              }).unwrap();
 
     let image = rasterizer.device()
                           .create_image(Format::RGBA8, buffer::Protection::ReadWrite, &atlas_size)

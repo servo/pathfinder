@@ -19,9 +19,9 @@ use euclid::{Point2D, Rect, Size2D};
 use gl::types::GLuint;
 use glfw::{Context, OpenGlProfileHint, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
-use pathfinder::atlas::AtlasBuilder;
+use pathfinder::atlas::{AtlasBuilder, AtlasOptions, GlyphRasterizationOptions};
 use pathfinder::charmap::CodepointRange;
-use pathfinder::coverage::CoverageBuffer;
+use pathfinder::coverage::{CoverageBuffer, CoverageBufferOptions};
 use pathfinder::font::Font;
 use pathfinder::outline::OutlineBuilder;
 use pathfinder::rasterizer::{Rasterizer, RasterizerOptions};
@@ -88,11 +88,18 @@ fn main() {
                 }
                 outlines = outline_builder.create_buffers().unwrap();
 
-                let mut atlas_builder = AtlasBuilder::new(device_pixel_width as GLuint,
-                                                          shelf_height);
+                let mut atlas_builder = AtlasBuilder::new(&AtlasOptions {
+                    available_width: device_pixel_width as GLuint,
+                    shelf_height: shelf_height,
+                    ..AtlasOptions::default()
+                });
                 for glyph_index in 0..(glyph_count as u16) {
-                    atlas_builder.pack_glyph(&outlines, glyph_index, point_size as f32, 0.0)
-                                 .unwrap();
+                    atlas_builder.pack_glyph(&outlines,
+                                             glyph_index,
+                                             &GlyphRasterizationOptions {
+                                                 point_size: point_size as f32,
+                                                 ..GlyphRasterizationOptions::default()
+                                             }).unwrap();
                 }
                 atlas = atlas_builder.create_atlas().unwrap();
             }
@@ -110,7 +117,11 @@ fn main() {
         println!("cpu,{}", time_per_glyph);
 
         let atlas_size = Size2D::new(ATLAS_SIZE, ATLAS_SIZE);
-        let coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
+        let coverage_buffer = CoverageBuffer::new(rasterizer.device(),
+                                                  &CoverageBufferOptions {
+                                                    size: atlas_size,
+                                                    ..CoverageBufferOptions::default()
+                                                  }).unwrap();
 
         let image = rasterizer.device()
                               .create_image(Format::R8, buffer::Protection::WriteOnly, &atlas_size)

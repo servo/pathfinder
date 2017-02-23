@@ -28,6 +28,9 @@ struct GlyphDescriptor {
 // The size of the atlas in pixels.
 uniform uvec2 uAtlasSize;
 
+// Whether subpixel antialiasing is in use.
+uniform bool uSubpixelAA;
+
 layout(std140) uniform ubGlyphDescriptors {
     GlyphDescriptor uGlyphs[MAX_GLYPHS];
 };
@@ -55,6 +58,8 @@ void main() {
     float pointSize = IMAGE_DESCRIPTOR_POINT_SIZE(image);
     vec2 glyphPxPos = glyphPos * pointSize / GLYPH_DESCRIPTOR_UNITS_PER_EM(glyph);
     vec2 atlasPos = glyphPxPos + IMAGE_DESCRIPTOR_ATLAS_POS(image);
+    if (uSubpixelAA)
+        atlasPos.x *= 3.0f;
 
     gl_Position = vec4(atlasPos, 0.0f, 1.0f);
 }

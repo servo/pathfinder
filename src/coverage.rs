@@ -18,6 +18,8 @@ use euclid::size::Size2D;
 use gl::types::{GLint, GLuint};
 use gl;
 
+const DEFAULT_COVERAGE_BUFFER_SIZE: u32 = 1024;
+
 /// An intermediate surface on the GPU used during the rasterization process.
 ///
 /// You can reuse this surface from draw operation to draw operation. It only needs to be at least
@@ -30,11 +32,15 @@ pub struct CoverageBuffer {
 }
 
 impl CoverageBuffer {
-    /// Creates a new coverage buffer of the given size.
-    ///
-    /// The size must be at least as large as every atlas you will render with it.
-    pub fn new(device: &Device, size: &Size2D<u32>) -> Result<CoverageBuffer, InitError> {
-        let image = try!(device.create_image(Format::R32F, Protection::ReadWrite, size)
+    /// Creates a new coverage buffer with the given options.
+    pub fn new(device: &Device, options: &CoverageBufferOptions)
+               -> Result<CoverageBuffer, InitError> {
+        let mut size = options.size;
+        if options.subpixel_antialiasing {
+            size.width *= 3
+        }
+
+        let image = try!(device.create_image(Format::R32F, Protection::ReadWrite, &size)
                                .map_err(InitError::ComputeError));
 
         let mut framebuffer = 0;
@@ -96,6 +102,31 @@ impl Drop for CoverageBuffer {
 
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             gl::DeleteFramebuffers(1, &mut self.framebuffer);
+        }
+    }
+}
+
+/// Options that control the format of the coverage buffer.
+#[derive(Clone, Copy, Debug)]
+pub struct CoverageBufferOptions {
+    /// The size of the coverage buffer.
+    ///
+    /// The size must be at least as large as every atlas you will render with the buffer.
+    pub size: Size2D<u32>,
+
+    /// Whether this coverage buffer is intended for subpixel antialiasing.
+    ///
+    /// If this buffer is intended for subpixel AA, all atlas rendered with it must use subpixel
+    /// AA, and vice versa.
+    pub subpixel_antialiasing: bool,
+}
+
+impl Default for CoverageBufferOptions {
+    #[inline]
+    fn default() -> CoverageBufferOptions {
+        CoverageBufferOptions {
+            size: Size2D::new(DEFAULT_COVERAGE_BUFFER_SIZE, DEFAULT_COVERAGE_BUFFER_SIZE),
+            subpixel_antialiasing: false,
         }
     }
 }

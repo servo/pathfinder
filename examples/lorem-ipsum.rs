@@ -19,9 +19,9 @@ use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use glfw::{Action, Context, Key, OpenGlProfileHint, SwapInterval, WindowEvent};
 use glfw::{WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
-use pathfinder::atlas::AtlasBuilder;
+use pathfinder::atlas::{AtlasBuilder, AtlasOptions, GlyphRasterizationOptions};
 use pathfinder::charmap::CodepointRanges;
-use pathfinder::coverage::CoverageBuffer;
+use pathfinder::coverage::{CoverageBuffer, CoverageBufferOptions};
 use pathfinder::error::RasterError;
 use pathfinder::font::Font;
 use pathfinder::rasterizer::{DrawAtlasProfilingEvents, Rasterizer, RasterizerOptions};
@@ -52,9 +52,10 @@ const FPS_PADDING: i32 = 6;
 
 static SHADER_PATH: &'static str = "resources/shaders/";
 
-static FPS_BACKGROUND_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.7];
-static FPS_FOREGROUND_COLOR: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
-static TEXT_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+static FPS_BACKGROUND_COLOR: [f32; 3] = [0.3, 0.3, 0.3];
+static FPS_FOREGROUND_COLOR: [f32; 3] = [1.0, 1.0, 1.0];
+static BACKGROUND_COLOR:     [f32; 3] = [1.0, 1.0, 1.0];
+static TEXT_COLOR:           [f32; 3] = [0.0, 0.0, 0.0];
 
 static ATLAS_DUMP_FILENAME: &'static str = "lorem-ipsum-atlas.png";
 
@@ -63,12 +64,20 @@ fn main() {
                                            .long("index")
                                            .help("Select an index within a font collection")
                                            .takes_value(true);
+    let subpixel_antialiasing_arg =
+        Arg::with_name("subpixel-aa").short("s")
+                                     .long("subpixel-aa")
+                                     .help("Enable subpixel antialiasing");
     let font_arg = Arg::with_name("FONT-FILE").help("Select the font file (`.ttf`, `.otf`, etc.)")
                                               .required(true)
                                               .index(1);
     let text_arg = Arg::with_name("TEXT-FILE").help("Select a file containing text to display")
                                               .index(2);
-    let matches = App::new("lorem-ipsum").arg(index_arg).arg(font_arg).arg(text_arg).get_matches();
+    let matches = App::new("lorem-ipsum").arg(index_arg)
+                                         .arg(subpixel_antialiasing_arg)
+                                         .arg(font_arg)
+                                         .arg(text_arg)
+                                         .get_matches();
 
     let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
     glfw.window_hint(WindowHint::ContextVersion(3, 3));
@@ -101,6 +110,8 @@ fn main() {
         None => 0,
     };
 
+    let subpixel_aa = matches.is_present("subpixel-aa");
+
     let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
     let mut buffer = vec![];
     let font = unsafe {
@@ -112,7 +123,7 @@ fn main() {
     let mut typesetter = Typesetter::new(page_width, &font, units_per_em);
     typesetter.add_text(&font, font.units_per_em() as f32, &text);
 
-    let renderer = Renderer::new();
+    let renderer = Renderer::new(subpixel_aa);
     let mut point_size = INITIAL_POINT_SIZE;
     let mut translation = Point2D::new(0, 0);
     let mut dirty = true;
@@ -229,7 +240,8 @@ struct Renderer {
     composite_atlas_uniform: GLint,
     composite_transform_uniform: GLint,
     composite_translation_uniform: GLint,
-    composite_color_uniform: GLint,
+    composite_foreground_color_uniform: GLint,
+    composite_background_color_uniform: GLint,
 
     main_composite_vertex_array: CompositeVertexArray,
     fps_composite_vertex_array: CompositeVertexArray,
@@ -253,10 +265,12 @@ struct Renderer {
     query: GLuint,
 
     shading_language: ShadingLanguage,
+
+    subpixel_aa: bool,
 }
 
 impl Renderer {
-    fn new() -> Renderer {
+    fn new(subpixel_aa: bool) -> Renderer {
         let instance = Instance::new().unwrap();
         let device = instance.open_device().unwrap();
         let queue = device.create_queue().unwrap();
@@ -270,7 +284,8 @@ impl Renderer {
 
         let (composite_program, composite_position_attribute, composite_tex_coord_attribute);
         let (composite_atlas_uniform, composite_transform_uniform);
-        let (composite_translation_uniform, composite_color_uniform);
+        let (composite_translation_uniform, composite_foreground_color_uniform);
+        let composite_background_color_uniform;
         let (main_composite_vertex_array, fps_composite_vertex_array);
         let (solid_color_program, solid_color_position_attribute, solid_color_color_uniform);
         let (mut solid_color_vertex_buffer, mut solid_color_index_buffer) = (0, 0);
@@ -289,8 +304,12 @@ impl Renderer {
             composite_translation_uniform =
                 gl::GetUniformLocation(composite_program,
                                        "uTranslation\0".as_ptr() as *const GLchar);
-            composite_color_uniform =
-                gl::GetUniformLocation(composite_program, "uColor\0".as_ptr() as *const GLchar);
+            composite_foreground_color_uniform =
+                gl::GetUniformLocation(composite_program,
+                                       "uForegroundColor\0".as_ptr() as *const GLchar);
+            composite_background_color_uniform =
+                gl::GetUniformLocation(composite_program,
+                                       "uBackgroundColor\0".as_ptr() as *const GLchar);
 
             solid_color_program = create_program(SOLID_COLOR_VERTEX_SHADER,
                                                  SOLID_COLOR_FRAGMENT_SHADER);
@@ -353,9 +372,16 @@ impl Renderer {
 
         // FIXME(pcwalton)
         let atlas_size = Size2D::new(ATLAS_SIZE, ATLAS_SIZE);
+        let coverage_buffer_options = CoverageBufferOptions {
+            size: atlas_size,
+            subpixel_antialiasing: subpixel_aa,
+            ..CoverageBufferOptions::default()
+        };
 
-        let main_coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
-        let fps_coverage_buffer = CoverageBuffer::new(rasterizer.device(), &atlas_size).unwrap();
+        let main_coverage_buffer = CoverageBuffer::new(rasterizer.device(),
+                                                       &coverage_buffer_options).unwrap();
+        let fps_coverage_buffer = CoverageBuffer::new(rasterizer.device(),
+                                                      &coverage_buffer_options).unwrap();
 
         let (main_compute_image, main_gl_texture) = create_image(&rasterizer, &atlas_size);
         let (fps_compute_image, fps_gl_texture) = create_image(&rasterizer, &atlas_size);
@@ -374,7 +400,8 @@ impl Renderer {
             composite_atlas_uniform: composite_atlas_uniform,
             composite_transform_uniform: composite_transform_uniform,
             composite_translation_uniform: composite_translation_uniform,
-            composite_color_uniform: composite_color_uniform,
+            composite_foreground_color_uniform: composite_foreground_color_uniform,
+            composite_background_color_uniform: composite_background_color_uniform,
 
             main_composite_vertex_array: main_composite_vertex_array,
             fps_composite_vertex_array: fps_composite_vertex_array,
@@ -398,6 +425,8 @@ impl Renderer {
             query: query,
 
             shading_language: shading_language,
+
+            subpixel_aa: subpixel_aa,
         }
     }
 
@@ -410,7 +439,14 @@ impl Renderer {
               translation: &Point2D<i32>)
               -> RedrawResult {
         let shelf_height = font.shelf_height(point_size);
-        let mut atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
+        let atlas_options = AtlasOptions {
+            available_width: ATLAS_SIZE,
+            shelf_height: shelf_height,
+            subpixel_antialiasing: self.subpixel_aa,
+            ..AtlasOptions::default()
+        };
+
+        let mut atlas_builder = AtlasBuilder::new(&atlas_options);
 
         let (positioned_glyphs, cached_glyphs) = self.determine_visible_glyphs(&mut atlas_builder,
                                                                                font,
@@ -445,7 +481,7 @@ impl Renderer {
                          0,
                          device_pixel_size.width as GLint,
                          device_pixel_size.height as GLint);
-            gl::ClearColor(1.0, 1.0, 1.0, 1.0);
+            gl::ClearColor(BACKGROUND_COLOR[0], BACKGROUND_COLOR[1], BACKGROUND_COLOR[2], 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
         }
 
@@ -458,7 +494,8 @@ impl Renderer {
                              translation,
                              self.main_gl_texture,
                              point_size,
-                             &TEXT_COLOR)
+                             &TEXT_COLOR,
+                             &BACKGROUND_COLOR)
         }
 
         RedrawResult {
@@ -497,8 +534,11 @@ impl Renderer {
             let subpixel_offset = (subpixel as f32) / (SUBPIXEL_GRANULARITY as f32);
             let origin = atlas_builder.pack_glyph(&glyph_store.outlines,
                                                   glyph_index,
-                                                  point_size,
-                                                  subpixel_offset).unwrap();
+                                                  &GlyphRasterizationOptions {
+                                                      point_size: point_size,
+                                                      horizontal_offset: subpixel_offset,
+                                                      ..GlyphRasterizationOptions::default()
+                                                  }).unwrap();
             CachedGlyph {
                 x: origin.x,
                 y: origin.y,
@@ -527,7 +567,8 @@ impl Renderer {
                    translation: &Point2D<i32>,
                    texture: GLuint,
                    point_size: f32,
-                   color: &[f32]) {
+                   foreground_color: &[f32],
+                   background_color: &[f32]) {
         unsafe {
             gl::UseProgram(self.composite_program);
             gl::BindVertexArray(vertex_array.vertex_array);
@@ -553,7 +594,8 @@ impl Renderer {
                           -1.0 + 2.0 * translation.x as f32 / device_pixel_size.width as f32,
                           1.0 - 2.0 * translation.y as f32 / device_pixel_size.height as f32);
 
-            gl::Uniform4fv(self.composite_color_uniform, 1, color.as_ptr());
+            gl::Uniform3fv(self.composite_foreground_color_uniform, 1, foreground_color.as_ptr());
+            gl::Uniform3fv(self.composite_background_color_uniform, 1, background_color.as_ptr());
 
             gl::Enable(gl::BLEND);
             gl::BlendEquation(gl::FUNC_ADD);
@@ -651,7 +693,7 @@ impl Renderer {
                            vertices.as_ptr() as *const GLvoid,
                            gl::DYNAMIC_DRAW);
 
-            gl::Uniform4fv(self.solid_color_color_uniform, 1, FPS_BACKGROUND_COLOR.as_ptr());
+            gl::Uniform3fv(self.solid_color_color_uniform, 1, FPS_BACKGROUND_COLOR.as_ptr());
 
             gl::Enable(gl::BLEND);
             gl::BlendEquation(gl::FUNC_ADD);
@@ -675,16 +717,28 @@ impl Renderer {
         fps_typesetter.add_text(&font, font.units_per_em() as f32, &fps_text);
 
         let shelf_height = font.shelf_height(FPS_DISPLAY_POINT_SIZE);
-        let mut fps_atlas_builder = AtlasBuilder::new(ATLAS_SIZE, shelf_height);
+        let atlas_options = AtlasOptions {
+            available_width: ATLAS_SIZE,
+            shelf_height: shelf_height,
+            subpixel_antialiasing: self.subpixel_aa,
+            ..AtlasOptions::default()
+        };
+
+        let mut fps_atlas_builder = AtlasBuilder::new(&atlas_options);
 
         let mut fps_glyphs = vec![];
         for &fps_glyph_index in &fps_glyph_store.all_glyph_indices {
             for subpixel in 0..SUBPIXEL_GRANULARITY_COUNT {
                 let subpixel_increment = SUBPIXEL_GRANULARITY * subpixel as f32;
+                let options = GlyphRasterizationOptions {
+                    point_size: FPS_DISPLAY_POINT_SIZE,
+                    horizontal_offset: subpixel_increment,
+                    ..GlyphRasterizationOptions::default()
+                };
+
                 let origin = fps_atlas_builder.pack_glyph(&fps_glyph_store.outlines,
                                                           fps_glyph_index,
-                                                          FPS_DISPLAY_POINT_SIZE,
-                                                          subpixel_increment).unwrap();
+                                                          &options).unwrap();
                 fps_glyphs.push(CachedGlyph {
                     x: origin.x,
                     y: origin.y,
@@ -728,7 +782,8 @@ impl Renderer {
                          &Point2D::new(fps_left, fps_top),
                          self.fps_gl_texture,
                          FPS_DISPLAY_POINT_SIZE,
-                         &FPS_FOREGROUND_COLOR);
+                         &FPS_FOREGROUND_COLOR,
+                         &FPS_BACKGROUND_COLOR);
     }
 
     fn take_screenshot(&self) {
@@ -839,7 +894,7 @@ fn create_program(vertex_shader_source: &str, fragment_shader_source: &str) -> G
 }
 
 fn create_image(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Image, GLuint) {
-    let compute_image = rasterizer.device().create_image(Format::R8,
+    let compute_image = rasterizer.device().create_image(Format::RGBA8,
                                                          buffer::Protection::ReadWrite,
                                                          &atlas_size).unwrap();
 
@@ -886,15 +941,17 @@ static COMPOSITE_FRAGMENT_SHADER: &'static str = "\
 #version 330
 
 uniform sampler2DRect uAtlas;
-uniform vec4 uColor;
+uniform vec3 uForegroundColor;
+uniform vec3 uBackgroundColor;
 
 in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
 void main() {
-    float value = texture(uAtlas, vTexCoord).r;
-    oFragColor = vec4(uColor.rgb, uColor.a * value);
+    vec3 value = texture(uAtlas, vTexCoord).rgb;
+    vec3 color = mix(uBackgroundColor, uForegroundColor, value);
+    oFragColor = vec4(color, 1.0f);
 }
 ";
 
@@ -911,12 +968,12 @@ void main() {
 static SOLID_COLOR_FRAGMENT_SHADER: &'static str = "\
 #version 330
 
-uniform vec4 uColor;
+uniform vec3 uColor;
 
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = uColor;
+    oFragColor = vec4(uColor, 1.0f);
 }
 ";
 

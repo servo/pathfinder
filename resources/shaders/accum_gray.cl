@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-// Computes total coverage and writes into the output atlas.
+// Computes total coverage and writes into the output atlas for grayscale antialiasing.
 //
 // This proceeds top to bottom for better data locality. For details on the algorithm, see [1].
 //
@@ -16,15 +16,13 @@
 
 const sampler_t SAMPLER = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
-__kernel void accum(__write_only image2d_t gImage,
-                    __read_only image2d_t gCoverage,
-                    uint4 kAtlasRect,
-                    uint kAtlasShelfHeight) {
+__kernel void accum_gray(__write_only image2d_t gImage,
+                         __read_only image2d_t gCoverage,
+                         uint4 kAtlasRect,
+                         uint kAtlasShelfHeight) {
     // Determine the boundaries of the column we'll be traversing.
-    uint atlasWidth = kAtlasRect.z - kAtlasRect.x, atlasHeight = kAtlasRect.w - kAtlasRect.y;
-    uint column = get_global_id(0) % atlasWidth, shelfIndex = get_global_id(0) / atlasWidth;
-    uint firstRow = min(shelfIndex * kAtlasShelfHeight, atlasHeight);
-    uint lastRow = min((shelfIndex + 1) * kAtlasShelfHeight, atlasHeight);
+    uint column = 0, firstRow = 0, lastRow = 0;
+    get_location(&column, &firstRow, &lastRow, kAtlasRect, kAtlasShelfHeight);
 
     // Sweep down the column, accumulating coverage as we go.
     float coverage = 0.0f;
