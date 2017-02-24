@@ -1,21 +1,38 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
+extern crate clap;
 extern crate euclid;
 extern crate memmap;
 extern crate pathfinder;
 
+use clap::{App, Arg};
 use memmap::{Mmap, Protection};
 use pathfinder::charmap::CodepointRange;
 use pathfinder::font::{Font, PointKind};
+use pathfinder::hinting::Hinter;
 use std::char;
-use std::env;
 
 fn main() {
-    let file = Mmap::open_path(env::args().nth(1).unwrap(), Protection::Read).unwrap();
+    let hint_arg = Arg::with_name("hint").short("H")
+                                         .long("hint")
+                                         .help("Apply hinting instructions");
+    let font_arg = Arg::with_name("FONT-FILE").help("Select the font file (`.ttf`, `.otf`, etc.)")
+                                              .required(true)
+                                              .index(1);
+    let matches = App::new("dump-outlines").arg(hint_arg).arg(font_arg).get_matches();
+
+    let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
     let mut buffer = vec![];
     unsafe {
         let font = Font::new(file.as_slice(), &mut buffer).unwrap();
+
+        let hinter = if matches.is_present("hint") {
+            Some(Hinter::new(&font).unwrap())
+        } else {
+            None
+        };
+
         let codepoint_ranges = [CodepointRange::new('!' as u32, '~' as u32)];
         let glyph_mapping = font.glyph_mapping_for_codepoint_ranges(&codepoint_ranges).unwrap();
         for (glyph_index, (_, glyph_id)) in glyph_mapping.iter().enumerate() {

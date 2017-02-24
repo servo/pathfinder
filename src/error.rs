@@ -141,7 +141,7 @@ pub enum HintingParseError {
     /// The instruction stream terminated abnormally.
     UnexpectedEof,
     /// An unexpected opcode was encountered.
-    UnknownOpcode,
+    UnknownOpcode(u8),
     /// An unexpected value was encountered for `DistanceType`.
     InvalidDistanceType,
 }

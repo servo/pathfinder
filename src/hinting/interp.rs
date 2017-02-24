@@ -25,7 +25,6 @@ impl<'a> ScriptInterpreter<'a> {
             branch_targets: vec![],
         };
         try!(interpreter.populate_branch_targets());
-        println!("{:#?}", interpreter.branch_targets);
         Ok(interpreter)
     }
 

@@ -137,8 +137,10 @@ pub enum Instruction<'a> {
     Mdap(ShouldRound),
     /// Move Indirect Absolute Point (0x3e-0x3f) (ttinst2.doc, 272-275)
     Miap(ShouldRound),
-    /// Move Direct Relative Point (0xc0-0xdf) (ttinst2.doc, 276-283)
+    /// Move Direct Relative Point (0xc0-0xdf) (ttinst2.doc, 276-278)
     Mdrp(SetRP0, ApplyMinimumDistance, ShouldRound, DistanceType),
+    /// Move Indirect Relative Point (0xe0-0xff) (ttinst2.doc, 279-283)
+    Mirp(SetRP0, ApplyMinimumDistance, ShouldRound, DistanceType),
     /// Align Relative Point (0x3c) (ttinst2.doc, 284)
     Alignrp,
     /// Move Point to Intersection of Two Lines (0x0f) (ttinst2.doc, 286-288)
@@ -277,13 +279,13 @@ impl<'a> Instruction<'a> {
             }
             0x41 | 0xb8...0xbf => {
                 let count = if op == 0x41 {
-                    try!(get(data, pc).ok_or(HintingParseError::UnexpectedEof)) as usize * 2
+                    try!(get(data, pc).ok_or(HintingParseError::UnexpectedEof)) as usize
                 } else {
-                    ((op as usize & 7) + 1) * 2
+                    (op as usize & 7) + 1
                 };
-                if *pc + count <= data.len() {
-                    let insn = Instruction::Pushw(&data[*pc..(*pc + count)]);
-                    *pc += count;
+                if *pc + count * 2 <= data.len() {
+                    let insn = Instruction::Pushw(&data[*pc..(*pc + count * 2)]);
+                    *pc += count * 2;
                     Ok(insn)
                 } else {
                     Err(HintingParseError::UnexpectedEof)
@@ -364,6 +366,12 @@ impl<'a> Instruction<'a> {
                                      ShouldRound((op & 0b00100) != 0),
                                      try!(DistanceType::parse(op & 0b00011))))
             }
+            0xe0...0xff => {
+                Ok(Instruction::Mirp(SetRP0((op & 0b10000) != 0),
+                                     ApplyMinimumDistance((op & 0b01000) != 0),
+                                     ShouldRound((op & 0b00100) != 0),
+                                     try!(DistanceType::parse(op & 0b00011))))
+            }
             0x3c => Ok(Instruction::Alignrp),
             0x0f => Ok(Instruction::Isect),
             0x27 => Ok(Instruction::Alignpts),
@@ -422,7 +430,7 @@ impl<'a> Instruction<'a> {
             0x4f => Ok(Instruction::Debug),
             0x88 => Ok(Instruction::Getinfo),
             0x91 => Ok(Instruction::Getvariation),
-            _ => Err(HintingParseError::UnknownOpcode),
+            _ => Err(HintingParseError::UnknownOpcode(op)),
         }
     }
 }
