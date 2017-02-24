@@ -124,3 +124,10 @@ pub enum GlyphStoreCreationError {
     GlError(GlError),
 }
 
+/// An error in hinting instruction evaluation.
+#[derive(Debug)]
+pub enum HintingError {
+    /// A miscellaneous error occurred.
+    Failed,
+}
+

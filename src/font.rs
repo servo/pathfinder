@@ -200,6 +200,24 @@ impl<'a> Font<'a> {
     pub fn line_gap(&self) -> i16 {
         self.tables.os_2.typo_line_gap
     }
+
+    /// Returns the Control Value Table of the font.
+    #[inline]
+    pub fn control_value_table(&self) -> &[u8] {
+        match self.tables.cvt {
+            None => &[],
+            Some(cvt) => cvt.bytes,
+        }
+    }
+
+    /// Returns the font program, which is run whenever the font is loaded.
+    #[inline]
+    pub fn font_program(&self) -> &[u8] {
+        match self.tables.fpgm {
+            None => &[],
+            Some(fpgm) => fpgm.bytes,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

@@ -124,8 +124,9 @@ impl<'a> GlyfTable<'a> {
         // Now parse the contours.
         let (mut position, mut point_index) = (Point2D::new(0, 0), 0);
         for _ in 0..number_of_contours {
-            let contour_point_count = try!(endpoints_reader.read_u16::<BigEndian>()
-                                                           .map_err(FontError::eof)) - point_index + 1;
+            let contour_point_count =
+                try!(endpoints_reader.read_u16::<BigEndian>().map_err(FontError::eof)) -
+                point_index + 1;
 
             let mut first_on_curve_point = None;
             let mut initial_off_curve_point = None;
@@ -143,7 +144,8 @@ impl<'a> GlyfTable<'a> {
                         delta.x = -delta.x
                     }
                 } else if !flags.contains(THIS_X_IS_SAME) {
-                    delta.x = try!(x_coordinate_reader.read_i16::<BigEndian>().map_err(FontError::eof))
+                    delta.x = try!(x_coordinate_reader.read_i16::<BigEndian>()
+                                                      .map_err(FontError::eof))
                 }
                 if flags.contains(Y_SHORT_VECTOR) {
                     delta.y = try!(y_coordinate_reader.read_u8().map_err(FontError::eof)) as i16;
@@ -151,7 +153,8 @@ impl<'a> GlyfTable<'a> {
                         delta.y = -delta.y
                     }
                 } else if !flags.contains(THIS_Y_IS_SAME) {
-                    delta.y = try!(y_coordinate_reader.read_i16::<BigEndian>().map_err(FontError::eof))
+                    delta.y = try!(y_coordinate_reader.read_i16::<BigEndian>()
+                                                      .map_err(FontError::eof))
                 }
 
                 if last_point_was_off_curve && !flags.contains(ON_CURVE) {
@@ -267,13 +270,19 @@ impl<'a> GlyfTable<'a> {
                 transform.m00 = scale;
                 transform.m11 = scale;
             } else if flags.contains(WE_HAVE_AN_X_AND_Y_SCALE) {
-                transform.m00 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
-                transform.m11 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
+                transform.m00 = F2Dot14(try!(reader.read_i16::<BigEndian>()
+                                                   .map_err(FontError::eof)));
+                transform.m11 = F2Dot14(try!(reader.read_i16::<BigEndian>()
+                                                   .map_err(FontError::eof)));
             } else if flags.contains(WE_HAVE_A_TWO_BY_TWO) {
-                transform.m00 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
-                transform.m01 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
-                transform.m10 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
-                transform.m11 = F2Dot14(try!(reader.read_i16::<BigEndian>().map_err(FontError::eof)));
+                transform.m00 = F2Dot14(try!(reader.read_i16::<BigEndian>()
+                                                   .map_err(FontError::eof)));
+                transform.m01 = F2Dot14(try!(reader.read_i16::<BigEndian>()
+                                                   .map_err(FontError::eof)));
+                transform.m10 = F2Dot14(try!(reader.read_i16::<BigEndian>()
+                                                   .map_err(FontError::eof)));
+                transform.m11 = F2Dot14(try!(reader.read_i16::<BigEndian>()
+                                                   .map_err(FontError::eof)));
             }
 
             if let Some(offset) = try!(loca_table.location_of(head_table, glyph_index)) {
@@ -332,7 +341,8 @@ fn calculate_size_of_x_coordinates<'a, 'b>(reader: &'a mut &'b [u8], number_of_p
                                            -> Result<u16, FontError> {
     let (mut x_coordinate_length, mut points_left) = (0, number_of_points);
     while points_left > 0 {
-        let flags = SimpleFlags::from_bits_truncate(try!(reader.read_u8().map_err(FontError::eof)));
+        let flags = SimpleFlags::from_bits_truncate(try!(reader.read_u8()
+                                                               .map_err(FontError::eof)));
         let repeat_count = if !flags.contains(REPEAT) {
             1
         } else {

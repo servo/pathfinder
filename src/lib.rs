@@ -93,6 +93,7 @@ pub mod charmap;
 pub mod coverage;
 pub mod error;
 pub mod font;
+pub mod hinting;
 pub mod outline;
 pub mod rasterizer;
 pub mod shaper;

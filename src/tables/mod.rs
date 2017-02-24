@@ -10,6 +10,28 @@
 
 //! OpenType fonts.
 
+// These tables need no parsing and so don't need separate files.
+pub mod cvt {
+    pub const TAG: u32 = ((b'c' as u32) << 24) |
+                          ((b'v' as u32) << 16) |
+                          ((b't' as u32) << 8)  |
+                           (b' ' as u32);
+}
+
+pub mod fpgm {
+    pub const TAG: u32 = ((b'f' as u32) << 24) |
+                          ((b'p' as u32) << 16) |
+                          ((b'g' as u32) << 8)  |
+                           (b'm' as u32);
+}
+
+pub mod prep {
+    pub const TAG: u32 = ((b'p' as u32) << 24) |
+                          ((b'r' as u32) << 16) |
+                          ((b'e' as u32) << 8)  |
+                           (b'p' as u32);
+}
+
 pub mod cff;
 pub mod cmap;
 pub mod glyf;

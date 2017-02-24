@@ -17,7 +17,9 @@ use error::FontError;
 use font::{Font, FontTable};
 use std::mem;
 use tables::cff::{self, CffTable};
+use tables::cvt;
 use tables::cmap::{self, CmapTable};
+use tables::fpgm;
 use tables::glyf::{self, GlyfTable};
 use tables::head::{self, HeadTable};
 use tables::hhea::{self, HheaTable};
@@ -25,6 +27,7 @@ use tables::hmtx::{self, HmtxTable};
 use tables::kern::{self, KernTable};
 use tables::loca::{self, LocaTable};
 use tables::os_2::{self, Os2Table};
+use tables::prep;
 use util::Jump;
 
 const OTTO: u32 = ((b'O' as u32) << 24) |
@@ -32,30 +35,36 @@ const OTTO: u32 = ((b'O' as u32) << 24) |
                   ((b'T' as u32) << 8)  |
                    (b'O' as u32);
 
-pub const KNOWN_TABLE_COUNT: usize = 9;
+pub const KNOWN_TABLE_COUNT: usize = 12;
 
 pub static KNOWN_TABLES: [u32; KNOWN_TABLE_COUNT] = [
     cff::TAG,
     os_2::TAG,
     cmap::TAG,
+    cvt::TAG,
+    fpgm::TAG,
     glyf::TAG,
     head::TAG,
     hhea::TAG,
     hmtx::TAG,
     kern::TAG,
     loca::TAG,
+    prep::TAG,
 ];
 
 // This must agree with the above.
 const TABLE_INDEX_CFF:  usize = 0;
 const TABLE_INDEX_OS_2: usize = 1;
 const TABLE_INDEX_CMAP: usize = 2;
-const TABLE_INDEX_GLYF: usize = 3;
-const TABLE_INDEX_HEAD: usize = 4;
-const TABLE_INDEX_HHEA: usize = 5;
-const TABLE_INDEX_HMTX: usize = 6;
-const TABLE_INDEX_KERN: usize = 7;
-const TABLE_INDEX_LOCA: usize = 8;
+const TABLE_INDEX_CVT:  usize = 3;
+const TABLE_INDEX_FPGM: usize = 4;
+const TABLE_INDEX_GLYF: usize = 5;
+const TABLE_INDEX_HEAD: usize = 6;
+const TABLE_INDEX_HHEA: usize = 7;
+const TABLE_INDEX_HMTX: usize = 8;
+const TABLE_INDEX_KERN: usize = 9;
+const TABLE_INDEX_LOCA: usize = 10;
+const TABLE_INDEX_PREP: usize = 11;
 
 pub static SFNT_VERSIONS: [u32; 3] = [
     0x10000,
@@ -65,16 +74,23 @@ pub static SFNT_VERSIONS: [u32; 3] = [
 
 #[doc(hidden)]
 pub struct FontTables<'a> {
+    // Required tables.
     pub cmap: CmapTable<'a>,
     pub head: HeadTable,
     pub hhea: HheaTable,
     pub hmtx: HmtxTable<'a>,
     pub os_2: Os2Table,
 
+    // Optional tables.
     pub cff: Option<CffTable<'a>>,
     pub glyf: Option<GlyfTable<'a>>,
     pub loca: Option<LocaTable<'a>>,
     pub kern: Option<KernTable<'a>>,
+
+    // Optional tables that need no parsing.
+    pub cvt: Option<FontTable<'a>>,
+    pub fpgm: Option<FontTable<'a>>,
+    pub prep: Option<FontTable<'a>>,
 }
 
 impl<'a> Font<'a> {
@@ -145,6 +161,10 @@ impl<'a> Font<'a> {
             glyf: tables[TABLE_INDEX_GLYF].map(GlyfTable::new),
             loca: loca_table,
             kern: tables[TABLE_INDEX_KERN].and_then(|table| KernTable::new(table).ok()),
+
+            cvt: tables[TABLE_INDEX_CVT],
+            fpgm: tables[TABLE_INDEX_FPGM],
+            prep: tables[TABLE_INDEX_PREP],
         };
 
         Ok(Font::from_tables(bytes, tables))
