@@ -18,8 +18,10 @@ use byteorder::{BigEndian, ByteOrder};
 use error::HintingError;
 use euclid::Point2D;
 use font::Font;
+use hinting::interp::ScriptInterpreter;
 
 mod insns;
+mod interp;
 
 /// A TrueType hinting virtual machine.
 pub struct Hinter {
@@ -93,6 +95,8 @@ impl Hinter {
             delta_shift: 0,
             graphics_state_flags: AUTO_FLIP,
         };
+
+        try!(ScriptInterpreter::new(font.font_program()).map_err(HintingError::AnalysisError));
 
         Ok(hinter)
     }

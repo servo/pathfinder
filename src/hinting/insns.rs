@@ -10,6 +10,8 @@
 
 //! TrueType instructions.
 
+use error::HintingParseError;
+
 /// All TrueType instructions.
 #[derive(Clone, Copy, Debug)]
 pub enum Instruction<'a> {
@@ -182,7 +184,7 @@ pub enum Instruction<'a> {
     /// Else (0x1b) (ttinst2.doc, 315)
     Else,
     /// End If (0x59) (ttinst2.doc, 316)
-    EIf,
+    Eif,
     /// Jump Relative on True (0x78) (ttinst2.doc, 317-318)
     Jrot,
     /// Jump (0x1c) (ttinst2.doc, 319)
@@ -256,12 +258,12 @@ pub enum Instruction<'a> {
 impl<'a> Instruction<'a> {
     #[inline]
     pub fn parse<'b, 'c>(data: &'b [u8], pc: &'c mut usize)
-                         -> Result<Instruction<'b>, ParseError> {
-        let op = try!(get(data, pc).ok_or(ParseError::Eof));
+                         -> Result<Instruction<'b>, HintingParseError> {
+        let op = try!(get(data, pc).ok_or(HintingParseError::Eof));
         match op {
             0x40 | 0xb0...0xb7 => {
                 let count = if op == 0x40 {
-                    try!(get(data, pc).ok_or(ParseError::UnexpectedEof)) as usize
+                    try!(get(data, pc).ok_or(HintingParseError::UnexpectedEof)) as usize
                 } else {
                     (op as usize & 7) + 1
                 };
@@ -270,12 +272,12 @@ impl<'a> Instruction<'a> {
                     *pc += count;
                     Ok(insn)
                 } else {
-                    Err(ParseError::UnexpectedEof)
+                    Err(HintingParseError::UnexpectedEof)
                 }
             }
             0x41 | 0xb8...0xbf => {
                 let count = if op == 0x41 {
-                    try!(get(data, pc).ok_or(ParseError::UnexpectedEof)) as usize * 2
+                    try!(get(data, pc).ok_or(HintingParseError::UnexpectedEof)) as usize * 2
                 } else {
                     ((op as usize & 7) + 1) * 2
                 };
@@ -284,7 +286,7 @@ impl<'a> Instruction<'a> {
                     *pc += count;
                     Ok(insn)
                 } else {
-                    Err(ParseError::UnexpectedEof)
+                    Err(HintingParseError::UnexpectedEof)
                 }
             }
             0x43 => Ok(Instruction::Rs),
@@ -385,7 +387,7 @@ impl<'a> Instruction<'a> {
             0x8a => Ok(Instruction::Roll),
             0x58 => Ok(Instruction::If),
             0x1b => Ok(Instruction::Else),
-            0x59 => Ok(Instruction::EIf),
+            0x59 => Ok(Instruction::Eif),
             0x78 => Ok(Instruction::Jrot),
             0x1c => Ok(Instruction::Jmpr),
             0x79 => Ok(Instruction::Jrof),
@@ -420,7 +422,7 @@ impl<'a> Instruction<'a> {
             0x4f => Ok(Instruction::Debug),
             0x88 => Ok(Instruction::Getinfo),
             0x91 => Ok(Instruction::Getvariation),
-            _ => Err(ParseError::UnknownOpcode),
+            _ => Err(HintingParseError::UnknownOpcode),
         }
     }
 }
@@ -484,25 +486,13 @@ pub enum DistanceType {
 }
 
 impl DistanceType {
-    fn parse(value: u8) -> Result<DistanceType, ParseError> {
+    fn parse(value: u8) -> Result<DistanceType, HintingParseError> {
         match value {
             0 => Ok(DistanceType::Gray),
             1 => Ok(DistanceType::Black),
             2 => Ok(DistanceType::White),
-            _ => Err(ParseError::InvalidDistanceType),
+            _ => Err(HintingParseError::InvalidDistanceType),
         }
     }
-}
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub enum ParseError {
-    /// The instruction stream terminated normally.
-    Eof,
-    /// The instruction stream terminated abnormally.
-    UnexpectedEof,
-    /// An unexpected opcode was encountered.
-    UnknownOpcode,
-    /// An unexpected value was encountered for `DistanceType`.
-    InvalidDistanceType,
 }
 

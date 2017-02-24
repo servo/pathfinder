@@ -125,9 +125,38 @@ pub enum GlyphStoreCreationError {
 }
 
 /// An error in hinting instruction evaluation.
-#[derive(Debug)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum HintingError {
     /// A miscellaneous error occurred.
     Failed,
+    /// An error was encountered during hinting program analysis.
+    AnalysisError(HintingAnalysisError),
+}
+
+/// An error encountered during parsing of the TrueType hinting bytecode.
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum HintingParseError {
+    /// The instruction stream terminated normally.
+    Eof,
+    /// The instruction stream terminated abnormally.
+    UnexpectedEof,
+    /// An unexpected opcode was encountered.
+    UnknownOpcode,
+    /// An unexpected value was encountered for `DistanceType`.
+    InvalidDistanceType,
+}
+
+/// An error encountered during semantic analysis of the TrueType hinting bytecode.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum HintingAnalysisError {
+    /// An error occurred while parsing the instruction stream.
+    ParseError(HintingParseError),
+    /// A branch target (e.g. `Eif`) was found without a corresponding branch instruction.
+    BranchTargetMissingBranch,
+    /// A branch target was (e.g. `If`) was found without a corresponding branch target (e.g.
+    /// `Eif`).
+    BranchMissingBranchTarget,
+    /// A branch target was mismatched with its branch instruction (`Eif` vs. `If`, etc.)
+    MismatchedBranchInstruction,
 }
 
