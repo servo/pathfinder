@@ -91,6 +91,8 @@ pub enum Instruction<'a> {
     Instctrl,
     /// Scan Conversion Control (0x85) (ttinst1.doc, 244-245)
     Scanctrl,
+    /// ScanType (0x8d) (ttinst1.doc, 246)
+    Scantype,
     /// Set Control Value Table Cut In (0x1d) (ttinst1.doc, 249)
     Scvtci,
     /// Set Single Width Cut In (0x1e) (ttinst1.doc, 250)
@@ -332,6 +334,7 @@ impl<'a> Instruction<'a> {
             0x1a => Ok(Instruction::Smd),
             0x8e => Ok(Instruction::Instctrl),
             0x85 => Ok(Instruction::Scanctrl),
+            0x8d => Ok(Instruction::Scantype),
             0x1d => Ok(Instruction::Scvtci),
             0x1e => Ok(Instruction::Sswci),
             0x1f => Ok(Instruction::Ssw),

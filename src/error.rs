@@ -124,13 +124,17 @@ pub enum GlyphStoreCreationError {
     GlError(GlError),
 }
 
-/// An error in hinting instruction evaluation.
+/// An error in construction of a hinter.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum HintingError {
+pub enum HinterCreationError {
     /// A miscellaneous error occurred.
     Failed,
-    /// An error was encountered during hinting program analysis.
-    AnalysisError(HintingAnalysisError),
+    /// An error was encountered while analyzing the font program.
+    FontProgramAnalysisError(HintingAnalysisError),
+    /// An error was encountered while analyzing the control value program.
+    ControlValueProgramAnalysisError(HintingAnalysisError),
+    /// An error was encountered during execution of the font program.
+    FontProgramExecutionError(HintingExecutionError),
 }
 
 /// An error encountered during parsing of the TrueType hinting bytecode.
@@ -158,5 +162,14 @@ pub enum HintingAnalysisError {
     BranchMissingBranchTarget,
     /// A branch target was mismatched with its branch instruction (`Eif` vs. `If`, etc.)
     MismatchedBranchInstruction,
+}
+
+/// An error encountered during execution of the TrueType hinting bytecode.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum HintingExecutionError {
+    /// An error occurred while parsing the instruction stream.
+    ParseError(HintingParseError),
+    /// An instruction expected more values than were on the stack.
+    StackUnderflow,
 }
 

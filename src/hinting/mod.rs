@@ -15,20 +15,33 @@
 //! See: https://www.microsoft.com/typography/otspec/ttinst.htm
 
 use byteorder::{BigEndian, ByteOrder};
-use error::HintingError;
+use error::{HinterCreationError, HintingExecutionError};
 use euclid::Point2D;
 use font::Font;
-use hinting::interp::ScriptInterpreter;
+use hinting::interp::{Frame, Script};
 
 mod insns;
 mod interp;
 
+const FONT_PROGRAM: usize = 0;
+const CONTROL_VALUE_PROGRAM: usize = 1;
+
 /// A TrueType hinting virtual machine.
-pub struct Hinter {
+pub struct Hinter<'a> {
+    // Scripts that we've analyzed so far.
+    scripts: Vec<Script<'a>>,
+    // The VM's evaluation stack.
+    stack: Vec<i32>,
+    // The VM's call stack.
+    call_stack: Vec<Frame>,
+    // The set of defined functions.
+    functions: Vec<Option<Frame>>,
     // The Control Value Table: the VM's initialized memory.
     control_value_table: Vec<i16>,
     // The Storage Area: the VM's uninitialized memory.
-    storage_area: Vec<u32>,
+    storage_area: Vec<i32>,
+    // The current font size.
+    point_size: f32,
     // The projection vector, in 2.14 fixed point.
     projection_vector: Point2D<i16>,
     // The dual projection vector, in 2.14 fixed point.
@@ -69,12 +82,29 @@ pub struct Hinter {
     graphics_state_flags: GraphicsStateFlags,
 }
 
-impl Hinter {
-    pub fn new(font: &Font) -> Result<Hinter, HintingError> {
+impl<'a> Hinter<'a> {
+    pub fn new<'b>(font: &'b Font) -> Result<Hinter<'b>, HinterCreationError> {
+        let font_program = font.font_program();
+        let control_value_program = font.control_value_program();
+        let scripts = vec![
+            try!(Script::new(font_program).map_err(HinterCreationError::FontProgramAnalysisError)),
+            try!(Script::new(control_value_program).map_err(
+                    HinterCreationError::ControlValueProgramAnalysisError)),
+        ];
+
         let cvt = font.control_value_table().chunks(2).map(BigEndian::read_i16).collect();
-        let hinter = Hinter {
+
+        // Initialize the call stack to the font program, so that we'll start executing it.
+        let call_stack = vec![Frame::new(0, scripts[FONT_PROGRAM].len(), FONT_PROGRAM)];
+
+        let mut hinter = Hinter {
+            scripts: scripts,
+            stack: vec![],
+            call_stack: call_stack,
+            functions: vec![],
             control_value_table: cvt,
             storage_area: vec![],
+            point_size: 0.0,
             projection_vector: Point2D::zero(),
             dual_projection_vector: Point2D::zero(),
             freedom_vector: Point2D::zero(),
@@ -96,9 +126,18 @@ impl Hinter {
             graphics_state_flags: AUTO_FLIP,
         };
 
-        try!(ScriptInterpreter::new(font.font_program()).map_err(HintingError::AnalysisError));
+        try!(hinter.exec().map_err(HinterCreationError::FontProgramExecutionError));
 
         Ok(hinter)
+    }
+
+    /// Sets the point size and reevaluates the control value program (`prep`).
+    pub fn set_point_size(&mut self, new_point_size: f32) -> Result<(), HintingExecutionError> {
+        self.point_size = new_point_size;
+        self.call_stack.push(Frame::new(0,
+                                        self.scripts[CONTROL_VALUE_PROGRAM].len(),
+                                        CONTROL_VALUE_PROGRAM));
+        self.exec()
     }
 }
 

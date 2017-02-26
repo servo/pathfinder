@@ -16,7 +16,9 @@ use std::char;
 fn main() {
     let hint_arg = Arg::with_name("hint").short("H")
                                          .long("hint")
-                                         .help("Apply hinting instructions");
+                                         .value_name("POINT-SIZE")
+                                         .help("Apply hinting instructions for a point size")
+                                         .takes_value(true);
     let font_arg = Arg::with_name("FONT-FILE").help("Select the font file (`.ttf`, `.otf`, etc.)")
                                               .required(true)
                                               .index(1);
@@ -27,8 +29,10 @@ fn main() {
     unsafe {
         let font = Font::new(file.as_slice(), &mut buffer).unwrap();
 
-        let hinter = if matches.is_present("hint") {
-            Some(Hinter::new(&font).unwrap())
+        let hinter = if let Some(point_size) = matches.value_of("hint") {
+            let mut hinter = Hinter::new(&font).unwrap();
+            hinter.set_point_size(point_size.parse().unwrap()).unwrap();
+            Some(hinter)
         } else {
             None
         };

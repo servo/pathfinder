@@ -218,6 +218,15 @@ impl<'a> Font<'a> {
             Some(fpgm) => fpgm.bytes,
         }
     }
+
+    /// Returns the control value program, which is run whenever the point size changes.
+    #[inline]
+    pub fn control_value_program(&self) -> &[u8] {
+        match self.tables.prep {
+            None => &[],
+            Some(prep) => prep.bytes,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
