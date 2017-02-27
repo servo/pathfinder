@@ -11,6 +11,8 @@
 //! TrueType instructions.
 
 use error::HintingParseError;
+use euclid::Point2D;
+use util::{F2DOT14_ONE, F2DOT14_ZERO, F2Dot14};
 
 /// All TrueType instructions.
 #[derive(Clone, Copy, Debug)]
@@ -453,6 +455,16 @@ fn get(data: &[u8], pc: &mut usize) -> Option<u8> {
 pub enum Axis {
     Y = 0,
     X = 1,
+}
+
+impl Axis {
+    #[inline]
+    pub fn as_point(self) -> Point2D<F2Dot14> {
+        match self {
+            Axis::Y => Point2D::new(F2DOT14_ZERO, F2DOT14_ONE),
+            Axis::X => Point2D::new(F2DOT14_ONE, F2DOT14_ZERO),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

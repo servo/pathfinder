@@ -19,9 +19,14 @@ use error::{HinterCreationError, HintingExecutionError};
 use euclid::Point2D;
 use font::Font;
 use hinting::interp::{Frame, Script};
+use util::{F26Dot6, F2Dot14};
 
 mod insns;
 mod interp;
+
+/// The version we return for the `getinfo` instruction. FreeType uses 35, so we do as well. (This
+/// supposedly corresponds to Windows 98.)
+pub const GETINFO_VERSION: i32 = 35;
 
 const FONT_PROGRAM: usize = 0;
 const CONTROL_VALUE_PROGRAM: usize = 1;
@@ -37,17 +42,17 @@ pub struct Hinter<'a> {
     // The set of defined functions.
     functions: Vec<Option<Frame>>,
     // The Control Value Table: the VM's initialized memory.
-    control_value_table: Vec<i16>,
+    control_value_table: Vec<F26Dot6>,
     // The Storage Area: the VM's uninitialized memory.
     storage_area: Vec<i32>,
     // The current font size.
     point_size: f32,
     // The projection vector, in 2.14 fixed point.
-    projection_vector: Point2D<i16>,
+    projection_vector: Point2D<F2Dot14>,
     // The dual projection vector, in 2.14 fixed point.
-    dual_projection_vector: Point2D<i16>,
+    dual_projection_vector: Point2D<F2Dot14>,
     // The freedom vector, in 2.14 fixed point.
-    freedom_vector: Point2D<i16>,
+    freedom_vector: Point2D<F2Dot14>,
     // The reference point indices.
     reference_points: [u32; 3],
     // The zone numbers.
@@ -92,7 +97,11 @@ impl<'a> Hinter<'a> {
                     HinterCreationError::ControlValueProgramAnalysisError)),
         ];
 
-        let cvt = font.control_value_table().chunks(2).map(BigEndian::read_i16).collect();
+        let cvt = font.control_value_table().chunks(2).map(|bytes| {
+            // FIXME(pcwalton): This is wrong!
+            let unscaled = BigEndian::read_i16(bytes) as i32;
+            F26Dot6(unscaled)
+        }).collect();
 
         // Initialize the call stack to the font program, so that we'll start executing it.
         let call_stack = vec![Frame::new(0, scripts[FONT_PROGRAM].len(), FONT_PROGRAM)];
@@ -187,4 +196,26 @@ bitflags! {
         const AUTO_FLIP = 1 << 1,
     }
 }
+
+bitflags! {
+    // Info returned by the `getinfo` instruction.
+    pub flags InfoSelector: i32 {
+        const VERSION = 0x1,
+        const GLYPH_ROTATION = 0x2,
+        const GLYPH_STRETCHED = 0x4,
+        const FONT_VARIATIONS = 0x8,
+        const VERTICAL_PHANTOM_POINTS = 0x10,
+        const FONT_SMOOTHING_GRAYSCALE = 0x20,
+        const SUBPIXEL_AA_ENABLED = 0x40,
+        const SUBPIXEL_AA_COMPATIBLE_WIDTHS_ENABLED = 0x80,
+        const SUBPIXEL_AA_HORIZONTAL_LCD_STRIPE_ORIENTATION = 0x100,
+        const SUBPIXEL_AA_BGR_LCD_STRIPE_ORDER = 0x200,
+        const SUBPIXEL_AA_SUBPIXEL_POSITIONED_TEXT_ENABLED = 0x400,
+        const SUBPIXEL_AA_SYMMETRIC_RENDERING_ENABLED = 0x800,
+        const SUBPIXEL_AA_GRAY_RENDERING_ENABLED = 0x1000,
+    }
+}
+
+pub const INFO_RESULT_VERSION_SHIFT: i32 = 0;
+pub const INFO_RESULT_FONT_SMOOTHING_GRAYSCALE_SHIFT: i32 = 12;
 

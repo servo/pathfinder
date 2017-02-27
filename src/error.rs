@@ -171,5 +171,9 @@ pub enum HintingExecutionError {
     ParseError(HintingParseError),
     /// An instruction expected more values than were on the stack.
     StackUnderflow,
+    /// An operation tried to read out of bounds of the control value table.
+    CvtReadOutOfBounds,
+    /// An undefined function ID was called.
+    CallToUndefinedFunction,
 }
 

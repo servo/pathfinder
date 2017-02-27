@@ -10,6 +10,7 @@ euclid = "0.10"
 flate2 = "0.2"
 gl = "0.6"
 memmap = "0.5"
+num-traits = "0.1"
 time = "0.1"
 
 [dependencies.compute-shader]

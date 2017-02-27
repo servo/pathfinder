@@ -14,18 +14,14 @@ use euclid::Point2D;
 use font::{FontTable, Point, PointKind};
 use outline::GlyphBounds;
 use std::mem;
-use std::ops::Mul;
 use tables::head::HeadTable;
 use tables::loca::LocaTable;
-use util::Jump;
+use util::{F2DOT14_ONE, F2DOT14_ZERO, F2Dot14, Jump};
 
 pub const TAG: u32 = ((b'g' as u32) << 24) |
                       ((b'l' as u32) << 16) |
                       ((b'y' as u32) << 8)  |
                        (b'f' as u32);
-
-const F2DOT14_ZERO: F2Dot14 = F2Dot14(0);
-const F2DOT14_ONE:  F2Dot14 = F2Dot14(0b0100_0000_0000_0000);
 
 bitflags! {
     flags SimpleFlags: u8 {
@@ -435,18 +431,6 @@ impl Mat3x2 {
                                    self.m10 * p.x + self.m11 * p.y + self.m12),
             ..*point
         }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-struct F2Dot14(i16);
-
-impl Mul<i16> for F2Dot14 {
-    type Output = i16;
-
-    #[inline]
-    fn mul(self, other: i16) -> i16 {
-        ((self.0 as i32 * other as i32) >> 14) as i16
     }
 }
 
