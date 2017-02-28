@@ -16,8 +16,8 @@ use compute_shader::image::{Color, ExternalImage, Format, Image};
 use compute_shader::instance::{Instance, ShadingLanguage};
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
-use glfw::{Action, Context, Key, OpenGlProfileHint, SwapInterval, WindowEvent};
-use glfw::{WindowHint, WindowMode};
+use glfw::{Action, Context, Key, OpenGlProfileHint, SwapInterval, Window, WindowEvent};
+use glfw::{Glfw, WindowHint, WindowMode};
 use memmap::{Mmap, Protection};
 use pathfinder::atlas::{AtlasBuilder, AtlasOptions, GlyphRasterizationOptions};
 use pathfinder::charmap::CodepointRanges;
@@ -34,6 +34,7 @@ use std::io::Read;
 use std::mem;
 use std::os::raw::c_void;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Receiver;
 
 const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 640;
@@ -50,7 +51,9 @@ const MAX_POINT_SIZE: f32 = 512.0;
 const FPS_DISPLAY_POINT_SIZE: f32 = 24.0;
 const FPS_PADDING: i32 = 6;
 
-static SHADER_PATH: &'static str = "resources/shaders/";
+static PATHFINDER_SHADER_PATH: &'static str = "resources/shaders/";
+static EXAMPLE_SHADER_PATH: &'static str = "resources/examples/lorem-ipsum/";
+static DEFAULT_TEXT_PATH: &'static str = "resources/examples/lorem-ipsum/default.txt";
 
 static FPS_BACKGROUND_COLOR: [f32; 3] = [0.3, 0.3, 0.3];
 static FPS_FOREGROUND_COLOR: [f32; 3] = [1.0, 1.0, 1.0];
@@ -59,176 +62,256 @@ static TEXT_COLOR:           [f32; 3] = [0.0, 0.0, 0.0];
 
 static ATLAS_DUMP_FILENAME: &'static str = "lorem-ipsum-atlas.png";
 
+static RECT_INDICES: [u16; 6] = [0, 1, 3, 1, 2, 3];
+
 fn main() {
-    let index_arg = Arg::with_name("index").short("i")
-                                           .long("index")
-                                           .help("Select an index within a font collection")
-                                           .takes_value(true);
-    let subpixel_antialiasing_arg =
-        Arg::with_name("subpixel-aa").short("s")
-                                     .long("subpixel-aa")
-                                     .help("Enable subpixel antialiasing");
-    let font_arg = Arg::with_name("FONT-FILE").help("Select the font file (`.ttf`, `.otf`, etc.)")
-                                              .required(true)
-                                              .index(1);
-    let text_arg = Arg::with_name("TEXT-FILE").help("Select a file containing text to display")
-                                              .index(2);
-    let matches = App::new("lorem-ipsum").arg(index_arg)
-                                         .arg(subpixel_antialiasing_arg)
-                                         .arg(font_arg)
-                                         .arg(text_arg)
-                                         .get_matches();
+    DemoApp::new(AppOptions::parse()).run()
+}
 
-    let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
-    glfw.window_hint(WindowHint::ContextVersion(3, 3));
-    glfw.window_hint(WindowHint::OpenGlForwardCompat(true));
-    glfw.window_hint(WindowHint::OpenGlProfile(OpenGlProfileHint::Core));
-    let context = glfw.create_window(WIDTH, HEIGHT, "lorem-ipsum", WindowMode::Windowed);
+struct DemoApp {
+    options: AppOptions,
+    renderer: Renderer,
+    glfw: Glfw,
+    window: Window,
+    events: Receiver<(f64, WindowEvent)>,
+    point_size: f32,
+    translation: Point2D<i32>,
+    device_pixel_size: Size2D<u32>,
+}
 
-    let (mut window, events) = context.expect("Couldn't create a window!");
-    window.make_current();
-    window.set_key_polling(true);
-    window.set_scroll_polling(true);
-    window.set_size_polling(true);
-    window.set_framebuffer_size_polling(true);
-    glfw.set_swap_interval(SwapInterval::Sync(1));
+impl DemoApp {
+    fn new(options: AppOptions) -> DemoApp {
+        let mut glfw = glfw::init(glfw::LOG_ERRORS).unwrap();
+        glfw.window_hint(WindowHint::ContextVersion(3, 3));
+        glfw.window_hint(WindowHint::OpenGlForwardCompat(true));
+        glfw.window_hint(WindowHint::OpenGlProfile(OpenGlProfileHint::Core));
+        let context = glfw.create_window(WIDTH, HEIGHT, "lorem-ipsum", WindowMode::Windowed);
 
-    gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
+        let (mut window, events) = context.expect("Couldn't create a window!");
+        window.make_current();
+        window.set_key_polling(true);
+        window.set_scroll_polling(true);
+        window.set_size_polling(true);
+        window.set_framebuffer_size_polling(true);
+        glfw.set_swap_interval(SwapInterval::Sync(1));
 
-    let (width, height) = window.get_framebuffer_size();
-    let mut device_pixel_size = Size2D::new(width as u32, height as u32);
+        gl::load_with(|symbol| window.get_proc_address(symbol) as *const c_void);
 
-    let mut text = "".to_string();
-    match matches.value_of("TEXT-FILE") {
-        Some(path) => drop(File::open(path).unwrap().read_to_string(&mut text).unwrap()),
-        None => text.push_str(TEXT),
+        let (width, height) = window.get_framebuffer_size();
+        let device_pixel_size = Size2D::new(width as u32, height as u32);
+
+        let renderer = Renderer::new(options.subpixel_aa);
+
+        DemoApp {
+            renderer: renderer,
+            glfw: glfw,
+            window: window,
+            events: events,
+            device_pixel_size: device_pixel_size,
+            point_size: INITIAL_POINT_SIZE,
+            translation: Point2D::zero(),
+            options: options,
+        }
     }
-    text = text.replace(&['\n', '\r', '\t'][..], " ");
 
-    let font_index = match matches.value_of("index") {
-        Some(index) => index.parse().unwrap(),
-        None => 0,
-    };
+    fn run(&mut self) {
+        let file = Mmap::open_path(&self.options.font_path, Protection::Read).unwrap();
+        let mut buffer = vec![];
+        let font = unsafe {
+            Font::from_collection_index(file.as_slice(),
+                                        self.options.font_index,
+                                        &mut buffer).unwrap()
+        };
 
-    let subpixel_aa = matches.is_present("subpixel-aa");
+        let page_width = self.device_pixel_size.width as f32 *
+            font.units_per_em() as f32 / INITIAL_POINT_SIZE;
 
-    let file = Mmap::open_path(matches.value_of("FONT-FILE").unwrap(), Protection::Read).unwrap();
-    let mut buffer = vec![];
-    let font = unsafe {
-        Font::from_collection_index(file.as_slice(), font_index, &mut buffer).unwrap()
-    };
+        let mut typesetter = Typesetter::new(page_width, &font, font.units_per_em() as f32);
+        typesetter.add_text(&font, font.units_per_em() as f32, &self.options.text);
 
-    let units_per_em = font.units_per_em() as f32;
-    let page_width = device_pixel_size.width as f32 * units_per_em / INITIAL_POINT_SIZE;
-    let mut typesetter = Typesetter::new(page_width, &font, units_per_em);
-    typesetter.add_text(&font, font.units_per_em() as f32, &text);
+        let glyph_stores = GlyphStores::new(&typesetter, &font);
 
-    let renderer = Renderer::new(subpixel_aa);
-    let mut point_size = INITIAL_POINT_SIZE;
-    let mut translation = Point2D::new(0, 0);
-    let mut dirty = true;
-
-    let glyph_store = typesetter.create_glyph_store(&font).unwrap();
-
-    // Set up the FPS glyph store.
-    let mut fps_chars: Vec<char> = vec![];
-    fps_chars.extend(" ./,:()".chars());
-    fps_chars.extend(('A' as u32..('Z' as u32 + 1)).flat_map(char::from_u32));
-    fps_chars.extend(('a' as u32..('z' as u32 + 1)).flat_map(char::from_u32));
-    fps_chars.extend(('0' as u32..('9' as u32 + 1)).flat_map(char::from_u32));
-    fps_chars.sort();
-    let fps_codepoint_ranges = CodepointRanges::from_sorted_chars(&fps_chars);
-    let fps_glyph_store = GlyphStore::from_codepoints(&fps_codepoint_ranges, &font).unwrap();
-
-    while !window.should_close() {
-        if dirty {
-            let redraw_result = renderer.redraw(point_size,
-                                                &font,
-                                                &glyph_store,
-                                                &typesetter,
-                                                &device_pixel_size,
-                                                &translation);
-
-            let (draw_time, accum_time);
-            match redraw_result.events {
-                Some(events) => {
-                    let mut draw_nanos = 0u64;
-                    unsafe {
-                        gl::Flush();
-                        gl::GetQueryObjectui64v(events.draw, gl::QUERY_RESULT, &mut draw_nanos);
-                    }
-
-                    draw_time = draw_nanos as f64;
-                    accum_time = events.accum.time_elapsed().unwrap() as f64;
-                }
-                None => {
-                    draw_time = 0.0;
-                    accum_time = 0.0;
-                }
+        let mut dirty = true;
+        while !self.window.should_close() {
+            if dirty {
+                self.redraw(&glyph_stores, &typesetter, &font);
+                dirty = false
             }
 
-            let timing = renderer.get_timing_in_ms();
+            self.glfw.wait_events();
+            let events: Vec<_> = glfw::flush_messages(&self.events).map(|(_, e)| e).collect();
+            for event in events {
+                dirty = self.handle_window_event(event) || dirty
+            }
+        }
+    }
 
-            renderer.draw_fps(&font,
-                              &fps_glyph_store,
-                              &device_pixel_size,
-                              draw_time,
-                              accum_time,
-                              timing,
-                              redraw_result.glyphs_drawn);
+    fn redraw(&mut self, glyph_stores: &GlyphStores, typesetter: &Typesetter, font: &Font) {
+        let redraw_result = self.renderer.redraw(self.point_size,
+                                                 &font,
+                                                 &glyph_stores.main,
+                                                 typesetter,
+                                                 &self.device_pixel_size,
+                                                 &self.translation);
 
-            window.swap_buffers();
+        let (draw_time, accum_time);
+        match redraw_result.events {
+            Some(events) => {
+                let mut draw_nanos = 0u64;
+                unsafe {
+                    gl::Flush();
+                    gl::GetQueryObjectui64v(events.draw, gl::QUERY_RESULT, &mut draw_nanos);
+                }
 
-            dirty = false
+                draw_time = draw_nanos as f64;
+                accum_time = events.accum.time_elapsed().unwrap() as f64;
+            }
+            None => {
+                draw_time = 0.0;
+                accum_time = 0.0;
+            }
         }
 
+        let timing = self.renderer.get_timing_in_ms();
 
-        glfw.wait_events();
-        for (_, event) in glfw::flush_messages(&events) {
-            match event {
-                WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
-                    window.set_should_close(true)
-                }
-                WindowEvent::Key(Key::S, _, Action::Press, _) => {
-                    renderer.take_screenshot();
-                    println!("wrote screenshot to: {}", ATLAS_DUMP_FILENAME);
-                }
-                WindowEvent::Scroll(x, y) => {
-                    if window.get_key(Key::LeftAlt) == Action::Press ||
-                            window.get_key(Key::RightAlt) == Action::Press {
-                        let old_point_size = point_size;
-                        point_size = old_point_size + y as f32;
+        self.renderer.draw_fps(&font,
+                               &glyph_stores.fps,
+                               &self.device_pixel_size,
+                               draw_time,
+                               accum_time,
+                               timing,
+                               redraw_result.glyphs_drawn);
 
-                        if point_size < MIN_POINT_SIZE {
-                            point_size = MIN_POINT_SIZE
-                        } else if point_size > MAX_POINT_SIZE {
-                            point_size = MAX_POINT_SIZE
-                        }
+        self.window.swap_buffers();
+    }
 
-                        let mut center = Point2D::new(
-                            translation.x as f32 - device_pixel_size.width as f32 * 0.5,
-                            translation.y as f32 - device_pixel_size.height as f32 * 0.5);
-                        center.x = center.x * point_size / old_point_size;
-                        center.y = center.y * point_size / old_point_size;
+    // Returns true if the window needs to be redrawn.
+    fn handle_window_event(&mut self, event: WindowEvent) -> bool {
+        match event {
+            WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
+                self.window.set_should_close(true);
+                false
+            }
+            WindowEvent::Key(Key::S, _, Action::Press, _) => {
+                self.renderer.take_screenshot();
+                println!("wrote screenshot to: {}", ATLAS_DUMP_FILENAME);
+                false
+            }
+            WindowEvent::Scroll(x, y) => {
+                if self.window.get_key(Key::LeftAlt) == Action::Press ||
+                        self.window.get_key(Key::RightAlt) == Action::Press {
+                    let old_point_size = self.point_size;
+                    self.point_size = old_point_size + y as f32;
 
-                        translation.x = (center.x + device_pixel_size.width as f32 * 0.5).round()
-                            as i32;
-                        translation.y = (center.y + device_pixel_size.height as f32 * 0.5).round()
-                            as i32;
-                    } else {
-                        translation.x += (x * SCROLL_SPEED).round() as i32;
-                        translation.y += (y * SCROLL_SPEED).round() as i32;
+                    if self.point_size < MIN_POINT_SIZE {
+                        self.point_size = MIN_POINT_SIZE
+                    } else if self.point_size > MAX_POINT_SIZE {
+                        self.point_size = MAX_POINT_SIZE
                     }
 
-                    dirty = true
+                    let mut center =
+                        Point2D::new(self.translation.x as f32 -
+                                     self.device_pixel_size.width as f32 *
+                                     0.5,
+                                     self.translation.y as f32 -
+                                     self.device_pixel_size.height as f32 *
+                                     0.5);
+                    center.x = center.x * self.point_size / old_point_size;
+                    center.y = center.y * self.point_size / old_point_size;
+
+                    self.translation.x =
+                        (center.x + self.device_pixel_size.width as f32 * 0.5).round() as i32;
+                    self.translation.y =
+                        (center.y + self.device_pixel_size.height as f32 * 0.5).round() as i32;
+                } else {
+                    self.translation.x += (x * SCROLL_SPEED).round() as i32;
+                    self.translation.y += (y * SCROLL_SPEED).round() as i32;
                 }
-                WindowEvent::Size(_, _) | WindowEvent::FramebufferSize(_, _) => {
-                    let (width, height) = window.get_framebuffer_size();
-                    device_pixel_size = Size2D::new(width as u32, height as u32);
-                    dirty = true
-                }
-                _ => {}
+
+                true
             }
+            WindowEvent::Size(_, _) | WindowEvent::FramebufferSize(_, _) => {
+                let (width, height) = self.window.get_framebuffer_size();
+                self.device_pixel_size = Size2D::new(width as u32, height as u32);
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+struct AppOptions {
+    font_path: String,
+    font_index: u32,
+    text: String,
+    subpixel_aa: bool,
+}
+
+impl AppOptions {
+    fn parse() -> AppOptions {
+        let index_arg = Arg::with_name("index").short("i")
+                                               .long("index")
+                                               .help("Select an index within a font collection")
+                                               .takes_value(true);
+        let subpixel_antialiasing_arg =
+            Arg::with_name("subpixel-aa").short("s")
+                                         .long("subpixel-aa")
+                                         .help("Enable subpixel antialiasing");
+        let font_arg =
+            Arg::with_name("FONT-FILE").help("Select the font file (`.ttf`, `.otf`, etc.)")
+                                       .required(true)
+                                       .index(1);
+        let text_arg = Arg::with_name("TEXT-FILE").help("Select a file containing text to display")
+                                                  .index(2);
+        let matches = App::new("lorem-ipsum").arg(index_arg)
+                                             .arg(subpixel_antialiasing_arg)
+                                             .arg(font_arg)
+                                             .arg(text_arg)
+                                             .get_matches();
+
+        let mut text = "".to_string();
+        let path = matches.value_of("TEXT-FILE").unwrap_or(DEFAULT_TEXT_PATH);
+        File::open(path).unwrap().read_to_string(&mut text).unwrap();
+        text = text.replace(&['\n', '\r', '\t'][..], " ");
+
+        let font_index = match matches.value_of("index") {
+            Some(index) => index.parse().unwrap(),
+            None => 0,
+        };
+
+        let font_path = matches.value_of("FONT-FILE").unwrap();
+        let subpixel_aa = matches.is_present("subpixel-aa");
+
+        AppOptions {
+            text: text,
+            font_index: font_index,
+            font_path: font_path.to_string(),
+            subpixel_aa: subpixel_aa,
+        }
+    }
+}
+
+struct GlyphStores {
+    main: GlyphStore,
+    fps: GlyphStore,
+}
+
+impl GlyphStores {
+    fn new(typesetter: &Typesetter, font: &Font) -> GlyphStores {
+        let main_glyph_store = typesetter.create_glyph_store(&font).unwrap();
+
+        let mut fps_chars: Vec<char> = vec![];
+        fps_chars.extend(" ./,:()".chars());
+        fps_chars.extend(('A' as u32..('Z' as u32 + 1)).flat_map(char::from_u32));
+        fps_chars.extend(('a' as u32..('z' as u32 + 1)).flat_map(char::from_u32));
+        fps_chars.extend(('0' as u32..('9' as u32 + 1)).flat_map(char::from_u32));
+        fps_chars.sort();
+        let fps_codepoint_ranges = CodepointRanges::from_sorted_chars(&fps_chars);
+        let fps_glyph_store = GlyphStore::from_codepoints(&fps_codepoint_ranges, &font).unwrap();
+
+        GlyphStores {
+            main: main_glyph_store,
+            fps: fps_glyph_store,
         }
     }
 }
@@ -277,7 +360,7 @@ impl Renderer {
 
         let mut rasterizer_options = RasterizerOptions::from_env().unwrap();
         if env::var("PATHFINDER_SHADER_PATH").is_err() {
-            rasterizer_options.shader_path = PathBuf::from(SHADER_PATH)
+            rasterizer_options.shader_path = PathBuf::from(PATHFINDER_SHADER_PATH)
         }
 
         let rasterizer = Rasterizer::new(&instance, device, queue, rasterizer_options).unwrap();
@@ -291,7 +374,7 @@ impl Renderer {
         let (mut solid_color_vertex_buffer, mut solid_color_index_buffer) = (0, 0);
         let mut solid_color_vertex_array = 0;
         unsafe {
-            composite_program = create_program(COMPOSITE_VERTEX_SHADER, COMPOSITE_FRAGMENT_SHADER);
+            composite_program = create_program("composite");
             composite_position_attribute =
                 gl::GetAttribLocation(composite_program, "aPosition\0".as_ptr() as *const GLchar);
             composite_tex_coord_attribute =
@@ -311,8 +394,7 @@ impl Renderer {
                 gl::GetUniformLocation(composite_program,
                                        "uBackgroundColor\0".as_ptr() as *const GLchar);
 
-            solid_color_program = create_program(SOLID_COLOR_VERTEX_SHADER,
-                                                 SOLID_COLOR_FRAGMENT_SHADER);
+            solid_color_program = create_program("solid_color");
             solid_color_position_attribute =
                 gl::GetAttribLocation(solid_color_program,
                                       "aPosition\0".as_ptr() as *const GLchar);
@@ -370,7 +452,7 @@ impl Renderer {
                            gl::STATIC_DRAW);
         }
 
-        // FIXME(pcwalton)
+        // FIXME(pcwalton): Dynamically resizing atlas.
         let atlas_size = Size2D::new(ATLAS_SIZE, ATLAS_SIZE);
         let coverage_buffer_options = CoverageBufferOptions {
             size: atlas_size,
@@ -870,8 +952,21 @@ impl CompositeVertexArray {
     }
 }
 
-fn create_program(vertex_shader_source: &str, fragment_shader_source: &str) -> GLuint {
+struct RedrawResult {
+    events: Option<DrawAtlasProfilingEvents>,
+    glyphs_drawn: u32,
+}
+
+fn create_program(name: &str) -> GLuint {
     unsafe {
+        let (mut vertex_shader_source, mut fragment_shader_source) = (vec![], vec![]);
+        File::open(&format!("{}/{}.vs.glsl",
+                            EXAMPLE_SHADER_PATH,
+                            name)).unwrap().read_to_end(&mut vertex_shader_source).unwrap();
+        File::open(&format!("{}/{}.fs.glsl",
+                            EXAMPLE_SHADER_PATH,
+                            name)).unwrap().read_to_end(&mut fragment_shader_source).unwrap();
+
         let vertex_shader = gl::CreateShader(gl::VERTEX_SHADER);
         let fragment_shader = gl::CreateShader(gl::FRAGMENT_SHADER);
         gl::ShaderSource(vertex_shader,
@@ -914,103 +1009,4 @@ fn create_image(rasterizer: &Rasterizer, atlas_size: &Size2D<u32>) -> (Image, GL
 
     (compute_image, gl_texture)
 }
-
-struct RedrawResult {
-    events: Option<DrawAtlasProfilingEvents>,
-    glyphs_drawn: u32,
-}
-
-static COMPOSITE_VERTEX_SHADER: &'static str = "\
-#version 330
-
-uniform mat2 uTransform;
-uniform vec2 uTranslation;
-
-in vec2 aPosition;
-in vec2 aTexCoord;
-
-out vec2 vTexCoord;
-
-void main() {
-    vTexCoord = aTexCoord;
-    gl_Position = vec4(uTransform * aPosition + uTranslation, 0.0f, 1.0f);
-}
-";
-
-static COMPOSITE_FRAGMENT_SHADER: &'static str = "\
-#version 330
-
-uniform sampler2DRect uAtlas;
-uniform vec3 uForegroundColor;
-uniform vec3 uBackgroundColor;
-
-in vec2 vTexCoord;
-
-out vec4 oFragColor;
-
-void main() {
-    vec3 value = texture(uAtlas, vTexCoord).rgb;
-    vec3 color = mix(uBackgroundColor, uForegroundColor, value);
-    oFragColor = vec4(color, 1.0f);
-}
-";
-
-static SOLID_COLOR_VERTEX_SHADER: &'static str = "\
-#version 330
-
-in vec2 aPosition;
-
-void main() {
-    gl_Position = vec4(aPosition, 0.0f, 1.0f);
-}
-";
-
-static SOLID_COLOR_FRAGMENT_SHADER: &'static str = "\
-#version 330
-
-uniform vec3 uColor;
-
-out vec4 oFragColor;
-
-void main() {
-    oFragColor = vec4(uColor, 1.0f);
-}
-";
-
-static RECT_INDICES: [u16; 6] = [0, 1, 3, 1, 2, 3];
-
-static TEXT: &'static str = "\
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur scelerisque pellentesque risus \
-quis vehicula. Ut sollicitudin aliquet diam, vel lobortis orci porta in. Sed eu nisi egestas odio \
-tincidunt cursus eget ut lorem. Fusce lacinia ex nec lectus rutrum mollis. Donec in ultrices \
-purus. Integer id suscipit magna. Suspendisse congue pulvinar neque id ultrices. Curabitur nec \
-tellus et est pellentesque posuere. Duis ut metus euismod, feugiat arcu vitae, posuere libero. \
-Curabitur nunc urna, rhoncus vitae scelerisque quis, viverra et odio. Suspendisse accumsan \
-pretium mi, nec fringilla metus condimentum id. Duis dignissim quam eu felis lobortis, eget \
-dignissim lectus fermentum. Nunc et massa id orci pellentesque rutrum. Nam imperdiet quam vel \
-ligula efficitur ultricies vel eu tellus. Maecenas luctus risus a erat euismod ultricies. \
-Pellentesque neque mauris, laoreet vitae finibus quis, molestie ut velit. Donec laoreet justo \
-risus. In id mi sed odio placerat interdum ut vitae erat. Fusce quis mollis mauris, sit amet \
-efficitur libero. In efficitur tortor nulla, sollicitudin sodales mi tempor in. In egestas \
-ultrices fermentum. Quisque mattis egestas nulla. Interdum et malesuada fames ac ante ipsum \
-primis in faucibus. Etiam in tempus sapien, in dignissim arcu. Quisque diam nulla, rhoncus et \
-tempor nec, facilisis porta purus. Nulla ut eros laoreet, placerat dolor ut, interdum orci. Sed \
-posuere eleifend mollis. Integer at nunc ex. Vestibulum aliquet risus quis lacinia convallis. \
-Fusce et metus viverra, varius nulla in, rutrum justo. Interdum et malesuada fames ac ante ipsum \
-primis in faucibus. Praesent non est vel lectus suscipit malesuada id ut nisl. Aenean sem ipsum, \
-tincidunt non orci non, varius consectetur purus. Aenean sed mollis turpis, sit amet vestibulum \
-risus. Nunc ut hendrerit urna, sit amet lacinia arcu. Curabitur laoreet a enim et eleifend. Etiam \
-consectetur pharetra massa, sed elementum quam molestie nec. Integer eu justo lectus. Vestibulum \
-sed vulputate sapien. Curabitur pretium luctus orci et interdum. Quisque ligula nisi, varius id \
-sodales id, volutpat et lorem. Pellentesque ex urna, malesuada at ex non, elementum ultricies \
-nulla. Nunc sodales, turpis at maximus bibendum, neque lorem laoreet felis, eget convallis sem \
-mauris ac quam. Mauris non pretium nulla. Nam semper pulvinar convallis. Suspendisse ultricies \
-odio vitae tortor congue, rutrum finibus nisl malesuada. Interdum et malesuada fames ac ante \
-ipsum primis in faucibus. Vestibulum aliquam et lacus sit amet lobortis. In sed ligula quis urna \
-accumsan vehicula sit amet id magna. Cras mollis orci vitae turpis porta, sed gravida nunc \
-aliquam. Phasellus nec facilisis nunc. Suspendisse volutpat leo felis, in iaculis nisi dignissim \
-et. Phasellus at urna purus. Nullam vitae metus ante. Praesent porttitor libero quis velit \
-fermentum rhoncus. Cras vitae rhoncus nulla. In efficitur risus sapien, sed viverra neque \
-scelerisque at. Morbi fringilla odio massa. Donec tincidunt magna diam, eget congue leo tristique \
-eget. Cras et sapien nulla.";
 
