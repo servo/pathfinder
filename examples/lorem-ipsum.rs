@@ -35,6 +35,7 @@ use std::mem;
 use std::os::raw::c_void;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
+use std::time::Instant;
 
 const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 640;
@@ -197,37 +198,30 @@ impl DemoApp {
                 println!("wrote screenshot to: {}", ATLAS_DUMP_FILENAME);
                 false
             }
-            WindowEvent::Scroll(x, y) => {
-                if self.window.get_key(Key::LeftAlt) == Action::Press ||
-                        self.window.get_key(Key::RightAlt) == Action::Press {
-                    let old_point_size = self.point_size;
-                    self.point_size = old_point_size + y as f32;
+            WindowEvent::Scroll(_, y) if self.window.get_key(Key::LeftAlt) == Action::Press ||
+                                         self.window.get_key(Key::RightAlt) == Action::Press => {
+                let old_point_size = self.point_size;
+                self.point_size = old_point_size + y as f32;
 
-                    if self.point_size < MIN_POINT_SIZE {
-                        self.point_size = MIN_POINT_SIZE
-                    } else if self.point_size > MAX_POINT_SIZE {
-                        self.point_size = MAX_POINT_SIZE
-                    }
-
-                    let mut center =
-                        Point2D::new(self.translation.x as f32 -
-                                     self.device_pixel_size.width as f32 *
-                                     0.5,
-                                     self.translation.y as f32 -
-                                     self.device_pixel_size.height as f32 *
-                                     0.5);
-                    center.x = center.x * self.point_size / old_point_size;
-                    center.y = center.y * self.point_size / old_point_size;
-
-                    self.translation.x =
-                        (center.x + self.device_pixel_size.width as f32 * 0.5).round() as i32;
-                    self.translation.y =
-                        (center.y + self.device_pixel_size.height as f32 * 0.5).round() as i32;
-                } else {
-                    self.translation.x += (x * SCROLL_SPEED).round() as i32;
-                    self.translation.y += (y * SCROLL_SPEED).round() as i32;
+                if self.point_size < MIN_POINT_SIZE {
+                    self.point_size = MIN_POINT_SIZE
+                } else if self.point_size > MAX_POINT_SIZE {
+                    self.point_size = MAX_POINT_SIZE
                 }
 
+                let offset = Point2D::new(self.device_pixel_size.width as f32,
+                                          self.device_pixel_size.height as f32);
+
+                let center = self.translation.cast().unwrap() - offset * 0.5;
+
+                self.translation = (center * self.point_size / old_point_size +
+                                    offset * 0.5).round().cast().unwrap();
+
+                true
+            }
+            WindowEvent::Scroll(x, y) => {
+                let vector = Point2D::new(x, y) * SCROLL_SPEED.round();
+                self.translation = self.translation + vector.cast().unwrap();
                 true
             }
             WindowEvent::Size(_, _) | WindowEvent::FramebufferSize(_, _) => {
@@ -604,30 +598,38 @@ impl Renderer {
                                                                      scale,
                                                                      SUBPIXEL_GRANULARITY);
 
-        let mut glyphs: Vec<_> = positioned_glyphs.iter().map(|positioned_glyph| {
-            (positioned_glyph.glyph_index,
-             (positioned_glyph.subpixel_x / SUBPIXEL_GRANULARITY).round() as u8)
-        }).collect();
-
-        glyphs.sort();
-        glyphs.dedup();
-
-        let cached_glyphs = glyphs.iter().map(|&(glyph_index, subpixel)| {
-            let subpixel_offset = (subpixel as f32) / (SUBPIXEL_GRANULARITY as f32);
-            let origin = atlas_builder.pack_glyph(&glyph_store.outlines,
-                                                  glyph_index,
-                                                  &GlyphRasterizationOptions {
-                                                      point_size: point_size,
-                                                      horizontal_offset: subpixel_offset,
-                                                      ..GlyphRasterizationOptions::default()
-                                                  }).unwrap();
-            CachedGlyph {
-                x: origin.x,
-                y: origin.y,
-                glyph_index: glyph_index,
-                subpixel: subpixel,
+        let mut glyphs = vec![];
+        for positioned_glyph in &positioned_glyphs {
+            if positioned_glyph.glyph_index as usize >= glyphs.len() {
+                glyphs.resize(positioned_glyph.glyph_index as usize + 1, 0)
             }
-        }).collect();
+
+            let subpixel = (positioned_glyph.subpixel_x / SUBPIXEL_GRANULARITY).round() as u8;
+            glyphs[positioned_glyph.glyph_index as usize] |= 1 << subpixel
+        }
+
+        let mut cached_glyphs = vec![];
+        for (glyph_index, &subpixels) in glyphs.iter().enumerate() {
+            for subpixel in 0..SUBPIXEL_GRANULARITY_COUNT {
+                if (subpixels & (1 << subpixel)) == 0 {
+                    cached_glyphs.push(CachedGlyph(Point2D::zero()));
+                    continue
+                }
+
+                let subpixel_offset = (subpixel as f32) / (SUBPIXEL_GRANULARITY as f32);
+                let options = GlyphRasterizationOptions {
+                    point_size: point_size,
+                    horizontal_offset: subpixel_offset,
+                    ..GlyphRasterizationOptions::default()
+                };
+
+                let origin = atlas_builder.pack_glyph(&glyph_store.outlines,
+                                                      glyph_index as u16,
+                                                      &options).unwrap();
+
+                cached_glyphs.push(CachedGlyph(origin));
+            }
+        }
 
         (positioned_glyphs, cached_glyphs)
     }
@@ -710,13 +712,11 @@ impl Renderer {
             let glyph_rect_i = glyph_rect.round_out();
             let glyph_size_i = glyph_rect_i.size();
 
-            let cached_glyph_index = cached_glyphs.binary_search_by(|cached_glyph| {
-                (cached_glyph.glyph_index, cached_glyph.subpixel).cmp(&(glyph_index, subpixel))
-            }).expect("Didn't cache the glyph properly!");
+            let cached_glyph_index = glyph_index as usize * SUBPIXEL_GRANULARITY_COUNT as usize +
+                subpixel as usize;
             let cached_glyph = cached_glyphs[cached_glyph_index];
 
-            let uv_tl: Point2D<u32> = Point2D::new(cached_glyph.x,
-                                                   cached_glyph.y).floor().cast().unwrap();
+            let uv_tl: Point2D<u32> = cached_glyph.0.floor().cast().unwrap();
             let uv_br = uv_tl + glyph_size_i.cast().unwrap();
 
             let left_pos = positioned_glyph.bounds.origin.x;
@@ -808,27 +808,14 @@ impl Renderer {
 
         let mut fps_atlas_builder = AtlasBuilder::new(&atlas_options);
 
-        let mut fps_glyphs = vec![];
-        for &fps_glyph_index in &fps_glyph_store.all_glyph_indices {
-            for subpixel in 0..SUBPIXEL_GRANULARITY_COUNT {
-                let subpixel_increment = SUBPIXEL_GRANULARITY * subpixel as f32;
-                let options = GlyphRasterizationOptions {
-                    point_size: FPS_DISPLAY_POINT_SIZE,
-                    horizontal_offset: subpixel_increment,
-                    ..GlyphRasterizationOptions::default()
-                };
-
-                let origin = fps_atlas_builder.pack_glyph(&fps_glyph_store.outlines,
-                                                          fps_glyph_index,
-                                                          &options).unwrap();
-                fps_glyphs.push(CachedGlyph {
-                    x: origin.x,
-                    y: origin.y,
-                    glyph_index: fps_glyph_index,
-                    subpixel: subpixel,
-                })
-            }
-        }
+        let (fps_positioned_glyphs, fps_cached_glyphs) =
+            self.determine_visible_glyphs(&mut fps_atlas_builder,
+                                          font,
+                                          fps_glyph_store,
+                                          &fps_typesetter,
+                                          device_pixel_size,
+                                          &Point2D::zero(),
+                                          FPS_DISPLAY_POINT_SIZE);
 
         let fps_atlas = fps_atlas_builder.create_atlas().unwrap();
         let rect = Rect::new(Point2D::new(0, 0), self.atlas_size);
@@ -846,20 +833,10 @@ impl Renderer {
         let fps_left = FPS_PADDING;
         let fps_top = device_pixel_size.height as i32 - FPS_PADDING - fps_line_spacing;
 
-        let fps_viewport = Rect::new(Point2D::zero(), device_pixel_size.cast().unwrap());
-        let fps_scale = FPS_DISPLAY_POINT_SIZE / font.units_per_em() as f32;
-
-        let fps_positioned_glyphs =
-            fps_typesetter.positioned_glyphs_in_rect(&fps_viewport,
-                                                     fps_glyph_store,
-                                                     font.units_per_em() as f32,
-                                                     fps_scale,
-                                                     SUBPIXEL_GRANULARITY);
-
         self.draw_glyphs(&fps_glyph_store,
                          &self.fps_composite_vertex_array,
                          &fps_positioned_glyphs,
-                         &fps_glyphs,
+                         &fps_cached_glyphs,
                          device_pixel_size,
                          &Point2D::new(fps_left, fps_top),
                          self.fps_gl_texture,
@@ -920,12 +897,7 @@ impl Vertex {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct CachedGlyph {
-    x: f32,
-    y: f32,
-    glyph_index: u16,
-    subpixel: u8,
-}
+struct CachedGlyph(Point2D<f32>);
 
 #[derive(Debug)]
 struct CompositeVertexArray {
