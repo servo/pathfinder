@@ -11,7 +11,7 @@
 //! Glyph vectors, uploaded in a resolution-independent manner to the GPU.
 
 use error::{FontError, GlError};
-use euclid::Size2D;
+use euclid::{Point2D, Size2D};
 use font::{Font, PointKind};
 use gl::types::{GLsizeiptr, GLuint};
 use gl;
@@ -42,49 +42,60 @@ impl OutlineBuilder {
         }
     }
 
+    /// Begins a new path.
+    pub fn create_path(&mut self) -> PathBuilder {
+        let vertex_count = self.vertices.len();
+        let index_count = self.indices.len();
+        let descriptor_count = self.descriptors.len();
+
+        PathBuilder {
+            outline_builder: self,
+            vbo_start_index: vertex_count as u32,
+            vbo_end_index: vertex_count as u32,
+            ibo_start_index: index_count as u32,
+            point_index_in_path: 0,
+            glyph_index: descriptor_count as u16,
+        }
+    }
+
     /// Adds a new glyph to the outline builder. Returns the glyph index, which is useful for later
     /// calls to `Atlas::pack_glyph()`.
     pub fn add_glyph(&mut self, font: &Font, glyph_id: u16) -> Result<u16, FontError> {
         let glyph_index = self.descriptors.len() as u16;
-
-        let mut point_index = self.vertices.len() as u32;
-        let start_index = self.indices.len() as u32;
-        let start_point = point_index;
         let mut last_point_kind = PointKind::OnCurve;
+        let mut control_point_index = 0;
+        let mut control_points = [Point2D::zero(), Point2D::zero(), Point2D::zero()];
+        let mut path_builder = self.create_path();
 
         try!(font.for_each_point(glyph_id, |point| {
-            self.vertices.push(Vertex {
-                x: point.position.x,
-                y: point.position.y,
-                glyph_index: glyph_index,
-            });
+            control_points[control_point_index] = point.position;
+            control_point_index += 1;
 
-            if point.index_in_contour > 0 && point.kind == PointKind::OnCurve {
-                let indices = match last_point_kind {
-                    PointKind::FirstCubicControl => [0, 0, 0, 0],
+            if point.index_in_contour == 0 {
+                path_builder.move_to(&control_points[0]);
+                control_point_index = 0
+            } else if point.kind == PointKind::OnCurve {
+                match last_point_kind {
+                    PointKind::FirstCubicControl => {}
                     PointKind::SecondCubicControl => {
-                        [point_index - 3, point_index - 2, point_index - 1, point_index]
+                        path_builder.cubic_curve_to(&control_points[0],
+                                                    &control_points[1],
+                                                    &control_points[2])
                     }
                     PointKind::QuadControl => {
-                        [point_index - 2, point_index - 1, point_index - 1, point_index]
+                        path_builder.quad_curve_to(&control_points[0], &control_points[1])
                     }
-                    PointKind::OnCurve => [point_index - 1, 0, 0, point_index],
-                };
-                self.indices.extend(indices.iter().cloned());
+                    PointKind::OnCurve => path_builder.line_to(&control_points[0]),
+                }
+
+                control_point_index = 0
             }
 
-            point_index += 1;
             last_point_kind = point.kind
         }));
 
-        // Add a glyph descriptor.
-        self.descriptors.push(GlyphDescriptor {
-            bounds: try!(font.glyph_bounds(glyph_id)),
-            units_per_em: font.units_per_em() as u32,
-            start_point: start_point as u32,
-            start_index: start_index,
-            glyph_id: glyph_id,
-        });
+        let bounds = try!(font.glyph_bounds(glyph_id));
+        path_builder.finish(&bounds, font.units_per_em() as u32, glyph_id);
 
         Ok(glyph_index)
     }
@@ -319,6 +330,102 @@ impl GlyphBounds {
     #[inline]
     pub fn size(&self) -> Size2D<i32> {
         Size2D::new(self.right - self.left, self.top - self.bottom)
+    }
+}
+
+/// A helper object to construct a single path.
+pub struct PathBuilder<'a> {
+    outline_builder: &'a mut OutlineBuilder,
+    vbo_start_index: u32,
+    vbo_end_index: u32,
+    ibo_start_index: u32,
+    point_index_in_path: u16,
+    glyph_index: u16,
+}
+
+impl<'a> PathBuilder<'a> {
+    fn add_point(&mut self, point: &Point2D<i16>) {
+        self.outline_builder.vertices.push(Vertex {
+            x: point.x,
+            y: point.y,
+            glyph_index: self.glyph_index,
+        });
+
+        self.point_index_in_path += 1;
+        self.vbo_end_index += 1;
+    }
+
+    /// Moves the pen to the given point.
+    pub fn move_to(&mut self, point: &Point2D<i16>) {
+        self.add_point(point)
+    }
+
+    /// Draws a straight line to the given point.
+    ///
+    /// Panics if a `move_to` has not been issued anywhere prior to this operation.
+    pub fn line_to(&mut self, point: &Point2D<i16>) {
+        if self.point_index_in_path == 0 {
+            panic!("`line_to` must not be the first operation in a path")
+        }
+
+        self.add_point(point);
+
+        self.outline_builder.indices.extend_from_slice(&[
+            self.vbo_end_index - 2,
+            0,
+            0,
+            self.vbo_end_index - 1,
+        ])
+    }
+
+    /// Draws a quadratic Bézier curve to the given point.
+    ///
+    /// Panics if a `move_to` has not been issued anywhere prior to this operation.
+    pub fn quad_curve_to(&mut self, p1: &Point2D<i16>, p2: &Point2D<i16>) {
+        if self.point_index_in_path == 0 {
+            panic!("`quad_curve_to` must not be the first operation in a path")
+        }
+
+        self.add_point(p1);
+        self.add_point(p2);
+
+        self.outline_builder.indices.extend_from_slice(&[
+            self.vbo_end_index - 3,
+            self.vbo_end_index - 2,
+            self.vbo_end_index - 2,
+            self.vbo_end_index - 1,
+        ])
+    }
+
+    /// Draws a cubic Bézier curve to the given point.
+    ///
+    /// Panics if a `move_to` has not been issued anywhere prior to this operation.
+    pub fn cubic_curve_to(&mut self, p1: &Point2D<i16>, p2: &Point2D<i16>, p3: &Point2D<i16>) {
+        if self.point_index_in_path == 0 {
+            panic!("`cubic_curve_to` must not be the first operation in a path")
+        }
+
+        self.add_point(p1);
+        self.add_point(p2);
+        self.add_point(p3);
+
+        self.outline_builder.indices.extend_from_slice(&[
+            self.vbo_end_index - 4,
+            self.vbo_end_index - 3,
+            self.vbo_end_index - 2,
+            self.vbo_end_index - 1
+        ])
+    }
+
+    /// Finishes the path.
+    pub fn finish(self, bounds: &GlyphBounds, units_per_em: u32, glyph_id: u16) {
+        self.outline_builder.descriptors.push(GlyphDescriptor {
+            bounds: *bounds,
+            units_per_em: units_per_em,
+            start_point: self.vbo_start_index,
+            start_index: self.ibo_start_index,
+            glyph_id: glyph_id,
+        })
     }
 }
 

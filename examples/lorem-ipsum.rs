@@ -35,7 +35,6 @@ use std::mem;
 use std::os::raw::c_void;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
-use std::time::Instant;
 
 const ATLAS_SIZE: u32 = 2048;
 const WIDTH: u32 = 640;
