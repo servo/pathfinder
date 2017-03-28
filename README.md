@@ -34,10 +34,19 @@ since most of the code runs on GPU.
 On Windows, running the demos requires GLFW, which requires CMake to be installed and in your PATH.
 Get it from [cmake.org](https://cmake.org/).
 
-On Linux, some development packages are needed to compile. On Ubuntu, the following line has been
-reported to suffice to install them:
+On Linux, some development packages are needed to compile. 
+
+On Ubuntu, the following line has been reported to suffice to install them:
 
     sudo apt-get install cmake libgl-dev libx11-dev xrandr-dev
+
+On Debian and its closer kin, you need instead:
+
+    sudo apt-get install cmake libgl1-mesa-dev libx11-dev libxrandr-dev
+
+You may be interested to see what difference installing libvulkan-dev and
+mesa-vulkan-drivers makes.  Finally, a proprietary AMD or Nvidia alternative
+might be faster on your hardware.
 
 ## Authors
 
