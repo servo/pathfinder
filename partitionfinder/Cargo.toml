@@ -1,0 +1,8 @@
+[package]
+name = "partitionfinder"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]
+bit-vec = "0.4"
+euclid = "0.15"
