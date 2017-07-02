@@ -39,7 +39,7 @@ struct pf_control_points {
 typedef struct pf_control_points pf_control_points_t;
 
 struct pf_subpath {
-    uint32_t first_endpoint_index, path_index;
+    uint32_t first_endpoint_index;
 };
 
 typedef struct pf_subpath pf_subpath_t;

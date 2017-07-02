@@ -1,5 +1,9 @@
 // partitionfinder/lib.rs
 
+#![feature(alloc_jemalloc)]
+
+// Needed to work around a problem with `heapsize`
+extern crate alloc_jemalloc;
 extern crate bit_vec;
 extern crate euclid;
 
@@ -43,5 +47,4 @@ pub struct ControlPoints {
 #[derive(Debug, Clone, Copy)]
 pub struct Subpath {
     pub first_endpoint_index: u32,
-    pub path_index: u32,
 }

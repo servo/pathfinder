@@ -3,6 +3,10 @@ name = "partitionfinder"
 version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
+[lib]
+name = "partitionfinder"
+crate-type = ["dylib", "rlib"]
+
 [dependencies]
 bit-vec = "0.4"
 euclid = "0.15"
