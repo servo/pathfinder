@@ -6,13 +6,12 @@ use geometry;
 use std::collections::BinaryHeap;
 use std::cmp::{self, Ordering};
 use std::u32;
-use {Bezieroid, ControlPoints, Endpoint, Path, Subpath};
+use {Bezieroid, ControlPoints, Endpoint, Subpath};
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
     control_points: &'a [ControlPoints],
     subpaths: &'a [Subpath],
-    paths: &'a [Path],
 
     bezieroids: Vec<Bezieroid>,
 
@@ -25,14 +24,12 @@ impl<'a> Partitioner<'a> {
     #[inline]
     pub fn new<'b>(endpoints: &'b [Endpoint],
                    control_points: &'b [ControlPoints],
-                   subpaths: &'b [Subpath],
-                   paths: &'b [Path])
+                   subpaths: &'b [Subpath])
                    -> Partitioner<'b> {
         Partitioner {
             endpoints: endpoints,
             control_points: control_points,
             subpaths: subpaths,
-            paths: paths,
 
             bezieroids: vec![],
 
@@ -42,11 +39,23 @@ impl<'a> Partitioner<'a> {
         }
     }
 
+    pub fn reset(&mut self,
+                 new_endpoints: &'a [Endpoint],
+                 new_control_points: &'a [ControlPoints],
+                 new_subpaths: &'a [Subpath]) {
+        self.endpoints = new_endpoints;
+        self.control_points = new_control_points;
+        self.subpaths = new_subpaths;
+
+        self.bezieroids.clear();
+        self.heap.clear();
+        self.visited_points.clear();
+        self.active_edges.clear();
+    }
+
     pub fn partition(&mut self) {
-        for path_index in (0..self.paths.len() as u32).rev() {
-            self.init_heap_for_path(path_index);
-            while self.process_next_point() {}
-        }
+        self.init_heap();
+        while self.process_next_point() {}
     }
 
     #[inline]
@@ -221,21 +230,14 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    fn init_heap_for_path(&mut self, path_index: u32) {
-        let path = &self.paths[path_index as usize];
-        let first_subpath_index = path.first_subpath_index;
-        let last_subpath_index = self.last_subpath_index_of_path(path_index);
-        for subpath_index in first_subpath_index..last_subpath_index {
-            let first_endpoint_index = self.subpaths[subpath_index as usize].first_endpoint_index;
-            let last_endpoint_index = self.last_endpoint_index_of_path(path_index);
-            for endpoint_index in first_endpoint_index..last_endpoint_index {
-                match self.classify_endpoint(endpoint_index) {
-                    EndpointClass::Min => {
-                        let new_point = self.create_point_from_endpoint(endpoint_index);
-                        self.heap.push(new_point)
-                    }
-                    EndpointClass::Regular | EndpointClass::Max => {}
+    fn init_heap(&mut self) {
+        for endpoint_index in 0..(self.endpoints.len() as u32) {
+            match self.classify_endpoint(endpoint_index) {
+                EndpointClass::Min => {
+                    let new_point = self.create_point_from_endpoint(endpoint_index);
+                    self.heap.push(new_point)
                 }
+                EndpointClass::Regular | EndpointClass::Max => {}
             }
         }
     }
@@ -344,12 +346,13 @@ impl<'a> Partitioner<'a> {
                 (x - prev_endpoint.position.x) / x_vector
             }
             Some(control_points_index) => {
+                // FIXME(pcwalton): Is `unwrap_or(0.0)` sensible?
                 let control_points = &self.control_points[control_points_index as usize];
                 geometry::solve_cubic_bezier_t_for_x(x,
                                                      &prev_endpoint.position,
                                                      &control_points.point1,
                                                      &control_points.point2,
-                                                     &next_endpoint.position)
+                                                     &next_endpoint.position).unwrap_or(0.0)
             }
         }
     }
@@ -388,11 +391,12 @@ impl<'a> Partitioner<'a> {
         let control_points_index = self.control_points_index(next_endpoint_index)
                                        .expect("Edge not a cubic bezier!");
         let control_points = &self.control_points[control_points_index as usize];
+        // FIXME(pcwalton): Is `.unwrap_or(0.0)` sensible?
         geometry::solve_cubic_bezier_y_for_x(x,
                                              &prev_endpoint.position,
                                              &control_points.point1,
                                              &control_points.point2,
-                                             &next_endpoint.position)
+                                             &next_endpoint.position).unwrap_or(0.0)
     }
 
     fn control_points_index(&self, next_endpoint_index: u32) -> Option<u32> {
@@ -572,17 +576,6 @@ impl<'a> Partitioner<'a> {
             Some(subpath) => subpath.first_endpoint_index,
             None => self.endpoints.len() as u32,
         }
-    }
-
-    fn last_subpath_index_of_path(&self, path_index: u32) -> u32 {
-        match self.paths.get(path_index as usize + 1) {
-            Some(path) => path.first_subpath_index,
-            None => self.subpaths.len() as u32,
-        }
-    }
-
-    fn last_endpoint_index_of_path(&self, path_index: u32) -> u32 {
-        self.last_endpoint_index_of_subpath(self.last_subpath_index_of_path(path_index))
     }
 }
 

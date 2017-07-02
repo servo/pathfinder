@@ -45,19 +45,3 @@ pub struct Subpath {
     pub first_endpoint_index: u32,
     pub path_index: u32,
 }
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct Path {
-    pub first_subpath_index: u32,
-    pub fill_color: ColorU8,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct ColorU8 {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
-}
