@@ -47,4 +47,5 @@ pub struct ControlPoints {
 #[derive(Debug, Clone, Copy)]
 pub struct Subpath {
     pub first_endpoint_index: u32,
+    pub last_endpoint_index: u32,
 }

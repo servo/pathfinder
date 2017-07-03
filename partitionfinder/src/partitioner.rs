@@ -22,14 +22,11 @@ pub struct Partitioner<'a> {
 
 impl<'a> Partitioner<'a> {
     #[inline]
-    pub fn new<'b>(endpoints: &'b [Endpoint],
-                   control_points: &'b [ControlPoints],
-                   subpaths: &'b [Subpath])
-                   -> Partitioner<'b> {
+    pub fn new<'b>() -> Partitioner<'b> {
         Partitioner {
-            endpoints: endpoints,
-            control_points: control_points,
-            subpaths: subpaths,
+            endpoints: &[],
+            control_points: &[],
+            subpaths: &[],
 
             bezieroids: vec![],
 
@@ -39,22 +36,23 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    pub fn reset(&mut self,
-                 new_endpoints: &'a [Endpoint],
-                 new_control_points: &'a [ControlPoints],
-                 new_subpaths: &'a [Subpath]) {
+    pub fn init(&mut self,
+                new_endpoints: &'a [Endpoint],
+                new_control_points: &'a [ControlPoints],
+                new_subpaths: &'a [Subpath]) {
         self.endpoints = new_endpoints;
         self.control_points = new_control_points;
         self.subpaths = new_subpaths;
 
+        self.visited_points = BitVec::from_elem(self.endpoints.len() * 2, false);
+
         self.bezieroids.clear();
         self.heap.clear();
-        self.visited_points.clear();
         self.active_edges.clear();
     }
 
-    pub fn partition(&mut self) {
-        self.init_heap();
+    pub fn partition(&mut self, first_subpath_index: u32, last_subpath_index: u32) {
+        self.init_heap(first_subpath_index, last_subpath_index);
         while self.process_next_point() {}
     }
 
@@ -230,14 +228,17 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    fn init_heap(&mut self) {
-        for endpoint_index in 0..(self.endpoints.len() as u32) {
-            match self.classify_endpoint(endpoint_index) {
-                EndpointClass::Min => {
-                    let new_point = self.create_point_from_endpoint(endpoint_index);
-                    self.heap.push(new_point)
+    fn init_heap(&mut self, first_subpath_index: u32, last_subpath_index: u32) {
+        for subpath in &self.subpaths[(first_subpath_index as usize)..
+                                      (last_subpath_index as usize)] {
+            for endpoint_index in subpath.first_endpoint_index..subpath.last_endpoint_index {
+                match self.classify_endpoint(endpoint_index) {
+                    EndpointClass::Min => {
+                        let new_point = self.create_point_from_endpoint(endpoint_index);
+                        self.heap.push(new_point)
+                    }
+                    EndpointClass::Regular | EndpointClass::Max => {}
                 }
-                EndpointClass::Regular | EndpointClass::Max => {}
             }
         }
     }
@@ -459,7 +460,7 @@ impl<'a> Partitioner<'a> {
         let lower_control_points_index = self.endpoints[next_lower_endpoint_index as usize]
                                              .control_points_index;
 
-        match (lower_control_points_index, upper_control_points_index) {
+        match (upper_control_points_index, lower_control_points_index) {
             (u32::MAX, u32::MAX) => {
                 self.line_line_crossing_point(prev_upper_endpoint_index,
                                               next_upper_endpoint_index,
@@ -543,23 +544,21 @@ impl<'a> Partitioner<'a> {
 
     fn prev_endpoint_of(&self, endpoint_index: u32) -> u32 {
         let endpoint = &self.endpoints[endpoint_index as usize];
-        let first_endpoint_index_of_subpath = self.subpaths[endpoint.subpath_index as usize]
-                                                  .first_endpoint_index;
-        if endpoint_index > first_endpoint_index_of_subpath {
+        let subpath = &self.subpaths[endpoint.subpath_index as usize];
+        if endpoint_index > subpath.first_endpoint_index {
             endpoint_index - 1
         } else {
-            self.last_endpoint_index_of_subpath(endpoint.subpath_index) - 1
+            subpath.last_endpoint_index - 1
         }
     }
 
     fn next_endpoint_of(&self, endpoint_index: u32) -> u32 {
         let endpoint = &self.endpoints[endpoint_index as usize];
-        let last_endpoint_index_of_subpath =
-            self.last_endpoint_index_of_subpath(endpoint.subpath_index);
-        if endpoint_index + 1 < last_endpoint_index_of_subpath {
+        let subpath = &self.subpaths[endpoint.subpath_index as usize];
+        if endpoint_index + 1 < subpath.last_endpoint_index {
             endpoint_index + 1
         } else {
-            self.subpaths[endpoint.subpath_index as usize].first_endpoint_index
+            subpath.first_endpoint_index
         }
     }
 
@@ -568,13 +567,6 @@ impl<'a> Partitioner<'a> {
             position: self.endpoints[endpoint_index as usize].position,
             endpoint_index: endpoint_index,
             point_type: PointType::Endpoint,
-        }
-    }
-
-    fn last_endpoint_index_of_subpath(&self, subpath_index: u32) -> u32 {
-        match self.subpaths.get(subpath_index as usize + 1) {
-            Some(subpath) => subpath.first_endpoint_index,
-            None => self.endpoints.len() as u32,
         }
     }
 }
