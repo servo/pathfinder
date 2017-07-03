@@ -5,7 +5,10 @@
 // Needed to work around a problem with `heapsize`
 extern crate alloc_jemalloc;
 extern crate bit_vec;
+extern crate env_logger;
 extern crate euclid;
+#[macro_use]
+extern crate log;
 
 use euclid::Point2D;
 use std::u32;

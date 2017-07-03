@@ -3,6 +3,7 @@
 use bit_vec::BitVec;
 use euclid::Point2D;
 use geometry;
+use log::LogLevel;
 use std::collections::BinaryHeap;
 use std::cmp::{self, Ordering};
 use std::u32;
@@ -72,6 +73,17 @@ impl<'a> Partitioner<'a> {
             return true
         }
 
+        debug!("processing point {}: {:?}",
+               point.endpoint_index,
+               self.endpoints[point.endpoint_index as usize].position);
+
+        if log_enabled!(LogLevel::Debug) {
+            debug!("... active edges:");
+            for (active_edge_index, active_edge) in self.active_edges.iter().enumerate() {
+                debug!("... ... edge {}: {:?}", active_edge_index, active_edge);
+            }
+        }
+
         self.mark_point_as_visited(&point);
 
         let matching_active_edges = self.find_right_point_in_active_edge_list(point.endpoint_index);
@@ -100,6 +112,8 @@ impl<'a> Partitioner<'a> {
     }
 
     fn process_min_endpoint(&mut self, endpoint_index: u32) {
+        debug!("... MIN point");
+
         let next_active_edge_index = self.find_point_between_active_edges(endpoint_index);
 
         let endpoint = &self.endpoints[endpoint_index as usize];
@@ -123,6 +137,8 @@ impl<'a> Partitioner<'a> {
     }
 
     fn process_regular_endpoint(&mut self, endpoint_index: u32, active_edge_index: u32) {
+        debug!("... REGULAR point: active edge {}", active_edge_index);
+
         let endpoint = &self.endpoints[endpoint_index as usize];
         if self.should_fill_below_active_edge(active_edge_index) {
             self.emit_bezieroid_below(active_edge_index, endpoint.position.x)
@@ -155,6 +171,8 @@ impl<'a> Partitioner<'a> {
     }
 
     fn process_max_endpoint(&mut self, endpoint_index: u32, active_edge_indices: [u32; 2]) {
+        debug!("... MAX point: active edges {:?}", active_edge_indices);
+
         debug_assert!(active_edge_indices[0] < active_edge_indices[1],
                       "Matching active edge indices in wrong order when processing MAX point");
 
@@ -328,7 +346,8 @@ impl<'a> Partitioner<'a> {
         let prev_point = self.create_point_from_endpoint(self.prev_endpoint_of(endpoint_index));
         let next_point = self.create_point_from_endpoint(self.next_endpoint_of(endpoint_index));
 
-        match (prev_point.cmp(&point), next_point.cmp(&point)) {
+        // Remember to reverse, because the comparison is reversed (as the heap is a max-heap).
+        match (prev_point.cmp(&point).reverse(), next_point.cmp(&point).reverse()) {
             (Ordering::Less, Ordering::Less) => EndpointClass::Max,
             (Ordering::Less, _) | (_, Ordering::Less) => EndpointClass::Regular,
             (_, _) => EndpointClass::Min,
@@ -594,15 +613,16 @@ impl Eq for Point {}
 impl PartialOrd for Point {
     #[inline]
     fn partial_cmp(&self, other: &Point) -> Option<Ordering> {
-        match self.position.x.partial_cmp(&other.position.x) {
+        // Reverse, because `std::collections::BinaryHeap` is a *max*-heap!
+        match other.position.x.partial_cmp(&self.position.x) {
             None | Some(Ordering::Equal) => {}
             Some(ordering) => return Some(ordering),
         }
-        match self.position.y.partial_cmp(&other.position.y) {
+        match other.position.y.partial_cmp(&self.position.y) {
             None | Some(Ordering::Equal) => {}
             Some(ordering) => return Some(ordering),
         }
-        self.endpoint_index.partial_cmp(&other.endpoint_index)
+        other.endpoint_index.partial_cmp(&self.endpoint_index)
     }
 }
 

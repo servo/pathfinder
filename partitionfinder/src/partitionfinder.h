@@ -68,6 +68,8 @@ void pf_partitioner_partition(pf_partitioner_t *partitioner,
 const pf_bezieroid_t *pf_partitioner_bezieroids(pf_partitioner_t *partitioner,
                                                 uint32_t *out_bezieroid_count);
 
+uint32_t pf_init_env_logger();
+
 #ifdef __cplusplus
 }
 #endif

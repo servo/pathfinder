@@ -1,5 +1,6 @@
 // partitionfinder/capi.rs
 
+use env_logger;
 use partitioner::Partitioner;
 use std::mem;
 use std::slice;
@@ -47,4 +48,9 @@ pub unsafe extern fn pf_partitioner_bezieroids<'a>(partitioner: *mut Partitioner
         *out_bezieroid_count = bezieroids.len() as u32
     }
     bezieroids.as_ptr()
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_init_env_logger() -> u32 {
+    env_logger::init().is_ok() as u32
 }
