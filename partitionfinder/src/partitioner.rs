@@ -221,6 +221,9 @@ impl<'a> Partitioner<'a> {
         let new_active_edges = &mut self.active_edges[next_active_edge_index as usize..
                                                       next_active_edge_index as usize + 2];
 
+        new_active_edges[0].left_endpoint_index = endpoint_index;
+        new_active_edges[1].left_endpoint_index = endpoint_index;
+
         let endpoint = &self.endpoints[endpoint_index as usize];
         let prev_endpoint = &self.endpoints[prev_endpoint_index as usize];
         let next_endpoint = &self.endpoints[next_endpoint_index as usize];
