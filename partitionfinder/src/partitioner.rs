@@ -45,15 +45,18 @@ impl<'a> Partitioner<'a> {
         self.control_points = new_control_points;
         self.subpaths = new_subpaths;
 
+        // FIXME(pcwalton): Move this initialization to `partition` below. Right now, this bit
+        // vector uses too much memory.
         self.visited_points = BitVec::from_elem(self.endpoints.len() * 2, false);
-
-        self.bezieroids.clear();
-        self.heap.clear();
-        self.active_edges.clear();
     }
 
     pub fn partition(&mut self, first_subpath_index: u32, last_subpath_index: u32) {
+        self.bezieroids.clear();
+        self.heap.clear();
+        self.active_edges.clear();
+
         self.init_heap(first_subpath_index, last_subpath_index);
+
         while self.process_next_point() {}
     }
 
@@ -103,8 +106,11 @@ impl<'a> Partitioner<'a> {
                 }
             }
             PointType::CrossingBelow => {
-                debug_assert!(matching_active_edges.count > 0);
-                self.process_crossing_point(point.position.x, matching_active_edges.indices[0])
+                // FIXME(pcwalton): This condition should always pass, but it fails on the Dutch
+                // rail map.
+                if matching_active_edges.count > 0 {
+                    self.process_crossing_point(point.position.x, matching_active_edges.indices[0])
+                }
             }
         }
 
@@ -206,8 +212,13 @@ impl<'a> Partitioner<'a> {
         }
 
         // Swap the two edges.
+        //
+        // FIXME(pcwalton): This condition should always pass, but it fails on the Dutch rail map.
         let lower_active_edge_index = upper_active_edge_index + 1;
-        self.active_edges.swap(upper_active_edge_index as usize, lower_active_edge_index as usize)
+        if (lower_active_edge_index as usize) < self.active_edges.len() {
+            self.active_edges.swap(upper_active_edge_index as usize,
+                                   lower_active_edge_index as usize)
+        }
     }
 
     fn add_new_edges_for_min_point(&mut self, endpoint_index: u32, next_active_edge_index: u32) {
