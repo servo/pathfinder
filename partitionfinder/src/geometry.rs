@@ -83,17 +83,17 @@ pub fn solve_line_y_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
     a.lerp(*b, (x - a.x) / (b.x - a.x)).y
 }
 
-fn newton_raphson<F, DFDX>(f: F, dfdx: DFDX, mut x_guess: f32) -> Option<f32>
+fn newton_raphson<F, DFDX>(f: F, dfdx: DFDX, mut x_guess: f32) -> f32
                            where F: Fn(f32) -> f32, DFDX: Fn(f32) -> f32 {
     for _ in 0..NEWTON_RAPHSON_ITERATIONS {
         let y = f(x_guess);
         if y.approx_eq(&0.0) {
-            return Some(x_guess)
+            break
         }
         let yy = dfdx(x_guess);
         x_guess -= y / yy
     }
-    None
+    x_guess
 }
 
 pub fn solve_cubic_bezier_t_for_x(x: f32,
@@ -101,7 +101,7 @@ pub fn solve_cubic_bezier_t_for_x(x: f32,
                                   p1: &Point2D<f32>,
                                   p2: &Point2D<f32>,
                                   p3: &Point2D<f32>)
-                                  -> Option<f32> {
+                                  -> f32 {
     newton_raphson(|t| sample_cubic_bezier(t, p0, p1, p2, p3).x - x,
                    |t| sample_cubic_bezier_deriv(t, p0, p1, p2, p3).x,
                    0.5)
@@ -112,6 +112,6 @@ pub fn solve_cubic_bezier_y_for_x(x: f32,
                                   p1: &Point2D<f32>,
                                   p2: &Point2D<f32>,
                                   p3: &Point2D<f32>)
-                                  -> Option<f32> {
-    solve_cubic_bezier_t_for_x(x, p0, p1, p2, p3).map(|t| sample_cubic_bezier(t, p0, p1, p2, p3).y)
+                                  -> f32 {
+    sample_cubic_bezier(solve_cubic_bezier_t_for_x(x, p0, p1, p2, p3), p0, p1, p2, p3).y
 }

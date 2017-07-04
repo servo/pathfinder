@@ -369,13 +369,12 @@ impl<'a> Partitioner<'a> {
                 (x - prev_endpoint.position.x) / x_vector
             }
             Some(control_points_index) => {
-                // FIXME(pcwalton): Is `unwrap_or(0.0)` sensible?
                 let control_points = &self.control_points[control_points_index as usize];
                 geometry::solve_cubic_bezier_t_for_x(x,
                                                      &prev_endpoint.position,
                                                      &control_points.point1,
                                                      &control_points.point2,
-                                                     &next_endpoint.position).unwrap_or(0.0)
+                                                     &next_endpoint.position)
             }
         }
     }
@@ -414,12 +413,11 @@ impl<'a> Partitioner<'a> {
         let control_points_index = self.control_points_index(next_endpoint_index)
                                        .expect("Edge not a cubic bezier!");
         let control_points = &self.control_points[control_points_index as usize];
-        // FIXME(pcwalton): Is `.unwrap_or(0.0)` sensible?
         geometry::solve_cubic_bezier_y_for_x(x,
                                              &prev_endpoint.position,
                                              &control_points.point1,
                                              &control_points.point2,
-                                             &next_endpoint.position).unwrap_or(0.0)
+                                             &next_endpoint.position)
     }
 
     fn control_points_index(&self, next_endpoint_index: u32) -> Option<u32> {
