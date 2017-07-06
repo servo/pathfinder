@@ -6,7 +6,7 @@ use partitioner::Partitioner;
 use tessellator::{QuadTessLevels, Tessellator};
 use std::mem;
 use std::slice;
-use {AntialiasingMode, Bezieroid, ControlPoints, Endpoint, Subpath, Vertex};
+use {AntialiasingMode, BQuad, ControlPoints, Endpoint, Subpath, Vertex};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -53,14 +53,14 @@ pub unsafe extern fn pf_partitioner_partition<'a>(partitioner: *mut Partitioner<
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_partitioner_bezieroids<'a>(partitioner: *mut Partitioner<'a>,
-                                                   out_bezieroid_count: *mut u32)
-                                                   -> *const Bezieroid {
-    let bezieroids = (*partitioner).bezieroids();
-    if !out_bezieroid_count.is_null() {
-        *out_bezieroid_count = bezieroids.len() as u32
+pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *mut Partitioner<'a>,
+                                                   out_b_quad_count: *mut u32)
+                                                   -> *const BQuad {
+    let b_quads = (*partitioner).b_quads();
+    if !out_b_quad_count.is_null() {
+        *out_b_quad_count = b_quads.len() as u32
     }
-    bezieroids.as_ptr()
+    b_quads.as_ptr()
 }
 
 #[no_mangle]
@@ -68,7 +68,7 @@ pub unsafe extern fn pf_tessellator_new(endpoints: *const Endpoint,
                                         endpoint_count: u32,
                                         control_points: *const ControlPoints,
                                         control_points_count: u32,
-                                        b_quads: *const Bezieroid,
+                                        b_quads: *const BQuad,
                                         b_quad_count: u32,
                                         antialiasing_mode: AntialiasingMode)
                                         -> *mut Tessellator<'static> {

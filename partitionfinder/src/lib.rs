@@ -21,7 +21,7 @@ pub mod tessellator;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct Bezieroid {
+pub struct BQuad {
     pub upper_prev_endpoint: u32,
     pub upper_next_endpoint: u32,
     pub lower_prev_endpoint: u32,

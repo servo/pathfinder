@@ -45,14 +45,14 @@ struct pf_quad_tess_levels {
 
 typedef struct pf_quad_tess_levels pf_quad_tess_levels_t;
 
-struct pf_bezieroid {
+struct pf_b_quad {
     uint32_t upper_prev_endpoint, upper_next_endpoint;
     uint32_t lower_prev_endpoint, lower_next_endpoint;
     float upper_left_time, upper_right_time;
     float lower_left_time, lower_right_time;
 };
 
-typedef struct pf_bezieroid pf_bezieroid_t;
+typedef struct pf_b_quad pf_b_quad_t;
 
 struct pf_endpoint {
     pf_point2d_f32_t position;
@@ -99,14 +99,14 @@ void pf_partitioner_partition(pf_partitioner_t *partitioner,
                               uint32_t first_subpath_index,
                               uint32_t last_subpath_index);
 
-const pf_bezieroid_t *pf_partitioner_bezieroids(pf_partitioner_t *partitioner,
-                                                uint32_t *out_bezieroid_count);
+const pf_b_quad_t *pf_partitioner_b_quads(pf_partitioner_t *partitioner,
+                                                uint32_t *out_b_quad_count);
 
 pf_tessellator_t *pf_tessellator_new(const pf_endpoint_t *endpoints,
                                      uint32_t endpoint_count,
                                      const pf_control_points_t *control_points,
                                      uint32_t control_points_index,
-                                     const pf_bezieroid_t *b_quads,
+                                     const pf_b_quad_t *b_quads,
                                      uint32_t b_quad_count,
                                      pf_antialiasing_mode_t antialiasing_mode);
 

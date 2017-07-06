@@ -6,14 +6,14 @@ use euclid::{Length, Transform2D};
 use half::{f16, self};
 use std::cmp;
 use std::u32;
-use {AntialiasingMode, Bezieroid, ControlPoints, Endpoint, Vertex};
+use {AntialiasingMode, BQuad, ControlPoints, Endpoint, Vertex};
 
 const TOLERANCE: f32 = 0.25;
 
 pub struct Tessellator<'a> {
     endpoints: &'a [Endpoint],
     control_points: &'a [ControlPoints],
-    b_quads: &'a [Bezieroid],
+    b_quads: &'a [BQuad],
     antialiasing_mode: AntialiasingMode,
 
     tess_levels: Vec<QuadTessLevels>,
@@ -43,7 +43,7 @@ impl QuadTessLevels {
 impl<'a> Tessellator<'a> {
     pub fn new<'b>(endpoints: &'b [Endpoint],
                    control_points: &'b [ControlPoints],
-                   b_quads: &'b [Bezieroid],
+                   b_quads: &'b [BQuad],
                    antialiasing_mode: AntialiasingMode)
                    -> Tessellator<'b> {
         Tessellator {

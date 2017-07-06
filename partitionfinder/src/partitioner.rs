@@ -7,14 +7,14 @@ use log::LogLevel;
 use std::collections::BinaryHeap;
 use std::cmp::{self, Ordering};
 use std::u32;
-use {Bezieroid, ControlPoints, Endpoint, Subpath};
+use {BQuad, ControlPoints, Endpoint, Subpath};
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
     control_points: &'a [ControlPoints],
     subpaths: &'a [Subpath],
 
-    bezieroids: Vec<Bezieroid>,
+    b_quads: Vec<BQuad>,
 
     heap: BinaryHeap<Point>,
     visited_points: BitVec,
@@ -29,7 +29,7 @@ impl<'a> Partitioner<'a> {
             control_points: &[],
             subpaths: &[],
 
-            bezieroids: vec![],
+            b_quads: vec![],
 
             heap: BinaryHeap::new(),
             visited_points: BitVec::new(),
@@ -51,7 +51,7 @@ impl<'a> Partitioner<'a> {
     }
 
     pub fn partition(&mut self, first_subpath_index: u32, last_subpath_index: u32) {
-        self.bezieroids.clear();
+        self.b_quads.clear();
         self.heap.clear();
         self.active_edges.clear();
 
@@ -61,8 +61,8 @@ impl<'a> Partitioner<'a> {
     }
 
     #[inline]
-    pub fn bezieroids(&self) -> &[Bezieroid] {
-        &self.bezieroids
+    pub fn b_quads(&self) -> &[BQuad] {
+        &self.b_quads
     }
 
     fn process_next_point(&mut self) -> bool {
@@ -124,7 +124,7 @@ impl<'a> Partitioner<'a> {
 
         let endpoint = &self.endpoints[endpoint_index as usize];
         if self.should_fill_above_active_edge(next_active_edge_index) {
-            self.emit_bezieroid_above(next_active_edge_index, endpoint.position.x)
+            self.emit_b_quad_above(next_active_edge_index, endpoint.position.x)
         }
 
         self.add_new_edges_for_min_point(endpoint_index, next_active_edge_index);
@@ -147,10 +147,10 @@ impl<'a> Partitioner<'a> {
 
         let endpoint = &self.endpoints[endpoint_index as usize];
         if self.should_fill_below_active_edge(active_edge_index) {
-            self.emit_bezieroid_below(active_edge_index, endpoint.position.x)
+            self.emit_b_quad_below(active_edge_index, endpoint.position.x)
         }
         if self.should_fill_above_active_edge(active_edge_index) {
-            self.emit_bezieroid_above(active_edge_index, endpoint.position.x)
+            self.emit_b_quad_above(active_edge_index, endpoint.position.x)
         }
 
         let prev_endpoint_index = self.prev_endpoint_of(endpoint_index);
@@ -185,13 +185,13 @@ impl<'a> Partitioner<'a> {
         let endpoint = &self.endpoints[endpoint_index as usize];
 
         if self.should_fill_above_active_edge(active_edge_indices[0]) {
-            self.emit_bezieroid_above(active_edge_indices[0], endpoint.position.x)
+            self.emit_b_quad_above(active_edge_indices[0], endpoint.position.x)
         }
         if self.should_fill_above_active_edge(active_edge_indices[1]) {
-            self.emit_bezieroid_above(active_edge_indices[1], endpoint.position.x)
+            self.emit_b_quad_above(active_edge_indices[1], endpoint.position.x)
         }
         if self.should_fill_below_active_edge(active_edge_indices[1]) {
-            self.emit_bezieroid_below(active_edge_indices[1], endpoint.position.x)
+            self.emit_b_quad_below(active_edge_indices[1], endpoint.position.x)
         }
 
         self.heap.pop();
@@ -205,10 +205,10 @@ impl<'a> Partitioner<'a> {
 
     fn process_crossing_point(&mut self, x: f32, upper_active_edge_index: u32) {
         if self.should_fill_above_active_edge(upper_active_edge_index) {
-            self.emit_bezieroid_above(upper_active_edge_index, x)
+            self.emit_b_quad_above(upper_active_edge_index, x)
         }
         if self.should_fill_below_active_edge(upper_active_edge_index) {
-            self.emit_bezieroid_below(upper_active_edge_index, x)
+            self.emit_b_quad_below(upper_active_edge_index, x)
         }
 
         // Swap the two edges.
@@ -285,23 +285,23 @@ impl<'a> Partitioner<'a> {
         active_edge_index % 2 == 1
     }
 
-    fn emit_bezieroid_below(&mut self, upper_active_edge_index: u32, right_x: f32) {
-        self.emit_bezieroid_above(upper_active_edge_index + 1, right_x)
+    fn emit_b_quad_below(&mut self, upper_active_edge_index: u32, right_x: f32) {
+        self.emit_b_quad_above(upper_active_edge_index + 1, right_x)
     }
 
-    fn emit_bezieroid_above(&mut self, lower_active_edge_index: u32, right_x: f32) {
+    fn emit_b_quad_above(&mut self, lower_active_edge_index: u32, right_x: f32) {
         // TODO(pcwalton): Assert that the green X position is the same on both edges.
         debug_assert!(lower_active_edge_index > 0,
-                      "Can't emit bezieroids above the top active edge");
+                      "Can't emit b_quads above the top active edge");
         let upper_active_edge_index = lower_active_edge_index - 1;
 
-        let new_bezieroid;
+        let new_b_quad;
 
         {
             let lower_active_edge = &self.active_edges[lower_active_edge_index as usize];
             let upper_active_edge = &self.active_edges[upper_active_edge_index as usize];
 
-            new_bezieroid = Bezieroid {
+            new_b_quad = BQuad {
                 upper_prev_endpoint: upper_active_edge.prev_endpoint_index(),
                 upper_next_endpoint: upper_active_edge.next_endpoint_index(),
                 lower_prev_endpoint: lower_active_edge.prev_endpoint_index(),
@@ -312,11 +312,11 @@ impl<'a> Partitioner<'a> {
                 lower_right_time: self.solve_t_for_active_edge(lower_active_edge_index, right_x),
             };
 
-            self.bezieroids.push(new_bezieroid);
+            self.b_quads.push(new_b_quad);
         }
 
-        self.active_edges[upper_active_edge_index as usize].time = new_bezieroid.upper_right_time;
-        self.active_edges[lower_active_edge_index as usize].time = new_bezieroid.lower_right_time;
+        self.active_edges[upper_active_edge_index as usize].time = new_b_quad.upper_right_time;
+        self.active_edges[lower_active_edge_index as usize].time = new_b_quad.lower_right_time;
     }
 
     fn already_visited_point(&self, point: &Point) -> bool {
