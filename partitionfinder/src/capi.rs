@@ -115,6 +115,7 @@ pub unsafe extern fn pf_tessellator_tess_levels<'a>(tessellator: *mut Tessellato
     tess_levels.as_ptr()
 }
 
+#[no_mangle]
 pub unsafe extern fn pf_tessellator_vertices<'a>(tessellator: *mut Tessellator<'a>,
                                                  out_vertex_count: *mut u32)
                                                  -> *const Vertex {
@@ -125,6 +126,7 @@ pub unsafe extern fn pf_tessellator_vertices<'a>(tessellator: *mut Tessellator<'
     vertices.as_ptr()
 }
 
+#[no_mangle]
 pub unsafe extern fn pf_tessellator_msaa_indices<'a>(tessellator: *mut Tessellator<'a>,
                                                      out_msaa_index_count: *mut u32)
                                                      -> *const u32 {
@@ -135,6 +137,7 @@ pub unsafe extern fn pf_tessellator_msaa_indices<'a>(tessellator: *mut Tessellat
     msaa_indices.as_ptr()
 }
 
+#[no_mangle]
 pub unsafe extern fn pf_tessellator_levien_indices<'a>(tessellator: *mut Tessellator<'a>,
                                                        out_levien_index_count: *mut u32)
                                                        -> *const u32 {
