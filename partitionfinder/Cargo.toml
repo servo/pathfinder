@@ -11,4 +11,5 @@ crate-type = ["dylib", "rlib"]
 bit-vec = "0.4"
 env_logger = "0.4"
 euclid = "0.15"
+half = "1.0"
 log = "0.3"
