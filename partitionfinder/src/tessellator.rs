@@ -6,7 +6,7 @@ use euclid::{Length, Transform2D};
 use half::{f16, self};
 use std::cmp;
 use std::u32;
-use {AntialiasingMode, BQuad, ControlPoints, Endpoint, Vertex};
+use {AntialiasingMode, BQuad, ControlPoints, EdgeInstance, Endpoint, Vertex};
 
 const TOLERANCE: f32 = 0.25;
 
@@ -19,7 +19,7 @@ pub struct Tessellator<'a> {
     tess_levels: Vec<QuadTessLevels>,
     vertices: Vec<Vertex>,
     msaa_indices: Vec<u32>,
-    levien_indices: Vec<u32>,
+    edge_instances: Vec<EdgeInstance>,
 }
 
 // NB: This must match the layout of `MTLQuadTessellationFactorsHalf` in Metal in order for the
@@ -55,7 +55,7 @@ impl<'a> Tessellator<'a> {
             tess_levels: vec![QuadTessLevels::new(); b_quads.len()],
             vertices: vec![],
             msaa_indices: vec![],
-            levien_indices: vec![],
+            edge_instances: vec![],
         }
     }
 
@@ -124,6 +124,41 @@ impl<'a> Tessellator<'a> {
                     first_lower_vertex_index + index + 0,
                 ].into_iter())
             }
+
+            // If Levien-style antialiasing is in use, then emit edge instances.
+            if self.antialiasing_mode == AntialiasingMode::Levien {
+                let upper_left_endpoint_time: Length<f32, ()> = Length::new(b_quad.upper_left_time);
+                let upper_right_endpoint_time: Length<f32, ()> =
+                    Length::new(b_quad.upper_right_time);
+                let lower_left_endpoint_time: Length<f32, ()> = Length::new(b_quad.lower_left_time);
+                let lower_right_endpoint_time: Length<f32, ()> =
+                    Length::new(b_quad.lower_right_time);
+
+                for index in 0..tess_level {
+                    let left_tess_coord = index as f32 / tess_level as f32;
+                    let right_tess_coord = (index + 1) as f32 / tess_level as f32;
+
+                    let upper_left_time = upper_left_endpoint_time.lerp(upper_right_endpoint_time,
+                                                                        left_tess_coord).get();
+                    let upper_right_time = upper_left_endpoint_time.lerp(upper_right_endpoint_time,
+                                                                         right_tess_coord).get();
+                    let lower_left_time = lower_left_endpoint_time.lerp(lower_right_endpoint_time,
+                                                                        left_tess_coord).get();
+                    let lower_right_time = lower_left_endpoint_time.lerp(lower_right_endpoint_time,
+                                                                         right_tess_coord).get();
+
+                    self.edge_instances.extend([
+                        EdgeInstance::new(b_quad.upper_prev_endpoint,
+                                          b_quad.upper_next_endpoint,
+                                          upper_left_time,
+                                          upper_right_time),
+                        EdgeInstance::new(b_quad.lower_prev_endpoint,
+                                          b_quad.lower_next_endpoint,
+                                          lower_left_time,
+                                          lower_right_time),
+                    ].into_iter())
+                }
+            }
         }
     }
 
@@ -143,10 +178,9 @@ impl<'a> Tessellator<'a> {
     }
 
     #[inline]
-    pub fn levien_indices(&self) -> &[u32] {
-        &self.levien_indices
+    pub fn edge_instances(&self) -> &[EdgeInstance] {
+        &self.edge_instances
     }
-
 }
 
 // http://antigrain.com/research/adaptive_bezier/

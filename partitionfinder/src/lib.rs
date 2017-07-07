@@ -82,3 +82,25 @@ impl Vertex {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct EdgeInstance {
+    pub prev_endpoint_index: u32,
+    pub next_endpoint_index: u32,
+    pub prev_time: f32,
+    pub next_time: f32,
+}
+
+impl EdgeInstance {
+    #[inline]
+    pub fn new(prev_endpoint_index: u32, next_endpoint_index: u32, prev_time: f32, next_time: f32)
+               -> EdgeInstance {
+        EdgeInstance {
+            prev_endpoint_index: prev_endpoint_index,
+            next_endpoint_index: next_endpoint_index,
+            prev_time: prev_time,
+            next_time: next_time,
+        }
+    }
+}

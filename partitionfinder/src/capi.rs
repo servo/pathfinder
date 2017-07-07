@@ -6,7 +6,7 @@ use partitioner::Partitioner;
 use tessellator::{QuadTessLevels, Tessellator};
 use std::mem;
 use std::slice;
-use {AntialiasingMode, BQuad, ControlPoints, Endpoint, Subpath, Vertex};
+use {AntialiasingMode, BQuad, ControlPoints, EdgeInstance, Endpoint, Subpath, Vertex};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -138,14 +138,14 @@ pub unsafe extern fn pf_tessellator_msaa_indices<'a>(tessellator: *mut Tessellat
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_tessellator_levien_indices<'a>(tessellator: *mut Tessellator<'a>,
-                                                       out_levien_index_count: *mut u32)
-                                                       -> *const u32 {
-    let levien_indices = (*tessellator).levien_indices();
-    if !out_levien_index_count.is_null() {
-        *out_levien_index_count = levien_indices.len() as u32
+pub unsafe extern fn pf_tessellator_edge_instances<'a>(tessellator: *mut Tessellator<'a>,
+                                                       out_edge_instance_count: *mut u32)
+                                                       -> *const EdgeInstance {
+    let edge_instances = (*tessellator).edge_instances();
+    if !out_edge_instance_count.is_null() {
+        *out_edge_instance_count = edge_instances.len() as u32
     }
-    levien_indices.as_ptr()
+    edge_instances.as_ptr()
 }
 
 #[no_mangle]

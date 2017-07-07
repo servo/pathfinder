@@ -38,6 +38,15 @@ struct pf_vertex {
 
 typedef struct pf_vertex pf_vertex_t;
 
+struct pf_edge_instance {
+    uint32_t prev_endpoint_index;
+    uint32_t next_endpoint_index;
+    float prev_time;
+    float next_time;
+};
+
+typedef struct pf_edge_instance pf_edge_instance_t;
+
 struct pf_quad_tess_levels {
     pf_float16_t outer[4];
     pf_float16_t inner[2];
@@ -125,8 +134,8 @@ const pf_vertex_t *pf_tessellator_vertices(const pf_tessellator_t *tessellator,
 const uint32_t *pf_tessellator_msaa_indices(const pf_tessellator_t *tessellator,
                                             uint32_t *out_msaa_index_count);
 
-const uint32_t *pf_tessellator_levien_indices(const pf_tessellator_t *tessellator,
-                                              uint32_t *out_levien_index_count);
+const pf_edge_instance_t *pf_tessellator_edge_instances(const pf_tessellator_t *tessellator,
+                                                        uint32_t *out_edge_instance_count);
 
 uint32_t pf_init_env_logger();
 
