@@ -16,6 +16,7 @@ use std::u32;
 
 pub mod capi;
 pub mod geometry;
+pub mod legalizer;
 pub mod partitioner;
 pub mod tessellator;
 
