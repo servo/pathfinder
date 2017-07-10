@@ -88,7 +88,7 @@ impl Legalizer {
                                       .last()
                                       .expect("`bezier_curve_to()` called with no current_subpath")
                                       .last_endpoint_index;
-        let point0 = self.endpoints[last_endpoint_index as usize].position;
+        let point0 = self.endpoints[last_endpoint_index as usize - 1].position;
         if iteration >= MAX_SUBDIVISIONS ||
                 [point0.x, point1.x, point2.x, endpoint.x].approx_ordered() {
             return self.monotone_bezier_curve_to(point1, point2, endpoint)
