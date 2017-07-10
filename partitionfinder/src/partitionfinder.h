@@ -84,6 +84,10 @@ struct pf_subpath {
 
 typedef struct pf_subpath pf_subpath_t;
 
+struct pf_legalizer;
+
+typedef struct pf_legalizer pf_legalizer_t;
+
 struct pf_partitioner;
 
 typedef struct pf_partitioner pf_partitioner_t;
@@ -91,6 +95,34 @@ typedef struct pf_partitioner pf_partitioner_t;
 struct pf_tessellator;
 
 typedef struct pf_tessellator pf_tessellator_t;
+
+pf_legalizer_t *pf_legalizer_new();
+
+void pf_legalizer_destroy(Legalizer *legalizer);
+
+const pf_endpoint_t *pf_legalizer_endpoints(const Legalizer *legalizer,
+                                            uint32_t *out_endpoint_count);
+
+const pf_control_points_t *pf_legalizer_control_points(const Legalizer *legalizer,
+                                                       uitn32_t *out_control_points_count);
+
+const pf_subpath_t *pf_legalizer_subpaths(const Legalizer *legalizer,
+                                          uint32_t *out_subpaths_count);
+
+void pf_legalizer_move_to(Legalizer *legalizer, const pf_point2d_f32_t *position);
+
+void pf_legalizer_close_path(Legalizer *legalizer);
+
+void pf_legalizer_line_to(Legalizer *legalizer, const pf_point2d_f32_t *endpoint);
+
+void pf_legalizer_quadratic_curve_to(Legalizer *legalizer,
+                                     const pf_point2d_f32_t *control_point,
+                                     const pf_point2d_f32_t *endpoint);
+
+void pf_legalizer_bezier_curve_to(Legalizer *legalizer,
+                                  const pf_point2d_f32_t *point1,
+                                  const pf_point2d_f32_t *point2,
+                                  const pf_point2d_f32_t *endpoint);
 
 pf_partitioner_t *pf_partitioner_new();
 
