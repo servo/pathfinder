@@ -98,28 +98,28 @@ typedef struct pf_tessellator pf_tessellator_t;
 
 pf_legalizer_t *pf_legalizer_new();
 
-void pf_legalizer_destroy(Legalizer *legalizer);
+void pf_legalizer_destroy(pf_legalizer_t *legalizer);
 
-const pf_endpoint_t *pf_legalizer_endpoints(const Legalizer *legalizer,
+const pf_endpoint_t *pf_legalizer_endpoints(const pf_legalizer_t *legalizer,
                                             uint32_t *out_endpoint_count);
 
-const pf_control_points_t *pf_legalizer_control_points(const Legalizer *legalizer,
-                                                       uitn32_t *out_control_points_count);
+const pf_control_points_t *pf_legalizer_control_points(const pf_legalizer_t *legalizer,
+                                                       uint32_t *out_control_points_count);
 
-const pf_subpath_t *pf_legalizer_subpaths(const Legalizer *legalizer,
+const pf_subpath_t *pf_legalizer_subpaths(const pf_legalizer_t *legalizer,
                                           uint32_t *out_subpaths_count);
 
-void pf_legalizer_move_to(Legalizer *legalizer, const pf_point2d_f32_t *position);
+void pf_legalizer_move_to(pf_legalizer_t *legalizer, const pf_point2d_f32_t *position);
 
-void pf_legalizer_close_path(Legalizer *legalizer);
+void pf_legalizer_close_path(pf_legalizer_t *legalizer);
 
-void pf_legalizer_line_to(Legalizer *legalizer, const pf_point2d_f32_t *endpoint);
+void pf_legalizer_line_to(pf_legalizer_t *legalizer, const pf_point2d_f32_t *endpoint);
 
-void pf_legalizer_quadratic_curve_to(Legalizer *legalizer,
+void pf_legalizer_quadratic_curve_to(pf_legalizer_t *legalizer,
                                      const pf_point2d_f32_t *control_point,
                                      const pf_point2d_f32_t *endpoint);
 
-void pf_legalizer_bezier_curve_to(Legalizer *legalizer,
+void pf_legalizer_bezier_curve_to(pf_legalizer_t *legalizer,
                                   const pf_point2d_f32_t *point1,
                                   const pf_point2d_f32_t *point2,
                                   const pf_point2d_f32_t *endpoint);
