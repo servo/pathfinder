@@ -7,7 +7,7 @@ use partitioner::Partitioner;
 use tessellator::{QuadTessLevels, Tessellator};
 use std::mem;
 use std::slice;
-use {AntialiasingMode, BQuad, ControlPoints, EdgeInstance, Endpoint, Subpath, Vertex};
+use {AntialiasingMode, BQuad, EdgeInstance, Endpoint, Subpath, Vertex};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -61,12 +61,13 @@ pub unsafe extern fn pf_legalizer_endpoints(legalizer: *const Legalizer,
 #[no_mangle]
 pub unsafe extern fn pf_legalizer_control_points(legalizer: *const Legalizer,
                                                  out_control_points_count: *mut u32)
-                                                 -> *const ControlPoints {
+                                                 -> *const Point2DF32 {
     let control_points = (*legalizer).control_points();
     if !out_control_points_count.is_null() {
         *out_control_points_count = control_points.len() as u32
     }
-    control_points.as_ptr()
+    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
+    control_points.as_ptr() as *const Point2DF32
 }
 
 #[no_mangle]
@@ -131,12 +132,14 @@ pub unsafe extern fn pf_partitioner_destroy<'a>(partitioner: *mut Partitioner<'a
 pub unsafe extern fn pf_partitioner_init<'a>(partitioner: *mut Partitioner<'a>,
                                              endpoints: *const Endpoint,
                                              endpoint_count: u32,
-                                             control_points: *const ControlPoints,
+                                             control_points: *const Point2DF32,
                                              control_points_count: u32,
                                              subpaths: *const Subpath,
                                              subpath_count: u32) {
+    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
     (*partitioner).init(slice::from_raw_parts(endpoints, endpoint_count as usize),
-                        slice::from_raw_parts(control_points, control_points_count as usize),
+                        slice::from_raw_parts(control_points as *const Point2D<f32>,
+                                              control_points_count as usize),
                         slice::from_raw_parts(subpaths, subpath_count as usize))
 }
 
@@ -161,12 +164,13 @@ pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *mut Partitioner<'a
 #[no_mangle]
 pub unsafe extern fn pf_tessellator_new(endpoints: *const Endpoint,
                                         endpoint_count: u32,
-                                        control_points: *const ControlPoints,
+                                        control_points: *const Point2D<f32>,
                                         control_points_count: u32,
                                         b_quads: *const BQuad,
                                         b_quad_count: u32,
                                         antialiasing_mode: AntialiasingMode)
                                         -> *mut Tessellator<'static> {
+    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
     let mut tessellator =
         Box::new(Tessellator::new(slice::from_raw_parts(endpoints, endpoint_count as usize),
                                   slice::from_raw_parts(control_points,

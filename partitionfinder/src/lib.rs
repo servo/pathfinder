@@ -38,15 +38,8 @@ pub struct BQuad {
 pub struct Endpoint {
     pub position: Point2D<f32>,
     /// `u32::MAX` if not present.
-    pub control_points_index: u32,
+    pub control_point_index: u32,
     pub subpath_index: u32,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct ControlPoints {
-    pub point1: Point2D<f32>,
-    pub point2: Point2D<f32>,
 }
 
 #[repr(C)]

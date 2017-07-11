@@ -2,17 +2,17 @@
 
 #![allow(dead_code)]
 
-use euclid::{Length, Transform2D};
+use euclid::{Length, Point2D, Transform2D};
 use half::{f16, self};
 use std::cmp;
 use std::u32;
-use {AntialiasingMode, BQuad, ControlPoints, EdgeInstance, Endpoint, Vertex};
+use {AntialiasingMode, BQuad, EdgeInstance, Endpoint, Vertex};
 
 const TOLERANCE: f32 = 0.25;
 
 pub struct Tessellator<'a> {
     endpoints: &'a [Endpoint],
-    control_points: &'a [ControlPoints],
+    control_points: &'a [Point2D<f32>],
     b_quads: &'a [BQuad],
     antialiasing_mode: AntialiasingMode,
 
@@ -42,7 +42,7 @@ impl QuadTessLevels {
 
 impl<'a> Tessellator<'a> {
     pub fn new<'b>(endpoints: &'b [Endpoint],
-                   control_points: &'b [ControlPoints],
+                   control_points: &'b [Point2D<f32>],
                    b_quads: &'b [BQuad],
                    antialiasing_mode: AntialiasingMode)
                    -> Tessellator<'b> {
@@ -190,10 +190,10 @@ fn tess_level_for_edge(prev_endpoint_index: u32,
                        right_time: f32,
                        transform: &Transform2D<f32>,
                        endpoints: &[Endpoint],
-                       control_points: &[ControlPoints])
+                       control_points: &[Point2D<f32>])
                        -> u32 {
-    let control_points_index = endpoints[next_endpoint_index as usize].control_points_index;
-    if control_points_index == u32::MAX {
+    let control_point_index = endpoints[next_endpoint_index as usize].control_point_index;
+    if control_point_index == u32::MAX {
         return 1
     }
 
@@ -201,13 +201,13 @@ fn tess_level_for_edge(prev_endpoint_index: u32,
 
     let prev_endpoint = &endpoints[prev_endpoint_index as usize];
     let next_endpoint = &endpoints[next_endpoint_index as usize];
-    let control_points = &control_points[control_points_index as usize];
+    let control_point = &control_points[control_point_index as usize];
 
     let p0 = transform.transform_point(&prev_endpoint.position);
-    let p1 = transform.transform_point(&control_points.point1);
-    let p2 = transform.transform_point(&control_points.point2);
-    let p3 = transform.transform_point(&next_endpoint.position);
+    let p1 = transform.transform_point(control_point);
+    let p2 = transform.transform_point(&next_endpoint.position);
 
-    let length = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
+    // FIXME(pcwalton): Is this good for quadratics?
+    let length = (p1 - p0).length() + (p2 - p1).length();
     1 + (length * TOLERANCE * (next_time - prev_time)) as u32
 }

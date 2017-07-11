@@ -59,61 +59,48 @@ pub fn line_line_crossing_point(a_p0: &Point2D<f32>,
 }
 
 // TODO(pcwalton): Implement this.
-pub fn line_cubic_bezier_crossing_point(_a_p0: &Point2D<f32>,
-                                        _a_p1: &Point2D<f32>,
-                                        _b_p0: &Point2D<f32>,
-                                        _b_p1: &Point2D<f32>,
-                                        _b_p2: &Point2D<f32>,
-                                        _b_p3: &Point2D<f32>)
+pub fn line_quadratic_bezier_crossing_point(_a_p0: &Point2D<f32>,
+                                            _a_p1: &Point2D<f32>,
+                                            _b_p0: &Point2D<f32>,
+                                            _b_p1: &Point2D<f32>,
+                                            _b_p2: &Point2D<f32>)
                                         -> Option<Point2D<f32>> {
     None
 }
 
 // TODO(pcwalton): Implement this.
-pub fn cubic_bezier_cubic_bezier_crossing_point(_a_p0: &Point2D<f32>,
-                                                _a_p1: &Point2D<f32>,
-                                                _a_p2: &Point2D<f32>,
-                                                _a_p3: &Point2D<f32>,
-                                                _b_p0: &Point2D<f32>,
-                                                _b_p1: &Point2D<f32>,
-                                                _b_p2: &Point2D<f32>,
-                                                _b_p3: &Point2D<f32>)
-                                                -> Option<Point2D<f32>> {
+pub fn quadratic_bezier_quadratic_bezier_crossing_point(_a_p0: &Point2D<f32>,
+                                                        _a_p1: &Point2D<f32>,
+                                                        _a_p2: &Point2D<f32>,
+                                                        _b_p0: &Point2D<f32>,
+                                                        _b_p1: &Point2D<f32>,
+                                                        _b_p2: &Point2D<f32>)
+                                                        -> Option<Point2D<f32>> {
     None
 }
 
-fn sample_cubic_bezier(t: f32,
-                       p0: &Point2D<f32>,
-                       p1: &Point2D<f32>,
-                       p2: &Point2D<f32>,
-                       p3: &Point2D<f32>)
-                       -> Point2D<f32> {
-    let (p0p1, p1p2, p2p3) = (p0.lerp(*p1, t), p1.lerp(*p2, t), p2.lerp(*p3, t));
-    let (p0p1p2, p1p2p3) = (p0p1.lerp(p1p2, t), p1p2.lerp(p2p3, t));
-    p0p1p2.lerp(p1p2p3, t)
+fn sample_quadratic_bezier(t: f32, p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
+                           -> Point2D<f32> {
+    p0.lerp(*p1, t).lerp(p1.lerp(*p2, t), t)
 }
 
-pub fn sample_cubic_bezier_deriv(t: f32,
-                                 p0: &Point2D<f32>,
-                                 p1: &Point2D<f32>,
-                                 p2: &Point2D<f32>,
-                                 p3: &Point2D<f32>)
-                                 -> Vector2D<f32> {
-    // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Cubic_B.C3.A9zier_curves
+pub fn sample_quadratic_bezier_deriv(t: f32,
+                                     p0: &Point2D<f32>,
+                                     p1: &Point2D<f32>,
+                                     p2: &Point2D<f32>)
+                                     -> Vector2D<f32> {
+    // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B.C3.A9zier_curves
     // FIXME(pcwalton): Can this be made faster?
-    let tt = 1.0 - t;
-    return (*p1 - *p0) * 3.0 * tt * tt + (*p2 - *p1) * 6.0 * tt * t + (*p3 - *p2) * 3.0 * t * t
+    return ((*p1 - *p0) * (1.0 - t) + (*p2 - *p1) * t) * 2.0
 }
 
-pub fn sample_cubic_bezier_deriv_deriv(t: f32,
-                                       p0: &Point2D<f32>,
-                                       p1: &Point2D<f32>,
-                                       p2: &Point2D<f32>,
-                                       p3: &Point2D<f32>)
-                                       -> Vector2D<f32> {
-    // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Cubic_B.C3.A9zier_curves
+pub fn sample_quadratic_bezier_deriv_deriv(p0: &Point2D<f32>,
+                                           p1: &Point2D<f32>,
+                                           p2: &Point2D<f32>)
+                                           -> Vector2D<f32> {
+    // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B.C3.A9zier_curves
     // FIXME(pcwalton): Can this be made faster?
-    (*p2 - *p1 * 2.0 + p0.to_vector()).lerp(*p3 - *p2 * 2.0 + p1.to_vector(), t) * 6.0
+    (*p2 - *p1 * 2.0 + p0.to_vector()) * 2.0
 }
 
 pub fn solve_line_y_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
@@ -133,51 +120,45 @@ pub(crate) fn newton_raphson<F, DFDX>(f: F, dfdx: DFDX, mut x_guess: f32) -> f32
     x_guess
 }
 
-pub fn solve_cubic_bezier_t_for_x(x: f32,
-                                  p0: &Point2D<f32>,
-                                  p1: &Point2D<f32>,
-                                  p2: &Point2D<f32>,
-                                  p3: &Point2D<f32>)
-                                  -> f32 {
-    newton_raphson(|t| sample_cubic_bezier(t, p0, p1, p2, p3).x - x,
-                   |t| sample_cubic_bezier_deriv(t, p0, p1, p2, p3).x,
+pub fn solve_quadratic_bezier_t_for_x(x: f32,
+                                      p0: &Point2D<f32>,
+                                      p1: &Point2D<f32>,
+                                      p2: &Point2D<f32>)
+                                      -> f32 {
+    // TODO(pcwalton): Use the quadratic equation instead.
+    newton_raphson(|t| sample_quadratic_bezier(t, p0, p1, p2).x - x,
+                   |t| sample_quadratic_bezier_deriv(t, p0, p1, p2).x,
                    0.5)
 }
 
-pub fn solve_cubic_bezier_y_for_x(x: f32,
-                                  p0: &Point2D<f32>,
-                                  p1: &Point2D<f32>,
-                                  p2: &Point2D<f32>,
-                                  p3: &Point2D<f32>)
-                                  -> f32 {
-    sample_cubic_bezier(solve_cubic_bezier_t_for_x(x, p0, p1, p2, p3), p0, p1, p2, p3).y
+pub fn solve_quadratic_bezier_y_for_x(x: f32,
+                                      p0: &Point2D<f32>,
+                                      p1: &Point2D<f32>,
+                                      p2: &Point2D<f32>)
+                                      -> f32 {
+    sample_quadratic_bezier(solve_quadratic_bezier_t_for_x(x, p0, p1, p2), p0, p1, p2).y
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct SubdividedCubicBezier {
+pub struct SubdividedQuadraticBezier {
     pub ap0: Point2D<f32>,
     pub ap1: Point2D<f32>,
-    pub ap2: Point2D<f32>,
-    pub ap3bp0: Point2D<f32>,
+    pub ap2bp0: Point2D<f32>,
     pub bp1: Point2D<f32>,
     pub bp2: Point2D<f32>,
-    pub bp3: Point2D<f32>,
 }
 
-impl SubdividedCubicBezier {
-    pub fn new(t: f32, p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>, p3: &Point2D<f32>)
-               -> SubdividedCubicBezier {
-        let (ap1, p1p2, bp2) = (p0.lerp(*p1, t), p1.lerp(*p2, t), p2.lerp(*p3, t));
-        let (ap2, bp1) = (ap1.lerp(p1p2, t), (p1p2.lerp(bp2, t)));
-        let ap3bp0 = ap2.lerp(bp1, t);
-        SubdividedCubicBezier {
+impl SubdividedQuadraticBezier {
+    pub fn new(t: f32, p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
+               -> SubdividedQuadraticBezier {
+        let (ap1, bp1) = (p0.lerp(*p1, t), p1.lerp(*p2, t));
+        let ap2bp0 = ap1.lerp(bp1, t);
+        SubdividedQuadraticBezier {
             ap0: *p0,
             ap1: ap1,
-            ap2: ap2,
-            ap3bp0: ap3bp0,
+            ap2bp0: ap2bp0,
             bp1: bp1,
-            bp2: bp2,
-            bp3: *p3,
+            bp2: *p2,
         }
     }
 }

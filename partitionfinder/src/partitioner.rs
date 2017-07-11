@@ -7,11 +7,11 @@ use log::LogLevel;
 use std::collections::BinaryHeap;
 use std::cmp::{self, Ordering};
 use std::u32;
-use {BQuad, ControlPoints, Endpoint, Subpath};
+use {BQuad, Endpoint, Subpath};
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
-    control_points: &'a [ControlPoints],
+    control_points: &'a [Point2D<f32>],
     subpaths: &'a [Subpath],
 
     b_quads: Vec<BQuad>,
@@ -39,7 +39,7 @@ impl<'a> Partitioner<'a> {
 
     pub fn init(&mut self,
                 new_endpoints: &'a [Endpoint],
-                new_control_points: &'a [ControlPoints],
+                new_control_points: &'a [Point2D<f32>],
                 new_subpaths: &'a [Subpath]) {
         self.endpoints = new_endpoints;
         self.control_points = new_control_points;
@@ -374,18 +374,17 @@ impl<'a> Partitioner<'a> {
         let next_endpoint_index = active_edge.next_endpoint_index();
         let prev_endpoint = &self.endpoints[prev_endpoint_index as usize];
         let next_endpoint = &self.endpoints[next_endpoint_index as usize];
-        match self.control_points_index(next_endpoint_index) {
+        match self.control_point_index(next_endpoint_index) {
             None => {
                 let x_vector = next_endpoint.position.x - prev_endpoint.position.x;
                 (x - prev_endpoint.position.x) / x_vector
             }
-            Some(control_points_index) => {
-                let control_points = &self.control_points[control_points_index as usize];
-                geometry::solve_cubic_bezier_t_for_x(x,
-                                                     &prev_endpoint.position,
-                                                     &control_points.point1,
-                                                     &control_points.point2,
-                                                     &next_endpoint.position)
+            Some(control_point_index) => {
+                let control_point = &self.control_points[control_point_index as usize];
+                geometry::solve_quadratic_bezier_t_for_x(x,
+                                                         &prev_endpoint.position,
+                                                         control_point,
+                                                         &next_endpoint.position)
             }
         }
     }
@@ -403,7 +402,7 @@ impl<'a> Partitioner<'a> {
     fn solve_active_edge_y_for_x(&self, x: f32, active_edge: &ActiveEdge) -> f32 {
         let prev_endpoint_index = active_edge.prev_endpoint_index();
         let next_endpoint_index = active_edge.next_endpoint_index();
-        if self.control_points_index(next_endpoint_index).is_none() {
+        if self.control_point_index(next_endpoint_index).is_none() {
             self.solve_line_y_for_x(x, prev_endpoint_index, next_endpoint_index)
         } else {
             self.solve_cubic_bezier_y_for_x(x, prev_endpoint_index, next_endpoint_index)
@@ -421,20 +420,19 @@ impl<'a> Partitioner<'a> {
                                   -> f32 {
         let prev_endpoint = &self.endpoints[prev_endpoint_index as usize];
         let next_endpoint = &self.endpoints[next_endpoint_index as usize];
-        let control_points_index = self.control_points_index(next_endpoint_index)
+        let control_point_index = self.control_point_index(next_endpoint_index)
                                        .expect("Edge not a cubic bezier!");
-        let control_points = &self.control_points[control_points_index as usize];
-        geometry::solve_cubic_bezier_y_for_x(x,
-                                             &prev_endpoint.position,
-                                             &control_points.point1,
-                                             &control_points.point2,
-                                             &next_endpoint.position)
+        let control_point = &self.control_points[control_point_index as usize];
+        geometry::solve_quadratic_bezier_y_for_x(x,
+                                                 &prev_endpoint.position,
+                                                 &control_point,
+                                                 &next_endpoint.position)
     }
 
-    fn control_points_index(&self, next_endpoint_index: u32) -> Option<u32> {
-        match self.endpoints[next_endpoint_index as usize].control_points_index {
+    fn control_point_index(&self, next_endpoint_index: u32) -> Option<u32> {
+        match self.endpoints[next_endpoint_index as usize].control_point_index {
             u32::MAX => None,
-            control_points_index => Some(control_points_index),
+            control_point_index => Some(control_point_index),
         }
     }
 
@@ -486,12 +484,12 @@ impl<'a> Partitioner<'a> {
         let next_upper_endpoint_index = upper_active_edge.next_endpoint_index();
         let prev_lower_endpoint_index = lower_active_edge.prev_endpoint_index();
         let next_lower_endpoint_index = lower_active_edge.next_endpoint_index();
-        let upper_control_points_index = self.endpoints[next_upper_endpoint_index as usize]
-                                             .control_points_index;
-        let lower_control_points_index = self.endpoints[next_lower_endpoint_index as usize]
-                                             .control_points_index;
+        let upper_control_point_index = self.endpoints[next_upper_endpoint_index as usize]
+                                            .control_point_index;
+        let lower_control_point_index = self.endpoints[next_lower_endpoint_index as usize]
+                                            .control_point_index;
 
-        match (upper_control_points_index, lower_control_points_index) {
+        match (upper_control_point_index, lower_control_point_index) {
             (u32::MAX, u32::MAX) => {
                 self.line_line_crossing_point(prev_upper_endpoint_index,
                                               next_upper_endpoint_index,
@@ -499,22 +497,22 @@ impl<'a> Partitioner<'a> {
                                               next_lower_endpoint_index)
             }
             (u32::MAX, _) => {
-                self.line_cubic_bezier_crossing_point(prev_upper_endpoint_index,
-                                                      next_upper_endpoint_index,
-                                                      next_lower_endpoint_index,
-                                                      next_lower_endpoint_index)
+                self.line_quadratic_bezier_crossing_point(prev_upper_endpoint_index,
+                                                          next_upper_endpoint_index,
+                                                          next_lower_endpoint_index,
+                                                          next_lower_endpoint_index)
             }
             (_, u32::MAX) => {
-                self.line_cubic_bezier_crossing_point(prev_lower_endpoint_index,
-                                                      next_lower_endpoint_index,
-                                                      next_upper_endpoint_index,
-                                                      next_upper_endpoint_index)
+                self.line_quadratic_bezier_crossing_point(prev_lower_endpoint_index,
+                                                          next_lower_endpoint_index,
+                                                          next_upper_endpoint_index,
+                                                          next_upper_endpoint_index)
             }
             (_, _) => {
-                self.cubic_bezier_cubic_bezier_crossing_point(prev_upper_endpoint_index,
-                                                              next_upper_endpoint_index,
-                                                              prev_lower_endpoint_index,
-                                                              next_lower_endpoint_index)
+                self.quadratic_bezier_quadratic_bezier_crossing_point(prev_upper_endpoint_index,
+                                                                      next_upper_endpoint_index,
+                                                                      prev_lower_endpoint_index,
+                                                                      next_lower_endpoint_index)
             }
         }
     }
@@ -532,44 +530,41 @@ impl<'a> Partitioner<'a> {
                                            &endpoints[next_lower_endpoint_index as usize].position)
     }
 
-    fn line_cubic_bezier_crossing_point(&self,
-                                        prev_line_endpoint_index: u32,
-                                        next_line_endpoint_index: u32,
-                                        prev_bezier_endpoint_index: u32,
-                                        next_bezier_endpoint_index: u32)
-                                        -> Option<Point2D<f32>> {
-        let control_points_index = self.control_points_index(next_bezier_endpoint_index)
-                                       .expect("Edge not a cubic Bezier!");
-        let control_points = &self.control_points[control_points_index as usize];
-        geometry::line_cubic_bezier_crossing_point(
+    fn line_quadratic_bezier_crossing_point(&self,
+                                            prev_line_endpoint_index: u32,
+                                            next_line_endpoint_index: u32,
+                                            prev_bezier_endpoint_index: u32,
+                                            next_bezier_endpoint_index: u32)
+                                            -> Option<Point2D<f32>> {
+        let control_point_index = self.control_point_index(next_bezier_endpoint_index)
+                                      .expect("Edge not a quadratic Bezier!");
+        let control_point = &self.control_points[control_point_index as usize];
+        geometry::line_quadratic_bezier_crossing_point(
             &self.endpoints[prev_line_endpoint_index as usize].position,
             &self.endpoints[next_line_endpoint_index as usize].position,
             &self.endpoints[prev_bezier_endpoint_index as usize].position,
-            &control_points.point1,
-            &control_points.point2,
+            control_point,
             &self.endpoints[next_bezier_endpoint_index as usize].position)
     }
 
-    fn cubic_bezier_cubic_bezier_crossing_point(&self,
-                                                prev_upper_endpoint_index: u32,
-                                                next_upper_endpoint_index: u32,
-                                                prev_lower_endpoint_index: u32,
-                                                next_lower_endpoint_index: u32)
-                                                -> Option<Point2D<f32>> {
-        let upper_control_points_index = self.control_points_index(next_upper_endpoint_index)
-                                             .expect("Upper edge not a cubic Bezier!");
-        let upper_control_points = &self.control_points[upper_control_points_index as usize];
-        let lower_control_points_index = self.control_points_index(next_lower_endpoint_index)
-                                             .expect("Lower edge not a cubic Bezier!");
-        let lower_control_points = &self.control_points[lower_control_points_index as usize];
-        geometry::cubic_bezier_cubic_bezier_crossing_point(
+    fn quadratic_bezier_quadratic_bezier_crossing_point(&self,
+                                                        prev_upper_endpoint_index: u32,
+                                                        next_upper_endpoint_index: u32,
+                                                        prev_lower_endpoint_index: u32,
+                                                        next_lower_endpoint_index: u32)
+                                                        -> Option<Point2D<f32>> {
+        let upper_control_point_index = self.control_point_index(next_upper_endpoint_index)
+                                            .expect("Upper edge not a quadratic Bezier!");
+        let upper_control_point = &self.control_points[upper_control_point_index as usize];
+        let lower_control_point_index = self.control_point_index(next_lower_endpoint_index)
+                                            .expect("Lower edge not a quadratic Bezier!");
+        let lower_control_point = &self.control_points[lower_control_point_index as usize];
+        geometry::quadratic_bezier_quadratic_bezier_crossing_point(
             &self.endpoints[prev_upper_endpoint_index as usize].position,
-            &upper_control_points.point1,
-            &upper_control_points.point2,
+            upper_control_point,
             &self.endpoints[next_upper_endpoint_index as usize].position,
             &self.endpoints[prev_lower_endpoint_index as usize].position,
-            &lower_control_points.point1,
-            &lower_control_points.point2,
+            lower_control_point,
             &self.endpoints[next_lower_endpoint_index as usize].position)
     }
 

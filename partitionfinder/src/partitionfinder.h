@@ -71,12 +71,6 @@ struct pf_endpoint {
 
 typedef struct pf_endpoint pf_endpoint_t;
 
-struct pf_control_points {
-    pf_point2d_f32_t point1, point2;
-};
-
-typedef struct pf_control_points pf_control_points_t;
-
 struct pf_subpath {
     uint32_t first_endpoint_index;
     uint32_t last_endpoint_index;
@@ -103,8 +97,8 @@ void pf_legalizer_destroy(pf_legalizer_t *legalizer);
 const pf_endpoint_t *pf_legalizer_endpoints(const pf_legalizer_t *legalizer,
                                             uint32_t *out_endpoint_count);
 
-const pf_control_points_t *pf_legalizer_control_points(const pf_legalizer_t *legalizer,
-                                                       uint32_t *out_control_points_count);
+const pf_point2d_f32_t *pf_legalizer_control_points(const pf_legalizer_t *legalizer,
+                                                    uint32_t *out_control_point_count);
 
 const pf_subpath_t *pf_legalizer_subpaths(const pf_legalizer_t *legalizer,
                                           uint32_t *out_subpaths_count);
@@ -131,8 +125,8 @@ void pf_partitioner_destroy(pf_partitioner_t *partitioner);
 void pf_partitioner_init(pf_partitioner_t *partitioner,
                          const pf_endpoint_t *endpoints,
                          uint32_t endpoint_count,
-                         const pf_control_points_t *control_points,
-                         uint32_t control_points_count,
+                         const pf_point2d_f32_t *control_points,
+                         uint32_t control_point_count,
                          const pf_subpath_t *subpaths,
                          uint32_t subpath_count);
 
@@ -145,8 +139,8 @@ const pf_b_quad_t *pf_partitioner_b_quads(pf_partitioner_t *partitioner,
 
 pf_tessellator_t *pf_tessellator_new(const pf_endpoint_t *endpoints,
                                      uint32_t endpoint_count,
-                                     const pf_control_points_t *control_points,
-                                     uint32_t control_points_index,
+                                     const pf_point2d_f32_t *control_points,
+                                     uint32_t control_point_index,
                                      const pf_b_quad_t *b_quads,
                                      uint32_t b_quad_count,
                                      pf_antialiasing_mode_t antialiasing_mode);
