@@ -1,6 +1,7 @@
 // partitionfinder/legalizer.rs
 
 use euclid::Point2D;
+use geometry::{QuadraticBezierInflectionPoints, SubdividedQuadraticBezier};
 use std::u32;
 use {Endpoint, Subpath};
 
@@ -64,11 +65,12 @@ impl Legalizer {
         })
     }
 
-    #[inline]
-    pub fn quadratic_curve_to(&mut self, control_point: &Point2D<f32>, endpoint: &Point2D<f32>) {
+    fn monotone_quadratic_curve_to(&mut self,
+                                   control_point: &Point2D<f32>,
+                                   endpoint: &Point2D<f32>) {
         self.subpaths
             .last_mut()
-            .expect("`line_to()` called with no current subpath")
+            .expect("`quadratic_curve_to()` called with no current subpath")
             .last_endpoint_index += 1;
         self.endpoints.push(Endpoint {
             position: *endpoint,
@@ -77,6 +79,51 @@ impl Legalizer {
         });
         self.control_points.push(*control_point)
     }
+
+    pub fn quadratic_curve_to(&mut self, control_point: &Point2D<f32>, endpoint: &Point2D<f32>) {
+        let last_endpoint_index =
+            self.subpaths
+                .last()
+                .expect("`quadratic_curve_to()` called with no current subpath")
+                .last_endpoint_index;
+        let point0 = self.endpoints[last_endpoint_index as usize - 1].position;
+
+        match QuadraticBezierInflectionPoints::calculate(&point0, control_point, endpoint) {
+            QuadraticBezierInflectionPoints {
+                xt: Some(xt),
+                yt: Some(yt),
+            } => {
+                let subdivision = SubdividedQuadraticBezier::new(f32::min(xt, yt),
+                                                                 &point0,
+                                                                 control_point,
+                                                                 endpoint);
+                self.monotone_quadratic_curve_to(&subdivision.ap1, &subdivision.ap2bp0);
+                self.quadratic_curve_to(&subdivision.bp1, &subdivision.bp2)
+            }
+            QuadraticBezierInflectionPoints {
+                xt: Some(t),
+                yt: None,
+            } |
+            QuadraticBezierInflectionPoints {
+                xt: None,
+                yt: Some(t),
+            } => {
+                let subdivision = SubdividedQuadraticBezier::new(t,
+                                                                 &point0,
+                                                                 control_point,
+                                                                 endpoint);
+                self.monotone_quadratic_curve_to(&subdivision.ap1, &subdivision.ap2bp0);
+                self.quadratic_curve_to(&subdivision.bp1, &subdivision.bp2)
+            }
+            QuadraticBezierInflectionPoints {
+                xt: None,
+                yt: None,
+            } => {
+                self.monotone_quadratic_curve_to(control_point, endpoint)
+            }
+        }
+    }
+
 
     pub fn bezier_curve_to(&mut self,
                            point1: &Point2D<f32>,

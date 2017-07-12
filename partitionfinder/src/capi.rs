@@ -133,13 +133,13 @@ pub unsafe extern fn pf_partitioner_init<'a>(partitioner: *mut Partitioner<'a>,
                                              endpoints: *const Endpoint,
                                              endpoint_count: u32,
                                              control_points: *const Point2DF32,
-                                             control_points_count: u32,
+                                             control_point_count: u32,
                                              subpaths: *const Subpath,
                                              subpath_count: u32) {
     // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
     (*partitioner).init(slice::from_raw_parts(endpoints, endpoint_count as usize),
                         slice::from_raw_parts(control_points as *const Point2D<f32>,
-                                              control_points_count as usize),
+                                              control_point_count as usize),
                         slice::from_raw_parts(subpaths, subpath_count as usize))
 }
 
@@ -165,7 +165,7 @@ pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *mut Partitioner<'a
 pub unsafe extern fn pf_tessellator_new(endpoints: *const Endpoint,
                                         endpoint_count: u32,
                                         control_points: *const Point2D<f32>,
-                                        control_points_count: u32,
+                                        control_point_count: u32,
                                         b_quads: *const BQuad,
                                         b_quad_count: u32,
                                         antialiasing_mode: AntialiasingMode)
@@ -174,7 +174,7 @@ pub unsafe extern fn pf_tessellator_new(endpoints: *const Endpoint,
     let mut tessellator =
         Box::new(Tessellator::new(slice::from_raw_parts(endpoints, endpoint_count as usize),
                                   slice::from_raw_parts(control_points,
-                                                        control_points_count as usize),
+                                                        control_point_count as usize),
                                   slice::from_raw_parts(b_quads, b_quad_count as usize),
                                   antialiasing_mode));
     let tessellator_ptr: *mut Tessellator<'static> = &mut *tessellator;

@@ -65,7 +65,7 @@ typedef struct pf_b_quad pf_b_quad_t;
 
 struct pf_endpoint {
     pf_point2d_f32_t position;
-    uint32_t control_points_index;
+    uint32_t control_point_index;
     uint32_t subpath_index;
 };
 

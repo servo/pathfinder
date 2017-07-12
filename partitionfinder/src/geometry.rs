@@ -94,15 +94,6 @@ pub fn sample_quadratic_bezier_deriv(t: f32,
     return ((*p1 - *p0) * (1.0 - t) + (*p2 - *p1) * t) * 2.0
 }
 
-pub fn sample_quadratic_bezier_deriv_deriv(p0: &Point2D<f32>,
-                                           p1: &Point2D<f32>,
-                                           p2: &Point2D<f32>)
-                                           -> Vector2D<f32> {
-    // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B.C3.A9zier_curves
-    // FIXME(pcwalton): Can this be made faster?
-    (*p2 - *p1 * 2.0 + p0.to_vector()) * 2.0
-}
-
 pub fn solve_line_y_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
     a.lerp(*b, (x - a.x) / (b.x - a.x)).y
 }
@@ -137,6 +128,31 @@ pub fn solve_quadratic_bezier_y_for_x(x: f32,
                                       p2: &Point2D<f32>)
                                       -> f32 {
     sample_quadratic_bezier(solve_quadratic_bezier_t_for_x(x, p0, p1, p2), p0, p1, p2).y
+}
+
+fn quadratic_bezier_axis_inflection_point(p0: f32, p1: f32, p2: f32) -> Option<f32> {
+    let t = (p0 - p1) / (p0 - 2.0 * p1 + p2);
+    if t > f32::approx_epsilon() && t < 1.0 - f32::approx_epsilon() {
+        Some(t)
+    } else {
+        None
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct QuadraticBezierInflectionPoints {
+    pub xt: Option<f32>,
+    pub yt: Option<f32>,
+}
+
+impl QuadraticBezierInflectionPoints {
+    pub fn calculate(p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
+                     -> QuadraticBezierInflectionPoints {
+        QuadraticBezierInflectionPoints {
+            xt: quadratic_bezier_axis_inflection_point(p0.x, p1.x, p2.x),
+            yt: quadratic_bezier_axis_inflection_point(p0.y, p1.y, p2.y),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
