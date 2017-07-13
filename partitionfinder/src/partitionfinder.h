@@ -39,10 +39,12 @@ struct pf_vertex {
 typedef struct pf_vertex pf_vertex_t;
 
 struct pf_edge_instance {
-    uint32_t prev_endpoint_index;
-    uint32_t next_endpoint_index;
-    float prev_time;
-    float next_time;
+    uint32_t left_b_vertex_index;
+    uint32_t control_point_b_vertex_index;
+    uint32_t right_b_vertex_index;
+    float left_time;
+    float right_time;
+    uint32_t padding;
 };
 
 typedef struct pf_edge_instance pf_edge_instance_t;
@@ -55,10 +57,8 @@ struct pf_quad_tess_levels {
 typedef struct pf_quad_tess_levels pf_quad_tess_levels_t;
 
 struct pf_b_quad {
-    uint32_t upper_prev_endpoint, upper_next_endpoint;
-    uint32_t lower_prev_endpoint, lower_next_endpoint;
-    float upper_left_time, upper_right_time;
-    float lower_left_time, lower_right_time;
+    uint32_t upper_left_vertex, upper_control_point, upper_right_vertex;
+    uint32_t lower_left_vertex, lower_control_point, lower_right_vertex;
 };
 
 typedef struct pf_b_quad pf_b_quad_t;
@@ -135,14 +135,15 @@ void pf_partitioner_partition(pf_partitioner_t *partitioner,
                               uint32_t last_subpath_index);
 
 const pf_b_quad_t *pf_partitioner_b_quads(pf_partitioner_t *partitioner,
-                                                uint32_t *out_b_quad_count);
+                                          uint32_t *out_b_quad_count);
 
-pf_tessellator_t *pf_tessellator_new(const pf_endpoint_t *endpoints,
-                                     uint32_t endpoint_count,
-                                     const pf_point2d_f32_t *control_points,
-                                     uint32_t control_point_index,
-                                     const pf_b_quad_t *b_quads,
+const pf_point2d_f32_t *pf_partitioner_b_vertices(pf_partitioner_t *partitioner,
+                                                  uint32_t *out_b_vertex_count);
+
+pf_tessellator_t *pf_tessellator_new(const pf_b_quad_t *b_quads,
                                      uint32_t b_quad_count,
+                                     const pf_point2d_f32_t *b_vertices,
+                                     uint32_t b_vertex_count,
                                      pf_antialiasing_mode_t antialiasing_mode);
 
 void pf_tessellator_destroy(pf_tessellator_t *tessellator);

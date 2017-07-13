@@ -2,18 +2,17 @@
 
 #![allow(dead_code)]
 
-use euclid::{Length, Point2D, Transform2D};
+use euclid::{Point2D, Transform2D};
 use half::{f16, self};
 use std::cmp;
 use std::u32;
-use {AntialiasingMode, BQuad, EdgeInstance, Endpoint, Vertex};
+use {AntialiasingMode, BQuad, EdgeInstance, Vertex};
 
 const TOLERANCE: f32 = 0.25;
 
 pub struct Tessellator<'a> {
-    endpoints: &'a [Endpoint],
-    control_points: &'a [Point2D<f32>],
     b_quads: &'a [BQuad],
+    b_vertices: &'a [Point2D<f32>],
     antialiasing_mode: AntialiasingMode,
 
     tess_levels: Vec<QuadTessLevels>,
@@ -41,15 +40,13 @@ impl QuadTessLevels {
 }
 
 impl<'a> Tessellator<'a> {
-    pub fn new<'b>(endpoints: &'b [Endpoint],
-                   control_points: &'b [Point2D<f32>],
-                   b_quads: &'b [BQuad],
+    pub fn new<'b>(b_quads: &'b [BQuad],
+                   b_vertices: &'b [Point2D<f32>],
                    antialiasing_mode: AntialiasingMode)
                    -> Tessellator<'b> {
         Tessellator {
-            endpoints: endpoints,
-            control_points: control_points,
             b_quads: b_quads,
+            b_vertices: b_vertices,
             antialiasing_mode: antialiasing_mode,
 
             tess_levels: vec![QuadTessLevels::new(); b_quads.len()],
@@ -61,20 +58,16 @@ impl<'a> Tessellator<'a> {
 
     pub fn compute_hull(&mut self, transform: &Transform2D<f32>) {
         for (tess_levels, bquad) in (self.tess_levels.iter_mut()).zip(self.b_quads.iter()) {
-            let upper_tess_level = tess_level_for_edge(bquad.upper_prev_endpoint,
-                                                       bquad.upper_next_endpoint,
-                                                       bquad.upper_left_time,
-                                                       bquad.upper_right_time,
+            let upper_tess_level = tess_level_for_edge(bquad.upper_left_vertex,
+                                                       bquad.upper_control_point,
+                                                       bquad.upper_right_vertex,
                                                        transform,
-                                                       self.endpoints,
-                                                       self.control_points);
-            let lower_tess_level = tess_level_for_edge(bquad.lower_prev_endpoint,
-                                                       bquad.lower_prev_endpoint,
-                                                       bquad.lower_left_time,
-                                                       bquad.lower_right_time,
+                                                       self.b_vertices);
+            let lower_tess_level = tess_level_for_edge(bquad.lower_left_vertex,
+                                                       bquad.lower_control_point,
+                                                       bquad.lower_right_vertex,
                                                        transform,
-                                                       self.endpoints,
-                                                       self.control_points);
+                                                       self.b_vertices);
 
             // TODO(pcwalton): Use fewer thin triangles.
             tess_levels.outer[0] = half::consts::ONE;
@@ -96,20 +89,18 @@ impl<'a> Tessellator<'a> {
 
             let first_upper_vertex_index = self.vertices.len() as u32;
             self.vertices.extend((0..(tess_level + 1)).map(|index| {
-                let left_time: Length<f32, ()> = Length::new(b_quad.upper_left_time);
-                let right_time: Length<f32, ()> = Length::new(b_quad.upper_right_time);
-                Vertex::new(b_quad.upper_prev_endpoint,
-                            b_quad.upper_next_endpoint,
-                            left_time.lerp(right_time, index as f32 / tess_level as f32).get())
+                Vertex::new(b_quad.upper_left_vertex,
+                            b_quad.upper_control_point,
+                            b_quad.upper_right_vertex,
+                            index as f32 / tess_level as f32)
             }));
 
             let first_lower_vertex_index = self.vertices.len() as u32;
             self.vertices.extend((0..(tess_level + 1)).map(|index| {
-                let left_time: Length<f32, ()> = Length::new(b_quad.lower_left_time);
-                let right_time: Length<f32, ()> = Length::new(b_quad.lower_right_time);
-                Vertex::new(b_quad.lower_prev_endpoint,
-                            b_quad.lower_next_endpoint,
-                            left_time.lerp(right_time, index as f32 / tess_level as f32).get())
+                Vertex::new(b_quad.lower_left_vertex,
+                            b_quad.lower_control_point,
+                            b_quad.lower_right_vertex,
+                            index as f32 / tess_level as f32)
             }));
 
             // Emit a triangle strip.
@@ -127,35 +118,21 @@ impl<'a> Tessellator<'a> {
 
             // If Levien-style antialiasing is in use, then emit edge instances.
             if self.antialiasing_mode == AntialiasingMode::Levien {
-                let upper_left_endpoint_time: Length<f32, ()> = Length::new(b_quad.upper_left_time);
-                let upper_right_endpoint_time: Length<f32, ()> =
-                    Length::new(b_quad.upper_right_time);
-                let lower_left_endpoint_time: Length<f32, ()> = Length::new(b_quad.lower_left_time);
-                let lower_right_endpoint_time: Length<f32, ()> =
-                    Length::new(b_quad.lower_right_time);
-
                 for index in 0..tess_level {
                     let left_tess_coord = index as f32 / tess_level as f32;
                     let right_tess_coord = (index + 1) as f32 / tess_level as f32;
 
-                    let upper_left_time = upper_left_endpoint_time.lerp(upper_right_endpoint_time,
-                                                                        left_tess_coord).get();
-                    let upper_right_time = upper_left_endpoint_time.lerp(upper_right_endpoint_time,
-                                                                         right_tess_coord).get();
-                    let lower_left_time = lower_left_endpoint_time.lerp(lower_right_endpoint_time,
-                                                                        left_tess_coord).get();
-                    let lower_right_time = lower_left_endpoint_time.lerp(lower_right_endpoint_time,
-                                                                         right_tess_coord).get();
-
                     self.edge_instances.extend([
-                        EdgeInstance::new(b_quad.upper_prev_endpoint,
-                                          b_quad.upper_next_endpoint,
-                                          upper_left_time,
-                                          upper_right_time),
-                        EdgeInstance::new(b_quad.lower_prev_endpoint,
-                                          b_quad.lower_next_endpoint,
-                                          lower_left_time,
-                                          lower_right_time),
+                        EdgeInstance::new(b_quad.upper_left_vertex,
+                                          b_quad.upper_control_point,
+                                          b_quad.upper_right_vertex,
+                                          left_tess_coord,
+                                          right_tess_coord),
+                        EdgeInstance::new(b_quad.lower_left_vertex,
+                                          b_quad.lower_control_point,
+                                          b_quad.lower_right_vertex,
+                                          left_tess_coord,
+                                          right_tess_coord),
                     ].into_iter())
                 }
             }
@@ -184,30 +161,25 @@ impl<'a> Tessellator<'a> {
 }
 
 // http://antigrain.com/research/adaptive_bezier/
-fn tess_level_for_edge(prev_endpoint_index: u32,
-                       next_endpoint_index: u32,
-                       left_time: f32,
-                       right_time: f32,
+fn tess_level_for_edge(left_endpoint_index: u32,
+                       control_point_index: u32,
+                       right_endpoint_index: u32,
                        transform: &Transform2D<f32>,
-                       endpoints: &[Endpoint],
-                       control_points: &[Point2D<f32>])
+                       b_vertices: &[Point2D<f32>])
                        -> u32 {
-    let control_point_index = endpoints[next_endpoint_index as usize].control_point_index;
     if control_point_index == u32::MAX {
         return 1
     }
 
-    let (prev_time, next_time) = (left_time.min(right_time), left_time.max(right_time));
+    let left_endpoint = &b_vertices[left_endpoint_index as usize];
+    let right_endpoint = &b_vertices[right_endpoint_index as usize];
+    let control_point = &b_vertices[control_point_index as usize];
 
-    let prev_endpoint = &endpoints[prev_endpoint_index as usize];
-    let next_endpoint = &endpoints[next_endpoint_index as usize];
-    let control_point = &control_points[control_point_index as usize];
-
-    let p0 = transform.transform_point(&prev_endpoint.position);
+    let p0 = transform.transform_point(left_endpoint);
     let p1 = transform.transform_point(control_point);
-    let p2 = transform.transform_point(&next_endpoint.position);
+    let p2 = transform.transform_point(right_endpoint);
 
     // FIXME(pcwalton): Is this good for quadratics?
     let length = (p1 - p0).length() + (p2 - p1).length();
-    1 + (length * TOLERANCE * (next_time - prev_time)) as u32
+    1 + (length * TOLERANCE) as u32
 }

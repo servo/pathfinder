@@ -23,14 +23,12 @@ pub mod tessellator;
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct BQuad {
-    pub upper_prev_endpoint: u32,
-    pub upper_next_endpoint: u32,
-    pub lower_prev_endpoint: u32,
-    pub lower_next_endpoint: u32,
-    pub upper_left_time: f32,
-    pub upper_right_time: f32,
-    pub lower_left_time: f32,
-    pub lower_right_time: f32,
+    pub upper_left_vertex: u32,
+    pub upper_control_point: u32,
+    pub upper_right_vertex: u32,
+    pub lower_left_vertex: u32,
+    pub lower_control_point: u32,
+    pub lower_right_vertex: u32,
 }
 
 #[repr(C)]
@@ -59,20 +57,23 @@ pub enum AntialiasingMode {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct Vertex {
-    pub prev_endpoint_index: u32,
-    pub next_endpoint_index: u32,
+    pub left_b_vertex_index: u32,
+    pub right_b_vertex_index: u32,
+    pub control_point_b_vertex_index: u32,
     pub time: f32,
-    padding: u32,
 }
 
 impl Vertex {
     #[inline]
-    pub fn new(prev_endpoint_index: u32, next_endpoint_index: u32, time: f32) -> Vertex {
+    pub fn new(left_b_vertex_index: u32,
+               control_point_b_vertex_index: u32,
+               right_b_vertex_index: u32,
+               time: f32) -> Vertex {
         Vertex {
-            prev_endpoint_index: prev_endpoint_index,
-            next_endpoint_index: next_endpoint_index,
+            left_b_vertex_index: left_b_vertex_index,
+            control_point_b_vertex_index: control_point_b_vertex_index,
+            right_b_vertex_index: right_b_vertex_index,
             time: time,
-            padding: 0,
         }
     }
 }
@@ -80,21 +81,29 @@ impl Vertex {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct EdgeInstance {
-    pub prev_endpoint_index: u32,
-    pub next_endpoint_index: u32,
-    pub prev_time: f32,
-    pub next_time: f32,
+    pub left_b_vertex_index: u32,
+    pub control_point_b_vertex_index: u32,
+    pub right_b_vertex_index: u32,
+    pub left_time: f32,
+    pub right_time: f32,
+    padding: u32,
 }
 
 impl EdgeInstance {
     #[inline]
-    pub fn new(prev_endpoint_index: u32, next_endpoint_index: u32, prev_time: f32, next_time: f32)
+    pub fn new(left_b_vertex_index: u32,
+               control_point_b_vertex_index: u32,
+               right_b_vertex_index: u32,
+               left_time: f32,
+               right_time: f32)
                -> EdgeInstance {
         EdgeInstance {
-            prev_endpoint_index: prev_endpoint_index,
-            next_endpoint_index: next_endpoint_index,
-            prev_time: prev_time,
-            next_time: next_time,
+            left_b_vertex_index: left_b_vertex_index,
+            control_point_b_vertex_index: control_point_b_vertex_index,
+            right_b_vertex_index: right_b_vertex_index,
+            left_time: left_time,
+            right_time: right_time,
+            padding: 0,
         }
     }
 }
