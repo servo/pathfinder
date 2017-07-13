@@ -7,7 +7,8 @@ use partitioner::Partitioner;
 use tessellator::{QuadTessLevels, Tessellator};
 use std::mem;
 use std::slice;
-use {AntialiasingMode, BQuad, EdgeInstance, Endpoint, Subpath, Vertex};
+use {AntialiasingMode, BQuad, BVertex, CurveIndices, EdgeInstance, Endpoint, LineIndices};
+use {Subpath, Vertex};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -32,6 +33,28 @@ pub struct Matrix2DF32 {
     pub m10: f32,
     pub m11: f32,
     pub m12: f32,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct CoverIndices {
+    pub interior_indices: *const u32,
+    pub interior_indices_len: u32,
+    pub curve_indices: *const u32,
+    pub curve_indices_len: u32,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct EdgeIndices {
+    pub upper_line_indices: *const LineIndices,
+    pub upper_line_indices_len: u32,
+    pub upper_curve_indices: *const CurveIndices,
+    pub upper_curve_indices_len: u32,
+    pub lower_line_indices: *const LineIndices,
+    pub lower_line_indices_len: u32,
+    pub lower_curve_indices: *const CurveIndices,
+    pub lower_curve_indices_len: u32,
 }
 
 #[no_mangle]
@@ -145,15 +168,16 @@ pub unsafe extern fn pf_partitioner_init<'a>(partitioner: *mut Partitioner<'a>,
 
 #[no_mangle]
 pub unsafe extern fn pf_partitioner_partition<'a>(partitioner: *mut Partitioner<'a>,
+                                                  path_id: u32,
                                                   first_subpath_index: u32,
                                                   last_subpath_index: u32) {
-    (*partitioner).partition(first_subpath_index, last_subpath_index)
+    (*partitioner).partition(path_id, first_subpath_index, last_subpath_index)
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *mut Partitioner<'a>,
-                                                   out_b_quad_count: *mut u32)
-                                                   -> *const BQuad {
+pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *const Partitioner<'a>,
+                                                out_b_quad_count: *mut u32)
+                                                -> *const BQuad {
     let b_quads = (*partitioner).b_quads();
     if !out_b_quad_count.is_null() {
         *out_b_quad_count = b_quads.len() as u32
@@ -162,21 +186,45 @@ pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *mut Partitioner<'a
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_tessellator_new(endpoints: *const Endpoint,
-                                        endpoint_count: u32,
-                                        control_points: *const Point2D<f32>,
-                                        control_point_count: u32,
-                                        b_quads: *const BQuad,
-                                        b_quad_count: u32,
-                                        antialiasing_mode: AntialiasingMode)
-                                        -> *mut Tessellator<'static> {
+pub unsafe extern fn pf_partitioner_b_vertices<'a>(partitioner: *const Partitioner<'a>,
+                                                   out_b_vertex_count: *mut u32)
+                                                   -> *const BVertex {
     // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
-    let mut tessellator =
-        Box::new(Tessellator::new(slice::from_raw_parts(endpoints, endpoint_count as usize),
-                                  slice::from_raw_parts(control_points,
-                                                        control_point_count as usize),
-                                  slice::from_raw_parts(b_quads, b_quad_count as usize),
-                                  antialiasing_mode));
+    let b_vertices = (*partitioner).b_vertices();
+    if !out_b_vertex_count.is_null() {
+        *out_b_vertex_count = b_vertices.len() as u32
+    }
+    b_vertices.as_ptr() as *const BVertex
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_partitioner_cover_indices<'a>(partitioner: *const Partitioner<'a>,
+                                                      out_cover_indices: *mut CoverIndices) {
+    let cover_indices = (*partitioner).cover_indices();
+    (*out_cover_indices).interior_indices = cover_indices.interior_indices.as_ptr();
+    (*out_cover_indices).interior_indices_len = cover_indices.interior_indices.len() as u32;
+    (*out_cover_indices).curve_indices = cover_indices.curve_indices.as_ptr();
+    (*out_cover_indices).curve_indices_len = cover_indices.curve_indices.len() as u32;
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_partitioner_edge_indices<'a>(partitioner: *const Partitioner<'a>,
+                                                     out_edge_indices: *mut EdgeIndices) {
+    let edge_indices = (*partitioner).edge_indices();
+    (*out_edge_indices).upper_line_indices = edge_indices.upper_line_indices.as_ptr();
+    (*out_edge_indices).upper_line_indices_len = edge_indices.upper_line_indices.len() as u32;
+    (*out_edge_indices).upper_curve_indices = edge_indices.upper_curve_indices.as_ptr();
+    (*out_edge_indices).upper_curve_indices_len = edge_indices.upper_curve_indices.len() as u32;
+    (*out_edge_indices).lower_line_indices = edge_indices.lower_line_indices.as_ptr();
+    (*out_edge_indices).lower_line_indices_len = edge_indices.lower_line_indices.len() as u32;
+    (*out_edge_indices).lower_curve_indices = edge_indices.lower_curve_indices.as_ptr();
+    (*out_edge_indices).lower_curve_indices_len = edge_indices.lower_curve_indices.len() as u32;
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_tessellator_new(antialiasing_mode: AntialiasingMode)
+                                        -> *mut Tessellator<'static> {
+    let mut tessellator = Box::new(Tessellator::new(antialiasing_mode));
     let tessellator_ptr: *mut Tessellator<'static> = &mut *tessellator;
     mem::forget(tessellator);
     tessellator_ptr
@@ -185,6 +233,21 @@ pub unsafe extern fn pf_tessellator_new(endpoints: *const Endpoint,
 #[no_mangle]
 pub unsafe extern fn pf_tessellator_destroy<'a>(tessellator: *mut Tessellator<'a>) {
     drop(mem::transmute::<*mut Tessellator<'a>, Box<Tessellator>>(tessellator))
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_tessellator_init<'a>(tessellator: *mut Tessellator<'a>,
+                                             b_quads: *const BQuad,
+                                             b_quad_count: u32,
+                                             b_vertices: *const BVertex,
+                                             b_vertex_count: u32,
+                                             b_indices: *const u32,
+                                             b_index_count: u32) {
+    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
+    (*tessellator).init(slice::from_raw_parts(b_quads, b_quad_count as usize),
+                        slice::from_raw_parts(b_vertices as *const BVertex,
+                                              b_vertex_count as usize),
+                        slice::from_raw_parts(b_indices as *const u32, b_index_count as usize))
 }
 
 #[no_mangle]
