@@ -29,6 +29,31 @@ pub struct BQuad {
     pub lower_left_vertex: u32,
     pub lower_control_point: u32,
     pub lower_right_vertex: u32,
+    path_id: u32,
+    pad: u32,
+}
+
+impl BQuad {
+    #[inline]
+    pub fn new(path_id: u32,
+               upper_left_vertex: u32,
+               upper_control_point: u32,
+               upper_right_vertex: u32,
+               lower_left_vertex: u32,
+               lower_control_point: u32,
+               lower_right_vertex: u32)
+               -> BQuad {
+        BQuad {
+            upper_left_vertex: upper_left_vertex,
+            upper_control_point: upper_control_point,
+            upper_right_vertex: upper_right_vertex,
+            lower_left_vertex: lower_left_vertex,
+            lower_control_point: lower_control_point,
+            lower_right_vertex: lower_right_vertex,
+            path_id: path_id,
+            pad: 0,
+        }
+    }
 }
 
 #[repr(C)]
@@ -58,22 +83,28 @@ pub enum AntialiasingMode {
 #[repr(C)]
 pub struct Vertex {
     pub left_b_vertex_index: u32,
-    pub right_b_vertex_index: u32,
     pub control_point_b_vertex_index: u32,
+    pub right_b_vertex_index: u32,
     pub time: f32,
+    pub path_id: u32,
+    pad: u32,
 }
 
 impl Vertex {
     #[inline]
-    pub fn new(left_b_vertex_index: u32,
+    pub fn new(path_id: u32,
+               left_b_vertex_index: u32,
                control_point_b_vertex_index: u32,
                right_b_vertex_index: u32,
-               time: f32) -> Vertex {
+               time: f32)
+               -> Vertex {
         Vertex {
+            path_id: path_id,
             left_b_vertex_index: left_b_vertex_index,
             control_point_b_vertex_index: control_point_b_vertex_index,
             right_b_vertex_index: right_b_vertex_index,
             time: time,
+            pad: 0,
         }
     }
 }

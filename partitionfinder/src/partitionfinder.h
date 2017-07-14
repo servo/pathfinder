@@ -30,10 +30,12 @@ struct pf_matrix2d_f32 {
 typedef struct pf_matrix2d_f32 pf_matrix2d_f32_t;
 
 struct pf_vertex {
-    uint32_t prev_endpoint_index;
-    uint32_t next_endpoint_index;
+    uint32_t left_b_vertex_index;
+    uint32_t control_point_b_vertex_index;
+    uint32_t right_b_vertex_index;
     float time;
-    uint32_t padding;
+    uint32_t path_id;
+    uint32_t pad;
 };
 
 typedef struct pf_vertex pf_vertex_t;
@@ -59,6 +61,8 @@ typedef struct pf_quad_tess_levels pf_quad_tess_levels_t;
 struct pf_b_quad {
     uint32_t upper_left_vertex, upper_control_point, upper_right_vertex;
     uint32_t lower_left_vertex, lower_control_point, lower_right_vertex;
+    uint32_t path_id;
+    uint32_t pad;
 };
 
 typedef struct pf_b_quad pf_b_quad_t;
@@ -131,6 +135,7 @@ void pf_partitioner_init(pf_partitioner_t *partitioner,
                          uint32_t subpath_count);
 
 void pf_partitioner_partition(pf_partitioner_t *partitioner,
+                              uint32_t path_id,
                               uint32_t first_subpath_index,
                               uint32_t last_subpath_index);
 
@@ -140,13 +145,15 @@ const pf_b_quad_t *pf_partitioner_b_quads(pf_partitioner_t *partitioner,
 const pf_point2d_f32_t *pf_partitioner_b_vertices(pf_partitioner_t *partitioner,
                                                   uint32_t *out_b_vertex_count);
 
-pf_tessellator_t *pf_tessellator_new(const pf_b_quad_t *b_quads,
-                                     uint32_t b_quad_count,
-                                     const pf_point2d_f32_t *b_vertices,
-                                     uint32_t b_vertex_count,
-                                     pf_antialiasing_mode_t antialiasing_mode);
+pf_tessellator_t *pf_tessellator_new(pf_antialiasing_mode_t antialiasing_mode);
 
 void pf_tessellator_destroy(pf_tessellator_t *tessellator);
+
+void pf_tessellator_init(pf_tessellator_t *tessellator,
+                         const pf_b_quad_t *b_quads,
+                         uint32_t b_quad_count,
+                         const pf_point2d_f32_t *b_vertices,
+                         uint32_t b_vertex_count);
 
 void pf_tessellator_compute_hull(pf_tessellator_t *tessellator, const pf_matrix2d_f32_t *transform);
 

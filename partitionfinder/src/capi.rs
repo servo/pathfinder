@@ -145,9 +145,10 @@ pub unsafe extern fn pf_partitioner_init<'a>(partitioner: *mut Partitioner<'a>,
 
 #[no_mangle]
 pub unsafe extern fn pf_partitioner_partition<'a>(partitioner: *mut Partitioner<'a>,
+                                                  path_id: u32,
                                                   first_subpath_index: u32,
                                                   last_subpath_index: u32) {
-    (*partitioner).partition(first_subpath_index, last_subpath_index)
+    (*partitioner).partition(path_id, first_subpath_index, last_subpath_index)
 }
 
 #[no_mangle]
@@ -174,18 +175,9 @@ pub unsafe extern fn pf_partitioner_b_vertices<'a>(partitioner: *mut Partitioner
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_tessellator_new(b_quads: *const BQuad,
-                                        b_quad_count: u32,
-                                        b_vertices: *const Point2DF32,
-                                        b_vertex_count: u32,
-                                        antialiasing_mode: AntialiasingMode)
+pub unsafe extern fn pf_tessellator_new(antialiasing_mode: AntialiasingMode)
                                         -> *mut Tessellator<'static> {
-    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
-    let mut tessellator =
-        Box::new(Tessellator::new(slice::from_raw_parts(b_quads, b_quad_count as usize),
-                                  slice::from_raw_parts(b_vertices as *const Point2D<f32>,
-                                                        b_vertex_count as usize),
-                                  antialiasing_mode));
+    let mut tessellator = Box::new(Tessellator::new(antialiasing_mode));
     let tessellator_ptr: *mut Tessellator<'static> = &mut *tessellator;
     mem::forget(tessellator);
     tessellator_ptr
@@ -194,6 +186,18 @@ pub unsafe extern fn pf_tessellator_new(b_quads: *const BQuad,
 #[no_mangle]
 pub unsafe extern fn pf_tessellator_destroy<'a>(tessellator: *mut Tessellator<'a>) {
     drop(mem::transmute::<*mut Tessellator<'a>, Box<Tessellator>>(tessellator))
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_tessellator_init<'a>(tessellator: *mut Tessellator<'a>,
+                                             b_quads: *const BQuad,
+                                             b_quad_count: u32,
+                                             b_vertices: *const Point2DF32,
+                                             b_vertex_count: u32) {
+    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
+    (*tessellator).init(slice::from_raw_parts(b_quads, b_quad_count as usize),
+                        slice::from_raw_parts(b_vertices as *const Point2D<f32>,
+                                              b_vertex_count as usize))
 }
 
 #[no_mangle]

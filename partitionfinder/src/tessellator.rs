@@ -40,32 +40,35 @@ impl QuadTessLevels {
 }
 
 impl<'a> Tessellator<'a> {
-    pub fn new<'b>(b_quads: &'b [BQuad],
-                   b_vertices: &'b [Point2D<f32>],
-                   antialiasing_mode: AntialiasingMode)
-                   -> Tessellator<'b> {
+    pub fn new<'b>(antialiasing_mode: AntialiasingMode) -> Tessellator<'b> {
         Tessellator {
-            b_quads: b_quads,
-            b_vertices: b_vertices,
+            b_quads: &[],
+            b_vertices: &[],
             antialiasing_mode: antialiasing_mode,
 
-            tess_levels: vec![QuadTessLevels::new(); b_quads.len()],
+            tess_levels: vec![],
             vertices: vec![],
             msaa_indices: vec![],
             edge_instances: vec![],
         }
     }
 
+    pub fn init(&mut self, b_quads: &'a [BQuad], b_vertices: &'a [Point2D<f32>]) {
+        self.b_quads = b_quads;
+        self.b_vertices = b_vertices;
+        self.tess_levels = vec![QuadTessLevels::new(); b_quads.len()];
+    }
+
     pub fn compute_hull(&mut self, transform: &Transform2D<f32>) {
-        for (tess_levels, bquad) in (self.tess_levels.iter_mut()).zip(self.b_quads.iter()) {
-            let upper_tess_level = tess_level_for_edge(bquad.upper_left_vertex,
-                                                       bquad.upper_control_point,
-                                                       bquad.upper_right_vertex,
+        for (tess_levels, b_quad) in (self.tess_levels.iter_mut()).zip(self.b_quads.iter()) {
+            let upper_tess_level = tess_level_for_edge(b_quad.upper_left_vertex,
+                                                       b_quad.upper_control_point,
+                                                       b_quad.upper_right_vertex,
                                                        transform,
                                                        self.b_vertices);
-            let lower_tess_level = tess_level_for_edge(bquad.lower_left_vertex,
-                                                       bquad.lower_control_point,
-                                                       bquad.lower_right_vertex,
+            let lower_tess_level = tess_level_for_edge(b_quad.lower_left_vertex,
+                                                       b_quad.lower_control_point,
+                                                       b_quad.lower_right_vertex,
                                                        transform,
                                                        self.b_vertices);
 
@@ -89,7 +92,8 @@ impl<'a> Tessellator<'a> {
 
             let first_upper_vertex_index = self.vertices.len() as u32;
             self.vertices.extend((0..(tess_level + 1)).map(|index| {
-                Vertex::new(b_quad.upper_left_vertex,
+                Vertex::new(b_quad.path_id,
+                            b_quad.upper_left_vertex,
                             b_quad.upper_control_point,
                             b_quad.upper_right_vertex,
                             index as f32 / tess_level as f32)
@@ -97,7 +101,8 @@ impl<'a> Tessellator<'a> {
 
             let first_lower_vertex_index = self.vertices.len() as u32;
             self.vertices.extend((0..(tess_level + 1)).map(|index| {
-                Vertex::new(b_quad.lower_left_vertex,
+                Vertex::new(b_quad.path_id,
+                            b_quad.lower_left_vertex,
                             b_quad.lower_control_point,
                             b_quad.lower_right_vertex,
                             index as f32 / tess_level as f32)

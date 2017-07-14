@@ -79,8 +79,8 @@ pub fn quadratic_bezier_quadratic_bezier_crossing_point(_a_p0: &Point2D<f32>,
     None
 }
 
-fn sample_quadratic_bezier(t: f32, p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
-                           -> Point2D<f32> {
+pub fn sample_quadratic_bezier(t: f32, p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
+                               -> Point2D<f32> {
     p0.lerp(*p1, t).lerp(p1.lerp(*p2, t), t)
 }
 
@@ -94,8 +94,12 @@ pub fn sample_quadratic_bezier_deriv(t: f32,
     return ((*p1 - *p0) * (1.0 - t) + (*p2 - *p1) * t) * 2.0
 }
 
-pub fn solve_line_y_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
-    a.lerp(*b, (x - a.x) / (b.x - a.x)).y
+pub fn solve_line_t_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
+    if b.x == a.x {
+        0.0
+    } else {
+        (x - a.x) / (b.x - a.x)
+    }
 }
 
 pub(crate) fn newton_raphson<F, DFDX>(f: F, dfdx: DFDX, mut x_guess: f32) -> f32
@@ -148,9 +152,16 @@ pub struct QuadraticBezierInflectionPoints {
 impl QuadraticBezierInflectionPoints {
     pub fn calculate(p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
                      -> QuadraticBezierInflectionPoints {
-        QuadraticBezierInflectionPoints {
-            xt: quadratic_bezier_axis_inflection_point(p0.x, p1.x, p2.x),
-            yt: quadratic_bezier_axis_inflection_point(p0.y, p1.y, p2.y),
+        if ((*p1 - *p0).length() + (*p2 - *p1).length()).abs() < f32::approx_epsilon() {
+            QuadraticBezierInflectionPoints {
+                xt: None,
+                yt: None,
+            }
+        } else {
+            QuadraticBezierInflectionPoints {
+                xt: quadratic_bezier_axis_inflection_point(p0.x, p1.x, p2.x),
+                yt: quadratic_bezier_axis_inflection_point(p0.y, p1.y, p2.y),
+            }
         }
     }
 }
