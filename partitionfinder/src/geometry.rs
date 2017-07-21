@@ -91,7 +91,14 @@ pub fn sample_quadratic_bezier_deriv(t: f32,
                                      -> Vector2D<f32> {
     // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B.C3.A9zier_curves
     // FIXME(pcwalton): Can this be made faster?
-    return ((*p1 - *p0) * (1.0 - t) + (*p2 - *p1) * t) * 2.0
+    ((*p1 - *p0) * (1.0 - t) + (*p2 - *p1) * t) * 2.0
+}
+
+pub fn sample_quadratic_bezier_deriv_deriv(p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
+                                           -> Vector2D<f32> {
+    // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B.C3.A9zier_curves
+    // FIXME(pcwalton): Can this be made faster?
+    (*p2 - *p1 * 2.0 + p0.to_vector()) * 2.0
 }
 
 pub fn solve_line_t_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {

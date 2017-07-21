@@ -7,7 +7,7 @@ use partitioner::Partitioner;
 use tessellator::{QuadTessLevels, Tessellator};
 use std::mem;
 use std::slice;
-use {AntialiasingMode, BQuad, EdgeInstance, Endpoint, Subpath, Vertex};
+use {AntialiasingMode, BQuad, BVertex, EdgeInstance, Endpoint, Subpath, Vertex};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -165,13 +165,24 @@ pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *mut Partitioner<'a
 #[no_mangle]
 pub unsafe extern fn pf_partitioner_b_vertices<'a>(partitioner: *mut Partitioner<'a>,
                                                    out_b_vertex_count: *mut u32)
-                                                   -> *const Point2DF32 {
+                                                   -> *const BVertex {
     // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
     let b_vertices = (*partitioner).b_vertices();
     if !out_b_vertex_count.is_null() {
         *out_b_vertex_count = b_vertices.len() as u32
     }
-    b_vertices.as_ptr() as *const Point2DF32
+    b_vertices.as_ptr() as *const BVertex
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_partitioner_b_indices<'a>(partitioner: *mut Partitioner<'a>,
+                                                  out_b_index_count: *mut u32)
+                                                  -> *const u32 {
+    let b_indices = (*partitioner).b_indices();
+    if !out_b_index_count.is_null() {
+        *out_b_index_count = b_indices.len() as u32
+    }
+    b_indices.as_ptr() as *const u32
 }
 
 #[no_mangle]
@@ -192,12 +203,15 @@ pub unsafe extern fn pf_tessellator_destroy<'a>(tessellator: *mut Tessellator<'a
 pub unsafe extern fn pf_tessellator_init<'a>(tessellator: *mut Tessellator<'a>,
                                              b_quads: *const BQuad,
                                              b_quad_count: u32,
-                                             b_vertices: *const Point2DF32,
-                                             b_vertex_count: u32) {
+                                             b_vertices: *const BVertex,
+                                             b_vertex_count: u32,
+                                             b_indices: *const u32,
+                                             b_index_count: u32) {
     // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
     (*tessellator).init(slice::from_raw_parts(b_quads, b_quad_count as usize),
-                        slice::from_raw_parts(b_vertices as *const Point2D<f32>,
-                                              b_vertex_count as usize))
+                        slice::from_raw_parts(b_vertices as *const BVertex,
+                                              b_vertex_count as usize),
+                        slice::from_raw_parts(b_indices as *const u32, b_index_count as usize))
 }
 
 #[no_mangle]

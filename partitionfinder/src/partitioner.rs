@@ -8,7 +8,7 @@ use std::collections::BinaryHeap;
 use std::cmp::{self, Ordering};
 use std::f32;
 use std::u32;
-use {BQuad, Endpoint, Subpath};
+use {BQuad, BVertex, Endpoint, Shape, Subpath};
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
@@ -16,7 +16,8 @@ pub struct Partitioner<'a> {
     subpaths: &'a [Subpath],
 
     b_quads: Vec<BQuad>,
-    b_vertices: Vec<Point2D<f32>>,
+    b_vertices: Vec<BVertex>,
+    b_indices: Vec<u32>,
 
     heap: BinaryHeap<Point>,
     visited_points: BitVec,
@@ -34,6 +35,7 @@ impl<'a> Partitioner<'a> {
 
             b_quads: vec![],
             b_vertices: vec![],
+            b_indices: vec![],
 
             heap: BinaryHeap::new(),
             visited_points: BitVec::new(),
@@ -74,8 +76,13 @@ impl<'a> Partitioner<'a> {
     }
 
     #[inline]
-    pub fn b_vertices(&self) -> &[Point2D<f32>] {
+    pub fn b_vertices(&self) -> &[BVertex] {
         &self.b_vertices
+    }
+
+    #[inline]
+    pub fn b_indices(&self) -> &[u32] {
+        &self.b_indices
     }
 
     fn process_next_point(&mut self) -> bool {
@@ -176,7 +183,7 @@ impl<'a> Partitioner<'a> {
 
             let endpoint_position = self.endpoints[active_edge.right_endpoint_index as usize]
                                         .position;
-            self.b_vertices.push(endpoint_position);
+            self.b_vertices.push(BVertex::new(&endpoint_position, self.path_id));
 
             if active_edge.left_to_right {
                 active_edge.right_endpoint_index = next_endpoint_index;
@@ -203,7 +210,9 @@ impl<'a> Partitioner<'a> {
             control_point_index => {
                 self.active_edges[active_edge_index as usize].control_point_vertex_index =
                     self.b_vertices.len() as u32;
-                self.b_vertices.push(self.control_points[control_point_index as usize])
+                let b_vertex = BVertex::new(&self.control_points[control_point_index as usize],
+                                            self.path_id);
+                self.b_vertices.push(b_vertex)
             }
         }
 
@@ -270,7 +279,7 @@ impl<'a> Partitioner<'a> {
         new_active_edges[1].left_vertex_index = new_active_edges[0].left_vertex_index;
 
         let position = self.endpoints[endpoint_index as usize].position;
-        self.b_vertices.push(position);
+        self.b_vertices.push(BVertex::new(&position, self.path_id));
 
         let endpoint = &self.endpoints[endpoint_index as usize];
         let prev_endpoint = &self.endpoints[prev_endpoint_index as usize];
@@ -305,7 +314,10 @@ impl<'a> Partitioner<'a> {
             u32::MAX => new_active_edges[0].control_point_vertex_index = u32::MAX,
             upper_control_point_index => {
                 new_active_edges[0].control_point_vertex_index = self.b_vertices.len() as u32;
-                self.b_vertices.push(self.control_points[upper_control_point_index as usize])
+                let b_vertex =
+                    BVertex::new(&self.control_points[upper_control_point_index as usize],
+                                 self.path_id);
+                self.b_vertices.push(b_vertex)
             }
         }
 
@@ -313,7 +325,10 @@ impl<'a> Partitioner<'a> {
             u32::MAX => new_active_edges[1].control_point_vertex_index = u32::MAX,
             lower_control_point_index => {
                 new_active_edges[1].control_point_vertex_index = self.b_vertices.len() as u32;
-                self.b_vertices.push(self.control_points[lower_control_point_index as usize])
+                let b_vertex =
+                    BVertex::new(&self.control_points[lower_control_point_index as usize],
+                                 self.path_id);
+                self.b_vertices.push(b_vertex)
             }
         }
     }
@@ -356,13 +371,44 @@ impl<'a> Partitioner<'a> {
         let upper_curve = self.subdivide_active_edge_at(upper_active_edge_index, right_x);
         let lower_curve = self.subdivide_active_edge_at(lower_active_edge_index, right_x);
 
-        self.b_quads.push(BQuad::new(self.path_id,
-                                     upper_curve.left_curve_left,
-                                     upper_curve.left_curve_control_point,
-                                     upper_curve.middle_point,
-                                     lower_curve.left_curve_left,
-                                     lower_curve.left_curve_control_point,
-                                     lower_curve.middle_point))
+        // TODO(pcwalton): Concave.
+        let upper_shape = if upper_curve.left_curve_control_point == u32::MAX {
+            Shape::Flat
+        } else {
+            Shape::Convex
+        };
+        let lower_shape = if lower_curve.left_curve_control_point == u32::MAX {
+            Shape::Flat
+        } else {
+            Shape::Convex
+        };
+
+        let start_index = self.b_indices.len() as u32;
+        self.b_indices.extend([
+            upper_curve.left_curve_left,
+            lower_curve.left_curve_left,
+            upper_curve.middle_point,
+            upper_curve.middle_point,
+            lower_curve.middle_point,
+            lower_curve.left_curve_left,
+        ].into_iter());
+
+        if upper_shape != Shape::Flat {
+            self.b_indices.extend([
+                upper_curve.left_curve_control_point,
+                upper_curve.middle_point,
+                upper_curve.left_curve_left,
+            ].into_iter())
+        }
+        if lower_shape != Shape::Flat {
+            self.b_indices.extend([
+                lower_curve.left_curve_control_point,
+                lower_curve.middle_point,
+                lower_curve.left_curve_left,
+            ].into_iter())
+        }
+
+        self.b_quads.push(BQuad::new(start_index, upper_shape, lower_shape))
     }
 
     fn already_visited_point(&self, point: &Point) -> bool {
@@ -425,7 +471,8 @@ impl<'a> Partitioner<'a> {
     }
 
     fn solve_active_edge_t_for_x(&self, x: f32, active_edge: &ActiveEdge) -> f32 {
-        let left_vertex_position = &self.b_vertices[active_edge.left_vertex_index as usize];
+        let left_vertex_position = &self.b_vertices[active_edge.left_vertex_index as usize]
+                                        .position;
         let right_endpoint_position = &self.endpoints[active_edge.right_endpoint_index as usize]
                                            .position;
         match active_edge.control_point_vertex_index {
@@ -433,7 +480,7 @@ impl<'a> Partitioner<'a> {
                 geometry::solve_line_t_for_x(x, left_vertex_position, right_endpoint_position)
             }
             control_point_vertex_index => {
-                let control_point = &self.b_vertices[control_point_vertex_index as usize];
+                let control_point = &self.b_vertices[control_point_vertex_index as usize].position;
                 geometry::solve_quadratic_bezier_t_for_x(x,
                                                          left_vertex_position,
                                                          control_point,
@@ -447,7 +494,8 @@ impl<'a> Partitioner<'a> {
     }
 
     fn sample_active_edge(&self, t: f32, active_edge: &ActiveEdge) -> Point2D<f32> {
-        let left_vertex_position = &self.b_vertices[active_edge.left_vertex_index as usize];
+        let left_vertex_position = &self.b_vertices[active_edge.left_vertex_index as usize]
+                                        .position;
         let right_endpoint_position = &self.endpoints[active_edge.right_endpoint_index as usize]
                                            .position;
         match active_edge.control_point_vertex_index {
@@ -457,7 +505,7 @@ impl<'a> Partitioner<'a> {
                                     .to_point()
             }
             control_point_vertex_index => {
-                let control_point = &self.b_vertices[control_point_vertex_index as usize];
+                let control_point = &self.b_vertices[control_point_vertex_index as usize].position;
                 geometry::sample_quadratic_bezier(t,
                                                   left_vertex_position,
                                                   control_point,
@@ -511,11 +559,11 @@ impl<'a> Partitioner<'a> {
         }
 
         let upper_left_vertex_position =
-            &self.b_vertices[upper_active_edge.left_vertex_index as usize];
+            &self.b_vertices[upper_active_edge.left_vertex_index as usize].position;
         let upper_right_endpoint_position =
             &self.endpoints[upper_active_edge.right_endpoint_index as usize].position;
         let lower_left_vertex_position =
-            &self.b_vertices[lower_active_edge.left_vertex_index as usize];
+            &self.b_vertices[lower_active_edge.left_vertex_index as usize].position;
         let lower_right_endpoint_position =
             &self.endpoints[lower_active_edge.right_endpoint_index as usize].position;
 
@@ -528,8 +576,8 @@ impl<'a> Partitioner<'a> {
                                                    lower_right_endpoint_position)
             }
             (upper_control_point_vertex_index, u32::MAX) => {
-                let upper_control_point = &self.b_vertices[upper_control_point_vertex_index as
-                                                           usize];
+                let upper_control_point =
+                    &self.b_vertices[upper_control_point_vertex_index as usize].position;
                 geometry::line_quadratic_bezier_crossing_point(lower_left_vertex_position,
                                                                lower_right_endpoint_position,
                                                                upper_left_vertex_position,
@@ -537,8 +585,8 @@ impl<'a> Partitioner<'a> {
                                                                upper_right_endpoint_position)
             }
             (u32::MAX, lower_control_point_vertex_index) => {
-                let lower_control_point = &self.b_vertices[lower_control_point_vertex_index as
-                                                           usize];
+                let lower_control_point =
+                    &self.b_vertices[lower_control_point_vertex_index as usize].position;
                 geometry::line_quadratic_bezier_crossing_point(upper_left_vertex_position,
                                                                upper_right_endpoint_position,
                                                                lower_left_vertex_position,
@@ -546,10 +594,10 @@ impl<'a> Partitioner<'a> {
                                                                lower_right_endpoint_position)
             }
             (upper_control_point_vertex_index, lower_control_point_vertex_index) => {
-                let upper_control_point = &self.b_vertices[upper_control_point_vertex_index as
-                                                           usize];
-                let lower_control_point = &self.b_vertices[lower_control_point_vertex_index as
-                                                           usize];
+                let upper_control_point =
+                    &self.b_vertices[upper_control_point_vertex_index as usize].position;
+                let lower_control_point =
+                    &self.b_vertices[lower_control_point_vertex_index as usize].position;
                 geometry::quadratic_bezier_quadratic_bezier_crossing_point(
                     upper_left_vertex_position,
                     upper_control_point,
@@ -573,27 +621,29 @@ impl<'a> Partitioner<'a> {
                 let left_point = self.b_vertices[left_curve_left as usize];
                 let right_point = self.endpoints[active_edge.right_endpoint_index as usize]
                                       .position;
-                let middle_point = left_point.to_vector().lerp(right_point.to_vector(), t);
+                let middle_point = left_point.position.to_vector().lerp(right_point.to_vector(), t);
 
                 active_edge.left_vertex_index = self.b_vertices.len() as u32;
-                self.b_vertices.push(middle_point.to_point());
+                self.b_vertices.push(BVertex::new(&middle_point.to_point(), left_point.path_id));
 
                 left_curve_control_point_vertex_index = u32::MAX;
             }
             _ => {
                 let subdivided_quadratic_bezier = SubdividedQuadraticBezier::new(
                     t,
-                    &self.b_vertices[active_edge.left_vertex_index as usize],
-                    &self.b_vertices[active_edge.control_point_vertex_index as usize],
+                    &self.b_vertices[active_edge.left_vertex_index as usize].position,
+                    &self.b_vertices[active_edge.control_point_vertex_index as usize].position,
                     &self.endpoints[active_edge.right_endpoint_index as usize].position);
 
                 left_curve_control_point_vertex_index = self.b_vertices.len() as u32;
                 active_edge.left_vertex_index = left_curve_control_point_vertex_index + 1;
                 active_edge.control_point_vertex_index = left_curve_control_point_vertex_index + 2;
+
+                let path_id = self.path_id;
                 self.b_vertices.extend([
-                    subdivided_quadratic_bezier.ap1,
-                    subdivided_quadratic_bezier.ap2bp0,
-                    subdivided_quadratic_bezier.bp1,
+                    BVertex::new(&subdivided_quadratic_bezier.ap1, path_id),
+                    BVertex::new(&subdivided_quadratic_bezier.ap2bp0, path_id),
+                    BVertex::new(&subdivided_quadratic_bezier.bp1, path_id),
                 ].into_iter());
             }
         }

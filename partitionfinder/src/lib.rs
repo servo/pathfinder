@@ -2,7 +2,7 @@
 
 #![feature(alloc_jemalloc)]
 
-// Needed to work around a problem with `heapsize`
+// needed to work around a problem with `heapsize`
 extern crate alloc_jemalloc;
 extern crate bit_vec;
 extern crate env_logger;
@@ -11,7 +11,7 @@ extern crate half;
 #[macro_use]
 extern crate log;
 
-use euclid::Point2D;
+use euclid::point2d;
 use std::u32;
 
 pub mod capi;
@@ -20,38 +20,83 @@ pub mod legalizer;
 pub mod partitioner;
 pub mod tessellator;
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct BQuad {
-    pub upper_left_vertex: u32,
-    pub upper_control_point: u32,
-    pub upper_right_vertex: u32,
-    pub lower_left_vertex: u32,
-    pub lower_control_point: u32,
-    pub lower_right_vertex: u32,
-    path_id: u32,
-    pad: u32,
+#[repr(u8)]
+#[derive(debug, clone, copy, partialeq)]
+pub enum shape {
+    flat = 0,
+    convex = 1,
+    concave = 2,
+}
+
+#[repr(c)]
+#[derive(debug, clone, copy)]
+pub struct bquad {
+    pub upper_left_vertex_index: u32,
+    pub upper_control_point_vertex_index: u32,
+    pub upper_right_vertex_index: u32,
+    pub lower_left_vertex_index: u32,
+    pub lower_control_point_vertex_index: u32,
+    pub lower_right_vertex_index: u32,
+    pad: [u32; 2],
 }
 
 impl BQuad {
     #[inline]
-    pub fn new(path_id: u32,
-               upper_left_vertex: u32,
-               upper_control_point: u32,
-               upper_right_vertex: u32,
-               lower_left_vertex: u32,
-               lower_control_point: u32,
-               lower_right_vertex: u32)
+    pub fn new(upper_left_vertex_index: u32,
+               upper_control_point_vertex_index: u32,
+               upper_right_vertex_index: u32,
+               lower_left_vertex_index: u32,
+               lower_control_point_vertex_index: u32,
+               lower_right_vertex_index: u32)
                -> BQuad {
         BQuad {
-            upper_left_vertex: upper_left_vertex,
-            upper_control_point: upper_control_point,
-            upper_right_vertex: upper_right_vertex,
-            lower_left_vertex: lower_left_vertex,
-            lower_control_point: lower_control_point,
-            lower_right_vertex: lower_right_vertex,
-            path_id: path_id,
-            pad: 0,
+            upper_left_vertex_index: upper_left_vertex_index,
+            upper_control_point_vertex_index: upper_control_point_vertex_index,
+            upper_right_vertex_index: upper_right_vertex_index,
+            lower_left_vertex_index: lower_left_vertex_index,
+            lower_control_point_vertex_index: lower_control_point_vertex_index,
+            lower_right_vertex_index: lower_right_vertex_index,
+            pad: [0; 2],
+        }
+    }
+
+    #[inline]
+    pub fn upper_left_vertex_index(&self) -> u32 {
+        self.start_index + 0
+    }
+
+    #[inline]
+    pub fn lower_left_vertex_index(&self) -> u32 {
+        self.start_index + 1
+    }
+
+    #[inline]
+    pub fn upper_right_vertex_index(&self) -> u32 {
+        self.start_index + 3
+    }
+
+    #[inline]
+    pub fn lower_right_vertex_index(&self) -> u32 {
+        self.start_index + 4
+    }
+
+    #[inline]
+    pub fn upper_control_point_vertex_index(&self) -> u32 {
+        match self.upper_shape {
+            Shape::Flat => u32::MAX,
+            Shape::Concave | Shape::Convex => self.start_index + 6,
+        }
+    }
+
+    #[inline]
+    pub fn lower_control_point_vertex_index(&self) -> u32 {
+        match (self.upper_shape, self.lower_shape) {
+            (_, Shape::Flat) => u32::MAX,
+            (Shape::Flat, Shape::Convex) | (Shape::Flat, Shape::Concave) => self.start_index + 6,
+            (Shape::Convex, Shape::Convex) |
+            (Shape::Convex, Shape::Concave) |
+            (Shape::Concave, Shape::Convex) |
+            (Shape::Concave, Shape::Concave) => self.start_index + 9,
         }
     }
 }
@@ -76,7 +121,26 @@ pub struct Subpath {
 #[repr(u8)]
 pub enum AntialiasingMode {
     Msaa = 0,
-    Levien = 1,
+    Ecaa = 1,
+}
+
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct BVertex {
+    pub position: Point2D<f32>,
+    pub path_id: u32,
+    pad: u32,
+}
+
+impl BVertex {
+    #[inline]
+    pub fn new(position: &Point2D<f32>, path_id: u32) -> BVertex {
+        BVertex {
+            position: *position,
+            path_id: path_id,
+            pad: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -112,29 +176,16 @@ impl Vertex {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct EdgeInstance {
-    pub left_b_vertex_index: u32,
-    pub control_point_b_vertex_index: u32,
-    pub right_b_vertex_index: u32,
-    pub left_time: f32,
-    pub right_time: f32,
-    padding: u32,
+    pub left_vertex_index: u32,
+    pub right_vertex_index: u32,
 }
 
 impl EdgeInstance {
     #[inline]
-    pub fn new(left_b_vertex_index: u32,
-               control_point_b_vertex_index: u32,
-               right_b_vertex_index: u32,
-               left_time: f32,
-               right_time: f32)
-               -> EdgeInstance {
+    pub fn new(left_vertex_index: u32, right_vertex_index: u32) -> EdgeInstance {
         EdgeInstance {
-            left_b_vertex_index: left_b_vertex_index,
-            control_point_b_vertex_index: control_point_b_vertex_index,
-            right_b_vertex_index: right_b_vertex_index,
-            left_time: left_time,
-            right_time: right_time,
-            padding: 0,
+            left_vertex_index: left_vertex_index,
+            right_vertex_index: right_vertex_index,
         }
     }
 }
