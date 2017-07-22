@@ -11,7 +11,7 @@ extern crate half;
 #[macro_use]
 extern crate log;
 
-use euclid::point2d;
+use euclid::Point2D;
 use std::u32;
 
 pub mod capi;
@@ -20,17 +20,9 @@ pub mod legalizer;
 pub mod partitioner;
 pub mod tessellator;
 
-#[repr(u8)]
-#[derive(debug, clone, copy, partialeq)]
-pub enum shape {
-    flat = 0,
-    convex = 1,
-    concave = 2,
-}
-
-#[repr(c)]
-#[derive(debug, clone, copy)]
-pub struct bquad {
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct BQuad {
     pub upper_left_vertex_index: u32,
     pub upper_control_point_vertex_index: u32,
     pub upper_right_vertex_index: u32,
@@ -59,46 +51,6 @@ impl BQuad {
             pad: [0; 2],
         }
     }
-
-    #[inline]
-    pub fn upper_left_vertex_index(&self) -> u32 {
-        self.start_index + 0
-    }
-
-    #[inline]
-    pub fn lower_left_vertex_index(&self) -> u32 {
-        self.start_index + 1
-    }
-
-    #[inline]
-    pub fn upper_right_vertex_index(&self) -> u32 {
-        self.start_index + 3
-    }
-
-    #[inline]
-    pub fn lower_right_vertex_index(&self) -> u32 {
-        self.start_index + 4
-    }
-
-    #[inline]
-    pub fn upper_control_point_vertex_index(&self) -> u32 {
-        match self.upper_shape {
-            Shape::Flat => u32::MAX,
-            Shape::Concave | Shape::Convex => self.start_index + 6,
-        }
-    }
-
-    #[inline]
-    pub fn lower_control_point_vertex_index(&self) -> u32 {
-        match (self.upper_shape, self.lower_shape) {
-            (_, Shape::Flat) => u32::MAX,
-            (Shape::Flat, Shape::Convex) | (Shape::Flat, Shape::Concave) => self.start_index + 6,
-            (Shape::Convex, Shape::Convex) |
-            (Shape::Convex, Shape::Concave) |
-            (Shape::Concave, Shape::Convex) |
-            (Shape::Concave, Shape::Concave) => self.start_index + 9,
-        }
-    }
 }
 
 #[repr(C)]
@@ -124,22 +76,57 @@ pub enum AntialiasingMode {
     Ecaa = 1,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[repr(u8)]
+pub enum BVertexKind {
+    Endpoint0 = 0,
+    Endpoint1 = 1,
+    ConvexControlPoint = 2,
+    ConcaveControlPoint = 3,
+}
+
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct BVertex {
     pub position: Point2D<f32>,
     pub path_id: u32,
-    pad: u32,
+    pub tex_coord: [u8; 2],
+    pub kind: BVertexKind,
+    pad: u8,
 }
 
 impl BVertex {
     #[inline]
-    pub fn new(position: &Point2D<f32>, path_id: u32) -> BVertex {
+    pub fn new(position: &Point2D<f32>, kind: BVertexKind, path_id: u32) -> BVertex {
+        let tex_coord = match kind {
+            BVertexKind::Endpoint0 => [0, 0],
+            BVertexKind::Endpoint1 => [2, 2],
+            BVertexKind::ConcaveControlPoint | BVertexKind::ConvexControlPoint => [1, 0],
+        };
         BVertex {
             position: *position,
             path_id: path_id,
+            tex_coord: tex_coord,
+            kind: kind,
             pad: 0,
         }
+    }
+
+    pub(crate) fn control_point(left_endpoint_position: &Point2D<f32>,
+                                control_point_position: &Point2D<f32>,
+                                right_endpoint_position: &Point2D<f32>,
+                                path_id: u32,
+                                bottom: bool)
+                                -> BVertex {
+        let control_point_vector = *control_point_position - *left_endpoint_position;
+        let right_vector = *right_endpoint_position - *left_endpoint_position;
+        let determinant = right_vector.cross(control_point_vector);
+        let endpoint_kind = if (determinant < 0.0) ^ bottom {
+            BVertexKind::ConvexControlPoint
+        } else {
+            BVertexKind::ConcaveControlPoint
+        };
+        BVertex::new(control_point_position, endpoint_kind, path_id)
     }
 }
 

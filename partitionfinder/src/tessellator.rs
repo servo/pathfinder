@@ -40,16 +40,6 @@ impl QuadTessLevels {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-struct BQuadVertices {
-    upper_left_vertex: u32,
-    upper_control_point: u32,
-    upper_right_vertex: u32,
-    lower_left_vertex: u32,
-    lower_control_point: u32,
-    lower_right_vertex: u32,
-}
-
 impl<'a> Tessellator<'a> {
     pub fn new<'b>(antialiasing_mode: AntialiasingMode) -> Tessellator<'b> {
         Tessellator {
@@ -72,36 +62,18 @@ impl<'a> Tessellator<'a> {
         self.tess_levels = vec![QuadTessLevels::new(); b_quads.len()];
     }
 
-    fn b_quad_vertices(&self, b_quad_index: u32) -> BQuadVertices {
-        let b_quad = &self.b_quads[b_quad_index as usize];
-        BQuadVertices {
-            upper_left_vertex: self.b_indices[b_quad.upper_left_vertex_index() as usize],
-            upper_right_vertex: self.b_indices[b_quad.upper_right_vertex_index() as usize],
-            lower_left_vertex: self.b_indices[b_quad.lower_left_vertex_index() as usize],
-            lower_right_vertex: self.b_indices[b_quad.lower_right_vertex_index() as usize],
-            upper_control_point: match b_quad.upper_control_point_vertex_index() {
-                u32::MAX => u32::MAX,
-                control_point_index => self.b_indices[control_point_index as usize],
-            },
-            lower_control_point: match b_quad.lower_control_point_vertex_index() {
-                u32::MAX => u32::MAX,
-                control_point_index => self.b_indices[control_point_index as usize],
-            },
-        }
-    }
-
     pub fn compute_hull(&mut self, transform: &Transform2D<f32>) {
         for b_quad_index in 0..self.tess_levels.len() {
-            let b_quad_vertices = self.b_quad_vertices(b_quad_index as u32);
+            let b_quad = &self.b_quads[b_quad_index as usize];
 
-            let upper_tess_level = tess_level_for_edge(b_quad_vertices.upper_left_vertex,
-                                                       b_quad_vertices.upper_control_point,
-                                                       b_quad_vertices.upper_right_vertex,
+            let upper_tess_level = tess_level_for_edge(b_quad.upper_left_vertex_index,
+                                                       b_quad.upper_control_point_vertex_index,
+                                                       b_quad.upper_right_vertex_index,
                                                        transform,
                                                        self.b_vertices);
-            let lower_tess_level = tess_level_for_edge(b_quad_vertices.lower_left_vertex,
-                                                       b_quad_vertices.lower_control_point,
-                                                       b_quad_vertices.lower_right_vertex,
+            let lower_tess_level = tess_level_for_edge(b_quad.lower_left_vertex_index,
+                                                       b_quad.lower_control_point_vertex_index,
+                                                       b_quad.lower_right_vertex_index,
                                                        transform,
                                                        self.b_vertices);
 
@@ -120,29 +92,29 @@ impl<'a> Tessellator<'a> {
     // TODO(pcwalton): Do a better tessellation that doesn't make so many sliver triangles.
     pub fn compute_domain(&mut self) {
         for (b_quad_index, tess_levels) in self.tess_levels.iter().enumerate() {
-            let b_quad_vertices = self.b_quad_vertices(b_quad_index as u32);
+            let b_quad = &self.b_quads[b_quad_index as usize];
 
             let upper_tess_level = f32::from(tess_levels.outer[1]) as u32;
             let lower_tess_level = f32::from(tess_levels.outer[3]) as u32;
             let tess_level = cmp::max(upper_tess_level, lower_tess_level);
 
-            let path_id = self.b_vertices[b_quad_vertices.upper_left_vertex as usize].path_id;
+            let path_id = self.b_vertices[b_quad.upper_left_vertex_index as usize].path_id;
 
             let first_upper_vertex_index = self.vertices.len() as u32;
             self.vertices.extend((0..(tess_level + 1)).map(|index| {
                 Vertex::new(path_id,
-                            b_quad_vertices.upper_left_vertex,
-                            b_quad_vertices.upper_control_point,
-                            b_quad_vertices.upper_right_vertex,
+                            b_quad.upper_left_vertex_index,
+                            b_quad.upper_control_point_vertex_index,
+                            b_quad.upper_right_vertex_index,
                             index as f32 / tess_level as f32)
             }));
 
             let first_lower_vertex_index = self.vertices.len() as u32;
             self.vertices.extend((0..(tess_level + 1)).map(|index| {
                 Vertex::new(path_id,
-                            b_quad_vertices.lower_left_vertex,
-                            b_quad_vertices.lower_control_point,
-                            b_quad_vertices.lower_right_vertex,
+                            b_quad.lower_left_vertex_index,
+                            b_quad.lower_control_point_vertex_index,
+                            b_quad.lower_right_vertex_index,
                             index as f32 / tess_level as f32)
             }));
 

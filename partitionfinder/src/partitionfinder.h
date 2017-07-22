@@ -9,9 +9,10 @@
 #define PF_ANTIALIASING_MODE_MSAA   0
 #define PF_ANTIALIASING_MODE_ECAA   1
 
-#define PF_SHAPE_FLAT       0
-#define PF_SHAPE_CONVEX     1
-#define PF_SHAPE_CONCAVE    2
+#define PF_B_VERTEX_KIND_ENDPOINT_0             0
+#define PF_B_VERTEX_KIND_ENDPOINT_1             1
+#define PF_B_VERTEX_KIND_CONVEX_CONTROL_POINT   2
+#define PF_B_VERTEX_KIND_CONCAVE_CONTROL_POINT  3
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,7 +22,7 @@ typedef uint8_t pf_antialiasing_mode_t;
 
 typedef uint16_t pf_float16_t;
 
-typedef uint8_t pf_shape_t;
+typedef uint8_t pf_b_vertex_kind_t;
 
 struct pf_point2d_f32 {
     float x, y;
@@ -39,7 +40,9 @@ typedef struct pf_matrix2d_f32 pf_matrix2d_f32_t;
 struct pf_b_vertex {
     pf_point2d_f32_t position;
     uint32_t path_id;
-    uint32_t pad;
+    uint8_t tex_coord[2];
+    pf_b_vertex_kind_t kind;
+    uint8_t pad;
 };
 
 typedef struct pf_b_vertex pf_b_vertex_t;
@@ -71,10 +74,12 @@ struct pf_quad_tess_levels {
 typedef struct pf_quad_tess_levels pf_quad_tess_levels_t;
 
 struct pf_b_quad {
-    uint32_t start_index;
-    pf_shape_t upper_shape;
-    pf_shape_t lower_shape;
-    uint8_t pad[2];
+    uint32_t upper_left_vertex_index;
+    uint32_t upper_control_point_vertex_index;
+    uint32_t upper_right_vertex_index;
+    uint32_t lower_left_vertex_index;
+    uint32_t lower_control_point_vertex_index;
+    uint32_t lower_right_vertex_index;
 };
 
 typedef struct pf_b_quad pf_b_quad_t;
@@ -189,40 +194,6 @@ const pf_edge_instance_t *pf_tessellator_edge_instances(const pf_tessellator_t *
                                                         uint32_t *out_edge_instance_count);
 
 uint32_t pf_init_env_logger();
-
-static inline uint32_t pf_b_quad_upper_left_vertex_index(const pf_b_quad_t *b_quad) {
-    return b_quad->start_index + 0;
-}
-
-static inline uint32_t pf_b_quad_lower_left_vertex_index(const pf_b_quad_t *b_quad) {
-    return b_quad->start_index + 1;
-}
-
-static inline uint32_t pf_b_quad_upper_right_vertex_index(const pf_b_quad_t *b_quad) {
-    return b_quad->start_index + 3;
-}
-
-static inline uint32_t pf_b_quad_lower_right_vertex_index(const pf_b_quad_t *b_quad) {
-    return b_quad->start_index + 4;
-}
-
-static inline uint32_t pf_b_quad_upper_control_point_vertex_index(const pf_b_quad_t *b_quad) {
-    switch (b_quad->upper_shape) {
-    case PF_SHAPE_FLAT:
-        return UINT32_MAX;
-    case PF_SHAPE_CONCAVE:
-    case PF_SHAPE_CONVEX:
-        return b_quad->start_index + 6;
-    }
-}
-
-static inline uint32_t pf_b_quad_lower_control_point_vertex_index(const pf_b_quad_t *b_quad) {
-    if (b_quad->lower_shape == PF_SHAPE_FLAT)
-        return UINT32_MAX;
-    if (b_quad->upper_shape == PF_SHAPE_FLAT)
-        return b_quad->start_index + 6;
-    return b_quad->start_index + 9;
-}
 
 #ifdef __cplusplus
 }

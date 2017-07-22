@@ -8,7 +8,7 @@ use std::collections::BinaryHeap;
 use std::cmp::{self, Ordering};
 use std::f32;
 use std::u32;
-use {BQuad, BVertex, Endpoint, Shape, Subpath};
+use {BQuad, BVertex, BVertexKind, Endpoint, Subpath};
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
@@ -60,6 +60,7 @@ impl<'a> Partitioner<'a> {
     pub fn partition(&mut self, path_id: u32, first_subpath_index: u32, last_subpath_index: u32) {
         self.b_quads.clear();
         self.b_vertices.clear();
+        self.b_indices.clear();
         self.heap.clear();
         self.active_edges.clear();
 
@@ -166,10 +167,10 @@ impl<'a> Partitioner<'a> {
         debug!("... REGULAR point: active edge {}", active_edge_index);
 
         let endpoint = &self.endpoints[endpoint_index as usize];
-        if self.should_fill_below_active_edge(active_edge_index) {
+        let bottom = self.should_fill_above_active_edge(active_edge_index);
+        if !bottom {
             self.emit_b_quad_below(active_edge_index, endpoint.position.x)
-        }
-        if self.should_fill_above_active_edge(active_edge_index) {
+        } else {
             self.emit_b_quad_above(active_edge_index, endpoint.position.x)
         }
 
@@ -183,7 +184,10 @@ impl<'a> Partitioner<'a> {
 
             let endpoint_position = self.endpoints[active_edge.right_endpoint_index as usize]
                                         .position;
-            self.b_vertices.push(BVertex::new(&endpoint_position, self.path_id));
+            self.b_vertices
+                .push(BVertex::new(&endpoint_position, active_edge.endpoint_kind(), self.path_id));
+
+            active_edge.toggle_parity();
 
             if active_edge.left_to_right {
                 active_edge.right_endpoint_index = next_endpoint_index;
@@ -210,9 +214,17 @@ impl<'a> Partitioner<'a> {
             control_point_index => {
                 self.active_edges[active_edge_index as usize].control_point_vertex_index =
                     self.b_vertices.len() as u32;
-                let b_vertex = BVertex::new(&self.control_points[control_point_index as usize],
-                                            self.path_id);
-                self.b_vertices.push(b_vertex)
+
+                let left_vertex_index = self.active_edges[active_edge_index as usize]
+                                            .left_vertex_index;
+                let control_point_position = &self.control_points[control_point_index as usize];
+                let control_point_b_vertex =
+                    BVertex::control_point(&self.b_vertices[left_vertex_index as usize].position,
+                                           &control_point_position,
+                                           &new_point.position,
+                                           self.path_id,
+                                           bottom);
+                self.b_vertices.push(control_point_b_vertex)
             }
         }
 
@@ -275,11 +287,15 @@ impl<'a> Partitioner<'a> {
         let new_active_edges = &mut self.active_edges[next_active_edge_index as usize..
                                                       next_active_edge_index as usize + 2];
 
-        new_active_edges[0].left_vertex_index = self.b_vertices.len() as u32;
-        new_active_edges[1].left_vertex_index = new_active_edges[0].left_vertex_index;
+        let left_vertex_index = self.b_vertices.len() as u32;
+        new_active_edges[0].left_vertex_index = left_vertex_index;
+        new_active_edges[1].left_vertex_index = left_vertex_index;
 
         let position = self.endpoints[endpoint_index as usize].position;
-        self.b_vertices.push(BVertex::new(&position, self.path_id));
+        self.b_vertices.push(BVertex::new(&position, BVertexKind::Endpoint0, self.path_id));
+
+        new_active_edges[0].toggle_parity();
+        new_active_edges[1].toggle_parity();
 
         let endpoint = &self.endpoints[endpoint_index as usize];
         let prev_endpoint = &self.endpoints[prev_endpoint_index as usize];
@@ -314,10 +330,17 @@ impl<'a> Partitioner<'a> {
             u32::MAX => new_active_edges[0].control_point_vertex_index = u32::MAX,
             upper_control_point_index => {
                 new_active_edges[0].control_point_vertex_index = self.b_vertices.len() as u32;
-                let b_vertex =
-                    BVertex::new(&self.control_points[upper_control_point_index as usize],
-                                 self.path_id);
-                self.b_vertices.push(b_vertex)
+
+                let control_point_position =
+                    self.control_points[upper_control_point_index as usize];
+                let right_vertex_position =
+                    self.endpoints[new_active_edges[0].right_endpoint_index as usize].position;
+                let control_point_b_vertex = BVertex::control_point(&position,
+                                                                    &control_point_position,
+                                                                    &right_vertex_position,
+                                                                    self.path_id,
+                                                                    false);
+                self.b_vertices.push(control_point_b_vertex)
             }
         }
 
@@ -325,10 +348,17 @@ impl<'a> Partitioner<'a> {
             u32::MAX => new_active_edges[1].control_point_vertex_index = u32::MAX,
             lower_control_point_index => {
                 new_active_edges[1].control_point_vertex_index = self.b_vertices.len() as u32;
-                let b_vertex =
-                    BVertex::new(&self.control_points[lower_control_point_index as usize],
-                                 self.path_id);
-                self.b_vertices.push(b_vertex)
+
+                let control_point_position =
+                    self.control_points[lower_control_point_index as usize];
+                let right_vertex_position =
+                    self.endpoints[new_active_edges[1].right_endpoint_index as usize].position;
+                let control_point_b_vertex = BVertex::control_point(&position,
+                                                                    &control_point_position,
+                                                                    &right_vertex_position,
+                                                                    self.path_id,
+                                                                    true);
+                self.b_vertices.push(control_point_b_vertex)
             }
         }
     }
@@ -371,44 +401,119 @@ impl<'a> Partitioner<'a> {
         let upper_curve = self.subdivide_active_edge_at(upper_active_edge_index, right_x);
         let lower_curve = self.subdivide_active_edge_at(lower_active_edge_index, right_x);
 
-        // TODO(pcwalton): Concave.
-        let upper_shape = if upper_curve.left_curve_control_point == u32::MAX {
-            Shape::Flat
-        } else {
-            Shape::Convex
-        };
-        let lower_shape = if lower_curve.left_curve_control_point == u32::MAX {
-            Shape::Flat
-        } else {
-            Shape::Convex
-        };
+        // NB: Order is important here—we depend on the provoking vertex!
 
-        let start_index = self.b_indices.len() as u32;
-        self.b_indices.extend([
-            upper_curve.left_curve_left,
-            lower_curve.left_curve_left,
-            upper_curve.middle_point,
-            upper_curve.middle_point,
-            lower_curve.middle_point,
-            lower_curve.left_curve_left,
-        ].into_iter());
+        let upper_shape = upper_curve.shape(&self.b_vertices);
+        let lower_shape = lower_curve.shape(&self.b_vertices);
+        match (upper_shape, lower_shape) {
+            (Shape::Flat, Shape::Flat) |
+            (Shape::Flat, Shape::Convex) |
+            (Shape::Convex, Shape::Flat) |
+            (Shape::Convex, Shape::Convex) => {
+                self.b_indices.extend([
+                    upper_curve.left_curve_left,
+                    upper_curve.middle_point,
+                    lower_curve.left_curve_left,
+                    lower_curve.middle_point,
+                    lower_curve.left_curve_left,
+                    upper_curve.middle_point,
+                ].into_iter());
+                if upper_shape != Shape::Flat {
+                    self.b_indices.extend([
+                        upper_curve.left_curve_control_point,
+                        upper_curve.middle_point,
+                        upper_curve.left_curve_left,
+                    ].into_iter())
+                }
+                if lower_shape != Shape::Flat {
+                    self.b_indices.extend([
+                        lower_curve.left_curve_control_point,
+                        lower_curve.left_curve_left,
+                        lower_curve.middle_point,
+                    ].into_iter())
+                }
+            }
 
-        if upper_shape != Shape::Flat {
-            self.b_indices.extend([
-                upper_curve.left_curve_control_point,
-                upper_curve.middle_point,
-                upper_curve.left_curve_left,
-            ].into_iter())
+            (Shape::Concave, Shape::Flat) |
+            (Shape::Concave, Shape::Convex) => {
+                self.b_indices.extend([
+                    upper_curve.left_curve_left,
+                    upper_curve.left_curve_control_point,
+                    lower_curve.left_curve_left,
+                    upper_curve.middle_point,
+                    lower_curve.middle_point,
+                    upper_curve.left_curve_control_point,
+                    lower_curve.middle_point,
+                    lower_curve.left_curve_left,
+                    upper_curve.left_curve_control_point,
+                    upper_curve.left_curve_control_point,
+                    upper_curve.left_curve_left,
+                    upper_curve.middle_point,
+                ].into_iter());
+                if lower_shape != Shape::Flat {
+                    self.b_indices.extend([
+                        lower_curve.left_curve_control_point,
+                        lower_curve.left_curve_left,
+                        lower_curve.middle_point,
+                    ].into_iter())
+                }
+            }
+
+            (Shape::Flat, Shape::Concave) |
+            (Shape::Convex, Shape::Concave) => {
+                self.b_indices.extend([
+                    upper_curve.left_curve_left,
+                    upper_curve.middle_point,
+                    lower_curve.left_curve_control_point,
+                    upper_curve.middle_point,
+                    lower_curve.middle_point,
+                    lower_curve.left_curve_control_point,
+                    upper_curve.left_curve_left,
+                    lower_curve.left_curve_control_point,
+                    lower_curve.left_curve_left,
+                    lower_curve.left_curve_control_point,
+                    lower_curve.middle_point,
+                    lower_curve.left_curve_left,
+                ].into_iter());
+                if upper_shape != Shape::Flat {
+                    self.b_indices.extend([
+                        upper_curve.left_curve_control_point,
+                        upper_curve.middle_point,
+                        upper_curve.left_curve_left,
+                    ].into_iter())
+                }
+            }
+
+            (Shape::Concave, Shape::Concave) => {
+                self.b_indices.extend([
+                    upper_curve.left_curve_left,
+                    upper_curve.left_curve_control_point,
+                    lower_curve.left_curve_left,
+                    lower_curve.left_curve_left,
+                    upper_curve.left_curve_control_point,
+                    lower_curve.left_curve_control_point,
+                    upper_curve.middle_point,
+                    lower_curve.left_curve_control_point,
+                    upper_curve.left_curve_control_point,
+                    upper_curve.middle_point,
+                    lower_curve.middle_point,
+                    lower_curve.left_curve_control_point,
+                    upper_curve.left_curve_control_point,
+                    upper_curve.left_curve_left,
+                    upper_curve.middle_point,
+                    lower_curve.left_curve_control_point,
+                    lower_curve.middle_point,
+                    lower_curve.left_curve_left,
+                ].into_iter())
+            }
         }
-        if lower_shape != Shape::Flat {
-            self.b_indices.extend([
-                lower_curve.left_curve_control_point,
-                lower_curve.middle_point,
-                lower_curve.left_curve_left,
-            ].into_iter())
-        }
 
-        self.b_quads.push(BQuad::new(start_index, upper_shape, lower_shape))
+        self.b_quads.push(BQuad::new(upper_curve.left_curve_left,
+                                     upper_curve.left_curve_control_point,
+                                     upper_curve.middle_point,
+                                     lower_curve.left_curve_left,
+                                     lower_curve.left_curve_control_point,
+                                     lower_curve.middle_point))
     }
 
     fn already_visited_point(&self, point: &Point) -> bool {
@@ -612,6 +717,8 @@ impl<'a> Partitioner<'a> {
     fn subdivide_active_edge_at(&mut self, active_edge_index: u32, x: f32) -> SubdividedActiveEdge {
         let t = self.solve_active_edge_t_for_x(x, &self.active_edges[active_edge_index as usize]);
 
+        let bottom = self.should_fill_above_active_edge(active_edge_index);
+
         let active_edge = &mut self.active_edges[active_edge_index as usize];
         let left_curve_left = active_edge.left_vertex_index;
 
@@ -624,27 +731,53 @@ impl<'a> Partitioner<'a> {
                 let middle_point = left_point.position.to_vector().lerp(right_point.to_vector(), t);
 
                 active_edge.left_vertex_index = self.b_vertices.len() as u32;
-                self.b_vertices.push(BVertex::new(&middle_point.to_point(), left_point.path_id));
+                self.b_vertices.push(BVertex::new(&middle_point.to_point(),
+                                                  active_edge.endpoint_kind(),
+                                                  left_point.path_id));
+
+                active_edge.toggle_parity();
 
                 left_curve_control_point_vertex_index = u32::MAX;
             }
             _ => {
+                let left_endpoint_position = self.b_vertices[active_edge.left_vertex_index as usize]
+                                                 .position;
+                let right_endpoint_position =
+                    self.endpoints[active_edge.right_endpoint_index as usize].position;
                 let subdivided_quadratic_bezier = SubdividedQuadraticBezier::new(
                     t,
-                    &self.b_vertices[active_edge.left_vertex_index as usize].position,
+                    &left_endpoint_position,
                     &self.b_vertices[active_edge.control_point_vertex_index as usize].position,
-                    &self.endpoints[active_edge.right_endpoint_index as usize].position);
+                    &right_endpoint_position);
+
+                let control_point_b_vertex_a =
+                    BVertex::control_point(&left_endpoint_position,
+                                           &subdivided_quadratic_bezier.ap1,
+                                           &subdivided_quadratic_bezier.ap2bp0,
+                                           self.path_id,
+                                           bottom);
 
                 left_curve_control_point_vertex_index = self.b_vertices.len() as u32;
                 active_edge.left_vertex_index = left_curve_control_point_vertex_index + 1;
-                active_edge.control_point_vertex_index = left_curve_control_point_vertex_index + 2;
 
-                let path_id = self.path_id;
                 self.b_vertices.extend([
-                    BVertex::new(&subdivided_quadratic_bezier.ap1, path_id),
-                    BVertex::new(&subdivided_quadratic_bezier.ap2bp0, path_id),
-                    BVertex::new(&subdivided_quadratic_bezier.bp1, path_id),
+                    control_point_b_vertex_a,
+                    BVertex::new(&subdivided_quadratic_bezier.ap2bp0,
+                                 active_edge.endpoint_kind(),
+                                 self.path_id)
                 ].into_iter());
+
+                let control_point_b_vertex_b =
+                    BVertex::control_point(&subdivided_quadratic_bezier.ap2bp0,
+                                           &subdivided_quadratic_bezier.bp1,
+                                           &right_endpoint_position,
+                                           self.path_id,
+                                           bottom);
+
+                active_edge.control_point_vertex_index = self.b_vertices.len() as u32;
+                self.b_vertices.push(control_point_b_vertex_b);
+
+                active_edge.toggle_parity();
             }
         }
 
@@ -742,6 +875,7 @@ struct ActiveEdge {
     control_point_vertex_index: u32,
     right_endpoint_index: u32,
     left_to_right: bool,
+    parity: bool,
 }
 
 impl Default for ActiveEdge {
@@ -751,6 +885,21 @@ impl Default for ActiveEdge {
             control_point_vertex_index: u32::MAX,
             right_endpoint_index: 0,
             left_to_right: false,
+            parity: false,
+        }
+    }
+}
+
+impl ActiveEdge {
+    fn toggle_parity(&mut self) {
+        self.parity = !self.parity
+    }
+
+    fn endpoint_kind(&self) -> BVertexKind {
+        if !self.parity {
+            BVertexKind::Endpoint0
+        } else {
+            BVertexKind::Endpoint1
         }
     }
 }
@@ -761,6 +910,18 @@ struct SubdividedActiveEdge {
     left_curve_control_point: u32,
     middle_point: u32,
     right_curve_control_point: u32,
+}
+
+impl SubdividedActiveEdge {
+    fn shape(&self, b_vertices: &[BVertex]) -> Shape {
+        if self.left_curve_control_point == u32::MAX {
+            return Shape::Flat
+        }
+        match b_vertices[self.left_curve_control_point as usize].kind {
+            BVertexKind::ConvexControlPoint => Shape::Convex,
+            _ => Shape::Concave,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -780,4 +941,11 @@ enum EndpointClass {
 struct MatchingActiveEdges {
     indices: [u32; 2],
     count: u8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Shape {
+    Flat,
+    Convex,
+    Concave,
 }
