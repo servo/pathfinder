@@ -56,7 +56,7 @@ impl<'a> Partitioner<'a> {
 
         // FIXME(pcwalton): Move this initialization to `partition` below. Right now, this bit
         // vector uses too much memory.
-        self.visited_points = BitVec::from_elem(self.endpoints.len() * 2, false);
+        self.visited_points = BitVec::from_elem(self.endpoints.len(), false);
     }
 
     pub fn partition(&mut self, path_id: u32, first_subpath_index: u32, last_subpath_index: u32) {
@@ -118,29 +118,17 @@ impl<'a> Partitioner<'a> {
 
         self.mark_point_as_visited(&point);
 
+        self.sort_active_edge_list(point.endpoint_index);
+
         let matching_active_edges = self.find_right_point_in_active_edge_list(point.endpoint_index);
-        match point.point_type {
-            PointType::Endpoint => {
-                match matching_active_edges.count {
-                    0 => self.process_min_endpoint(point.endpoint_index),
-                    1 => {
-                        self.process_regular_endpoint(point.endpoint_index,
-                                                      matching_active_edges.indices[0])
-                    }
-                    2 => {
-                        self.process_max_endpoint(point.endpoint_index,
-                                                  matching_active_edges.indices)
-                    }
-                    _ => debug_assert!(false),
-                }
+        match matching_active_edges.count {
+            0 => self.process_min_endpoint(point.endpoint_index),
+            1 => {
+                self.process_regular_endpoint(point.endpoint_index,
+                                              matching_active_edges.indices[0])
             }
-            PointType::CrossingBelow => {
-                // FIXME(pcwalton): This condition should always pass, but it fails on the Dutch
-                // rail map.
-                if matching_active_edges.count > 0 {
-                    self.process_crossing_point(point.position.x, matching_active_edges.indices[0])
-                }
-            }
+            2 => self.process_max_endpoint(point.endpoint_index, matching_active_edges.indices),
+            _ => debug_assert!(false),
         }
 
         true
@@ -166,9 +154,6 @@ impl<'a> Partitioner<'a> {
             let new_point = self.create_point_from_endpoint(prev_endpoint_index);
             self.heap.push(new_point)
         }
-
-        self.add_crossings_to_heap_if_necessary(next_active_edge_index + 0,
-                                                next_active_edge_index + 2)
     }
 
     fn process_regular_endpoint(&mut self, endpoint_index: u32, active_edge_index: u32) {
@@ -235,8 +220,6 @@ impl<'a> Partitioner<'a> {
                 self.b_vertices.push(control_point_b_vertex)
             }
         }
-
-        self.add_crossings_to_heap_if_necessary(active_edge_index + 0, active_edge_index + 2)
     }
 
     fn process_max_endpoint(&mut self, endpoint_index: u32, active_edge_indices: [u32; 2]) {
@@ -262,25 +245,18 @@ impl<'a> Partitioner<'a> {
         // FIXME(pcwalton): This is twice as slow as it needs to be.
         self.active_edges.remove(active_edge_indices[1] as usize);
         self.active_edges.remove(active_edge_indices[0] as usize);
-
-        self.add_crossings_to_heap_if_necessary(active_edge_indices[0], active_edge_indices[0] + 2)
     }
 
-    fn process_crossing_point(&mut self, x: f32, upper_active_edge_index: u32) {
-        if self.should_fill_above_active_edge(upper_active_edge_index) {
-            self.emit_b_quad_above(upper_active_edge_index, x)
-        }
-        if self.should_fill_below_active_edge(upper_active_edge_index) {
-            self.emit_b_quad_below(upper_active_edge_index, x)
-        }
-
-        // Swap the two edges.
-        //
-        // FIXME(pcwalton): This condition should always pass, but it fails on the Dutch rail map.
-        let lower_active_edge_index = upper_active_edge_index + 1;
-        if (lower_active_edge_index as usize) < self.active_edges.len() {
-            self.active_edges.swap(upper_active_edge_index as usize,
-                                   lower_active_edge_index as usize)
+    fn sort_active_edge_list(&mut self, endpoint_index: u32) {
+        for index in 1..self.active_edges.len() {
+            for sorted_index in (1..(index + 1)).rev() {
+                if self.active_edges_are_ordered((sorted_index - 1) as u32,
+                                                 sorted_index as u32,
+                                                 endpoint_index) {
+                    break
+                }
+                self.active_edges.swap(sorted_index - 1, sorted_index)
+            }
         }
     }
 
@@ -368,6 +344,39 @@ impl<'a> Partitioner<'a> {
                 self.b_vertices.push(control_point_b_vertex)
             }
         }
+    }
+
+    fn active_edges_are_ordered(&mut self,
+                                prev_active_edge_index: u32,
+                                next_active_edge_index: u32,
+                                reference_endpoint_index: u32)
+                                -> bool {
+        let prev_active_edge = &self.active_edges[prev_active_edge_index as usize];
+        let next_active_edge = &self.active_edges[next_active_edge_index as usize];
+        if prev_active_edge.right_endpoint_index == next_active_edge.right_endpoint_index {
+            // Always ordered.
+            // FIXME(pcwalton): Is this true?
+            return true
+        }
+
+        let prev_active_edge_right_endpoint =
+            &self.endpoints[prev_active_edge.right_endpoint_index as usize];
+        let next_active_edge_right_endpoint =
+            &self.endpoints[next_active_edge.right_endpoint_index as usize];
+        if prev_active_edge_right_endpoint.position.y <=
+                next_active_edge_right_endpoint.position.y {
+            // Guaranteed to be ordered.
+            // FIXME(pcwalton): Is this true?
+            return true
+        }
+
+        // Slow path.
+        let reference_endpoint = &self.endpoints[reference_endpoint_index as usize];
+        let prev_active_edge_y = self.solve_active_edge_y_for_x(reference_endpoint.position.x,
+                                                                prev_active_edge);
+        let next_active_edge_y = self.solve_active_edge_y_for_x(reference_endpoint.position.x,
+                                                                next_active_edge);
+        prev_active_edge_y <= next_active_edge_y
     }
 
     fn init_heap(&mut self, first_subpath_index: u32, last_subpath_index: u32) {
@@ -561,7 +570,7 @@ impl<'a> Partitioner<'a> {
 
     fn already_visited_point(&self, point: &Point) -> bool {
         // FIXME(pcwalton): This makes the visited vector too big.
-        let index = point.endpoint_index as usize * 2 + point.point_type as usize;
+        let index = point.endpoint_index as usize;
         match self.visited_points.get(index) {
             None => false,
             Some(visited) => visited,
@@ -570,8 +579,7 @@ impl<'a> Partitioner<'a> {
 
     fn mark_point_as_visited(&mut self, point: &Point) {
         // FIXME(pcwalton): This makes the visited vector too big.
-        self.visited_points.set(point.endpoint_index as usize * 2 + point.point_type as usize,
-                                true)
+        self.visited_points.set(point.endpoint_index as usize, true)
     }
 
     fn find_right_point_in_active_edge_list(&self, endpoint_index: u32) -> MatchingActiveEdges {
@@ -659,39 +667,6 @@ impl<'a> Partitioner<'a> {
                                                   control_point,
                                                   right_endpoint_position)
             }
-        }
-    }
-
-    fn add_crossings_to_heap_if_necessary(&mut self,
-                                          mut first_active_edge_index: u32,
-                                          mut last_active_edge_index: u32) {
-        if self.active_edges.is_empty() {
-            return
-        }
-
-        first_active_edge_index = first_active_edge_index.checked_sub(1)
-                                                         .unwrap_or(first_active_edge_index);
-        last_active_edge_index = cmp::min(last_active_edge_index + 1,
-                                          self.active_edges.len() as u32);
-
-        for (upper_active_edge_index, upper_active_edge) in
-                self.active_edges[(first_active_edge_index as usize)..
-                                  (last_active_edge_index as usize - 1)]
-                    .iter()
-                    .enumerate() {
-            let crossing_position =
-                match self.crossing_point_for_active_edge(upper_active_edge_index as u32) {
-                    None => continue,
-                    Some(crossing_point) => crossing_point,
-                };
-
-            let new_point = Point {
-                position: crossing_position,
-                endpoint_index: upper_active_edge.right_endpoint_index,
-                point_type: PointType::CrossingBelow,
-            };
-
-            self.heap.push(new_point);
         }
     }
 
@@ -856,7 +831,6 @@ impl<'a> Partitioner<'a> {
         Point {
             position: self.endpoints[endpoint_index as usize].position,
             endpoint_index: endpoint_index,
-            point_type: PointType::Endpoint,
         }
     }
 
@@ -949,7 +923,6 @@ pub struct EdgeIndices<'a> {
 struct Point {
     position: Point2D<f32>,
     endpoint_index: u32,
-    point_type: PointType,
 }
 
 impl PartialEq for Point {
@@ -1041,12 +1014,6 @@ impl SubdividedActiveEdge {
             _ => Shape::Concave,
         }
     }
-}
-
-#[derive(Debug, Clone, Copy)]
-enum PointType {
-    Endpoint = 0,
-    CrossingBelow = 1,
 }
 
 #[derive(Debug, Clone, Copy)]
