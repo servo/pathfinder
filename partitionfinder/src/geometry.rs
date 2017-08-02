@@ -59,12 +59,12 @@ pub fn line_line_crossing_point(a_p0: &Point2D<f32>,
 }
 
 // TODO(pcwalton): Implement this.
-pub fn line_quadratic_bezier_crossing_point(_a_p0: &Point2D<f32>,
-                                            _a_p1: &Point2D<f32>,
-                                            _b_p0: &Point2D<f32>,
-                                            _b_p1: &Point2D<f32>,
-                                            _b_p2: &Point2D<f32>)
-                                        -> Option<Point2D<f32>> {
+pub fn line_quadratic_bezier_crossing_point(a_p0: &Point2D<f32>,
+                                            a_p1: &Point2D<f32>,
+                                            b_p0: &Point2D<f32>,
+                                            b_p1: &Point2D<f32>,
+                                            b_p2: &Point2D<f32>)
+                                            -> Option<Point2D<f32>> {
     None
 }
 

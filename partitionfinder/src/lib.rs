@@ -160,6 +160,45 @@ impl Vertex {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct LineIndices {
+    pub left_vertex_index: u32,
+    pub right_vertex_index: u32,
+}
+
+impl LineIndices {
+    #[inline]
+    pub fn new(left_vertex_index: u32, right_vertex_index: u32) -> LineIndices {
+        LineIndices {
+            left_vertex_index: left_vertex_index,
+            right_vertex_index: right_vertex_index,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct CurveIndices {
+    pub left_vertex_index: u32,
+    pub right_vertex_index: u32,
+    pub control_point_vertex_index: u32,
+    pad: u32,
+}
+
+impl CurveIndices {
+    #[inline]
+    pub fn new(left_vertex_index: u32, control_point_vertex_index: u32, right_vertex_index: u32)
+               -> CurveIndices {
+        CurveIndices {
+            left_vertex_index: left_vertex_index,
+            right_vertex_index: right_vertex_index,
+            control_point_vertex_index: control_point_vertex_index,
+            pad: 0,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct EdgeInstance {

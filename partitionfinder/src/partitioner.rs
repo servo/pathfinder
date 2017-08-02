@@ -8,7 +8,7 @@ use std::collections::BinaryHeap;
 use std::cmp::{self, Ordering};
 use std::f32;
 use std::u32;
-use {BQuad, BVertex, BVertexKind, Endpoint, Subpath};
+use {BQuad, BVertex, BVertexKind, CurveIndices, Endpoint, LineIndices, Subpath};
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
@@ -17,7 +17,8 @@ pub struct Partitioner<'a> {
 
     b_quads: Vec<BQuad>,
     b_vertices: Vec<BVertex>,
-    b_indices: Vec<u32>,
+    cover_indices: CoverIndicesBuffer,
+    edge_indices: EdgeIndicesBuffer,
 
     heap: BinaryHeap<Point>,
     visited_points: BitVec,
@@ -35,7 +36,8 @@ impl<'a> Partitioner<'a> {
 
             b_quads: vec![],
             b_vertices: vec![],
-            b_indices: vec![],
+            cover_indices: CoverIndicesBuffer::new(),
+            edge_indices: EdgeIndicesBuffer::new(),
 
             heap: BinaryHeap::new(),
             visited_points: BitVec::new(),
@@ -60,7 +62,8 @@ impl<'a> Partitioner<'a> {
     pub fn partition(&mut self, path_id: u32, first_subpath_index: u32, last_subpath_index: u32) {
         self.b_quads.clear();
         self.b_vertices.clear();
-        self.b_indices.clear();
+        self.cover_indices.clear();
+        self.edge_indices.clear();
         self.heap.clear();
         self.active_edges.clear();
 
@@ -82,8 +85,13 @@ impl<'a> Partitioner<'a> {
     }
 
     #[inline]
-    pub fn b_indices(&self) -> &[u32] {
-        &self.b_indices
+    pub fn cover_indices(&self) -> CoverIndices {
+        self.cover_indices.as_ref()
+    }
+
+    #[inline]
+    pub fn edge_indices(&self) -> EdgeIndices {
+        self.edge_indices.as_ref()
     }
 
     fn process_next_point(&mut self) -> bool {
@@ -301,12 +309,11 @@ impl<'a> Partitioner<'a> {
         let prev_endpoint = &self.endpoints[prev_endpoint_index as usize];
         let next_endpoint = &self.endpoints[next_endpoint_index as usize];
 
-        // TODO(pcwalton): There's a faster way to do this with no divisions, almost certainly.
-        let prev_vector = (prev_endpoint.position - endpoint.position).normalize();
-        let next_vector = (next_endpoint.position - endpoint.position).normalize();
+        let prev_vector = prev_endpoint.position - endpoint.position;
+        let next_vector = next_endpoint.position - endpoint.position;
 
         let (upper_control_point_index, lower_control_point_index);
-        if prev_vector.y <= next_vector.y {
+        if prev_vector.cross(next_vector) >= 0.0 {
             new_active_edges[0].right_endpoint_index = prev_endpoint_index;
             new_active_edges[1].right_endpoint_index = next_endpoint_index;
             new_active_edges[0].left_to_right = false;
@@ -405,12 +412,42 @@ impl<'a> Partitioner<'a> {
 
         let upper_shape = upper_curve.shape(&self.b_vertices);
         let lower_shape = lower_curve.shape(&self.b_vertices);
+
+        match upper_shape {
+            Shape::Flat => {
+                self.edge_indices
+                    .upper_line_indices
+                    .push(LineIndices::new(upper_curve.left_curve_left, upper_curve.middle_point))
+            }
+            Shape::Convex | Shape::Concave => {
+                self.edge_indices
+                    .upper_curve_indices
+                    .push(CurveIndices::new(upper_curve.left_curve_left,
+                                            upper_curve.left_curve_control_point,
+                                            upper_curve.middle_point))
+            }
+        }
+        match lower_shape {
+            Shape::Flat => {
+                self.edge_indices
+                    .lower_line_indices
+                    .push(LineIndices::new(lower_curve.left_curve_left, lower_curve.middle_point))
+            }
+            Shape::Convex | Shape::Concave => {
+                self.edge_indices
+                    .lower_curve_indices
+                    .push(CurveIndices::new(lower_curve.left_curve_left,
+                                            lower_curve.left_curve_control_point,
+                                            lower_curve.middle_point))
+            }
+        }
+
         match (upper_shape, lower_shape) {
             (Shape::Flat, Shape::Flat) |
             (Shape::Flat, Shape::Convex) |
             (Shape::Convex, Shape::Flat) |
             (Shape::Convex, Shape::Convex) => {
-                self.b_indices.extend([
+                self.cover_indices.interior_indices.extend([
                     upper_curve.left_curve_left,
                     upper_curve.middle_point,
                     lower_curve.left_curve_left,
@@ -419,14 +456,14 @@ impl<'a> Partitioner<'a> {
                     upper_curve.middle_point,
                 ].into_iter());
                 if upper_shape != Shape::Flat {
-                    self.b_indices.extend([
+                    self.cover_indices.curve_indices.extend([
                         upper_curve.left_curve_control_point,
                         upper_curve.middle_point,
                         upper_curve.left_curve_left,
                     ].into_iter())
                 }
                 if lower_shape != Shape::Flat {
-                    self.b_indices.extend([
+                    self.cover_indices.curve_indices.extend([
                         lower_curve.left_curve_control_point,
                         lower_curve.left_curve_left,
                         lower_curve.middle_point,
@@ -436,7 +473,7 @@ impl<'a> Partitioner<'a> {
 
             (Shape::Concave, Shape::Flat) |
             (Shape::Concave, Shape::Convex) => {
-                self.b_indices.extend([
+                self.cover_indices.interior_indices.extend([
                     upper_curve.left_curve_left,
                     upper_curve.left_curve_control_point,
                     lower_curve.left_curve_left,
@@ -446,12 +483,14 @@ impl<'a> Partitioner<'a> {
                     lower_curve.middle_point,
                     lower_curve.left_curve_left,
                     upper_curve.left_curve_control_point,
+                ].into_iter());
+                self.cover_indices.curve_indices.extend([
                     upper_curve.left_curve_control_point,
                     upper_curve.left_curve_left,
                     upper_curve.middle_point,
                 ].into_iter());
                 if lower_shape != Shape::Flat {
-                    self.b_indices.extend([
+                    self.cover_indices.curve_indices.extend([
                         lower_curve.left_curve_control_point,
                         lower_curve.left_curve_left,
                         lower_curve.middle_point,
@@ -461,7 +500,7 @@ impl<'a> Partitioner<'a> {
 
             (Shape::Flat, Shape::Concave) |
             (Shape::Convex, Shape::Concave) => {
-                self.b_indices.extend([
+                self.cover_indices.interior_indices.extend([
                     upper_curve.left_curve_left,
                     upper_curve.middle_point,
                     lower_curve.left_curve_control_point,
@@ -471,12 +510,14 @@ impl<'a> Partitioner<'a> {
                     upper_curve.left_curve_left,
                     lower_curve.left_curve_control_point,
                     lower_curve.left_curve_left,
+                ].into_iter());
+                self.cover_indices.curve_indices.extend([
                     lower_curve.left_curve_control_point,
                     lower_curve.middle_point,
                     lower_curve.left_curve_left,
                 ].into_iter());
                 if upper_shape != Shape::Flat {
-                    self.b_indices.extend([
+                    self.cover_indices.curve_indices.extend([
                         upper_curve.left_curve_control_point,
                         upper_curve.middle_point,
                         upper_curve.left_curve_left,
@@ -485,7 +526,7 @@ impl<'a> Partitioner<'a> {
             }
 
             (Shape::Concave, Shape::Concave) => {
-                self.b_indices.extend([
+                self.cover_indices.interior_indices.extend([
                     upper_curve.left_curve_left,
                     upper_curve.left_curve_control_point,
                     lower_curve.left_curve_left,
@@ -498,13 +539,15 @@ impl<'a> Partitioner<'a> {
                     upper_curve.middle_point,
                     lower_curve.middle_point,
                     lower_curve.left_curve_control_point,
+                ].into_iter());
+                self.cover_indices.curve_indices.extend([
                     upper_curve.left_curve_control_point,
                     upper_curve.left_curve_left,
                     upper_curve.middle_point,
                     lower_curve.left_curve_control_point,
                     lower_curve.middle_point,
                     lower_curve.left_curve_left,
-                ].into_iter())
+                ].into_iter());
             }
         }
 
@@ -824,6 +867,82 @@ impl<'a> Partitioner<'a> {
     fn control_point_index_after_endpoint(&self, endpoint_index: u32) -> u32 {
         self.control_point_index_before_endpoint(self.next_endpoint_of(endpoint_index))
     }
+}
+
+#[derive(Debug, Clone)]
+struct CoverIndicesBuffer {
+    interior_indices: Vec<u32>,
+    curve_indices: Vec<u32>,
+}
+
+impl CoverIndicesBuffer {
+    fn new() -> CoverIndicesBuffer {
+        CoverIndicesBuffer {
+            interior_indices: vec![],
+            curve_indices: vec![],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.interior_indices.clear();
+        self.curve_indices.clear();
+    }
+
+    fn as_ref(&self) -> CoverIndices {
+        CoverIndices {
+            interior_indices: &self.interior_indices,
+            curve_indices: &self.curve_indices,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CoverIndices<'a> {
+    pub interior_indices: &'a [u32],
+    pub curve_indices: &'a [u32],
+}
+
+#[derive(Debug, Clone)]
+struct EdgeIndicesBuffer {
+    upper_line_indices: Vec<LineIndices>,
+    upper_curve_indices: Vec<CurveIndices>,
+    lower_line_indices: Vec<LineIndices>,
+    lower_curve_indices: Vec<CurveIndices>,
+}
+
+impl EdgeIndicesBuffer {
+    fn new() -> EdgeIndicesBuffer {
+        EdgeIndicesBuffer {
+            upper_line_indices: vec![],
+            upper_curve_indices: vec![],
+            lower_line_indices: vec![],
+            lower_curve_indices: vec![],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.upper_line_indices.clear();
+        self.upper_curve_indices.clear();
+        self.lower_line_indices.clear();
+        self.lower_curve_indices.clear();
+    }
+
+    fn as_ref(&self) -> EdgeIndices {
+        EdgeIndices {
+            upper_line_indices: &self.upper_line_indices,
+            upper_curve_indices: &self.upper_curve_indices,
+            lower_line_indices: &self.lower_line_indices,
+            lower_curve_indices: &self.lower_curve_indices,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct EdgeIndices<'a> {
+    pub upper_line_indices: &'a [LineIndices],
+    pub upper_curve_indices: &'a [CurveIndices],
+    pub lower_line_indices: &'a [LineIndices],
+    pub lower_curve_indices: &'a [CurveIndices],
 }
 
 #[derive(Debug, Clone, Copy)]

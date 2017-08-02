@@ -59,6 +59,44 @@ struct pf_vertex {
 
 typedef struct pf_vertex pf_vertex_t;
 
+struct pf_cover_indices {
+    const uint32_t *interior_indices;
+    uint32_t interior_indices_len;
+    const uint32_t *curve_indices;
+    uint32_t curve_indices_len;
+};
+
+typedef struct pf_cover_indices pf_cover_indices_t;
+
+struct pf_line_indices {
+    uint32_t left_vertex_index;
+    uint32_t right_vertex_index;
+};
+
+typedef struct pf_line_indices pf_line_indices_t;
+
+struct pf_curve_indices {
+    uint32_t left_vertex_index;
+    uint32_t right_vertex_index;
+    uint32_t control_point_vertex_index;
+    uint32_t pad;
+};
+
+typedef struct pf_curve_indices pf_curve_indices_t;
+
+struct pf_edge_indices {
+    const pf_line_indices_t *top_line_indices;
+    uint32_t top_line_indices_len;
+    const pf_curve_indices_t *top_curve_indices;
+    uint32_t top_curve_indices_len;
+    const pf_line_indices_t *bottom_line_indices;
+    uint32_t bottom_line_indices_len;
+    const pf_curve_indices_t *bottom_curve_indices;
+    uint32_t bottom_curve_indices_len;
+};
+
+typedef struct pf_edge_indices pf_edge_indices_t;
+
 struct pf_edge_instance {
     uint32_t left_vertex;
     uint32_t right_vertex;
@@ -80,6 +118,7 @@ struct pf_b_quad {
     uint32_t lower_left_vertex_index;
     uint32_t lower_control_point_vertex_index;
     uint32_t lower_right_vertex_index;
+    uint32_t pad[2];
 };
 
 typedef struct pf_b_quad pf_b_quad_t;
@@ -156,14 +195,17 @@ void pf_partitioner_partition(pf_partitioner_t *partitioner,
                               uint32_t first_subpath_index,
                               uint32_t last_subpath_index);
 
-const pf_b_quad_t *pf_partitioner_b_quads(pf_partitioner_t *partitioner,
+const pf_b_quad_t *pf_partitioner_b_quads(const pf_partitioner_t *partitioner,
                                           uint32_t *out_b_quad_count);
 
-const pf_b_vertex_t *pf_partitioner_b_vertices(pf_partitioner_t *partitioner,
+const pf_b_vertex_t *pf_partitioner_b_vertices(const pf_partitioner_t *partitioner,
                                                uint32_t *out_b_vertex_count);
 
-const uint32_t *pf_partitioner_b_indices(pf_partitioner_t *partitioner,
-                                         uint32_t *out_b_index_count);
+const void pf_partitioner_cover_indices(const pf_partitioner_t *partitioner,
+                                        pf_cover_indices_t *out_cover_indices);
+
+const void pf_partitioner_edge_indices(const pf_partitioner_t *partitioner,
+                                       pf_edge_indices_t *out_edge_indices);
 
 pf_tessellator_t *pf_tessellator_new(pf_antialiasing_mode_t antialiasing_mode);
 
