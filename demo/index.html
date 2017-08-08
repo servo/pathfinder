@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Pathfinder Demo</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <link rel="stylesheet" href="/css/bootstrap/bootstrap.css">
+        <script type="text/javascript" src="js/jquery/jquery.js"></script>
+        <script type="text/javascript" src="js/bootstrap/bootstrap.js"></script>
+        <script type="text/javascript" src="js/pathfinder.js"></script>
+        <style type="text/css">
+            #pf-load-font-button-label {
+                position: fixed;
+                bottom: 1em;
+                right: 1em;
+            }
+            #pf-canvas {
+                display: block;
+            }
+        </style>
+    </head>
+    <body>
+        <nav class="navbar navbar-toggleable-md navbar-inverse bg-inverse">
+            <a class="navbar-brand" href="#">Pathfinder Demo</a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav mr-auto">
+                    <li class="nav-item active">
+                        <a class="nav-link" href="#">Text</a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+        <canvas id="pf-canvas" width="400" height="300"></canvas>
+        <label class="btn btn-secondary btn-file" id="pf-load-font-button-label">
+            Load Font…
+            <input type="file" style="display: none" id="pf-load-font-button">
+        </label>
+    </body>
+</html>

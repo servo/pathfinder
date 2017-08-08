@@ -1,0 +1,21 @@
+{
+  "name": "pathfinder-demo",
+  "version": "0.1.0",
+  "description": "Demo for Pathfinder 2",
+  "main": "index.js",
+  "scripts": {
+    "build": "webpack",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Patrick Walton <pcwalton@mimiga.net>",
+  "license": "MIT OR Apache-2.0",
+  "dependencies": {
+    "@types/node": "^8.0.19",
+    "bootstrap": "^4.0.0-alpha.6",
+    "live-server": "^1.2.0",
+    "opentype.js": "^0.7.3",
+    "ts-loader": "^2.3.2",
+    "typescript": "^2.4.2",
+    "webpack": "^3.4.1"
+  }
+}
