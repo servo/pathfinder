@@ -1,7 +1,7 @@
-// partitionfinder/partitionfinder.h
+// pathfinder/partitioner/partitioner.h
 
-#ifndef PARTITIONFINDER_H
-#define PARTITIONFINDER_H
+#ifndef PATHFINDER_PARTITIONER_H
+#define PATHFINDER_PARTITIONER_H
 
 #include <limits.h>
 #include <stdint.h>
@@ -47,18 +47,6 @@ struct pf_b_vertex {
 
 typedef struct pf_b_vertex pf_b_vertex_t;
 
-struct pf_vertex {
-    uint32_t left_b_vertex_index;
-    uint32_t control_point_b_vertex_index;
-    uint32_t right_b_vertex_index;
-    float time;
-    uint32_t path_id;
-    uint8_t bottom;
-    uint8_t pad0, pad1, pad2;
-};
-
-typedef struct pf_vertex pf_vertex_t;
-
 struct pf_cover_indices {
     const uint32_t *interior_indices;
     uint32_t interior_indices_len;
@@ -97,20 +85,6 @@ struct pf_edge_indices {
 
 typedef struct pf_edge_indices pf_edge_indices_t;
 
-struct pf_edge_instance {
-    uint32_t left_vertex;
-    uint32_t right_vertex;
-};
-
-typedef struct pf_edge_instance pf_edge_instance_t;
-
-struct pf_quad_tess_levels {
-    pf_float16_t outer[4];
-    pf_float16_t inner[2];
-};
-
-typedef struct pf_quad_tess_levels pf_quad_tess_levels_t;
-
 struct pf_b_quad {
     uint32_t upper_left_vertex_index;
     uint32_t upper_control_point_vertex_index;
@@ -145,10 +119,6 @@ typedef struct pf_legalizer pf_legalizer_t;
 struct pf_partitioner;
 
 typedef struct pf_partitioner pf_partitioner_t;
-
-struct pf_tessellator;
-
-typedef struct pf_tessellator pf_tessellator_t;
 
 pf_legalizer_t *pf_legalizer_new();
 
@@ -206,34 +176,6 @@ const void pf_partitioner_cover_indices(const pf_partitioner_t *partitioner,
 
 const void pf_partitioner_edge_indices(const pf_partitioner_t *partitioner,
                                        pf_edge_indices_t *out_edge_indices);
-
-pf_tessellator_t *pf_tessellator_new(pf_antialiasing_mode_t antialiasing_mode);
-
-void pf_tessellator_destroy(pf_tessellator_t *tessellator);
-
-void pf_tessellator_init(pf_tessellator_t *tessellator,
-                         const pf_b_quad_t *b_quads,
-                         uint32_t b_quad_count,
-                         const pf_point2d_f32_t *b_vertices,
-                         uint32_t b_vertex_count,
-                         const uint32_t *b_indices,
-                         uint32_t b_index_count);
-
-void pf_tessellator_compute_hull(pf_tessellator_t *tessellator, const pf_matrix2d_f32_t *transform);
-
-void pf_tessellator_compute_domain(pf_tessellator_t *tessellator);
-
-const pf_quad_tess_levels_t *pf_tessellator_tess_levels(const pf_tessellator_t *tessellator,
-                                                        uint32_t *out_tess_levels_count);
-
-const pf_vertex_t *pf_tessellator_vertices(const pf_tessellator_t *tessellator,
-                                           uint32_t *out_vertex_count);
-
-const uint32_t *pf_tessellator_msaa_indices(const pf_tessellator_t *tessellator,
-                                            uint32_t *out_msaa_index_count);
-
-const pf_edge_instance_t *pf_tessellator_edge_instances(const pf_tessellator_t *tessellator,
-                                                        uint32_t *out_edge_instance_count);
 
 uint32_t pf_init_env_logger();
 

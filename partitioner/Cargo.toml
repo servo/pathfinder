@@ -1,10 +1,10 @@
 [package]
-name = "partitionfinder"
+name = "pathfinder_partitioner"
 version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [lib]
-name = "partitionfinder"
+name = "pathfinder_partitioner"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]

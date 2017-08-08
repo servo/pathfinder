@@ -5,7 +5,7 @@ use euclid::Point2D;
 use geometry::{self, SubdividedQuadraticBezier};
 use log::LogLevel;
 use std::collections::BinaryHeap;
-use std::cmp::{self, Ordering};
+use std::cmp::Ordering;
 use std::f32;
 use std::u32;
 use {BQuad, BVertex, BVertexKind, CurveIndices, Endpoint, LineIndices, Subpath};

@@ -18,7 +18,6 @@ pub mod capi;
 pub mod geometry;
 pub mod legalizer;
 pub mod partitioner;
-pub mod tessellator;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -130,36 +129,6 @@ impl BVertex {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct Vertex {
-    pub left_b_vertex_index: u32,
-    pub control_point_b_vertex_index: u32,
-    pub right_b_vertex_index: u32,
-    pub time: f32,
-    pub path_id: u32,
-    pad: u32,
-}
-
-impl Vertex {
-    #[inline]
-    pub fn new(path_id: u32,
-               left_b_vertex_index: u32,
-               control_point_b_vertex_index: u32,
-               right_b_vertex_index: u32,
-               time: f32)
-               -> Vertex {
-        Vertex {
-            path_id: path_id,
-            left_b_vertex_index: left_b_vertex_index,
-            control_point_b_vertex_index: control_point_b_vertex_index,
-            right_b_vertex_index: right_b_vertex_index,
-            time: time,
-            pad: 0,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct LineIndices {
@@ -195,23 +164,6 @@ impl CurveIndices {
             right_vertex_index: right_vertex_index,
             control_point_vertex_index: control_point_vertex_index,
             pad: 0,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct EdgeInstance {
-    pub left_vertex_index: u32,
-    pub right_vertex_index: u32,
-}
-
-impl EdgeInstance {
-    #[inline]
-    pub fn new(left_vertex_index: u32, right_vertex_index: u32) -> EdgeInstance {
-        EdgeInstance {
-            left_vertex_index: left_vertex_index,
-            right_vertex_index: right_vertex_index,
         }
     }
 }
