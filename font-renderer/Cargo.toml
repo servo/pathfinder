@@ -1,0 +1,12 @@
+[package]
+name = "pathfinder_font_renderer"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]
+app_units = "0.5"
+euclid = "0.15"
+
+[dependencies.freetype-sys]
+git = "https://github.com/pcwalton/freetype-sys.git"
+branch = "outline-get-cbox"

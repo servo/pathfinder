@@ -1,7 +1,9 @@
-/target
+/font-renderer/target
+/partitioner/target
 Cargo.lock
 
 # Editors
+*.swp
 
 # IntelliJ
 .idea
