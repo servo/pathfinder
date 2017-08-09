@@ -6,7 +6,14 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 [dependencies]
 app_units = "0.5"
 euclid = "0.15"
+log = "0.3"
 
 [dependencies.freetype-sys]
 git = "https://github.com/pcwalton/freetype-sys.git"
 branch = "outline-get-cbox"
+
+[dependencies.pathfinder_partitioner]
+path = "../partitioner"
+
+[dev-dependencies]
+env_logger = "0.4"
