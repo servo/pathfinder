@@ -10,6 +10,9 @@ extern crate euclid;
 extern crate half;
 #[macro_use]
 extern crate log;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 use euclid::Point2D;
 use std::u32;
@@ -20,7 +23,7 @@ pub mod legalizer;
 pub mod partitioner;
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BQuad {
     pub upper_left_vertex_index: u32,
     pub upper_control_point_vertex_index: u32,
@@ -53,7 +56,7 @@ impl BQuad {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Endpoint {
     pub position: Point2D<f32>,
     /// `u32::MAX` if not present.
@@ -62,7 +65,7 @@ pub struct Endpoint {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Subpath {
     pub first_endpoint_index: u32,
     pub last_endpoint_index: u32,
@@ -75,7 +78,7 @@ pub enum AntialiasingMode {
     Ecaa = 1,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum BVertexKind {
     Endpoint0 = 0,
@@ -84,7 +87,7 @@ pub enum BVertexKind {
     ConcaveControlPoint = 3,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct BVertex {
     pub position: Point2D<f32>,
@@ -129,7 +132,7 @@ impl BVertex {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct LineIndices {
     pub left_vertex_index: u32,
@@ -146,7 +149,7 @@ impl LineIndices {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[repr(C)]
 pub struct CurveIndices {
     pub left_vertex_index: u32,

@@ -1,5 +1,7 @@
 /font-renderer/target
 /partitioner/target
+/demo/client/target
+/demo/server/target
 Cargo.lock
 
 # Editors
