@@ -10,7 +10,6 @@ extern crate base64;
 extern crate bincode;
 extern crate euclid;
 extern crate fontsan;
-extern crate opentype_sanitizer_sys;
 extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
 extern crate rocket;
@@ -101,6 +100,7 @@ struct DecodedOutlineIndices {
     subpath_indices: IndexRange,
 }
 
+#[allow(non_snake_case)]
 #[derive(Clone, Copy, Serialize, Deserialize)]
 struct PartitionGlyphInfo {
     id: u32,
