@@ -15,6 +15,7 @@ extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
 extern crate rocket;
 extern crate rocket_contrib;
+extern crate serde;
 extern crate serde_json;
 
 #[macro_use]
@@ -28,7 +29,9 @@ use pathfinder_font_renderer::{GlyphKey, GlyphOutlineBuffer};
 use pathfinder_partitioner::partitioner::Partitioner;
 use rocket::response::NamedFile;
 use rocket_contrib::json::Json;
+use serde::Serialize;
 use std::io;
+use std::mem;
 use std::path::{Path, PathBuf};
 
 static STATIC_ROOT_PATH: &'static str = "../client/index.html";
@@ -49,6 +52,28 @@ impl IndexRange {
             start: start,
             end: end,
         }
+    }
+
+    fn from_vector_append_operation<T>(dest: &mut Vec<T>, src: &[T]) -> IndexRange where T: Clone {
+        let start = dest.len();
+        dest.extend(src.iter().cloned());
+        let end = dest.len();
+        IndexRange {
+            start: start,
+            end: end,
+        }
+    }
+
+    fn from_vector_append_and_serialization<T>(dest: &mut Vec<u8>, src: &[T])
+                                               -> Result<IndexRange, ()>
+                                               where T: Serialize {
+        let byte_len_before = dest.len();
+        try!(bincode::serialize_into(dest, src, Infinite).map_err(drop));
+        let byte_len_after = dest.len();
+        Ok(IndexRange {
+            start: byte_len_before / mem::size_of::<T>(),
+            end: byte_len_after / mem::size_of::<T>(),
+        })
     }
 }
 
@@ -80,8 +105,14 @@ struct DecodedOutlineIndices {
 struct PartitionGlyphInfo {
     id: u32,
     dimensions: PartitionGlyphDimensions,
-    b_quad_indices: IndexRange,
-    b_vertex_indices: IndexRange,
+    bQuadIndices: IndexRange,
+    bVertexIndices: IndexRange,
+    coverInteriorIndices: IndexRange,
+    coverCurveIndices: IndexRange,
+    edgeUpperLineIndices: IndexRange,
+    edgeUpperCurveIndices: IndexRange,
+    edgeLowerLineIndices: IndexRange,
+    edgeLowerCurveIndices: IndexRange,
 }
 
 #[allow(non_snake_case)]
@@ -92,6 +123,16 @@ struct PartitionFontResponse {
     bQuads: String,
     // Base64-encoded `bincode`-encoded `BVertex`es.
     bVertices: String,
+    coverInteriorIndices: Vec<u32>,
+    coverCurveIndices: Vec<u32>,
+    // Base64-encoded `bincode`-encoded `LineIndices` instances.
+    edgeUpperLineIndices: String,
+    // Base64-encoded `bincode`-encoded `CurveIndices` instances.
+    edgeUpperCurveIndices: String,
+    // Base64-encoded `bincode`-encoded `LineIndices` instances.
+    edgeLowerLineIndices: String,
+    // Base64-encoded `bincode`-encoded `CurveIndices` instances.
+    edgeLowerCurveIndices: String,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -154,8 +195,10 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
     // Partition the decoded glyph outlines.
     let mut partitioner = Partitioner::new();
-    let (mut b_quad_count, mut b_vertex_count) = (0, 0);
     let (mut b_quads, mut b_vertices) = (vec![], vec![]);
+    let (mut cover_interior_indices, mut cover_curve_indices) = (vec![], vec![]);
+    let (mut edge_upper_line_indices, mut edge_upper_curve_indices) = (vec![], vec![]);
+    let (mut edge_lower_line_indices, mut edge_lower_curve_indices) = (vec![], vec![]);
     partitioner.init(&outline_buffer.endpoints,
                      &outline_buffer.control_points,
                      &outline_buffer.subpaths);
@@ -186,29 +229,35 @@ fn partition_font(request: Json<PartitionFontRequest>)
                               decoded_outline_indices.subpath_indices.end as u32);
 
         let (path_b_quads, path_b_vertices) = (partitioner.b_quads(), partitioner.b_vertices());
-        let (first_b_quad_index, first_b_vertex_index) = (b_quad_count, b_vertex_count);
-        let last_b_quad_index = first_b_quad_index + path_b_quads.len();
-        let last_b_vertex_index = first_b_vertex_index + path_b_vertices.len();
-
-        for b_quad in partitioner.b_quads() {
-            if bincode::serialize_into(&mut b_quads, b_quad, Infinite).is_err() {
-                return Json(Err(PartitionFontError::BincodeSerializationFailed))
-            }
-        }
-        for b_vertex in partitioner.b_vertices() {
-            if bincode::serialize_into(&mut b_vertices, b_vertex, Infinite).is_err() {
-                return Json(Err(PartitionFontError::BincodeSerializationFailed))
-            }
-        }
-
-        b_quad_count = last_b_quad_index;
-        b_vertex_count = last_b_vertex_index;
+        let cover_indices = partitioner.cover_indices();
+        let edge_indices = partitioner.edge_indices();
 
         glyph_info.push(PartitionGlyphInfo {
             id: glyph_id,
             dimensions: dimensions,
-            b_quad_indices: IndexRange::new(first_b_quad_index, last_b_quad_index),
-            b_vertex_indices: IndexRange::new(first_b_vertex_index, last_b_vertex_index),
+            bQuadIndices: IndexRange::from_vector_append_and_serialization(&mut b_quads,
+                                                                           path_b_quads).unwrap(),
+            bVertexIndices:
+                IndexRange::from_vector_append_and_serialization(&mut b_vertices,
+                                                                 path_b_vertices).unwrap(),
+            coverInteriorIndices:
+                IndexRange::from_vector_append_operation(&mut cover_interior_indices,
+                                                         cover_indices.interior_indices),
+            coverCurveIndices:
+                IndexRange::from_vector_append_operation(&mut cover_curve_indices,
+                                                         cover_indices.curve_indices),
+            edgeUpperLineIndices: IndexRange::from_vector_append_and_serialization(
+                &mut edge_upper_line_indices,
+                edge_indices.upper_line_indices).unwrap(),
+            edgeUpperCurveIndices: IndexRange::from_vector_append_and_serialization(
+                &mut edge_upper_curve_indices,
+                edge_indices.upper_curve_indices).unwrap(),
+            edgeLowerLineIndices: IndexRange::from_vector_append_and_serialization(
+                &mut edge_lower_line_indices,
+                edge_indices.lower_line_indices).unwrap(),
+            edgeLowerCurveIndices: IndexRange::from_vector_append_and_serialization(
+                &mut edge_lower_curve_indices,
+                edge_indices.lower_curve_indices).unwrap(),
         })
     }
 
@@ -217,6 +266,12 @@ fn partition_font(request: Json<PartitionFontRequest>)
         glyphInfo: glyph_info,
         bQuads: base64::encode(&b_quads),
         bVertices: base64::encode(&b_vertices),
+        coverInteriorIndices: cover_interior_indices,
+        coverCurveIndices: cover_curve_indices,
+        edgeUpperLineIndices: base64::encode(&edge_upper_line_indices),
+        edgeUpperCurveIndices: base64::encode(&edge_upper_curve_indices),
+        edgeLowerLineIndices: base64::encode(&edge_lower_line_indices),
+        edgeLowerCurveIndices: base64::encode(&edge_lower_curve_indices),
     }))
 }
 
