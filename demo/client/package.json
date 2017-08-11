@@ -10,6 +10,7 @@
   "license": "MIT OR Apache-2.0",
   "dependencies": {
     "@types/node": "^8.0.19",
+    "base64-js": "^1.2.1",
     "bootstrap": "^4.0.0-alpha.6",
     "opentype.js": "^0.7.3",
     "ts-loader": "^2.3.2",

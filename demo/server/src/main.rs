@@ -52,13 +52,14 @@ impl IndexRange {
     }
 }
 
+#[allow(non_snake_case)]
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionFontRequest {
     // Base64 encoded.
     otf: String,
-    font_index: u32,
-    glyph_ids: Vec<u32>,
-    point_size: f64,
+    fontIndex: u32,
+    glyphIDs: Vec<u32>,
+    pointSize: f64,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -83,13 +84,14 @@ struct PartitionGlyphInfo {
     b_vertex_indices: IndexRange,
 }
 
+#[allow(non_snake_case)]
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionFontResponse {
-    glyph_info: Vec<PartitionGlyphInfo>,
+    glyphInfo: Vec<PartitionGlyphInfo>,
     // Base64-encoded `bincode`-encoded `BQuad`s.
-    b_quads: String,
+    bQuads: String,
     // Base64-encoded `bincode`-encoded `BVertex`es.
-    b_vertices: String,
+    bVertices: String,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -119,16 +121,16 @@ fn partition_font(request: Json<PartitionFontRequest>)
     let font_key = FontKey::new();
     let font_instance_key = FontInstanceKey {
         font_key: font_key,
-        size: Au::from_f64_px(request.point_size),
+        size: Au::from_f64_px(request.pointSize),
     };
     let mut font_context = FontContext::new();
-    if font_context.add_font_from_memory(&font_key, otf_data, request.font_index).is_err() {
+    if font_context.add_font_from_memory(&font_key, otf_data, request.fontIndex).is_err() {
         return Json(Err(PartitionFontError::FontLoadingFailed))
     }
 
     // Read glyph info.
     let mut outline_buffer = GlyphOutlineBuffer::new();
-    let decoded_outline_indices: Vec<_> = request.glyph_ids.iter().map(|&glyph_id| {
+    let decoded_outline_indices: Vec<_> = request.glyphIDs.iter().map(|&glyph_id| {
         let glyph_key = GlyphKey::new(glyph_id);
 
         let first_endpoint_index = outline_buffer.endpoints.len();
@@ -159,7 +161,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
                      &outline_buffer.subpaths);
     let mut glyph_info = vec![];
     for (path_index, (&glyph_id, decoded_outline_indices)) in
-            request.glyph_ids.iter().zip(decoded_outline_indices.iter()).enumerate() {
+            request.glyphIDs.iter().zip(decoded_outline_indices.iter()).enumerate() {
         let glyph_key = GlyphKey::new(glyph_id);
 
         let dimensions = match font_context.glyph_dimensions(&font_instance_key, &glyph_key) {
@@ -212,9 +214,9 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
     // Return the response.
     Json(Ok(PartitionFontResponse {
-        glyph_info: glyph_info,
-        b_quads: base64::encode(&b_quads),
-        b_vertices: base64::encode(&b_vertices),
+        glyphInfo: glyph_info,
+        bQuads: base64::encode(&b_quads),
+        bVertices: base64::encode(&b_vertices),
     }))
 }
 

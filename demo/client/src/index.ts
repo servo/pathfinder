@@ -1,10 +1,29 @@
 // pathfinder/demo/src/index.ts
 
+const base64js = require('base64-js');
 const opentype = require('opentype.js');
 
-class AppController {
-    constructor() {
+const TEXT: string = "A";
+const FONT_SIZE: number = 16.0;
+
+const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
+
+class PathfinderMeshes {
+    constructor(encodedResponse: string) {
+        const response = JSON.parse(encodedResponse);
+        if (!('Ok' in response))
+            throw new Error("Failed to partition the font!");
+        const meshes = response.Ok;
+        this.bQuads = base64js.toByteArray(meshes.bQuads);
+        this.bVertices = base64js.toByteArray(meshes.bVertices);
     }
+
+    bQuads: ArrayBuffer;
+    bVertices: ArrayBuffer;
+}
+
+class AppController {
+    constructor() {}
 
     start() {
         this.view = new PathfinderView(document.getElementById('pf-canvas') as HTMLCanvasElement);
@@ -15,16 +34,49 @@ class AppController {
 
     loadFont() {
         const file = this.loadFontButton.files[0];
-        const fileURL = window.URL.createObjectURL(file);
-        opentype.load(fileURL, (err, font) => this.fontLoaded(font));
+        const reader = new FileReader;
+        reader.addEventListener('loadend', () => {
+            this.fontData = reader.result;
+            this.fontLoaded();
+        }, false);
+        reader.readAsArrayBuffer(file);
     }
 
-    fontLoaded(font) {
+    fontLoaded() {
+        this.font = opentype.parse(this.fontData);
+        if (!this.font.supported) {
+            window.alert("The font type is unsupported.");
+            return;
+        }
+
+        const glyphIDs = this.font.stringToGlyphs(TEXT).map(glyph => glyph.index);
+
+        const request = {
+            otf: base64js.fromByteArray(new Uint8Array(this.fontData)),
+            fontIndex: 0,
+            glyphIDs: glyphIDs,
+            pointSize: FONT_SIZE,
+        };
+
+        const xhr = new XMLHttpRequest();
+        xhr.addEventListener('load', () => {
+            this.meshes = new PathfinderMeshes(xhr.responseText);
+            this.meshesReceived();
+        }, false);
+        xhr.open('POST', PARTITION_FONT_ENDPOINT_URL, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.send(JSON.stringify(request));
+    }
+
+    meshesReceived() {
         // TODO(pcwalton)
     }
 
     view: PathfinderView;
     loadFontButton: HTMLInputElement;
+    fontData: ArrayBuffer;
+    font: any;
+    meshes: PathfinderMeshes;
 }
 
 class PathfinderView {
