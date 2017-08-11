@@ -26,12 +26,13 @@ pub mod partitioner;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BQuad {
     pub upper_left_vertex_index: u32,
-    pub upper_control_point_vertex_index: u32,
     pub upper_right_vertex_index: u32,
+    pub upper_control_point_vertex_index: u32,
+    pad0: u32,
     pub lower_left_vertex_index: u32,
-    pub lower_control_point_vertex_index: u32,
     pub lower_right_vertex_index: u32,
-    pad: [u32; 2],
+    pub lower_control_point_vertex_index: u32,
+    pad1: u32,
 }
 
 impl BQuad {
@@ -50,7 +51,8 @@ impl BQuad {
             lower_left_vertex_index: lower_left_vertex_index,
             lower_control_point_vertex_index: lower_control_point_vertex_index,
             lower_right_vertex_index: lower_right_vertex_index,
-            pad: [0; 2],
+            pad0: 0,
+            pad1: 0,
         }
     }
 }

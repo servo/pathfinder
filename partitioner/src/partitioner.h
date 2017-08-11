@@ -87,12 +87,13 @@ typedef struct pf_edge_indices pf_edge_indices_t;
 
 struct pf_b_quad {
     uint32_t upper_left_vertex_index;
-    uint32_t upper_control_point_vertex_index;
     uint32_t upper_right_vertex_index;
+    uint32_t upper_control_point_vertex_index;
+    uint32_t pad0;
     uint32_t lower_left_vertex_index;
-    uint32_t lower_control_point_vertex_index;
     uint32_t lower_right_vertex_index;
-    uint32_t pad[2];
+    uint32_t lower_control_point_vertex_index;
+    uint32_t pad1;
 };
 
 typedef struct pf_b_quad pf_b_quad_t;
