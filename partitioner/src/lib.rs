@@ -91,24 +91,22 @@ pub enum BVertexKind {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[repr(C)]
-pub struct BVertex {
-    pub position: Point2D<f32>,
+pub struct BVertexInfo {
     pub path_id: u32,
     pub tex_coord: [u8; 2],
     pub kind: BVertexKind,
     pad: u8,
 }
 
-impl BVertex {
+impl BVertexInfo {
     #[inline]
-    pub fn new(position: &Point2D<f32>, kind: BVertexKind, path_id: u32) -> BVertex {
+    pub fn new(kind: BVertexKind, path_id: u32) -> BVertexInfo {
         let tex_coord = match kind {
             BVertexKind::Endpoint0 => [0, 0],
             BVertexKind::Endpoint1 => [2, 2],
             BVertexKind::ConcaveControlPoint | BVertexKind::ConvexControlPoint => [1, 0],
         };
-        BVertex {
-            position: *position,
+        BVertexInfo {
             path_id: path_id,
             tex_coord: tex_coord,
             kind: kind,
@@ -121,7 +119,7 @@ impl BVertex {
                                 right_endpoint_position: &Point2D<f32>,
                                 path_id: u32,
                                 bottom: bool)
-                                -> BVertex {
+                                -> BVertexInfo {
         let control_point_vector = *control_point_position - *left_endpoint_position;
         let right_vector = *right_endpoint_position - *left_endpoint_position;
         let determinant = right_vector.cross(control_point_vector);
@@ -130,7 +128,7 @@ impl BVertex {
         } else {
             BVertexKind::ConcaveControlPoint
         };
-        BVertex::new(control_point_position, endpoint_kind, path_id)
+        BVertexInfo::new(endpoint_kind, path_id)
     }
 }
 

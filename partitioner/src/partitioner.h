@@ -37,15 +37,14 @@ struct pf_matrix2d_f32 {
 
 typedef struct pf_matrix2d_f32 pf_matrix2d_f32_t;
 
-struct pf_b_vertex {
-    pf_point2d_f32_t position;
+struct pf_b_vertex_info {
     uint32_t path_id;
     uint8_t tex_coord[2];
     pf_b_vertex_kind_t kind;
     uint8_t pad;
 };
 
-typedef struct pf_b_vertex pf_b_vertex_t;
+typedef struct pf_b_vertex_info pf_b_vertex_info_t;
 
 struct pf_cover_indices {
     const uint32_t *interior_indices;
@@ -169,8 +168,11 @@ void pf_partitioner_partition(pf_partitioner_t *partitioner,
 const pf_b_quad_t *pf_partitioner_b_quads(const pf_partitioner_t *partitioner,
                                           uint32_t *out_b_quad_count);
 
-const pf_b_vertex_t *pf_partitioner_b_vertices(const pf_partitioner_t *partitioner,
-                                               uint32_t *out_b_vertex_count);
+const pf_point2d_f32_t *pf_partitioner_b_vertex_positions(const pf_partitioner_t *partitioner,
+                                                          uint32_t *out_b_vertex_count);
+
+const pf_b_vertex_info_t *pf_partitioner_b_vertex_info(const pf_partitioner_t *partitioner,
+                                                       uint32_t *out_b_vertex_count);
 
 const void pf_partitioner_cover_indices(const pf_partitioner_t *partitioner,
                                         pf_cover_indices_t *out_cover_indices);

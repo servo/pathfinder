@@ -6,7 +6,7 @@ use legalizer::Legalizer;
 use partitioner::Partitioner;
 use std::mem;
 use std::slice;
-use {BQuad, BVertex, CurveIndices, Endpoint, LineIndices, Subpath};
+use {BQuad, BVertexInfo, CurveIndices, Endpoint, LineIndices, Subpath};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -184,15 +184,25 @@ pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *const Partitioner<
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_partitioner_b_vertices<'a>(partitioner: *const Partitioner<'a>,
-                                                   out_b_vertex_count: *mut u32)
-                                                   -> *const BVertex {
-    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
-    let b_vertices = (*partitioner).b_vertices();
+pub unsafe extern fn pf_partitioner_b_vertex_positions<'a>(partitioner: *const Partitioner<'a>,
+                                                           out_b_vertex_count: *mut u32)
+                                                           -> *const Point2D<f32> {
+    let b_vertex_positions = (*partitioner).b_vertex_positions();
     if !out_b_vertex_count.is_null() {
-        *out_b_vertex_count = b_vertices.len() as u32
+        *out_b_vertex_count = b_vertex_positions.len() as u32
     }
-    b_vertices.as_ptr() as *const BVertex
+    b_vertex_positions.as_ptr() as *const Point2D<f32>
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_partitioner_b_vertex_info<'a>(partitioner: *const Partitioner<'a>,
+                                                      out_b_vertex_count: *mut u32)
+                                                      -> *const BVertexInfo {
+    let b_vertex_info = (*partitioner).b_vertex_info();
+    if !out_b_vertex_count.is_null() {
+        *out_b_vertex_count = b_vertex_info.len() as u32
+    }
+    b_vertex_info.as_ptr() as *const BVertexInfo
 }
 
 #[no_mangle]

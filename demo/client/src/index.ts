@@ -14,11 +14,13 @@ class PathfinderMeshes {
         if (!('Ok' in response))
             throw new Error("Failed to partition the font!");
         const meshes = response.Ok;
-        this.bQuads = base64js.toByteArray(meshes.bQuads);
+        this.bQuadPositions = base64js.toByteArray(meshes.bQuadPositions);
+        this.bQuadInfo = base64js.toByteArray(meshes.bQuadInfo);
         this.bVertices = base64js.toByteArray(meshes.bVertices);
     }
 
-    bQuads: ArrayBuffer;
+    bQuadPositions: ArrayBuffer;
+    bQuadInfo: ArrayBuffer;
     bVertices: ArrayBuffer;
 }
 
