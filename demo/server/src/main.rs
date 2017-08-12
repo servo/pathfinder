@@ -26,9 +26,12 @@ use euclid::{Point2D, Size2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey};
 use pathfinder_font_renderer::{GlyphKey, GlyphOutlineBuffer};
 use pathfinder_partitioner::partitioner::Partitioner;
-use rocket::response::NamedFile;
+use rocket::http::{ContentType, Status};
+use rocket::request::Request;
+use rocket::response::{NamedFile, Responder, Response};
 use rocket_contrib::json::Json;
 use serde::Serialize;
+use std::fs::File;
 use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -38,6 +41,7 @@ static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstr
 static STATIC_JS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/js";
 static STATIC_JS_JQUERY_PATH: &'static str = "../client/node_modules/jquery/dist";
 static STATIC_JS_PATHFINDER_JS_PATH: &'static str = "../client/pathfinder.js";
+static STATIC_GLSL_PATH: &'static str = "../../shaders";
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 struct IndexRange {
@@ -304,6 +308,28 @@ fn static_js_bootstrap(file: PathBuf) -> Option<NamedFile> {
 fn static_js_jquery(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_JS_JQUERY_PATH).join(file)).ok()
 }
+#[get("/glsl/<file..>")]
+fn static_glsl(file: PathBuf) -> Option<Shader> {
+    Shader::open(Path::new(STATIC_GLSL_PATH).join(file)).ok()
+}
+
+struct Shader {
+    file: File,
+}
+
+impl Shader {
+    fn open(path: PathBuf) -> io::Result<Shader> {
+        File::open(path).map(|file| Shader {
+            file: file,
+        })
+    }
+}
+
+impl<'a> Responder<'a> for Shader {
+    fn respond_to(self, _: &Request) -> Result<Response<'a>, Status> {
+        Response::build().header(ContentType::Plain).streamed_body(self.file).ok()
+    }
+}
 
 fn main() {
     rocket::ignite().mount("/", routes![
@@ -313,5 +339,6 @@ fn main() {
         static_css_bootstrap,
         static_js_bootstrap,
         static_js_jquery,
+        static_glsl,
     ]).launch();
 }

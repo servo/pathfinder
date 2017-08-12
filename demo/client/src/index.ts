@@ -8,6 +8,39 @@ const FONT_SIZE: number = 16.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
+const SHADER_URLS: ShaderURLMap = {
+    directCurve: {
+        vertex: "/glsl/gles2/direct-curve.vs.glsl",
+        fragment: "/glsl/gles2/direct-curve.fs.glsl",
+    },
+    directInterior: {
+        vertex: "/glsl/gles2/direct-interior.vs.glsl",
+        fragment: "/glsl/gles2/direct-interior.fs.glsl",
+    },
+};
+
+interface ShaderURLMap {
+    [shaderName: string]: { 'vertex': string, 'fragment': string }
+}
+
+interface ShaderMap {
+    [shaderName: string]: { [shaderType: number]: WebGLShader };
+}
+
+interface ShaderProgramMap {
+    [shaderProgramName: string]: PathfinderShaderProgram;
+}
+
+type ShaderType = number;
+
+type ShaderTypeName = 'vertex' | 'fragment';
+
+function expect<T>(value: T | null, message: string): T {
+    if (value == null)
+        throw new Error(message);
+    return value;
+}
+
 class PathfinderMeshes {
     constructor(encodedResponse: string) {
         const response = JSON.parse(encodedResponse);
@@ -35,7 +68,7 @@ class AppController {
     }
 
     loadFont() {
-        const file = this.loadFontButton.files[0];
+        const file = expect(this.loadFontButton.files, "No file selected!")[0];
         const reader = new FileReader;
         reader.addEventListener('loadend', () => {
             this.fontData = reader.result;
@@ -46,12 +79,10 @@ class AppController {
 
     fontLoaded() {
         this.font = opentype.parse(this.fontData);
-        if (!this.font.supported) {
-            window.alert("The font type is unsupported.");
-            return;
-        }
+        if (!this.font.supported)
+            throw new Error("The font type is unsupported.");
 
-        const glyphIDs = this.font.stringToGlyphs(TEXT).map(glyph => glyph.index);
+        const glyphIDs = this.font.stringToGlyphs(TEXT).map((glyph: any) => glyph.index);
 
         const request = {
             otf: base64js.fromByteArray(new Uint8Array(this.fontData)),
@@ -60,7 +91,7 @@ class AppController {
             pointSize: FONT_SIZE,
         };
 
-        const xhr = new XMLHttpRequest();
+        const xhr = new XMLHttpRequest;
         xhr.addEventListener('load', () => {
             this.meshes = new PathfinderMeshes(xhr.responseText);
             this.meshesReceived();
@@ -84,9 +115,83 @@ class AppController {
 class PathfinderView {
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
+
+        this.initContext();
+
+        this.loadShaders().then(shaders => this.shaderProgramsPromise = this.linkShaders(shaders));
+
+        window.addEventListener('resize', () => this.resizeToFit(), false);
+        this.resizeToFit();
+    }
+
+    initContext() {
+        this.gl = expect(this.canvas.getContext('webgl', { antialias: false, depth: true }),
+                         "Failed to initialize WebGL! Check that your browser supports it.");
+
+        this.gl.clearColor(0.0, 0.0, 1.0, 1.0);
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT);
+        this.gl.flush();
+    }
+
+    loadShaders(): Promise<ShaderMap> {
+        return new Promise((resolve, reject) => {
+            let shaders: ShaderMap = {};
+            const shaderKeys = Object.keys(SHADER_URLS);
+            let shaderKeysLeft = shaderKeys.length;
+
+            let loaded = (type: ShaderType, shaderKey: string, source: string) => {
+                const shader = this.gl.createShader(type);
+                if (shader == null)
+                    throw new Error("Failed to create shader!");
+                this.gl.shaderSource(shader, source);
+                this.gl.compileShader(shader);
+                if (!(shaderKey in shaders))
+                    shaders[shaderKey] = {};
+                shaders[shaderKey][type] = shader;
+
+                shaderKeysLeft--;
+                if (shaderKeysLeft == 0)
+                    resolve(shaders);
+            };
+
+            for (const shaderKey of shaderKeys) {
+                for (const typeName of ['vertex', 'fragment'] as Array<ShaderTypeName>) {
+                    const type = {
+                        vertex: this.gl.VERTEX_SHADER,
+                        fragment: this.gl.FRAGMENT_SHADER,
+                    }[typeName];
+
+                    const xhr = new XMLHttpRequest;
+                    xhr.addEventListener('load',
+                                         () => loaded(type, shaderKey, xhr.responseText),
+                                         false);
+                    xhr.addEventListener('error', () => reject(), false);
+                    xhr.open('GET', SHADER_URLS[shaderKey][typeName], true);
+                    xhr.send();
+                }
+            }
+        });
+    }
+
+    linkShaders(shaders: ShaderMap): Promise<ShaderProgramMap> {
+        // TODO(pcwalton)
+        throw new Error("TODO");
+    }
+
+    resizeToFit() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight - this.canvas.scrollTop;
     }
 
     canvas: HTMLCanvasElement;
+    gl: WebGLRenderingContext;
+    shaderProgramsPromise: Promise<ShaderProgramMap>;
+}
+
+class PathfinderShaderProgram {
+    constructor(vertexShaderSource: string, fragmentShaderSource: string) {
+        // TODO(pcwalton)
+    }
 }
 
 function main() {

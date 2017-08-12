@@ -8,7 +8,9 @@
         "typeRoots": [
             "node_modules/@types"
         ],
-        "sourceMap": true
+        "sourceMap": true,
+        "strictNullChecks": true,
+        "noImplicitAny": true
     },
     "include": [
         "src"
