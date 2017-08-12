@@ -91,14 +91,16 @@ class AppController {
             pointSize: FONT_SIZE,
         };
 
-        const xhr = new XMLHttpRequest;
-        xhr.addEventListener('load', () => {
-            this.meshes = new PathfinderMeshes(xhr.responseText);
-            this.meshesReceived();
-        }, false);
-        xhr.open('POST', PARTITION_FONT_ENDPOINT_URL, true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.send(JSON.stringify(request));
+        window.fetch(PARTITION_FONT_ENDPOINT_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(request),
+        }).then((response) => {
+            response.text().then((encodedMeshes) => {
+                this.meshes = new PathfinderMeshes(encodedMeshes);
+                this.meshesReceived();
+            });
+        });
     }
 
     meshesReceived() {
@@ -134,43 +136,34 @@ class PathfinderView {
     }
 
     loadShaders(): Promise<ShaderMap> {
-        return new Promise((resolve, reject) => {
-            let shaders: ShaderMap = {};
-            const shaderKeys = Object.keys(SHADER_URLS);
-            let shaderKeysLeft = shaderKeys.length;
+        let shaders: ShaderMap = {};
+        const shaderKeys = Object.keys(SHADER_URLS);
 
-            let loaded = (type: ShaderType, shaderKey: string, source: string) => {
-                const shader = this.gl.createShader(type);
-                if (shader == null)
-                    throw new Error("Failed to create shader!");
-                this.gl.shaderSource(shader, source);
-                this.gl.compileShader(shader);
-                if (!(shaderKey in shaders))
-                    shaders[shaderKey] = {};
-                shaders[shaderKey][type] = shader;
+        let promises = [];
+        for (const shaderKey of shaderKeys) {
+            for (const typeName of ['vertex', 'fragment'] as Array<ShaderTypeName>) {
+                const type = {
+                    vertex: this.gl.VERTEX_SHADER,
+                    fragment: this.gl.FRAGMENT_SHADER,
+                }[typeName];
 
-                shaderKeysLeft--;
-                if (shaderKeysLeft == 0)
-                    resolve(shaders);
-            };
-
-            for (const shaderKey of shaderKeys) {
-                for (const typeName of ['vertex', 'fragment'] as Array<ShaderTypeName>) {
-                    const type = {
-                        vertex: this.gl.VERTEX_SHADER,
-                        fragment: this.gl.FRAGMENT_SHADER,
-                    }[typeName];
-
-                    const xhr = new XMLHttpRequest;
-                    xhr.addEventListener('load',
-                                         () => loaded(type, shaderKey, xhr.responseText),
-                                         false);
-                    xhr.addEventListener('error', () => reject(), false);
-                    xhr.open('GET', SHADER_URLS[shaderKey][typeName], true);
-                    xhr.send();
-                }
+                const url = SHADER_URLS[shaderKey][typeName];
+                promises.push(window.fetch(url).then((response) => {
+                    return response.text().then((source) => {
+                        const shader = this.gl.createShader(type);
+                        if (shader == null)
+                            throw new Error("Failed to create shader!");
+                        this.gl.shaderSource(shader, source);
+                        this.gl.compileShader(shader);
+                        if (!(shaderKey in shaders))
+                            shaders[shaderKey] = {};
+                        shaders[shaderKey][type] = shader;
+                    });
+                }));
             }
-        });
+        }
+
+        return Promise.all(promises).then(() => shaders);
     }
 
     linkShaders(shaders: ShaderMap): Promise<ShaderProgramMap> {
