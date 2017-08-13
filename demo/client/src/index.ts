@@ -8,6 +8,8 @@ const FONT_SIZE: number = 16.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
+const COMMON_SHADER_URL: string = '/glsl/gles2/common.inc.glsl';
+
 const SHADER_URLS: ShaderURLMap = {
     directCurve: {
         vertex: "/glsl/gles2/direct-curve.vs.glsl",
@@ -20,7 +22,7 @@ const SHADER_URLS: ShaderURLMap = {
 };
 
 interface ShaderURLMap {
-    [shaderName: string]: { 'vertex': string, 'fragment': string }
+    [shaderName: string]: { 'vertex': string, 'fragment': string };
 }
 
 interface ShaderMap {
@@ -37,15 +39,21 @@ type ShaderTypeName = 'vertex' | 'fragment';
 
 function expect<T>(value: T | null, message: string): T {
     if (value == null)
-        throw new Error(message);
+        throw new PathfinderError(message);
     return value;
+}
+
+class PathfinderError extends Error {
+    constructor(message?: string | undefined) {
+        super(message);
+    }
 }
 
 class PathfinderMeshes {
     constructor(encodedResponse: string) {
         const response = JSON.parse(encodedResponse);
         if (!('Ok' in response))
-            throw new Error("Failed to partition the font!");
+            throw new PathfinderError("Failed to partition the font!");
         const meshes = response.Ok;
         this.bQuadPositions = base64js.toByteArray(meshes.bQuadPositions);
         this.bQuadInfo = base64js.toByteArray(meshes.bQuadInfo);
@@ -80,7 +88,7 @@ class AppController {
     fontLoaded() {
         this.font = opentype.parse(this.fontData);
         if (!this.font.supported)
-            throw new Error("The font type is unsupported.");
+            throw new PathfinderError("The font type is unsupported.");
 
         const glyphIDs = this.font.stringToGlyphs(TEXT).map((glyph: any) => glyph.index);
 
@@ -120,7 +128,7 @@ class PathfinderView {
 
         this.initContext();
 
-        this.loadShaders().then(shaders => this.shaderProgramsPromise = this.linkShaders(shaders));
+        this.shaderProgramsPromise = this.loadShaders().then(shaders => this.linkShaders(shaders));
 
         window.addEventListener('resize', () => this.resizeToFit(), false);
         this.resizeToFit();
@@ -137,38 +145,65 @@ class PathfinderView {
 
     loadShaders(): Promise<ShaderMap> {
         let shaders: ShaderMap = {};
-        const shaderKeys = Object.keys(SHADER_URLS);
+        return window.fetch(COMMON_SHADER_URL)
+                     .then((response) => response.text())
+                     .then((commonSource) => {
+            const shaderKeys = Object.keys(SHADER_URLS);
 
-        let promises = [];
-        for (const shaderKey of shaderKeys) {
-            for (const typeName of ['vertex', 'fragment'] as Array<ShaderTypeName>) {
-                const type = {
-                    vertex: this.gl.VERTEX_SHADER,
-                    fragment: this.gl.FRAGMENT_SHADER,
-                }[typeName];
+            let promises = [];
+            for (const shaderKey of shaderKeys) {
+                for (const typeName of ['vertex', 'fragment'] as Array<ShaderTypeName>) {
+                    const type = {
+                        vertex: this.gl.VERTEX_SHADER,
+                        fragment: this.gl.FRAGMENT_SHADER,
+                    }[typeName];
 
-                const url = SHADER_URLS[shaderKey][typeName];
-                promises.push(window.fetch(url).then((response) => {
-                    return response.text().then((source) => {
+                    const url = SHADER_URLS[shaderKey][typeName];
+                    promises.push(window.fetch(url)
+                                        .then(response => response.text())
+                                        .then(source => {
                         const shader = this.gl.createShader(type);
                         if (shader == null)
-                            throw new Error("Failed to create shader!");
-                        this.gl.shaderSource(shader, source);
+                            throw new PathfinderError("Failed to create shader!");
+                        this.gl.shaderSource(shader, commonSource + "\n#line 1\n" + source);
                         this.gl.compileShader(shader);
+                        if (this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS) == 0) {
+                            const infoLog = this.gl.getShaderInfoLog(shader);
+                            throw new PathfinderError(`Failed to compile ${typeName} shader ` +
+                                                    `"${shaderKey}":\n${infoLog}`);
+                        }
+
                         if (!(shaderKey in shaders))
                             shaders[shaderKey] = {};
                         shaders[shaderKey][type] = shader;
-                    });
-                }));
+                    }));
+                }
             }
-        }
 
-        return Promise.all(promises).then(() => shaders);
+            return Promise.all(promises);
+        }).then(() => shaders);
     }
 
     linkShaders(shaders: ShaderMap): Promise<ShaderProgramMap> {
-        // TODO(pcwalton)
-        throw new Error("TODO");
+        return new Promise((resolve, reject) => {
+            let shaderProgramMap: ShaderProgramMap = {};
+            for (const shaderKey of Object.keys(shaders)) {
+                const program = expect(this.gl.createProgram(), "Failed to create shader program!");
+                const compiledShaders = shaders[shaderKey];
+                for (const compiledShader of Object.values(compiledShaders))
+                    this.gl.attachShader(program, compiledShader);
+                this.gl.linkProgram(program);
+
+                if (this.gl.getProgramParameter(program, this.gl.LINK_STATUS) == 0) {
+                    const infoLog = this.gl.getProgramInfoLog(program);
+                    throw new PathfinderError(`Failed to link program "${program}":\n${infoLog}`);
+                }
+
+                shaderProgramMap[shaderKey] = program;
+            }
+
+            resolve(shaderProgramMap);
+        });
     }
 
     resizeToFit() {
@@ -182,7 +217,7 @@ class PathfinderView {
 }
 
 class PathfinderShaderProgram {
-    constructor(vertexShaderSource: string, fragmentShaderSource: string) {
+    constructor(vertexShader: WebGLShader, fragmentShader: WebGLShader) {
         // TODO(pcwalton)
     }
 }

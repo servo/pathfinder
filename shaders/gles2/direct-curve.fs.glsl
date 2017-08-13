@@ -6,8 +6,6 @@
 // It is therefore unsuitable for ECAA, but it's fast (specifically, preserving early Z) and
 // compatible with OpenGL ES 2.0.
 
-#version 100
-
 precision highp float;
 
 varying vec4 vColor;

@@ -80,13 +80,13 @@ pub enum AntialiasingMode {
     Ecaa = 1,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
-pub enum BVertexKind {
-    Endpoint0 = 0,
-    Endpoint1 = 1,
-    ConvexControlPoint = 2,
-    ConcaveControlPoint = 3,
+pub(crate) enum BVertexKind {
+    Endpoint0,
+    Endpoint1,
+    ConvexControlPoint,
+    ConcaveControlPoint,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -94,22 +94,23 @@ pub enum BVertexKind {
 pub struct BVertexInfo {
     pub path_id: u32,
     pub tex_coord: [u8; 2],
-    pub kind: BVertexKind,
+    pub sign: i8,
     pad: u8,
 }
 
 impl BVertexInfo {
     #[inline]
-    pub fn new(kind: BVertexKind, path_id: u32) -> BVertexInfo {
-        let tex_coord = match kind {
-            BVertexKind::Endpoint0 => [0, 0],
-            BVertexKind::Endpoint1 => [2, 2],
-            BVertexKind::ConcaveControlPoint | BVertexKind::ConvexControlPoint => [1, 0],
+    pub(crate) fn new(kind: BVertexKind, path_id: u32) -> BVertexInfo {
+        let (tex_coord, sign) = match kind {
+            BVertexKind::Endpoint0 => ([0, 0], 0),
+            BVertexKind::Endpoint1 => ([2, 2], 0),
+            BVertexKind::ConcaveControlPoint => ([1, 0], 1),
+            BVertexKind::ConvexControlPoint => ([1, 0], -1),
         };
         BVertexInfo {
             path_id: path_id,
             tex_coord: tex_coord,
-            kind: kind,
+            sign: sign,
             pad: 0,
         }
     }

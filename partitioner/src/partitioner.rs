@@ -1017,11 +1017,11 @@ struct SubdividedActiveEdge {
 impl SubdividedActiveEdge {
     fn shape(&self, b_vertex_info: &[BVertexInfo]) -> Shape {
         if self.left_curve_control_point == u32::MAX {
-            return Shape::Flat
-        }
-        match b_vertex_info[self.left_curve_control_point as usize].kind {
-            BVertexKind::ConvexControlPoint => Shape::Convex,
-            _ => Shape::Concave,
+            Shape::Flat
+        } else if b_vertex_info[self.left_curve_control_point as usize].sign < 0 {
+            Shape::Convex
+        } else {
+            Shape::Concave
         }
     }
 }

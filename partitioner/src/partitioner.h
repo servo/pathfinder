@@ -9,11 +9,6 @@
 #define PF_ANTIALIASING_MODE_MSAA   0
 #define PF_ANTIALIASING_MODE_ECAA   1
 
-#define PF_B_VERTEX_KIND_ENDPOINT_0             0
-#define PF_B_VERTEX_KIND_ENDPOINT_1             1
-#define PF_B_VERTEX_KIND_CONVEX_CONTROL_POINT   2
-#define PF_B_VERTEX_KIND_CONCAVE_CONTROL_POINT  3
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,8 +16,6 @@ extern "C" {
 typedef uint8_t pf_antialiasing_mode_t;
 
 typedef uint16_t pf_float16_t;
-
-typedef uint8_t pf_b_vertex_kind_t;
 
 struct pf_point2d_f32 {
     float x, y;
@@ -40,7 +33,7 @@ typedef struct pf_matrix2d_f32 pf_matrix2d_f32_t;
 struct pf_b_vertex_info {
     uint32_t path_id;
     uint8_t tex_coord[2];
-    pf_b_vertex_kind_t kind;
+    int8_t sign;
     uint8_t pad;
 };
 
