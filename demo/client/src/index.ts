@@ -3,14 +3,30 @@
 const base64js = require('base64-js');
 const opentype = require('opentype.js');
 
-const TEXT: string = "A";
+const TEXT: string = "G";
 const FONT_SIZE: number = 16.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
 const COMMON_SHADER_URL: string = '/glsl/gles2/common.inc.glsl';
 
-const SHADER_URLS: ShaderURLMap = {
+const UINT32_SIZE: number = 4;
+
+const B_POSITION_SIZE: number = 8;
+
+const B_VERTEX_QUAD_SIZE: number = 8;
+const B_VERTEX_QUAD_PATH_ID_OFFSET: number = 0;
+const B_VERTEX_QUAD_TEX_COORD_OFFSET: number = 4;
+const B_VERTEX_QUAD_SIGN_OFFSET: number = 6;
+
+const IDENTITY: Matrix4D = [
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0,
+];
+
+const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     directCurve: {
         vertex: "/glsl/gles2/direct-curve.vs.glsl",
         fragment: "/glsl/gles2/direct-curve.fs.glsl",
@@ -21,16 +37,34 @@ const SHADER_URLS: ShaderURLMap = {
     },
 };
 
-interface ShaderURLMap {
-    [shaderName: string]: { 'vertex': string, 'fragment': string };
+interface UnlinkedShaderProgram {
+    vertex: WebGLShader;
+    fragment: WebGLShader;
 }
 
-interface ShaderMap {
-    [shaderName: string]: { [shaderType: number]: WebGLShader };
+type Matrix4D = number[];
+
+interface ShaderProgramSource {
+    vertex: string;
+    fragment: string;
 }
 
-interface ShaderProgramMap {
-    [shaderProgramName: string]: PathfinderShaderProgram;
+interface ShaderProgramURLs {
+    vertex: string;
+    fragment: string;
+}
+
+interface ShaderMap<T> {
+    directCurve: T;
+    directInterior: T;
+}
+
+interface UniformMap {
+    [uniformName: string]: WebGLUniformLocation;
+}
+
+interface AttributeMap {
+    [attributeName: string]: number;
 }
 
 type ShaderType = number;
@@ -43,26 +77,91 @@ function expect<T>(value: T | null, message: string): T {
     return value;
 }
 
+function unwrap<T>(value: T | null): T {
+    return expect(value, "Unexpected null!");
+}
+
 class PathfinderError extends Error {
     constructor(message?: string | undefined) {
         super(message);
     }
 }
 
-class PathfinderMeshes {
+interface Meshes<T> {
+    readonly bQuads: T;
+    readonly bVertexPositions: T;
+    readonly bVertexInfo: T;
+    readonly coverInteriorIndices: T;
+    readonly coverCurveIndices: T;
+    readonly edgeUpperLineIndices: T;
+    readonly edgeUpperCurveIndices: T;
+    readonly edgeLowerLineIndices: T;
+    readonly edgeLowerCurveIndices: T;
+}
+
+type BufferType = number;
+
+const BUFFER_TYPES: Meshes<BufferType> = {
+    bQuads: WebGLRenderingContext.ARRAY_BUFFER,
+    bVertexPositions: WebGLRenderingContext.ARRAY_BUFFER,
+    bVertexInfo: WebGLRenderingContext.ARRAY_BUFFER,
+    coverInteriorIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
+    coverCurveIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
+    edgeUpperLineIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
+    edgeUpperCurveIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
+    edgeLowerLineIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
+    edgeLowerCurveIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
+};
+
+class PathfinderMeshData implements Meshes<ArrayBuffer> {
     constructor(encodedResponse: string) {
         const response = JSON.parse(encodedResponse);
         if (!('Ok' in response))
             throw new PathfinderError("Failed to partition the font!");
         const meshes = response.Ok;
-        this.bQuadPositions = base64js.toByteArray(meshes.bQuadPositions);
-        this.bQuadInfo = base64js.toByteArray(meshes.bQuadInfo);
-        this.bVertices = base64js.toByteArray(meshes.bVertices);
+        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshData>)
+            this[bufferName] = base64js.toByteArray(meshes[bufferName]).buffer;
     }
 
-    bQuadPositions: ArrayBuffer;
-    bQuadInfo: ArrayBuffer;
-    bVertices: ArrayBuffer;
+    readonly bQuads: ArrayBuffer;
+    readonly bVertexPositions: ArrayBuffer;
+    readonly bVertexInfo: ArrayBuffer;
+    readonly coverInteriorIndices: ArrayBuffer;
+    readonly coverCurveIndices: ArrayBuffer;
+    readonly edgeUpperLineIndices: ArrayBuffer;
+    readonly edgeUpperCurveIndices: ArrayBuffer;
+    readonly edgeLowerLineIndices: ArrayBuffer;
+    readonly edgeLowerCurveIndices: ArrayBuffer;
+}
+
+class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
+    constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
+        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshBuffers>) {
+            const bufferType = BUFFER_TYPES[bufferName];
+            const buffer = expect(gl.createBuffer(), "Failed to create buffer!");
+            gl.bindBuffer(bufferType, buffer);
+            gl.bufferData(bufferType, meshData[bufferName], gl.STATIC_DRAW);
+            console.log(`${bufferName} has size ${meshData[bufferName].byteLength}`);
+            if (bufferName == 'coverInteriorIndices') {
+                const typedArray = new Uint32Array(meshData[bufferName]);
+                let array = [];
+                for (let i = 0; i < typedArray.length; i++)
+                    array[i] = typedArray[i];
+                console.log(array.toString());
+            }
+            this[bufferName] = buffer;
+        }
+    }
+
+    readonly bQuads: WebGLBuffer;
+    readonly bVertexPositions: WebGLBuffer;
+    readonly bVertexInfo: WebGLBuffer;
+    readonly coverInteriorIndices: WebGLBuffer;
+    readonly coverCurveIndices: WebGLBuffer;
+    readonly edgeUpperLineIndices: WebGLBuffer;
+    readonly edgeUpperCurveIndices: WebGLBuffer;
+    readonly edgeLowerLineIndices: WebGLBuffer;
+    readonly edgeLowerCurveIndices: WebGLBuffer;
 }
 
 class AppController {
@@ -105,21 +204,21 @@ class AppController {
             body: JSON.stringify(request),
         }).then((response) => {
             response.text().then((encodedMeshes) => {
-                this.meshes = new PathfinderMeshes(encodedMeshes);
+                this.meshes = new PathfinderMeshData(encodedMeshes);
                 this.meshesReceived();
             });
         });
     }
 
     meshesReceived() {
-        // TODO(pcwalton)
+        this.view.attachMeshes(this.meshes);
     }
 
     view: PathfinderView;
     loadFontButton: HTMLInputElement;
     fontData: ArrayBuffer;
     font: any;
-    meshes: PathfinderMeshes;
+    meshes: PathfinderMeshData;
 }
 
 class PathfinderView {
@@ -137,18 +236,15 @@ class PathfinderView {
     initContext() {
         this.gl = expect(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                          "Failed to initialize WebGL! Check that your browser supports it.");
-
-        this.gl.clearColor(0.0, 0.0, 1.0, 1.0);
-        this.gl.clear(this.gl.COLOR_BUFFER_BIT);
-        this.gl.flush();
+        this.gl.getExtension('OES_element_index_uint');
     }
 
-    loadShaders(): Promise<ShaderMap> {
-        let shaders: ShaderMap = {};
+    loadShaders(): Promise<ShaderMap<UnlinkedShaderProgram>> {
+        let shaders: Partial<ShaderMap<Partial<UnlinkedShaderProgram>>> = {};
         return window.fetch(COMMON_SHADER_URL)
                      .then((response) => response.text())
                      .then((commonSource) => {
-            const shaderKeys = Object.keys(SHADER_URLS);
+            const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
 
             let promises = [];
             for (const shaderKey of shaderKeys) {
@@ -173,53 +269,150 @@ class PathfinderView {
                                                     `"${shaderKey}":\n${infoLog}`);
                         }
 
-                        if (!(shaderKey in shaders))
+                        if (shaders[shaderKey] == null)
                             shaders[shaderKey] = {};
-                        shaders[shaderKey][type] = shader;
+                        shaders[shaderKey]![typeName] = shader;
                     }));
                 }
             }
 
             return Promise.all(promises);
-        }).then(() => shaders);
+        }).then(() => shaders as ShaderMap<UnlinkedShaderProgram>);
     }
 
-    linkShaders(shaders: ShaderMap): Promise<ShaderProgramMap> {
+    linkShaders(shaders: ShaderMap<UnlinkedShaderProgram>):
+                Promise<ShaderMap<PathfinderShaderProgram>> {
         return new Promise((resolve, reject) => {
-            let shaderProgramMap: ShaderProgramMap = {};
-            for (const shaderKey of Object.keys(shaders)) {
-                const program = expect(this.gl.createProgram(), "Failed to create shader program!");
-                const compiledShaders = shaders[shaderKey];
-                for (const compiledShader of Object.values(compiledShaders))
-                    this.gl.attachShader(program, compiledShader);
-                this.gl.linkProgram(program);
-
-                if (this.gl.getProgramParameter(program, this.gl.LINK_STATUS) == 0) {
-                    const infoLog = this.gl.getProgramInfoLog(program);
-                    throw new PathfinderError(`Failed to link program "${program}":\n${infoLog}`);
-                }
-
-                shaderProgramMap[shaderKey] = program;
+            let shaderProgramMap: Partial<ShaderMap<PathfinderShaderProgram>> = {};
+            for (const shaderName of Object.keys(shaders) as
+                 Array<keyof ShaderMap<UnlinkedShaderProgram>>) {
+                shaderProgramMap[shaderName] = new PathfinderShaderProgram(this.gl,
+                                                                           shaderName,
+                                                                           shaders[shaderName]);
             }
 
-            resolve(shaderProgramMap);
+            resolve(shaderProgramMap as ShaderMap<PathfinderShaderProgram>);
         });
     }
 
+    attachMeshes(meshes: PathfinderMeshData) {
+        this.meshes = new PathfinderMeshBuffers(this.gl, meshes);
+        this.setDirty();
+    }
+
+    setDirty() {
+        if (this.dirty)
+            return;
+        this.dirty = true;
+        window.requestAnimationFrame(() => this.redraw());
+    }
+
     resizeToFit() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight - this.canvas.scrollTop;
+        const width = window.innerWidth, height = window.innerHeight - this.canvas.scrollTop;
+        const devicePixelRatio = window.devicePixelRatio;
+        this.canvas.style.width = width + 'px';
+        this.canvas.style.height = height + 'px';
+        this.canvas.width = width * devicePixelRatio;
+        this.canvas.height = height * devicePixelRatio;
+        this.setDirty();
+    }
+
+    redraw() {
+        this.shaderProgramsPromise.then((shaderPrograms: ShaderMap<PathfinderShaderProgram>) => {
+            if (this.meshes == null) {
+                this.dirty = false;
+                return;
+            }
+
+            // Clear.
+            this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+            this.gl.clearDepth(0.0);
+            this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+
+            // Set up the depth buffer.
+            this.gl.depthFunc(this.gl.GREATER);
+            this.gl.enable(this.gl.DEPTH_TEST);
+
+            // Set up the implicit cover interior VAO.
+            const directInteriorProgram = shaderPrograms.directInterior;
+            this.gl.useProgram(directInteriorProgram.program);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
+            this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
+                                        2,
+                                        this.gl.FLOAT,
+                                        false,
+                                        0,
+                                        0);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexInfo);
+            this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathDepth,
+                                        1,
+                                        this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
+                                        true,
+                                        B_VERTEX_QUAD_SIZE,
+                                        B_VERTEX_QUAD_PATH_ID_OFFSET);
+            this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
+            this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathDepth);
+            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
+
+            // Draw direct interior parts.
+            this.gl.uniformMatrix4fv(directInteriorProgram.uniforms.uTransform, false, IDENTITY);
+            this.gl.uniform2i(directInteriorProgram.uniforms.uFramebufferSize,
+                              this.canvas.width,
+                              this.canvas.height);
+            const triangleCount =
+                this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER, this.gl.BUFFER_SIZE) /
+                UINT32_SIZE;
+            this.gl.drawElements(this.gl.TRIANGLES, triangleCount, this.gl.UNSIGNED_INT, 0);
+
+            // Clear dirty bit and finish.
+            this.dirty = false;
+        });
     }
 
     canvas: HTMLCanvasElement;
     gl: WebGLRenderingContext;
-    shaderProgramsPromise: Promise<ShaderProgramMap>;
+    shaderProgramsPromise: Promise<ShaderMap<PathfinderShaderProgram>>;
+    meshes: PathfinderMeshBuffers;
+    dirty: boolean;
 }
 
 class PathfinderShaderProgram {
-    constructor(vertexShader: WebGLShader, fragmentShader: WebGLShader) {
-        // TODO(pcwalton)
+    constructor(gl: WebGLRenderingContext,
+                programName: string,
+                unlinkedShaderProgram: UnlinkedShaderProgram) {
+        this.program = expect(gl.createProgram(), "Failed to create shader program!");
+        for (const compiledShader of Object.values(unlinkedShaderProgram))
+            gl.attachShader(this.program, compiledShader);
+        gl.linkProgram(this.program);
+
+        if (gl.getProgramParameter(this.program, gl.LINK_STATUS) == 0) {
+            const infoLog = gl.getProgramInfoLog(this.program);
+            throw new PathfinderError(`Failed to link program "${programName}":\n${infoLog}`);
+        }
+
+        const uniformCount = gl.getProgramParameter(this.program, gl.ACTIVE_UNIFORMS);
+        const attributeCount = gl.getProgramParameter(this.program, gl.ACTIVE_ATTRIBUTES);
+
+        let uniforms: UniformMap = {};
+        let attributes: AttributeMap = {};
+
+        for (let uniformIndex = 0; uniformIndex < uniformCount; uniformIndex++) {
+            const uniformName = unwrap(gl.getActiveUniform(this.program, uniformIndex)).name;
+            uniforms[uniformName] = expect(gl.getUniformLocation(this.program, uniformName),
+                                           `Didn't find uniform "${uniformName}"!`);
+        }
+        for (let attributeIndex = 0; attributeIndex < attributeCount; attributeIndex++) {
+            const attributeName = unwrap(gl.getActiveAttrib(this.program, attributeIndex)).name;
+            attributes[attributeName] = attributeIndex;
+        }
+
+        this.uniforms = uniforms;
+        this.attributes = attributes;
     }
+
+    readonly uniforms: UniformMap;
+    readonly attributes: AttributeMap;
+    readonly program: WebGLProgram;
 }
 
 function main() {

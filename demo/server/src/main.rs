@@ -57,21 +57,13 @@ impl IndexRange {
         }
     }
 
-    fn from_vector_append_operation<T>(dest: &mut Vec<T>, src: &[T]) -> IndexRange where T: Clone {
-        let start = dest.len();
-        dest.extend(src.iter().cloned());
-        let end = dest.len();
-        IndexRange {
-            start: start,
-            end: end,
-        }
-    }
-
     fn from_vector_append_and_serialization<T>(dest: &mut Vec<u8>, src: &[T])
                                                -> Result<IndexRange, ()>
                                                where T: Serialize {
         let byte_len_before = dest.len();
-        try!(bincode::serialize_into(dest, src, Infinite).map_err(drop));
+        for src_value in src {
+            try!(bincode::serialize_into(dest, src_value, Infinite).map_err(drop))
+        }
         let byte_len_after = dest.len();
         Ok(IndexRange {
             start: byte_len_before / mem::size_of::<T>(),
@@ -129,8 +121,10 @@ struct PartitionFontResponse {
     bVertexPositions: String,
     // Base64-encoded `bincode`-encoded `BVertexInfo`s.
     bVertexInfo: String,
-    coverInteriorIndices: Vec<u32>,
-    coverCurveIndices: Vec<u32>,
+    // Base64-encoded `u32`s.
+    coverInteriorIndices: String,
+    // Base64-encoded `u32`s.
+    coverCurveIndices: String,
     // Base64-encoded `bincode`-encoded `LineIndices` instances.
     edgeUpperLineIndices: String,
     // Base64-encoded `bincode`-encoded `CurveIndices` instances.
@@ -251,12 +245,12 @@ fn partition_font(request: Json<PartitionFontRequest>)
             bVertexIndices:
                 IndexRange::from_vector_append_and_serialization(&mut b_vertex_info,
                                                                  path_b_vertex_info).unwrap(),
-            coverInteriorIndices:
-                IndexRange::from_vector_append_operation(&mut cover_interior_indices,
-                                                         cover_indices.interior_indices),
-            coverCurveIndices:
-                IndexRange::from_vector_append_operation(&mut cover_curve_indices,
-                                                         cover_indices.curve_indices),
+            coverInteriorIndices: IndexRange::from_vector_append_and_serialization(
+                &mut cover_interior_indices,
+                cover_indices.interior_indices).unwrap(),
+            coverCurveIndices: IndexRange::from_vector_append_and_serialization(
+                &mut cover_curve_indices,
+                cover_indices.curve_indices).unwrap(),
             edgeUpperLineIndices: IndexRange::from_vector_append_and_serialization(
                 &mut edge_upper_line_indices,
                 edge_indices.upper_line_indices).unwrap(),
@@ -278,8 +272,8 @@ fn partition_font(request: Json<PartitionFontRequest>)
         bQuads: base64::encode(&b_quads),
         bVertexPositions: base64::encode(&b_vertex_positions),
         bVertexInfo: base64::encode(&b_vertex_info),
-        coverInteriorIndices: cover_interior_indices,
-        coverCurveIndices: cover_curve_indices,
+        coverInteriorIndices: base64::encode(&cover_interior_indices),
+        coverCurveIndices: base64::encode(&cover_curve_indices),
         edgeUpperLineIndices: base64::encode(&edge_upper_line_indices),
         edgeUpperCurveIndices: base64::encode(&edge_upper_curve_indices),
         edgeLowerLineIndices: base64::encode(&edge_lower_line_indices),

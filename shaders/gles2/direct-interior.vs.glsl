@@ -6,7 +6,6 @@ precision highp float;
 
 uniform mat4 uTransform;
 uniform ivec2 uFramebufferSize;
-uniform int uMaxTextureSize;
 uniform ivec2 uPathColorsDimensions;
 uniform sampler2D uPathColors;
 
@@ -20,5 +19,6 @@ void main() {
     position = convertScreenToClipSpace(position, uFramebufferSize);
     gl_Position = vec4(position, aPathDepth, 1.0);
 
-    vColor = fetchFloat4NormIndexedData(uPathColors, aPathDepth, uPathColorsDimensions);
+    //vColor = fetchFloat4NormIndexedData(uPathColors, aPathDepth, uPathColorsDimensions);
+    vColor = vec4(0.0, 0.0, 0.0, 1.0);
 }
