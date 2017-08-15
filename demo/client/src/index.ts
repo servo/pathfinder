@@ -44,6 +44,11 @@ interface UnlinkedShaderProgram {
 
 type Matrix4D = number[];
 
+interface Size2D {
+    width: number;
+    height: number;
+}
+
 interface ShaderProgramSource {
     vertex: string;
     fragment: string;
@@ -202,15 +207,14 @@ class AppController {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(request),
-        }).then((response) => {
-            response.text().then((encodedMeshes) => {
-                this.meshes = new PathfinderMeshData(encodedMeshes);
-                this.meshesReceived();
-            });
+        }).then(response => response.text()).then(encodedMeshes => {
+            this.meshes = new PathfinderMeshData(encodedMeshes);
+            this.meshesReceived();
         });
     }
 
     meshesReceived() {
+        this.view.uploadPathData(TEXT.length);
         this.view.attachMeshes(this.meshes);
     }
 
@@ -295,6 +299,17 @@ class PathfinderView {
         });
     }
 
+    uploadPathData(pathCount: number) {
+        const pathColors = new Uint8Array(4 * pathCount);
+        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+            for (let channel = 0; channel < 3; channel++)
+                pathColors[pathIndex * 4 + channel] = 0x00; // RGB
+            pathColors[pathIndex * 4 + 3] = 0xff;           // alpha
+        }
+
+        this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, pathColors);
+    }
+
     attachMeshes(meshes: PathfinderMeshData) {
         this.meshes = new PathfinderMeshBuffers(this.gl, meshes);
         this.setDirty();
@@ -358,10 +373,16 @@ class PathfinderView {
             this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
 
             // Draw direct interior parts.
+            this.gl.activeTexture(this.gl.TEXTURE0);
+            this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
             this.gl.uniformMatrix4fv(directInteriorProgram.uniforms.uTransform, false, IDENTITY);
             this.gl.uniform2i(directInteriorProgram.uniforms.uFramebufferSize,
                               this.canvas.width,
                               this.canvas.height);
+            this.gl.uniform2i(directInteriorProgram.uniforms.uPathColorsDimensions,
+                              this.pathColorsBufferTexture.size.width,
+                              this.pathColorsBufferTexture.size.height);
+            this.gl.uniform1i(directInteriorProgram.uniforms.uPathColors, 0);
             let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                         this.gl.BUFFER_SIZE) / UINT32_SIZE;
             this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -405,10 +426,16 @@ class PathfinderView {
             this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
 
             // Draw direct curve parts.
+            this.gl.activeTexture(this.gl.TEXTURE0);
+            this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
             this.gl.uniformMatrix4fv(directCurveProgram.uniforms.uTransform, false, IDENTITY);
             this.gl.uniform2i(directCurveProgram.uniforms.uFramebufferSize,
                               this.canvas.width,
                               this.canvas.height);
+            this.gl.uniform2i(directCurveProgram.uniforms.uPathColorsDimensions,
+                              this.pathColorsBufferTexture.size.width,
+                              this.pathColorsBufferTexture.size.height);
+            this.gl.uniform1i(directCurveProgram.uniforms.uPathColors, 0);
             indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
             this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -422,6 +449,7 @@ class PathfinderView {
     gl: WebGLRenderingContext;
     shaderProgramsPromise: Promise<ShaderMap<PathfinderShaderProgram>>;
     meshes: PathfinderMeshBuffers;
+    pathColorsBufferTexture: PathfinderBufferTexture;
     dirty: boolean;
 }
 
@@ -462,6 +490,28 @@ class PathfinderShaderProgram {
     readonly uniforms: UniformMap;
     readonly attributes: AttributeMap;
     readonly program: WebGLProgram;
+}
+
+class PathfinderBufferTexture {
+    constructor(gl: WebGLRenderingContext, data: Uint8Array) {
+        const pixelCount = Math.ceil(data.length / 4);
+        const width = Math.ceil(Math.sqrt(pixelCount));
+        const height = Math.ceil(pixelCount / width);
+        this.size = { width: width, height: height };
+
+        this.texture = expect(gl.createTexture(), "Failed to create texture!");
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    }
+
+    readonly texture: WebGLTexture;
+    readonly size: Size2D;
 }
 
 function main() {
