@@ -308,7 +308,9 @@ class PathfinderView {
     }
 
     resizeToFit() {
-        const width = window.innerWidth, height = window.innerHeight - this.canvas.scrollTop;
+        const width = window.innerWidth;
+        const height = window.scrollY + window.innerHeight -
+            this.canvas.getBoundingClientRect().top;
         const devicePixelRatio = window.devicePixelRatio;
         this.canvas.style.width = width + 'px';
         this.canvas.style.height = height + 'px';
@@ -331,6 +333,7 @@ class PathfinderView {
 
             // Set up the depth buffer.
             this.gl.depthFunc(this.gl.GREATER);
+            this.gl.depthMask(true);
             this.gl.enable(this.gl.DEPTH_TEST);
 
             // Set up the implicit cover interior VAO.
@@ -359,10 +362,56 @@ class PathfinderView {
             this.gl.uniform2i(directInteriorProgram.uniforms.uFramebufferSize,
                               this.canvas.width,
                               this.canvas.height);
-            const triangleCount =
-                this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER, this.gl.BUFFER_SIZE) /
-                UINT32_SIZE;
-            this.gl.drawElements(this.gl.TRIANGLES, triangleCount, this.gl.UNSIGNED_INT, 0);
+            let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
+                                                        this.gl.BUFFER_SIZE) / UINT32_SIZE;
+            this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+
+            // Disable depth writing.
+            this.gl.depthMask(false);
+
+            // Set up the implicit cover curve VAO.
+            const directCurveProgram = shaderPrograms.directCurve;
+            this.gl.useProgram(directCurveProgram.program);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
+            this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
+                                        2,
+                                        this.gl.FLOAT,
+                                        false,
+                                        0,
+                                        0);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexInfo);
+            this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
+                                        2,
+                                        this.gl.UNSIGNED_BYTE,
+                                        false,
+                                        B_VERTEX_QUAD_SIZE,
+                                        B_VERTEX_QUAD_TEX_COORD_OFFSET);
+            this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathDepth,
+                                        1,
+                                        this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
+                                        true,
+                                        B_VERTEX_QUAD_SIZE,
+                                        B_VERTEX_QUAD_PATH_ID_OFFSET);
+            this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
+                                        1,
+                                        this.gl.BYTE,
+                                        false,
+                                        B_VERTEX_QUAD_SIZE,
+                                        B_VERTEX_QUAD_SIGN_OFFSET);
+            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
+            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
+            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathDepth);
+            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
+            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
+
+            // Draw direct curve parts.
+            this.gl.uniformMatrix4fv(directCurveProgram.uniforms.uTransform, false, IDENTITY);
+            this.gl.uniform2i(directCurveProgram.uniforms.uFramebufferSize,
+                              this.canvas.width,
+                              this.canvas.height);
+            indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
+                                                    this.gl.BUFFER_SIZE) / UINT32_SIZE;
+            this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
 
             // Clear dirty bit and finish.
             this.dirty = false;

@@ -23,7 +23,8 @@ void main() {
     position = convertScreenToClipSpace(position, uFramebufferSize);
     gl_Position = vec4(position, aPathDepth, 1.0);
 
-    vColor = fetchFloat4NormIndexedData(uPathColors, aPathDepth, uPathColorsDimensions);
+    //vColor = fetchFloat4NormIndexedData(uPathColors, aPathDepth, uPathColorsDimensions);
+    vColor = vec4(0.0, 0.0, 0.0, 1.0);
     vTexCoord = vec2(aTexCoord) / 2.0;
     vSign = aSign;
 }
