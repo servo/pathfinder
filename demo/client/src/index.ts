@@ -148,6 +148,15 @@ class PathfinderError extends Error {
     }
 }
 
+// GL utilities
+
+function setTextureParameters(gl: WebGLRenderingContext, filter: number) {
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+}
+
 interface Meshes<T> {
     readonly bQuads: T;
     readonly bVertexPositions: T;
@@ -314,6 +323,7 @@ class PathfinderView {
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
         this.gl.getExtension('OES_element_index_uint');
+        this.gl.getExtension('WEBGL_depth_texture');
 
         // Upload quad buffers.
         this.quadPositionsBuffer = unwrapNull(this.gl.createBuffer());
@@ -608,11 +618,7 @@ class PathfinderBufferTexture {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        setTextureParameters(gl, gl.NEAREST);
     }
 
     readonly texture: WebGLTexture;
@@ -666,17 +672,20 @@ class SSAAStrategy implements AntialiasingStrategy {
                       gl.RGBA,
                       gl.UNSIGNED_BYTE,
                       null);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        setTextureParameters(gl, gl.LINEAR);
 
-        this.supersampledDepthBuffer = unwrapNull(gl.createRenderbuffer());
-        gl.bindRenderbuffer(gl.RENDERBUFFER, this.supersampledDepthBuffer);
-        gl.renderbufferStorage(gl.RENDERBUFFER,
-                               gl.DEPTH_COMPONENT16,
-                               this.supersampledFramebufferSize.width,
-                               this.supersampledFramebufferSize.height);
+        this.supersampledDepthTexture = unwrapNull(gl.createTexture());
+        gl.bindTexture(gl.TEXTURE_2D, this.supersampledDepthTexture);
+        gl.texImage2D(gl.TEXTURE_2D,
+                      0,
+                      gl.DEPTH_COMPONENT,
+                      this.supersampledFramebufferSize.width,
+                      this.supersampledFramebufferSize.height,
+                      0,
+                      gl.DEPTH_COMPONENT,
+                      gl.UNSIGNED_INT,
+                      null);
+        setTextureParameters(gl, gl.NEAREST);
 
         this.supersampledFramebuffer = unwrapNull(gl.createFramebuffer());
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.supersampledFramebuffer);
@@ -685,10 +694,11 @@ class SSAAStrategy implements AntialiasingStrategy {
                                 gl.TEXTURE_2D,
                                 this.supersampledColorTexture,
                                 0);
-        gl.framebufferRenderbuffer(gl.FRAMEBUFFER,
-                                   gl.DEPTH_ATTACHMENT,
-                                   gl.RENDERBUFFER,
-                                   this.supersampledDepthBuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,
+                                gl.DEPTH_ATTACHMENT,
+                                gl.TEXTURE_2D,
+                                this.supersampledDepthTexture,
+                                0);
         assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE,
                "The SSAA framebuffer was incomplete!");
 
@@ -741,7 +751,7 @@ class SSAAStrategy implements AntialiasingStrategy {
     canvasFramebufferSize: Readonly<Size2D>;
     supersampledFramebufferSize: Readonly<Size2D>;
     supersampledColorTexture: WebGLTexture;
-    supersampledDepthBuffer: WebGLRenderbuffer;
+    supersampledDepthTexture: WebGLTexture;
     supersampledFramebuffer: WebGLFramebuffer;
 }
 
