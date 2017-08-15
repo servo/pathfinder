@@ -72,18 +72,48 @@ interface AttributeMap {
     [attributeName: string]: number;
 }
 
+interface AntialiasingStrategy {
+    // Prepares any OpenGL data. This is only called on startup and canvas resize.
+    init(gl: WebGLRenderingContext, framebufferSize: Size2D): void;
+
+    // Called before direct rendering.
+    //
+    // Typically, this redirects direct rendering to a framebuffer of some sort.
+    prepare(gl: WebGLRenderingContext): void;
+
+    // Called after direct rendering.
+    //
+    // This usually performs the actual antialiasing and blits to the real framebuffer.
+    resolve(gl: WebGLRenderingContext): void;
+
+    // Returns the size of the framebuffer for direct rendering.
+    //
+    // For supersampling-based techniques, this may be larger than the actual framebuffer.
+    getFramebufferSize(): Size2D;
+}
+
 type ShaderType = number;
 
 type ShaderTypeName = 'vertex' | 'fragment';
 
-function expect<T>(value: T | null, message: string): T {
-    if (value == null)
+function expectNotNull<T>(value: T | null, message: string): T {
+    if (value === null)
         throw new PathfinderError(message);
     return value;
 }
 
-function unwrap<T>(value: T | null): T {
-    return expect(value, "Unexpected null!");
+function expectNotUndef<T>(value: T | undefined, message: string): T {
+    if (value === undefined)
+        throw new PathfinderError(message);
+    return value;
+}
+
+function unwrapNull<T>(value: T | null): T {
+    return expectNotNull(value, "Unexpected null!");
+}
+
+function unwrapUndef<T>(value: T | undefined): T {
+    return expectNotUndef(value, "Unexpected `undefined`!");
 }
 
 class PathfinderError extends Error {
@@ -143,17 +173,9 @@ class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshBuffers>) {
             const bufferType = BUFFER_TYPES[bufferName];
-            const buffer = expect(gl.createBuffer(), "Failed to create buffer!");
+            const buffer = expectNotNull(gl.createBuffer(), "Failed to create buffer!");
             gl.bindBuffer(bufferType, buffer);
             gl.bufferData(bufferType, meshData[bufferName], gl.STATIC_DRAW);
-            console.log(`${bufferName} has size ${meshData[bufferName].byteLength}`);
-            if (bufferName == 'coverInteriorIndices') {
-                const typedArray = new Uint32Array(meshData[bufferName]);
-                let array = [];
-                for (let i = 0; i < typedArray.length; i++)
-                    array[i] = typedArray[i];
-                console.log(array.toString());
-            }
             this[bufferName] = buffer;
         }
     }
@@ -177,16 +199,27 @@ class AppController {
 
         this.loadFontButton = document.getElementById('pf-load-font-button') as HTMLInputElement;
         this.loadFontButton.addEventListener('change', () => this.loadFont(), false);
+
+        this.aaLevelSelect = document.getElementById('pf-aa-level-select') as HTMLSelectElement;
+        this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
+        this.updateAALevel();
     }
 
     loadFont() {
-        const file = expect(this.loadFontButton.files, "No file selected!")[0];
+        const file = expectNotNull(this.loadFontButton.files, "No file selected!")[0];
         const reader = new FileReader;
         reader.addEventListener('loadend', () => {
             this.fontData = reader.result;
             this.fontLoaded();
         }, false);
         reader.readAsArrayBuffer(file);
+    }
+
+    updateAALevel() {
+        const selectedOption = this.aaLevelSelect.selectedOptions[0];
+        const aaType = unwrapUndef(selectedOption.dataset.pfType);
+        const aaLevel = parseInt(unwrapUndef(selectedOption.dataset.pfLevel));
+        this.view.setAntialiasingOptions(aaType, aaLevel);
     }
 
     fontLoaded() {
@@ -220,6 +253,7 @@ class AppController {
 
     view: PathfinderView;
     loadFontButton: HTMLInputElement;
+    aaLevelSelect: HTMLSelectElement;
     fontData: ArrayBuffer;
     font: any;
     meshes: PathfinderMeshData;
@@ -231,15 +265,24 @@ class PathfinderView {
 
         this.initContext();
 
+        this.antialiasingStrategy = new NoAAStrategy(0);
+
         this.shaderProgramsPromise = this.loadShaders().then(shaders => this.linkShaders(shaders));
 
         window.addEventListener('resize', () => this.resizeToFit(), false);
         this.resizeToFit();
     }
 
+    setAntialiasingOptions(aaType: string, aaLevel: number) {
+        this.antialiasingStrategy = new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
+
+        let canvas = this.canvas;
+        this.antialiasingStrategy.init(this.gl, { width: canvas.width, height: canvas.height });
+    }
+
     initContext() {
-        this.gl = expect(this.canvas.getContext('webgl', { antialias: false, depth: true }),
-                         "Failed to initialize WebGL! Check that your browser supports it.");
+        this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
+                                "Failed to initialize WebGL! Check that your browser supports it.");
         this.gl.getExtension('OES_element_index_uint');
     }
 
@@ -327,10 +370,19 @@ class PathfinderView {
         const height = window.scrollY + window.innerHeight -
             this.canvas.getBoundingClientRect().top;
         const devicePixelRatio = window.devicePixelRatio;
+
+        const framebufferSize = {
+            width: width * devicePixelRatio,
+            height: height * devicePixelRatio,
+        };
+
         this.canvas.style.width = width + 'px';
         this.canvas.style.height = height + 'px';
-        this.canvas.width = width * devicePixelRatio;
-        this.canvas.height = height * devicePixelRatio;
+        this.canvas.width = framebufferSize.width;
+        this.canvas.height = framebufferSize.height;
+
+        this.antialiasingStrategy.init(this.gl, framebufferSize);
+
         this.setDirty();
     }
 
@@ -346,103 +398,114 @@ class PathfinderView {
             this.gl.clearDepth(0.0);
             this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
-            // Set up the depth buffer.
-            this.gl.depthFunc(this.gl.GREATER);
-            this.gl.depthMask(true);
-            this.gl.enable(this.gl.DEPTH_TEST);
+            // Prepare for direct rendering.
+            this.antialiasingStrategy.prepare(this.gl);
 
-            // Set up the implicit cover interior VAO.
-            const directInteriorProgram = shaderPrograms.directInterior;
-            this.gl.useProgram(directInteriorProgram.program);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
-            this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
-                                        2,
-                                        this.gl.FLOAT,
-                                        false,
-                                        0,
-                                        0);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexInfo);
-            this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathDepth,
-                                        1,
-                                        this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
-                                        true,
-                                        B_VERTEX_QUAD_SIZE,
-                                        B_VERTEX_QUAD_PATH_ID_OFFSET);
-            this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
-            this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathDepth);
-            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
+            // Perform direct rendering (Loop-Blinn).
+            this.renderDirect(shaderPrograms);
 
-            // Draw direct interior parts.
-            this.gl.activeTexture(this.gl.TEXTURE0);
-            this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
-            this.gl.uniformMatrix4fv(directInteriorProgram.uniforms.uTransform, false, IDENTITY);
-            this.gl.uniform2i(directInteriorProgram.uniforms.uFramebufferSize,
-                              this.canvas.width,
-                              this.canvas.height);
-            this.gl.uniform2i(directInteriorProgram.uniforms.uPathColorsDimensions,
-                              this.pathColorsBufferTexture.size.width,
-                              this.pathColorsBufferTexture.size.height);
-            this.gl.uniform1i(directInteriorProgram.uniforms.uPathColors, 0);
-            let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
-                                                        this.gl.BUFFER_SIZE) / UINT32_SIZE;
-            this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
-
-            // Disable depth writing.
-            this.gl.depthMask(false);
-
-            // Set up the implicit cover curve VAO.
-            const directCurveProgram = shaderPrograms.directCurve;
-            this.gl.useProgram(directCurveProgram.program);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
-            this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
-                                        2,
-                                        this.gl.FLOAT,
-                                        false,
-                                        0,
-                                        0);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexInfo);
-            this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
-                                        2,
-                                        this.gl.UNSIGNED_BYTE,
-                                        false,
-                                        B_VERTEX_QUAD_SIZE,
-                                        B_VERTEX_QUAD_TEX_COORD_OFFSET);
-            this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathDepth,
-                                        1,
-                                        this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
-                                        true,
-                                        B_VERTEX_QUAD_SIZE,
-                                        B_VERTEX_QUAD_PATH_ID_OFFSET);
-            this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
-                                        1,
-                                        this.gl.BYTE,
-                                        false,
-                                        B_VERTEX_QUAD_SIZE,
-                                        B_VERTEX_QUAD_SIGN_OFFSET);
-            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
-            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
-            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathDepth);
-            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
-            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
-
-            // Draw direct curve parts.
-            this.gl.activeTexture(this.gl.TEXTURE0);
-            this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
-            this.gl.uniformMatrix4fv(directCurveProgram.uniforms.uTransform, false, IDENTITY);
-            this.gl.uniform2i(directCurveProgram.uniforms.uFramebufferSize,
-                              this.canvas.width,
-                              this.canvas.height);
-            this.gl.uniform2i(directCurveProgram.uniforms.uPathColorsDimensions,
-                              this.pathColorsBufferTexture.size.width,
-                              this.pathColorsBufferTexture.size.height);
-            this.gl.uniform1i(directCurveProgram.uniforms.uPathColors, 0);
-            indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
-                                                    this.gl.BUFFER_SIZE) / UINT32_SIZE;
-            this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+            // Antialias.
+            this.antialiasingStrategy.resolve(this.gl);
 
             // Clear dirty bit and finish.
             this.dirty = false;
         });
+    }
+
+    renderDirect(shaderPrograms: ShaderMap<PathfinderShaderProgram>) {
+        // Set up the depth buffer.
+        this.gl.depthFunc(this.gl.GREATER);
+        this.gl.depthMask(true);
+        this.gl.enable(this.gl.DEPTH_TEST);
+
+        // Set up the implicit cover interior VAO.
+        const directInteriorProgram = shaderPrograms.directInterior;
+        this.gl.useProgram(directInteriorProgram.program);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
+        this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
+                                    2,
+                                    this.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexInfo);
+        this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathDepth,
+                                    1,
+                                    this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
+                                    true,
+                                    B_VERTEX_QUAD_SIZE,
+                                    B_VERTEX_QUAD_PATH_ID_OFFSET);
+        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
+        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathDepth);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
+
+        // Draw direct interior parts.
+        this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
+        this.gl.uniformMatrix4fv(directInteriorProgram.uniforms.uTransform, false, IDENTITY);
+        this.gl.uniform2i(directInteriorProgram.uniforms.uFramebufferSize,
+                            this.canvas.width,
+                            this.canvas.height);
+        this.gl.uniform2i(directInteriorProgram.uniforms.uPathColorsDimensions,
+                            this.pathColorsBufferTexture.size.width,
+                            this.pathColorsBufferTexture.size.height);
+        this.gl.uniform1i(directInteriorProgram.uniforms.uPathColors, 0);
+        let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
+                                                    this.gl.BUFFER_SIZE) / UINT32_SIZE;
+        this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+
+        // Disable depth writing.
+        this.gl.depthMask(false);
+
+        // Set up the implicit cover curve VAO.
+        const directCurveProgram = shaderPrograms.directCurve;
+        this.gl.useProgram(directCurveProgram.program);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
+                                    2,
+                                    this.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexInfo);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
+                                    2,
+                                    this.gl.UNSIGNED_BYTE,
+                                    false,
+                                    B_VERTEX_QUAD_SIZE,
+                                    B_VERTEX_QUAD_TEX_COORD_OFFSET);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathDepth,
+                                    1,
+                                    this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
+                                    true,
+                                    B_VERTEX_QUAD_SIZE,
+                                    B_VERTEX_QUAD_PATH_ID_OFFSET);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
+                                    1,
+                                    this.gl.BYTE,
+                                    false,
+                                    B_VERTEX_QUAD_SIZE,
+                                    B_VERTEX_QUAD_SIGN_OFFSET);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathDepth);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
+
+        // Draw direct curve parts.
+        this.gl.activeTexture(this.gl.TEXTURE0);
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
+        this.gl.uniformMatrix4fv(directCurveProgram.uniforms.uTransform, false, IDENTITY);
+        this.gl.uniform2i(directCurveProgram.uniforms.uFramebufferSize,
+                            this.canvas.width,
+                            this.canvas.height);
+        this.gl.uniform2i(directCurveProgram.uniforms.uPathColorsDimensions,
+                            this.pathColorsBufferTexture.size.width,
+                            this.pathColorsBufferTexture.size.height);
+        this.gl.uniform1i(directCurveProgram.uniforms.uPathColors, 0);
+        indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
+                                                this.gl.BUFFER_SIZE) / UINT32_SIZE;
+        this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
     }
 
     canvas: HTMLCanvasElement;
@@ -450,6 +513,7 @@ class PathfinderView {
     shaderProgramsPromise: Promise<ShaderMap<PathfinderShaderProgram>>;
     meshes: PathfinderMeshBuffers;
     pathColorsBufferTexture: PathfinderBufferTexture;
+    antialiasingStrategy: AntialiasingStrategy;
     dirty: boolean;
 }
 
@@ -457,7 +521,7 @@ class PathfinderShaderProgram {
     constructor(gl: WebGLRenderingContext,
                 programName: string,
                 unlinkedShaderProgram: UnlinkedShaderProgram) {
-        this.program = expect(gl.createProgram(), "Failed to create shader program!");
+        this.program = expectNotNull(gl.createProgram(), "Failed to create shader program!");
         for (const compiledShader of Object.values(unlinkedShaderProgram))
             gl.attachShader(this.program, compiledShader);
         gl.linkProgram(this.program);
@@ -474,12 +538,12 @@ class PathfinderShaderProgram {
         let attributes: AttributeMap = {};
 
         for (let uniformIndex = 0; uniformIndex < uniformCount; uniformIndex++) {
-            const uniformName = unwrap(gl.getActiveUniform(this.program, uniformIndex)).name;
-            uniforms[uniformName] = expect(gl.getUniformLocation(this.program, uniformName),
-                                           `Didn't find uniform "${uniformName}"!`);
+            const uniformName = unwrapNull(gl.getActiveUniform(this.program, uniformIndex)).name;
+            uniforms[uniformName] = expectNotNull(gl.getUniformLocation(this.program, uniformName),
+                                                  `Didn't find uniform "${uniformName}"!`);
         }
         for (let attributeIndex = 0; attributeIndex < attributeCount; attributeIndex++) {
-            const attributeName = unwrap(gl.getActiveAttrib(this.program, attributeIndex)).name;
+            const attributeName = unwrapNull(gl.getActiveAttrib(this.program, attributeIndex)).name;
             attributes[attributeName] = attributeIndex;
         }
 
@@ -499,7 +563,7 @@ class PathfinderBufferTexture {
         const height = Math.ceil(pixelCount / width);
         this.size = { width: width, height: height };
 
-        this.texture = expect(gl.createTexture(), "Failed to create texture!");
+        this.texture = expectNotNull(gl.createTexture(), "Failed to create texture!");
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
@@ -513,6 +577,54 @@ class PathfinderBufferTexture {
     readonly texture: WebGLTexture;
     readonly size: Size2D;
 }
+
+class NoAAStrategy implements AntialiasingStrategy {
+    constructor(level: number) {
+        this.framebufferSize = { width: 0, height: 0 };
+    }
+
+    init(gl: WebGLRenderingContext, framebufferSize: Size2D) {
+        this.framebufferSize = framebufferSize;
+    }
+
+    prepare(gl: WebGLRenderingContext) {}
+    resolve(gl: WebGLRenderingContext) {}
+
+    getFramebufferSize() {
+        return this.framebufferSize;
+    }
+
+    framebufferSize: Size2D;
+}
+
+// TODO(pcwalton)
+class SSAAStrategy implements AntialiasingStrategy {
+    constructor(level: number) {
+        this.framebufferSize = { width: 0, height: 0 };
+    }
+
+    init(gl: WebGLRenderingContext, framebufferSize: Size2D) {
+        this.framebufferSize = framebufferSize;
+    }
+
+    prepare(gl: WebGLRenderingContext) {}
+    resolve(gl: WebGLRenderingContext) {}
+
+    getFramebufferSize() {
+        return this.framebufferSize;
+    }
+
+    framebufferSize: Size2D;
+}
+
+interface AntialiasingStrategyTable {
+    [type: string]: typeof NoAAStrategy;
+}
+
+const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
+    none: NoAAStrategy,
+    ssaa: SSAAStrategy,
+};
 
 function main() {
     const controller = new AppController;

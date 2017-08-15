@@ -9,9 +9,15 @@
         <script type="text/javascript" src="js/bootstrap/bootstrap.js"></script>
         <script type="text/javascript" src="js/pathfinder.js"></script>
         <style type="text/css">
-            #pf-load-font-button-label {
+            .pf-bottom-control {
                 position: fixed;
                 bottom: 1em;
+            }
+            #pf-load-font-button-label {
+                left: 1em;
+                margin: 0;
+            }
+            #pf-rendering-options-group {
                 right: 1em;
             }
             #pf-canvas {
@@ -31,9 +37,16 @@
             </div>
         </nav>
         <canvas id="pf-canvas" width="400" height="300"></canvas>
-        <label class="btn btn-secondary btn-file" id="pf-load-font-button-label">
+        <label class="btn btn-secondary btn-file pf-bottom-control" id="pf-load-font-button-label">
             Load Font…
             <input type="file" style="display: none" id="pf-load-font-button">
         </label>
+        <div class="pf-bottom-control" id="pf-rendering-options-group">
+            <select class="custom-select" id="pf-aa-level-select">
+                <option data-pf-type="none" data-pf-level="0" selected>No AA</option>
+                <option data-pf-type="ssaa" data-pf-level="2">2&times;SSAA</option>
+                <option data-pf-type="ssaa" data-pf-level="4">4&times;SSAA</option>
+            </select>
+        </div>
     </body>
 </html>
