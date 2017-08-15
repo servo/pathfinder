@@ -27,6 +27,10 @@ const IDENTITY: Matrix4D = [
 ];
 
 const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
+    blit: {
+        vertex: "/glsl/gles2/blit.vs.glsl",
+        fragment: "/glsl/gles2/blit.fs.glsl",
+    },
     directCurve: {
         vertex: "/glsl/gles2/direct-curve.vs.glsl",
         fragment: "/glsl/gles2/direct-curve.fs.glsl",
@@ -60,6 +64,7 @@ interface ShaderProgramURLs {
 }
 
 interface ShaderMap<T> {
+    blit: T;
     directCurve: T;
     directInterior: T;
 }
@@ -79,12 +84,12 @@ interface AntialiasingStrategy {
     // Called before direct rendering.
     //
     // Typically, this redirects direct rendering to a framebuffer of some sort.
-    prepare(gl: WebGLRenderingContext): void;
+    prepare(view: PathfinderView): void;
 
     // Called after direct rendering.
     //
     // This usually performs the actual antialiasing and blits to the real framebuffer.
-    resolve(gl: WebGLRenderingContext): void;
+    resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>): void;
 
     // Returns the size of the framebuffer for direct rendering.
     //
@@ -95,6 +100,27 @@ interface AntialiasingStrategy {
 type ShaderType = number;
 
 type ShaderTypeName = 'vertex' | 'fragment';
+
+const QUAD_POSITIONS: Float32Array = new Float32Array([
+    -1.0,  1.0,
+     1.0,  1.0,
+    -1.0, -1.0,
+     1.0, -1.0,
+]);
+
+const QUAD_TEX_COORDS: Float32Array = new Float32Array([
+    0.0, 1.0,
+    1.0, 1.0,
+    0.0, 0.0,
+    1.0, 0.0,
+]);
+
+// Various utility functions
+
+function assert(value: boolean, message: string) {
+    if (!value)
+        throw new PathfinderError(message);
+}
 
 function expectNotNull<T>(value: T | null, message: string): T {
     if (value === null)
@@ -217,7 +243,8 @@ class AppController {
 
     updateAALevel() {
         const selectedOption = this.aaLevelSelect.selectedOptions[0];
-        const aaType = unwrapUndef(selectedOption.dataset.pfType);
+        const aaType = unwrapUndef(selectedOption.dataset.pfType) as
+            keyof AntialiasingStrategyTable;
         const aaLevel = parseInt(unwrapUndef(selectedOption.dataset.pfLevel));
         this.view.setAntialiasingOptions(aaType, aaLevel);
     }
@@ -273,17 +300,28 @@ class PathfinderView {
         this.resizeToFit();
     }
 
-    setAntialiasingOptions(aaType: string, aaLevel: number) {
+    setAntialiasingOptions(aaType: keyof AntialiasingStrategyTable, aaLevel: number) {
         this.antialiasingStrategy = new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
 
         let canvas = this.canvas;
         this.antialiasingStrategy.init(this.gl, { width: canvas.width, height: canvas.height });
+
+        this.setDirty();
     }
 
     initContext() {
+        // Initialize the OpenGL context.
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
         this.gl.getExtension('OES_element_index_uint');
+
+        // Upload quad buffers.
+        this.quadPositionsBuffer = unwrapNull(this.gl.createBuffer());
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadPositionsBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, QUAD_POSITIONS, this.gl.STATIC_DRAW);
+        this.quadTexCoordsBuffer = unwrapNull(this.gl.createBuffer());
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadTexCoordsBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, QUAD_TEX_COORDS, this.gl.STATIC_DRAW);
     }
 
     loadShaders(): Promise<ShaderMap<UnlinkedShaderProgram>> {
@@ -393,19 +431,20 @@ class PathfinderView {
                 return;
             }
 
+            // Prepare for direct rendering.
+            this.antialiasingStrategy.prepare(this);
+
             // Clear.
             this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
             this.gl.clearDepth(0.0);
+            this.gl.depthMask(true);
             this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-
-            // Prepare for direct rendering.
-            this.antialiasingStrategy.prepare(this.gl);
 
             // Perform direct rendering (Loop-Blinn).
             this.renderDirect(shaderPrograms);
 
             // Antialias.
-            this.antialiasingStrategy.resolve(this.gl);
+            this.antialiasingStrategy.resolve(this, shaderPrograms);
 
             // Clear dirty bit and finish.
             this.dirty = false;
@@ -444,11 +483,11 @@ class PathfinderView {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
         this.gl.uniformMatrix4fv(directInteriorProgram.uniforms.uTransform, false, IDENTITY);
         this.gl.uniform2i(directInteriorProgram.uniforms.uFramebufferSize,
-                            this.canvas.width,
-                            this.canvas.height);
+                          this.canvas.width,
+                          this.canvas.height);
         this.gl.uniform2i(directInteriorProgram.uniforms.uPathColorsDimensions,
-                            this.pathColorsBufferTexture.size.width,
-                            this.pathColorsBufferTexture.size.height);
+                          this.pathColorsBufferTexture.size.width,
+                          this.pathColorsBufferTexture.size.height);
         this.gl.uniform1i(directInteriorProgram.uniforms.uPathColors, 0);
         let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
@@ -497,11 +536,11 @@ class PathfinderView {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
         this.gl.uniformMatrix4fv(directCurveProgram.uniforms.uTransform, false, IDENTITY);
         this.gl.uniform2i(directCurveProgram.uniforms.uFramebufferSize,
-                            this.canvas.width,
-                            this.canvas.height);
+                          this.canvas.width,
+                          this.canvas.height);
         this.gl.uniform2i(directCurveProgram.uniforms.uPathColorsDimensions,
-                            this.pathColorsBufferTexture.size.width,
-                            this.pathColorsBufferTexture.size.height);
+                          this.pathColorsBufferTexture.size.width,
+                          this.pathColorsBufferTexture.size.height);
         this.gl.uniform1i(directCurveProgram.uniforms.uPathColors, 0);
         indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                 this.gl.BUFFER_SIZE) / UINT32_SIZE;
@@ -510,10 +549,12 @@ class PathfinderView {
 
     canvas: HTMLCanvasElement;
     gl: WebGLRenderingContext;
+    antialiasingStrategy: AntialiasingStrategy;
     shaderProgramsPromise: Promise<ShaderMap<PathfinderShaderProgram>>;
     meshes: PathfinderMeshBuffers;
     pathColorsBufferTexture: PathfinderBufferTexture;
-    antialiasingStrategy: AntialiasingStrategy;
+    quadPositionsBuffer: WebGLBuffer;
+    quadTexCoordsBuffer: WebGLBuffer;
     dirty: boolean;
 }
 
@@ -587,8 +628,11 @@ class NoAAStrategy implements AntialiasingStrategy {
         this.framebufferSize = framebufferSize;
     }
 
-    prepare(gl: WebGLRenderingContext) {}
-    resolve(gl: WebGLRenderingContext) {}
+    prepare(view: PathfinderView) {
+        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+    }
+
+    resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>) {}
 
     getFramebufferSize() {
         return this.framebufferSize;
@@ -597,28 +641,113 @@ class NoAAStrategy implements AntialiasingStrategy {
     framebufferSize: Size2D;
 }
 
-// TODO(pcwalton)
 class SSAAStrategy implements AntialiasingStrategy {
     constructor(level: number) {
-        this.framebufferSize = { width: 0, height: 0 };
+        this.level = level;
+        this.canvasFramebufferSize = { width: 0, height: 0 };
+        this.supersampledFramebufferSize = { width: 0, height: 0 };
     }
 
     init(gl: WebGLRenderingContext, framebufferSize: Size2D) {
-        this.framebufferSize = framebufferSize;
+        this.canvasFramebufferSize = framebufferSize;
+        this.supersampledFramebufferSize = {
+            width: framebufferSize.width * 2,
+            height: framebufferSize.height * (this.level == 2 ? 1 : 2),
+        };
+
+        this.supersampledColorTexture = unwrapNull(gl.createTexture());
+        gl.bindTexture(gl.TEXTURE_2D, this.supersampledColorTexture);
+        gl.texImage2D(gl.TEXTURE_2D,
+                      0,
+                      gl.RGBA,
+                      this.supersampledFramebufferSize.width,
+                      this.supersampledFramebufferSize.height,
+                      0,
+                      gl.RGBA,
+                      gl.UNSIGNED_BYTE,
+                      null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+        this.supersampledDepthBuffer = unwrapNull(gl.createRenderbuffer());
+        gl.bindRenderbuffer(gl.RENDERBUFFER, this.supersampledDepthBuffer);
+        gl.renderbufferStorage(gl.RENDERBUFFER,
+                               gl.DEPTH_COMPONENT16,
+                               this.supersampledFramebufferSize.width,
+                               this.supersampledFramebufferSize.height);
+
+        this.supersampledFramebuffer = unwrapNull(gl.createFramebuffer());
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.supersampledFramebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,
+                                gl.COLOR_ATTACHMENT0,
+                                gl.TEXTURE_2D,
+                                this.supersampledColorTexture,
+                                0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER,
+                                   gl.DEPTH_ATTACHMENT,
+                                   gl.RENDERBUFFER,
+                                   this.supersampledDepthBuffer);
+        assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE,
+               "The SSAA framebuffer was incomplete!");
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
-    prepare(gl: WebGLRenderingContext) {}
-    resolve(gl: WebGLRenderingContext) {}
+    prepare(view: PathfinderView) {
+        const size = this.supersampledFramebufferSize;
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.supersampledFramebuffer);
+        view.gl.viewport(0, 0, size.width, size.height);
+    }
+
+    resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>) {
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
+        view.gl.viewport(0, 0, view.canvas.width, view.canvas.height);
+        view.gl.disable(view.gl.DEPTH_TEST);
+
+        // Set up the blit program VAO.
+        const blitProgram = shaders.blit;
+        view.gl.useProgram(blitProgram.program);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+        view.gl.vertexAttribPointer(blitProgram.attributes.aPosition,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadTexCoordsBuffer);
+        view.gl.vertexAttribPointer(blitProgram.attributes.aTexCoord,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+        view.gl.enableVertexAttribArray(blitProgram.attributes.aPosition);
+        view.gl.enableVertexAttribArray(blitProgram.attributes.aTexCoord);
+
+        // Resolve framebuffer.
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
+        view.gl.uniform1i(blitProgram.uniforms.uSource, 0);
+        view.gl.drawArrays(view.gl.TRIANGLE_STRIP, 0, 4);
+    }
 
     getFramebufferSize() {
-        return this.framebufferSize;
+        return this.supersampledFramebufferSize;
     }
 
-    framebufferSize: Size2D;
+    level: number;
+    canvasFramebufferSize: Readonly<Size2D>;
+    supersampledFramebufferSize: Readonly<Size2D>;
+    supersampledColorTexture: WebGLTexture;
+    supersampledDepthBuffer: WebGLRenderbuffer;
+    supersampledFramebuffer: WebGLFramebuffer;
 }
 
 interface AntialiasingStrategyTable {
-    [type: string]: typeof NoAAStrategy;
+    none: typeof NoAAStrategy;
+    ssaa: typeof SSAAStrategy;
 }
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
