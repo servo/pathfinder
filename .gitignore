@@ -1,6 +1,11 @@
 /font-renderer/target
 /partitioner/target
 /demo/client/target
+/demo/client/*.js
+/demo/client/src/*.js
+/demo/client/src/*.js.map
+/demo/client/node_modules
+/demo/client/package-lock.json
 /demo/server/target
 Cargo.lock
 

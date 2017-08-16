@@ -9,11 +9,13 @@
 precision highp float;
 
 varying vec4 vColor;
+varying vec2 vPathID;
 varying vec2 vTexCoord;
 varying float vSign;
 
 void main() {
     float side = vTexCoord.x * vTexCoord.x - vTexCoord.y;
     float alpha = float(sign(side) == sign(vSign));
-    gl_FragColor = vec4(vColor.rgb, vColor.a * alpha);
+    gl_FragData[0] = vec4(vColor.rgb, vColor.a * alpha);
+    gl_FragData[1] = vec4(vPathID, 1.0, 1.0);
 }

@@ -11,19 +11,24 @@ uniform sampler2D uPathColors;
 
 attribute vec2 aPosition;
 attribute vec2 aTexCoord;
-attribute float aPathDepth;
+attribute float aPathID;
 attribute float aSign;
 
 varying vec4 vColor;
+varying vec2 vPathID;
 varying vec2 vTexCoord;
 varying float vSign;
 
 void main() {
+    int pathID = int(aPathID);
+
     vec2 position = transformVertexPosition(aPosition, uTransform);
     position = convertScreenToClipSpace(position, uFramebufferSize);
-    gl_Position = vec4(position, aPathDepth, 1.0);
+    float depth = convertPathIndexToDepthValue(pathID);
+    gl_Position = vec4(position, depth, 1.0);
 
-    vColor = fetchFloat4NormIndexedData(uPathColors, aPathDepth, uPathColorsDimensions);
+    vColor = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
+    vPathID = packPathID(pathID);
     vTexCoord = vec2(aTexCoord) / 2.0;
     vSign = aSign;
 }

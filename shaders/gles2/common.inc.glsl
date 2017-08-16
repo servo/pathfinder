@@ -38,3 +38,7 @@ vec4 fetchFloat4Data(sampler2D dataTexture, int index, ivec2 dimensions) {
 vec4 fetchFloat4NormIndexedData(sampler2D dataTexture, float normIndex, ivec2 dimensions) {
     return fetchFloat4Data(dataTexture, int(normIndex * float(dimensions.x)), dimensions);
 }
+
+vec2 packPathID(int pathID) {
+    return vec2(imod(pathID, 256), pathID / 256) / 255.0;
+}
