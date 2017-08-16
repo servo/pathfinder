@@ -39,6 +39,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         vertex: "/glsl/gles2/direct-interior.vs.glsl",
         fragment: "/glsl/gles2/direct-interior.fs.glsl",
     },
+    ecaaEdgeDetect: {
+        vertex: "/glsl/gles2/ecaa-edge-detect.vs.glsl",
+        fragment: "/glsl/gles2/ecaa-edge-detect.fs.glsl",
+    },
 };
 
 interface UnlinkedShaderProgram {
@@ -67,6 +71,7 @@ interface ShaderMap<T> {
     blit: T;
     directCurve: T;
     directInterior: T;
+    ecaaEdgeDetect: T;
 }
 
 interface UniformMap {
@@ -322,8 +327,10 @@ class PathfinderView {
         // Initialize the OpenGL context.
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
+        this.gl.getExtension('EXT_frag_depth');
         this.gl.getExtension('OES_element_index_uint');
         this.gl.getExtension('WEBGL_depth_texture');
+        this.gl.getExtension('WEBGL_draw_buffers');
 
         // Upload quad buffers.
         this.quadPositionsBuffer = unwrapNull(this.gl.createBuffer());

@@ -4,6 +4,9 @@
 
 #version 100
 
+#extension GL_EXT_draw_buffers : require
+#extension GL_EXT_frag_depth : require
+
 #define MAX_PATHS   65536
 
 precision highp float;
