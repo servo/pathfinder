@@ -17,5 +17,5 @@ void main() {
     float side = vTexCoord.x * vTexCoord.x - vTexCoord.y;
     float alpha = float(sign(side) == sign(vSign));
     gl_FragData[0] = vec4(vColor.rgb, vColor.a * alpha);
-    gl_FragData[1] = vec4(vPathID, 1.0, 1.0);
+    gl_FragData[1] = vec4(vPathID, 0.0, alpha);
 }

@@ -224,7 +224,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
             }
         };
 
-        partitioner.partition(path_index as u32,
+        partitioner.partition((path_index + 1) as u32,
                               decoded_outline_indices.subpath_indices.start as u32,
                               decoded_outline_indices.subpath_indices.end as u32);
 

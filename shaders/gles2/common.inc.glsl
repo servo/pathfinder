@@ -27,7 +27,7 @@ vec2 convertScreenToClipSpace(vec2 position, ivec2 framebufferSize) {
 }
 
 float convertPathIndexToDepthValue(int pathIndex) {
-    return float(pathIndex + 1) / float(MAX_PATHS);
+    return mix(-1.0, 1.0, float(pathIndex) / float(MAX_PATHS));
 }
 
 vec4 fetchFloat4Data(sampler2D dataTexture, int index, ivec2 dimensions) {
@@ -41,4 +41,9 @@ vec4 fetchFloat4NormIndexedData(sampler2D dataTexture, float normIndex, ivec2 di
 
 vec2 packPathID(int pathID) {
     return vec2(imod(pathID, 256), pathID / 256) / 255.0;
+}
+
+int unpackPathID(vec2 packedPathID) {
+    ivec2 pathIDBytes = ivec2(floor(packedPathID * 255.0));
+    return pathIDBytes.y * 256 + pathIDBytes.x;
 }

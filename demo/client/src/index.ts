@@ -14,10 +14,10 @@ const UINT32_SIZE: number = 4;
 
 const B_POSITION_SIZE: number = 8;
 
-const B_VERTEX_QUAD_SIZE: number = 8;
-const B_VERTEX_QUAD_PATH_ID_OFFSET: number = 0;
-const B_VERTEX_QUAD_TEX_COORD_OFFSET: number = 4;
-const B_VERTEX_QUAD_SIGN_OFFSET: number = 6;
+const B_VERTEX_SIZE: number = 8;
+const B_VERTEX_PATH_ID_OFFSET: number = 0;
+const B_VERTEX_TEX_COORD_OFFSET: number = 4;
+const B_VERTEX_SIGN_OFFSET: number = 6;
 
 const IDENTITY: Matrix4D = [
     1.0, 0.0, 0.0, 0.0,
@@ -42,6 +42,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     ecaaEdgeDetect: {
         vertex: "/glsl/gles2/ecaa-edge-detect.vs.glsl",
         fragment: "/glsl/gles2/ecaa-edge-detect.fs.glsl",
+    },
+    ecaaResolve: {
+        vertex: "/glsl/gles2/ecaa-resolve.vs.glsl",
+        fragment: "/glsl/gles2/ecaa-resolve.fs.glsl",
     },
 };
 
@@ -72,6 +76,7 @@ interface ShaderMap<T> {
     directCurve: T;
     directInterior: T;
     ecaaEdgeDetect: T;
+    ecaaResolve: T;
 }
 
 interface UniformMap {
@@ -150,11 +155,90 @@ class PathfinderError extends Error {
 
 // GL utilities
 
+function createFramebufferColorTexture(gl: WebGLRenderingContext, size: Size2D): WebGLTexture {
+    // Firefox seems to have a bug whereby textures don't get marked as initialized when cleared
+    // if they're anything other than the first attachment of an FBO. To work around this, supply
+    // zero data explicitly when initializing the texture.
+
+    const texture = unwrapNull(gl.createTexture());
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D,
+                  0,
+                  gl.RGBA,
+                  size.width,
+                  size.height,
+                  0,
+                  gl.RGBA,
+                  gl.UNSIGNED_BYTE,
+                  new Uint8Array(size.width * size.height * 4));
+    setTextureParameters(gl, gl.NEAREST);
+    return texture;
+}
+
+function createFramebufferDepthTexture(gl: WebGLRenderingContext, size: Size2D): WebGLTexture {
+    const texture = unwrapNull(gl.createTexture());
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D,
+                  0,
+                  gl.DEPTH_COMPONENT,
+                  size.width,
+                  size.height,
+                  0,
+                  gl.DEPTH_COMPONENT,
+                  gl.UNSIGNED_INT,
+                  null);
+    setTextureParameters(gl, gl.NEAREST);
+    return texture;
+}
+
 function setTextureParameters(gl: WebGLRenderingContext, filter: number) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+}
+
+function createFramebuffer(gl: WebGLRenderingContext,
+                           drawBuffersExt: any,
+                           colorAttachments: WebGLTexture[],
+                           depthAttachment: WebGLTexture | null):
+                           WebGLFramebuffer {
+    const framebuffer = unwrapNull(gl.createFramebuffer());
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+
+    const colorAttachmentCount = colorAttachments.length;
+    for (let colorAttachmentIndex = 0;
+         colorAttachmentIndex < colorAttachmentCount;
+         colorAttachmentIndex++) {
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,
+                                drawBuffersExt[`COLOR_ATTACHMENT${colorAttachmentIndex}_WEBGL`],
+                                gl.TEXTURE_2D,
+                                colorAttachments[colorAttachmentIndex],
+                                0);
+    }
+
+    if (depthAttachment != null) {
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,
+                                gl.DEPTH_ATTACHMENT,
+                                gl.TEXTURE_2D,
+                                depthAttachment,
+                                0);
+    }
+
+    assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE,
+           "Framebuffer was incomplete!");
+    return framebuffer;
+}
+
+function initQuadVAO(view: PathfinderView, attributes: any) {
+    view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+    view.gl.vertexAttribPointer(attributes.aPosition, 2, view.gl.FLOAT, false, 0, 0);
+    view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadTexCoordsBuffer);
+    view.gl.vertexAttribPointer(attributes.aTexCoord, 2, view.gl.FLOAT, false, 0, 0);
+    view.gl.enableVertexAttribArray(attributes.aPosition);
+    view.gl.enableVertexAttribArray(attributes.aTexCoord);
 }
 
 interface Meshes<T> {
@@ -446,12 +530,6 @@ class PathfinderView {
             // Prepare for direct rendering.
             this.antialiasingStrategy.prepare(this);
 
-            // Clear.
-            this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-            this.gl.clearDepth(0.0);
-            this.gl.depthMask(true);
-            this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-
             // Perform direct rendering (Loop-Blinn).
             this.renderDirect(shaderPrograms);
 
@@ -464,10 +542,11 @@ class PathfinderView {
     }
 
     renderDirect(shaderPrograms: ShaderMap<PathfinderShaderProgram>) {
-        // Set up the depth buffer.
+        // Set up implicit cover state.
         this.gl.depthFunc(this.gl.GREATER);
         this.gl.depthMask(true);
         this.gl.enable(this.gl.DEPTH_TEST);
+        this.gl.disable(this.gl.BLEND);
 
         // Set up the implicit cover interior VAO.
         const directInteriorProgram = shaderPrograms.directInterior;
@@ -484,10 +563,10 @@ class PathfinderView {
                                     1,
                                     this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
                                     false,
-                                    B_VERTEX_QUAD_SIZE,
-                                    B_VERTEX_QUAD_PATH_ID_OFFSET);
+                                    B_VERTEX_SIZE,
+                                    B_VERTEX_PATH_ID_OFFSET);
         this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
-        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathDepth);
+        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
 
         // Draw direct interior parts.
@@ -505,10 +584,13 @@ class PathfinderView {
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
         this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
 
-        // Disable depth writing.
+        // Set up direct curve state.
         this.gl.depthMask(false);
+        this.gl.enable(this.gl.BLEND);
+        this.gl.blendEquation(this.gl.FUNC_ADD);
+        this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
 
-        // Set up the implicit cover curve VAO.
+        // Set up the direct curve VAO.
         const directCurveProgram = shaderPrograms.directCurve;
         this.gl.useProgram(directCurveProgram.program);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
@@ -523,23 +605,23 @@ class PathfinderView {
                                     2,
                                     this.gl.UNSIGNED_BYTE,
                                     false,
-                                    B_VERTEX_QUAD_SIZE,
-                                    B_VERTEX_QUAD_TEX_COORD_OFFSET);
+                                    B_VERTEX_SIZE,
+                                    B_VERTEX_TEX_COORD_OFFSET);
         this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
                                     1,
                                     this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
                                     false,
-                                    B_VERTEX_QUAD_SIZE,
-                                    B_VERTEX_QUAD_PATH_ID_OFFSET);
+                                    B_VERTEX_SIZE,
+                                    B_VERTEX_PATH_ID_OFFSET);
         this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
                                     1,
                                     this.gl.BYTE,
                                     false,
-                                    B_VERTEX_QUAD_SIZE,
-                                    B_VERTEX_QUAD_SIGN_OFFSET);
+                                    B_VERTEX_SIZE,
+                                    B_VERTEX_SIGN_OFFSET);
         this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
         this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
-        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathDepth);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
         this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
 
@@ -639,6 +721,12 @@ class NoAAStrategy implements AntialiasingStrategy {
 
     prepare(view: PathfinderView) {
         view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+
+        // Clear.
+        view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        view.gl.clearDepth(0.0);
+        view.gl.depthMask(true);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
     }
 
     resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>) {}
@@ -661,6 +749,7 @@ class SSAAStrategy implements AntialiasingStrategy {
         };
 
         this.supersampledColorTexture = unwrapNull(view.gl.createTexture());
+        view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
         view.gl.texImage2D(view.gl.TEXTURE_2D,
                            0,
@@ -673,33 +762,13 @@ class SSAAStrategy implements AntialiasingStrategy {
                            null);
         setTextureParameters(view.gl, view.gl.LINEAR);
 
-        this.supersampledDepthTexture = unwrapNull(view.gl.createTexture());
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledDepthTexture);
-        view.gl.texImage2D(view.gl.TEXTURE_2D,
-                           0,
-                           view.gl.DEPTH_COMPONENT,
-                           this.supersampledFramebufferSize.width,
-                           this.supersampledFramebufferSize.height,
-                           0,
-                           view.gl.DEPTH_COMPONENT,
-                           view.gl.UNSIGNED_INT,
-                           null);
-        setTextureParameters(view.gl, view.gl.NEAREST);
+        this.supersampledDepthTexture =
+            createFramebufferDepthTexture(view.gl, this.supersampledFramebufferSize);
 
-        this.supersampledFramebuffer = unwrapNull(view.gl.createFramebuffer());
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.supersampledFramebuffer);
-        view.gl.framebufferTexture2D(view.gl.FRAMEBUFFER,
-                                     view.gl.COLOR_ATTACHMENT0,
-                                     view.gl.TEXTURE_2D,
-                                     this.supersampledColorTexture,
-                                     0);
-        view.gl.framebufferTexture2D(view.gl.FRAMEBUFFER,
-                                     view.gl.DEPTH_ATTACHMENT,
-                                     view.gl.TEXTURE_2D,
-                                     this.supersampledDepthTexture,
-                                     0);
-        assert(view.gl.checkFramebufferStatus(view.gl.FRAMEBUFFER) == view.gl.FRAMEBUFFER_COMPLETE,
-               "The SSAA framebuffer was incomplete!");
+        this.supersampledFramebuffer = createFramebuffer(view.gl,
+                                                         view.drawBuffersExt,
+                                                         [this.supersampledColorTexture],
+                                                         this.supersampledDepthTexture);
 
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
     }
@@ -708,6 +777,12 @@ class SSAAStrategy implements AntialiasingStrategy {
         const size = this.supersampledFramebufferSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.supersampledFramebuffer);
         view.gl.viewport(0, 0, size.width, size.height);
+
+        // Clear.
+        view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        view.gl.clearDepth(0.0);
+        view.gl.depthMask(true);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
     }
 
     resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>) {
@@ -718,22 +793,7 @@ class SSAAStrategy implements AntialiasingStrategy {
         // Set up the blit program VAO.
         const blitProgram = shaders.blit;
         view.gl.useProgram(blitProgram.program);
-        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
-        view.gl.vertexAttribPointer(blitProgram.attributes.aPosition,
-                                    2,
-                                    view.gl.FLOAT,
-                                    false,
-                                    0,
-                                    0);
-        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadTexCoordsBuffer);
-        view.gl.vertexAttribPointer(blitProgram.attributes.aTexCoord,
-                                    2,
-                                    view.gl.FLOAT,
-                                    false,
-                                    0,
-                                    0);
-        view.gl.enableVertexAttribArray(blitProgram.attributes.aPosition);
-        view.gl.enableVertexAttribArray(blitProgram.attributes.aTexCoord);
+        initQuadVAO(view, blitProgram.attributes);
 
         // Resolve framebuffer.
         view.gl.activeTexture(view.gl.TEXTURE0);
@@ -757,82 +817,129 @@ class ECAAStrategy implements AntialiasingStrategy {
 
     init(view: PathfinderView, framebufferSize: Size2D) {
         this.framebufferSize = framebufferSize;
-
-        this.directColorTexture = unwrapNull(view.gl.createTexture());
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directColorTexture);
-        view.gl.texImage2D(view.gl.TEXTURE_2D,
-                           0,
-                           view.gl.RGBA,
-                           framebufferSize.width,
-                           framebufferSize.height,
-                           0,
-                           view.gl.RGBA,
-                           view.gl.UNSIGNED_BYTE,
-                           null);
-        setTextureParameters(view.gl, view.gl.NEAREST);
-
-        this.directPathIDTexture = unwrapNull(view.gl.createTexture());
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directPathIDTexture);
-        view.gl.texImage2D(view.gl.TEXTURE_2D,
-                           0,
-                           view.gl.RGBA,  // really should be RG
-                           framebufferSize.width,
-                           framebufferSize.height,
-                           0,
-                           view.gl.RGBA,
-                           view.gl.UNSIGNED_BYTE,
-                           null);
-        setTextureParameters(view.gl, view.gl.NEAREST);
-
-        this.directDepthTexture = unwrapNull(view.gl.createTexture());
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directDepthTexture);
-        view.gl.texImage2D(view.gl.TEXTURE_2D,
-                           0,
-                           view.gl.DEPTH_COMPONENT,
-                           framebufferSize.width,
-                           framebufferSize.height,
-                           0,
-                           view.gl.DEPTH_COMPONENT,
-                           view.gl.UNSIGNED_INT,
-                           null);
-        setTextureParameters(view.gl, view.gl.NEAREST);
-
-        this.directFramebuffer = unwrapNull(view.gl.createFramebuffer());
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.directFramebuffer);
-        view.gl.framebufferTexture2D(view.gl.FRAMEBUFFER,
-                                     view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
-                                     view.gl.TEXTURE_2D,
-                                     this.directColorTexture,
-                                     0);
-        view.gl.framebufferTexture2D(view.gl.FRAMEBUFFER,
-                                     view.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
-                                     view.gl.TEXTURE_2D,
-                                     this.directPathIDTexture,
-                                     0);
-        view.gl.framebufferTexture2D(view.gl.FRAMEBUFFER,
-                                     view.gl.DEPTH_ATTACHMENT,
-                                     view.gl.TEXTURE_2D,
-                                     this.directDepthTexture,
-                                     0);
-        assert(view.gl.checkFramebufferStatus(view.gl.FRAMEBUFFER) == view.gl.FRAMEBUFFER_COMPLETE,
-               "The direct framebuffer was incomplete!");
-
+        this.initDirectFramebuffer(view);
+        this.initEdgeDetectFramebuffer(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
+    }
+
+    initDirectFramebuffer(view: PathfinderView) {
+        this.directColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
+        this.directPathIDTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
+        this.directDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
+        this.directFramebuffer =
+            createFramebuffer(view.gl,
+                              view.drawBuffersExt,
+                              [this.directColorTexture, this.directPathIDTexture],
+                              this.directDepthTexture);
+    }
+
+    initEdgeDetectFramebuffer(view: PathfinderView) {
+        this.bgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
+        this.fgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
+        this.aaDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
+        this.edgeDetectFramebuffer = createFramebuffer(view.gl,
+                                                       view.drawBuffersExt,
+                                                       [this.bgColorTexture, this.fgColorTexture],
+                                                       this.aaDepthTexture);
     }
 
     prepare(view: PathfinderView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.directFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+
+        // Clear out the color and depth textures.
+        view.drawBuffersExt.drawBuffersWEBGL([
+            view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
+            view.drawBuffersExt.NONE,
+        ]);
+        view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        view.gl.clearDepth(0.0);
+        view.gl.depthMask(true);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
+
+        // Clear out the path ID texture.
+        view.drawBuffersExt.drawBuffersWEBGL([
+            view.drawBuffersExt.NONE,
+            view.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
+        ]);
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT);
+
+        // Render to both textures.
+        view.drawBuffersExt.drawBuffersWEBGL([
+            view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
+            view.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
+        ]);
     }
 
     resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>) {
-        // TODO(pcwalton)
+        // Set state for edge detection.
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
+        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+
+        view.drawBuffersExt.drawBuffersWEBGL([
+            view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
+            view.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
+        ]);
+
+        view.gl.depthMask(true);
+        view.gl.depthFunc(view.gl.ALWAYS);
+        view.gl.enable(view.gl.DEPTH_TEST);
+        view.gl.disable(view.gl.BLEND);
+
+        view.gl.clearDepth(0.0);
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
+
+        // Set up the edge detection VAO.
+        const edgeDetectProgram = shaders.ecaaEdgeDetect;
+        view.gl.useProgram(edgeDetectProgram.program);
+        initQuadVAO(view, edgeDetectProgram.attributes);
+
+        // Perform edge detection.
+        view.gl.uniform2i(edgeDetectProgram.uniforms.uFramebufferSize,
+                          this.framebufferSize.width,
+                          this.framebufferSize.height);
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directColorTexture);
+        view.gl.uniform1i(edgeDetectProgram.uniforms.uColor, 0);
+        view.gl.activeTexture(view.gl.TEXTURE1);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directPathIDTexture);
+        view.gl.uniform1i(edgeDetectProgram.uniforms.uPathID, 1);
+        view.gl.drawArrays(view.gl.TRIANGLE_STRIP, 0, 4);
+
+        // Set state for ECAA resolve.
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
+        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.disable(view.gl.DEPTH_TEST);
+        view.drawBuffersExt.drawBuffersWEBGL([view.gl.BACK]);
+
+        // Set up the ECAA resolve VAO.
+        const resolveProgram = shaders.ecaaResolve;
+        view.gl.useProgram(resolveProgram.program);
+        initQuadVAO(view, resolveProgram.attributes);
+
+        // Perform ECAA resolution.
+        view.gl.uniform2i(resolveProgram.uniforms.uFramebufferSize,
+                          this.framebufferSize.width,
+                          this.framebufferSize.height);
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
+        view.gl.uniform1i(resolveProgram.uniforms.uBGColor, 0);
+        view.gl.activeTexture(view.gl.TEXTURE1);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.fgColorTexture);
+        view.gl.uniform1i(resolveProgram.uniforms.uFGColor, 1);
+        view.gl.drawArrays(view.gl.TRIANGLE_STRIP, 0, 4);
     }
 
     directColorTexture: WebGLTexture;
     directPathIDTexture: WebGLTexture;
     directDepthTexture: WebGLTexture;
     directFramebuffer: WebGLFramebuffer;
+    bgColorTexture: WebGLTexture;
+    fgColorTexture: WebGLTexture;
+    aaDepthTexture: WebGLTexture;
+    edgeDetectFramebuffer: WebGLFramebuffer;
     framebufferSize: Size2D;
 }
 
