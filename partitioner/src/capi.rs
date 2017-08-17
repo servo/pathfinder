@@ -6,7 +6,7 @@ use legalizer::Legalizer;
 use partitioner::Partitioner;
 use std::mem;
 use std::slice;
-use {BQuad, BVertexInfo, CurveIndices, Endpoint, LineIndices, Subpath};
+use {BQuad, BVertexLoopBlinnData, CurveIndices, Endpoint, LineIndices, Subpath};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -166,7 +166,7 @@ pub unsafe extern fn pf_partitioner_init<'a>(partitioner: *mut Partitioner<'a>,
 
 #[no_mangle]
 pub unsafe extern fn pf_partitioner_partition<'a>(partitioner: *mut Partitioner<'a>,
-                                                  path_id: u32,
+                                                  path_id: u16,
                                                   first_subpath_index: u32,
                                                   last_subpath_index: u32) {
     (*partitioner).partition(path_id, first_subpath_index, last_subpath_index)
@@ -195,14 +195,26 @@ pub unsafe extern fn pf_partitioner_b_vertex_positions<'a>(partitioner: *const P
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_partitioner_b_vertex_info<'a>(partitioner: *const Partitioner<'a>,
-                                                      out_b_vertex_count: *mut u32)
-                                                      -> *const BVertexInfo {
-    let b_vertex_info = (*partitioner).b_vertex_info();
+pub unsafe extern fn pf_partitioner_b_vertex_path_ids<'a>(partitioner: *const Partitioner<'a>,
+                                                          out_b_vertex_count: *mut u32)
+                                                          -> *const u16 {
+    let b_vertex_path_ids = (*partitioner).b_vertex_path_ids();
     if !out_b_vertex_count.is_null() {
-        *out_b_vertex_count = b_vertex_info.len() as u32
+        *out_b_vertex_count = b_vertex_path_ids.len() as u32
     }
-    b_vertex_info.as_ptr() as *const BVertexInfo
+    b_vertex_path_ids.as_ptr() as *const u16
+}
+
+#[no_mangle]
+pub unsafe extern fn pf_partitioner_b_vertex_loop_blinn_data<'a>(
+        partitioner: *const Partitioner<'a>,
+        out_b_vertex_count: *mut u32)
+        -> *const BVertexLoopBlinnData {
+    let b_vertex_loop_blinn_data = (*partitioner).b_vertex_loop_blinn_data();
+    if !out_b_vertex_count.is_null() {
+        *out_b_vertex_count = b_vertex_loop_blinn_data.len() as u32
+    }
+    b_vertex_loop_blinn_data.as_ptr() as *const BVertexLoopBlinnData
 }
 
 #[no_mangle]

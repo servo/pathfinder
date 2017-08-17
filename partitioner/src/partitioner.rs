@@ -7,8 +7,9 @@ use log::LogLevel;
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use std::f32;
+use std::iter;
 use std::u32;
-use {BQuad, BVertexInfo, BVertexKind, CurveIndices, Endpoint, LineIndices, Subpath};
+use {BQuad, BVertexLoopBlinnData, BVertexKind, CurveIndices, Endpoint, LineIndices, Subpath};
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
@@ -17,14 +18,15 @@ pub struct Partitioner<'a> {
 
     b_quads: Vec<BQuad>,
     b_vertex_positions: Vec<Point2D<f32>>,
-    b_vertex_info: Vec<BVertexInfo>,
+    b_vertex_path_ids: Vec<u16>,
+    b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
     cover_indices: CoverIndicesBuffer,
     edge_indices: EdgeIndicesBuffer,
 
     heap: BinaryHeap<Point>,
     visited_points: BitVec,
     active_edges: Vec<ActiveEdge>,
-    path_id: u32,
+    path_id: u16,
 }
 
 impl<'a> Partitioner<'a> {
@@ -37,7 +39,8 @@ impl<'a> Partitioner<'a> {
 
             b_quads: vec![],
             b_vertex_positions: vec![],
-            b_vertex_info: vec![],
+            b_vertex_path_ids: vec![],
+            b_vertex_loop_blinn_data: vec![],
             cover_indices: CoverIndicesBuffer::new(),
             edge_indices: EdgeIndicesBuffer::new(),
 
@@ -61,9 +64,10 @@ impl<'a> Partitioner<'a> {
         self.visited_points = BitVec::from_elem(self.endpoints.len(), false);
     }
 
-    pub fn partition(&mut self, path_id: u32, first_subpath_index: u32, last_subpath_index: u32) {
+    pub fn partition(&mut self, path_id: u16, first_subpath_index: u32, last_subpath_index: u32) {
         self.b_quads.clear();
-        self.b_vertex_info.clear();
+        self.b_vertex_loop_blinn_data.clear();
+        self.b_vertex_path_ids.clear();
         self.b_vertex_positions.clear();
         self.cover_indices.clear();
         self.edge_indices.clear();
@@ -88,8 +92,13 @@ impl<'a> Partitioner<'a> {
     }
 
     #[inline]
-    pub fn b_vertex_info(&self) -> &[BVertexInfo] {
-        &self.b_vertex_info
+    pub fn b_vertex_path_ids(&self) -> &[u16] {
+        &self.b_vertex_path_ids
+    }
+
+    #[inline]
+    pub fn b_vertex_loop_blinn_data(&self) -> &[BVertexLoopBlinnData] {
+        &self.b_vertex_loop_blinn_data
     }
 
     #[inline]
@@ -180,13 +189,15 @@ impl<'a> Partitioner<'a> {
 
         {
             let active_edge = &mut self.active_edges[active_edge_index as usize];
-            active_edge.left_vertex_index = self.b_vertex_info.len() as u32;
+            active_edge.left_vertex_index = self.b_vertex_loop_blinn_data.len() as u32;
             active_edge.control_point_vertex_index = active_edge.left_vertex_index + 1;
 
             let endpoint_position = self.endpoints[active_edge.right_endpoint_index as usize]
                                         .position;
             self.b_vertex_positions.push(endpoint_position);
-            self.b_vertex_info.push(BVertexInfo::new(active_edge.endpoint_kind(), self.path_id));
+            self.b_vertex_path_ids.push(self.path_id);
+            self.b_vertex_loop_blinn_data.push(BVertexLoopBlinnData::new(
+                active_edge.endpoint_kind()));
 
             active_edge.toggle_parity();
 
@@ -214,19 +225,19 @@ impl<'a> Partitioner<'a> {
             }
             control_point_index => {
                 self.active_edges[active_edge_index as usize].control_point_vertex_index =
-                    self.b_vertex_info.len() as u32;
+                    self.b_vertex_loop_blinn_data.len() as u32;
 
                 let left_vertex_index = self.active_edges[active_edge_index as usize]
                                             .left_vertex_index;
                 let control_point_position = &self.control_points[control_point_index as usize];
-                let control_point_b_vertex_info = BVertexInfo::control_point(
+                let control_point_b_vertex_loop_blinn_data = BVertexLoopBlinnData::control_point(
                     &self.b_vertex_positions[left_vertex_index as usize],
                     &control_point_position,
                     &new_point.position,
-                    self.path_id,
                     bottom);
                 self.b_vertex_positions.push(*control_point_position);
-                self.b_vertex_info.push(control_point_b_vertex_info);
+                self.b_vertex_path_ids.push(self.path_id);
+                self.b_vertex_loop_blinn_data.push(control_point_b_vertex_loop_blinn_data);
             }
         }
     }
@@ -280,13 +291,14 @@ impl<'a> Partitioner<'a> {
         let new_active_edges = &mut self.active_edges[next_active_edge_index as usize..
                                                       next_active_edge_index as usize + 2];
 
-        let left_vertex_index = self.b_vertex_info.len() as u32;
+        let left_vertex_index = self.b_vertex_loop_blinn_data.len() as u32;
         new_active_edges[0].left_vertex_index = left_vertex_index;
         new_active_edges[1].left_vertex_index = left_vertex_index;
 
         let position = self.endpoints[endpoint_index as usize].position;
         self.b_vertex_positions.push(position);
-        self.b_vertex_info.push(BVertexInfo::new(BVertexKind::Endpoint0, self.path_id));
+        self.b_vertex_path_ids.push(self.path_id);
+        self.b_vertex_loop_blinn_data.push(BVertexLoopBlinnData::new(BVertexKind::Endpoint0));
 
         new_active_edges[0].toggle_parity();
         new_active_edges[1].toggle_parity();
@@ -322,40 +334,42 @@ impl<'a> Partitioner<'a> {
         match upper_control_point_index {
             u32::MAX => new_active_edges[0].control_point_vertex_index = u32::MAX,
             upper_control_point_index => {
-                new_active_edges[0].control_point_vertex_index = self.b_vertex_info.len() as u32;
+                new_active_edges[0].control_point_vertex_index =
+                    self.b_vertex_loop_blinn_data.len() as u32;
 
                 let control_point_position =
                     self.control_points[upper_control_point_index as usize];
                 let right_vertex_position =
                     self.endpoints[new_active_edges[0].right_endpoint_index as usize].position;
-                let control_point_b_vertex_info =
-                    BVertexInfo::control_point(&position,
-                                               &control_point_position,
-                                               &right_vertex_position,
-                                               self.path_id,
-                                               false);
+                let control_point_b_vertex_loop_blinn_data =
+                    BVertexLoopBlinnData::control_point(&position,
+                                                        &control_point_position,
+                                                        &right_vertex_position,
+                                                        false);
                 self.b_vertex_positions.push(control_point_position);
-                self.b_vertex_info.push(control_point_b_vertex_info);
+                self.b_vertex_path_ids.push(self.path_id);
+                self.b_vertex_loop_blinn_data.push(control_point_b_vertex_loop_blinn_data);
             }
         }
 
         match lower_control_point_index {
             u32::MAX => new_active_edges[1].control_point_vertex_index = u32::MAX,
             lower_control_point_index => {
-                new_active_edges[1].control_point_vertex_index = self.b_vertex_info.len() as u32;
+                new_active_edges[1].control_point_vertex_index =
+                    self.b_vertex_loop_blinn_data.len() as u32;
 
                 let control_point_position =
                     self.control_points[lower_control_point_index as usize];
                 let right_vertex_position =
                     self.endpoints[new_active_edges[1].right_endpoint_index as usize].position;
-                let control_point_b_vertex_info =
-                    BVertexInfo::control_point(&position,
-                                               &control_point_position,
-                                               &right_vertex_position,
-                                               self.path_id,
-                                               true);
+                let control_point_b_vertex_loop_blinn_data =
+                    BVertexLoopBlinnData::control_point(&position,
+                                                        &control_point_position,
+                                                        &right_vertex_position,
+                                                        true);
                 self.b_vertex_positions.push(control_point_position);
-                self.b_vertex_info.push(control_point_b_vertex_info);
+                self.b_vertex_path_ids.push(self.path_id);
+                self.b_vertex_loop_blinn_data.push(control_point_b_vertex_loop_blinn_data);
             }
         }
     }
@@ -433,8 +447,8 @@ impl<'a> Partitioner<'a> {
 
         // NB: Order is important here—we depend on the provoking vertex!
 
-        let upper_shape = upper_curve.shape(&self.b_vertex_info);
-        let lower_shape = lower_curve.shape(&self.b_vertex_info);
+        let upper_shape = upper_curve.shape(&self.b_vertex_loop_blinn_data);
+        let lower_shape = lower_curve.shape(&self.b_vertex_loop_blinn_data);
 
         match upper_shape {
             Shape::Flat => {
@@ -757,15 +771,17 @@ impl<'a> Partitioner<'a> {
         let left_curve_control_point_vertex_index;
         match active_edge.control_point_vertex_index {
             u32::MAX => {
-                let path_id = self.b_vertex_info[left_curve_left as usize].path_id;
+                let path_id = self.b_vertex_path_ids[left_curve_left as usize];
                 let left_point_position = self.b_vertex_positions[left_curve_left as usize];
                 let right_point = self.endpoints[active_edge.right_endpoint_index as usize]
                                       .position;
                 let middle_point = left_point_position.to_vector().lerp(right_point.to_vector(), t);
 
-                active_edge.left_vertex_index = self.b_vertex_info.len() as u32;
+                active_edge.left_vertex_index = self.b_vertex_loop_blinn_data.len() as u32;
                 self.b_vertex_positions.push(middle_point.to_point());
-                self.b_vertex_info.push(BVertexInfo::new(active_edge.endpoint_kind(), path_id));
+                self.b_vertex_path_ids.push(path_id);
+                self.b_vertex_loop_blinn_data
+                    .push(BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
 
                 active_edge.toggle_parity();
 
@@ -782,7 +798,7 @@ impl<'a> Partitioner<'a> {
                     &self.b_vertex_positions[active_edge.control_point_vertex_index as usize],
                     &right_endpoint_position);
 
-                left_curve_control_point_vertex_index = self.b_vertex_info.len() as u32;
+                left_curve_control_point_vertex_index = self.b_vertex_loop_blinn_data.len() as u32;
                 active_edge.left_vertex_index = left_curve_control_point_vertex_index + 1;
                 active_edge.control_point_vertex_index = left_curve_control_point_vertex_index + 2;
 
@@ -791,18 +807,17 @@ impl<'a> Partitioner<'a> {
                     subdivided_quadratic_bezier.ap2bp0,
                     subdivided_quadratic_bezier.bp1,
                 ].into_iter());
-                self.b_vertex_info.extend([
-                    BVertexInfo::control_point(&left_endpoint_position,
-                                               &subdivided_quadratic_bezier.ap1,
-                                               &subdivided_quadratic_bezier.ap2bp0,
-                                               self.path_id,
-                                               bottom),
-                    BVertexInfo::new(active_edge.endpoint_kind(), self.path_id),
-                    BVertexInfo::control_point(&subdivided_quadratic_bezier.ap2bp0,
-                                               &subdivided_quadratic_bezier.bp1,
-                                               &right_endpoint_position,
-                                               self.path_id,
-                                               bottom),
+                self.b_vertex_path_ids.extend(iter::repeat(self.path_id).take(3));
+                self.b_vertex_loop_blinn_data.extend([
+                    BVertexLoopBlinnData::control_point(&left_endpoint_position,
+                                                        &subdivided_quadratic_bezier.ap1,
+                                                        &subdivided_quadratic_bezier.ap2bp0,
+                                                        bottom),
+                    BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
+                    BVertexLoopBlinnData::control_point(&subdivided_quadratic_bezier.ap2bp0,
+                                                        &subdivided_quadratic_bezier.bp1,
+                                                        &right_endpoint_position,
+                                                        bottom),
                 ].into_iter());
 
                 active_edge.toggle_parity();
@@ -1015,10 +1030,10 @@ struct SubdividedActiveEdge {
 }
 
 impl SubdividedActiveEdge {
-    fn shape(&self, b_vertex_info: &[BVertexInfo]) -> Shape {
+    fn shape(&self, b_vertex_loop_blinn_data: &[BVertexLoopBlinnData]) -> Shape {
         if self.left_curve_control_point == u32::MAX {
             Shape::Flat
-        } else if b_vertex_info[self.left_curve_control_point as usize].sign < 0 {
+        } else if b_vertex_loop_blinn_data[self.left_curve_control_point as usize].sign < 0 {
             Shape::Convex
         } else {
             Shape::Concave

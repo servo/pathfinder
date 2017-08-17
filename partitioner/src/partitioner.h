@@ -6,14 +6,9 @@
 #include <limits.h>
 #include <stdint.h>
 
-#define PF_ANTIALIASING_MODE_MSAA   0
-#define PF_ANTIALIASING_MODE_ECAA   1
-
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef uint8_t pf_antialiasing_mode_t;
 
 typedef uint16_t pf_float16_t;
 
@@ -30,14 +25,13 @@ struct pf_matrix2d_f32 {
 
 typedef struct pf_matrix2d_f32 pf_matrix2d_f32_t;
 
-struct pf_b_vertex_info {
-    uint32_t path_id;
+struct pf_b_vertex_loop_blinn_data {
     uint8_t tex_coord[2];
     int8_t sign;
     uint8_t pad;
 };
 
-typedef struct pf_b_vertex_info pf_b_vertex_info_t;
+typedef struct pf_b_vertex_loop_blinn_data pf_b_vertex_loop_blinn_data_t;
 
 struct pf_cover_indices {
     const uint32_t *interior_indices;
@@ -154,7 +148,7 @@ void pf_partitioner_init(pf_partitioner_t *partitioner,
                          uint32_t subpath_count);
 
 void pf_partitioner_partition(pf_partitioner_t *partitioner,
-                              uint32_t path_id,
+                              uint16_t path_id,
                               uint32_t first_subpath_index,
                               uint32_t last_subpath_index);
 
@@ -164,8 +158,12 @@ const pf_b_quad_t *pf_partitioner_b_quads(const pf_partitioner_t *partitioner,
 const pf_point2d_f32_t *pf_partitioner_b_vertex_positions(const pf_partitioner_t *partitioner,
                                                           uint32_t *out_b_vertex_count);
 
-const pf_b_vertex_info_t *pf_partitioner_b_vertex_info(const pf_partitioner_t *partitioner,
-                                                       uint32_t *out_b_vertex_count);
+const uint16_t *pf_partitioner_b_vertex_path_ids(const pf_partitioner_t *partitioner,
+                                                 uint32_t *out_b_vertex_count);
+
+const pf_b_vertex_loop_blinn_data_t *pf_partitioner_b_vertex_loop_blinn_data(
+    const pf_partitioner_t *partitioner,
+    uint32_t *out_b_vertex_count);
 
 const void pf_partitioner_cover_indices(const pf_partitioner_t *partitioner,
                                         pf_cover_indices_t *out_cover_indices);

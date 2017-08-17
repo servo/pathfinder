@@ -7,9 +7,9 @@ precision highp float;
 uniform mat4 uTransform;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uBVertexPositionDimensions;
-uniform ivec2 uBVertexInfoDimensions;
+uniform ivec2 uBVertexPathIDDimensions;
 uniform sampler2D uBVertexPosition;
-uniform sampler2D uBVertexInfo;
+uniform sampler2D uBVertexPathID;
 
 attribute vec2 aQuadPosition;
 attribute vec3 aUpperPointIndices;
@@ -48,7 +48,7 @@ void main() {
 
     vec4 roundedExtents = vec4(floor(extents.xy), ceil(extents.zw));
 
-    int pathID = fetchUInt16Data(uBVertexInfo, pointIndices.x, uBVertexInfoDimensions);
+    int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
 
     vec2 position = mix(roundedExtents.xy, roundedExtents.zw, aQuadPosition);
     position = convertScreenToClipSpace(position, uFramebufferSize);

@@ -14,10 +14,11 @@ const UINT32_SIZE: number = 4;
 
 const B_POSITION_SIZE: number = 8;
 
-const B_VERTEX_SIZE: number = 8;
-const B_VERTEX_PATH_ID_OFFSET: number = 0;
-const B_VERTEX_TEX_COORD_OFFSET: number = 4;
-const B_VERTEX_SIGN_OFFSET: number = 6;
+const B_PATH_INDEX_SIZE: number = 2;
+
+const B_LOOP_BLINN_DATA_SIZE: number = 4;
+const B_LOOP_BLINN_DATA_TEX_COORD_OFFSET: number = 0;
+const B_LOOP_BLINN_DATA_SIGN_OFFSET: number = 2;
 
 const IDENTITY: Matrix4D = [
     1.0, 0.0, 0.0, 0.0,
@@ -249,7 +250,8 @@ function initQuadVAO(view: PathfinderView, attributes: any) {
 interface Meshes<T> {
     readonly bQuads: T;
     readonly bVertexPositions: T;
-    readonly bVertexInfo: T;
+    readonly bVertexPathIDs: T;
+    readonly bVertexLoopBlinnData: T;
     readonly coverInteriorIndices: T;
     readonly coverCurveIndices: T;
     readonly edgeUpperLineIndices: T;
@@ -258,18 +260,19 @@ interface Meshes<T> {
     readonly edgeLowerCurveIndices: T;
 }
 
-type BufferType = number;
+type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
 const BUFFER_TYPES: Meshes<BufferType> = {
-    bQuads: WebGLRenderingContext.ARRAY_BUFFER,
-    bVertexPositions: WebGLRenderingContext.ARRAY_BUFFER,
-    bVertexInfo: WebGLRenderingContext.ARRAY_BUFFER,
-    coverInteriorIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
-    coverCurveIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
-    edgeUpperLineIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
-    edgeUpperCurveIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
-    edgeLowerLineIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
-    edgeLowerCurveIndices: WebGLRenderingContext.ELEMENT_ARRAY_BUFFER,
+    bQuads: 'ARRAY_BUFFER',
+    bVertexPositions: 'ARRAY_BUFFER',
+    bVertexPathIDs: 'ARRAY_BUFFER',
+    bVertexLoopBlinnData: 'ARRAY_BUFFER',
+    coverInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
+    coverCurveIndices: 'ELEMENT_ARRAY_BUFFER',
+    edgeUpperLineIndices: 'ELEMENT_ARRAY_BUFFER',
+    edgeUpperCurveIndices: 'ELEMENT_ARRAY_BUFFER',
+    edgeLowerLineIndices: 'ELEMENT_ARRAY_BUFFER',
+    edgeLowerCurveIndices: 'ELEMENT_ARRAY_BUFFER',
 };
 
 class PathfinderMeshData implements Meshes<ArrayBuffer> {
@@ -284,7 +287,8 @@ class PathfinderMeshData implements Meshes<ArrayBuffer> {
 
     readonly bQuads: ArrayBuffer;
     readonly bVertexPositions: ArrayBuffer;
-    readonly bVertexInfo: ArrayBuffer;
+    readonly bVertexPathIDs: ArrayBuffer;
+    readonly bVertexLoopBlinnData: ArrayBuffer;
     readonly coverInteriorIndices: ArrayBuffer;
     readonly coverCurveIndices: ArrayBuffer;
     readonly edgeUpperLineIndices: ArrayBuffer;
@@ -296,7 +300,7 @@ class PathfinderMeshData implements Meshes<ArrayBuffer> {
 class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshBuffers>) {
-            const bufferType = BUFFER_TYPES[bufferName];
+            const bufferType = gl[BUFFER_TYPES[bufferName]];
             const buffer = expectNotNull(gl.createBuffer(), "Failed to create buffer!");
             gl.bindBuffer(bufferType, buffer);
             gl.bufferData(bufferType, meshData[bufferName], gl.STATIC_DRAW);
@@ -306,7 +310,8 @@ class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
 
     readonly bQuads: WebGLBuffer;
     readonly bVertexPositions: WebGLBuffer;
-    readonly bVertexInfo: WebGLBuffer;
+    readonly bVertexPathIDs: WebGLBuffer;
+    readonly bVertexLoopBlinnData: WebGLBuffer;
     readonly coverInteriorIndices: WebGLBuffer;
     readonly coverCurveIndices: WebGLBuffer;
     readonly edgeUpperLineIndices: WebGLBuffer;
@@ -563,13 +568,13 @@ class PathfinderView {
                                     false,
                                     0,
                                     0);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexInfo);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPathIDs);
         this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathID,
                                     1,
-                                    this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
+                                    this.gl.UNSIGNED_SHORT,
                                     false,
-                                    B_VERTEX_SIZE,
-                                    B_VERTEX_PATH_ID_OFFSET);
+                                    0,
+                                    0);
         this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
         this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
@@ -605,25 +610,26 @@ class PathfinderView {
                                     false,
                                     0,
                                     0);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexInfo);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPathIDs);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
+                                    1,
+                                    this.gl.UNSIGNED_SHORT,
+                                    false,
+                                    0,
+                                    0);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexLoopBlinnData);
         this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
                                     2,
                                     this.gl.UNSIGNED_BYTE,
                                     false,
-                                    B_VERTEX_SIZE,
-                                    B_VERTEX_TEX_COORD_OFFSET);
-        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
-                                    1,
-                                    this.gl.UNSIGNED_SHORT, // FIXME(pcwalton)
-                                    false,
-                                    B_VERTEX_SIZE,
-                                    B_VERTEX_PATH_ID_OFFSET);
+                                    B_LOOP_BLINN_DATA_SIZE,
+                                    B_LOOP_BLINN_DATA_TEX_COORD_OFFSET);
         this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
                                     1,
                                     this.gl.BYTE,
                                     false,
-                                    B_VERTEX_SIZE,
-                                    B_VERTEX_SIGN_OFFSET);
+                                    B_LOOP_BLINN_DATA_SIZE,
+                                    B_LOOP_BLINN_DATA_SIGN_OFFSET);
         this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
         this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
         this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);

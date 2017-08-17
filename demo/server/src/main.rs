@@ -119,8 +119,10 @@ struct PartitionFontResponse {
     bQuads: String,
     // Base64-encoded `bincode`-encoded `Point2D<f32>`s.
     bVertexPositions: String,
-    // Base64-encoded `bincode`-encoded `BVertexInfo`s.
-    bVertexInfo: String,
+    // Base64-encoded `bincode`-encoded `u16`s.
+    bVertexPathIDs: String,
+    // Base64-encoded `bincode`-encoded `BVertexLoopBlinnData`s.
+    bVertexLoopBlinnData: String,
     // Base64-encoded `u32`s.
     coverInteriorIndices: String,
     // Base64-encoded `u32`s.
@@ -195,7 +197,8 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
     // Partition the decoded glyph outlines.
     let mut partitioner = Partitioner::new();
-    let (mut b_quads, mut b_vertex_positions, mut b_vertex_info) = (vec![], vec![], vec![]);
+    let (mut b_quads, mut b_vertex_positions) = (vec![], vec![]);
+    let (mut b_vertex_path_ids, mut b_vertex_loop_blinn_data) = (vec![], vec![]);
     let (mut cover_interior_indices, mut cover_curve_indices) = (vec![], vec![]);
     let (mut edge_upper_line_indices, mut edge_upper_curve_indices) = (vec![], vec![]);
     let (mut edge_lower_line_indices, mut edge_lower_curve_indices) = (vec![], vec![]);
@@ -224,27 +227,30 @@ fn partition_font(request: Json<PartitionFontRequest>)
             }
         };
 
-        partitioner.partition((path_index + 1) as u32,
+        partitioner.partition((path_index + 1) as u16,
                               decoded_outline_indices.subpath_indices.start as u32,
                               decoded_outline_indices.subpath_indices.end as u32);
 
         let path_b_quads = partitioner.b_quads();
         let path_b_vertex_positions = partitioner.b_vertex_positions();
-        let path_b_vertex_info = partitioner.b_vertex_info();
+        let path_b_vertex_path_ids = partitioner.b_vertex_path_ids();
+        let path_b_vertex_loop_blinn_data = partitioner.b_vertex_loop_blinn_data();
         let cover_indices = partitioner.cover_indices();
         let edge_indices = partitioner.edge_indices();
 
         IndexRange::from_vector_append_and_serialization(&mut b_vertex_positions,
                                                          path_b_vertex_positions).unwrap();
+        IndexRange::from_vector_append_and_serialization(&mut b_vertex_path_ids,
+                                                         path_b_vertex_path_ids).unwrap();
 
         glyph_info.push(PartitionGlyphInfo {
             id: glyph_id,
             dimensions: dimensions,
             bQuadIndices: IndexRange::from_vector_append_and_serialization(&mut b_quads,
                                                                            path_b_quads).unwrap(),
-            bVertexIndices:
-                IndexRange::from_vector_append_and_serialization(&mut b_vertex_info,
-                                                                 path_b_vertex_info).unwrap(),
+            bVertexIndices: IndexRange::from_vector_append_and_serialization(
+                &mut b_vertex_loop_blinn_data,
+                path_b_vertex_loop_blinn_data).unwrap(),
             coverInteriorIndices: IndexRange::from_vector_append_and_serialization(
                 &mut cover_interior_indices,
                 cover_indices.interior_indices).unwrap(),
@@ -271,7 +277,8 @@ fn partition_font(request: Json<PartitionFontRequest>)
         glyphInfo: glyph_info,
         bQuads: base64::encode(&b_quads),
         bVertexPositions: base64::encode(&b_vertex_positions),
-        bVertexInfo: base64::encode(&b_vertex_info),
+        bVertexPathIDs: base64::encode(&b_vertex_path_ids),
+        bVertexLoopBlinnData: base64::encode(&b_vertex_loop_blinn_data),
         coverInteriorIndices: base64::encode(&cover_interior_indices),
         coverCurveIndices: base64::encode(&cover_curve_indices),
         edgeUpperLineIndices: base64::encode(&edge_upper_line_indices),

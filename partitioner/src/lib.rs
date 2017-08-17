@@ -91,24 +91,22 @@ pub(crate) enum BVertexKind {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[repr(C)]
-pub struct BVertexInfo {
-    pub path_id: u32,
+pub struct BVertexLoopBlinnData {
     pub tex_coord: [u8; 2],
     pub sign: i8,
     pad: u8,
 }
 
-impl BVertexInfo {
+impl BVertexLoopBlinnData {
     #[inline]
-    pub(crate) fn new(kind: BVertexKind, path_id: u32) -> BVertexInfo {
+    pub(crate) fn new(kind: BVertexKind) -> BVertexLoopBlinnData {
         let (tex_coord, sign) = match kind {
             BVertexKind::Endpoint0 => ([0, 0], 0),
             BVertexKind::Endpoint1 => ([2, 2], 0),
             BVertexKind::ConcaveControlPoint => ([1, 0], 1),
             BVertexKind::ConvexControlPoint => ([1, 0], -1),
         };
-        BVertexInfo {
-            path_id: path_id,
+        BVertexLoopBlinnData {
             tex_coord: tex_coord,
             sign: sign,
             pad: 0,
@@ -118,9 +116,8 @@ impl BVertexInfo {
     pub(crate) fn control_point(left_endpoint_position: &Point2D<f32>,
                                 control_point_position: &Point2D<f32>,
                                 right_endpoint_position: &Point2D<f32>,
-                                path_id: u32,
                                 bottom: bool)
-                                -> BVertexInfo {
+                                -> BVertexLoopBlinnData {
         let control_point_vector = *control_point_position - *left_endpoint_position;
         let right_vector = *right_endpoint_position - *left_endpoint_position;
         let determinant = right_vector.cross(control_point_vector);
@@ -129,7 +126,7 @@ impl BVertexInfo {
         } else {
             BVertexKind::ConcaveControlPoint
         };
-        BVertexInfo::new(endpoint_kind, path_id)
+        BVertexLoopBlinnData::new(endpoint_kind)
     }
 }
 
