@@ -47,6 +47,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         vertex: "/glsl/gles2/ecaa-resolve.vs.glsl",
         fragment: "/glsl/gles2/ecaa-resolve.fs.glsl",
     },
+    ecaaCover: {
+        vertex: "/glsl/gles2/ecaa-cover.vs.glsl",
+        fragment: "/glsl/gles2/ecaa-cover.fs.glsl",
+    },
 };
 
 interface UnlinkedShaderProgram {
@@ -77,6 +81,7 @@ interface ShaderMap<T> {
     directInterior: T;
     ecaaEdgeDetect: T;
     ecaaResolve: T;
+    ecaaCover: T;
 }
 
 interface UniformMap {

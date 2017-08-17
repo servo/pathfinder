@@ -30,6 +30,11 @@ float convertPathIndexToDepthValue(int pathIndex) {
     return mix(-1.0, 1.0, float(pathIndex) / float(MAX_PATHS));
 }
 
+int unpackUInt16(vec2 packedValue) {
+    ivec2 valueBytes = ivec2(floor(packedValue * 255.0));
+    return valueBytes.y * 256 + valueBytes.x;
+}
+
 vec4 fetchFloat4Data(sampler2D dataTexture, int index, ivec2 dimensions) {
     ivec2 pixelCoord = ivec2(imod(index, dimensions.x), index / dimensions.x);
     return texture2D(dataTexture, (vec2(pixelCoord) + 0.5) / vec2(dimensions));
@@ -39,11 +44,19 @@ vec4 fetchFloat4NormIndexedData(sampler2D dataTexture, float normIndex, ivec2 di
     return fetchFloat4Data(dataTexture, int(normIndex * float(dimensions.x)), dimensions);
 }
 
+vec2 fetchFloat2Data(sampler2D dataTexture, int index, ivec2 dimensions) {
+    vec4 float4Data = fetchFloat4Data(dataTexture, index / 2, dimensions);
+    return index / 2 * 2 == index ? float4Data.xy : float4Data.zw;
+}
+
+int fetchUInt16Data(sampler2D dataTexture, int index, ivec2 dimensions) {
+    return unpackUInt16(fetchFloat2Data(dataTexture, index, dimensions));
+}
+
 vec2 packPathID(int pathID) {
     return vec2(imod(pathID, 256), pathID / 256) / 255.0;
 }
 
 int unpackPathID(vec2 packedPathID) {
-    ivec2 pathIDBytes = ivec2(floor(packedPathID * 255.0));
-    return pathIDBytes.y * 256 + pathIDBytes.x;
+    return unpackUInt16(packedPathID);
 }
