@@ -58,7 +58,10 @@ void main() {
 
     int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
 
-    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, (aQuadPosition + 1.0) / 2.0);
+    // FIXME(pcwalton): Use a separate VBO for this.
+    vec2 quadPosition = (aQuadPosition + 1.0) * 0.5;
+
+    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
     position = convertScreenToClipSpace(position, uFramebufferSize);
     float depth = convertPathIndexToDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);

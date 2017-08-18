@@ -9,6 +9,8 @@
 
 #define MAX_PATHS   65536
 
+#define EPSILON     0.001
+
 precision highp float;
 
 // https://stackoverflow.com/a/36078859
@@ -64,4 +66,12 @@ vec2 packPathID(int pathID) {
 
 int unpackPathID(vec2 packedPathID) {
     return unpackUInt16(packedPathID);
+}
+
+bool xor(bool a, bool b) {
+    return (a && !b) || (!a && b);
+}
+
+float det2(vec2 a, vec2 b) {
+    return a.x * b.y - b.x * a.y;
 }
