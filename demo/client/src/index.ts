@@ -20,6 +20,10 @@ const B_LOOP_BLINN_DATA_SIZE: number = 4;
 const B_LOOP_BLINN_DATA_TEX_COORD_OFFSET: number = 0;
 const B_LOOP_BLINN_DATA_SIGN_OFFSET: number = 2;
 
+const B_QUAD_SIZE: number = 4 * 8;
+const B_QUAD_UPPER_INDICES_OFFSET: number = 0;
+const B_QUAD_LOWER_INDICES_OFFSET: number = 4 * 4;
+
 const IDENTITY: Matrix4D = [
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
@@ -97,6 +101,9 @@ interface AntialiasingStrategy {
     // Prepares any OpenGL data. This is only called on startup and canvas resize.
     init(view: PathfinderView, framebufferSize: Size2D): void;
 
+    // Uploads any mesh data. This is called whenever a new set of meshes is supplied.
+    attachMeshes(view: PathfinderView): void;
+
     // Called before direct rendering.
     //
     // Typically, this redirects direct rendering to a framebuffer of some sort.
@@ -105,12 +112,14 @@ interface AntialiasingStrategy {
     // Called after direct rendering.
     //
     // This usually performs the actual antialiasing and blits to the real framebuffer.
-    resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>): void;
+    resolve(view: PathfinderView): void;
 }
 
 type ShaderType = number;
 
 type ShaderTypeName = 'vertex' | 'fragment';
+
+type WebGLVertexArrayObject = any;
 
 const QUAD_POSITIONS: Float32Array = new Float32Array([
     -1.0,  1.0,
@@ -125,6 +134,8 @@ const QUAD_TEX_COORDS: Float32Array = new Float32Array([
     0.0, 0.0,
     1.0, 0.0,
 ]);
+
+const QUAD_ELEMENTS: Uint8Array = new Uint8Array([2, 0, 1, 1, 3, 2]);
 
 // Various utility functions
 
@@ -245,6 +256,7 @@ function initQuadVAO(view: PathfinderView, attributes: any) {
     view.gl.vertexAttribPointer(attributes.aTexCoord, 2, view.gl.FLOAT, false, 0, 0);
     view.gl.enableVertexAttribArray(attributes.aPosition);
     view.gl.enableVertexAttribArray(attributes.aTexCoord);
+    view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 }
 
 interface Meshes<T> {
@@ -283,6 +295,8 @@ class PathfinderMeshData implements Meshes<ArrayBuffer> {
         const meshes = response.Ok;
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshData>)
             this[bufferName] = base64js.toByteArray(meshes[bufferName]).buffer;
+
+        this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
     }
 
     readonly bQuads: ArrayBuffer;
@@ -295,6 +309,8 @@ class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly edgeUpperCurveIndices: ArrayBuffer;
     readonly edgeLowerLineIndices: ArrayBuffer;
     readonly edgeLowerCurveIndices: ArrayBuffer;
+
+    readonly bQuadCount: number;
 }
 
 class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
@@ -324,7 +340,12 @@ class AppController {
     constructor() {}
 
     start() {
-        this.view = new PathfinderView(document.getElementById('pf-canvas') as HTMLCanvasElement);
+        const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
+        const shaderLoader = new PathfinderShaderLoader;
+        shaderLoader.load();
+        this.view = Promise.all([shaderLoader.common, shaderLoader.shaders]).then(allShaders => {
+            return new PathfinderView(canvas, allShaders[0], allShaders[1]);
+        });
 
         this.loadFontButton = document.getElementById('pf-load-font-button') as HTMLInputElement;
         this.loadFontButton.addEventListener('change', () => this.loadFont(), false);
@@ -349,7 +370,7 @@ class AppController {
         const aaType = unwrapUndef(selectedOption.dataset.pfType) as
             keyof AntialiasingStrategyTable;
         const aaLevel = parseInt(unwrapUndef(selectedOption.dataset.pfLevel));
-        this.view.setAntialiasingOptions(aaType, aaLevel);
+        this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel));
     }
 
     fontLoaded() {
@@ -377,11 +398,13 @@ class AppController {
     }
 
     meshesReceived() {
-        this.view.uploadPathData(TEXT.length);
-        this.view.attachMeshes(this.meshes);
+        this.view.then(view => {
+            view.uploadPathData(TEXT.length);
+            view.attachMeshes(this.meshes);
+        })
     }
 
-    view: PathfinderView;
+    view: Promise<PathfinderView>;
     loadFontButton: HTMLInputElement;
     aaLevelSelect: HTMLSelectElement;
     fontData: ArrayBuffer;
@@ -389,15 +412,43 @@ class AppController {
     meshes: PathfinderMeshData;
 }
 
+class PathfinderShaderLoader {
+    load() {
+        this.common = window.fetch(COMMON_SHADER_URL).then(response => response.text());
+
+        const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
+        let promises = [];
+        for (const shaderKey of shaderKeys) {
+            promises.push(Promise.all([
+                window.fetch(SHADER_URLS[shaderKey].vertex).then(response => response.text()),
+                window.fetch(SHADER_URLS[shaderKey].fragment).then(response => response.text()),
+            ]).then(results => { return { vertex: results[0], fragment: results[1] } }));
+        }
+
+        this.shaders = Promise.all(promises).then(promises => {
+            let shaderMap: Partial<ShaderMap<ShaderProgramSource>> = {};
+            for (let keyIndex = 0; keyIndex < shaderKeys.length; keyIndex++)
+                shaderMap[shaderKeys[keyIndex]] = promises[keyIndex];
+            return shaderMap as ShaderMap<ShaderProgramSource>;
+        });
+    }
+
+    common: Promise<string>;
+    shaders: Promise<ShaderMap<ShaderProgramSource>>;
+}
+
 class PathfinderView {
-    constructor(canvas: HTMLCanvasElement) {
+    constructor(canvas: HTMLCanvasElement,
+                commonShaderSource: string,
+                shaderSources: ShaderMap<ShaderProgramSource>) {
         this.canvas = canvas;
 
         this.initContext();
 
         this.antialiasingStrategy = new NoAAStrategy(0);
 
-        this.shaderProgramsPromise = this.loadShaders().then(shaders => this.linkShaders(shaders));
+        const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
+        this.shaderPrograms = this.linkShaders(shaderSource);
 
         window.addEventListener('resize', () => this.resizeToFit(), false);
         this.resizeToFit();
@@ -408,6 +459,8 @@ class PathfinderView {
 
         let canvas = this.canvas;
         this.antialiasingStrategy.init(this, { width: canvas.width, height: canvas.height });
+        if (this.meshData != null)
+            this.antialiasingStrategy.attachMeshes(this);
 
         this.setDirty();
     }
@@ -417,8 +470,13 @@ class PathfinderView {
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
         this.drawBuffersExt = this.gl.getExtension('WEBGL_draw_buffers');
+        this.halfFloatExt = this.gl.getExtension('OES_texture_half_float');
+        this.instancedArraysExt = this.gl.getExtension('ANGLE_instanced_arrays');
+        this.vertexArrayObjectExt = this.gl.getExtension('OES_vertex_array_object');
+        this.gl.getExtension('EXT_color_buffer_half_float');
         this.gl.getExtension('EXT_frag_depth');
         this.gl.getExtension('OES_element_index_uint');
+        this.gl.getExtension('OES_texture_float');
         this.gl.getExtension('WEBGL_depth_texture');
 
         // Upload quad buffers.
@@ -428,62 +486,53 @@ class PathfinderView {
         this.quadTexCoordsBuffer = unwrapNull(this.gl.createBuffer());
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadTexCoordsBuffer);
         this.gl.bufferData(this.gl.ARRAY_BUFFER, QUAD_TEX_COORDS, this.gl.STATIC_DRAW);
+        this.quadElementsBuffer = unwrapNull(this.gl.createBuffer());
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.quadElementsBuffer);
+        this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_ELEMENTS, this.gl.STATIC_DRAW);
     }
 
-    loadShaders(): Promise<ShaderMap<UnlinkedShaderProgram>> {
+    compileShaders(commonSource: string, shaderSources: ShaderMap<ShaderProgramSource>):
+                   ShaderMap<UnlinkedShaderProgram> {
         let shaders: Partial<ShaderMap<Partial<UnlinkedShaderProgram>>> = {};
-        return window.fetch(COMMON_SHADER_URL)
-                     .then((response) => response.text())
-                     .then((commonSource) => {
-            const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
+        const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
 
-            let promises = [];
-            for (const shaderKey of shaderKeys) {
-                for (const typeName of ['vertex', 'fragment'] as Array<ShaderTypeName>) {
-                    const type = {
-                        vertex: this.gl.VERTEX_SHADER,
-                        fragment: this.gl.FRAGMENT_SHADER,
-                    }[typeName];
+        for (const shaderKey of shaderKeys) {
+            for (const typeName of ['vertex', 'fragment'] as Array<ShaderTypeName>) {
+                const type = {
+                    vertex: this.gl.VERTEX_SHADER,
+                    fragment: this.gl.FRAGMENT_SHADER,
+                }[typeName];
 
-                    const url = SHADER_URLS[shaderKey][typeName];
-                    promises.push(window.fetch(url)
-                                        .then(response => response.text())
-                                        .then(source => {
-                        const shader = this.gl.createShader(type);
-                        if (shader == null)
-                            throw new PathfinderError("Failed to create shader!");
-                        this.gl.shaderSource(shader, commonSource + "\n#line 1\n" + source);
-                        this.gl.compileShader(shader);
-                        if (this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS) == 0) {
-                            const infoLog = this.gl.getShaderInfoLog(shader);
-                            throw new PathfinderError(`Failed to compile ${typeName} shader ` +
-                                                    `"${shaderKey}":\n${infoLog}`);
-                        }
+                const source = shaderSources[shaderKey][typeName];
+                const shader = this.gl.createShader(type);
+                if (shader == null)
+                    throw new PathfinderError("Failed to create shader!");
 
-                        if (shaders[shaderKey] == null)
-                            shaders[shaderKey] = {};
-                        shaders[shaderKey]![typeName] = shader;
-                    }));
+                this.gl.shaderSource(shader, commonSource + "\n#line 1\n" + source);
+                this.gl.compileShader(shader);
+                if (this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS) == 0) {
+                    const infoLog = this.gl.getShaderInfoLog(shader);
+                    throw new PathfinderError(`Failed to compile ${typeName} shader ` +
+                                              `"${shaderKey}":\n${infoLog}`);
                 }
-            }
 
-            return Promise.all(promises);
-        }).then(() => shaders as ShaderMap<UnlinkedShaderProgram>);
+                if (shaders[shaderKey] == null)
+                    shaders[shaderKey] = {};
+                shaders[shaderKey]![typeName] = shader;
+            }
+        }
+
+        return shaders as ShaderMap<UnlinkedShaderProgram>;
     }
 
-    linkShaders(shaders: ShaderMap<UnlinkedShaderProgram>):
-                Promise<ShaderMap<PathfinderShaderProgram>> {
-        return new Promise((resolve, reject) => {
-            let shaderProgramMap: Partial<ShaderMap<PathfinderShaderProgram>> = {};
-            for (const shaderName of Object.keys(shaders) as
-                 Array<keyof ShaderMap<UnlinkedShaderProgram>>) {
-                shaderProgramMap[shaderName] = new PathfinderShaderProgram(this.gl,
-                                                                           shaderName,
-                                                                           shaders[shaderName]);
-            }
-
-            resolve(shaderProgramMap as ShaderMap<PathfinderShaderProgram>);
-        });
+    linkShaders(shaders: ShaderMap<UnlinkedShaderProgram>): ShaderMap<PathfinderShaderProgram> {
+        let shaderProgramMap: Partial<ShaderMap<PathfinderShaderProgram>> = {};
+        for (const shaderName of Object.keys(shaders) as Array<keyof ShaderMap<string>>) {
+            shaderProgramMap[shaderName] = new PathfinderShaderProgram(this.gl,
+                                                                       shaderName,
+                                                                       shaders[shaderName]);
+        }
+        return shaderProgramMap as ShaderMap<PathfinderShaderProgram>;
     }
 
     uploadPathData(pathCount: number) {
@@ -498,7 +547,9 @@ class PathfinderView {
     }
 
     attachMeshes(meshes: PathfinderMeshData) {
+        this.meshData = meshes;
         this.meshes = new PathfinderMeshBuffers(this.gl, meshes);
+        this.antialiasingStrategy.attachMeshes(this);
         this.setDirty();
     }
 
@@ -531,27 +582,25 @@ class PathfinderView {
     }
 
     redraw() {
-        this.shaderProgramsPromise.then((shaderPrograms: ShaderMap<PathfinderShaderProgram>) => {
-            if (this.meshes == null) {
-                this.dirty = false;
-                return;
-            }
-
-            // Prepare for direct rendering.
-            this.antialiasingStrategy.prepare(this);
-
-            // Perform direct rendering (Loop-Blinn).
-            this.renderDirect(shaderPrograms);
-
-            // Antialias.
-            this.antialiasingStrategy.resolve(this, shaderPrograms);
-
-            // Clear dirty bit and finish.
+        if (this.meshes == null) {
             this.dirty = false;
-        });
+            return;
+        }
+
+        // Prepare for direct rendering.
+        this.antialiasingStrategy.prepare(this);
+
+        // Perform direct rendering (Loop-Blinn).
+        this.renderDirect();
+
+        // Antialias.
+        this.antialiasingStrategy.resolve(this);
+
+        // Clear dirty bit and finish.
+        this.dirty = false;
     }
 
-    renderDirect(shaderPrograms: ShaderMap<PathfinderShaderProgram>) {
+    renderDirect() {
         // Set up implicit cover state.
         this.gl.depthFunc(this.gl.GREATER);
         this.gl.depthMask(true);
@@ -559,7 +608,7 @@ class PathfinderView {
         this.gl.disable(this.gl.BLEND);
 
         // Set up the implicit cover interior VAO.
-        const directInteriorProgram = shaderPrograms.directInterior;
+        const directInteriorProgram = this.shaderPrograms.directInterior;
         this.gl.useProgram(directInteriorProgram.program);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
         this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
@@ -601,7 +650,7 @@ class PathfinderView {
         this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
 
         // Set up the direct curve VAO.
-        const directCurveProgram = shaderPrograms.directCurve;
+        const directCurveProgram = this.shaderPrograms.directCurve;
         this.gl.useProgram(directCurveProgram.program);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
         this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
@@ -655,12 +704,17 @@ class PathfinderView {
     canvas: HTMLCanvasElement;
     gl: WebGLRenderingContext;
     drawBuffersExt: any;
+    halfFloatExt: any;
+    instancedArraysExt: any;
+    vertexArrayObjectExt: any;
     antialiasingStrategy: AntialiasingStrategy;
-    shaderProgramsPromise: Promise<ShaderMap<PathfinderShaderProgram>>;
+    shaderPrograms: ShaderMap<PathfinderShaderProgram>;
     meshes: PathfinderMeshBuffers;
+    meshData: PathfinderMeshData;
     pathColorsBufferTexture: PathfinderBufferTexture;
     quadPositionsBuffer: WebGLBuffer;
     quadTexCoordsBuffer: WebGLBuffer;
+    quadElementsBuffer: WebGLBuffer;
     dirty: boolean;
 }
 
@@ -704,16 +758,28 @@ class PathfinderShaderProgram {
 }
 
 class PathfinderBufferTexture {
-    constructor(gl: WebGLRenderingContext, data: Uint8Array) {
+    constructor(gl: WebGLRenderingContext, data: Float32Array | Uint8Array) {
         const pixelCount = Math.ceil(data.length / 4);
         const width = Math.ceil(Math.sqrt(pixelCount));
         const height = Math.ceil(pixelCount / width);
         this.size = { width: width, height: height };
 
+        // Pad out with zeroes as necessary.
+        //
+        // FIXME(pcwalton): Do this earlier to save a copy here.
+        const elementCount = width * height * 4;
+        if (data.length != elementCount) {
+            const newData = new Float32Array(elementCount);
+            newData.set(data);
+            data = newData;
+        }
+
         this.texture = expectNotNull(gl.createTexture(), "Failed to create texture!");
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        const glType = data instanceof Float32Array ? gl.FLOAT : gl.UNSIGNED_BYTE;
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, glType, data);
+
         setTextureParameters(gl, gl.NEAREST);
     }
 
@@ -730,6 +796,8 @@ class NoAAStrategy implements AntialiasingStrategy {
         this.framebufferSize = framebufferSize;
     }
 
+    attachMeshes(view: PathfinderView) {}
+
     prepare(view: PathfinderView) {
         view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
 
@@ -740,7 +808,7 @@ class NoAAStrategy implements AntialiasingStrategy {
         view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
     }
 
-    resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>) {}
+    resolve(view: PathfinderView) {}
 
     framebufferSize: Size2D;
 }
@@ -784,6 +852,8 @@ class SSAAStrategy implements AntialiasingStrategy {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
     }
 
+    attachMeshes(view: PathfinderView) {}
+
     prepare(view: PathfinderView) {
         const size = this.supersampledFramebufferSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.supersampledFramebuffer);
@@ -796,13 +866,13 @@ class SSAAStrategy implements AntialiasingStrategy {
         view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
     }
 
-    resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>) {
+    resolve(view: PathfinderView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
         view.gl.viewport(0, 0, view.canvas.width, view.canvas.height);
         view.gl.disable(view.gl.DEPTH_TEST);
 
         // Set up the blit program VAO.
-        const blitProgram = shaders.blit;
+        const blitProgram = view.shaderPrograms.blit;
         view.gl.useProgram(blitProgram.program);
         initQuadVAO(view, blitProgram.attributes);
 
@@ -810,7 +880,8 @@ class SSAAStrategy implements AntialiasingStrategy {
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
         view.gl.uniform1i(blitProgram.uniforms.uSource, 0);
-        view.gl.drawArrays(view.gl.TRIANGLE_STRIP, 0, 4);
+        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+        view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
     }
 
     level: number;
@@ -828,9 +899,24 @@ class ECAAStrategy implements AntialiasingStrategy {
 
     init(view: PathfinderView, framebufferSize: Size2D) {
         this.framebufferSize = framebufferSize;
+
         this.initDirectFramebuffer(view);
         this.initEdgeDetectFramebuffer(view);
+        this.initAAAlphaFramebuffer(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
+
+        this.createEdgeDetectVAO(view);
+    }
+
+    attachMeshes(view: PathfinderView) {
+        const bVertexPositions = new Float32Array(view.meshData.bVertexPositions);
+        const bVertexPathIDs = new Uint8Array(view.meshData.bVertexPathIDs);
+        this.bVertexPositionBufferTexture = new PathfinderBufferTexture(view.gl, bVertexPositions);
+        this.bVertexPathIDBufferTexture = new PathfinderBufferTexture(view.gl, bVertexPathIDs);
+
+        this.createEdgeDetectVAO(view);
+        this.createCoverVAO(view);
+        this.createResolveVAO(view);
     }
 
     initDirectFramebuffer(view: PathfinderView) {
@@ -852,6 +938,79 @@ class ECAAStrategy implements AntialiasingStrategy {
                                                        view.drawBuffersExt,
                                                        [this.bgColorTexture, this.fgColorTexture],
                                                        this.aaDepthTexture);
+    }
+
+    initAAAlphaFramebuffer(view: PathfinderView) {
+        const texture = unwrapNull(view.gl.createTexture());
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, texture);
+        view.gl.texImage2D(view.gl.TEXTURE_2D,
+                           0,
+                           view.gl.ALPHA,
+                           this.framebufferSize.width,
+                           this.framebufferSize.height,
+                           0,
+                           view.gl.ALPHA,
+                           view.halfFloatExt.HALF_FLOAT_OES,
+                           null);
+
+        this.aaFramebuffer = createFramebuffer(view.gl,
+                                               view.drawBuffersExt,
+                                               [this.aaAlphaTexture],
+                                               this.aaDepthTexture);
+    }
+
+    createEdgeDetectVAO(view: PathfinderView) {
+        this.edgeDetectVAO = view.vertexArrayObjectExt.createVertexArrayOES();
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
+
+        const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
+        view.gl.useProgram(edgeDetectProgram.program);
+        initQuadVAO(view, edgeDetectProgram.attributes);
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    createResolveVAO(view: PathfinderView) {
+        this.resolveVAO = view.vertexArrayObjectExt.createVertexArrayOES();
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
+
+        const resolveProgram = view.shaderPrograms.ecaaResolve;
+        view.gl.useProgram(resolveProgram.program);
+        initQuadVAO(view, resolveProgram.attributes);
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    createCoverVAO(view: PathfinderView) {
+        this.coverVAO = view.vertexArrayObjectExt.createVertexArrayOES();
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
+
+        const coverProgram = view.shaderPrograms.ecaaCover;
+        const attributes = coverProgram.attributes;
+        view.gl.useProgram(coverProgram.program);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+        view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.meshes.bQuads);
+        view.gl.vertexAttribPointer(attributes.aUpperPointIndices,
+                                    4,
+                                    view.gl.UNSIGNED_SHORT,
+                                    false,
+                                    B_QUAD_SIZE,
+                                    B_QUAD_UPPER_INDICES_OFFSET);
+        view.gl.vertexAttribPointer(attributes.aLowerPointIndices,
+                                    4,
+                                    view.gl.UNSIGNED_SHORT,
+                                    false,
+                                    B_QUAD_SIZE,
+                                    B_QUAD_LOWER_INDICES_OFFSET);
+        view.gl.enableVertexAttribArray(attributes.aQuadPosition);
+        view.gl.enableVertexAttribArray(attributes.aUpperPointIndices);
+        view.gl.enableVertexAttribArray(attributes.aLowerPointIndices);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aUpperPointIndices, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLowerPointIndices, 1);
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
     prepare(view: PathfinderView) {
@@ -883,8 +1042,44 @@ class ECAAStrategy implements AntialiasingStrategy {
         ]);
     }
 
-    resolve(view: PathfinderView, shaders: ShaderMap<PathfinderShaderProgram>) {
+    resolve(view: PathfinderView) {
+        // Detect edges.
+        this.detectEdges(view);
+
+        // Conservatively cover.
+        this.cover(view);
+
+        // Set state for ECAA resolve.
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
+        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.disable(view.gl.DEPTH_TEST);
+        view.gl.disable(view.gl.BLEND);
+        view.drawBuffersExt.drawBuffersWEBGL([view.gl.BACK]);
+
+        // Resolve.
+        const resolveProgram = view.shaderPrograms.ecaaResolve;
+        view.gl.useProgram(resolveProgram.program);
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
+        view.gl.uniform2i(resolveProgram.uniforms.uFramebufferSize,
+                          this.framebufferSize.width,
+                          this.framebufferSize.height);
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
+        view.gl.uniform1i(resolveProgram.uniforms.uBGColor, 0);
+        view.gl.activeTexture(view.gl.TEXTURE1);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.fgColorTexture);
+        view.gl.uniform1i(resolveProgram.uniforms.uFGColor, 1);
+        view.gl.activeTexture(view.gl.TEXTURE2);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
+        view.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 2);
+        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+        view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    detectEdges(view: PathfinderView) {
         // Set state for edge detection.
+        const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
 
@@ -902,12 +1097,9 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
 
-        // Set up the edge detection VAO.
-        const edgeDetectProgram = shaders.ecaaEdgeDetect;
-        view.gl.useProgram(edgeDetectProgram.program);
-        initQuadVAO(view, edgeDetectProgram.attributes);
-
         // Perform edge detection.
+        view.gl.useProgram(edgeDetectProgram.program);
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
         view.gl.uniform2i(edgeDetectProgram.uniforms.uFramebufferSize,
                           this.framebufferSize.width,
                           this.framebufferSize.height);
@@ -917,32 +1109,59 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.activeTexture(view.gl.TEXTURE1);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.directPathIDTexture);
         view.gl.uniform1i(edgeDetectProgram.uniforms.uPathID, 1);
-        view.gl.drawArrays(view.gl.TRIANGLE_STRIP, 0, 4);
-
-        // Set state for ECAA resolve.
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
-        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
-        view.gl.disable(view.gl.DEPTH_TEST);
-        view.drawBuffersExt.drawBuffersWEBGL([view.gl.BACK]);
-
-        // Set up the ECAA resolve VAO.
-        const resolveProgram = shaders.ecaaResolve;
-        view.gl.useProgram(resolveProgram.program);
-        initQuadVAO(view, resolveProgram.attributes);
-
-        // Perform ECAA resolution.
-        view.gl.uniform2i(resolveProgram.uniforms.uFramebufferSize,
-                          this.framebufferSize.width,
-                          this.framebufferSize.height);
-        view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uBGColor, 0);
-        view.gl.activeTexture(view.gl.TEXTURE1);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.fgColorTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uFGColor, 1);
-        view.gl.drawArrays(view.gl.TRIANGLE_STRIP, 0, 4);
+        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+        view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
+    cover(view: PathfinderView) {
+        // Set state for conservative coverage.
+        const coverProgram = view.shaderPrograms.ecaaCover;
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
+        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+
+        view.gl.depthMask(false);
+        //view.gl.depthFunc(view.gl.EQUAL);
+        view.gl.depthFunc(view.gl.ALWAYS);
+        view.gl.enable(view.gl.DEPTH_TEST);
+        view.gl.blendEquation(view.gl.FUNC_ADD);
+        view.gl.blendFunc(view.gl.ONE, view.gl.ONE);
+        view.gl.enable(view.gl.BLEND);
+
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT);
+
+        // Conservatively cover.
+        view.gl.useProgram(coverProgram.program);
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
+        const uniforms = coverProgram.uniforms;
+        view.gl.uniformMatrix4fv(uniforms.uTransform, false, IDENTITY);
+        view.gl.uniform2i(uniforms.uFramebufferSize,
+                          this.framebufferSize.width,
+                          this.framebufferSize.height);
+        view.gl.uniform2i(uniforms.uBVertexPositionDimensions,
+                          this.bVertexPositionBufferTexture.size.width,
+                          this.bVertexPositionBufferTexture.size.height);
+        view.gl.uniform2i(uniforms.uBVertexPathIDDimensions,
+                          this.bVertexPathIDBufferTexture.size.width,
+                          this.bVertexPathIDBufferTexture.size.height);
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPositionBufferTexture.texture);
+        view.gl.uniform1i(uniforms.uBVertexPosition, 0);
+        view.gl.activeTexture(view.gl.TEXTURE1);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPathIDBufferTexture.texture);
+        view.gl.uniform1i(uniforms.uBVertexPathID, 1);
+        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+        view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
+                                                           6,
+                                                           view.gl.UNSIGNED_BYTE,
+                                                           0,
+                                                           view.meshData.bQuadCount);
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    bVertexPositionBufferTexture: PathfinderBufferTexture;
+    bVertexPathIDBufferTexture: PathfinderBufferTexture;
     directColorTexture: WebGLTexture;
     directPathIDTexture: WebGLTexture;
     directDepthTexture: WebGLTexture;
@@ -950,7 +1169,12 @@ class ECAAStrategy implements AntialiasingStrategy {
     bgColorTexture: WebGLTexture;
     fgColorTexture: WebGLTexture;
     aaDepthTexture: WebGLTexture;
+    aaAlphaTexture: WebGLTexture;
     edgeDetectFramebuffer: WebGLFramebuffer;
+    aaFramebuffer: WebGLFramebuffer;
+    edgeDetectVAO: WebGLVertexArrayObject;
+    coverVAO: WebGLVertexArrayObject;
+    resolveVAO: WebGLVertexArrayObject;
     framebufferSize: Size2D;
 }
 

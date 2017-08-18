@@ -12,15 +12,18 @@ uniform sampler2D uBVertexPosition;
 uniform sampler2D uBVertexPathID;
 
 attribute vec2 aQuadPosition;
-attribute vec3 aUpperPointIndices;
-attribute vec3 aLowerPointIndices;
+attribute vec4 aUpperPointIndices;
+attribute vec4 aLowerPointIndices;
 
 varying vec2 vHorizontalExtents;
 
 void main() {
     // Fetch B-vertex positions.
     // FIXME(pcwalton): This could be slightly optimized to fetch fewer positions.
-    ivec4 pointIndices = ivec4(ivec2(aUpperPointIndices.xy), ivec2(aLowerPointIndices.xy));
+    ivec4 pointIndices = ivec4(unpackUInt32Attribute(aUpperPointIndices.xy),
+                               unpackUInt32Attribute(aUpperPointIndices.zw),
+                               unpackUInt32Attribute(aLowerPointIndices.xy),
+                               unpackUInt32Attribute(aLowerPointIndices.zw));
     vec2 upperLeftPosition = fetchFloat2Data(uBVertexPosition,
                                              pointIndices.x,
                                              uBVertexPositionDimensions);

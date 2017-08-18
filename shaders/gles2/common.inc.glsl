@@ -35,6 +35,11 @@ int unpackUInt16(vec2 packedValue) {
     return valueBytes.y * 256 + valueBytes.x;
 }
 
+int unpackUInt32Attribute(vec2 packedValue) {
+    ivec2 valueWords = ivec2(packedValue);
+    return valueWords.y * 65536 + valueWords.x;
+}
+
 vec4 fetchFloat4Data(sampler2D dataTexture, int index, ivec2 dimensions) {
     ivec2 pixelCoord = ivec2(imod(index, dimensions.x), index / dimensions.x);
     return texture2D(dataTexture, (vec2(pixelCoord) + 0.5) / vec2(dimensions));

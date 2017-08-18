@@ -9,7 +9,8 @@
             "node_modules/@types"
         ],
         "sourceMap": true,
-        "strict": true
+        "strict": true,
+        "allowUnreachableCode": true
     },
     "include": [
         "src"
