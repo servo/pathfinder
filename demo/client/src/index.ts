@@ -470,10 +470,10 @@ class PathfinderView {
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
         this.drawBuffersExt = this.gl.getExtension('WEBGL_draw_buffers');
-        this.halfFloatExt = this.gl.getExtension('OES_texture_half_float');
+        this.colorBufferHalfFloatExt = this.gl.getExtension('EXT_color_buffer_half_float');
         this.instancedArraysExt = this.gl.getExtension('ANGLE_instanced_arrays');
+        this.textureHalfFloatExt = this.gl.getExtension('OES_texture_half_float');
         this.vertexArrayObjectExt = this.gl.getExtension('OES_vertex_array_object');
-        this.gl.getExtension('EXT_color_buffer_half_float');
         this.gl.getExtension('EXT_frag_depth');
         this.gl.getExtension('OES_element_index_uint');
         this.gl.getExtension('OES_texture_float');
@@ -703,9 +703,10 @@ class PathfinderView {
 
     canvas: HTMLCanvasElement;
     gl: WebGLRenderingContext;
+    colorBufferHalfFloatExt: any;
     drawBuffersExt: any;
-    halfFloatExt: any;
     instancedArraysExt: any;
+    textureHalfFloatExt: any;
     vertexArrayObjectExt: any;
     antialiasingStrategy: AntialiasingStrategy;
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
@@ -941,18 +942,19 @@ class ECAAStrategy implements AntialiasingStrategy {
     }
 
     initAAAlphaFramebuffer(view: PathfinderView) {
-        const texture = unwrapNull(view.gl.createTexture());
+        this.aaAlphaTexture = unwrapNull(view.gl.createTexture());
         view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, texture);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
         view.gl.texImage2D(view.gl.TEXTURE_2D,
                            0,
-                           view.gl.ALPHA,
+                           view.gl.RGB,
                            this.framebufferSize.width,
                            this.framebufferSize.height,
                            0,
-                           view.gl.ALPHA,
-                           view.halfFloatExt.HALF_FLOAT_OES,
+                           view.gl.RGB,
+                           view.textureHalfFloatExt.HALF_FLOAT_OES,
                            null);
+        setTextureParameters(view.gl, view.gl.NEAREST);
 
         this.aaFramebuffer = createFramebuffer(view.gl,
                                                view.drawBuffersExt,
@@ -1009,6 +1011,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.enableVertexAttribArray(attributes.aLowerPointIndices);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aUpperPointIndices, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLowerPointIndices, 1);
+        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
@@ -1049,32 +1052,8 @@ class ECAAStrategy implements AntialiasingStrategy {
         // Conservatively cover.
         this.cover(view);
 
-        // Set state for ECAA resolve.
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
-        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
-        view.gl.disable(view.gl.DEPTH_TEST);
-        view.gl.disable(view.gl.BLEND);
-        view.drawBuffersExt.drawBuffersWEBGL([view.gl.BACK]);
-
-        // Resolve.
-        const resolveProgram = view.shaderPrograms.ecaaResolve;
-        view.gl.useProgram(resolveProgram.program);
-        view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
-        view.gl.uniform2i(resolveProgram.uniforms.uFramebufferSize,
-                          this.framebufferSize.width,
-                          this.framebufferSize.height);
-        view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uBGColor, 0);
-        view.gl.activeTexture(view.gl.TEXTURE1);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.fgColorTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uFGColor, 1);
-        view.gl.activeTexture(view.gl.TEXTURE2);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 2);
-        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
-        view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
-        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+        // Resolve the antialiasing.
+        this.resolveAA(view);
     }
 
     detectEdges(view: PathfinderView) {
@@ -1151,12 +1130,39 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.activeTexture(view.gl.TEXTURE1);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPathIDBufferTexture.texture);
         view.gl.uniform1i(uniforms.uBVertexPathID, 1);
-        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
         view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                            6,
                                                            view.gl.UNSIGNED_BYTE,
                                                            0,
                                                            view.meshData.bQuadCount);
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    resolveAA(view: PathfinderView) {
+        // Set state for ECAA resolve.
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
+        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.disable(view.gl.DEPTH_TEST);
+        view.gl.disable(view.gl.BLEND);
+        view.drawBuffersExt.drawBuffersWEBGL([view.gl.BACK]);
+
+        // Resolve.
+        const resolveProgram = view.shaderPrograms.ecaaResolve;
+        view.gl.useProgram(resolveProgram.program);
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
+        view.gl.uniform2i(resolveProgram.uniforms.uFramebufferSize,
+                          this.framebufferSize.width,
+                          this.framebufferSize.height);
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
+        view.gl.uniform1i(resolveProgram.uniforms.uBGColor, 0);
+        view.gl.activeTexture(view.gl.TEXTURE1);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.fgColorTexture);
+        view.gl.uniform1i(resolveProgram.uniforms.uFGColor, 1);
+        view.gl.activeTexture(view.gl.TEXTURE2);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
+        view.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 2);
+        view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 

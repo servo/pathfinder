@@ -42,6 +42,11 @@ void main() {
     lowerLeftPosition = transformVertexPosition(lowerLeftPosition, uTransform);
     lowerRightPosition = transformVertexPosition(lowerRightPosition, uTransform);
 
+    /*upperLeftPosition = vec2(0.0, 0.0);
+    upperRightPosition = vec2(200.0, 0.0);
+    lowerLeftPosition = vec2(0.0, 200.0);
+    lowerRightPosition = vec2(200.0, 200.0);*/
+
     vec4 extents = vec4(min(upperLeftPosition.x, lowerLeftPosition.x),
                         min(min(upperLeftPosition.y, upperRightPosition.y),
                             min(lowerLeftPosition.y, lowerRightPosition.y)),
@@ -53,7 +58,7 @@ void main() {
 
     int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
 
-    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, aQuadPosition);
+    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, (aQuadPosition + 1.0) / 2.0);
     position = convertScreenToClipSpace(position, uFramebufferSize);
     float depth = convertPathIndexToDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);
