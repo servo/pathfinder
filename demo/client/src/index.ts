@@ -3,7 +3,7 @@
 const base64js = require('base64-js');
 const opentype = require('opentype.js');
 
-const TEXT: string = "G";
+const TEXT: string = "X";
 const FONT_SIZE: number = 16.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
@@ -100,6 +100,11 @@ interface UniformMap {
 
 interface AttributeMap {
     [attributeName: string]: number;
+}
+
+interface UpperAndLower<T> {
+    upper: T;
+    lower: T;
 }
 
 interface AntialiasingStrategy {
@@ -272,8 +277,8 @@ interface Meshes<T> {
     readonly coverInteriorIndices: T;
     readonly coverCurveIndices: T;
     readonly edgeUpperLineIndices: T;
-    readonly edgeUpperCurveIndices: T;
     readonly edgeLowerLineIndices: T;
+    readonly edgeUpperCurveIndices: T;
     readonly edgeLowerCurveIndices: T;
 }
 
@@ -286,10 +291,10 @@ const BUFFER_TYPES: Meshes<BufferType> = {
     bVertexLoopBlinnData: 'ARRAY_BUFFER',
     coverInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
     coverCurveIndices: 'ELEMENT_ARRAY_BUFFER',
-    edgeUpperLineIndices: 'ELEMENT_ARRAY_BUFFER',
-    edgeUpperCurveIndices: 'ELEMENT_ARRAY_BUFFER',
-    edgeLowerLineIndices: 'ELEMENT_ARRAY_BUFFER',
-    edgeLowerCurveIndices: 'ELEMENT_ARRAY_BUFFER',
+    edgeUpperLineIndices: 'ARRAY_BUFFER',
+    edgeLowerLineIndices: 'ARRAY_BUFFER',
+    edgeUpperCurveIndices: 'ARRAY_BUFFER',
+    edgeLowerCurveIndices: 'ARRAY_BUFFER',
 };
 
 class PathfinderMeshData implements Meshes<ArrayBuffer> {
@@ -298,10 +303,14 @@ class PathfinderMeshData implements Meshes<ArrayBuffer> {
         if (!('Ok' in response))
             throw new PathfinderError("Failed to partition the font!");
         const meshes = response.Ok;
-        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshData>)
+        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>)
             this[bufferName] = base64js.toByteArray(meshes[bufferName]).buffer;
 
         this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
+        this.edgeUpperLineIndexCount = this.edgeUpperLineIndices.byteLength / 8;
+        this.edgeLowerLineIndexCount = this.edgeLowerLineIndices.byteLength / 8;
+        this.edgeUpperCurveIndexCount = this.edgeUpperCurveIndices.byteLength / 16;
+        this.edgeLowerCurveIndexCount = this.edgeLowerCurveIndices.byteLength / 16;
     }
 
     readonly bQuads: ArrayBuffer;
@@ -311,11 +320,15 @@ class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly coverInteriorIndices: ArrayBuffer;
     readonly coverCurveIndices: ArrayBuffer;
     readonly edgeUpperLineIndices: ArrayBuffer;
-    readonly edgeUpperCurveIndices: ArrayBuffer;
     readonly edgeLowerLineIndices: ArrayBuffer;
+    readonly edgeUpperCurveIndices: ArrayBuffer;
     readonly edgeLowerCurveIndices: ArrayBuffer;
 
     readonly bQuadCount: number;
+    readonly edgeUpperLineIndexCount: number;
+    readonly edgeLowerLineIndexCount: number;
+    readonly edgeUpperCurveIndexCount: number;
+    readonly edgeLowerCurveIndexCount: number;
 }
 
 class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
@@ -922,6 +935,7 @@ class ECAAStrategy implements AntialiasingStrategy {
 
         this.createEdgeDetectVAO(view);
         this.createCoverVAO(view);
+        this.createLineVAO(view);
         this.createResolveVAO(view);
     }
 
@@ -978,17 +992,6 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    createResolveVAO(view: PathfinderView) {
-        this.resolveVAO = view.vertexArrayObjectExt.createVertexArrayOES();
-        view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
-
-        const resolveProgram = view.shaderPrograms.ecaaResolve;
-        view.gl.useProgram(resolveProgram.program);
-        initQuadVAO(view, resolveProgram.attributes);
-
-        view.vertexArrayObjectExt.bindVertexArrayOES(null);
-    }
-
     createCoverVAO(view: PathfinderView) {
         this.coverVAO = view.vertexArrayObjectExt.createVertexArrayOES();
         view.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
@@ -1017,6 +1020,52 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aUpperPointIndices, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLowerPointIndices, 1);
         view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    createLineVAO(view: PathfinderView) {
+        const lineProgram = view.shaderPrograms.ecaaLine;
+        const attributes = lineProgram.attributes;
+
+        const vaos: Partial<UpperAndLower<WebGLVertexArrayObject>> = {};
+        for (const direction of ['upper', 'lower'] as Array<'upper' | 'lower'>) {
+            vaos[direction] = view.vertexArrayObjectExt.createVertexArrayOES();
+            view.vertexArrayObjectExt.bindVertexArrayOES(vaos[direction]);
+
+            const lineIndexBuffer = {
+                upper: view.meshes.edgeUpperLineIndices,
+                lower: view.meshes.edgeLowerLineIndices,
+            }[direction];
+
+            view.gl.useProgram(lineProgram.program);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+            view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineIndexBuffer);
+            view.gl.vertexAttribPointer(attributes.aLineIndices,
+                                        4,
+                                        view.gl.UNSIGNED_SHORT,
+                                        false,
+                                        0,
+                                        0);
+            view.gl.enableVertexAttribArray(attributes.aQuadPosition);
+            view.gl.enableVertexAttribArray(attributes.aLineIndices);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLineIndices, 1);
+            view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+        }
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+
+        this.edgeVAOs = vaos as UpperAndLower<WebGLVertexArrayObject>;
+    }
+
+    createResolveVAO(view: PathfinderView) {
+        this.resolveVAO = view.vertexArrayObjectExt.createVertexArrayOES();
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
+
+        const resolveProgram = view.shaderPrograms.ecaaResolve;
+        view.gl.useProgram(resolveProgram.program);
+        initQuadVAO(view, resolveProgram.attributes);
 
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
@@ -1056,6 +1105,9 @@ class ECAAStrategy implements AntialiasingStrategy {
 
         // Conservatively cover.
         this.cover(view);
+
+        // Antialias.
+        this.antialiasLines(view);
 
         // Resolve the antialiasing.
         this.resolveAA(view);
@@ -1143,6 +1195,57 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
+    antialiasLines(view: PathfinderView) {
+        // Set state for line antialiasing.
+        const lineProgram = view.shaderPrograms.ecaaLine;
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
+        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+
+        view.gl.depthMask(false);
+        //view.gl.depthFunc(view.gl.EQUAL);
+        view.gl.depthFunc(view.gl.ALWAYS);
+        view.gl.enable(view.gl.DEPTH_TEST);
+        view.gl.blendEquation(view.gl.FUNC_REVERSE_SUBTRACT);
+        view.gl.blendFunc(view.gl.ONE, view.gl.ONE);
+        view.gl.enable(view.gl.BLEND);
+
+        // Antialias lines.
+        view.gl.useProgram(lineProgram.program);
+        const uniforms = lineProgram.uniforms;
+        view.gl.uniformMatrix4fv(uniforms.uTransform, false, IDENTITY);
+        view.gl.uniform2i(uniforms.uFramebufferSize,
+                          this.framebufferSize.width,
+                          this.framebufferSize.height);
+        view.gl.uniform2i(uniforms.uBVertexPositionDimensions,
+                          this.bVertexPositionBufferTexture.size.width,
+                          this.bVertexPositionBufferTexture.size.height);
+        view.gl.uniform2i(uniforms.uBVertexPathIDDimensions,
+                          this.bVertexPathIDBufferTexture.size.width,
+                          this.bVertexPathIDBufferTexture.size.height);
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPositionBufferTexture.texture);
+        view.gl.uniform1i(uniforms.uBVertexPosition, 0);
+        view.gl.activeTexture(view.gl.TEXTURE1);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPathIDBufferTexture.texture);
+        view.gl.uniform1i(uniforms.uBVertexPathID, 1);
+
+        for (const direction of ['upper', 'lower'] as Array<keyof UpperAndLower<void>>) {
+            view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeVAOs[direction]);
+            view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
+            const count = {
+                upper: view.meshData.edgeUpperLineIndexCount,
+                lower: view.meshData.edgeLowerLineIndexCount,
+            }[direction];
+            view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
+                                                               6,
+                                                               view.gl.UNSIGNED_BYTE,
+                                                               0,
+                                                               count);
+        }
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
     resolveAA(view: PathfinderView) {
         // Set state for ECAA resolve.
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
@@ -1185,6 +1288,7 @@ class ECAAStrategy implements AntialiasingStrategy {
     aaFramebuffer: WebGLFramebuffer;
     edgeDetectVAO: WebGLVertexArrayObject;
     coverVAO: WebGLVertexArrayObject;
+    edgeVAOs: UpperAndLower<WebGLVertexArrayObject>;
     resolveVAO: WebGLVertexArrayObject;
     framebufferSize: Size2D;
 }

@@ -58,9 +58,8 @@ void main() {
     vec2 a4 = vec2(a0.x, a3y);
 
     // Calculate area with the shoelace formula.
-    float area = 0.5 * (det2(a0, a1) + det2(a1, a2) + det2(a2, a3) + det2(a3, a4) + det2(a4, a0)); 
-    if (!slopeNegative)
-        area = -area;
+    float area = det2(a0, a1) + det2(a1, a2) + det2(a2, a3) + det2(a3, a4) + det2(a4, a0); 
+    area *= slopeNegative ? 0.5 : -0.5;
 
     // Done!
     gl_FragColor = vec4(area);
