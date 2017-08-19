@@ -15,6 +15,5 @@ void main() {
     vec4 bgColor = texture2D(uBGColor, vTexCoord);
     vec4 fgColor = texture2D(uFGColor, vTexCoord);
     float alpha = clamp(texture2D(uAAAlpha, vTexCoord).r, 0.0, 1.0);
-    //gl_FragColor = mix(bgColor, fgColor, alpha);
-    gl_FragColor = vec4(vec3(alpha), 1.0);
+    gl_FragColor = mix(bgColor, fgColor, alpha);
 }

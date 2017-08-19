@@ -61,5 +61,5 @@ void main() {
     float depth = convertPathIndexToDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);
 
-    vHorizontalExtents = roundedExtents.xz;
+    vHorizontalExtents = extents.xz;
 }

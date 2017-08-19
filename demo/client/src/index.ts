@@ -5,7 +5,7 @@
 const base64js = require('base64-js');
 const opentype = require('opentype.js');
 
-const TEXT: string = "G";
+const TEXT: string = "O";
 const FONT_SIZE: number = 16.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
@@ -568,7 +568,9 @@ class PathfinderView {
             pathColors[pathIndex * 4 + 3] = 0xff;           // alpha
         }
 
-        this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, pathColors);
+        this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl,
+                                                                   pathColors,
+                                                                   'uPathColors');
     }
 
     attachMeshes(meshes: PathfinderMeshData) {
@@ -625,6 +627,15 @@ class PathfinderView {
         this.dirty = false;
     }
 
+    setTransformUniform(uniforms: UniformMap) {
+        this.gl.uniformMatrix4fv(uniforms.uTransform, false, IDENTITY);
+    }
+
+    setFramebufferSizeUniform(uniforms: UniformMap) {
+        const currentViewport = this.gl.getParameter(this.gl.VIEWPORT);
+        this.gl.uniform2i(uniforms.uFramebufferSize, currentViewport[2], currentViewport[3]);
+    }
+
     renderDirect() {
         // Set up implicit cover state.
         this.gl.depthFunc(this.gl.GREATER);
@@ -654,16 +665,9 @@ class PathfinderView {
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
 
         // Draw direct interior parts.
-        this.gl.activeTexture(this.gl.TEXTURE0);
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
-        this.gl.uniformMatrix4fv(directInteriorProgram.uniforms.uTransform, false, IDENTITY);
-        this.gl.uniform2i(directInteriorProgram.uniforms.uFramebufferSize,
-                          this.canvas.width,
-                          this.canvas.height);
-        this.gl.uniform2i(directInteriorProgram.uniforms.uPathColorsDimensions,
-                          this.pathColorsBufferTexture.size.width,
-                          this.pathColorsBufferTexture.size.height);
-        this.gl.uniform1i(directInteriorProgram.uniforms.uPathColors, 0);
+        this.setTransformUniform(directInteriorProgram.uniforms);
+        this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
+        this.pathColorsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 0);
         let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
         this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -711,16 +715,10 @@ class PathfinderView {
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
 
         // Draw direct curve parts.
-        this.gl.activeTexture(this.gl.TEXTURE0);
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.pathColorsBufferTexture.texture);
         this.gl.uniformMatrix4fv(directCurveProgram.uniforms.uTransform, false, IDENTITY);
-        this.gl.uniform2i(directCurveProgram.uniforms.uFramebufferSize,
-                          this.canvas.width,
-                          this.canvas.height);
-        this.gl.uniform2i(directCurveProgram.uniforms.uPathColorsDimensions,
-                          this.pathColorsBufferTexture.size.width,
-                          this.pathColorsBufferTexture.size.height);
-        this.gl.uniform1i(directCurveProgram.uniforms.uPathColors, 0);
+        this.setTransformUniform(directCurveProgram.uniforms);
+        this.setFramebufferSizeUniform(directCurveProgram.uniforms);
+        this.pathColorsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 0);
         indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                 this.gl.BUFFER_SIZE) / UINT32_SIZE;
         this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -784,11 +782,15 @@ class PathfinderShaderProgram {
 }
 
 class PathfinderBufferTexture {
-    constructor(gl: WebGLRenderingContext, data: Float32Array | Uint8Array) {
+    constructor(gl: WebGLRenderingContext,
+                data: Float32Array | Uint8Array,
+                uniformName: string) {
         const pixelCount = Math.ceil(data.length / 4);
         const width = Math.ceil(Math.sqrt(pixelCount));
         const height = Math.ceil(pixelCount / width);
         this.size = { width: width, height: height };
+
+        this.uniformName = uniformName;
 
         // Pad out with zeroes as necessary.
         //
@@ -809,8 +811,16 @@ class PathfinderBufferTexture {
         setTextureParameters(gl, gl.NEAREST);
     }
 
+    bind(gl: WebGLRenderingContext, uniforms: UniformMap, textureUnit: number) {
+        gl.activeTexture(gl.TEXTURE0 + textureUnit);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture);
+        gl.uniform2i(uniforms[`${this.uniformName}Dimensions`], this.size.width, this.size.height);
+        gl.uniform1i(uniforms[this.uniformName], textureUnit);
+    }
+
     readonly texture: WebGLTexture;
     readonly size: Size2D;
+    readonly uniformName: string;
 }
 
 class NoAAStrategy implements AntialiasingStrategy {
@@ -937,12 +947,17 @@ class ECAAStrategy implements AntialiasingStrategy {
     attachMeshes(view: PathfinderView) {
         const bVertexPositions = new Float32Array(view.meshData.bVertexPositions);
         const bVertexPathIDs = new Uint8Array(view.meshData.bVertexPathIDs);
-        this.bVertexPositionBufferTexture = new PathfinderBufferTexture(view.gl, bVertexPositions);
-        this.bVertexPathIDBufferTexture = new PathfinderBufferTexture(view.gl, bVertexPathIDs);
+        this.bVertexPositionBufferTexture = new PathfinderBufferTexture(view.gl,
+                                                                        bVertexPositions,
+                                                                        'uBVertexPosition');
+        this.bVertexPathIDBufferTexture = new PathfinderBufferTexture(view.gl,
+                                                                      bVertexPathIDs,
+                                                                      'uBVertexPathID');
 
         this.createEdgeDetectVAO(view);
         this.createCoverVAO(view);
-        this.createLineVAO(view);
+        this.createLineVAOs(view);
+        this.createCurveVAOs(view);
         this.createResolveVAO(view);
     }
 
@@ -1031,7 +1046,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    createLineVAO(view: PathfinderView) {
+    createLineVAOs(view: PathfinderView) {
         const lineProgram = view.shaderPrograms.ecaaLine;
         const attributes = lineProgram.attributes;
 
@@ -1063,7 +1078,50 @@ class ECAAStrategy implements AntialiasingStrategy {
 
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
 
-        this.edgeVAOs = vaos as UpperAndLower<WebGLVertexArrayObject>;
+        this.lineVAOs = vaos as UpperAndLower<WebGLVertexArrayObject>;
+    }
+
+    createCurveVAOs(view: PathfinderView) {
+        const curveProgram = view.shaderPrograms.ecaaCurve;
+        const attributes = curveProgram.attributes;
+
+        const vaos: Partial<UpperAndLower<WebGLVertexArrayObject>> = {};
+        for (const direction of ['upper', 'lower'] as Array<'upper' | 'lower'>) {
+            vaos[direction] = view.vertexArrayObjectExt.createVertexArrayOES();
+            view.vertexArrayObjectExt.bindVertexArrayOES(vaos[direction]);
+
+            const curveIndexBuffer = {
+                upper: view.meshes.edgeUpperCurveIndices,
+                lower: view.meshes.edgeLowerCurveIndices,
+            }[direction];
+
+            view.gl.useProgram(curveProgram.program);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+            view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveIndexBuffer);
+            view.gl.vertexAttribPointer(attributes.aCurveEndpointIndices,
+                                        4,
+                                        view.gl.UNSIGNED_SHORT,
+                                        false,
+                                        UINT32_SIZE * 4,
+                                        0);
+            view.gl.vertexAttribPointer(attributes.aCurveControlPointIndex,
+                                        2,
+                                        view.gl.UNSIGNED_SHORT,
+                                        false,
+                                        UINT32_SIZE * 4,
+                                        UINT32_SIZE * 2);
+            view.gl.enableVertexAttribArray(attributes.aQuadPosition);
+            view.gl.enableVertexAttribArray(attributes.aCurveEndpointIndices);
+            view.gl.enableVertexAttribArray(attributes.aCurveControlPointIndex);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aCurveEndpointIndices, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aCurveControlPointIndex, 1);
+            view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+        }
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+
+        this.curveVAOs = vaos as UpperAndLower<WebGLVertexArrayObject>;
     }
 
     createResolveVAO(view: PathfinderView) {
@@ -1115,6 +1173,7 @@ class ECAAStrategy implements AntialiasingStrategy {
 
         // Antialias.
         this.antialiasLines(view);
+        this.antialiasCurves(view);
 
         // Resolve the antialiasing.
         this.resolveAA(view);
@@ -1178,22 +1237,10 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.useProgram(coverProgram.program);
         view.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
         const uniforms = coverProgram.uniforms;
-        view.gl.uniformMatrix4fv(uniforms.uTransform, false, IDENTITY);
-        view.gl.uniform2i(uniforms.uFramebufferSize,
-                          this.framebufferSize.width,
-                          this.framebufferSize.height);
-        view.gl.uniform2i(uniforms.uBVertexPositionDimensions,
-                          this.bVertexPositionBufferTexture.size.width,
-                          this.bVertexPositionBufferTexture.size.height);
-        view.gl.uniform2i(uniforms.uBVertexPathIDDimensions,
-                          this.bVertexPathIDBufferTexture.size.width,
-                          this.bVertexPathIDBufferTexture.size.height);
-        view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPositionBufferTexture.texture);
-        view.gl.uniform1i(uniforms.uBVertexPosition, 0);
-        view.gl.activeTexture(view.gl.TEXTURE1);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPathIDBufferTexture.texture);
-        view.gl.uniform1i(uniforms.uBVertexPathID, 1);
+        view.setTransformUniform(uniforms);
+        view.setFramebufferSizeUniform(uniforms);
+        this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
+        this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
         view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                            6,
                                                            view.gl.UNSIGNED_BYTE,
@@ -1202,9 +1249,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    antialiasLines(view: PathfinderView) {
-        // Set state for line antialiasing.
-        const lineProgram = view.shaderPrograms.ecaaLine;
+    setAAState(view: PathfinderView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
 
@@ -1215,33 +1260,54 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.blendEquation(view.gl.FUNC_REVERSE_SUBTRACT);
         view.gl.blendFunc(view.gl.ONE, view.gl.ONE);
         view.gl.enable(view.gl.BLEND);
+    }
 
-        // Antialias lines.
+    setAAUniforms(view: PathfinderView, uniforms: UniformMap) {
+        view.setTransformUniform(uniforms);
+        view.setFramebufferSizeUniform(uniforms);
+        this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
+        this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
+    }
+
+    antialiasLines(view: PathfinderView) {
+        this.setAAState(view);
+
+        const lineProgram = view.shaderPrograms.ecaaLine;
         view.gl.useProgram(lineProgram.program);
         const uniforms = lineProgram.uniforms;
-        view.gl.uniformMatrix4fv(uniforms.uTransform, false, IDENTITY);
-        view.gl.uniform2i(uniforms.uFramebufferSize,
-                          this.framebufferSize.width,
-                          this.framebufferSize.height);
-        view.gl.uniform2i(uniforms.uBVertexPositionDimensions,
-                          this.bVertexPositionBufferTexture.size.width,
-                          this.bVertexPositionBufferTexture.size.height);
-        view.gl.uniform2i(uniforms.uBVertexPathIDDimensions,
-                          this.bVertexPathIDBufferTexture.size.width,
-                          this.bVertexPathIDBufferTexture.size.height);
-        view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPositionBufferTexture.texture);
-        view.gl.uniform1i(uniforms.uBVertexPosition, 0);
-        view.gl.activeTexture(view.gl.TEXTURE1);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bVertexPathIDBufferTexture.texture);
-        view.gl.uniform1i(uniforms.uBVertexPathID, 1);
+        this.setAAUniforms(view, uniforms);
 
         for (const direction of ['upper', 'lower'] as Array<keyof UpperAndLower<void>>) {
-            view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeVAOs[direction]);
+            view.vertexArrayObjectExt.bindVertexArrayOES(this.lineVAOs[direction]);
             view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
             const count = {
                 upper: view.meshData.edgeUpperLineIndexCount,
                 lower: view.meshData.edgeLowerLineIndexCount,
+            }[direction];
+            view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
+                                                               6,
+                                                               view.gl.UNSIGNED_BYTE,
+                                                               0,
+                                                               count);
+        }
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    antialiasCurves(view: PathfinderView) {
+        this.setAAState(view);
+
+        const curveProgram = view.shaderPrograms.ecaaCurve;
+        view.gl.useProgram(curveProgram.program);
+        const uniforms = curveProgram.uniforms;
+        this.setAAUniforms(view, uniforms);
+
+        for (const direction of ['upper', 'lower'] as Array<keyof UpperAndLower<void>>) {
+            view.vertexArrayObjectExt.bindVertexArrayOES(this.curveVAOs[direction]);
+            view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
+            const count = {
+                upper: view.meshData.edgeUpperCurveIndexCount,
+                lower: view.meshData.edgeLowerCurveIndexCount,
             }[direction];
             view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                                6,
@@ -1265,9 +1331,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         const resolveProgram = view.shaderPrograms.ecaaResolve;
         view.gl.useProgram(resolveProgram.program);
         view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
-        view.gl.uniform2i(resolveProgram.uniforms.uFramebufferSize,
-                          this.framebufferSize.width,
-                          this.framebufferSize.height);
+        view.setFramebufferSizeUniform(resolveProgram.uniforms);
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
         view.gl.uniform1i(resolveProgram.uniforms.uBGColor, 0);
@@ -1295,7 +1359,8 @@ class ECAAStrategy implements AntialiasingStrategy {
     aaFramebuffer: WebGLFramebuffer;
     edgeDetectVAO: WebGLVertexArrayObject;
     coverVAO: WebGLVertexArrayObject;
-    edgeVAOs: UpperAndLower<WebGLVertexArrayObject>;
+    lineVAOs: UpperAndLower<WebGLVertexArrayObject>;
+    curveVAOs: UpperAndLower<WebGLVertexArrayObject>;
     resolveVAO: WebGLVertexArrayObject;
     framebufferSize: Size2D;
 }

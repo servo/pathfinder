@@ -45,19 +45,19 @@ bool computeQuadPosition(out vec2 outPosition,
                          vec2 quadPosition,
                          ivec2 framebufferSize,
                          mat4 transform) {
+    leftPosition = transformVertexPosition(leftPosition, transform);
+    rightPosition = transformVertexPosition(rightPosition, transform);
+
     if (abs(leftPosition.x - rightPosition.x) <= EPSILON) {
         outPosition = vec2(0.0);
         return false;
     }
 
-    leftPosition = transformVertexPosition(leftPosition, transform);
-    rightPosition = transformVertexPosition(rightPosition, transform);
-
     vec2 verticalExtents = vec2(min(leftPosition.y, rightPosition.y),
                                 max(leftPosition.y, rightPosition.y));
 
     vec4 roundedExtents = vec4(floor(vec2(leftPosition.x, verticalExtents.x)),
-                                ceil(vec2(rightPosition.x, verticalExtents.y)));
+                               ceil(vec2(rightPosition.x, verticalExtents.y)));
 
     // FIXME(pcwalton): Use a separate VBO for this.
     quadPosition = (quadPosition + 1.0) * 0.5;
@@ -76,6 +76,8 @@ bool computeQuadPosition(out vec2 outPosition,
 // * `pixelExtents` are the boundaries of the pixel (left/right/bottom/top respectively).
 // * `p` and `q` are the Liang-Barsky clipping distances.
 // * `lowerPart` is true if this is the lower half of the B-quad.
+//
+// FIXME(pcwalton): This API is ludicrous. Clean it up!
 float computeCoverage(vec2 p0,
                       vec2 p1,
                       vec2 spanP0,
