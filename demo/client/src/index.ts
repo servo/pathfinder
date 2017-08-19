@@ -6,10 +6,12 @@ const base64js = require('base64-js');
 const glmatrix = require('gl-matrix');
 const opentype = require('opentype.js');
 
-const TEXT: string = "O";
+const TEXT: string = "G";
 const FONT_SIZE: number = 16.0;
 
 const SCALE_FACTOR: number = 1.0 / 100.0;
+
+const TIME_INTERVAL_DELAY: number = 32;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
@@ -136,6 +138,8 @@ interface AntialiasingStrategy {
 type ShaderType = number;
 
 type ShaderTypeName = 'vertex' | 'fragment';
+
+type WebGLQuery = any;
 
 type WebGLVertexArrayObject = any;
 
@@ -366,11 +370,13 @@ class AppController {
     constructor() {}
 
     start() {
+        this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
+
         const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
         const shaderLoader = new PathfinderShaderLoader;
         shaderLoader.load();
         this.view = Promise.all([shaderLoader.common, shaderLoader.shaders]).then(allShaders => {
-            return new PathfinderView(canvas, allShaders[0], allShaders[1]);
+            return new PathfinderView(this, canvas, allShaders[0], allShaders[1]);
         });
 
         this.loadFontButton = document.getElementById('pf-load-font-button') as HTMLInputElement;
@@ -430,9 +436,14 @@ class AppController {
         })
     }
 
+    updateTiming(newTime: number) {
+        this.fpsLabel.innerHTML = `${newTime} ms`;
+    }
+
     view: Promise<PathfinderView>;
     loadFontButton: HTMLInputElement;
     aaLevelSelect: HTMLSelectElement;
+    fpsLabel: HTMLElement;
     fontData: ArrayBuffer;
     font: any;
     meshes: PathfinderMeshData;
@@ -464,9 +475,12 @@ class PathfinderShaderLoader {
 }
 
 class PathfinderView {
-    constructor(canvas: HTMLCanvasElement,
+    constructor(appController: AppController,
+                canvas: HTMLCanvasElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
+        this.appController = appController;
+
         this.transform = glmatrix.mat4.create();
 
         this.canvas = canvas;
@@ -502,11 +516,15 @@ class PathfinderView {
         this.colorBufferHalfFloatExt = this.gl.getExtension('EXT_color_buffer_half_float');
         this.instancedArraysExt = this.gl.getExtension('ANGLE_instanced_arrays');
         this.textureHalfFloatExt = this.gl.getExtension('OES_texture_half_float');
+        this.timerQueryExt = this.gl.getExtension('EXT_disjoint_timer_query');
         this.vertexArrayObjectExt = this.gl.getExtension('OES_vertex_array_object');
         this.gl.getExtension('EXT_frag_depth');
         this.gl.getExtension('OES_element_index_uint');
         this.gl.getExtension('OES_texture_float');
         this.gl.getExtension('WEBGL_depth_texture');
+
+        // Set up our timer query for profiling.
+        this.timerQuery = this.timerQueryExt.createQueryEXT();
 
         // Upload quad buffers.
         this.quadPositionsBuffer = unwrapNull(this.gl.createBuffer());
@@ -591,6 +609,7 @@ class PathfinderView {
         window.requestAnimationFrame(() => this.redraw());
     }
 
+    // FIXME(pcwalton): This logic is all wrong.
     onWheel(event: WheelEvent) {
         if (event.ctrlKey) {
             // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
@@ -636,6 +655,10 @@ class PathfinderView {
             return;
         }
 
+        // Start timing.
+        if (this.timerQueryPollInterval == null)
+            this.timerQueryExt.beginQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT, this.timerQuery);
+
         // Prepare for direct rendering.
         this.antialiasingStrategy.prepare(this);
 
@@ -645,8 +668,34 @@ class PathfinderView {
         // Antialias.
         this.antialiasingStrategy.resolve(this);
 
+        // Finish timing and update the profile.
+        this.updateTiming();
+
         // Clear dirty bit and finish.
         this.dirty = false;
+    }
+
+    updateTiming() {
+        if (this.timerQueryPollInterval != null)
+            return;
+
+        this.timerQueryExt.endQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT);
+
+        this.timerQueryPollInterval = window.setInterval(() => {
+            if (this.timerQueryExt.getQueryObjectEXT(this.timerQuery,
+                                                     this.timerQueryExt
+                                                         .QUERY_RESULT_AVAILABLE_EXT) == 0) {
+                return;
+            }
+
+            const elapsedTime =
+                this.timerQueryExt.getQueryObjectEXT(this.timerQuery,
+                                                     this.timerQueryExt.QUERY_RESULT_EXT);
+            this.appController.updateTiming(elapsedTime / 1000000.0);
+
+            window.clearInterval(this.timerQueryPollInterval!);
+            this.timerQueryPollInterval = null;
+        }, TIME_INTERVAL_DELAY);
     }
 
     setTransformUniform(uniforms: UniformMap) {
@@ -746,22 +795,35 @@ class PathfinderView {
     }
 
     canvas: HTMLCanvasElement;
+
     gl: WebGLRenderingContext;
+
     colorBufferHalfFloatExt: any;
     drawBuffersExt: any;
     instancedArraysExt: any;
     textureHalfFloatExt: any;
+    timerQueryExt: any;
     vertexArrayObjectExt: any;
+
     antialiasingStrategy: AntialiasingStrategy;
+
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
+
     meshes: PathfinderMeshBuffers;
     meshData: PathfinderMeshData;
+
+    timerQuery: WebGLQuery;
+    timerQueryPollInterval: number | null;
+
     pathColorsBufferTexture: PathfinderBufferTexture;
+
     quadPositionsBuffer: WebGLBuffer;
     quadTexCoordsBuffer: WebGLBuffer;
     quadElementsBuffer: WebGLBuffer;
 
     transform: Matrix4D;
+
+    appController: AppController;
 
     dirty: boolean;
 }
@@ -1193,11 +1255,16 @@ class ECAAStrategy implements AntialiasingStrategy {
         this.detectEdges(view);
 
         // Conservatively cover.
+        //if (view.timerQueryPollInterval == null)
+        //    view.timerQueryExt.beginQueryEXT(view.timerQueryExt.TIME_ELAPSED_EXT, view.timerQuery);
         this.cover(view);
 
         // Antialias.
         this.antialiasLines(view);
         this.antialiasCurves(view);
+
+        //if (view.timerQueryPollInterval == null)
+        //    view.timerQueryExt.endQueryEXT(view.timerQueryExt.TIME_ELAPSED_EXT);
 
         // Resolve the antialiasing.
         this.resolveAA(view);

@@ -27,6 +27,13 @@
                 display: block;
                 touch-action: none;
             }
+            #pf-fps-label {
+                position: absolute;
+                right: 1em;
+                margin-top: 1em;
+                color: white;
+                background: rgba(0, 0, 0, 0.75);
+            }
         </style>
     </head>
     <body>
@@ -40,6 +47,7 @@
                 </ul>
             </div>
         </nav>
+        <div class="rounded py-1 px-3" id="pf-fps-label">0 ms</div>
         <canvas id="pf-canvas" width="400" height="300"></canvas>
         <label class="btn btn-secondary btn-file pf-bottom-control" id="pf-load-font-button-label">
             Load Font…
