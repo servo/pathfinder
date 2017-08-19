@@ -3,10 +3,13 @@
 // Copyright © 2017 Mozilla Foundation
 
 const base64js = require('base64-js');
+const glmatrix = require('gl-matrix');
 const opentype = require('opentype.js');
 
 const TEXT: string = "O";
 const FONT_SIZE: number = 16.0;
+
+const SCALE_FACTOR: number = 1.0 / 100.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
@@ -25,13 +28,6 @@ const B_LOOP_BLINN_DATA_SIGN_OFFSET: number = 2;
 const B_QUAD_SIZE: number = 4 * 8;
 const B_QUAD_UPPER_INDICES_OFFSET: number = 0;
 const B_QUAD_LOWER_INDICES_OFFSET: number = 4 * 4;
-
-const IDENTITY: Matrix4D = [
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 1.0, 0.0,
-    0.0, 0.0, 0.0, 1.0,
-];
 
 const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     blit: {
@@ -73,7 +69,12 @@ interface UnlinkedShaderProgram {
     fragment: WebGLShader;
 }
 
-type Matrix4D = number[];
+type Matrix4D = Float32Array;
+
+interface Point2D {
+    x: number;
+    y: number;
+}
 
 interface Size2D {
     width: number;
@@ -466,7 +467,10 @@ class PathfinderView {
     constructor(canvas: HTMLCanvasElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
+        this.transform = glmatrix.mat4.create();
+
         this.canvas = canvas;
+        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
 
         this.initContext();
 
@@ -587,6 +591,24 @@ class PathfinderView {
         window.requestAnimationFrame(() => this.redraw());
     }
 
+    onWheel(event: WheelEvent) {
+        if (event.ctrlKey) {
+            // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
+            const scaleFactor = 1.0 - event.deltaY * window.devicePixelRatio * SCALE_FACTOR;
+            const scaleFactors = new Float32Array([scaleFactor, scaleFactor, 1.0]);
+            glmatrix.mat4.scale(this.transform, this.transform, scaleFactors);
+        } else {
+            const delta = new Float32Array([
+                -event.deltaX * window.devicePixelRatio,
+                event.deltaY * window.devicePixelRatio,
+                0.0
+            ]);
+            glmatrix.mat4.translate(this.transform, this.transform, delta);
+        }
+
+        this.setDirty();
+    }
+
     resizeToFit() {
         const width = window.innerWidth;
         const height = window.scrollY + window.innerHeight -
@@ -628,7 +650,7 @@ class PathfinderView {
     }
 
     setTransformUniform(uniforms: UniformMap) {
-        this.gl.uniformMatrix4fv(uniforms.uTransform, false, IDENTITY);
+        this.gl.uniformMatrix4fv(uniforms.uTransform, false, this.transform);
     }
 
     setFramebufferSizeUniform(uniforms: UniformMap) {
@@ -715,7 +737,6 @@ class PathfinderView {
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
 
         // Draw direct curve parts.
-        this.gl.uniformMatrix4fv(directCurveProgram.uniforms.uTransform, false, IDENTITY);
         this.setTransformUniform(directCurveProgram.uniforms);
         this.setFramebufferSizeUniform(directCurveProgram.uniforms);
         this.pathColorsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 0);
@@ -739,6 +760,9 @@ class PathfinderView {
     quadPositionsBuffer: WebGLBuffer;
     quadTexCoordsBuffer: WebGLBuffer;
     quadElementsBuffer: WebGLBuffer;
+
+    transform: Matrix4D;
+
     dirty: boolean;
 }
 
