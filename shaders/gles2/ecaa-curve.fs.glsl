@@ -1,0 +1,55 @@
+
+// pathfinder/shaders/gles2/ecaa-line.vs.glsl
+//
+// Copyright (c) 2017 Mozilla Foundation
+
+precision highp float;
+
+uniform bool uLowerPart;
+
+varying vec4 vEndpoints;
+varying vec2 vControlPoint;
+
+// Solve the equation:
+//
+//    x = p0x + t^2 * (p0x - 2*p1x + p2x) + t*(2*p1x - 2*p0x)
+//
+// We use the Citardauq Formula to avoid floating point precision issues.
+float solveCurveT(float p0x, float p1x, float p2x, float x) {
+    float a = p0x - 2.0 * p1x + p2x;
+    float b = 2.0 * p1x - 2.0 * p0x;
+    float c = p0x - x;
+    return 2.0 * c / (-b - sqrt(b * b - 4.0 * a * c));
+}
+
+void main() {
+    // Unpack.
+    vec2 center = gl_FragCoord.xy;
+    vec2 p0 = vEndpoints.xy, p1 = vEndpoints.zw;
+    vec2 cp = vControlPoint;
+
+    // Compute pixel extents.
+    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
+
+    // Clip the curve to the left and right edges to create a line.
+    //
+    // TODO(pcwalton): Consider clipping to the bottom and top edges properly too. (I kind of doubt
+    // it's worth it to do this, though, given that the maximum error doing it this way will always
+    // be less than a pixel, and it saves a lot of time.)
+    //
+    // FIXME(pcwalton): Factor out shared terms to avoid computing them multiple times.
+    vec2 t = vec2(pixelExtents.x > p0.x ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.x) : 0.0,
+                  p1.x < pixelExtents.y ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.y) : 1.0);
+
+    vec2 spanP0 = mix(mix(p0, cp, t.x), mix(cp, p1, t.x), t.x);
+    vec2 spanP1 = mix(mix(p0, cp, t.y), mix(cp, p1, t.y), t.y);
+    p0 = spanP0;
+    p1 = spanP1;
+    t = vec2(0.0, 1.0);
+
+    // Set up Liang-Barsky clipping.
+    vec4 p = (p1 - p0).xxyy, q = pixelExtents - p0.xxyy;
+
+    // Compute area.
+    gl_FragColor = vec4(computeCoverage(p0, p1, p0, p1, t, pixelExtents, p, q, uLowerPart));
+}

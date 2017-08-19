@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-line.vs.glsl
+// pathfinder/shaders/gles2/ecaa-curve.vs.glsl
 //
 // Copyright (c) 2017 Mozilla Foundation
 
@@ -13,33 +13,42 @@ uniform sampler2D uBVertexPathID;
 uniform bool uLowerPart;
 
 attribute vec2 aQuadPosition;
-attribute vec4 aLineIndices;
+attribute vec4 aCurveEndpointIndices;
+attribute vec2 aCurveControlPointIndex;
 
 varying vec4 vEndpoints;
+varying vec2 vControlPoint;
 
 void main() {
     // Fetch B-vertex positions.
-    ivec2 pointIndices = ivec2(unpackUInt32Attribute(aLineIndices.xy),
-                               unpackUInt32Attribute(aLineIndices.zw));
+    ivec3 pointIndices = ivec3(unpackUInt32Attribute(aCurveEndpointIndices.xy),
+                               unpackUInt32Attribute(aCurveEndpointIndices.zw),
+                               unpackUInt32Attribute(aCurveControlPointIndex));
     vec2 leftPosition = fetchFloat2Data(uBVertexPosition,
                                         pointIndices.x,
                                         uBVertexPositionDimensions);
     vec2 rightPosition = fetchFloat2Data(uBVertexPosition,
                                          pointIndices.y,
                                          uBVertexPositionDimensions);
+    vec2 controlPointPosition = fetchFloat2Data(uBVertexPosition,
+                                                pointIndices.z,
+                                                uBVertexPositionDimensions);
 
     // Transform the points, and compute the position of this vertex.
     vec2 position;
-    computeQuadPosition(position,
-                        leftPosition,
-                        rightPosition,
-                        aQuadPosition,
-                        uFramebufferSize,
-                        uTransform);
+    if (computeQuadPosition(position,
+                            leftPosition,
+                            rightPosition,
+                            aQuadPosition,
+                            uFramebufferSize,
+                            uTransform)) {
+        controlPointPosition = transformVertexPosition(controlPointPosition, uTransform);
+    }
 
     int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
     float depth = convertPathIndexToDepthValue(pathID);
 
     gl_Position = vec4(position, depth, 1.0);
     vEndpoints = vec4(leftPosition, rightPosition);
+    vControlPoint = controlPointPosition;
 }

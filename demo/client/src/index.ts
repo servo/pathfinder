@@ -1,9 +1,11 @@
 // pathfinder/demo/src/index.ts
+//
+// Copyright © 2017 Mozilla Foundation
 
 const base64js = require('base64-js');
 const opentype = require('opentype.js');
 
-const TEXT: string = "X";
+const TEXT: string = "G";
 const FONT_SIZE: number = 16.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
@@ -56,6 +58,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         vertex: "/glsl/gles2/ecaa-line.vs.glsl",
         fragment: "/glsl/gles2/ecaa-line.fs.glsl",
     },
+    ecaaCurve: {
+        vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
+        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
+    },
     ecaaResolve: {
         vertex: "/glsl/gles2/ecaa-resolve.vs.glsl",
         fragment: "/glsl/gles2/ecaa-resolve.fs.glsl",
@@ -91,6 +97,7 @@ interface ShaderMap<T> {
     ecaaEdgeDetect: T;
     ecaaCover: T;
     ecaaLine: T;
+    ecaaCurve: T;
     ecaaResolve: T;
 }
 
