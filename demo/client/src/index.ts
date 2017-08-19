@@ -74,17 +74,14 @@ interface UnlinkedShaderProgram {
 
 type Matrix4D = Float32Array;
 
-type Rect = Float32Array;
+type Rect = glmatrix.vec4;
 
 interface Point2D {
     x: number;
     y: number;
 }
 
-interface Size2D {
-    width: number;
-    height: number;
-}
+type Size2D = glmatrix.vec2;
 
 interface ShaderProgramSource {
     vertex: string;
@@ -201,19 +198,19 @@ function createFramebufferColorTexture(gl: WebGLRenderingContext, size: Size2D):
     // Firefox seems to have a bug whereby textures don't get marked as initialized when cleared
     // if they're anything other than the first attachment of an FBO. To work around this, supply
     // zero data explicitly when initializing the texture.
-
+    const zeroes = new Uint8Array(size[0] * size[1] * UINT32_SIZE);
     const texture = unwrapNull(gl.createTexture());
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texImage2D(gl.TEXTURE_2D,
                   0,
                   gl.RGBA,
-                  size.width,
-                  size.height,
+                  size[0],
+                  size[1],
                   0,
                   gl.RGBA,
                   gl.UNSIGNED_BYTE,
-                  new Uint8Array(size.width * size.height * 4));
+                  zeroes);
     setTextureParameters(gl, gl.NEAREST);
     return texture;
 }
@@ -225,8 +222,8 @@ function createFramebufferDepthTexture(gl: WebGLRenderingContext, size: Size2D):
     gl.texImage2D(gl.TEXTURE_2D,
                   0,
                   gl.DEPTH_COMPONENT,
-                  size.width,
-                  size.height,
+                  size[0],
+                  size[1],
                   0,
                   gl.DEPTH_COMPONENT,
                   gl.UNSIGNED_INT,
@@ -425,7 +422,9 @@ class AppController {
             const height = metrics.yMax - metrics.yMin;
             atlasHeight = Math.max(atlasHeight, height);
             const newAtlasWidth = atlasWidth + width;
-            glyph.setAtlasLocation(new Float32Array([atlasWidth, 0, newAtlasWidth, height]));
+            const glyphRect = new Float32Array([atlasWidth, 0, newAtlasWidth, height]) as
+                glmatrix.vec4;
+            glyph.setAtlasLocation(glyphRect);
             atlasWidth = newAtlasWidth;
         }
 
@@ -529,7 +528,8 @@ class PathfinderView {
         this.antialiasingStrategy = new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
 
         let canvas = this.canvas;
-        this.antialiasingStrategy.init(this, { width: canvas.width, height: canvas.height });
+        this.antialiasingStrategy
+            .init(this, new Float32Array([canvas.width, canvas.height]) as Size2D);
         if (this.meshData != null)
             this.antialiasingStrategy.attachMeshes(this);
 
@@ -662,15 +662,13 @@ class PathfinderView {
             this.canvas.getBoundingClientRect().top;
         const devicePixelRatio = window.devicePixelRatio;
 
-        const framebufferSize = {
-            width: width * devicePixelRatio,
-            height: height * devicePixelRatio,
-        };
+        const framebufferSize = new Float32Array([width, height]) as glmatrix.vec2;
+        glmatrix.vec2.scale(framebufferSize, framebufferSize, devicePixelRatio);
 
         this.canvas.style.width = width + 'px';
         this.canvas.style.height = height + 'px';
-        this.canvas.width = framebufferSize.width;
-        this.canvas.height = framebufferSize.height;
+        this.canvas.width = framebufferSize[0];
+        this.canvas.height = framebufferSize[1];
 
         this.antialiasingStrategy.init(this, framebufferSize);
 
@@ -902,7 +900,7 @@ class PathfinderBufferTexture {
         const pixelCount = Math.ceil(data.length / 4);
         const width = Math.ceil(Math.sqrt(pixelCount));
         const height = Math.ceil(pixelCount / width);
-        this.size = { width: width, height: height };
+        this.size = new Float32Array([width, height]) as glmatrix.vec2;
 
         this.uniformName = uniformName;
 
@@ -928,7 +926,7 @@ class PathfinderBufferTexture {
     bind(gl: WebGLRenderingContext, uniforms: UniformMap, textureUnit: number) {
         gl.activeTexture(gl.TEXTURE0 + textureUnit);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
-        gl.uniform2i(uniforms[`${this.uniformName}Dimensions`], this.size.width, this.size.height);
+        gl.uniform2i(uniforms[`${this.uniformName}Dimensions`], this.size[0], this.size[1]);
         gl.uniform1i(uniforms[this.uniformName], textureUnit);
     }
 
@@ -939,7 +937,7 @@ class PathfinderBufferTexture {
 
 class NoAAStrategy implements AntialiasingStrategy {
     constructor(level: number) {
-        this.framebufferSize = { width: 0, height: 0 };
+        this.framebufferSize = new Float32Array([0, 0]) as Size2D;
     }
 
     init(view: PathfinderView, framebufferSize: Size2D) {
@@ -949,7 +947,7 @@ class NoAAStrategy implements AntialiasingStrategy {
     attachMeshes(view: PathfinderView) {}
 
     prepare(view: PathfinderView) {
-        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
         // Clear.
         view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -966,16 +964,16 @@ class NoAAStrategy implements AntialiasingStrategy {
 class SSAAStrategy implements AntialiasingStrategy {
     constructor(level: number) {
         this.level = level;
-        this.canvasFramebufferSize = { width: 0, height: 0 };
-        this.supersampledFramebufferSize = { width: 0, height: 0 };
+        this.canvasFramebufferSize = new Float32Array([0, 0]) as Size2D;
+        this.supersampledFramebufferSize = new Float32Array([0, 0]) as Size2D;
     }
 
     init(view: PathfinderView, framebufferSize: Size2D) {
         this.canvasFramebufferSize = framebufferSize;
-        this.supersampledFramebufferSize = {
-            width: framebufferSize.width * 2,
-            height: framebufferSize.height * (this.level == 2 ? 1 : 2),
-        };
+        this.supersampledFramebufferSize = new Float32Array([
+            framebufferSize[0] * 2,
+            framebufferSize[1] * (this.level == 2 ? 1 : 2),
+        ]) as Size2D;
 
         this.supersampledColorTexture = unwrapNull(view.gl.createTexture());
         view.gl.activeTexture(view.gl.TEXTURE0);
@@ -983,8 +981,8 @@ class SSAAStrategy implements AntialiasingStrategy {
         view.gl.texImage2D(view.gl.TEXTURE_2D,
                            0,
                            view.gl.RGBA,
-                           this.supersampledFramebufferSize.width,
-                           this.supersampledFramebufferSize.height,
+                           this.supersampledFramebufferSize[0],
+                           this.supersampledFramebufferSize[1],
                            0,
                            view.gl.RGBA,
                            view.gl.UNSIGNED_BYTE,
@@ -1007,7 +1005,7 @@ class SSAAStrategy implements AntialiasingStrategy {
     prepare(view: PathfinderView) {
         const size = this.supersampledFramebufferSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.supersampledFramebuffer);
-        view.gl.viewport(0, 0, size.width, size.height);
+        view.gl.viewport(0, 0, size[0], size[1]);
 
         // Clear.
         view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -1029,14 +1027,15 @@ class SSAAStrategy implements AntialiasingStrategy {
         // Resolve framebuffer.
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
+        view.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, glmatrix.mat4.create());
         view.gl.uniform1i(blitProgram.uniforms.uSource, 0);
         view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
         view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
     }
 
     level: number;
-    canvasFramebufferSize: Readonly<Size2D>;
-    supersampledFramebufferSize: Readonly<Size2D>;
+    canvasFramebufferSize: Size2D;
+    supersampledFramebufferSize: Size2D;
     supersampledColorTexture: WebGLTexture;
     supersampledDepthTexture: WebGLTexture;
     supersampledFramebuffer: WebGLFramebuffer;
@@ -1044,7 +1043,7 @@ class SSAAStrategy implements AntialiasingStrategy {
 
 class ECAAStrategy implements AntialiasingStrategy {
     constructor(level: number) {
-        this.framebufferSize = { width: 0, height: 0 };
+        this.framebufferSize = new Float32Array([0, 0]) as Size2D;
     }
 
     init(view: PathfinderView, framebufferSize: Size2D) {
@@ -1103,8 +1102,8 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.texImage2D(view.gl.TEXTURE_2D,
                            0,
                            view.gl.RGB,
-                           this.framebufferSize.width,
-                           this.framebufferSize.height,
+                           this.framebufferSize[0],
+                           this.framebufferSize[1],
                            0,
                            view.gl.RGB,
                            view.textureHalfFloatExt.HALF_FLOAT_OES,
@@ -1251,7 +1250,7 @@ class ECAAStrategy implements AntialiasingStrategy {
 
     prepare(view: PathfinderView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.directFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
         // Clear out the color and depth textures.
         view.drawBuffersExt.drawBuffersWEBGL([
@@ -1297,7 +1296,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         // Set state for edge detection.
         const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
         view.drawBuffersExt.drawBuffersWEBGL([
             view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
@@ -1316,9 +1315,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         // Perform edge detection.
         view.gl.useProgram(edgeDetectProgram.program);
         view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
-        view.gl.uniform2i(edgeDetectProgram.uniforms.uFramebufferSize,
-                          this.framebufferSize.width,
-                          this.framebufferSize.height);
+        view.setFramebufferSizeUniform(edgeDetectProgram.uniforms);
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.directColorTexture);
         view.gl.uniform1i(edgeDetectProgram.uniforms.uColor, 0);
@@ -1334,7 +1331,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         // Set state for conservative coverage.
         const coverProgram = view.shaderPrograms.ecaaCover;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
         view.gl.depthMask(false);
         //view.gl.depthFunc(view.gl.EQUAL);
@@ -1365,7 +1362,7 @@ class ECAAStrategy implements AntialiasingStrategy {
 
     setAAState(view: PathfinderView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
         view.gl.depthMask(false);
         //view.gl.depthFunc(view.gl.EQUAL);
@@ -1436,7 +1433,7 @@ class ECAAStrategy implements AntialiasingStrategy {
     resolveAA(view: PathfinderView) {
         // Set state for ECAA resolve.
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
-        view.gl.viewport(0, 0, this.framebufferSize.width, this.framebufferSize.height);
+        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
         view.gl.disable(view.gl.DEPTH_TEST);
         view.gl.disable(view.gl.BLEND);
         view.drawBuffersExt.drawBuffersWEBGL([view.gl.BACK]);

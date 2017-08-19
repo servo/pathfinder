@@ -2,7 +2,7 @@
 //
 // Copyright (c) 2017 Mozilla Foundation
 
-precision lowp float;
+precision mediump float;
 
 uniform sampler2D uSource;
 
