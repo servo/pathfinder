@@ -13,7 +13,7 @@ extern crate log;
 extern crate env_logger;
 
 use app_units::Au;
-use euclid::{Point2D, Size2D};
+use euclid::{Point2D, Size2D, Transform2D};
 use freetype_sys::{FT_BBox, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_OUTLINE};
 use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LOAD_TARGET_LIGHT, FT_Library};
 use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
@@ -93,13 +93,15 @@ impl FontContext {
     pub fn push_glyph_outline(&self,
                               font_instance: &FontInstanceKey,
                               glyph_key: &GlyphKey,
-                              glyph_outline_buffer: &mut GlyphOutlineBuffer)
+                              glyph_outline_buffer: &mut GlyphOutlineBuffer,
+                              transform: &Transform2D<f32>)
                               -> Result<(), ()> {
         self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
             self.push_glyph_outline_from_glyph_slot(font_instance,
                                                     glyph_key,
                                                     glyph_slot,
-                                                    glyph_outline_buffer)
+                                                    glyph_outline_buffer,
+                                                    transform)
         })
     }
 
@@ -111,7 +113,8 @@ impl FontContext {
         };
 
         unsafe {
-            FT_Set_Char_Size(face.face, font_instance.size.to_ft_f26dot6(), 0, 0, 0);
+            let point_size = (font_instance.size.to_f64_px() / 72.0).to_ft_f26dot6();
+            FT_Set_Char_Size(face.face, point_size, 0, 72, 0);
 
             if FT_Load_Glyph(face.face, glyph_key.glyph_index as FT_UInt, GLYPH_LOAD_FLAGS) != 0 {
                 return None
@@ -174,7 +177,8 @@ impl FontContext {
                                           _: &FontInstanceKey,
                                           _: &GlyphKey,
                                           glyph_slot: FT_GlyphSlot,
-                                          glyph_outline_buffer: &mut GlyphOutlineBuffer) {
+                                          glyph_outline_buffer: &mut GlyphOutlineBuffer,
+                                          transform: &Transform2D<f32>) {
         unsafe {
             let outline = &(*glyph_slot).outline;
             let mut first_point_index = 0 as u32;
@@ -189,7 +193,8 @@ impl FontContext {
                     // FIXME(pcwalton): Does FreeType produce multiple consecutive off-curve points
                     // in a row like raw TrueType does?
                     let point = *outline.points.offset(point_index as isize);
-                    let point_position = Point2D::new(point.x as f32, point.y as f32);
+                    let point_position = transform.transform_point(&Point2D::new(point.x as f32,
+                                                                                 point.y as f32));
                     if (*outline.tags.offset(point_index as isize) & FREETYPE_POINT_ON_CURVE) != 0 {
                         glyph_outline_buffer.endpoints.push(Endpoint {
                             position: point_position,
@@ -303,8 +308,14 @@ trait ToFtF26Dot6 {
     fn to_ft_f26dot6(&self) -> FT_F26Dot6;
 }
 
+impl ToFtF26Dot6 for f64 {
+    fn to_ft_f26dot6(&self) -> FT_F26Dot6 {
+        (*self * 64.0 + 0.5) as FT_F26Dot6
+    }
+}
+
 impl ToFtF26Dot6 for Au {
     fn to_ft_f26dot6(&self) -> FT_F26Dot6 {
-        (self.to_f64_px() * 64.0 + 0.5) as FT_F26Dot6
+        self.to_f64_px().to_ft_f26dot6()
     }
 }

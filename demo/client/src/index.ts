@@ -2,11 +2,12 @@
 //
 // Copyright © 2017 Mozilla Foundation
 
-const base64js = require('base64-js');
-const glmatrix = require('gl-matrix');
-const opentype = require('opentype.js');
+import * as _ from 'lodash';
+import * as base64js from 'base64-js';
+import * as glmatrix from 'gl-matrix';
+import * as opentype from 'opentype.js';
 
-const TEXT: string = "G";
+const TEXT: string = "Lorem ipsum dolor sit amet";
 const FONT_SIZE: number = 16.0;
 
 const SCALE_FACTOR: number = 1.0 / 100.0;
@@ -72,6 +73,8 @@ interface UnlinkedShaderProgram {
 }
 
 type Matrix4D = Float32Array;
+
+type Rect = Float32Array;
 
 interface Point2D {
     x: number;
@@ -316,7 +319,7 @@ class PathfinderMeshData implements Meshes<ArrayBuffer> {
             throw new PathfinderError("Failed to partition the font!");
         const meshes = response.Ok;
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>)
-            this[bufferName] = base64js.toByteArray(meshes[bufferName]).buffer;
+            this[bufferName] = base64js.toByteArray(meshes[bufferName]).buffer as ArrayBuffer;
 
         this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
         this.edgeUpperLineIndexCount = this.edgeUpperLineIndices.byteLength / 8;
@@ -407,16 +410,40 @@ class AppController {
 
     fontLoaded() {
         this.font = opentype.parse(this.fontData);
-        if (!this.font.supported)
+        if (!(this.font as any).supported)
             throw new PathfinderError("The font type is unsupported.");
 
-        const glyphIDs = this.font.stringToGlyphs(TEXT).map((glyph: any) => glyph.index);
+        this.glyphs = this.font.stringToGlyphs(TEXT).map(glyph => new PathfinderGlyph(glyph));
+        this.glyphs.sort((a, b) => a.index() - b.index());
+        this.glyphs = _.sortedUniqBy(this.glyphs, glyph => glyph.index());
 
+        // Lay out in the atlas.
+        let atlasWidth = 0, atlasHeight = 0;
+        for (const glyph of this.glyphs) {
+            const metrics = glyph.metrics();
+            const width = metrics.xMax - metrics.xMin;
+            const height = metrics.yMax - metrics.yMin;
+            atlasHeight = Math.max(atlasHeight, height);
+            const newAtlasWidth = atlasWidth + width;
+            glyph.setAtlasLocation(new Float32Array([atlasWidth, 0, newAtlasWidth, height]));
+            atlasWidth = newAtlasWidth;
+        }
+
+        // Build the partitioning request to the server.
         const request = {
             otf: base64js.fromByteArray(new Uint8Array(this.fontData)),
             fontIndex: 0,
-            glyphIDs: glyphIDs,
-            pointSize: FONT_SIZE,
+            glyphs: this.glyphs.map(glyph => {
+                const atlasLocation = glyph.getAtlasLocation();
+                const metrics = glyph.metrics();
+                const tX = atlasLocation[0] - metrics.xMin;
+                const tY = atlasLocation[1] - metrics.yMin;
+                return {
+                    id: glyph.index(),
+                    transform: [1, 0, 0, 1, tX, tY],
+                };
+            }),
+            pointSize: this.font.unitsPerEm,
         };
 
         window.fetch(PARTITION_FONT_ENDPOINT_URL, {
@@ -445,7 +472,8 @@ class AppController {
     aaLevelSelect: HTMLSelectElement;
     fpsLabel: HTMLElement;
     fontData: ArrayBuffer;
-    font: any;
+    font: opentype.Font;
+    glyphs: Array<PathfinderGlyph>;
     meshes: PathfinderMeshData;
 }
 
@@ -614,14 +642,14 @@ class PathfinderView {
         if (event.ctrlKey) {
             // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
             const scaleFactor = 1.0 - event.deltaY * window.devicePixelRatio * SCALE_FACTOR;
-            const scaleFactors = new Float32Array([scaleFactor, scaleFactor, 1.0]);
+            const scaleFactors = new Float32Array([scaleFactor, scaleFactor, 1.0]) as glmatrix.vec3;
             glmatrix.mat4.scale(this.transform, this.transform, scaleFactors);
         } else {
             const delta = new Float32Array([
                 -event.deltaX * window.devicePixelRatio,
                 event.deltaY * window.devicePixelRatio,
-                0.0
-            ]);
+                0.0,
+            ]) as glmatrix.vec3;
             glmatrix.mat4.translate(this.transform, this.transform, delta);
         }
 
@@ -821,7 +849,7 @@ class PathfinderView {
     quadTexCoordsBuffer: WebGLBuffer;
     quadElementsBuffer: WebGLBuffer;
 
-    transform: Matrix4D;
+    transform: glmatrix.mat4;
 
     appController: AppController;
 
@@ -1455,6 +1483,31 @@ interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
     ecaa: typeof ECAAStrategy;
+}
+
+class PathfinderGlyph {
+    constructor(glyph: opentype.Glyph) {
+        this.glyph = glyph;
+    }
+
+    getAtlasLocation() {
+        return this.atlasLocation;
+    }
+
+    setAtlasLocation(rect: Rect) {
+        this.atlasLocation = rect;
+    }
+
+    index(): number {
+        return (this.glyph as any).index;
+    }
+
+    metrics(): opentype.Metrics {
+        return this.glyph.getMetrics();
+    }
+
+    glyph: opentype.Glyph;
+    private atlasLocation: Rect;
 }
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {

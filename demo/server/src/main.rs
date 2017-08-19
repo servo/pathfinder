@@ -22,7 +22,7 @@ extern crate serde_derive;
 
 use app_units::Au;
 use bincode::Infinite;
-use euclid::{Point2D, Size2D};
+use euclid::{Point2D, Size2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey};
 use pathfinder_font_renderer::{GlyphKey, GlyphOutlineBuffer};
 use pathfinder_partitioner::partitioner::Partitioner;
@@ -43,7 +43,7 @@ static STATIC_JS_JQUERY_PATH: &'static str = "../client/node_modules/jquery/dist
 static STATIC_JS_PATHFINDER_JS_PATH: &'static str = "../client/pathfinder.js";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct IndexRange {
     start: usize,
     end: usize,
@@ -57,9 +57,7 @@ impl IndexRange {
         }
     }
 
-    fn from_vector_append_and_serialization<T>(dest: &mut Vec<u8>, src: &[T])
-                                               -> Result<IndexRange, ()>
-                                               where T: Serialize {
+    fn from_data<T>(dest: &mut Vec<u8>, src: &[T]) -> Result<IndexRange, ()> where T: Serialize {
         let byte_len_before = dest.len();
         for src_value in src {
             try!(bincode::serialize_into(dest, src_value, Infinite).map_err(drop))
@@ -78,8 +76,14 @@ struct PartitionFontRequest {
     // Base64 encoded.
     otf: String,
     fontIndex: u32,
-    glyphIDs: Vec<u32>,
+    glyphs: Vec<PartitionGlyph>,
     pointSize: f64,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+struct PartitionGlyph {
+    id: u32,
+    transform: Transform2D<f32>,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -89,7 +93,7 @@ struct PartitionGlyphDimensions {
     advance: f32,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct DecodedOutlineIndices {
     endpoint_indices: IndexRange,
     control_point_indices: IndexRange,
@@ -173,15 +177,18 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
     // Read glyph info.
     let mut outline_buffer = GlyphOutlineBuffer::new();
-    let decoded_outline_indices: Vec<_> = request.glyphIDs.iter().map(|&glyph_id| {
-        let glyph_key = GlyphKey::new(glyph_id);
+    let decoded_outline_indices: Vec<_> = request.glyphs.iter().map(|glyph| {
+        let glyph_key = GlyphKey::new(glyph.id);
 
         let first_endpoint_index = outline_buffer.endpoints.len();
         let first_control_point_index = outline_buffer.control_points.len();
         let first_subpath_index = outline_buffer.subpaths.len();
 
         // This might fail; if so, just leave it blank.
-        drop(font_context.push_glyph_outline(&font_instance_key, &glyph_key, &mut outline_buffer));
+        drop(font_context.push_glyph_outline(&font_instance_key,
+                                             &glyph_key,
+                                             &mut outline_buffer,
+                                             &glyph.transform));
 
         let last_endpoint_index = outline_buffer.endpoints.len();
         let last_control_point_index = outline_buffer.control_points.len();
@@ -202,13 +209,15 @@ fn partition_font(request: Json<PartitionFontRequest>)
     let (mut cover_interior_indices, mut cover_curve_indices) = (vec![], vec![]);
     let (mut edge_upper_line_indices, mut edge_upper_curve_indices) = (vec![], vec![]);
     let (mut edge_lower_line_indices, mut edge_lower_curve_indices) = (vec![], vec![]);
+
     partitioner.init(&outline_buffer.endpoints,
                      &outline_buffer.control_points,
                      &outline_buffer.subpaths);
+
     let mut glyph_info = vec![];
-    for (path_index, (&glyph_id, decoded_outline_indices)) in
-            request.glyphIDs.iter().zip(decoded_outline_indices.iter()).enumerate() {
-        let glyph_key = GlyphKey::new(glyph_id);
+    for (path_index, (&glyph, decoded_outline_indices)) in
+            request.glyphs.iter().zip(decoded_outline_indices.iter()).enumerate() {
+        let glyph_key = GlyphKey::new(glyph.id);
 
         let dimensions = match font_context.glyph_dimensions(&font_instance_key, &glyph_key) {
             Some(dimensions) => {
@@ -231,44 +240,64 @@ fn partition_font(request: Json<PartitionFontRequest>)
                               decoded_outline_indices.subpath_indices.start as u32,
                               decoded_outline_indices.subpath_indices.end as u32);
 
-        let path_b_quads = partitioner.b_quads();
         let path_b_vertex_positions = partitioner.b_vertex_positions();
         let path_b_vertex_path_ids = partitioner.b_vertex_path_ids();
         let path_b_vertex_loop_blinn_data = partitioner.b_vertex_loop_blinn_data();
         let cover_indices = partitioner.cover_indices();
         let edge_indices = partitioner.edge_indices();
 
-        IndexRange::from_vector_append_and_serialization(&mut b_vertex_positions,
-                                                         path_b_vertex_positions).unwrap();
-        IndexRange::from_vector_append_and_serialization(&mut b_vertex_path_ids,
-                                                         path_b_vertex_path_ids).unwrap();
+        let positions_start = IndexRange::from_data(&mut b_vertex_positions,
+                                                    path_b_vertex_positions).unwrap().start as u32;
+        IndexRange::from_data(&mut b_vertex_path_ids, path_b_vertex_path_ids).unwrap();
+
+        let mut path_b_quads = partitioner.b_quads().to_vec();
+        let mut path_cover_interior_indices = cover_indices.interior_indices.to_vec();
+        let mut path_cover_curve_indices = cover_indices.curve_indices.to_vec();
+        let mut path_edge_upper_line_indices = edge_indices.upper_line_indices.to_vec();
+        let mut path_edge_upper_curve_indices = edge_indices.upper_curve_indices.to_vec();
+        let mut path_edge_lower_line_indices = edge_indices.lower_line_indices.to_vec();
+        let mut path_edge_lower_curve_indices = edge_indices.lower_curve_indices.to_vec();
+
+        for path_b_quad in &mut path_b_quads {
+            path_b_quad.offset(positions_start);
+        }
+        for path_cover_interior_index in &mut path_cover_interior_indices {
+            *path_cover_interior_index += positions_start
+        }
+        for path_cover_curve_index in &mut path_cover_curve_indices {
+            *path_cover_curve_index += positions_start
+        }
+        for path_edge_upper_line_indices in &mut path_edge_upper_line_indices {
+            path_edge_upper_line_indices.offset(positions_start);
+        }
+        for path_edge_upper_curve_indices in &mut path_edge_upper_curve_indices {
+            path_edge_upper_curve_indices.offset(positions_start);
+        }
+        for path_edge_lower_line_indices in &mut path_edge_lower_line_indices {
+            path_edge_lower_line_indices.offset(positions_start);
+        }
+        for path_edge_lower_curve_indices in &mut path_edge_lower_curve_indices {
+            path_edge_lower_curve_indices.offset(positions_start);
+        }
 
         glyph_info.push(PartitionGlyphInfo {
-            id: glyph_id,
+            id: glyph.id,
             dimensions: dimensions,
-            bQuadIndices: IndexRange::from_vector_append_and_serialization(&mut b_quads,
-                                                                           path_b_quads).unwrap(),
-            bVertexIndices: IndexRange::from_vector_append_and_serialization(
-                &mut b_vertex_loop_blinn_data,
-                path_b_vertex_loop_blinn_data).unwrap(),
-            coverInteriorIndices: IndexRange::from_vector_append_and_serialization(
-                &mut cover_interior_indices,
-                cover_indices.interior_indices).unwrap(),
-            coverCurveIndices: IndexRange::from_vector_append_and_serialization(
-                &mut cover_curve_indices,
-                cover_indices.curve_indices).unwrap(),
-            edgeUpperLineIndices: IndexRange::from_vector_append_and_serialization(
-                &mut edge_upper_line_indices,
-                edge_indices.upper_line_indices).unwrap(),
-            edgeUpperCurveIndices: IndexRange::from_vector_append_and_serialization(
-                &mut edge_upper_curve_indices,
-                edge_indices.upper_curve_indices).unwrap(),
-            edgeLowerLineIndices: IndexRange::from_vector_append_and_serialization(
-                &mut edge_lower_line_indices,
-                edge_indices.lower_line_indices).unwrap(),
-            edgeLowerCurveIndices: IndexRange::from_vector_append_and_serialization(
-                &mut edge_lower_curve_indices,
-                edge_indices.lower_curve_indices).unwrap(),
+            bQuadIndices: IndexRange::from_data(&mut b_quads, &path_b_quads).unwrap(),
+            bVertexIndices: IndexRange::from_data(&mut b_vertex_loop_blinn_data,
+                                                  path_b_vertex_loop_blinn_data).unwrap(),
+            coverInteriorIndices: IndexRange::from_data(&mut cover_interior_indices,
+                                                        &path_cover_interior_indices).unwrap(),
+            coverCurveIndices: IndexRange::from_data(&mut cover_curve_indices,
+                                                     &path_cover_curve_indices).unwrap(),
+            edgeUpperLineIndices: IndexRange::from_data(&mut edge_upper_line_indices,
+                                                        &path_edge_upper_line_indices).unwrap(),
+            edgeUpperCurveIndices: IndexRange::from_data(&mut edge_upper_curve_indices,
+                                                         &path_edge_upper_curve_indices).unwrap(),
+            edgeLowerLineIndices: IndexRange::from_data(&mut edge_lower_line_indices,
+                                                        &path_edge_lower_line_indices).unwrap(),
+            edgeLowerCurveIndices: IndexRange::from_data(&mut edge_lower_curve_indices,
+                                                         &path_edge_lower_curve_indices).unwrap(),
         })
     }
 

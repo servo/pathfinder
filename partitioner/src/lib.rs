@@ -55,6 +55,20 @@ impl BQuad {
             pad1: 0,
         }
     }
+
+    #[inline]
+    pub fn offset(&mut self, delta: u32) {
+        self.upper_left_vertex_index += delta;
+        self.upper_right_vertex_index += delta;
+        self.lower_left_vertex_index += delta;
+        self.lower_right_vertex_index += delta;
+        if self.upper_control_point_vertex_index < u32::MAX {
+            self.upper_control_point_vertex_index += delta;
+        }
+        if self.lower_control_point_vertex_index < u32::MAX {
+            self.lower_control_point_vertex_index += delta;
+        }
+    }
 }
 
 #[repr(C)]
@@ -145,6 +159,12 @@ impl LineIndices {
             right_vertex_index: right_vertex_index,
         }
     }
+
+    #[inline]
+    pub fn offset(&mut self, delta: u32) {
+        self.left_vertex_index += delta;
+        self.right_vertex_index += delta;
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -165,6 +185,15 @@ impl CurveIndices {
             right_vertex_index: right_vertex_index,
             control_point_vertex_index: control_point_vertex_index,
             pad: 0,
+        }
+    }
+
+    #[inline]
+    pub fn offset(&mut self, delta: u32) {
+        self.left_vertex_index += delta;
+        self.right_vertex_index += delta;
+        if self.control_point_vertex_index < u32::MAX {
+            self.control_point_vertex_index += delta;
         }
     }
 }
