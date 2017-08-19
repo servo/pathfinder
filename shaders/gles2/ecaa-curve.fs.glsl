@@ -38,8 +38,8 @@ void main() {
     // be less than a pixel, and it saves a lot of time.)
     //
     // FIXME(pcwalton): Factor out shared terms to avoid computing them multiple times.
-    vec2 t = vec2(pixelExtents.x > p0.x ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.x) : 0.0,
-                  p1.x < pixelExtents.y ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.y) : 1.0);
+    vec2 t = vec2(p0.x < pixelExtents.x ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.x) : 0.0,
+                  p1.x > pixelExtents.y ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.y) : 1.0);
 
     vec2 spanP0 = mix(mix(p0, cp, t.x), mix(cp, p1, t.x), t.x);
     vec2 spanP1 = mix(mix(p0, cp, t.y), mix(cp, p1, t.y), t.y);

@@ -1255,16 +1255,11 @@ class ECAAStrategy implements AntialiasingStrategy {
         this.detectEdges(view);
 
         // Conservatively cover.
-        //if (view.timerQueryPollInterval == null)
-        //    view.timerQueryExt.beginQueryEXT(view.timerQueryExt.TIME_ELAPSED_EXT, view.timerQuery);
         this.cover(view);
 
         // Antialias.
         this.antialiasLines(view);
         this.antialiasCurves(view);
-
-        //if (view.timerQueryPollInterval == null)
-        //    view.timerQueryExt.endQueryEXT(view.timerQueryExt.TIME_ELAPSED_EXT);
 
         // Resolve the antialiasing.
         this.resolveAA(view);
