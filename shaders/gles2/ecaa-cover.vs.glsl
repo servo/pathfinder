@@ -42,11 +42,6 @@ void main() {
     lowerLeftPosition = transformVertexPosition(lowerLeftPosition, uTransform);
     lowerRightPosition = transformVertexPosition(lowerRightPosition, uTransform);
 
-    /*upperLeftPosition = vec2(0.0, 0.0);
-    upperRightPosition = vec2(200.0, 0.0);
-    lowerLeftPosition = vec2(0.0, 200.0);
-    lowerRightPosition = vec2(200.0, 200.0);*/
-
     vec4 extents = vec4(min(upperLeftPosition.x, lowerLeftPosition.x),
                         min(min(upperLeftPosition.y, upperRightPosition.y),
                             min(lowerLeftPosition.y, lowerRightPosition.y)),
