@@ -4,12 +4,13 @@
 
 precision highp float;
 
-uniform mat4 uTransform;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uBVertexPositionDimensions;
 uniform ivec2 uBVertexPathIDDimensions;
+uniform ivec2 uPathTransformDimensions;
 uniform sampler2D uBVertexPosition;
 uniform sampler2D uBVertexPathID;
+uniform sampler2D uPathTransform;
 
 attribute vec2 aQuadPosition;
 attribute vec4 aUpperPointIndices;
@@ -37,10 +38,14 @@ void main() {
                                               pointIndices.w,
                                               uBVertexPositionDimensions);
 
-    upperLeftPosition = transformVertexPosition(upperLeftPosition, uTransform);
-    upperRightPosition = transformVertexPosition(upperRightPosition, uTransform);
-    lowerLeftPosition = transformVertexPosition(lowerLeftPosition, uTransform);
-    lowerRightPosition = transformVertexPosition(lowerRightPosition, uTransform);
+    int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
+
+    vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
+
+    upperLeftPosition = transformVertexPositionST(upperLeftPosition, transform);
+    upperRightPosition = transformVertexPositionST(upperRightPosition, transform);
+    lowerLeftPosition = transformVertexPositionST(lowerLeftPosition, transform);
+    lowerRightPosition = transformVertexPositionST(lowerRightPosition, transform);
 
     vec4 extents = vec4(min(upperLeftPosition.x, lowerLeftPosition.x),
                         min(min(upperLeftPosition.y, upperRightPosition.y),
@@ -50,8 +55,6 @@ void main() {
                             max(lowerLeftPosition.y, lowerRightPosition.y)));
 
     vec4 roundedExtents = vec4(floor(extents.xy), ceil(extents.zw));
-
-    int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
 
     // FIXME(pcwalton): Use a separate VBO for this.
     vec2 quadPosition = (aQuadPosition + 1.0) * 0.5;

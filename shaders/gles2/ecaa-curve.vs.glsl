@@ -4,12 +4,13 @@
 
 precision highp float;
 
-uniform mat4 uTransform;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uBVertexPositionDimensions;
 uniform ivec2 uBVertexPathIDDimensions;
+uniform ivec2 uPathTransformDimensions;
 uniform sampler2D uBVertexPosition;
 uniform sampler2D uBVertexPathID;
+uniform sampler2D uPathTransform;
 uniform bool uLowerPart;
 
 attribute vec2 aQuadPosition;
@@ -34,6 +35,10 @@ void main() {
                                                 pointIndices.z,
                                                 uBVertexPositionDimensions);
 
+    int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
+
+    vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
+
     // Transform the points, and compute the position of this vertex.
     vec2 position;
     if (computeQuadPosition(position,
@@ -41,11 +46,10 @@ void main() {
                             rightPosition,
                             aQuadPosition,
                             uFramebufferSize,
-                            uTransform)) {
-        controlPointPosition = transformVertexPosition(controlPointPosition, uTransform);
+                            transform)) {
+        controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
     }
 
-    int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
     float depth = convertPathIndexToDepthValue(pathID);
 
     gl_Position = vec4(position, depth, 1.0);

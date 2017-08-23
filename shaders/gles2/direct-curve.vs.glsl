@@ -7,7 +7,9 @@ precision highp float;
 uniform mat4 uTransform;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathColorsDimensions;
+uniform ivec2 uPathTransformDimensions;
 uniform sampler2D uPathColors;
+uniform sampler2D uPathTransform;
 
 attribute vec2 aPosition;
 attribute vec2 aTexCoord;
@@ -22,8 +24,12 @@ varying float vSign;
 void main() {
     int pathID = int(aPathID);
 
-    vec2 position = transformVertexPosition(aPosition, uTransform);
+    vec4 pathTransform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
+
+    vec2 position = transformVertexPositionST(aPosition, pathTransform);
+    position = transformVertexPosition(position, uTransform);
     position = convertScreenToClipSpace(position, uFramebufferSize);
+
     float depth = convertPathIndexToDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);
 

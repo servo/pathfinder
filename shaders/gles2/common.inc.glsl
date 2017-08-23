@@ -27,8 +27,13 @@ bool xor(bool a, bool b) {
 float det2(vec2 a, vec2 b) {
     return a.x * b.y - b.x * a.y;
 }
+
 vec2 transformVertexPosition(vec2 position, mat4 transform) {
     return (transform * vec4(position, 0.0, 1.0)).xy;
+}
+
+vec2 transformVertexPositionST(vec2 position, vec4 stTransform) {
+    return position * stTransform.xy + stTransform.zw;
 }
 
 vec2 convertScreenToClipSpace(vec2 position, ivec2 framebufferSize) {
@@ -44,9 +49,9 @@ bool computeQuadPosition(out vec2 outPosition,
                          inout vec2 rightPosition,
                          vec2 quadPosition,
                          ivec2 framebufferSize,
-                         mat4 transform) {
-    leftPosition = transformVertexPosition(leftPosition, transform);
-    rightPosition = transformVertexPosition(rightPosition, transform);
+                         vec4 transform) {
+    leftPosition = transformVertexPositionST(leftPosition, transform);
+    rightPosition = transformVertexPositionST(rightPosition, transform);
 
     if (abs(leftPosition.x - rightPosition.x) <= EPSILON) {
         outPosition = vec2(0.0);

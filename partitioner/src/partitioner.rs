@@ -79,6 +79,9 @@ impl<'a> Partitioner<'a> {
         self.init_heap(first_subpath_index, last_subpath_index);
 
         while self.process_next_point() {}
+
+        debug_assert!(self.b_vertex_loop_blinn_data.len() == self.b_vertex_path_ids.len());
+        debug_assert!(self.b_vertex_loop_blinn_data.len() == self.b_vertex_positions.len());
     }
 
     #[inline]
