@@ -677,11 +677,11 @@ class PathfinderView {
     }
 
     uploadPathData(pathCount: number) {
-        const pathColors = new Uint8Array(4 * pathCount);
+        const pathColors = new Uint8Array(4 * (pathCount + 1));
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
             for (let channel = 0; channel < 3; channel++)
-                pathColors[pathIndex * 4 + channel] = 0x00; // RGB
-            pathColors[pathIndex * 4 + 3] = 0xff;           // alpha
+                pathColors[(pathIndex + 1) * 4 + channel] = 0x00; // RGB
+            pathColors[(pathIndex + 1) * 4 + 3] = 0xff;           // alpha
         }
 
         this.pathColorsBufferTexture.upload(this.gl, pathColors);
