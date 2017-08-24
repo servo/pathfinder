@@ -208,6 +208,16 @@ impl FontContext {
                     }
                 }
 
+                if let Some(last_control_point_index) = current_control_point_index.take() {
+                    let first_endpoint = glyph_outline_buffer.endpoints[first_endpoint_index as
+                                                                        usize];
+                    glyph_outline_buffer.endpoints.push(Endpoint {
+                        position: first_endpoint.position,
+                        control_point_index: last_control_point_index,
+                        subpath_index: current_subpath_index,
+                    })
+                }
+
                 let last_endpoint_index = glyph_outline_buffer.endpoints.len() as u32;
                 glyph_outline_buffer.subpaths.push(Subpath {
                     first_endpoint_index: first_endpoint_index,
