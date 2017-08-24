@@ -7,7 +7,8 @@ import * as base64js from 'base64-js';
 import * as glmatrix from 'gl-matrix';
 import * as opentype from 'opentype.js';
 
-const TEXT: string = "Lorem ipsum dolor sit amet";
+//const TEXT: string = "Lorem ipsum dolor sit amet";
+const TEXT: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 const INITIAL_FONT_SIZE: number = 72.0;
 
@@ -142,6 +143,9 @@ interface AntialiasingStrategy {
     //
     // This usually performs the actual antialiasing and blits to the real framebuffer.
     resolve(view: PathfinderView): void;
+
+    // True if direct rendering should occur.
+    shouldRenderDirect: boolean;
 }
 
 type ShaderType = number;
@@ -843,16 +847,17 @@ class PathfinderView {
         this.antialiasingStrategy.prepare(this);
 
         // Perform direct rendering (Loop-Blinn).
-        this.renderDirect();
+        if (this.antialiasingStrategy.shouldRenderDirect)
+            this.renderDirect();
 
         // Antialias.
         this.antialiasingStrategy.resolve(this);
 
-        // Draw the glyphs with the resolved atlas to the default framebuffer.
-        this.composite();
-
         // Finish timing and update the profile.
         this.updateTiming();
+
+        // Draw the glyphs with the resolved atlas to the default framebuffer.
+        this.composite();
 
         // Clear dirty bit and finish.
         this.dirty = false;
@@ -1260,6 +1265,10 @@ class NoAAStrategy implements AntialiasingStrategy {
 
     resolve(view: PathfinderView) {}
 
+    get shouldRenderDirect() {
+        return true;
+    }
+
     framebufferSize: Size2D;
 }
 
@@ -1346,6 +1355,10 @@ class SSAAStrategy implements AntialiasingStrategy {
         view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
     }
 
+    get shouldRenderDirect() {
+        return true;
+    }
+
     level: number;
     destFramebufferSize: Size2D;
     supersampledFramebufferSize: Size2D;
@@ -1354,7 +1367,7 @@ class SSAAStrategy implements AntialiasingStrategy {
     supersampledFramebuffer: WebGLFramebuffer;
 }
 
-class ECAAStrategy implements AntialiasingStrategy {
+abstract class ECAAStrategy implements AntialiasingStrategy {
     constructor(level: number) {
         this.framebufferSize = new Float32Array([0, 0]) as Size2D;
     }
@@ -1391,7 +1404,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         return glmatrix.mat4.create();
     }
 
-    initDirectFramebuffer(view: PathfinderView) {
+    private initDirectFramebuffer(view: PathfinderView) {
         this.directColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
         this.directPathIDTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
         this.directDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
@@ -1402,17 +1415,7 @@ class ECAAStrategy implements AntialiasingStrategy {
                               this.directDepthTexture);
     }
 
-    initEdgeDetectFramebuffer(view: PathfinderView) {
-        this.bgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
-        this.fgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
-        this.aaDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
-        this.edgeDetectFramebuffer = createFramebuffer(view.gl,
-                                                       view.drawBuffersExt,
-                                                       [this.bgColorTexture, this.fgColorTexture],
-                                                       this.aaDepthTexture);
-    }
-
-    initAAAlphaFramebuffer(view: PathfinderView) {
+    private initAAAlphaFramebuffer(view: PathfinderView) {
         this.aaAlphaTexture = unwrapNull(view.gl.createTexture());
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
@@ -1430,21 +1433,10 @@ class ECAAStrategy implements AntialiasingStrategy {
         this.aaFramebuffer = createFramebuffer(view.gl,
                                                view.drawBuffersExt,
                                                [this.aaAlphaTexture],
-                                               this.aaDepthTexture);
+                                               view.atlasDepthTexture);
     }
 
-    createEdgeDetectVAO(view: PathfinderView) {
-        this.edgeDetectVAO = view.vertexArrayObjectExt.createVertexArrayOES();
-        view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
-
-        const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
-        view.gl.useProgram(edgeDetectProgram.program);
-        initQuadVAO(view, edgeDetectProgram.attributes);
-
-        view.vertexArrayObjectExt.bindVertexArrayOES(null);
-    }
-
-    createCoverVAO(view: PathfinderView) {
+    private createCoverVAO(view: PathfinderView) {
         this.coverVAO = view.vertexArrayObjectExt.createVertexArrayOES();
         view.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
 
@@ -1476,7 +1468,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    createLineVAOs(view: PathfinderView) {
+    private createLineVAOs(view: PathfinderView) {
         const lineProgram = view.shaderPrograms.ecaaLine;
         const attributes = lineProgram.attributes;
 
@@ -1511,7 +1503,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         this.lineVAOs = vaos as UpperAndLower<WebGLVertexArrayObject>;
     }
 
-    createCurveVAOs(view: PathfinderView) {
+    private createCurveVAOs(view: PathfinderView) {
         const curveProgram = view.shaderPrograms.ecaaCurve;
         const attributes = curveProgram.attributes;
 
@@ -1595,8 +1587,8 @@ class ECAAStrategy implements AntialiasingStrategy {
     }
 
     resolve(view: PathfinderView) {
-        // Detect edges.
-        this.detectEdges(view);
+        // Detect edges if necessary.
+        this.detectEdgesIfNecessary(view);
 
         // Conservatively cover.
         this.cover(view);
@@ -1609,58 +1601,19 @@ class ECAAStrategy implements AntialiasingStrategy {
         this.resolveAA(view);
     }
 
-    detectEdges(view: PathfinderView) {
-        // Set state for edge detection.
-        const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
-
-        view.drawBuffersExt.drawBuffersWEBGL([
-            view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
-            view.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
-        ]);
-
-        view.gl.depthMask(true);
-        view.gl.depthFunc(view.gl.ALWAYS);
-        view.gl.enable(view.gl.DEPTH_TEST);
-        view.gl.disable(view.gl.BLEND);
-
-        view.gl.clearDepth(0.0);
-        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
-
-        // Perform edge detection.
-        view.gl.useProgram(edgeDetectProgram.program);
-        view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
-        view.setFramebufferSizeUniform(edgeDetectProgram.uniforms);
-        view.setTransformSTAndTexScaleUniformsForAtlas(edgeDetectProgram.uniforms);
-        view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directColorTexture);
-        view.gl.uniform1i(edgeDetectProgram.uniforms.uColor, 0);
-        view.gl.activeTexture(view.gl.TEXTURE1);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directPathIDTexture);
-        view.gl.uniform1i(edgeDetectProgram.uniforms.uPathID, 1);
-        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
-        view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
-        view.vertexArrayObjectExt.bindVertexArrayOES(null);
-    }
-
     private cover(view: PathfinderView) {
         // Set state for conservative coverage.
         const coverProgram = view.shaderPrograms.ecaaCover;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
-        view.gl.depthMask(false);
-        view.gl.depthFunc(view.gl.EQUAL);
-        //view.gl.depthFunc(view.gl.ALWAYS);
-        view.gl.enable(view.gl.DEPTH_TEST);
+        this.setCoverDepthState(view);
+
         view.gl.blendEquation(view.gl.FUNC_ADD);
         view.gl.blendFunc(view.gl.ONE, view.gl.ONE);
         view.gl.enable(view.gl.BLEND);
 
-        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        view.gl.clear(view.gl.COLOR_BUFFER_BIT);
+        this.clearForCover(view);
 
         // Conservatively cover.
         view.gl.useProgram(coverProgram.program);
@@ -1682,16 +1635,14 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
-        view.gl.depthMask(false);
-        view.gl.depthFunc(view.gl.EQUAL);
-        //view.gl.depthFunc(view.gl.ALWAYS);
-        view.gl.enable(view.gl.DEPTH_TEST);
+        this.setAADepthState(view);
+
         view.gl.blendEquation(view.gl.FUNC_REVERSE_SUBTRACT);
         view.gl.blendFunc(view.gl.ONE, view.gl.ONE);
         view.gl.enable(view.gl.BLEND);
     }
 
-    setAAUniforms(view: PathfinderView, uniforms: UniformMap) {
+    private setAAUniforms(view: PathfinderView, uniforms: UniformMap) {
         view.setFramebufferSizeUniform(uniforms);
         this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
         this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
@@ -1752,9 +1703,12 @@ class ECAAStrategy implements AntialiasingStrategy {
         // Set state for ECAA resolve.
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.atlasFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
-        view.gl.disable(view.gl.DEPTH_TEST);
+        this.setResolveDepthState(view);
         view.gl.disable(view.gl.BLEND);
         view.drawBuffersExt.drawBuffersWEBGL([view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
+
+        // Clear out the resolve buffer, if necessary.
+        this.clearForResolve(view);
 
         // Resolve.
         const resolveProgram = view.shaderPrograms.ecaaResolve;
@@ -1775,24 +1729,162 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    bVertexPositionBufferTexture: PathfinderBufferTexture;
-    bVertexPathIDBufferTexture: PathfinderBufferTexture;
-    directColorTexture: WebGLTexture;
-    directPathIDTexture: WebGLTexture;
-    directDepthTexture: WebGLTexture;
-    directFramebuffer: WebGLFramebuffer;
-    bgColorTexture: WebGLTexture;
-    fgColorTexture: WebGLTexture;
-    aaDepthTexture: WebGLTexture;
-    aaAlphaTexture: WebGLTexture;
-    edgeDetectFramebuffer: WebGLFramebuffer;
-    aaFramebuffer: WebGLFramebuffer;
-    edgeDetectVAO: WebGLVertexArrayObject;
-    coverVAO: WebGLVertexArrayObject;
-    lineVAOs: UpperAndLower<WebGLVertexArrayObject>;
-    curveVAOs: UpperAndLower<WebGLVertexArrayObject>;
-    resolveVAO: WebGLVertexArrayObject;
-    framebufferSize: Size2D;
+    protected abstract initEdgeDetectFramebuffer(view: PathfinderView): void;
+    protected abstract createEdgeDetectVAO(view: PathfinderView): void;
+    protected abstract detectEdgesIfNecessary(view: PathfinderView): void; 
+    protected abstract setCoverDepthState(view: PathfinderView): void;
+    protected abstract clearForCover(view: PathfinderView): void;
+    protected abstract setAADepthState(view: PathfinderView): void;
+    protected abstract clearForResolve(view: PathfinderView): void;
+    protected abstract setResolveDepthState(view: PathfinderView): void;
+
+    abstract shouldRenderDirect: boolean;
+
+    private bVertexPositionBufferTexture: PathfinderBufferTexture;
+    private bVertexPathIDBufferTexture: PathfinderBufferTexture;
+    private directDepthTexture: WebGLTexture;
+    private directFramebuffer: WebGLFramebuffer;
+    private aaAlphaTexture: WebGLTexture;
+    private aaFramebuffer: WebGLFramebuffer;
+    private coverVAO: WebGLVertexArrayObject;
+    private lineVAOs: UpperAndLower<WebGLVertexArrayObject>;
+    private curveVAOs: UpperAndLower<WebGLVertexArrayObject>;
+    private resolveVAO: WebGLVertexArrayObject;
+
+    protected directColorTexture: WebGLTexture;
+    protected directPathIDTexture: WebGLTexture;
+    protected bgColorTexture: WebGLTexture;
+    protected fgColorTexture: WebGLTexture;
+    protected framebufferSize: Size2D;
+}
+
+class MonochromeECAAStrategy extends ECAAStrategy {
+    protected initEdgeDetectFramebuffer(view: PathfinderView) {}
+
+    protected createEdgeDetectVAO(view: PathfinderView) {}
+
+    protected detectEdgesIfNecessary(view: PathfinderView) {}
+
+    protected setCoverDepthState(view: PathfinderView) {
+        view.gl.depthMask(true);
+        view.gl.depthFunc(view.gl.ALWAYS);
+        view.gl.enable(view.gl.DEPTH_TEST);
+    }
+
+    protected clearForCover(view: PathfinderView) {
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        view.gl.clearDepth(0.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
+    }
+
+    protected setAADepthState(view: PathfinderView) {
+        view.gl.disable(view.gl.DEPTH_TEST);
+    }
+
+    protected setResolveDepthState(view: PathfinderView) {
+        view.gl.depthMask(false);
+        view.gl.depthFunc(view.gl.NOTEQUAL);
+        view.gl.enable(view.gl.DEPTH_TEST);
+    }
+
+    protected clearForResolve(view: PathfinderView) {
+        view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT);
+    }
+
+    get shouldRenderDirect() {
+        return false;
+    }
+}
+
+class MulticolorECAAStrategy extends ECAAStrategy {
+    protected initEdgeDetectFramebuffer(view: PathfinderView) {
+        this.bgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
+        this.fgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
+        this.edgeDetectFramebuffer = createFramebuffer(view.gl,
+                                                       view.drawBuffersExt,
+                                                       [this.bgColorTexture, this.fgColorTexture],
+                                                       view.atlasDepthTexture);
+    }
+
+    protected createEdgeDetectVAO(view: PathfinderView) {
+        this.edgeDetectVAO = view.vertexArrayObjectExt.createVertexArrayOES();
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
+
+        const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
+        view.gl.useProgram(edgeDetectProgram.program);
+        initQuadVAO(view, edgeDetectProgram.attributes);
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    protected detectEdgesIfNecessary(view: PathfinderView) {
+        // Set state for edge detection.
+        const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
+        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
+        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+
+        view.drawBuffersExt.drawBuffersWEBGL([
+            view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
+            view.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
+        ]);
+
+        view.gl.depthMask(true);
+        view.gl.depthFunc(view.gl.ALWAYS);
+        view.gl.enable(view.gl.DEPTH_TEST);
+        view.gl.disable(view.gl.BLEND);
+
+        view.gl.clearDepth(0.0);
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
+
+        // Perform edge detection.
+        view.gl.useProgram(edgeDetectProgram.program);
+        view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
+        view.setFramebufferSizeUniform(edgeDetectProgram.uniforms);
+        view.setTransformSTAndTexScaleUniformsForAtlas(edgeDetectProgram.uniforms);
+        view.gl.activeTexture(view.gl.TEXTURE0);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directColorTexture);
+        view.gl.uniform1i(edgeDetectProgram.uniforms.uColor, 0);
+        view.gl.activeTexture(view.gl.TEXTURE1);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.directPathIDTexture);
+        view.gl.uniform1i(edgeDetectProgram.uniforms.uPathID, 1);
+        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+        view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    protected setCoverDepthState(view: PathfinderView) {
+        view.gl.depthMask(false);
+        view.gl.depthFunc(view.gl.ALWAYS);
+        view.gl.enable(view.gl.DEPTH_TEST);
+    }
+
+    protected clearForCover(view: PathfinderView) {
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT);
+    }
+
+    protected setAADepthState(view: PathfinderView) {
+        view.gl.depthMask(false);
+        view.gl.depthFunc(view.gl.EQUAL);
+        view.gl.enable(view.gl.DEPTH_TEST);
+    }
+
+    protected setResolveDepthState(view: PathfinderView) {
+        view.gl.depthMask(false);
+        view.gl.depthFunc(view.gl.NOTEQUAL);
+        view.gl.enable(view.gl.DEPTH_TEST);
+    }
+
+    protected clearForResolve(view: PathfinderView) {}
+
+    get shouldRenderDirect() {
+        return true;
+    }
+
+    private edgeDetectFramebuffer: WebGLFramebuffer;
+    private edgeDetectVAO: WebGLVertexArrayObject;
 }
 
 interface AntialiasingStrategyTable {
@@ -1905,7 +1997,7 @@ class Atlas {
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    ecaa: ECAAStrategy,
+    ecaa: MonochromeECAAStrategy,
 };
 
 function main() {
