@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-resolve.vs.glsl
+// pathfinder/shaders/gles2/ecaa-mono-resolve.vs.glsl
 //
 // Copyright (c) 2017 Mozilla Foundation
 

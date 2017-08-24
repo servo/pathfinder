@@ -65,9 +65,13 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
         fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
     },
-    ecaaResolve: {
-        vertex: "/glsl/gles2/ecaa-resolve.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-resolve.fs.glsl",
+    ecaaMonoResolve: {
+        vertex: "/glsl/gles2/ecaa-mono-resolve.vs.glsl",
+        fragment: "/glsl/gles2/ecaa-mono-resolve.fs.glsl",
+    },
+    ecaaMultiResolve: {
+        vertex: "/glsl/gles2/ecaa-multi-resolve.vs.glsl",
+        fragment: "/glsl/gles2/ecaa-multi-resolve.fs.glsl",
     },
 };
 
@@ -105,7 +109,8 @@ interface ShaderMap<T> {
     ecaaCover: T;
     ecaaLine: T;
     ecaaCurve: T;
-    ecaaResolve: T;
+    ecaaMonoResolve: T;
+    ecaaMultiResolve: T;
 }
 
 interface UniformMap {
@@ -1054,6 +1059,14 @@ class PathfinderView {
         this.gl.drawElements(this.gl.TRIANGLES, this.textGlyphCount * 6, this.gl.UNSIGNED_INT, 0);
     }
 
+    get bgColor(): glmatrix.vec4 {
+        return glmatrix.vec4.fromValues(1.0, 1.0, 1.0, 1.0);
+    }
+
+    get fgColor(): glmatrix.vec4 {
+        return glmatrix.vec4.fromValues(0.0, 0.0, 0.0, 1.0);
+    }
+
     canvas: HTMLCanvasElement;
 
     gl: WebGLRenderingContext;
@@ -1550,7 +1563,7 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
         this.resolveVAO = view.vertexArrayObjectExt.createVertexArrayOES();
         view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
 
-        const resolveProgram = view.shaderPrograms.ecaaResolve;
+        const resolveProgram = this.getResolveProgram(view);
         view.gl.useProgram(resolveProgram.program);
         initQuadVAO(view, resolveProgram.attributes);
 
@@ -1711,24 +1724,20 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
         this.clearForResolve(view);
 
         // Resolve.
-        const resolveProgram = view.shaderPrograms.ecaaResolve;
+        const resolveProgram = this.getResolveProgram(view);
         view.gl.useProgram(resolveProgram.program);
         view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
         view.setFramebufferSizeUniform(resolveProgram.uniforms);
         view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uBGColor, 0);
-        view.gl.activeTexture(view.gl.TEXTURE1);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.fgColorTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uFGColor, 1);
-        view.gl.activeTexture(view.gl.TEXTURE2);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 2);
+        view.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 0);
+        this.setResolveUniforms(view, resolveProgram);
         view.setTransformSTAndTexScaleUniformsForAtlas(resolveProgram.uniforms);
         view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
+    protected abstract getResolveProgram(view: PathfinderView): PathfinderShaderProgram;
     protected abstract initEdgeDetectFramebuffer(view: PathfinderView): void;
     protected abstract createEdgeDetectVAO(view: PathfinderView): void;
     protected abstract detectEdgesIfNecessary(view: PathfinderView): void; 
@@ -1737,6 +1746,8 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
     protected abstract setAADepthState(view: PathfinderView): void;
     protected abstract clearForResolve(view: PathfinderView): void;
     protected abstract setResolveDepthState(view: PathfinderView): void;
+    protected abstract setResolveUniforms(view: PathfinderView,
+                                          program: PathfinderShaderProgram): void;
 
     abstract shouldRenderDirect: boolean;
 
@@ -1753,12 +1764,14 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
 
     protected directColorTexture: WebGLTexture;
     protected directPathIDTexture: WebGLTexture;
-    protected bgColorTexture: WebGLTexture;
-    protected fgColorTexture: WebGLTexture;
     protected framebufferSize: Size2D;
 }
 
-class MonochromeECAAStrategy extends ECAAStrategy {
+class ECAAMonochromeStrategy extends ECAAStrategy {
+    protected getResolveProgram(view: PathfinderView): PathfinderShaderProgram {
+        return view.shaderPrograms.ecaaMonoResolve;
+    }
+
     protected initEdgeDetectFramebuffer(view: PathfinderView) {}
 
     protected createEdgeDetectVAO(view: PathfinderView) {}
@@ -1792,12 +1805,21 @@ class MonochromeECAAStrategy extends ECAAStrategy {
         view.gl.clear(view.gl.COLOR_BUFFER_BIT);
     }
 
+    protected setResolveUniforms(view: PathfinderView, program: PathfinderShaderProgram) {
+        view.gl.uniform4fv(program.uniforms.uBGColor, view.bgColor);
+        view.gl.uniform4fv(program.uniforms.uFGColor, view.fgColor);
+    }
+
     get shouldRenderDirect() {
         return false;
     }
 }
 
-class MulticolorECAAStrategy extends ECAAStrategy {
+class ECAAMulticolorStrategy extends ECAAStrategy {
+    protected getResolveProgram(view: PathfinderView): PathfinderShaderProgram {
+        return view.shaderPrograms.ecaaMultiResolve;
+    }
+
     protected initEdgeDetectFramebuffer(view: PathfinderView) {
         this.bgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
         this.fgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
@@ -1879,12 +1901,23 @@ class MulticolorECAAStrategy extends ECAAStrategy {
 
     protected clearForResolve(view: PathfinderView) {}
 
+    protected setResolveUniforms(view: PathfinderView, program: PathfinderShaderProgram) {
+        view.gl.activeTexture(view.gl.TEXTURE1);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
+        view.gl.uniform1i(program.uniforms.uBGColor, 1);
+        view.gl.activeTexture(view.gl.TEXTURE2);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, this.fgColorTexture);
+        view.gl.uniform1i(program.uniforms.uFGColor, 2);
+    }
+
     get shouldRenderDirect() {
         return true;
     }
 
     private edgeDetectFramebuffer: WebGLFramebuffer;
     private edgeDetectVAO: WebGLVertexArrayObject;
+    private bgColorTexture: WebGLTexture;
+    private fgColorTexture: WebGLTexture;
 }
 
 interface AntialiasingStrategyTable {
@@ -1997,7 +2030,7 @@ class Atlas {
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    ecaa: MonochromeECAAStrategy,
+    ecaa: ECAAMonochromeStrategy,
 };
 
 function main() {

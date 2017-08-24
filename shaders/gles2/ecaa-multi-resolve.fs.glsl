@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-resolve.fs.glsl
+// pathfinder/shaders/gles2/ecaa-multi-resolve.fs.glsl
 //
 // Copyright (c) 2017 Mozilla Foundation
 
@@ -11,8 +11,8 @@ uniform sampler2D uAAAlpha;
 varying vec2 vTexCoord;
 
 void main() {
-    vec4 bgColor = vec4(1.0);//texture2D(uBGColor, vTexCoord);
-    vec4 fgColor = vec4(vec3(0.0), 1.0);//texture2D(uFGColor, vTexCoord);
+    vec4 bgColor = texture2D(uBGColor, vTexCoord);
+    vec4 fgColor = texture2D(uFGColor, vTexCoord);
     float alpha = clamp(texture2D(uAAAlpha, vTexCoord).r, 0.0, 1.0);
     gl_FragColor = mix(bgColor, fgColor, alpha);
 }
