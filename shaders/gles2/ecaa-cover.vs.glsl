@@ -56,12 +56,9 @@ void main() {
 
     vec4 roundedExtents = vec4(floor(extents.xy), ceil(extents.zw));
 
-    // FIXME(pcwalton): Use a separate VBO for this.
-    vec2 quadPosition = (aQuadPosition + 1.0) * 0.5;
-
-    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
+    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, aQuadPosition);
     position = convertScreenToClipSpace(position, uFramebufferSize);
-    float depth = convertPathIndexToDepthValue(pathID);
+    float depth = convertPathIndexToViewportDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);
 
     vHorizontalExtents = extents.xz;

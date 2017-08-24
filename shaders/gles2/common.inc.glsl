@@ -40,8 +40,12 @@ vec2 convertScreenToClipSpace(vec2 position, ivec2 framebufferSize) {
     return position / vec2(framebufferSize) * 2.0 - 1.0;
 }
 
-float convertPathIndexToDepthValue(int pathIndex) {
+float convertPathIndexToViewportDepthValue(int pathIndex) {
     return mix(-1.0, 1.0, float(pathIndex) / float(MAX_PATHS));
+}
+
+float convertPathIndexToWindowDepthValue(int pathIndex) {
+    return float(pathIndex) / float(MAX_PATHS);
 }
 
 bool computeQuadPosition(out vec2 outPosition,
@@ -64,10 +68,7 @@ bool computeQuadPosition(out vec2 outPosition,
     vec4 roundedExtents = vec4(floor(vec2(leftPosition.x, verticalExtents.x)),
                                ceil(vec2(rightPosition.x, verticalExtents.y)));
 
-    // FIXME(pcwalton): Use a separate VBO for this.
-    quadPosition = (quadPosition + 1.0) * 0.5;
-
-    vec2 position = mix(roundedExtents.xy, roundedExtents.zw,  quadPosition);
+    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
     outPosition = convertScreenToClipSpace(position, framebufferSize);
     return true;
 }

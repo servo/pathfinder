@@ -153,10 +153,10 @@ type WebGLQuery = any;
 type WebGLVertexArrayObject = any;
 
 const QUAD_POSITIONS: Float32Array = new Float32Array([
-    -1.0,  1.0,
-     1.0,  1.0,
-    -1.0, -1.0,
-     1.0, -1.0,
+    0.0, 1.0,
+    1.0, 1.0,
+    0.0, 0.0,
+    1.0, 0.0,
 ]);
 
 const QUAD_TEX_COORDS: Float32Array = new Float32Array([
@@ -891,6 +891,33 @@ class PathfinderView {
         this.gl.uniform2i(uniforms.uFramebufferSize, currentViewport[2], currentViewport[3]);
     }
 
+    setIdentityTexScaleUniform(uniforms: UniformMap) {
+        this.gl.uniform2f(uniforms.uTexScale, 1.0, 1.0);
+    }
+
+    usedSizeFactor(): glmatrix.vec2 {
+        const usedSize = glmatrix.vec2.create();
+        glmatrix.vec2.div(usedSize, this.appController.atlas.usedSize, ATLAS_SIZE);
+        return usedSize;
+    }
+
+    setTransformSTAndTexScaleUniformsForAtlas(uniforms: UniformMap) {
+        const usedSize = this.usedSizeFactor();
+        this.gl.uniform4f(uniforms.uTransformST, 2.0 * usedSize[0], 2.0 * usedSize[1], -1.0, -1.0);
+        this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
+    }
+
+    setTransformAndTexScaleUniformsForAtlas(uniforms: UniformMap) {
+        const usedSize = this.usedSizeFactor();
+
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform, transform, [2.0 * usedSize[0], 2.0 * usedSize[1], 1.0]);
+        this.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
+
+        this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
+    }
+
     renderDirect() {
         // Set up implicit cover state.
         this.gl.depthFunc(this.gl.GREATER);
@@ -1018,6 +1045,7 @@ class PathfinderView {
         this.gl.activeTexture(this.gl.TEXTURE0);
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.appController.atlas.ensureTexture(this.gl));
         this.gl.uniform1i(blitProgram.uniforms.uSource, 0);
+        this.setIdentityTexScaleUniform(blitProgram.uniforms);
         this.gl.drawElements(this.gl.TRIANGLES, this.textGlyphCount * 6, this.gl.UNSIGNED_INT, 0);
     }
 
@@ -1155,7 +1183,7 @@ class PathfinderBufferTexture {
         }
 
         if (remainderDimensions[2] > 0) {
-            // Round data up to a multiple of 4 if necessary.
+            // Round data up to a multiple of 4 elements if necessary.
             let remainderLength = data.length - splitIndex;
             let remainder: Float32Array | Uint8Array;
             if (remainderLength % 4 == 0) {
@@ -1310,10 +1338,10 @@ class SSAAStrategy implements AntialiasingStrategy {
         initQuadVAO(view, blitProgram.attributes);
 
         // Resolve framebuffer.
-        view.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, glmatrix.mat4.create());
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
         view.gl.uniform1i(blitProgram.uniforms.uSource, 0);
+        view.setTransformAndTexScaleUniformsForAtlas(blitProgram.uniforms);
         view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
         view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
     }
@@ -1605,6 +1633,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.useProgram(edgeDetectProgram.program);
         view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
         view.setFramebufferSizeUniform(edgeDetectProgram.uniforms);
+        view.setTransformSTAndTexScaleUniformsForAtlas(edgeDetectProgram.uniforms);
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.directColorTexture);
         view.gl.uniform1i(edgeDetectProgram.uniforms.uColor, 0);
@@ -1616,15 +1645,15 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    cover(view: PathfinderView) {
+    private cover(view: PathfinderView) {
         // Set state for conservative coverage.
         const coverProgram = view.shaderPrograms.ecaaCover;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
         view.gl.depthMask(false);
-        //view.gl.depthFunc(view.gl.EQUAL);
-        view.gl.depthFunc(view.gl.ALWAYS);
+        view.gl.depthFunc(view.gl.EQUAL);
+        //view.gl.depthFunc(view.gl.ALWAYS);
         view.gl.enable(view.gl.DEPTH_TEST);
         view.gl.blendEquation(view.gl.FUNC_ADD);
         view.gl.blendFunc(view.gl.ONE, view.gl.ONE);
@@ -1649,13 +1678,13 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    setAAState(view: PathfinderView) {
+    private setAAState(view: PathfinderView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
 
         view.gl.depthMask(false);
-        //view.gl.depthFunc(view.gl.EQUAL);
-        view.gl.depthFunc(view.gl.ALWAYS);
+        view.gl.depthFunc(view.gl.EQUAL);
+        //view.gl.depthFunc(view.gl.ALWAYS);
         view.gl.enable(view.gl.DEPTH_TEST);
         view.gl.blendEquation(view.gl.FUNC_REVERSE_SUBTRACT);
         view.gl.blendFunc(view.gl.ONE, view.gl.ONE);
@@ -1669,7 +1698,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.atlasTransformBuffer.bind(view.gl, uniforms, 2);
     }
 
-    antialiasLines(view: PathfinderView) {
+    private antialiasLines(view: PathfinderView) {
         this.setAAState(view);
 
         const lineProgram = view.shaderPrograms.ecaaLine;
@@ -1694,7 +1723,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    antialiasCurves(view: PathfinderView) {
+    private antialiasCurves(view: PathfinderView) {
         this.setAAState(view);
 
         const curveProgram = view.shaderPrograms.ecaaCurve;
@@ -1719,7 +1748,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    resolveAA(view: PathfinderView) {
+    private resolveAA(view: PathfinderView) {
         // Set state for ECAA resolve.
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.atlasFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
@@ -1741,6 +1770,7 @@ class ECAAStrategy implements AntialiasingStrategy {
         view.gl.activeTexture(view.gl.TEXTURE2);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
         view.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 2);
+        view.setTransformSTAndTexScaleUniformsForAtlas(resolveProgram.uniforms);
         view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }

@@ -4,7 +4,6 @@
 
 precision highp float;
 
-uniform ivec2 uFramebufferSize;
 uniform sampler2D uBGColor;
 uniform sampler2D uFGColor;
 uniform sampler2D uAAAlpha;

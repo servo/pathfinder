@@ -63,7 +63,7 @@ void main() {
     // Determine the depth.
     //
     // If all colors are the same, avoid touching this pixel in any further passes.
-    float outDepth = fgColor == bgColor ? -1.0 : convertPathIndexToDepthValue(fgPathID);
+    float outDepth = fgColor == bgColor ? -1.0 : convertPathIndexToWindowDepthValue(fgPathID);
 
     // Output results.
     gl_FragData[0] = bgColor;
