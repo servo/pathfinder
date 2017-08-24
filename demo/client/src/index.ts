@@ -34,7 +34,7 @@ const B_QUAD_SIZE: number = 4 * 8;
 const B_QUAD_UPPER_INDICES_OFFSET: number = 0;
 const B_QUAD_LOWER_INDICES_OFFSET: number = 4 * 4;
 
-const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(2048, 2048);
+const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(4096, 4096);
 
 const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     blit: {
@@ -500,8 +500,9 @@ class AppController {
         this.rebuildAtlas();
     }
 
-    updateTiming(newTime: number) {
-        this.fpsLabel.innerHTML = `${newTime} ms`;
+    updateTiming(newTimes: {atlasRendering: number, compositing: number}) {
+        this.fpsLabel.innerHTML =
+            `${newTimes.atlasRendering} ms atlas, ${newTimes.compositing} ms compositing`;
     }
 
     private rebuildAtlas() {
@@ -615,8 +616,9 @@ class PathfinderView {
         this.gl.getExtension('OES_texture_float');
         this.gl.getExtension('WEBGL_depth_texture');
 
-        // Set up our timer query for profiling.
-        this.timerQuery = this.timerQueryExt.createQueryEXT();
+        // Set up our timer queries for profiling.
+        this.atlasRenderingTimerQuery = this.timerQueryExt.createQueryEXT();
+        this.compositingTimerQuery = this.timerQueryExt.createQueryEXT();
 
         // Upload quad buffers.
         this.quadPositionsBuffer = unwrapNull(this.gl.createBuffer());
@@ -801,7 +803,6 @@ class PathfinderView {
         window.requestAnimationFrame(() => this.redraw());
     }
 
-    // FIXME(pcwalton): This logic is all wrong.
     onWheel(event: WheelEvent) {
         event.preventDefault();
 
@@ -861,9 +862,11 @@ class PathfinderView {
             return;
         }
 
-        // Start timing.
-        if (this.timerQueryPollInterval == null)
-            this.timerQueryExt.beginQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT, this.timerQuery);
+        // Start timing rendering.
+        if (this.timerQueryPollInterval == null) {
+            this.timerQueryExt.beginQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT,
+                                             this.atlasRenderingTimerQuery);
+        }
 
         // Prepare for direct rendering.
         this.antialiasingStrategy.prepare(this);
@@ -875,33 +878,47 @@ class PathfinderView {
         // Antialias.
         this.antialiasingStrategy.resolve(this);
 
-        // Finish timing and update the profile.
-        this.updateTiming();
+        // End the timer, and start a new one.
+        if (this.timerQueryPollInterval == null) {
+            this.timerQueryExt.endQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT);
+            this.timerQueryExt.beginQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT,
+                                             this.compositingTimerQuery);
+        }
 
         // Draw the glyphs with the resolved atlas to the default framebuffer.
         this.composite();
 
-        // Clear dirty bit and finish.
+        // Finish timing, clear dirty bit and finish.
+        this.finishTiming();
         this.dirty = false;
     }
 
-    updateTiming() {
+    finishTiming() {
         if (this.timerQueryPollInterval != null)
             return;
 
         this.timerQueryExt.endQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT);
 
         this.timerQueryPollInterval = window.setInterval(() => {
-            if (this.timerQueryExt.getQueryObjectEXT(this.timerQuery,
-                                                     this.timerQueryExt
-                                                         .QUERY_RESULT_AVAILABLE_EXT) == 0) {
-                return;
+            for (const queryName of ['atlasRenderingTimerQuery', 'compositingTimerQuery'] as
+                    Array<'atlasRenderingTimerQuery' | 'compositingTimerQuery'>) {
+                if (this.timerQueryExt.getQueryObjectEXT(this[queryName],
+                                                         this.timerQueryExt
+                                                               .QUERY_RESULT_AVAILABLE_EXT) == 0) {
+                    return;
+                }
             }
 
-            const elapsedTime =
-                this.timerQueryExt.getQueryObjectEXT(this.timerQuery,
+            const atlasRenderingTime =
+                this.timerQueryExt.getQueryObjectEXT(this.atlasRenderingTimerQuery,
                                                      this.timerQueryExt.QUERY_RESULT_EXT);
-            this.appController.updateTiming(elapsedTime / 1000000.0);
+            const compositingTime =
+                this.timerQueryExt.getQueryObjectEXT(this.compositingTimerQuery,
+                                                     this.timerQueryExt.QUERY_RESULT_EXT);
+            this.appController.updateTiming({
+                atlasRendering: atlasRenderingTime / 1000000.0,
+                compositing: compositingTime / 1000000.0,
+            });
 
             window.clearInterval(this.timerQueryPollInterval!);
             this.timerQueryPollInterval = null;
@@ -1040,6 +1057,7 @@ class PathfinderView {
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         this.gl.disable(this.gl.DEPTH_TEST);
         this.gl.disable(this.gl.BLEND);
+        this.gl.disable(this.gl.SCISSOR_TEST);
 
         // Clear.
         this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -1102,7 +1120,8 @@ class PathfinderView {
     meshes: PathfinderMeshBuffers;
     meshData: PathfinderMeshData;
 
-    timerQuery: WebGLQuery;
+    atlasRenderingTimerQuery: WebGLQuery;
+    compositingTimerQuery: WebGLQuery;
     timerQueryPollInterval: number | null;
 
     pathColorsBufferTexture: PathfinderBufferTexture;
@@ -1285,6 +1304,7 @@ class NoAAStrategy implements AntialiasingStrategy {
     prepare(view: PathfinderView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.atlasFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.disable(view.gl.SCISSOR_TEST);
 
         // Clear.
         view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -1315,10 +1335,11 @@ class SSAAStrategy implements AntialiasingStrategy {
     
     setFramebufferSize(view: PathfinderView, framebufferSize: Size2D) {
         this.destFramebufferSize = framebufferSize;
-        this.supersampledFramebufferSize = new Float32Array([
-            framebufferSize[0] * 2,
-            framebufferSize[1] * (this.level == 2 ? 1 : 2),
-        ]) as Size2D;
+
+        this.supersampledFramebufferSize = glmatrix.vec2.create();
+        glmatrix.vec2.mul(this.supersampledFramebufferSize,
+                          framebufferSize,
+                          this.supersampleScale);
 
         this.supersampledColorTexture = unwrapNull(view.gl.createTexture());
         view.gl.activeTexture(view.gl.TEXTURE0);
@@ -1355,9 +1376,12 @@ class SSAAStrategy implements AntialiasingStrategy {
     }
 
     prepare(view: PathfinderView) {
-        const size = this.supersampledFramebufferSize;
+        const framebufferSize = this.supersampledFramebufferSize;
+        const usedSize = this.usedSupersampledFramebufferSize(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.supersampledFramebuffer);
-        view.gl.viewport(0, 0, size[0], size[1]);
+        view.gl.viewport(0, 0, framebufferSize[0], framebufferSize[1]);
+        view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        view.gl.enable(view.gl.SCISSOR_TEST);
 
         // Clear.
         view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -1389,12 +1413,22 @@ class SSAAStrategy implements AntialiasingStrategy {
         return true;
     }
 
-    level: number;
-    destFramebufferSize: Size2D;
-    supersampledFramebufferSize: Size2D;
-    supersampledColorTexture: WebGLTexture;
-    supersampledDepthTexture: WebGLTexture;
-    supersampledFramebuffer: WebGLFramebuffer;
+    private get supersampleScale(): glmatrix.vec2 {
+        return glmatrix.vec2.fromValues(2, this.level == 2 ? 1 : 2);
+    }
+
+    private usedSupersampledFramebufferSize(view: PathfinderView): glmatrix.vec2 {
+        const result = glmatrix.vec2.create();
+        glmatrix.vec2.mul(result, view.appController.atlas.usedSize, this.supersampleScale);
+        return result;
+    }
+
+    private level: number;
+    private destFramebufferSize: Size2D;
+    private supersampledFramebufferSize: Size2D;
+    private supersampledColorTexture: WebGLTexture;
+    private supersampledDepthTexture: WebGLTexture;
+    private supersampledFramebuffer: WebGLFramebuffer;
 }
 
 abstract class ECAAStrategy implements AntialiasingStrategy {
@@ -1576,7 +1610,7 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
         this.curveVAOs = vaos as UpperAndLower<WebGLVertexArrayObject>;
     }
 
-    createResolveVAO(view: PathfinderView) {
+    private createResolveVAO(view: PathfinderView) {
         this.resolveVAO = view.vertexArrayObjectExt.createVertexArrayOES();
         view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
 
@@ -1588,8 +1622,11 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
     }
 
     prepare(view: PathfinderView) {
+        const usedSize = view.appController.atlas.usedSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.directFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        view.gl.enable(view.gl.SCISSOR_TEST);
 
         // Clear out the color and depth textures.
         view.drawBuffersExt.drawBuffersWEBGL([
@@ -1634,8 +1671,11 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
     private cover(view: PathfinderView) {
         // Set state for conservative coverage.
         const coverProgram = view.shaderPrograms.ecaaCover;
+        const usedSize = view.appController.atlas.usedSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        view.gl.enable(view.gl.SCISSOR_TEST);
 
         this.setCoverDepthState(view);
 
@@ -1662,8 +1702,11 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
     }
 
     private setAAState(view: PathfinderView) {
+        const usedSize = view.appController.atlas.usedSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        view.gl.enable(view.gl.SCISSOR_TEST);
 
         this.setAADepthState(view);
 
@@ -1731,8 +1774,11 @@ abstract class ECAAStrategy implements AntialiasingStrategy {
 
     private resolveAA(view: PathfinderView) {
         // Set state for ECAA resolve.
+        const usedSize = view.appController.atlas.usedSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.atlasFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        view.gl.enable(view.gl.SCISSOR_TEST);
         this.setResolveDepthState(view);
         view.gl.disable(view.gl.BLEND);
         view.drawBuffersExt.drawBuffersWEBGL([view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
