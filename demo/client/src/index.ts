@@ -807,8 +807,25 @@ class PathfinderView {
 
         if (event.ctrlKey) {
             // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
+            const mouseLocation = glmatrix.vec2.fromValues(event.clientX, event.clientY);
+            const canvasLocation = this.canvas.getBoundingClientRect();
+            mouseLocation[0] -= canvasLocation.left;
+            mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
+            glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
+
+            const absoluteTranslation = glmatrix.vec2.create();
+            glmatrix.vec2.sub(absoluteTranslation, this.translation, mouseLocation);
+            glmatrix.vec2.scale(absoluteTranslation,
+                                absoluteTranslation,
+                                1.0 / this.appController.fontSize);
+
             const scale = 1.0 - event.deltaY * window.devicePixelRatio * SCALE_FACTOR;
             this.appController.scaleFontSize(scale);
+
+            glmatrix.vec2.scale(absoluteTranslation,
+                                absoluteTranslation,
+                                this.appController.fontSize);
+            glmatrix.vec2.add(this.translation, absoluteTranslation, mouseLocation);
             return;
         }
 
