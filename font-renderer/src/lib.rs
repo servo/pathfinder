@@ -35,6 +35,8 @@ const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_TARGET_LIGHT;
 
 const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
 
+const DPI: u32 = 72;
+
 pub struct FontContext {
     library: FT_Library,
     faces: BTreeMap<FontKey, Face>,
@@ -113,8 +115,8 @@ impl FontContext {
         };
 
         unsafe {
-            let point_size = (font_instance.size.to_f64_px() / 72.0).to_ft_f26dot6();
-            FT_Set_Char_Size(face.face, point_size, 0, 72, 0);
+            let point_size = (font_instance.size.to_f64_px() / (DPI as f64)).to_ft_f26dot6();
+            FT_Set_Char_Size(face.face, point_size, 0, DPI, 0);
 
             if FT_Load_Glyph(face.face, glyph_key.glyph_index as FT_UInt, GLYPH_LOAD_FLAGS) != 0 {
                 return None
@@ -188,13 +190,12 @@ impl FontContext {
                 let mut current_control_point_index = None;
                 let last_point_index = *outline.contours.offset(contour_index as isize) as u32 + 1;
                 for point_index in first_point_index..last_point_index {
-                    // FIXME(pcwalton): Use `units_per_EM` to do this conversion?
                     // TODO(pcwalton): Approximate cubic Béziers with quadratics.
-                    // FIXME(pcwalton): Does FreeType produce multiple consecutive off-curve points
-                    // in a row like raw TrueType does?
                     let point = *outline.points.offset(point_index as isize);
-                    let point_position = transform.transform_point(&Point2D::new(point.x as f32,
-                                                                                 point.y as f32));
+                    let point_position = Point2D::new(f32::from_ft_f26dot6(point.x as FT_F26Dot6),
+                                                      f32::from_ft_f26dot6(point.y as FT_F26Dot6));
+                    let point_position = point_position * (DPI as f32);
+                    let point_position = transform.transform_point(&point_position);
                     if (*outline.tags.offset(point_index as isize) & FREETYPE_POINT_ON_CURVE) != 0 {
                         glyph_outline_buffer.endpoints.push(Endpoint {
                             position: point_position,
@@ -311,6 +312,16 @@ impl Drop for Face {
         unsafe {
             FT_Done_Face(self.face);
         }
+    }
+}
+
+trait FromFtF26Dot6 {
+    fn from_ft_f26dot6(value: FT_F26Dot6) -> Self;
+}
+
+impl FromFtF26Dot6 for f32 {
+    fn from_ft_f26dot6(value: FT_F26Dot6) -> f32 {
+        (value as f32) / 64.0
     }
 }
 

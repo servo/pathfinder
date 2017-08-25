@@ -709,12 +709,18 @@ class PathfinderView {
 
         for (let textGlyphIndex = 0; textGlyphIndex < textGlyphs.length; textGlyphIndex++) {
             const textGlyph = textGlyphs[textGlyphIndex];
+            const textGlyphMetrics = textGlyph.getMetrics();
 
             const atlasGlyphIndex = _.sortedIndexOf(atlasGlyphIndices, textGlyph.getIndex());
             const atlasGlyph = atlasGlyphs[atlasGlyphIndex];
 
             // Set positions.
-            const textGlyphBL = currentPosition, textGlyphTR = glmatrix.vec2.create();
+            const textGlyphBL = glmatrix.vec2.create(), textGlyphTR = glmatrix.vec2.create();
+            const offset = glmatrix.vec2.fromValues(textGlyphMetrics.leftSideBearing,
+                                                    textGlyphMetrics.yMin);
+            glmatrix.vec2.scale(offset, offset, this.pixelsPerUnit);
+            glmatrix.vec2.add(textGlyphBL, currentPosition, offset);
+            glmatrix.vec2.round(textGlyphBL, textGlyphBL);
             glmatrix.vec2.add(textGlyphTR, textGlyphBL, atlasGlyph.atlasSize);
 
             glyphPositions.set([
@@ -743,7 +749,7 @@ class PathfinderView {
                              textGlyphIndex * 6);
 
             // Advance.
-            currentPosition[0] += Math.round(textGlyph.advanceWidth * this.pixelsPerUnit);
+            currentPosition[0] += textGlyph.advanceWidth * this.pixelsPerUnit;
         }
 
         this.glyphPositionsBuffer = unwrapNull(this.gl.createBuffer());
@@ -2037,6 +2043,7 @@ class Atlas {
 
         for (const glyph of glyphs) {
             const metrics = glyph.metrics;
+
             const glyphSize = glmatrix.vec2.fromValues(metrics.xMax - metrics.xMin,
                                                        metrics.yMax - metrics.yMin);
             glmatrix.vec2.scale(glyphSize, glyphSize, pixelsPerUnit);
