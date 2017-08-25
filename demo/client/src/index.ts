@@ -428,7 +428,7 @@ class AppController {
         this.updateAALevel();
     }
 
-    loadFont() {
+    private loadFont() {
         const file = expectNotNull(this.loadFontButton.files, "No file selected!")[0];
         const reader = new FileReader;
         reader.addEventListener('loadend', () => {
@@ -438,7 +438,7 @@ class AppController {
         reader.readAsArrayBuffer(file);
     }
 
-    updateAALevel() {
+    private updateAALevel() {
         const selectedOption = this.aaLevelSelect.selectedOptions[0];
         const aaType = unwrapUndef(selectedOption.dataset.pfType) as
             keyof AntialiasingStrategyTable;
@@ -446,7 +446,7 @@ class AppController {
         this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel));
     }
 
-    fontLoaded() {
+    private fontLoaded() {
         this.font = opentype.parse(this.fontData);
         if (!this.font.isSupported())
             throw new PathfinderError("The font type is unsupported.");
@@ -455,17 +455,17 @@ class AppController {
         this.textGlyphs = this.font.stringToGlyphs(TEXT);
 
         this.atlasGlyphs = this.textGlyphs.map(glyph => new PathfinderGlyph(glyph));
-        this.atlasGlyphs.sort((a, b) => a.index() - b.index());
-        this.atlasGlyphs = _.sortedUniqBy(this.atlasGlyphs, glyph => glyph.index());
+        this.atlasGlyphs.sort((a, b) => a.index - b.index);
+        this.atlasGlyphs = _.sortedUniqBy(this.atlasGlyphs, glyph => glyph.index);
 
         // Build the partitioning request to the server.
         const request = {
             otf: base64js.fromByteArray(new Uint8Array(this.fontData)),
             fontIndex: 0,
             glyphs: this.atlasGlyphs.map(glyph => {
-                const metrics = glyph.metrics();
+                const metrics = glyph.metrics;
                 return {
-                    id: glyph.index(),
+                    id: glyph.index,
                     transform: [1, 0, 0, 1, 0, 0],
                 };
             }),
@@ -482,7 +482,7 @@ class AppController {
         });
     }
 
-    meshesReceived() {
+    private meshesReceived() {
         this.rebuildAtlas();
         this.view.then(view => {
             view.uploadPathData(this.atlasGlyphs.length);
@@ -494,7 +494,7 @@ class AppController {
         this.setFontSize(scale * this.fontSize);
     }
 
-    setFontSize(newPixelsPerEm: number) {
+    private setFontSize(newPixelsPerEm: number) {
         this.fontSize = newPixelsPerEm;
 
         this.rebuildAtlas();
@@ -520,19 +520,19 @@ class AppController {
         return this._atlas;
     }
 
-    view: Promise<PathfinderView>;
-    loadFontButton: HTMLInputElement;
-    aaLevelSelect: HTMLSelectElement;
-    fpsLabel: HTMLElement;
+    private view: Promise<PathfinderView>;
+    private loadFontButton: HTMLInputElement;
+    private aaLevelSelect: HTMLSelectElement;
+    private fpsLabel: HTMLElement;
 
-    fontData: ArrayBuffer;
-    font: opentype.Font;
-    textGlyphs: opentype.Glyph[];
+    private fontData: ArrayBuffer;
+    private font: opentype.Font;
+    private textGlyphs: opentype.Glyph[];
 
     private _atlas: Atlas;
-    atlasGlyphs: PathfinderGlyph[];
+    private atlasGlyphs: PathfinderGlyph[];
 
-    meshes: PathfinderMeshData;
+    private meshes: PathfinderMeshData;
 
     /// The font size in pixels per em.
     fontSize: number;
@@ -698,7 +698,7 @@ class PathfinderView {
     private createTextBuffers(textGlyphs: opentype.Glyph[], atlasGlyphs: PathfinderGlyph[]) {
         this.textGlyphCount = textGlyphs.length;
 
-        const atlasGlyphIndices = atlasGlyphs.map(atlasGlyph => atlasGlyph.index());
+        const atlasGlyphIndices = atlasGlyphs.map(atlasGlyph => atlasGlyph.index);
 
         const glyphPositions = new Float32Array(textGlyphs.length * 8);
         const glyphTexCoords = new Float32Array(textGlyphs.length * 8);
@@ -714,7 +714,7 @@ class PathfinderView {
 
             // Set positions.
             const textGlyphBL = currentPosition, textGlyphTR = glmatrix.vec2.create();
-            glmatrix.vec2.add(textGlyphTR, textGlyphBL, atlasGlyph.getAtlasSize());
+            glmatrix.vec2.add(textGlyphTR, textGlyphBL, atlasGlyph.atlasSize);
 
             glyphPositions.set([
                 textGlyphBL[0], textGlyphTR[1],
@@ -724,7 +724,7 @@ class PathfinderView {
             ], textGlyphIndex * 8);
 
             // Set texture coordinates.
-            const atlasGlyphRect = atlasGlyph.getAtlasRect();
+            const atlasGlyphRect = atlasGlyph.atlasRect;
             const atlasGlyphBL = atlasGlyphRect.slice(0, 2) as glmatrix.vec2;
             const atlasGlyphTR = atlasGlyphRect.slice(2, 4) as glmatrix.vec2;
             glmatrix.vec2.div(atlasGlyphBL, atlasGlyphBL, ATLAS_SIZE);
@@ -766,8 +766,8 @@ class PathfinderView {
 
         const transforms = new Float32Array(_.concat([0, 0, 0, 0],
                                                      _.flatMap(atlasGlyphs, glyph => {
-            const atlasLocation = glyph.getAtlasRect();
-            const metrics = glyph.metrics();
+            const atlasLocation = glyph.atlasRect;
+            const metrics = glyph.metrics;
             const left = metrics.xMin * this.pixelsPerUnit;
             const bottom = metrics.yMin * this.pixelsPerUnit;
             return [
@@ -796,14 +796,14 @@ class PathfinderView {
         this.createTextBuffers(textGlyphs, atlasGlyphs);
     }
 
-    setDirty() {
+    private setDirty() {
         if (this.dirty)
             return;
         this.dirty = true;
         window.requestAnimationFrame(() => this.redraw());
     }
 
-    onWheel(event: WheelEvent) {
+    private onWheel(event: WheelEvent) {
         event.preventDefault();
 
         if (event.ctrlKey) {
@@ -837,7 +837,7 @@ class PathfinderView {
         this.setDirty();
     }
 
-    resizeToFit() {
+    private resizeToFit() {
         const width = window.innerWidth;
         const height = window.scrollY + window.innerHeight -
             this.canvas.getBoundingClientRect().top;
@@ -856,7 +856,7 @@ class PathfinderView {
         this.setDirty();
     }
 
-    redraw() {
+    private redraw() {
         if (this.meshes == null) {
             this.dirty = false;
             return;
@@ -893,7 +893,7 @@ class PathfinderView {
         this.dirty = false;
     }
 
-    finishTiming() {
+    private finishTiming() {
         if (this.timerQueryPollInterval != null)
             return;
 
@@ -925,7 +925,7 @@ class PathfinderView {
         }, TIME_INTERVAL_DELAY);
     }
 
-    setTransformUniform(uniforms: UniformMap) {
+    private setTransformUniform(uniforms: UniformMap) {
         const transform = this.antialiasingStrategy.transform();
         this.gl.uniformMatrix4fv(uniforms.uTransform, false, this.antialiasingStrategy.transform());
     }
@@ -939,20 +939,20 @@ class PathfinderView {
         this.gl.uniform2f(uniforms.uTexScale, 1.0, 1.0);
     }
 
-    usedSizeFactor(): glmatrix.vec2 {
+    private get usedSizeFactor(): glmatrix.vec2 {
         const usedSize = glmatrix.vec2.create();
         glmatrix.vec2.div(usedSize, this.appController.atlas.usedSize, ATLAS_SIZE);
         return usedSize;
     }
 
     setTransformSTAndTexScaleUniformsForAtlas(uniforms: UniformMap) {
-        const usedSize = this.usedSizeFactor();
+        const usedSize = this.usedSizeFactor;
         this.gl.uniform4f(uniforms.uTransformST, 2.0 * usedSize[0], 2.0 * usedSize[1], -1.0, -1.0);
         this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
     setTransformAndTexScaleUniformsForAtlas(uniforms: UniformMap) {
-        const usedSize = this.usedSizeFactor();
+        const usedSize = this.usedSizeFactor;
 
         const transform = glmatrix.mat4.create();
         glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
@@ -962,7 +962,7 @@ class PathfinderView {
         this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
-    renderDirect() {
+    private renderDirect() {
         // Set up implicit cover state.
         this.gl.depthFunc(this.gl.GREATER);
         this.gl.depthMask(true);
@@ -1051,7 +1051,7 @@ class PathfinderView {
         this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
     }
 
-    composite() {
+    private composite() {
         // Set up composite state.
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -1102,35 +1102,35 @@ class PathfinderView {
         return glmatrix.vec4.fromValues(0.0, 0.0, 0.0, 1.0);
     }
 
-    canvas: HTMLCanvasElement;
+    private canvas: HTMLCanvasElement;
 
     gl: WebGLRenderingContext;
 
-    colorBufferHalfFloatExt: any;
+    private colorBufferHalfFloatExt: any;
     drawBuffersExt: any;
     instancedArraysExt: any;
     textureHalfFloatExt: any;
-    timerQueryExt: any;
+    private timerQueryExt: any;
     vertexArrayObjectExt: any;
 
-    antialiasingStrategy: AntialiasingStrategy;
+    private antialiasingStrategy: AntialiasingStrategy;
 
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
 
     meshes: PathfinderMeshBuffers;
     meshData: PathfinderMeshData;
 
-    atlasRenderingTimerQuery: WebGLQuery;
-    compositingTimerQuery: WebGLQuery;
-    timerQueryPollInterval: number | null;
+    private atlasRenderingTimerQuery: WebGLQuery;
+    private compositingTimerQuery: WebGLQuery;
+    private timerQueryPollInterval: number | null;
 
-    pathColorsBufferTexture: PathfinderBufferTexture;
+    private pathColorsBufferTexture: PathfinderBufferTexture;
 
     quadPositionsBuffer: WebGLBuffer;
     quadTexCoordsBuffer: WebGLBuffer;
     quadElementsBuffer: WebGLBuffer;
 
-    translation: glmatrix.vec2;
+    private translation: glmatrix.vec2;
 
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
@@ -1994,32 +1994,32 @@ class PathfinderGlyph {
         this.glyph = glyph;
     }
 
-    getAtlasRect() {
-        return this.atlasRect;
+    get atlasRect() {
+        return this._atlasRect;
     }
 
-    getAtlasSize(): Size2D {
+    get atlasSize(): Size2D {
         let atlasSize = glmatrix.vec2.create();
         glmatrix.vec2.sub(atlasSize,
-                          this.atlasRect.slice(2, 4) as glmatrix.vec2,
-                          this.atlasRect.slice(0, 2) as glmatrix.vec2);
+                          this._atlasRect.slice(2, 4) as glmatrix.vec2,
+                          this._atlasRect.slice(0, 2) as glmatrix.vec2);
         return atlasSize;
     }
 
     setAtlasRect(rect: Rect) {
-        this.atlasRect = rect;
+        this._atlasRect = rect;
     }
 
-    index(): number {
+    get index(): number {
         return this.glyph.getIndex();
     }
 
-    metrics(): opentype.Metrics {
+    get metrics(): opentype.Metrics {
         return this.glyph.getMetrics();
     }
 
-    glyph: opentype.Glyph;
-    private atlasRect: Rect;
+    private glyph: opentype.Glyph;
+    private _atlasRect: Rect;
 }
 
 class Atlas {
@@ -2035,7 +2035,7 @@ class Atlas {
         let shelfBottom = 0.0;
 
         for (const glyph of glyphs) {
-            const metrics = glyph.metrics();
+            const metrics = glyph.metrics;
             const glyphSize = glmatrix.vec2.fromValues(metrics.xMax - metrics.xMin,
                                                        metrics.yMax - metrics.yMin);
             glmatrix.vec2.scale(glyphSize, glyphSize, pixelsPerUnit);
