@@ -2049,12 +2049,12 @@ class Atlas {
 
             const glyphRect = glmatrix.vec4.fromValues(nextOrigin[0] + 1,
                                                        nextOrigin[1] + 1,
-                                                       nextOrigin[0] + glyphSize[0] + 2,
-                                                       nextOrigin[1] + glyphSize[1] + 2);
+                                                       nextOrigin[0] + glyphSize[0] + 1,
+                                                       nextOrigin[1] + glyphSize[1] + 1);
 
             glyph.setAtlasRect(glyphRect);
 
-            nextOrigin[0] = glyphRect[2];
+            nextOrigin[0] = glyphRect[2] + 1;
             shelfBottom = Math.max(shelfBottom, glyphRect[3]);
         }
 
