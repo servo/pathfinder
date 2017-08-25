@@ -601,7 +601,7 @@ class PathfinderView {
         this.setDirty();
     }
 
-    initContext() {
+    private initContext() {
         // Initialize the OpenGL context.
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
@@ -632,8 +632,8 @@ class PathfinderView {
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_ELEMENTS, this.gl.STATIC_DRAW);
     }
 
-    compileShaders(commonSource: string, shaderSources: ShaderMap<ShaderProgramSource>):
-                   ShaderMap<UnlinkedShaderProgram> {
+    private compileShaders(commonSource: string, shaderSources: ShaderMap<ShaderProgramSource>):
+                           ShaderMap<UnlinkedShaderProgram> {
         let shaders: Partial<ShaderMap<Partial<UnlinkedShaderProgram>>> = {};
         const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
 
@@ -666,7 +666,8 @@ class PathfinderView {
         return shaders as ShaderMap<UnlinkedShaderProgram>;
     }
 
-    linkShaders(shaders: ShaderMap<UnlinkedShaderProgram>): ShaderMap<PathfinderShaderProgram> {
+    private linkShaders(shaders: ShaderMap<UnlinkedShaderProgram>):
+                        ShaderMap<PathfinderShaderProgram> {
         let shaderProgramMap: Partial<ShaderMap<PathfinderShaderProgram>> = {};
         for (const shaderName of Object.keys(shaders) as Array<keyof ShaderMap<string>>) {
             shaderProgramMap[shaderName] = new PathfinderShaderProgram(this.gl,
@@ -1135,8 +1136,8 @@ class PathfinderView {
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 
-    pixelsPerUnit: number;
-    textGlyphCount: number;
+    private pixelsPerUnit: number;
+    private textGlyphCount: number;
 
     glyphPositionsBuffer: WebGLBuffer;
     glyphTexCoordsBuffer: WebGLBuffer;
@@ -1146,7 +1147,7 @@ class PathfinderView {
 
     appController: AppController;
 
-    dirty: boolean;
+    private dirty: boolean;
 }
 
 class PathfinderShaderProgram {
