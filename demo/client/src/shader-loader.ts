@@ -8,6 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+import {AttributeMap, UniformMap} from './gl-utils';
+import {PathfinderError, expectNotNull, unwrapNull} from './utils';
+
+export interface UnlinkedShaderProgram {
+    vertex: WebGLShader;
+    fragment: WebGLShader;
+}
+
 const COMMON_SHADER_URL: string = '/glsl/gles2/common.inc.glsl';
 
 export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
@@ -106,4 +114,43 @@ export class ShaderLoader {
 
     common: Promise<string>;
     shaders: Promise<ShaderMap<ShaderProgramSource>>;
+}
+
+export class PathfinderShaderProgram {
+    constructor(gl: WebGLRenderingContext,
+                programName: string,
+                unlinkedShaderProgram: UnlinkedShaderProgram) {
+        this.program = expectNotNull(gl.createProgram(), "Failed to create shader program!");
+        for (const compiledShader of Object.values(unlinkedShaderProgram))
+            gl.attachShader(this.program, compiledShader);
+        gl.linkProgram(this.program);
+
+        if (gl.getProgramParameter(this.program, gl.LINK_STATUS) == 0) {
+            const infoLog = gl.getProgramInfoLog(this.program);
+            throw new PathfinderError(`Failed to link program "${programName}":\n${infoLog}`);
+        }
+
+        const uniformCount = gl.getProgramParameter(this.program, gl.ACTIVE_UNIFORMS);
+        const attributeCount = gl.getProgramParameter(this.program, gl.ACTIVE_ATTRIBUTES);
+
+        let uniforms: UniformMap = {};
+        let attributes: AttributeMap = {};
+
+        for (let uniformIndex = 0; uniformIndex < uniformCount; uniformIndex++) {
+            const uniformName = unwrapNull(gl.getActiveUniform(this.program, uniformIndex)).name;
+            uniforms[uniformName] = expectNotNull(gl.getUniformLocation(this.program, uniformName),
+                                                  `Didn't find uniform "${uniformName}"!`);
+        }
+        for (let attributeIndex = 0; attributeIndex < attributeCount; attributeIndex++) {
+            const attributeName = unwrapNull(gl.getActiveAttrib(this.program, attributeIndex)).name;
+            attributes[attributeName] = attributeIndex;
+        }
+
+        this.uniforms = uniforms;
+        this.attributes = attributes;
+    }
+
+    readonly uniforms: UniformMap;
+    readonly attributes: AttributeMap;
+    readonly program: WebGLProgram;
 }
