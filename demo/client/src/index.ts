@@ -7,8 +7,41 @@ import * as base64js from 'base64-js';
 import * as glmatrix from 'gl-matrix';
 import * as opentype from 'opentype.js';
 
-//const TEXT: string = "Lorem ipsum dolor sit amet";
-const TEXT: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const TEXT: string =
+`’Twas brillig, and the slithy toves
+Did gyre and gimble in the wabe;
+All mimsy were the borogoves,
+And the mome raths outgrabe.
+
+“Beware the Jabberwock, my son!
+The jaws that bite, the claws that catch!
+Beware the Jubjub bird, and shun
+The frumious Bandersnatch!”
+
+He took his vorpal sword in hand:
+Long time the manxome foe he sought—
+So rested he by the Tumtum tree,
+And stood awhile in thought.
+
+And as in uffish thought he stood,
+The Jabberwock, with eyes of flame,
+Came whiffling through the tulgey wood,
+And burbled as it came!
+
+One, two! One, two! And through and through
+The vorpal blade went snicker-snack!
+He left it dead, and with its head
+He went galumphing back.
+
+“And hast thou slain the Jabberwock?
+Come to my arms, my beamish boy!
+O frabjous day! Callooh! Callay!”
+He chortled in his joy.
+
+’Twas brillig, and the slithy toves
+Did gyre and gimble in the wabe;
+All mimsy were the borogoves,
+And the mome raths outgrabe.`;
 
 const INITIAL_FONT_SIZE: number = 72.0;
 
@@ -190,10 +223,6 @@ declare module 'opentype.js' {
 
 opentype.Font.prototype.isSupported = function() {
     return (this as any).supported;
-}
-
-opentype.Glyph.prototype.getIndex = function() {
-    return (this as any).index;
 }
 
 // Various utility functions
@@ -457,21 +486,24 @@ class AppController {
             throw new PathfinderError("The font type is unsupported.");
 
         // Lay out the text.
-        this.textGlyphs = this.font.stringToGlyphs(TEXT).map(glyph => new TextGlyph(glyph));
+        this.lineGlyphs = TEXT.split("\n").map(line => {
+            return this.font.stringToGlyphs(line).map(glyph => new TextGlyph(glyph));
+        });
+        this.textGlyphs = _.flatten(this.lineGlyphs);
 
         // Determine all glyphs potentially needed.
-        this.uniqueGlyphs = this.textGlyphs.map(textGlyph => textGlyph.glyph);
-        this.uniqueGlyphs.sort((a, b) => a.getIndex() - b.getIndex());
-        this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.getIndex());
+        this.uniqueGlyphs = this.textGlyphs.map(textGlyph => textGlyph);
+        this.uniqueGlyphs.sort((a, b) => a.index - b.index);
+        this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.index);
 
         // Build the partitioning request to the server.
         const request = {
             otf: base64js.fromByteArray(new Uint8Array(this.fontData)),
             fontIndex: 0,
             glyphs: this.uniqueGlyphs.map(glyph => {
-                const metrics = glyph.getMetrics();
+                const metrics = glyph.metrics;
                 return {
-                    id: glyph.getIndex(),
+                    id: glyph.index,
                     transform: [1, 0, 0, 1, 0, 0],
                 };
             }),
@@ -521,8 +553,9 @@ class AppController {
 
     private fontData: ArrayBuffer;
     font: opentype.Font;
+    lineGlyphs: TextGlyph[][];
     textGlyphs: TextGlyph[];
-    uniqueGlyphs: opentype.Glyph[];
+    uniqueGlyphs: PathfinderGlyph[];
 
     private _atlas: Atlas;
     atlasGlyphs: AtlasGlyph[];
@@ -693,52 +726,64 @@ class PathfinderView {
 
     /// Lays out glyphs on the canvas.
     private layoutGlyphs() {
+        const lineGlyphs = this.appController.lineGlyphs;
         const textGlyphs = this.appController.textGlyphs;
 
-        this.pixelsPerUnit = this.appController.fontSize / this.appController.font.unitsPerEm;
-
-        this.textGlyphCount = textGlyphs.length;
+        const font = this.appController.font;
+        this.pixelsPerUnit = this.appController.fontSize / font.unitsPerEm;
 
         const glyphPositions = new Float32Array(textGlyphs.length * 8);
         const glyphIndices = new Uint32Array(textGlyphs.length * 6);
 
+        const os2Table = font.tables.os2;
+        const lineHeight = (os2Table.sTypoAscender - os2Table.sTypoDescender +
+                            os2Table.sTypoLineGap) * this.pixelsPerUnit;
+
         const currentPosition = glmatrix.vec2.create();
 
-        for (let glyphIndex = 0; glyphIndex < textGlyphs.length; glyphIndex++) {
-            const textGlyph = textGlyphs[glyphIndex];
-            const glyphMetrics = textGlyph.glyph.getMetrics();
+        let glyphIndex = 0;
+        for (const line of lineGlyphs) {
+            for (let lineCharIndex = 0; lineCharIndex < line.length; lineCharIndex++) {
+                const textGlyph = textGlyphs[glyphIndex];
+                const glyphMetrics = textGlyph.metrics;
 
-            // Determine the atlas size.
-            const atlasSize = glmatrix.vec2.fromValues(glyphMetrics.xMax - glyphMetrics.xMin,
-                                                       glyphMetrics.yMax - glyphMetrics.yMin);
-            glmatrix.vec2.scale(atlasSize, atlasSize, this.pixelsPerUnit);
-            glmatrix.vec2.ceil(atlasSize, atlasSize);
+                // Determine the atlas size.
+                const atlasSize = glmatrix.vec2.fromValues(glyphMetrics.xMax - glyphMetrics.xMin,
+                                                           glyphMetrics.yMax - glyphMetrics.yMin);
+                glmatrix.vec2.scale(atlasSize, atlasSize, this.pixelsPerUnit);
+                glmatrix.vec2.ceil(atlasSize, atlasSize);
 
-            // Set positions.
-            const textGlyphBL = glmatrix.vec2.create(), textGlyphTR = glmatrix.vec2.create();
-            const offset = glmatrix.vec2.fromValues(glyphMetrics.leftSideBearing,
-                                                    glyphMetrics.yMin);
-            glmatrix.vec2.scale(offset, offset, this.pixelsPerUnit);
-            glmatrix.vec2.add(textGlyphBL, currentPosition, offset);
-            glmatrix.vec2.round(textGlyphBL, textGlyphBL);
-            glmatrix.vec2.add(textGlyphTR, textGlyphBL, atlasSize);
+                // Set positions.
+                const textGlyphBL = glmatrix.vec2.create(), textGlyphTR = glmatrix.vec2.create();
+                const offset = glmatrix.vec2.fromValues(glyphMetrics.leftSideBearing,
+                                                        glyphMetrics.yMin);
+                glmatrix.vec2.scale(offset, offset, this.pixelsPerUnit);
+                glmatrix.vec2.add(textGlyphBL, currentPosition, offset);
+                glmatrix.vec2.round(textGlyphBL, textGlyphBL);
+                glmatrix.vec2.add(textGlyphTR, textGlyphBL, atlasSize);
 
-            glyphPositions.set([
-                textGlyphBL[0], textGlyphTR[1],
-                textGlyphTR[0], textGlyphTR[1],
-                textGlyphBL[0], textGlyphBL[1],
-                textGlyphTR[0], textGlyphBL[1],
-            ], glyphIndex * 8);
+                glyphPositions.set([
+                    textGlyphBL[0], textGlyphTR[1],
+                    textGlyphTR[0], textGlyphTR[1],
+                    textGlyphBL[0], textGlyphBL[1],
+                    textGlyphTR[0], textGlyphBL[1],
+                ], glyphIndex * 8);
 
-            textGlyph.canvasRect = glmatrix.vec4.fromValues(textGlyphBL[0], textGlyphBL[1],
-                                                            textGlyphTR[0], textGlyphTR[1]);
+                textGlyph.canvasRect = glmatrix.vec4.fromValues(textGlyphBL[0], textGlyphBL[1],
+                                                                textGlyphTR[0], textGlyphTR[1]);
 
-            // Set indices.
-            glyphIndices.set(QUAD_ELEMENTS.map(elementIndex => elementIndex + 4 * glyphIndex),
-                             glyphIndex * 6);
+                // Set indices.
+                glyphIndices.set(Array.from(QUAD_ELEMENTS).map(index => index + 4 * glyphIndex),
+                                 glyphIndex * 6);
 
-            // Advance.
-            currentPosition[0] += textGlyph.glyph.advanceWidth * this.pixelsPerUnit;
+                // Advance.
+                currentPosition[0] += textGlyph.advanceWidth * this.pixelsPerUnit;
+
+                glyphIndex++;
+            }
+
+            currentPosition[0] = 0;
+            currentPosition[1] -= lineHeight;
         }
 
         this.glyphPositionsBuffer = unwrapNull(this.gl.createBuffer());
@@ -760,7 +805,7 @@ class PathfinderView {
 
         let atlasGlyphs =
             textGlyphs.filter(textGlyph => rectsIntersect(textGlyph.canvasRect, canvasRect))
-                      .map(textGlyph => new AtlasGlyph(textGlyph.glyph));
+                      .map(textGlyph => new AtlasGlyph(textGlyph));
         atlasGlyphs.sort((a, b) => a.index - b.index);
         atlasGlyphs = _.sortedUniqBy(atlasGlyphs, glyph => glyph.index);
         this.appController.atlasGlyphs = atlasGlyphs;
@@ -770,7 +815,7 @@ class PathfinderView {
 
         this.appController.atlas.layoutGlyphs(atlasGlyphs, fontSize, unitsPerEm);
 
-        const uniqueGlyphIndices = this.appController.uniqueGlyphs.map(glyph => glyph.getIndex());
+        const uniqueGlyphIndices = this.appController.uniqueGlyphs.map(glyph => glyph.index);
         uniqueGlyphIndices.sort((a, b) => a - b);
 
         // TODO(pcwalton): Regenerate the IBOs to include only the glyphs we care about.
@@ -820,9 +865,9 @@ class PathfinderView {
 
         for (let textGlyphIndex = 0; textGlyphIndex < textGlyphs.length; textGlyphIndex++) {
             const textGlyph = textGlyphs[textGlyphIndex];
-            const textGlyphMetrics = textGlyph.glyph.getMetrics();
+            const textGlyphMetrics = textGlyph.metrics;
 
-            let atlasGlyphIndex = _.sortedIndexOf(atlasGlyphIndices, textGlyph.glyph.getIndex());
+            let atlasGlyphIndex = _.sortedIndexOf(atlasGlyphIndices, textGlyph.index);
             if (atlasGlyphIndex < 0)
                 continue;
 
@@ -1157,7 +1202,10 @@ class PathfinderView {
         this.gl.bindTexture(this.gl.TEXTURE_2D, this.appController.atlas.ensureTexture(this.gl));
         this.gl.uniform1i(blitProgram.uniforms.uSource, 0);
         this.setIdentityTexScaleUniform(blitProgram.uniforms);
-        this.gl.drawElements(this.gl.TRIANGLES, this.textGlyphCount * 6, this.gl.UNSIGNED_INT, 0);
+        this.gl.drawElements(this.gl.TRIANGLES,
+                             this.appController.textGlyphs.length * 6,
+                             this.gl.UNSIGNED_INT,
+                             0);
     }
 
     get bgColor(): glmatrix.vec4 {
@@ -1202,7 +1250,6 @@ class PathfinderView {
     atlasDepthTexture: WebGLTexture;
 
     private pixelsPerUnit: number;
-    private textGlyphCount: number;
 
     glyphPositionsBuffer: WebGLBuffer;
     glyphTexCoordsBuffer: WebGLBuffer;
@@ -2055,9 +2102,34 @@ interface AntialiasingStrategyTable {
     ecaa: typeof ECAAStrategy;
 }
 
-class TextGlyph {
-    constructor(glyph: opentype.Glyph) {
-        this.glyph = glyph;
+class PathfinderGlyph {
+    constructor(glyph: opentype.Glyph | PathfinderGlyph) {
+        this.glyph = glyph instanceof PathfinderGlyph ? glyph.glyph : glyph;
+        this._metrics = null;
+    }
+
+    get index(): number {
+        return (this.glyph as any).index;
+    }
+
+    get metrics(): opentype.Metrics {
+        if (this._metrics == null)
+            this._metrics = this.glyph.getMetrics();
+        return this._metrics;
+    }
+
+    get advanceWidth(): number {
+        return this.glyph.advanceWidth;
+    }
+
+    private glyph: opentype.Glyph;
+    private _metrics: opentype.Metrics | null;
+}
+
+class TextGlyph extends PathfinderGlyph {
+    constructor(glyph: opentype.Glyph | PathfinderGlyph) {
+        super(glyph);
+        this._canvasRect = glmatrix.vec4.create();
     }
 
     get canvasRect() {
@@ -2068,13 +2140,13 @@ class TextGlyph {
         this._canvasRect = rect;
     }
 
-    glyph: opentype.Glyph;
     private _canvasRect: Rect;
 }
 
-class AtlasGlyph {
-    constructor(glyph: opentype.Glyph) {
-        this.glyph = glyph;
+class AtlasGlyph extends PathfinderGlyph {
+    constructor(glyph: opentype.Glyph | PathfinderGlyph) {
+        super(glyph);
+        this._atlasRect = glmatrix.vec4.create();
     }
 
     get atlasRect() {
@@ -2093,15 +2165,6 @@ class AtlasGlyph {
         return atlasSize;
     }
 
-    get index(): number {
-        return this.glyph.getIndex();
-    }
-
-    get metrics(): opentype.Metrics {
-        return this.glyph.getMetrics();
-    }
-
-    private glyph: opentype.Glyph;
     private _atlasRect: Rect;
 }
 
