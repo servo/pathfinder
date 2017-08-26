@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Text &mdash; Pathfinder Demo</title>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        <link rel="stylesheet" href="/css/bootstrap/bootstrap.css">
+        <link rel="stylesheet" href="/css/pathfinder.css">
+        <script type="text/javascript" src="js/jquery/jquery.js"></script>
+        <script type="text/javascript" src="js/bootstrap/bootstrap.js"></script>
+        <script type="text/javascript" src="js/pathfinder.js"></script>
+    </head>
+    <body>
+        <nav class="navbar navbar-toggleable-md navbar-inverse bg-inverse">
+            <a class="navbar-brand" href="#">Pathfinder</a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav mr-auto">
+                    <li class="nav-item dropdown active">
+                        <a class="nav-link dropdown-toggle" id="pf-demos-menu"
+                         data-toggle="dropdown" ref="/" aria-haspopup="true"
+                         aria-expanded="false">Demos</a>
+                        <div class="dropdown-menu" aria-labelledby="pf-demos-menu">
+                            <a class="dropdown-item" href="/">Text</a>
+                            <a class="dropdown-item" href="/svg">SVG</a>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+        <div class="rounded py-1 px-3" id="pf-fps-label">0 ms</div>
+        <canvas id="pf-canvas" width="400" height="300"></canvas>
+        <label class="btn btn-secondary btn-file pf-bottom-control" id="pf-load-font-button-label">
+            Load Font&hellip;
+            <input type="file" style="display: none" id="pf-load-font-button">
+        </label>
+        <div class="pf-bottom-control" id="pf-rendering-options-group">
+            <select class="custom-select" id="pf-aa-level-select">
+                <option data-pf-type="none" data-pf-level="0" selected>No AA</option>
+                <option data-pf-type="ecaa" data-pf-level="0">ECAA</option>
+                <option data-pf-type="ssaa" data-pf-level="2">2&times;SSAA</option>
+                <option data-pf-type="ssaa" data-pf-level="4">4&times;SSAA</option>
+            </select>
+        </div>
+    </body>
+</html>

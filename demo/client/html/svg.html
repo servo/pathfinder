@@ -1,57 +1,37 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>Pathfinder Demo</title>
+        <title>SVG &mdash; Pathfinder Demo</title>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <link rel="stylesheet" href="/css/bootstrap/bootstrap.css">
+        <link rel="stylesheet" href="/css/pathfinder.css">
         <script type="text/javascript" src="js/jquery/jquery.js"></script>
         <script type="text/javascript" src="js/bootstrap/bootstrap.js"></script>
         <script type="text/javascript" src="js/pathfinder.js"></script>
-        <style type="text/css">
-            body {
-                background: lightslategray;
-            }
-            .pf-bottom-control {
-                position: fixed;
-                bottom: 1em;
-            }
-            #pf-load-font-button-label {
-                left: 1em;
-                margin: 0;
-            }
-            #pf-rendering-options-group {
-                right: 1em;
-            }
-            #pf-canvas {
-                display: block;
-                touch-action: none;
-            }
-            #pf-fps-label {
-                position: absolute;
-                right: 1em;
-                margin-top: 1em;
-                color: white;
-                background: rgba(0, 0, 0, 0.75);
-            }
-        </style>
     </head>
     <body>
         <nav class="navbar navbar-toggleable-md navbar-inverse bg-inverse">
-            <a class="navbar-brand" href="#">Pathfinder Demo</a>
+            <a class="navbar-brand" href="#">Pathfinder</a>
             <div class="collapse navbar-collapse">
                 <ul class="navbar-nav mr-auto">
-                    <li class="nav-item active">
-                        <a class="nav-link" href="#">Text</a>
+                    <li class="nav-item dropdown active">
+                        <a class="nav-link dropdown-toggle" id="pf-demos-menu"
+                         data-toggle="dropdown" ref="/" aria-haspopup="true"
+                         aria-expanded="false">Demos</a>
+                        <div class="dropdown-menu" aria-labelledby="pf-demos-menu">
+                            <a class="dropdown-item" href="/">Text</a>
+                            <a class="dropdown-item" href="/svg">SVG</a>
+                        </div>
                     </li>
                 </ul>
             </div>
         </nav>
         <div class="rounded py-1 px-3" id="pf-fps-label">0 ms</div>
         <canvas id="pf-canvas" width="400" height="300"></canvas>
-        <label class="btn btn-secondary btn-file pf-bottom-control" id="pf-load-font-button-label">
-            Load Font…
-            <input type="file" style="display: none" id="pf-load-font-button">
+        <label class="btn btn-secondary btn-file pf-bottom-control" id="pf-load-svg-button-label">
+            Load SVG&hellip;
+            <input type="file" style="display: none" id="pf-load-svg-button">
         </label>
         <div class="pf-bottom-control" id="pf-rendering-options-group">
             <select class="custom-select" id="pf-aa-level-select">

@@ -36,8 +36,10 @@ use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
 
-static STATIC_ROOT_PATH: &'static str = "../client/index.html";
+static STATIC_TEXT_DEMO_PATH: &'static str = "../client/html/text.html";
+static STATIC_SVG_DEMO_PATH: &'static str = "../client/html/svg.html";
 static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/css";
+static STATIC_CSS_PATHFINDER_PATH: &'static str = "../client/css/pathfinder.css";
 static STATIC_JS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/js";
 static STATIC_JS_JQUERY_PATH: &'static str = "../client/node_modules/jquery/dist";
 static STATIC_JS_PATHFINDER_JS_PATH: &'static str = "../client/pathfinder.js";
@@ -319,8 +321,12 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
 // Static files
 #[get("/")]
-fn static_index() -> io::Result<NamedFile> {
-    NamedFile::open(STATIC_ROOT_PATH)
+fn static_text_demo() -> io::Result<NamedFile> {
+    NamedFile::open(STATIC_TEXT_DEMO_PATH)
+}
+#[get("/svg")]
+fn static_svg_demo() -> io::Result<NamedFile> {
+    NamedFile::open(STATIC_SVG_DEMO_PATH)
 }
 #[get("/js/pathfinder.js")]
 fn static_js_pathfinder_js() -> io::Result<NamedFile> {
@@ -329,6 +335,10 @@ fn static_js_pathfinder_js() -> io::Result<NamedFile> {
 #[get("/css/bootstrap/<file..>")]
 fn static_css_bootstrap(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_CSS_BOOTSTRAP_PATH).join(file)).ok()
+}
+#[get("/css/pathfinder.css")]
+fn static_css_pathfinder_css() -> io::Result<NamedFile> {
+    NamedFile::open(STATIC_CSS_PATHFINDER_PATH)
 }
 #[get("/js/bootstrap/<file..>")]
 fn static_js_bootstrap(file: PathBuf) -> Option<NamedFile> {
@@ -364,9 +374,11 @@ impl<'a> Responder<'a> for Shader {
 fn main() {
     rocket::ignite().mount("/", routes![
         partition_font,
-        static_index,
+        static_text_demo,
+        static_svg_demo,
         static_js_pathfinder_js,
         static_css_bootstrap,
+        static_css_pathfinder_css,
         static_js_bootstrap,
         static_js_jquery,
         static_glsl,

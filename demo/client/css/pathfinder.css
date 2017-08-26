@@ -1,0 +1,26 @@
+body {
+    background: lightslategray;
+}
+.pf-bottom-control {
+    position: fixed;
+    bottom: 1em;
+}
+#pf-load-font-button-label,
+#pf-load-svg-button-label {
+    left: 1em;
+    margin: 0;
+}
+#pf-rendering-options-group {
+    right: 1em;
+}
+#pf-canvas {
+    display: block;
+    touch-action: none;
+}
+#pf-fps-label {
+    position: absolute;
+    right: 1em;
+    margin-top: 1em;
+    color: white;
+    background: rgba(0, 0, 0, 0.75);
+}
