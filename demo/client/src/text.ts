@@ -13,6 +13,9 @@ import * as base64js from 'base64-js';
 import * as glmatrix from 'gl-matrix';
 import * as opentype from 'opentype.js';
 
+import AppController from './app-controller';
+import {SHADER_NAMES, ShaderMap, ShaderProgramSource} from './shader-loader';
+
 const TEXT: string =
 `’Twas brillig, and the slithy toves
 Did gyre and gimble in the wabe;
@@ -57,8 +60,6 @@ const TIME_INTERVAL_DELAY: number = 32;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
-const COMMON_SHADER_URL: string = '/glsl/gles2/common.inc.glsl';
-
 const UINT32_SIZE: number = 4;
 
 const B_POSITION_SIZE: number = 8;
@@ -75,45 +76,6 @@ const B_QUAD_LOWER_INDICES_OFFSET: number = 4 * 4;
 
 const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(3072, 3072);
 
-const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
-    blit: {
-        vertex: "/glsl/gles2/blit.vs.glsl",
-        fragment: "/glsl/gles2/blit.fs.glsl",
-    },
-    directCurve: {
-        vertex: "/glsl/gles2/direct-curve.vs.glsl",
-        fragment: "/glsl/gles2/direct-curve.fs.glsl",
-    },
-    directInterior: {
-        vertex: "/glsl/gles2/direct-interior.vs.glsl",
-        fragment: "/glsl/gles2/direct-interior.fs.glsl",
-    },
-    ecaaEdgeDetect: {
-        vertex: "/glsl/gles2/ecaa-edge-detect.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-edge-detect.fs.glsl",
-    },
-    ecaaCover: {
-        vertex: "/glsl/gles2/ecaa-cover.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-cover.fs.glsl",
-    },
-    ecaaLine: {
-        vertex: "/glsl/gles2/ecaa-line.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-line.fs.glsl",
-    },
-    ecaaCurve: {
-        vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
-    },
-    ecaaMonoResolve: {
-        vertex: "/glsl/gles2/ecaa-mono-resolve.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-mono-resolve.fs.glsl",
-    },
-    ecaaMultiResolve: {
-        vertex: "/glsl/gles2/ecaa-multi-resolve.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-multi-resolve.fs.glsl",
-    },
-};
-
 interface UnlinkedShaderProgram {
     vertex: WebGLShader;
     fragment: WebGLShader;
@@ -129,28 +91,6 @@ interface Point2D {
 }
 
 type Size2D = glmatrix.vec2;
-
-interface ShaderProgramSource {
-    vertex: string;
-    fragment: string;
-}
-
-interface ShaderProgramURLs {
-    vertex: string;
-    fragment: string;
-}
-
-interface ShaderMap<T> {
-    blit: T;
-    directCurve: T;
-    directInterior: T;
-    ecaaEdgeDetect: T;
-    ecaaCover: T;
-    ecaaLine: T;
-    ecaaCurve: T;
-    ecaaMonoResolve: T;
-    ecaaMultiResolve: T;
-}
 
 interface UniformMap {
     [uniformName: string]: WebGLUniformLocation;
@@ -443,29 +383,32 @@ class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly edgeLowerCurveIndices: WebGLBuffer;
 }
 
-class AppController {
+class TextDemoController extends AppController<PathfinderView> {
     constructor() {
+        super();
         this._atlas = new Atlas;
     }
 
     start() {
+        super.start();
+
         this.fontSize = INITIAL_FONT_SIZE;
 
         this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
 
         const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
-        const shaderLoader = new PathfinderShaderLoader;
-        shaderLoader.load();
-        this.view = Promise.all([shaderLoader.common, shaderLoader.shaders]).then(allShaders => {
-            return new PathfinderView(this, canvas, allShaders[0], allShaders[1]);
-        });
-
         this.loadFontButton = document.getElementById('pf-load-font-button') as HTMLInputElement;
         this.loadFontButton.addEventListener('change', () => this.loadFont(), false);
 
         this.aaLevelSelect = document.getElementById('pf-aa-level-select') as HTMLSelectElement;
         this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
         this.updateAALevel();
+    }
+
+    protected createView(canvas: HTMLCanvasElement,
+                         commonShaderSource: string,
+                         shaderSources: ShaderMap<ShaderProgramSource>) {
+        return new PathfinderView(this, canvas, commonShaderSource, shaderSources);
     }
 
     private loadFont() {
@@ -552,7 +495,6 @@ class AppController {
         return this._atlas;
     }
 
-    private view: Promise<PathfinderView>;
     private loadFontButton: HTMLInputElement;
     private aaLevelSelect: HTMLSelectElement;
     private fpsLabel: HTMLElement;
@@ -572,33 +514,8 @@ class AppController {
     fontSize: number;
 }
 
-class PathfinderShaderLoader {
-    load() {
-        this.common = window.fetch(COMMON_SHADER_URL).then(response => response.text());
-
-        const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
-        let promises = [];
-        for (const shaderKey of shaderKeys) {
-            promises.push(Promise.all([
-                window.fetch(SHADER_URLS[shaderKey].vertex).then(response => response.text()),
-                window.fetch(SHADER_URLS[shaderKey].fragment).then(response => response.text()),
-            ]).then(results => { return { vertex: results[0], fragment: results[1] } }));
-        }
-
-        this.shaders = Promise.all(promises).then(promises => {
-            let shaderMap: Partial<ShaderMap<ShaderProgramSource>> = {};
-            for (let keyIndex = 0; keyIndex < shaderKeys.length; keyIndex++)
-                shaderMap[shaderKeys[keyIndex]] = promises[keyIndex];
-            return shaderMap as ShaderMap<ShaderProgramSource>;
-        });
-    }
-
-    common: Promise<string>;
-    shaders: Promise<ShaderMap<ShaderProgramSource>>;
-}
-
 class PathfinderView {
-    constructor(appController: AppController,
+    constructor(appController: TextDemoController,
                 canvas: HTMLCanvasElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
@@ -669,9 +586,8 @@ class PathfinderView {
     private compileShaders(commonSource: string, shaderSources: ShaderMap<ShaderProgramSource>):
                            ShaderMap<UnlinkedShaderProgram> {
         let shaders: Partial<ShaderMap<Partial<UnlinkedShaderProgram>>> = {};
-        const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
 
-        for (const shaderKey of shaderKeys) {
+        for (const shaderKey of SHADER_NAMES) {
             for (const typeName of ['vertex', 'fragment'] as Array<ShaderTypeName>) {
                 const type = {
                     vertex: this.gl.VERTEX_SHADER,
@@ -1263,7 +1179,7 @@ class PathfinderView {
 
     atlasTransformBuffer: PathfinderBufferTexture;
 
-    appController: AppController;
+    appController: TextDemoController;
 
     private dirty: boolean;
 }
@@ -2250,7 +2166,7 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
 };
 
 function main() {
-    const controller = new AppController;
+    const controller = new TextDemoController;
     window.addEventListener('load', () => controller.start(), false);
 }
 
