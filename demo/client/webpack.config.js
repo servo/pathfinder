@@ -1,6 +1,9 @@
 module.exports = {
     devtool: 'inline-source-map',
-    entry: "./src/index.ts",
+    entry: {
+        svg: "./src/svg.ts",
+        text: "./src/text.ts",
+    },
     module: {
         rules: [
             {
@@ -14,7 +17,7 @@ module.exports = {
         extensions: [".tsx", ".ts", ".js"],
     },
     output: {
-        filename: "pathfinder.js",
+        filename: "[name].js",
         path: __dirname,
     },
 }

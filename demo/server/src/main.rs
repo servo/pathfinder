@@ -42,7 +42,7 @@ static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstr
 static STATIC_CSS_PATHFINDER_PATH: &'static str = "../client/css/pathfinder.css";
 static STATIC_JS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/js";
 static STATIC_JS_JQUERY_PATH: &'static str = "../client/node_modules/jquery/dist";
-static STATIC_JS_PATHFINDER_JS_PATH: &'static str = "../client/pathfinder.js";
+static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -328,10 +328,6 @@ fn static_text_demo() -> io::Result<NamedFile> {
 fn static_svg_demo() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_SVG_DEMO_PATH)
 }
-#[get("/js/pathfinder.js")]
-fn static_js_pathfinder_js() -> io::Result<NamedFile> {
-    NamedFile::open(STATIC_JS_PATHFINDER_JS_PATH)
-}
 #[get("/css/bootstrap/<file..>")]
 fn static_css_bootstrap(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_CSS_BOOTSTRAP_PATH).join(file)).ok()
@@ -347,6 +343,10 @@ fn static_js_bootstrap(file: PathBuf) -> Option<NamedFile> {
 #[get("/js/jquery/<file..>")]
 fn static_js_jquery(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_JS_JQUERY_PATH).join(file)).ok()
+}
+#[get("/js/pathfinder/<file..>")]
+fn static_js_pathfinder(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_JS_PATHFINDER_PATH).join(file)).ok()
 }
 #[get("/glsl/<file..>")]
 fn static_glsl(file: PathBuf) -> Option<Shader> {
@@ -376,11 +376,11 @@ fn main() {
         partition_font,
         static_text_demo,
         static_svg_demo,
-        static_js_pathfinder_js,
         static_css_bootstrap,
         static_css_pathfinder_css,
         static_js_bootstrap,
         static_js_jquery,
+        static_js_pathfinder,
         static_glsl,
     ]).launch();
 }
