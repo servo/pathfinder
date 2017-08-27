@@ -13,7 +13,7 @@ import * as glmatrix from 'gl-matrix';
 import {AntialiasingStrategy} from './aa-strategy';
 import {createFramebufferDepthTexture, createFramebuffer, setTextureParameters} from './gl-utils';
 import {unwrapNull} from './utils';
-import PathfinderView from './view';
+import {PathfinderView} from './view';
 
 export default class SSAAStrategy implements AntialiasingStrategy {
     constructor(level: number) {

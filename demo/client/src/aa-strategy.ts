@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import PathfinderView from './view';
+import {PathfinderView} from './view';
 
 export interface AntialiasingStrategy {
     // Prepares any OpenGL data. This is only called on startup and canvas resize.

@@ -21,9 +21,9 @@ import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull} from './utils';
+import {MonochromePathfinderView} from './view';
 import AppController from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
-import PathfinderView from './view';
 import SSAAStrategy from './ssaa-strategy';
 
 const TEXT: string =
@@ -258,7 +258,7 @@ class TextDemoController extends AppController<TextDemoView> {
     fontSize: number;
 }
 
-class TextDemoView extends PathfinderView {
+class TextDemoView extends MonochromePathfinderView {
     constructor(appController: TextDemoController,
                 canvas: HTMLCanvasElement,
                 commonShaderSource: string,

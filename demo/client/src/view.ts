@@ -31,7 +31,7 @@ const QUAD_TEX_COORDS: Float32Array = new Float32Array([
     1.0, 0.0,
 ]);
 
-export default abstract class PathfinderView {
+export abstract class PathfinderView {
     constructor(canvas: HTMLCanvasElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
@@ -141,9 +141,6 @@ export default abstract class PathfinderView {
     abstract get destAllocatedSize(): glmatrix.vec2;
     abstract get destUsedSize(): glmatrix.vec2;
 
-    abstract get bgColor(): glmatrix.vec4;
-    abstract get fgColor(): glmatrix.vec4;
-
     protected canvas: HTMLCanvasElement;
 
     gl: WebGLRenderingContext;
@@ -166,4 +163,9 @@ export default abstract class PathfinderView {
 
     atlasTransformBuffer: PathfinderBufferTexture;
     protected pathColorsBufferTexture: PathfinderBufferTexture;
+}
+
+export abstract class MonochromePathfinderView extends PathfinderView {
+    abstract get bgColor(): glmatrix.vec4;
+    abstract get fgColor(): glmatrix.vec4;
 }

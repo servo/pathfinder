@@ -10,9 +10,13 @@
 
 export const UINT32_SIZE: number = 4;
 
+export function panic(message: string): never {
+    throw new PathfinderError(message);
+}
+
 export function assert(value: boolean, message: string) {
     if (!value)
-        throw new PathfinderError(message);
+        panic(message);
 }
 
 export function expectNotNull<T>(value: T | null, message: string): T {
