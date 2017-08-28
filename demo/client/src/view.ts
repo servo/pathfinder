@@ -44,7 +44,29 @@ export abstract class PathfinderView {
 
         this.atlasTransformBuffer = new PathfinderBufferTexture(this.gl, 'uPathTransform');
         this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
+
+        window.addEventListener('resize', () => this.resizeToFit(false), false);
+        this.resizeToFit(true);
     }
+
+    private resizeToFit(initialSize: boolean) {
+        const width = window.innerWidth;
+        const height = window.scrollY + window.innerHeight -
+            this.canvas.getBoundingClientRect().top;
+        const devicePixelRatio = window.devicePixelRatio;
+
+        const canvasSize = new Float32Array([width, height]) as glmatrix.vec2;
+        glmatrix.vec2.scale(canvasSize, canvasSize, devicePixelRatio);
+
+        this.canvas.style.width = width + 'px';
+        this.canvas.style.height = height + 'px';
+        this.canvas.width = canvasSize[0];
+        this.canvas.height = canvasSize[1];
+
+        this.resized(initialSize);
+    }
+
+    protected abstract resized(initialSize: boolean): void;
 
     protected initContext() {
         // Initialize the OpenGL context.

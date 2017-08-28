@@ -45,11 +45,8 @@ export interface Meshes<T> {
 }
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer> {
-    constructor(encodedResponse: string) {
-        const response = JSON.parse(encodedResponse);
-        if (!('Ok' in response))
-            throw new PathfinderError("Failed to partition the font!");
-        const meshes = response.Ok;
+    constructor(meshes: any) {
+        console.log(meshes);
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>)
             this[bufferName] = base64js.toByteArray(meshes[bufferName]).buffer as ArrayBuffer;
 

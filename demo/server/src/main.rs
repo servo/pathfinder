@@ -26,6 +26,7 @@ use euclid::{Point2D, Size2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey};
 use pathfinder_font_renderer::{GlyphKey, GlyphOutlineBuffer};
 use pathfinder_partitioner::partitioner::Partitioner;
+use pathfinder_partitioner::{Endpoint, Subpath};
 use rocket::http::{ContentType, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Responder, Response};
@@ -35,6 +36,7 @@ use std::fs::File;
 use std::io;
 use std::mem;
 use std::path::{Path, PathBuf};
+use std::u32;
 
 static STATIC_TEXT_DEMO_PATH: &'static str = "../client/html/text.html";
 static STATIC_SVG_DEMO_PATH: &'static str = "../client/html/svg.html";
@@ -46,19 +48,18 @@ static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+struct SubpathRange {
+    start: u32,
+    end: u32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct IndexRange {
     start: usize,
     end: usize,
 }
 
 impl IndexRange {
-    fn new(start: usize, end: usize) -> IndexRange {
-        IndexRange {
-            start: start,
-            end: end,
-        }
-    }
-
     fn from_data<T>(dest: &mut Vec<u8>, src: &[T]) -> Result<IndexRange, ()> where T: Serialize {
         let byte_len_before = dest.len();
         for src_value in src {
@@ -95,52 +96,84 @@ struct PartitionGlyphDimensions {
     advance: f32,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-struct DecodedOutlineIndices {
-    endpoint_indices: IndexRange,
-    control_point_indices: IndexRange,
-    subpath_indices: IndexRange,
+impl PartitionGlyphDimensions {
+    fn dummy() -> PartitionGlyphDimensions {
+        PartitionGlyphDimensions {
+            origin: Point2D::zero(),
+            size: Size2D::zero(),
+            advance: 0.0,
+        }
+    }
 }
 
-#[allow(non_snake_case)]
 #[derive(Clone, Copy, Serialize, Deserialize)]
 struct PartitionGlyphInfo {
     id: u32,
     dimensions: PartitionGlyphDimensions,
-    bQuadIndices: IndexRange,
-    bVertexIndices: IndexRange,
-    coverInteriorIndices: IndexRange,
-    coverCurveIndices: IndexRange,
-    edgeUpperLineIndices: IndexRange,
-    edgeUpperCurveIndices: IndexRange,
-    edgeLowerLineIndices: IndexRange,
-    edgeLowerCurveIndices: IndexRange,
+    #[serde(rename = "pathIndices")]
+    path_indices: PartitionPathIndices,
 }
 
-#[allow(non_snake_case)]
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionFontResponse {
-    glyphInfo: Vec<PartitionGlyphInfo>,
+    #[serde(rename = "glyphInfo")]
+    glyph_info: Vec<PartitionGlyphInfo>,
+    #[serde(rename = "pathData")]
+    path_data: PartitionEncodedPathData,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+struct PartitionPathIndices {
+    #[serde(rename = "bQuadIndices")]
+    b_quad_indices: IndexRange,
+    #[serde(rename = "bVertexIndices")]
+    b_vertex_indices: IndexRange,
+    #[serde(rename = "coverInteriorIndices")]
+    cover_interior_indices: IndexRange,
+    #[serde(rename = "coverCurveIndices")]
+    cover_curve_indices: IndexRange,
+    #[serde(rename = "coverUpperLineIndices")]
+    edge_upper_line_indices: IndexRange,
+    #[serde(rename = "coverUpperCurveIndices")]
+    edge_upper_curve_indices: IndexRange,
+    #[serde(rename = "coverLowerLineIndices")]
+    edge_lower_line_indices: IndexRange,
+    #[serde(rename = "coverLowerCurveIndices")]
+    edge_lower_curve_indices: IndexRange,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct PartitionEncodedPathData {
     // Base64-encoded `bincode`-encoded `BQuad`s.
-    bQuads: String,
+    #[serde(rename = "bQuads")]
+    b_quads: String,
     // Base64-encoded `bincode`-encoded `Point2D<f32>`s.
-    bVertexPositions: String,
+    #[serde(rename = "bVertexPositions")]
+    b_vertex_positions: String,
     // Base64-encoded `bincode`-encoded `u16`s.
-    bVertexPathIDs: String,
+    #[serde(rename = "bVertexPathIDs")]
+    b_vertex_path_ids: String,
     // Base64-encoded `bincode`-encoded `BVertexLoopBlinnData`s.
-    bVertexLoopBlinnData: String,
+    #[serde(rename = "bVertexLoopBlinnData")]
+    b_vertex_loop_blinn_data: String,
     // Base64-encoded `u32`s.
-    coverInteriorIndices: String,
+    #[serde(rename = "coverInteriorIndices")]
+    cover_interior_indices: String,
     // Base64-encoded `u32`s.
-    coverCurveIndices: String,
+    #[serde(rename = "coverCurveIndices")]
+    cover_curve_indices: String,
     // Base64-encoded `bincode`-encoded `LineIndices` instances.
-    edgeUpperLineIndices: String,
+    #[serde(rename = "edgeUpperLineIndices")]
+    edge_upper_line_indices: String,
     // Base64-encoded `bincode`-encoded `CurveIndices` instances.
-    edgeUpperCurveIndices: String,
+    #[serde(rename = "edgeUpperCurveIndices")]
+    edge_upper_curve_indices: String,
     // Base64-encoded `bincode`-encoded `LineIndices` instances.
-    edgeLowerLineIndices: String,
+    #[serde(rename = "edgeLowerLineIndices")]
+    edge_lower_line_indices: String,
     // Base64-encoded `bincode`-encoded `CurveIndices` instances.
-    edgeLowerCurveIndices: String,
+    #[serde(rename = "edgeLowerCurveIndices")]
+    edge_lower_curve_indices: String,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -148,99 +181,52 @@ enum PartitionFontError {
     Base64DecodingFailed,
     FontSanitizationFailed,
     FontLoadingFailed,
-    BincodeSerializationFailed,
     Unimplemented,
 }
 
-#[post("/partition-font", format = "application/json", data = "<request>")]
-fn partition_font(request: Json<PartitionFontRequest>)
-                  -> Json<Result<PartitionFontResponse, PartitionFontError>> {
-    let unsafe_otf_data = match base64::decode(&request.otf) {
-        Ok(unsafe_otf_data) => unsafe_otf_data,
-        Err(_) => return Json(Err(PartitionFontError::Base64DecodingFailed)),
-    };
+#[derive(Clone, Copy, Serialize, Deserialize)]
+enum PartitionSvgPathsError {
+    UnknownSvgPathSegmentType,
+    Unimplemented,
+}
 
-    // Sanitize.
-    let otf_data = match fontsan::process(&unsafe_otf_data) {
-        Ok(otf_data) => otf_data,
-        Err(_) => return Json(Err(PartitionFontError::FontSanitizationFailed)),
-    };
+#[derive(Clone, Serialize, Deserialize)]
+struct PartitionSvgPathsRequest {
+    paths: Vec<PartitionSvgPath>,
+}
 
-    // Parse glyph data.
-    let font_key = FontKey::new();
-    let font_instance_key = FontInstanceKey {
-        font_key: font_key,
-        size: Au::from_f64_px(request.pointSize),
-    };
-    let mut font_context = FontContext::new();
-    if font_context.add_font_from_memory(&font_key, otf_data, request.fontIndex).is_err() {
-        return Json(Err(PartitionFontError::FontLoadingFailed))
-    }
+#[derive(Clone, Serialize, Deserialize)]
+struct PartitionSvgPath {
+    segments: Vec<PartitionSvgPathSegment>,
+}
 
-    // Read glyph info.
-    let mut outline_buffer = GlyphOutlineBuffer::new();
-    let decoded_outline_indices: Vec<_> = request.glyphs.iter().map(|glyph| {
-        let glyph_key = GlyphKey::new(glyph.id);
+#[derive(Clone, Serialize, Deserialize)]
+struct PartitionSvgPathSegment {
+    #[serde(rename = "type")]
+    kind: char,
+    values: Vec<f64>,
+}
 
-        let first_endpoint_index = outline_buffer.endpoints.len();
-        let first_control_point_index = outline_buffer.control_points.len();
-        let first_subpath_index = outline_buffer.subpaths.len();
+#[derive(Clone, Serialize, Deserialize)]
+struct PartitionSvgPathsResponse {
+    #[serde(rename = "pathIndices")]
+    path_indices: Vec<PartitionPathIndices>,
+    #[serde(rename = "pathData")]
+    path_data: PartitionEncodedPathData,
+}
 
-        // This might fail; if so, just leave it blank.
-        drop(font_context.push_glyph_outline(&font_instance_key,
-                                             &glyph_key,
-                                             &mut outline_buffer,
-                                             &glyph.transform));
-
-        let last_endpoint_index = outline_buffer.endpoints.len();
-        let last_control_point_index = outline_buffer.control_points.len();
-        let last_subpath_index = outline_buffer.subpaths.len();
-
-        DecodedOutlineIndices {
-            endpoint_indices: IndexRange::new(first_endpoint_index, last_endpoint_index),
-            control_point_indices: IndexRange::new(first_control_point_index,
-                                                   last_control_point_index),
-            subpath_indices: IndexRange::new(first_subpath_index, last_subpath_index),
-        }
-    }).collect();
-
-    // Partition the decoded glyph outlines.
-    let mut partitioner = Partitioner::new();
+fn partition_paths(partitioner: &mut Partitioner, subpath_indices: &[SubpathRange])
+                   -> (PartitionEncodedPathData, Vec<PartitionPathIndices>) {
     let (mut b_quads, mut b_vertex_positions) = (vec![], vec![]);
     let (mut b_vertex_path_ids, mut b_vertex_loop_blinn_data) = (vec![], vec![]);
     let (mut cover_interior_indices, mut cover_curve_indices) = (vec![], vec![]);
     let (mut edge_upper_line_indices, mut edge_upper_curve_indices) = (vec![], vec![]);
     let (mut edge_lower_line_indices, mut edge_lower_curve_indices) = (vec![], vec![]);
 
-    partitioner.init(&outline_buffer.endpoints,
-                     &outline_buffer.control_points,
-                     &outline_buffer.subpaths);
+    let mut path_indices = vec![];
 
-    let mut glyph_info = vec![];
-    for (path_index, (&glyph, decoded_outline_indices)) in
-            request.glyphs.iter().zip(decoded_outline_indices.iter()).enumerate() {
-        let glyph_key = GlyphKey::new(glyph.id);
-
-        let dimensions = match font_context.glyph_dimensions(&font_instance_key, &glyph_key) {
-            Some(dimensions) => {
-                PartitionGlyphDimensions {
-                    origin: dimensions.origin,
-                    size: dimensions.size,
-                    advance: dimensions.advance,
-                }
-            }
-            None => {
-                PartitionGlyphDimensions {
-                    origin: Point2D::zero(),
-                    size: Size2D::zero(),
-                    advance: 0.0,
-                }
-            }
-        };
-
-        partitioner.partition((path_index + 1) as u16,
-                              decoded_outline_indices.subpath_indices.start as u32,
-                              decoded_outline_indices.subpath_indices.end as u32);
+    for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
+        partitioner.partition((path_index + 1) as u16, subpath_range.start, subpath_range.end);
 
         let path_b_vertex_positions = partitioner.b_vertex_positions();
         let path_b_vertex_path_ids = partitioner.b_vertex_path_ids();
@@ -282,40 +268,205 @@ fn partition_font(request: Json<PartitionFontRequest>)
             path_edge_lower_curve_indices.offset(positions_start);
         }
 
+        path_indices.push(PartitionPathIndices {
+            b_quad_indices: IndexRange::from_data(&mut b_quads, &path_b_quads).unwrap(),
+            b_vertex_indices: IndexRange::from_data(&mut b_vertex_loop_blinn_data,
+                                                    path_b_vertex_loop_blinn_data).unwrap(),
+            cover_interior_indices: IndexRange::from_data(&mut cover_interior_indices,
+                                                          &path_cover_interior_indices).unwrap(),
+            cover_curve_indices: IndexRange::from_data(&mut cover_curve_indices,
+                                                       &path_cover_curve_indices).unwrap(),
+            edge_upper_line_indices: IndexRange::from_data(&mut edge_upper_line_indices,
+                                                           &path_edge_upper_line_indices).unwrap(),
+            edge_upper_curve_indices:
+                IndexRange::from_data(&mut edge_upper_curve_indices,
+                                      &path_edge_upper_curve_indices).unwrap(),
+            edge_lower_line_indices: IndexRange::from_data(&mut edge_lower_line_indices,
+                                                           &path_edge_lower_line_indices).unwrap(),
+            edge_lower_curve_indices:
+                IndexRange::from_data(&mut edge_lower_curve_indices,
+                                      &path_edge_lower_curve_indices).unwrap(),
+        })
+    }
+
+    let encoded_path_data = PartitionEncodedPathData {
+        b_quads: base64::encode(&b_quads),
+        b_vertex_positions: base64::encode(&b_vertex_positions),
+        b_vertex_path_ids: base64::encode(&b_vertex_path_ids),
+        b_vertex_loop_blinn_data: base64::encode(&b_vertex_loop_blinn_data),
+        cover_interior_indices: base64::encode(&cover_interior_indices),
+        cover_curve_indices: base64::encode(&cover_curve_indices),
+        edge_upper_line_indices: base64::encode(&edge_upper_line_indices),
+        edge_upper_curve_indices: base64::encode(&edge_upper_curve_indices),
+        edge_lower_line_indices: base64::encode(&edge_lower_line_indices),
+        edge_lower_curve_indices: base64::encode(&edge_lower_curve_indices),
+    };
+
+    (encoded_path_data, path_indices)
+}
+
+#[post("/partition-font", format = "application/json", data = "<request>")]
+fn partition_font(request: Json<PartitionFontRequest>)
+                  -> Json<Result<PartitionFontResponse, PartitionFontError>> {
+    // Decode Base64-encoded OTF data.
+    let unsafe_otf_data = match base64::decode(&request.otf) {
+        Ok(unsafe_otf_data) => unsafe_otf_data,
+        Err(_) => return Json(Err(PartitionFontError::Base64DecodingFailed)),
+    };
+
+    // Sanitize.
+    let otf_data = match fontsan::process(&unsafe_otf_data) {
+        Ok(otf_data) => otf_data,
+        Err(_) => return Json(Err(PartitionFontError::FontSanitizationFailed)),
+    };
+
+    // Parse glyph data.
+    let font_key = FontKey::new();
+    let font_instance_key = FontInstanceKey {
+        font_key: font_key,
+        size: Au::from_f64_px(request.pointSize),
+    };
+    let mut font_context = FontContext::new();
+    if font_context.add_font_from_memory(&font_key, otf_data, request.fontIndex).is_err() {
+        return Json(Err(PartitionFontError::FontLoadingFailed))
+    }
+
+    // Read glyph info.
+    let mut outline_buffer = GlyphOutlineBuffer::new();
+    let subpath_indices: Vec<_> = request.glyphs.iter().map(|glyph| {
+        let glyph_key = GlyphKey::new(glyph.id);
+
+        let first_subpath_index = outline_buffer.subpaths.len();
+
+        // This might fail; if so, just leave it blank.
+        drop(font_context.push_glyph_outline(&font_instance_key,
+                                             &glyph_key,
+                                             &mut outline_buffer,
+                                             &glyph.transform));
+
+        let last_subpath_index = outline_buffer.subpaths.len();
+
+        SubpathRange {
+            start: first_subpath_index as u32,
+            end: last_subpath_index as u32,
+        }
+    }).collect();
+
+    // Partition the decoded glyph outlines.
+    let mut partitioner = Partitioner::new();
+    partitioner.init(&outline_buffer.endpoints,
+                     &outline_buffer.control_points,
+                     &outline_buffer.subpaths);
+    let (encoded_path_data, path_indices) = partition_paths(&mut partitioner, &subpath_indices);
+
+    // Package up other miscellaneous glyph info.
+    let mut glyph_info = vec![];
+    for (glyph, glyph_path_indices) in request.glyphs.iter().zip(path_indices.iter()) {
+        let glyph_key = GlyphKey::new(glyph.id);
+
+        let dimensions = match font_context.glyph_dimensions(&font_instance_key, &glyph_key) {
+            Some(dimensions) => {
+                PartitionGlyphDimensions {
+                    origin: dimensions.origin,
+                    size: dimensions.size,
+                    advance: dimensions.advance,
+                }
+            }
+            None => PartitionGlyphDimensions::dummy(),
+        };
+
         glyph_info.push(PartitionGlyphInfo {
             id: glyph.id,
             dimensions: dimensions,
-            bQuadIndices: IndexRange::from_data(&mut b_quads, &path_b_quads).unwrap(),
-            bVertexIndices: IndexRange::from_data(&mut b_vertex_loop_blinn_data,
-                                                  path_b_vertex_loop_blinn_data).unwrap(),
-            coverInteriorIndices: IndexRange::from_data(&mut cover_interior_indices,
-                                                        &path_cover_interior_indices).unwrap(),
-            coverCurveIndices: IndexRange::from_data(&mut cover_curve_indices,
-                                                     &path_cover_curve_indices).unwrap(),
-            edgeUpperLineIndices: IndexRange::from_data(&mut edge_upper_line_indices,
-                                                        &path_edge_upper_line_indices).unwrap(),
-            edgeUpperCurveIndices: IndexRange::from_data(&mut edge_upper_curve_indices,
-                                                         &path_edge_upper_curve_indices).unwrap(),
-            edgeLowerLineIndices: IndexRange::from_data(&mut edge_lower_line_indices,
-                                                        &path_edge_lower_line_indices).unwrap(),
-            edgeLowerCurveIndices: IndexRange::from_data(&mut edge_lower_curve_indices,
-                                                         &path_edge_lower_curve_indices).unwrap(),
+            path_indices: *glyph_path_indices,
         })
     }
 
     // Return the response.
     Json(Ok(PartitionFontResponse {
-        glyphInfo: glyph_info,
-        bQuads: base64::encode(&b_quads),
-        bVertexPositions: base64::encode(&b_vertex_positions),
-        bVertexPathIDs: base64::encode(&b_vertex_path_ids),
-        bVertexLoopBlinnData: base64::encode(&b_vertex_loop_blinn_data),
-        coverInteriorIndices: base64::encode(&cover_interior_indices),
-        coverCurveIndices: base64::encode(&cover_curve_indices),
-        edgeUpperLineIndices: base64::encode(&edge_upper_line_indices),
-        edgeUpperCurveIndices: base64::encode(&edge_upper_curve_indices),
-        edgeLowerLineIndices: base64::encode(&edge_lower_line_indices),
-        edgeLowerCurveIndices: base64::encode(&edge_lower_curve_indices),
+        glyph_info: glyph_info,
+        path_data: encoded_path_data,
+    }))
+}
+
+#[post("/partition-svg-paths", format = "application/json", data = "<request>")]
+fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
+                       -> Json<Result<PartitionSvgPathsResponse, PartitionSvgPathsError>> {
+    // Parse the SVG path.
+    //
+    // The client has already normalized it, so we only have to handle `M`, `L`, `C`, and `Z`
+    // commands.
+    let (mut endpoints, mut control_points, mut subpaths) = (vec![], vec![], vec![]);
+    let mut paths = vec![];
+    for path in &request.paths {
+        let first_subpath_index = subpaths.len() as u32;
+
+        let mut first_endpoint_index_in_subpath = endpoints.len();
+        for segment in &path.segments {
+            match segment.kind {
+                'M' => {
+                    if first_endpoint_index_in_subpath < endpoints.len() {
+                        subpaths.push(Subpath {
+                            first_endpoint_index: first_endpoint_index_in_subpath as u32,
+                            last_endpoint_index: endpoints.len() as u32,
+                        });
+                        first_endpoint_index_in_subpath = endpoints.len();
+                    }
+
+                    endpoints.push(Endpoint {
+                        position: Point2D::new(segment.values[0] as f32, segment.values[1] as f32),
+                        control_point_index: u32::MAX,
+                        subpath_index: subpaths.len() as u32,
+                    })
+                }
+                'L' => {
+                    endpoints.push(Endpoint {
+                        position: Point2D::new(segment.values[0] as f32, segment.values[1] as f32),
+                        control_point_index: u32::MAX,
+                        subpath_index: subpaths.len() as u32,
+                    })
+                }
+                'C' => {
+                    // FIXME(pcwalton): Do real cubic-to-quadratic conversion.
+                    let control_point_0 = Point2D::new(segment.values[0] as f32,
+                                                       segment.values[1] as f32);
+                    let control_point_1 = Point2D::new(segment.values[2] as f32,
+                                                       segment.values[3] as f32);
+                    let control_point = control_point_0.lerp(control_point_1, 0.5);
+                    endpoints.push(Endpoint {
+                        position: Point2D::new(segment.values[4] as f32, segment.values[5] as f32),
+                        control_point_index: control_points.len() as u32,
+                        subpath_index: subpaths.len() as u32,
+                    });
+                    control_points.push(control_point);
+                }
+                'Z' => {
+                    subpaths.push(Subpath {
+                        first_endpoint_index: first_endpoint_index_in_subpath as u32,
+                        last_endpoint_index: endpoints.len() as u32,
+                    });
+                    first_endpoint_index_in_subpath = endpoints.len();
+                }
+                _ => return Json(Err(PartitionSvgPathsError::UnknownSvgPathSegmentType)),
+            }
+        }
+
+        let last_subpath_index = subpaths.len() as u32;
+        paths.push(SubpathRange {
+            start: first_subpath_index,
+            end: last_subpath_index,
+        })
+    }
+
+    // Partition the paths.
+    let mut partitioner = Partitioner::new();
+    partitioner.init(&endpoints, &control_points, &subpaths);
+    let (encoded_path_data, path_indices) = partition_paths(&mut partitioner, &paths);
+
+    // Return the response.
+    Json(Ok(PartitionSvgPathsResponse {
+        path_indices: path_indices,
+        path_data: encoded_path_data,
     }))
 }
 
@@ -374,6 +525,7 @@ impl<'a> Responder<'a> for Shader {
 fn main() {
     rocket::ignite().mount("/", routes![
         partition_font,
+        partition_svg_paths,
         static_text_demo,
         static_svg_demo,
         static_css_bootstrap,

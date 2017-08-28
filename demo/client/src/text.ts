@@ -20,7 +20,7 @@ import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
-import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull} from './utils';
+import { PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic } from './utils';
 import {MonochromePathfinderView} from './view';
 import AppController from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
@@ -140,9 +140,8 @@ class TextDemoController extends AppController<TextDemoView> {
 
         this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
 
-        const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
-        this.loadFontButton = document.getElementById('pf-load-font-button') as HTMLInputElement;
-        this.loadFontButton.addEventListener('change', () => this.loadFont(), false);
+        this.loadFileButton = document.getElementById('pf-load-font-button') as HTMLInputElement;
+        this.loadFileButton.addEventListener('change', () => this.loadFile(), false);
 
         this.aaLevelSelect = document.getElementById('pf-aa-level-select') as HTMLSelectElement;
         this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
@@ -155,16 +154,6 @@ class TextDemoController extends AppController<TextDemoView> {
         return new TextDemoView(this, canvas, commonShaderSource, shaderSources);
     }
 
-    private loadFont() {
-        const file = expectNotNull(this.loadFontButton.files, "No file selected!")[0];
-        const reader = new FileReader;
-        reader.addEventListener('loadend', () => {
-            this.fontData = reader.result;
-            this.fontLoaded();
-        }, false);
-        reader.readAsArrayBuffer(file);
-    }
-
     private updateAALevel() {
         const selectedOption = this.aaLevelSelect.selectedOptions[0];
         const aaType = unwrapUndef(selectedOption.dataset.pfType) as
@@ -173,8 +162,8 @@ class TextDemoController extends AppController<TextDemoView> {
         this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel));
     }
 
-    private fontLoaded() {
-        this.font = opentype.parse(this.fontData);
+    protected fileLoaded() {
+        this.font = opentype.parse(this.fileData);
         if (!this.font.isSupported())
             throw new PathfinderError("The font type is unsupported.");
 
@@ -191,7 +180,7 @@ class TextDemoController extends AppController<TextDemoView> {
 
         // Build the partitioning request to the server.
         const request = {
-            otf: base64js.fromByteArray(new Uint8Array(this.fontData)),
+            otf: base64js.fromByteArray(new Uint8Array(this.fileData)),
             fontIndex: 0,
             glyphs: this.uniqueGlyphs.map(glyph => {
                 const metrics = glyph.metrics;
@@ -203,12 +192,17 @@ class TextDemoController extends AppController<TextDemoView> {
             pointSize: this.font.unitsPerEm,
         };
 
+        // Make the request.
         window.fetch(PARTITION_FONT_ENDPOINT_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(request),
-        }).then(response => response.text()).then(encodedMeshes => {
-            this.meshes = new PathfinderMeshData(encodedMeshes);
+        }).then(response => response.text()).then(responseText => {
+            const response = JSON.parse(responseText);
+            if (!('Ok' in response))
+                panic("Failed to partition the font!");
+            const meshes = response.Ok.pathData;
+            this.meshes = new PathfinderMeshData(meshes);
             this.meshesReceived();
         });
     }
@@ -239,11 +233,9 @@ class TextDemoController extends AppController<TextDemoView> {
         return this._atlas;
     }
 
-    private loadFontButton: HTMLInputElement;
     private aaLevelSelect: HTMLSelectElement;
     private fpsLabel: HTMLElement;
 
-    private fontData: ArrayBuffer;
     font: opentype.Font;
     lineGlyphs: TextGlyph[][];
     textGlyphs: TextGlyph[];
@@ -272,9 +264,7 @@ class TextDemoView extends MonochromePathfinderView {
         this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
 
         this.antialiasingStrategy = new NoAAStrategy(0);
-
-        window.addEventListener('resize', () => this.resizeToFit(), false);
-        this.resizeToFit();
+        this.antialiasingStrategy.init(this);
     }
 
     setAntialiasingOptions(aaType: keyof AntialiasingStrategyTable, aaLevel: number) {
@@ -540,22 +530,9 @@ class TextDemoView extends MonochromePathfinderView {
         this.rebuildAtlasIfNecessary();
     }
 
-    private resizeToFit() {
-        const width = window.innerWidth;
-        const height = window.scrollY + window.innerHeight -
-            this.canvas.getBoundingClientRect().top;
-        const devicePixelRatio = window.devicePixelRatio;
-
-        const canvasSize = new Float32Array([width, height]) as glmatrix.vec2;
-        glmatrix.vec2.scale(canvasSize, canvasSize, devicePixelRatio);
-
-        this.canvas.style.width = width + 'px';
-        this.canvas.style.height = height + 'px';
-        this.canvas.width = canvasSize[0];
-        this.canvas.height = canvasSize[1];
-
-        this.antialiasingStrategy.init(this);
-
+    protected resized(initialSize: boolean) {
+        if (!initialSize)
+            this.antialiasingStrategy.init(this);
         this.setDirty();
     }
 

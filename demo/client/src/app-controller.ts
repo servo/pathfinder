@@ -9,6 +9,7 @@
 // except according to those terms.
 
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
+import {expectNotNull} from './utils';
 
 export default abstract class AppController<View> {
     constructor() {}
@@ -24,10 +25,27 @@ export default abstract class AppController<View> {
         });
     }
 
+    protected loadFile() {
+        const file = expectNotNull(this.loadFileButton.files, "No file selected!")[0];
+        const reader = new FileReader;
+        reader.addEventListener('loadend', () => {
+            this.fileData = reader.result;
+            this.fileLoaded();
+        }, false);
+        reader.readAsArrayBuffer(file);
+    }
+
+    protected abstract fileLoaded(): void;
+
     protected abstract createView(canvas: HTMLCanvasElement,
                                   commonShaderSource: string,
                                   shaderSources: ShaderMap<ShaderProgramSource>):
                                   View;
 
     view: Promise<View>;
+
+    protected fileData: ArrayBuffer;
+
+    protected canvas: HTMLCanvasElement;
+    protected loadFileButton: HTMLInputElement;
 }
