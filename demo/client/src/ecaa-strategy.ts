@@ -88,10 +88,12 @@ export abstract class ECAAStrategy implements AntialiasingStrategy {
                            null);
         setTextureParameters(view.gl, view.gl.NEAREST);
 
+        this.aaDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
+
         this.aaFramebuffer = createFramebuffer(view.gl,
                                                view.drawBuffersExt,
                                                [this.aaAlphaTexture],
-                                               view.destDepthTexture);
+                                               this.aaDepthTexture);
     }
 
     private createCoverVAO(view: MonochromePathfinderView) {
@@ -421,6 +423,7 @@ export abstract class ECAAStrategy implements AntialiasingStrategy {
 
     protected directColorTexture: WebGLTexture;
     protected directPathIDTexture: WebGLTexture;
+    protected aaDepthTexture: WebGLTexture;
     protected framebufferSize: glmatrix.vec2;
 }
 
@@ -483,7 +486,7 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
         this.edgeDetectFramebuffer = createFramebuffer(view.gl,
                                                        view.drawBuffersExt,
                                                        [this.bgColorTexture, this.fgColorTexture],
-                                                       view.destDepthTexture);
+                                                       this.aaDepthTexture);
     }
 
     protected createEdgeDetectVAO(view: MonochromePathfinderView) {

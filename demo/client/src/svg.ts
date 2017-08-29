@@ -20,6 +20,8 @@ import {PathfinderView, Timings} from './view';
 import AppController from './app-controller';
 import SSAAStrategy from "./ssaa-strategy";
 
+const parseColor = require('parse-color');
+
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
 const PARTITION_SVG_PATHS_ENDPOINT_URL: string = "/partition-svg-paths";
@@ -35,8 +37,10 @@ declare class SVGPathSegment {
     values: number[];
 }
 
-declare class SVGPathElement {
-    getPathData(settings: any): SVGPathSegment[];
+declare global {
+    interface SVGPathElement {
+        getPathData(settings: any): SVGPathSegment[];
+    }
 }
 
 interface AntialiasingStrategyTable {
@@ -117,7 +121,7 @@ class SVGDemoController extends AppController<SVGDemoView> {
 
     private meshesReceived() {
         this.view.then(view => {
-            // TODO(pcwalton): Upload path color data.
+            view.uploadPathData(this.pathElements);
             view.attachMeshes(this.meshes);
         })
     }
@@ -136,7 +140,7 @@ class SVGDemoView extends PathfinderView {
 
         this.appController = appController;
 
-        this.resized(false);
+        this._scale = 1.0;
     }
 
     protected resized(initialSize: boolean) {}
@@ -145,24 +149,25 @@ class SVGDemoView extends PathfinderView {
         return glmatrix.vec2.fromValues(this.canvas.width, this.canvas.height);
     }
 
-    get destDepthTexture() {
-        return panic("TODO");
-    }
-
-    get destFramebuffer() {
-        return panic("TODO");
+    get destFramebuffer(): WebGLFramebuffer | null {
+        return null;
     }
 
     get destUsedSize(): glmatrix.vec2 {
         return this.destAllocatedSize;
     }
 
-    setTransformAndTexScaleUniformsForDest() {
-        panic("TODO");
-    }
+    protected panned(): void {}
 
-    setTransformSTAndTexScaleUniformsForDest() {
-        panic("TODO");
+    uploadPathData(elements: SVGPathElement[]) {
+        const pathColors = new Uint8Array(4 * (elements.length + 1));
+        for (let pathIndex = 0; pathIndex < elements.length; pathIndex++) {
+            const style = window.getComputedStyle(elements[pathIndex]);
+            const fillColor = style.fill === 'none' ? [0, 0, 0, 0] : parseColor(style.fill).rgba;
+            pathColors.set(fillColor, (pathIndex + 1) * 4);
+        }
+
+        this.pathColorsBufferTexture.upload(this.gl, pathColors);
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
@@ -175,6 +180,21 @@ class SVGDemoView extends PathfinderView {
     protected updateTimings(timings: Timings) {
         // TODO(pcwalton)
     }
+
+    protected get usedSizeFactor(): glmatrix.vec2 {
+        return glmatrix.vec2.create();
+    }
+
+    protected get scale(): number {
+        return this._scale;
+    }
+
+    protected set scale(newScale: number) {
+        this._scale = newScale;
+        this.setDirty();
+    }
+
+    private _scale: number;
 
     private appController: SVGDemoController;
 }

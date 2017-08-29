@@ -46,7 +46,6 @@ export interface Meshes<T> {
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     constructor(meshes: any) {
-        console.log(meshes);
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>)
             this[bufferName] = base64js.toByteArray(meshes[bufferName]).buffer as ArrayBuffer;
 

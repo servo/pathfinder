@@ -64,8 +64,6 @@ And the mome raths outgrabe.`;
 
 const INITIAL_FONT_SIZE: number = 72.0;
 
-const SCALE_FACTOR: number = 1.0 / 100.0;
-
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
 const B_POSITION_SIZE: number = 8;
@@ -207,15 +205,6 @@ class TextDemoController extends AppController<TextDemoView> {
         })
     }
 
-    scaleFontSize(scale: number) {
-        this.setFontSize(scale * this.fontSize);
-    }
-
-    private setFontSize(newPixelsPerEm: number) {
-        this.fontSize = newPixelsPerEm;
-        this.view.then(view => view.attachText());
-    }
-
     updateTimings(newTimes: Timings) {
         this.fpsLabel.innerHTML =
             `${newTimes.atlasRendering} ms atlas, ${newTimes.compositing} ms compositing`;
@@ -223,6 +212,17 @@ class TextDemoController extends AppController<TextDemoView> {
 
     get atlas(): Atlas {
         return this._atlas;
+    }
+
+    /// The font size in pixels per em.
+    get fontSize(): number {
+        return this._fontSize;
+    }
+
+    /// The font size in pixels per em.
+    set fontSize(newFontSize: number) {
+        this._fontSize = newFontSize;
+        this.view.then(view => view.attachText());
     }
 
     private aaLevelSelect: HTMLSelectElement;
@@ -238,8 +238,7 @@ class TextDemoController extends AppController<TextDemoView> {
 
     private meshes: PathfinderMeshData;
 
-    /// The font size in pixels per em.
-    fontSize: number;
+    private _fontSize: number;
 }
 
 class TextDemoView extends MonochromePathfinderView {
@@ -250,10 +249,6 @@ class TextDemoView extends MonochromePathfinderView {
         super(canvas, commonShaderSource, shaderSources);
 
         this.appController = appController;
-
-        this.translation = glmatrix.vec2.create();
-
-        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
     }
 
     protected initContext() {
@@ -453,38 +448,7 @@ class TextDemoView extends MonochromePathfinderView {
         this.setDirty();
     }
 
-    private onWheel(event: WheelEvent) {
-        event.preventDefault();
-
-        if (event.ctrlKey) {
-            // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
-            const mouseLocation = glmatrix.vec2.fromValues(event.clientX, event.clientY);
-            const canvasLocation = this.canvas.getBoundingClientRect();
-            mouseLocation[0] -= canvasLocation.left;
-            mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
-            glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
-
-            const absoluteTranslation = glmatrix.vec2.create();
-            glmatrix.vec2.sub(absoluteTranslation, this.translation, mouseLocation);
-            glmatrix.vec2.scale(absoluteTranslation,
-                                absoluteTranslation,
-                                1.0 / this.appController.fontSize);
-
-            const scale = 1.0 - event.deltaY * window.devicePixelRatio * SCALE_FACTOR;
-            this.appController.scaleFontSize(scale);
-
-            glmatrix.vec2.scale(absoluteTranslation,
-                                absoluteTranslation,
-                                this.appController.fontSize);
-            glmatrix.vec2.add(this.translation, absoluteTranslation, mouseLocation);
-            return;
-        }
-
-        // Pan event.
-        const delta = glmatrix.vec2.fromValues(-event.deltaX, event.deltaY);
-        glmatrix.vec2.scale(delta, delta, window.devicePixelRatio);
-        glmatrix.vec2.add(this.translation, this.translation, delta);
-
+    protected panned() {
         this.rebuildAtlasIfNecessary();
     }
 
@@ -494,31 +458,14 @@ class TextDemoView extends MonochromePathfinderView {
         this.setDirty();
     }
 
-    setIdentityTexScaleUniform(uniforms: UniformMap) {
+    private setIdentityTexScaleUniform(uniforms: UniformMap) {
         this.gl.uniform2f(uniforms.uTexScale, 1.0, 1.0);
     }
 
-    private get usedSizeFactor(): glmatrix.vec2 {
+    protected get usedSizeFactor(): glmatrix.vec2 {
         const usedSize = glmatrix.vec2.create();
         glmatrix.vec2.div(usedSize, this.appController.atlas.usedSize, ATLAS_SIZE);
         return usedSize;
-    }
-
-    setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap) {
-        const usedSize = this.usedSizeFactor;
-        this.gl.uniform4f(uniforms.uTransformST, 2.0 * usedSize[0], 2.0 * usedSize[1], -1.0, -1.0);
-        this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
-    }
-
-    setTransformAndTexScaleUniformsForDest(uniforms: UniformMap) {
-        const usedSize = this.usedSizeFactor;
-
-        const transform = glmatrix.mat4.create();
-        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
-        glmatrix.mat4.scale(transform, transform, [2.0 * usedSize[0], 2.0 * usedSize[1], 1.0]);
-        this.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
-
-        this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
     protected compositeIfNecessary() {
@@ -579,16 +526,20 @@ class TextDemoView extends MonochromePathfinderView {
         return this.atlasFramebuffer;
     }
 
-    get destDepthTexture(): WebGLTexture {
-        return this.atlasDepthTexture;
-    }
-
     get destAllocatedSize(): glmatrix.vec2 {
         return ATLAS_SIZE;
     }
 
     get destUsedSize(): glmatrix.vec2 {
         return this.appController.atlas.usedSize;
+    }
+
+    protected get scale(): number {
+        return this.appController.fontSize;
+    }
+
+    protected set scale(newScale: number) {
+        this.appController.fontSize = newScale;
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
@@ -599,8 +550,6 @@ class TextDemoView extends MonochromePathfinderView {
     protected updateTimings(timings: Timings) {
         this.appController.updateTimings(timings);
     }
-
-    private translation: glmatrix.vec2;
 
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;

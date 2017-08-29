@@ -18,6 +18,8 @@ import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
 import {PathfinderError, UINT32_SIZE, expectNotNull, unwrapNull} from './utils';
 import PathfinderBufferTexture from './buffer-texture';
 
+const SCALE_FACTOR: number = 1.0 / 100.0;
+
 const TIME_INTERVAL_DELAY: number = 32;
 
 const B_LOOP_BLINN_DATA_SIZE: number = 4;
@@ -53,6 +55,8 @@ export abstract class PathfinderView {
 
         this.initContext();
 
+        this.translation = glmatrix.vec2.create();
+
         const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
         this.shaderPrograms = this.linkShaders(shaderSource);
 
@@ -64,6 +68,8 @@ export abstract class PathfinderView {
 
         window.addEventListener('resize', () => this.resizeToFit(false), false);
         this.resizeToFit(true);
+
+        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
     }
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName, aaLevel: number) {
@@ -365,8 +371,52 @@ export abstract class PathfinderView {
         window.requestAnimationFrame(() => this.redraw());
     }
 
-    abstract setTransformAndTexScaleUniformsForDest(uniforms: UniformMap): void;
-    abstract setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap): void;
+    private onWheel(event: WheelEvent) {
+        event.preventDefault();
+
+        if (event.ctrlKey) {
+            // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
+            const mouseLocation = glmatrix.vec2.fromValues(event.clientX, event.clientY);
+            const canvasLocation = this.canvas.getBoundingClientRect();
+            mouseLocation[0] -= canvasLocation.left;
+            mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
+            glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
+
+            const absoluteTranslation = glmatrix.vec2.create();
+            glmatrix.vec2.sub(absoluteTranslation, this.translation, mouseLocation);
+            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
+
+            this.scale *= 1.0 - event.deltaY * window.devicePixelRatio * SCALE_FACTOR;
+
+            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, this.scale);
+            glmatrix.vec2.add(this.translation, absoluteTranslation, mouseLocation);
+            return;
+        }
+
+        // Pan event.
+        const delta = glmatrix.vec2.fromValues(-event.deltaX, event.deltaY);
+        glmatrix.vec2.scale(delta, delta, window.devicePixelRatio);
+        glmatrix.vec2.add(this.translation, this.translation, delta);
+
+        this.panned();
+    }
+
+    setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap) {
+        const usedSize = this.usedSizeFactor;
+        this.gl.uniform4f(uniforms.uTransformST, 2.0 * usedSize[0], 2.0 * usedSize[1], -1.0, -1.0);
+        this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
+    }
+
+    setTransformAndTexScaleUniformsForDest(uniforms: UniformMap) {
+        const usedSize = this.usedSizeFactor;
+
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform, transform, [2.0 * usedSize[0], 2.0 * usedSize[1], 1.0]);
+        this.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
+
+        this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
+    }
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
                                         AntialiasingStrategy;
@@ -374,14 +424,22 @@ export abstract class PathfinderView {
     protected abstract compositeIfNecessary(): void;
 
     protected abstract updateTimings(timings: Timings): void;
-    
-    abstract get destFramebuffer(): WebGLFramebuffer;
-    abstract get destDepthTexture(): WebGLTexture;
+
+    protected abstract panned(): void;
+
+    abstract get destFramebuffer(): WebGLFramebuffer | null;
 
     abstract get destAllocatedSize(): glmatrix.vec2;
     abstract get destUsedSize(): glmatrix.vec2;
 
+    protected abstract get usedSizeFactor(): glmatrix.vec2;
+
+    protected abstract get scale(): number;
+    protected abstract set scale(newScale: number);
+
     protected antialiasingStrategy: AntialiasingStrategy;
+
+    protected translation: glmatrix.vec2;
 
     protected canvas: HTMLCanvasElement;
 
