@@ -25,8 +25,18 @@ export function expectNotNull<T>(value: T | null, message: string): T {
     return value;
 }
 
+function expectNotUndef<T>(value: T | undefined, message: string): T {
+    if (value === undefined)
+        throw new PathfinderError(message);
+    return value;
+}
+
 export function unwrapNull<T>(value: T | null): T {
     return expectNotNull(value, "Unexpected null!");
+}
+
+export function unwrapUndef<T>(value: T | undefined): T {
+    return expectNotUndef(value, "Unexpected `undefined`!");
 }
 
 export class PathfinderError extends Error {

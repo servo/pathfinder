@@ -8,10 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+import {AntialiasingStrategyName} from "./aa-strategy";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
-import {expectNotNull} from './utils';
+import {expectNotNull, unwrapUndef} from './utils';
+import {PathfinderView} from "./view";
 
-export default abstract class AppController<View> {
+export default abstract class AppController<View extends PathfinderView> {
     constructor() {}
 
     start() {
@@ -23,6 +25,18 @@ export default abstract class AppController<View> {
         this.view = Promise.all([shaderLoader.common, shaderLoader.shaders]).then(allShaders => {
             return this.createView(canvas, allShaders[0], allShaders[1]);
         });
+
+        this.aaLevelSelect = document.getElementById('pf-aa-level-select') as HTMLSelectElement;
+        this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
+        this.updateAALevel();
+    }
+
+    private updateAALevel() {
+        const selectedOption = this.aaLevelSelect.selectedOptions[0];
+        const aaType = unwrapUndef(selectedOption.dataset.pfType) as
+            AntialiasingStrategyName;
+        const aaLevel = parseInt(unwrapUndef(selectedOption.dataset.pfLevel));
+        this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel));
     }
 
     protected loadFile() {
@@ -48,4 +62,5 @@ export default abstract class AppController<View> {
 
     protected canvas: HTMLCanvasElement;
     protected loadFileButton: HTMLInputElement;
+    private aaLevelSelect: HTMLSelectElement;
 }

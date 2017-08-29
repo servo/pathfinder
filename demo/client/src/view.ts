@@ -239,7 +239,7 @@ export abstract class PathfinderView {
 
     private setTransformUniform(uniforms: UniformMap) {
         const transform = glmatrix.mat4.create();
-        glmatrix.mat4.mul(transform, this.worldTransform, this.antialiasingStrategy.transform);
+        glmatrix.mat4.mul(transform, this.antialiasingStrategy.transform, this.worldTransform);
         this.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
 

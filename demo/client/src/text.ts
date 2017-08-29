@@ -100,18 +100,6 @@ opentype.Font.prototype.isSupported = function() {
     return (this as any).supported;
 }
 
-// Various utility functions
-
-function expectNotUndef<T>(value: T | undefined, message: string): T {
-    if (value === undefined)
-        throw new PathfinderError(message);
-    return value;
-}
-
-function unwrapUndef<T>(value: T | undefined): T {
-    return expectNotUndef(value, "Unexpected `undefined`!");
-}
-
 /// The separating axis theorem.
 function rectsIntersect(a: glmatrix.vec4, b: glmatrix.vec4): boolean {
     return a[2] > b[0] && a[3] > b[1] && a[0] < b[2] && a[1] < b[3];
@@ -132,24 +120,12 @@ class TextDemoController extends AppController<TextDemoView> {
 
         this.loadFileButton = document.getElementById('pf-load-font-button') as HTMLInputElement;
         this.loadFileButton.addEventListener('change', () => this.loadFile(), false);
-
-        this.aaLevelSelect = document.getElementById('pf-aa-level-select') as HTMLSelectElement;
-        this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
-        this.updateAALevel();
     }
 
     protected createView(canvas: HTMLCanvasElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>) {
         return new TextDemoView(this, canvas, commonShaderSource, shaderSources);
-    }
-
-    private updateAALevel() {
-        const selectedOption = this.aaLevelSelect.selectedOptions[0];
-        const aaType = unwrapUndef(selectedOption.dataset.pfType) as
-            keyof AntialiasingStrategyTable;
-        const aaLevel = parseInt(unwrapUndef(selectedOption.dataset.pfLevel));
-        this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel));
     }
 
     protected fileLoaded() {
@@ -225,7 +201,6 @@ class TextDemoController extends AppController<TextDemoView> {
         this.view.then(view => view.attachText());
     }
 
-    private aaLevelSelect: HTMLSelectElement;
     private fpsLabel: HTMLElement;
 
     font: opentype.Font;
