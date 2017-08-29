@@ -25,12 +25,14 @@ interface UpperAndLower<T> {
     lower: T;
 }
 
-export abstract class ECAAStrategy implements AntialiasingStrategy {
+export abstract class ECAAStrategy extends AntialiasingStrategy {
     constructor(level: number) {
+        super();
         this.framebufferSize = glmatrix.vec2.create();
     }
 
     init(view: MonochromePathfinderView) {
+        super.init(view);
         this.bVertexPositionBufferTexture = new PathfinderBufferTexture(view.gl,
                                                                         'uBVertexPosition');
         this.bVertexPathIDBufferTexture = new PathfinderBufferTexture(view.gl, 'uBVertexPathID');
@@ -49,8 +51,8 @@ export abstract class ECAAStrategy implements AntialiasingStrategy {
         this.createResolveVAO(view);
     }
 
-    setFramebufferSize(view: MonochromePathfinderView, framebufferSize: glmatrix.vec2) {
-        this.framebufferSize = framebufferSize;
+    setFramebufferSize(view: MonochromePathfinderView) {
+        this.framebufferSize = view.destAllocatedSize;
 
         this.initDirectFramebuffer(view);
         this.initEdgeDetectFramebuffer(view);
@@ -58,7 +60,7 @@ export abstract class ECAAStrategy implements AntialiasingStrategy {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
     }
 
-    transform(): glmatrix.mat4 {
+    get transform(): glmatrix.mat4 {
         return glmatrix.mat4.create();
     }
 
@@ -288,7 +290,7 @@ export abstract class ECAAStrategy implements AntialiasingStrategy {
         view.setFramebufferSizeUniform(uniforms);
         this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
         this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
-        view.atlasTransformBuffer.bind(view.gl, uniforms, 2);
+        view.pathTransformBufferTexture.bind(view.gl, uniforms, 2);
         view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                            6,
                                                            view.gl.UNSIGNED_BYTE,
@@ -315,7 +317,7 @@ export abstract class ECAAStrategy implements AntialiasingStrategy {
         view.setFramebufferSizeUniform(uniforms);
         this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
         this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
-        view.atlasTransformBuffer.bind(view.gl, uniforms, 2);
+        view.pathTransformBufferTexture.bind(view.gl, uniforms, 2);
     }
 
     private antialiasLines(view: MonochromePathfinderView) {

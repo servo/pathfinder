@@ -15,23 +15,22 @@ import {createFramebufferDepthTexture, createFramebuffer, setTextureParameters} 
 import {unwrapNull} from './utils';
 import {PathfinderView} from './view';
 
-export default class SSAAStrategy implements AntialiasingStrategy {
+export default class SSAAStrategy extends AntialiasingStrategy {
     constructor(level: number) {
+        super();
         this.level = level;
         this.destFramebufferSize = glmatrix.vec2.create();
         this.supersampledFramebufferSize = glmatrix.vec2.create();
     }
 
-    init(view: PathfinderView) {}
-
     attachMeshes(view: PathfinderView) {}
     
-    setFramebufferSize(view: PathfinderView, framebufferSize: glmatrix.vec2) {
-        this.destFramebufferSize = framebufferSize;
+    setFramebufferSize(view: PathfinderView) {
+        this.destFramebufferSize = view.destAllocatedSize;
 
         this.supersampledFramebufferSize = glmatrix.vec2.create();
         glmatrix.vec2.mul(this.supersampledFramebufferSize,
-                          framebufferSize,
+                          this.destFramebufferSize,
                           this.supersampleScale);
 
         this.supersampledColorTexture = unwrapNull(view.gl.createTexture());
@@ -59,7 +58,7 @@ export default class SSAAStrategy implements AntialiasingStrategy {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
     }
 
-    transform(): glmatrix.mat4 {
+    get transform(): glmatrix.mat4 {
         const scale = glmatrix.vec2.create();
         glmatrix.vec2.div(scale, this.supersampledFramebufferSize, this.destFramebufferSize);
 

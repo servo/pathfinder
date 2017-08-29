@@ -14,47 +14,48 @@ import {PathfinderView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'ecaa';
 
-export interface AntialiasingStrategy {
+export abstract class AntialiasingStrategy {
     // Prepares any OpenGL data. This is only called on startup and canvas resize.
-    init(view: PathfinderView): void;
+    init(view: PathfinderView): void {
+        this.setFramebufferSize(view);
+    }
 
     // Uploads any mesh data. This is called whenever a new set of meshes is supplied.
-    attachMeshes(view: PathfinderView): void;
+    abstract attachMeshes(view: PathfinderView): void;
 
     // This is called whenever the framebuffer has changed.
-    setFramebufferSize(view: PathfinderView, framebufferSize: glmatrix.vec2): void;
+    abstract setFramebufferSize(view: PathfinderView): void;
 
     // Returns the transformation matrix that should be applied when directly rendering.
-    transform(): glmatrix.mat4;
+    abstract get transform(): glmatrix.mat4;
 
     // Called before direct rendering.
     //
     // Typically, this redirects direct rendering to a framebuffer of some sort.
-    prepare(view: PathfinderView): void;
+    abstract prepare(view: PathfinderView): void;
 
     // Called after direct rendering.
     //
     // This usually performs the actual antialiasing and blits to the real framebuffer.
-    resolve(view: PathfinderView): void;
+    abstract resolve(view: PathfinderView): void;
 
     // True if direct rendering should occur.
     shouldRenderDirect: boolean;
 }
 
-export class NoAAStrategy implements AntialiasingStrategy {
+export class NoAAStrategy extends AntialiasingStrategy {
     constructor(level: number) {
+        super();
         this.framebufferSize = glmatrix.vec2.create();
     }
 
-    init(view: PathfinderView) {}
-
     attachMeshes(view: PathfinderView) {}
 
-    setFramebufferSize(view: PathfinderView, framebufferSize: glmatrix.vec2) {
-        this.framebufferSize = framebufferSize;
+    setFramebufferSize(view: PathfinderView) {
+        this.framebufferSize = view.destAllocatedSize;
     }
 
-    transform(): glmatrix.mat4 {
+    get transform(): glmatrix.mat4 {
         return glmatrix.mat4.create();
     }
 

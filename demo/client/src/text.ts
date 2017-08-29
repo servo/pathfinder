@@ -380,7 +380,7 @@ class TextDemoView extends MonochromePathfinderView {
             transforms[pathID * 4 + 3] = atlasLocation[1] - bottom;
         }
 
-        this.atlasTransformBuffer.upload(this.gl, transforms);
+        this.pathTransformBufferTexture.upload(this.gl, transforms);
     }
 
     private createAtlasFramebuffer() {
@@ -392,7 +392,7 @@ class TextDemoView extends MonochromePathfinderView {
                                                     this.atlasDepthTexture);
 
         // Allow the antialiasing strategy to set up framebuffers as necessary.
-        this.antialiasingStrategy.setFramebufferSize(this, ATLAS_SIZE);
+        this.antialiasingStrategy.setFramebufferSize(this);
     }
 
     private setGlyphTexCoords() {
@@ -551,6 +551,10 @@ class TextDemoView extends MonochromePathfinderView {
         this.appController.updateTimings(timings);
     }
 
+    protected get worldTransform() {
+        return glmatrix.mat4.create();
+    }
+
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 
@@ -559,8 +563,6 @@ class TextDemoView extends MonochromePathfinderView {
     glyphPositionsBuffer: WebGLBuffer;
     glyphTexCoordsBuffer: WebGLBuffer;
     glyphElementsBuffer: WebGLBuffer;
-
-    atlasTransformBuffer: PathfinderBufferTexture;
 
     appController: TextDemoController;
 }

@@ -143,7 +143,10 @@ class SVGDemoView extends PathfinderView {
         this._scale = 1.0;
     }
 
-    protected resized(initialSize: boolean) {}
+    protected resized(initialSize: boolean) {
+        this.antialiasingStrategy.init(this);
+        this.setDirty();
+    }
 
     get destAllocatedSize(): glmatrix.vec2 {
         return glmatrix.vec2.fromValues(this.canvas.width, this.canvas.height);
@@ -157,17 +160,29 @@ class SVGDemoView extends PathfinderView {
         return this.destAllocatedSize;
     }
 
-    protected panned(): void {}
+    protected panned(): void {
+        this.setDirty();
+    }
 
     uploadPathData(elements: SVGPathElement[]) {
         const pathColors = new Uint8Array(4 * (elements.length + 1));
+        const pathTransforms = new Float32Array(4 * (elements.length + 1));
         for (let pathIndex = 0; pathIndex < elements.length; pathIndex++) {
+            const startOffset = (pathIndex + 1) * 4;
+
+            // Set color.
             const style = window.getComputedStyle(elements[pathIndex]);
-            const fillColor = style.fill === 'none' ? [0, 0, 0, 0] : parseColor(style.fill).rgba;
-            pathColors.set(fillColor, (pathIndex + 1) * 4);
+            const fillColor: number[] =
+                style.fill === 'none' ? [0, 0, 0, 0] : parseColor(style.fill).rgba;
+            pathColors.set(fillColor.slice(0, 3), startOffset);
+            pathColors[startOffset + 3] = fillColor[3] * 255;
+
+            // TODO(pcwalton): Set transform.
+            pathTransforms.set([1, 1, 0, 0], startOffset);
         }
 
         this.pathColorsBufferTexture.upload(this.gl, pathColors);
+        this.pathTransformBufferTexture.upload(this.gl, pathTransforms);
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
@@ -182,7 +197,7 @@ class SVGDemoView extends PathfinderView {
     }
 
     protected get usedSizeFactor(): glmatrix.vec2 {
-        return glmatrix.vec2.create();
+        return glmatrix.vec2.fromValues(1.0, 1.0);
     }
 
     protected get scale(): number {
@@ -192,6 +207,13 @@ class SVGDemoView extends PathfinderView {
     protected set scale(newScale: number) {
         this._scale = newScale;
         this.setDirty();
+    }
+
+    protected get worldTransform() {
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.fromTranslation(transform, [this.translation[0], this.translation[1], 0]);
+        glmatrix.mat4.scale(transform, transform, [this.scale, this.scale, 1.0]);
+        return transform;
     }
 
     private _scale: number;

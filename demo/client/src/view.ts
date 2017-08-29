@@ -60,7 +60,7 @@ export abstract class PathfinderView {
         const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
         this.shaderPrograms = this.linkShaders(shaderSource);
 
-        this.atlasTransformBuffer = new PathfinderBufferTexture(this.gl, 'uPathTransform');
+        this.pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
         this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
 
         this.antialiasingStrategy = new NoAAStrategy(0);
@@ -77,7 +77,6 @@ export abstract class PathfinderView {
 
         let canvas = this.canvas;
         this.antialiasingStrategy.init(this);
-        this.antialiasingStrategy.setFramebufferSize(this, this.destAllocatedSize);
         if (this.meshData != null)
             this.antialiasingStrategy.attachMeshes(this);
 
@@ -233,14 +232,15 @@ export abstract class PathfinderView {
         // Draw the glyphs with the resolved atlas to the default framebuffer.
         this.compositeIfNecessary();
 
-        // Finish timing, clear dirty bit and finish.
+        // Finish timing, clear dirty bit, and finish.
         this.finishTiming();
         this.dirty = false;
     }
 
     private setTransformUniform(uniforms: UniformMap) {
-        const transform = this.antialiasingStrategy.transform();
-        this.gl.uniformMatrix4fv(uniforms.uTransform, false, this.antialiasingStrategy.transform());
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.mul(transform, this.worldTransform, this.antialiasingStrategy.transform);
+        this.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
 
     private renderDirect() {
@@ -275,7 +275,7 @@ export abstract class PathfinderView {
         this.setTransformUniform(directInteriorProgram.uniforms);
         this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
         this.pathColorsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 0);
-        this.atlasTransformBuffer.bind(this.gl, directInteriorProgram.uniforms, 1);
+        this.pathTransformBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 1);
         let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
         this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -326,7 +326,7 @@ export abstract class PathfinderView {
         this.setTransformUniform(directCurveProgram.uniforms);
         this.setFramebufferSizeUniform(directCurveProgram.uniforms);
         this.pathColorsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 0);
-        this.atlasTransformBuffer.bind(this.gl, directCurveProgram.uniforms, 1);
+        this.pathTransformBufferTexture.bind(this.gl, directCurveProgram.uniforms, 1);
         indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                 this.gl.BUFFER_SIZE) / UINT32_SIZE;
         this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -437,6 +437,8 @@ export abstract class PathfinderView {
     protected abstract get scale(): number;
     protected abstract set scale(newScale: number);
 
+    protected abstract get worldTransform(): glmatrix.mat4;
+
     protected antialiasingStrategy: AntialiasingStrategy;
 
     protected translation: glmatrix.vec2;
@@ -461,7 +463,7 @@ export abstract class PathfinderView {
     meshes: PathfinderMeshBuffers;
     meshData: PathfinderMeshData;
 
-    atlasTransformBuffer: PathfinderBufferTexture;
+    pathTransformBufferTexture: PathfinderBufferTexture;
     protected pathColorsBufferTexture: PathfinderBufferTexture;
 
     private atlasRenderingTimerQuery: WebGLQuery;
