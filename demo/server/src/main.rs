@@ -38,8 +38,8 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::u32;
 
-static STATIC_TEXT_DEMO_PATH: &'static str = "../client/html/text.html";
-static STATIC_SVG_DEMO_PATH: &'static str = "../client/html/svg.html";
+static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text.html";
+static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg.html";
 static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/css";
 static STATIC_CSS_PATHFINDER_PATH: &'static str = "../client/css/pathfinder.css";
 static STATIC_JS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/js";

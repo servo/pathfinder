@@ -26,6 +26,8 @@ import AppController from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import SSAAStrategy from './ssaa-strategy';
 
+require('../html/text.html');
+
 const TEXT: string =
 `’Twas brillig, and the slithy toves
 Did gyre and gimble in the wabe;

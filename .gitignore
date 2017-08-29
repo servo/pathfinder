@@ -1,6 +1,7 @@
 /font-renderer/target
 /partitioner/target
 /demo/client/target
+/demo/client/*.html
 /demo/client/*.js
 /demo/client/src/*.js
 /demo/client/src/*.js.map
