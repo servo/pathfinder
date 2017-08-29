@@ -9,6 +9,7 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as _ from 'lodash';
 import 'path-data-polyfill.js';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
@@ -90,16 +91,38 @@ class SVGDemoController extends AppController<SVGDemoView> {
         const queue: Array<Element> = [this.svg];
         let element;
         while ((element = queue.pop()) != null) {
-            for (const kid of element.childNodes) {
+            let kid = element.lastChild;
+            while (kid != null) {
                 if (kid instanceof Element)
                     queue.push(kid);
+                kid = kid.previousSibling;
             }
+
             if (element instanceof SVGPathElement)
                 this.pathElements.push(element);
         }
 
-        // Extract and normalize the path data.
-        let pathData = this.pathElements.map(element => element.getPathData({normalize: true}));
+        // Extract, normalize, and transform the path data.
+        let pathData = [];
+        for (const element of this.pathElements) {
+            const svgCTM = element.getCTM();
+            const ctm = glmatrix.mat2d.fromValues(svgCTM.a, svgCTM.b,
+                                                  svgCTM.c, svgCTM.d,
+                                                  svgCTM.e, svgCTM.f);
+            glmatrix.mat2d.scale(ctm, ctm, [1.0, -1.0]);
+
+            pathData.push(element.getPathData({normalize: true}).map(segment => {
+                const newValues = _.flatMap(_.chunk(segment.values, 2), coords => {
+                    const point = glmatrix.vec2.create();
+                    glmatrix.vec2.transformMat2d(point, coords, ctm);
+                    return [point[0], point[1]];
+                });
+                return {
+                    type: segment.type,
+                    values: newValues,
+                };
+            }));
+        }
 
         // Build the partitioning request to the server.
         const request = {paths: pathData.map(segments => ({segments: segments}))};
