@@ -10,12 +10,19 @@
 
 import * as glmatrix from 'gl-matrix';
 
+import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {QUAD_ELEMENTS, UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, SHADER_NAMES, ShaderMap} from './shader-loader';
 import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
-import {PathfinderError, expectNotNull, unwrapNull} from './utils';
+import {PathfinderError, UINT32_SIZE, expectNotNull, unwrapNull} from './utils';
 import PathfinderBufferTexture from './buffer-texture';
+
+const TIME_INTERVAL_DELAY: number = 32;
+
+const B_LOOP_BLINN_DATA_SIZE: number = 4;
+const B_LOOP_BLINN_DATA_TEX_COORD_OFFSET: number = 0;
+const B_LOOP_BLINN_DATA_SIGN_OFFSET: number = 2;
 
 const QUAD_POSITIONS: Float32Array = new Float32Array([
     0.0, 1.0,
@@ -31,6 +38,13 @@ const QUAD_TEX_COORDS: Float32Array = new Float32Array([
     1.0, 0.0,
 ]);
 
+export interface Timings {
+    atlasRendering: number;
+    compositing: number;
+}
+
+declare class WebGLQuery {}
+
 export abstract class PathfinderView {
     constructor(canvas: HTMLCanvasElement,
                 commonShaderSource: string,
@@ -45,8 +59,31 @@ export abstract class PathfinderView {
         this.atlasTransformBuffer = new PathfinderBufferTexture(this.gl, 'uPathTransform');
         this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
 
+        this.antialiasingStrategy = new NoAAStrategy(0);
+        this.antialiasingStrategy.init(this);
+
         window.addEventListener('resize', () => this.resizeToFit(false), false);
         this.resizeToFit(true);
+    }
+
+    setAntialiasingOptions(aaType: AntialiasingStrategyName, aaLevel: number) {
+        this.antialiasingStrategy = this.createAAStrategy(aaType, aaLevel);
+
+        let canvas = this.canvas;
+        this.antialiasingStrategy.init(this);
+        this.antialiasingStrategy.setFramebufferSize(this, this.destAllocatedSize);
+        if (this.meshData != null)
+            this.antialiasingStrategy.attachMeshes(this);
+
+        this.setDirty();
+    }
+
+    attachMeshes(meshes: PathfinderMeshData) {
+        this.meshData = meshes;
+        this.meshes = new PathfinderMeshBuffers(this.gl, meshes);
+        this.antialiasingStrategy.attachMeshes(this);
+
+        this.setDirty();
     }
 
     private resizeToFit(initialSize: boolean) {
@@ -93,6 +130,10 @@ export abstract class PathfinderView {
         this.quadElementsBuffer = unwrapNull(this.gl.createBuffer());
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.quadElementsBuffer);
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_ELEMENTS, this.gl.STATIC_DRAW);
+
+        // Set up our timer queries for profiling.
+        this.atlasRenderingTimerQuery = this.timerQueryExt.createQueryEXT();
+        this.compositingTimerQuery = this.timerQueryExt.createQueryEXT();
     }
 
     private compileShaders(commonSource: string, shaderSources: ShaderMap<ShaderProgramSource>):
@@ -154,14 +195,193 @@ export abstract class PathfinderView {
         this.gl.uniform2i(uniforms.uFramebufferSize, currentViewport[2], currentViewport[3]);
     }
 
+    protected redraw() {
+        if (this.meshes == null) {
+            this.dirty = false;
+            return;
+        }
+
+        // Start timing rendering.
+        if (this.timerQueryPollInterval == null) {
+            this.timerQueryExt.beginQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT,
+                                             this.atlasRenderingTimerQuery);
+        }
+
+        // Prepare for direct rendering.
+        this.antialiasingStrategy.prepare(this);
+
+        // Perform direct rendering (Loop-Blinn).
+        if (this.antialiasingStrategy.shouldRenderDirect)
+            this.renderDirect();
+
+        // Antialias.
+        this.antialiasingStrategy.resolve(this);
+
+        // End the timer, and start a new one.
+        if (this.timerQueryPollInterval == null) {
+            this.timerQueryExt.endQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT);
+            this.timerQueryExt.beginQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT,
+                                             this.compositingTimerQuery);
+        }
+
+        // Draw the glyphs with the resolved atlas to the default framebuffer.
+        this.compositeIfNecessary();
+
+        // Finish timing, clear dirty bit and finish.
+        this.finishTiming();
+        this.dirty = false;
+    }
+
+    private setTransformUniform(uniforms: UniformMap) {
+        const transform = this.antialiasingStrategy.transform();
+        this.gl.uniformMatrix4fv(uniforms.uTransform, false, this.antialiasingStrategy.transform());
+    }
+
+    private renderDirect() {
+        // Set up implicit cover state.
+        this.gl.depthFunc(this.gl.GREATER);
+        this.gl.depthMask(true);
+        this.gl.enable(this.gl.DEPTH_TEST);
+        this.gl.disable(this.gl.BLEND);
+
+        // Set up the implicit cover interior VAO.
+        const directInteriorProgram = this.shaderPrograms.directInterior;
+        this.gl.useProgram(directInteriorProgram.program);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
+        this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
+                                    2,
+                                    this.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPathIDs);
+        this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathID,
+                                    1,
+                                    this.gl.UNSIGNED_SHORT,
+                                    false,
+                                    0,
+                                    0);
+        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
+        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
+
+        // Draw direct interior parts.
+        this.setTransformUniform(directInteriorProgram.uniforms);
+        this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
+        this.pathColorsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 0);
+        this.atlasTransformBuffer.bind(this.gl, directInteriorProgram.uniforms, 1);
+        let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
+                                                    this.gl.BUFFER_SIZE) / UINT32_SIZE;
+        this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+
+        // Set up direct curve state.
+        this.gl.depthMask(false);
+        this.gl.enable(this.gl.BLEND);
+        this.gl.blendEquation(this.gl.FUNC_ADD);
+        this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+
+        // Set up the direct curve VAO.
+        const directCurveProgram = this.shaderPrograms.directCurve;
+        this.gl.useProgram(directCurveProgram.program);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
+                                    2,
+                                    this.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPathIDs);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
+                                    1,
+                                    this.gl.UNSIGNED_SHORT,
+                                    false,
+                                    0,
+                                    0);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexLoopBlinnData);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
+                                    2,
+                                    this.gl.UNSIGNED_BYTE,
+                                    false,
+                                    B_LOOP_BLINN_DATA_SIZE,
+                                    B_LOOP_BLINN_DATA_TEX_COORD_OFFSET);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
+                                    1,
+                                    this.gl.BYTE,
+                                    false,
+                                    B_LOOP_BLINN_DATA_SIZE,
+                                    B_LOOP_BLINN_DATA_SIGN_OFFSET);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
+
+        // Draw direct curve parts.
+        this.setTransformUniform(directCurveProgram.uniforms);
+        this.setFramebufferSizeUniform(directCurveProgram.uniforms);
+        this.pathColorsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 0);
+        this.atlasTransformBuffer.bind(this.gl, directCurveProgram.uniforms, 1);
+        indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
+                                                this.gl.BUFFER_SIZE) / UINT32_SIZE;
+        this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+    }
+
+    private finishTiming() {
+        if (this.timerQueryPollInterval != null)
+            return;
+
+        this.timerQueryExt.endQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT);
+
+        this.timerQueryPollInterval = window.setInterval(() => {
+            for (const queryName of ['atlasRenderingTimerQuery', 'compositingTimerQuery'] as
+                    Array<'atlasRenderingTimerQuery' | 'compositingTimerQuery'>) {
+                if (this.timerQueryExt.getQueryObjectEXT(this[queryName],
+                                                         this.timerQueryExt
+                                                               .QUERY_RESULT_AVAILABLE_EXT) == 0) {
+                    return;
+                }
+            }
+
+            const atlasRenderingTime =
+                this.timerQueryExt.getQueryObjectEXT(this.atlasRenderingTimerQuery,
+                                                     this.timerQueryExt.QUERY_RESULT_EXT);
+            const compositingTime =
+                this.timerQueryExt.getQueryObjectEXT(this.compositingTimerQuery,
+                                                     this.timerQueryExt.QUERY_RESULT_EXT);
+            this.updateTimings({
+                atlasRendering: atlasRenderingTime / 1000000.0,
+                compositing: compositingTime / 1000000.0,
+            });
+
+            window.clearInterval(this.timerQueryPollInterval!);
+            this.timerQueryPollInterval = null;
+        }, TIME_INTERVAL_DELAY);
+    }
+
+    protected setDirty() {
+        if (this.dirty)
+            return;
+        this.dirty = true;
+        window.requestAnimationFrame(() => this.redraw());
+    }
+
     abstract setTransformAndTexScaleUniformsForDest(uniforms: UniformMap): void;
     abstract setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap): void;
 
+    protected abstract createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
+                                        AntialiasingStrategy;
+
+    protected abstract compositeIfNecessary(): void;
+
+    protected abstract updateTimings(timings: Timings): void;
+    
     abstract get destFramebuffer(): WebGLFramebuffer;
     abstract get destDepthTexture(): WebGLTexture;
 
     abstract get destAllocatedSize(): glmatrix.vec2;
     abstract get destUsedSize(): glmatrix.vec2;
+
+    protected antialiasingStrategy: AntialiasingStrategy;
 
     protected canvas: HTMLCanvasElement;
 
@@ -185,6 +405,12 @@ export abstract class PathfinderView {
 
     atlasTransformBuffer: PathfinderBufferTexture;
     protected pathColorsBufferTexture: PathfinderBufferTexture;
+
+    private atlasRenderingTimerQuery: WebGLQuery;
+    private compositingTimerQuery: WebGLQuery;
+    private timerQueryPollInterval: number | null;
+
+    protected dirty: boolean;
 }
 
 export abstract class MonochromePathfinderView extends PathfinderView {

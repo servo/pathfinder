@@ -11,14 +11,24 @@
 import * as glmatrix from 'gl-matrix';
 import 'path-data-polyfill.js';
 
+import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import {ECAAStrategy, ECAAMulticolorStrategy} from "./ecaa-strategy";
+import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
-import {PathfinderView} from './view';
 import {panic} from './utils';
+import {PathfinderView, Timings} from './view';
 import AppController from './app-controller';
+import SSAAStrategy from "./ssaa-strategy";
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
 const PARTITION_SVG_PATHS_ENDPOINT_URL: string = "/partition-svg-paths";
+
+const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
+    none: NoAAStrategy,
+    ssaa: SSAAStrategy,
+    ecaa: ECAAMulticolorStrategy,
+};
 
 declare class SVGPathSegment {
     type: string;
@@ -27,6 +37,12 @@ declare class SVGPathSegment {
 
 declare class SVGPathElement {
     getPathData(settings: any): SVGPathSegment[];
+}
+
+interface AntialiasingStrategyTable {
+    none: typeof NoAAStrategy;
+    ssaa: typeof SSAAStrategy;
+    ecaa: typeof ECAAStrategy;
 }
 
 class SVGDemoController extends AppController<SVGDemoView> {
@@ -83,7 +99,6 @@ class SVGDemoController extends AppController<SVGDemoView> {
 
         // Build the partitioning request to the server.
         const request = {paths: pathData.map(segments => ({segments: segments}))};
-        console.log(JSON.stringify(request));
 
         // Make the request.
         window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
@@ -91,12 +106,25 @@ class SVGDemoController extends AppController<SVGDemoView> {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(request),
         }).then(response => response.text()).then(responseText => {
-            console.log(JSON.parse(responseText));
+            const response = JSON.parse(responseText);
+            if (!('Ok' in response))
+                panic("Failed to partition the font!");
+            const meshes = response.Ok.pathData;
+            this.meshes = new PathfinderMeshData(meshes);
+            this.meshesReceived();
         });
+    }
+
+    private meshesReceived() {
+        this.view.then(view => {
+            // TODO(pcwalton): Upload path color data.
+            view.attachMeshes(this.meshes);
+        })
     }
 
     private svg: SVGSVGElement;
     private pathElements: Array<SVGPathElement>;
+    private meshes: PathfinderMeshData;
 }
 
 class SVGDemoView extends PathfinderView {
@@ -135,6 +163,17 @@ class SVGDemoView extends PathfinderView {
 
     setTransformSTAndTexScaleUniformsForDest() {
         panic("TODO");
+    }
+
+    protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
+                               AntialiasingStrategy {
+        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
+    }
+
+    protected compositeIfNecessary(): void {}
+
+    protected updateTimings(timings: Timings) {
+        // TODO(pcwalton)
     }
 
     private appController: SVGDemoController;
