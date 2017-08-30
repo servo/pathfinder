@@ -1,4 +1,4 @@
-// pathfinder/client/src/text.ts
+// pathfinder/client/src/text-demo.ts
 //
 // Copyright © 2017 The Pathfinder Project Developers.
 //
@@ -26,7 +26,7 @@ import AppController from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import SSAAStrategy from './ssaa-strategy';
 
-require('../html/text.html');
+require('../html/text-demo.html');
 
 const TEXT: string =
 `’Twas brillig, and the slithy toves

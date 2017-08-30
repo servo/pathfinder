@@ -38,8 +38,8 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::u32;
 
-static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text.html";
-static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg.html";
+static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text-demo.html";
+static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg-demo.html";
 static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/css";
 static STATIC_CSS_PATHFINDER_PATH: &'static str = "../client/css/pathfinder.css";
 static STATIC_JS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/js";
@@ -475,7 +475,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 fn static_text_demo() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_TEXT_DEMO_PATH)
 }
-#[get("/svg")]
+#[get("/demo/svg")]
 fn static_svg_demo() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_SVG_DEMO_PATH)
 }

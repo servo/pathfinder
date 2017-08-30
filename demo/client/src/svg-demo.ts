@@ -1,4 +1,4 @@
-// pathfinder/client/src/svg.ts
+// pathfinder/client/src/svg-demo.ts
 //
 // Copyright © 2017 The Pathfinder Project Developers.
 //
@@ -21,7 +21,7 @@ import {PathfinderView, Timings} from './view';
 import AppController from './app-controller';
 import SSAAStrategy from "./ssaa-strategy";
 
-require('../html/svg.html');
+require('../html/svg-demo.html');
 
 const parseColor = require('parse-color');
 

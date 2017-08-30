@@ -3,8 +3,8 @@ const ExtractTextPlugin = require('extract-text-webpack-plugin');
 module.exports = {
     devtool: 'inline-source-map',
     entry: {
-        svg: "./src/svg.ts",
-        text: "./src/text.ts",
+        'svg-demo': "./src/svg-demo.ts",
+        'text-demo': "./src/text-demo.ts",
     },
     module: {
         rules: [
