@@ -202,11 +202,23 @@ impl FontContext {
                             control_point_index: current_control_point_index.take().unwrap_or(!0),
                             subpath_index: current_subpath_index,
                         });
-                    } else {
-                        let mut control_points = &mut glyph_outline_buffer.control_points;
-                        current_control_point_index = Some(control_points.len() as u32);
-                        control_points.push(point_position)
+                        continue
                     }
+
+                    // Add an implied endpoint if necessary.
+                    let mut control_points = &mut glyph_outline_buffer.control_points;
+                    if let Some(prev_control_point_index) = current_control_point_index.take() {
+                        let prev_control_point_position =
+                            control_points[prev_control_point_index as usize];
+                        glyph_outline_buffer.endpoints.push(Endpoint {
+                            position: prev_control_point_position.lerp(point_position, 0.5),
+                            control_point_index: prev_control_point_index,
+                            subpath_index: current_subpath_index,
+                        })
+                    }
+
+                    current_control_point_index = Some(control_points.len() as u32);
+                    control_points.push(point_position)
                 }
 
                 if let Some(last_control_point_index) = current_control_point_index.take() {
