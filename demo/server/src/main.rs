@@ -45,6 +45,7 @@ static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstr
 static STATIC_CSS_PATHFINDER_PATH: &'static str = "../client/css/pathfinder.css";
 static STATIC_JS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/js";
 static STATIC_JS_JQUERY_PATH: &'static str = "../client/node_modules/jquery/dist";
+static STATIC_JS_POPPER_JS_PATH: &'static str = "../client/node_modules/popper.js/dist/umd";
 static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 
@@ -500,6 +501,10 @@ fn static_js_bootstrap(file: PathBuf) -> Option<NamedFile> {
 fn static_js_jquery(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_JS_JQUERY_PATH).join(file)).ok()
 }
+#[get("/js/popper.js/<file..>")]
+fn static_js_popper_js(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_JS_POPPER_JS_PATH).join(file)).ok()
+}
 #[get("/js/pathfinder/<file..>")]
 fn static_js_pathfinder(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_JS_PATHFINDER_PATH).join(file)).ok()
@@ -538,6 +543,7 @@ fn main() {
         static_css_pathfinder_css,
         static_js_bootstrap,
         static_js_jquery,
+        static_js_popper_js,
         static_js_pathfinder,
         static_glsl,
     ]).launch();
