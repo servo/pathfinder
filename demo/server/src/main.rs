@@ -38,6 +38,7 @@ use std::mem;
 use std::path::{Path, PathBuf};
 use std::u32;
 
+static STATIC_INDEX_PATH: &'static str = "../client/index.html";
 static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text-demo.html";
 static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg-demo.html";
 static STATIC_3D_DEMO_PATH: &'static str = "../client/3d-demo.html";
@@ -513,6 +514,10 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
 // Static files
 #[get("/")]
+fn static_index() -> io::Result<NamedFile> {
+    NamedFile::open(STATIC_INDEX_PATH)
+}
+#[get("/demo/text")]
 fn static_demo_text() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_TEXT_DEMO_PATH)
 }
@@ -597,6 +602,7 @@ fn main() {
     rocket::ignite().mount("/", routes![
         partition_font,
         partition_svg_paths,
+        static_index,
         static_demo_text,
         static_demo_svg,
         static_demo_3d,

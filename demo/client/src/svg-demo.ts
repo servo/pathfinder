@@ -21,8 +21,6 @@ import {PathfinderView, Timings} from './view';
 import AppController from './app-controller';
 import SSAAStrategy from "./ssaa-strategy";
 
-require('../html/svg-demo.html');
-
 const parseColor = require('parse-color');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";

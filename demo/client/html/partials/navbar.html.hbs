@@ -1,15 +1,18 @@
 <nav class="navbar navbar-expand-sm navbar-dark bg-dark">
-    <a class="navbar-brand" href="#">Pathfinder</a>
+    <a class="navbar-brand" href="/">Pathfinder</a>
     <div class="collapse navbar-collapse">
         <ul class="navbar-nav mr-auto">
-            <li class="nav-item dropdown active">
+            <li class="nav-item dropdown {{#if isDemo}}active{{/if}}">
                 <a class="nav-link dropdown-toggle" id="pf-demos-menu" data-toggle="dropdown"
                  ref="/" aria-haspopup="true" aria-expanded="false">Demos</a>
                 <div class="dropdown-menu" aria-labelledby="pf-demos-menu">
-                    <a class="dropdown-item" href="/">Text</a>
+                    <a class="dropdown-item" href="/demo/text">Text</a>
                     <a class="dropdown-item" href="/demo/svg">SVG</a>
                     <a class="dropdown-item" href="/demo/3d">3D</a>
                 </div>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="https://github.com/pcwalton/pathfinder">Code</a>
             </li>
         </ul>
     </div>

@@ -1,3 +1,7 @@
+const Handlebars = require('handlebars');
+const HandlebarsPlugin = require('handlebars-webpack-plugin');
+const fs = require('fs');
+
 module.exports = {
     devtool: 'inline-source-map',
     entry: {
@@ -8,42 +12,9 @@ module.exports = {
     module: {
         rules: [
             {
-                test: /\.tsx?$/,
+                test: /src\/[a-zA-Z0-9_-]+\.tsx?$/,
                 use: 'ts-loader',
                 exclude: /node_modules/,
-            },
-            {
-                test: /\.svg?$/,
-                use: 'svg-inline-loader',
-            },
-            {
-                test: /html\/[a-zA-Z0-9_-]+\.html$/,
-                use: [
-                    {
-                        loader: 'file-loader',
-                        options: {
-                            name: "[name].html",
-                        },
-                    },
-                    'extract-loader',
-                    {
-                        loader: 'html-loader',
-                        options: {
-                            interpolate: true,
-                        },
-                    },
-                ],
-            },
-            {
-                test: /html\/include\/[a-zA-Z0-9_-]+\.html$/,
-                use: [
-                    {
-                        loader: 'html-loader',
-                        options: {
-                            interpolate: true,
-                        },
-                    },
-                ],
             },
         ]
     },
@@ -54,4 +25,17 @@ module.exports = {
         filename: "[name].js",
         path: __dirname,
     },
+    plugins: [
+        new HandlebarsPlugin({
+            entry: "html/*.hbs",
+            output: "./[name]",
+            partials: ["html/partials/*.hbs"],
+            helpers: {
+                octicon: function(iconName) {
+                    const svg = fs.readFileSync(`node_modules/octicons/build/svg/${iconName}.svg`);
+                    return new Handlebars.SafeString(svg);
+                }
+            },
+        })
+    ]
 }

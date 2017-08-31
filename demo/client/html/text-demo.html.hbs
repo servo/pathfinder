@@ -1,15 +1,14 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>SVG &mdash; Pathfinder Demo</title>
+        <title>Text &mdash; Pathfinder Demo</title>
         <meta charset="utf-8">
-        ${require('./include/header.html')}
-        <script type="text/javascript" src="/js/pathfinder/svg-demo.js"></script>
+        {{>partials/header.html}}
+        <script type="text/javascript" src="/js/pathfinder/text-demo.js"></script>
     </head>
     <body>
-        ${require('./include/navbar.html')}
+        {{>partials/navbar.html isDemo=true}}
         <canvas id="pf-canvas" width="400" height="300"></canvas>
-        <svg id="pf-svg" xmlns="http://www.w3.org/2000/svg" width="400" height="300"></svg>
         <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end">
             <div class="ml-3">
                 <div id="pf-settings" class="card mb-4 pf-invisible">
@@ -20,9 +19,11 @@
                         </button>
                         <form>
                             <div class="form-group">
-                                <label for="pf-select-file">SVG document</label>
+                                <label for="pf-select-file">Font</label>
                                 <select id="pf-select-file" class="form-control custom-select">
-                                    <option value="tiger" selected>Ghostscript Tiger</option>
+                                    <option value="open-sans" selected>Open Sans</option>
+                                    <option value="nimbus-sans">Nimbus Sans</option>
+                                    <option value="eb-garamond">EB Garamond</option>
                                     <option value="load-custom">Load File&hellip;</option>
                                 </select>
                                 <input id="pf-file-select" type="file">
@@ -33,7 +34,7 @@
                                     <option value="none" selected>None</option>
                                     <option value="ssaa-2">2&times;SSAA</option>
                                     <option value="ssaa-4">4&times;SSAA</option>
-                                    <option value="ecaa">ECAA (BROKEN)</option>
+                                    <option value="ecaa">ECAA</option>
                                 </select>
                             </div>
                         </form>
@@ -42,7 +43,7 @@
                 </div>
                 <button id="pf-settings-button" type="button" class="btn btn-outline-secondary"
                  aria-expanded="false" aria-controls="#pf-settings">
-                    ${require('octicons/build/svg/gear.svg')}
+                    {{octicon "gear"}}
                 </button>
             </div>
             <div class="rounded py-1 px-3 mr-3" id="pf-fps-label">0 ms</div>
