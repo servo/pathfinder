@@ -50,6 +50,10 @@ export default abstract class AppController<View extends PathfinderView> {
         this.updateAALevel();
     }
 
+    protected loadInitialFile() {
+        this.fileSelectionChanged();
+    }
+
     private updateAALevel() {
         const selectedOption = this.aaLevelSelect.selectedOptions[0];
         const aaValues = unwrapNull(/^([a-z-]+)(?:-([0-9]+))?$/.exec(selectedOption.value));
@@ -83,12 +87,23 @@ export default abstract class AppController<View extends PathfinderView> {
             return;
         }
 
+        // Remove the "Custom…" placeholder if it exists.
         const placeholder = document.getElementById('pf-custom-option-placeholder');
         if (placeholder != null)
             this.selectFileElement.removeChild(placeholder);
+
+        // Fetch the file.
+        window.fetch(`${this.builtinFileURI}/${selectedOption.value}`)
+              .then(response => response.arrayBuffer())
+              .then(data => {
+                  this.fileData = data;
+                  this.fileLoaded();
+              });
     }
 
     protected abstract fileLoaded(): void;
+
+    protected abstract get builtinFileURI(): string;
 
     protected abstract createView(canvas: HTMLCanvasElement,
                                   commonShaderSource: string,

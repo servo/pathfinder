@@ -7,7 +7,7 @@
     user-select: none;
     -moz-user-select: none;
     opacity: 1.0;
-    transition: opacity 300ms, transform 300ms;
+    transition: opacity 300ms, transform 300ms, visibility 300ms;
     transform: translateY(0);
 }
 #pf-settings-button:not(:hover) {
@@ -20,6 +20,7 @@
 #pf-settings.pf-invisible {
     opacity: 0.0;
     transform: translateY(1em);
+    visibility: hidden;
 }
 button > svg {
     width: 1.25em;

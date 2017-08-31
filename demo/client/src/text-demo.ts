@@ -68,6 +68,8 @@ const INITIAL_FONT_SIZE: number = 72.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
+const BUILTIN_FONT_URI: string = "/otf/demo";
+
 const B_POSITION_SIZE: number = 8;
 
 const B_PATH_INDEX_SIZE: number = 2;
@@ -119,6 +121,8 @@ class TextDemoController extends AppController<TextDemoView> {
         this.fontSize = INITIAL_FONT_SIZE;
 
         this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
+
+        this.loadInitialFile();
     }
 
     protected createView(canvas: HTMLCanvasElement,
@@ -144,8 +148,12 @@ class TextDemoController extends AppController<TextDemoView> {
         this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.index);
 
         // Build the partitioning request to the server.
+        //
+        // FIXME(pcwalton): If this is a builtin font, don't resend it to the server!
         const request = {
-            otf: base64js.fromByteArray(new Uint8Array(this.fileData)),
+            face: {
+                Custom: base64js.fromByteArray(new Uint8Array(this.fileData)),
+            },
             fontIndex: 0,
             glyphs: this.uniqueGlyphs.map(glyph => {
                 const metrics = glyph.metrics;
@@ -198,6 +206,10 @@ class TextDemoController extends AppController<TextDemoView> {
     set fontSize(newFontSize: number) {
         this._fontSize = newFontSize;
         this.view.then(view => view.attachText());
+    }
+
+    protected get builtinFileURI(): string {
+        return BUILTIN_FONT_URI;
     }
 
     private fpsLabel: HTMLElement;

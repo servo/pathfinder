@@ -29,6 +29,8 @@ const SVG_NS: string = "http://www.w3.org/2000/svg";
 
 const PARTITION_SVG_PATHS_ENDPOINT_URL: string = "/partition-svg-paths";
 
+const BUILTIN_SVG_URI: string = "/svg/demo";
+
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
@@ -59,6 +61,8 @@ class SVGDemoController extends AppController<SVGDemoView> {
         this.svg = document.getElementById('pf-svg') as Element as SVGSVGElement;
 
         this.pathElements = [];
+
+        this.loadInitialFile();
     }
 
     protected fileLoaded() {
@@ -139,6 +143,10 @@ class SVGDemoController extends AppController<SVGDemoView> {
             this.meshes = new PathfinderMeshData(meshes);
             this.meshesReceived();
         });
+    }
+
+    protected get builtinFileURI(): string {
+        return BUILTIN_SVG_URI;
     }
 
     private meshesReceived() {

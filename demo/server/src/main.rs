@@ -33,7 +33,7 @@ use rocket::response::{NamedFile, Responder, Response};
 use rocket_contrib::json::Json;
 use serde::Serialize;
 use std::fs::File;
-use std::io;
+use std::io::{self, Read};
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::u32;
@@ -50,6 +50,16 @@ static STATIC_JS_POPPER_JS_PATH: &'static str = "../client/node_modules/popper.j
 static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
 static STATIC_SVG_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build/svg";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
+
+static BUILTIN_FONTS: [(&'static str, &'static str); 3] = [
+    ("open-sans", "../../resources/fonts/open-sans/OpenSans-Regular.ttf"),
+    ("nimbus-sans", "../../resources/fonts/nimbus-sans/NimbusSanL-Regu.ttf"),
+    ("eb-garamond", "../../resources/fonts/eb-garamond/EBGaramond12-Regular.ttf"),
+];
+
+static BUILTIN_SVGS: [(&'static str, &'static str); 1] = [
+    ("tiger", "../../resources/svg/Ghostscript_Tiger.svg"),
+];
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct SubpathRange {
@@ -77,14 +87,22 @@ impl IndexRange {
     }
 }
 
-#[allow(non_snake_case)]
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionFontRequest {
-    // Base64 encoded.
-    otf: String,
-    fontIndex: u32,
+    face: PartitionFontRequestFace,
+    #[serde(rename = "fontIndex")]
+    font_index: u32,
     glyphs: Vec<PartitionGlyph>,
-    pointSize: f64,
+    #[serde(rename = "pointSize")]
+    point_size: f64,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+enum PartitionFontRequestFace {
+    /// One of the builtin fonts in `BUILTIN_FONTS`.
+    Builtin(String),
+    /// Base64-encoded OTF data.
+    Custom(String),
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -182,6 +200,7 @@ struct PartitionEncodedPathData {
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 enum PartitionFontError {
+    UnknownBuiltinFont,
     Base64DecodingFailed,
     FontSanitizationFailed,
     FontLoadingFailed,
@@ -312,26 +331,44 @@ fn partition_paths(partitioner: &mut Partitioner, subpath_indices: &[SubpathRang
 #[post("/partition-font", format = "application/json", data = "<request>")]
 fn partition_font(request: Json<PartitionFontRequest>)
                   -> Json<Result<PartitionFontResponse, PartitionFontError>> {
-    // Decode Base64-encoded OTF data.
-    let unsafe_otf_data = match base64::decode(&request.otf) {
-        Ok(unsafe_otf_data) => unsafe_otf_data,
-        Err(_) => return Json(Err(PartitionFontError::Base64DecodingFailed)),
-    };
+    // Fetch the OTF data.
+    let otf_data = match request.face {
+        PartitionFontRequestFace::Builtin(ref builtin_font_name) => {
+            // Read in the builtin font.
+            match BUILTIN_FONTS.iter().filter(|& &(name, _)| name == builtin_font_name).next() {
+                Some(&(_, path)) => {
+                    let mut data = vec![];
+                    File::open(path).expect("Couldn't find builtin font!")
+                                    .read_to_end(&mut data)
+                                    .expect("Couldn't read builtin font!");
+                    data
+                }
+                None => return Json(Err(PartitionFontError::UnknownBuiltinFont)),
+            }
+        }
+        PartitionFontRequestFace::Custom(ref encoded_data) => {
+            // Decode Base64-encoded OTF data.
+            let unsafe_otf_data = match base64::decode(encoded_data) {
+                Ok(unsafe_otf_data) => unsafe_otf_data,
+                Err(_) => return Json(Err(PartitionFontError::Base64DecodingFailed)),
+            };
 
-    // Sanitize.
-    let otf_data = match fontsan::process(&unsafe_otf_data) {
-        Ok(otf_data) => otf_data,
-        Err(_) => return Json(Err(PartitionFontError::FontSanitizationFailed)),
+            // Sanitize.
+            match fontsan::process(&unsafe_otf_data) {
+                Ok(otf_data) => otf_data,
+                Err(_) => return Json(Err(PartitionFontError::FontSanitizationFailed)),
+            }
+        }
     };
 
     // Parse glyph data.
     let font_key = FontKey::new();
     let font_instance_key = FontInstanceKey {
         font_key: font_key,
-        size: Au::from_f64_px(request.pointSize),
+        size: Au::from_f64_px(request.point_size),
     };
     let mut font_context = FontContext::new();
-    if font_context.add_font_from_memory(&font_key, otf_data, request.fontIndex).is_err() {
+    if font_context.add_font_from_memory(&font_key, otf_data, request.font_index).is_err() {
         return Json(Err(PartitionFontError::FontLoadingFailed))
     }
 
@@ -476,15 +513,15 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
 // Static files
 #[get("/")]
-fn static_text_demo() -> io::Result<NamedFile> {
+fn static_demo_text() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_TEXT_DEMO_PATH)
 }
 #[get("/demo/svg")]
-fn static_svg_demo() -> io::Result<NamedFile> {
+fn static_demo_svg() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_SVG_DEMO_PATH)
 }
 #[get("/demo/3d")]
-fn static_3d_demo() -> io::Result<NamedFile> {
+fn static_demo_3d() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_3D_DEMO_PATH)
 }
 #[get("/css/bootstrap/<file..>")]
@@ -523,6 +560,20 @@ fn static_svg_octicons(file: PathBuf) -> Option<NamedFile> {
 fn static_glsl(file: PathBuf) -> Option<Shader> {
     Shader::open(Path::new(STATIC_GLSL_PATH).join(file)).ok()
 }
+#[get("/otf/demo/<font_name>")]
+fn static_otf_demo(font_name: String) -> Option<NamedFile> {
+    BUILTIN_FONTS.iter()
+                 .filter(|& &(name, _)| name == font_name)
+                 .next()
+                 .and_then(|&(_, path)| NamedFile::open(Path::new(path)).ok())
+}
+#[get("/svg/demo/<svg_name>")]
+fn static_svg_demo(svg_name: String) -> Option<NamedFile> {
+    BUILTIN_SVGS.iter()
+                .filter(|& &(name, _)| name == svg_name)
+                .next()
+                .and_then(|&(_, path)| NamedFile::open(Path::new(path)).ok())
+}
 
 struct Shader {
     file: File,
@@ -546,9 +597,9 @@ fn main() {
     rocket::ignite().mount("/", routes![
         partition_font,
         partition_svg_paths,
-        static_text_demo,
-        static_svg_demo,
-        static_3d_demo,
+        static_demo_text,
+        static_demo_svg,
+        static_demo_3d,
         static_css_bootstrap,
         static_css_octicons,
         static_css_pathfinder_css,
@@ -558,5 +609,7 @@ fn main() {
         static_js_pathfinder,
         static_svg_octicons,
         static_glsl,
+        static_otf_demo,
+        static_svg_demo,
     ]).launch();
 }
