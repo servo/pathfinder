@@ -13,6 +13,10 @@ module.exports = {
                 exclude: /node_modules/,
             },
             {
+                test: /\.svg?$/,
+                use: 'svg-inline-loader',
+            },
+            {
                 test: /html\/[a-zA-Z0-9_-]+\.html$/,
                 use: [
                     {

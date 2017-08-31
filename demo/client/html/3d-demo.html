@@ -8,15 +8,36 @@
     </head>
     <body>
         ${require('./include/navbar.html')}
-        <div class="rounded py-1 px-3" id="pf-fps-label">0 ms</div>
         <canvas id="pf-canvas" width="400" height="300"></canvas>
-        <div class="pf-bottom-control" id="pf-rendering-options-group">
-            <select class="custom-select" id="pf-aa-level-select">
-                <option data-pf-type="none" data-pf-level="0" selected>No AA</option>
-                <option data-pf-type="ecaa" data-pf-level="0">ECAA (BROKEN)</option>
-                <option data-pf-type="ssaa" data-pf-level="2">2&times;SSAA</option>
-                <option data-pf-type="ssaa" data-pf-level="4">4&times;SSAA</option>
-            </select>
+        <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end">
+            <div class="ml-3">
+                <div id="pf-settings" class="card mb-4 pf-invisible">
+                    <div class="card-body">
+                        <button id="pf-settings-close-button" type="button" class="close"
+                         aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                        <h4 class="card-title">Settings</h4>
+                        <form>
+                            <div class="form-group">
+                                <label for="pf-aa-level-select">Antialiasing</label>
+                                <select id="pf-aa-level-select" class="form-control custom-select">
+                                    <option value="none" selected>None</option>
+                                    <option value="ssaa-2">2&times;SSAA</option>
+                                    <option value="ssaa-4">4&times;SSAA</option>
+                                    <option value="ecaa">ECAA (BROKEN)</option>
+                                </select>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="pf-arrow-box"></div>
+                </div>
+                <button id="pf-settings-button" type="button" class="btn btn-outline-secondary"
+                 aria-expanded="false" aria-controls="#pf-settings">
+                    ${require('octicons/build/svg/gear.svg')}
+                </button>
+            </div>
+            <div class="rounded py-1 px-3 mr-3" id="pf-fps-label">0 ms</div>
         </div>
     </body>
 </html>

@@ -10,7 +10,7 @@
 
 import {AntialiasingStrategyName} from "./aa-strategy";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
-import {expectNotNull, unwrapUndef} from './utils';
+import { expectNotNull, unwrapUndef, unwrapNull } from './utils';
 import {PathfinderView} from "./view";
 
 export default abstract class AppController<View extends PathfinderView> {
@@ -18,6 +18,25 @@ export default abstract class AppController<View extends PathfinderView> {
 
     start() {
         const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
+
+        this.settingsCard = document.getElementById('pf-settings') as HTMLElement;
+        this.settingsButton = document.getElementById('pf-settings-button') as HTMLButtonElement;
+        this.settingsCloseButton = document.getElementById('pf-settings-close-button') as
+            HTMLButtonElement;
+        this.settingsButton.addEventListener('click', () => {
+            this.settingsCard.classList.toggle('pf-invisible');
+        }, false);
+        this.settingsCloseButton.addEventListener('click', () => {
+            this.settingsCard.classList.add('pf-invisible');
+        }, false);
+
+        this.filePickerElement = document.getElementById('pf-file-select') as HTMLInputElement;
+        this.filePickerElement.addEventListener('change', () => this.loadFile(), false);
+
+        this.selectFileElement = document.getElementById('pf-select-file') as HTMLSelectElement;
+        this.selectFileElement.addEventListener('click', () => {
+            this.fileSelectionChanged();
+        }, false);
 
         const shaderLoader = new ShaderLoader;
         shaderLoader.load();
@@ -33,14 +52,14 @@ export default abstract class AppController<View extends PathfinderView> {
 
     private updateAALevel() {
         const selectedOption = this.aaLevelSelect.selectedOptions[0];
-        const aaType = unwrapUndef(selectedOption.dataset.pfType) as
-            AntialiasingStrategyName;
-        const aaLevel = parseInt(unwrapUndef(selectedOption.dataset.pfLevel));
+        const aaValues = unwrapNull(/^([a-z-]+)(?:-([0-9]+))?$/.exec(selectedOption.value));
+        const aaType = aaValues[1] as AntialiasingStrategyName;
+        const aaLevel = aaValues[2] === "" ? 1 : parseInt(aaValues[2]); 
         this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel));
     }
 
     protected loadFile() {
-        const file = expectNotNull(this.loadFileButton.files, "No file selected!")[0];
+        const file = expectNotNull(this.filePickerElement.files, "No file selected!")[0];
         const reader = new FileReader;
         reader.addEventListener('loadend', () => {
             this.fileData = reader.result;
@@ -49,18 +68,41 @@ export default abstract class AppController<View extends PathfinderView> {
         reader.readAsArrayBuffer(file);
     }
 
+    protected fileSelectionChanged() {
+        const selectedOption = this.selectFileElement.selectedOptions[0] as HTMLOptionElement;
+
+        if (selectedOption.value === 'load-custom') {
+            this.filePickerElement.click();
+
+            const oldSelectedIndex = this.selectFileElement.selectedIndex;
+            const newOption = document.createElement('option');
+            newOption.id = 'pf-custom-option-placeholder';
+            newOption.appendChild(document.createTextNode("Custom"));
+            this.selectFileElement.insertBefore(newOption, selectedOption);
+            this.selectFileElement.selectedIndex = oldSelectedIndex;
+            return;
+        }
+
+        const placeholder = document.getElementById('pf-custom-option-placeholder');
+        if (placeholder != null)
+            this.selectFileElement.removeChild(placeholder);
+    }
+
     protected abstract fileLoaded(): void;
 
     protected abstract createView(canvas: HTMLCanvasElement,
                                   commonShaderSource: string,
-                                  shaderSources: ShaderMap<ShaderProgramSource>):
-                                  View;
+                                  shaderSources: ShaderMap<ShaderProgramSource>): View;
 
     view: Promise<View>;
 
     protected fileData: ArrayBuffer;
 
     protected canvas: HTMLCanvasElement;
-    protected loadFileButton: HTMLInputElement;
+    protected selectFileElement: HTMLSelectElement;
+    protected filePickerElement: HTMLInputElement;
     private aaLevelSelect: HTMLSelectElement;
+    private settingsCard: HTMLElement;
+    private settingsButton: HTMLButtonElement;
+    private settingsCloseButton: HTMLButtonElement;
 }

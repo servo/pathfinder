@@ -42,11 +42,13 @@ static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text-demo.html";
 static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg-demo.html";
 static STATIC_3D_DEMO_PATH: &'static str = "../client/3d-demo.html";
 static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/css";
+static STATIC_CSS_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build";
 static STATIC_CSS_PATHFINDER_PATH: &'static str = "../client/css/pathfinder.css";
 static STATIC_JS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/js";
 static STATIC_JS_JQUERY_PATH: &'static str = "../client/node_modules/jquery/dist";
 static STATIC_JS_POPPER_JS_PATH: &'static str = "../client/node_modules/popper.js/dist/umd";
 static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
+static STATIC_SVG_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build/svg";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -489,6 +491,10 @@ fn static_3d_demo() -> io::Result<NamedFile> {
 fn static_css_bootstrap(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_CSS_BOOTSTRAP_PATH).join(file)).ok()
 }
+#[get("/css/octicons/<file..>")]
+fn static_css_octicons(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_CSS_OCTICONS_PATH).join(file)).ok()
+}
 #[get("/css/pathfinder.css")]
 fn static_css_pathfinder_css() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_CSS_PATHFINDER_PATH)
@@ -508,6 +514,10 @@ fn static_js_popper_js(file: PathBuf) -> Option<NamedFile> {
 #[get("/js/pathfinder/<file..>")]
 fn static_js_pathfinder(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_JS_PATHFINDER_PATH).join(file)).ok()
+}
+#[get("/svg/octicons/<file..>")]
+fn static_svg_octicons(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_SVG_OCTICONS_PATH).join(file)).ok()
 }
 #[get("/glsl/<file..>")]
 fn static_glsl(file: PathBuf) -> Option<Shader> {
@@ -540,11 +550,13 @@ fn main() {
         static_svg_demo,
         static_3d_demo,
         static_css_bootstrap,
+        static_css_octicons,
         static_css_pathfinder_css,
         static_js_bootstrap,
         static_js_jquery,
         static_js_popper_js,
         static_js_pathfinder,
+        static_svg_octicons,
         static_glsl,
     ]).launch();
 }

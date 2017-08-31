@@ -119,9 +119,6 @@ class TextDemoController extends AppController<TextDemoView> {
         this.fontSize = INITIAL_FONT_SIZE;
 
         this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
-
-        this.loadFileButton = document.getElementById('pf-load-font-button') as HTMLInputElement;
-        this.loadFileButton.addEventListener('change', () => this.loadFile(), false);
     }
 
     protected createView(canvas: HTMLCanvasElement,

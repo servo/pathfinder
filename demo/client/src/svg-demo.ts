@@ -59,9 +59,6 @@ class SVGDemoController extends AppController<SVGDemoView> {
         this.svg = document.getElementById('pf-svg') as Element as SVGSVGElement;
 
         this.pathElements = [];
-
-        this.loadFileButton = document.getElementById('pf-load-svg-button') as HTMLInputElement;
-        this.loadFileButton.addEventListener('change', () => this.loadFile(), false);
     }
 
     protected fileLoaded() {
