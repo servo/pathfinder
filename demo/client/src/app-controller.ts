@@ -10,7 +10,7 @@
 
 import {AntialiasingStrategyName} from "./aa-strategy";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
-import { expectNotNull, unwrapUndef, unwrapNull } from './utils';
+import {expectNotNull, unwrapUndef, unwrapNull} from './utils';
 import {PathfinderView} from "./view";
 
 export default abstract class AppController<View extends PathfinderView> {
