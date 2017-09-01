@@ -29,7 +29,7 @@ use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_partitioner::{Endpoint, Subpath};
 use rocket::http::{ContentType, Status};
 use rocket::request::Request;
-use rocket::response::{NamedFile, Responder, Response};
+use rocket::response::{NamedFile, Redirect, Responder, Response};
 use rocket_contrib::json::Json;
 use serde::Serialize;
 use std::fs::File;
@@ -42,6 +42,7 @@ static STATIC_INDEX_PATH: &'static str = "../client/index.html";
 static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text-demo.html";
 static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg-demo.html";
 static STATIC_3D_DEMO_PATH: &'static str = "../client/3d-demo.html";
+static STATIC_DOC_API_PATH: &'static str = "../../font-renderer/target/doc";
 static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/css";
 static STATIC_CSS_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build";
 static STATIC_CSS_PATHFINDER_PATH: &'static str = "../client/css/pathfinder.css";
@@ -51,6 +52,8 @@ static STATIC_JS_POPPER_JS_PATH: &'static str = "../client/node_modules/popper.j
 static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
 static STATIC_SVG_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build/svg";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
+
+static STATIC_DOC_API_INDEX_URI: &'static str = "/doc/api/pathfinder_font_renderer/index.html";
 
 static BUILTIN_FONTS: [(&'static str, &'static str); 3] = [
     ("open-sans", "../../resources/fonts/open-sans/OpenSans-Regular.ttf"),
@@ -529,6 +532,14 @@ fn static_demo_svg() -> io::Result<NamedFile> {
 fn static_demo_3d() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_3D_DEMO_PATH)
 }
+#[get("/doc/api")]
+fn static_doc_api_index() -> Redirect {
+    Redirect::to(STATIC_DOC_API_INDEX_URI)
+}
+#[get("/doc/api/<file..>")]
+fn static_doc_api(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_DOC_API_PATH).join(file)).ok()
+}
 #[get("/css/bootstrap/<file..>")]
 fn static_css_bootstrap(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_CSS_BOOTSTRAP_PATH).join(file)).ok()
@@ -606,6 +617,8 @@ fn main() {
         static_demo_text,
         static_demo_svg,
         static_demo_3d,
+        static_doc_api_index,
+        static_doc_api,
         static_css_bootstrap,
         static_css_octicons,
         static_css_pathfinder_css,
