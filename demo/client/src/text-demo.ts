@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-import {Font} from "opentype.js";
+import {Font} from 'opentype.js';
 import * as _ from 'lodash';
 import * as base64js from 'base64-js';
 import * as glmatrix from 'gl-matrix';
@@ -28,7 +28,7 @@ import AppController from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import SSAAStrategy from './ssaa-strategy';
 
-const TEXT: string =
+const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves
 Did gyre and gimble in the wabe;
 All mimsy were the borogoves,
@@ -76,6 +76,16 @@ const B_PATH_INDEX_SIZE: number = 2;
 
 const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(3072, 3072);
 
+declare global {
+    interface Window {
+        jQuery(element: HTMLElement): JQuerySubset;
+    }
+}
+
+interface JQuerySubset {
+    modal(options?: any): void;
+}
+
 type Matrix4D = Float32Array;
 
 type Rect = glmatrix.vec4;
@@ -108,6 +118,7 @@ function rectsIntersect(a: glmatrix.vec4, b: glmatrix.vec4): boolean {
 class TextDemoController extends AppController<TextDemoView> {
     constructor() {
         super();
+        this.text = DEFAULT_TEXT;
         this._atlas = new Atlas;
     }
 
@@ -115,8 +126,29 @@ class TextDemoController extends AppController<TextDemoView> {
         super.start();
 
         this._fontSize = INITIAL_FONT_SIZE;
+
         this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
+        this.editTextModal = unwrapNull(document.getElementById('pf-edit-text-modal'));
+        this.editTextArea = unwrapNull(document.getElementById('pf-edit-text-area')) as
+            HTMLTextAreaElement;
+
+        const editTextOkButton = unwrapNull(document.getElementById('pf-edit-text-ok-button'));
+        editTextOkButton.addEventListener('click', () => this.updateText(), false);
+
         this.loadInitialFile();
+    }
+
+    showTextEditor() {
+        this.editTextArea.value = this.text;
+
+        window.jQuery(this.editTextModal).modal();
+    }
+
+    private updateText() {
+        this.text = this.editTextArea.value;
+        this.recreateLayout();
+
+        window.jQuery(this.editTextModal).modal('hide');
     }
 
     protected createView(canvas: HTMLCanvasElement,
@@ -126,7 +158,11 @@ class TextDemoController extends AppController<TextDemoView> {
     }
 
     protected fileLoaded() {
-        this.layout = new TextLayout(this.fileData, TEXT, glyph => new GlyphInstance(glyph));
+        this.recreateLayout();
+    }
+
+    private recreateLayout() {
+        this.layout = new TextLayout(this.fileData, this.text, glyph => new GlyphInstance(glyph));
         this.layout.partition().then((meshes: PathfinderMeshData) => {
             this.meshes = meshes;
             this.view.then(view => {
@@ -170,6 +206,8 @@ class TextDemoController extends AppController<TextDemoView> {
     }
 
     private fpsLabel: HTMLElement;
+    private editTextModal: HTMLElement;
+    private editTextArea: HTMLTextAreaElement;
 
     private _atlas: Atlas;
     atlasGlyphs: AtlasGlyph[];
@@ -177,6 +215,8 @@ class TextDemoController extends AppController<TextDemoView> {
     private meshes: PathfinderMeshData;
 
     private _fontSize: number;
+
+    private text: string;
 
     layout: TextLayout<GlyphInstance>;
 }
@@ -189,6 +229,8 @@ class TextDemoView extends MonochromePathfinderView {
         super(canvas, commonShaderSource, shaderSources);
 
         this.appController = appController;
+
+        this.canvas.addEventListener('dblclick', () => this.appController.showTextEditor(), false);
     }
 
     protected initContext() {

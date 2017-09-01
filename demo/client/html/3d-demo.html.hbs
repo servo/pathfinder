@@ -9,8 +9,8 @@
     <body>
         {{>partials/navbar.html isDemo=true}}
         <canvas id="pf-canvas" width="400" height="300"></canvas>
-        <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end">
-            <div class="ml-3">
+        <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end pf-pointer-events-none">
+            <div class="ml-3 pf-pointer-events-none">
                 <div id="pf-settings" class="card mb-4 pf-invisible">
                     <div class="card-body">
                         <button id="pf-settings-close-button" type="button" class="close"

@@ -10,6 +10,12 @@
     transition: opacity 300ms, transform 300ms, visibility 300ms;
     transform: translateY(0);
 }
+#pf-settings:not(.pf-invisible) {
+    pointer-events: auto;
+}
+#pf-settings-button {
+    pointer-events: auto;
+}
 #pf-settings-button:not(:hover) {
     background: rgba(255, 255, 255, 0.75);
 }
@@ -28,6 +34,9 @@ button > svg {
 }
 button > svg path {
     fill: currentColor;
+}
+.pf-pointer-events-none {
+    pointer-events: none;
 }
 #pf-rendering-options-group {
     right: 1em;
