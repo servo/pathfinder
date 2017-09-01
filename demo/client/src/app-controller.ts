@@ -82,7 +82,7 @@ export default abstract class AppController<View extends PathfinderView> {
     }
 
     private fileSelectionChanged(event: Event) {
-        const selectFileElement = event.target as HTMLSelectElement;
+        const selectFileElement = event.currentTarget as HTMLSelectElement;
         const selectedOption = selectFileElement.selectedOptions[0] as HTMLOptionElement;
 
         if (selectedOption.value === 'load-custom' && this.filePickerElement != null) {
