@@ -68,6 +68,15 @@ button > svg path {
 	margin-left: -15px;
 }
 
+.github-corner > svg {
+    fill: #151513;
+    color: #fff;
+    position: absolute;
+    top: 0;
+    border: 0;
+    right: 0;
+    z-index: 1;
+}
 .github-corner:hover .octo-arm {
     animation: octocat-wave 560ms ease-in-out;
 }
