@@ -15,14 +15,16 @@ import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import {BUILTIN_FONT_URI, TextLayout, PathfinderGlyph} from "./text";
+import {panic, PathfinderError} from "./utils";
 import {PathfinderView, Timings} from "./view";
 import AppController from "./app-controller";
 import SSAAStrategy from "./ssaa-strategy";
-import { panic, PathfinderError } from "./utils";
 
 const TEXT: string = "Lorem ipsum dolor sit amet";
 
 const FONT: string = 'open-sans';
+
+const PIXELS_PER_UNIT: number = 1.0;
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
@@ -35,8 +37,15 @@ interface AntialiasingStrategyTable {
 }
 
 class ThreeDController extends AppController<ThreeDView> {
+    start() {
+        super.start();
+
+        this.loadInitialFile();
+    }
+
     protected fileLoaded(): void {
-        this.layout = new TextLayout(this.fileData, TEXT, glyph => new Glyph(glyph));
+        this.layout = new TextLayout(this.fileData, TEXT, glyph => new ThreeDGlyph(glyph));
+        this.layout.layoutText();
         this.layout.partition().then((meshes: PathfinderMeshData) => {
             this.meshes = meshes;
             this.view.then(view => {
@@ -61,7 +70,7 @@ class ThreeDController extends AppController<ThreeDView> {
         return FONT;
     }
 
-    layout: TextLayout<Glyph>;
+    layout: TextLayout<ThreeDGlyph>;
     private meshes: PathfinderMeshData;
 }
 
@@ -73,17 +82,30 @@ class ThreeDView extends PathfinderView {
         super(canvas, commonShaderSource, shaderSources);
 
         this.appController = appController;
+        this._scale = 1.0;
     }
 
     uploadPathMetadata(pathCount: number) {
+        const textGlyphs = this.appController.layout.textGlyphs;
+
         const pathColors = new Uint8Array(4 * (pathCount + 1));
+        const pathTransforms = new Float32Array(4 * (pathCount + 1));
+
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+            const startOffset = (pathIndex + 1) * 4;
+
             for (let channel = 0; channel < 3; channel++)
-                pathColors[(pathIndex + 1) * 4 + channel] = 0x00; // RGB
-            pathColors[(pathIndex + 1) * 4 + 3] = 0xff;           // alpha
+                pathColors[startOffset + channel] = 0x00; // RGB
+            pathColors[startOffset + 3] = 0xff;           // alpha
+
+            const textGlyph = textGlyphs[pathIndex];
+            const glyphRect = textGlyph.getRect(PIXELS_PER_UNIT);
+            console.log(glyphRect);
+            pathTransforms.set([1, 1, glyphRect[0], glyphRect[1]], startOffset);
         }
 
         this.pathColorsBufferTexture.upload(this.gl, pathColors);
+        this.pathTransformBufferTexture.upload(this.gl, pathTransforms);
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
@@ -140,16 +162,17 @@ class ThreeDView extends PathfinderView {
     private appController: ThreeDController;
 }
 
-class Glyph extends PathfinderGlyph {
+class ThreeDGlyph extends PathfinderGlyph {
     constructor(glyph: opentype.Glyph) {
         super(glyph);
     }
 
     getRect(pixelsPerUnit: number): glmatrix.vec4 {
-        const rect = glmatrix.vec4.fromValues(this.position[0],
-                                              this.position[1],
-                                              this.metrics.xMax - this.metrics.xMin,
-                                              this.metrics.yMax - this.metrics.yMin);
+        const rect =
+            glmatrix.vec4.fromValues(this.position[0],
+                                     this.position[1],
+                                     this.position[0] + this.metrics.xMax - this.metrics.xMin,
+                                     this.position[1] + this.metrics.yMax - this.metrics.yMin);
         glmatrix.vec4.scale(rect, rect, pixelsPerUnit);
         return rect;
     }

@@ -155,7 +155,7 @@ class SVGDemoController extends AppController<SVGDemoView> {
 
     private meshesReceived() {
         this.view.then(view => {
-            view.uploadPathData(this.pathElements);
+            view.uploadPathMetadata(this.pathElements);
             view.attachMeshes(this.meshes);
         })
     }
@@ -173,7 +173,6 @@ class SVGDemoView extends PathfinderView {
         super(canvas, commonShaderSource, shaderSources);
 
         this.appController = appController;
-
         this._scale = 1.0;
     }
 
@@ -193,7 +192,7 @@ class SVGDemoView extends PathfinderView {
         this.setDirty();
     }
 
-    uploadPathData(elements: SVGPathElement[]) {
+    uploadPathMetadata(elements: SVGPathElement[]) {
         const pathColors = new Uint8Array(4 * (elements.length + 1));
         const pathTransforms = new Float32Array(4 * (elements.length + 1));
         for (let pathIndex = 0; pathIndex < elements.length; pathIndex++) {
