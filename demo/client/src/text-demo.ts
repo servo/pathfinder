@@ -21,7 +21,7 @@ import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
-import {PathfinderGlyph, TextLayout} from "./text";
+import {BUILTIN_FONT_URI, PathfinderGlyph, TextLayout} from "./text";
 import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic} from './utils';
 import {MonochromePathfinderView, Timings} from './view';
 import AppController from './app-controller';
@@ -68,7 +68,7 @@ const INITIAL_FONT_SIZE: number = 72.0;
 
 const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
 
-const BUILTIN_FONT_URI: string = "/otf/demo";
+const DEFAULT_FONT: string = 'open-sans';
 
 const B_POSITION_SIZE: number = 8;
 
@@ -115,9 +115,7 @@ class TextDemoController extends AppController<TextDemoView> {
         super.start();
 
         this._fontSize = INITIAL_FONT_SIZE;
-
         this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
-
         this.loadInitialFile();
     }
 
@@ -131,16 +129,12 @@ class TextDemoController extends AppController<TextDemoView> {
         this.layout = new TextLayout(this.fileData, TEXT, glyph => new GlyphInstance(glyph));
         this.layout.partition().then((meshes: PathfinderMeshData) => {
             this.meshes = meshes;
-            this.meshesReceived();
+            this.view.then(view => {
+                view.attachText();
+                view.uploadPathMetadata(this.layout.uniqueGlyphs.length);
+                view.attachMeshes(this.meshes);
+            });
         });
-    }
-
-    private meshesReceived() {
-        this.view.then(view => {
-            view.attachText();
-            view.uploadPathData(this.layout.uniqueGlyphs.length);
-            view.attachMeshes(this.meshes);
-        })
     }
 
     updateTimings(newTimes: Timings) {
@@ -160,7 +154,6 @@ class TextDemoController extends AppController<TextDemoView> {
     /// The font size in pixels per em.
     set fontSize(newFontSize: number) {
         this._fontSize = newFontSize;
-        this.layout
         this.view.then(view => view.attachText());
     }
 
@@ -170,6 +163,10 @@ class TextDemoController extends AppController<TextDemoView> {
 
     protected get builtinFileURI(): string {
         return BUILTIN_FONT_URI;
+    }
+
+    protected get defaultFile(): string {
+        return DEFAULT_FONT;
     }
 
     private fpsLabel: HTMLElement;
@@ -198,7 +195,7 @@ class TextDemoView extends MonochromePathfinderView {
         super.initContext();
     }
 
-    uploadPathData(pathCount: number) {
+    uploadPathMetadata(pathCount: number) {
         const pathColors = new Uint8Array(4 * (pathCount + 1));
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
             for (let channel = 0; channel < 3; channel++)
@@ -352,12 +349,6 @@ class TextDemoView extends MonochromePathfinderView {
 
     protected panned() {
         this.rebuildAtlasIfNecessary();
-    }
-
-    protected resized(initialSize: boolean) {
-        if (!initialSize)
-            this.antialiasingStrategy.init(this);
-        this.setDirty();
     }
 
     private setIdentityTexScaleUniform(uniforms: UniformMap) {

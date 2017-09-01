@@ -30,13 +30,21 @@ export default abstract class AppController<View extends PathfinderView> {
             this.settingsCard.classList.add('pf-invisible');
         }, false);
 
-        this.filePickerElement = document.getElementById('pf-file-select') as HTMLInputElement;
-        this.filePickerElement.addEventListener('change', () => this.loadFile(), false);
+        this.filePickerElement = document.getElementById('pf-file-select') as
+            (HTMLInputElement | null);
+        if (this.filePickerElement != null) {
+            this.filePickerElement.addEventListener('change',
+                                                    event => this.loadFile(event),
+                                                    false);
+        }
 
-        this.selectFileElement = document.getElementById('pf-select-file') as HTMLSelectElement;
-        this.selectFileElement.addEventListener('click', () => {
-            this.fileSelectionChanged();
-        }, false);
+        const selectFileElement = document.getElementById('pf-select-file') as
+            (HTMLSelectElement | null);
+        if (selectFileElement != null) {
+            selectFileElement.addEventListener('click',
+                                               event => this.fileSelectionChanged(event),
+                                               false);
+        }
 
         const shaderLoader = new ShaderLoader;
         shaderLoader.load();
@@ -51,7 +59,7 @@ export default abstract class AppController<View extends PathfinderView> {
     }
 
     protected loadInitialFile() {
-        this.fileSelectionChanged();
+        this.fetchFile(this.defaultFile);
     }
 
     private updateAALevel() {
@@ -62,8 +70,9 @@ export default abstract class AppController<View extends PathfinderView> {
         this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel));
     }
 
-    protected loadFile() {
-        const file = expectNotNull(this.filePickerElement.files, "No file selected!")[0];
+    protected loadFile(event: Event) {
+        const filePickerElement = event.target as HTMLInputElement;
+        const file = expectNotNull(filePickerElement.files, "No file selected!")[0];
         const reader = new FileReader;
         reader.addEventListener('loadend', () => {
             this.fileData = reader.result;
@@ -72,28 +81,33 @@ export default abstract class AppController<View extends PathfinderView> {
         reader.readAsArrayBuffer(file);
     }
 
-    protected fileSelectionChanged() {
-        const selectedOption = this.selectFileElement.selectedOptions[0] as HTMLOptionElement;
+    private fileSelectionChanged(event: Event) {
+        const selectFileElement = event.target as HTMLSelectElement;
+        const selectedOption = selectFileElement.selectedOptions[0] as HTMLOptionElement;
 
-        if (selectedOption.value === 'load-custom') {
+        if (selectedOption.value === 'load-custom' && this.filePickerElement != null) {
             this.filePickerElement.click();
 
-            const oldSelectedIndex = this.selectFileElement.selectedIndex;
+            const oldSelectedIndex = selectFileElement.selectedIndex;
             const newOption = document.createElement('option');
             newOption.id = 'pf-custom-option-placeholder';
             newOption.appendChild(document.createTextNode("Custom"));
-            this.selectFileElement.insertBefore(newOption, selectedOption);
-            this.selectFileElement.selectedIndex = oldSelectedIndex;
+            selectFileElement.insertBefore(newOption, selectedOption);
+            selectFileElement.selectedIndex = oldSelectedIndex;
             return;
         }
 
         // Remove the "Custom…" placeholder if it exists.
         const placeholder = document.getElementById('pf-custom-option-placeholder');
         if (placeholder != null)
-            this.selectFileElement.removeChild(placeholder);
+            selectFileElement.removeChild(placeholder);
 
         // Fetch the file.
-        window.fetch(`${this.builtinFileURI}/${selectedOption.value}`)
+        this.fetchFile(selectedOption.value);
+    }
+
+    private fetchFile(file: string) {
+        window.fetch(`${this.builtinFileURI}/${file}`)
               .then(response => response.arrayBuffer())
               .then(data => {
                   this.fileData = data;
@@ -105,6 +119,8 @@ export default abstract class AppController<View extends PathfinderView> {
 
     protected abstract get builtinFileURI(): string;
 
+    protected abstract get defaultFile(): string;
+
     protected abstract createView(canvas: HTMLCanvasElement,
                                   commonShaderSource: string,
                                   shaderSources: ShaderMap<ShaderProgramSource>): View;
@@ -114,8 +130,7 @@ export default abstract class AppController<View extends PathfinderView> {
     protected fileData: ArrayBuffer;
 
     protected canvas: HTMLCanvasElement;
-    protected selectFileElement: HTMLSelectElement;
-    protected filePickerElement: HTMLInputElement;
+    protected filePickerElement: HTMLInputElement | null;
     private aaLevelSelect: HTMLSelectElement;
     private settingsCard: HTMLElement;
     private settingsButton: HTMLButtonElement;

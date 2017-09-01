@@ -17,6 +17,8 @@ import * as opentype from "opentype.js";
 import {PathfinderMeshData} from "./meshes";
 import {assert, panic} from "./utils";
 
+export const BUILTIN_FONT_URI: string = "/otf/demo";
+
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
 
 opentype.Font.prototype.isSupported = function() {

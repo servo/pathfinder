@@ -29,6 +29,8 @@ const PARTITION_SVG_PATHS_ENDPOINT_URL: string = "/partition-svg-paths";
 
 const BUILTIN_SVG_URI: string = "/svg/demo";
 
+const DEFAULT_FILE: string = 'tiger';
+
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
@@ -147,6 +149,10 @@ class SVGDemoController extends AppController<SVGDemoView> {
         return BUILTIN_SVG_URI;
     }
 
+    protected get defaultFile(): string {
+        return DEFAULT_FILE;
+    }
+
     private meshesReceived() {
         this.view.then(view => {
             view.uploadPathData(this.pathElements);
@@ -169,11 +175,6 @@ class SVGDemoView extends PathfinderView {
         this.appController = appController;
 
         this._scale = 1.0;
-    }
-
-    protected resized(initialSize: boolean) {
-        this.antialiasingStrategy.init(this);
-        this.setDirty();
     }
 
     get destAllocatedSize(): glmatrix.vec2 {

@@ -105,10 +105,13 @@ export abstract class PathfinderView {
         this.canvas.width = canvasSize[0];
         this.canvas.height = canvasSize[1];
 
-        this.resized(initialSize);
+        this.resized();
     }
 
-    protected abstract resized(initialSize: boolean): void;
+    private resized(): void {
+        this.antialiasingStrategy.init(this);
+        this.setDirty();
+    }
 
     protected initContext() {
         // Initialize the OpenGL context.

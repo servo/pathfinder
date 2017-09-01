@@ -8,55 +8,151 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-import {AntialiasingStrategy, AntialiasingStrategyName} from "./aa-strategy";
+import * as glmatrix from 'gl-matrix';
+
+import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {mat4, vec2} from "gl-matrix";
+import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
+import {BUILTIN_FONT_URI, TextLayout, PathfinderGlyph} from "./text";
 import {PathfinderView, Timings} from "./view";
 import AppController from "./app-controller";
+import SSAAStrategy from "./ssaa-strategy";
+import { panic, PathfinderError } from "./utils";
+
+const TEXT: string = "Lorem ipsum dolor sit amet";
+
+const FONT: string = 'open-sans';
+
+const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
+    none: NoAAStrategy,
+    ssaa: SSAAStrategy,
+};
+
+interface AntialiasingStrategyTable {
+    none: typeof NoAAStrategy;
+    ssaa: typeof SSAAStrategy;
+}
 
 class ThreeDController extends AppController<ThreeDView> {
     protected fileLoaded(): void {
-        throw new Error("Method not implemented.");
+        this.layout = new TextLayout(this.fileData, TEXT, glyph => new Glyph(glyph));
+        this.layout.partition().then((meshes: PathfinderMeshData) => {
+            this.meshes = meshes;
+            this.view.then(view => {
+                view.uploadPathMetadata(this.layout.textGlyphs.length);
+                view.attachMeshes(this.meshes);
+            });
+        });
     }
 
     protected createView(canvas: HTMLCanvasElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>):
                          ThreeDView {
-        throw new Error("Method not implemented.");
+        return new ThreeDView(this, canvas, commonShaderSource, shaderSources);
     }
 
-    protected builtinFileURI: string;
+    protected get builtinFileURI(): string {
+        return BUILTIN_FONT_URI;
+    }
+
+    protected get defaultFile(): string {
+        return FONT;
+    }
+
+    layout: TextLayout<Glyph>;
+    private meshes: PathfinderMeshData;
 }
 
 class ThreeDView extends PathfinderView {
-    protected resized(initialSize: boolean): void {
-        throw new Error("Method not implemented.");
+    constructor(appController: ThreeDController,
+                canvas: HTMLCanvasElement,
+                commonShaderSource: string,
+                shaderSources: ShaderMap<ShaderProgramSource>) {
+        super(canvas, commonShaderSource, shaderSources);
+
+        this.appController = appController;
+    }
+
+    uploadPathMetadata(pathCount: number) {
+        const pathColors = new Uint8Array(4 * (pathCount + 1));
+        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+            for (let channel = 0; channel < 3; channel++)
+                pathColors[(pathIndex + 1) * 4 + channel] = 0x00; // RGB
+            pathColors[(pathIndex + 1) * 4 + 3] = 0xff;           // alpha
+        }
+
+        this.pathColorsBufferTexture.upload(this.gl, pathColors);
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
                                AntialiasingStrategy {
-        throw new Error("Method not implemented.");
+        if (aaType != 'ecaa')
+            return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
+        throw new PathfinderError("Unsupported antialiasing type!");
     }
 
-    protected compositeIfNecessary(): void {
-        throw new Error("Method not implemented.");
-    }
+    protected compositeIfNecessary(): void {}
 
-    protected updateTimings(timings: Timings): void {
-        throw new Error("Method not implemented.");
+    protected updateTimings(timings: Timings) {
+        // TODO(pcwalton)
     }
 
     protected panned(): void {
-        throw new Error("Method not implemented.");
+        this.setDirty();
     }
 
-    destFramebuffer: WebGLFramebuffer | null;
-    destAllocatedSize: vec2;
-    destUsedSize: vec2;
-    protected usedSizeFactor: vec2;
-    protected scale: number;
-    protected worldTransform: mat4;
+    get destAllocatedSize(): glmatrix.vec2 {
+        return glmatrix.vec2.fromValues(this.canvas.width, this.canvas.height);
+    }
+
+    get destFramebuffer(): WebGLFramebuffer | null {
+        return null;
+    }
+
+    get destUsedSize(): glmatrix.vec2 {
+        return this.destAllocatedSize;
+    }
+
+    protected get usedSizeFactor(): glmatrix.vec2 {
+        return glmatrix.vec2.fromValues(1.0, 1.0);
+    }
+
+    protected get scale(): number {
+        return this._scale;
+    }
+
+    protected set scale(newScale: number) {
+        this._scale = newScale;
+        this.setDirty();
+    }
+
+    protected get worldTransform() {
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.fromTranslation(transform, [this.translation[0], this.translation[1], 0]);
+        glmatrix.mat4.scale(transform, transform, [this.scale, this.scale, 1.0]);
+        return transform;
+    }
+
+    private _scale: number;
+
+    private appController: ThreeDController;
+}
+
+class Glyph extends PathfinderGlyph {
+    constructor(glyph: opentype.Glyph) {
+        super(glyph);
+    }
+
+    getRect(pixelsPerUnit: number): glmatrix.vec4 {
+        const rect = glmatrix.vec4.fromValues(this.position[0],
+                                              this.position[1],
+                                              this.metrics.xMax - this.metrics.xMin,
+                                              this.metrics.yMax - this.metrics.yMin);
+        glmatrix.vec4.scale(rect, rect, pixelsPerUnit);
+        return rect;
+    }
 }
 
 function main() {
