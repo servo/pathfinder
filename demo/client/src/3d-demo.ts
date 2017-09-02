@@ -17,7 +17,7 @@ import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import {BUILTIN_FONT_URI, TextLayout, PathfinderGlyph} from "./text";
 import {PathfinderError, panic, unwrapNull} from "./utils";
-import {PathfinderView, Timings} from "./view";
+import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
 
 const TEXT: string = "Lorem ipsum dolor sit amet";
@@ -46,10 +46,10 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     protected fileLoaded(): void {
         this.layout = new TextLayout(this.fileData, TEXT, glyph => new ThreeDGlyph(glyph));
         this.layout.layoutText();
-        this.layout.partition().then((meshes: PathfinderMeshData) => {
+        this.layout.glyphStorage.partition().then((meshes: PathfinderMeshData) => {
             this.meshes = meshes;
             this.view.then(view => {
-                view.uploadPathMetadata(this.layout.textGlyphs.length);
+                view.uploadPathMetadata(this.layout.glyphStorage.textGlyphs.length);
                 view.attachMeshes(this.meshes);
             });
         });
@@ -57,7 +57,6 @@ class ThreeDController extends DemoAppController<ThreeDView> {
 
     protected createView(): ThreeDView {
         return new ThreeDView(this,
-                              this.canvas,
                               unwrapNull(this.commonShaderSource),
                               unwrapNull(this.shaderSources));
     }
@@ -74,19 +73,18 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     private meshes: PathfinderMeshData;
 }
 
-class ThreeDView extends PathfinderView {
+class ThreeDView extends PathfinderDemoView {
     constructor(appController: ThreeDController,
-                canvas: HTMLCanvasElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(canvas, commonShaderSource, shaderSources);
+        super(commonShaderSource, shaderSources);
 
         this.appController = appController;
         this._scale = 1.0;
     }
 
     uploadPathMetadata(pathCount: number) {
-        const textGlyphs = this.appController.layout.textGlyphs;
+        const textGlyphs = this.appController.layout.glyphStorage.textGlyphs;
 
         const pathColors = new Uint8Array(4 * (pathCount + 1));
         const pathTransforms = new Float32Array(4 * (pathCount + 1));
@@ -119,10 +117,6 @@ class ThreeDView extends PathfinderView {
 
     protected updateTimings(timings: Timings) {
         // TODO(pcwalton)
-    }
-
-    protected panned(): void {
-        this.setDirty();
     }
 
     get destAllocatedSize(): glmatrix.vec2 {

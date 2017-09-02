@@ -11,7 +11,7 @@
 import {AntialiasingStrategyName} from "./aa-strategy";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapUndef, unwrapNull} from './utils';
-import {PathfinderView} from "./view";
+import {PathfinderDemoView} from "./view";
 
 export abstract class AppController {
     start() {
@@ -41,7 +41,7 @@ export abstract class AppController {
     protected abstract get builtinFileURI(): string;
 }
 
-export abstract class DemoAppController<View extends PathfinderView> extends AppController {
+export abstract class DemoAppController<View extends PathfinderDemoView> extends AppController {
     constructor() {
         super();
     }

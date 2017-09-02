@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+export const UINT32_MAX: number = 0xffffffff;
 export const UINT32_SIZE: number = 4;
 
 export function panic(message: string): never {

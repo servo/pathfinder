@@ -66,8 +66,6 @@ And the mome raths outgrabe.`;
 
 const INITIAL_FONT_SIZE: number = 72.0;
 
-const PARTITION_FONT_ENDPOINT_URL: string = "/partition-font";
-
 const DEFAULT_FONT: string = 'open-sans';
 
 const B_POSITION_SIZE: number = 8;
@@ -153,7 +151,6 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     protected createView() {
         return new TextDemoView(this,
-                                this.canvas,
                                 unwrapNull(this.commonShaderSource),
                                 unwrapNull(this.shaderSources));
     }
@@ -164,11 +161,11 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     private recreateLayout() {
         this.layout = new TextLayout(this.fileData, this.text, glyph => new GlyphInstance(glyph));
-        this.layout.partition().then((meshes: PathfinderMeshData) => {
+        this.layout.glyphStorage.partition().then((meshes: PathfinderMeshData) => {
             this.meshes = meshes;
             this.view.then(view => {
                 view.attachText();
-                view.uploadPathMetadata(this.layout.uniqueGlyphs.length);
+                view.uploadPathMetadata(this.layout.glyphStorage.uniqueGlyphs.length);
                 view.attachMeshes(this.meshes);
             });
         });
@@ -195,7 +192,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     }
 
     get pixelsPerUnit(): number {
-        return this._fontSize / this.layout.font.unitsPerEm;
+        return this._fontSize / this.layout.glyphStorage.font.unitsPerEm;
     }
 
     protected get builtinFileURI(): string {
@@ -224,10 +221,9 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
 class TextDemoView extends MonochromePathfinderView {
     constructor(appController: TextDemoController,
-                canvas: HTMLCanvasElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(canvas, commonShaderSource, shaderSources);
+        super(commonShaderSource, shaderSources);
 
         this.appController = appController;
 
@@ -253,7 +249,7 @@ class TextDemoView extends MonochromePathfinderView {
     private layoutGlyphs() {
         this.appController.layout.layoutText();
 
-        const textGlyphs = this.appController.layout.textGlyphs;
+        const textGlyphs = this.appController.layout.glyphStorage.textGlyphs;
         const glyphPositions = new Float32Array(textGlyphs.length * 8);
         const glyphIndices = new Uint32Array(textGlyphs.length * 6);
 
@@ -279,7 +275,7 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     private buildAtlasGlyphs() {
-        const textGlyphs = this.appController.layout.textGlyphs;
+        const textGlyphs = this.appController.layout.glyphStorage.textGlyphs;
         const pixelsPerUnit = this.appController.pixelsPerUnit;
 
         // Only build glyphs in view.
@@ -297,7 +293,7 @@ class TextDemoView extends MonochromePathfinderView {
 
         this.appController.atlas.layoutGlyphs(atlasGlyphs, pixelsPerUnit);
 
-        const uniqueGlyphs = this.appController.layout.uniqueGlyphs;
+        const uniqueGlyphs = this.appController.layout.glyphStorage.uniqueGlyphs;
         const uniqueGlyphIndices = uniqueGlyphs.map(glyph => glyph.index);
         uniqueGlyphIndices.sort((a, b) => a - b);
 
@@ -334,11 +330,12 @@ class TextDemoView extends MonochromePathfinderView {
                                                     this.atlasDepthTexture);
 
         // Allow the antialiasing strategy to set up framebuffers as necessary.
-        this.antialiasingStrategy.setFramebufferSize(this);
+        if (this.antialiasingStrategy != null)
+            this.antialiasingStrategy.setFramebufferSize(this);
     }
 
     private setGlyphTexCoords() {
-        const textGlyphs = this.appController.layout.textGlyphs;
+        const textGlyphs = this.appController.layout.glyphStorage.textGlyphs;
         const atlasGlyphs = this.appController.atlasGlyphs;
 
         const atlasGlyphIndices = atlasGlyphs.map(atlasGlyph => atlasGlyph.index);
@@ -391,6 +388,7 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     protected panned() {
+        super.panned();
         this.rebuildAtlasIfNecessary();
     }
 
@@ -445,7 +443,7 @@ class TextDemoView extends MonochromePathfinderView {
         this.gl.uniform1i(blitProgram.uniforms.uSource, 0);
         this.setIdentityTexScaleUniform(blitProgram.uniforms);
         this.gl.drawElements(this.gl.TRIANGLES,
-                             this.appController.layout.textGlyphs.length * 6,
+                             this.appController.layout.glyphStorage.textGlyphs.length * 6,
                              this.gl.UNSIGNED_INT,
                              0);
     }

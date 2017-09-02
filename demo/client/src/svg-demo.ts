@@ -18,7 +18,7 @@ import {ECAAStrategy, ECAAMulticolorStrategy} from "./ecaa-strategy";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
 import {panic, unwrapNull} from './utils';
-import {PathfinderView, Timings} from './view';
+import {PathfinderDemoView, Timings} from './view';
 import SSAAStrategy from "./ssaa-strategy";
 
 const parseColor = require('parse-color');
@@ -75,7 +75,6 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
 
     protected createView() {
         return new SVGDemoView(this,
-                               this.canvas,
                                unwrapNull(this.commonShaderSource),
                                unwrapNull(this.shaderSources));
     }
@@ -166,12 +165,11 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
     private meshes: PathfinderMeshData;
 }
 
-class SVGDemoView extends PathfinderView {
+class SVGDemoView extends PathfinderDemoView {
     constructor(appController: SVGDemoController,
-                canvas: HTMLCanvasElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(canvas, commonShaderSource, shaderSources);
+        super(commonShaderSource, shaderSources);
 
         this.appController = appController;
         this._scale = 1.0;
@@ -187,10 +185,6 @@ class SVGDemoView extends PathfinderView {
 
     get destUsedSize(): glmatrix.vec2 {
         return this.destAllocatedSize;
-    }
-
-    protected panned(): void {
-        this.setDirty();
     }
 
     uploadPathMetadata(elements: SVGPathElement[]) {

@@ -21,23 +21,28 @@ export const BUILTIN_FONT_URI: string = "/otf/demo";
 
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
 
+type CreateGlyphFn<Glyph> = (glyph: opentype.Glyph) => Glyph;
+
 opentype.Font.prototype.isSupported = function() {
     return (this as any).supported;
 }
 
-export class TextLayout<Glyph extends PathfinderGlyph> {
+export class GlyphStorage<Glyph extends PathfinderGlyph> {
     constructor(fontData: ArrayBuffer,
-                text: string,
-                createGlyph: (glyph: opentype.Glyph) => Glyph) {
-        this.fontData = fontData;
-        this.font = opentype.parse(fontData);
-        assert(this.font.isSupported(), "The font type is unsupported!");
+                textGlyphs: Glyph[] | string,
+                createGlyph: CreateGlyphFn<Glyph>,
+                font?: Font) {
+        if (font == null) {
+            font = opentype.parse(fontData);
+            assert(font.isSupported(), "The font type is unsupported!");
+        }
 
-        // Lay out the text.
-        this.lineGlyphs = text.split("\n").map(line => {
-            return this.font.stringToGlyphs(line).map(createGlyph);
-        });
-        this.textGlyphs = _.flatten(this.lineGlyphs);
+        if (typeof(textGlyphs) === 'string')
+            textGlyphs = font.stringToGlyphs(textGlyphs).map(createGlyph);
+
+        this.fontData = fontData;
+        this.textGlyphs = textGlyphs;
+        this.font = font;
 
         // Determine all glyphs potentially needed.
         this.uniqueGlyphs = this.textGlyphs.map(textGlyph => textGlyph);
@@ -77,8 +82,25 @@ export class TextLayout<Glyph extends PathfinderGlyph> {
         });
     }
 
+    readonly fontData: ArrayBuffer;
+    readonly font: Font;
+    readonly textGlyphs: Glyph[];
+    readonly uniqueGlyphs: Glyph[];
+}
+
+export class TextLayout<Glyph extends PathfinderGlyph> {
+    constructor(fontData: ArrayBuffer, text: string, createGlyph: CreateGlyphFn<Glyph>) {
+        const font = opentype.parse(fontData);
+        assert(font.isSupported(), "The font type is unsupported!");
+
+        this.lineGlyphs = text.split("\n").map(line => font.stringToGlyphs(line).map(createGlyph));
+
+        const textGlyphs = _.flatten(this.lineGlyphs);
+        this.glyphStorage = new GlyphStorage(fontData, textGlyphs, createGlyph, font);
+    }
+
     layoutText() {
-        const os2Table = this.font.tables.os2;
+        const os2Table = this.glyphStorage.font.tables.os2;
         const lineHeight = os2Table.sTypoAscender - os2Table.sTypoDescender +
             os2Table.sTypoLineGap;
 
@@ -87,7 +109,7 @@ export class TextLayout<Glyph extends PathfinderGlyph> {
         let glyphIndex = 0;
         for (const line of this.lineGlyphs) {
             for (let lineCharIndex = 0; lineCharIndex < line.length; lineCharIndex++) {
-                const textGlyph = this.textGlyphs[glyphIndex];
+                const textGlyph = this.glyphStorage.textGlyphs[glyphIndex];
                 textGlyph.position = glmatrix.vec2.clone(currentPosition);
                 currentPosition[0] += textGlyph.advanceWidth;
                 glyphIndex++;
@@ -98,11 +120,8 @@ export class TextLayout<Glyph extends PathfinderGlyph> {
         }
     }
 
-    readonly fontData: ArrayBuffer;
-    readonly font: Font;
     readonly lineGlyphs: Glyph[][];
-    readonly textGlyphs: Glyph[];
-    readonly uniqueGlyphs: Glyph[];
+    readonly glyphStorage: GlyphStorage<Glyph>;
 }
 
 export abstract class PathfinderGlyph {

@@ -26,8 +26,14 @@ const BUFFER_TYPES: Meshes<BufferType> = {
 };
 
 export const B_QUAD_SIZE: number = 4 * 8;
-export const B_QUAD_UPPER_INDICES_OFFSET: number = 0;
-export const B_QUAD_LOWER_INDICES_OFFSET: number = 4 * 4;
+export const B_QUAD_UPPER_LEFT_VERTEX_OFFSET: number = 4 * 0;
+export const B_QUAD_UPPER_RIGHT_VERTEX_OFFSET: number = 4 * 1;
+export const B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET: number = 4 * 2;
+export const B_QUAD_LOWER_LEFT_VERTEX_OFFSET: number = 4 * 4;
+export const B_QUAD_LOWER_RIGHT_VERTEX_OFFSET: number = 4 * 5;
+export const B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET: number = 4 * 6;
+export const B_QUAD_UPPER_INDICES_OFFSET: number = B_QUAD_UPPER_LEFT_VERTEX_OFFSET;
+export const B_QUAD_LOWER_INDICES_OFFSET: number = B_QUAD_LOWER_LEFT_VERTEX_OFFSET;
 
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 

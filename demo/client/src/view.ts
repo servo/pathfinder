@@ -48,47 +48,17 @@ export interface Timings {
 declare class WebGLQuery {}
 
 export abstract class PathfinderView {
-    constructor(canvas: HTMLCanvasElement,
-                commonShaderSource: string,
-                shaderSources: ShaderMap<ShaderProgramSource>) {
-        this.canvas = canvas;
-
-        this.initContext();
+    constructor() {
+        this.dirty = false;
 
         this.translation = glmatrix.vec2.create();
 
-        const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
-        this.shaderPrograms = this.linkShaders(shaderSource);
+        this.canvas = unwrapNull(document.getElementById('pf-canvas')) as HTMLCanvasElement;
 
-        this.pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
-        this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
-
-        this.antialiasingStrategy = new NoAAStrategy(0);
-        this.antialiasingStrategy.init(this);
+        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
 
         window.addEventListener('resize', () => this.resizeToFit(false), false);
         this.resizeToFit(true);
-
-        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
-    }
-
-    setAntialiasingOptions(aaType: AntialiasingStrategyName, aaLevel: number) {
-        this.antialiasingStrategy = this.createAAStrategy(aaType, aaLevel);
-
-        let canvas = this.canvas;
-        this.antialiasingStrategy.init(this);
-        if (this.meshData != null)
-            this.antialiasingStrategy.attachMeshes(this);
-
-        this.setDirty();
-    }
-
-    attachMeshes(meshes: PathfinderMeshData) {
-        this.meshData = meshes;
-        this.meshes = new PathfinderMeshBuffers(this.gl, meshes);
-        this.antialiasingStrategy.attachMeshes(this);
-
-        this.setDirty();
     }
 
     private resizeToFit(initialSize: boolean) {
@@ -108,9 +78,107 @@ export abstract class PathfinderView {
         this.resized();
     }
 
-    private resized(): void {
-        this.antialiasingStrategy.init(this);
+    private onWheel(event: WheelEvent) {
+        event.preventDefault();
+
+        if (event.ctrlKey) {
+            // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
+            const mouseLocation = glmatrix.vec2.fromValues(event.clientX, event.clientY);
+            const canvasLocation = this.canvas.getBoundingClientRect();
+            mouseLocation[0] -= canvasLocation.left;
+            mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
+            glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
+
+            const absoluteTranslation = glmatrix.vec2.create();
+            glmatrix.vec2.sub(absoluteTranslation, this.translation, mouseLocation);
+            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
+
+            this.scale *= 1.0 - event.deltaY * window.devicePixelRatio * SCALE_FACTOR;
+
+            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, this.scale);
+            glmatrix.vec2.add(this.translation, absoluteTranslation, mouseLocation);
+
+            this.setDirty();
+            return;
+        }
+
+        // Pan event.
+        const delta = glmatrix.vec2.fromValues(-event.deltaX, event.deltaY);
+        glmatrix.vec2.scale(delta, delta, window.devicePixelRatio);
+        glmatrix.vec2.add(this.translation, this.translation, delta);
+
+        this.panned();
+    }
+
+    protected panned(): void {
         this.setDirty();
+    }
+
+    protected resized(): void {
+        this.setDirty();
+    }
+
+    protected setDirty() {
+        if (this.dirty)
+            return;
+        this.dirty = true;
+        window.requestAnimationFrame(() => this.redraw());
+    }
+
+    protected redraw() {
+        this.dirty = false;
+    }
+
+    protected abstract get scale(): number;
+    protected abstract set scale(newScale: number);
+
+    protected canvas: HTMLCanvasElement;
+
+    protected translation: glmatrix.vec2;
+
+    private dirty: boolean;
+}
+
+export abstract class PathfinderDemoView extends PathfinderView {
+    constructor(commonShaderSource: string, shaderSources: ShaderMap<ShaderProgramSource>) {
+        super();
+
+        this.initContext();
+
+        const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
+        this.shaderPrograms = this.linkShaders(shaderSource);
+
+        this.pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
+        this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
+
+        this.antialiasingStrategy = new NoAAStrategy(0);
+        this.antialiasingStrategy.init(this);
+    }
+
+    setAntialiasingOptions(aaType: AntialiasingStrategyName, aaLevel: number) {
+        this.antialiasingStrategy = this.createAAStrategy(aaType, aaLevel);
+
+        let canvas = this.canvas;
+        this.antialiasingStrategy.init(this);
+        if (this.meshData != null)
+            this.antialiasingStrategy.attachMeshes(this);
+
+        this.setDirty();
+    }
+
+    attachMeshes(meshes: PathfinderMeshData) {
+        this.meshData = meshes;
+        this.meshes = new PathfinderMeshBuffers(this.gl, meshes);
+        unwrapNull(this.antialiasingStrategy).attachMeshes(this);
+
+        this.setDirty();
+    }
+
+    protected resized(): void {
+        super.resized();
+
+        if (this.antialiasingStrategy != null)
+            this.antialiasingStrategy.init(this);
     }
 
     protected initContext() {
@@ -204,10 +272,10 @@ export abstract class PathfinderView {
     }
 
     protected redraw() {
-        if (this.meshes == null) {
-            this.dirty = false;
+        super.redraw();
+
+        if (this.meshes == null)
             return;
-        }
 
         // Start timing rendering.
         if (this.timerQueryPollInterval == null) {
@@ -216,14 +284,15 @@ export abstract class PathfinderView {
         }
 
         // Prepare for direct rendering.
-        this.antialiasingStrategy.prepare(this);
+        const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
+        antialiasingStrategy.prepare(this);
 
         // Perform direct rendering (Loop-Blinn).
-        if (this.antialiasingStrategy.shouldRenderDirect)
+        if (antialiasingStrategy.shouldRenderDirect)
             this.renderDirect();
 
         // Antialias.
-        this.antialiasingStrategy.resolve(this);
+        antialiasingStrategy.resolve(this);
 
         // End the timer, and start a new one.
         if (this.timerQueryPollInterval == null) {
@@ -235,14 +304,14 @@ export abstract class PathfinderView {
         // Draw the glyphs with the resolved atlas to the default framebuffer.
         this.compositeIfNecessary();
 
-        // Finish timing, clear dirty bit, and finish.
+        // Finish timing, and finish.
         this.finishTiming();
-        this.dirty = false;
     }
 
     private setTransformUniform(uniforms: UniformMap) {
         const transform = glmatrix.mat4.create();
-        glmatrix.mat4.mul(transform, this.antialiasingStrategy.transform, this.worldTransform);
+        if (this.antialiasingStrategy != null)
+            glmatrix.mat4.mul(transform, this.antialiasingStrategy.transform, this.worldTransform);
         this.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
 
@@ -367,43 +436,6 @@ export abstract class PathfinderView {
         }, TIME_INTERVAL_DELAY);
     }
 
-    protected setDirty() {
-        if (this.dirty)
-            return;
-        this.dirty = true;
-        window.requestAnimationFrame(() => this.redraw());
-    }
-
-    private onWheel(event: WheelEvent) {
-        event.preventDefault();
-
-        if (event.ctrlKey) {
-            // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
-            const mouseLocation = glmatrix.vec2.fromValues(event.clientX, event.clientY);
-            const canvasLocation = this.canvas.getBoundingClientRect();
-            mouseLocation[0] -= canvasLocation.left;
-            mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
-            glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
-
-            const absoluteTranslation = glmatrix.vec2.create();
-            glmatrix.vec2.sub(absoluteTranslation, this.translation, mouseLocation);
-            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
-
-            this.scale *= 1.0 - event.deltaY * window.devicePixelRatio * SCALE_FACTOR;
-
-            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, this.scale);
-            glmatrix.vec2.add(this.translation, absoluteTranslation, mouseLocation);
-            return;
-        }
-
-        // Pan event.
-        const delta = glmatrix.vec2.fromValues(-event.deltaX, event.deltaY);
-        glmatrix.vec2.scale(delta, delta, window.devicePixelRatio);
-        glmatrix.vec2.add(this.translation, this.translation, delta);
-
-        this.panned();
-    }
-
     setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap) {
         const usedSize = this.usedSizeFactor;
         this.gl.uniform4f(uniforms.uTransformST, 2.0 * usedSize[0], 2.0 * usedSize[1], -1.0, -1.0);
@@ -428,8 +460,6 @@ export abstract class PathfinderView {
 
     protected abstract updateTimings(timings: Timings): void;
 
-    protected abstract panned(): void;
-
     abstract get destFramebuffer(): WebGLFramebuffer | null;
 
     abstract get destAllocatedSize(): glmatrix.vec2;
@@ -437,16 +467,9 @@ export abstract class PathfinderView {
 
     protected abstract get usedSizeFactor(): glmatrix.vec2;
 
-    protected abstract get scale(): number;
-    protected abstract set scale(newScale: number);
-
     protected abstract get worldTransform(): glmatrix.mat4;
 
-    protected antialiasingStrategy: AntialiasingStrategy;
-
-    protected translation: glmatrix.vec2;
-
-    protected canvas: HTMLCanvasElement;
+    protected antialiasingStrategy: AntialiasingStrategy | null;
 
     gl: WebGLRenderingContext;
 
@@ -472,11 +495,9 @@ export abstract class PathfinderView {
     private atlasRenderingTimerQuery: WebGLQuery;
     private compositingTimerQuery: WebGLQuery;
     private timerQueryPollInterval: number | null;
-
-    protected dirty: boolean;
 }
 
-export abstract class MonochromePathfinderView extends PathfinderView {
+export abstract class MonochromePathfinderView extends PathfinderDemoView {
     abstract get bgColor(): glmatrix.vec4;
     abstract get fgColor(): glmatrix.vec4;
 }
