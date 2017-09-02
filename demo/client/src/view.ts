@@ -17,8 +17,7 @@ import {PathfinderShaderProgram, SHADER_NAMES, ShaderMap} from './shader-loader'
 import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
 import {PathfinderError, UINT32_SIZE, expectNotNull, unwrapNull} from './utils';
 import PathfinderBufferTexture from './buffer-texture';
-
-const SCALE_FACTOR: number = 1.0 / 100.0;
+import { Camera } from "./camera";
 
 const TIME_INTERVAL_DELAY: number = 32;
 
@@ -51,11 +50,7 @@ export abstract class PathfinderView {
     constructor() {
         this.dirty = false;
 
-        this.translation = glmatrix.vec2.create();
-
         this.canvas = unwrapNull(document.getElementById('pf-canvas')) as HTMLCanvasElement;
-
-        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
 
         window.addEventListener('resize', () => this.resizeToFit(false), false);
         this.resizeToFit(true);
@@ -78,42 +73,6 @@ export abstract class PathfinderView {
         this.resized();
     }
 
-    private onWheel(event: WheelEvent) {
-        event.preventDefault();
-
-        if (event.ctrlKey) {
-            // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
-            const mouseLocation = glmatrix.vec2.fromValues(event.clientX, event.clientY);
-            const canvasLocation = this.canvas.getBoundingClientRect();
-            mouseLocation[0] -= canvasLocation.left;
-            mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
-            glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
-
-            const absoluteTranslation = glmatrix.vec2.create();
-            glmatrix.vec2.sub(absoluteTranslation, this.translation, mouseLocation);
-            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
-
-            this.scale *= 1.0 - event.deltaY * window.devicePixelRatio * SCALE_FACTOR;
-
-            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, this.scale);
-            glmatrix.vec2.add(this.translation, absoluteTranslation, mouseLocation);
-
-            this.setDirty();
-            return;
-        }
-
-        // Pan event.
-        const delta = glmatrix.vec2.fromValues(-event.deltaX, event.deltaY);
-        glmatrix.vec2.scale(delta, delta, window.devicePixelRatio);
-        glmatrix.vec2.add(this.translation, this.translation, delta);
-
-        this.panned();
-    }
-
-    protected panned(): void {
-        this.setDirty();
-    }
-
     protected resized(): void {
         this.setDirty();
     }
@@ -129,12 +88,9 @@ export abstract class PathfinderView {
         this.dirty = false;
     }
 
-    protected abstract get scale(): number;
-    protected abstract set scale(newScale: number);
-
     protected canvas: HTMLCanvasElement;
 
-    protected translation: glmatrix.vec2;
+    protected camera: Camera;
 
     private dirty: boolean;
 }

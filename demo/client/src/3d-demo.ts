@@ -19,6 +19,7 @@ import {BUILTIN_FONT_URI, TextLayout, PathfinderGlyph} from "./text";
 import {PathfinderError, panic, unwrapNull} from "./utils";
 import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
+import { OrthographicCamera } from "./camera";
 
 const TEXT: string = "Lorem ipsum dolor sit amet";
 
@@ -80,7 +81,10 @@ class ThreeDView extends PathfinderDemoView {
         super(commonShaderSource, shaderSources);
 
         this.appController = appController;
-        this._scale = 1.0;
+
+        this.camera = new OrthographicCamera(this.canvas);
+        this.camera.onPan = () => this.setDirty();
+        this.camera.onZoom = () => this.setDirty();
     }
 
     uploadPathMetadata(pathCount: number) {
@@ -98,7 +102,6 @@ class ThreeDView extends PathfinderDemoView {
 
             const textGlyph = textGlyphs[pathIndex];
             const glyphRect = textGlyph.getRect(PIXELS_PER_UNIT);
-            console.log(glyphRect);
             pathTransforms.set([1, 1, glyphRect[0], glyphRect[1]], startOffset);
         }
 
@@ -135,25 +138,19 @@ class ThreeDView extends PathfinderDemoView {
         return glmatrix.vec2.fromValues(1.0, 1.0);
     }
 
-    protected get scale(): number {
-        return this._scale;
-    }
-
-    protected set scale(newScale: number) {
-        this._scale = newScale;
-        this.setDirty();
-    }
-
     protected get worldTransform() {
         const transform = glmatrix.mat4.create();
-        glmatrix.mat4.fromTranslation(transform, [this.translation[0], this.translation[1], 0]);
-        glmatrix.mat4.scale(transform, transform, [this.scale, this.scale, 1.0]);
+        const translation = this.camera.translation;
+        glmatrix.mat4.fromTranslation(transform, [translation[0], translation[1], 0]);
+        glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
         return transform;
     }
 
     private _scale: number;
 
     private appController: ThreeDController;
+
+    camera: OrthographicCamera;
 }
 
 class ThreeDGlyph extends PathfinderGlyph {

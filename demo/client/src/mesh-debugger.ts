@@ -11,13 +11,14 @@
 import * as glmatrix from 'gl-matrix';
 
 import {AppController} from "./app-controller";
+import {OrthographicCamera} from "./camera";
 import {B_QUAD_SIZE, B_QUAD_UPPER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, B_QUAD_LOWER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshData} from "./meshes";
 import {BUILTIN_FONT_URI, GlyphStorage, PathfinderGlyph} from "./text";
-import { unwrapNull, UINT32_SIZE, UINT32_MAX } from "./utils";
+import {unwrapNull, UINT32_SIZE, UINT32_MAX} from "./utils";
 import {PathfinderView} from "./view";
 
 const CHARACTER: string = 'r';
@@ -67,6 +68,7 @@ class MeshDebuggerView extends PathfinderView {
         super();
 
         this.appController = appController;
+        this.camera = new OrthographicCamera(this.canvas);
         this.scale = 1.0;
     }
 
@@ -85,7 +87,8 @@ class MeshDebuggerView extends PathfinderView {
         context.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
         context.save();
-        context.translate(this.translation[0], this.canvas.height - this.translation[1]);
+        context.translate(this.camera.translation[0],
+                          this.canvas.height - this.camera.translation[1]);
         context.scale(this.scale, this.scale);
 
         context.font = POINT_LABEL_FONT;
@@ -156,6 +159,8 @@ class MeshDebuggerView extends PathfinderView {
     protected scale: number;
 
     private appController: MeshDebuggerAppController;
+
+    camera: OrthographicCamera;
 }
 
 class MeshDebuggerGlyph extends PathfinderGlyph {}

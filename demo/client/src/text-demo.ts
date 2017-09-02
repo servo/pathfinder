@@ -27,6 +27,7 @@ import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic} 
 import {MonochromePathfinderView, Timings} from './view';
 import PathfinderBufferTexture from './buffer-texture';
 import SSAAStrategy from './ssaa-strategy';
+import { OrthographicCamera } from "./camera";
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves
@@ -227,6 +228,10 @@ class TextDemoView extends MonochromePathfinderView {
 
         this.appController = appController;
 
+        this.camera = new OrthographicCamera(this.canvas);
+        this.camera.onPan = () => this.onPan();
+        this.camera.onZoom = () => this.onZoom();
+
         this.canvas.addEventListener('dblclick', () => this.appController.showTextEditor(), false);
     }
 
@@ -279,10 +284,11 @@ class TextDemoView extends MonochromePathfinderView {
         const pixelsPerUnit = this.appController.pixelsPerUnit;
 
         // Only build glyphs in view.
-        const canvasRect = glmatrix.vec4.fromValues(-this.translation[0],
-                                                    -this.translation[1],
-                                                    -this.translation[0] + this.canvas.width,
-                                                    -this.translation[1] + this.canvas.height);
+        const translation = this.camera.translation;
+        const canvasRect = glmatrix.vec4.fromValues(-translation[0],
+                                                    -translation[1],
+                                                    -translation[0] + this.canvas.width,
+                                                    -translation[1] + this.canvas.height);
 
         let atlasGlyphs =
             textGlyphs.filter(glyph => rectsIntersect(glyph.getRect(pixelsPerUnit), canvasRect))
@@ -387,8 +393,14 @@ class TextDemoView extends MonochromePathfinderView {
         this.setDirty();
     }
 
-    protected panned() {
-        super.panned();
+    protected onPan() {
+        this.setDirty();
+        this.rebuildAtlasIfNecessary();
+    }
+
+    protected onZoom() {
+        this.appController.fontSize = this.camera.scale * INITIAL_FONT_SIZE;
+        this.setDirty();
         this.rebuildAtlasIfNecessary();
     }
 
@@ -434,7 +446,7 @@ class TextDemoView extends MonochromePathfinderView {
                             [2.0 / this.canvas.width, 2.0 / this.canvas.height, 1.0]);
         glmatrix.mat4.translate(transform,
                                 transform,
-                                [this.translation[0], this.translation[1], 0.0]);
+                                [this.camera.translation[0], this.camera.translation[1], 0.0]);
 
         // Blit.
         this.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
@@ -468,14 +480,6 @@ class TextDemoView extends MonochromePathfinderView {
         return this.appController.atlas.usedSize;
     }
 
-    protected get scale(): number {
-        return this.appController.fontSize;
-    }
-
-    protected set scale(newScale: number) {
-        this.appController.fontSize = newScale;
-    }
-
     protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
                                AntialiasingStrategy {
         return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
@@ -497,6 +501,8 @@ class TextDemoView extends MonochromePathfinderView {
     glyphElementsBuffer: WebGLBuffer;
 
     appController: TextDemoController;
+
+    camera: OrthographicCamera;
 }
 
 interface AntialiasingStrategyTable {
