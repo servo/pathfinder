@@ -1,10 +1,16 @@
-// partitionfinder/geometry.rs
+// pathfinder/partitioner/src/geometry.rs
+//
+// Copyright © 2017 The Pathfinder Project Developers.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
 
 use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Vector2D};
 use std::cmp::Ordering;
-
-const NEWTON_RAPHSON_ITERATIONS: u8 = 8;
 
 pub(crate) trait ApproxOrdered {
     fn approx_ordered(&self) -> bool;
@@ -84,23 +90,6 @@ pub fn sample_quadratic_bezier(t: f32, p0: &Point2D<f32>, p1: &Point2D<f32>, p2:
     p0.lerp(*p1, t).lerp(p1.lerp(*p2, t), t)
 }
 
-pub fn sample_quadratic_bezier_deriv(t: f32,
-                                     p0: &Point2D<f32>,
-                                     p1: &Point2D<f32>,
-                                     p2: &Point2D<f32>)
-                                     -> Vector2D<f32> {
-    // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B.C3.A9zier_curves
-    // FIXME(pcwalton): Can this be made faster?
-    ((*p1 - *p0) * (1.0 - t) + (*p2 - *p1) * t) * 2.0
-}
-
-pub fn sample_quadratic_bezier_deriv_deriv(p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
-                                           -> Vector2D<f32> {
-    // https://en.wikipedia.org/wiki/B%C3%A9zier_curve#Quadratic_B.C3.A9zier_curves
-    // FIXME(pcwalton): Can this be made faster?
-    (*p2 - *p1 * 2.0 + p0.to_vector()) * 2.0
-}
-
 pub fn solve_line_t_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
     if b.x == a.x {
         0.0
@@ -109,28 +98,22 @@ pub fn solve_line_t_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
     }
 }
 
-pub(crate) fn newton_raphson<F, DFDX>(f: F, dfdx: DFDX, mut x_guess: f32) -> f32
-                                      where F: Fn(f32) -> f32, DFDX: Fn(f32) -> f32 {
-    for _ in 0..NEWTON_RAPHSON_ITERATIONS {
-        let y = f(x_guess);
-        if y.approx_eq(&0.0) {
-            break
-        }
-        let yy = dfdx(x_guess);
-        x_guess -= y / yy
-    }
-    x_guess
-}
-
+// Use the Citardauq Formula to avoid precision problems.
+//
+// https://math.stackexchange.com/a/311397
 pub fn solve_quadratic_bezier_t_for_x(x: f32,
                                       p0: &Point2D<f32>,
                                       p1: &Point2D<f32>,
                                       p2: &Point2D<f32>)
                                       -> f32 {
-    // TODO(pcwalton): Use the quadratic equation instead.
-    newton_raphson(|t| sample_quadratic_bezier(t, p0, p1, p2).x - x,
-                   |t| sample_quadratic_bezier_deriv(t, p0, p1, p2).x,
-                   0.5)
+    let (p0x, p1x, p2x, x) = (p0.x as f64, p1.x as f64, p2.x as f64, x as f64);
+
+    let a = p0x - 2.0 * p1x + p2x;
+    let b = -2.0 * p0x + 2.0 * p1x;
+    let c = p0x - x;
+
+    let t = 2.0 * c / (-b - (b * b - 4.0 * a * c).sqrt());
+    t.max(0.0).min(1.0) as f32
 }
 
 pub fn solve_quadratic_bezier_y_for_x(x: f32,

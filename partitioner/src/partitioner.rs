@@ -1,4 +1,12 @@
-// partitionfinder/partitioner.rs
+// pathfinder/partitioner/src/partitioner.rs
+//
+// Copyright © 2017 The Pathfinder Project Developers.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
 
 use bit_vec::BitVec;
 use euclid::Point2D;
@@ -448,8 +456,6 @@ impl<'a> Partitioner<'a> {
         let upper_curve = self.subdivide_active_edge_at(upper_active_edge_index, right_x);
         let lower_curve = self.subdivide_active_edge_at(lower_active_edge_index, right_x);
 
-        // NB: Order is important here—we depend on the provoking vertex!
-
         let upper_shape = upper_curve.shape(&self.b_vertex_loop_blinn_data);
         let lower_shape = lower_curve.shape(&self.b_vertex_loop_blinn_data);
 
@@ -481,6 +487,12 @@ impl<'a> Partitioner<'a> {
                                             lower_curve.middle_point))
             }
         }
+
+        debug!("... emitting B-quad: UL {} BL {} UR {} BR {}",
+               upper_curve.left_curve_left,
+               lower_curve.left_curve_left,
+               upper_curve.middle_point,
+               lower_curve.middle_point);
 
         match (upper_shape, lower_shape) {
             (Shape::Flat, Shape::Flat) |

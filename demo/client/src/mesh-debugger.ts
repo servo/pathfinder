@@ -20,13 +20,13 @@ import {BUILTIN_FONT_URI, GlyphStorage, PathfinderGlyph} from "./text";
 import { unwrapNull, UINT32_SIZE, UINT32_MAX } from "./utils";
 import {PathfinderView} from "./view";
 
-const CHARACTER: string = 'o';
+const CHARACTER: string = 'r';
 
-const FONT: string = 'nimbus-sans';
+const FONT: string = 'eb-garamond';
 
-const POINT_LABEL_FONT: string = "36px sans-serif";
+const POINT_LABEL_FONT: string = "12px sans-serif";
 const POINT_LABEL_OFFSET: glmatrix.vec2 = glmatrix.vec2.fromValues(12.0, 12.0);
-const POINT_RADIUS: number = 6.0;
+const POINT_RADIUS: number = 2.0;
 
 class MeshDebuggerAppController extends AppController {
     start() {

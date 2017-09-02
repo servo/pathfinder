@@ -8,6 +8,7 @@
 extern crate app_units;
 extern crate base64;
 extern crate bincode;
+extern crate env_logger;
 extern crate euclid;
 extern crate fontsan;
 extern crate pathfinder_font_renderer;
@@ -615,6 +616,8 @@ impl<'a> Responder<'a> for Shader {
 }
 
 fn main() {
+    drop(env_logger::init());
+
     rocket::ignite().mount("/", routes![
         partition_font,
         partition_svg_paths,
