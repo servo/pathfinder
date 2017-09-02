@@ -42,6 +42,7 @@ static STATIC_INDEX_PATH: &'static str = "../client/index.html";
 static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text-demo.html";
 static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg-demo.html";
 static STATIC_3D_DEMO_PATH: &'static str = "../client/3d-demo.html";
+static STATIC_MESH_DEBUGGER_PATH: &'static str = "../client/mesh-debugger.html";
 static STATIC_DOC_API_PATH: &'static str = "../../font-renderer/target/doc";
 static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/css";
 static STATIC_CSS_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build";
@@ -532,6 +533,10 @@ fn static_demo_svg() -> io::Result<NamedFile> {
 fn static_demo_3d() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_3D_DEMO_PATH)
 }
+#[get("/debug/mesh")]
+fn static_debug_mesh() -> io::Result<NamedFile> {
+    NamedFile::open(STATIC_MESH_DEBUGGER_PATH)
+}
 #[get("/doc/api")]
 fn static_doc_api_index() -> Redirect {
     Redirect::to(STATIC_DOC_API_INDEX_URI)
@@ -617,6 +622,7 @@ fn main() {
         static_demo_text,
         static_demo_svg,
         static_demo_3d,
+        static_debug_mesh,
         static_doc_api_index,
         static_doc_api,
         static_css_bootstrap,

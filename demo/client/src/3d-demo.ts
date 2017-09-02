@@ -11,13 +11,13 @@
 import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import {DemoAppController} from "./app-controller";
 import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import {BUILTIN_FONT_URI, TextLayout, PathfinderGlyph} from "./text";
-import {panic, PathfinderError} from "./utils";
+import {PathfinderError, panic, unwrapNull} from "./utils";
 import {PathfinderView, Timings} from "./view";
-import AppController from "./app-controller";
 import SSAAStrategy from "./ssaa-strategy";
 
 const TEXT: string = "Lorem ipsum dolor sit amet";
@@ -36,7 +36,7 @@ interface AntialiasingStrategyTable {
     ssaa: typeof SSAAStrategy;
 }
 
-class ThreeDController extends AppController<ThreeDView> {
+class ThreeDController extends DemoAppController<ThreeDView> {
     start() {
         super.start();
 
@@ -55,11 +55,11 @@ class ThreeDController extends AppController<ThreeDView> {
         });
     }
 
-    protected createView(canvas: HTMLCanvasElement,
-                         commonShaderSource: string,
-                         shaderSources: ShaderMap<ShaderProgramSource>):
-                         ThreeDView {
-        return new ThreeDView(this, canvas, commonShaderSource, shaderSources);
+    protected createView(): ThreeDView {
+        return new ThreeDView(this,
+                              this.canvas,
+                              unwrapNull(this.commonShaderSource),
+                              unwrapNull(this.shaderSources));
     }
 
     protected get builtinFileURI(): string {

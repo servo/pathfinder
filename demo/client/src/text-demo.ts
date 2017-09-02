@@ -15,6 +15,7 @@ import * as glmatrix from 'gl-matrix';
 import * as opentype from 'opentype.js';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
+import {DemoAppController} from './app-controller';
 import {ECAAMonochromeStrategy, ECAAStrategy} from './ecaa-strategy';
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from './gl-utils';
@@ -24,7 +25,6 @@ import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-
 import {BUILTIN_FONT_URI, PathfinderGlyph, TextLayout} from "./text";
 import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic} from './utils';
 import {MonochromePathfinderView, Timings} from './view';
-import AppController from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import SSAAStrategy from './ssaa-strategy';
 
@@ -115,7 +115,7 @@ function rectsIntersect(a: glmatrix.vec4, b: glmatrix.vec4): boolean {
     return a[2] > b[0] && a[3] > b[1] && a[0] < b[2] && a[1] < b[3];
 }
 
-class TextDemoController extends AppController<TextDemoView> {
+class TextDemoController extends DemoAppController<TextDemoView> {
     constructor() {
         super();
         this.text = DEFAULT_TEXT;
@@ -151,10 +151,11 @@ class TextDemoController extends AppController<TextDemoView> {
         window.jQuery(this.editTextModal).modal('hide');
     }
 
-    protected createView(canvas: HTMLCanvasElement,
-                         commonShaderSource: string,
-                         shaderSources: ShaderMap<ShaderProgramSource>) {
-        return new TextDemoView(this, canvas, commonShaderSource, shaderSources);
+    protected createView() {
+        return new TextDemoView(this,
+                                this.canvas,
+                                unwrapNull(this.commonShaderSource),
+                                unwrapNull(this.shaderSources));
     }
 
     protected fileLoaded() {

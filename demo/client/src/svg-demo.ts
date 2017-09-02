@@ -12,13 +12,13 @@ import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 import 'path-data-polyfill.js';
 
+import {DemoAppController} from './app-controller';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {ECAAStrategy, ECAAMulticolorStrategy} from "./ecaa-strategy";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
-import {panic} from './utils';
+import {panic, unwrapNull} from './utils';
 import {PathfinderView, Timings} from './view';
-import AppController from './app-controller';
 import SSAAStrategy from "./ssaa-strategy";
 
 const parseColor = require('parse-color');
@@ -54,7 +54,7 @@ interface AntialiasingStrategyTable {
     ecaa: typeof ECAAStrategy;
 }
 
-class SVGDemoController extends AppController<SVGDemoView> {
+class SVGDemoController extends DemoAppController<SVGDemoView> {
     start() {
         super.start();
 
@@ -73,10 +73,11 @@ class SVGDemoController extends AppController<SVGDemoView> {
         this.attachSVG(svgElement);
     }
 
-    protected createView(canvas: HTMLCanvasElement,
-                         commonShaderSource: string,
-                         shaderSources: ShaderMap<ShaderProgramSource>) {
-        return new SVGDemoView(this, canvas, commonShaderSource, shaderSources);
+    protected createView() {
+        return new SVGDemoView(this,
+                               this.canvas,
+                               unwrapNull(this.commonShaderSource),
+                               unwrapNull(this.shaderSources));
     }
 
     private attachSVG(svgElement: SVGSVGElement) {

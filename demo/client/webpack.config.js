@@ -8,6 +8,7 @@ module.exports = {
         '3d-demo': "./src/3d-demo.ts",
         'svg-demo': "./src/svg-demo.ts",
         'text-demo': "./src/text-demo.ts",
+        'mesh-debugger': "./src/mesh-debugger.ts",
     },
     module: {
         rules: [

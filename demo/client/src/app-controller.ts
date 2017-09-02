@@ -13,11 +13,41 @@ import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapUndef, unwrapNull} from './utils';
 import {PathfinderView} from "./view";
 
-export default abstract class AppController<View extends PathfinderView> {
-    constructor() {}
-
+export abstract class AppController {
     start() {
         const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
+    }
+
+    protected loadInitialFile() {
+        this.fetchFile(this.defaultFile);
+    }
+
+    protected fetchFile(file: string) {
+        window.fetch(`${this.builtinFileURI}/${file}`)
+              .then(response => response.arrayBuffer())
+              .then(data => {
+                  this.fileData = data;
+                  this.fileLoaded();
+              });
+    }
+
+    protected canvas: HTMLCanvasElement;
+
+    protected fileData: ArrayBuffer;
+
+    protected abstract fileLoaded(): void;
+
+    protected abstract get defaultFile(): string;
+    protected abstract get builtinFileURI(): string;
+}
+
+export abstract class DemoAppController<View extends PathfinderView> extends AppController {
+    constructor() {
+        super();
+    }
+
+    start() {
+        super.start();
 
         this.settingsCard = document.getElementById('pf-settings') as HTMLElement;
         this.settingsButton = document.getElementById('pf-settings-button') as HTMLButtonElement;
@@ -50,16 +80,14 @@ export default abstract class AppController<View extends PathfinderView> {
         shaderLoader.load();
 
         this.view = Promise.all([shaderLoader.common, shaderLoader.shaders]).then(allShaders => {
-            return this.createView(canvas, allShaders[0], allShaders[1]);
+            this.commonShaderSource = allShaders[0];
+            this.shaderSources = allShaders[1];
+            return this.createView();
         });
 
         this.aaLevelSelect = document.getElementById('pf-aa-level-select') as HTMLSelectElement;
         this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
         this.updateAALevel();
-    }
-
-    protected loadInitialFile() {
-        this.fetchFile(this.defaultFile);
     }
 
     private updateAALevel() {
@@ -106,31 +134,15 @@ export default abstract class AppController<View extends PathfinderView> {
         this.fetchFile(selectedOption.value);
     }
 
-    private fetchFile(file: string) {
-        window.fetch(`${this.builtinFileURI}/${file}`)
-              .then(response => response.arrayBuffer())
-              .then(data => {
-                  this.fileData = data;
-                  this.fileLoaded();
-              });
-    }
-
-    protected abstract fileLoaded(): void;
-
-    protected abstract get builtinFileURI(): string;
-
-    protected abstract get defaultFile(): string;
-
-    protected abstract createView(canvas: HTMLCanvasElement,
-                                  commonShaderSource: string,
-                                  shaderSources: ShaderMap<ShaderProgramSource>): View;
+    protected abstract createView(): View;
 
     view: Promise<View>;
 
-    protected fileData: ArrayBuffer;
-
-    protected canvas: HTMLCanvasElement;
     protected filePickerElement: HTMLInputElement | null;
+
+    protected commonShaderSource: string | null;
+    protected shaderSources: ShaderMap<ShaderProgramSource> | null;
+
     private aaLevelSelect: HTMLSelectElement;
     private settingsCard: HTMLElement;
     private settingsButton: HTMLButtonElement;
