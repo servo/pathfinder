@@ -12,6 +12,7 @@ import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {DemoAppController} from "./app-controller";
+import {PerspectiveCamera} from "./camera";
 import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
@@ -19,13 +20,16 @@ import {BUILTIN_FONT_URI, TextLayout, PathfinderGlyph} from "./text";
 import {PathfinderError, panic, unwrapNull} from "./utils";
 import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
-import { OrthographicCamera } from "./camera";
 
 const TEXT: string = "Lorem ipsum dolor sit amet";
 
 const FONT: string = 'open-sans';
 
 const PIXELS_PER_UNIT: number = 1.0;
+
+const FOV: number = 45.0;
+const NEAR_CLIP_PLANE: number = 0.01;
+const FAR_CLIP_PLANE: number = 1000.0;
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
@@ -82,9 +86,8 @@ class ThreeDView extends PathfinderDemoView {
 
         this.appController = appController;
 
-        this.camera = new OrthographicCamera(this.canvas);
-        this.camera.onPan = () => this.setDirty();
-        this.camera.onZoom = () => this.setDirty();
+        this.camera = new PerspectiveCamera(this.canvas);
+        this.camera.onChange = () => this.setDirty();
     }
 
     uploadPathMetadata(pathCount: number) {
@@ -140,9 +143,13 @@ class ThreeDView extends PathfinderDemoView {
 
     protected get worldTransform() {
         const transform = glmatrix.mat4.create();
-        const translation = this.camera.translation;
-        glmatrix.mat4.fromTranslation(transform, [translation[0], translation[1], 0]);
-        glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
+        glmatrix.mat4.perspective(transform,
+                                  FOV / 180.0 * Math.PI,
+                                  this.canvas.width / this.canvas.height,
+                                  NEAR_CLIP_PLANE,
+                                  FAR_CLIP_PLANE);
+        glmatrix.mat4.translate(transform, transform, this.camera.translation);
+        glmatrix.mat4.mul(transform, transform, this.camera.rotationMatrix);
         return transform;
     }
 
@@ -150,7 +157,7 @@ class ThreeDView extends PathfinderDemoView {
 
     private appController: ThreeDController;
 
-    camera: OrthographicCamera;
+    camera: PerspectiveCamera;
 }
 
 class ThreeDGlyph extends PathfinderGlyph {
