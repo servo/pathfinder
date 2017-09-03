@@ -11,13 +11,13 @@
 import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import {Camera} from "./camera";
 import {QUAD_ELEMENTS, UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, SHADER_NAMES, ShaderMap} from './shader-loader';
 import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
 import {PathfinderError, UINT32_SIZE, expectNotNull, unwrapNull} from './utils';
 import PathfinderBufferTexture from './buffer-texture';
-import { Camera } from "./camera";
 
 const TIME_INTERVAL_DELAY: number = 32;
 

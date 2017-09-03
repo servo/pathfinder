@@ -15,7 +15,7 @@ extern crate env_logger;
 use app_units::Au;
 use euclid::{Point2D, Size2D, Transform2D};
 use freetype_sys::{FT_BBox, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_OUTLINE};
-use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LOAD_TARGET_LIGHT, FT_Library};
+use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LOAD_NO_HINTING, FT_Library};
 use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
 use freetype_sys::{FT_Set_Char_Size, FT_UInt};
 use pathfinder_partitioner::{Endpoint, Subpath};
@@ -28,10 +28,10 @@ use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 #[cfg(test)]
 mod tests;
 
-// Default to slight hinting.
+// Default to no hinting.
 //
 // TODO(pcwalton): Make this configurable.
-const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_TARGET_LIGHT;
+const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING;
 
 const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
 

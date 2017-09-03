@@ -16,6 +16,7 @@ import * as opentype from 'opentype.js';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
 import {DemoAppController} from './app-controller';
+import {OrthographicCamera} from "./camera";
 import {ECAAMonochromeStrategy, ECAAStrategy} from './ecaa-strategy';
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from './gl-utils';
@@ -27,7 +28,6 @@ import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic} 
 import {MonochromePathfinderView, Timings} from './view';
 import PathfinderBufferTexture from './buffer-texture';
 import SSAAStrategy from './ssaa-strategy';
-import { OrthographicCamera } from "./camera";
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves
