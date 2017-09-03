@@ -518,23 +518,23 @@ class Atlas {
     }
 
     layoutGlyphs(glyphs: AtlasGlyph[], pixelsPerUnit: number) {
-        let nextOrigin = glmatrix.vec2.create();
-        let shelfBottom = 0.0;
+        let nextOrigin = glmatrix.vec2.fromValues(1.0, 1.0);
+        let shelfBottom = 2.0;
 
         for (const glyph of glyphs) {
             // Place the glyph, and advance the origin.
             glyph.setPixelPosition(nextOrigin, pixelsPerUnit);
-            nextOrigin[0] = glyph.getRect(pixelsPerUnit)[2];
+            nextOrigin[0] = glyph.getRect(pixelsPerUnit)[2] + 1.0;
 
             // If the glyph overflowed the shelf, make a new one and reposition the glyph.
             if (nextOrigin[0] > ATLAS_SIZE[0]) {
-                nextOrigin = glmatrix.vec2.fromValues(0.0, shelfBottom);
+                nextOrigin = glmatrix.vec2.fromValues(1.0, shelfBottom + 1.0);
                 glyph.setPixelPosition(nextOrigin, pixelsPerUnit);
-                nextOrigin[0] = glyph.getRect(pixelsPerUnit)[2];
+                nextOrigin[0] = glyph.getRect(pixelsPerUnit)[2] + 1.0;
             }
 
             // Grow the shelf as necessary.
-            shelfBottom = Math.max(shelfBottom, glyph.getRect(pixelsPerUnit)[3]);
+            shelfBottom = Math.max(shelfBottom, glyph.getRect(pixelsPerUnit)[3] + 1.0);
         }
 
         // FIXME(pcwalton): Could be more precise if we don't have a full row.
@@ -583,9 +583,7 @@ class AtlasGlyph extends PathfinderGlyph {
 
         const glyphBL = glmatrix.vec2.create(), glyphTR = glmatrix.vec2.create();
         glmatrix.vec2.scale(glyphBL, this.position, pixelsPerUnit);
-        glmatrix.vec2.add(glyphBL, glyphBL, [1.0, 1.0]);
         glmatrix.vec2.add(glyphTR, glyphBL, glyphSize);
-        glmatrix.vec2.add(glyphTR, glyphTR, [1.0, 1.0]);
 
         return glmatrix.vec4.fromValues(glyphBL[0], glyphBL[1], glyphTR[0], glyphTR[1]);
     }
