@@ -260,7 +260,7 @@ class TextDemoView extends MonochromePathfinderView {
 
         for (let glyphIndex = 0; glyphIndex < textGlyphs.length; glyphIndex++) {
             const textGlyph = textGlyphs[glyphIndex];
-            const rect = textGlyph.getRect(this.appController.pixelsPerUnit);
+            const rect = textGlyph.pixelRect(this.appController.pixelsPerUnit);
             glyphPositions.set([
                 rect[0], rect[3],
                 rect[2], rect[3],
@@ -291,7 +291,7 @@ class TextDemoView extends MonochromePathfinderView {
                                                     -translation[1] + this.canvas.height);
 
         let atlasGlyphs =
-            textGlyphs.filter(glyph => rectsIntersect(glyph.getRect(pixelsPerUnit), canvasRect))
+            textGlyphs.filter(glyph => rectsIntersect(glyph.pixelRect(pixelsPerUnit), canvasRect))
                       .map(textGlyph => new AtlasGlyph(textGlyph.opentypeGlyph));
         atlasGlyphs.sort((a, b) => a.index - b.index);
         atlasGlyphs = _.sortedUniqBy(atlasGlyphs, glyph => glyph.index);
@@ -313,15 +313,12 @@ class TextDemoView extends MonochromePathfinderView {
             assert(pathID >= 0, "No path ID!");
             pathID++;
 
-            const atlasLocation = glyph.getRect(pixelsPerUnit);
+            const atlasOrigin = glyph.pixelOrigin(pixelsPerUnit);
             const metrics = glyph.metrics;
-            const left = metrics.xMin * pixelsPerUnit;
-            const bottom = metrics.yMin * pixelsPerUnit;
-
             transforms[pathID * 4 + 0] = pixelsPerUnit;
             transforms[pathID * 4 + 1] = pixelsPerUnit;
-            transforms[pathID * 4 + 2] = atlasLocation[0] - left;
-            transforms[pathID * 4 + 3] = atlasLocation[1] - bottom;
+            transforms[pathID * 4 + 2] = atlasOrigin[0];
+            transforms[pathID * 4 + 3] = atlasOrigin[1];
         }
 
         this.pathTransformBufferTexture.upload(this.gl, transforms);
@@ -360,7 +357,7 @@ class TextDemoView extends MonochromePathfinderView {
 
             // Set texture coordinates.
             const atlasGlyph = atlasGlyphs[atlasGlyphIndex];
-            const atlasGlyphRect = atlasGlyph.getRect(this.appController.pixelsPerUnit);
+            const atlasGlyphRect = atlasGlyph.pixelRect(this.appController.pixelsPerUnit);
             const atlasGlyphBL = atlasGlyphRect.slice(0, 2) as glmatrix.vec2;
             const atlasGlyphTR = atlasGlyphRect.slice(2, 4) as glmatrix.vec2;
             glmatrix.vec2.div(atlasGlyphBL, atlasGlyphBL, ATLAS_SIZE);
@@ -523,18 +520,18 @@ class Atlas {
 
         for (const glyph of glyphs) {
             // Place the glyph, and advance the origin.
-            glyph.setPixelPosition(nextOrigin, pixelsPerUnit);
-            nextOrigin[0] = glyph.getRect(pixelsPerUnit)[2] + 1.0;
+            glyph.setPixelLowerLeft(nextOrigin, pixelsPerUnit);
+            nextOrigin[0] = glyph.pixelRect(pixelsPerUnit)[2] + 1.0;
 
             // If the glyph overflowed the shelf, make a new one and reposition the glyph.
             if (nextOrigin[0] > ATLAS_SIZE[0]) {
                 nextOrigin = glmatrix.vec2.fromValues(1.0, shelfBottom + 1.0);
-                glyph.setPixelPosition(nextOrigin, pixelsPerUnit);
-                nextOrigin[0] = glyph.getRect(pixelsPerUnit)[2] + 1.0;
+                glyph.setPixelLowerLeft(nextOrigin, pixelsPerUnit);
+                nextOrigin[0] = glyph.pixelRect(pixelsPerUnit)[2] + 1.0;
             }
 
             // Grow the shelf as necessary.
-            shelfBottom = Math.max(shelfBottom, glyph.getRect(pixelsPerUnit)[3] + 1.0);
+            shelfBottom = Math.max(shelfBottom, glyph.pixelRect(pixelsPerUnit)[3] + 1.0);
         }
 
         // FIXME(pcwalton): Could be more precise if we don't have a full row.
@@ -574,44 +571,11 @@ class AtlasGlyph extends PathfinderGlyph {
     constructor(glyph: opentype.Glyph) {
         super(glyph);
     }
-
-    getRect(pixelsPerUnit: number): glmatrix.vec4 {
-        const glyphSize = glmatrix.vec2.fromValues(this.metrics.xMax - this.metrics.xMin,
-                                                   this.metrics.yMax - this.metrics.yMin);
-        glmatrix.vec2.scale(glyphSize, glyphSize, pixelsPerUnit);
-        glmatrix.vec2.ceil(glyphSize, glyphSize);
-
-        const glyphBL = glmatrix.vec2.create(), glyphTR = glmatrix.vec2.create();
-        glmatrix.vec2.scale(glyphBL, this.position, pixelsPerUnit);
-        glmatrix.vec2.add(glyphTR, glyphBL, glyphSize);
-
-        return glmatrix.vec4.fromValues(glyphBL[0], glyphBL[1], glyphTR[0], glyphTR[1]);
-    }
 }
 
 class GlyphInstance extends PathfinderGlyph {
     constructor(glyph: opentype.Glyph) {
         super(glyph);
-    }
-
-    getRect(pixelsPerUnit: number): glmatrix.vec4 {
-        // Determine the atlas size.
-        const atlasSize = glmatrix.vec2.fromValues(this.metrics.xMax - this.metrics.xMin,
-                                                   this.metrics.yMax - this.metrics.yMin);
-        glmatrix.vec2.scale(atlasSize, atlasSize, pixelsPerUnit);
-        glmatrix.vec2.ceil(atlasSize, atlasSize);
-
-        // Set positions.
-        const textGlyphBL = glmatrix.vec2.create(), textGlyphTR = glmatrix.vec2.create();
-        const offset = glmatrix.vec2.fromValues(this.metrics.leftSideBearing,
-                                                this.metrics.yMin);
-        glmatrix.vec2.add(textGlyphBL, this.position, offset);
-        glmatrix.vec2.scale(textGlyphBL, textGlyphBL, pixelsPerUnit);
-        glmatrix.vec2.round(textGlyphBL, textGlyphBL);
-        glmatrix.vec2.add(textGlyphTR, textGlyphBL, atlasSize);
-
-        return glmatrix.vec4.fromValues(textGlyphBL[0], textGlyphBL[1],
-                                        textGlyphTR[0], textGlyphTR[1]);
     }
 }
 

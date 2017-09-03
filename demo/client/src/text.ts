@@ -23,6 +23,13 @@ const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
 
 type CreateGlyphFn<Glyph> = (glyph: opentype.Glyph) => Glyph;
 
+export interface PixelMetrics {
+    left: number;
+    right: number;
+    ascent: number;
+    descent: number;
+}
+
 opentype.Font.prototype.isSupported = function() {
     return (this as any).supported;
 }
@@ -110,7 +117,7 @@ export class TextLayout<Glyph extends PathfinderGlyph> {
         for (const line of this.lineGlyphs) {
             for (let lineCharIndex = 0; lineCharIndex < line.length; lineCharIndex++) {
                 const textGlyph = this.glyphStorage.textGlyphs[glyphIndex];
-                textGlyph.position = glmatrix.vec2.clone(currentPosition);
+                textGlyph.origin = glmatrix.vec2.clone(currentPosition);
                 currentPosition[0] += textGlyph.advanceWidth;
                 glyphIndex++;
             }
@@ -128,7 +135,7 @@ export abstract class PathfinderGlyph {
     constructor(glyph: opentype.Glyph) {
         this.opentypeGlyph = glyph;
         this._metrics = null;
-        this.position = glmatrix.vec2.create();
+        this.origin = glmatrix.vec2.create();
     }
 
     get index(): number {
@@ -145,14 +152,50 @@ export abstract class PathfinderGlyph {
         return this.opentypeGlyph.advanceWidth;
     }
 
-    setPixelPosition(pixelPosition: glmatrix.vec2, pixelsPerUnit: number): void {
-        glmatrix.vec2.scale(this.position, pixelPosition, 1.0 / pixelsPerUnit);
+    pixelOrigin(pixelsPerUnit: number): glmatrix.vec2 {
+        const origin = glmatrix.vec2.create();
+        glmatrix.vec2.scale(origin, this.origin, pixelsPerUnit);
+        return origin;
+    }
+
+    setPixelOrigin(pixelOrigin: glmatrix.vec2, pixelsPerUnit: number): void {
+        glmatrix.vec2.scale(this.origin, pixelOrigin, 1.0 / pixelsPerUnit);
+    }
+
+    setPixelLowerLeft(pixelLowerLeft: glmatrix.vec2, pixelsPerUnit: number): void {
+        const pixelMetrics = this.pixelMetrics(pixelsPerUnit);
+        const pixelOrigin = glmatrix.vec2.fromValues(pixelLowerLeft[0],
+                                                     pixelLowerLeft[1] + pixelMetrics.descent);
+        this.setPixelOrigin(pixelOrigin, pixelsPerUnit);
+    }
+
+    protected pixelMetrics(pixelsPerUnit: number): PixelMetrics {
+        const metrics = this.metrics;
+        return {
+            left: Math.floor(metrics.xMin * pixelsPerUnit),
+            right: Math.ceil(metrics.xMax * pixelsPerUnit),
+            ascent: Math.ceil(metrics.yMax * pixelsPerUnit),
+            descent: Math.ceil(-metrics.yMin * pixelsPerUnit),
+        };
+    }
+
+    pixelRect(pixelsPerUnit: number): glmatrix.vec4 {
+        const pixelMetrics = this.pixelMetrics(pixelsPerUnit);
+        const textGlyphOrigin = glmatrix.vec2.clone(this.origin);
+        glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, pixelsPerUnit);
+        glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
+
+        return glmatrix.vec4.fromValues(textGlyphOrigin[0],
+                                        textGlyphOrigin[1] - pixelMetrics.descent,
+                                        textGlyphOrigin[0] + pixelMetrics.right,
+                                        textGlyphOrigin[1] + pixelMetrics.ascent);
+
     }
 
     readonly opentypeGlyph: opentype.Glyph;
 
     private _metrics: Metrics | null;
 
-    /// In font units.
-    position: glmatrix.vec2;
+    /// In font units, relative to (0, 0).
+    origin: glmatrix.vec2;
 }

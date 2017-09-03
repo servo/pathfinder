@@ -104,7 +104,7 @@ class ThreeDView extends PathfinderDemoView {
             pathColors[startOffset + 3] = 0xff;           // alpha
 
             const textGlyph = textGlyphs[pathIndex];
-            const glyphRect = textGlyph.getRect(PIXELS_PER_UNIT);
+            const glyphRect = textGlyph.pixelRect(PIXELS_PER_UNIT);
             pathTransforms.set([1, 1, glyphRect[0], glyphRect[1]], startOffset);
         }
 
@@ -163,16 +163,6 @@ class ThreeDView extends PathfinderDemoView {
 class ThreeDGlyph extends PathfinderGlyph {
     constructor(glyph: opentype.Glyph) {
         super(glyph);
-    }
-
-    getRect(pixelsPerUnit: number): glmatrix.vec4 {
-        const rect =
-            glmatrix.vec4.fromValues(this.position[0],
-                                     this.position[1],
-                                     this.position[0] + this.metrics.xMax - this.metrics.xMin,
-                                     this.position[1] + this.metrics.yMax - this.metrics.yMin);
-        glmatrix.vec4.scale(rect, rect, pixelsPerUnit);
-        return rect;
     }
 }
 
