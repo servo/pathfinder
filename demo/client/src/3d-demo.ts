@@ -148,8 +148,8 @@ class ThreeDView extends PathfinderDemoView {
                                   this.canvas.width / this.canvas.height,
                                   NEAR_CLIP_PLANE,
                                   FAR_CLIP_PLANE);
-        glmatrix.mat4.translate(transform, transform, this.camera.translation);
         glmatrix.mat4.mul(transform, transform, this.camera.rotationMatrix);
+        glmatrix.mat4.translate(transform, transform, this.camera.translation);
         return transform;
     }
 

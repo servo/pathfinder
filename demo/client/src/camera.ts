@@ -101,23 +101,28 @@ export class PerspectiveCamera extends Camera {
             return;
         }
 
-        this.movementDelta = glmatrix.vec3.fromValues(PERSPECTIVE_MOVEMENT_SPEED, 0.0, 0.0);
+        this.movementDelta = glmatrix.vec3.fromValues(0.0, 0.0, PERSPECTIVE_MOVEMENT_SPEED);
         if (event.button !== 1)
             this.movementDelta[0] = -this.movementDelta[0];
 
-        this.movementInterval = window.setInterval(() => this.move(), MOVEMENT_INTERVAL_DELAY);
+        if (this.movementInterval == null)
+            this.movementInterval = window.setInterval(() => this.move(), MOVEMENT_INTERVAL_DELAY);
     }
 
     private onMouseUp(event: MouseEvent): void {
         if (this.movementInterval != null) {
             window.clearInterval(this.movementInterval);
+            this.movementInterval = null;
             this.movementDelta = glmatrix.vec3.create();
         }
     }
 
     private move() {
+        const invRotationMatrix = glmatrix.mat4.create();
+        glmatrix.mat4.invert(invRotationMatrix, this.rotationMatrix);
+
         const delta = glmatrix.vec3.clone(this.movementDelta);
-        glmatrix.vec3.transformMat4(delta, delta, this.rotationMatrix);
+        glmatrix.vec3.transformMat4(delta, delta, invRotationMatrix);
         glmatrix.vec3.add(this.translation, this.translation, delta);
 
         if (this.onChange != null)

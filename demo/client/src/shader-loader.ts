@@ -28,6 +28,7 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'ecaaCurve',
     'ecaaMonoResolve',
     'ecaaMultiResolve',
+    'demo3DMonument',
 ];
 
 const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
@@ -67,6 +68,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         vertex: "/glsl/gles2/ecaa-multi-resolve.vs.glsl",
         fragment: "/glsl/gles2/ecaa-multi-resolve.fs.glsl",
     },
+    demo3DMonument: {
+        vertex: "/glsl/gles2/demo-3d-monument.vs.glsl",
+        fragment: "/glsl/gles2/demo-3d-monument.fs.glsl",
+    },
 };
 
 export interface ShaderMap<T> {
@@ -79,6 +84,7 @@ export interface ShaderMap<T> {
     ecaaCurve: T;
     ecaaMonoResolve: T;
     ecaaMultiResolve: T;
+    demo3DMonument: T;
 }
 
 export interface ShaderProgramSource {
