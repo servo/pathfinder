@@ -19,7 +19,14 @@ export abstract class AppController {
     }
 
     protected loadInitialFile() {
-        this.fetchFile(this.defaultFile);
+        const selectFileElement = document.getElementById('pf-select-file') as
+            (HTMLSelectElement | null);
+        if (selectFileElement != null) {
+            const selectedOption = selectFileElement.selectedOptions[0] as HTMLOptionElement;
+            this.fetchFile(selectedOption.value);
+        } else {
+            this.fetchFile(this.defaultFile);
+        }
     }
 
     protected fetchFile(file: string) {
