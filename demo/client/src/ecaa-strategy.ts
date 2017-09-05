@@ -64,10 +64,9 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         return glmatrix.mat4.create();
     }
 
-    private initDirectFramebuffer(view: MonochromePathfinderView) {
+    protected initDirectFramebuffer(view: MonochromePathfinderView) {
         this.directColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
         this.directPathIDTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
-        this.directDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
         this.directFramebuffer =
             createFramebuffer(view.gl,
                               view.drawBuffersExt,
@@ -398,23 +397,30 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
+    protected setCoverDepthState(view: MonochromePathfinderView): void {
+        view.gl.disable(view.gl.DEPTH_TEST);
+    }
+
+    protected setResolveDepthState(view: MonochromePathfinderView): void {}
+
     protected abstract getResolveProgram(view: MonochromePathfinderView): PathfinderShaderProgram;
     protected abstract initEdgeDetectFramebuffer(view: MonochromePathfinderView): void;
     protected abstract createEdgeDetectVAO(view: MonochromePathfinderView): void;
     protected abstract detectEdgesIfNecessary(view: MonochromePathfinderView): void; 
-    protected abstract setCoverDepthState(view: MonochromePathfinderView): void;
     protected abstract clearForCover(view: MonochromePathfinderView): void;
     protected abstract setAADepthState(view: MonochromePathfinderView): void;
     protected abstract clearForResolve(view: MonochromePathfinderView): void;
-    protected abstract setResolveDepthState(view: MonochromePathfinderView): void;
     protected abstract setResolveUniforms(view: MonochromePathfinderView,
                                           program: PathfinderShaderProgram): void;
+
+    protected get directDepthTexture(): WebGLTexture | null {
+        return null;
+    }
 
     abstract shouldRenderDirect: boolean;
 
     private bVertexPositionBufferTexture: PathfinderBufferTexture;
     private bVertexPathIDBufferTexture: PathfinderBufferTexture;
-    private directDepthTexture: WebGLTexture;
     private directFramebuffer: WebGLFramebuffer;
     private aaAlphaTexture: WebGLTexture;
     private aaFramebuffer: WebGLFramebuffer;
@@ -440,12 +446,6 @@ export class ECAAMonochromeStrategy extends ECAAStrategy {
 
     protected detectEdgesIfNecessary(view: MonochromePathfinderView) {}
 
-    protected setCoverDepthState(view: MonochromePathfinderView) {
-        view.gl.depthMask(true);
-        view.gl.depthFunc(view.gl.ALWAYS);
-        view.gl.enable(view.gl.DEPTH_TEST);
-    }
-
     protected clearForCover(view: MonochromePathfinderView) {
         view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         view.gl.clearDepth(0.0);
@@ -454,12 +454,6 @@ export class ECAAMonochromeStrategy extends ECAAStrategy {
 
     protected setAADepthState(view: MonochromePathfinderView) {
         view.gl.disable(view.gl.DEPTH_TEST);
-    }
-
-    protected setResolveDepthState(view: MonochromePathfinderView) {
-        view.gl.depthMask(false);
-        view.gl.depthFunc(view.gl.NOTEQUAL);
-        view.gl.enable(view.gl.DEPTH_TEST);
     }
 
     protected clearForResolve(view: MonochromePathfinderView) {
@@ -480,6 +474,11 @@ export class ECAAMonochromeStrategy extends ECAAStrategy {
 export class ECAAMulticolorStrategy extends ECAAStrategy {
     protected getResolveProgram(view: MonochromePathfinderView): PathfinderShaderProgram {
         return view.shaderPrograms.ecaaMultiResolve;
+    }
+
+    protected initDirectFramebuffer(view: MonochromePathfinderView) {
+        this._directDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
+        super.initDirectFramebuffer(view);
     }
 
     protected initEdgeDetectFramebuffer(view: MonochromePathfinderView) {
@@ -575,6 +574,12 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
     get shouldRenderDirect() {
         return true;
     }
+
+    protected get directDepthTexture(): WebGLTexture {
+        return this._directDepthTexture;
+    }
+
+    private _directDepthTexture: WebGLTexture;
 
     private edgeDetectFramebuffer: WebGLFramebuffer;
     private edgeDetectVAO: WebGLVertexArrayObject;
