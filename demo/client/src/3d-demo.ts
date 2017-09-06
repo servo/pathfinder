@@ -53,11 +53,12 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     protected fileLoaded(): void {
         this.layout = new TextLayout(this.fileData, TEXT, glyph => new ThreeDGlyph(glyph));
         this.layout.layoutText();
-        this.layout.glyphStorage.partition().then((meshes: PathfinderMeshData) => {
-            this.meshes = meshes;
+        this.layout.glyphStorage.partition().then((baseMeshes: PathfinderMeshData) => {
+            this.baseMeshes = baseMeshes;
+            this.expandedMeshes = this.layout.glyphStorage.expandMeshes(baseMeshes).meshes;
             this.view.then(view => {
                 view.uploadPathMetadata(this.layout.glyphStorage.textGlyphs.length);
-                view.attachMeshes(this.meshes);
+                view.attachMeshes(this.expandedMeshes);
             });
         });
     }
@@ -77,7 +78,9 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     }
 
     layout: TextLayout<ThreeDGlyph>;
-    private meshes: PathfinderMeshData;
+
+    private baseMeshes: PathfinderMeshData;
+    private expandedMeshes: PathfinderMeshData;
 }
 
 class ThreeDView extends PathfinderDemoView {

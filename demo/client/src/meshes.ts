@@ -10,7 +10,7 @@
 
 import * as base64js from 'base64-js';
 
-import {PathfinderError, expectNotNull} from './utils';
+import {PathfinderError, expectNotNull, panic} from './utils';
 
 const BUFFER_TYPES: Meshes<BufferType> = {
     bQuads: 'ARRAY_BUFFER',
@@ -51,9 +51,16 @@ export interface Meshes<T> {
 }
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer> {
-    constructor(meshes: any) {
-        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>)
-            this[bufferName] = base64js.toByteArray(meshes[bufferName]).buffer as ArrayBuffer;
+    constructor(meshes: Meshes<string | ArrayBuffer>) {
+        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>) {
+            const meshBuffer = meshes[bufferName];
+            if (typeof(meshBuffer) === 'string')
+                this[bufferName] = base64js.toByteArray(meshBuffer).buffer as ArrayBuffer;
+            else if (meshBuffer instanceof ArrayBuffer)
+                this[bufferName] = meshBuffer;
+            else
+                panic("Unknown buffer type!");
+        }
 
         this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
         this.edgeUpperLineIndexCount = this.edgeUpperLineIndices.byteLength / 8;

@@ -14,12 +14,16 @@ import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 import * as opentype from "opentype.js";
 
-import {PathfinderMeshData} from "./meshes";
-import {assert, panic} from "./utils";
+import {B_QUAD_SIZE, PathfinderMeshData} from "./meshes";
+import {UINT32_SIZE, UINT32_MAX, assert, panic} from "./utils";
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
 
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
+
+export interface ExpandedMeshData {
+    meshes: PathfinderMeshData;
+}
 
 type CreateGlyphFn<Glyph> = (glyph: opentype.Glyph) => Glyph;
 
@@ -87,6 +91,91 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
                 panic("Failed to partition the font!");
             return new PathfinderMeshData(response.Ok.pathData);
         });
+    }
+
+    expandMeshes(meshes: PathfinderMeshData): ExpandedMeshData {
+        const bQuads = _.chunk(new Uint32Array(meshes.bQuads), B_QUAD_SIZE / UINT32_SIZE);
+        const bVertexPositions = new Float32Array(meshes.bVertexPositions);
+        const bVertexPathIDs = new Uint16Array(meshes.bVertexPathIDs);
+        const bVertexLoopBlinnData = new Uint32Array(meshes.bVertexLoopBlinnData);
+
+        const expandedBQuads: number[] = [];
+        const expandedBVertexPositions: number[] = [];
+        const expandedBVertexPathIDs: number[] = [];
+        const expandedBVertexLoopBlinnData: number[] = [];
+        const expandedCoverInteriorIndices: number[] = [];
+        const expandedCoverCurveIndices: number[] = [];
+
+        for (let textGlyphIndex = 0; textGlyphIndex < this.textGlyphs.length; textGlyphIndex++) {
+            const textGlyph = this.textGlyphs[textGlyphIndex];
+            const uniqueGlyphIndex = _.sortedIndexBy(this.uniqueGlyphs, textGlyph, 'index');
+            if (uniqueGlyphIndex < 0)
+                continue;
+            const firstBVertexIndex = _.sortedIndex(bVertexPathIDs, uniqueGlyphIndex + 1);
+            if (firstBVertexIndex < 0)
+                continue;
+
+            // Copy over vertices.
+            let bVertexIndex = firstBVertexIndex;
+            const firstExpandedBVertexIndex = expandedBVertexPathIDs.length;
+            while (bVertexIndex < bVertexPathIDs.length &&
+                   bVertexPathIDs[bVertexIndex] === uniqueGlyphIndex + 1) {
+                expandedBVertexPositions.push(bVertexPositions[bVertexIndex * 2 + 0],
+                                              bVertexPositions[bVertexIndex * 2 + 1]);
+                expandedBVertexPathIDs.push(textGlyphIndex + 1);
+                expandedBVertexLoopBlinnData.push(bVertexLoopBlinnData[bVertexIndex]);
+                bVertexIndex++;
+            }
+
+            // Copy over indices.
+            copyIndices(expandedCoverInteriorIndices,
+                        new Uint32Array(meshes.coverInteriorIndices),
+                        firstExpandedBVertexIndex,
+                        firstBVertexIndex,
+                        bVertexIndex);
+            copyIndices(expandedCoverCurveIndices,
+                        new Uint32Array(meshes.coverCurveIndices),
+                        firstExpandedBVertexIndex,
+                        firstBVertexIndex,
+                        bVertexIndex);
+
+            // Copy over B-quads.
+            let firstBQuadIndex =
+                _.findIndex(bQuads, bQuad => bVertexPathIDs[bQuad[0]] == uniqueGlyphIndex + 1);
+            if (firstBQuadIndex < 0)
+                firstBQuadIndex = bQuads.length;
+            const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
+            for (let bQuadIndex = firstBQuadIndex; bQuadIndex < bQuads.length; bQuadIndex++) {
+                const bQuad = bQuads[bQuadIndex];
+                if (bVertexPathIDs[bQuad[0]] !== uniqueGlyphIndex + 1)
+                    break;
+                for (let indexIndex = 0; indexIndex < B_QUAD_SIZE / UINT32_SIZE; indexIndex++) {
+                    const srcIndex = bQuad[indexIndex];
+                    if (srcIndex === UINT32_MAX)
+                        expandedBQuads.push(srcIndex);
+                    else
+                        expandedBQuads.push(srcIndex + indexDelta);
+                }
+            }
+        }
+
+        return {
+            meshes: new PathfinderMeshData({
+                bQuads: new Uint32Array(expandedBQuads).buffer as ArrayBuffer,
+                bVertexPositions: new Float32Array(expandedBVertexPositions).buffer as ArrayBuffer,
+                bVertexPathIDs: new Uint16Array(expandedBVertexPathIDs).buffer as ArrayBuffer,
+                bVertexLoopBlinnData: new Uint32Array(expandedBVertexLoopBlinnData).buffer as
+                    ArrayBuffer,
+                coverInteriorIndices: new Uint32Array(expandedCoverInteriorIndices).buffer as
+                    ArrayBuffer,
+                coverCurveIndices: new Uint32Array(expandedCoverCurveIndices).buffer as
+                    ArrayBuffer,
+                edgeUpperCurveIndices: new ArrayBuffer(0),
+                edgeUpperLineIndices: new ArrayBuffer(0),
+                edgeLowerCurveIndices: new ArrayBuffer(0),
+                edgeLowerLineIndices: new ArrayBuffer(0),
+            })
+        }
     }
 
     readonly fontData: ArrayBuffer;
@@ -198,4 +287,24 @@ export abstract class PathfinderGlyph {
 
     /// In font units, relative to (0, 0).
     origin: glmatrix.vec2;
+}
+
+function copyIndices(destIndices: number[],
+                     srcIndices: Uint32Array,
+                     firstExpandedIndex: number,
+                     firstIndex: number,
+                     lastIndex: number) {
+    // FIXME(pcwalton): Use binary search instead of linear search.
+    const indexDelta = firstExpandedIndex - firstIndex;
+    let indexIndex = _.findIndex(srcIndices,
+                                 srcIndex => srcIndex >= firstIndex && srcIndex < lastIndex);
+    if (indexIndex < 0)
+        return;
+    while (indexIndex < srcIndices.length) {
+        const index = srcIndices[indexIndex];
+        if (index < firstIndex || index >= lastIndex)
+            break;
+        destIndices.push(index + indexDelta);
+        indexIndex++;
+    }
 }
