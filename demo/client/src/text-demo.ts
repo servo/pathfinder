@@ -490,6 +490,14 @@ class TextDemoView extends MonochromePathfinderView {
         return glmatrix.mat4.create();
     }
 
+    protected get directCurveProgramName(): keyof ShaderMap<void> {
+        return 'directCurve';
+    }
+
+    protected get directInteriorProgramName(): keyof ShaderMap<void> {
+        return 'directInterior';
+    }
+
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 

@@ -279,7 +279,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.gl.disable(this.gl.BLEND);
 
         // Set up the implicit cover interior VAO.
-        const directInteriorProgram = this.shaderPrograms.directInterior;
+        const directInteriorProgram = this.shaderPrograms[this.directInteriorProgramName];
         this.gl.useProgram(directInteriorProgram.program);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
         this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
@@ -315,7 +315,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
 
         // Set up the direct curve VAO.
-        const directCurveProgram = this.shaderPrograms.directCurve;
+        const directCurveProgram = this.shaderPrograms[this.directCurveProgramName];
         this.gl.useProgram(directCurveProgram.program);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
         this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
@@ -424,6 +424,9 @@ export abstract class PathfinderDemoView extends PathfinderView {
     protected abstract get usedSizeFactor(): glmatrix.vec2;
 
     protected abstract get worldTransform(): glmatrix.mat4;
+
+    protected abstract get directCurveProgramName(): keyof ShaderMap<void>;
+    protected abstract get directInteriorProgramName(): keyof ShaderMap<void>;
 
     protected antialiasingStrategy: AntialiasingStrategy | null;
 

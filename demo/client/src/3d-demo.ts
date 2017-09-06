@@ -29,7 +29,9 @@ const PIXELS_PER_UNIT: number = 1.0;
 
 const FOV: number = 45.0;
 const NEAR_CLIP_PLANE: number = 0.01;
-const FAR_CLIP_PLANE: number = 1000.0;
+const FAR_CLIP_PLANE: number = 10000.0;
+
+const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 50.0, 1.0 / 50.0, 1.0);
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
@@ -142,15 +144,29 @@ class ThreeDView extends PathfinderDemoView {
     }
 
     protected get worldTransform() {
-        const transform = glmatrix.mat4.create();
-        glmatrix.mat4.perspective(transform,
+        const projection = glmatrix.mat4.create();
+        glmatrix.mat4.perspective(projection,
                                   FOV / 180.0 * Math.PI,
                                   this.canvas.width / this.canvas.height,
                                   NEAR_CLIP_PLANE,
                                   FAR_CLIP_PLANE);
-        glmatrix.mat4.mul(transform, transform, this.camera.rotationMatrix);
-        glmatrix.mat4.translate(transform, transform, this.camera.translation);
+
+        const modelview = glmatrix.mat4.create();
+        glmatrix.mat4.mul(modelview, modelview, this.camera.rotationMatrix);
+        glmatrix.mat4.translate(modelview, modelview, this.camera.translation);
+        glmatrix.mat4.scale(modelview, modelview, SCALE);
+
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.mul(transform, projection, modelview);
         return transform;
+    }
+
+    protected get directCurveProgramName(): keyof ShaderMap<void> {
+        return 'direct3DCurve';
+    }
+
+    protected get directInteriorProgramName(): keyof ShaderMap<void> {
+        return 'direct3DInterior';
     }
 
     private _scale: number;

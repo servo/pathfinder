@@ -22,6 +22,8 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'blit',
     'directCurve',
     'directInterior',
+    'direct3DCurve',
+    'direct3DInterior',
     'ecaaEdgeDetect',
     'ecaaCover',
     'ecaaLine',
@@ -42,6 +44,14 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     },
     directInterior: {
         vertex: "/glsl/gles2/direct-interior.vs.glsl",
+        fragment: "/glsl/gles2/direct-interior.fs.glsl",
+    },
+    direct3DCurve: {
+        vertex: "/glsl/gles2/direct-3d-curve.vs.glsl",
+        fragment: "/glsl/gles2/direct-curve.fs.glsl",
+    },
+    direct3DInterior: {
+        vertex: "/glsl/gles2/direct-3d-interior.vs.glsl",
         fragment: "/glsl/gles2/direct-interior.fs.glsl",
     },
     ecaaEdgeDetect: {
@@ -78,6 +88,8 @@ export interface ShaderMap<T> {
     blit: T;
     directCurve: T;
     directInterior: T;
+    direct3DCurve: T;
+    direct3DInterior: T;
     ecaaEdgeDetect: T;
     ecaaCover: T;
     ecaaLine: T;

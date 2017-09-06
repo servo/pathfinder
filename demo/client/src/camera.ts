@@ -18,6 +18,8 @@ const PERSPECTIVE_ROTATION_SPEED: number = 1.0 / 300.0;
 
 const MOVEMENT_INTERVAL_DELAY: number = 10;
 
+const INITIAL_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, 0.0, -1000.0);
+
 export abstract class Camera {
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
@@ -83,7 +85,7 @@ export class PerspectiveCamera extends Camera {
     constructor(canvas: HTMLCanvasElement) {
         super(canvas);
 
-        this.translation = glmatrix.vec3.create();
+        this.translation = glmatrix.vec3.clone(INITIAL_TRANSLATION);
         this.rotation = glmatrix.vec2.create();
         this.movementDelta = glmatrix.vec3.create();
         this.movementInterval = null;
@@ -133,8 +135,8 @@ export class PerspectiveCamera extends Camera {
         if (document.pointerLockElement !== this.canvas)
             return;
 
-        this.rotation[0] += event.movementY * PERSPECTIVE_ROTATION_SPEED;
         this.rotation[1] += event.movementX * PERSPECTIVE_ROTATION_SPEED;
+        this.rotation[0] += event.movementY * PERSPECTIVE_ROTATION_SPEED;
 
         if (this.onChange != null)
             this.onChange();
@@ -142,8 +144,8 @@ export class PerspectiveCamera extends Camera {
 
     get rotationMatrix(): glmatrix.mat4 {
         const matrix = glmatrix.mat4.create();
-        glmatrix.mat4.fromXRotation(matrix, this.rotation[0]);
-        glmatrix.mat4.rotateY(matrix, matrix, this.rotation[1]);
+        glmatrix.mat4.fromYRotation(matrix, this.rotation[1]);
+        glmatrix.mat4.rotateX(matrix, matrix, this.rotation[0]);
         return matrix;
     }
 

@@ -235,6 +235,14 @@ class SVGDemoView extends PathfinderDemoView {
         return transform;
     }
 
+    protected get directCurveProgramName(): keyof ShaderMap<void> {
+        return 'directCurve';
+    }
+
+    protected get directInteriorProgramName(): keyof ShaderMap<void> {
+        return 'directInterior';
+    }
+
     private appController: SVGDemoController;
 
     camera: OrthographicCamera;
