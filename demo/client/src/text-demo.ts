@@ -73,7 +73,7 @@ const B_POSITION_SIZE: number = 8;
 
 const B_PATH_INDEX_SIZE: number = 2;
 
-const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(3072, 3072);
+const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(2048, 4096);
 
 declare global {
     interface Window {
@@ -477,9 +477,11 @@ class TextDemoView extends MonochromePathfinderView {
         return this.appController.atlas.usedSize;
     }
 
-    protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
+    protected createAAStrategy(aaType: AntialiasingStrategyName,
+                               aaLevel: number,
+                               subpixelAA: boolean):
                                AntialiasingStrategy {
-        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
+        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
     protected updateTimings(timings: Timings) {

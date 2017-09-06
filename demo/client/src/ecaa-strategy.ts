@@ -26,7 +26,7 @@ interface UpperAndLower<T> {
 }
 
 export abstract class ECAAStrategy extends AntialiasingStrategy {
-    constructor(level: number) {
+    constructor(level: number, subpixelAA: boolean) {
         super();
         this.framebufferSize = glmatrix.vec2.create();
     }

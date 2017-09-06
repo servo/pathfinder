@@ -107,12 +107,14 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
         this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
 
-        this.antialiasingStrategy = new NoAAStrategy(0);
+        this.antialiasingStrategy = new NoAAStrategy(0, false);
         this.antialiasingStrategy.init(this);
     }
 
-    setAntialiasingOptions(aaType: AntialiasingStrategyName, aaLevel: number) {
-        this.antialiasingStrategy = this.createAAStrategy(aaType, aaLevel);
+    setAntialiasingOptions(aaType: AntialiasingStrategyName,
+                           aaLevel: number,
+                           subpixelAA: boolean) {
+        this.antialiasingStrategy = this.createAAStrategy(aaType, aaLevel, subpixelAA);
 
         let canvas = this.canvas;
         this.antialiasingStrategy.init(this);
@@ -409,7 +411,9 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
-    protected abstract createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
+    protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
+                                        aaLevel: number,
+                                        subpixelAA: boolean):
                                         AntialiasingStrategy;
 
     protected abstract compositeIfNecessary(): void;

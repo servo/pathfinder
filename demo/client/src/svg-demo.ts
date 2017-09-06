@@ -212,9 +212,11 @@ class SVGDemoView extends PathfinderDemoView {
         this.pathTransformBufferTexture.upload(this.gl, pathTransforms);
     }
 
-    protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
+    protected createAAStrategy(aaType: AntialiasingStrategyName,
+                               aaLevel: number,
+                               subpixelAA: boolean):
                                AntialiasingStrategy {
-        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
+        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
     protected compositeIfNecessary(): void {}

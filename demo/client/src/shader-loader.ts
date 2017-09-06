@@ -24,6 +24,7 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'directInterior',
     'direct3DCurve',
     'direct3DInterior',
+    'ssaaSubpixelResolve',
     'ecaaEdgeDetect',
     'ecaaCover',
     'ecaaLine',
@@ -53,6 +54,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     direct3DInterior: {
         vertex: "/glsl/gles2/direct-3d-interior.vs.glsl",
         fragment: "/glsl/gles2/direct-interior.fs.glsl",
+    },
+    ssaaSubpixelResolve: {
+        vertex: "/glsl/gles2/ssaa-subpixel-resolve.vs.glsl",
+        fragment: "/glsl/gles2/ssaa-subpixel-resolve.fs.glsl",
     },
     ecaaEdgeDetect: {
         vertex: "/glsl/gles2/ecaa-edge-detect.vs.glsl",
@@ -90,6 +95,7 @@ export interface ShaderMap<T> {
     directInterior: T;
     direct3DCurve: T;
     direct3DInterior: T;
+    ssaaSubpixelResolve: T;
     ecaaEdgeDetect: T;
     ecaaCover: T;
     ecaaLine: T;

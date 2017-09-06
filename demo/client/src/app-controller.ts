@@ -93,7 +93,11 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
         });
 
         this.aaLevelSelect = document.getElementById('pf-aa-level-select') as HTMLSelectElement;
+        this.subpixelAASwitch =
+            document.getElementById('pf-subpixel-aa') as HTMLInputElement | null;
         this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
+        if (this.subpixelAASwitch != null)
+            this.subpixelAASwitch.addEventListener('change', () => this.updateAALevel(), false);
         this.updateAALevel();
     }
 
@@ -102,7 +106,8 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
         const aaValues = unwrapNull(/^([a-z-]+)(?:-([0-9]+))?$/.exec(selectedOption.value));
         const aaType = aaValues[1] as AntialiasingStrategyName;
         const aaLevel = aaValues[2] === "" ? 1 : parseInt(aaValues[2]); 
-        this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel));
+        const subpixelAA = this.subpixelAASwitch == null ? false : this.subpixelAASwitch.checked;
+        this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel, subpixelAA));
     }
 
     protected loadFile(event: Event) {
@@ -151,6 +156,8 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
     protected shaderSources: ShaderMap<ShaderProgramSource> | null;
 
     private aaLevelSelect: HTMLSelectElement;
+    private subpixelAASwitch: HTMLInputElement | null;
+
     private settingsCard: HTMLElement;
     private settingsButton: HTMLButtonElement;
     private settingsCloseButton: HTMLButtonElement;

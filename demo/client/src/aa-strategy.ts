@@ -44,7 +44,7 @@ export abstract class AntialiasingStrategy {
 }
 
 export class NoAAStrategy extends AntialiasingStrategy {
-    constructor(level: number) {
+    constructor(level: number, subpixelAA: boolean) {
         super();
         this.framebufferSize = glmatrix.vec2.create();
     }

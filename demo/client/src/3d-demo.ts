@@ -117,10 +117,12 @@ class ThreeDView extends PathfinderDemoView {
         this.pathTransformBufferTexture.upload(this.gl, pathTransforms);
     }
 
-    protected createAAStrategy(aaType: AntialiasingStrategyName, aaLevel: number):
+    protected createAAStrategy(aaType: AntialiasingStrategyName,
+                               aaLevel: number,
+                               subpixelAA: boolean):
                                AntialiasingStrategy {
         if (aaType != 'ecaa')
-            return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel);
+            return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
         throw new PathfinderError("Unsupported antialiasing type!");
     }
 

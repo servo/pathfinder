@@ -16,9 +16,10 @@ import {unwrapNull} from './utils';
 import {PathfinderDemoView} from './view';
 
 export default class SSAAStrategy extends AntialiasingStrategy {
-    constructor(level: number) {
+    constructor(level: number, subpixelAA: boolean) {
         super();
         this.level = level;
+        this.subpixelAA = subpixelAA;
         this.destFramebufferSize = glmatrix.vec2.create();
         this.supersampledFramebufferSize = glmatrix.vec2.create();
     }
@@ -88,15 +89,22 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         view.gl.disable(view.gl.DEPTH_TEST);
 
         // Set up the blit program VAO.
-        const blitProgram = view.shaderPrograms.blit;
-        view.gl.useProgram(blitProgram.program);
-        view.initQuadVAO(blitProgram.attributes);
+        let resolveProgram;
+        if (this.subpixelAA)
+            resolveProgram = view.shaderPrograms.ssaaSubpixelResolve;
+        else
+            resolveProgram = view.shaderPrograms.blit;
+        view.gl.useProgram(resolveProgram.program);
+        view.initQuadVAO(resolveProgram.attributes);
 
         // Resolve framebuffer.
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
-        view.gl.uniform1i(blitProgram.uniforms.uSource, 0);
-        view.setTransformAndTexScaleUniformsForDest(blitProgram.uniforms);
+        view.gl.uniform1i(resolveProgram.uniforms.uSource, 0);
+        view.gl.uniform2i(resolveProgram.uniforms.uSourceDimensions,
+                          this.supersampledFramebufferSize[0],
+                          this.supersampledFramebufferSize[1]);
+        view.setTransformAndTexScaleUniformsForDest(resolveProgram.uniforms);
         view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
         view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
     }
@@ -106,7 +114,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     }
 
     private get supersampleScale(): glmatrix.vec2 {
-        return glmatrix.vec2.fromValues(2, this.level == 2 ? 1 : 2);
+        return glmatrix.vec2.fromValues(this.subpixelAA ? 3 : 2, this.level == 2 ? 1 : 2);
     }
 
     private usedSupersampledFramebufferSize(view: PathfinderDemoView): glmatrix.vec2 {
@@ -116,6 +124,8 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     }
 
     private level: number;
+    private subpixelAA: boolean;
+
     private destFramebufferSize: glmatrix.vec2;
     private supersampledFramebufferSize: glmatrix.vec2;
     private supersampledColorTexture: WebGLTexture;
