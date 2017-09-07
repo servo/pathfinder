@@ -23,12 +23,9 @@ import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
 import * as _ from "lodash";
 
-const WIDTH: number = 40000;
+const WIDTH: number = 150000;
 
-const TEXT: string[][] = [
-    [ "Lorem ipsum", "dolor sit amet" ],
-    [ "consectetur adipiscing elit." ],
-];
+const TEXT_DATA_URI: string = "/data/mozmonument.json";
 
 const FONT: string = 'open-sans';
 
@@ -38,7 +35,7 @@ const FOV: number = 45.0;
 const NEAR_CLIP_PLANE: number = 0.01;
 const FAR_CLIP_PLANE: number = 10000.0;
 
-const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 50.0, 1.0 / 50.0, 1.0);
+const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 200.0, 1.0 / 200.0, 1.0);
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
@@ -50,21 +47,55 @@ interface AntialiasingStrategyTable {
     ssaa: typeof SSAAStrategy;
 }
 
+interface Panels {
+    upper: string[][];
+    lower: string[][];
+}
+
 class ThreeDController extends DemoAppController<ThreeDView> {
     start() {
         super.start();
 
+        this.textPromise = window.fetch(TEXT_DATA_URI)
+                                 .then(response => response.json())
+                                 .then(textData => this.parseTextData(textData));
+
         this.loadInitialFile();
+    }
+
+    private parseTextData(textData: any): string[][] {
+        const panels = {
+            upper: [],
+            lower: [],
+        };
+
+        for (const nameData of textData.monument) {
+            if (nameData.side !== '1')
+                continue;
+
+            const row = parseInt(nameData.row) - 1, number = parseInt(nameData.number) - 1;
+            const panel: string[][] = panels[nameData.panel as ('upper' | 'lower')];
+
+            if (panel[row] == null)
+                panel[row] = [];
+            panel[row][number] = nameData.name;
+        }
+
+        return panels.upper.concat(panels.lower);
     }
 
     protected fileLoaded(): void {
         const font = opentype.parse(this.fileData);
         assert(font.isSupported(), "The font type is unsupported!");
 
+        this.textPromise.then(text => this.layoutText(font, text));
+    }
+
+    private layoutText(font: opentype.Font, text: string[][]) {
         const createGlyph = (glyph: opentype.Glyph) => new ThreeDGlyph(glyph);
         let textRuns = [];
-        for (let lineNumber = 0; lineNumber < TEXT.length; lineNumber++) {
-            const line = TEXT[lineNumber];
+        for (let lineNumber = 0; lineNumber < text.length; lineNumber++) {
+            const line = text[lineNumber];
 
             const lineY = -lineNumber * font.lineHeight();
             const lineGlyphs = line.map(string => {
@@ -114,6 +145,8 @@ class ThreeDController extends DemoAppController<ThreeDView> {
 
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: PathfinderMeshData;
+
+    private textPromise: Promise<string[][]>;
 }
 
 class ThreeDView extends PathfinderDemoView {

@@ -54,6 +54,7 @@ static STATIC_JS_POPPER_JS_PATH: &'static str = "../client/node_modules/popper.j
 static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
 static STATIC_SVG_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build/svg";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
+static STATIC_DATA_PATH: &'static str = "../../resources/data";
 
 static STATIC_DOC_API_INDEX_URI: &'static str = "/doc/api/pathfinder_font_renderer/index.html";
 
@@ -610,6 +611,10 @@ fn static_svg_demo(svg_name: String) -> Option<NamedFile> {
                 .next()
                 .and_then(|&(_, path)| NamedFile::open(Path::new(path)).ok())
 }
+#[get("/data/<file..>")]
+fn static_data(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_DATA_PATH).join(file)).ok()
+}
 
 struct Shader {
     file: File,
@@ -653,5 +658,6 @@ fn main() {
         static_glsl,
         static_otf_demo,
         static_svg_demo,
+        static_data,
     ]).launch();
 }
