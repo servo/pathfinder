@@ -60,10 +60,15 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
         this.settingsButton = document.getElementById('pf-settings-button') as HTMLButtonElement;
         this.settingsCloseButton = document.getElementById('pf-settings-close-button') as
             HTMLButtonElement;
-        this.settingsButton.addEventListener('click', () => {
+
+        this.settingsButton.addEventListener('click', event => {
+            event.stopPropagation();
             this.settingsCard.classList.toggle('pf-invisible');
         }, false);
         this.settingsCloseButton.addEventListener('click', () => {
+            this.settingsCard.classList.add('pf-invisible');
+        }, false);
+        document.body.addEventListener('click', () => {
             this.settingsCard.classList.add('pf-invisible');
         }, false);
 
