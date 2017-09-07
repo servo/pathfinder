@@ -3,7 +3,13 @@
     left: 1em;
     margin: 0;
 }
+#pf-settings-container {
+    margin-right: 1rem;
+    pointer-events: none;
+    text-align: right;
+}
 #pf-settings {
+    text-align: initial;
     user-select: none;
     -moz-user-select: none;
     opacity: 1.0;
@@ -56,7 +62,7 @@ button > svg path {
 
 .pf-arrow-box:after, .pf-arrow-box:before {
 	top: 100%;
-	left: 22px;
+	right: 22px;
 	border: solid transparent;
 	content: " ";
 	height: 0;
@@ -68,13 +74,13 @@ button > svg path {
 	border-color: rgba(0, 0, 0, 0);
 	border-top-color: white;
 	border-width: 14px;
-	margin-left: -14px;
+	margin-right: -14px;
 }
 .pf-arrow-box:before {
 	border-color: rgba(0, 0, 0, 0);
 	border-top-color: rgba(0, 0, 0, 0.125);
 	border-width: 15px;
-	margin-left: -15px;
+	margin-right: -15px;
 }
 
 .github-corner > svg {

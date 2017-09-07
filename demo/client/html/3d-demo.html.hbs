@@ -10,7 +10,8 @@
         {{>partials/navbar.html isDemo=true}}
         <canvas id="pf-canvas" width="400" height="300"></canvas>
         <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end pf-pointer-events-none">
-            <div class="ml-3 pf-pointer-events-none">
+            <div class="rounded py-1 px-3 ml-3" id="pf-fps-label">0 ms</div>
+            <div id="pf-settings-container">
                 <div id="pf-settings" class="card mb-4 pf-invisible">
                     <div class="card-body">
                         <button id="pf-settings-close-button" type="button" class="close"
@@ -36,7 +37,6 @@
                     {{octicon "gear"}}
                 </button>
             </div>
-            <div class="rounded py-1 px-3 mr-3" id="pf-fps-label">0 ms</div>
         </div>
     </body>
 </html>
