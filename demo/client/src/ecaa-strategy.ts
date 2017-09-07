@@ -43,8 +43,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     attachMeshes(view: MonochromePathfinderView) {
-        const bVertexPositions = new Float32Array(view.meshData.bVertexPositions);
-        const bVertexPathIDs = new Uint8Array(view.meshData.bVertexPathIDs);
+        const bVertexPositions = new Float32Array(view.meshData[0].bVertexPositions);
+        const bVertexPathIDs = new Uint8Array(view.meshData[0].bVertexPathIDs);
         this.bVertexPositionBufferTexture.upload(view.gl, bVertexPositions);
         this.bVertexPathIDBufferTexture.upload(view.gl, bVertexPathIDs);
 
@@ -115,7 +115,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.useProgram(coverProgram.program);
         view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
         view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
-        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.meshes.bQuads);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.meshes[0].bQuads);
         view.gl.vertexAttribPointer(attributes.aUpperPointIndices,
                                     4,
                                     view.gl.UNSIGNED_SHORT,
@@ -148,8 +148,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.vertexArrayObjectExt.bindVertexArrayOES(vaos[direction]);
 
             const lineIndexBuffer = {
-                upper: view.meshes.edgeUpperLineIndices,
-                lower: view.meshes.edgeLowerLineIndices,
+                upper: view.meshes[0].edgeUpperLineIndices,
+                lower: view.meshes[0].edgeLowerLineIndices,
             }[direction];
 
             view.gl.useProgram(lineProgram.program);
@@ -183,8 +183,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.vertexArrayObjectExt.bindVertexArrayOES(vaos[direction]);
 
             const curveIndexBuffer = {
-                upper: view.meshes.edgeUpperCurveIndices,
-                lower: view.meshes.edgeLowerCurveIndices,
+                upper: view.meshes[0].edgeUpperCurveIndices,
+                lower: view.meshes[0].edgeLowerCurveIndices,
             }[direction];
 
             view.gl.useProgram(curveProgram.program);
@@ -310,7 +310,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                                            6,
                                                            view.gl.UNSIGNED_BYTE,
                                                            0,
-                                                           view.meshData.bQuadCount);
+                                                           view.meshData[0].bQuadCount);
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
@@ -351,8 +351,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.vertexArrayObjectExt.bindVertexArrayOES(this.lineVAOs[direction]);
             view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
             const count = {
-                upper: view.meshData.edgeUpperLineIndexCount,
-                lower: view.meshData.edgeLowerLineIndexCount,
+                upper: view.meshData[0].edgeUpperLineIndexCount,
+                lower: view.meshData[0].edgeLowerLineIndexCount,
             }[direction];
             view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                                6,
@@ -376,8 +376,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.vertexArrayObjectExt.bindVertexArrayOES(this.curveVAOs[direction]);
             view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
             const count = {
-                upper: view.meshData.edgeUpperCurveIndexCount,
-                lower: view.meshData.edgeLowerCurveIndexCount,
+                upper: view.meshData[0].edgeUpperCurveIndexCount,
+                lower: view.meshData[0].edgeLowerCurveIndexCount,
             }[direction];
             view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                                6,

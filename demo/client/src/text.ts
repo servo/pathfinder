@@ -21,6 +21,28 @@ export const BUILTIN_FONT_URI: string = "/otf/demo";
 
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
 
+export interface ExpandedMeshData {
+    meshes: PathfinderMeshData;
+}
+
+type CreateGlyphFn<Glyph> = (glyph: opentype.Glyph) => Glyph;
+
+export interface PixelMetrics {
+    left: number;
+    right: number;
+    ascent: number;
+    descent: number;
+}
+
+opentype.Font.prototype.isSupported = function() {
+    return (this as any).supported;
+}
+
+opentype.Font.prototype.lineHeight = function() {
+    const os2Table = this.tables.os2;
+    return os2Table.sTypoAscender - os2Table.sTypoDescender + os2Table.sTypoLineGap;
+};
+
 export class TextRun<Glyph extends PathfinderGlyph> {
     constructor(text: string | Glyph[],
                 origin: number[],
@@ -45,81 +67,13 @@ export class TextRun<Glyph extends PathfinderGlyph> {
     readonly origin: number[];
 }
 
-export interface ExpandedMeshData {
-    meshes: PathfinderMeshData;
-}
-
-type CreateGlyphFn<Glyph> = (glyph: opentype.Glyph) => Glyph;
-
-export interface PixelMetrics {
-    left: number;
-    right: number;
-    ascent: number;
-    descent: number;
-}
-
-opentype.Font.prototype.isSupported = function() {
-    return (this as any).supported;
-}
-
-opentype.Font.prototype.lineHeight = function() {
-    const os2Table = this.tables.os2;
-    return os2Table.sTypoAscender - os2Table.sTypoDescender + os2Table.sTypoLineGap;
-};
-
-export class GlyphStorage<Glyph extends PathfinderGlyph> {
-    constructor(fontData: ArrayBuffer,
-                textRuns: TextRun<Glyph>[],
-                createGlyph: CreateGlyphFn<Glyph>,
-                font?: Font) {
-        if (font == null) {
-            font = opentype.parse(fontData);
-            assert(font.isSupported(), "The font type is unsupported!");
-        }
-
-        this.fontData = fontData;
-        this.textRuns = textRuns;
-        this.font = font;
-
-        // Determine all glyphs potentially needed.
-        this.uniqueGlyphs = _.flatMap(this.textRuns, textRun => textRun.glyphs);
-        this.uniqueGlyphs.sort((a, b) => a.index - b.index);
-        this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.index);
+export class TextFrame<Glyph extends PathfinderGlyph> {
+    constructor(runs: TextRun<Glyph>[], origin: glmatrix.vec3) {
+        this.runs = runs;
+        this.origin = origin;
     }
 
-    partition(): Promise<PathfinderMeshData> {
-        // Build the partitioning request to the server.
-        //
-        // FIXME(pcwalton): If this is a builtin font, don't resend it to the server!
-        const request = {
-            face: {
-                Custom: base64js.fromByteArray(new Uint8Array(this.fontData)),
-            },
-            fontIndex: 0,
-            glyphs: this.uniqueGlyphs.map(glyph => {
-                const metrics = glyph.metrics;
-                return {
-                    id: glyph.index,
-                    transform: [1, 0, 0, 1, 0, 0],
-                };
-            }),
-            pointSize: this.font.unitsPerEm,
-        };
-
-        // Make the request.
-        return window.fetch(PARTITION_FONT_ENDPOINT_URI, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(request),
-        }).then(response => response.text()).then(responseText => {
-            const response = JSON.parse(responseText);
-            if (!('Ok' in response))
-                panic("Failed to partition the font!");
-            return new PathfinderMeshData(response.Ok.pathData);
-        });
-    }
-
-    expandMeshes(meshes: PathfinderMeshData): ExpandedMeshData {
+    expandMeshes(uniqueGlyphs: Glyph[], meshes: PathfinderMeshData): ExpandedMeshData {
         const bQuads = _.chunk(new Uint32Array(meshes.bQuads), B_QUAD_SIZE / UINT32_SIZE);
         const bVertexPositions = new Float32Array(meshes.bVertexPositions);
         const bVertexPathIDs = new Uint16Array(meshes.bVertexPathIDs);
@@ -133,9 +87,9 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         const expandedCoverCurveIndices: number[] = [];
 
         let textGlyphIndex = 0;
-        for (const textRun of this.textRuns) {
+        for (const textRun of this.runs) {
             for (const textGlyph of textRun.glyphs) {
-                const uniqueGlyphIndex = _.sortedIndexBy(this.uniqueGlyphs, textGlyph, 'index');
+                const uniqueGlyphIndex = _.sortedIndexBy(uniqueGlyphs, textGlyph, 'index');
                 if (uniqueGlyphIndex < 0)
                     continue;
                 const firstBVertexIndex = _.sortedIndex(bVertexPathIDs, uniqueGlyphIndex + 1);
@@ -208,21 +162,87 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         }
     }
 
+
+    get allGlyphs(): Glyph[] {
+        return _.flatMap(this.runs, run => run.glyphs);
+    }
+
+    readonly runs: TextRun<Glyph>[];
+    readonly origin: glmatrix.vec3;
+}
+
+export class GlyphStorage<Glyph extends PathfinderGlyph> {
+    constructor(fontData: ArrayBuffer,
+                textFrames: TextFrame<Glyph>[],
+                createGlyph: CreateGlyphFn<Glyph>,
+                font?: Font) {
+        if (font == null) {
+            font = opentype.parse(fontData);
+            assert(font.isSupported(), "The font type is unsupported!");
+        }
+
+        this.fontData = fontData;
+        this.textFrames = textFrames;
+        this.font = font;
+
+        // Determine all glyphs potentially needed.
+        this.uniqueGlyphs = this.allGlyphs;
+        this.uniqueGlyphs.sort((a, b) => a.index - b.index);
+        this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.index);
+    }
+
+    expandMeshes(meshes: PathfinderMeshData): ExpandedMeshData[] {
+        return this.textFrames.map(textFrame => textFrame.expandMeshes(this.uniqueGlyphs, meshes));
+    }
+
+    partition(): Promise<PathfinderMeshData> {
+        // Build the partitioning request to the server.
+        //
+        // FIXME(pcwalton): If this is a builtin font, don't resend it to the server!
+        const request = {
+            face: {
+                Custom: base64js.fromByteArray(new Uint8Array(this.fontData)),
+            },
+            fontIndex: 0,
+            glyphs: this.uniqueGlyphs.map(glyph => {
+                const metrics = glyph.metrics;
+                return {
+                    id: glyph.index,
+                    transform: [1, 0, 0, 1, 0, 0],
+                };
+            }),
+            pointSize: this.font.unitsPerEm,
+        };
+
+        // Make the request.
+        return window.fetch(PARTITION_FONT_ENDPOINT_URI, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(request),
+        }).then(response => response.text()).then(responseText => {
+            const response = JSON.parse(responseText);
+            if (!('Ok' in response))
+                panic("Failed to partition the font!");
+            return new PathfinderMeshData(response.Ok.pathData);
+        });
+    }
+
     layoutRuns() {
-        this.textRuns.forEach(textRun => textRun.layout());
+        for (const textFrame of this.textFrames)
+            textFrame.runs.forEach(textRun => textRun.layout());
     }
 
     get allGlyphs(): Glyph[] {
-        return _.flatMap(this.textRuns, textRun => textRun.glyphs);
+        return _.flatMap(this.textFrames, textRun => textRun.allGlyphs);
     }
 
     readonly fontData: ArrayBuffer;
     readonly font: Font;
-    readonly textRuns: TextRun<Glyph>[];
+    readonly textFrames: TextFrame<Glyph>[];
     readonly uniqueGlyphs: Glyph[];
 }
 
-export class TextLayout<Glyph extends PathfinderGlyph> {
+export class SimpleTextLayout<Glyph extends PathfinderGlyph> {
     constructor(fontData: ArrayBuffer, text: string, createGlyph: CreateGlyphFn<Glyph>) {
         const font = opentype.parse(fontData);
         assert(font.isSupported(), "The font type is unsupported!");
@@ -230,22 +250,23 @@ export class TextLayout<Glyph extends PathfinderGlyph> {
         const os2Table = font.tables.os2;
         const lineHeight = os2Table.sTypoAscender - os2Table.sTypoDescender +
             os2Table.sTypoLineGap;
-        this.textRuns = text.split("\n").map((line, lineNumber) => {
+        const textRuns: TextRun<Glyph>[] = text.split("\n").map((line, lineNumber) => {
             return new TextRun<Glyph>(line, [0.0, -lineHeight * lineNumber], font, createGlyph);
         });
+        this.textFrame = new TextFrame(textRuns, glmatrix.vec3.create());
 
-        this.glyphStorage = new GlyphStorage(fontData, this.textRuns, createGlyph, font);
+        this.glyphStorage = new GlyphStorage(fontData, [this.textFrame], createGlyph, font);
     }
 
     layoutRuns() {
-        this.textRuns.forEach(textRun => textRun.layout());
+        this.textFrame.runs.forEach(textRun => textRun.layout());
     }
 
     get allGlyphs(): Glyph[] {
-        return _.flatMap(this.textRuns, textRun => textRun.glyphs);
+        return this.textFrame.allGlyphs;
     }
 
-    readonly textRuns: TextRun<Glyph>[];
+    readonly textFrame: TextFrame<Glyph>;
     readonly glyphStorage: GlyphStorage<Glyph>;
 }
 

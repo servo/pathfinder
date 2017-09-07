@@ -23,7 +23,7 @@ import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
-import {BUILTIN_FONT_URI, PathfinderGlyph, TextLayout} from "./text";
+import {BUILTIN_FONT_URI, PathfinderGlyph, SimpleTextLayout} from "./text";
 import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic} from './utils';
 import {MonochromePathfinderView, Timings} from './view';
 import PathfinderBufferTexture from './buffer-texture';
@@ -162,13 +162,13 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     }
 
     private recreateLayout() {
-        this.layout = new TextLayout(this.fileData, this.text, glyph => new GlyphInstance(glyph));
+        this.layout = new SimpleTextLayout(this.fileData, this.text, glyph => new GlyphInstance(glyph));
         this.layout.glyphStorage.partition().then((meshes: PathfinderMeshData) => {
             this.meshes = meshes;
             this.view.then(view => {
                 view.attachText();
                 view.uploadPathMetadata(this.layout.glyphStorage.uniqueGlyphs.length);
-                view.attachMeshes(this.meshes);
+                view.attachMeshes([this.meshes]);
             });
         });
     }
@@ -218,7 +218,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     private text: string;
 
-    layout: TextLayout<GlyphInstance>;
+    layout: SimpleTextLayout<GlyphInstance>;
 }
 
 class TextDemoView extends MonochromePathfinderView {

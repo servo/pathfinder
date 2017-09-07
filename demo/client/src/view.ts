@@ -124,9 +124,9 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.setDirty();
     }
 
-    attachMeshes(meshes: PathfinderMeshData) {
+    attachMeshes(meshes: PathfinderMeshData[]) {
         this.meshData = meshes;
-        this.meshes = new PathfinderMeshBuffers(this.gl, meshes);
+        this.meshes = meshes.map(meshes => new PathfinderMeshBuffers(this.gl, meshes));
         unwrapNull(this.antialiasingStrategy).attachMeshes(this);
 
         this.setDirty();
@@ -274,92 +274,94 @@ export abstract class PathfinderDemoView extends PathfinderView {
     }
 
     private renderDirect() {
-        // Set up implicit cover state.
-        this.gl.depthFunc(this.gl.GREATER);
-        this.gl.depthMask(true);
-        this.gl.enable(this.gl.DEPTH_TEST);
-        this.gl.disable(this.gl.BLEND);
+        for (const meshes of this.meshes) {
+            // Set up implicit cover state.
+            this.gl.depthFunc(this.gl.GREATER);
+            this.gl.depthMask(true);
+            this.gl.enable(this.gl.DEPTH_TEST);
+            this.gl.disable(this.gl.BLEND);
 
-        // Set up the implicit cover interior VAO.
-        const directInteriorProgram = this.shaderPrograms[this.directInteriorProgramName];
-        this.gl.useProgram(directInteriorProgram.program);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
-        this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
-                                    2,
-                                    this.gl.FLOAT,
-                                    false,
-                                    0,
-                                    0);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPathIDs);
-        this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathID,
-                                    1,
-                                    this.gl.UNSIGNED_SHORT,
-                                    false,
-                                    0,
-                                    0);
-        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
-        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverInteriorIndices);
+            // Set up the implicit cover interior VAO.
+            const directInteriorProgram = this.shaderPrograms[this.directInteriorProgramName];
+            this.gl.useProgram(directInteriorProgram.program);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPositions);
+            this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
+                                        2,
+                                        this.gl.FLOAT,
+                                        false,
+                                        0,
+                                        0);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
+            this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathID,
+                                        1,
+                                        this.gl.UNSIGNED_SHORT,
+                                        false,
+                                        0,
+                                        0);
+            this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
+            this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
+            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, meshes.coverInteriorIndices);
 
-        // Draw direct interior parts.
-        this.setTransformUniform(directInteriorProgram.uniforms);
-        this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
-        this.pathColorsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 0);
-        this.pathTransformBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 1);
-        let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
+            // Draw direct interior parts.
+            this.setTransformUniform(directInteriorProgram.uniforms);
+            this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
+            this.pathColorsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 0);
+            this.pathTransformBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 1);
+            let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
+                                                        this.gl.BUFFER_SIZE) / UINT32_SIZE;
+            this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+
+            // Set up direct curve state.
+            this.gl.depthMask(false);
+            this.gl.enable(this.gl.BLEND);
+            this.gl.blendEquation(this.gl.FUNC_ADD);
+            this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+
+            // Set up the direct curve VAO.
+            const directCurveProgram = this.shaderPrograms[this.directCurveProgramName];
+            this.gl.useProgram(directCurveProgram.program);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPositions);
+            this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
+                                        2,
+                                        this.gl.FLOAT,
+                                        false,
+                                        0,
+                                        0);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
+            this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
+                                        1,
+                                        this.gl.UNSIGNED_SHORT,
+                                        false,
+                                        0,
+                                        0);
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexLoopBlinnData);
+            this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
+                                        2,
+                                        this.gl.UNSIGNED_BYTE,
+                                        false,
+                                        B_LOOP_BLINN_DATA_SIZE,
+                                        B_LOOP_BLINN_DATA_TEX_COORD_OFFSET);
+            this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
+                                        1,
+                                        this.gl.BYTE,
+                                        false,
+                                        B_LOOP_BLINN_DATA_SIZE,
+                                        B_LOOP_BLINN_DATA_SIGN_OFFSET);
+            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
+            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
+            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
+            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
+            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, meshes.coverCurveIndices);
+
+            // Draw direct curve parts.
+            this.setTransformUniform(directCurveProgram.uniforms);
+            this.setFramebufferSizeUniform(directCurveProgram.uniforms);
+            this.pathColorsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 0);
+            this.pathTransformBufferTexture.bind(this.gl, directCurveProgram.uniforms, 1);
+            indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
-        this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
-
-        // Set up direct curve state.
-        this.gl.depthMask(false);
-        this.gl.enable(this.gl.BLEND);
-        this.gl.blendEquation(this.gl.FUNC_ADD);
-        this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
-
-        // Set up the direct curve VAO.
-        const directCurveProgram = this.shaderPrograms[this.directCurveProgramName];
-        this.gl.useProgram(directCurveProgram.program);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPositions);
-        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
-                                    2,
-                                    this.gl.FLOAT,
-                                    false,
-                                    0,
-                                    0);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexPathIDs);
-        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
-                                    1,
-                                    this.gl.UNSIGNED_SHORT,
-                                    false,
-                                    0,
-                                    0);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.meshes.bVertexLoopBlinnData);
-        this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
-                                    2,
-                                    this.gl.UNSIGNED_BYTE,
-                                    false,
-                                    B_LOOP_BLINN_DATA_SIZE,
-                                    B_LOOP_BLINN_DATA_TEX_COORD_OFFSET);
-        this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
-                                    1,
-                                    this.gl.BYTE,
-                                    false,
-                                    B_LOOP_BLINN_DATA_SIZE,
-                                    B_LOOP_BLINN_DATA_SIGN_OFFSET);
-        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
-        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
-        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
-        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.meshes.coverCurveIndices);
-
-        // Draw direct curve parts.
-        this.setTransformUniform(directCurveProgram.uniforms);
-        this.setFramebufferSizeUniform(directCurveProgram.uniforms);
-        this.pathColorsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 0);
-        this.pathTransformBufferTexture.bind(this.gl, directCurveProgram.uniforms, 1);
-        indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
-                                                this.gl.BUFFER_SIZE) / UINT32_SIZE;
-        this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+            this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+        }
     }
 
     private finishTiming() {
@@ -449,8 +451,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
     quadTexCoordsBuffer: WebGLBuffer;
     quadElementsBuffer: WebGLBuffer;
 
-    meshes: PathfinderMeshBuffers;
-    meshData: PathfinderMeshData;
+    meshes: PathfinderMeshBuffers[];
+    meshData: PathfinderMeshData[];
 
     pathTransformBufferTexture: PathfinderBufferTexture;
     protected pathColorsBufferTexture: PathfinderBufferTexture;

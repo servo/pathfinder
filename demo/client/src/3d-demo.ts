@@ -17,7 +17,8 @@ import {PerspectiveCamera} from "./camera";
 import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
-import {BUILTIN_FONT_URI, PathfinderGlyph, TextRun, TextLayout, GlyphStorage} from "./text";
+import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStorage, PathfinderGlyph} from "./text";
+import {SimpleTextLayout, TextFrame, TextRun} from "./text";
 import {PathfinderError, assert, panic, unwrapNull} from "./utils";
 import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
@@ -114,15 +115,18 @@ class ThreeDController extends DemoAppController<ThreeDView> {
             }
         }
 
-        this.glyphStorage = new GlyphStorage(this.fileData, textRuns, createGlyph, font);
+        // TODO(pcwalton)
+        const textFrame = new TextFrame(textRuns, glmatrix.vec3.create());
+
+        this.glyphStorage = new GlyphStorage(this.fileData, [textFrame], createGlyph, font);
         this.glyphStorage.layoutRuns();
 
         this.glyphStorage.partition().then((baseMeshes: PathfinderMeshData) => {
             this.baseMeshes = baseMeshes;
-            this.expandedMeshes = this.glyphStorage.expandMeshes(baseMeshes).meshes;
+            this.expandedMeshes = this.glyphStorage.expandMeshes(baseMeshes);
             this.view.then(view => {
                 view.uploadPathMetadata();
-                view.attachMeshes(this.expandedMeshes);
+                view.attachMeshes(this.expandedMeshes.map(meshes => meshes.meshes));
             });
         });
     }
@@ -144,7 +148,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     glyphStorage: GlyphStorage<ThreeDGlyph>;
 
     private baseMeshes: PathfinderMeshData;
-    private expandedMeshes: PathfinderMeshData;
+    private expandedMeshes: ExpandedMeshData[];
 
     private textPromise: Promise<string[][]>;
 }

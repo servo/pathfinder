@@ -157,7 +157,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
     private meshesReceived() {
         this.view.then(view => {
             view.uploadPathMetadata(this.pathElements);
-            view.attachMeshes(this.meshes);
+            view.attachMeshes([this.meshes]);
         })
     }
 

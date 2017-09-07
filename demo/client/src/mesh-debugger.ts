@@ -17,8 +17,8 @@ import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, B_QUAD_LOWER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshData} from "./meshes";
-import { BUILTIN_FONT_URI, GlyphStorage, PathfinderGlyph, TextRun } from "./text";
-import { unwrapNull, UINT32_SIZE, UINT32_MAX, assert } from "./utils";
+import {BUILTIN_FONT_URI, GlyphStorage, PathfinderGlyph, TextRun, TextFrame} from "./text";
+import {unwrapNull, UINT32_SIZE, UINT32_MAX, assert} from "./utils";
 import {PathfinderView} from "./view";
 import * as opentype from "opentype.js";
 
@@ -45,7 +45,8 @@ class MeshDebuggerAppController extends AppController {
 
         const createGlyph = (glyph: opentype.Glyph) => new MeshDebuggerGlyph(glyph);
         const textRun = new TextRun<MeshDebuggerGlyph>(CHARACTER, [0, 0], font, createGlyph);
-        this.glyphStorage = new GlyphStorage(this.fileData, [textRun], createGlyph, font);
+        const textFrame = new TextFrame([textRun], glmatrix.vec3.create());
+        this.glyphStorage = new GlyphStorage(this.fileData, [textFrame], createGlyph, font);
 
         this.glyphStorage.partition().then(meshes => {
             this.meshes = meshes;
