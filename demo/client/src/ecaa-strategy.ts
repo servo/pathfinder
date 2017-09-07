@@ -28,7 +28,11 @@ interface UpperAndLower<T> {
 export abstract class ECAAStrategy extends AntialiasingStrategy {
     constructor(level: number, subpixelAA: boolean) {
         super();
-        this.framebufferSize = glmatrix.vec2.create();
+
+        this.subpixelAA = subpixelAA;
+
+        this.supersampledFramebufferSize = glmatrix.vec2.create();
+        this.destFramebufferSize = glmatrix.vec2.create();
     }
 
     init(view: MonochromePathfinderView) {
@@ -52,7 +56,10 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     setFramebufferSize(view: MonochromePathfinderView) {
-        this.framebufferSize = view.destAllocatedSize;
+        this.destFramebufferSize = glmatrix.vec2.clone(view.destAllocatedSize);
+        glmatrix.vec2.mul(this.supersampledFramebufferSize,
+                          this.destFramebufferSize,
+                          this.supersampleScale);
 
         this.initDirectFramebuffer(view);
         this.initEdgeDetectFramebuffer(view);
@@ -65,8 +72,9 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     protected initDirectFramebuffer(view: MonochromePathfinderView) {
-        this.directColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
-        this.directPathIDTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
+        this.directColorTexture = createFramebufferColorTexture(view.gl, this.destFramebufferSize);
+        this.directPathIDTexture = createFramebufferColorTexture(view.gl,
+                                                                 this.destFramebufferSize);
         this.directFramebuffer =
             createFramebuffer(view.gl,
                               view.drawBuffersExt,
@@ -81,15 +89,16 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.texImage2D(view.gl.TEXTURE_2D,
                            0,
                            view.gl.RGB,
-                           this.framebufferSize[0],
-                           this.framebufferSize[1],
+                           this.supersampledFramebufferSize[0],
+                           this.supersampledFramebufferSize[1],
                            0,
                            view.gl.RGB,
                            view.textureHalfFloatExt.HALF_FLOAT_OES,
                            null);
         setTextureParameters(view.gl, view.gl.NEAREST);
 
-        this.aaDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
+        this.aaDepthTexture = createFramebufferDepthTexture(view.gl,
+                                                            this.supersampledFramebufferSize);
 
         this.aaFramebuffer = createFramebuffer(view.gl,
                                                view.drawBuffersExt,
@@ -219,9 +228,12 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     prepare(view: MonochromePathfinderView) {
-        const usedSize = view.destUsedSize;
+        const usedSize = this.supersampledUsedSize(view);;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.directFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.viewport(0,
+                         0,
+                         this.supersampledFramebufferSize[0],
+                         this.supersampledFramebufferSize[1]);
         view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
         view.gl.enable(view.gl.SCISSOR_TEST);
 
@@ -268,9 +280,12 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     private cover(view: MonochromePathfinderView) {
         // Set state for conservative coverage.
         const coverProgram = view.shaderPrograms.ecaaCover;
-        const usedSize = view.destUsedSize;
+        const usedSize = this.supersampledUsedSize(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.viewport(0,
+                         0,
+                         this.supersampledFramebufferSize[0],
+                         this.supersampledFramebufferSize[1]);
         view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
         view.gl.enable(view.gl.SCISSOR_TEST);
 
@@ -290,6 +305,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
         this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
         view.pathTransformBufferTexture.bind(view.gl, uniforms, 2);
+        view.gl.uniform1f(uniforms.uScaleX, this.supersampleScale[0]);
         view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                            6,
                                                            view.gl.UNSIGNED_BYTE,
@@ -299,9 +315,12 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     private setAAState(view: MonochromePathfinderView) {
-        const usedSize = view.destUsedSize;
+        const usedSize = this.supersampledUsedSize(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.viewport(0,
+                         0,
+                         this.supersampledFramebufferSize[0],
+                         this.supersampledFramebufferSize[1]);
         view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
         view.gl.enable(view.gl.SCISSOR_TEST);
 
@@ -317,6 +336,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
         this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
         view.pathTransformBufferTexture.bind(view.gl, uniforms, 2);
+        view.gl.uniform1f(uniforms.uScaleX, this.supersampleScale[0]);
     }
 
     private antialiasLines(view: MonochromePathfinderView) {
@@ -373,7 +393,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         // Set state for ECAA resolve.
         const usedSize = view.destUsedSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.viewport(0, 0, this.destFramebufferSize[0], this.destFramebufferSize[1]);
         view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
         view.gl.enable(view.gl.SCISSOR_TEST);
         this.setResolveDepthState(view);
@@ -391,6 +411,9 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
         view.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 0);
+        view.gl.uniform2i(resolveProgram.uniforms.uAAAlphaDimensions,
+                          this.supersampledFramebufferSize[0],
+                          this.supersampledFramebufferSize[1]);
         this.setResolveUniforms(view, resolveProgram);
         view.setTransformSTAndTexScaleUniformsForDest(resolveProgram.uniforms);
         view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
@@ -402,6 +425,12 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     protected setResolveDepthState(view: MonochromePathfinderView): void {}
+
+    protected supersampledUsedSize(view: MonochromePathfinderView): glmatrix.vec2 {
+        const usedSize = glmatrix.vec2.create();
+        glmatrix.vec2.mul(usedSize, view.destUsedSize, this.supersampleScale);
+        return usedSize;
+    }
 
     protected abstract getResolveProgram(view: MonochromePathfinderView): PathfinderShaderProgram;
     protected abstract initEdgeDetectFramebuffer(view: MonochromePathfinderView): void;
@@ -415,6 +444,10 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 
     protected get directDepthTexture(): WebGLTexture | null {
         return null;
+    }
+
+    protected get supersampleScale(): glmatrix.vec2 {
+        return glmatrix.vec2.fromValues(this.subpixelAA ? 3.0 : 1.0, 1.0);
     }
 
     abstract shouldRenderDirect: boolean;
@@ -432,11 +465,17 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     protected directColorTexture: WebGLTexture;
     protected directPathIDTexture: WebGLTexture;
     protected aaDepthTexture: WebGLTexture;
-    protected framebufferSize: glmatrix.vec2;
+
+    protected supersampledFramebufferSize: glmatrix.vec2;
+    protected destFramebufferSize: glmatrix.vec2;
+
+    protected subpixelAA: boolean;
 }
 
 export class ECAAMonochromeStrategy extends ECAAStrategy {
     protected getResolveProgram(view: MonochromePathfinderView): PathfinderShaderProgram {
+        if (this.subpixelAA)
+            return view.shaderPrograms.ecaaMonoSubpixelResolve;
         return view.shaderPrograms.ecaaMonoResolve;
     }
 
@@ -477,13 +516,16 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
     }
 
     protected initDirectFramebuffer(view: MonochromePathfinderView) {
-        this._directDepthTexture = createFramebufferDepthTexture(view.gl, this.framebufferSize);
+        this._directDepthTexture =
+            createFramebufferDepthTexture(view.gl, this.supersampledFramebufferSize);
         super.initDirectFramebuffer(view);
     }
 
     protected initEdgeDetectFramebuffer(view: MonochromePathfinderView) {
-        this.bgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
-        this.fgColorTexture = createFramebufferColorTexture(view.gl, this.framebufferSize);
+        this.bgColorTexture = createFramebufferColorTexture(view.gl,
+                                                            this.supersampledFramebufferSize);
+        this.fgColorTexture = createFramebufferColorTexture(view.gl,
+                                                            this.supersampledFramebufferSize);
         this.edgeDetectFramebuffer = createFramebuffer(view.gl,
                                                        view.drawBuffersExt,
                                                        [this.bgColorTexture, this.fgColorTexture],
@@ -505,7 +547,10 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
         // Set state for edge detection.
         const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        view.gl.viewport(0,
+                         0,
+                         this.supersampledFramebufferSize[0],
+                         this.supersampledFramebufferSize[1]);
 
         view.drawBuffersExt.drawBuffersWEBGL([
             view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,

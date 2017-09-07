@@ -5,6 +5,7 @@
 precision highp float;
 
 uniform ivec2 uFramebufferSize;
+uniform float uScaleX;
 uniform ivec2 uBVertexPositionDimensions;
 uniform ivec2 uBVertexPathIDDimensions;
 uniform ivec2 uPathTransformDimensions;
@@ -41,6 +42,7 @@ void main() {
     int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
+    transform.xz *= uScaleX;
 
     upperLeftPosition = transformVertexPositionST(upperLeftPosition, transform);
     upperRightPosition = transformVertexPositionST(upperRightPosition, transform);

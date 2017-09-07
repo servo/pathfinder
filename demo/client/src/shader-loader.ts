@@ -30,6 +30,7 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'ecaaLine',
     'ecaaCurve',
     'ecaaMonoResolve',
+    'ecaaMonoSubpixelResolve',
     'ecaaMultiResolve',
     'demo3DMonument',
 ];
@@ -79,6 +80,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         vertex: "/glsl/gles2/ecaa-mono-resolve.vs.glsl",
         fragment: "/glsl/gles2/ecaa-mono-resolve.fs.glsl",
     },
+    ecaaMonoSubpixelResolve: {
+        vertex: "/glsl/gles2/ecaa-mono-subpixel-resolve.vs.glsl",
+        fragment: "/glsl/gles2/ecaa-mono-subpixel-resolve.fs.glsl",
+    },
     ecaaMultiResolve: {
         vertex: "/glsl/gles2/ecaa-multi-resolve.vs.glsl",
         fragment: "/glsl/gles2/ecaa-multi-resolve.fs.glsl",
@@ -101,6 +106,7 @@ export interface ShaderMap<T> {
     ecaaLine: T;
     ecaaCurve: T;
     ecaaMonoResolve: T;
+    ecaaMonoSubpixelResolve: T;
     ecaaMultiResolve: T;
     demo3DMonument: T;
 }

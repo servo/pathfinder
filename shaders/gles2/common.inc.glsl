@@ -7,6 +7,10 @@
 #extension GL_EXT_draw_buffers : require
 #extension GL_EXT_frag_depth : require
 
+#define LCD_FILTER_FACTOR_0     (86.0 / 255.0)
+#define LCD_FILTER_FACTOR_1     (77.0 / 255.0)
+#define LCD_FILTER_FACTOR_2     (8.0  / 255.0)
+
 #define MAX_PATHS   65536
 
 #define EPSILON     0.001
@@ -131,6 +135,15 @@ float computeCoverage(vec2 p0,
     // Calculate area with the shoelace formula.
     float area = det2(a0, a1) + det2(a1, a2) + det2(a2, a3) + det2(a3, a4) + det2(a4, a0); 
     return area * (slopeNegative ? 0.5 : -0.5);
+}
+
+// https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html
+float lcdFilter(float shadeL2, float shadeL1, float shade0, float shadeR1, float shadeR2) {
+    return LCD_FILTER_FACTOR_2 * shadeL2 +
+        LCD_FILTER_FACTOR_1 * shadeL1 +
+        LCD_FILTER_FACTOR_0 * shade0 +
+        LCD_FILTER_FACTOR_1 * shadeR1 +
+        LCD_FILTER_FACTOR_2 * shadeR2;
 }
 
 int unpackUInt16(vec2 packedValue) {

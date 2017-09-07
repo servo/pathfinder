@@ -27,7 +27,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     attachMeshes(view: PathfinderDemoView) {}
     
     setFramebufferSize(view: PathfinderDemoView) {
-        this.destFramebufferSize = view.destAllocatedSize;
+        this.destFramebufferSize = glmatrix.vec2.clone(view.destAllocatedSize);
 
         this.supersampledFramebufferSize = glmatrix.vec2.create();
         glmatrix.vec2.mul(this.supersampledFramebufferSize,

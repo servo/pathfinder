@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ssaa-subpixel-resolve.fs.glsl
+// pathfinder/shaders/gles2/ecaa-subpixel-mono-resolve.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -10,17 +10,19 @@
 
 precision mediump float;
 
-uniform sampler2D uSource;
-uniform ivec2 uSourceDimensions;
+uniform vec4 uBGColor;
+uniform vec4 uFGColor;
+uniform sampler2D uAAAlpha;
+uniform ivec2 uAAAlphaDimensions;
 
 varying vec2 vTexCoord;
 
 float sampleSource(float deltaX) {
-    return texture2D(uSource, vec2(vTexCoord.s + deltaX, vTexCoord.y)).r;
+    return texture2D(uAAAlpha, vec2(vTexCoord.s + deltaX, vTexCoord.y)).r;
 }
 
 void main() {
-    float onePixel = 1.0 / float(uSourceDimensions.x);
+    float onePixel = 1.0 / float(uAAAlphaDimensions.x);
 
     float shade0 = sampleSource(0.0);
     vec3 shadeL = vec3(sampleSource(-1.0 * onePixel),
@@ -30,8 +32,9 @@ void main() {
                        sampleSource(2.0 * onePixel),
                        sampleSource(3.0 * onePixel));
 
-    gl_FragColor = vec4(lcdFilter(shadeL.z, shadeL.y, shadeL.x, shade0,   shadeR.x),
-                        lcdFilter(shadeL.y, shadeL.x, shade0,   shadeR.x, shadeR.y),
-                        lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z),
-                        1.0);
+    vec3 alpha = vec3(lcdFilter(shadeL.z, shadeL.y, shadeL.x, shade0,   shadeR.x),
+                      lcdFilter(shadeL.y, shadeL.x, shade0,   shadeR.x, shadeR.y),
+                      lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z));
+
+    gl_FragColor = mix(uBGColor, uFGColor, vec4(alpha, 1.0));
 }
