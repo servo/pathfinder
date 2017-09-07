@@ -103,6 +103,7 @@ type ShaderType = number;
 declare module 'opentype.js' {
     interface Font {
         isSupported(): boolean;
+        lineHeight(): number;
     }
     interface Glyph {
         getIndex(): number;
@@ -252,9 +253,9 @@ class TextDemoView extends MonochromePathfinderView {
 
     /// Lays out glyphs on the canvas.
     private layoutGlyphs() {
-        this.appController.layout.layoutText();
+        this.appController.layout.layoutRuns();
 
-        const textGlyphs = this.appController.layout.glyphStorage.textGlyphs;
+        const textGlyphs = this.appController.layout.glyphStorage.allGlyphs;
         const glyphPositions = new Float32Array(textGlyphs.length * 8);
         const glyphIndices = new Uint32Array(textGlyphs.length * 6);
 
@@ -280,7 +281,7 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     private buildAtlasGlyphs() {
-        const textGlyphs = this.appController.layout.glyphStorage.textGlyphs;
+        const textGlyphs = this.appController.layout.glyphStorage.allGlyphs;
         const pixelsPerUnit = this.appController.pixelsPerUnit;
 
         // Only build glyphs in view.
@@ -338,7 +339,7 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     private setGlyphTexCoords() {
-        const textGlyphs = this.appController.layout.glyphStorage.textGlyphs;
+        const textGlyphs = this.appController.layout.glyphStorage.allGlyphs;
         const atlasGlyphs = this.appController.atlasGlyphs;
 
         const atlasGlyphIndices = atlasGlyphs.map(atlasGlyph => atlasGlyph.index);
@@ -452,7 +453,7 @@ class TextDemoView extends MonochromePathfinderView {
         this.gl.uniform1i(blitProgram.uniforms.uSource, 0);
         this.setIdentityTexScaleUniform(blitProgram.uniforms);
         this.gl.drawElements(this.gl.TRIANGLES,
-                             this.appController.layout.glyphStorage.textGlyphs.length * 6,
+                             this.appController.layout.glyphStorage.allGlyphs.length * 6,
                              this.gl.UNSIGNED_INT,
                              0);
     }

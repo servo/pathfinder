@@ -21,6 +21,30 @@ export const BUILTIN_FONT_URI: string = "/otf/demo";
 
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
 
+export class TextRun<Glyph extends PathfinderGlyph> {
+    constructor(text: string | Glyph[],
+                origin: number[],
+                font: Font,
+                createGlyph: CreateGlyphFn<Glyph>) {
+        if (typeof(text) === 'string')
+            text = font.stringToGlyphs(text).map(createGlyph);
+
+        this.glyphs = text;
+        this.origin = origin;
+    }
+
+    layout() {
+        let currentX = this.origin[0];
+        for (const glyph of this.glyphs) {
+            glyph.origin = glmatrix.vec2.fromValues(currentX, this.origin[1]);
+            currentX += glyph.advanceWidth;
+        }
+    }
+
+    readonly glyphs: Glyph[];
+    readonly origin: number[];
+}
+
 export interface ExpandedMeshData {
     meshes: PathfinderMeshData;
 }
@@ -38,9 +62,14 @@ opentype.Font.prototype.isSupported = function() {
     return (this as any).supported;
 }
 
+opentype.Font.prototype.lineHeight = function() {
+    const os2Table = this.tables.os2;
+    return os2Table.sTypoAscender - os2Table.sTypoDescender + os2Table.sTypoLineGap;
+};
+
 export class GlyphStorage<Glyph extends PathfinderGlyph> {
     constructor(fontData: ArrayBuffer,
-                textGlyphs: Glyph[] | string,
+                textRuns: TextRun<Glyph>[],
                 createGlyph: CreateGlyphFn<Glyph>,
                 font?: Font) {
         if (font == null) {
@@ -48,15 +77,12 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
             assert(font.isSupported(), "The font type is unsupported!");
         }
 
-        if (typeof(textGlyphs) === 'string')
-            textGlyphs = font.stringToGlyphs(textGlyphs).map(createGlyph);
-
         this.fontData = fontData;
-        this.textGlyphs = textGlyphs;
+        this.textRuns = textRuns;
         this.font = font;
 
         // Determine all glyphs potentially needed.
-        this.uniqueGlyphs = this.textGlyphs.map(textGlyph => textGlyph);
+        this.uniqueGlyphs = _.flatMap(this.textRuns, textRun => textRun.glyphs);
         this.uniqueGlyphs.sort((a, b) => a.index - b.index);
         this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.index);
     }
@@ -106,56 +132,60 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         const expandedCoverInteriorIndices: number[] = [];
         const expandedCoverCurveIndices: number[] = [];
 
-        for (let textGlyphIndex = 0; textGlyphIndex < this.textGlyphs.length; textGlyphIndex++) {
-            const textGlyph = this.textGlyphs[textGlyphIndex];
-            const uniqueGlyphIndex = _.sortedIndexBy(this.uniqueGlyphs, textGlyph, 'index');
-            if (uniqueGlyphIndex < 0)
-                continue;
-            const firstBVertexIndex = _.sortedIndex(bVertexPathIDs, uniqueGlyphIndex + 1);
-            if (firstBVertexIndex < 0)
-                continue;
+        let textGlyphIndex = 0;
+        for (const textRun of this.textRuns) {
+            for (const textGlyph of textRun.glyphs) {
+                const uniqueGlyphIndex = _.sortedIndexBy(this.uniqueGlyphs, textGlyph, 'index');
+                if (uniqueGlyphIndex < 0)
+                    continue;
+                const firstBVertexIndex = _.sortedIndex(bVertexPathIDs, uniqueGlyphIndex + 1);
+                if (firstBVertexIndex < 0)
+                    continue;
 
-            // Copy over vertices.
-            let bVertexIndex = firstBVertexIndex;
-            const firstExpandedBVertexIndex = expandedBVertexPathIDs.length;
-            while (bVertexIndex < bVertexPathIDs.length &&
-                   bVertexPathIDs[bVertexIndex] === uniqueGlyphIndex + 1) {
-                expandedBVertexPositions.push(bVertexPositions[bVertexIndex * 2 + 0],
-                                              bVertexPositions[bVertexIndex * 2 + 1]);
-                expandedBVertexPathIDs.push(textGlyphIndex + 1);
-                expandedBVertexLoopBlinnData.push(bVertexLoopBlinnData[bVertexIndex]);
-                bVertexIndex++;
-            }
-
-            // Copy over indices.
-            copyIndices(expandedCoverInteriorIndices,
-                        new Uint32Array(meshes.coverInteriorIndices),
-                        firstExpandedBVertexIndex,
-                        firstBVertexIndex,
-                        bVertexIndex);
-            copyIndices(expandedCoverCurveIndices,
-                        new Uint32Array(meshes.coverCurveIndices),
-                        firstExpandedBVertexIndex,
-                        firstBVertexIndex,
-                        bVertexIndex);
-
-            // Copy over B-quads.
-            let firstBQuadIndex =
-                _.findIndex(bQuads, bQuad => bVertexPathIDs[bQuad[0]] == uniqueGlyphIndex + 1);
-            if (firstBQuadIndex < 0)
-                firstBQuadIndex = bQuads.length;
-            const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
-            for (let bQuadIndex = firstBQuadIndex; bQuadIndex < bQuads.length; bQuadIndex++) {
-                const bQuad = bQuads[bQuadIndex];
-                if (bVertexPathIDs[bQuad[0]] !== uniqueGlyphIndex + 1)
-                    break;
-                for (let indexIndex = 0; indexIndex < B_QUAD_SIZE / UINT32_SIZE; indexIndex++) {
-                    const srcIndex = bQuad[indexIndex];
-                    if (srcIndex === UINT32_MAX)
-                        expandedBQuads.push(srcIndex);
-                    else
-                        expandedBQuads.push(srcIndex + indexDelta);
+                // Copy over vertices.
+                let bVertexIndex = firstBVertexIndex;
+                const firstExpandedBVertexIndex = expandedBVertexPathIDs.length;
+                while (bVertexIndex < bVertexPathIDs.length &&
+                    bVertexPathIDs[bVertexIndex] === uniqueGlyphIndex + 1) {
+                    expandedBVertexPositions.push(bVertexPositions[bVertexIndex * 2 + 0],
+                                                bVertexPositions[bVertexIndex * 2 + 1]);
+                    expandedBVertexPathIDs.push(textGlyphIndex + 1);
+                    expandedBVertexLoopBlinnData.push(bVertexLoopBlinnData[bVertexIndex]);
+                    bVertexIndex++;
                 }
+
+                // Copy over indices.
+                copyIndices(expandedCoverInteriorIndices,
+                            new Uint32Array(meshes.coverInteriorIndices),
+                            firstExpandedBVertexIndex,
+                            firstBVertexIndex,
+                            bVertexIndex);
+                copyIndices(expandedCoverCurveIndices,
+                            new Uint32Array(meshes.coverCurveIndices),
+                            firstExpandedBVertexIndex,
+                            firstBVertexIndex,
+                            bVertexIndex);
+
+                // Copy over B-quads.
+                let firstBQuadIndex =
+                    _.findIndex(bQuads, bQuad => bVertexPathIDs[bQuad[0]] == uniqueGlyphIndex + 1);
+                if (firstBQuadIndex < 0)
+                    firstBQuadIndex = bQuads.length;
+                const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
+                for (let bQuadIndex = firstBQuadIndex; bQuadIndex < bQuads.length; bQuadIndex++) {
+                    const bQuad = bQuads[bQuadIndex];
+                    if (bVertexPathIDs[bQuad[0]] !== uniqueGlyphIndex + 1)
+                        break;
+                    for (let indexIndex = 0; indexIndex < B_QUAD_SIZE / UINT32_SIZE; indexIndex++) {
+                        const srcIndex = bQuad[indexIndex];
+                        if (srcIndex === UINT32_MAX)
+                            expandedBQuads.push(srcIndex);
+                        else
+                            expandedBQuads.push(srcIndex + indexDelta);
+                    }
+                }
+
+                textGlyphIndex++;
             }
         }
 
@@ -178,9 +208,17 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         }
     }
 
+    layoutRuns() {
+        this.textRuns.forEach(textRun => textRun.layout());
+    }
+
+    get allGlyphs(): Glyph[] {
+        return _.flatMap(this.textRuns, textRun => textRun.glyphs);
+    }
+
     readonly fontData: ArrayBuffer;
     readonly font: Font;
-    readonly textGlyphs: Glyph[];
+    readonly textRuns: TextRun<Glyph>[];
     readonly uniqueGlyphs: Glyph[];
 }
 
@@ -189,34 +227,25 @@ export class TextLayout<Glyph extends PathfinderGlyph> {
         const font = opentype.parse(fontData);
         assert(font.isSupported(), "The font type is unsupported!");
 
-        this.lineGlyphs = text.split("\n").map(line => font.stringToGlyphs(line).map(createGlyph));
-
-        const textGlyphs = _.flatten(this.lineGlyphs);
-        this.glyphStorage = new GlyphStorage(fontData, textGlyphs, createGlyph, font);
-    }
-
-    layoutText() {
-        const os2Table = this.glyphStorage.font.tables.os2;
+        const os2Table = font.tables.os2;
         const lineHeight = os2Table.sTypoAscender - os2Table.sTypoDescender +
             os2Table.sTypoLineGap;
+        this.textRuns = text.split("\n").map((line, lineNumber) => {
+            return new TextRun<Glyph>(line, [0.0, -lineHeight * lineNumber], font, createGlyph);
+        });
 
-        const currentPosition = glmatrix.vec2.create();
-
-        let glyphIndex = 0;
-        for (const line of this.lineGlyphs) {
-            for (let lineCharIndex = 0; lineCharIndex < line.length; lineCharIndex++) {
-                const textGlyph = this.glyphStorage.textGlyphs[glyphIndex];
-                textGlyph.origin = glmatrix.vec2.clone(currentPosition);
-                currentPosition[0] += textGlyph.advanceWidth;
-                glyphIndex++;
-            }
-
-            currentPosition[0] = 0;
-            currentPosition[1] -= lineHeight;
-        }
+        this.glyphStorage = new GlyphStorage(fontData, this.textRuns, createGlyph, font);
     }
 
-    readonly lineGlyphs: Glyph[][];
+    layoutRuns() {
+        this.textRuns.forEach(textRun => textRun.layout());
+    }
+
+    get allGlyphs(): Glyph[] {
+        return _.flatMap(this.textRuns, textRun => textRun.glyphs);
+    }
+
+    readonly textRuns: TextRun<Glyph>[];
     readonly glyphStorage: GlyphStorage<Glyph>;
 }
 

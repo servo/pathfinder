@@ -9,6 +9,7 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as opentype from "opentype.js";
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {DemoAppController} from "./app-controller";
@@ -16,12 +17,18 @@ import {PerspectiveCamera} from "./camera";
 import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
-import {BUILTIN_FONT_URI, TextLayout, PathfinderGlyph} from "./text";
-import {PathfinderError, panic, unwrapNull} from "./utils";
+import {BUILTIN_FONT_URI, PathfinderGlyph, TextRun, TextLayout, GlyphStorage} from "./text";
+import {PathfinderError, assert, panic, unwrapNull} from "./utils";
 import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
+import * as _ from "lodash";
 
-const TEXT: string = "Lorem ipsum dolor sit amet";
+const WIDTH: number = 40000;
+
+const TEXT: string[][] = [
+    [ "Lorem ipsum", "dolor sit amet" ],
+    [ "consectetur adipiscing elit." ],
+];
 
 const FONT: string = 'open-sans';
 
@@ -51,13 +58,39 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     }
 
     protected fileLoaded(): void {
-        this.layout = new TextLayout(this.fileData, TEXT, glyph => new ThreeDGlyph(glyph));
-        this.layout.layoutText();
-        this.layout.glyphStorage.partition().then((baseMeshes: PathfinderMeshData) => {
+        const font = opentype.parse(this.fileData);
+        assert(font.isSupported(), "The font type is unsupported!");
+
+        const createGlyph = (glyph: opentype.Glyph) => new ThreeDGlyph(glyph);
+        let textRuns = [];
+        for (let lineNumber = 0; lineNumber < TEXT.length; lineNumber++) {
+            const line = TEXT[lineNumber];
+
+            const lineY = -lineNumber * font.lineHeight();
+            const lineGlyphs = line.map(string => {
+                const glyphs = font.stringToGlyphs(string).map(createGlyph);
+                return { glyphs: glyphs, width: _.sumBy(glyphs, glyph => glyph.advanceWidth) };
+            });
+
+            const usedSpace = _.sumBy(lineGlyphs, 'width');
+            const emptySpace = Math.max(WIDTH - usedSpace, 0.0);
+            const spacing = emptySpace / Math.max(lineGlyphs.length - 1, 1);
+
+            let currentX = 0.0;
+            for (const glyphInfo of lineGlyphs) {
+                textRuns.push(new TextRun(glyphInfo.glyphs, [currentX, lineY], font, createGlyph));
+                currentX += glyphInfo.width + spacing;
+            }
+        }
+
+        this.glyphStorage = new GlyphStorage(this.fileData, textRuns, createGlyph, font);
+        this.glyphStorage.layoutRuns();
+
+        this.glyphStorage.partition().then((baseMeshes: PathfinderMeshData) => {
             this.baseMeshes = baseMeshes;
-            this.expandedMeshes = this.layout.glyphStorage.expandMeshes(baseMeshes).meshes;
+            this.expandedMeshes = this.glyphStorage.expandMeshes(baseMeshes).meshes;
             this.view.then(view => {
-                view.uploadPathMetadata(this.layout.glyphStorage.textGlyphs.length);
+                view.uploadPathMetadata();
                 view.attachMeshes(this.expandedMeshes);
             });
         });
@@ -77,7 +110,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         return FONT;
     }
 
-    layout: TextLayout<ThreeDGlyph>;
+    glyphStorage: GlyphStorage<ThreeDGlyph>;
 
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: PathfinderMeshData;
@@ -95,8 +128,9 @@ class ThreeDView extends PathfinderDemoView {
         this.camera.onChange = () => this.setDirty();
     }
 
-    uploadPathMetadata(pathCount: number) {
-        const textGlyphs = this.appController.layout.glyphStorage.textGlyphs;
+    uploadPathMetadata() {
+        const textGlyphs = this.appController.glyphStorage.allGlyphs;
+        const pathCount = textGlyphs.length;
 
         const pathColors = new Uint8Array(4 * (pathCount + 1));
         const pathTransforms = new Float32Array(4 * (pathCount + 1));
@@ -121,7 +155,7 @@ class ThreeDView extends PathfinderDemoView {
                                aaLevel: number,
                                subpixelAA: boolean):
                                AntialiasingStrategy {
-        if (aaType != 'ecaa')
+        if (aaType !== 'ecaa')
             return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
         throw new PathfinderError("Unsupported antialiasing type!");
     }
