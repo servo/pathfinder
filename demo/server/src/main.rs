@@ -13,10 +13,10 @@ extern crate euclid;
 extern crate fontsan;
 extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
+extern crate pathfinder_path_utils;
 extern crate rocket;
 extern crate rocket_contrib;
 extern crate serde;
-extern crate serde_json;
 
 #[macro_use]
 extern crate serde_derive;
@@ -24,10 +24,9 @@ extern crate serde_derive;
 use app_units::Au;
 use bincode::Infinite;
 use euclid::{Point2D, Size2D, Transform2D};
-use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey};
-use pathfinder_font_renderer::{GlyphKey, GlyphOutlineBuffer};
+use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
 use pathfinder_partitioner::partitioner::Partitioner;
-use pathfinder_partitioner::{Endpoint, Subpath};
+use pathfinder_path_utils::{Endpoint, PathBuffer, Subpath, Transform2DPathStream};
 use rocket::http::{ContentType, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
@@ -394,19 +393,18 @@ fn partition_font(request: Json<PartitionFontRequest>)
     }
 
     // Read glyph info.
-    let mut outline_buffer = GlyphOutlineBuffer::new();
+    let mut path_buffer = PathBuffer::new();
     let subpath_indices: Vec<_> = request.glyphs.iter().map(|glyph| {
         let glyph_key = GlyphKey::new(glyph.id);
 
-        let first_subpath_index = outline_buffer.subpaths.len();
+        let first_subpath_index = path_buffer.subpaths.len();
 
         // This might fail; if so, just leave it blank.
-        drop(font_context.push_glyph_outline(&font_instance_key,
-                                             &glyph_key,
-                                             &mut outline_buffer,
-                                             &glyph.transform));
+        if let Ok(glyph_outline) = font_context.glyph_outline(&font_instance_key, &glyph_key) {
+            path_buffer.add_stream(Transform2DPathStream::new(glyph_outline, &glyph.transform))
+        }
 
-        let last_subpath_index = outline_buffer.subpaths.len();
+        let last_subpath_index = path_buffer.subpaths.len();
 
         SubpathRange {
             start: first_subpath_index as u32,
@@ -416,9 +414,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
     // Partition the decoded glyph outlines.
     let mut partitioner = Partitioner::new();
-    partitioner.init(&outline_buffer.endpoints,
-                     &outline_buffer.control_points,
-                     &outline_buffer.subpaths);
+    partitioner.init_with_path_buffer(&path_buffer);
     let (encoded_path_data, path_indices) = partition_paths(&mut partitioner, &subpath_indices);
 
     // Package up other miscellaneous glyph info.
@@ -458,34 +454,34 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     //
     // The client has already normalized it, so we only have to handle `M`, `L`, `C`, and `Z`
     // commands.
-    let (mut endpoints, mut control_points, mut subpaths) = (vec![], vec![], vec![]);
+    let mut path_buffer = PathBuffer::new();
     let mut paths = vec![];
     for path in &request.paths {
-        let first_subpath_index = subpaths.len() as u32;
+        let first_subpath_index = path_buffer.subpaths.len() as u32;
 
-        let mut first_endpoint_index_in_subpath = endpoints.len();
+        let mut first_endpoint_index_in_subpath = path_buffer.endpoints.len();
         for segment in &path.segments {
             match segment.kind {
                 'M' => {
-                    if first_endpoint_index_in_subpath < endpoints.len() {
-                        subpaths.push(Subpath {
+                    if first_endpoint_index_in_subpath < path_buffer.endpoints.len() {
+                        path_buffer.subpaths.push(Subpath {
                             first_endpoint_index: first_endpoint_index_in_subpath as u32,
-                            last_endpoint_index: endpoints.len() as u32,
+                            last_endpoint_index: path_buffer.endpoints.len() as u32,
                         });
-                        first_endpoint_index_in_subpath = endpoints.len();
+                        first_endpoint_index_in_subpath = path_buffer.endpoints.len();
                     }
 
-                    endpoints.push(Endpoint {
+                    path_buffer.endpoints.push(Endpoint {
                         position: Point2D::new(segment.values[0] as f32, segment.values[1] as f32),
                         control_point_index: u32::MAX,
-                        subpath_index: subpaths.len() as u32,
+                        subpath_index: path_buffer.subpaths.len() as u32,
                     })
                 }
                 'L' => {
-                    endpoints.push(Endpoint {
+                    path_buffer.endpoints.push(Endpoint {
                         position: Point2D::new(segment.values[0] as f32, segment.values[1] as f32),
                         control_point_index: u32::MAX,
-                        subpath_index: subpaths.len() as u32,
+                        subpath_index: path_buffer.subpaths.len() as u32,
                     })
                 }
                 'C' => {
@@ -495,25 +491,25 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                     let control_point_1 = Point2D::new(segment.values[2] as f32,
                                                        segment.values[3] as f32);
                     let control_point = control_point_0.lerp(control_point_1, 0.5);
-                    endpoints.push(Endpoint {
+                    path_buffer.endpoints.push(Endpoint {
                         position: Point2D::new(segment.values[4] as f32, segment.values[5] as f32),
-                        control_point_index: control_points.len() as u32,
-                        subpath_index: subpaths.len() as u32,
+                        control_point_index: path_buffer.control_points.len() as u32,
+                        subpath_index: path_buffer.subpaths.len() as u32,
                     });
-                    control_points.push(control_point);
+                    path_buffer.control_points.push(control_point);
                 }
                 'Z' => {
-                    subpaths.push(Subpath {
+                    path_buffer.subpaths.push(Subpath {
                         first_endpoint_index: first_endpoint_index_in_subpath as u32,
-                        last_endpoint_index: endpoints.len() as u32,
+                        last_endpoint_index: path_buffer.endpoints.len() as u32,
                     });
-                    first_endpoint_index_in_subpath = endpoints.len();
+                    first_endpoint_index_in_subpath = path_buffer.endpoints.len();
                 }
                 _ => return Json(Err(PartitionSvgPathsError::UnknownSvgPathSegmentType)),
             }
         }
 
-        let last_subpath_index = subpaths.len() as u32;
+        let last_subpath_index = path_buffer.subpaths.len() as u32;
         paths.push(SubpathRange {
             start: first_subpath_index,
             end: last_subpath_index,
@@ -522,7 +518,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
     // Partition the paths.
     let mut partitioner = Partitioner::new();
-    partitioner.init(&endpoints, &control_points, &subpaths);
+    partitioner.init_with_path_buffer(&path_buffer);
     let (encoded_path_data, path_indices) = partition_paths(&mut partitioner, &paths);
 
     // Return the response.

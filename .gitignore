@@ -1,5 +1,6 @@
 /font-renderer/target
 /partitioner/target
+/path-utils/target
 /demo/client/target
 /demo/client/*.html
 /demo/client/*.js

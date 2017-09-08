@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use euclid::Point2D;
 use euclid::approxeq::ApproxEq;
-use euclid::{Point2D, Vector2D};
 use std::cmp::Ordering;
 
 pub(crate) trait ApproxOrdered {

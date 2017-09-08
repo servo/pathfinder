@@ -12,6 +12,7 @@ use bit_vec::BitVec;
 use euclid::Point2D;
 use geometry::{self, SubdividedQuadraticBezier};
 use log::LogLevel;
+use pathfinder_path_utils::PathBuffer;
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use std::f32;
@@ -59,10 +60,10 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    pub fn init(&mut self,
-                new_endpoints: &'a [Endpoint],
-                new_control_points: &'a [Point2D<f32>],
-                new_subpaths: &'a [Subpath]) {
+    pub fn init_with_raw_data(&mut self,
+                              new_endpoints: &'a [Endpoint],
+                              new_control_points: &'a [Point2D<f32>],
+                              new_subpaths: &'a [Subpath]) {
         self.endpoints = new_endpoints;
         self.control_points = new_control_points;
         self.subpaths = new_subpaths;
@@ -70,6 +71,12 @@ impl<'a> Partitioner<'a> {
         // FIXME(pcwalton): Move this initialization to `partition` below. Right now, this bit
         // vector uses too much memory.
         self.visited_points = BitVec::from_elem(self.endpoints.len(), false);
+    }
+
+    pub fn init_with_path_buffer(&mut self, path_buffer: &'a PathBuffer) {
+        self.init_with_raw_data(&path_buffer.endpoints,
+                                &path_buffer.control_points,
+                                &path_buffer.subpaths)
     }
 
     pub fn partition(&mut self, path_id: u16, first_subpath_index: u32, last_subpath_index: u32) {

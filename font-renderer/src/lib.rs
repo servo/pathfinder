@@ -3,7 +3,7 @@
 extern crate app_units;
 extern crate euclid;
 extern crate freetype_sys;
-extern crate pathfinder_partitioner;
+extern crate pathfinder_path_utils;
 
 #[allow(unused_imports)]
 #[macro_use]
@@ -13,14 +13,16 @@ extern crate log;
 extern crate env_logger;
 
 use app_units::Au;
-use euclid::{Point2D, Size2D, Transform2D};
+use euclid::{Point2D, Size2D};
 use freetype_sys::{FT_BBox, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_OUTLINE};
 use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LOAD_NO_HINTING, FT_Library};
 use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
 use freetype_sys::{FT_Set_Char_Size, FT_UInt};
-use pathfinder_partitioner::{Endpoint, Subpath};
+use pathfinder_path_utils::PathSegment;
+use pathfinder_path_utils::freetype::OutlineStream;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
@@ -32,8 +34,6 @@ mod tests;
 //
 // TODO(pcwalton): Make this configurable.
 const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING;
-
-const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
 
 const DPI: u32 = 72;
 
@@ -92,20 +92,33 @@ impl FontContext {
         })
     }
 
+    pub fn glyph_outline<'a>(&'a mut self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
+                             -> Result<GlyphOutline<'a>, ()> {
+        self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
+            unsafe {
+                GlyphOutline {
+                    stream: OutlineStream::new(&(*glyph_slot).outline),
+                    phantom: PhantomData,
+                }
+            }
+        })
+    }
+
+/*
     pub fn push_glyph_outline(&self,
                               font_instance: &FontInstanceKey,
                               glyph_key: &GlyphKey,
-                              glyph_outline_buffer: &mut GlyphOutlineBuffer,
-                              transform: &Transform2D<f32>)
+                              path_buffer: &mut PathBuffer)
                               -> Result<(), ()> {
         self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
-            self.push_glyph_outline_from_glyph_slot(font_instance,
-                                                    glyph_key,
-                                                    glyph_slot,
-                                                    glyph_outline_buffer,
-                                                    transform)
+            unsafe {
+                let outline = &(*glyph_slot).outline;
+                for contour_index in 0..outline.n_contours as u16 {
+                    path_buffer.add_subpath_from_stream(OutlineIter::new(outline, contour_index))
+                }
+            }
         })
-    }
+    }*/
 
     fn load_glyph(&self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
                   -> Option<FT_GlyphSlot> {
@@ -174,73 +187,17 @@ impl FontContext {
 
         bounding_box
     }
+}
 
-    fn push_glyph_outline_from_glyph_slot(&self,
-                                          _: &FontInstanceKey,
-                                          _: &GlyphKey,
-                                          glyph_slot: FT_GlyphSlot,
-                                          glyph_outline_buffer: &mut GlyphOutlineBuffer,
-                                          transform: &Transform2D<f32>) {
-        unsafe {
-            let outline = &(*glyph_slot).outline;
-            let mut first_point_index = 0 as u32;
-            let mut first_endpoint_index = glyph_outline_buffer.endpoints.len() as u32;
-            for contour_index in 0..outline.n_contours as usize {
-                let current_subpath_index = glyph_outline_buffer.subpaths.len() as u32;
-                let mut current_control_point_index = None;
-                let last_point_index = *outline.contours.offset(contour_index as isize) as u32 + 1;
-                for point_index in first_point_index..last_point_index {
-                    // TODO(pcwalton): Approximate cubic Béziers with quadratics.
-                    let point = *outline.points.offset(point_index as isize);
-                    let point_position = Point2D::new(f32::from_ft_f26dot6(point.x as FT_F26Dot6),
-                                                      f32::from_ft_f26dot6(point.y as FT_F26Dot6));
-                    let point_position = point_position * (DPI as f32);
-                    let point_position = transform.transform_point(&point_position);
-                    if (*outline.tags.offset(point_index as isize) & FREETYPE_POINT_ON_CURVE) != 0 {
-                        glyph_outline_buffer.endpoints.push(Endpoint {
-                            position: point_position,
-                            control_point_index: current_control_point_index.take().unwrap_or(!0),
-                            subpath_index: current_subpath_index,
-                        });
-                        continue
-                    }
+pub struct GlyphOutline<'a> {
+    stream: OutlineStream<'static>,
+    phantom: PhantomData<&'a ()>,
+}
 
-                    // Add an implied endpoint if necessary.
-                    let mut control_points = &mut glyph_outline_buffer.control_points;
-                    if let Some(prev_control_point_index) = current_control_point_index.take() {
-                        let prev_control_point_position =
-                            control_points[prev_control_point_index as usize];
-                        glyph_outline_buffer.endpoints.push(Endpoint {
-                            position: prev_control_point_position.lerp(point_position, 0.5),
-                            control_point_index: prev_control_point_index,
-                            subpath_index: current_subpath_index,
-                        })
-                    }
-
-                    current_control_point_index = Some(control_points.len() as u32);
-                    control_points.push(point_position)
-                }
-
-                if let Some(last_control_point_index) = current_control_point_index.take() {
-                    let first_endpoint = glyph_outline_buffer.endpoints[first_endpoint_index as
-                                                                        usize];
-                    glyph_outline_buffer.endpoints.push(Endpoint {
-                        position: first_endpoint.position,
-                        control_point_index: last_control_point_index,
-                        subpath_index: current_subpath_index,
-                    })
-                }
-
-                let last_endpoint_index = glyph_outline_buffer.endpoints.len() as u32;
-                glyph_outline_buffer.subpaths.push(Subpath {
-                    first_endpoint_index: first_endpoint_index,
-                    last_endpoint_index: last_endpoint_index,
-                });
-
-                first_endpoint_index = last_endpoint_index;
-                first_point_index = last_point_index;
-            }
-        }
+impl<'a> Iterator for GlyphOutline<'a> {
+    type Item = PathSegment;
+    fn next(&mut self) -> Option<PathSegment> {
+        self.stream.next()
     }
 }
 
@@ -295,23 +252,6 @@ pub struct GlyphDimensions {
     pub origin: Point2D<i32>,
     pub size: Size2D<u32>,
     pub advance: f32,
-}
-
-pub struct GlyphOutlineBuffer {
-    pub endpoints: Vec<Endpoint>,
-    pub control_points: Vec<Point2D<f32>>,
-    pub subpaths: Vec<Subpath>,
-}
-
-impl GlyphOutlineBuffer {
-    #[inline]
-    pub fn new() -> GlyphOutlineBuffer {
-        GlyphOutlineBuffer {
-            endpoints: vec![],
-            control_points: vec![],
-            subpaths: vec![],
-        }
-    }
 }
 
 struct Face {

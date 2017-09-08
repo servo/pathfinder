@@ -1,0 +1,13 @@
+[package]
+name = "pathfinder_path_utils"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]
+euclid = "0.15"
+serde = "1.0"
+serde_derive = "1.0"
+
+[dependencies.freetype-sys]
+git = "https://github.com/pcwalton/freetype-sys.git"
+branch = "stroker"

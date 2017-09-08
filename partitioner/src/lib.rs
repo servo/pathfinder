@@ -18,11 +18,13 @@ extern crate euclid;
 extern crate half;
 #[macro_use]
 extern crate log;
+extern crate pathfinder_path_utils;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
 use euclid::Point2D;
+use pathfinder_path_utils::{Endpoint, Subpath};
 use std::u32;
 
 pub mod capi;
@@ -77,22 +79,6 @@ impl BQuad {
             self.lower_control_point_vertex_index += delta;
         }
     }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Endpoint {
-    pub position: Point2D<f32>,
-    /// `u32::MAX` if not present.
-    pub control_point_index: u32,
-    pub subpath_index: u32,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Subpath {
-    pub first_endpoint_index: u32,
-    pub last_endpoint_index: u32,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

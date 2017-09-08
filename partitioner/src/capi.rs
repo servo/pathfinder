@@ -157,11 +157,10 @@ pub unsafe extern fn pf_partitioner_init<'a>(partitioner: *mut Partitioner<'a>,
                                              control_point_count: u32,
                                              subpaths: *const Subpath,
                                              subpath_count: u32) {
-    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
-    (*partitioner).init(slice::from_raw_parts(endpoints, endpoint_count as usize),
-                        slice::from_raw_parts(control_points as *const Point2D<f32>,
-                                              control_point_count as usize),
-                        slice::from_raw_parts(subpaths, subpath_count as usize))
+    (*partitioner).init_with_raw_data(slice::from_raw_parts(endpoints, endpoint_count as usize),
+                                      slice::from_raw_parts(control_points as *const Point2D<f32>,
+                                                            control_point_count as usize),
+                                      slice::from_raw_parts(subpaths, subpath_count as usize))
 }
 
 #[no_mangle]
