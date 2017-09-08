@@ -97,28 +97,12 @@ impl FontContext {
         self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
             unsafe {
                 GlyphOutline {
-                    stream: OutlineStream::new(&(*glyph_slot).outline),
+                    stream: OutlineStream::new(&(*glyph_slot).outline, 72.0),
                     phantom: PhantomData,
                 }
             }
         })
     }
-
-/*
-    pub fn push_glyph_outline(&self,
-                              font_instance: &FontInstanceKey,
-                              glyph_key: &GlyphKey,
-                              path_buffer: &mut PathBuffer)
-                              -> Result<(), ()> {
-        self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
-            unsafe {
-                let outline = &(*glyph_slot).outline;
-                for contour_index in 0..outline.n_contours as u16 {
-                    path_buffer.add_subpath_from_stream(OutlineIter::new(outline, contour_index))
-                }
-            }
-        })
-    }*/
 
     fn load_glyph(&self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
                   -> Option<FT_GlyphSlot> {

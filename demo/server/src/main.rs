@@ -26,7 +26,8 @@ use bincode::Infinite;
 use euclid::{Point2D, Size2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
 use pathfinder_partitioner::partitioner::Partitioner;
-use pathfinder_path_utils::{Endpoint, PathBuffer, Subpath, Transform2DPathStream};
+use pathfinder_path_utils::stroke;
+use pathfinder_path_utils::{PathBuffer, PathSegment, Transform2DPathStream};
 use rocket::http::{ContentType, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
@@ -227,6 +228,13 @@ struct PartitionSvgPathsRequest {
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionSvgPath {
     segments: Vec<PartitionSvgPathSegment>,
+    kind: PartitionSvgPathKind,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+enum PartitionSvgPathKind {
+    Fill,
+    Stroke(f32),
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -457,32 +465,19 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     let mut path_buffer = PathBuffer::new();
     let mut paths = vec![];
     for path in &request.paths {
+        let mut stream = vec![];
+
         let first_subpath_index = path_buffer.subpaths.len() as u32;
 
-        let mut first_endpoint_index_in_subpath = path_buffer.endpoints.len();
         for segment in &path.segments {
             match segment.kind {
                 'M' => {
-                    if first_endpoint_index_in_subpath < path_buffer.endpoints.len() {
-                        path_buffer.subpaths.push(Subpath {
-                            first_endpoint_index: first_endpoint_index_in_subpath as u32,
-                            last_endpoint_index: path_buffer.endpoints.len() as u32,
-                        });
-                        first_endpoint_index_in_subpath = path_buffer.endpoints.len();
-                    }
-
-                    path_buffer.endpoints.push(Endpoint {
-                        position: Point2D::new(segment.values[0] as f32, segment.values[1] as f32),
-                        control_point_index: u32::MAX,
-                        subpath_index: path_buffer.subpaths.len() as u32,
-                    })
+                    stream.push(PathSegment::MoveTo(Point2D::new(segment.values[0] as f32,
+                                                                 segment.values[1] as f32)))
                 }
                 'L' => {
-                    path_buffer.endpoints.push(Endpoint {
-                        position: Point2D::new(segment.values[0] as f32, segment.values[1] as f32),
-                        control_point_index: u32::MAX,
-                        subpath_index: path_buffer.subpaths.len() as u32,
-                    })
+                    stream.push(PathSegment::LineTo(Point2D::new(segment.values[0] as f32,
+                                                                 segment.values[1] as f32)))
                 }
                 'C' => {
                     // FIXME(pcwalton): Do real cubic-to-quadratic conversion.
@@ -491,25 +486,24 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                     let control_point_1 = Point2D::new(segment.values[2] as f32,
                                                        segment.values[3] as f32);
                     let control_point = control_point_0.lerp(control_point_1, 0.5);
-                    path_buffer.endpoints.push(Endpoint {
-                        position: Point2D::new(segment.values[4] as f32, segment.values[5] as f32),
-                        control_point_index: path_buffer.control_points.len() as u32,
-                        subpath_index: path_buffer.subpaths.len() as u32,
-                    });
-                    path_buffer.control_points.push(control_point);
+                    stream.push(PathSegment::CurveTo(control_point,
+                                                     Point2D::new(segment.values[4] as f32,
+                                                                  segment.values[5] as f32)))
                 }
-                'Z' => {
-                    path_buffer.subpaths.push(Subpath {
-                        first_endpoint_index: first_endpoint_index_in_subpath as u32,
-                        last_endpoint_index: path_buffer.endpoints.len() as u32,
-                    });
-                    first_endpoint_index_in_subpath = path_buffer.endpoints.len();
-                }
+                'Z' => stream.push(PathSegment::ClosePath),
                 _ => return Json(Err(PartitionSvgPathsError::UnknownSvgPathSegmentType)),
             }
         }
 
+        match path.kind {
+            PartitionSvgPathKind::Fill => path_buffer.add_stream(stream.into_iter()),
+            PartitionSvgPathKind::Stroke(stroke_width) => {
+                stroke::stroke(&mut path_buffer, stream.into_iter(), stroke_width)
+            }
+        }
+
         let last_subpath_index = path_buffer.subpaths.len() as u32;
+
         paths.push(SubpathRange {
             start: first_subpath_index,
             end: last_subpath_index,

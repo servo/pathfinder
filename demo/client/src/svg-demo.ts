@@ -33,6 +33,9 @@ const BUILTIN_SVG_URI: string = "/svg/demo";
 
 const DEFAULT_FILE: string = 'tiger';
 
+/// The minimum size of a stroke.
+const HAIRLINE_STROKE_WIDTH: number = 0.25;
+
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
@@ -56,13 +59,18 @@ interface AntialiasingStrategyTable {
     ecaa: typeof ECAAStrategy;
 }
 
+interface PathInstance {
+    element: SVGPathElement;
+    stroke: number | 'fill';
+}
+
 class SVGDemoController extends DemoAppController<SVGDemoView> {
     start() {
         super.start();
 
         this.svg = document.getElementById('pf-svg') as Element as SVGSVGElement;
 
-        this.pathElements = [];
+        this.pathInstances = [];
 
         this.loadInitialFile();
     }
@@ -92,7 +100,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
             this.svg.appendChild(kid);
 
         // Scan for geometry elements.
-        this.pathElements.length = 0;
+        this.pathInstances.length = 0;
         const queue: Array<Element> = [this.svg];
         let element;
         while ((element = queue.pop()) != null) {
@@ -103,20 +111,30 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
                 kid = kid.previousSibling;
             }
 
-            if (element instanceof SVGPathElement)
-                this.pathElements.push(element);
+            if (element instanceof SVGPathElement) {
+                const style = window.getComputedStyle(element);
+                if (style.fill !== 'none')
+                    this.pathInstances.push({ element: element, stroke: 'fill' });
+                if (style.stroke !== 'none') {
+                    this.pathInstances.push({
+                        element: element,
+                        stroke: parseInt(style.strokeWidth!),
+                    });
+                }
+            }
         }
 
         // Extract, normalize, and transform the path data.
-        let pathData = [];
-        for (const element of this.pathElements) {
+        const request: any = { paths: [] };
+        for (const instance of this.pathInstances) {
+            const element = instance.element;
             const svgCTM = element.getCTM();
             const ctm = glmatrix.mat2d.fromValues(svgCTM.a, svgCTM.b,
                                                   svgCTM.c, svgCTM.d,
                                                   svgCTM.e, svgCTM.f);
             glmatrix.mat2d.scale(ctm, ctm, [1.0, -1.0]);
 
-            pathData.push(element.getPathData({normalize: true}).map(segment => {
+            const segments = element.getPathData({normalize: true}).map(segment => {
                 const newValues = _.flatMap(_.chunk(segment.values, 2), coords => {
                     const point = glmatrix.vec2.create();
                     glmatrix.vec2.transformMat2d(point, coords, ctm);
@@ -126,11 +144,16 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
                     type: segment.type,
                     values: newValues,
                 };
-            }));
-        }
+            });
 
-        // Build the partitioning request to the server.
-        const request = {paths: pathData.map(segments => ({segments: segments}))};
+            let kind;
+            if (instance.stroke === 'fill')
+                kind = 'Fill';
+            else
+                kind = { Stroke: Math.max(HAIRLINE_STROKE_WIDTH, instance.stroke) };
+
+            request.paths.push({ segments: segments, kind: kind });
+        }
 
         // Make the request.
         window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
@@ -157,13 +180,13 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
 
     private meshesReceived() {
         this.view.then(view => {
-            view.uploadPathMetadata(this.pathElements);
+            view.uploadPathMetadata(this.pathInstances);
             view.attachMeshes([this.meshes]);
         })
     }
 
     private svg: SVGSVGElement;
-    private pathElements: Array<SVGPathElement>;
+    private pathInstances: PathInstance[];
     private meshes: PathfinderMeshData;
 }
 
@@ -192,18 +215,19 @@ class SVGDemoView extends PathfinderDemoView {
         return this.destAllocatedSize;
     }
 
-    uploadPathMetadata(elements: SVGPathElement[]) {
-        const pathColors = new Uint8Array(4 * (elements.length + 1));
-        const pathTransforms = new Float32Array(4 * (elements.length + 1));
-        for (let pathIndex = 0; pathIndex < elements.length; pathIndex++) {
+    uploadPathMetadata(instances: PathInstance[]) {
+        const pathColors = new Uint8Array(4 * (instances.length + 1));
+        const pathTransforms = new Float32Array(4 * (instances.length + 1));
+        for (let pathIndex = 0; pathIndex < instances.length; pathIndex++) {
             const startOffset = (pathIndex + 1) * 4;
 
             // Set color.
-            const style = window.getComputedStyle(elements[pathIndex]);
-            const fillColor: number[] =
-                style.fill === 'none' ? [0, 0, 0, 0] : parseColor(style.fill).rgba;
-            pathColors.set(fillColor.slice(0, 3), startOffset);
-            pathColors[startOffset + 3] = fillColor[3] * 255;
+            const style = window.getComputedStyle(instances[pathIndex].element);
+            const property = instances[pathIndex].stroke === 'fill' ? 'fill' : 'stroke';
+            const color: number[] =
+                style[property] === 'none' ? [0, 0, 0, 0] : parseColor(style[property]).rgba;
+            pathColors.set(color.slice(0, 3), startOffset);
+            pathColors[startOffset + 3] = color[3] * 255;
 
             // TODO(pcwalton): Set transform.
             pathTransforms.set([1, 1, 0, 0], startOffset);

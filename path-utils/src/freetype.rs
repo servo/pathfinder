@@ -9,13 +9,11 @@
 // except according to those terms.
 
 use euclid::Point2D;
-use freetype_sys::{FT_Outline, FT_Vector};
+use freetype_sys::{FT_Fixed, FT_Outline, FT_Pos, FT_Vector};
 
 use PathSegment;
 
 const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
-
-const DPI: f32 = 72.0;
 
 pub struct OutlineStream<'a> {
     outline: &'a FT_Outline,
@@ -23,17 +21,19 @@ pub struct OutlineStream<'a> {
     contour_index: u16,
     first_position_of_subpath: Point2D<f32>,
     first_point_index_of_contour: bool,
+    dpi: f32,
 }
 
 impl<'a> OutlineStream<'a> {
     #[inline]
-    pub unsafe fn new(outline: &FT_Outline) -> OutlineStream {
+    pub unsafe fn new(outline: &FT_Outline, dpi: f32) -> OutlineStream {
         OutlineStream {
             outline: outline,
             point_index: 0,
             contour_index: 0,
             first_position_of_subpath: Point2D::zero(),
             first_point_index_of_contour: true,
+            dpi: dpi,
         }
     }
 
@@ -43,7 +43,7 @@ impl<'a> OutlineStream<'a> {
             let point_offset = self.point_index as isize;
             let position = ft_vector_to_f32(*self.outline.points.offset(point_offset));
             let tag = *self.outline.tags.offset(point_offset);
-            (position * DPI, tag)
+            (position * self.dpi, tag)
         }
     }
 }
@@ -110,4 +110,17 @@ impl<'a> Iterator for OutlineStream<'a> {
 #[inline]
 fn ft_vector_to_f32(ft_vector: FT_Vector) -> Point2D<f32> {
     Point2D::new(ft_vector.x as f32 / 64.0, ft_vector.y as f32 / 64.0)
+}
+
+#[inline]
+pub fn f32_to_ft_vector(point: &Point2D<f32>) -> FT_Vector {
+    FT_Vector {
+        x: (point.x * 64.0).round() as FT_Pos,
+        y: (point.y * 64.0).round() as FT_Pos,
+    }
+}
+
+#[inline]
+pub fn f32_to_26_6_ft_fixed(length: f32) -> FT_Fixed {
+    (length * 64.0).round() as FT_Fixed
 }

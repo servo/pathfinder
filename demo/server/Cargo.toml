@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
+app_units = "0.5"
 base64 = "0.6"
 bincode = "0.8"
 env_logger = "0.3"
