@@ -68,9 +68,8 @@ export class TextRun<Glyph extends PathfinderGlyph> {
 }
 
 export class TextFrame<Glyph extends PathfinderGlyph> {
-    constructor(runs: TextRun<Glyph>[], origin: glmatrix.vec3) {
+    constructor(runs: TextRun<Glyph>[]) {
         this.runs = runs;
-        this.origin = origin;
     }
 
     expandMeshes(uniqueGlyphs: Glyph[], meshes: PathfinderMeshData): ExpandedMeshData {
@@ -253,7 +252,7 @@ export class SimpleTextLayout<Glyph extends PathfinderGlyph> {
         const textRuns: TextRun<Glyph>[] = text.split("\n").map((line, lineNumber) => {
             return new TextRun<Glyph>(line, [0.0, -lineHeight * lineNumber], font, createGlyph);
         });
-        this.textFrame = new TextFrame(textRuns, glmatrix.vec3.create());
+        this.textFrame = new TextFrame(textRuns);
 
         this.glyphStorage = new GlyphStorage(fontData, [this.textFrame], createGlyph, font);
     }

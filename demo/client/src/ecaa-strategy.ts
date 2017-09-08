@@ -304,7 +304,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.setFramebufferSizeUniform(uniforms);
         this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
         this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
-        view.pathTransformBufferTexture.bind(view.gl, uniforms, 2);
+        view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 2);
         view.gl.uniform1f(uniforms.uScaleX, this.supersampleScale[0]);
         view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                            6,
@@ -335,7 +335,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.setFramebufferSizeUniform(uniforms);
         this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
         this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
-        view.pathTransformBufferTexture.bind(view.gl, uniforms, 2);
+        view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 2);
         view.gl.uniform1f(uniforms.uScaleX, this.supersampleScale[0]);
     }
 

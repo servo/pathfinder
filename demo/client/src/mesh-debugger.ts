@@ -45,7 +45,7 @@ class MeshDebuggerAppController extends AppController {
 
         const createGlyph = (glyph: opentype.Glyph) => new MeshDebuggerGlyph(glyph);
         const textRun = new TextRun<MeshDebuggerGlyph>(CHARACTER, [0, 0], font, createGlyph);
-        const textFrame = new TextFrame([textRun], glmatrix.vec3.create());
+        const textFrame = new TextFrame([textRun]);
         this.glyphStorage = new GlyphStorage(this.fileData, [textFrame], createGlyph, font);
 
         this.glyphStorage.partition().then(meshes => {

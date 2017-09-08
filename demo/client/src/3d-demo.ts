@@ -23,6 +23,7 @@ import {PathfinderError, assert, panic, unwrapNull} from "./utils";
 import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
 import * as _ from "lodash";
+import PathfinderBufferTexture from "./buffer-texture";
 
 const WIDTH: number = 150000;
 
@@ -34,9 +35,11 @@ const PIXELS_PER_UNIT: number = 1.0;
 
 const FOV: number = 45.0;
 const NEAR_CLIP_PLANE: number = 0.01;
-const FAR_CLIP_PLANE: number = 10000.0;
+const FAR_CLIP_PLANE: number = 200000.0;
 
-const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 200.0, 1.0 / 200.0, 1.0);
+const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 200.0, 1.0 / 200.0, 1.0 / 200.0);
+
+const TEXT_TRANSLATION: number[] = [-WIDTH * 0.5, 0.0, WIDTH * 0.5];
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
@@ -48,77 +51,85 @@ interface AntialiasingStrategyTable {
     ssaa: typeof SSAAStrategy;
 }
 
-interface Panels {
-    upper: string[][];
-    lower: string[][];
+interface TextLine {
+    names: string[];
+}
+
+interface MonumentSide {
+    lines: TextLine[];
 }
 
 class ThreeDController extends DemoAppController<ThreeDView> {
     start() {
         super.start();
 
-        this.textPromise = window.fetch(TEXT_DATA_URI)
-                                 .then(response => response.json())
-                                 .then(textData => this.parseTextData(textData));
+        this.monumentPromise = window.fetch(TEXT_DATA_URI)
+                                     .then(response => response.json())
+                                     .then(textData => this.parseTextData(textData));
 
         this.loadInitialFile();
     }
 
-    private parseTextData(textData: any): string[][] {
-        const panels = {
-            upper: [],
-            lower: [],
-        };
+    private parseTextData(textData: any): MonumentSide[] {
+        const sides = [];
+        for (let sideIndex = 0; sideIndex < 4; sideIndex++)
+            sides[sideIndex] = { upper: { lines: [] }, lower: { lines: [] } };
 
         for (const nameData of textData.monument) {
-            if (nameData.side !== '1')
+            const side = parseInt(nameData.side) - 1;
+            const row = parseInt(nameData.row) - 1;
+            const number = parseInt(nameData.number) - 1;
+
+            if (sides[side] == null)
                 continue;
 
-            const row = parseInt(nameData.row) - 1, number = parseInt(nameData.number) - 1;
-            const panel: string[][] = panels[nameData.panel as ('upper' | 'lower')];
+            const lines: TextLine[] = sides[side][nameData.panel as ('upper' | 'lower')].lines;
+            if (lines[row] == null)
+                lines[row] = { names: [] };
 
-            if (panel[row] == null)
-                panel[row] = [];
-            panel[row][number] = nameData.name;
+            lines[row].names[number] = nameData.name;
         }
 
-        return panels.upper.concat(panels.lower);
+        return sides.map(side => ({ lines: side.upper.lines.concat(side.lower.lines) }));
     }
 
     protected fileLoaded(): void {
         const font = opentype.parse(this.fileData);
         assert(font.isSupported(), "The font type is unsupported!");
 
-        this.textPromise.then(text => this.layoutText(font, text));
+        this.monumentPromise.then(monument => this.layoutMonument(font, monument));
     }
 
-    private layoutText(font: opentype.Font, text: string[][]) {
+    private layoutMonument(font: opentype.Font, monument: MonumentSide[]) {
         const createGlyph = (glyph: opentype.Glyph) => new ThreeDGlyph(glyph);
-        let textRuns = [];
-        for (let lineNumber = 0; lineNumber < text.length; lineNumber++) {
-            const line = text[lineNumber];
+        let textFrames = [];
+        for (const monumentSide of monument) {
+            let textRuns = [];
+            for (let lineNumber = 0; lineNumber < monumentSide.lines.length; lineNumber++) {
+                const line = monumentSide.lines[lineNumber];
 
-            const lineY = -lineNumber * font.lineHeight();
-            const lineGlyphs = line.map(string => {
-                const glyphs = font.stringToGlyphs(string).map(createGlyph);
-                return { glyphs: glyphs, width: _.sumBy(glyphs, glyph => glyph.advanceWidth) };
-            });
+                const lineY = -lineNumber * font.lineHeight();
+                const lineGlyphs = line.names.map(string => {
+                    const glyphs = font.stringToGlyphs(string).map(createGlyph);
+                    return { glyphs: glyphs, width: _.sumBy(glyphs, glyph => glyph.advanceWidth) };
+                });
 
-            const usedSpace = _.sumBy(lineGlyphs, 'width');
-            const emptySpace = Math.max(WIDTH - usedSpace, 0.0);
-            const spacing = emptySpace / Math.max(lineGlyphs.length - 1, 1);
+                const usedSpace = _.sumBy(lineGlyphs, 'width');
+                const emptySpace = Math.max(WIDTH - usedSpace, 0.0);
+                const spacing = emptySpace / Math.max(lineGlyphs.length - 1, 1);
 
-            let currentX = 0.0;
-            for (const glyphInfo of lineGlyphs) {
-                textRuns.push(new TextRun(glyphInfo.glyphs, [currentX, lineY], font, createGlyph));
-                currentX += glyphInfo.width + spacing;
+                let currentX = 0.0;
+                for (const glyphInfo of lineGlyphs) {
+                    const textRunOrigin = [currentX, lineY];
+                    textRuns.push(new TextRun(glyphInfo.glyphs, textRunOrigin, font, createGlyph));
+                    currentX += glyphInfo.width + spacing;
+                }
             }
+
+            textFrames.push(new TextFrame(textRuns));
         }
 
-        // TODO(pcwalton)
-        const textFrame = new TextFrame(textRuns, glmatrix.vec3.create());
-
-        this.glyphStorage = new GlyphStorage(this.fileData, [textFrame], createGlyph, font);
+        this.glyphStorage = new GlyphStorage(this.fileData, textFrames, createGlyph, font);
         this.glyphStorage.layoutRuns();
 
         this.glyphStorage.partition().then((baseMeshes: PathfinderMeshData) => {
@@ -150,7 +161,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: ExpandedMeshData[];
 
-    private textPromise: Promise<string[][]>;
+    private monumentPromise: Promise<MonumentSide[]>;
 }
 
 class ThreeDView extends PathfinderDemoView {
@@ -166,26 +177,40 @@ class ThreeDView extends PathfinderDemoView {
     }
 
     uploadPathMetadata() {
-        const textGlyphs = this.appController.glyphStorage.allGlyphs;
-        const pathCount = textGlyphs.length;
+        this.pathColorsBufferTextures = [];
+        this.pathTransformBufferTextures = [];
 
-        const pathColors = new Uint8Array(4 * (pathCount + 1));
-        const pathTransforms = new Float32Array(4 * (pathCount + 1));
+        const textFrameCount = this.appController.glyphStorage.textFrames.length;
+        for (let textFrameIndex = 0;
+             textFrameIndex < textFrameCount;
+             textFrameIndex++) {
+            const textFrame = this.appController.glyphStorage.textFrames[textFrameIndex];
+            const textGlyphs = textFrame.allGlyphs;
+            const pathCount = textGlyphs.length;
 
-        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
-            const startOffset = (pathIndex + 1) * 4;
+            const pathColors = new Uint8Array(4 * (pathCount + 1));
+            const pathTransforms = new Float32Array(4 * (pathCount + 1));
 
-            for (let channel = 0; channel < 3; channel++)
-                pathColors[startOffset + channel] = 0x00; // RGB
-            pathColors[startOffset + 3] = 0xff;           // alpha
+            for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+                const startOffset = (pathIndex + 1) * 4;
 
-            const textGlyph = textGlyphs[pathIndex];
-            const glyphRect = textGlyph.pixelRect(PIXELS_PER_UNIT);
-            pathTransforms.set([1, 1, glyphRect[0], glyphRect[1]], startOffset);
+                for (let channel = 0; channel < 3; channel++)
+                    pathColors[startOffset + channel] = 0x00; // RGB
+                pathColors[startOffset + 3] = 0xff;           // alpha
+
+                const textGlyph = textGlyphs[pathIndex];
+                const glyphRect = textGlyph.pixelRect(PIXELS_PER_UNIT);
+                pathTransforms.set([1, 1, glyphRect[0], glyphRect[1]], startOffset);
+            }
+
+            const pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
+            const pathTransformBufferTexture = new PathfinderBufferTexture(this.gl,
+                                                                           'uPathTransform');
+            pathColorsBufferTexture.upload(this.gl, pathColors);
+            pathTransformBufferTexture.upload(this.gl, pathTransforms);
+            this.pathColorsBufferTextures.push(pathColorsBufferTexture);
+            this.pathTransformBufferTextures.push(pathTransformBufferTexture);
         }
-
-        this.pathColorsBufferTexture.upload(this.gl, pathColors);
-        this.pathTransformBufferTexture.upload(this.gl, pathTransforms);
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
@@ -234,6 +259,13 @@ class ThreeDView extends PathfinderDemoView {
 
         const transform = glmatrix.mat4.create();
         glmatrix.mat4.mul(transform, projection, modelview);
+        return transform;
+    }
+
+    protected getModelviewTransform(objectIndex: number): glmatrix.mat4 {
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.rotateY(transform, transform, Math.PI / 2.0 * objectIndex);
+        glmatrix.mat4.translate(transform, transform, TEXT_TRANSLATION);
         return transform;
     }
 

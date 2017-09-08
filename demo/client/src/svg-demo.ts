@@ -21,6 +21,7 @@ import {ShaderMap, ShaderProgramSource} from './shader-loader';
 import {panic, unwrapNull} from './utils';
 import {PathfinderDemoView, Timings} from './view';
 import SSAAStrategy from "./ssaa-strategy";
+import PathfinderBufferTexture from "./buffer-texture";
 
 const parseColor = require('parse-color');
 
@@ -208,8 +209,12 @@ class SVGDemoView extends PathfinderDemoView {
             pathTransforms.set([1, 1, 0, 0], startOffset);
         }
 
-        this.pathColorsBufferTexture.upload(this.gl, pathColors);
-        this.pathTransformBufferTexture.upload(this.gl, pathTransforms);
+        const pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
+        const pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
+        pathColorsBufferTexture.upload(this.gl, pathColors);
+        pathTransformBufferTexture.upload(this.gl, pathTransforms);
+        this.pathColorsBufferTextures = [pathColorsBufferTexture];
+        this.pathTransformBufferTextures = [pathTransformBufferTexture];
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,

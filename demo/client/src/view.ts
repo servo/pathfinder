@@ -104,8 +104,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
         const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
         this.shaderPrograms = this.linkShaders(shaderSource);
 
-        this.pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
-        this.pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
+        this.pathTransformBufferTextures = [];
+        this.pathColorsBufferTextures = [];
 
         this.antialiasingStrategy = new NoAAStrategy(0, false);
         this.antialiasingStrategy.init(this);
@@ -266,15 +266,18 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.finishTiming();
     }
 
-    private setTransformUniform(uniforms: UniformMap) {
+    private setTransformUniform(uniforms: UniformMap, objectIndex: number) {
         const transform = glmatrix.mat4.create();
         if (this.antialiasingStrategy != null)
             glmatrix.mat4.mul(transform, this.antialiasingStrategy.transform, this.worldTransform);
+        glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
         this.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
 
     private renderDirect() {
-        for (const meshes of this.meshes) {
+        for (let objectIndex = 0; objectIndex < this.meshes.length; objectIndex++) {
+            const meshes = this.meshes[objectIndex];
+
             // Set up implicit cover state.
             this.gl.depthFunc(this.gl.GREATER);
             this.gl.depthMask(true);
@@ -303,10 +306,14 @@ export abstract class PathfinderDemoView extends PathfinderView {
             this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, meshes.coverInteriorIndices);
 
             // Draw direct interior parts.
-            this.setTransformUniform(directInteriorProgram.uniforms);
+            this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
-            this.pathColorsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 0);
-            this.pathTransformBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 1);
+            this.pathColorsBufferTextures[objectIndex].bind(this.gl,
+                                                            directInteriorProgram.uniforms,
+                                                            0);
+            this.pathTransformBufferTextures[objectIndex].bind(this.gl,
+                                                               directInteriorProgram.uniforms,
+                                                               1);
             let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                         this.gl.BUFFER_SIZE) / UINT32_SIZE;
             this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -354,10 +361,14 @@ export abstract class PathfinderDemoView extends PathfinderView {
             this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, meshes.coverCurveIndices);
 
             // Draw direct curve parts.
-            this.setTransformUniform(directCurveProgram.uniforms);
+            this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directCurveProgram.uniforms);
-            this.pathColorsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 0);
-            this.pathTransformBufferTexture.bind(this.gl, directCurveProgram.uniforms, 1);
+            this.pathColorsBufferTextures[objectIndex].bind(this.gl,
+                                                            directCurveProgram.uniforms,
+                                                            0);
+            this.pathTransformBufferTextures[objectIndex].bind(this.gl,
+                                                               directCurveProgram.uniforms,
+                                                               1);
             indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
             this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -413,6 +424,10 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
+    protected getModelviewTransform(pathIndex: number): glmatrix.mat4 {
+        return glmatrix.mat4.create();
+    }
+
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
                                         aaLevel: number,
                                         subpixelAA: boolean):
@@ -454,8 +469,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
     meshes: PathfinderMeshBuffers[];
     meshData: PathfinderMeshData[];
 
-    pathTransformBufferTexture: PathfinderBufferTexture;
-    protected pathColorsBufferTexture: PathfinderBufferTexture;
+    pathTransformBufferTextures: PathfinderBufferTexture[];
+    protected pathColorsBufferTextures: PathfinderBufferTexture[];
 
     private atlasRenderingTimerQuery: WebGLQuery;
     private compositingTimerQuery: WebGLQuery;

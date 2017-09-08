@@ -248,7 +248,9 @@ class TextDemoView extends MonochromePathfinderView {
             pathColors[(pathIndex + 1) * 4 + 3] = 0xff;           // alpha
         }
 
-        this.pathColorsBufferTexture.upload(this.gl, pathColors);
+        const pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
+        pathColorsBufferTexture.upload(this.gl, pathColors);
+        this.pathColorsBufferTextures = [pathColorsBufferTexture];
     }
 
     /// Lays out glyphs on the canvas.
@@ -322,7 +324,9 @@ class TextDemoView extends MonochromePathfinderView {
             transforms[pathID * 4 + 3] = atlasOrigin[1];
         }
 
-        this.pathTransformBufferTexture.upload(this.gl, transforms);
+        const pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
+        pathTransformBufferTexture.upload(this.gl, transforms);
+        this.pathTransformBufferTextures = [pathTransformBufferTexture];
     }
 
     private createAtlasFramebuffer() {
