@@ -63,12 +63,6 @@ export class NoAAStrategy extends AntialiasingStrategy {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
         view.gl.disable(view.gl.SCISSOR_TEST);
-
-        // Clear.
-        view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        view.gl.clearDepth(0.0);
-        view.gl.depthMask(true);
-        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
     }
 
     resolve(view: PathfinderDemoView) {}

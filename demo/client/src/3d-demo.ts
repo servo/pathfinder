@@ -26,6 +26,7 @@ import * as _ from "lodash";
 import PathfinderBufferTexture from "./buffer-texture";
 
 const WIDTH: number = 150000;
+const PADDING: number = 2000;
 
 const TEXT_DATA_URI: string = "/data/mozmonument.json";
 
@@ -34,12 +35,41 @@ const FONT: string = 'open-sans';
 const PIXELS_PER_UNIT: number = 1.0;
 
 const FOV: number = 45.0;
-const NEAR_CLIP_PLANE: number = 0.01;
-const FAR_CLIP_PLANE: number = 200000.0;
+const NEAR_CLIP_PLANE: number = 0.1;
+const FAR_CLIP_PLANE: number = 3000.0;
 
 const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 200.0, 1.0 / 200.0, 1.0 / 200.0);
 
-const TEXT_TRANSLATION: number[] = [-WIDTH * 0.5, 0.0, WIDTH * 0.5];
+const TEXT_TRANSLATION: number[] = [-(WIDTH + PADDING) * 0.5, 0.0, (WIDTH + PADDING) * 0.5];
+
+const MONUMENT_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, -690.0, 0.0);
+const MONUMENT_SCALE: glmatrix.vec3 =
+    glmatrix.vec3.fromValues((WIDTH + PADDING) / 400.0 - 0.5,
+                             700.0,
+                             (WIDTH + PADDING) / 400.0 - 0.5);
+
+const TEXT_COLOR: Uint8Array = new Uint8Array([0xf2, 0xf8, 0xf8, 0xff]);
+const MONUMENT_COLOR: number[] = [0x70 / 0xff, 0x80 / 0xff, 0x80 / 0xff];
+
+const CUBE_VERTEX_POSITIONS: Float32Array = new Float32Array([
+    -1.0, -1.0, -1.0,  // 0
+     1.0, -1.0, -1.0,  // 1
+    -1.0, -1.0,  1.0,  // 2
+     1.0, -1.0,  1.0,  // 3
+    -1.0,  1.0, -1.0,  // 4
+     1.0,  1.0, -1.0,  // 5
+    -1.0,  1.0,  1.0,  // 6
+     1.0,  1.0,  1.0,  // 7
+]);
+
+const CUBE_INDICES: Uint16Array = new Uint16Array([
+    0, 1, 2, 2, 1, 3,   // bottom
+    0, 5, 1, 0, 4, 5,   // front
+    2, 4, 0, 2, 6, 4,   // left
+    3, 5, 1, 3, 7, 5,   // right
+    2, 7, 3, 2, 6, 7,   // back
+    4, 5, 6, 6, 5, 7,   // top
+]);
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
@@ -174,6 +204,14 @@ class ThreeDView extends PathfinderDemoView {
 
         this.camera = new PerspectiveCamera(this.canvas);
         this.camera.onChange = () => this.setDirty();
+
+        this.cubeVertexPositionBuffer = unwrapNull(this.gl.createBuffer());
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.cubeVertexPositionBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, CUBE_VERTEX_POSITIONS, this.gl.STATIC_DRAW);
+
+        this.cubeIndexBuffer = unwrapNull(this.gl.createBuffer());
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.cubeIndexBuffer);
+        this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, CUBE_INDICES, this.gl.STATIC_DRAW);
     }
 
     uploadPathMetadata() {
@@ -194,9 +232,7 @@ class ThreeDView extends PathfinderDemoView {
             for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
                 const startOffset = (pathIndex + 1) * 4;
 
-                for (let channel = 0; channel < 3; channel++)
-                    pathColors[startOffset + channel] = 0x00; // RGB
-                pathColors[startOffset + 3] = 0xff;           // alpha
+                pathColors.set(TEXT_COLOR, startOffset);
 
                 const textGlyph = textGlyphs[pathIndex];
                 const glyphRect = textGlyph.pixelRect(PIXELS_PER_UNIT);
@@ -222,6 +258,38 @@ class ThreeDView extends PathfinderDemoView {
         throw new PathfinderError("Unsupported antialiasing type!");
     }
 
+    protected drawSceneryIfNecessary(): void {
+        // Set up the cube VBO.
+        const shaderProgram = this.shaderPrograms.demo3DMonument;
+        this.gl.useProgram(shaderProgram.program);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.cubeVertexPositionBuffer);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.cubeIndexBuffer);
+        this.gl.vertexAttribPointer(shaderProgram.attributes.aPosition,
+                                    3,
+                                    this.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+        this.gl.enableVertexAttribArray(shaderProgram.attributes.aPosition);
+
+        // Set uniforms for the monument.
+        const transform = this.calculateWorldTransform(MONUMENT_TRANSLATION, MONUMENT_SCALE);
+        this.gl.uniformMatrix4fv(shaderProgram.uniforms.uTransform, false, transform);
+        this.gl.uniform4f(shaderProgram.uniforms.uColor,
+                          MONUMENT_COLOR[0],
+                          MONUMENT_COLOR[1],
+                          MONUMENT_COLOR[2],
+                          1.0);
+
+        // Set state for the monument.
+        this.gl.enable(this.gl.DEPTH_TEST);
+        this.gl.depthMask(true);
+        this.gl.disable(this.gl.SCISSOR_TEST);
+
+        // Draw the monument!
+        this.gl.drawElements(this.gl.TRIANGLES, CUBE_INDICES.length, this.gl.UNSIGNED_SHORT, 0);
+    }
+
     protected compositeIfNecessary(): void {}
 
     protected updateTimings(timings: Timings) {
@@ -244,7 +312,9 @@ class ThreeDView extends PathfinderDemoView {
         return glmatrix.vec2.fromValues(1.0, 1.0);
     }
 
-    protected get worldTransform() {
+    private calculateWorldTransform(modelviewTranslation: glmatrix.vec3,
+                                    modelviewScale: glmatrix.vec3):
+                                    glmatrix.mat4 {
         const projection = glmatrix.mat4.create();
         glmatrix.mat4.perspective(projection,
                                   FOV / 180.0 * Math.PI,
@@ -255,11 +325,23 @@ class ThreeDView extends PathfinderDemoView {
         const modelview = glmatrix.mat4.create();
         glmatrix.mat4.mul(modelview, modelview, this.camera.rotationMatrix);
         glmatrix.mat4.translate(modelview, modelview, this.camera.translation);
-        glmatrix.mat4.scale(modelview, modelview, SCALE);
+        glmatrix.mat4.translate(modelview, modelview, modelviewTranslation);
+        glmatrix.mat4.scale(modelview, modelview, modelviewScale);
 
         const transform = glmatrix.mat4.create();
         glmatrix.mat4.mul(transform, projection, modelview);
         return transform;
+    }
+
+    protected clearForResolve(): void {
+        this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        this.gl.clearDepth(1.0);
+        this.gl.depthMask(true);
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+    }
+
+    protected get worldTransform() {
+        return this.calculateWorldTransform(glmatrix.vec3.create(), SCALE);
     }
 
     protected getModelviewTransform(objectIndex: number): glmatrix.mat4 {
@@ -277,9 +359,14 @@ class ThreeDView extends PathfinderDemoView {
         return 'direct3DInterior';
     }
 
+    protected depthFunction: number = this.gl.LESS;
+
     private _scale: number;
 
     private appController: ThreeDController;
+
+    private cubeVertexPositionBuffer: WebGLBuffer;
+    private cubeIndexBuffer: WebGLBuffer;
 
     camera: PerspectiveCamera;
 }

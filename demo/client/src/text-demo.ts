@@ -505,6 +505,8 @@ class TextDemoView extends MonochromePathfinderView {
         return 'directInterior';
     }
 
+    protected depthFunction: number = this.gl.GREATER;
+
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 

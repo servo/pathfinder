@@ -274,6 +274,8 @@ class SVGDemoView extends PathfinderDemoView {
         return 'directInterior';
     }
 
+    protected depthFunction: number = this.gl.GREATER;
+
     private appController: SVGDemoController;
 
     camera: OrthographicCamera;

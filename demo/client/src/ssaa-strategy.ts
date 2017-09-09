@@ -75,12 +75,6 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         view.gl.viewport(0, 0, framebufferSize[0], framebufferSize[1]);
         view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
         view.gl.enable(view.gl.SCISSOR_TEST);
-
-        // Clear.
-        view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        view.gl.clearDepth(0.0);
-        view.gl.depthMask(true);
-        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
     }
 
     resolve(view: PathfinderDemoView) {

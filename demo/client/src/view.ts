@@ -247,6 +247,12 @@ export abstract class PathfinderDemoView extends PathfinderView {
         const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
         antialiasingStrategy.prepare(this);
 
+        // Clear.
+        this.clearForResolve();
+
+        // Draw "scenery" (used in the 3D view).
+        this.drawSceneryIfNecessary();
+
         // Perform direct rendering (Loop-Blinn).
         if (antialiasingStrategy.shouldRenderDirect)
             this.renderDirect();
@@ -287,7 +293,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
             const meshes = this.meshes[objectIndex];
 
             // Set up implicit cover state.
-            this.gl.depthFunc(this.gl.GREATER);
+            this.gl.depthFunc(this.depthFunction);
             this.gl.depthMask(true);
             this.gl.enable(this.gl.DEPTH_TEST);
             this.gl.disable(this.gl.BLEND);
@@ -457,6 +463,17 @@ export abstract class PathfinderDemoView extends PathfinderView {
     protected getModelviewTransform(pathIndex: number): glmatrix.mat4 {
         return glmatrix.mat4.create();
     }
+
+    protected drawSceneryIfNecessary(): void {}
+
+    protected clearForResolve(): void {
+        this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        this.gl.clearDepth(0.0);
+        this.gl.depthMask(true);
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+    }
+
+    protected abstract get depthFunction(): number;
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
                                         aaLevel: number,
