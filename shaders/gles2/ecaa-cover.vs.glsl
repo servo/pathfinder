@@ -9,9 +9,11 @@ uniform float uScaleX;
 uniform ivec2 uBVertexPositionDimensions;
 uniform ivec2 uBVertexPathIDDimensions;
 uniform ivec2 uPathTransformDimensions;
+uniform ivec2 uPathHintsDimensions;
 uniform sampler2D uBVertexPosition;
 uniform sampler2D uBVertexPathID;
 uniform sampler2D uPathTransform;
+uniform sampler2D uPathHints;
 
 attribute vec2 aQuadPosition;
 attribute vec4 aUpperPointIndices;
@@ -41,8 +43,14 @@ void main() {
 
     int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
 
+    vec4 hints = fetchFloat4Data(uPathHints, pathID, uPathHintsDimensions);
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
     transform.xz *= uScaleX;
+
+    upperLeftPosition = hintPosition(upperLeftPosition, hints);
+    upperRightPosition = hintPosition(upperRightPosition, hints);
+    lowerLeftPosition = hintPosition(lowerLeftPosition, hints);
+    lowerRightPosition = hintPosition(lowerRightPosition, hints);
 
     upperLeftPosition = transformVertexPositionST(upperLeftPosition, transform);
     upperRightPosition = transformVertexPositionST(upperRightPosition, transform);

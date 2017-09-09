@@ -328,6 +328,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
             this.pathTransformBufferTextures[objectIndex].bind(this.gl,
                                                                directInteriorProgram.uniforms,
                                                                1);
+            if (this.pathHintsBufferTexture != null)
+                this.pathHintsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 2);
             let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                         this.gl.BUFFER_SIZE) / UINT32_SIZE;
             this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -383,6 +385,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
             this.pathTransformBufferTextures[objectIndex].bind(this.gl,
                                                                directCurveProgram.uniforms,
                                                                1);
+            if (this.pathHintsBufferTexture != null)
+                this.pathHintsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 2);
             indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
             this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
@@ -517,6 +521,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
     meshData: PathfinderMeshData[];
 
     pathTransformBufferTextures: PathfinderBufferTexture[];
+    pathHintsBufferTexture: PathfinderBufferTexture | null;
     protected pathColorsBufferTextures: PathfinderBufferTexture[];
 
     private atlasRenderingTimerQuery: WebGLQuery;

@@ -23,7 +23,7 @@ import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
-import {BUILTIN_FONT_URI, PathfinderGlyph, SimpleTextLayout} from "./text";
+import {BUILTIN_FONT_URI, Hint, PathfinderGlyph, SimpleTextLayout} from "./text";
 import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic} from './utils';
 import {MonochromePathfinderView, Timings} from './view';
 import PathfinderBufferTexture from './buffer-texture';
@@ -127,7 +127,12 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
         this._fontSize = INITIAL_FONT_SIZE;
 
+        this.hintingSelect = unwrapNull(document.getElementById('pf-hinting-select')) as
+            HTMLSelectElement;
+        this.hintingSelect.addEventListener('change', () => this.hintingChanged(), false);
+
         this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
+
         this.editTextModal = unwrapNull(document.getElementById('pf-edit-text-modal'));
         this.editTextArea = unwrapNull(document.getElementById('pf-edit-text-area')) as
             HTMLTextAreaElement;
@@ -144,7 +149,11 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         window.jQuery(this.editTextModal).modal();
     }
 
-    private updateText() {
+    private hintingChanged(): void {
+        this.view.then(view => view.updateHinting());
+    }
+
+    private updateText(): void {
         this.text = this.editTextArea.value;
         this.recreateLayout();
 
@@ -162,7 +171,9 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     }
 
     private recreateLayout() {
-        this.layout = new SimpleTextLayout(this.fileData, this.text, glyph => new GlyphInstance(glyph));
+        this.layout = new SimpleTextLayout(this.fileData,
+                                           this.text,
+                                           glyph => new GlyphInstance(glyph));
         this.layout.glyphStorage.partition().then((meshes: PathfinderMeshData) => {
             this.meshes = meshes;
             this.view.then(view => {
@@ -197,6 +208,14 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         return this._fontSize / this.layout.glyphStorage.font.unitsPerEm;
     }
 
+    get useHinting(): boolean {
+        return this.hintingSelect.selectedIndex !== 0;
+    }
+
+    createHint(): Hint {
+        return new Hint(this.layout.glyphStorage.font, this.pixelsPerUnit, this.useHinting);
+    }
+
     protected get builtinFileURI(): string {
         return BUILTIN_FONT_URI;
     }
@@ -206,6 +225,9 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     }
 
     private fpsLabel: HTMLElement;
+
+    private hintingSelect: HTMLSelectElement;
+
     private editTextModal: HTMLElement;
     private editTextArea: HTMLTextAreaElement;
 
@@ -263,7 +285,8 @@ class TextDemoView extends MonochromePathfinderView {
 
         for (let glyphIndex = 0; glyphIndex < textGlyphs.length; glyphIndex++) {
             const textGlyph = textGlyphs[glyphIndex];
-            const rect = textGlyph.pixelRect(this.appController.pixelsPerUnit);
+            const rect = textGlyph.pixelRect(this.appController.createHint(),
+                                             this.appController.pixelsPerUnit);
             glyphPositions.set([
                 rect[0], rect[3],
                 rect[2], rect[3],
@@ -286,6 +309,8 @@ class TextDemoView extends MonochromePathfinderView {
         const textGlyphs = this.appController.layout.glyphStorage.allGlyphs;
         const pixelsPerUnit = this.appController.pixelsPerUnit;
 
+        const hint = this.appController.createHint();
+
         // Only build glyphs in view.
         const translation = this.camera.translation;
         const canvasRect = glmatrix.vec4.fromValues(-translation[0],
@@ -294,13 +319,14 @@ class TextDemoView extends MonochromePathfinderView {
                                                     -translation[1] + this.canvas.height);
 
         let atlasGlyphs =
-            textGlyphs.filter(glyph => rectsIntersect(glyph.pixelRect(pixelsPerUnit), canvasRect))
-                      .map(textGlyph => new AtlasGlyph(textGlyph.opentypeGlyph));
+            textGlyphs.filter(glyph => {
+                        return rectsIntersect(glyph.pixelRect(hint, pixelsPerUnit), canvasRect);
+                      }).map(textGlyph => new AtlasGlyph(textGlyph.opentypeGlyph));
         atlasGlyphs.sort((a, b) => a.index - b.index);
         atlasGlyphs = _.sortedUniqBy(atlasGlyphs, glyph => glyph.index);
         this.appController.atlasGlyphs = atlasGlyphs;
 
-        this.appController.atlas.layoutGlyphs(atlasGlyphs, pixelsPerUnit);
+        this.appController.atlas.layoutGlyphs(atlasGlyphs, hint, pixelsPerUnit);
 
         const uniqueGlyphs = this.appController.layout.glyphStorage.uniqueGlyphs;
         const uniqueGlyphIndices = uniqueGlyphs.map(glyph => glyph.index);
@@ -308,6 +334,7 @@ class TextDemoView extends MonochromePathfinderView {
 
         // TODO(pcwalton): Regenerate the IBOs to include only the glyphs we care about.
         const transforms = new Float32Array((uniqueGlyphs.length + 1) * 4);
+        const pathHints = new Float32Array((uniqueGlyphs.length + 1) * 4);
 
         for (let glyphIndex = 0; glyphIndex < atlasGlyphs.length; glyphIndex++) {
             const glyph = atlasGlyphs[glyphIndex];
@@ -322,11 +349,18 @@ class TextDemoView extends MonochromePathfinderView {
             transforms[pathID * 4 + 1] = pixelsPerUnit;
             transforms[pathID * 4 + 2] = atlasOrigin[0];
             transforms[pathID * 4 + 3] = atlasOrigin[1];
+
+            pathHints[pathID * 4 + 0] = hint.xHeight;
+            pathHints[pathID * 4 + 1] = hint.hintedXHeight;
         }
 
         const pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
         pathTransformBufferTexture.upload(this.gl, transforms);
         this.pathTransformBufferTextures = [pathTransformBufferTexture];
+
+        const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
+        pathHintsBufferTexture.upload(this.gl, pathHints);
+        this.pathHintsBufferTexture = pathHintsBufferTexture;
     }
 
     private createAtlasFramebuffer() {
@@ -346,6 +380,8 @@ class TextDemoView extends MonochromePathfinderView {
         const textGlyphs = this.appController.layout.glyphStorage.allGlyphs;
         const atlasGlyphs = this.appController.atlasGlyphs;
 
+        const hint = this.appController.createHint();
+
         const atlasGlyphIndices = atlasGlyphs.map(atlasGlyph => atlasGlyph.index);
 
         const glyphTexCoords = new Float32Array(textGlyphs.length * 8);
@@ -362,7 +398,7 @@ class TextDemoView extends MonochromePathfinderView {
 
             // Set texture coordinates.
             const atlasGlyph = atlasGlyphs[atlasGlyphIndex];
-            const atlasGlyphRect = atlasGlyph.pixelRect(this.appController.pixelsPerUnit);
+            const atlasGlyphRect = atlasGlyph.pixelRect(hint, this.appController.pixelsPerUnit);
             const atlasGlyphBL = atlasGlyphRect.slice(0, 2) as glmatrix.vec2;
             const atlasGlyphTR = atlasGlyphRect.slice(2, 4) as glmatrix.vec2;
             glmatrix.vec2.div(atlasGlyphBL, atlasGlyphBL, ATLAS_SIZE);
@@ -402,6 +438,11 @@ class TextDemoView extends MonochromePathfinderView {
 
     protected onZoom() {
         this.appController.fontSize = this.camera.scale * INITIAL_FONT_SIZE;
+        this.setDirty();
+        this.rebuildAtlasIfNecessary();
+    }
+
+    updateHinting(): void {
         this.setDirty();
         this.rebuildAtlasIfNecessary();
     }
@@ -531,24 +572,24 @@ class Atlas {
         this._usedSize = glmatrix.vec2.create();
     }
 
-    layoutGlyphs(glyphs: AtlasGlyph[], pixelsPerUnit: number) {
+    layoutGlyphs(glyphs: AtlasGlyph[], hint: Hint, pixelsPerUnit: number) {
         let nextOrigin = glmatrix.vec2.fromValues(1.0, 1.0);
         let shelfBottom = 2.0;
 
         for (const glyph of glyphs) {
             // Place the glyph, and advance the origin.
             glyph.setPixelLowerLeft(nextOrigin, pixelsPerUnit);
-            nextOrigin[0] = glyph.pixelRect(pixelsPerUnit)[2] + 1.0;
+            nextOrigin[0] = glyph.pixelRect(hint, pixelsPerUnit)[2] + 1.0;
 
             // If the glyph overflowed the shelf, make a new one and reposition the glyph.
             if (nextOrigin[0] > ATLAS_SIZE[0]) {
                 nextOrigin = glmatrix.vec2.fromValues(1.0, shelfBottom + 1.0);
                 glyph.setPixelLowerLeft(nextOrigin, pixelsPerUnit);
-                nextOrigin[0] = glyph.pixelRect(pixelsPerUnit)[2] + 1.0;
+                nextOrigin[0] = glyph.pixelRect(hint, pixelsPerUnit)[2] + 1.0;
             }
 
             // Grow the shelf as necessary.
-            shelfBottom = Math.max(shelfBottom, glyph.pixelRect(pixelsPerUnit)[3] + 1.0);
+            shelfBottom = Math.max(shelfBottom, glyph.pixelRect(hint, pixelsPerUnit)[3] + 1.0);
         }
 
         // FIXME(pcwalton): Could be more precise if we don't have a full row.

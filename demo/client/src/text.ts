@@ -301,24 +301,29 @@ export abstract class PathfinderGlyph {
     }
 
     setPixelLowerLeft(pixelLowerLeft: glmatrix.vec2, pixelsPerUnit: number): void {
-        const pixelMetrics = this.pixelMetrics(pixelsPerUnit);
+        const pixelDescent = this.calculatePixelDescent(pixelsPerUnit);
         const pixelOrigin = glmatrix.vec2.fromValues(pixelLowerLeft[0],
-                                                     pixelLowerLeft[1] + pixelMetrics.descent);
+                                                     pixelLowerLeft[1] + pixelDescent);
         this.setPixelOrigin(pixelOrigin, pixelsPerUnit);
     }
 
-    protected pixelMetrics(pixelsPerUnit: number): PixelMetrics {
+    private calculatePixelDescent(pixelsPerUnit: number): number {
+        return Math.ceil(-this.metrics.yMin * pixelsPerUnit);
+    }
+
+    protected pixelMetrics(hint: Hint, pixelsPerUnit: number): PixelMetrics {
         const metrics = this.metrics;
+        const top = hint.hintPosition(glmatrix.vec2.fromValues(0, metrics.yMax))[1];
         return {
             left: Math.floor(metrics.xMin * pixelsPerUnit),
             right: Math.ceil(metrics.xMax * pixelsPerUnit),
-            ascent: Math.ceil(metrics.yMax * pixelsPerUnit),
-            descent: Math.ceil(-metrics.yMin * pixelsPerUnit),
+            ascent: Math.ceil(top * pixelsPerUnit),
+            descent: this.calculatePixelDescent(pixelsPerUnit),
         };
     }
 
-    pixelRect(pixelsPerUnit: number): glmatrix.vec4 {
-        const pixelMetrics = this.pixelMetrics(pixelsPerUnit);
+    pixelRect(hint: Hint, pixelsPerUnit: number): glmatrix.vec4 {
+        const pixelMetrics = this.pixelMetrics(hint, pixelsPerUnit);
         const textGlyphOrigin = glmatrix.vec2.clone(this.origin);
         glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, pixelsPerUnit);
         glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
@@ -336,6 +341,42 @@ export abstract class PathfinderGlyph {
 
     /// In font units, relative to (0, 0).
     origin: glmatrix.vec2;
+}
+
+export class Hint {
+    constructor(font: Font, pixelsPerUnit: number, useHinting: boolean) {
+        this.useHinting = useHinting;
+
+        const os2Table = font.tables.os2;
+        this.xHeight = os2Table.sxHeight != null ? os2Table.sxHeight : 0;
+
+        if (!useHinting) {
+            this.hintedXHeight = this.xHeight;
+        } else {
+            this.hintedXHeight = Math.ceil(Math.ceil(this.xHeight * pixelsPerUnit) /
+                                           pixelsPerUnit);
+        }
+    }
+
+    hintPosition(position: glmatrix.vec2): glmatrix.vec2 {
+        if (!this.useHinting)
+            return position;
+
+        if (position[1] < 0.0)
+            return position;
+
+        if (position[1] >= this.hintedXHeight) {
+            return glmatrix.vec2.fromValues(position[0],
+                                            position[1] - this.xHeight + this.hintedXHeight);
+        }
+
+        return glmatrix.vec2.fromValues(position[0],
+                                        position[1] / this.xHeight * this.hintedXHeight);
+    }
+
+    readonly xHeight: number;
+    readonly hintedXHeight: number;
+    private useHinting: boolean;
 }
 
 function copyIndices(destIndices: number[],

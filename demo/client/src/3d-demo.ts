@@ -18,7 +18,7 @@ import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStorage, PathfinderGlyph} from "./text";
-import {SimpleTextLayout, TextFrame, TextRun} from "./text";
+import {Hint, SimpleTextLayout, TextFrame, TextRun} from "./text";
 import {PathfinderError, assert, panic, unwrapNull} from "./utils";
 import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
@@ -225,6 +225,8 @@ class ThreeDView extends PathfinderDemoView {
             const textFrame = this.appController.glyphStorage.textFrames[textFrameIndex];
             const textGlyphs = textFrame.allGlyphs;
             const pathCount = textGlyphs.length;
+            
+            const hint = new Hint(this.appController.glyphStorage.font, PIXELS_PER_UNIT, false);
 
             const pathColors = new Uint8Array(4 * (pathCount + 1));
             const pathTransforms = new Float32Array(4 * (pathCount + 1));
@@ -235,7 +237,7 @@ class ThreeDView extends PathfinderDemoView {
                 pathColors.set(TEXT_COLOR, startOffset);
 
                 const textGlyph = textGlyphs[pathIndex];
-                const glyphRect = textGlyph.pixelRect(PIXELS_PER_UNIT);
+                const glyphRect = textGlyph.pixelRect(hint, PIXELS_PER_UNIT);
                 pathTransforms.set([1, 1, glyphRect[0], glyphRect[1]], startOffset);
             }
 
