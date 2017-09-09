@@ -107,6 +107,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.pathTransformBufferTextures = [];
         this.pathColorsBufferTextures = [];
 
+        this.wantsScreenshot = false;
+
         this.antialiasingStrategy = new NoAAStrategy(0, false);
         this.antialiasingStrategy.init(this);
     }
@@ -262,8 +264,14 @@ export abstract class PathfinderDemoView extends PathfinderView {
         // Draw the glyphs with the resolved atlas to the default framebuffer.
         this.compositeIfNecessary();
 
-        // Finish timing, and finish.
+        // Finish timing.
         this.finishTiming();
+
+        // Take a screenshot if desired.
+        if (this.wantsScreenshot) {
+            this.wantsScreenshot = false;
+            this.takeScreenshot();
+        }
     }
 
     private setTransformUniform(uniforms: UniformMap, objectIndex: number) {
@@ -424,6 +432,28 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
+    queueScreenshot() {
+        this.wantsScreenshot = true;
+        this.setDirty();
+    }
+
+    private takeScreenshot() {
+        const width = this.canvas.width, height = this.canvas.height;
+        const scratchCanvas = document.createElement('canvas');
+        scratchCanvas.width = width;
+        scratchCanvas.height = height;
+        const scratch2DContext = unwrapNull(scratchCanvas.getContext('2d'));
+        scratch2DContext.drawImage(this.canvas, 0, 0, width, height);
+
+        const scratchLink = document.createElement('a');
+        scratchLink.download = 'pathfinder-screenshot.png';
+        scratchLink.href = scratchCanvas.toDataURL();
+        scratchLink.style.position = 'absolute';
+        document.body.appendChild(scratchLink);
+        scratchLink.click();
+        document.body.removeChild(scratchLink);
+    }
+
     protected getModelviewTransform(pathIndex: number): glmatrix.mat4 {
         return glmatrix.mat4.create();
     }
@@ -475,6 +505,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
     private atlasRenderingTimerQuery: WebGLQuery;
     private compositingTimerQuery: WebGLQuery;
     private timerQueryPollInterval: number | null;
+
+    private wantsScreenshot: boolean;
 }
 
 export abstract class MonochromePathfinderView extends PathfinderDemoView {

@@ -40,6 +40,8 @@ export abstract class AppController {
 
     protected canvas: HTMLCanvasElement;
 
+    protected screenshotButton: HTMLButtonElement | null;
+
     protected fileData: ArrayBuffer;
 
     protected abstract fileLoaded(): void;
@@ -71,6 +73,15 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
         document.body.addEventListener('click', () => {
             this.settingsCard.classList.add('pf-invisible');
         }, false);
+        this.settingsCard.addEventListener('click', event => event.stopPropagation(), false);
+
+        const screenshotButton = document.getElementById('pf-screenshot-button') as
+            HTMLButtonElement | null;
+        if (screenshotButton != null) {
+            screenshotButton.addEventListener('click', () => {
+                this.view.then(view => view.queueScreenshot());
+            }, false);
+        }
 
         this.filePickerElement = document.getElementById('pf-file-select') as
             (HTMLInputElement | null);
