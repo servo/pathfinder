@@ -11,26 +11,32 @@
         <canvas id="pf-canvas" width="400" height="300"></canvas>
         <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end pf-pointer-events-none">
             <div class="rounded py-1 px-3 ml-3" id="pf-fps-label">0 ms</div>
-            <div id="pf-settings-container">
-                <div id="pf-settings" class="card mb-4 pf-invisible">
-                    <div class="card-body">
-                        <button id="pf-settings-close-button" type="button" class="close"
-                         aria-label="Close">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                        <form>
-                            <div class="form-group">
-                                <label for="pf-aa-level-select">Antialiasing</label>
-                                <select id="pf-aa-level-select" class="form-control custom-select">
-                                    <option value="none" selected>None</option>
-                                    <option value="ssaa-2">2&times;SSAA</option>
-                                    <option value="ssaa-4">4&times;SSAA</option>
-                                    <option value="ecaa">ECAA (BROKEN)</option>
-                                </select>
-                            </div>
-                        </form>
+            <div id="pf-toolbar">
+                <button id="pf-screenshot-button" type="button"
+                 class="btn btn-outline-secondary pf-toolbar-button">
+                    {{octicon "device-camera"}}
+                </button>
+                <div id="pf-settings-container">
+                    <div id="pf-settings" class="card mb-4 pf-invisible">
+                        <div class="card-body">
+                            <button id="pf-settings-close-button" type="button" class="close"
+                            aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                            <form>
+                                <div class="form-group">
+                                    <label for="pf-aa-level-select">Antialiasing</label>
+                                    <select id="pf-aa-level-select" class="form-control custom-select">
+                                        <option value="none" selected>None</option>
+                                        <option value="ssaa-2">2&times;SSAA</option>
+                                        <option value="ssaa-4">4&times;SSAA</option>
+                                        <option value="ecaa">ECAA (BROKEN)</option>
+                                    </select>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="pf-arrow-box"></div>
                     </div>
-                    <div class="pf-arrow-box"></div>
                 </div>
                 <button id="pf-settings-button" type="button" class="btn btn-outline-secondary"
                  aria-expanded="false" aria-controls="#pf-settings">

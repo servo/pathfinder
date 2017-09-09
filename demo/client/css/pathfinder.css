@@ -4,9 +4,14 @@
     margin: 0;
 }
 #pf-settings-container {
-    margin-right: 1rem;
+    position: absolute;
+    right: 1rem;
+    bottom: 2rem;
     pointer-events: none;
     text-align: right;
+}
+#pf-toolbar {
+    margin-right: 1rem;
 }
 #pf-settings {
     text-align: initial;
@@ -19,10 +24,10 @@
 #pf-settings:not(.pf-invisible) {
     pointer-events: auto;
 }
-#pf-settings-button {
+.pf-toolbar-button {
     pointer-events: auto;
 }
-#pf-settings-button:not(:hover) {
+.pf-toolbar-button:not(:hover) {
     background: rgba(255, 255, 255, 0.75);
 }
 #pf-file-select {

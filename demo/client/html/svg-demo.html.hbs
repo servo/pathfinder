@@ -12,39 +12,44 @@
         <svg id="pf-svg" xmlns="http://www.w3.org/2000/svg" width="400" height="300"></svg>
         <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end pf-pointer-events-none">
             <div class="rounded py-1 px-3 ml-3" id="pf-fps-label">0 ms</div>
-            <div id="pf-settings-container">
-                <div id="pf-settings" class="card mb-4 pf-invisible">
-                    <div class="card-body">
-                        <button id="pf-settings-close-button" type="button" class="close"
-                         aria-label="Close">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                        <form>
-                            <div class="form-group">
-                                <label for="pf-select-file">SVG document</label>
-                                <select id="pf-select-file" class="form-control custom-select">
-                                    <option value="tiger" selected>Ghostscript Tiger</option>
-                                    <option value="load-custom">Load File&hellip;</option>
-                                </select>
-                                <input id="pf-file-select" type="file">
-                            </div>
-                            <div class="form-group">
-                                <label for="pf-aa-level-select">Antialiasing</label>
-                                <select id="pf-aa-level-select" class="form-control custom-select">
-                                    <option value="none" selected>None</option>
-                                    <option value="ssaa-2">2&times;SSAA</option>
-                                    <option value="ssaa-4">4&times;SSAA</option>
-                                    <option value="ecaa">ECAA (BROKEN)</option>
-                                </select>
-                            </div>
-                        </form>
-                    </div>
-                    <div class="pf-arrow-box"></div>
-                </div>
-                <button id="pf-settings-button" type="button" class="btn btn-outline-secondary"
-                 aria-expanded="false" aria-controls="#pf-settings">
-                    {{octicon "gear"}}
+            <div id="pf-toolbar">
+                <button id="pf-screenshot-button" type="button"
+                 class="btn btn-outline-secondary pf-toolbar-button">
+                    {{octicon "device-camera"}}
                 </button>
+                <div id="pf-settings-container">
+                    <div id="pf-settings" class="card mb-4 pf-invisible">
+                        <div class="card-body">
+                            <button id="pf-settings-close-button" type="button" class="close"
+                            aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                            <form>
+                                <div class="form-group">
+                                    <label for="pf-select-file">SVG document</label>
+                                    <select id="pf-select-file" class="form-control custom-select">
+                                        <option value="tiger" selected>Ghostscript Tiger</option>
+                                        <option value="load-custom">Load File&hellip;</option>
+                                    </select>
+                                    <input id="pf-file-select" type="file">
+                                </div>
+                                <div class="form-group">
+                                    <label for="pf-aa-level-select">Antialiasing</label>
+                                    <select id="pf-aa-level-select" class="form-control custom-select">
+                                        <option value="none" selected>None</option>
+                                        <option value="ssaa-2">2&times;SSAA</option>
+                                        <option value="ssaa-4">4&times;SSAA</option>
+                                        <option value="ecaa">ECAA (BROKEN)</option>
+                                    </select>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="pf-arrow-box"></div>
+                    </div>
+                </div>
+                <button id="pf-settings-button" type="button"
+                class="btn btn-outline-secondary pf-toolbar-button" aria-expanded="false"
+                aria-controls="#pf-settings">{{octicon "gear"}}</button>
             </div>
         </div>
     </body>

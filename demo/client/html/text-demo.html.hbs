@@ -11,46 +11,53 @@
         <canvas id="pf-canvas" width="400" height="300"></canvas>
         <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end pf-pointer-events-none">
             <div class="rounded py-1 px-3 ml-3" id="pf-fps-label">0 ms</div>
-            <div id="pf-settings-container">
-                <div id="pf-settings" class="card mb-4 pf-invisible">
-                    <div class="card-body">
-                        <button id="pf-settings-close-button" type="button" class="close"
-                         aria-label="Close">
-                            <span aria-hidden="true">&times;</span>
-                        </button>
-                        <form>
-                            <div class="form-group">
-                                <label for="pf-select-file">Font</label>
-                                <select id="pf-select-file" class="form-control custom-select">
-                                    <option value="eb-garamond" selected>EB Garamond</option>
-                                    <option value="open-sans">Open Sans</option>
-                                    <option value="nimbus-sans">Nimbus Sans</option>
-                                    <option value="load-custom">Load File&hellip;</option>
-                                </select>
-                                <input id="pf-file-select" type="file">
-                            </div>
-                            <div class="form-group">
-                                <label for="pf-aa-level-select">Antialiasing</label>
-                                <select id="pf-aa-level-select" class="form-control custom-select">
-                                    <option value="none">None</option>
-                                    <option value="ssaa-2">2&times;SSAA</option>
-                                    <option value="ssaa-4">4&times;SSAA</option>
-                                    <option value="ecaa" selected>ECAA</option>
-                                </select>
-                            </div>
-                            <div class="form-check">
-                                <label class="form-check-label">
-                                    <input class="form-check-input" value="" type="checkbox"
-                                     id="pf-subpixel-aa">
-                                    Subpixel AA
-                                </label>
-                            </div>
-                        </form>
+            <div id="pf-toolbar">
+                <button id="pf-screenshot-button" type="button"
+                 class="btn btn-outline-secondary pf-toolbar-button">
+                    {{octicon "device-camera"}}
+                </button>
+                <div id="pf-settings-container">
+                    <div id="pf-settings" class="card mb-4 pf-invisible">
+                        <div class="card-body">
+                            <button id="pf-settings-close-button" type="button" class="close"
+                            aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                            <form>
+                                <div class="form-group">
+                                    <label for="pf-select-file">Font</label>
+                                    <select id="pf-select-file" class="form-control custom-select">
+                                        <option value="eb-garamond" selected>EB Garamond</option>
+                                        <option value="open-sans">Open Sans</option>
+                                        <option value="nimbus-sans">Nimbus Sans</option>
+                                        <option value="load-custom">Load File&hellip;</option>
+                                    </select>
+                                    <input id="pf-file-select" type="file">
+                                </div>
+                                <div class="form-group">
+                                    <label for="pf-aa-level-select">Antialiasing</label>
+                                    <select id="pf-aa-level-select" class="form-control custom-select">
+                                        <option value="none">None</option>
+                                        <option value="ssaa-2">2&times;SSAA</option>
+                                        <option value="ssaa-4">4&times;SSAA</option>
+                                        <option value="ecaa" selected>ECAA</option>
+                                    </select>
+                                </div>
+                                <div class="form-check">
+                                    <label class="form-check-label">
+                                        <input class="form-check-input" value="" type="checkbox"
+                                        id="pf-subpixel-aa">
+                                        Subpixel AA
+                                    </label>
+                                </div>
+                            </form>
+                        </div>
+                        <div class="pf-arrow-box"></div>
                     </div>
-                    <div class="pf-arrow-box"></div>
                 </div>
-                <button id="pf-settings-button" type="button" class="btn btn-outline-secondary"
-                 aria-expanded="false" aria-controls="#pf-settings">{{octicon "gear"}}</button>
+                <button id="pf-settings-button" type="button"
+                 class="btn btn-outline-secondary pf-toolbar-button" aria-expanded="false"
+                 aria-controls="#pf-settings">{{octicon "gear"}}</button>
             </div>
         </div>
         <div class="modal fade" id="pf-edit-text-modal" tabindex="-1" role="dialog"
