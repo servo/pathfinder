@@ -88,6 +88,14 @@ export abstract class PathfinderView {
         this.dirty = false;
     }
 
+    zoomIn(): void {
+        this.camera.zoomIn();
+    }
+
+    zoomOut(): void {
+        this.camera.zoomOut();
+    }
+
     protected canvas: HTMLCanvasElement;
 
     protected camera: Camera;

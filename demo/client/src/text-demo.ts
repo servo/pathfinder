@@ -293,8 +293,13 @@ class TextDemoView extends MonochromePathfinderView {
                 rect[0], rect[1],
                 rect[2], rect[1],
             ], glyphIndex * 8);
-            glyphIndices.set(Array.from(QUAD_ELEMENTS).map(index => index + 4 * glyphIndex),
-                             glyphIndex * 6);
+
+            for (let glyphIndexIndex = 0;
+                 glyphIndexIndex < QUAD_ELEMENTS.length;
+                 glyphIndexIndex++) {
+                glyphIndices[glyphIndexIndex + glyphIndex * 6] =
+                    QUAD_ELEMENTS[glyphIndexIndex] + 4 * glyphIndex;
+            }
         }
 
         this.glyphPositionsBuffer = unwrapNull(this.gl.createBuffer());

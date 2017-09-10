@@ -13,6 +13,16 @@
         <div class="fixed-bottom mb-3 d-flex justify-content-between align-items-end pf-pointer-events-none">
             <div class="rounded py-1 px-3 ml-3" id="pf-fps-label">0 ms</div>
             <div id="pf-toolbar">
+                <div class="btn-group" role="group" aria-label="Zoom">
+                    <button id="pf-zoom-out-button" type="button"
+                     class="btn btn-outline-secondary pf-toolbar-button">
+                        {{octicon "dash"}}
+                    </button>
+                    <button id="pf-zoom-in-button" type="button"
+                     class="btn btn-outline-secondary pf-toolbar-button">
+                        {{octicon "plus"}}
+                    </button>
+                </div>
                 <button id="pf-screenshot-button" type="button"
                  class="btn btn-outline-secondary pf-toolbar-button">
                     {{octicon "device-camera"}}

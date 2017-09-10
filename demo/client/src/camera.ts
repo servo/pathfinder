@@ -13,6 +13,9 @@ import {PathfinderView} from "./view";
 
 const ORTHOGRAPHIC_ZOOM_SPEED: number = 1.0 / 100.0;
 
+const ZOOM_IN_FACTOR: number = 1.2;
+const ZOOM_OUT_FACTOR: number = 1.0 / ZOOM_IN_FACTOR;
+
 const PERSPECTIVE_MOVEMENT_SPEED: number = 10.0;
 const PERSPECTIVE_ROTATION_SPEED: number = 1.0 / 300.0;
 
@@ -24,6 +27,9 @@ export abstract class Camera {
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
     }
+
+    abstract zoomIn(): void;
+    abstract zoomOut(): void;
 
     protected canvas: HTMLCanvasElement;
 }
@@ -52,17 +58,9 @@ export class OrthographicCamera extends Camera {
             mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
             glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
 
-            const absoluteTranslation = glmatrix.vec2.create();
-            glmatrix.vec2.sub(absoluteTranslation, this.translation, mouseLocation);
-            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
+            const scale = 1.0 - event.deltaY * window.devicePixelRatio * ORTHOGRAPHIC_ZOOM_SPEED;
 
-            this.scale *= 1.0 - event.deltaY * window.devicePixelRatio * ORTHOGRAPHIC_ZOOM_SPEED;
-
-            glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, this.scale);
-            glmatrix.vec2.add(this.translation, absoluteTranslation, mouseLocation);
-
-            if (this.onZoom != null)
-                this.onZoom();
+            this.zoom(scale, mouseLocation);
         } else {
             // Pan event.
             const delta = glmatrix.vec2.fromValues(-event.deltaX, event.deltaY);
@@ -72,6 +70,32 @@ export class OrthographicCamera extends Camera {
             if (this.onPan != null)
                 this.onPan();
         }
+    }
+
+    zoomIn(): void {
+        this.zoom(ZOOM_IN_FACTOR, this.centerPoint);
+    }
+
+    zoomOut(): void {
+        this.zoom(ZOOM_OUT_FACTOR, this.centerPoint);
+    }
+
+    private zoom(scale: number, point: glmatrix.vec2): void {
+        const absoluteTranslation = glmatrix.vec2.create();
+        glmatrix.vec2.sub(absoluteTranslation, this.translation, point);
+        glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
+
+        this.scale *= scale;
+
+        glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, this.scale);
+        glmatrix.vec2.add(this.translation, absoluteTranslation, point);
+
+        if (this.onZoom != null)
+            this.onZoom();
+    }
+
+    private get centerPoint(): glmatrix.vec2 {
+        return glmatrix.vec2.fromValues(this.canvas.width * 0.5, this.canvas.height * 0.5);
     }
 
     onPan: (() => void) | null;
@@ -147,6 +171,14 @@ export class PerspectiveCamera extends Camera {
         glmatrix.mat4.fromXRotation(matrix, this.rotation[1]);
         glmatrix.mat4.rotateY(matrix, matrix, this.rotation[0]);
         return matrix;
+    }
+
+    zoomIn(): void {
+        // TODO(pcwalton)
+    }
+
+    zoomOut(): void {
+        // TODO(pcwalton)
     }
 
     onChange: (() => void) | null;

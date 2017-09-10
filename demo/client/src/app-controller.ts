@@ -83,6 +83,22 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
             }, false);
         }
 
+        const zoomInButton = document.getElementById('pf-zoom-in-button') as HTMLButtonElement |
+            null;
+        if (zoomInButton != null) {
+            zoomInButton.addEventListener('click', () => {
+                this.view.then(view => view.zoomIn());
+            }, false);
+        }
+
+        const zoomOutButton = document.getElementById('pf-zoom-out-button') as HTMLButtonElement |
+            null;
+        if (zoomOutButton != null) {
+            zoomOutButton.addEventListener('click', () => {
+                this.view.then(view => view.zoomOut());
+            }, false);
+        }
+
         this.filePickerElement = document.getElementById('pf-file-select') as
             (HTMLInputElement | null);
         if (this.filePickerElement != null) {
