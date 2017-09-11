@@ -28,9 +28,8 @@
                                     <label for="pf-aa-level-select">Antialiasing</label>
                                     <select id="pf-aa-level-select" class="form-control custom-select">
                                         <option value="none" selected>None</option>
-                                        <option value="ssaa-2">2&times;SSAA</option>
-                                        <option value="ssaa-4">4&times;SSAA</option>
-                                        <option value="ecaa">ECAA (BROKEN)</option>
+                                        <option value="ssaa-2">2&times;SSAA (BROKEN)</option>
+                                        <option value="ssaa-4">4&times;SSAA (BROKEN)</option>
                                     </select>
                                 </div>
                             </form>
@@ -38,7 +37,8 @@
                         <div class="pf-arrow-box"></div>
                     </div>
                 </div>
-                <button id="pf-settings-button" type="button" class="btn btn-outline-secondary"
+                <button id="pf-settings-button" type="button"
+                 class="btn btn-outline-secondary pf-toolbar-button"
                  aria-expanded="false" aria-controls="#pf-settings">
                     {{octicon "gear"}}
                 </button>
