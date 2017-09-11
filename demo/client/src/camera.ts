@@ -9,6 +9,8 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as _ from 'lodash';
+
 import {PathfinderView} from "./view";
 
 const ORTHOGRAPHIC_ZOOM_SPEED: number = 1.0 / 100.0;
@@ -19,9 +21,20 @@ const ZOOM_OUT_FACTOR: number = 1.0 / ZOOM_IN_FACTOR;
 const PERSPECTIVE_MOVEMENT_SPEED: number = 10.0;
 const PERSPECTIVE_ROTATION_SPEED: number = 1.0 / 300.0;
 
+const PERSPECTIVE_MOVEMENT_VECTORS: PerspectiveMovementVectors = _.fromPairs([
+    ['W'.charCodeAt(0), glmatrix.vec3.fromValues(0, 0,  PERSPECTIVE_MOVEMENT_SPEED)],
+    ['A'.charCodeAt(0), glmatrix.vec3.fromValues(PERSPECTIVE_MOVEMENT_SPEED, 0, 0)],
+    ['S'.charCodeAt(0), glmatrix.vec3.fromValues(0, 0, -PERSPECTIVE_MOVEMENT_SPEED)],
+    ['D'.charCodeAt(0), glmatrix.vec3.fromValues(-PERSPECTIVE_MOVEMENT_SPEED, 0, 0)],
+]);
+
 const MOVEMENT_INTERVAL_DELAY: number = 10;
 
 const INITIAL_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, 0.0, -1000.0);
+
+interface PerspectiveMovementVectors {
+    [keyCode: number]: glmatrix.vec3;
+}
 
 export abstract class Camera {
     constructor(canvas: HTMLCanvasElement) {
@@ -137,6 +150,9 @@ export class PerspectiveCamera extends Camera {
         this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
         this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
 
+        window.addEventListener('keydown', event => this.onKeyDown(event), false);
+        window.addEventListener('keyup', event => this.onKeyUp(event), false);
+
         this.onChange = null;
     }
 
@@ -150,11 +166,42 @@ export class PerspectiveCamera extends Camera {
         if (event.button !== 1)
             this.movementDelta[0] = -this.movementDelta[0];
 
+        this.startMoving();
+    }
+
+    private onMouseUp(event: MouseEvent): void {
+        this.stopMoving();
+    }
+
+    private onMouseMove(event: MouseEvent): void {
+        if (document.pointerLockElement !== this.canvas)
+            return;
+
+        this.rotation[0] += event.movementX * PERSPECTIVE_ROTATION_SPEED;
+        this.rotation[1] += event.movementY * PERSPECTIVE_ROTATION_SPEED;
+
+        if (this.onChange != null)
+            this.onChange();
+    }
+
+    private onKeyDown(event: KeyboardEvent): void {
+        if (PERSPECTIVE_MOVEMENT_VECTORS.hasOwnProperty(event.keyCode)) {
+            this.movementDelta = glmatrix.vec3.clone(PERSPECTIVE_MOVEMENT_VECTORS[event.keyCode]);
+            this.startMoving();
+        }
+    }
+
+    private onKeyUp(event: KeyboardEvent): void {
+        if (PERSPECTIVE_MOVEMENT_VECTORS.hasOwnProperty(event.keyCode))
+            this.stopMoving();
+    }
+
+    private startMoving(): void {
         if (this.movementInterval == null)
             this.movementInterval = window.setInterval(() => this.move(), MOVEMENT_INTERVAL_DELAY);
     }
 
-    private onMouseUp(event: MouseEvent): void {
+    private stopMoving(): void {
         if (this.movementInterval != null) {
             window.clearInterval(this.movementInterval);
             this.movementInterval = null;
@@ -169,17 +216,6 @@ export class PerspectiveCamera extends Camera {
         const delta = glmatrix.vec3.clone(this.movementDelta);
         glmatrix.vec3.transformMat4(delta, delta, invRotationMatrix);
         glmatrix.vec3.add(this.translation, this.translation, delta);
-
-        if (this.onChange != null)
-            this.onChange();
-    }
-
-    private onMouseMove(event: MouseEvent): void {
-        if (document.pointerLockElement !== this.canvas)
-            return;
-
-        this.rotation[0] += event.movementX * PERSPECTIVE_ROTATION_SPEED;
-        this.rotation[1] += event.movementY * PERSPECTIVE_ROTATION_SPEED;
 
         if (this.onChange != null)
             this.onChange();
