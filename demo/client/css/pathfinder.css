@@ -57,6 +57,12 @@ button > svg path {
     position: absolute;
     touch-action: none;
 }
+#pf-canvas.pf-draggable {
+    cursor: grab;
+}
+#pf-canvas.pf-draggable.pf-grabbing {
+    cursor: grabbing;
+}
 #pf-fps-label {
     color: white;
     background: rgba(0, 0, 0, 0.75);

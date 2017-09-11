@@ -42,34 +42,53 @@ export class OrthographicCamera extends Camera {
         this.scale = 1.0;
 
         this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
+        this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
+        this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
+        this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
 
         this.onPan = null;
         this.onZoom = null;
     }
 
-    onWheel(event: MouseWheelEvent) {
+    onWheel(event: MouseWheelEvent): void {
         event.preventDefault();
 
-        if (event.ctrlKey) {
-            // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
-            const mouseLocation = glmatrix.vec2.fromValues(event.clientX, event.clientY);
-            const canvasLocation = this.canvas.getBoundingClientRect();
-            mouseLocation[0] -= canvasLocation.left;
-            mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
-            glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
-
-            const scale = 1.0 - event.deltaY * window.devicePixelRatio * ORTHOGRAPHIC_ZOOM_SPEED;
-
-            this.zoom(scale, mouseLocation);
-        } else {
-            // Pan event.
-            const delta = glmatrix.vec2.fromValues(-event.deltaX, event.deltaY);
-            glmatrix.vec2.scale(delta, delta, window.devicePixelRatio);
-            glmatrix.vec2.add(this.translation, this.translation, delta);
-
-            if (this.onPan != null)
-                this.onPan();
+        if (!event.ctrlKey) {
+            this.pan(glmatrix.vec2.fromValues(-event.deltaX, event.deltaY));
+            return;
         }
+
+        // Zoom event: see https://developer.mozilla.org/en-US/docs/Web/Events/wheel
+        const mouseLocation = glmatrix.vec2.fromValues(event.clientX, event.clientY);
+        const canvasLocation = this.canvas.getBoundingClientRect();
+        mouseLocation[0] -= canvasLocation.left;
+        mouseLocation[1] = canvasLocation.bottom - mouseLocation[1];
+        glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
+
+        const scale = 1.0 - event.deltaY * window.devicePixelRatio * ORTHOGRAPHIC_ZOOM_SPEED;
+        this.zoom(scale, mouseLocation);
+    }
+
+    private onMouseDown(event: MouseEvent): void {
+        this.canvas.classList.add('pf-grabbing');
+    }
+
+    private onMouseUp(event: MouseEvent): void {
+        this.canvas.classList.remove('pf-grabbing');
+    }
+
+    private onMouseMove(event: MouseEvent): void {
+        if ((event.buttons & 1) !== 0)
+            this.pan(glmatrix.vec2.fromValues(event.movementX, -event.movementY));
+    }
+
+    private pan(delta: glmatrix.vec2): void {
+        // Pan event.
+        glmatrix.vec2.scale(delta, delta, window.devicePixelRatio);
+        glmatrix.vec2.add(this.translation, this.translation, delta);
+
+        if (this.onPan != null)
+            this.onPan();
     }
 
     zoomIn(): void {
