@@ -1,3 +1,7 @@
+nav {
+    -moz-user-select: none;
+    user-select: none;
+}
 #pf-load-font-button-label,
 #pf-load-svg-button-label {
     left: 1em;
