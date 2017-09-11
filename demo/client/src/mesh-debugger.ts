@@ -54,13 +54,8 @@ class MeshDebuggerAppController extends AppController {
         })
     }
 
-    protected get defaultFile(): string {
-        return FONT;
-    }
-
-    protected get builtinFileURI(): string {
-        return BUILTIN_FONT_URI;
-    }
+    protected readonly defaultFile: string = FONT;
+    protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
 
     glyphStorage: GlyphStorage<MeshDebuggerGlyph>;
     meshes: PathfinderMeshData;
