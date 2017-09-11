@@ -10,15 +10,15 @@
   "license": "MIT OR Apache-2.0",
   "dependencies": {
     "@types/base64-js": "^1.2.5",
-    "@types/gl-matrix": "^2.2.34",
-    "@types/lodash": "^4.14.73",
-    "@types/node": "^8.0.19",
+    "@types/gl-matrix": "^2.3.0",
+    "@types/lodash": "^4.14.74",
+    "@types/node": "^8.0.28",
     "@types/opentype.js": "0.0.0",
     "base64-js": "^1.2.1",
     "bootstrap": "^4.0.0-beta",
     "gl-matrix": "^2.4.0",
     "handlebars": "^4.0.10",
-    "handlebars-loader": "^1.5.0",
+    "handlebars-loader": "^1.6.0",
     "handlebars-webpack-plugin": "^1.2.0",
     "html-loader": "^0.5.1",
     "jquery": "^3.2.1",
@@ -28,8 +28,8 @@
     "parse-color": "^1.0.0",
     "path-data-polyfill.js": "^1.0.2",
     "popper.js": "^1.12.5",
-    "ts-loader": "^2.3.2",
-    "typescript": "^2.4.2",
-    "webpack": "^3.4.1"
+    "ts-loader": "^2.3.7",
+    "typescript": "^2.5.2",
+    "webpack": "^3.5.6"
   }
 }
