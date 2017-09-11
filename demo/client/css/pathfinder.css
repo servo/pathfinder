@@ -27,7 +27,7 @@
 .pf-toolbar-button {
     pointer-events: auto;
 }
-.pf-toolbar-button:not(:hover) {
+.pf-toolbar-button.btn-outline-secondary:not(:hover) {
     background: rgba(255, 255, 255, 0.75);
 }
 #pf-file-select {
