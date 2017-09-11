@@ -104,7 +104,8 @@ button > svg path {
     position: absolute;
     top: 0;
     border: 0;
-    right: 0;
+    right: -1rem;
+    max-height: 100%;
     z-index: 1;
 }
 .github-corner:hover .octo-arm {
