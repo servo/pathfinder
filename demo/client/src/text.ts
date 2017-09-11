@@ -63,13 +63,19 @@ export class TextRun<Glyph extends PathfinderGlyph> {
         }
     }
 
+    get measure(): number {
+        const lastGlyph = _.last(this.glyphs);
+        return lastGlyph == null ? 0.0 : lastGlyph.origin[0] + lastGlyph.advanceWidth;
+    }
+
     readonly glyphs: Glyph[];
     readonly origin: number[];
 }
 
 export class TextFrame<Glyph extends PathfinderGlyph> {
-    constructor(runs: TextRun<Glyph>[]) {
+    constructor(runs: TextRun<Glyph>[], font: Font) {
         this.runs = runs;
+        this.font = font;
     }
 
     expandMeshes(uniqueGlyphs: Glyph[], meshes: PathfinderMeshData): ExpandedMeshData {
@@ -161,6 +167,21 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
         }
     }
 
+    get bounds(): glmatrix.vec4 {
+        if (this.runs.length === 0)
+            return glmatrix.vec4.create();
+
+        const upperLeft = glmatrix.vec2.clone(this.runs[0].origin);
+        const lowerRight = glmatrix.vec2.clone(_.last(this.runs)!.origin);
+
+        const lineHeight = this.font.lineHeight();
+        upperLeft[1] -= lineHeight;
+        lowerRight[1] += lineHeight;
+
+        lowerRight[0] = _.defaultTo<number>(_.max(this.runs.map(run => run.measure)), 0.0);
+
+        return glmatrix.vec4.fromValues(upperLeft[0], upperLeft[1], lowerRight[0], lowerRight[1]);
+    }
 
     get allGlyphs(): Glyph[] {
         return _.flatMap(this.runs, run => run.glyphs);
@@ -168,6 +189,9 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
 
     readonly runs: TextRun<Glyph>[];
     readonly origin: glmatrix.vec3;
+
+    private readonly font: Font;
+
 }
 
 export class GlyphStorage<Glyph extends PathfinderGlyph> {
@@ -246,13 +270,11 @@ export class SimpleTextLayout<Glyph extends PathfinderGlyph> {
         const font = opentype.parse(fontData);
         assert(font.isSupported(), "The font type is unsupported!");
 
-        const os2Table = font.tables.os2;
-        const lineHeight = os2Table.sTypoAscender - os2Table.sTypoDescender +
-            os2Table.sTypoLineGap;
+        const lineHeight = font.lineHeight();
         const textRuns: TextRun<Glyph>[] = text.split("\n").map((line, lineNumber) => {
             return new TextRun<Glyph>(line, [0.0, -lineHeight * lineNumber], font, createGlyph);
         });
-        this.textFrame = new TextFrame(textRuns);
+        this.textFrame = new TextFrame(textRuns, font);
 
         this.glyphStorage = new GlyphStorage(fontData, [this.textFrame], createGlyph, font);
     }

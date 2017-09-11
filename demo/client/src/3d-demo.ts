@@ -156,7 +156,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
                 }
             }
 
-            textFrames.push(new TextFrame(textRuns));
+            textFrames.push(new TextFrame(textRuns, font));
         }
 
         this.glyphStorage = new GlyphStorage(this.fileData, textFrames, createGlyph, font);

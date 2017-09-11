@@ -15,8 +15,8 @@ import {PathfinderView} from "./view";
 
 const ORTHOGRAPHIC_ZOOM_SPEED: number = 1.0 / 100.0;
 
-const ZOOM_IN_FACTOR: number = 1.2;
-const ZOOM_OUT_FACTOR: number = 1.0 / ZOOM_IN_FACTOR;
+const ORTHOGRAPHIC_ZOOM_IN_FACTOR: number = 1.2;
+const ORTHOGRAPHIC_ZOOM_OUT_FACTOR: number = 1.0 / ORTHOGRAPHIC_ZOOM_IN_FACTOR;
 
 const PERSPECTIVE_MOVEMENT_SPEED: number = 10.0;
 const PERSPECTIVE_ROTATION_SPEED: number = 1.0 / 300.0;
@@ -28,9 +28,9 @@ const PERSPECTIVE_MOVEMENT_VECTORS: PerspectiveMovementVectors = _.fromPairs([
     ['D'.charCodeAt(0), glmatrix.vec3.fromValues(-PERSPECTIVE_MOVEMENT_SPEED, 0, 0)],
 ]);
 
-const MOVEMENT_INTERVAL_DELAY: number = 10;
+const PERSPECTIVE_MOVEMENT_INTERVAL_DELAY: number = 10;
 
-const INITIAL_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, 0.0, -1000.0);
+const PERSPECTIVE_INITIAL_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, 0.0, -1000.0);
 
 interface PerspectiveMovementVectors {
     [keyCode: number]: glmatrix.vec3;
@@ -53,6 +53,8 @@ export class OrthographicCamera extends Camera {
 
         this.translation = glmatrix.vec2.create();
         this.scale = 1.0;
+
+        this._bounds = glmatrix.vec4.create();
 
         this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
         this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
@@ -104,12 +106,29 @@ export class OrthographicCamera extends Camera {
             this.onPan();
     }
 
+    private zoomToFit(): void {
+        const upperLeft = glmatrix.vec2.fromValues(this._bounds[0], this._bounds[1]);
+        const lowerRight = glmatrix.vec2.fromValues(this._bounds[2], this._bounds[3]);
+
+        // Center.
+        this.translation = glmatrix.vec2.create();
+        glmatrix.vec2.lerp(this.translation, upperLeft, lowerRight, 0.5);
+        glmatrix.vec2.scale(this.translation, this.translation, -this.scale);
+        this.translation[0] += this.canvas.width * 0.5;
+        this.translation[1] += this.canvas.height * 0.5;
+
+        // TODO(pcwalton): Scale appropriately.
+
+        if (this.onPan != null)
+            this.onPan();
+    }
+
     zoomIn(): void {
-        this.zoom(ZOOM_IN_FACTOR, this.centerPoint);
+        this.zoom(ORTHOGRAPHIC_ZOOM_IN_FACTOR, this.centerPoint);
     }
 
     zoomOut(): void {
-        this.zoom(ZOOM_OUT_FACTOR, this.centerPoint);
+        this.zoom(ORTHOGRAPHIC_ZOOM_OUT_FACTOR, this.centerPoint);
     }
 
     private zoom(scale: number, point: glmatrix.vec2): void {
@@ -130,8 +149,19 @@ export class OrthographicCamera extends Camera {
         return glmatrix.vec2.fromValues(this.canvas.width * 0.5, this.canvas.height * 0.5);
     }
 
+    get bounds(): glmatrix.vec4 {
+        return this._bounds;
+    }
+
+    set bounds(newBounds: glmatrix.vec4) {
+        this._bounds = glmatrix.vec4.clone(newBounds);
+        this.zoomToFit();
+    }
+
     onPan: (() => void) | null;
     onZoom: (() => void) | null;
+
+    private _bounds: glmatrix.vec4;
 
     translation: glmatrix.vec2;
     scale: number;
@@ -141,7 +171,7 @@ export class PerspectiveCamera extends Camera {
     constructor(canvas: HTMLCanvasElement) {
         super(canvas);
 
-        this.translation = glmatrix.vec3.clone(INITIAL_TRANSLATION);
+        this.translation = glmatrix.vec3.clone(PERSPECTIVE_INITIAL_TRANSLATION);
         this.rotation = glmatrix.vec2.create();
         this.movementDelta = glmatrix.vec3.create();
         this.movementInterval = null;
@@ -198,7 +228,7 @@ export class PerspectiveCamera extends Camera {
 
     private startMoving(): void {
         if (this.movementInterval == null)
-            this.movementInterval = window.setInterval(() => this.move(), MOVEMENT_INTERVAL_DELAY);
+            this.movementInterval = window.setInterval(() => this.move(), PERSPECTIVE_MOVEMENT_INTERVAL_DELAY);
     }
 
     private stopMoving(): void {

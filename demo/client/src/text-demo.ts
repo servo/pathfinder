@@ -24,7 +24,7 @@ import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {BUILTIN_FONT_URI, Hint, PathfinderGlyph, SimpleTextLayout} from "./text";
-import {PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic} from './utils';
+import { PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic, scaleRect } from './utils';
 import {MonochromePathfinderView, Timings} from './view';
 import PathfinderBufferTexture from './buffer-texture';
 import SSAAStrategy from './ssaa-strategy';
@@ -277,9 +277,13 @@ class TextDemoView extends MonochromePathfinderView {
 
     /// Lays out glyphs on the canvas.
     private layoutGlyphs() {
-        this.appController.layout.layoutRuns();
+        const layout = this.appController.layout;
+        layout.layoutRuns();
 
-        const textGlyphs = this.appController.layout.glyphStorage.allGlyphs;
+        const textBounds = scaleRect(layout.textFrame.bounds, this.appController.pixelsPerUnit);
+        this.camera.bounds = textBounds;
+
+        const textGlyphs = layout.glyphStorage.allGlyphs;
         const glyphPositions = new Float32Array(textGlyphs.length * 8);
         const glyphIndices = new Uint32Array(textGlyphs.length * 6);
 
