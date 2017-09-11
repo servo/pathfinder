@@ -175,8 +175,8 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
         const lowerRight = glmatrix.vec2.clone(_.last(this.runs)!.origin);
 
         const lineHeight = this.font.lineHeight();
-        upperLeft[1] -= lineHeight;
-        lowerRight[1] += lineHeight;
+        upperLeft[1] += lineHeight * 2.0;
+        lowerRight[1] -= lineHeight;
 
         lowerRight[0] = _.defaultTo<number>(_.max(this.runs.map(run => run.measure)), 0.0);
 

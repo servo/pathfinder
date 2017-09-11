@@ -201,7 +201,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     /// The font size in pixels per em.
     set fontSize(newFontSize: number) {
         this._fontSize = newFontSize;
-        this.view.then(view => view.attachText());
+        this.view.then(view => view.relayoutText());
     }
 
     get pixelsPerUnit(): number {
@@ -276,11 +276,12 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     /// Lays out glyphs on the canvas.
-    private layoutGlyphs() {
+    private layoutText() {
         const layout = this.appController.layout;
         layout.layoutRuns();
 
-        const textBounds = scaleRect(layout.textFrame.bounds, this.appController.pixelsPerUnit);
+        let textBounds = layout.textFrame.bounds;
+        textBounds = scaleRect(textBounds, this.appController.pixelsPerUnit);
         this.camera.bounds = textBounds;
 
         const textGlyphs = layout.glyphStorage.allGlyphs;
@@ -429,8 +430,12 @@ class TextDemoView extends MonochromePathfinderView {
     attachText() {
         if (this.atlasFramebuffer == null)
             this.createAtlasFramebuffer();
-        this.layoutGlyphs();
+        this.relayoutText();
+        this.camera.zoomToFit();
+    }
 
+    relayoutText() {
+        this.layoutText();
         this.rebuildAtlasIfNecessary();
     }
 

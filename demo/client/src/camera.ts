@@ -106,9 +106,14 @@ export class OrthographicCamera extends Camera {
             this.onPan();
     }
 
-    private zoomToFit(): void {
+    zoomToFit(): void {
         const upperLeft = glmatrix.vec2.fromValues(this._bounds[0], this._bounds[1]);
         const lowerRight = glmatrix.vec2.fromValues(this._bounds[2], this._bounds[3]);
+        const width = this._bounds[2] - this._bounds[0];
+        const height = this._bounds[1] - this._bounds[3];
+
+        // Scale appropriately.
+        this.scale = Math.min(this.canvas.width / width, this.canvas.height / height);
 
         // Center.
         this.translation = glmatrix.vec2.create();
@@ -117,8 +122,8 @@ export class OrthographicCamera extends Camera {
         this.translation[0] += this.canvas.width * 0.5;
         this.translation[1] += this.canvas.height * 0.5;
 
-        // TODO(pcwalton): Scale appropriately.
-
+        if (this.onZoom != null)
+            this.onZoom();
         if (this.onPan != null)
             this.onPan();
     }
@@ -155,7 +160,6 @@ export class OrthographicCamera extends Camera {
 
     set bounds(newBounds: glmatrix.vec4) {
         this._bounds = glmatrix.vec4.clone(newBounds);
-        this.zoomToFit();
     }
 
     onPan: (() => void) | null;
