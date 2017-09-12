@@ -26,8 +26,9 @@ use bincode::Infinite;
 use euclid::{Point2D, Size2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
 use pathfinder_partitioner::partitioner::Partitioner;
+use pathfinder_path_utils::monotonic::MonotonicPathSegmentStream;
 use pathfinder_path_utils::stroke;
-use pathfinder_path_utils::{PathBuffer, PathSegment, Transform2DPathStream};
+use pathfinder_path_utils::{PathBuffer, PathBufferStream, PathSegment, Transform2DPathStream};
 use rocket::http::{ContentType, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
@@ -410,7 +411,9 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
         // This might fail; if so, just leave it blank.
         if let Ok(glyph_outline) = font_context.glyph_outline(&font_instance_key, &glyph_key) {
-            path_buffer.add_stream(Transform2DPathStream::new(glyph_outline, &glyph.transform))
+            let stream = Transform2DPathStream::new(glyph_outline, &glyph.transform);
+            let stream = MonotonicPathSegmentStream::new(stream);
+            path_buffer.add_stream(stream)
         }
 
         let last_subpath_index = path_buffer.subpaths.len();
@@ -497,9 +500,15 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
         }
 
         match path.kind {
-            PartitionSvgPathKind::Fill => path_buffer.add_stream(stream.into_iter()),
+            PartitionSvgPathKind::Fill => {
+                path_buffer.add_stream(MonotonicPathSegmentStream::new(stream.into_iter()))
+            }
             PartitionSvgPathKind::Stroke(stroke_width) => {
-                stroke::stroke(&mut path_buffer, stream.into_iter(), stroke_width)
+                let mut temp_path_buffer = PathBuffer::new();
+                stroke::stroke(&mut temp_path_buffer, stream.into_iter(), stroke_width);
+                let stream = PathBufferStream::new(&temp_path_buffer);
+                let stream = MonotonicPathSegmentStream::new(stream);
+                path_buffer.add_stream(stream)
             }
         }
 

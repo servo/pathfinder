@@ -98,6 +98,53 @@ impl PathBuffer {
     }
 }
 
+pub struct PathBufferStream<'a> {
+    path_buffer: &'a PathBuffer,
+    endpoint_index: u32,
+    subpath_index: u32,
+}
+
+impl<'a> PathBufferStream<'a> {
+    pub fn new<'b>(path_buffer: &'b PathBuffer) -> PathBufferStream<'b> {
+        PathBufferStream {
+            path_buffer: path_buffer,
+            endpoint_index: 0,
+            subpath_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for PathBufferStream<'a> {
+    type Item = PathSegment;
+
+    fn next(&mut self) -> Option<PathSegment> {
+        if self.subpath_index as usize == self.path_buffer.subpaths.len() {
+            return None
+        }
+
+        let subpath = &self.path_buffer.subpaths[self.subpath_index as usize];
+        if self.endpoint_index == subpath.last_endpoint_index {
+            self.subpath_index += 1;
+            return Some(PathSegment::ClosePath)
+        }
+
+        let endpoint = &self.path_buffer.endpoints[self.endpoint_index as usize];
+        self.endpoint_index += 1;
+
+        if self.endpoint_index == subpath.first_endpoint_index {
+            return Some(PathSegment::MoveTo(endpoint.position))
+        }
+
+        if endpoint.control_point_index == u32::MAX {
+            return Some(PathSegment::LineTo(endpoint.position))
+        }
+
+        let control_point = &self.path_buffer
+                                 .control_points[endpoint.control_point_index as usize];
+        Some(PathSegment::CurveTo(*control_point, endpoint.position))
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Endpoint {

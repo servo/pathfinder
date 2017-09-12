@@ -13,6 +13,7 @@ use euclid::Point2D;
 use geometry::{self, SubdividedQuadraticBezier};
 use log::LogLevel;
 use pathfinder_path_utils::PathBuffer;
+use pathfinder_path_utils::curve::Curve;
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use std::f32;
@@ -712,10 +713,7 @@ impl<'a> Partitioner<'a> {
             }
             control_point_vertex_index => {
                 let control_point = &self.b_vertex_positions[control_point_vertex_index as usize];
-                geometry::sample_quadratic_bezier(t,
-                                                  left_vertex_position,
-                                                  control_point,
-                                                  right_endpoint_position)
+                Curve::new(left_vertex_position, control_point, right_endpoint_position).sample(t)
             }
         }
     }

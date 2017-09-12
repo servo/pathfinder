@@ -10,6 +10,7 @@
 
 use euclid::Point2D;
 use euclid::approxeq::ApproxEq;
+use pathfinder_path_utils::curve::Curve;
 use std::cmp::Ordering;
 
 pub(crate) trait ApproxOrdered {
@@ -85,11 +86,6 @@ pub fn quadratic_bezier_quadratic_bezier_crossing_point(_a_p0: &Point2D<f32>,
     None
 }
 
-pub fn sample_quadratic_bezier(t: f32, p0: &Point2D<f32>, p1: &Point2D<f32>, p2: &Point2D<f32>)
-                               -> Point2D<f32> {
-    p0.lerp(*p1, t).lerp(p1.lerp(*p2, t), t)
-}
-
 pub fn solve_line_t_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
     if b.x == a.x {
         0.0
@@ -121,7 +117,7 @@ pub fn solve_quadratic_bezier_y_for_x(x: f32,
                                       p1: &Point2D<f32>,
                                       p2: &Point2D<f32>)
                                       -> f32 {
-    sample_quadratic_bezier(solve_quadratic_bezier_t_for_x(x, p0, p1, p2), p0, p1, p2).y
+    Curve::new(p0, p1, p2).sample(solve_quadratic_bezier_t_for_x(x, p0, p1, p2)).y
 }
 
 fn quadratic_bezier_axis_inflection_point(p0: f32, p1: f32, p2: f32) -> Option<f32> {
