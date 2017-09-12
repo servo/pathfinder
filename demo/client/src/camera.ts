@@ -30,7 +30,9 @@ const PERSPECTIVE_MOVEMENT_VECTORS: PerspectiveMovementVectors = _.fromPairs([
 
 const PERSPECTIVE_MOVEMENT_INTERVAL_DELAY: number = 10;
 
-const PERSPECTIVE_INITIAL_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, 0.0, -1000.0);
+const PERSPECTIVE_INITIAL_TRANSLATION: glmatrix.vec3 =
+    glmatrix.vec3.clone([1750.0, 700.0, -1750.0]);
+const PERSPECTIVE_INITIAL_ROTATION: glmatrix.vec2 = glmatrix.vec2.clone([Math.PI * 0.25, 0.0]);
 
 interface PerspectiveMovementVectors {
     [keyCode: number]: glmatrix.vec3;
@@ -176,7 +178,7 @@ export class PerspectiveCamera extends Camera {
         super(canvas);
 
         this.translation = glmatrix.vec3.clone(PERSPECTIVE_INITIAL_TRANSLATION);
-        this.rotation = glmatrix.vec2.create();
+        this.rotation = glmatrix.vec2.clone(PERSPECTIVE_INITIAL_ROTATION);
         this.movementDelta = glmatrix.vec3.create();
         this.movementInterval = null;
 
@@ -274,7 +276,7 @@ export class PerspectiveCamera extends Camera {
 
     translation: glmatrix.vec3;
 
-    /// Pitch and yaw Euler angles.
+    /// Yaw and pitch Euler angles.
     rotation: glmatrix.vec2;
 
     private movementDelta: glmatrix.vec3;

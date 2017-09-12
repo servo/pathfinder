@@ -42,11 +42,13 @@ const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 200.0, 1.0 / 200.0, 
 
 const TEXT_TRANSLATION: number[] = [-(WIDTH + PADDING) * 0.5, 0.0, (WIDTH + PADDING) * 0.5];
 
+const TEXT_DECAL_OFFSET: number = 5.0;
+
 const MONUMENT_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, -690.0, 0.0);
 const MONUMENT_SCALE: glmatrix.vec3 =
-    glmatrix.vec3.fromValues((WIDTH + PADDING) / 400.0 - 0.5,
+    glmatrix.vec3.fromValues((WIDTH + PADDING) / 400.0 - TEXT_DECAL_OFFSET,
                              700.0,
-                             (WIDTH + PADDING) / 400.0 - 0.5);
+                             (WIDTH + PADDING) / 400.0 - TEXT_DECAL_OFFSET);
 
 const TEXT_COLOR: Uint8Array = new Uint8Array([0xf2, 0xf8, 0xf8, 0xff]);
 const MONUMENT_COLOR: number[] = [0x70 / 0xff, 0x80 / 0xff, 0x80 / 0xff];
