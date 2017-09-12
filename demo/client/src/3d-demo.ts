@@ -237,8 +237,8 @@ class ThreeDView extends PathfinderDemoView {
                 pathColors.set(TEXT_COLOR, startOffset);
 
                 const textGlyph = textGlyphs[pathIndex];
-                const glyphRect = textGlyph.pixelRect(hint, PIXELS_PER_UNIT);
-                pathTransforms.set([1, 1, glyphRect[0], glyphRect[1]], startOffset);
+                const glyphOrigin = textGlyph.calculatePixelOrigin(hint, PIXELS_PER_UNIT);
+                pathTransforms.set([1, 1, glyphOrigin[0], glyphOrigin[1]], startOffset);
             }
 
             const pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');

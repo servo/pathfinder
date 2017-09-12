@@ -344,10 +344,15 @@ export abstract class PathfinderGlyph {
         };
     }
 
-    pixelRect(hint: Hint, pixelsPerUnit: number): glmatrix.vec4 {
-        const pixelMetrics = this.pixelMetrics(hint, pixelsPerUnit);
+    calculatePixelOrigin(hint: Hint, pixelsPerUnit: number): glmatrix.vec2 {
         const textGlyphOrigin = glmatrix.vec2.clone(this.origin);
         glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, pixelsPerUnit);
+        return textGlyphOrigin;
+    }
+
+    pixelRect(hint: Hint, pixelsPerUnit: number): glmatrix.vec4 {
+        const pixelMetrics = this.pixelMetrics(hint, pixelsPerUnit);
+        const textGlyphOrigin = this.calculatePixelOrigin(hint, pixelsPerUnit);
         glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
 
         return glmatrix.vec4.fromValues(textGlyphOrigin[0],
