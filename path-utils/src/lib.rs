@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+extern crate arrayvec;
 extern crate euclid;
 extern crate freetype_sys;
 #[macro_use]
@@ -16,7 +17,9 @@ extern crate serde_derive;
 use euclid::{Point2D, Transform2D};
 use std::u32;
 
+pub mod curve;
 pub mod freetype;
+pub mod monotonic;
 pub mod stroke;
 
 #[derive(Clone, Copy, Debug)]
