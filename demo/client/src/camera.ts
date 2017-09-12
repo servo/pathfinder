@@ -110,7 +110,7 @@ export class OrthographicCamera extends Camera {
         const upperLeft = glmatrix.vec2.fromValues(this._bounds[0], this._bounds[1]);
         const lowerRight = glmatrix.vec2.fromValues(this._bounds[2], this._bounds[3]);
         const width = this._bounds[2] - this._bounds[0];
-        const height = this._bounds[1] - this._bounds[3];
+        const height = Math.abs(this._bounds[1] - this._bounds[3]);
 
         // Scale appropriately.
         this.scale = Math.min(this.canvas.width / width, this.canvas.height / height);

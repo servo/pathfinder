@@ -124,8 +124,10 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
             }
         }
 
-        // Extract, normalize, and transform the path data.
         const request: any = { paths: [] };
+        let minX = 0, minY = 0, maxX = 0, maxY = 0;
+
+        // Extract, normalize, and transform the path data.
         for (const instance of this.pathInstances) {
             const element = instance.element;
             const svgCTM = element.getCTM();
@@ -138,6 +140,12 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
                 const newValues = _.flatMap(_.chunk(segment.values, 2), coords => {
                     const point = glmatrix.vec2.create();
                     glmatrix.vec2.transformMat2d(point, coords, ctm);
+
+                    minX = Math.min(point[0], minX);
+                    minY = Math.min(point[1], minY);
+                    maxX = Math.max(point[0], maxX);
+                    maxY = Math.max(point[1], maxY);
+
                     return [point[0], point[1]];
                 });
                 return {
@@ -155,6 +163,8 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
             request.paths.push({ segments: segments, kind: kind });
         }
 
+        const bounds = glmatrix.vec4.clone([minX, minY, maxX, maxY]);
+
         // Make the request.
         window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
             method: 'POST',
@@ -166,7 +176,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
                 panic("Failed to partition the font!");
             const meshes = response.Ok.pathData;
             this.meshes = new PathfinderMeshData(meshes);
-            this.meshesReceived();
+            this.meshesReceived(bounds);
         });
     }
 
@@ -178,10 +188,13 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
         return DEFAULT_FILE;
     }
 
-    private meshesReceived() {
+    private meshesReceived(bounds: glmatrix.vec4): void {
         this.view.then(view => {
             view.uploadPathMetadata(this.pathInstances);
             view.attachMeshes([this.meshes]);
+
+            view.camera.bounds = bounds;
+            view.camera.zoomToFit();
         })
     }
 
