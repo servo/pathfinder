@@ -109,6 +109,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
         this.initContext();
 
+        this.lastTimings = { atlasRendering: 0, compositing: 0 };
+
         const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
         this.shaderPrograms = this.linkShaders(shaderSource);
 
@@ -281,12 +283,17 @@ export abstract class PathfinderDemoView extends PathfinderView {
         // Finish timing.
         this.finishTiming();
 
+        // Invoke the post-render hook.
+        this.renderingFinished();
+
         // Take a screenshot if desired.
         if (this.wantsScreenshot) {
             this.wantsScreenshot = false;
             this.takeScreenshot();
         }
     }
+
+    protected renderingFinished(): void {}
 
     private setTransformUniform(uniforms: UniformMap, objectIndex: number) {
         const transform = glmatrix.mat4.create();
@@ -423,10 +430,10 @@ export abstract class PathfinderDemoView extends PathfinderView {
             const compositingTime =
                 this.timerQueryExt.getQueryObjectEXT(this.compositingTimerQuery,
                                                      this.timerQueryExt.QUERY_RESULT_EXT);
-            this.updateTimings({
+            this.lastTimings = {
                 atlasRendering: atlasRenderingTime / 1000000.0,
                 compositing: compositingTime / 1000000.0,
-            });
+            };
 
             window.clearInterval(this.timerQueryPollInterval!);
             this.timerQueryPollInterval = null;
@@ -485,6 +492,34 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 
+    uploadPathColors(objectCount: number) {
+        this.pathColorsBufferTextures = [];
+
+        for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
+            const pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
+            const pathColors = this.pathColorsForObject(objectIndex);
+            pathColorsBufferTexture.upload(this.gl, pathColors);
+            this.pathColorsBufferTextures.push(pathColorsBufferTexture);
+        }
+    }
+
+    uploadPathTransforms(objectCount: number) {
+        this.pathTransformBufferTextures = [];
+
+        for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
+            const pathTransformBufferTexture = new PathfinderBufferTexture(this.gl,
+                                                                           'uPathTransform');
+
+            const pathTransforms = this.pathTransformsForObject(objectIndex);
+            pathTransformBufferTexture.upload(this.gl, pathTransforms);
+            this.pathTransformBufferTextures.push(pathTransformBufferTexture);
+        }
+
+    }
+
+    protected abstract pathColorsForObject(objectIndex: number): Uint8Array;
+    protected abstract pathTransformsForObject(objectIndex: number): Float32Array;
+
     protected abstract get depthFunction(): number;
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
@@ -493,8 +528,6 @@ export abstract class PathfinderDemoView extends PathfinderView {
                                         AntialiasingStrategy;
 
     protected abstract compositeIfNecessary(): void;
-
-    protected abstract updateTimings(timings: Timings): void;
 
     abstract get destFramebuffer(): WebGLFramebuffer | null;
 
@@ -535,6 +568,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
     private atlasRenderingTimerQuery: WebGLQuery;
     private compositingTimerQuery: WebGLQuery;
     private timerQueryPollInterval: number | null;
+
+    protected lastTimings: Timings;
 
     private wantsScreenshot: boolean;
 }

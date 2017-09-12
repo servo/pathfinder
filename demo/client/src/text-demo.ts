@@ -178,7 +178,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
             this.meshes = meshes;
             this.view.then(view => {
                 view.attachText();
-                view.uploadPathMetadata(this.layout.glyphStorage.uniqueGlyphs.length);
+                view.uploadPathColors(1);
                 view.attachMeshes([this.meshes]);
             });
         });
@@ -262,17 +262,19 @@ class TextDemoView extends MonochromePathfinderView {
         super.initContext();
     }
 
-    uploadPathMetadata(pathCount: number) {
+    protected pathColorsForObject(objectIndex: number): Uint8Array {
+        const atlasGlyphs = this.appController.atlasGlyphs;
+        const pathCount = atlasGlyphs.length;
+
         const pathColors = new Uint8Array(4 * (pathCount + 1));
+
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
             for (let channel = 0; channel < 3; channel++)
                 pathColors[(pathIndex + 1) * 4 + channel] = 0x00; // RGB
             pathColors[(pathIndex + 1) * 4 + 3] = 0xff;           // alpha
         }
 
-        const pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
-        pathColorsBufferTexture.upload(this.gl, pathColors);
-        this.pathColorsBufferTextures = [pathColorsBufferTexture];
+        return pathColors;
     }
 
     /// Lays out glyphs on the canvas.
@@ -342,9 +344,36 @@ class TextDemoView extends MonochromePathfinderView {
         const uniqueGlyphIndices = uniqueGlyphs.map(glyph => glyph.index);
         uniqueGlyphIndices.sort((a, b) => a - b);
 
+        this.uploadPathTransforms(1);
+
         // TODO(pcwalton): Regenerate the IBOs to include only the glyphs we care about.
-        const transforms = new Float32Array((uniqueGlyphs.length + 1) * 4);
         const pathHints = new Float32Array((uniqueGlyphs.length + 1) * 4);
+
+        for (let glyphIndex = 0; glyphIndex < atlasGlyphs.length; glyphIndex++) {
+            const glyph = atlasGlyphs[glyphIndex];
+
+            let pathID = _.sortedIndexOf(uniqueGlyphIndices, glyph.index);
+            assert(pathID >= 0, "No path ID!");
+            pathID++;
+
+            pathHints[pathID * 4 + 0] = hint.xHeight;
+            pathHints[pathID * 4 + 1] = hint.hintedXHeight;
+        }
+
+        const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
+        pathHintsBufferTexture.upload(this.gl, pathHints);
+        this.pathHintsBufferTexture = pathHintsBufferTexture;
+    }
+
+    protected pathTransformsForObject(objectIndex: number): Float32Array {
+        const atlasGlyphs = this.appController.atlasGlyphs;
+        const pixelsPerUnit = this.appController.pixelsPerUnit;
+
+        const uniqueGlyphs = this.appController.layout.glyphStorage.uniqueGlyphs;
+        const uniqueGlyphIndices = uniqueGlyphs.map(glyph => glyph.index);
+        uniqueGlyphIndices.sort((a, b) => a - b);
+
+        const transforms = new Float32Array((uniqueGlyphs.length + 1) * 4);
 
         for (let glyphIndex = 0; glyphIndex < atlasGlyphs.length; glyphIndex++) {
             const glyph = atlasGlyphs[glyphIndex];
@@ -359,18 +388,9 @@ class TextDemoView extends MonochromePathfinderView {
             transforms[pathID * 4 + 1] = pixelsPerUnit;
             transforms[pathID * 4 + 2] = atlasOrigin[0];
             transforms[pathID * 4 + 3] = atlasOrigin[1];
-
-            pathHints[pathID * 4 + 0] = hint.xHeight;
-            pathHints[pathID * 4 + 1] = hint.hintedXHeight;
         }
 
-        const pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
-        pathTransformBufferTexture.upload(this.gl, transforms);
-        this.pathTransformBufferTextures = [pathTransformBufferTexture];
-
-        const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
-        pathHintsBufferTexture.upload(this.gl, pathHints);
-        this.pathHintsBufferTexture = pathHintsBufferTexture;
+        return transforms;
     }
 
     private createAtlasFramebuffer() {

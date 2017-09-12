@@ -58,22 +58,29 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
     start() {
         super.start();
 
-        this.settingsCard = document.getElementById('pf-settings') as HTMLElement;
-        this.settingsButton = document.getElementById('pf-settings-button') as HTMLButtonElement;
-        this.settingsCloseButton = document.getElementById('pf-settings-close-button') as
-            HTMLButtonElement;
+        const settingsCard = document.getElementById('pf-settings') as (HTMLElement | null);
+        const settingsButton = document.getElementById('pf-settings-button') as
+            (HTMLButtonElement | null);
+        const settingsCloseButton = document.getElementById('pf-settings-close-button') as
+            (HTMLButtonElement | null);
 
-        this.settingsButton.addEventListener('click', event => {
-            event.stopPropagation();
-            this.settingsCard.classList.toggle('pf-invisible');
-        }, false);
-        this.settingsCloseButton.addEventListener('click', () => {
-            this.settingsCard.classList.add('pf-invisible');
-        }, false);
-        document.body.addEventListener('click', () => {
-            this.settingsCard.classList.add('pf-invisible');
-        }, false);
-        this.settingsCard.addEventListener('click', event => event.stopPropagation(), false);
+        if (settingsButton != null) {
+            settingsButton.addEventListener('click', event => {
+                event.stopPropagation();
+                unwrapNull(settingsCard).classList.toggle('pf-invisible');
+            }, false);
+        }
+        if (settingsCloseButton != null) {
+            settingsCloseButton.addEventListener('click', () => {
+                unwrapNull(settingsCard).classList.add('pf-invisible');
+            }, false);
+        }
+        if (settingsCard != null) {
+            document.body.addEventListener('click', () => {
+                settingsCard.classList.add('pf-invisible');
+            }, false);
+            settingsCard.addEventListener('click', event => event.stopPropagation(), false);
+        }
 
         const screenshotButton = document.getElementById('pf-screenshot-button') as
             HTMLButtonElement | null;
@@ -124,20 +131,31 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
             return this.createView();
         });
 
-        this.aaLevelSelect = document.getElementById('pf-aa-level-select') as HTMLSelectElement;
+        this.aaLevelSelect = document.getElementById('pf-aa-level-select') as
+            (HTMLSelectElement | null);
+        if (this.aaLevelSelect != null)
+            this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
+
         this.subpixelAASwitch =
             document.getElementById('pf-subpixel-aa') as HTMLInputElement | null;
-        this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
         if (this.subpixelAASwitch != null)
             this.subpixelAASwitch.addEventListener('change', () => this.updateAALevel(), false);
+
         this.updateAALevel();
     }
 
     private updateAALevel() {
-        const selectedOption = this.aaLevelSelect.selectedOptions[0];
-        const aaValues = unwrapNull(/^([a-z-]+)(?:-([0-9]+))?$/.exec(selectedOption.value));
-        const aaType = aaValues[1] as AntialiasingStrategyName;
-        const aaLevel = aaValues[2] === "" ? 1 : parseInt(aaValues[2]); 
+        let aaType: AntialiasingStrategyName, aaLevel: number;
+        if (this.aaLevelSelect != null) {
+            const selectedOption = this.aaLevelSelect.selectedOptions[0];
+            const aaValues = unwrapNull(/^([a-z-]+)(?:-([0-9]+))?$/.exec(selectedOption.value));
+            aaType = aaValues[1] as AntialiasingStrategyName;
+            aaLevel = aaValues[2] === "" ? 1 : parseInt(aaValues[2]);
+        } else {
+            aaType = 'none';
+            aaLevel = 0;
+        }
+
         const subpixelAA = this.subpixelAASwitch == null ? false : this.subpixelAASwitch.checked;
         this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel, subpixelAA));
     }
@@ -187,10 +205,6 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
     protected commonShaderSource: string | null;
     protected shaderSources: ShaderMap<ShaderProgramSource> | null;
 
-    private aaLevelSelect: HTMLSelectElement;
+    private aaLevelSelect: HTMLSelectElement | null;
     private subpixelAASwitch: HTMLInputElement | null;
-
-    private settingsCard: HTMLElement;
-    private settingsButton: HTMLButtonElement;
-    private settingsCloseButton: HTMLButtonElement;
 }

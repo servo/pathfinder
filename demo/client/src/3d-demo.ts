@@ -168,7 +168,8 @@ class ThreeDController extends DemoAppController<ThreeDView> {
             this.baseMeshes = baseMeshes;
             this.expandedMeshes = this.glyphStorage.expandMeshes(baseMeshes);
             this.view.then(view => {
-                view.uploadPathMetadata();
+                view.uploadPathColors(this.expandedMeshes.length);
+                view.uploadPathTransforms(this.expandedMeshes.length);
                 view.attachMeshes(this.expandedMeshes.map(meshes => meshes.meshes));
             });
         });
@@ -216,41 +217,34 @@ class ThreeDView extends PathfinderDemoView {
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, CUBE_INDICES, this.gl.STATIC_DRAW);
     }
 
-    uploadPathMetadata() {
-        this.pathColorsBufferTextures = [];
-        this.pathTransformBufferTextures = [];
+    protected pathColorsForObject(textFrameIndex: number): Uint8Array {
+        const textFrame = this.appController.glyphStorage.textFrames[textFrameIndex];
+        const textGlyphs = textFrame.allGlyphs;
+        const pathCount = textGlyphs.length;
+        
+        const pathColors = new Uint8Array(4 * (pathCount + 1));
+        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++)
+            pathColors.set(TEXT_COLOR, (pathIndex + 1) * 4);
 
-        const textFrameCount = this.appController.glyphStorage.textFrames.length;
-        for (let textFrameIndex = 0;
-             textFrameIndex < textFrameCount;
-             textFrameIndex++) {
-            const textFrame = this.appController.glyphStorage.textFrames[textFrameIndex];
-            const textGlyphs = textFrame.allGlyphs;
-            const pathCount = textGlyphs.length;
-            
-            const hint = new Hint(this.appController.glyphStorage.font, PIXELS_PER_UNIT, false);
+        return pathColors;
+    }
 
-            const pathColors = new Uint8Array(4 * (pathCount + 1));
-            const pathTransforms = new Float32Array(4 * (pathCount + 1));
+    protected pathTransformsForObject(textFrameIndex: number): Float32Array {
+        const textFrame = this.appController.glyphStorage.textFrames[textFrameIndex];
+        const textGlyphs = textFrame.allGlyphs;
+        const pathCount = textGlyphs.length;
+        
+        const hint = new Hint(this.appController.glyphStorage.font, PIXELS_PER_UNIT, false);
 
-            for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
-                const startOffset = (pathIndex + 1) * 4;
+        const pathTransforms = new Float32Array(4 * (pathCount + 1));
 
-                pathColors.set(TEXT_COLOR, startOffset);
-
-                const textGlyph = textGlyphs[pathIndex];
-                const glyphOrigin = textGlyph.calculatePixelOrigin(hint, PIXELS_PER_UNIT);
-                pathTransforms.set([1, 1, glyphOrigin[0], glyphOrigin[1]], startOffset);
-            }
-
-            const pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
-            const pathTransformBufferTexture = new PathfinderBufferTexture(this.gl,
-                                                                           'uPathTransform');
-            pathColorsBufferTexture.upload(this.gl, pathColors);
-            pathTransformBufferTexture.upload(this.gl, pathTransforms);
-            this.pathColorsBufferTextures.push(pathColorsBufferTexture);
-            this.pathTransformBufferTextures.push(pathTransformBufferTexture);
+        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+            const textGlyph = textGlyphs[pathIndex];
+            const glyphOrigin = textGlyph.calculatePixelOrigin(hint, PIXELS_PER_UNIT);
+            pathTransforms.set([1, 1, glyphOrigin[0], glyphOrigin[1]], (pathIndex + 1) * 4);
         }
+
+        return pathTransforms;
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
@@ -304,17 +298,13 @@ class ThreeDView extends PathfinderDemoView {
         return glmatrix.vec2.fromValues(this.canvas.width, this.canvas.height);
     }
 
-    get destFramebuffer(): WebGLFramebuffer | null {
-        return null;
-    }
+    destFramebuffer: WebGLFramebuffer | null = null;
 
     get destUsedSize(): glmatrix.vec2 {
         return this.destAllocatedSize;
     }
 
-    protected get usedSizeFactor(): glmatrix.vec2 {
-        return glmatrix.vec2.fromValues(1.0, 1.0);
-    }
+    protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.clone([1.0, 1.0]);
 
     private calculateWorldTransform(modelviewTranslation: glmatrix.vec3,
                                     modelviewScale: glmatrix.vec3):
@@ -355,13 +345,8 @@ class ThreeDView extends PathfinderDemoView {
         return transform;
     }
 
-    protected get directCurveProgramName(): keyof ShaderMap<void> {
-        return 'direct3DCurve';
-    }
-
-    protected get directInteriorProgramName(): keyof ShaderMap<void> {
-        return 'direct3DInterior';
-    }
+    protected directCurveProgramName: keyof ShaderMap<void> = 'direct3DCurve';
+    protected directInteriorProgramName: keyof ShaderMap<void> = 'direct3DInterior';
 
     protected depthFunction: number = this.gl.LESS;
 

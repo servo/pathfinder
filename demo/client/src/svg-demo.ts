@@ -190,7 +190,8 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
 
     private meshesReceived(bounds: glmatrix.vec4): void {
         this.view.then(view => {
-            view.uploadPathMetadata(this.pathInstances);
+            view.uploadPathColors(1);
+            view.uploadPathTransforms(1);
             view.attachMeshes([this.meshes]);
 
             view.camera.bounds = bounds;
@@ -198,8 +199,9 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
         })
     }
 
+    pathInstances: PathInstance[];
+
     private svg: SVGSVGElement;
-    private pathInstances: PathInstance[];
     private meshes: PathfinderMeshData;
 }
 
@@ -228,9 +230,10 @@ class SVGDemoView extends PathfinderDemoView {
         return this.destAllocatedSize;
     }
 
-    uploadPathMetadata(instances: PathInstance[]) {
+    protected pathColorsForObject(objectIndex: number): Uint8Array {
+        const instances = this.appController.pathInstances;
         const pathColors = new Uint8Array(4 * (instances.length + 1));
-        const pathTransforms = new Float32Array(4 * (instances.length + 1));
+
         for (let pathIndex = 0; pathIndex < instances.length; pathIndex++) {
             const startOffset = (pathIndex + 1) * 4;
 
@@ -241,17 +244,22 @@ class SVGDemoView extends PathfinderDemoView {
                 style[property] === 'none' ? [0, 0, 0, 0] : parseColor(style[property]).rgba;
             pathColors.set(color.slice(0, 3), startOffset);
             pathColors[startOffset + 3] = color[3] * 255;
+        }
 
+        return pathColors;
+    }
+
+    protected pathTransformsForObject(objectIndex: number): Float32Array {
+        const instances = this.appController.pathInstances;
+        const pathTransforms = new Float32Array(4 * (instances.length + 1));
+
+        for (let pathIndex = 0; pathIndex < instances.length; pathIndex++) {
             // TODO(pcwalton): Set transform.
+            const startOffset = (pathIndex + 1) * 4;
             pathTransforms.set([1, 1, 0, 0], startOffset);
         }
 
-        const pathColorsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathColors');
-        const pathTransformBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathTransform');
-        pathColorsBufferTexture.upload(this.gl, pathColors);
-        pathTransformBufferTexture.upload(this.gl, pathTransforms);
-        this.pathColorsBufferTextures = [pathColorsBufferTexture];
-        this.pathTransformBufferTextures = [pathTransformBufferTexture];
+        return pathTransforms;
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
