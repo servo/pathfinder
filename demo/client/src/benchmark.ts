@@ -159,20 +159,31 @@ class BenchmarkTestView extends PathfinderDemoView {
 
     protected pathTransformsForObject(objectIndex: number): Float32Array {
         const pathTransforms = new Float32Array(4 * (STRING.length + 1));
-        let currentX = 0;
+
+        let currentX = 0, currentY = 0;
+        const availableWidth = this.canvas.width / this.pixelsPerUnit;
+        const lineHeight = unwrapNull(this.appController.font).lineHeight();
 
         for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
             const glyph = unwrapNull(this.appController.textRun).glyphs[glyphIndex];
-            pathTransforms.set([1, 1, currentX, 0], (glyphIndex + 1) * 4);
+            pathTransforms.set([1, 1, currentX, currentY], (glyphIndex + 1) * 4);
+
             currentX += glyph.advanceWidth;
+            if (currentX > availableWidth) {
+                currentX = 0;
+                currentY += lineHeight;
+            }
         }
 
         return pathTransforms;
     }
 
     protected renderingFinished(): void {
-        if (this.renderingPromiseCallback != null)
-            this.renderingPromiseCallback(this.lastTimings.atlasRendering);
+        if (this.renderingPromiseCallback != null) {
+            const glyphCount = unwrapNull(this.appController.textRun).glyphs.length;
+            const usPerGlyph = this.lastTimings.atlasRendering * 1000.0 / glyphCount;
+            this.renderingPromiseCallback(usPerGlyph);
+        }
     }
 
     destFramebuffer: WebGLFramebuffer | null = null;
@@ -195,10 +206,14 @@ class BenchmarkTestView extends PathfinderDemoView {
         glmatrix.mat4.fromTranslation(transform, [translation[0], translation[1], 0]);
         glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
 
-        const pixelsPerUnit = this._pixelsPerEm / unwrapNull(this.appController.font).unitsPerEm;
+        const pixelsPerUnit = this.pixelsPerUnit;
         glmatrix.mat4.scale(transform, transform, [pixelsPerUnit, pixelsPerUnit, 1.0]);
 
         return transform;
+    }
+
+    private get pixelsPerUnit(): number {
+        return this._pixelsPerEm / unwrapNull(this.appController.font).unitsPerEm;
     }
 
     get pixelsPerEm(): number {
@@ -207,6 +222,7 @@ class BenchmarkTestView extends PathfinderDemoView {
 
     set pixelsPerEm(newPixelsPerEm: number) {
         this._pixelsPerEm = newPixelsPerEm;
+        this.uploadPathTransforms(1);
         this.setDirty();
     }
 
