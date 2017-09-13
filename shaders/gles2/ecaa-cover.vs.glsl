@@ -4,8 +4,8 @@
 
 precision highp float;
 
+uniform vec4 uTransformST;
 uniform ivec2 uFramebufferSize;
-uniform float uScaleX;
 uniform ivec2 uBVertexPositionDimensions;
 uniform ivec2 uBVertexPathIDDimensions;
 uniform ivec2 uPathTransformDimensions;
@@ -45,7 +45,6 @@ void main() {
 
     vec4 hints = fetchFloat4Data(uPathHints, pathID, uPathHintsDimensions);
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
-    transform.xz *= uScaleX;
 
     upperLeftPosition = hintPosition(upperLeftPosition, hints);
     upperRightPosition = hintPosition(upperRightPosition, hints);
@@ -56,6 +55,16 @@ void main() {
     upperRightPosition = transformVertexPositionST(upperRightPosition, transform);
     lowerLeftPosition = transformVertexPositionST(lowerLeftPosition, transform);
     lowerRightPosition = transformVertexPositionST(lowerRightPosition, transform);
+
+    upperLeftPosition = transformVertexPositionST(upperLeftPosition, uTransformST);
+    upperRightPosition = transformVertexPositionST(upperRightPosition, uTransformST);
+    lowerLeftPosition = transformVertexPositionST(lowerLeftPosition, uTransformST);
+    lowerRightPosition = transformVertexPositionST(lowerRightPosition, uTransformST);
+
+    upperLeftPosition = convertClipToScreenSpace(upperLeftPosition, uFramebufferSize);
+    upperRightPosition = convertClipToScreenSpace(upperRightPosition, uFramebufferSize);
+    lowerLeftPosition = convertClipToScreenSpace(lowerLeftPosition, uFramebufferSize);
+    lowerRightPosition = convertClipToScreenSpace(lowerRightPosition, uFramebufferSize);
 
     vec4 extents = vec4(min(upperLeftPosition.x, lowerLeftPosition.x),
                         min(min(upperLeftPosition.y, upperRightPosition.y),

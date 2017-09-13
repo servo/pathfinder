@@ -4,8 +4,8 @@
 
 precision highp float;
 
+uniform vec4 uTransformST;
 uniform ivec2 uFramebufferSize;
-uniform float uScaleX;
 uniform ivec2 uBVertexPositionDimensions;
 uniform ivec2 uBVertexPathIDDimensions;
 uniform ivec2 uPathTransformDimensions;
@@ -42,7 +42,6 @@ void main() {
 
     vec4 hints = fetchFloat4Data(uPathHints, pathID, uPathHintsDimensions);
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
-    transform.xz *= uScaleX;
 
     // Transform the points, and compute the position of this vertex.
     vec2 position;
@@ -52,9 +51,12 @@ void main() {
                             aQuadPosition,
                             uFramebufferSize,
                             transform,
+                            uTransformST,
                             hints)) {
         controlPointPosition = hintPosition(controlPointPosition, hints);
         controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
+        controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
+        controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);
     }
 
     float depth = convertPathIndexToViewportDepthValue(pathID);

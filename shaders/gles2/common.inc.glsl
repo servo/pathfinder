@@ -48,6 +48,10 @@ vec2 hintPosition(vec2 position, vec4 pathHints) {
     return vec2(position.x, position.y / pathHints.x * pathHints.y);
 }
 
+vec2 convertClipToScreenSpace(vec2 position, ivec2 framebufferSize) {
+    return (position + 1.0) * 0.5 * vec2(framebufferSize);
+}
+
 vec2 convertScreenToClipSpace(vec2 position, ivec2 framebufferSize) {
     return position / vec2(framebufferSize) * 2.0 - 1.0;
 }
@@ -65,13 +69,20 @@ bool computeQuadPosition(out vec2 outPosition,
                          inout vec2 rightPosition,
                          vec2 quadPosition,
                          ivec2 framebufferSize,
-                         vec4 transform,
+                         vec4 localTransformST,
+                         vec4 globalTransformST,
                          vec4 hints) {
     leftPosition = hintPosition(leftPosition, hints);
     rightPosition = hintPosition(rightPosition, hints);
 
-    leftPosition = transformVertexPositionST(leftPosition, transform);
-    rightPosition = transformVertexPositionST(rightPosition, transform);
+    leftPosition = transformVertexPositionST(leftPosition, localTransformST);
+    rightPosition = transformVertexPositionST(rightPosition, localTransformST);
+
+    leftPosition = transformVertexPositionST(leftPosition, globalTransformST);
+    rightPosition = transformVertexPositionST(rightPosition, globalTransformST);
+
+    leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
+    rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
 
     if (abs(leftPosition.x - rightPosition.x) <= EPSILON) {
         outPosition = vec2(0.0);

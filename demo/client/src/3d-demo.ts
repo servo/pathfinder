@@ -25,7 +25,7 @@ import SSAAStrategy from "./ssaa-strategy";
 import * as _ from "lodash";
 import PathfinderBufferTexture from "./buffer-texture";
 
-const WIDTH: number = 150000;
+const TEXT_AVAILABLE_WIDTH: number = 150000;
 const PADDING: number = 2000;
 
 const TEXT_DATA_URI: string = "/data/mozmonument.json";
@@ -40,15 +40,19 @@ const FAR_CLIP_PLANE: number = 3000.0;
 
 const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 200.0, 1.0 / 200.0, 1.0 / 200.0);
 
-const TEXT_TRANSLATION: number[] = [-(WIDTH + PADDING) * 0.5, 0.0, (WIDTH + PADDING) * 0.5];
+const TEXT_TRANSLATION: number[] = [
+    -(TEXT_AVAILABLE_WIDTH + PADDING) * 0.5,
+    0.0,
+    (TEXT_AVAILABLE_WIDTH + PADDING) * 0.5
+];
 
 const TEXT_DECAL_OFFSET: number = 5.0;
 
 const MONUMENT_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, -690.0, 0.0);
 const MONUMENT_SCALE: glmatrix.vec3 =
-    glmatrix.vec3.fromValues((WIDTH + PADDING) / 400.0 - TEXT_DECAL_OFFSET,
+    glmatrix.vec3.fromValues((TEXT_AVAILABLE_WIDTH + PADDING) / 400.0 - TEXT_DECAL_OFFSET,
                              700.0,
-                             (WIDTH + PADDING) / 400.0 - TEXT_DECAL_OFFSET);
+                             (TEXT_AVAILABLE_WIDTH + PADDING) / 400.0 - TEXT_DECAL_OFFSET);
 
 const TEXT_COLOR: Uint8Array = new Uint8Array([0xf2, 0xf8, 0xf8, 0xff]);
 const MONUMENT_COLOR: number[] = [0x70 / 0xff, 0x80 / 0xff, 0x80 / 0xff];
@@ -147,7 +151,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
                 });
 
                 const usedSpace = _.sumBy(lineGlyphs, 'width');
-                const emptySpace = Math.max(WIDTH - usedSpace, 0.0);
+                const emptySpace = Math.max(TEXT_AVAILABLE_WIDTH - usedSpace, 0.0);
                 const spacing = emptySpace / Math.max(lineGlyphs.length - 1, 1);
 
                 let currentX = 0.0;

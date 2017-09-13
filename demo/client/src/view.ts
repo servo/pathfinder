@@ -295,10 +295,23 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
     protected renderingFinished(): void {}
 
+    setTransformSTUniform(uniforms: UniformMap, objectIndex: number) {
+        // FIXME(pcwalton): Lossy conversion from a 4x4 matrix to an ST matrix is ugly and fragile.
+        // Refactor.
+        const transform = glmatrix.mat4.clone(this.worldTransform);
+        glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
+
+        const translation = glmatrix.vec4.clone([transform[12], transform[13], 0.0, 1.0]);
+
+        this.gl.uniform4f(uniforms.uTransformST,
+                          transform[0],
+                          transform[5],
+                          transform[12],
+                          transform[13]);
+    }
+
     private setTransformUniform(uniforms: UniformMap, objectIndex: number) {
-        const transform = glmatrix.mat4.create();
-        if (this.antialiasingStrategy != null)
-            glmatrix.mat4.mul(transform, this.antialiasingStrategy.transform, this.worldTransform);
+        const transform = glmatrix.mat4.clone(this.worldTransform);
         glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
         this.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }

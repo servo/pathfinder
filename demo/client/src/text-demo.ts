@@ -568,8 +568,11 @@ class TextDemoView extends MonochromePathfinderView {
         this.appController.updateTimings(timings);
     }
 
-    protected get worldTransform() {
-        return glmatrix.mat4.create();
+    protected get worldTransform(): glmatrix.mat4 {
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform, transform, [2.0 / ATLAS_SIZE[0], 2.0 / ATLAS_SIZE[1], 1.0]);
+        return transform;
     }
 
     protected get directCurveProgramName(): keyof ShaderMap<void> {

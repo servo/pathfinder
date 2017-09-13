@@ -5,7 +5,6 @@
 precision highp float;
 
 uniform mat4 uTransform;
-uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathColorsDimensions;
 uniform ivec2 uPathTransformDimensions;
 uniform ivec2 uPathHintsDimensions;
@@ -32,7 +31,6 @@ void main() {
     vec2 position = hintPosition(aPosition, pathHints);
     position = transformVertexPositionST(position, pathTransform);
     position = transformVertexPosition(position, uTransform);
-    position = convertScreenToClipSpace(position, uFramebufferSize);
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);
