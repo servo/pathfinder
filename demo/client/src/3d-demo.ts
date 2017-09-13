@@ -294,8 +294,8 @@ class ThreeDView extends PathfinderDemoView {
 
     protected compositeIfNecessary(): void {}
 
-    protected updateTimings(timings: Timings) {
-        // TODO(pcwalton)
+    protected newTimingsReceived() {
+        this.appController.newTimingsReceived(_.pick(this.lastTimings, ['rendering']));
     }
 
     get destAllocatedSize(): glmatrix.vec2 {

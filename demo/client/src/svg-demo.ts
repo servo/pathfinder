@@ -271,8 +271,8 @@ class SVGDemoView extends PathfinderDemoView {
 
     protected compositeIfNecessary(): void {}
 
-    protected updateTimings(timings: Timings) {
-        // TODO(pcwalton)
+    protected newTimingsReceived() {
+        this.appController.newTimingsReceived(_.pick(this.lastTimings, ['rendering']));
     }
 
     protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.fromValues(1.0, 1.0);
@@ -288,7 +288,6 @@ class SVGDemoView extends PathfinderDemoView {
         glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
         if (this.antialiasingStrategy != null)
             glmatrix.mat4.mul(transform, transform, this.antialiasingStrategy.transform);
-        console.log(transform);
         return transform;
     }
 

@@ -39,8 +39,13 @@ const QUAD_TEX_COORDS: Float32Array = new Float32Array([
     1.0, 0.0,
 ]);
 
+export const TIMINGS: {[name: string]: string} = {
+    rendering: "Rendering",
+    compositing: "Compositing",
+}
+
 export interface Timings {
-    atlasRendering: number;
+    rendering: number;
     compositing: number;
 }
 
@@ -109,7 +114,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
         this.initContext();
 
-        this.lastTimings = { atlasRendering: 0, compositing: 0 };
+        this.lastTimings = { rendering: 0, compositing: 0 };
 
         const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
         this.shaderPrograms = this.linkShaders(shaderSource);
@@ -444,9 +449,11 @@ export abstract class PathfinderDemoView extends PathfinderView {
                 this.timerQueryExt.getQueryObjectEXT(this.compositingTimerQuery,
                                                      this.timerQueryExt.QUERY_RESULT_EXT);
             this.lastTimings = {
-                atlasRendering: atlasRenderingTime / 1000000.0,
+                rendering: atlasRenderingTime / 1000000.0,
                 compositing: compositingTime / 1000000.0,
             };
+
+            this.newTimingsReceived();
 
             window.clearInterval(this.timerQueryPollInterval!);
             this.timerQueryPollInterval = null;
@@ -529,6 +536,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
         }
 
     }
+
+    protected newTimingsReceived() {}
 
     protected abstract pathColorsForObject(objectIndex: number): Uint8Array;
     protected abstract pathTransformsForObject(objectIndex: number): Float32Array;

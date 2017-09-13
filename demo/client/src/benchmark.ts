@@ -181,7 +181,7 @@ class BenchmarkTestView extends PathfinderDemoView {
     protected renderingFinished(): void {
         if (this.renderingPromiseCallback != null) {
             const glyphCount = unwrapNull(this.appController.textRun).glyphs.length;
-            const usPerGlyph = this.lastTimings.atlasRendering * 1000.0 / glyphCount;
+            const usPerGlyph = this.lastTimings.rendering * 1000.0 / glyphCount;
             this.renderingPromiseCallback(usPerGlyph);
         }
     }

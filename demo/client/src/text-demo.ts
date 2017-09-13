@@ -24,8 +24,9 @@ import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {BUILTIN_FONT_URI, Hint, PathfinderGlyph, SimpleTextLayout} from "./text";
-import { PathfinderError, assert, expectNotNull, UINT32_SIZE, unwrapNull, panic, scaleRect } from './utils';
-import {MonochromePathfinderView, Timings} from './view';
+import {PathfinderError, UINT32_SIZE, assert, expectNotNull, scaleRect, panic} from './utils';
+import {unwrapNull} from './utils';
+import { MonochromePathfinderView, Timings, TIMINGS } from './view';
 import PathfinderBufferTexture from './buffer-texture';
 import SSAAStrategy from './ssaa-strategy';
 
@@ -131,8 +132,6 @@ class TextDemoController extends DemoAppController<TextDemoView> {
             HTMLSelectElement;
         this.hintingSelect.addEventListener('change', () => this.hintingChanged(), false);
 
-        this.fpsLabel = unwrapNull(document.getElementById('pf-fps-label'));
-
         this.editTextModal = unwrapNull(document.getElementById('pf-edit-text-modal'));
         this.editTextArea = unwrapNull(document.getElementById('pf-edit-text-area')) as
             HTMLTextAreaElement;
@@ -184,11 +183,6 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         });
     }
 
-    updateTimings(newTimes: Timings) {
-        this.fpsLabel.innerHTML =
-            `${newTimes.atlasRendering} ms atlas, ${newTimes.compositing} ms compositing`;
-    }
-
     get atlas(): Atlas {
         return this._atlas;
     }
@@ -223,8 +217,6 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     protected get defaultFile(): string {
         return DEFAULT_FONT;
     }
-
-    private fpsLabel: HTMLElement;
 
     private hintingSelect: HTMLSelectElement;
 
@@ -564,8 +556,8 @@ class TextDemoView extends MonochromePathfinderView {
         return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
-    protected updateTimings(timings: Timings) {
-        this.appController.updateTimings(timings);
+    protected newTimingsReceived() {
+        this.appController.newTimingsReceived(this.lastTimings);
     }
 
     protected get worldTransform(): glmatrix.mat4 {

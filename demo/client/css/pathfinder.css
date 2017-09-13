@@ -70,6 +70,7 @@ button > svg path {
 #pf-fps-label {
     color: white;
     background: rgba(0, 0, 0, 0.75);
+    width: 17em;
 }
 #pf-svg {
     visibility: hidden;

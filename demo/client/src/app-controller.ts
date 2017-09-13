@@ -11,7 +11,7 @@
 import {AntialiasingStrategyName} from "./aa-strategy";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapUndef, unwrapNull} from './utils';
-import {PathfinderDemoView} from "./view";
+import { PathfinderDemoView, Timings, TIMINGS } from "./view";
 
 export abstract class AppController {
     start() {
@@ -122,6 +122,8 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
                                                false);
         }
 
+        this.fpsLabel = document.getElementById('pf-fps-label');
+
         const shaderLoader = new ShaderLoader;
         shaderLoader.load();
 
@@ -142,6 +144,32 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
             this.subpixelAASwitch.addEventListener('change', () => this.updateAALevel(), false);
 
         this.updateAALevel();
+    }
+
+    newTimingsReceived(timings: Timings) {
+        if (this.fpsLabel == null)
+            return;
+
+        while (this.fpsLabel.lastChild != null)
+            this.fpsLabel.removeChild(this.fpsLabel.lastChild);
+
+        for (const timing of Object.keys(timings) as Array<keyof Timings>) {
+            const tr = document.createElement('div');
+            tr.classList.add('row');
+
+            const keyTD = document.createElement('div');
+            const valueTD = document.createElement('div');
+            keyTD.classList.add('col');
+            valueTD.classList.add('col');
+            keyTD.appendChild(document.createTextNode(TIMINGS[timing]));
+            valueTD.appendChild(document.createTextNode(timings[timing] + " ms"));
+
+            tr.appendChild(keyTD);
+            tr.appendChild(valueTD);
+            this.fpsLabel.appendChild(tr);
+        }
+
+        this.fpsLabel.classList.remove('invisible');
     }
 
     private updateAALevel() {
@@ -207,4 +235,5 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
 
     private aaLevelSelect: HTMLSelectElement | null;
     private subpixelAASwitch: HTMLInputElement | null;
+    private fpsLabel: HTMLElement | null;
 }
