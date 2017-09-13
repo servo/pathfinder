@@ -174,13 +174,16 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
         const upperLeft = glmatrix.vec2.clone(this.runs[0].origin);
         const lowerRight = glmatrix.vec2.clone(_.last(this.runs)!.origin);
 
+        const lowerLeft = glmatrix.vec2.clone([upperLeft[0], lowerRight[1]]);
+        const upperRight = glmatrix.vec2.clone([lowerRight[0], upperLeft[1]]);
+
         const lineHeight = this.font.lineHeight();
-        upperLeft[1] += lineHeight * 2.0;
-        lowerRight[1] -= lineHeight;
+        lowerLeft[1] -= lineHeight;
+        upperRight[1] += lineHeight * 2.0;
 
-        lowerRight[0] = _.defaultTo<number>(_.max(this.runs.map(run => run.measure)), 0.0);
+        upperRight[0] = _.defaultTo<number>(_.max(this.runs.map(run => run.measure)), 0.0);
 
-        return glmatrix.vec4.fromValues(upperLeft[0], upperLeft[1], lowerRight[0], lowerRight[1]);
+        return glmatrix.vec4.clone([lowerLeft[0], lowerLeft[1], upperRight[0], upperRight[1]]);
     }
 
     get allGlyphs(): Glyph[] {
