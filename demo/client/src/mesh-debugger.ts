@@ -68,7 +68,7 @@ class MeshDebuggerView extends PathfinderView {
         super();
 
         this.appController = appController;
-        this.camera = new OrthographicCamera(this.canvas, false);
+        this.camera = new OrthographicCamera(this.canvas);
         this.scale = 1.0;
     }
 

@@ -76,6 +76,9 @@ const B_PATH_INDEX_SIZE: number = 2;
 
 const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(2048, 4096);
 
+const MIN_SCALE: number = 0.02;
+const MAX_SCALE: number = 10.0;
+
 declare global {
     interface Window {
         jQuery(element: HTMLElement): JQuerySubset;
@@ -243,7 +246,7 @@ class TextDemoView extends MonochromePathfinderView {
 
         this.appController = appController;
 
-        this.camera = new OrthographicCamera(this.canvas, true);
+        this.camera = new OrthographicCamera(this.canvas, MIN_SCALE, MAX_SCALE);
         this.camera.onPan = () => this.onPan();
         this.camera.onZoom = () => this.onZoom();
 

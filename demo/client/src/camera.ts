@@ -18,7 +18,8 @@ const ORTHOGRAPHIC_ZOOM_SPEED: number = 1.0 / 100.0;
 const ORTHOGRAPHIC_ZOOM_IN_FACTOR: number = 1.2;
 const ORTHOGRAPHIC_ZOOM_OUT_FACTOR: number = 1.0 / ORTHOGRAPHIC_ZOOM_IN_FACTOR;
 
-const ORTHOGRAPHIC_MAX_SCALE: number = 10.0;
+const ORTHOGRAPHIC_DEFAULT_MIN_SCALE: number = 0.01;
+const ORTHOGRAPHIC_DEFAULT_MAX_SCALE: number = 1000.0;
 
 const PERSPECTIVE_MOVEMENT_SPEED: number = 10.0;
 const PERSPECTIVE_ROTATION_SPEED: number = 1.0 / 300.0;
@@ -52,10 +53,11 @@ export abstract class Camera {
 }
 
 export class OrthographicCamera extends Camera {
-    constructor(canvas: HTMLCanvasElement, limitedZoom: boolean) {
+    constructor(canvas: HTMLCanvasElement, minScale?: number, maxScale?: number) {
         super(canvas);
 
-        this.limitedZoom = limitedZoom;
+        this.minScale = _.defaultTo(minScale, ORTHOGRAPHIC_DEFAULT_MIN_SCALE);
+        this.maxScale = _.defaultTo(maxScale, ORTHOGRAPHIC_DEFAULT_MAX_SCALE);
 
         this.translation = glmatrix.vec2.create();
         this.scale = 1.0;
@@ -147,9 +149,7 @@ export class OrthographicCamera extends Camera {
         glmatrix.vec2.sub(absoluteTranslation, this.translation, point);
         glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
 
-        this.scale *= scale;
-        if (this.limitedZoom && this.scale > ORTHOGRAPHIC_MAX_SCALE)
-            this.scale = ORTHOGRAPHIC_MAX_SCALE;
+        this.scale = _.clamp(this.scale * scale, this.minScale, this.maxScale);
 
         glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, this.scale);
         glmatrix.vec2.add(this.translation, absoluteTranslation, point);
@@ -178,7 +178,8 @@ export class OrthographicCamera extends Camera {
     translation: glmatrix.vec2;
     scale: number;
 
-    private readonly limitedZoom: boolean;
+    private readonly minScale: number;
+    private readonly maxScale: number;
 }
 
 export class PerspectiveCamera extends Camera {
