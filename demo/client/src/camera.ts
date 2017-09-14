@@ -53,11 +53,15 @@ export abstract class Camera {
 }
 
 export class OrthographicCamera extends Camera {
-    constructor(canvas: HTMLCanvasElement, minScale?: number, maxScale?: number) {
+    constructor(canvas: HTMLCanvasElement, options?: OrthographicCameraOptions) {
         super(canvas);
 
-        this.minScale = _.defaultTo(minScale, ORTHOGRAPHIC_DEFAULT_MIN_SCALE);
-        this.maxScale = _.defaultTo(maxScale, ORTHOGRAPHIC_DEFAULT_MAX_SCALE);
+        if (options == null)
+            options = {};
+
+        this.minScale = _.defaultTo(options.minScale, ORTHOGRAPHIC_DEFAULT_MIN_SCALE);
+        this.maxScale = _.defaultTo(options.maxScale, ORTHOGRAPHIC_DEFAULT_MAX_SCALE);
+        this.scaleBounds = !!options.scaleBounds;
 
         this.translation = glmatrix.vec2.create();
         this.scale = 1.0;
@@ -117,7 +121,7 @@ export class OrthographicCamera extends Camera {
     }
 
     private clampViewport() {
-        const bounds = glmatrix.vec4.clone(this._bounds);
+        const bounds = this.bounds;
         for (let axis = 0; axis < 2; axis++) {
             const viewportLength = axis === 0 ? this.canvas.width : this.canvas.height;
             const axisBounds = [bounds[axis + 0], bounds[axis + 2]];
@@ -187,7 +191,10 @@ export class OrthographicCamera extends Camera {
     }
 
     get bounds(): glmatrix.vec4 {
-        return this._bounds;
+        const bounds = glmatrix.vec4.clone(this._bounds);
+        if (this.scaleBounds)
+            glmatrix.vec4.scale(bounds, bounds, this.scale);
+        return bounds;
     }
 
     set bounds(newBounds: glmatrix.vec4) {
@@ -204,6 +211,7 @@ export class OrthographicCamera extends Camera {
 
     private readonly minScale: number;
     private readonly maxScale: number;
+    private readonly scaleBounds: boolean;
 }
 
 export class PerspectiveCamera extends Camera {
@@ -314,4 +322,10 @@ export class PerspectiveCamera extends Camera {
 
     private movementDelta: glmatrix.vec3;
     private movementInterval: number | null;
+}
+
+export interface OrthographicCameraOptions {
+    minScale?: number;
+    maxScale?: number;
+    scaleBounds?: boolean;
 }

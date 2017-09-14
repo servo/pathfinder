@@ -246,7 +246,10 @@ class TextDemoView extends MonochromePathfinderView {
 
         this.appController = appController;
 
-        this.camera = new OrthographicCamera(this.canvas, MIN_SCALE, MAX_SCALE);
+        this.camera = new OrthographicCamera(this.canvas, {
+            minScale: MIN_SCALE,
+            maxScale: MAX_SCALE,
+        });
         this.camera.onPan = () => this.onPan();
         this.camera.onZoom = () => this.onZoom();
 

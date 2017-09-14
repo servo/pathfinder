@@ -213,7 +213,7 @@ class SVGDemoView extends PathfinderDemoView {
 
         this.appController = appController;
 
-        this.camera = new OrthographicCamera(this.canvas);
+        this.camera = new OrthographicCamera(this.canvas, { scaleBounds: true });
         this.camera.onPan = () => this.setDirty();
         this.camera.onZoom = () => this.setDirty();
     }
@@ -286,8 +286,6 @@ class SVGDemoView extends PathfinderDemoView {
                             [2.0 / this.canvas.width, 2.0 / this.canvas.height, 1.0]);
         glmatrix.mat4.translate(transform, transform, [translation[0], translation[1], 0]);
         glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
-        if (this.antialiasingStrategy != null)
-            glmatrix.mat4.mul(transform, transform, this.antialiasingStrategy.transform);
         return transform;
     }
 
