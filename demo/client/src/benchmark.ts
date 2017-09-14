@@ -203,7 +203,11 @@ class BenchmarkTestView extends PathfinderDemoView {
     protected get worldTransform() {
         const transform = glmatrix.mat4.create();
         const translation = this.camera.translation;
-        glmatrix.mat4.fromTranslation(transform, [translation[0], translation[1], 0]);
+        glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform,
+                            transform,
+                            [2.0 / this.canvas.width, 2.0 / this.canvas.height, 1.0]);
+        glmatrix.mat4.translate(transform, transform, [translation[0], translation[1], 0]);
         glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
 
         const pixelsPerUnit = this.pixelsPerUnit;
