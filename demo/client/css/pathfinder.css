@@ -99,15 +99,19 @@ button > svg path {
 	margin-right: -15px;
 }
 
+.github-corner {
+    display: block;
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    text-align: right;
+}
 .github-corner > svg {
     fill: #151513;
     color: #fff;
-    position: absolute;
-    top: 0;
-    border: 0;
-    right: -1rem;
-    max-height: 100%;
-    z-index: 1;
+    height: 100%;
+    width: auto;
 }
 .github-corner:hover .octo-arm {
     animation: octocat-wave 560ms ease-in-out;
