@@ -9,7 +9,21 @@
     <body>
         {{>partials/navbar.html isTool=true}}
         <canvas id="pf-canvas" class="pf-draggable" width="400" height="300"></canvas>
-        <div class="fixed-bottom mb-3 d-flex justify-content-end align-items-end pf-pointer-events-none">
+        <div id="pf-nonoverlapping-bottom-bar"
+         class="fixed-bottom mb-3 pt-3 d-flex justify-content-between align-items-end pf-pointer-events-none border border-right-0 border-bottom-0 border-left-0">
+            <div class="container ml-3 pf-pointer-events-auto">
+                <div class="row">
+                    <label for="pf-aa-level-select" class="col-form-label">Antialiasing</label>
+                    <div class="col-md-auto">
+                        <select id="pf-aa-level-select" class="form-control custom-select">
+                            <option value="none" selected>None</option>
+                            <option value="ssaa-2">2&times;SSAA</option>
+                            <option value="ssaa-4">4&times;SSAA</option>
+                            <option value="ecaa">ECAA (BROKEN)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
             <div id="pf-toolbar">
                 <button id="pf-run-benchmark-button" type="button"
                  class="btn btn-primary pf-toolbar-button">

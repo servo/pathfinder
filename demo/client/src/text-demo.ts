@@ -535,13 +535,8 @@ class TextDemoView extends MonochromePathfinderView {
                              0);
     }
 
-    get bgColor(): glmatrix.vec4 {
-        return glmatrix.vec4.fromValues(1.0, 1.0, 1.0, 1.0);
-    }
-
-    get fgColor(): glmatrix.vec4 {
-        return glmatrix.vec4.fromValues(0.0, 0.0, 0.0, 1.0);
-    }
+    readonly bgColor: glmatrix.vec4 = glmatrix.vec4.fromValues(1.0, 1.0, 1.0, 1.0);
+    readonly fgColor: glmatrix.vec4 = glmatrix.vec4.fromValues(0.0, 0.0, 0.0, 1.0);
 
     get destFramebuffer(): WebGLFramebuffer {
         return this.atlasFramebuffer;

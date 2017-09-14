@@ -53,6 +53,9 @@ button > svg path {
 .pf-pointer-events-none {
     pointer-events: none;
 }
+.pf-pointer-events-auto {
+    pointer-events: auto;
+}
 #pf-rendering-options-group {
     right: 1em;
 }

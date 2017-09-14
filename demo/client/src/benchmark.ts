@@ -15,11 +15,13 @@ import { AppController, DemoAppController } from "./app-controller";
 import {PathfinderMeshData} from "./meshes";
 import { BUILTIN_FONT_URI, GlyphStorage, PathfinderGlyph, TextFrame, TextRun, ExpandedMeshData } from "./text";
 import { assert, unwrapNull, PathfinderError } from "./utils";
-import { PathfinderDemoView, Timings } from "./view";
+import { PathfinderDemoView, Timings, MonochromePathfinderView } from "./view";
 import { ShaderMap, ShaderProgramSource } from "./shader-loader";
 import { AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy } from "./aa-strategy";
 import SSAAStrategy from './ssaa-strategy';
 import { OrthographicCamera } from './camera';
+import { ECAAStrategy, ECAAMonochromeStrategy } from './ecaa-strategy';
+import PathfinderBufferTexture from './buffer-texture';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -33,6 +35,7 @@ const MAX_FONT_SIZE: number = 200;
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
+    ecaa: ECAAMonochromeStrategy,
 };
 
 interface ElapsedTime {
@@ -43,6 +46,7 @@ interface ElapsedTime {
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
+    ecaa: typeof ECAAStrategy;
 }
 
 class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
@@ -73,6 +77,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             this.view.then(view => {
                 view.uploadPathColors(1);
                 view.uploadPathTransforms(1);
+                view.uploadHints();
                 view.attachMeshes([expandedMeshes.meshes]);
             })
         })
@@ -122,7 +127,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     textRun: TextRun<BenchmarkGlyph> | null;
 }
     
-class BenchmarkTestView extends PathfinderDemoView {
+class BenchmarkTestView extends MonochromePathfinderView {
     constructor(appController: BenchmarkAppController,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
@@ -139,9 +144,7 @@ class BenchmarkTestView extends PathfinderDemoView {
                                aaLevel: number,
                                subpixelAA: boolean):
                                AntialiasingStrategy {
-        if (aaType !== 'ecaa')
-            return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
-        throw new PathfinderError("Unsupported antialiasing type!");
+        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
     protected compositeIfNecessary(): void {}
@@ -184,6 +187,15 @@ class BenchmarkTestView extends PathfinderDemoView {
             const usPerGlyph = this.lastTimings.rendering * 1000.0 / glyphCount;
             this.renderingPromiseCallback(usPerGlyph);
         }
+    }
+
+    uploadHints(): void {
+        const glyphCount = unwrapNull(this.appController.textRun).glyphs.length;
+        const pathHints = new Float32Array((glyphCount + 1) * 4);
+
+        const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
+        pathHintsBufferTexture.upload(this.gl, pathHints);
+        this.pathHintsBufferTexture = pathHintsBufferTexture;
     }
 
     destFramebuffer: WebGLFramebuffer | null = null;
@@ -233,6 +245,9 @@ class BenchmarkTestView extends PathfinderDemoView {
     renderingPromiseCallback: ((time: number) => void) | null;
 
     private _pixelsPerEm: number = 32.0;
+
+    readonly bgColor: glmatrix.vec4 = glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
+    readonly fgColor: glmatrix.vec4 = glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
 
     protected directCurveProgramName: keyof ShaderMap<void> = 'directCurve';
     protected directInteriorProgramName: keyof ShaderMap<void> = 'directInterior';

@@ -63,8 +63,14 @@ export abstract class PathfinderView {
 
     private resizeToFit(initialSize: boolean) {
         const width = window.innerWidth;
-        const height = window.scrollY + window.innerHeight -
-            this.canvas.getBoundingClientRect().top;
+
+        let height = window.scrollY + window.innerHeight - this.canvas.getBoundingClientRect().top;
+        const nonoverlappingBottomBar = document.getElementById('pf-nonoverlapping-bottom-bar');
+        if (nonoverlappingBottomBar != null) {
+            const rect = nonoverlappingBottomBar.getBoundingClientRect();
+            height -= window.innerHeight - rect.top;
+        }
+
         const devicePixelRatio = window.devicePixelRatio;
 
         const canvasSize = new Float32Array([width, height]) as glmatrix.vec2;
