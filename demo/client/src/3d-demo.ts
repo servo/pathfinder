@@ -26,7 +26,9 @@ import * as _ from "lodash";
 import PathfinderBufferTexture from "./buffer-texture";
 
 const TEXT_AVAILABLE_WIDTH: number = 150000;
-const PADDING: number = 2000;
+const TEXT_PADDING: number = 2000;
+
+const TEXT_SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 200.0, 1.0 / 200.0, 1.0 / 200.0);
 
 const TEXT_DATA_URI: string = "/data/mozmonument.json";
 
@@ -36,23 +38,19 @@ const PIXELS_PER_UNIT: number = 1.0;
 
 const FOV: number = 45.0;
 const NEAR_CLIP_PLANE: number = 0.1;
-const FAR_CLIP_PLANE: number = 3000.0;
-
-const SCALE: glmatrix.vec3 = glmatrix.vec3.fromValues(1.0 / 200.0, 1.0 / 200.0, 1.0 / 200.0);
+const FAR_CLIP_PLANE: number = 10000.0;
 
 const TEXT_TRANSLATION: number[] = [
-    -(TEXT_AVAILABLE_WIDTH + PADDING) * 0.5,
+    -TEXT_AVAILABLE_WIDTH * 0.5,
     0.0,
-    (TEXT_AVAILABLE_WIDTH + PADDING) * 0.5
+    TEXT_AVAILABLE_WIDTH * 0.5 + TEXT_PADDING,
 ];
-
-const TEXT_DECAL_OFFSET: number = 5.0;
 
 const MONUMENT_TRANSLATION: glmatrix.vec3 = glmatrix.vec3.fromValues(0.0, -690.0, 0.0);
 const MONUMENT_SCALE: glmatrix.vec3 =
-    glmatrix.vec3.fromValues((TEXT_AVAILABLE_WIDTH + PADDING) / 400.0 - TEXT_DECAL_OFFSET,
+    glmatrix.vec3.fromValues((TEXT_AVAILABLE_WIDTH * 0.5 + TEXT_PADDING) * TEXT_SCALE[0],
                              700.0,
-                             (TEXT_AVAILABLE_WIDTH + PADDING) / 400.0 - TEXT_DECAL_OFFSET);
+                             (TEXT_AVAILABLE_WIDTH * 0.5 + TEXT_PADDING) * TEXT_SCALE[2]);
 
 const TEXT_COLOR: Uint8Array = new Uint8Array([0xf2, 0xf8, 0xf8, 0xff]);
 const MONUMENT_COLOR: number[] = [0x70 / 0xff, 0x80 / 0xff, 0x80 / 0xff];
@@ -290,6 +288,10 @@ class ThreeDView extends PathfinderDemoView {
 
         // Draw the monument!
         this.gl.drawElements(this.gl.TRIANGLES, CUBE_INDICES.length, this.gl.UNSIGNED_SHORT, 0);
+
+        // Clear to avoid Z-fighting.
+        this.gl.clearDepth(1.0);
+        this.gl.clear(this.gl.DEPTH_BUFFER_BIT);
     }
 
     protected compositeIfNecessary(): void {}
@@ -339,7 +341,7 @@ class ThreeDView extends PathfinderDemoView {
     }
 
     protected get worldTransform() {
-        return this.calculateWorldTransform(glmatrix.vec3.create(), SCALE);
+        return this.calculateWorldTransform(glmatrix.vec3.create(), TEXT_SCALE);
     }
 
     protected getModelviewTransform(objectIndex: number): glmatrix.mat4 {
@@ -347,6 +349,18 @@ class ThreeDView extends PathfinderDemoView {
         glmatrix.mat4.rotateY(transform, transform, Math.PI / 2.0 * objectIndex);
         glmatrix.mat4.translate(transform, transform, TEXT_TRANSLATION);
         return transform;
+    }
+
+    // Cheap but effective backface culling.
+    protected shouldRenderObject(objectIndex: number): boolean {
+        const translation = this.camera.translation;
+        const extent = TEXT_TRANSLATION[2] * TEXT_SCALE[2];
+        switch (objectIndex) {
+        case 0:     return translation[2] < -extent;
+        case 1:     return translation[0] < -extent;
+        case 2:     return translation[2] > extent;
+        default:    return translation[0] > extent;
+        }
     }
 
     protected directCurveProgramName: keyof ShaderMap<void> = 'direct3DCurve';

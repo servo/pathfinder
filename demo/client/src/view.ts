@@ -329,6 +329,9 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
     private renderDirect() {
         for (let objectIndex = 0; objectIndex < this.meshes.length; objectIndex++) {
+            if (!this.shouldRenderObject(objectIndex))
+                continue;
+
             const meshes = this.meshes[objectIndex];
 
             // Set up implicit cover state.
@@ -518,6 +521,10 @@ export abstract class PathfinderDemoView extends PathfinderView {
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 
+    protected shouldRenderObject(objectIndex: number): boolean {
+        return true;
+    }
+
     uploadPathColors(objectCount: number) {
         this.pathColorsBufferTextures = [];
 
@@ -540,7 +547,6 @@ export abstract class PathfinderDemoView extends PathfinderView {
             pathTransformBufferTexture.upload(this.gl, pathTransforms);
             this.pathTransformBufferTextures.push(pathTransformBufferTexture);
         }
-
     }
 
     protected newTimingsReceived() {}
