@@ -207,7 +207,9 @@ class ThreeDView extends PathfinderDemoView {
 
         this.appController = appController;
 
-        this.camera = new PerspectiveCamera(this.canvas);
+        this.camera = new PerspectiveCamera(this.canvas, {
+            innerCollisionExtent: MONUMENT_SCALE[0],
+        });
         this.camera.onChange = () => this.setDirty();
 
         this.cubeVertexPositionBuffer = unwrapNull(this.gl.createBuffer());

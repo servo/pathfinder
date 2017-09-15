@@ -37,6 +37,19 @@ const PERSPECTIVE_INITIAL_TRANSLATION: glmatrix.vec3 =
     glmatrix.vec3.clone([1750.0, 700.0, -1750.0]);
 const PERSPECTIVE_INITIAL_ROTATION: glmatrix.vec2 = glmatrix.vec2.clone([Math.PI * 0.25, 0.0]);
 
+const PERSPECTIVE_OUTER_COLLISION_EXTENT: number = 3000.0;
+const PERSPECTIVE_HITBOX_RADIUS: number = 1.0;
+
+export interface OrthographicCameraOptions {
+    minScale?: number;
+    maxScale?: number;
+    scaleBounds?: boolean;
+}
+
+export interface PerspectiveCameraOptions {
+    innerCollisionExtent?: number;
+}
+
 interface PerspectiveMovementVectors {
     [keyCode: number]: glmatrix.vec3;
 }
@@ -215,8 +228,12 @@ export class OrthographicCamera extends Camera {
 }
 
 export class PerspectiveCamera extends Camera {
-    constructor(canvas: HTMLCanvasElement) {
+    constructor(canvas: HTMLCanvasElement, options?: PerspectiveCameraOptions) {
         super(canvas);
+
+        if (options == null)
+            options = {};
+        this.innerCollisionExtent = options.innerCollisionExtent || 0.0;
 
         this.translation = glmatrix.vec3.clone(PERSPECTIVE_INITIAL_TRANSLATION);
         this.rotation = glmatrix.vec2.clone(PERSPECTIVE_INITIAL_ROTATION);
@@ -292,7 +309,30 @@ export class PerspectiveCamera extends Camera {
 
         const delta = glmatrix.vec3.clone(this.movementDelta);
         glmatrix.vec3.transformMat4(delta, delta, invRotationMatrix);
-        glmatrix.vec3.add(this.translation, this.translation, delta);
+
+        const trialTranslation = glmatrix.vec3.create();
+        glmatrix.vec3.add(trialTranslation, this.translation, delta);
+
+        // TODO(pcwalton): Sliding…
+        const absoluteTrialTranslationX = Math.abs(trialTranslation[0]);
+        const absoluteTrialTranslationZ = Math.abs(trialTranslation[2]);
+        if (absoluteTrialTranslationX < this.innerCollisionExtent + PERSPECTIVE_HITBOX_RADIUS &&
+            absoluteTrialTranslationZ < this.innerCollisionExtent + PERSPECTIVE_HITBOX_RADIUS) {
+            return;
+        }
+
+        if (absoluteTrialTranslationX > PERSPECTIVE_OUTER_COLLISION_EXTENT -
+            PERSPECTIVE_HITBOX_RADIUS) {
+            trialTranslation[0] = Math.sign(trialTranslation[0]) *
+                (PERSPECTIVE_OUTER_COLLISION_EXTENT - PERSPECTIVE_HITBOX_RADIUS);
+        }
+        if (absoluteTrialTranslationZ > PERSPECTIVE_OUTER_COLLISION_EXTENT -
+            PERSPECTIVE_HITBOX_RADIUS) {
+            trialTranslation[2] = Math.sign(trialTranslation[2]) *
+                (PERSPECTIVE_OUTER_COLLISION_EXTENT - PERSPECTIVE_HITBOX_RADIUS);
+        }
+
+        this.translation = trialTranslation;
 
         if (this.onChange != null)
             this.onChange();
@@ -322,10 +362,6 @@ export class PerspectiveCamera extends Camera {
 
     private movementDelta: glmatrix.vec3;
     private movementInterval: number | null;
-}
 
-export interface OrthographicCameraOptions {
-    minScale?: number;
-    maxScale?: number;
-    scaleBounds?: boolean;
+    private readonly innerCollisionExtent: number;
 }
