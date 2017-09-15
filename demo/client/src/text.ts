@@ -325,22 +325,27 @@ export abstract class PathfinderGlyph {
         glmatrix.vec2.scale(this.origin, pixelOrigin, 1.0 / pixelsPerUnit);
     }
 
-    setPixelLowerLeft(pixelLowerLeft: glmatrix.vec2, pixelsPerUnit: number): void {
-        const pixelDescent = this.calculatePixelDescent(pixelsPerUnit);
-        const pixelOrigin = glmatrix.vec2.fromValues(pixelLowerLeft[0],
-                                                     pixelLowerLeft[1] + pixelDescent);
-        this.setPixelOrigin(pixelOrigin, pixelsPerUnit);
+    private calculatePixelXMin(pixelsPerUnit: number): number {
+        return Math.floor(this.metrics.xMin * pixelsPerUnit);
     }
 
     private calculatePixelDescent(pixelsPerUnit: number): number {
         return Math.ceil(-this.metrics.yMin * pixelsPerUnit);
     }
 
+    setPixelLowerLeft(pixelLowerLeft: glmatrix.vec2, pixelsPerUnit: number): void {
+        const pixelXMin = this.calculatePixelXMin(pixelsPerUnit);
+        const pixelDescent = this.calculatePixelDescent(pixelsPerUnit);
+        const pixelOrigin = glmatrix.vec2.fromValues(pixelLowerLeft[0] - pixelXMin,
+                                                     pixelLowerLeft[1] + pixelDescent);
+        this.setPixelOrigin(pixelOrigin, pixelsPerUnit);
+    }
+
     protected pixelMetrics(hint: Hint, pixelsPerUnit: number): PixelMetrics {
         const metrics = this.metrics;
         const top = hint.hintPosition(glmatrix.vec2.fromValues(0, metrics.yMax))[1];
         return {
-            left: Math.floor(metrics.xMin * pixelsPerUnit),
+            left: this.calculatePixelXMin(pixelsPerUnit),
             right: Math.ceil(metrics.xMax * pixelsPerUnit),
             ascent: Math.ceil(top * pixelsPerUnit),
             descent: this.calculatePixelDescent(pixelsPerUnit),
@@ -358,7 +363,7 @@ export abstract class PathfinderGlyph {
         const textGlyphOrigin = this.calculatePixelOrigin(hint, pixelsPerUnit);
         glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
 
-        return glmatrix.vec4.fromValues(textGlyphOrigin[0],
+        return glmatrix.vec4.fromValues(textGlyphOrigin[0] + pixelMetrics.left,
                                         textGlyphOrigin[1] - pixelMetrics.descent,
                                         textGlyphOrigin[0] + pixelMetrics.right,
                                         textGlyphOrigin[1] + pixelMetrics.ascent);
