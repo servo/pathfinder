@@ -269,7 +269,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
         antialiasingStrategy.prepare(this);
 
         // Clear.
-        this.clearForResolve();
+        this.clearForDirectRendering();
 
         // Draw "scenery" (used in the 3D view).
         this.drawSceneryIfNecessary();
@@ -514,7 +514,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
     protected drawSceneryIfNecessary(): void {}
 
-    protected clearForResolve(): void {
+    protected clearForDirectRendering(): void {
         this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
         this.gl.clearDepth(0.0);
         this.gl.depthMask(true);

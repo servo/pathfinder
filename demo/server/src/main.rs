@@ -330,7 +330,7 @@ fn partition_paths(partitioner: &mut Partitioner, subpath_indices: &[SubpathRang
 
     // Reverse interior indices for early Z optimizations.
     let mut new_cover_interior_indices = Vec::with_capacity(cover_interior_indices.len());
-    for path_indices in &mut path_indices {
+    for path_indices in path_indices.iter_mut().rev() {
         let old_byte_start = path_indices.cover_interior_indices.start * mem::size_of::<u32>();
         let old_byte_end = path_indices.cover_interior_indices.end * mem::size_of::<u32>();
         let new_start_index = new_cover_interior_indices.len() / mem::size_of::<u32>();

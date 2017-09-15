@@ -333,7 +333,7 @@ class ThreeDView extends PathfinderDemoView {
         return transform;
     }
 
-    protected clearForResolve(): void {
+    protected clearForDirectRendering(): void {
         this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
         this.gl.clearDepth(1.0);
         this.gl.depthMask(true);
