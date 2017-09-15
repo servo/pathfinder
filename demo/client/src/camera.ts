@@ -277,7 +277,9 @@ export class PerspectiveCamera extends Camera {
             return;
 
         this.rotation[0] += event.movementX * PERSPECTIVE_ROTATION_SPEED;
-        this.rotation[1] += event.movementY * PERSPECTIVE_ROTATION_SPEED;
+
+        const trialYRotation = this.rotation[1] + event.movementY * PERSPECTIVE_ROTATION_SPEED;
+        this.rotation[1] = _.clamp(trialYRotation, -Math.PI * 0.5, Math.PI * 0.5);
 
         if (this.onChange != null)
             this.onChange();
