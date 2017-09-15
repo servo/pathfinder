@@ -13,6 +13,8 @@ import * as _ from 'lodash';
 
 import {PathfinderView} from "./view";
 
+const PIXELS_PER_LINE: number = 16.0;
+
 const ORTHOGRAPHIC_ZOOM_SPEED: number = 1.0 / 100.0;
 
 const ORTHOGRAPHIC_ZOOM_IN_FACTOR: number = 1.2;
@@ -94,7 +96,10 @@ export class OrthographicCamera extends Camera {
         event.preventDefault();
 
         if (!event.ctrlKey) {
-            this.pan(glmatrix.vec2.fromValues(-event.deltaX, event.deltaY));
+            const delta = glmatrix.vec2.fromValues(-event.deltaX, event.deltaY);
+            if (event.deltaMode === event.DOM_DELTA_LINE)
+                glmatrix.vec2.scale(delta, delta, PIXELS_PER_LINE);
+            this.pan(delta);
             return;
         }
 
