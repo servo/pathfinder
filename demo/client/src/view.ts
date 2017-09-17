@@ -75,6 +75,7 @@ export abstract class PathfinderView {
 
         const canvasSize = new Float32Array([width, height]) as glmatrix.vec2;
         glmatrix.vec2.scale(canvasSize, canvasSize, devicePixelRatio);
+        glmatrix.vec2.round(canvasSize, canvasSize);
 
         this.canvas.style.width = width + 'px';
         this.canvas.style.height = height + 'px';
