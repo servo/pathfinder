@@ -466,6 +466,14 @@ impl<'a> Partitioner<'a> {
         active_edge_index > 0 && self.should_fill_below_active_edge(active_edge_index - 1)
     }
 
+    fn winding_number_above_active_edge(&self, active_edge_index: u32) -> i32 {
+        if active_edge_index == 0 {
+            0
+        } else {
+            self.winding_number_below_active_edge(active_edge_index - 1)
+        }
+    }
+
     fn winding_number_below_active_edge(&self, active_edge_index: u32) -> i32 {
         let mut winding_number = 0;
         for active_edge_index in 0..(active_edge_index as usize + 1) {
@@ -479,14 +487,44 @@ impl<'a> Partitioner<'a> {
     }
 
     fn emit_b_quad_below(&mut self, upper_active_edge_index: u32, right_x: f32) {
-        self.emit_b_quad_above(upper_active_edge_index + 1, right_x)
+        let mut lower_active_edge_index = upper_active_edge_index + 1;
+
+        if self.fill_rule == FillRule::Winding {
+            let active_edge_count = self.active_edges.len() as u32;
+            let mut winding_number =
+                self.winding_number_below_active_edge(lower_active_edge_index);
+            while lower_active_edge_index + 1 < active_edge_count && winding_number != 0 {
+                lower_active_edge_index += 1;
+                if self.active_edges[lower_active_edge_index as usize].left_to_right {
+                    winding_number += 1
+                } else {
+                    winding_number -= 1
+                }
+            }
+        }
+
+        self.emit_b_quad_above(lower_active_edge_index, right_x)
     }
 
     fn emit_b_quad_above(&mut self, lower_active_edge_index: u32, right_x: f32) {
         // TODO(pcwalton): Assert that the green X position is the same on both edges.
         debug_assert!(lower_active_edge_index > 0,
                       "Can't emit b_quads above the top active edge");
-        let upper_active_edge_index = lower_active_edge_index - 1;
+
+        let mut upper_active_edge_index = lower_active_edge_index - 1;
+
+        if self.fill_rule == FillRule::Winding {
+            let mut winding_number =
+                self.winding_number_above_active_edge(upper_active_edge_index);
+            while upper_active_edge_index > 0 && winding_number != 0 {
+                upper_active_edge_index -= 1;
+                if self.active_edges[upper_active_edge_index as usize].left_to_right {
+                    winding_number -= 1
+                } else {
+                    winding_number += 1
+                }
+            }
+        }
 
         let upper_curve = self.subdivide_active_edge_at(upper_active_edge_index, right_x);
         let lower_curve = self.subdivide_active_edge_at(lower_active_edge_index, right_x);

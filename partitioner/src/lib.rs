@@ -33,7 +33,7 @@ pub mod legalizer;
 pub mod partitioner;
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum FillRule {
     EvenOdd = 0,
     Winding = 1,
