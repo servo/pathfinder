@@ -34,6 +34,13 @@ pub mod partitioner;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum FillRule {
+    EvenOdd = 0,
+    Winding = 1,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct BQuad {
     pub upper_left_vertex_index: u32,
     pub upper_right_vertex_index: u32,

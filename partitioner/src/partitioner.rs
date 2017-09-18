@@ -19,12 +19,15 @@ use std::cmp::Ordering;
 use std::f32;
 use std::iter;
 use std::u32;
-use {BQuad, BVertexLoopBlinnData, BVertexKind, CurveIndices, Endpoint, LineIndices, Subpath};
+use {BQuad, BVertexLoopBlinnData, BVertexKind, CurveIndices, Endpoint, FillRule};
+use {LineIndices, Subpath};
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
     control_points: &'a [Point2D<f32>],
     subpaths: &'a [Subpath],
+
+    fill_rule: FillRule,
 
     b_quads: Vec<BQuad>,
     b_vertex_positions: Vec<Point2D<f32>>,
@@ -46,6 +49,8 @@ impl<'a> Partitioner<'a> {
             endpoints: &[],
             control_points: &[],
             subpaths: &[],
+
+            fill_rule: FillRule::Winding,
 
             b_quads: vec![],
             b_vertex_positions: vec![],
@@ -78,6 +83,11 @@ impl<'a> Partitioner<'a> {
         self.init_with_raw_data(&path_buffer.endpoints,
                                 &path_buffer.control_points,
                                 &path_buffer.subpaths)
+    }
+
+    #[inline]
+    pub fn set_fill_rule(&mut self, new_fill_rule: FillRule) {
+        self.fill_rule = new_fill_rule
     }
 
     pub fn partition(&mut self, path_id: u16, first_subpath_index: u32, last_subpath_index: u32) {
@@ -442,13 +452,30 @@ impl<'a> Partitioner<'a> {
     }
 
     fn should_fill_below_active_edge(&self, active_edge_index: u32) -> bool {
-        // TODO(pcwalton): Support the winding fill rule.
-        active_edge_index % 2 == 0
+        if (active_edge_index as usize) + 1 == self.active_edges.len() {
+            return false
+        }
+
+        match self.fill_rule {
+            FillRule::EvenOdd => active_edge_index % 2 == 0,
+            FillRule::Winding => self.winding_number_below_active_edge(active_edge_index) != 0,
+        }
     }
 
     fn should_fill_above_active_edge(&self, active_edge_index: u32) -> bool {
-        // TODO(pcwalton): Support the winding fill rule.
-        active_edge_index % 2 == 1
+        active_edge_index > 0 && self.should_fill_below_active_edge(active_edge_index - 1)
+    }
+
+    fn winding_number_below_active_edge(&self, active_edge_index: u32) -> i32 {
+        let mut winding_number = 0;
+        for active_edge_index in 0..(active_edge_index as usize + 1) {
+            if self.active_edges[active_edge_index].left_to_right {
+                winding_number += 1
+            } else {
+                winding_number -= 1
+            }
+        }
+        winding_number
     }
 
     fn emit_b_quad_below(&mut self, upper_active_edge_index: u32, right_x: f32) {
@@ -780,7 +807,8 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    fn subdivide_active_edge_at(&mut self, active_edge_index: u32, x: f32) -> SubdividedActiveEdge {
+    fn subdivide_active_edge_at(&mut self, active_edge_index: u32, x: f32)
+                                -> SubdividedActiveEdge {
         let t = self.solve_active_edge_t_for_x(x, &self.active_edges[active_edge_index as usize]);
 
         let bottom = self.should_fill_above_active_edge(active_edge_index);
