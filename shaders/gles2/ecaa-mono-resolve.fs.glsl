@@ -18,5 +18,5 @@ varying vec2 vTexCoord;
 
 void main() {
     float alpha = clamp(texture2D(uAAAlpha, vTexCoord).r, 0.0, 1.0);
-    gl_FragColor = mix(uBGColor, uFGColor, alpha);
+    gl_FragColor = vec4(uFGColor.rgb, uFGColor.a * alpha);
 }

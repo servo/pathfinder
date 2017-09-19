@@ -500,7 +500,7 @@ export class ECAAMonochromeStrategy extends ECAAStrategy {
     }
 
     protected clearForResolve(view: MonochromePathfinderView) {
-        view.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         view.gl.clear(view.gl.COLOR_BUFFER_BIT);
     }
 

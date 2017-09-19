@@ -32,9 +32,10 @@ void main() {
                        sampleSource(2.0 * onePixel),
                        sampleSource(3.0 * onePixel));
 
-    vec3 alpha = vec3(lcdFilter(shadeL.z, shadeL.y, shadeL.x, shade0,   shadeR.x),
-                      lcdFilter(shadeL.y, shadeL.x, shade0,   shadeR.x, shadeR.y),
-                      lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z));
+    vec3 shades = vec3(lcdFilter(shadeL.z, shadeL.y, shadeL.x, shade0,   shadeR.x),
+                       lcdFilter(shadeL.y, shadeL.x, shade0,   shadeR.x, shadeR.y),
+                       lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z));
 
-    gl_FragColor = mix(uBGColor, uFGColor, vec4(alpha, 1.0));
+    vec3 color = mix(uBGColor.rgb, uFGColor.rgb, shades);
+    gl_FragColor = vec4(color, any(greaterThan(shades, vec3(0.0))) ? uFGColor.a : uBGColor.a);
 }

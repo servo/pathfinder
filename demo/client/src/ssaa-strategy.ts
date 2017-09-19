@@ -25,7 +25,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     }
 
     attachMeshes(view: PathfinderDemoView) {}
-    
+
     setFramebufferSize(view: PathfinderDemoView) {
         this.destFramebufferSize = glmatrix.vec2.clone(view.destAllocatedSize);
 
@@ -81,6 +81,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
         view.gl.viewport(0, 0, view.destAllocatedSize[0], view.destAllocatedSize[1]);
         view.gl.disable(view.gl.DEPTH_TEST);
+        view.gl.disable(view.gl.BLEND);
 
         // Set up the blit program VAO.
         let resolveProgram;
