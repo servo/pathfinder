@@ -14,11 +14,14 @@ use geometry::{self, SubdividedQuadraticBezier};
 use log::LogLevel;
 use pathfinder_path_utils::PathBuffer;
 use pathfinder_path_utils::curve::Curve;
+use pathfinder_path_utils::intersection::Intersection;
+use pathfinder_path_utils::line::Line;
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use std::f32;
 use std::iter;
 use std::u32;
+
 use {BQuad, BVertexLoopBlinnData, BVertexKind, CurveIndices, Endpoint, FillRule};
 use {LineIndices, Subpath};
 
@@ -811,36 +814,50 @@ impl<'a> Partitioner<'a> {
                                                    lower_left_vertex_position,
                                                    lower_right_endpoint_position)
             }
+
             (upper_control_point_vertex_index, u32::MAX) => {
                 let upper_control_point =
                     &self.b_vertex_positions[upper_control_point_vertex_index as usize];
-                geometry::line_quadratic_bezier_crossing_point(lower_left_vertex_position,
-                                                               lower_right_endpoint_position,
-                                                               upper_left_vertex_position,
-                                                               upper_control_point,
-                                                               upper_right_endpoint_position)
+                let upper_curve = Curve::new(&upper_left_vertex_position,
+                                             &upper_control_point,
+                                             &upper_right_endpoint_position);
+                let lower_line = Line::new(lower_left_vertex_position,
+                                           lower_right_endpoint_position);
+
+                Intersection::calculate(&upper_curve, &lower_line).map(|intersection| {
+                    lower_line.sample(intersection.t_b)
+                })
             }
+
             (u32::MAX, lower_control_point_vertex_index) => {
                 let lower_control_point =
                     &self.b_vertex_positions[lower_control_point_vertex_index as usize];
-                geometry::line_quadratic_bezier_crossing_point(upper_left_vertex_position,
-                                                               upper_right_endpoint_position,
-                                                               lower_left_vertex_position,
-                                                               lower_control_point,
-                                                               lower_right_endpoint_position)
+                let lower_curve = Curve::new(&lower_left_vertex_position,
+                                             &lower_control_point,
+                                             &lower_right_endpoint_position);
+                let upper_line = Line::new(upper_left_vertex_position,
+                                           upper_right_endpoint_position);
+
+                Intersection::calculate(&upper_line, &lower_curve).map(|intersection| {
+                    upper_line.sample(intersection.t_a)
+                })
             }
+
             (upper_control_point_vertex_index, lower_control_point_vertex_index) => {
                 let upper_control_point =
                     &self.b_vertex_positions[upper_control_point_vertex_index as usize];
                 let lower_control_point =
                     &self.b_vertex_positions[lower_control_point_vertex_index as usize];
-                geometry::quadratic_bezier_quadratic_bezier_crossing_point(
-                    upper_left_vertex_position,
-                    upper_control_point,
-                    upper_right_endpoint_position,
-                    lower_left_vertex_position,
-                    lower_control_point,
-                    lower_right_endpoint_position)
+                let upper_curve = Curve::new(&upper_left_vertex_position,
+                                             &upper_control_point,
+                                             &upper_right_endpoint_position);
+                let lower_curve = Curve::new(&lower_left_vertex_position,
+                                             &lower_control_point,
+                                             &lower_right_endpoint_position);
+
+                Intersection::calculate(&upper_curve, &lower_curve).map(|intersection| {
+                    upper_curve.sample(intersection.t_a)
+                })
             }
         }
     }

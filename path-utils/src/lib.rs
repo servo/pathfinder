@@ -19,6 +19,8 @@ use std::u32;
 
 pub mod curve;
 pub mod freetype;
+pub mod intersection;
+pub mod line;
 pub mod monotonic;
 pub mod stroke;
 
@@ -194,4 +196,9 @@ impl<I> Iterator for Transform2DPathStream<I> where I: Iterator<Item = PathSegme
             Some(PathSegment::ClosePath) => Some(PathSegment::ClosePath),
         }
     }
+}
+
+#[inline]
+pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
 }

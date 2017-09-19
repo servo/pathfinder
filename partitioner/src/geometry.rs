@@ -65,27 +65,6 @@ pub fn line_line_crossing_point(a_p0: &Point2D<f32>,
     Some(p + r * t)
 }
 
-// TODO(pcwalton): Implement this.
-pub fn line_quadratic_bezier_crossing_point(a_p0: &Point2D<f32>,
-                                            a_p1: &Point2D<f32>,
-                                            b_p0: &Point2D<f32>,
-                                            b_p1: &Point2D<f32>,
-                                            b_p2: &Point2D<f32>)
-                                            -> Option<Point2D<f32>> {
-    None
-}
-
-// TODO(pcwalton): Implement this.
-pub fn quadratic_bezier_quadratic_bezier_crossing_point(_a_p0: &Point2D<f32>,
-                                                        _a_p1: &Point2D<f32>,
-                                                        _a_p2: &Point2D<f32>,
-                                                        _b_p0: &Point2D<f32>,
-                                                        _b_p1: &Point2D<f32>,
-                                                        _b_p2: &Point2D<f32>)
-                                                        -> Option<Point2D<f32>> {
-    None
-}
-
 pub fn solve_line_t_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
     if b.x == a.x {
         0.0

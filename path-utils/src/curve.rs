@@ -10,8 +10,8 @@
 
 //! Geometry utilities for Bézier curves.
 
-use euclid::Point2D;
 use euclid::approxeq::ApproxEq;
+use euclid::Point2D;
 use std::f32;
 
 use PathSegment;
