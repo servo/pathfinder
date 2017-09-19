@@ -167,7 +167,7 @@ impl<'a> Partitioner<'a> {
 
         self.mark_point_as_visited(&point);
 
-        self.sort_active_edge_list(point.endpoint_index);
+        self.sort_active_edge_list_and_emit_self_intersections(point.endpoint_index);
 
         let matching_active_edges = self.find_right_point_in_active_edge_list(point.endpoint_index);
         match matching_active_edges.count {
@@ -299,14 +299,31 @@ impl<'a> Partitioner<'a> {
         self.active_edges.remove(active_edge_indices[0] as usize);
     }
 
-    fn sort_active_edge_list(&mut self, endpoint_index: u32) {
+    fn sort_active_edge_list_and_emit_self_intersections(&mut self, endpoint_index: u32) {
         for index in 1..self.active_edges.len() {
             for sorted_index in (1..(index + 1)).rev() {
-                if self.active_edges_are_ordered((sorted_index - 1) as u32,
-                                                 sorted_index as u32,
+                let upper_active_edge_index = (sorted_index - 1) as u32;
+                let lower_active_edge_index = sorted_index as u32;
+
+                if self.active_edges_are_ordered(upper_active_edge_index,
+                                                 lower_active_edge_index,
                                                  endpoint_index) {
                     break
                 }
+
+                if let Some(crossing_point) =
+                        self.crossing_point_for_active_edge(upper_active_edge_index) {
+                    if self.should_fill_above_active_edge(upper_active_edge_index) {
+                        self.emit_b_quad_above(upper_active_edge_index, crossing_point.x)
+                    }
+                    if self.should_fill_above_active_edge(lower_active_edge_index) {
+                        self.emit_b_quad_above(lower_active_edge_index, crossing_point.x)
+                    }
+                    if self.should_fill_above_active_edge(lower_active_edge_index + 1) {
+                        self.emit_b_quad_below(lower_active_edge_index, crossing_point.x)
+                    }
+                }
+
                 self.active_edges.swap(sorted_index - 1, sorted_index)
             }
         }
