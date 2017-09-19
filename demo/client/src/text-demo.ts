@@ -494,8 +494,10 @@ class TextDemoView extends MonochromePathfinderView {
         this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
         this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
         this.gl.disable(this.gl.DEPTH_TEST);
-        this.gl.disable(this.gl.BLEND);
         this.gl.disable(this.gl.SCISSOR_TEST);
+        this.gl.blendEquation(this.gl.FUNC_ADD);
+        this.gl.blendFunc(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA);
+        this.gl.enable(this.gl.BLEND);
 
         // Clear.
         this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -533,6 +535,13 @@ class TextDemoView extends MonochromePathfinderView {
                              this.appController.layout.glyphStorage.allGlyphs.length * 6,
                              this.gl.UNSIGNED_INT,
                              0);
+    }
+
+    protected clearForDirectRendering(): void {
+        this.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        this.gl.clearDepth(0.0);
+        this.gl.depthMask(true);
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
     }
 
     readonly bgColor: glmatrix.vec4 = glmatrix.vec4.fromValues(1.0, 1.0, 1.0, 1.0);
