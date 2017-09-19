@@ -42,6 +42,8 @@ const PERSPECTIVE_INITIAL_ROTATION: glmatrix.vec2 = glmatrix.vec2.clone([Math.PI
 const PERSPECTIVE_OUTER_COLLISION_EXTENT: number = 3000.0;
 const PERSPECTIVE_HITBOX_RADIUS: number = 1.0;
 
+const KEYCODES = ["W", "A", "S", "D"].map(x => x.charCodeAt(0));
+
 export interface OrthographicCameraOptions {
     minScale?: number;
     maxScale?: number;
@@ -54,6 +56,10 @@ export interface PerspectiveCameraOptions {
 
 interface PerspectiveMovementVectors {
     [keyCode: number]: glmatrix.vec3;
+}
+
+interface PerspectiveMovementKeys {
+    [keyCode: number]: boolean;
 }
 
 export abstract class Camera {
@@ -253,6 +259,13 @@ export class PerspectiveCamera extends Camera {
         window.addEventListener('keyup', event => this.onKeyUp(event), false);
 
         this.onChange = null;
+
+        this.wasdPress = _.fromPairs([
+            ['W'.charCodeAt(0), false],
+            ['A'.charCodeAt(0), false],
+            ['S'.charCodeAt(0), false],
+            ['D'.charCodeAt(0), false],
+        ]);
     }
 
     private onMouseDown(event: MouseEvent): void {
@@ -287,14 +300,37 @@ export class PerspectiveCamera extends Camera {
 
     private onKeyDown(event: KeyboardEvent): void {
         if (PERSPECTIVE_MOVEMENT_VECTORS.hasOwnProperty(event.keyCode)) {
-            this.movementDelta = glmatrix.vec3.clone(PERSPECTIVE_MOVEMENT_VECTORS[event.keyCode]);
+            // keyDown will be repeated on prolonged holds of the key,
+            // don't do extra computation in that case
+            if (this.wasdPress[event.keyCode])
+                return;
+            this.wasdPress[event.keyCode] = true;
+            this.updateMovementDelta();
             this.startMoving();
         }
     }
 
     private onKeyUp(event: KeyboardEvent): void {
-        if (PERSPECTIVE_MOVEMENT_VECTORS.hasOwnProperty(event.keyCode))
-            this.stopMoving();
+        if (PERSPECTIVE_MOVEMENT_VECTORS.hasOwnProperty(event.keyCode)) {
+            this.wasdPress[event.keyCode] = false;
+            if (this.updateMovementDelta()) {
+               this.stopMoving();
+           }
+        }
+    }
+
+    // Updates the movementDelta vector based on what keys are currently pressed
+    // Returns true if the vector is now empty
+    private updateMovementDelta(): boolean {
+        this.movementDelta = glmatrix.vec3.create();
+        let empty = true;
+        for (const key of KEYCODES) {
+            if (this.wasdPress[key]) {
+                glmatrix.vec3.add(this.movementDelta, this.movementDelta, PERSPECTIVE_MOVEMENT_VECTORS[key]);
+                empty = false;
+            }
+        }
+        return empty;
     }
 
     private startMoving(): void {
@@ -368,6 +404,8 @@ export class PerspectiveCamera extends Camera {
     rotation: glmatrix.vec2;
 
     private movementDelta: glmatrix.vec3;
+    // If W, A, S, D are pressed
+    private wasdPress:  PerspectiveMovementKeys;
     private movementInterval: number | null;
 
     private readonly innerCollisionExtent: number;
