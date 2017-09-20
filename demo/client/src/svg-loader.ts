@@ -13,7 +13,7 @@ import * as _ from 'lodash';
 
 import 'path-data-polyfill.js';
 import {panic, unwrapNull} from "./utils";
-import {PathfinderMeshData, Partitionable} from "./meshes";
+import {PathfinderMeshData} from "./meshes";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
 
@@ -38,8 +38,9 @@ export interface PathInstance {
     stroke: number | 'fill';
 }
 
-export class SVGLoader implements Partitionable {
+export class SVGLoader {
     constructor() {
+        this.scale = 1.0;
         this.svg = unwrapNull(document.getElementById('pf-svg')) as Element as SVGSVGElement;
         this.pathInstances = [];
         this.paths = [];
@@ -102,6 +103,7 @@ export class SVGLoader implements Partitionable {
                                                   svgCTM.c, svgCTM.d,
                                                   svgCTM.e, svgCTM.f);
             glmatrix.mat2d.scale(ctm, ctm, [1.0, -1.0]);
+            glmatrix.mat2d.scale(ctm, ctm, [this.scale, this.scale]);
 
             const segments = element.getPathData({normalize: true}).map(segment => {
                 const newValues = _.flatMap(_.chunk(segment.values, 2), coords => {
@@ -133,12 +135,13 @@ export class SVGLoader implements Partitionable {
         this.bounds = glmatrix.vec4.clone([minX, minY, maxX, maxY]);
     }
 
-    partition(): Promise<PathfinderMeshData> {
+    partition(pathIndex?: number | undefined): Promise<PathfinderMeshData> {
         // Make the request.
+        const paths = pathIndex == null ? this.paths : [this.paths[pathIndex]];
         return window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ paths: this.paths }),
+            body: JSON.stringify({ paths: paths }),
         }).then(response => response.text()).then(responseText => {
             const response = JSON.parse(responseText);
             if (!('Ok' in response))
@@ -150,6 +153,7 @@ export class SVGLoader implements Partitionable {
 
     private svg: SVGSVGElement;
     private fileData: ArrayBuffer;
+    scale: number;
 
     pathInstances: PathInstance[];
     private paths: any[];

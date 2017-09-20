@@ -37,10 +37,6 @@ export const B_QUAD_LOWER_INDICES_OFFSET: number = B_QUAD_LOWER_LEFT_VERTEX_OFFS
 
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
-export interface Partitionable {
-    partition(): Promise<PathfinderMeshData>;
-}
-
 export interface Meshes<T> {
     readonly bQuads: T;
     readonly bVertexPositions: T;

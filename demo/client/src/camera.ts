@@ -48,6 +48,7 @@ export interface OrthographicCameraOptions {
     minScale?: number;
     maxScale?: number;
     scaleBounds?: boolean;
+    ignoreBounds?: boolean;
 }
 
 export interface PerspectiveCameraOptions {
@@ -83,6 +84,7 @@ export class OrthographicCamera extends Camera {
         this.minScale = _.defaultTo(options.minScale, ORTHOGRAPHIC_DEFAULT_MIN_SCALE);
         this.maxScale = _.defaultTo(options.maxScale, ORTHOGRAPHIC_DEFAULT_MAX_SCALE);
         this.scaleBounds = !!options.scaleBounds;
+        this.ignoreBounds = !!options.ignoreBounds;
 
         this.translation = glmatrix.vec2.create();
         this.scale = 1.0;
@@ -145,6 +147,9 @@ export class OrthographicCamera extends Camera {
     }
 
     private clampViewport() {
+        if (this.ignoreBounds)
+            return;
+
         const bounds = this.bounds;
         for (let axis = 0; axis < 2; axis++) {
             const viewportLength = axis === 0 ? this.canvas.width : this.canvas.height;
@@ -236,6 +241,7 @@ export class OrthographicCamera extends Camera {
     private readonly minScale: number;
     private readonly maxScale: number;
     private readonly scaleBounds: boolean;
+    private readonly ignoreBounds: boolean;
 }
 
 export class PerspectiveCamera extends Camera {

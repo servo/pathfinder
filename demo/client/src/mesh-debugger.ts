@@ -17,8 +17,7 @@ import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, B_QUAD_LOWER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshData} from "./meshes";
-import {Partitionable} from "./meshes";
-import { SVGLoader, BUILTIN_SVG_URI } from './svg-loader';
+import {SVGLoader, BUILTIN_SVG_URI} from './svg-loader';
 import {BUILTIN_FONT_URI, TextFrameGlyphStorage, PathfinderGlyph, TextRun} from "./text";
 import {GlyphStorage, TextFrame} from "./text";
 import {unwrapNull, UINT32_SIZE, UINT32_MAX, assert} from "./utils";
@@ -30,7 +29,8 @@ const CHARACTER: string = 'A';
 
 const FONT: string = 'eb-garamond';
 
-const POINT_LABEL_FONT: string = "12px sans-serif";
+const POINT_LABEL_FONT: string = "sans-serif";
+const POINT_LABEL_FONT_SIZE: number = 12.0;
 const POINT_LABEL_OFFSET: glmatrix.vec2 = glmatrix.vec2.fromValues(12.0, 12.0);
 const POINT_RADIUS: number = 2.0;
 
@@ -38,6 +38,8 @@ const BUILTIN_URIS = {
     font: BUILTIN_FONT_URI,
     svg: BUILTIN_SVG_URI,
 };
+
+const SVG_SCALE: number = 1.0;
 
 type FileType = 'font' | 'svg';
 
@@ -115,6 +117,7 @@ class MeshDebuggerAppController extends AppController {
 
     private svgLoaded(): void {
         this.file = new SVGLoader;
+        this.file.scale = SVG_SCALE;
         this.file.loadFile(this.fileData);
 
         const pathCount = this.file.pathInstances.length;
@@ -129,7 +132,7 @@ class MeshDebuggerAppController extends AppController {
     protected loadPath(opentypeGlyph?: opentype.Glyph | null) {
         window.jQuery(this.openModal).modal('hide');
 
-        let partitionable: Partitionable | null = null;
+        let promise: Promise<PathfinderMeshData>;
 
         if (this.file instanceof opentype.Font) {
             if (opentypeGlyph == null) {
@@ -138,14 +141,15 @@ class MeshDebuggerAppController extends AppController {
             }
 
             const glyph = new MeshDebuggerGlyph(opentypeGlyph);
-            partitionable = new GlyphStorage(this.fileData, [glyph], this.file);
+            const glyphStorage = new GlyphStorage(this.fileData, [glyph], this.file);
+            promise = glyphStorage.partition();
         } else if (this.file instanceof SVGLoader) {
-            partitionable = this.file;
+            promise = this.file.partition(this.fontPathSelect.selectedIndex);
         } else {
             return;
         }
 
-        partitionable.partition().then(meshes => {
+        promise.then(meshes => {
             this.meshes = meshes;
             this.view.attachMeshes();
         })
@@ -171,8 +175,10 @@ class MeshDebuggerView extends PathfinderView {
         super();
 
         this.appController = appController;
-        this.camera = new OrthographicCamera(this.canvas);
-        this.scale = 1.0;
+        this.camera = new OrthographicCamera(this.canvas, { ignoreBounds: true });
+
+        this.camera.onPan = () => this.setDirty();
+        this.camera.onZoom = () => this.setDirty();
     }
 
     attachMeshes() {
@@ -192,9 +198,11 @@ class MeshDebuggerView extends PathfinderView {
         context.save();
         context.translate(this.camera.translation[0],
                           this.canvas.height - this.camera.translation[1]);
-        context.scale(this.scale, this.scale);
+        context.scale(this.camera.scale, this.camera.scale);
 
-        context.font = POINT_LABEL_FONT;
+        const invScaleFactor = window.devicePixelRatio / this.camera.scale;
+        context.font = `${12.0 * invScaleFactor}px ${POINT_LABEL_FONT}`;
+        context.lineWidth = invScaleFactor;
 
         const bQuads = new Uint32Array(meshes.bQuads);
         const positions = new Float32Array(meshes.bVertexPositions);
@@ -224,10 +232,26 @@ class MeshDebuggerView extends PathfinderView {
             const lowerRightPosition = unwrapNull(getPosition(positions, lowerRightIndex));
             const lowerControlPointPosition = getPosition(positions, lowerControlPointIndex);
 
-            drawVertexIfNecessary(context, markedVertices, upperLeftIndex, upperLeftPosition);
-            drawVertexIfNecessary(context, markedVertices, upperRightIndex, upperRightPosition);
-            drawVertexIfNecessary(context, markedVertices, lowerLeftIndex, lowerLeftPosition);
-            drawVertexIfNecessary(context, markedVertices, lowerRightIndex, lowerRightPosition);
+            drawVertexIfNecessary(context,
+                                  markedVertices,
+                                  upperLeftIndex,
+                                  upperLeftPosition,
+                                  invScaleFactor);
+            drawVertexIfNecessary(context,
+                                  markedVertices,
+                                  upperRightIndex,
+                                  upperRightPosition,
+                                  invScaleFactor);
+            drawVertexIfNecessary(context,
+                                  markedVertices,
+                                  lowerLeftIndex,
+                                  lowerLeftPosition,
+                                  invScaleFactor);
+            drawVertexIfNecessary(context,
+                                  markedVertices,
+                                  lowerRightIndex,
+                                  lowerRightPosition,
+                                  invScaleFactor);
 
             context.beginPath();
             context.moveTo(upperLeftPosition[0], upperLeftPosition[1]);
@@ -259,8 +283,6 @@ class MeshDebuggerView extends PathfinderView {
         context.restore();
     }
 
-    protected scale: number;
-
     private appController: MeshDebuggerAppController;
 
     camera: OrthographicCamera;
@@ -277,19 +299,20 @@ function getPosition(positions: Float32Array, vertexIndex: number): Float32Array
 function drawVertexIfNecessary(context: CanvasRenderingContext2D,
                                markedVertices: boolean[],
                                vertexIndex: number,
-                               position: Float32Array) {
+                               position: Float32Array,
+                               invScaleFactor: number) {
     if (markedVertices[vertexIndex] != null)
         return;
     markedVertices[vertexIndex] = true;
 
     context.beginPath();
     context.moveTo(position[0], position[1]);
-    context.arc(position[0], position[1], POINT_RADIUS, 0, 2.0 * Math.PI);
+    context.arc(position[0], position[1], POINT_RADIUS * invScaleFactor, 0, 2.0 * Math.PI);
     context.fill();
 
     context.fillText("" + vertexIndex,
-                     position[0] + POINT_LABEL_OFFSET[0],
-                     position[1] + POINT_LABEL_OFFSET[1]);
+                     position[0] + POINT_LABEL_OFFSET[0] * invScaleFactor,
+                     position[1] + POINT_LABEL_OFFSET[1] * invScaleFactor);
 }
 
 function main() {
