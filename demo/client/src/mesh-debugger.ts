@@ -9,9 +9,11 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as opentype from "opentype.js";
 
 import {AppController} from "./app-controller";
 import {OrthographicCamera} from "./camera";
+import {FilePickerView} from './file-picker';
 import {B_QUAD_SIZE, B_QUAD_UPPER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, B_QUAD_LOWER_LEFT_VERTEX_OFFSET} from "./meshes";
@@ -22,7 +24,6 @@ import {BUILTIN_FONT_URI, TextFrameGlyphStorage, PathfinderGlyph, TextRun} from 
 import {GlyphStorage, TextFrame} from "./text";
 import {unwrapNull, UINT32_SIZE, UINT32_MAX, assert} from "./utils";
 import {PathfinderView} from "./view";
-import * as opentype from "opentype.js";
 import {Font} from 'opentype.js';
 
 const CHARACTER: string = 'A';
@@ -51,6 +52,12 @@ class MeshDebuggerAppController extends AppController {
 
         this.view = new MeshDebuggerView(this);
 
+        this.filePicker = unwrapNull(FilePickerView.create());
+        this.filePicker.onFileLoaded = fileData => {
+            this.fileData = fileData;
+            this.fileLoaded();
+        };
+
         this.openModal = unwrapNull(document.getElementById('pf-open-modal'));
         this.fontPathSelectGroup =
             unwrapNull(document.getElementById('pf-font-path-select-group'));
@@ -59,7 +66,7 @@ class MeshDebuggerAppController extends AppController {
 
         this.openFileSelect = unwrapNull(document.getElementById('pf-open-file-select')) as
             HTMLSelectElement;
-        this.openFileSelect.addEventListener('change', () => this.openSelectedFile(), false);
+        this.openFileSelect.addEventListener('click', () => this.openSelectedFile(), false);
 
         const openButton = unwrapNull(document.getElementById('pf-open-button'));
         openButton.addEventListener('click', () => this.showOpenDialog(), false);
@@ -82,7 +89,12 @@ class MeshDebuggerAppController extends AppController {
 
         const results = unwrapNull(/^([a-z]+)-(.*)$/.exec(optionValue));
         this.fileType = results[1] as FileType;
-        this.fetchFile(results[2], BUILTIN_URIS[this.fileType]);
+
+        const filename = results[2];
+        if (filename === 'custom')
+            this.filePicker.open();
+        else
+            this.fetchFile(results[2], BUILTIN_URIS[this.fileType]);
     }
 
     protected fileLoaded(): void {
@@ -167,6 +179,7 @@ class MeshDebuggerAppController extends AppController {
     private fontPathSelectGroup: HTMLElement;
     private fontPathSelect: HTMLSelectElement;
 
+    private filePicker: FilePickerView;
     private view: MeshDebuggerView;
 }
 
