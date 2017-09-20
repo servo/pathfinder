@@ -10,7 +10,9 @@
 
 //! Geometry utilities for straight line segments.
 
-use euclid::Point2D;
+use euclid::{Point2D, Vector2D};
+
+use intersection::{Intersect, Side};
 
 pub struct Line {
     pub endpoints: [Point2D<f32>; 2],
@@ -27,5 +29,15 @@ impl Line {
     #[inline]
     pub fn sample(&self, t: f32) -> Point2D<f32> {
         self.endpoints[0].lerp(self.endpoints[1], t)
+    }
+
+    #[inline]
+    pub(crate) fn to_vector(&self) -> Vector2D<f32> {
+        self.endpoints[1] - self.endpoints[0]
+    }
+
+    #[inline]
+    pub fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Side {
+        <Line as Intersect>::intersect(self, other)
     }
 }

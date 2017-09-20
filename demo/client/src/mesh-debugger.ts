@@ -35,6 +35,10 @@ const POINT_LABEL_FONT_SIZE: number = 12.0;
 const POINT_LABEL_OFFSET: glmatrix.vec2 = glmatrix.vec2.fromValues(12.0, 12.0);
 const POINT_RADIUS: number = 2.0;
 
+const LIGHT_STROKE_STYLE: string = "rgb(192, 192, 192)";
+const LINE_STROKE_STYLE: string = "rgb(0, 128, 0)";
+const CURVE_STROKE_STYLE: string = "rgb(128, 0, 0)";
+
 const BUILTIN_URIS = {
     font: BUILTIN_FONT_URI,
     svg: BUILTIN_SVG_URI,
@@ -214,7 +218,7 @@ class MeshDebuggerView extends PathfinderView {
         context.scale(this.camera.scale, this.camera.scale);
 
         const invScaleFactor = window.devicePixelRatio / this.camera.scale;
-        context.font = `${12.0 * invScaleFactor}px ${POINT_LABEL_FONT}`;
+        context.font = `12px ${POINT_LABEL_FONT}`;
         context.lineWidth = invScaleFactor;
 
         const bQuads = new Uint32Array(meshes.bQuads);
@@ -268,28 +272,42 @@ class MeshDebuggerView extends PathfinderView {
 
             context.beginPath();
             context.moveTo(upperLeftPosition[0], upperLeftPosition[1]);
-
             if (upperControlPointPosition != null) {
+                context.strokeStyle = CURVE_STROKE_STYLE;
                 context.quadraticCurveTo(upperControlPointPosition[0],
                                          upperControlPointPosition[1],
                                          upperRightPosition[0],
                                          upperRightPosition[1]);
             } else {
+                context.strokeStyle = LINE_STROKE_STYLE;
                 context.lineTo(upperRightPosition[0], upperRightPosition[1]);
             }
+            context.stroke();
 
+            context.strokeStyle = LIGHT_STROKE_STYLE;
+            context.beginPath();
+            context.moveTo(upperRightPosition[0], upperRightPosition[1]);
             context.lineTo(lowerRightPosition[0], lowerRightPosition[1]);
+            context.stroke();
 
+            context.beginPath();
+            context.moveTo(lowerRightPosition[0], lowerRightPosition[1]);
             if (lowerControlPointPosition != null) {
+                context.strokeStyle = CURVE_STROKE_STYLE;
                 context.quadraticCurveTo(lowerControlPointPosition[0],
                                          lowerControlPointPosition[1],
                                          lowerLeftPosition[0],
                                          lowerLeftPosition[1]);
             } else {
+                context.strokeStyle = LINE_STROKE_STYLE;
                 context.lineTo(lowerLeftPosition[0], lowerLeftPosition[1]);
             }
+            context.stroke();
 
-            context.closePath();
+            context.strokeStyle = LIGHT_STROKE_STYLE;
+            context.beginPath();
+            context.moveTo(lowerLeftPosition[0], lowerLeftPosition[1]);
+            context.lineTo(upperLeftPosition[0], upperLeftPosition[1]);
             context.stroke();
         }
 
@@ -323,9 +341,12 @@ function drawVertexIfNecessary(context: CanvasRenderingContext2D,
     context.arc(position[0], position[1], POINT_RADIUS * invScaleFactor, 0, 2.0 * Math.PI);
     context.fill();
 
+    context.save();
+    context.scale(invScaleFactor, invScaleFactor);
     context.fillText("" + vertexIndex,
-                     position[0] + POINT_LABEL_OFFSET[0] * invScaleFactor,
-                     position[1] + POINT_LABEL_OFFSET[1] * invScaleFactor);
+                     position[0] / invScaleFactor + POINT_LABEL_OFFSET[0],
+                     position[1] / invScaleFactor + POINT_LABEL_OFFSET[1]);
+    context.restore();
 }
 
 function main() {

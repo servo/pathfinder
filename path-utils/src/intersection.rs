@@ -10,95 +10,81 @@
 
 //! Intersections of two segments.
 
-use euclid::{Point2D, Rect};
+use euclid::approxeq::ApproxEq;
+use euclid::Point2D;
 
 use curve::Curve;
 use line::Line;
-use lerp;
+use {det2x2, det3x3, lerp};
 
-const SUBDIVISION_TOLERANCE: f32 = 0.0001;
-const MAX_SUBDIVISIONS: u32 = 1000;
-
-pub struct Intersection {
-    pub t_a: f32,
-    pub t_b: f32,
+pub trait Side {
+    fn side(&self, point: &Point2D<f32>) -> f32;
 }
 
-impl Intersection {
+pub(crate) trait Intersect {
+    fn sample(&self, t: f32) -> Point2D<f32>;
+
     /// Requires that any curves be monotonic. (See the `monotonic` module for that.)
     ///
     /// This should work for line segments, but it is inefficient.
     ///
-    /// See T.W. Sederberg, "Computer Aided Geometric Design Course Notes" § 7.6.
-    pub fn calculate<A, B>(a: &A, b: &B) -> Option<Intersection> where A: Intersect, B: Intersect {
-        let (mut a_lower_t, mut a_upper_t) = (0.0, 1.0);
-        let (mut b_lower_t, mut b_upper_t) = (0.0, 1.0);
+    /// See T.W. Sederberg, "Computer Aided Geometric Design Course Notes" § 17.8.
+    fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Side {
+        let (mut t_min, mut t_max) = (0.0, 1.0);
+        let mut iteration = 0;
+        while t_max - t_min > f32::approx_epsilon() {
+            let (p_min, p_max) = (self.sample(t_min), self.sample(t_max));
 
-        for _ in 0..MAX_SUBDIVISIONS {
-            let a_lower_point = a.sample(a_lower_t);
-            let a_upper_point = a.sample(a_upper_t);
-            let b_lower_point = b.sample(b_lower_t);
-            let b_upper_point = b.sample(b_upper_t);
+            let side_min = other.side(&p_min).signum();
+            let side_max = other.side(&p_max).signum();
+            if iteration == 0 && side_min == side_max {
+                return None
+            }
 
-            let a_distance = (a_upper_point - a_lower_point).length();
-            let b_distance = (b_upper_point - b_lower_point).length();
+            let t_mid = lerp(t_min, t_max, 0.5);
+            let p_mid = self.sample(t_mid);
+            let side_mid = other.side(&p_mid).signum();
 
-            let need_to_subdivide_a = a_distance >= SUBDIVISION_TOLERANCE;
-            let need_to_subdivide_b = b_distance >= SUBDIVISION_TOLERANCE;
-            if !need_to_subdivide_b && !need_to_subdivide_a {
+            if side_mid == side_min {
+                t_min = t_mid
+            } else if side_mid == side_max {
+                t_max = t_mid
+            } else {
                 break
             }
 
-            let a_rect;
-            if need_to_subdivide_a {
-                let a_middle_t = lerp(a_lower_t, a_upper_t, 0.5);
-                let a_middle_point = a.sample(a_middle_t);
-
-                let a_lower_rect =
-                    Rect::from_points(&[a_lower_point, a_middle_point]);
-                let a_upper_rect =
-                    Rect::from_points(&[a_middle_point, a_upper_point]);
-                let b_rect = Rect::from_points(&[b_lower_point, b_upper_point]);
-
-                if a_lower_rect.intersects(&b_rect) {
-                    a_upper_t = a_middle_t;
-                    a_rect = a_lower_rect;
-                } else if a_upper_rect.intersects(&b_rect) {
-                    a_lower_t = a_middle_t;
-                    a_rect = a_upper_rect;
-                } else {
-                    return None
-                }
-            } else {
-                a_rect = Rect::from_points(&[a_lower_point, a_upper_point])
-            }
-
-            if need_to_subdivide_b {
-                let b_middle_t = lerp(b_lower_t, b_upper_t, 0.5);
-                let b_middle_point = b.sample(b_middle_t);
-
-                let b_lower_rect = Rect::from_points(&[b_lower_point, b_middle_point]);
-                let b_upper_rect = Rect::from_points(&[b_middle_point, b_upper_point]);
-
-                if b_lower_rect.intersects(&a_rect) {
-                    b_upper_t = b_middle_t
-                } else if b_upper_rect.intersects(&a_rect) {
-                    b_lower_t = b_middle_t
-                } else {
-                    return None
-                }
-            }
+            iteration += 1
         }
 
-        Some(Intersection {
-            t_a: lerp(a_lower_t, a_upper_t, 0.5),
-            t_b: lerp(b_lower_t, b_upper_t, 0.5),
-        })
+        Some(self.sample(lerp(t_min, t_max, 0.5)))
     }
 }
 
-pub trait Intersect {
-    fn sample(&self, t: f32) -> Point2D<f32>;
+impl Side for Line {
+    #[inline]
+    fn side(&self, point: &Point2D<f32>) -> f32 {
+        self.to_vector().cross(*point - self.endpoints[0])
+    }
+}
+
+impl Side for Curve {
+    /// See T.W. Sederberg, "Computer Aided Geometric Design Course Notes" § 17.6.1.
+    fn side(&self, point: &Point2D<f32>) -> f32 {
+        fn l(factor: f32, point: &Point2D<f32>, point_i: &Point2D<f32>, point_j: &Point2D<f32>)
+             -> f32 {
+            factor * det3x3(&[
+                point.x, point.y, 1.0,
+                point_i.x, point_i.y, 1.0,
+                point_j.x, point_j.y, 1.0,
+            ])
+        }
+
+        let l20 = l(1.0 * 1.0, point, &self.endpoints[1], &self.endpoints[0]);
+        det2x2(&[
+            l(2.0 * 1.0, point, &self.endpoints[1], &self.control_point), l20,
+            l20, l(2.0 * 1.0, point, &self.control_point, &self.endpoints[0]),
+        ])
+    }
 }
 
 impl Intersect for Line {

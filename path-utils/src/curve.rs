@@ -15,6 +15,7 @@ use euclid::Point2D;
 use std::f32;
 
 use PathSegment;
+use intersection::{Intersect, Side};
 
 pub struct Curve {
     pub endpoints: [Point2D<f32>; 2],
@@ -71,5 +72,10 @@ impl Curve {
         } else {
             None
         }
+    }
+
+    #[inline]
+    pub fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Side {
+        <Curve as Intersect>::intersect(self, other)
     }
 }
