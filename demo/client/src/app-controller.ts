@@ -12,6 +12,7 @@ import {AntialiasingStrategyName} from "./aa-strategy";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapUndef, unwrapNull} from './utils';
 import {PathfinderDemoView, Timings, TIMINGS} from "./view";
+import { FilePickerView } from "./file-picker";
 
 export abstract class AppController {
     start() {
@@ -105,12 +106,12 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
             }, false);
         }
 
-        this.filePickerElement = document.getElementById('pf-file-select') as
-            (HTMLInputElement | null);
-        if (this.filePickerElement != null) {
-            this.filePickerElement.addEventListener('change',
-                                                    event => this.loadFile(event),
-                                                    false);
+        this.filePickerView = FilePickerView.create();
+        if (this.filePickerView != null) {
+            this.filePickerView.onFileLoaded = fileData => {
+                this.fileData = fileData;
+                this.fileLoaded();
+            };
         }
 
         const selectFileElement = document.getElementById('pf-select-file') as
@@ -187,23 +188,12 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
         this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel, subpixelAA));
     }
 
-    protected loadFile(event: Event) {
-        const filePickerElement = event.target as HTMLInputElement;
-        const file = expectNotNull(filePickerElement.files, "No file selected!")[0];
-        const reader = new FileReader;
-        reader.addEventListener('loadend', () => {
-            this.fileData = reader.result;
-            this.fileLoaded();
-        }, false);
-        reader.readAsArrayBuffer(file);
-    }
-
     private fileSelectionChanged(event: Event) {
         const selectFileElement = event.currentTarget as HTMLSelectElement;
         const selectedOption = selectFileElement.selectedOptions[0] as HTMLOptionElement;
 
-        if (selectedOption.value === 'load-custom' && this.filePickerElement != null) {
-            this.filePickerElement.click();
+        if (selectedOption.value === 'load-custom' && this.filePickerView != null) {
+            this.filePickerView.open();
 
             const oldSelectedIndex = selectFileElement.selectedIndex;
             const newOption = document.createElement('option');
@@ -229,7 +219,7 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
 
     view: Promise<View>;
 
-    protected filePickerElement: HTMLInputElement | null;
+    protected filePickerView: FilePickerView | null;
 
     protected commonShaderSource: string | null;
     protected shaderSources: ShaderMap<ShaderProgramSource> | null;

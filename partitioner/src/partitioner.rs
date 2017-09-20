@@ -300,15 +300,15 @@ impl<'a> Partitioner<'a> {
     }
 
     fn sort_active_edge_list_and_emit_self_intersections(&mut self, endpoint_index: u32) {
-        for index in 1..self.active_edges.len() {
-            for sorted_index in (1..(index + 1)).rev() {
-                let upper_active_edge_index = (sorted_index - 1) as u32;
-                let lower_active_edge_index = sorted_index as u32;
+        loop {
+            let mut swapped = false;
+            for lower_active_edge_index in 1..(self.active_edges.len() as u32) {
+                let upper_active_edge_index = lower_active_edge_index - 1;
 
                 if self.active_edges_are_ordered(upper_active_edge_index,
                                                  lower_active_edge_index,
                                                  endpoint_index) {
-                    break
+                    continue
                 }
 
                 if let Some(crossing_point) =
@@ -324,7 +324,13 @@ impl<'a> Partitioner<'a> {
                     }
                 }
 
-                self.active_edges.swap(sorted_index - 1, sorted_index)
+                self.active_edges.swap(upper_active_edge_index as usize,
+                                       lower_active_edge_index as usize);
+                swapped = true;
+            }
+
+            if !swapped {
+                break
             }
         }
     }
