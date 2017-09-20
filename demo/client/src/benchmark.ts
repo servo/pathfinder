@@ -56,7 +56,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         const runBenchmarkButton = unwrapNull(document.getElementById('pf-run-benchmark-button'));
         runBenchmarkButton.addEventListener('click', () => this.runBenchmark(), false);
 
-        this.loadInitialFile();
+        this.loadInitialFile(this.builtinFileURI);
     }
 
     protected fileLoaded(): void {

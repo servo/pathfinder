@@ -11,37 +11,52 @@
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
+import 'path-data-polyfill.js';
 import {panic, unwrapNull} from "./utils";
-import {PathfinderMeshData} from "./meshes";
+import {PathfinderMeshData, Partitionable} from "./meshes";
+
+export const BUILTIN_SVG_URI: string = "/svg/demo";
 
 const PARTITION_SVG_PATHS_ENDPOINT_URL: string = "/partition-svg-paths";
 
 /// The minimum size of a stroke.
 const HAIRLINE_STROKE_WIDTH: number = 0.25;
 
+declare class SVGPathSegment {
+    type: string;
+    values: number[];
+}
+
+declare global {
+    interface SVGPathElement {
+        getPathData(settings: any): SVGPathSegment[];
+    }
+}
+
 export interface PathInstance {
     element: SVGPathElement;
     stroke: number | 'fill';
 }
 
-export class SVGLoader {
+export class SVGLoader implements Partitionable {
     constructor() {
         this.svg = unwrapNull(document.getElementById('pf-svg')) as Element as SVGSVGElement;
         this.pathInstances = [];
+        this.paths = [];
         this.bounds = glmatrix.vec4.create();
     }
 
-    loadFile(fileData: ArrayBuffer): Promise<PathfinderMeshData> {
+    loadFile(fileData: ArrayBuffer) {
         this.fileData = fileData;
 
         const decoder = new (window as any).TextDecoder('utf-8');
         const fileStringData = decoder.decode(new DataView(this.fileData));
         const svgDocument = (new DOMParser).parseFromString(fileStringData, 'image/svg+xml');
         const svgElement = svgDocument.documentElement as Element as SVGSVGElement;
-        return this.attachSVG(svgElement);
+        this.attachSVG(svgElement);
     }
 
-    private attachSVG(svgElement: SVGSVGElement): Promise<PathfinderMeshData> {
+    private attachSVG(svgElement: SVGSVGElement) {
         // Clear out the current document.
         let kid;
         while ((kid = this.svg.firstChild) != null)
@@ -76,8 +91,8 @@ export class SVGLoader {
             }
         }
 
-        const request: any = { paths: [] };
         let minX = 0, minY = 0, maxX = 0, maxY = 0;
+        this.paths = [];
 
         // Extract, normalize, and transform the path data.
         for (const instance of this.pathInstances) {
@@ -112,16 +127,18 @@ export class SVGLoader {
             else
                 kind = { Stroke: Math.max(HAIRLINE_STROKE_WIDTH, instance.stroke) };
 
-            request.paths.push({ segments: segments, kind: kind });
+            this.paths.push({ segments: segments, kind: kind });
         }
 
         this.bounds = glmatrix.vec4.clone([minX, minY, maxX, maxY]);
+    }
 
+    partition(): Promise<PathfinderMeshData> {
         // Make the request.
         return window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(request),
+            body: JSON.stringify({ paths: this.paths }),
         }).then(response => response.text()).then(responseText => {
             const response = JSON.parse(responseText);
             if (!('Ok' in response))
@@ -135,5 +152,6 @@ export class SVGLoader {
     private fileData: ArrayBuffer;
 
     pathInstances: PathInstance[];
+    private paths: any[];
     bounds: glmatrix.vec4;
 }

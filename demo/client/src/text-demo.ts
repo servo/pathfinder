@@ -142,7 +142,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         const editTextOkButton = unwrapNull(document.getElementById('pf-edit-text-ok-button'));
         editTextOkButton.addEventListener('click', () => this.updateText(), false);
 
-        this.loadInitialFile();
+        this.loadInitialFile(this.builtinFileURI);
     }
 
     showTextEditor() {

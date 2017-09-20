@@ -101,7 +101,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
                                      .then(response => response.json())
                                      .then(textData => this.parseTextData(textData));
 
-        this.loadInitialFile();
+        this.loadInitialFile(this.builtinFileURI);
     }
 
     private parseTextData(textData: any): MonumentSide[] {

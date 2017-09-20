@@ -10,7 +10,6 @@
 
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
-import 'path-data-polyfill.js';
 
 import {DemoAppController} from './app-controller';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
@@ -18,7 +17,7 @@ import {OrthographicCamera} from "./camera";
 import {ECAAStrategy, ECAAMulticolorStrategy} from "./ecaa-strategy";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
-import {SVGLoader} from './svg-loader';
+import { SVGLoader, BUILTIN_SVG_URI } from './svg-loader';
 import {panic, unwrapNull} from './utils';
 import {PathfinderDemoView, Timings} from './view';
 import SSAAStrategy from "./ssaa-strategy";
@@ -28,8 +27,6 @@ const parseColor = require('parse-color');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
-const BUILTIN_SVG_URI: string = "/svg/demo";
-
 const DEFAULT_FILE: string = 'tiger';
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
@@ -37,17 +34,6 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     ssaa: SSAAStrategy,
     ecaa: ECAAMulticolorStrategy,
 };
-
-declare class SVGPathSegment {
-    type: string;
-    values: number[];
-}
-
-declare global {
-    interface SVGPathElement {
-        getPathData(settings: any): SVGPathSegment[];
-    }
-}
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
@@ -61,11 +47,12 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
 
         this.loader = new SVGLoader;
 
-        this.loadInitialFile();
+        this.loadInitialFile(this.builtinFileURI);
     }
 
     protected fileLoaded() {
-        this.loader.loadFile(this.fileData).then(meshes => {
+        this.loader.loadFile(this.fileData);
+        this.loader.partition().then(meshes => {
             this.meshes = meshes;
             this.meshesReceived();
         })
@@ -77,9 +64,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
                                unwrapNull(this.shaderSources));
     }
 
-    protected get builtinFileURI(): string {
-        return BUILTIN_SVG_URI;
-    }
+    protected readonly builtinFileURI: string = BUILTIN_SVG_URI;
 
     protected get defaultFile(): string {
         return DEFAULT_FILE;

@@ -17,6 +17,8 @@ import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, B_QUAD_LOWER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshData} from "./meshes";
+import {Partitionable} from "./meshes";
+import { SVGLoader, BUILTIN_SVG_URI } from './svg-loader';
 import {BUILTIN_FONT_URI, TextFrameGlyphStorage, PathfinderGlyph, TextRun} from "./text";
 import {GlyphStorage, TextFrame} from "./text";
 import {unwrapNull, UINT32_SIZE, UINT32_MAX, assert} from "./utils";
@@ -32,9 +34,18 @@ const POINT_LABEL_FONT: string = "12px sans-serif";
 const POINT_LABEL_OFFSET: glmatrix.vec2 = glmatrix.vec2.fromValues(12.0, 12.0);
 const POINT_RADIUS: number = 2.0;
 
+const BUILTIN_URIS = {
+    font: BUILTIN_FONT_URI,
+    svg: BUILTIN_SVG_URI,
+};
+
+type FileType = 'font' | 'svg';
+
 class MeshDebuggerAppController extends AppController {
     start() {
         super.start();
+
+        this.fileType = 'font';
 
         this.view = new MeshDebuggerView(this);
 
@@ -54,7 +65,7 @@ class MeshDebuggerAppController extends AppController {
         const openOKButton = unwrapNull(document.getElementById('pf-open-ok-button'));
         openOKButton.addEventListener('click', () => this.loadPath(), false);
 
-        this.loadInitialFile();
+        this.loadInitialFile(BUILTIN_FONT_URI);
     }
 
     private showOpenDialog(): void {
@@ -67,57 +78,83 @@ class MeshDebuggerAppController extends AppController {
 
         this.fontPathSelectGroup.classList.add('pf-display-none');
 
-        if (optionValue.startsWith('font-')) {
-            this.fetchFile(optionValue.substr('font-'.length));
-        } else if (optionValue.startsWith('svg-')) {
-            // TODO(pcwalton)
-        }
+        const results = unwrapNull(/^([a-z]+)-(.*)$/.exec(optionValue));
+        this.fileType = results[1] as FileType;
+        this.fetchFile(results[2], BUILTIN_URIS[this.fileType]);
     }
 
     protected fileLoaded(): void {
-        this.font = opentype.parse(this.fileData);
-        assert(this.font.isSupported(), "The font type is unsupported!");
-
         while (this.fontPathSelect.lastChild != null)
             this.fontPathSelect.removeChild(this.fontPathSelect.lastChild);
 
         this.fontPathSelectGroup.classList.remove('pf-display-none');
 
-        const glyphCount = this.font.numGlyphs;
+        if (this.fileType === 'font')
+            this.fontLoaded();
+        else if (this.fileType === 'svg')
+            this.svgLoaded();
+    }
+
+    private fontLoaded(): void {
+        this.file = opentype.parse(this.fileData);
+        assert(this.file.isSupported(), "The font type is unsupported!");
+
+        const glyphCount = this.file.numGlyphs;
         for (let glyphIndex = 1; glyphIndex < glyphCount; glyphIndex++) {
             const newOption = document.createElement('option');
             newOption.value = "" + glyphIndex;
-            const glyphName = this.font.glyphIndexToName(glyphIndex);
+            const glyphName = this.file.glyphIndexToName(glyphIndex);
             newOption.appendChild(document.createTextNode(glyphName));
             this.fontPathSelect.appendChild(newOption);
         }
 
         // Automatically load a path if this is the initial pageload.
         if (this.meshes == null)
-            this.loadPath(this.font.charToGlyph(CHARACTER));
+            this.loadPath(this.file.charToGlyph(CHARACTER));
+    }
+
+    private svgLoaded(): void {
+        this.file = new SVGLoader;
+        this.file.loadFile(this.fileData);
+
+        const pathCount = this.file.pathInstances.length;
+        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+            const newOption = document.createElement('option');
+            newOption.value = "" + pathIndex;
+            newOption.appendChild(document.createTextNode(`Path ${pathIndex}`));
+            this.fontPathSelect.appendChild(newOption);
+        }
     }
 
     protected loadPath(opentypeGlyph?: opentype.Glyph | null) {
         window.jQuery(this.openModal).modal('hide');
 
-        if (opentypeGlyph == null) {
-            const glyphIndex = parseInt(this.fontPathSelect.selectedOptions[0].value);
-            opentypeGlyph = this.font.glyphs.get(glyphIndex);
+        let partitionable: Partitionable | null = null;
+
+        if (this.file instanceof opentype.Font) {
+            if (opentypeGlyph == null) {
+                const glyphIndex = parseInt(this.fontPathSelect.selectedOptions[0].value);
+                opentypeGlyph = this.file.glyphs.get(glyphIndex);
+            }
+
+            const glyph = new MeshDebuggerGlyph(opentypeGlyph);
+            partitionable = new GlyphStorage(this.fileData, [glyph], this.file);
+        } else if (this.file instanceof SVGLoader) {
+            partitionable = this.file;
+        } else {
+            return;
         }
 
-        const glyph = new MeshDebuggerGlyph(opentypeGlyph);
-        const glyphStorage = new GlyphStorage(this.fileData, [glyph], this.font);
-
-        glyphStorage.partition().then(meshes => {
+        partitionable.partition().then(meshes => {
             this.meshes = meshes;
             this.view.attachMeshes();
         })
     }
 
     protected readonly defaultFile: string = FONT;
-    protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
 
-    private font: Font;
+    private file: Font | SVGLoader | null;
+    private fileType: FileType;
 
     meshes: PathfinderMeshData | null;
 

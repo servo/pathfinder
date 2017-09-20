@@ -18,19 +18,19 @@ export abstract class AppController {
         const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
     }
 
-    protected loadInitialFile() {
+    protected loadInitialFile(builtinFileURI: string) {
         const selectFileElement = document.getElementById('pf-select-file') as
             (HTMLSelectElement | null);
         if (selectFileElement != null) {
             const selectedOption = selectFileElement.selectedOptions[0] as HTMLOptionElement;
-            this.fetchFile(selectedOption.value);
+            this.fetchFile(selectedOption.value, builtinFileURI);
         } else {
-            this.fetchFile(this.defaultFile);
+            this.fetchFile(this.defaultFile, builtinFileURI);
         }
     }
 
-    protected fetchFile(file: string) {
-        window.fetch(`${this.builtinFileURI}/${file}`)
+    protected fetchFile(file: string, builtinFileURI: string) {
+        window.fetch(`${builtinFileURI}/${file}`)
               .then(response => response.arrayBuffer())
               .then(data => {
                   this.fileData = data;
@@ -47,7 +47,6 @@ export abstract class AppController {
     protected abstract fileLoaded(): void;
 
     protected abstract get defaultFile(): string;
-    protected abstract get builtinFileURI(): string;
 }
 
 export abstract class DemoAppController<View extends PathfinderDemoView> extends AppController {
@@ -221,10 +220,12 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
             selectFileElement.removeChild(placeholder);
 
         // Fetch the file.
-        this.fetchFile(selectedOption.value);
+        this.fetchFile(selectedOption.value, this.builtinFileURI);
     }
 
     protected abstract createView(): View;
+
+    protected abstract readonly builtinFileURI: string;
 
     view: Promise<View>;
 
