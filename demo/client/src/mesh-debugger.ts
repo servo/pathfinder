@@ -17,12 +17,14 @@ import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, B_QUAD_LOWER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshData} from "./meshes";
-import {BUILTIN_FONT_URI, GlyphStorage, PathfinderGlyph, TextRun, TextFrame} from "./text";
+import {BUILTIN_FONT_URI, TextFrameGlyphStorage, PathfinderGlyph, TextRun} from "./text";
+import {GlyphStorage, TextFrame} from "./text";
 import {unwrapNull, UINT32_SIZE, UINT32_MAX, assert} from "./utils";
 import {PathfinderView} from "./view";
 import * as opentype from "opentype.js";
+import {Font} from 'opentype.js';
 
-const CHARACTER: string = 'r';
+const CHARACTER: string = 'A';
 
 const FONT: string = 'eb-garamond';
 
@@ -36,19 +38,77 @@ class MeshDebuggerAppController extends AppController {
 
         this.view = new MeshDebuggerView(this);
 
+        this.openModal = unwrapNull(document.getElementById('pf-open-modal'));
+        this.fontPathSelectGroup =
+            unwrapNull(document.getElementById('pf-font-path-select-group'));
+        this.fontPathSelect = unwrapNull(document.getElementById('pf-font-path-select')) as
+            HTMLSelectElement;
+
+        this.openFileSelect = unwrapNull(document.getElementById('pf-open-file-select')) as
+            HTMLSelectElement;
+        this.openFileSelect.addEventListener('change', () => this.openSelectedFile(), false);
+
+        const openButton = unwrapNull(document.getElementById('pf-open-button'));
+        openButton.addEventListener('click', () => this.showOpenDialog(), false);
+
+        const openOKButton = unwrapNull(document.getElementById('pf-open-ok-button'));
+        openOKButton.addEventListener('click', () => this.loadPath(), false);
+
         this.loadInitialFile();
     }
 
+    private showOpenDialog(): void {
+        window.jQuery(this.openModal).modal();
+    }
+
+    private openSelectedFile(): void {
+        const selectedOption = this.openFileSelect.selectedOptions[0] as HTMLOptionElement;
+        const optionValue = selectedOption.value;
+
+        this.fontPathSelectGroup.classList.add('pf-display-none');
+
+        if (optionValue.startsWith('font-')) {
+            this.fetchFile(optionValue.substr('font-'.length));
+        } else if (optionValue.startsWith('svg-')) {
+            // TODO(pcwalton)
+        }
+    }
+
     protected fileLoaded(): void {
-        const font = opentype.parse(this.fileData);
-        assert(font.isSupported(), "The font type is unsupported!");
+        this.font = opentype.parse(this.fileData);
+        assert(this.font.isSupported(), "The font type is unsupported!");
 
-        const createGlyph = (glyph: opentype.Glyph) => new MeshDebuggerGlyph(glyph);
-        const textRun = new TextRun<MeshDebuggerGlyph>(CHARACTER, [0, 0], font, createGlyph);
-        const textFrame = new TextFrame([textRun], font);
-        this.glyphStorage = new GlyphStorage(this.fileData, [textFrame], createGlyph, font);
+        while (this.fontPathSelect.lastChild != null)
+            this.fontPathSelect.removeChild(this.fontPathSelect.lastChild);
 
-        this.glyphStorage.partition().then(meshes => {
+        this.fontPathSelectGroup.classList.remove('pf-display-none');
+
+        const glyphCount = this.font.numGlyphs;
+        for (let glyphIndex = 1; glyphIndex < glyphCount; glyphIndex++) {
+            const newOption = document.createElement('option');
+            newOption.value = "" + glyphIndex;
+            const glyphName = this.font.glyphIndexToName(glyphIndex);
+            newOption.appendChild(document.createTextNode(glyphName));
+            this.fontPathSelect.appendChild(newOption);
+        }
+
+        // Automatically load a path if this is the initial pageload.
+        if (this.meshes == null)
+            this.loadPath(this.font.charToGlyph(CHARACTER));
+    }
+
+    protected loadPath(opentypeGlyph?: opentype.Glyph | null) {
+        window.jQuery(this.openModal).modal('hide');
+
+        if (opentypeGlyph == null) {
+            const glyphIndex = parseInt(this.fontPathSelect.selectedOptions[0].value);
+            opentypeGlyph = this.font.glyphs.get(glyphIndex);
+        }
+
+        const glyph = new MeshDebuggerGlyph(opentypeGlyph);
+        const glyphStorage = new GlyphStorage(this.fileData, [glyph], this.font);
+
+        glyphStorage.partition().then(meshes => {
             this.meshes = meshes;
             this.view.attachMeshes();
         })
@@ -57,8 +117,14 @@ class MeshDebuggerAppController extends AppController {
     protected readonly defaultFile: string = FONT;
     protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
 
-    glyphStorage: GlyphStorage<MeshDebuggerGlyph>;
-    meshes: PathfinderMeshData;
+    private font: Font;
+
+    meshes: PathfinderMeshData | null;
+
+    private openModal: HTMLElement;
+    private openFileSelect: HTMLSelectElement;
+    private fontPathSelectGroup: HTMLElement;
+    private fontPathSelect: HTMLSelectElement;
 
     private view: MeshDebuggerView;
 }

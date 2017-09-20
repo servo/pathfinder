@@ -17,7 +17,7 @@ import {PerspectiveCamera} from "./camera";
 import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
-import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStorage, PathfinderGlyph} from "./text";
+import {BUILTIN_FONT_URI, ExpandedMeshData, TextFrameGlyphStorage, PathfinderGlyph} from "./text";
 import {Hint, SimpleTextLayout, TextFrame, TextRun} from "./text";
 import {PathfinderError, assert, panic, unwrapNull} from "./utils";
 import {PathfinderDemoView, Timings} from "./view";
@@ -163,7 +163,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
             textFrames.push(new TextFrame(textRuns, font));
         }
 
-        this.glyphStorage = new GlyphStorage(this.fileData, textFrames, createGlyph, font);
+        this.glyphStorage = new TextFrameGlyphStorage(this.fileData, textFrames, font);
         this.glyphStorage.layoutRuns();
 
         this.glyphStorage.partition().then((baseMeshes: PathfinderMeshData) => {
@@ -191,7 +191,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         return FONT;
     }
 
-    glyphStorage: GlyphStorage<ThreeDGlyph>;
+    glyphStorage: TextFrameGlyphStorage<ThreeDGlyph>;
 
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: ExpandedMeshData[];

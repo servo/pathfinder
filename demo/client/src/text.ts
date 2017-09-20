@@ -194,31 +194,22 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
     readonly origin: glmatrix.vec3;
 
     private readonly font: Font;
-
 }
 
 export class GlyphStorage<Glyph extends PathfinderGlyph> {
-    constructor(fontData: ArrayBuffer,
-                textFrames: TextFrame<Glyph>[],
-                createGlyph: CreateGlyphFn<Glyph>,
-                font?: Font) {
+    constructor(fontData: ArrayBuffer, glyphs: Glyph[], font?: Font) {
         if (font == null) {
             font = opentype.parse(fontData);
             assert(font.isSupported(), "The font type is unsupported!");
         }
 
         this.fontData = fontData;
-        this.textFrames = textFrames;
         this.font = font;
 
         // Determine all glyphs potentially needed.
-        this.uniqueGlyphs = this.allGlyphs;
+        this.uniqueGlyphs = glyphs;
         this.uniqueGlyphs.sort((a, b) => a.index - b.index);
         this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.index);
-    }
-
-    expandMeshes(meshes: PathfinderMeshData): ExpandedMeshData[] {
-        return this.textFrames.map(textFrame => textFrame.expandMeshes(this.uniqueGlyphs, meshes));
     }
 
     partition(): Promise<PathfinderMeshData> {
@@ -253,6 +244,23 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         });
     }
 
+    readonly fontData: ArrayBuffer;
+    readonly font: Font;
+    readonly uniqueGlyphs: Glyph[];
+}
+
+export class TextFrameGlyphStorage<Glyph extends PathfinderGlyph> extends GlyphStorage<Glyph> {
+    constructor(fontData: ArrayBuffer, textFrames: TextFrame<Glyph>[], font?: Font) {
+        const allGlyphs = _.flatMap(textFrames, textRun => textRun.allGlyphs);
+        super(fontData, allGlyphs, font);
+
+        this.textFrames = textFrames;
+    }
+
+    expandMeshes(meshes: PathfinderMeshData): ExpandedMeshData[] {
+        return this.textFrames.map(textFrame => textFrame.expandMeshes(this.uniqueGlyphs, meshes));
+    }
+
     layoutRuns() {
         for (const textFrame of this.textFrames)
             textFrame.runs.forEach(textRun => textRun.layout());
@@ -262,10 +270,7 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         return _.flatMap(this.textFrames, textRun => textRun.allGlyphs);
     }
 
-    readonly fontData: ArrayBuffer;
-    readonly font: Font;
     readonly textFrames: TextFrame<Glyph>[];
-    readonly uniqueGlyphs: Glyph[];
 }
 
 export class SimpleTextLayout<Glyph extends PathfinderGlyph> {
@@ -279,7 +284,7 @@ export class SimpleTextLayout<Glyph extends PathfinderGlyph> {
         });
         this.textFrame = new TextFrame(textRuns, font);
 
-        this.glyphStorage = new GlyphStorage(fontData, [this.textFrame], createGlyph, font);
+        this.glyphStorage = new TextFrameGlyphStorage(fontData, [this.textFrame], font);
     }
 
     layoutRuns() {
@@ -291,7 +296,7 @@ export class SimpleTextLayout<Glyph extends PathfinderGlyph> {
     }
 
     readonly textFrame: TextFrame<Glyph>;
-    readonly glyphStorage: GlyphStorage<Glyph>;
+    readonly glyphStorage: TextFrameGlyphStorage<Glyph>;
 }
 
 export abstract class PathfinderGlyph {

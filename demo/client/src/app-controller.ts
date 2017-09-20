@@ -11,7 +11,7 @@
 import {AntialiasingStrategyName} from "./aa-strategy";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapUndef, unwrapNull} from './utils';
-import { PathfinderDemoView, Timings, TIMINGS } from "./view";
+import {PathfinderDemoView, Timings, TIMINGS} from "./view";
 
 export abstract class AppController {
     start() {

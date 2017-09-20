@@ -13,7 +13,7 @@ import * as opentype from "opentype.js";
 
 import { AppController, DemoAppController } from "./app-controller";
 import {PathfinderMeshData} from "./meshes";
-import { BUILTIN_FONT_URI, GlyphStorage, PathfinderGlyph, TextFrame, TextRun, ExpandedMeshData } from "./text";
+import { BUILTIN_FONT_URI, TextFrameGlyphStorage, PathfinderGlyph, TextFrame, TextRun, ExpandedMeshData } from "./text";
 import { assert, unwrapNull, PathfinderError } from "./utils";
 import { PathfinderDemoView, Timings, MonochromePathfinderView } from "./view";
 import { ShaderMap, ShaderProgramSource } from "./shader-loader";
@@ -68,7 +68,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         const textRun = new TextRun<BenchmarkGlyph>(STRING, [0, 0], font, createGlyph);
         this.textRun = textRun;
         const textFrame = new TextFrame([textRun], font);
-        this.glyphStorage = new GlyphStorage(this.fileData, [textFrame], createGlyph, font);
+        this.glyphStorage = new TextFrameGlyphStorage(this.fileData, [textFrame], font);
 
         this.glyphStorage.partition().then(baseMeshes => {
             this.baseMeshes = baseMeshes;
@@ -116,7 +116,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     protected readonly defaultFile: string = FONT;
     protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
 
-    private glyphStorage: GlyphStorage<BenchmarkGlyph>;
+    private glyphStorage: TextFrameGlyphStorage<BenchmarkGlyph>;
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: ExpandedMeshData;
 

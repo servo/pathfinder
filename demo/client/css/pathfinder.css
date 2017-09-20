@@ -85,7 +85,7 @@ button > svg path {
 #pf-svg {
     visibility: hidden;
 }
-#pf-spinner {
+.pf-spinner {
     position: absolute;
     top: 0;
     left: 0;
@@ -93,6 +93,9 @@ button > svg path {
     right: 0;
 }
 .pf-spinner-hidden {
+    display: none !important;
+}
+.pf-display-none {
     display: none !important;
 }
 
