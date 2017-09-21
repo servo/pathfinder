@@ -188,9 +188,7 @@ impl<'a> Partitioner<'a> {
         let next_active_edge_index = self.find_point_between_active_edges(endpoint_index);
 
         let endpoint = &self.endpoints[endpoint_index as usize];
-        if self.should_fill_above_active_edge(next_active_edge_index) {
-            self.emit_b_quad_above(next_active_edge_index, endpoint.position.x)
-        }
+        self.emit_b_quad(next_active_edge_index, endpoint.position.x);
 
         self.add_new_edges_for_min_point(endpoint_index, next_active_edge_index);
 
@@ -208,12 +206,8 @@ impl<'a> Partitioner<'a> {
         debug!("... REGULAR point: active edge {}", active_edge_index);
 
         let endpoint = &self.endpoints[endpoint_index as usize];
-        let bottom = self.should_fill_above_active_edge(active_edge_index);
-        if !bottom {
-            self.emit_b_quad_below(active_edge_index, endpoint.position.x)
-        } else {
-            self.emit_b_quad_above(active_edge_index, endpoint.position.x)
-        }
+        let bottom = self.emit_b_quad(active_edge_index, endpoint.position.x) ==
+            BQuadEmissionResult::BQuadEmittedAbove;
 
         let prev_endpoint_index = self.prev_endpoint_of(endpoint_index);
         let next_endpoint_index = self.next_endpoint_of(endpoint_index);
@@ -281,15 +275,8 @@ impl<'a> Partitioner<'a> {
 
         let endpoint = &self.endpoints[endpoint_index as usize];
 
-        if self.should_fill_above_active_edge(active_edge_indices[0]) {
-            self.emit_b_quad_above(active_edge_indices[0], endpoint.position.x)
-        }
-        if self.should_fill_above_active_edge(active_edge_indices[1]) {
-            self.emit_b_quad_above(active_edge_indices[1], endpoint.position.x)
-        }
-        if self.should_fill_below_active_edge(active_edge_indices[1]) {
-            self.emit_b_quad_below(active_edge_indices[1], endpoint.position.x)
-        }
+        self.emit_b_quad(active_edge_indices[0], endpoint.position.x);
+        self.emit_b_quad(active_edge_indices[1], endpoint.position.x);
 
         self.heap.pop();
 
@@ -312,15 +299,10 @@ impl<'a> Partitioner<'a> {
 
                 if let Some(crossing_point) =
                         self.crossing_point_for_active_edge(upper_active_edge_index) {
-                    if self.should_fill_above_active_edge(upper_active_edge_index) {
-                        self.emit_b_quad_above(upper_active_edge_index, crossing_point.x)
-                    }
-                    if self.should_fill_above_active_edge(lower_active_edge_index) {
-                        self.emit_b_quad_above(lower_active_edge_index, crossing_point.x)
-                    }
-                    if self.should_fill_above_active_edge(lower_active_edge_index + 1) {
-                        self.emit_b_quad_below(lower_active_edge_index, crossing_point.x)
-                    }
+                    debug!("found SELF-INTERSECTION point for active edges {} & {}",
+                           upper_active_edge_index,
+                           lower_active_edge_index);
+                    self.emit_b_quad(lower_active_edge_index, crossing_point.x);
                 }
 
                 self.active_edges.swap(upper_active_edge_index as usize,
@@ -476,83 +458,73 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    fn should_fill_below_active_edge(&self, active_edge_index: u32) -> bool {
-        if (active_edge_index as usize) + 1 == self.active_edges.len() {
-            return false
-        }
-
+    fn bounding_active_edges_for_fill(&self, active_edge_index: u32) -> (u32, u32) {
         match self.fill_rule {
-            FillRule::EvenOdd => active_edge_index % 2 == 0,
-            FillRule::Winding => self.winding_number_below_active_edge(active_edge_index) != 0,
-        }
-    }
-
-    fn should_fill_above_active_edge(&self, active_edge_index: u32) -> bool {
-        active_edge_index > 0 && self.should_fill_below_active_edge(active_edge_index - 1)
-    }
-
-    fn winding_number_above_active_edge(&self, active_edge_index: u32) -> i32 {
-        if active_edge_index == 0 {
-            0
-        } else {
-            self.winding_number_below_active_edge(active_edge_index - 1)
-        }
-    }
-
-    fn winding_number_below_active_edge(&self, active_edge_index: u32) -> i32 {
-        let mut winding_number = 0;
-        for active_edge_index in 0..(active_edge_index as usize + 1) {
-            if self.active_edges[active_edge_index].left_to_right {
-                winding_number += 1
-            } else {
-                winding_number -= 1
+            FillRule::EvenOdd if active_edge_index % 2 == 1 => {
+                (active_edge_index - 1, active_edge_index)
             }
-        }
-        winding_number
-    }
+            FillRule::EvenOdd if (active_edge_index as usize) + 1 == self.active_edges.len() => {
+                (active_edge_index, active_edge_index)
+            }
+            FillRule::EvenOdd => (active_edge_index, active_edge_index + 1),
 
-    fn emit_b_quad_below(&mut self, upper_active_edge_index: u32, right_x: f32) {
-        let mut lower_active_edge_index = upper_active_edge_index + 1;
-
-        if self.fill_rule == FillRule::Winding {
-            let active_edge_count = self.active_edges.len() as u32;
-            let mut winding_number =
-                self.winding_number_below_active_edge(lower_active_edge_index);
-            while lower_active_edge_index + 1 < active_edge_count && winding_number != 0 {
-                lower_active_edge_index += 1;
-                if self.active_edges[lower_active_edge_index as usize].left_to_right {
-                    winding_number += 1
-                } else {
-                    winding_number -= 1
+            FillRule::Winding => {
+                let (mut winding_number, mut upper_active_edge_index) = (0, 0);
+                for (active_edge_index, active_edge) in
+                        self.active_edges[0..active_edge_index as usize].iter().enumerate() {
+                    if winding_number == 0 {
+                        upper_active_edge_index = active_edge_index as u32
+                    }
+                    winding_number += active_edge.winding_number()
                 }
+                if winding_number == 0 {
+                    upper_active_edge_index = active_edge_index as u32
+                }
+
+                let mut lower_active_edge_index = active_edge_index;
+                for (active_edge_index, active_edge) in
+                        self.active_edges.iter().enumerate().skip(active_edge_index as usize) {
+                    winding_number += active_edge.winding_number();
+                    if winding_number == 0 {
+                        lower_active_edge_index = active_edge_index as u32;
+                        break
+                    }
+                }
+
+                (upper_active_edge_index, lower_active_edge_index)
             }
         }
-
-        self.emit_b_quad_above(lower_active_edge_index, right_x)
     }
 
-    fn emit_b_quad_above(&mut self, lower_active_edge_index: u32, right_x: f32) {
+    fn emit_b_quad(&mut self, active_edge_index: u32, right_x: f32) -> BQuadEmissionResult {
+        if (active_edge_index as usize) >= self.active_edges.len() {
+            return BQuadEmissionResult::NoBQuadEmitted
+        }
+
         // TODO(pcwalton): Assert that the green X position is the same on both edges.
-        debug_assert!(lower_active_edge_index > 0,
-                      "Can't emit b_quads above the top active edge");
+        let (upper_active_edge_index, lower_active_edge_index) =
+            self.bounding_active_edges_for_fill(active_edge_index);
+        debug!("... bounding active edges for fill = [{},{}] around {}",
+               upper_active_edge_index,
+               lower_active_edge_index,
+               active_edge_index);
 
-        let mut upper_active_edge_index = lower_active_edge_index - 1;
-
-        if self.fill_rule == FillRule::Winding {
-            let mut winding_number =
-                self.winding_number_above_active_edge(upper_active_edge_index);
-            while upper_active_edge_index > 0 && winding_number != 0 {
-                upper_active_edge_index -= 1;
-                if self.active_edges[upper_active_edge_index as usize].left_to_right {
-                    winding_number -= 1
-                } else {
-                    winding_number += 1
-                }
-            }
+        let emission_result = BQuadEmissionResult::new(active_edge_index,
+                                                       upper_active_edge_index,
+                                                       lower_active_edge_index);
+        if emission_result == BQuadEmissionResult::NoBQuadEmitted {
+            return emission_result
         }
 
-        let upper_curve = self.subdivide_active_edge_at(upper_active_edge_index, right_x);
-        let lower_curve = self.subdivide_active_edge_at(lower_active_edge_index, right_x);
+        let upper_curve = self.subdivide_active_edge_at(upper_active_edge_index,
+                                                        right_x,
+                                                        SubdivisionType::Upper);
+        for active_edge_index in (upper_active_edge_index + 1)..lower_active_edge_index {
+            self.subdivide_active_edge_at(active_edge_index, right_x, SubdivisionType::Inside);
+        }
+        let lower_curve = self.subdivide_active_edge_at(lower_active_edge_index,
+                                                        right_x,
+                                                        SubdivisionType::Lower);
 
         let upper_shape = upper_curve.shape(&self.b_vertex_loop_blinn_data);
         let lower_shape = lower_curve.shape(&self.b_vertex_loop_blinn_data);
@@ -706,7 +678,9 @@ impl<'a> Partitioner<'a> {
                                      upper_curve.middle_point,
                                      lower_curve.left_curve_left,
                                      lower_curve.left_curve_control_point,
-                                     lower_curve.middle_point))
+                                     lower_curve.middle_point));
+
+        emission_result
     }
 
     fn already_visited_point(&self, point: &Point) -> bool {
@@ -875,11 +849,14 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    fn subdivide_active_edge_at(&mut self, active_edge_index: u32, x: f32)
+    fn subdivide_active_edge_at(&mut self,
+                                active_edge_index: u32,
+                                x: f32,
+                                subdivision_type: SubdivisionType)
                                 -> SubdividedActiveEdge {
         let t = self.solve_active_edge_t_for_x(x, &self.active_edges[active_edge_index as usize]);
 
-        let bottom = self.should_fill_above_active_edge(active_edge_index);
+        let bottom = subdivision_type == SubdivisionType::Lower;
 
         let active_edge = &mut self.active_edges[active_edge_index as usize];
         let left_curve_left = active_edge.left_vertex_index;
@@ -1135,6 +1112,15 @@ impl ActiveEdge {
             BVertexKind::Endpoint1
         }
     }
+
+    #[inline]
+    fn winding_number(&self) -> i32 {
+        if self.left_to_right {
+            1
+        } else {
+            -1
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1175,4 +1161,34 @@ enum Shape {
     Flat,
     Convex,
     Concave,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum BQuadEmissionResult {
+    NoBQuadEmitted,
+    BQuadEmittedBelow,
+    BQuadEmittedAbove,
+    BQuadEmittedAround,
+}
+
+impl BQuadEmissionResult {
+    fn new(active_edge_index: u32, upper_active_edge_index: u32, lower_active_edge_index: u32)
+           -> BQuadEmissionResult {
+        if upper_active_edge_index == lower_active_edge_index {
+            BQuadEmissionResult::NoBQuadEmitted
+        } else if upper_active_edge_index == active_edge_index {
+            BQuadEmissionResult::BQuadEmittedBelow
+        } else if lower_active_edge_index == active_edge_index {
+            BQuadEmissionResult::BQuadEmittedAbove
+        } else {
+            BQuadEmissionResult::BQuadEmittedAround
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum SubdivisionType {
+    Upper,
+    Inside,
+    Lower,
 }
