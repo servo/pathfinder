@@ -156,14 +156,17 @@ impl<'a> Partitioner<'a> {
             return true
         }
 
-        debug!("processing point {}: {:?}",
-               point.endpoint_index,
-               self.endpoints[point.endpoint_index as usize].position);
-
         if log_enabled!(LogLevel::Debug) {
-            debug!("... active edges:");
+            let position = self.endpoints[point.endpoint_index as usize].position;
+            debug!("processing point {}: {:?}", point.endpoint_index, position);
+            debug!("... active edges at {}:", position.x);
             for (active_edge_index, active_edge) in self.active_edges.iter().enumerate() {
-                debug!("... ... edge {}: {:?}", active_edge_index, active_edge);
+                let y = self.solve_active_edge_y_for_x(position.x, active_edge);
+                debug!("... ... edge {}: {:?} @ ({}, {})",
+                       active_edge_index,
+                       active_edge,
+                       position.x,
+                       y);
             }
         }
 
@@ -430,18 +433,8 @@ impl<'a> Partitioner<'a> {
             return true
         }
 
-        let prev_active_edge_right_endpoint =
-            &self.endpoints[prev_active_edge.right_endpoint_index as usize];
-        let next_active_edge_right_endpoint =
-            &self.endpoints[next_active_edge.right_endpoint_index as usize];
-        if prev_active_edge_right_endpoint.position.y <=
-                next_active_edge_right_endpoint.position.y {
-            // Guaranteed to be ordered.
-            // FIXME(pcwalton): Is this true?
-            return true
-        }
-
-        // Slow path.
+        // TODO(pcwalton): See if we can speed this up. It's trickier than it seems, due to path
+        // self intersection!
         let reference_endpoint = &self.endpoints[reference_endpoint_index as usize];
         let prev_active_edge_y = self.solve_active_edge_y_for_x(reference_endpoint.position.x,
                                                                 prev_active_edge);
