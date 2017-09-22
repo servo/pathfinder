@@ -54,11 +54,11 @@ impl Curve {
 
     pub fn inflection_points(&self) -> (Option<f32>, Option<f32>) {
         let inflection_point_x = Curve::inflection_point_x(self.endpoints[0].x,
-                                                           self.endpoints[1].x,
-                                                           self.control_point.x);
+                                                           self.control_point.x,
+                                                           self.endpoints[1].x);
         let inflection_point_y = Curve::inflection_point_x(self.endpoints[0].y,
-                                                           self.endpoints[1].y,
-                                                           self.control_point.y);
+                                                           self.control_point.y,
+                                                           self.endpoints[1].y);
         (inflection_point_x, inflection_point_y)
     }
 
@@ -68,7 +68,7 @@ impl Curve {
     }
 
     #[inline]
-    fn inflection_point_x(endpoint_x_0: f32, endpoint_x_1: f32, control_point_x: f32)
+    fn inflection_point_x(endpoint_x_0: f32, control_point_x: f32, endpoint_x_1: f32)
                           -> Option<f32> {
         let num = endpoint_x_0 - control_point_x;
         let denom = endpoint_x_0 - 2.0 * control_point_x + endpoint_x_1;

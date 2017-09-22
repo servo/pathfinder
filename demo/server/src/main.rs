@@ -506,6 +506,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
             PartitionSvgPathKind::Stroke(stroke_width) => {
                 let mut temp_path_buffer = PathBuffer::new();
                 stroke::stroke(&mut temp_path_buffer, stream.into_iter(), stroke_width);
+
                 let stream = PathBufferStream::new(&temp_path_buffer);
                 let stream = MonotonicPathSegmentStream::new(stream);
                 path_buffer.add_stream(stream)

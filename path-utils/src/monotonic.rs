@@ -52,15 +52,12 @@ impl<I> Iterator for MonotonicPathSegmentStream<I> where I: Iterator<Item = Path
             }
             Some(PathSegment::CurveTo(control_point, endpoint)) => {
                 let curve = Curve::new(&self.prev_point, &control_point, &endpoint);
+                self.prev_point = endpoint;
                 match curve.inflection_points() {
-                    (None, None) => {
-                        self.prev_point = endpoint;
-                        Some(PathSegment::CurveTo(control_point, endpoint))
-                    }
+                    (None, None) => Some(PathSegment::CurveTo(control_point, endpoint)),
                     (Some(t), None) | (None, Some(t)) => {
                         let (prev_curve, next_curve) = curve.subdivide(t);
                         self.queue.push(next_curve.to_path_segment());
-                        self.prev_point = prev_curve.endpoints[1];
                         Some(prev_curve.to_path_segment())
                     }
                     (Some(mut t0), Some(mut t1)) => {
@@ -69,11 +66,10 @@ impl<I> Iterator for MonotonicPathSegmentStream<I> where I: Iterator<Item = Path
                         }
 
                         let (curve_0, curve_12) = curve.subdivide(t0);
-                        let (curve_1, curve_2) = curve_12.subdivide(t1);
+                        let (curve_1, curve_2) = curve_12.subdivide((t1 - t0) / (1.0 - t0));
                         self.queue.push(curve_1.to_path_segment());
                         self.queue.push(curve_2.to_path_segment());
 
-                        self.prev_point = curve_0.endpoints[1];
                         Some(curve_0.to_path_segment())
                     }
                 }
