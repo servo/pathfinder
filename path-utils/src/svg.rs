@@ -1,0 +1,32 @@
+// pathfinder/path-utils/src/svg.rs
+//
+// Copyright © 2017 The Pathfinder Project Developers.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+//! Utilities for converting paths to SVG representations.
+
+use std::io::{self, Write};
+
+use PathSegment;
+
+pub fn to_svg_description<W, S>(output: &mut W, stream: S) -> io::Result<()>
+                                where W: Write, S: Iterator<Item = PathSegment> {
+    for segment in stream {
+        match segment {
+            PathSegment::MoveTo(point) => try!(write!(output, "M{},{} ", point.x, point.y)),
+            PathSegment::LineTo(point) => try!(write!(output, "L{},{} ", point.x, point.y)),
+            PathSegment::CurveTo(control_point, endpoint) => {
+                try!(write!(output, "Q{},{} {},{} ",
+                            control_point.x, control_point.y,
+                            endpoint.x, endpoint.y))
+            }
+            PathSegment::ClosePath => try!(output.write_all(b"z")),
+        }
+    }
+    Ok(())
+}

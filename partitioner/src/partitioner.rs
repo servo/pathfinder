@@ -9,6 +9,7 @@
 // except according to those terms.
 
 use bit_vec::BitVec;
+use euclid::approxeq::ApproxEq;
 use euclid::Point2D;
 use geometry::{self, SubdividedQuadraticBezier};
 use log::LogLevel;
@@ -23,6 +24,8 @@ use std::u32;
 
 use {BQuad, BVertexLoopBlinnData, BVertexKind, CurveIndices, Endpoint, FillRule};
 use {LineIndices, Subpath};
+
+const MAX_B_QUAD_SUBDIVISIONS: u8 = 8;
 
 pub struct Partitioner<'a> {
     endpoints: &'a [Endpoint],
@@ -188,7 +191,7 @@ impl<'a> Partitioner<'a> {
         let next_active_edge_index = self.find_point_between_active_edges(endpoint_index);
 
         let endpoint = &self.endpoints[endpoint_index as usize];
-        self.emit_b_quad(next_active_edge_index, endpoint.position.x);
+        self.emit_b_quads_around_active_edge(next_active_edge_index, endpoint.position.x);
 
         self.add_new_edges_for_min_point(endpoint_index, next_active_edge_index);
 
@@ -206,7 +209,7 @@ impl<'a> Partitioner<'a> {
         debug!("... REGULAR point: active edge {}", active_edge_index);
 
         let endpoint = &self.endpoints[endpoint_index as usize];
-        let bottom = self.emit_b_quad(active_edge_index, endpoint.position.x) ==
+        let bottom = self.emit_b_quads_around_active_edge(active_edge_index, endpoint.position.x) ==
             BQuadEmissionResult::BQuadEmittedAbove;
 
         let prev_endpoint_index = self.prev_endpoint_of(endpoint_index);
@@ -275,8 +278,8 @@ impl<'a> Partitioner<'a> {
 
         let endpoint = &self.endpoints[endpoint_index as usize];
 
-        self.emit_b_quad(active_edge_indices[0], endpoint.position.x);
-        self.emit_b_quad(active_edge_indices[1], endpoint.position.x);
+        self.emit_b_quads_around_active_edge(active_edge_indices[0], endpoint.position.x);
+        self.emit_b_quads_around_active_edge(active_edge_indices[1], endpoint.position.x);
 
         self.heap.pop();
 
@@ -302,7 +305,11 @@ impl<'a> Partitioner<'a> {
                     debug!("found SELF-INTERSECTION point for active edges {} & {}",
                            upper_active_edge_index,
                            lower_active_edge_index);
-                    self.emit_b_quad(lower_active_edge_index, crossing_point.x);
+                    self.emit_b_quads_around_active_edge(lower_active_edge_index, crossing_point.x);
+                } else {
+                    debug!("warning: swapped active edges {} & {} without finding intersection",
+                           upper_active_edge_index,
+                           lower_active_edge_index);
                 }
 
                 self.active_edges.swap(upper_active_edge_index as usize,
@@ -496,7 +503,8 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    fn emit_b_quad(&mut self, active_edge_index: u32, right_x: f32) -> BQuadEmissionResult {
+    fn emit_b_quads_around_active_edge(&mut self, active_edge_index: u32, right_x: f32)
+                                       -> BQuadEmissionResult {
         if (active_edge_index as usize) >= self.active_edges.len() {
             return BQuadEmissionResult::NoBQuadEmitted
         }
@@ -521,48 +529,144 @@ impl<'a> Partitioner<'a> {
                                                         SubdivisionType::Upper);
         for active_edge_index in (upper_active_edge_index + 1)..lower_active_edge_index {
             self.subdivide_active_edge_at(active_edge_index, right_x, SubdivisionType::Inside);
+            self.active_edges[active_edge_index as usize].toggle_parity();
         }
         let lower_curve = self.subdivide_active_edge_at(lower_active_edge_index,
                                                         right_x,
                                                         SubdivisionType::Lower);
 
-        let upper_shape = upper_curve.shape(&self.b_vertex_loop_blinn_data);
-        let lower_shape = lower_curve.shape(&self.b_vertex_loop_blinn_data);
+        self.emit_b_quads(upper_active_edge_index,
+                          lower_active_edge_index,
+                          &upper_curve,
+                          &lower_curve,
+                          0);
+
+        emission_result
+    }
+
+    /// Toggles parity at the end.
+    fn emit_b_quads(&mut self,
+                    upper_active_edge_index: u32,
+                    lower_active_edge_index: u32,
+                    upper_subdivision: &SubdividedActiveEdge,
+                    lower_subdivision: &SubdividedActiveEdge,
+                    iteration: u8) {
+        let upper_shape = upper_subdivision.shape(&self.b_vertex_loop_blinn_data);
+        let lower_shape = lower_subdivision.shape(&self.b_vertex_loop_blinn_data);
+
+        // Make sure the convex hulls of the two curves do not intersect. If they do, subdivide and
+        // recurse.
+        if iteration < MAX_B_QUAD_SUBDIVISIONS {
+            // TODO(pcwalton): Handle concave-line convex hull intersections.
+            if let (Some(upper_curve), Some(lower_curve)) =
+                    (upper_subdivision.to_curve(&self.b_vertex_positions),
+                     lower_subdivision.to_curve(&self.b_vertex_positions)) {
+                // TODO(pcwalton): Handle concave-concave convex hull intersections.
+                if upper_shape == Shape::Concave &&
+                        lower_curve.baseline().side(&upper_curve.control_point) >
+                        f32::approx_epsilon() {
+                    let (upper_left_subsubdivision, upper_right_subsubdivision) =
+                        self.subdivide_active_edge_again_at_t(&upper_subdivision,
+                                                              0.5,
+                                                              false);
+                    let midpoint_x = self.b_vertex_positions[upper_left_subsubdivision.middle_point
+                                                             as usize].x;
+                    let (lower_left_subsubdivision, lower_right_subsubdivision) =
+                        self.subdivide_active_edge_again_at_x(&lower_subdivision,
+                                                              midpoint_x,
+                                                              true);
+
+                    self.emit_b_quads(upper_active_edge_index,
+                                      lower_active_edge_index,
+                                      &upper_left_subsubdivision,
+                                      &lower_left_subsubdivision,
+                                      iteration + 1);
+                    self.emit_b_quads(upper_active_edge_index,
+                                      lower_active_edge_index,
+                                      &upper_right_subsubdivision,
+                                      &lower_right_subsubdivision,
+                                      iteration + 1);
+                    return;
+                }
+
+                if lower_shape == Shape::Concave &&
+                        upper_curve.baseline().side(&lower_curve.control_point) <
+                        -f32::approx_epsilon() {
+                    let (lower_left_subsubdivision, lower_right_subsubdivision) =
+                        self.subdivide_active_edge_again_at_t(&lower_subdivision,
+                                                              0.5,
+                                                              true);
+                    let midpoint_x = self.b_vertex_positions[lower_left_subsubdivision.middle_point
+                                                             as usize].x;
+                    let (upper_left_subsubdivision, upper_right_subsubdivision) =
+                        self.subdivide_active_edge_again_at_x(&upper_subdivision,
+                                                              midpoint_x,
+                                                              false);
+
+                    self.emit_b_quads(upper_active_edge_index,
+                                      lower_active_edge_index,
+                                      &upper_left_subsubdivision,
+                                      &lower_left_subsubdivision,
+                                      iteration + 1);
+                    self.emit_b_quads(upper_active_edge_index,
+                                      lower_active_edge_index,
+                                      &upper_right_subsubdivision,
+                                      &lower_right_subsubdivision,
+                                      iteration + 1);
+                    return;
+                }
+            }
+        }
 
         match upper_shape {
             Shape::Flat => {
                 self.edge_indices
                     .upper_line_indices
-                    .push(LineIndices::new(upper_curve.left_curve_left, upper_curve.middle_point))
+                    .push(LineIndices::new(upper_subdivision.left_curve_left,
+                                           upper_subdivision.middle_point))
             }
             Shape::Convex | Shape::Concave => {
                 self.edge_indices
                     .upper_curve_indices
-                    .push(CurveIndices::new(upper_curve.left_curve_left,
-                                            upper_curve.left_curve_control_point,
-                                            upper_curve.middle_point))
+                    .push(CurveIndices::new(upper_subdivision.left_curve_left,
+                                            upper_subdivision.left_curve_control_point,
+                                            upper_subdivision.middle_point))
             }
         }
         match lower_shape {
             Shape::Flat => {
                 self.edge_indices
                     .lower_line_indices
-                    .push(LineIndices::new(lower_curve.left_curve_left, lower_curve.middle_point))
+                    .push(LineIndices::new(lower_subdivision.left_curve_left,
+                                           lower_subdivision.middle_point))
             }
             Shape::Convex | Shape::Concave => {
                 self.edge_indices
                     .lower_curve_indices
-                    .push(CurveIndices::new(lower_curve.left_curve_left,
-                                            lower_curve.left_curve_control_point,
-                                            lower_curve.middle_point))
+                    .push(CurveIndices::new(lower_subdivision.left_curve_left,
+                                            lower_subdivision.left_curve_control_point,
+                                            lower_subdivision.middle_point))
             }
         }
 
         debug!("... emitting B-quad: UL {} BL {} UR {} BR {}",
-               upper_curve.left_curve_left,
-               lower_curve.left_curve_left,
-               upper_curve.middle_point,
-               lower_curve.middle_point);
+               upper_subdivision.left_curve_left,
+               lower_subdivision.left_curve_left,
+               upper_subdivision.middle_point,
+               lower_subdivision.middle_point);
+
+        {
+            let upper_active_edge = &mut self.active_edges[upper_active_edge_index as usize];
+            self.b_vertex_loop_blinn_data[upper_subdivision.middle_point as usize] =
+                BVertexLoopBlinnData::new(upper_active_edge.endpoint_kind());
+            upper_active_edge.toggle_parity();
+        }
+        {
+            let lower_active_edge = &mut self.active_edges[lower_active_edge_index as usize];
+            self.b_vertex_loop_blinn_data[lower_subdivision.middle_point as usize] =
+                BVertexLoopBlinnData::new(lower_active_edge.endpoint_kind());
+            lower_active_edge.toggle_parity();
+        }
 
         match (upper_shape, lower_shape) {
             (Shape::Flat, Shape::Flat) |
@@ -570,25 +674,25 @@ impl<'a> Partitioner<'a> {
             (Shape::Convex, Shape::Flat) |
             (Shape::Convex, Shape::Convex) => {
                 self.cover_indices.interior_indices.extend([
-                    upper_curve.left_curve_left,
-                    upper_curve.middle_point,
-                    lower_curve.left_curve_left,
-                    lower_curve.middle_point,
-                    lower_curve.left_curve_left,
-                    upper_curve.middle_point,
+                    upper_subdivision.left_curve_left,
+                    upper_subdivision.middle_point,
+                    lower_subdivision.left_curve_left,
+                    lower_subdivision.middle_point,
+                    lower_subdivision.left_curve_left,
+                    upper_subdivision.middle_point,
                 ].into_iter());
                 if upper_shape != Shape::Flat {
                     self.cover_indices.curve_indices.extend([
-                        upper_curve.left_curve_control_point,
-                        upper_curve.middle_point,
-                        upper_curve.left_curve_left,
+                        upper_subdivision.left_curve_control_point,
+                        upper_subdivision.middle_point,
+                        upper_subdivision.left_curve_left,
                     ].into_iter())
                 }
                 if lower_shape != Shape::Flat {
                     self.cover_indices.curve_indices.extend([
-                        lower_curve.left_curve_control_point,
-                        lower_curve.left_curve_left,
-                        lower_curve.middle_point,
+                        lower_subdivision.left_curve_control_point,
+                        lower_subdivision.left_curve_left,
+                        lower_subdivision.middle_point,
                     ].into_iter())
                 }
             }
@@ -596,26 +700,26 @@ impl<'a> Partitioner<'a> {
             (Shape::Concave, Shape::Flat) |
             (Shape::Concave, Shape::Convex) => {
                 self.cover_indices.interior_indices.extend([
-                    upper_curve.left_curve_left,
-                    upper_curve.left_curve_control_point,
-                    lower_curve.left_curve_left,
-                    upper_curve.middle_point,
-                    lower_curve.middle_point,
-                    upper_curve.left_curve_control_point,
-                    lower_curve.middle_point,
-                    lower_curve.left_curve_left,
-                    upper_curve.left_curve_control_point,
+                    upper_subdivision.left_curve_left,
+                    upper_subdivision.left_curve_control_point,
+                    lower_subdivision.left_curve_left,
+                    upper_subdivision.middle_point,
+                    lower_subdivision.middle_point,
+                    upper_subdivision.left_curve_control_point,
+                    lower_subdivision.middle_point,
+                    lower_subdivision.left_curve_left,
+                    upper_subdivision.left_curve_control_point,
                 ].into_iter());
                 self.cover_indices.curve_indices.extend([
-                    upper_curve.left_curve_control_point,
-                    upper_curve.left_curve_left,
-                    upper_curve.middle_point,
+                    upper_subdivision.left_curve_control_point,
+                    upper_subdivision.left_curve_left,
+                    upper_subdivision.middle_point,
                 ].into_iter());
                 if lower_shape != Shape::Flat {
                     self.cover_indices.curve_indices.extend([
-                        lower_curve.left_curve_control_point,
-                        lower_curve.left_curve_left,
-                        lower_curve.middle_point,
+                        lower_subdivision.left_curve_control_point,
+                        lower_subdivision.left_curve_left,
+                        lower_subdivision.middle_point,
                     ].into_iter())
                 }
             }
@@ -623,64 +727,121 @@ impl<'a> Partitioner<'a> {
             (Shape::Flat, Shape::Concave) |
             (Shape::Convex, Shape::Concave) => {
                 self.cover_indices.interior_indices.extend([
-                    upper_curve.left_curve_left,
-                    upper_curve.middle_point,
-                    lower_curve.left_curve_control_point,
-                    upper_curve.middle_point,
-                    lower_curve.middle_point,
-                    lower_curve.left_curve_control_point,
-                    upper_curve.left_curve_left,
-                    lower_curve.left_curve_control_point,
-                    lower_curve.left_curve_left,
+                    upper_subdivision.left_curve_left,
+                    upper_subdivision.middle_point,
+                    lower_subdivision.left_curve_control_point,
+                    upper_subdivision.middle_point,
+                    lower_subdivision.middle_point,
+                    lower_subdivision.left_curve_control_point,
+                    upper_subdivision.left_curve_left,
+                    lower_subdivision.left_curve_control_point,
+                    lower_subdivision.left_curve_left,
                 ].into_iter());
                 self.cover_indices.curve_indices.extend([
-                    lower_curve.left_curve_control_point,
-                    lower_curve.middle_point,
-                    lower_curve.left_curve_left,
+                    lower_subdivision.left_curve_control_point,
+                    lower_subdivision.middle_point,
+                    lower_subdivision.left_curve_left,
                 ].into_iter());
                 if upper_shape != Shape::Flat {
                     self.cover_indices.curve_indices.extend([
-                        upper_curve.left_curve_control_point,
-                        upper_curve.middle_point,
-                        upper_curve.left_curve_left,
+                        upper_subdivision.left_curve_control_point,
+                        upper_subdivision.middle_point,
+                        upper_subdivision.left_curve_left,
                     ].into_iter())
                 }
             }
 
             (Shape::Concave, Shape::Concave) => {
                 self.cover_indices.interior_indices.extend([
-                    upper_curve.left_curve_left,
-                    upper_curve.left_curve_control_point,
-                    lower_curve.left_curve_left,
-                    lower_curve.left_curve_left,
-                    upper_curve.left_curve_control_point,
-                    lower_curve.left_curve_control_point,
-                    upper_curve.middle_point,
-                    lower_curve.left_curve_control_point,
-                    upper_curve.left_curve_control_point,
-                    upper_curve.middle_point,
-                    lower_curve.middle_point,
-                    lower_curve.left_curve_control_point,
+                    upper_subdivision.left_curve_left,
+                    upper_subdivision.left_curve_control_point,
+                    lower_subdivision.left_curve_left,
+                    lower_subdivision.left_curve_left,
+                    upper_subdivision.left_curve_control_point,
+                    lower_subdivision.left_curve_control_point,
+                    upper_subdivision.middle_point,
+                    lower_subdivision.left_curve_control_point,
+                    upper_subdivision.left_curve_control_point,
+                    upper_subdivision.middle_point,
+                    lower_subdivision.middle_point,
+                    lower_subdivision.left_curve_control_point,
                 ].into_iter());
                 self.cover_indices.curve_indices.extend([
-                    upper_curve.left_curve_control_point,
-                    upper_curve.left_curve_left,
-                    upper_curve.middle_point,
-                    lower_curve.left_curve_control_point,
-                    lower_curve.middle_point,
-                    lower_curve.left_curve_left,
+                    upper_subdivision.left_curve_control_point,
+                    upper_subdivision.left_curve_left,
+                    upper_subdivision.middle_point,
+                    lower_subdivision.left_curve_control_point,
+                    lower_subdivision.middle_point,
+                    lower_subdivision.left_curve_left,
                 ].into_iter());
             }
         }
 
-        self.b_quads.push(BQuad::new(upper_curve.left_curve_left,
-                                     upper_curve.left_curve_control_point,
-                                     upper_curve.middle_point,
-                                     lower_curve.left_curve_left,
-                                     lower_curve.left_curve_control_point,
-                                     lower_curve.middle_point));
+        self.b_quads.push(BQuad::new(upper_subdivision.left_curve_left,
+                                     upper_subdivision.left_curve_control_point,
+                                     upper_subdivision.middle_point,
+                                     lower_subdivision.left_curve_left,
+                                     lower_subdivision.left_curve_control_point,
+                                     lower_subdivision.middle_point))
+    }
 
-        emission_result
+    fn subdivide_active_edge_again_at_t(&mut self,
+                                        subdivision: &SubdividedActiveEdge,
+                                        t: f32,
+                                        bottom: bool)
+                                        -> (SubdividedActiveEdge, SubdividedActiveEdge) {
+        let curve = subdivision.to_curve(&self.b_vertex_positions)
+                               .expect("subdivide_active_edge_again_at_t(): not a curve!");
+        let (left_curve, right_curve) = curve.subdivide(t);
+
+        let left_control_point_index = self.b_vertex_positions.len() as u32;
+        let midpoint_index = left_control_point_index + 1;
+        let right_control_point_index = midpoint_index + 1;
+        self.b_vertex_positions.extend([
+            left_curve.control_point,
+            left_curve.endpoints[1],
+            right_curve.control_point,
+        ].into_iter());
+
+        self.b_vertex_path_ids.extend(iter::repeat(self.path_id).take(3));
+
+        // Initially, assume that the parity is false. We will modify the Loop-Blinn data later if
+        // that is incorrect.
+        self.b_vertex_loop_blinn_data.extend([
+            BVertexLoopBlinnData::control_point(&left_curve.endpoints[0],
+                                                &left_curve.control_point,
+                                                &left_curve.endpoints[1],
+                                                bottom),
+            BVertexLoopBlinnData::new(BVertexKind::Endpoint0),
+            BVertexLoopBlinnData::control_point(&right_curve.endpoints[0],
+                                                &right_curve.control_point,
+                                                &right_curve.endpoints[1],
+                                                bottom),
+        ].into_iter());
+
+        (SubdividedActiveEdge {
+            left_curve_left: subdivision.left_curve_left,
+            left_curve_control_point: left_control_point_index,
+            middle_point: midpoint_index,
+        }, SubdividedActiveEdge {
+            left_curve_left: midpoint_index,
+            left_curve_control_point: right_control_point_index,
+            middle_point: subdivision.middle_point,
+        })
+    }
+
+    fn subdivide_active_edge_again_at_x(&mut self,
+                                        subdivision: &SubdividedActiveEdge,
+                                        x: f32,
+                                        bottom: bool)
+                                        -> (SubdividedActiveEdge, SubdividedActiveEdge) {
+        let curve = subdivision.to_curve(&self.b_vertex_positions)
+                               .expect("subdivide_active_edge_again_at_x(): not a curve!");
+        let t = geometry::solve_quadratic_bezier_t_for_x(x,
+                                                         &curve.endpoints[0],
+                                                         &curve.control_point,
+                                                         &curve.endpoints[1]);
+        self.subdivide_active_edge_again_at_t(subdivision, t, bottom)
     }
 
     fn already_visited_point(&self, point: &Point) -> bool {
@@ -849,6 +1010,7 @@ impl<'a> Partitioner<'a> {
         }
     }
 
+    /// Does *not* toggle parity. You must do this after calling this function.
     fn subdivide_active_edge_at(&mut self,
                                 active_edge_index: u32,
                                 x: f32,
@@ -875,8 +1037,6 @@ impl<'a> Partitioner<'a> {
                 self.b_vertex_path_ids.push(path_id);
                 self.b_vertex_loop_blinn_data
                     .push(BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
-
-                active_edge.toggle_parity();
 
                 left_curve_control_point_vertex_index = u32::MAX;
             }
@@ -912,8 +1072,6 @@ impl<'a> Partitioner<'a> {
                                                         &right_endpoint_position,
                                                         bottom),
                 ].into_iter());
-
-                active_edge.toggle_parity();
             }
         }
 
@@ -921,7 +1079,6 @@ impl<'a> Partitioner<'a> {
             left_curve_left: left_curve_left,
             left_curve_control_point: left_curve_control_point_vertex_index,
             middle_point: active_edge.left_vertex_index,
-            right_curve_control_point: active_edge.control_point_vertex_index,
         }
     }
 
@@ -1128,7 +1285,6 @@ struct SubdividedActiveEdge {
     left_curve_left: u32,
     left_curve_control_point: u32,
     middle_point: u32,
-    right_curve_control_point: u32,
 }
 
 impl SubdividedActiveEdge {
@@ -1139,6 +1295,16 @@ impl SubdividedActiveEdge {
             Shape::Convex
         } else {
             Shape::Concave
+        }
+    }
+
+    fn to_curve(&self, b_vertex_positions: &[Point2D<f32>]) -> Option<Curve> {
+        if self.left_curve_control_point == u32::MAX {
+            None
+        } else {
+            Some(Curve::new(&b_vertex_positions[self.left_curve_left as usize],
+                            &b_vertex_positions[self.left_curve_control_point as usize],
+                            &b_vertex_positions[self.middle_point as usize]))
         }
     }
 }

@@ -82,8 +82,8 @@ button > svg path {
     background: rgba(0, 0, 0, 0.75);
     width: 17em;
 }
-#pf-svg {
-    visibility: hidden;
+#pf-svg, #pf-svg * {
+    visibility: hidden !important;
 }
 .pf-spinner {
     position: absolute;

@@ -32,6 +32,11 @@ impl Line {
     }
 
     #[inline]
+    pub fn side(&self, point: &Point2D<f32>) -> f32 {
+        self.to_vector().cross(*point - self.endpoints[0])
+    }
+
+    #[inline]
     pub(crate) fn to_vector(&self) -> Vector2D<f32> {
         self.endpoints[1] - self.endpoints[0]
     }

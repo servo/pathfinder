@@ -23,6 +23,7 @@ pub mod intersection;
 pub mod line;
 pub mod monotonic;
 pub mod stroke;
+pub mod svg;
 
 #[derive(Clone, Copy, Debug)]
 pub enum PathSegment {
@@ -130,10 +131,12 @@ impl<'a> Iterator for PathBufferStream<'a> {
             return Some(PathSegment::ClosePath)
         }
 
-        let endpoint = &self.path_buffer.endpoints[self.endpoint_index as usize];
+        let endpoint_index = self.endpoint_index;
         self.endpoint_index += 1;
 
-        if self.endpoint_index == subpath.first_endpoint_index {
+        let endpoint = &self.path_buffer.endpoints[endpoint_index as usize];
+
+        if endpoint_index == subpath.first_endpoint_index {
             return Some(PathSegment::MoveTo(endpoint.position))
         }
 

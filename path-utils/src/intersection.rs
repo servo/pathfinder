@@ -63,7 +63,7 @@ pub(crate) trait Intersect {
 impl Side for Line {
     #[inline]
     fn side(&self, point: &Point2D<f32>) -> f32 {
-        self.to_vector().cross(*point - self.endpoints[0])
+        Line::side(self, point)
     }
 }
 

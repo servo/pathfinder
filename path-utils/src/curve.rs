@@ -16,6 +16,7 @@ use std::f32;
 
 use PathSegment;
 use intersection::{Intersect, Side};
+use line::Line;
 
 pub struct Curve {
     pub endpoints: [Point2D<f32>; 2],
@@ -59,6 +60,11 @@ impl Curve {
                                                            self.endpoints[1].y,
                                                            self.control_point.y);
         (inflection_point_x, inflection_point_y)
+    }
+
+    #[inline]
+    pub fn baseline(&self) -> Line {
+        Line::new(&self.endpoints[0], &self.endpoints[1])
     }
 
     #[inline]
