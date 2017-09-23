@@ -26,6 +26,7 @@ use bincode::Infinite;
 use euclid::{Point2D, Size2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
 use pathfinder_partitioner::partitioner::Partitioner;
+use pathfinder_path_utils::cubic::CubicCurve;
 use pathfinder_path_utils::monotonic::MonotonicPathSegmentStream;
 use pathfinder_path_utils::stroke;
 use pathfinder_path_utils::{PathBuffer, PathBufferStream, PathSegment, Transform2DPathStream};
@@ -468,6 +469,8 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     // commands.
     let mut path_buffer = PathBuffer::new();
     let mut paths = vec![];
+    let mut last_point = Point2D::zero();
+
     for path in &request.paths {
         let mut stream = vec![];
 
@@ -476,12 +479,12 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
         for segment in &path.segments {
             match segment.kind {
                 'M' => {
-                    stream.push(PathSegment::MoveTo(Point2D::new(segment.values[0] as f32,
-                                                                 segment.values[1] as f32)))
+                    last_point = Point2D::new(segment.values[0] as f32, segment.values[1] as f32);
+                    stream.push(PathSegment::MoveTo(last_point))
                 }
                 'L' => {
-                    stream.push(PathSegment::LineTo(Point2D::new(segment.values[0] as f32,
-                                                                 segment.values[1] as f32)))
+                    last_point = Point2D::new(segment.values[0] as f32, segment.values[1] as f32);
+                    stream.push(PathSegment::LineTo(last_point))
                 }
                 'C' => {
                     // FIXME(pcwalton): Do real cubic-to-quadratic conversion.
@@ -489,10 +492,14 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                                                        segment.values[1] as f32);
                     let control_point_1 = Point2D::new(segment.values[2] as f32,
                                                        segment.values[3] as f32);
-                    let control_point = control_point_0.lerp(control_point_1, 0.5);
-                    stream.push(PathSegment::CurveTo(control_point,
-                                                     Point2D::new(segment.values[4] as f32,
-                                                                  segment.values[5] as f32)))
+                    let endpoint_1 = Point2D::new(segment.values[4] as f32,
+                                                  segment.values[5] as f32);
+                    let cubic = CubicCurve::new(&last_point,
+                                                &control_point_0,
+                                                &control_point_1,
+                                                &endpoint_1);
+                    last_point = endpoint_1;
+                    stream.extend(cubic.approximate_curve().map(|curve| curve.to_path_segment()));
                 }
                 'Z' => stream.push(PathSegment::ClosePath),
                 _ => return Json(Err(PartitionSvgPathsError::UnknownSvgPathSegmentType)),

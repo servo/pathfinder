@@ -17,6 +17,7 @@ extern crate serde_derive;
 use euclid::{Point2D, Transform2D};
 use std::u32;
 
+pub mod cubic;
 pub mod curve;
 pub mod freetype;
 pub mod intersection;

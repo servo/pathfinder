@@ -48,7 +48,7 @@ impl Curve {
     }
 
     #[inline]
-    pub(crate) fn to_path_segment(&self) -> PathSegment {
+    pub fn to_path_segment(&self) -> PathSegment {
         PathSegment::CurveTo(self.control_point, self.endpoints[1])
     }
 
