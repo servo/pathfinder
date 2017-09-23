@@ -76,7 +76,7 @@ const B_PATH_INDEX_SIZE: number = 2;
 
 const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(2048, 4096);
 
-const MIN_SCALE: number = 0.02;
+const MIN_SCALE: number = 0.001;
 const MAX_SCALE: number = 10.0;
 
 declare global {
@@ -157,7 +157,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     private updateText(): void {
         this.text = this.editTextArea.value;
-        this.recreateLayout();
+        //this.recreateLayout();
 
         window.jQuery(this.editTextModal).modal('hide');
     }
@@ -168,17 +168,19 @@ class TextDemoController extends DemoAppController<TextDemoView> {
                                 unwrapNull(this.shaderSources));
     }
 
-    protected fileLoaded() {
-        this.recreateLayout();
+    protected fileLoaded(fileData: ArrayBuffer) {
+        this.recreateLayout(fileData);
     }
 
-    private recreateLayout() {
-        this.layout = new SimpleTextLayout(this.fileData,
-                                           this.text,
-                                           glyph => new GlyphInstance(glyph));
-        this.layout.glyphStorage.partition().then((meshes: PathfinderMeshData) => {
-            this.meshes = meshes;
+    private recreateLayout(fileData: ArrayBuffer) {
+        const newLayout = new SimpleTextLayout(fileData,
+                                               this.text,
+                                               glyph => new GlyphInstance(glyph));
+        newLayout.glyphStorage.partition().then((meshes: PathfinderMeshData) => {
             this.view.then(view => {
+                this.layout = newLayout;
+                this.meshes = meshes;
+
                 view.attachText();
                 view.uploadPathColors(1);
                 view.attachMeshes([this.meshes]);
@@ -250,8 +252,6 @@ class TextDemoView extends MonochromePathfinderView {
             minScale: MIN_SCALE,
             maxScale: MAX_SCALE,
         });
-        this.camera.onPan = () => this.onPan();
-        this.camera.onZoom = () => this.onZoom();
 
         this.canvas.addEventListener('dblclick', () => this.appController.showTextEditor(), false);
     }
@@ -281,7 +281,6 @@ class TextDemoView extends MonochromePathfinderView {
         layout.layoutRuns();
 
         let textBounds = layout.textFrame.bounds;
-        textBounds = scaleRect(textBounds, this.appController.pixelsPerUnit);
         this.camera.bounds = textBounds;
 
         const textGlyphs = layout.glyphStorage.allGlyphs;
@@ -361,6 +360,8 @@ class TextDemoView extends MonochromePathfinderView {
         const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
         pathHintsBufferTexture.upload(this.gl, pathHints);
         this.pathHintsBufferTexture = pathHintsBufferTexture;
+
+        this.setGlyphTexCoords();
     }
 
     protected pathTransformsForObject(objectIndex: number): Float32Array {
@@ -446,37 +447,42 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     attachText() {
+        this.panZoomEventsEnabled = false;
+
         if (this.atlasFramebuffer == null)
             this.createAtlasFramebuffer();
-        this.relayoutText();
+
+        this.layoutText();
         this.camera.zoomToFit();
+        this.appController.fontSize = this.camera.scale *
+            this.appController.layout.glyphStorage.font.unitsPerEm;
+        this.buildAtlasGlyphs();
+        this.setDirty();
+
+        this.panZoomEventsEnabled = true;
     }
 
     relayoutText() {
         this.layoutText();
-        this.rebuildAtlasIfNecessary();
-    }
-
-    private rebuildAtlasIfNecessary() {
         this.buildAtlasGlyphs();
-        this.setGlyphTexCoords();
         this.setDirty();
     }
 
     protected onPan() {
+        this.buildAtlasGlyphs();
         this.setDirty();
-        this.rebuildAtlasIfNecessary();
     }
 
     protected onZoom() {
-        this.appController.fontSize = this.camera.scale * INITIAL_FONT_SIZE;
+        this.appController.fontSize = this.camera.scale *
+            this.appController.layout.glyphStorage.font.unitsPerEm;
+        this.buildAtlasGlyphs();
         this.setDirty();
-        this.rebuildAtlasIfNecessary();
     }
 
     updateHinting(): void {
+        this.buildAtlasGlyphs();
         this.setDirty();
-        this.rebuildAtlasIfNecessary();
     }
 
     private setIdentityTexScaleUniform(uniforms: UniformMap) {
@@ -524,7 +530,9 @@ class TextDemoView extends MonochromePathfinderView {
                             [2.0 / this.canvas.width, 2.0 / this.canvas.height, 1.0]);
         glmatrix.mat4.translate(transform,
                                 transform,
-                                [this.camera.translation[0], this.camera.translation[1], 0.0]);
+                                [this.camera.translation[0],
+                                 this.camera.translation[1],
+                                 0.0]);
 
         // Blit.
         this.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
@@ -543,6 +551,16 @@ class TextDemoView extends MonochromePathfinderView {
         this.gl.clearDepth(0.0);
         this.gl.depthMask(true);
         this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+    }
+
+    private set panZoomEventsEnabled(flag: boolean) {
+        if (flag) {
+            this.camera.onPan = () => this.onPan();
+            this.camera.onZoom = () => this.onZoom();
+        } else {
+            this.camera.onPan = null;
+            this.camera.onZoom = null;
+        }
     }
 
     readonly bgColor: glmatrix.vec4 = glmatrix.vec4.fromValues(1.0, 1.0, 1.0, 0.0);

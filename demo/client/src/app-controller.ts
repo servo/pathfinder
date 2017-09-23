@@ -33,19 +33,14 @@ export abstract class AppController {
     protected fetchFile(file: string, builtinFileURI: string) {
         window.fetch(`${builtinFileURI}/${file}`)
               .then(response => response.arrayBuffer())
-              .then(data => {
-                  this.fileData = data;
-                  this.fileLoaded();
-              });
+              .then(data => this.fileLoaded(data));
     }
 
     protected canvas: HTMLCanvasElement;
 
     protected screenshotButton: HTMLButtonElement | null;
 
-    protected fileData: ArrayBuffer;
-
-    protected abstract fileLoaded(): void;
+    protected abstract fileLoaded(data: ArrayBuffer): void;
 
     protected abstract get defaultFile(): string;
 }
@@ -108,10 +103,7 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
 
         this.filePickerView = FilePickerView.create();
         if (this.filePickerView != null) {
-            this.filePickerView.onFileLoaded = fileData => {
-                this.fileData = fileData;
-                this.fileLoaded();
-            };
+            this.filePickerView.onFileLoaded = fileData => this.fileLoaded(fileData);
         }
 
         const selectFileElement = document.getElementById('pf-select-file') as

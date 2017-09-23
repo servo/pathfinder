@@ -57,10 +57,7 @@ class MeshDebuggerAppController extends AppController {
         this.view = new MeshDebuggerView(this);
 
         this.filePicker = unwrapNull(FilePickerView.create());
-        this.filePicker.onFileLoaded = fileData => {
-            this.fileData = fileData;
-            this.fileLoaded();
-        };
+        this.filePicker.onFileLoaded = fileData => this.fileLoaded(fileData);
 
         this.openModal = unwrapNull(document.getElementById('pf-open-modal'));
         this.fontPathSelectGroup =
@@ -101,20 +98,20 @@ class MeshDebuggerAppController extends AppController {
             this.fetchFile(results[2], BUILTIN_URIS[this.fileType]);
     }
 
-    protected fileLoaded(): void {
+    protected fileLoaded(fileData: ArrayBuffer): void {
         while (this.fontPathSelect.lastChild != null)
             this.fontPathSelect.removeChild(this.fontPathSelect.lastChild);
 
         this.fontPathSelectGroup.classList.remove('pf-display-none');
 
         if (this.fileType === 'font')
-            this.fontLoaded();
+            this.fontLoaded(fileData);
         else if (this.fileType === 'svg')
-            this.svgLoaded();
+            this.svgLoaded(fileData);
     }
 
-    private fontLoaded(): void {
-        this.file = opentype.parse(this.fileData);
+    private fontLoaded(fileData: ArrayBuffer): void {
+        this.file = opentype.parse(fileData);
         assert(this.file.isSupported(), "The font type is unsupported!");
 
         const glyphCount = this.file.numGlyphs;
@@ -131,10 +128,10 @@ class MeshDebuggerAppController extends AppController {
             this.loadPath(this.file.charToGlyph(CHARACTER));
     }
 
-    private svgLoaded(): void {
+    private svgLoaded(fileData: ArrayBuffer): void {
         this.file = new SVGLoader;
         this.file.scale = SVG_SCALE;
-        this.file.loadFile(this.fileData);
+        this.file.loadFile(fileData);
 
         const pathCount = this.file.pathInstances.length;
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
@@ -157,7 +154,7 @@ class MeshDebuggerAppController extends AppController {
             }
 
             const glyph = new MeshDebuggerGlyph(opentypeGlyph);
-            const glyphStorage = new GlyphStorage(this.fileData, [glyph], this.file);
+            const glyphStorage = new GlyphStorage(this.file.toArrayBuffer(), [glyph], this.file);
             promise = glyphStorage.partition();
         } else if (this.file instanceof SVGLoader) {
             promise = this.file.partition(this.fontPathSelect.selectedIndex);

@@ -59,8 +59,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         this.loadInitialFile(this.builtinFileURI);
     }
 
-    protected fileLoaded(): void {
-        const font = opentype.parse(this.fileData);
+    protected fileLoaded(fileData: ArrayBuffer): void {
+        const font = opentype.parse(fileData);
         this.font = font;
         assert(this.font.isSupported(), "The font type is unsupported!");
 
@@ -68,7 +68,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         const textRun = new TextRun<BenchmarkGlyph>(STRING, [0, 0], font, createGlyph);
         this.textRun = textRun;
         const textFrame = new TextFrame([textRun], font);
-        this.glyphStorage = new TextFrameGlyphStorage(this.fileData, [textFrame], font);
+        this.glyphStorage = new TextFrameGlyphStorage(fileData, [textFrame], font);
 
         this.glyphStorage.partition().then(baseMeshes => {
             this.baseMeshes = baseMeshes;

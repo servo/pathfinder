@@ -50,8 +50,8 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
         this.loadInitialFile(this.builtinFileURI);
     }
 
-    protected fileLoaded() {
-        this.loader.loadFile(this.fileData);
+    protected fileLoaded(fileData: ArrayBuffer) {
+        this.loader.loadFile(fileData);
         this.loader.partition().then(meshes => {
             this.meshes = meshes;
             this.meshesReceived();

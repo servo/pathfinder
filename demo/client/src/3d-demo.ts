@@ -127,14 +127,14 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         return sides.map(side => ({ lines: side.upper.lines.concat(side.lower.lines) }));
     }
 
-    protected fileLoaded(): void {
-        const font = opentype.parse(this.fileData);
+    protected fileLoaded(fileData: ArrayBuffer): void {
+        const font = opentype.parse(fileData);
         assert(font.isSupported(), "The font type is unsupported!");
 
-        this.monumentPromise.then(monument => this.layoutMonument(font, monument));
+        this.monumentPromise.then(monument => this.layoutMonument(font, fileData, monument));
     }
 
-    private layoutMonument(font: opentype.Font, monument: MonumentSide[]) {
+    private layoutMonument(font: opentype.Font, fileData: ArrayBuffer, monument: MonumentSide[]) {
         const createGlyph = (glyph: opentype.Glyph) => new ThreeDGlyph(glyph);
         let textFrames = [];
         for (const monumentSide of monument) {
@@ -163,7 +163,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
             textFrames.push(new TextFrame(textRuns, font));
         }
 
-        this.glyphStorage = new TextFrameGlyphStorage(this.fileData, textFrames, font);
+        this.glyphStorage = new TextFrameGlyphStorage(fileData, textFrames, font);
         this.glyphStorage.layoutRuns();
 
         this.glyphStorage.partition().then((baseMeshes: PathfinderMeshData) => {

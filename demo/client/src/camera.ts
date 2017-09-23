@@ -150,7 +150,10 @@ export class OrthographicCamera extends Camera {
         if (this.ignoreBounds)
             return;
 
-        const bounds = this.bounds;
+        const bounds = glmatrix.vec4.clone(this.bounds);
+        if (!this.scaleBounds)
+            glmatrix.vec4.scale(bounds, bounds, this.scale);
+
         for (let axis = 0; axis < 2; axis++) {
             const viewportLength = axis === 0 ? this.canvas.width : this.canvas.height;
             const axisBounds = [bounds[axis + 0], bounds[axis + 2]];
@@ -170,8 +173,8 @@ export class OrthographicCamera extends Camera {
     }
 
     zoomToFit(): void {
-        const upperLeft = glmatrix.vec2.fromValues(this._bounds[0], this._bounds[1]);
-        const lowerRight = glmatrix.vec2.fromValues(this._bounds[2], this._bounds[3]);
+        const upperLeft = glmatrix.vec2.clone([this._bounds[0], this._bounds[1]]);
+        const lowerRight = glmatrix.vec2.clone([this._bounds[2], this._bounds[3]]);
         const width = this._bounds[2] - this._bounds[0];
         const height = Math.abs(this._bounds[1] - this._bounds[3]);
 
@@ -184,11 +187,6 @@ export class OrthographicCamera extends Camera {
         glmatrix.vec2.scale(this.translation, this.translation, -this.scale);
         this.translation[0] += this.canvas.width * 0.5;
         this.translation[1] += this.canvas.height * 0.5;
-
-        if (this.onZoom != null)
-            this.onZoom();
-        if (this.onPan != null)
-            this.onPan();
     }
 
     zoomIn(): void {
