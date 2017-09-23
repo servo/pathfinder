@@ -220,17 +220,26 @@ impl<'a> Partitioner<'a> {
 
         {
             let active_edge = &mut self.active_edges[active_edge_index as usize];
-            active_edge.left_vertex_index = self.b_vertex_loop_blinn_data.len() as u32;
-            active_edge.control_point_vertex_index = active_edge.left_vertex_index + 1;
-
             let endpoint_position = self.endpoints[active_edge.right_endpoint_index as usize]
                                         .position;
-            self.b_vertex_positions.push(endpoint_position);
-            self.b_vertex_path_ids.push(self.path_id);
-            self.b_vertex_loop_blinn_data.push(BVertexLoopBlinnData::new(
-                active_edge.endpoint_kind()));
 
-            active_edge.toggle_parity();
+            // If we already made a B-vertex point for this endpoint, reuse it instead of making a
+            // new one.
+            let old_left_position =
+                self.b_vertex_positions[active_edge.left_vertex_index as usize];
+            let should_update = (endpoint_position - old_left_position).square_length() >
+                f32::approx_epsilon();
+            if should_update {
+                active_edge.left_vertex_index = self.b_vertex_loop_blinn_data.len() as u32;
+                active_edge.control_point_vertex_index = active_edge.left_vertex_index + 1;
+
+                self.b_vertex_positions.push(endpoint_position);
+                self.b_vertex_path_ids.push(self.path_id);
+                self.b_vertex_loop_blinn_data.push(BVertexLoopBlinnData::new(
+                    active_edge.endpoint_kind()));
+
+                active_edge.toggle_parity();
+            }
 
             if active_edge.left_to_right {
                 active_edge.right_endpoint_index = next_endpoint_index;
@@ -281,6 +290,8 @@ impl<'a> Partitioner<'a> {
 
         let endpoint = &self.endpoints[endpoint_index as usize];
 
+        // TODO(pcwalton): Collapse the two duplicate endpoints that this will create together if
+        // possible (i.e. if they have the same parity).
         self.emit_b_quads_around_active_edge(active_edge_indices[0], endpoint.position.x);
         self.emit_b_quads_around_active_edge(active_edge_indices[1], endpoint.position.x);
 
@@ -521,18 +532,22 @@ impl<'a> Partitioner<'a> {
                                                         right_x,
                                                         SubdivisionType::Upper);
         for active_edge_index in (upper_active_edge_index + 1)..lower_active_edge_index {
-            self.subdivide_active_edge_at(active_edge_index, right_x, SubdivisionType::Inside);
-            self.active_edges[active_edge_index as usize].toggle_parity();
+            if self.subdivide_active_edge_at(active_edge_index, right_x, SubdivisionType::Inside)
+                   .is_some() {
+                self.active_edges[active_edge_index as usize].toggle_parity();
+            }
         }
         let lower_curve = self.subdivide_active_edge_at(lower_active_edge_index,
                                                         right_x,
                                                         SubdivisionType::Lower);
 
-        self.emit_b_quads(upper_active_edge_index,
-                          lower_active_edge_index,
-                          &upper_curve,
-                          &lower_curve,
-                          0);
+        if let (Some(upper_curve), Some(lower_curve)) = (upper_curve, lower_curve) {
+            self.emit_b_quads(upper_active_edge_index,
+                              lower_active_edge_index,
+                              &upper_curve,
+                              &lower_curve,
+                              0);
+        }
 
         emission_result
     }
@@ -1008,19 +1023,23 @@ impl<'a> Partitioner<'a> {
                                 active_edge_index: u32,
                                 x: f32,
                                 subdivision_type: SubdivisionType)
-                                -> SubdividedActiveEdge {
+                                -> Option<SubdividedActiveEdge> {
+        let left_curve_left = self.active_edges[active_edge_index as usize].left_vertex_index;
+        let left_point_position = self.b_vertex_positions[left_curve_left as usize];
+        if x - left_point_position.x < f32::approx_epsilon() {
+            // Too thin to make a difference. Forget it.
+            return None
+        }
+
         let t = self.solve_active_edge_t_for_x(x, &self.active_edges[active_edge_index as usize]);
 
         let bottom = subdivision_type == SubdivisionType::Lower;
-
         let active_edge = &mut self.active_edges[active_edge_index as usize];
-        let left_curve_left = active_edge.left_vertex_index;
 
         let left_curve_control_point_vertex_index;
         match active_edge.control_point_vertex_index {
             u32::MAX => {
                 let path_id = self.b_vertex_path_ids[left_curve_left as usize];
-                let left_point_position = self.b_vertex_positions[left_curve_left as usize];
                 let right_point = self.endpoints[active_edge.right_endpoint_index as usize]
                                       .position;
                 let middle_point = left_point_position.to_vector().lerp(right_point.to_vector(), t);
@@ -1068,11 +1087,11 @@ impl<'a> Partitioner<'a> {
             }
         }
 
-        SubdividedActiveEdge {
+        Some(SubdividedActiveEdge {
             left_curve_left: left_curve_left,
             left_curve_control_point: left_curve_control_point_vertex_index,
             middle_point: active_edge.left_vertex_index,
-        }
+        })
     }
 
     fn prev_endpoint_of(&self, endpoint_index: u32) -> u32 {
