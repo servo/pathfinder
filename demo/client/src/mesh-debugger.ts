@@ -113,6 +113,7 @@ class MeshDebuggerAppController extends AppController {
     private fontLoaded(fileData: ArrayBuffer): void {
         this.file = opentype.parse(fileData);
         assert(this.file.isSupported(), "The font type is unsupported!");
+        this.fileData = fileData;
 
         const glyphCount = this.file.numGlyphs;
         for (let glyphIndex = 1; glyphIndex < glyphCount; glyphIndex++) {
@@ -147,14 +148,14 @@ class MeshDebuggerAppController extends AppController {
 
         let promise: Promise<PathfinderMeshData>;
 
-        if (this.file instanceof opentype.Font) {
+        if (this.file instanceof opentype.Font && this.fileData != null) {
             if (opentypeGlyph == null) {
                 const glyphIndex = parseInt(this.fontPathSelect.selectedOptions[0].value);
                 opentypeGlyph = this.file.glyphs.get(glyphIndex);
             }
 
             const glyph = new MeshDebuggerGlyph(opentypeGlyph);
-            const glyphStorage = new GlyphStorage(this.file.toArrayBuffer(), [glyph], this.file);
+            const glyphStorage = new GlyphStorage(this.fileData, [glyph], this.file);
             promise = glyphStorage.partition();
         } else if (this.file instanceof SVGLoader) {
             promise = this.file.partition(this.fontPathSelect.selectedIndex);
@@ -172,6 +173,7 @@ class MeshDebuggerAppController extends AppController {
 
     private file: Font | SVGLoader | null;
     private fileType: FileType;
+    private fileData: ArrayBuffer | null;
 
     meshes: PathfinderMeshData | null;
 
