@@ -303,6 +303,7 @@ impl<'a> Partitioner<'a> {
     }
 
     fn sort_active_edge_list_and_emit_self_intersections(&mut self, endpoint_index: u32) {
+        let x = self.endpoints[endpoint_index as usize].position.x;
         loop {
             let mut swapped = false;
             for lower_active_edge_index in 1..(self.active_edges.len() as u32) {
@@ -310,7 +311,7 @@ impl<'a> Partitioner<'a> {
 
                 if self.active_edges_are_ordered(upper_active_edge_index,
                                                  lower_active_edge_index,
-                                                 endpoint_index) {
+                                                 x) {
                     continue
                 }
 
@@ -435,7 +436,7 @@ impl<'a> Partitioner<'a> {
     fn active_edges_are_ordered(&mut self,
                                 prev_active_edge_index: u32,
                                 next_active_edge_index: u32,
-                                reference_endpoint_index: u32)
+                                x: f32)
                                 -> bool {
         let prev_active_edge = &self.active_edges[prev_active_edge_index as usize];
         let next_active_edge = &self.active_edges[next_active_edge_index as usize];
@@ -447,11 +448,10 @@ impl<'a> Partitioner<'a> {
 
         // TODO(pcwalton): See if we can speed this up. It's trickier than it seems, due to path
         // self intersection!
-        let reference_endpoint = &self.endpoints[reference_endpoint_index as usize];
-        let prev_active_edge_y = self.solve_active_edge_y_for_x(reference_endpoint.position.x,
-                                                                prev_active_edge);
-        let next_active_edge_y = self.solve_active_edge_y_for_x(reference_endpoint.position.x,
-                                                                next_active_edge);
+        let prev_active_edge_t = self.solve_active_edge_t_for_x(x, prev_active_edge);
+        let next_active_edge_t = self.solve_active_edge_t_for_x(x, next_active_edge);
+        let prev_active_edge_y = self.sample_active_edge(prev_active_edge_t, prev_active_edge).y;
+        let next_active_edge_y = self.sample_active_edge(next_active_edge_t, next_active_edge).y;
         prev_active_edge_y <= next_active_edge_y
     }
 
@@ -846,10 +846,7 @@ impl<'a> Partitioner<'a> {
                                         -> (SubdividedActiveEdge, SubdividedActiveEdge) {
         let curve = subdivision.to_curve(&self.b_vertex_positions)
                                .expect("subdivide_active_edge_again_at_x(): not a curve!");
-        let t = geometry::solve_quadratic_bezier_t_for_x(x,
-                                                         &curve.endpoints[0],
-                                                         &curve.control_point,
-                                                         &curve.endpoints[1]);
+        let t = curve.solve_t_for_x(x);
         self.subdivide_active_edge_again_at_t(subdivision, t, bottom)
     }
 
@@ -922,10 +919,9 @@ impl<'a> Partitioner<'a> {
             }
             control_point_vertex_index => {
                 let control_point = &self.b_vertex_positions[control_point_vertex_index as usize];
-                geometry::solve_quadratic_bezier_t_for_x(x,
-                                                         left_vertex_position,
-                                                         control_point,
-                                                         right_endpoint_position)
+                Curve::new(left_vertex_position,
+                           control_point,
+                           right_endpoint_position).solve_t_for_x(x)
             }
         }
     }

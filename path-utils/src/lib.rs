@@ -208,12 +208,12 @@ pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
 }
 
 #[inline]
-pub(crate) fn det2x2(m: &[f32; 4]) -> f32 {
-    m[0] * m[3] - m[1] * m[2]
-}
-
-pub(crate) fn det3x3(m: &[f32; 9]) -> f32 {
-    m[0] * det2x2(&[m[4], m[5], m[7], m[8]]) -
-    m[1] * det2x2(&[m[3], m[5], m[6], m[8]]) +
-    m[2] * det2x2(&[m[3], m[4], m[6], m[7]])
+pub(crate) fn sign(x: f32) -> f32 {
+    if x < 0.0 {
+        -1.0
+    } else if x > 0.0 {
+        1.0
+    } else {
+        x
+    }
 }

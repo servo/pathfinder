@@ -73,32 +73,6 @@ pub fn solve_line_t_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
     }
 }
 
-// Use the Citardauq Formula to avoid precision problems.
-//
-// https://math.stackexchange.com/a/311397
-pub fn solve_quadratic_bezier_t_for_x(x: f32,
-                                      p0: &Point2D<f32>,
-                                      p1: &Point2D<f32>,
-                                      p2: &Point2D<f32>)
-                                      -> f32 {
-    let (p0x, p1x, p2x, x) = (p0.x as f64, p1.x as f64, p2.x as f64, x as f64);
-
-    let a = p0x - 2.0 * p1x + p2x;
-    let b = -2.0 * p0x + 2.0 * p1x;
-    let c = p0x - x;
-
-    let t = 2.0 * c / (-b - (b * b - 4.0 * a * c).sqrt());
-    t.max(0.0).min(1.0) as f32
-}
-
-pub fn solve_quadratic_bezier_y_for_x(x: f32,
-                                      p0: &Point2D<f32>,
-                                      p1: &Point2D<f32>,
-                                      p2: &Point2D<f32>)
-                                      -> f32 {
-    Curve::new(p0, p1, p2).sample(solve_quadratic_bezier_t_for_x(x, p0, p1, p2)).y
-}
-
 fn quadratic_bezier_axis_inflection_point(p0: f32, p1: f32, p2: f32) -> Option<f32> {
     let t = (p0 - p1) / (p0 - 2.0 * p1 + p2);
     if t > f32::approx_epsilon() && t < 1.0 - f32::approx_epsilon() {

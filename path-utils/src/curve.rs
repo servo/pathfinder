@@ -15,9 +15,10 @@ use euclid::Point2D;
 use std::f32;
 
 use PathSegment;
-use intersection::{Intersect, Side};
+use intersection::Intersect;
 use line::Line;
 
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Curve {
     pub endpoints: [Point2D<f32>; 2],
     pub control_point: Point2D<f32>,
@@ -62,6 +63,28 @@ impl Curve {
         (inflection_point_x, inflection_point_y)
     }
 
+    /// Uses the Citardauq Formula to avoid precision problems.
+    ///
+    /// https://math.stackexchange.com/a/311397
+    pub fn solve_t_for_x(&self, x: f32) -> f32 {
+        let p0x = self.endpoints[0].x as f64;
+        let p1x = self.control_point.x as f64;
+        let p2x = self.endpoints[1].x as f64;
+        let x = x as f64;
+
+        let a = p0x - 2.0 * p1x + p2x;
+        let b = -2.0 * p0x + 2.0 * p1x;
+        let c = p0x - x;
+
+        let t = 2.0 * c / (-b - (b * b - 4.0 * a * c).sqrt());
+        t.max(0.0).min(1.0) as f32
+    }
+
+    #[inline]
+    pub fn solve_y_for_x(&self, x: f32) -> f32 {
+        self.sample(self.solve_t_for_x(x)).y
+    }
+
     #[inline]
     pub fn baseline(&self) -> Line {
         Line::new(&self.endpoints[0], &self.endpoints[1])
@@ -81,7 +104,7 @@ impl Curve {
     }
 
     #[inline]
-    pub fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Side {
+    pub fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Intersect {
         <Curve as Intersect>::intersect(self, other)
     }
 }

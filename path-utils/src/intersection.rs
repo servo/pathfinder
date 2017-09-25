@@ -15,88 +15,73 @@ use euclid::Point2D;
 
 use curve::Curve;
 use line::Line;
-use {det2x2, det3x3, lerp};
+use {lerp, sign};
 
-pub trait Side {
-    fn side(&self, point: &Point2D<f32>) -> f32;
-}
-
-pub(crate) trait Intersect {
-    fn sample(&self, t: f32) -> Point2D<f32>;
+pub trait Intersect {
+    fn min_x(&self) -> f32;
+    fn max_x(&self) -> f32;
+    fn solve_y_for_x(&self, t: f32) -> f32;
 
     /// Requires that any curves be monotonic. (See the `monotonic` module for that.)
     ///
     /// This should work for line segments, but it is inefficient.
     ///
-    /// See T.W. Sederberg, "Computer Aided Geometric Design Course Notes" § 17.8.
-    fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Side {
-        let (mut t_min, mut t_max) = (0.0, 1.0);
-        let mut iteration = 0;
-        while t_max - t_min > f32::approx_epsilon() {
-            let (p_min, p_max) = (self.sample(t_min), self.sample(t_max));
+    /// This algorithm used to be smarter (based on implicitization) but floating point error
+    /// forced the adoption of this simpler, but slower, technique. Improvements are welcome.
+    fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Intersect {
+        let mut min_x = f32::max(self.min_x(), other.min_x());
+        let mut max_x = f32::min(self.max_x(), other.max_x());
 
-            let side_min = other.side(&p_min).signum();
-            let side_max = other.side(&p_max).signum();
-            if iteration == 0 && side_min == side_max {
-                return None
-            }
+        while max_x - min_x > f32::approx_epsilon() {
+            let mid_x = lerp(min_x, max_x, 0.5);
+            let min_sign = sign(self.solve_y_for_x(min_x) - other.solve_y_for_x(min_x));
+            let mid_sign = sign(self.solve_y_for_x(mid_x) - other.solve_y_for_x(mid_x));
+            let max_sign = sign(self.solve_y_for_x(max_x) - other.solve_y_for_x(max_x));
 
-            let t_mid = lerp(t_min, t_max, 0.5);
-            let p_mid = self.sample(t_mid);
-            let side_mid = other.side(&p_mid).signum();
-
-            if side_mid == side_min {
-                t_min = t_mid
-            } else if side_mid == side_max {
-                t_max = t_mid
+            if min_sign == mid_sign && mid_sign != max_sign {
+                min_x = mid_x
+            } else if min_sign != mid_sign && mid_sign == max_sign {
+                max_x = min_x
             } else {
                 break
             }
-
-            iteration += 1
         }
 
-        Some(self.sample(lerp(t_min, t_max, 0.5)))
-    }
-}
-
-impl Side for Line {
-    #[inline]
-    fn side(&self, point: &Point2D<f32>) -> f32 {
-        Line::side(self, point)
-    }
-}
-
-impl Side for Curve {
-    /// See T.W. Sederberg, "Computer Aided Geometric Design Course Notes" § 17.6.1.
-    fn side(&self, point: &Point2D<f32>) -> f32 {
-        fn l(factor: f32, point: &Point2D<f32>, point_i: &Point2D<f32>, point_j: &Point2D<f32>)
-             -> f32 {
-            factor * det3x3(&[
-                point.x, point.y, 1.0,
-                point_i.x, point_i.y, 1.0,
-                point_j.x, point_j.y, 1.0,
-            ])
-        }
-
-        let l20 = l(1.0 * 1.0, point, &self.endpoints[1], &self.endpoints[0]);
-        det2x2(&[
-            l(2.0 * 1.0, point, &self.endpoints[1], &self.control_point), l20,
-            l20, l(2.0 * 1.0, point, &self.control_point, &self.endpoints[0]),
-        ])
+        let mid_x = lerp(min_x, max_x, 0.5);
+        Some(Point2D::new(mid_x, self.solve_y_for_x(mid_x)))
     }
 }
 
 impl Intersect for Line {
     #[inline]
-    fn sample(&self, t: f32) -> Point2D<f32> {
-        Line::sample(self, t)
+    fn min_x(&self) -> f32 {
+        f32::min(self.endpoints[0].x, self.endpoints[1].x)
+    }
+
+    #[inline]
+    fn max_x(&self) -> f32 {
+        f32::max(self.endpoints[0].x, self.endpoints[1].x)
+    }
+
+    #[inline]
+    fn solve_y_for_x(&self, x: f32) -> f32 {
+        self.sample((x - self.endpoints[0].x) / (self.endpoints[1].x - self.endpoints[0].x)).y
     }
 }
 
 impl Intersect for Curve {
     #[inline]
-    fn sample(&self, t: f32) -> Point2D<f32> {
-        Curve::sample(self, t)
+    fn min_x(&self) -> f32 {
+        f32::min(self.endpoints[0].x, self.endpoints[1].x)
+    }
+
+    #[inline]
+    fn max_x(&self) -> f32 {
+        f32::max(self.endpoints[0].x, self.endpoints[1].x)
+    }
+
+    #[inline]
+    fn solve_y_for_x(&self, x: f32) -> f32 {
+        Curve::solve_y_for_x(self, x)
     }
 }

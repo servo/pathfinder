@@ -12,8 +12,9 @@
 
 use euclid::{Point2D, Vector2D};
 
-use intersection::{Intersect, Side};
+use intersection::Intersect;
 
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Line {
     pub endpoints: [Point2D<f32>; 2],
 }
@@ -42,7 +43,7 @@ impl Line {
     }
 
     #[inline]
-    pub fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Side {
+    pub fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Intersect {
         <Line as Intersect>::intersect(self, other)
     }
 }
