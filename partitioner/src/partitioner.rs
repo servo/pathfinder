@@ -319,6 +319,7 @@ impl<'a> Partitioner<'a> {
                     debug!("found SELF-INTERSECTION point for active edges {} & {}",
                            upper_active_edge_index,
                            lower_active_edge_index);
+                    self.emit_b_quads_around_active_edge(upper_active_edge_index, crossing_point.x);
                     self.emit_b_quads_around_active_edge(lower_active_edge_index, crossing_point.x);
                 } else {
                     debug!("warning: swapped active edges {} & {} without finding intersection",
