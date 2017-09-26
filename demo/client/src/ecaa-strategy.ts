@@ -302,14 +302,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         // Conservatively cover.
         view.gl.useProgram(coverProgram.program);
         view.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
-        const uniforms = coverProgram.uniforms;
-        view.setTransformSTUniform(uniforms, 0);
-        view.setFramebufferSizeUniform(uniforms);
-        this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
-        this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
-        view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 2);
-        if (view.pathHintsBufferTexture !== null)
-            view.pathHintsBufferTexture.bind(view.gl, uniforms, 3);
+        this.setAAUniforms(view, coverProgram.uniforms);
         view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                            6,
                                                            view.gl.UNSIGNED_BYTE,
