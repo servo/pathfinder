@@ -31,6 +31,34 @@
                 </button>
             </div>
         </div>
+        <div class="modal fade" id="pf-benchmark-results-modal" tabindex="-1" role="dialog"
+         aria-labelledby="pf-benchmark-results-label" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="pf-benchmark-result-label">
+                            Benchmark Results
+                        </h5>
+                        <button type="button" class="close" data-dismiss="modal"
+                         aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <table class="table table-striped">
+                            <thead class="thead-default">
+                                <tr><th>Font size (px)</th><th>GPU time per glyph (µs)</th></tr>
+                            </thead>
+                            <tbody id="pf-benchmark-results-table-body"></tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary"
+                         id="pf-benchmark-results-close-button">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </body>
 </html>
 

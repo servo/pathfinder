@@ -53,6 +53,18 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     start() {
         super.start();
 
+        this.resultsModal = unwrapNull(document.getElementById('pf-benchmark-results-modal')) as
+            HTMLDivElement;
+        this.resultsTableBody =
+            unwrapNull(document.getElementById('pf-benchmark-results-table-body')) as
+            HTMLTableSectionElement;
+
+        const resultsCloseButton =
+            unwrapNull(document.getElementById('pf-benchmark-results-close-button'));
+        resultsCloseButton.addEventListener('click', () => {
+            window.jQuery(this.resultsModal).modal('hide');
+        }, false);
+
         const runBenchmarkButton = unwrapNull(document.getElementById('pf-run-benchmark-button'));
         runBenchmarkButton.addEventListener('click', () => this.runBenchmark(), false);
 
@@ -104,7 +116,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             this.elapsedTimes.push({ size: this.pixelsPerEm, time: elapsedTime });
 
             if (this.pixelsPerEm == MAX_FONT_SIZE) {
-                console.info(this.elapsedTimes);
+                this.showResults();
                 return;
             }
 
@@ -113,8 +125,30 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         });
     }
 
+    private showResults(): void {
+        while (this.resultsTableBody.lastChild != null)
+            this.resultsTableBody.removeChild(this.resultsTableBody.lastChild);
+
+        for (const elapsedTime of this.elapsedTimes) {
+            const tr = document.createElement('tr');
+            const sizeTH = document.createElement('th');
+            const timeTD = document.createElement('td');
+            sizeTH.appendChild(document.createTextNode("" + elapsedTime.size));
+            timeTD.appendChild(document.createTextNode("" + elapsedTime.time));
+            sizeTH.scope = 'row';
+            tr.appendChild(sizeTH);
+            tr.appendChild(timeTD);
+            this.resultsTableBody.appendChild(tr);
+        }
+
+        window.jQuery(this.resultsModal).modal();
+    }
+
     protected readonly defaultFile: string = FONT;
     protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
+
+    private resultsModal: HTMLDivElement;
+    private resultsTableBody: HTMLTableSectionElement;
 
     private glyphStorage: TextFrameGlyphStorage<BenchmarkGlyph>;
     private baseMeshes: PathfinderMeshData;

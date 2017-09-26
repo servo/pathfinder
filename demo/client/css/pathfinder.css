@@ -98,6 +98,10 @@ button > svg path {
 .pf-display-none {
     display: none !important;
 }
+#pf-benchmark-results-modal .modal-body {
+    overflow: scroll;
+    max-height: 75vh;
+}
 
 /*
  * Arrow
