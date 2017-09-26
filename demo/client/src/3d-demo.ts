@@ -166,9 +166,9 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         this.glyphStorage = new TextFrameGlyphStorage(fileData, textFrames, font);
         this.glyphStorage.layoutRuns();
 
-        this.glyphStorage.partition().then((baseMeshes: PathfinderMeshData) => {
-            this.baseMeshes = baseMeshes;
-            this.expandedMeshes = this.glyphStorage.expandMeshes(baseMeshes);
+        this.glyphStorage.partition().then(result => {
+            this.baseMeshes = result.meshes;
+            this.expandedMeshes = this.glyphStorage.expandMeshes(this.baseMeshes);
             this.view.then(view => {
                 view.uploadPathColors(this.expandedMeshes.length);
                 view.uploadPathTransforms(this.expandedMeshes.length);

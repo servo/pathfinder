@@ -39,6 +39,7 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::mem;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use std::u32;
 
 static STATIC_INDEX_PATH: &'static str = "../client/index.html";
@@ -152,6 +153,7 @@ struct PartitionFontResponse {
     glyph_info: Vec<PartitionGlyphInfo>,
     #[serde(rename = "pathData")]
     path_data: PartitionEncodedPathData,
+    time: f64,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -255,108 +257,126 @@ struct PartitionSvgPathsResponse {
     path_data: PartitionEncodedPathData,
 }
 
-fn partition_paths(partitioner: &mut Partitioner, subpath_indices: &[SubpathRange])
-                   -> (PartitionEncodedPathData, Vec<PartitionPathIndices>) {
-    let (mut b_quads, mut b_vertex_positions) = (vec![], vec![]);
-    let (mut b_vertex_path_ids, mut b_vertex_loop_blinn_data) = (vec![], vec![]);
-    let (mut cover_interior_indices, mut cover_curve_indices) = (vec![], vec![]);
-    let (mut edge_upper_line_indices, mut edge_upper_curve_indices) = (vec![], vec![]);
-    let (mut edge_lower_line_indices, mut edge_lower_curve_indices) = (vec![], vec![]);
+struct PathPartitioningResult {
+    encoded_data: PartitionEncodedPathData,
+    indices: Vec<PartitionPathIndices>,
+    time: Duration,
+}
 
-    let mut path_indices = vec![];
+impl PathPartitioningResult {
+    fn compute(partitioner: &mut Partitioner, subpath_indices: &[SubpathRange])
+               -> PathPartitioningResult {
+        let timestamp_before = Instant::now();
 
-    for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
-        partitioner.partition((path_index + 1) as u16, subpath_range.start, subpath_range.end);
+        let (mut b_quads, mut b_vertex_positions) = (vec![], vec![]);
+        let (mut b_vertex_path_ids, mut b_vertex_loop_blinn_data) = (vec![], vec![]);
+        let (mut cover_interior_indices, mut cover_curve_indices) = (vec![], vec![]);
+        let (mut edge_upper_line_indices, mut edge_upper_curve_indices) = (vec![], vec![]);
+        let (mut edge_lower_line_indices, mut edge_lower_curve_indices) = (vec![], vec![]);
 
-        let path_b_vertex_positions = partitioner.b_vertex_positions();
-        let path_b_vertex_path_ids = partitioner.b_vertex_path_ids();
-        let path_b_vertex_loop_blinn_data = partitioner.b_vertex_loop_blinn_data();
-        let cover_indices = partitioner.cover_indices();
-        let edge_indices = partitioner.edge_indices();
+        let mut path_indices = vec![];
 
-        let positions_start = IndexRange::from_data(&mut b_vertex_positions,
-                                                    path_b_vertex_positions).unwrap().start as u32;
-        IndexRange::from_data(&mut b_vertex_path_ids, path_b_vertex_path_ids).unwrap();
+        for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
+            partitioner.partition((path_index + 1) as u16, subpath_range.start, subpath_range.end);
 
-        let mut path_b_quads = partitioner.b_quads().to_vec();
-        let mut path_cover_interior_indices = cover_indices.interior_indices.to_vec();
-        let mut path_cover_curve_indices = cover_indices.curve_indices.to_vec();
-        let mut path_edge_upper_line_indices = edge_indices.upper_line_indices.to_vec();
-        let mut path_edge_upper_curve_indices = edge_indices.upper_curve_indices.to_vec();
-        let mut path_edge_lower_line_indices = edge_indices.lower_line_indices.to_vec();
-        let mut path_edge_lower_curve_indices = edge_indices.lower_curve_indices.to_vec();
+            let path_b_vertex_positions = partitioner.b_vertex_positions();
+            let path_b_vertex_path_ids = partitioner.b_vertex_path_ids();
+            let path_b_vertex_loop_blinn_data = partitioner.b_vertex_loop_blinn_data();
+            let cover_indices = partitioner.cover_indices();
+            let edge_indices = partitioner.edge_indices();
 
-        for path_b_quad in &mut path_b_quads {
-            path_b_quad.offset(positions_start);
-        }
-        for path_cover_interior_index in &mut path_cover_interior_indices {
-            *path_cover_interior_index += positions_start
-        }
-        for path_cover_curve_index in &mut path_cover_curve_indices {
-            *path_cover_curve_index += positions_start
-        }
-        for path_edge_upper_line_indices in &mut path_edge_upper_line_indices {
-            path_edge_upper_line_indices.offset(positions_start);
-        }
-        for path_edge_upper_curve_indices in &mut path_edge_upper_curve_indices {
-            path_edge_upper_curve_indices.offset(positions_start);
-        }
-        for path_edge_lower_line_indices in &mut path_edge_lower_line_indices {
-            path_edge_lower_line_indices.offset(positions_start);
-        }
-        for path_edge_lower_curve_indices in &mut path_edge_lower_curve_indices {
-            path_edge_lower_curve_indices.offset(positions_start);
+            let positions_start =
+                IndexRange::from_data(&mut b_vertex_positions,
+                                      path_b_vertex_positions).unwrap().start as u32;
+            IndexRange::from_data(&mut b_vertex_path_ids, path_b_vertex_path_ids).unwrap();
+
+            let mut path_b_quads = partitioner.b_quads().to_vec();
+            let mut path_cover_interior_indices = cover_indices.interior_indices.to_vec();
+            let mut path_cover_curve_indices = cover_indices.curve_indices.to_vec();
+            let mut path_edge_upper_line_indices = edge_indices.upper_line_indices.to_vec();
+            let mut path_edge_upper_curve_indices = edge_indices.upper_curve_indices.to_vec();
+            let mut path_edge_lower_line_indices = edge_indices.lower_line_indices.to_vec();
+            let mut path_edge_lower_curve_indices = edge_indices.lower_curve_indices.to_vec();
+
+            for path_b_quad in &mut path_b_quads {
+                path_b_quad.offset(positions_start);
+            }
+            for path_cover_interior_index in &mut path_cover_interior_indices {
+                *path_cover_interior_index += positions_start
+            }
+            for path_cover_curve_index in &mut path_cover_curve_indices {
+                *path_cover_curve_index += positions_start
+            }
+            for path_edge_upper_line_indices in &mut path_edge_upper_line_indices {
+                path_edge_upper_line_indices.offset(positions_start);
+            }
+            for path_edge_upper_curve_indices in &mut path_edge_upper_curve_indices {
+                path_edge_upper_curve_indices.offset(positions_start);
+            }
+            for path_edge_lower_line_indices in &mut path_edge_lower_line_indices {
+                path_edge_lower_line_indices.offset(positions_start);
+            }
+            for path_edge_lower_curve_indices in &mut path_edge_lower_curve_indices {
+                path_edge_lower_curve_indices.offset(positions_start);
+            }
+
+            path_indices.push(PartitionPathIndices {
+                b_quad_indices: IndexRange::from_data(&mut b_quads, &path_b_quads).unwrap(),
+                b_vertex_indices: IndexRange::from_data(&mut b_vertex_loop_blinn_data,
+                                                        path_b_vertex_loop_blinn_data).unwrap(),
+                cover_interior_indices: IndexRange::from_data(&mut cover_interior_indices,
+                                                            &path_cover_interior_indices).unwrap(),
+                cover_curve_indices: IndexRange::from_data(&mut cover_curve_indices,
+                                                        &path_cover_curve_indices).unwrap(),
+                edge_upper_line_indices:
+                    IndexRange::from_data(&mut edge_upper_line_indices,
+                                          &path_edge_upper_line_indices).unwrap(),
+                edge_upper_curve_indices:
+                    IndexRange::from_data(&mut edge_upper_curve_indices,
+                                        &path_edge_upper_curve_indices).unwrap(),
+                edge_lower_line_indices: IndexRange::from_data(&mut edge_lower_line_indices,
+                                                            &path_edge_lower_line_indices).unwrap(),
+                edge_lower_curve_indices:
+                    IndexRange::from_data(&mut edge_lower_curve_indices,
+                                        &path_edge_lower_curve_indices).unwrap(),
+            })
         }
 
-        path_indices.push(PartitionPathIndices {
-            b_quad_indices: IndexRange::from_data(&mut b_quads, &path_b_quads).unwrap(),
-            b_vertex_indices: IndexRange::from_data(&mut b_vertex_loop_blinn_data,
-                                                    path_b_vertex_loop_blinn_data).unwrap(),
-            cover_interior_indices: IndexRange::from_data(&mut cover_interior_indices,
-                                                          &path_cover_interior_indices).unwrap(),
-            cover_curve_indices: IndexRange::from_data(&mut cover_curve_indices,
-                                                       &path_cover_curve_indices).unwrap(),
-            edge_upper_line_indices: IndexRange::from_data(&mut edge_upper_line_indices,
-                                                           &path_edge_upper_line_indices).unwrap(),
-            edge_upper_curve_indices:
-                IndexRange::from_data(&mut edge_upper_curve_indices,
-                                      &path_edge_upper_curve_indices).unwrap(),
-            edge_lower_line_indices: IndexRange::from_data(&mut edge_lower_line_indices,
-                                                           &path_edge_lower_line_indices).unwrap(),
-            edge_lower_curve_indices:
-                IndexRange::from_data(&mut edge_lower_curve_indices,
-                                      &path_edge_lower_curve_indices).unwrap(),
-        })
+        // Reverse interior indices for early Z optimizations.
+        let mut new_cover_interior_indices = Vec::with_capacity(cover_interior_indices.len());
+        for path_indices in path_indices.iter_mut().rev() {
+            let old_byte_start = path_indices.cover_interior_indices.start * mem::size_of::<u32>();
+            let old_byte_end = path_indices.cover_interior_indices.end * mem::size_of::<u32>();
+            let new_start_index = new_cover_interior_indices.len() / mem::size_of::<u32>();
+            new_cover_interior_indices.extend(
+                cover_interior_indices[old_byte_start..old_byte_end].into_iter());
+            let new_end_index = new_cover_interior_indices.len() / mem::size_of::<u32>();
+            path_indices.cover_interior_indices.start = new_start_index;
+            path_indices.cover_interior_indices.end = new_end_index;
+        }
+        cover_interior_indices = new_cover_interior_indices;
+
+        let time_elapsed = timestamp_before.elapsed();
+
+        let encoded_path_data = PartitionEncodedPathData {
+            b_quads: base64::encode(&b_quads),
+            b_vertex_positions: base64::encode(&b_vertex_positions),
+            b_vertex_path_ids: base64::encode(&b_vertex_path_ids),
+            b_vertex_loop_blinn_data: base64::encode(&b_vertex_loop_blinn_data),
+            cover_interior_indices: base64::encode(&cover_interior_indices),
+            cover_curve_indices: base64::encode(&cover_curve_indices),
+            edge_upper_line_indices: base64::encode(&edge_upper_line_indices),
+            edge_upper_curve_indices: base64::encode(&edge_upper_curve_indices),
+            edge_lower_line_indices: base64::encode(&edge_lower_line_indices),
+            edge_lower_curve_indices: base64::encode(&edge_lower_curve_indices),
+        };
+
+        PathPartitioningResult {
+            encoded_data: encoded_path_data,
+            indices: path_indices,
+            time: time_elapsed,
+        }
     }
-
-    // Reverse interior indices for early Z optimizations.
-    let mut new_cover_interior_indices = Vec::with_capacity(cover_interior_indices.len());
-    for path_indices in path_indices.iter_mut().rev() {
-        let old_byte_start = path_indices.cover_interior_indices.start * mem::size_of::<u32>();
-        let old_byte_end = path_indices.cover_interior_indices.end * mem::size_of::<u32>();
-        let new_start_index = new_cover_interior_indices.len() / mem::size_of::<u32>();
-        new_cover_interior_indices.extend(
-            cover_interior_indices[old_byte_start..old_byte_end].into_iter());
-        let new_end_index = new_cover_interior_indices.len() / mem::size_of::<u32>();
-        path_indices.cover_interior_indices.start = new_start_index;
-        path_indices.cover_interior_indices.end = new_end_index;
-    }
-    cover_interior_indices = new_cover_interior_indices;
-
-    let encoded_path_data = PartitionEncodedPathData {
-        b_quads: base64::encode(&b_quads),
-        b_vertex_positions: base64::encode(&b_vertex_positions),
-        b_vertex_path_ids: base64::encode(&b_vertex_path_ids),
-        b_vertex_loop_blinn_data: base64::encode(&b_vertex_loop_blinn_data),
-        cover_interior_indices: base64::encode(&cover_interior_indices),
-        cover_curve_indices: base64::encode(&cover_curve_indices),
-        edge_upper_line_indices: base64::encode(&edge_upper_line_indices),
-        edge_upper_curve_indices: base64::encode(&edge_upper_curve_indices),
-        edge_lower_line_indices: base64::encode(&edge_lower_line_indices),
-        edge_lower_curve_indices: base64::encode(&edge_lower_curve_indices),
-    };
-
-    (encoded_path_data, path_indices)
 }
 
 #[post("/partition-font", format = "application/json", data = "<request>")]
@@ -428,11 +448,14 @@ fn partition_font(request: Json<PartitionFontRequest>)
     // Partition the decoded glyph outlines.
     let mut partitioner = Partitioner::new();
     partitioner.init_with_path_buffer(&path_buffer);
-    let (encoded_path_data, path_indices) = partition_paths(&mut partitioner, &subpath_indices);
+    let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
+                                                                   &subpath_indices);
 
     // Package up other miscellaneous glyph info.
     let mut glyph_info = vec![];
-    for (glyph, glyph_path_indices) in request.glyphs.iter().zip(path_indices.iter()) {
+    for (glyph, glyph_path_indices) in request.glyphs
+                                              .iter()
+                                              .zip(path_partitioning_result.indices.iter()) {
         let glyph_key = GlyphKey::new(glyph.id);
 
         let dimensions = match font_context.glyph_dimensions(&font_instance_key, &glyph_key) {
@@ -453,10 +476,14 @@ fn partition_font(request: Json<PartitionFontRequest>)
         })
     }
 
+    let time = path_partitioning_result.time.as_secs() as f64 +
+        path_partitioning_result.time.subsec_nanos() as f64 * 1e-9;
+
     // Return the response.
     Json(Ok(PartitionFontResponse {
         glyph_info: glyph_info,
-        path_data: encoded_path_data,
+        path_data: path_partitioning_result.encoded_data,
+        time: time,
     }))
 }
 
@@ -531,12 +558,12 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     // Partition the paths.
     let mut partitioner = Partitioner::new();
     partitioner.init_with_path_buffer(&path_buffer);
-    let (encoded_path_data, path_indices) = partition_paths(&mut partitioner, &paths);
+    let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner, &paths);
 
     // Return the response.
     Json(Ok(PartitionSvgPathsResponse {
-        path_indices: path_indices,
-        path_data: encoded_path_data,
+        path_indices: path_partitioning_result.indices,
+        path_data: path_partitioning_result.encoded_data,
     }))
 }
 

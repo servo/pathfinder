@@ -58,6 +58,9 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         this.resultsTableBody =
             unwrapNull(document.getElementById('pf-benchmark-results-table-body')) as
             HTMLTableSectionElement;
+        this.resultsPartitioningTimeLabel =
+            unwrapNull(document.getElementById('pf-benchmark-results-partitioning-time')) as
+            HTMLSpanElement;
 
         const resultsCloseButton =
             unwrapNull(document.getElementById('pf-benchmark-results-close-button'));
@@ -82,10 +85,18 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         const textFrame = new TextFrame([textRun], font);
         this.glyphStorage = new TextFrameGlyphStorage(fileData, [textFrame], font);
 
-        this.glyphStorage.partition().then(baseMeshes => {
-            this.baseMeshes = baseMeshes;
-            const expandedMeshes = this.glyphStorage.expandMeshes(baseMeshes)[0];
+        this.glyphStorage.partition().then(result => {
+            this.baseMeshes = result.meshes;
+
+            const partitionTime = result.time / this.glyphStorage.uniqueGlyphs.length * 1e6;
+            const timeLabel = this.resultsPartitioningTimeLabel;
+            while (timeLabel.firstChild != null)
+                timeLabel.removeChild(timeLabel.firstChild);
+            timeLabel.appendChild(document.createTextNode("" + partitionTime));
+
+            const expandedMeshes = this.glyphStorage.expandMeshes(this.baseMeshes)[0];
             this.expandedMeshes = expandedMeshes;
+
             this.view.then(view => {
                 view.uploadPathColors(1);
                 view.uploadPathTransforms(1);
@@ -149,6 +160,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
     private resultsModal: HTMLDivElement;
     private resultsTableBody: HTMLTableSectionElement;
+    private resultsPartitioningTimeLabel: HTMLSpanElement;
 
     private glyphStorage: TextFrameGlyphStorage<BenchmarkGlyph>;
     private baseMeshes: PathfinderMeshData;
@@ -156,6 +168,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
     private pixelsPerEm: number;
     private elapsedTimes: ElapsedTime[];
+    private partitionTime: number;
 
     font: opentype.Font | null;
     textRun: TextRun<BenchmarkGlyph> | null;

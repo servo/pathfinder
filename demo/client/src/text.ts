@@ -25,6 +25,11 @@ export interface ExpandedMeshData {
     meshes: PathfinderMeshData;
 }
 
+export interface PartitionResult {
+    meshes: PathfinderMeshData,
+    time: number,
+}
+
 type CreateGlyphFn<Glyph> = (glyph: opentype.Glyph) => Glyph;
 
 export interface PixelMetrics {
@@ -250,7 +255,7 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.index);
     }
 
-    partition(): Promise<PathfinderMeshData> {
+    partition(): Promise<PartitionResult> {
         // Build the partitioning request to the server.
         //
         // FIXME(pcwalton): If this is a builtin font, don't resend it to the server!
@@ -278,7 +283,10 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
             const response = JSON.parse(responseText);
             if (!('Ok' in response))
                 panic("Failed to partition the font!");
-            return new PathfinderMeshData(response.Ok.pathData);
+            return {
+                meshes: new PathfinderMeshData(response.Ok.pathData),
+                time: response.Ok.time,
+            };
         });
     }
 

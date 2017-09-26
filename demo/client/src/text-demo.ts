@@ -176,10 +176,10 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         const newLayout = new SimpleTextLayout(fileData,
                                                this.text,
                                                glyph => new GlyphInstance(glyph));
-        newLayout.glyphStorage.partition().then((meshes: PathfinderMeshData) => {
+        newLayout.glyphStorage.partition().then(result => {
             this.view.then(view => {
                 this.layout = newLayout;
-                this.meshes = meshes;
+                this.meshes = result.meshes;
 
                 view.attachText();
                 view.uploadPathColors(1);

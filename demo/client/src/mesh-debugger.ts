@@ -156,7 +156,7 @@ class MeshDebuggerAppController extends AppController {
 
             const glyph = new MeshDebuggerGlyph(opentypeGlyph);
             const glyphStorage = new GlyphStorage(this.fileData, [glyph], this.file);
-            promise = glyphStorage.partition();
+            promise = glyphStorage.partition().then(result => result.meshes);
         } else if (this.file instanceof SVGLoader) {
             promise = this.file.partition(this.fontPathSelect.selectedIndex);
         } else {

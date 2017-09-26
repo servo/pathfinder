@@ -102,6 +102,12 @@ button > svg path {
     overflow: scroll;
     max-height: 75vh;
 }
+.pf-benchmark-results-global {
+    padding: 0.75rem;
+}
+.pf-benchmark-results-label {
+    font-weight: bold;
+}
 
 /*
  * Arrow
