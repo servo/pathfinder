@@ -84,12 +84,23 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
         const bVertexPathIDs = new Uint16Array(meshes.bVertexPathIDs);
         const bVertexLoopBlinnData = new Uint32Array(meshes.bVertexLoopBlinnData);
 
+        const edgeUpperCurveIndices = new Uint32Array(meshes.edgeUpperCurveIndices);
+        const edgeLowerCurveIndices = new Uint32Array(meshes.edgeLowerCurveIndices);
+        for (let indexIndex = 3; indexIndex < edgeUpperCurveIndices.length; indexIndex += 4)
+            edgeUpperCurveIndices[indexIndex] = 0;
+        for (let indexIndex = 3; indexIndex < edgeLowerCurveIndices.length; indexIndex += 4)
+            edgeLowerCurveIndices[indexIndex] = 0;
+
         const expandedBQuads: number[] = [];
         const expandedBVertexPositions: number[] = [];
         const expandedBVertexPathIDs: number[] = [];
         const expandedBVertexLoopBlinnData: number[] = [];
         const expandedCoverInteriorIndices: number[] = [];
         const expandedCoverCurveIndices: number[] = [];
+        const expandedEdgeUpperCurveIndices: number[] = [];
+        const expandedEdgeUpperLineIndices: number[] = [];
+        const expandedEdgeLowerCurveIndices: number[] = [];
+        const expandedEdgeLowerLineIndices: number[] = [];
 
         let textGlyphIndex = 0;
         for (const textRun of this.runs) {
@@ -125,6 +136,29 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
                             firstBVertexIndex,
                             bVertexIndex);
 
+                copyIndices(expandedEdgeUpperLineIndices,
+                            new Uint32Array(meshes.edgeUpperLineIndices),
+                            firstExpandedBVertexIndex,
+                            firstBVertexIndex,
+                            bVertexIndex);
+                copyIndices(expandedEdgeUpperCurveIndices,
+                            new Uint32Array(edgeUpperCurveIndices),
+                            firstExpandedBVertexIndex,
+                            firstBVertexIndex,
+                            bVertexIndex,
+                            indexIndex => indexIndex % 4 < 3);
+                copyIndices(expandedEdgeLowerLineIndices,
+                            new Uint32Array(meshes.edgeLowerLineIndices),
+                            firstExpandedBVertexIndex,
+                            firstBVertexIndex,
+                            bVertexIndex);
+                copyIndices(expandedEdgeLowerCurveIndices,
+                            new Uint32Array(edgeLowerCurveIndices),
+                            firstExpandedBVertexIndex,
+                            firstBVertexIndex,
+                            bVertexIndex,
+                            indexIndex => indexIndex % 4 < 3);
+
                 // Copy over B-quads.
                 let firstBQuadIndex =
                     _.findIndex(bQuads, bQuad => bVertexPathIDs[bQuad[0]] == uniqueGlyphIndex + 1);
@@ -159,10 +193,14 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
                     ArrayBuffer,
                 coverCurveIndices: new Uint32Array(expandedCoverCurveIndices).buffer as
                     ArrayBuffer,
-                edgeUpperCurveIndices: new ArrayBuffer(0),
-                edgeUpperLineIndices: new ArrayBuffer(0),
-                edgeLowerCurveIndices: new ArrayBuffer(0),
-                edgeLowerLineIndices: new ArrayBuffer(0),
+                edgeUpperCurveIndices: new Uint32Array(expandedEdgeUpperCurveIndices).buffer as
+                    ArrayBuffer,
+                edgeUpperLineIndices: new Uint32Array(expandedEdgeUpperLineIndices).buffer as
+                    ArrayBuffer,
+                edgeLowerCurveIndices: new Uint32Array(expandedEdgeLowerCurveIndices).buffer as
+                    ArrayBuffer,
+                edgeLowerLineIndices: new Uint32Array(expandedEdgeLowerLineIndices).buffer as
+                    ArrayBuffer,
             })
         }
     }
@@ -423,18 +461,28 @@ function copyIndices(destIndices: number[],
                      srcIndices: Uint32Array,
                      firstExpandedIndex: number,
                      firstIndex: number,
-                     lastIndex: number) {
+                     lastIndex: number,
+                     validateIndex?: (indexIndex: number) => boolean) {
+    if (firstIndex === lastIndex)
+        return;
+
     // FIXME(pcwalton): Use binary search instead of linear search.
-    const indexDelta = firstExpandedIndex - firstIndex;
-    let indexIndex = _.findIndex(srcIndices,
-                                 srcIndex => srcIndex >= firstIndex && srcIndex < lastIndex);
+    let indexIndex = _.findIndex(srcIndices, srcIndex => {
+        return srcIndex >= firstIndex && srcIndex < lastIndex;
+    });
     if (indexIndex < 0)
         return;
+
+    const indexDelta = firstExpandedIndex - firstIndex;
     while (indexIndex < srcIndices.length) {
         const index = srcIndices[indexIndex];
-        if (index < firstIndex || index >= lastIndex)
-            break;
-        destIndices.push(index + indexDelta);
+        if (validateIndex == null || validateIndex(indexIndex)) {
+            if (index < firstIndex || index >= lastIndex)
+                break;
+            destIndices.push(index + indexDelta);
+        } else {
+            destIndices.push(index);
+        }
         indexIndex++;
     }
 }

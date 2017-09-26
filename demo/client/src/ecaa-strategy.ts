@@ -402,7 +402,10 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.enable(view.gl.SCISSOR_TEST);
         this.setResolveDepthState(view);
         view.gl.disable(view.gl.BLEND);
-        view.drawBuffersExt.drawBuffersWEBGL([view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
+        if (view.destFramebuffer != null)
+            view.drawBuffersExt.drawBuffersWEBGL([view.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
+        else
+            view.drawBuffersExt.drawBuffersWEBGL([view.gl.BACK]);
 
         // Clear out the resolve buffer, if necessary.
         this.clearForResolve(view);
@@ -428,7 +431,9 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.disable(view.gl.DEPTH_TEST);
     }
 
-    protected setResolveDepthState(view: MonochromePathfinderView): void {}
+    protected setResolveDepthState(view: MonochromePathfinderView): void {
+        view.gl.disable(view.gl.DEPTH_TEST);
+    }
 
     protected supersampledUsedSize(view: MonochromePathfinderView): glmatrix.vec2 {
         const usedSize = glmatrix.vec2.create();

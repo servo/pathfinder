@@ -280,7 +280,7 @@ class BenchmarkTestView extends MonochromePathfinderView {
 
     private _pixelsPerEm: number = 32.0;
 
-    readonly bgColor: glmatrix.vec4 = glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
+    readonly bgColor: glmatrix.vec4 = glmatrix.vec4.clone([1.0, 1.0, 1.0, 0.0]);
     readonly fgColor: glmatrix.vec4 = glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
 
     protected directCurveProgramName: keyof ShaderMap<void> = 'directCurve';
