@@ -280,7 +280,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
             this.renderDirect();
 
         // Antialias.
-        antialiasingStrategy.resolve(this);
+        antialiasingStrategy.antialias(this);
 
         // End the timer, and start a new one.
         if (this.timerQueryPollInterval == null) {
@@ -288,6 +288,8 @@ export abstract class PathfinderDemoView extends PathfinderView {
             this.timerQueryExt.beginQueryEXT(this.timerQueryExt.TIME_ELAPSED_EXT,
                                              this.compositingTimerQuery);
         }
+
+        antialiasingStrategy.resolve(this);
 
         // Draw the glyphs with the resolved atlas to the default framebuffer.
         this.compositeIfNecessary();

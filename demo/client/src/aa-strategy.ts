@@ -36,7 +36,12 @@ export abstract class AntialiasingStrategy {
 
     // Called after direct rendering.
     //
-    // This usually performs the actual antialiasing and blits to the real framebuffer.
+    // This usually performs the actual antialiasing.
+    abstract antialias(view: PathfinderDemoView): void;
+
+    // Called after antialiasing.
+    //
+    // This usually blits to the real framebuffer.
     abstract resolve(view: PathfinderDemoView): void;
 
     // True if direct rendering should occur.
@@ -64,6 +69,8 @@ export class NoAAStrategy extends AntialiasingStrategy {
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
         view.gl.disable(view.gl.SCISSOR_TEST);
     }
+
+    antialias(view: PathfinderDemoView) {}
 
     resolve(view: PathfinderDemoView) {}
 

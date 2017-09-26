@@ -262,7 +262,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         ]);
     }
 
-    resolve(view: MonochromePathfinderView) {
+    antialias(view: MonochromePathfinderView) {
         // Detect edges if necessary.
         this.detectEdgesIfNecessary(view);
 
@@ -272,7 +272,9 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         // Antialias.
         this.antialiasLines(view);
         this.antialiasCurves(view);
+    }
 
+    resolve(view: MonochromePathfinderView) {
         // Resolve the antialiasing.
         this.resolveAA(view);
     }

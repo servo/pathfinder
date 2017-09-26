@@ -77,6 +77,8 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         view.gl.enable(view.gl.SCISSOR_TEST);
     }
 
+    antialias(view: PathfinderDemoView) {}
+
     resolve(view: PathfinderDemoView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
         view.gl.viewport(0, 0, view.destAllocatedSize[0], view.destAllocatedSize[1]);
