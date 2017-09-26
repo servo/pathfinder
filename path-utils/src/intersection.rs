@@ -65,7 +65,7 @@ impl Intersect for Line {
 
     #[inline]
     fn solve_y_for_x(&self, x: f32) -> f32 {
-        self.sample((x - self.endpoints[0].x) / (self.endpoints[1].x - self.endpoints[0].x)).y
+        Line::solve_y_for_x(self, x)
     }
 }
 

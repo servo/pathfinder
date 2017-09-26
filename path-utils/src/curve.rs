@@ -48,6 +48,15 @@ impl Curve {
         (Curve::new(p0, &ap1, &ap2bp0), Curve::new(&ap2bp0, &bp1, p2))
     }
 
+    pub fn subdivide_at_x(&self, x: f32) -> (Curve, Curve) {
+        let (prev_part, next_part) = self.subdivide(self.solve_t_for_x(x));
+        if self.endpoints[0].x <= self.endpoints[1].x {
+            (prev_part, next_part)
+        } else {
+            (next_part, prev_part)
+        }
+    }
+
     #[inline]
     pub fn to_path_segment(&self) -> PathSegment {
         PathSegment::CurveTo(self.control_point, self.endpoints[1])

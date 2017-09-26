@@ -10,68 +10,6 @@
 
 use euclid::Point2D;
 use euclid::approxeq::ApproxEq;
-use pathfinder_path_utils::curve::Curve;
-use std::cmp::Ordering;
-
-pub(crate) trait ApproxOrdered {
-    fn approx_ordered(&self) -> bool;
-}
-
-impl ApproxOrdered for [f32] {
-    fn approx_ordered(&self) -> bool {
-        let mut last_ordering = Ordering::Equal;
-        for window in self.windows(2) {
-            let (last_value, this_value) = (window[0], window[1]);
-            let this_ordering = if last_value - this_value < -f32::approx_epsilon() {
-                Ordering::Less
-            } else if last_value - this_value > f32::approx_epsilon() {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            };
-            if last_ordering != Ordering::Equal && this_ordering != last_ordering {
-                return false
-            }
-            last_ordering = this_ordering
-        }
-        true
-    }
-}
-
-// https://stackoverflow.com/a/565282
-pub fn line_line_crossing_point(a_p0: &Point2D<f32>,
-                                a_p1: &Point2D<f32>,
-                                b_p0: &Point2D<f32>,
-                                b_p1: &Point2D<f32>)
-                                -> Option<Point2D<f32>> {
-    let (p, r) = (*a_p0, *a_p1 - *a_p0);
-    let (q, s) = (*b_p0, *b_p1 - *b_p0);
-
-    let rs = r.cross(s);
-    if rs.approx_eq(&0.0) {
-        return None
-    }
-
-    let t = (q - p).cross(s) / rs;
-    if t < f32::approx_epsilon() || t > 1.0f32 - f32::approx_epsilon() {
-        return None
-    }
-
-    let u = (q - p).cross(r) / rs;
-    if u < f32::approx_epsilon() || u > 1.0f32 - f32::approx_epsilon() {
-        return None
-    }
-
-    Some(p + r * t)
-}
-
-pub fn solve_line_t_for_x(x: f32, a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
-    if b.x == a.x {
-        0.0
-    } else {
-        (x - a.x) / (b.x - a.x)
-    }
-}
 
 fn quadratic_bezier_axis_inflection_point(p0: f32, p1: f32, p2: f32) -> Option<f32> {
     let t = (p0 - p1) / (p0 - 2.0 * p1 + p2);

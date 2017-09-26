@@ -11,7 +11,7 @@
 use bit_vec::BitVec;
 use euclid::approxeq::ApproxEq;
 use euclid::Point2D;
-use geometry::{self, SubdividedQuadraticBezier};
+use geometry::SubdividedQuadraticBezier;
 use log::LogLevel;
 use pathfinder_path_utils::PathBuffer;
 use pathfinder_path_utils::curve::Curve;
@@ -316,7 +316,7 @@ impl<'a> Partitioner<'a> {
                 }
 
                 if let Some(crossing_point) =
-                        self.crossing_point_for_active_edge(upper_active_edge_index) {
+                        self.crossing_point_for_active_edge(upper_active_edge_index, x) {
                     debug!("found SELF-INTERSECTION point for active edges {} & {}",
                            upper_active_edge_index,
                            lower_active_edge_index);
@@ -914,9 +914,7 @@ impl<'a> Partitioner<'a> {
         let right_endpoint_position = &self.endpoints[active_edge.right_endpoint_index as usize]
                                            .position;
         match active_edge.control_point_vertex_index {
-            u32::MAX => {
-                geometry::solve_line_t_for_x(x, left_vertex_position, right_endpoint_position)
-            }
+            u32::MAX => Line::new(left_vertex_position, right_endpoint_position).solve_t_for_x(x),
             control_point_vertex_index => {
                 let control_point = &self.b_vertex_positions[control_point_vertex_index as usize];
                 Curve::new(left_vertex_position,
@@ -948,7 +946,7 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    fn crossing_point_for_active_edge(&self, upper_active_edge_index: u32)
+    fn crossing_point_for_active_edge(&self, upper_active_edge_index: u32, max_x: f32)
                                       -> Option<Point2D<f32>> {
         let lower_active_edge_index = upper_active_edge_index + 1;
 
@@ -971,31 +969,38 @@ impl<'a> Partitioner<'a> {
         match (upper_active_edge.control_point_vertex_index,
                lower_active_edge.control_point_vertex_index) {
             (u32::MAX, u32::MAX) => {
-                geometry::line_line_crossing_point(upper_left_vertex_position,
-                                                   upper_right_endpoint_position,
-                                                   lower_left_vertex_position,
-                                                   lower_right_endpoint_position)
+                let (upper_line, _) =
+                    Line::new(upper_left_vertex_position,
+                              upper_right_endpoint_position).subdivide_at_x(max_x);
+                let (lower_line, _) =
+                    Line::new(lower_left_vertex_position,
+                              lower_right_endpoint_position).subdivide_at_x(max_x);
+                upper_line.intersect_with_line(&lower_line)
             }
 
             (upper_control_point_vertex_index, u32::MAX) => {
                 let upper_control_point =
                     &self.b_vertex_positions[upper_control_point_vertex_index as usize];
-                let upper_curve = Curve::new(&upper_left_vertex_position,
-                                             &upper_control_point,
-                                             &upper_right_endpoint_position);
-                let lower_line = Line::new(lower_left_vertex_position,
-                                           lower_right_endpoint_position);
+                let (upper_curve, _) =
+                    Curve::new(&upper_left_vertex_position,
+                               &upper_control_point,
+                               &upper_right_endpoint_position).subdivide_at_x(max_x);
+                let (lower_line, _) =
+                    Line::new(lower_left_vertex_position,
+                              lower_right_endpoint_position).subdivide_at_x(max_x);
                 upper_curve.intersect(&lower_line)
             }
 
             (u32::MAX, lower_control_point_vertex_index) => {
                 let lower_control_point =
                     &self.b_vertex_positions[lower_control_point_vertex_index as usize];
-                let lower_curve = Curve::new(&lower_left_vertex_position,
-                                             &lower_control_point,
-                                             &lower_right_endpoint_position);
-                let upper_line = Line::new(upper_left_vertex_position,
-                                           upper_right_endpoint_position);
+                let (lower_curve, _) =
+                    Curve::new(&lower_left_vertex_position,
+                               &lower_control_point,
+                               &lower_right_endpoint_position).subdivide_at_x(max_x);
+                let (upper_line, _) =
+                    Line::new(upper_left_vertex_position,
+                              upper_right_endpoint_position).subdivide_at_x(max_x);
                 lower_curve.intersect(&upper_line)
             }
 
@@ -1004,12 +1009,14 @@ impl<'a> Partitioner<'a> {
                     &self.b_vertex_positions[upper_control_point_vertex_index as usize];
                 let lower_control_point =
                     &self.b_vertex_positions[lower_control_point_vertex_index as usize];
-                let upper_curve = Curve::new(&upper_left_vertex_position,
-                                             &upper_control_point,
-                                             &upper_right_endpoint_position);
-                let lower_curve = Curve::new(&lower_left_vertex_position,
-                                             &lower_control_point,
-                                             &lower_right_endpoint_position);
+                let (upper_curve, _) =
+                    Curve::new(&upper_left_vertex_position,
+                               &upper_control_point,
+                               &upper_right_endpoint_position).subdivide_at_x(max_x);
+                let (lower_curve, _) =
+                    Curve::new(&lower_left_vertex_position,
+                               &lower_control_point,
+                               &lower_right_endpoint_position).subdivide_at_x(max_x);
                 upper_curve.intersect(&lower_curve)
             }
         }
