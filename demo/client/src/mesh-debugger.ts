@@ -20,8 +20,8 @@ import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, B_QUAD_LOWER_LEFT_VERTEX_OFFSE
 import {B_QUAD_LOWER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshData} from "./meshes";
 import {SVGLoader, BUILTIN_SVG_URI} from './svg-loader';
-import {BUILTIN_FONT_URI, TextFrameGlyphStorage, PathfinderGlyph, TextRun} from "./text";
-import {GlyphStorage, TextFrame} from "./text";
+import {BUILTIN_FONT_URI, TextRun} from "./text";
+import { GlyphStore, TextFrame, PathfinderFont } from "./text";
 import {unwrapNull, UINT32_SIZE, UINT32_MAX, assert} from "./utils";
 import {PathfinderView} from "./view";
 import {Font} from 'opentype.js';
@@ -111,22 +111,21 @@ class MeshDebuggerAppController extends AppController {
     }
 
     private fontLoaded(fileData: ArrayBuffer): void {
-        this.file = opentype.parse(fileData);
-        assert(this.file.isSupported(), "The font type is unsupported!");
+        this.file = new PathfinderFont(fileData);
         this.fileData = fileData;
 
-        const glyphCount = this.file.numGlyphs;
+        const glyphCount = this.file.opentypeFont.numGlyphs;
         for (let glyphIndex = 1; glyphIndex < glyphCount; glyphIndex++) {
             const newOption = document.createElement('option');
             newOption.value = "" + glyphIndex;
-            const glyphName = this.file.glyphIndexToName(glyphIndex);
+            const glyphName = this.file.opentypeFont.glyphIndexToName(glyphIndex);
             newOption.appendChild(document.createTextNode(glyphName));
             this.fontPathSelect.appendChild(newOption);
         }
 
         // Automatically load a path if this is the initial pageload.
         if (this.meshes == null)
-            this.loadPath(this.file.charToGlyph(CHARACTER));
+            this.loadPath(this.file.opentypeFont.charToGlyph(CHARACTER));
     }
 
     private svgLoaded(fileData: ArrayBuffer): void {
@@ -148,14 +147,13 @@ class MeshDebuggerAppController extends AppController {
 
         let promise: Promise<PathfinderMeshData>;
 
-        if (this.file instanceof opentype.Font && this.fileData != null) {
+        if (this.file instanceof PathfinderFont && this.fileData != null) {
             if (opentypeGlyph == null) {
                 const glyphIndex = parseInt(this.fontPathSelect.selectedOptions[0].value);
-                opentypeGlyph = this.file.glyphs.get(glyphIndex);
+                opentypeGlyph = this.file.opentypeFont.glyphs.get(glyphIndex);
             }
 
-            const glyph = new MeshDebuggerGlyph(opentypeGlyph);
-            const glyphStorage = new GlyphStorage(this.fileData, [glyph], this.file);
+            const glyphStorage = new GlyphStore(this.file, [(opentypeGlyph as any).index]);
             promise = glyphStorage.partition().then(result => result.meshes);
         } else if (this.file instanceof SVGLoader) {
             promise = this.file.partition(this.fontPathSelect.selectedIndex);
@@ -171,7 +169,7 @@ class MeshDebuggerAppController extends AppController {
 
     protected readonly defaultFile: string = FONT;
 
-    private file: Font | SVGLoader | null;
+    private file: PathfinderFont | SVGLoader | null;
     private fileType: FileType;
     private fileData: ArrayBuffer | null;
 
@@ -317,8 +315,6 @@ class MeshDebuggerView extends PathfinderView {
 
     camera: OrthographicCamera;
 }
-
-class MeshDebuggerGlyph extends PathfinderGlyph {}
 
 function getPosition(positions: Float32Array, vertexIndex: number): Float32Array | null {
     if (vertexIndex == UINT32_MAX)

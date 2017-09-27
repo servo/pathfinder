@@ -8,14 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-import {Font, Metrics} from 'opentype.js';
+import {Metrics} from 'opentype.js';
 import * as base64js from 'base64-js';
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 import * as opentype from "opentype.js";
 
 import {B_QUAD_SIZE, PathfinderMeshData} from "./meshes";
-import {UINT32_SIZE, UINT32_MAX, assert, panic} from "./utils";
+import { UINT32_SIZE, UINT32_MAX, assert, panic, unwrapNull } from "./utils";
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
 
@@ -29,8 +29,6 @@ export interface PartitionResult {
     meshes: PathfinderMeshData,
     time: number,
 }
-
-type CreateGlyphFn<Glyph> = (glyph: opentype.Glyph) => Glyph;
 
 export interface PixelMetrics {
     left: number;
@@ -48,48 +46,103 @@ opentype.Font.prototype.lineHeight = function() {
     return os2Table.sTypoAscender - os2Table.sTypoDescender + os2Table.sTypoLineGap;
 };
 
-export class TextRun<Glyph extends PathfinderGlyph> {
-    constructor(text: string | Glyph[],
-                origin: number[],
-                font: Font,
-                createGlyph: CreateGlyphFn<Glyph>) {
-        if (typeof(text) === 'string')
-            text = font.stringToGlyphs(text).map(createGlyph);
+export class PathfinderFont {
+    constructor(data: ArrayBuffer) {
+        this.data = data;
 
-        this.glyphs = text;
-        this.origin = origin;
+        this.opentypeFont = opentype.parse(data);
+        if (!this.opentypeFont.isSupported())
+            panic("Unsupported font!");
+
+        this.metricsCache = [];
     }
 
-    layout() {
-        let currentX = this.origin[0];
-        for (const glyph of this.glyphs) {
-            glyph.origin = glmatrix.vec2.fromValues(currentX, this.origin[1]);
-            currentX += glyph.advanceWidth;
-        }
+    metricsForGlyph(glyphID: number): Metrics | null {
+        if (this.metricsCache[glyphID] == null)
+            this.metricsCache[glyphID] = this.opentypeFont.glyphs.get(glyphID).getMetrics();
+        return this.metricsCache[glyphID];
     }
 
-    get measure(): number {
-        const lastGlyph = _.last(this.glyphs);
-        return lastGlyph == null ? 0.0 : lastGlyph.origin[0] + lastGlyph.advanceWidth;
-    }
+    readonly opentypeFont: opentype.Font;
+    readonly data: ArrayBuffer;
 
-    readonly glyphs: Glyph[];
-    readonly origin: number[];
+    private metricsCache: Metrics[];
 }
 
-export class TextFrame<Glyph extends PathfinderGlyph> {
-    constructor(runs: TextRun<Glyph>[], font: Font) {
-        this.runs = runs;
+export class TextRun {
+    constructor(text: number[] | string, origin: number[], font: PathfinderFont) {
+        if (typeof(text) === 'string') {
+            this.glyphIDs = font.opentypeFont
+                                .stringToGlyphs(text)
+                                .map(glyph => (glyph as any).index);
+        } else {
+            this.glyphIDs = text;
+        }
+
+        this.origin = origin;
+        this.advances = [];
         this.font = font;
     }
 
-    expandMeshes(uniqueGlyphs: Glyph[], meshes: PathfinderMeshData): ExpandedMeshData {
+    layout() {
+        this.advances = [];
+        let currentX = 0;
+        for (const glyphID of this.glyphIDs) {
+            this.advances.push(currentX);
+            currentX += this.font.opentypeFont.glyphs.get(glyphID).advanceWidth;
+        }
+    }
+
+    private pixelMetricsForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
+                                   PixelMetrics {
+        const metrics = unwrapNull(this.font.metricsForGlyph(index));
+        return calculatePixelMetricsForGlyph(metrics, pixelsPerUnit, hint);
+    }
+
+    calculatePixelOriginForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
+                                   glmatrix.vec2 {
+        const textGlyphOrigin = glmatrix.vec2.clone(this.origin);
+        textGlyphOrigin[0] += this.advances[index];
+        glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, pixelsPerUnit);
+        return textGlyphOrigin;
+    }
+
+    pixelRectForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint): glmatrix.vec4 {
+        const metrics = unwrapNull(this.font.metricsForGlyph(this.glyphIDs[index]));
+        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index, pixelsPerUnit, hint);
+        glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
+        return calculatePixelRectForGlyph(metrics, textGlyphOrigin, pixelsPerUnit, hint);
+    }
+
+    get measure(): number {
+        const lastGlyphID = _.last(this.glyphIDs), lastAdvance = _.last(this.advances);
+        if (lastGlyphID == null || lastAdvance == null)
+            return 0.0;
+        return lastAdvance + this.font.opentypeFont.glyphs.get(lastGlyphID).advanceWidth;
+    }
+
+    readonly glyphIDs: number[];
+    advances: number[];
+    readonly origin: number[];
+    private readonly font: PathfinderFont;
+}
+
+export class TextFrame {
+    constructor(runs: TextRun[], font: PathfinderFont) {
+        this.runs = runs;
+        this.origin = glmatrix.vec3.create();
+        this.font = font;
+    }
+
+    expandMeshes(meshes: PathfinderMeshData, glyphIDs: number[]): ExpandedMeshData {
         const pathIDs = [];
         for (const textRun of this.runs) {
-            for (const textGlyph of textRun.glyphs) {
-                const uniqueGlyphIndex = _.sortedIndexBy(uniqueGlyphs, textGlyph, 'index');
-                if (uniqueGlyphIndex >= 0)
-                    pathIDs.push(uniqueGlyphIndex + 1);
+            for (let glyphIndex = 0; glyphIndex < textRun.glyphIDs.length; glyphIndex++) {
+                const glyphID = textRun.glyphIDs[glyphIndex];
+                if (glyphID === 0)
+                    continue;
+                const pathID = _.sortedIndexOf(glyphIDs, glyphID);
+                pathIDs.push(pathID + 1);
             }
         }
 
@@ -108,7 +161,7 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
         const lowerLeft = glmatrix.vec2.clone([upperLeft[0], lowerRight[1]]);
         const upperRight = glmatrix.vec2.clone([lowerRight[0], upperLeft[1]]);
 
-        const lineHeight = this.font.lineHeight();
+        const lineHeight = this.font.opentypeFont.lineHeight();
         lowerLeft[1] -= lineHeight;
         upperRight[1] += lineHeight * 2.0;
 
@@ -117,30 +170,28 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
         return glmatrix.vec4.clone([lowerLeft[0], lowerLeft[1], upperRight[0], upperRight[1]]);
     }
 
-    get allGlyphs(): Glyph[] {
-        return _.flatMap(this.runs, run => run.glyphs);
+    get totalGlyphCount(): number {
+        return _.sumBy(this.runs, run => run.glyphIDs.length);
     }
 
-    readonly runs: TextRun<Glyph>[];
+    get allGlyphIDs(): number[] {
+        const glyphIDs = [];
+        for (const run of this.runs)
+            glyphIDs.push(...run.glyphIDs);
+        return glyphIDs;
+    }
+
+    readonly runs: TextRun[];
     readonly origin: glmatrix.vec3;
 
-    private readonly font: Font;
+    private readonly font: PathfinderFont;
 }
 
-export class GlyphStorage<Glyph extends PathfinderGlyph> {
-    constructor(fontData: ArrayBuffer, glyphs: Glyph[], font?: Font) {
-        if (font == null) {
-            font = opentype.parse(fontData);
-            assert(font.isSupported(), "The font type is unsupported!");
-        }
-
-        this.fontData = fontData;
+/// Stores one copy of each glyph.
+export class GlyphStore {
+    constructor(font: PathfinderFont, glyphIDs: number[]) {
         this.font = font;
-
-        // Determine all glyphs potentially needed.
-        this.uniqueGlyphs = glyphs;
-        this.uniqueGlyphs.sort((a, b) => a.index - b.index);
-        this.uniqueGlyphs = _.sortedUniqBy(this.uniqueGlyphs, glyph => glyph.index);
+        this.glyphIDs = glyphIDs;
     }
 
     partition(): Promise<PartitionResult> {
@@ -149,17 +200,11 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         // FIXME(pcwalton): If this is a builtin font, don't resend it to the server!
         const request = {
             face: {
-                Custom: base64js.fromByteArray(new Uint8Array(this.fontData)),
+                Custom: base64js.fromByteArray(new Uint8Array(this.font.data)),
             },
             fontIndex: 0,
-            glyphs: this.uniqueGlyphs.map(glyph => {
-                const metrics = glyph.metrics;
-                return {
-                    id: glyph.index,
-                    transform: [1, 0, 0, 1, 0, 0],
-                };
-            }),
-            pointSize: this.font.unitsPerEm,
+            glyphs: this.glyphIDs.map(id => ({ id: id, transform: [1, 0, 0, 1, 0, 0] })),
+            pointSize: this.font.opentypeFont.unitsPerEm,
         };
 
         // Make the request.
@@ -178,150 +223,36 @@ export class GlyphStorage<Glyph extends PathfinderGlyph> {
         });
     }
 
-    readonly fontData: ArrayBuffer;
-    readonly font: Font;
-    readonly uniqueGlyphs: Glyph[];
+    indexOfGlyphWithID(glyphID: number): number | null {
+        const index = _.sortedIndexOf(this.glyphIDs, glyphID);
+        return index >= 0 ? index : null;
+    }
+
+    readonly font: PathfinderFont;
+    readonly glyphIDs: number[];
 }
 
-export class TextFrameGlyphStorage<Glyph extends PathfinderGlyph> extends GlyphStorage<Glyph> {
-    constructor(fontData: ArrayBuffer, textFrames: TextFrame<Glyph>[], font?: Font) {
-        const allGlyphs = _.flatMap(textFrames, textRun => textRun.allGlyphs);
-        super(fontData, allGlyphs, font);
-
-        this.textFrames = textFrames;
-    }
-
-    expandMeshes(meshes: PathfinderMeshData): ExpandedMeshData[] {
-        return this.textFrames.map(textFrame => textFrame.expandMeshes(this.uniqueGlyphs, meshes));
-    }
-
-    layoutRuns() {
-        for (const textFrame of this.textFrames)
-            textFrame.runs.forEach(textRun => textRun.layout());
-    }
-
-    get allGlyphs(): Glyph[] {
-        return _.flatMap(this.textFrames, textRun => textRun.allGlyphs);
-    }
-
-    readonly textFrames: TextFrame<Glyph>[];
-}
-
-export class SimpleTextLayout<Glyph extends PathfinderGlyph> {
-    constructor(fontData: ArrayBuffer, text: string, createGlyph: CreateGlyphFn<Glyph>) {
-        const font = opentype.parse(fontData);
-        assert(font.isSupported(), "The font type is unsupported!");
-
-        const lineHeight = font.lineHeight();
-        const textRuns: TextRun<Glyph>[] = text.split("\n").map((line, lineNumber) => {
-            return new TextRun<Glyph>(line, [0.0, -lineHeight * lineNumber], font, createGlyph);
+export class SimpleTextLayout {
+    constructor(font: PathfinderFont, text: string) {
+        const lineHeight = font.opentypeFont.lineHeight();
+        const textRuns: TextRun[] = text.split("\n").map((line, lineNumber) => {
+            return new TextRun(line, [0.0, -lineHeight * lineNumber], font);
         });
         this.textFrame = new TextFrame(textRuns, font);
-
-        this.glyphStorage = new TextFrameGlyphStorage(fontData, [this.textFrame], font);
     }
 
     layoutRuns() {
         this.textFrame.runs.forEach(textRun => textRun.layout());
     }
 
-    get allGlyphs(): Glyph[] {
-        return this.textFrame.allGlyphs;
-    }
-
-    readonly textFrame: TextFrame<Glyph>;
-    readonly glyphStorage: TextFrameGlyphStorage<Glyph>;
-}
-
-export abstract class PathfinderGlyph {
-    constructor(glyph: opentype.Glyph) {
-        this.opentypeGlyph = glyph;
-        this._metrics = null;
-        this.origin = glmatrix.vec2.create();
-    }
-
-    get index(): number {
-        return (this.opentypeGlyph as any).index;
-    }
-
-    get metrics(): opentype.Metrics {
-        if (this._metrics == null)
-            this._metrics = this.opentypeGlyph.getMetrics();
-        return this._metrics;
-    }
-
-    get advanceWidth(): number {
-        return this.opentypeGlyph.advanceWidth;
-    }
-
-    pixelOrigin(pixelsPerUnit: number): glmatrix.vec2 {
-        const origin = glmatrix.vec2.create();
-        glmatrix.vec2.scale(origin, this.origin, pixelsPerUnit);
-        return origin;
-    }
-
-    setPixelOrigin(pixelOrigin: glmatrix.vec2, pixelsPerUnit: number): void {
-        glmatrix.vec2.scale(this.origin, pixelOrigin, 1.0 / pixelsPerUnit);
-    }
-
-    private calculatePixelXMin(pixelsPerUnit: number): number {
-        return Math.floor(this.metrics.xMin * pixelsPerUnit);
-    }
-
-    private calculatePixelDescent(pixelsPerUnit: number): number {
-        return Math.ceil(-this.metrics.yMin * pixelsPerUnit);
-    }
-
-    setPixelLowerLeft(pixelLowerLeft: glmatrix.vec2, pixelsPerUnit: number): void {
-        const pixelXMin = this.calculatePixelXMin(pixelsPerUnit);
-        const pixelDescent = this.calculatePixelDescent(pixelsPerUnit);
-        const pixelOrigin = glmatrix.vec2.fromValues(pixelLowerLeft[0] - pixelXMin,
-                                                     pixelLowerLeft[1] + pixelDescent);
-        this.setPixelOrigin(pixelOrigin, pixelsPerUnit);
-    }
-
-    protected pixelMetrics(hint: Hint, pixelsPerUnit: number): PixelMetrics {
-        const metrics = this.metrics;
-        const top = hint.hintPosition(glmatrix.vec2.fromValues(0, metrics.yMax))[1];
-        return {
-            left: this.calculatePixelXMin(pixelsPerUnit),
-            right: Math.ceil(metrics.xMax * pixelsPerUnit),
-            ascent: Math.ceil(top * pixelsPerUnit),
-            descent: this.calculatePixelDescent(pixelsPerUnit),
-        };
-    }
-
-    calculatePixelOrigin(hint: Hint, pixelsPerUnit: number): glmatrix.vec2 {
-        const textGlyphOrigin = glmatrix.vec2.clone(this.origin);
-        glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, pixelsPerUnit);
-        return textGlyphOrigin;
-    }
-
-    pixelRect(hint: Hint, pixelsPerUnit: number): glmatrix.vec4 {
-        const pixelMetrics = this.pixelMetrics(hint, pixelsPerUnit);
-        const textGlyphOrigin = this.calculatePixelOrigin(hint, pixelsPerUnit);
-        glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
-
-        return glmatrix.vec4.fromValues(textGlyphOrigin[0] + pixelMetrics.left,
-                                        textGlyphOrigin[1] - pixelMetrics.descent,
-                                        textGlyphOrigin[0] + pixelMetrics.right,
-                                        textGlyphOrigin[1] + pixelMetrics.ascent);
-
-    }
-
-    readonly opentypeGlyph: opentype.Glyph;
-
-    private _metrics: Metrics | null;
-
-    /// In font units, relative to (0, 0).
-    origin: glmatrix.vec2;
+    readonly textFrame: TextFrame;
 }
 
 export class Hint {
-    constructor(font: Font, pixelsPerUnit: number, useHinting: boolean) {
+    constructor(font: PathfinderFont, pixelsPerUnit: number, useHinting: boolean) {
         this.useHinting = useHinting;
 
-        const os2Table = font.tables.os2;
+        const os2Table = font.opentypeFont.tables.os2;
         this.xHeight = os2Table.sxHeight != null ? os2Table.sxHeight : 0;
 
         if (!useHinting) {
@@ -352,3 +283,34 @@ export class Hint {
     readonly hintedXHeight: number;
     private useHinting: boolean;
 }
+
+export function calculatePixelXMin(metrics: Metrics, pixelsPerUnit: number): number {
+    return Math.floor(metrics.xMin * pixelsPerUnit);
+}
+
+export function calculatePixelDescent(metrics: Metrics, pixelsPerUnit: number): number {
+    return Math.ceil(-metrics.yMin * pixelsPerUnit);
+}
+
+function calculatePixelMetricsForGlyph(metrics: Metrics, pixelsPerUnit: number, hint: Hint):
+                                       PixelMetrics {
+    const top = hint.hintPosition(glmatrix.vec2.fromValues(0, metrics.yMax))[1];
+    return {
+        left: calculatePixelXMin(metrics, pixelsPerUnit),
+        right: Math.ceil(metrics.xMax * pixelsPerUnit),
+        ascent: Math.ceil(top * pixelsPerUnit),
+        descent: calculatePixelDescent(metrics, pixelsPerUnit),
+    };
+}
+
+export function calculatePixelRectForGlyph(metrics: Metrics,
+                                           pixelOrigin: glmatrix.vec2,
+                                           pixelsPerUnit: number,
+                                           hint: Hint):
+                                           glmatrix.vec4 {
+        const pixelMetrics = calculatePixelMetricsForGlyph(metrics, pixelsPerUnit, hint);
+        return glmatrix.vec4.clone([pixelOrigin[0] + pixelMetrics.left,
+                                    pixelOrigin[1] - pixelMetrics.descent,
+                                    pixelOrigin[0] + pixelMetrics.right,
+                                    pixelOrigin[1] + pixelMetrics.ascent]);
+    }

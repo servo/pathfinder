@@ -17,8 +17,8 @@ import {PerspectiveCamera} from "./camera";
 import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
-import {BUILTIN_FONT_URI, ExpandedMeshData, TextFrameGlyphStorage, PathfinderGlyph} from "./text";
-import {Hint, SimpleTextLayout, TextFrame, TextRun} from "./text";
+import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
+import { Hint, TextFrame, TextRun, GlyphStore, PathfinderFont } from "./text";
 import {PathfinderError, assert, panic, unwrapNull} from "./utils";
 import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
@@ -128,24 +128,25 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     }
 
     protected fileLoaded(fileData: ArrayBuffer): void {
-        const font = opentype.parse(fileData);
-        assert(font.isSupported(), "The font type is unsupported!");
-
+        const font = new PathfinderFont(fileData);
         this.monumentPromise.then(monument => this.layoutMonument(font, fileData, monument));
     }
 
-    private layoutMonument(font: opentype.Font, fileData: ArrayBuffer, monument: MonumentSide[]) {
-        const createGlyph = (glyph: opentype.Glyph) => new ThreeDGlyph(glyph);
-        let textFrames = [];
+    private layoutMonument(font: PathfinderFont, fileData: ArrayBuffer, monument: MonumentSide[]) {
+        this.textFrames = [];
+        let glyphsNeeded: number[] = [];
+
         for (const monumentSide of monument) {
             let textRuns = [];
             for (let lineNumber = 0; lineNumber < monumentSide.lines.length; lineNumber++) {
                 const line = monumentSide.lines[lineNumber];
 
-                const lineY = -lineNumber * font.lineHeight();
+                const lineY = -lineNumber * font.opentypeFont.lineHeight();
                 const lineGlyphs = line.names.map(string => {
-                    const glyphs = font.stringToGlyphs(string).map(createGlyph);
-                    return { glyphs: glyphs, width: _.sumBy(glyphs, glyph => glyph.advanceWidth) };
+                    const glyphs = font.opentypeFont.stringToGlyphs(string);
+                    const glyphIDs = glyphs.map(glyph => (glyph as any).index);
+                    const width = _.sumBy(glyphs, glyph => glyph.advanceWidth);
+                    return { glyphs: glyphIDs, width: width };
                 });
 
                 const usedSpace = _.sumBy(lineGlyphs, 'width');
@@ -155,20 +156,27 @@ class ThreeDController extends DemoAppController<ThreeDView> {
                 let currentX = 0.0;
                 for (const glyphInfo of lineGlyphs) {
                     const textRunOrigin = [currentX, lineY];
-                    textRuns.push(new TextRun(glyphInfo.glyphs, textRunOrigin, font, createGlyph));
+                    const textRun = new TextRun(glyphInfo.glyphs, textRunOrigin, font); 
+                    textRun.layout();
+                    textRuns.push(textRun);
                     currentX += glyphInfo.width + spacing;
                 }
             }
 
-            textFrames.push(new TextFrame(textRuns, font));
+            const textFrame = new TextFrame(textRuns, font);
+            this.textFrames.push(textFrame);
+            glyphsNeeded.push(...textFrame.allGlyphIDs);
         }
 
-        this.glyphStorage = new TextFrameGlyphStorage(fileData, textFrames, font);
-        this.glyphStorage.layoutRuns();
+        glyphsNeeded.sort((a, b) => a - b);
+        glyphsNeeded = _.sortedUniq(glyphsNeeded);
 
-        this.glyphStorage.partition().then(result => {
+        this.glyphStore = new GlyphStore(font, glyphsNeeded);
+        this.glyphStore.partition().then(result => {
             this.baseMeshes = result.meshes;
-            this.expandedMeshes = this.glyphStorage.expandMeshes(this.baseMeshes);
+            this.expandedMeshes = this.textFrames.map(textFrame => {
+                return textFrame.expandMeshes(this.baseMeshes, glyphsNeeded);
+            });
             this.view.then(view => {
                 view.uploadPathColors(this.expandedMeshes.length);
                 view.uploadPathTransforms(this.expandedMeshes.length);
@@ -191,7 +199,8 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         return FONT;
     }
 
-    glyphStorage: TextFrameGlyphStorage<ThreeDGlyph>;
+    textFrames: TextFrame[];
+    glyphStore: GlyphStore;
 
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: ExpandedMeshData[];
@@ -222,9 +231,8 @@ class ThreeDView extends PathfinderDemoView {
     }
 
     protected pathColorsForObject(textFrameIndex: number): Uint8Array {
-        const textFrame = this.appController.glyphStorage.textFrames[textFrameIndex];
-        const textGlyphs = textFrame.allGlyphs;
-        const pathCount = textGlyphs.length;
+        const textFrame = this.appController.textFrames[textFrameIndex];
+        const pathCount = textFrame.totalGlyphCount;
         
         const pathColors = new Uint8Array(4 * (pathCount + 1));
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++)
@@ -234,18 +242,24 @@ class ThreeDView extends PathfinderDemoView {
     }
 
     protected pathTransformsForObject(textFrameIndex: number): Float32Array {
-        const textFrame = this.appController.glyphStorage.textFrames[textFrameIndex];
-        const textGlyphs = textFrame.allGlyphs;
-        const pathCount = textGlyphs.length;
+        const textFrame = this.appController.textFrames[textFrameIndex];
+        const pathCount = textFrame.totalGlyphCount;
         
-        const hint = new Hint(this.appController.glyphStorage.font, PIXELS_PER_UNIT, false);
+        const hint = new Hint(this.appController.glyphStore.font, PIXELS_PER_UNIT, false);
 
         const pathTransforms = new Float32Array(4 * (pathCount + 1));
 
-        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
-            const textGlyph = textGlyphs[pathIndex];
-            const glyphOrigin = textGlyph.calculatePixelOrigin(hint, PIXELS_PER_UNIT);
-            pathTransforms.set([1, 1, glyphOrigin[0], glyphOrigin[1]], (pathIndex + 1) * 4);
+        let globalPathIndex = 0;
+        for (const run of textFrame.runs) {
+            for (let pathIndex = 0;
+                 pathIndex < run.glyphIDs.length;
+                 pathIndex++, globalPathIndex++) {
+                const glyphOrigin = run.calculatePixelOriginForGlyphAt(pathIndex,
+                                                                       PIXELS_PER_UNIT,
+                                                                       hint);
+                pathTransforms.set([1, 1, glyphOrigin[0], glyphOrigin[1]],
+                                   (globalPathIndex + 1) * 4);
+            }
         }
 
         return pathTransforms;
@@ -378,12 +392,6 @@ class ThreeDView extends PathfinderDemoView {
     private cubeIndexBuffer: WebGLBuffer;
 
     camera: PerspectiveCamera;
-}
-
-class ThreeDGlyph extends PathfinderGlyph {
-    constructor(glyph: opentype.Glyph) {
-        super(glyph);
-    }
 }
 
 function main() {

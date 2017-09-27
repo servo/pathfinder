@@ -13,7 +13,7 @@ import * as opentype from "opentype.js";
 
 import { AppController, DemoAppController } from "./app-controller";
 import {PathfinderMeshData} from "./meshes";
-import { BUILTIN_FONT_URI, TextFrameGlyphStorage, PathfinderGlyph, TextFrame, TextRun, ExpandedMeshData } from "./text";
+import { BUILTIN_FONT_URI, TextFrame, TextRun, ExpandedMeshData, GlyphStore, PathfinderFont } from "./text";
 import { assert, unwrapNull, PathfinderError } from "./utils";
 import { PathfinderDemoView, Timings, MonochromePathfinderView } from "./view";
 import { ShaderMap, ShaderProgramSource } from "./shader-loader";
@@ -75,26 +75,28 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     }
 
     protected fileLoaded(fileData: ArrayBuffer): void {
-        const font = opentype.parse(fileData);
+        const font = new PathfinderFont(fileData);
         this.font = font;
-        assert(this.font.isSupported(), "The font type is unsupported!");
 
-        const createGlyph = (glyph: opentype.Glyph) => new BenchmarkGlyph(glyph);
-        const textRun = new TextRun<BenchmarkGlyph>(STRING, [0, 0], font, createGlyph);
+        const textRun = new TextRun(STRING, [0, 0], font);
+        textRun.layout();
         this.textRun = textRun;
         const textFrame = new TextFrame([textRun], font);
-        this.glyphStorage = new TextFrameGlyphStorage(fileData, [textFrame], font);
 
-        this.glyphStorage.partition().then(result => {
+        const glyphIDs = textFrame.allGlyphIDs;
+        glyphIDs.sort((a, b) => a - b);
+        this.glyphStore = new GlyphStore(font, glyphIDs);
+
+        this.glyphStore.partition().then(result => {
             this.baseMeshes = result.meshes;
 
-            const partitionTime = result.time / this.glyphStorage.uniqueGlyphs.length * 1e6;
+            const partitionTime = result.time / this.glyphStore.glyphIDs.length * 1e6;
             const timeLabel = this.resultsPartitioningTimeLabel;
             while (timeLabel.firstChild != null)
                 timeLabel.removeChild(timeLabel.firstChild);
             timeLabel.appendChild(document.createTextNode("" + partitionTime));
 
-            const expandedMeshes = this.glyphStorage.expandMeshes(this.baseMeshes)[0];
+            const expandedMeshes = textFrame.expandMeshes(this.baseMeshes, glyphIDs);
             this.expandedMeshes = expandedMeshes;
 
             this.view.then(view => {
@@ -162,7 +164,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     private resultsTableBody: HTMLTableSectionElement;
     private resultsPartitioningTimeLabel: HTMLSpanElement;
 
-    private glyphStorage: TextFrameGlyphStorage<BenchmarkGlyph>;
+    private glyphStore: GlyphStore;
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: ExpandedMeshData;
 
@@ -170,8 +172,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     private elapsedTimes: ElapsedTime[];
     private partitionTime: number;
 
-    font: opentype.Font | null;
-    textRun: TextRun<BenchmarkGlyph> | null;
+    font: PathfinderFont | null;
+    textRun: TextRun | null;
 }
     
 class BenchmarkTestView extends MonochromePathfinderView {
@@ -212,13 +214,16 @@ class BenchmarkTestView extends MonochromePathfinderView {
 
         let currentX = 0, currentY = 0;
         const availableWidth = this.canvas.width / this.pixelsPerUnit;
-        const lineHeight = unwrapNull(this.appController.font).lineHeight();
+        const lineHeight = unwrapNull(this.appController.font).opentypeFont.lineHeight();
 
         for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
-            const glyph = unwrapNull(this.appController.textRun).glyphs[glyphIndex];
+            const glyphID = unwrapNull(this.appController.textRun).glyphIDs[glyphIndex];
             pathTransforms.set([1, 1, currentX, currentY], (glyphIndex + 1) * 4);
 
-            currentX += glyph.advanceWidth;
+            currentX += unwrapNull(this.appController.font).opentypeFont
+                                                           .glyphs
+                                                           .get(glyphID)
+                                                           .advanceWidth;
             if (currentX > availableWidth) {
                 currentX = 0;
                 currentY += lineHeight;
@@ -230,14 +235,14 @@ class BenchmarkTestView extends MonochromePathfinderView {
 
     protected renderingFinished(): void {
         if (this.renderingPromiseCallback != null) {
-            const glyphCount = unwrapNull(this.appController.textRun).glyphs.length;
+            const glyphCount = unwrapNull(this.appController.textRun).glyphIDs.length;
             const usPerGlyph = this.lastTimings.rendering * 1000.0 / glyphCount;
             this.renderingPromiseCallback(usPerGlyph);
         }
     }
 
     uploadHints(): void {
-        const glyphCount = unwrapNull(this.appController.textRun).glyphs.length;
+        const glyphCount = unwrapNull(this.appController.textRun).glyphIDs.length;
         const pathHints = new Float32Array((glyphCount + 1) * 4);
 
         const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
@@ -276,7 +281,7 @@ class BenchmarkTestView extends MonochromePathfinderView {
     }
 
     private get pixelsPerUnit(): number {
-        return this._pixelsPerEm / unwrapNull(this.appController.font).unitsPerEm;
+        return this._pixelsPerEm / unwrapNull(this.appController.font).opentypeFont.unitsPerEm;
     }
 
     get pixelsPerEm(): number {
@@ -303,8 +308,6 @@ class BenchmarkTestView extends MonochromePathfinderView {
 
     protected camera: OrthographicCamera;
 }
-
-class BenchmarkGlyph extends PathfinderGlyph {}
 
 function main() {
     const controller = new BenchmarkAppController;
