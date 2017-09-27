@@ -74,6 +74,8 @@ const B_POSITION_SIZE: number = 8;
 
 const B_PATH_INDEX_SIZE: number = 2;
 
+const SUBPIXEL_GRANULARITY: number = 4;
+
 const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(2048, 4096);
 
 const MIN_SCALE: number = 0.001;

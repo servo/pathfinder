@@ -10,7 +10,8 @@
 
 import * as base64js from 'base64-js';
 
-import {PathfinderError, expectNotNull, panic} from './utils';
+import { PathfinderError, expectNotNull, panic, UINT32_SIZE, UINT32_MAX } from './utils';
+import * as _ from 'lodash';
 
 const BUFFER_TYPES: Meshes<BufferType> = {
     bQuads: 'ARRAY_BUFFER',
@@ -69,6 +70,125 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
         this.edgeLowerCurveIndexCount = this.edgeLowerCurveIndices.byteLength / 16;
     }
 
+    expand(pathIDs: number[]): PathfinderMeshData {
+        const bQuads = _.chunk(new Uint32Array(this.bQuads), B_QUAD_SIZE / UINT32_SIZE);
+        const bVertexPositions = new Float32Array(this.bVertexPositions);
+        const bVertexPathIDs = new Uint16Array(this.bVertexPathIDs);
+        const bVertexLoopBlinnData = new Uint32Array(this.bVertexLoopBlinnData);
+
+        const edgeUpperCurveIndices = new Uint32Array(this.edgeUpperCurveIndices);
+        const edgeLowerCurveIndices = new Uint32Array(this.edgeLowerCurveIndices);
+        for (let indexIndex = 3; indexIndex < edgeUpperCurveIndices.length; indexIndex += 4)
+            edgeUpperCurveIndices[indexIndex] = 0;
+        for (let indexIndex = 3; indexIndex < edgeLowerCurveIndices.length; indexIndex += 4)
+            edgeLowerCurveIndices[indexIndex] = 0;
+
+        const expandedBQuads: number[] = [];
+        const expandedBVertexPositions: number[] = [];
+        const expandedBVertexPathIDs: number[] = [];
+        const expandedBVertexLoopBlinnData: number[] = [];
+        const expandedCoverInteriorIndices: number[] = [];
+        const expandedCoverCurveIndices: number[] = [];
+        const expandedEdgeUpperCurveIndices: number[] = [];
+        const expandedEdgeUpperLineIndices: number[] = [];
+        const expandedEdgeLowerCurveIndices: number[] = [];
+        const expandedEdgeLowerLineIndices: number[] = [];
+
+        let textGlyphIndex = 0;
+        for (const pathID of pathIDs) {
+            const firstBVertexIndex = _.sortedIndex(bVertexPathIDs, pathID);
+            if (firstBVertexIndex < 0)
+                continue;
+
+            // Copy over vertices.
+            let bVertexIndex = firstBVertexIndex;
+            const firstExpandedBVertexIndex = expandedBVertexPathIDs.length;
+            while (bVertexIndex < bVertexPathIDs.length &&
+                bVertexPathIDs[bVertexIndex] === pathID) {
+                expandedBVertexPositions.push(bVertexPositions[bVertexIndex * 2 + 0],
+                                            bVertexPositions[bVertexIndex * 2 + 1]);
+                expandedBVertexPathIDs.push(textGlyphIndex + 1);
+                expandedBVertexLoopBlinnData.push(bVertexLoopBlinnData[bVertexIndex]);
+                bVertexIndex++;
+            }
+
+            // Copy over indices.
+            copyIndices(expandedCoverInteriorIndices,
+                        new Uint32Array(this.coverInteriorIndices),
+                        firstExpandedBVertexIndex,
+                        firstBVertexIndex,
+                        bVertexIndex);
+            copyIndices(expandedCoverCurveIndices,
+                        new Uint32Array(this.coverCurveIndices),
+                        firstExpandedBVertexIndex,
+                        firstBVertexIndex,
+                        bVertexIndex);
+
+            copyIndices(expandedEdgeUpperLineIndices,
+                        new Uint32Array(this.edgeUpperLineIndices),
+                        firstExpandedBVertexIndex,
+                        firstBVertexIndex,
+                        bVertexIndex);
+            copyIndices(expandedEdgeUpperCurveIndices,
+                        new Uint32Array(edgeUpperCurveIndices),
+                        firstExpandedBVertexIndex,
+                        firstBVertexIndex,
+                        bVertexIndex,
+                        indexIndex => indexIndex % 4 < 3);
+            copyIndices(expandedEdgeLowerLineIndices,
+                        new Uint32Array(this.edgeLowerLineIndices),
+                        firstExpandedBVertexIndex,
+                        firstBVertexIndex,
+                        bVertexIndex);
+            copyIndices(expandedEdgeLowerCurveIndices,
+                        new Uint32Array(edgeLowerCurveIndices),
+                        firstExpandedBVertexIndex,
+                        firstBVertexIndex,
+                        bVertexIndex,
+                        indexIndex => indexIndex % 4 < 3);
+
+            // Copy over B-quads.
+            let firstBQuadIndex = _.findIndex(bQuads,
+                                              bQuad => bVertexPathIDs[bQuad[0]] === pathID);
+            if (firstBQuadIndex < 0)
+                firstBQuadIndex = bQuads.length;
+            const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
+            for (let bQuadIndex = firstBQuadIndex; bQuadIndex < bQuads.length; bQuadIndex++) {
+                const bQuad = bQuads[bQuadIndex];
+                if (bVertexPathIDs[bQuad[0]] !== pathID)
+                    break;
+                for (let indexIndex = 0; indexIndex < B_QUAD_SIZE / UINT32_SIZE; indexIndex++) {
+                    const srcIndex = bQuad[indexIndex];
+                    if (srcIndex === UINT32_MAX)
+                        expandedBQuads.push(srcIndex);
+                    else
+                        expandedBQuads.push(srcIndex + indexDelta);
+                }
+            }
+
+            textGlyphIndex++;
+        }
+
+        return new PathfinderMeshData({
+            bQuads: new Uint32Array(expandedBQuads).buffer as ArrayBuffer,
+            bVertexPositions: new Float32Array(expandedBVertexPositions).buffer as ArrayBuffer,
+            bVertexPathIDs: new Uint16Array(expandedBVertexPathIDs).buffer as ArrayBuffer,
+            bVertexLoopBlinnData: new Uint32Array(expandedBVertexLoopBlinnData).buffer as
+                ArrayBuffer,
+            coverInteriorIndices: new Uint32Array(expandedCoverInteriorIndices).buffer as
+                ArrayBuffer,
+            coverCurveIndices: new Uint32Array(expandedCoverCurveIndices).buffer as ArrayBuffer,
+            edgeUpperCurveIndices: new Uint32Array(expandedEdgeUpperCurveIndices).buffer as
+                ArrayBuffer,
+            edgeUpperLineIndices: new Uint32Array(expandedEdgeUpperLineIndices).buffer as
+                ArrayBuffer,
+            edgeLowerCurveIndices: new Uint32Array(expandedEdgeLowerCurveIndices).buffer as
+                ArrayBuffer,
+            edgeLowerLineIndices: new Uint32Array(expandedEdgeLowerLineIndices).buffer as
+                ArrayBuffer,
+        })
+    }
+
     readonly bQuads: ArrayBuffer;
     readonly bVertexPositions: ArrayBuffer;
     readonly bVertexPathIDs: ArrayBuffer;
@@ -108,4 +228,34 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly edgeUpperCurveIndices: WebGLBuffer;
     readonly edgeLowerLineIndices: WebGLBuffer;
     readonly edgeLowerCurveIndices: WebGLBuffer;
+}
+
+function copyIndices(destIndices: number[],
+                     srcIndices: Uint32Array,
+                     firstExpandedIndex: number,
+                     firstIndex: number,
+                     lastIndex: number,
+                     validateIndex?: (indexIndex: number) => boolean) {
+    if (firstIndex === lastIndex)
+        return;
+
+    // FIXME(pcwalton): Use binary search instead of linear search.
+    let indexIndex = _.findIndex(srcIndices, srcIndex => {
+        return srcIndex >= firstIndex && srcIndex < lastIndex;
+    });
+    if (indexIndex < 0)
+        return;
+
+    const indexDelta = firstExpandedIndex - firstIndex;
+    while (indexIndex < srcIndices.length) {
+        const index = srcIndices[indexIndex];
+        if (validateIndex == null || validateIndex(indexIndex)) {
+            if (index < firstIndex || index >= lastIndex)
+                break;
+            destIndices.push(index + indexDelta);
+        } else {
+            destIndices.push(index);
+        }
+        indexIndex++;
+    }
 }

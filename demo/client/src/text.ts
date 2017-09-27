@@ -84,130 +84,18 @@ export class TextFrame<Glyph extends PathfinderGlyph> {
     }
 
     expandMeshes(uniqueGlyphs: Glyph[], meshes: PathfinderMeshData): ExpandedMeshData {
-        const bQuads = _.chunk(new Uint32Array(meshes.bQuads), B_QUAD_SIZE / UINT32_SIZE);
-        const bVertexPositions = new Float32Array(meshes.bVertexPositions);
-        const bVertexPathIDs = new Uint16Array(meshes.bVertexPathIDs);
-        const bVertexLoopBlinnData = new Uint32Array(meshes.bVertexLoopBlinnData);
-
-        const edgeUpperCurveIndices = new Uint32Array(meshes.edgeUpperCurveIndices);
-        const edgeLowerCurveIndices = new Uint32Array(meshes.edgeLowerCurveIndices);
-        for (let indexIndex = 3; indexIndex < edgeUpperCurveIndices.length; indexIndex += 4)
-            edgeUpperCurveIndices[indexIndex] = 0;
-        for (let indexIndex = 3; indexIndex < edgeLowerCurveIndices.length; indexIndex += 4)
-            edgeLowerCurveIndices[indexIndex] = 0;
-
-        const expandedBQuads: number[] = [];
-        const expandedBVertexPositions: number[] = [];
-        const expandedBVertexPathIDs: number[] = [];
-        const expandedBVertexLoopBlinnData: number[] = [];
-        const expandedCoverInteriorIndices: number[] = [];
-        const expandedCoverCurveIndices: number[] = [];
-        const expandedEdgeUpperCurveIndices: number[] = [];
-        const expandedEdgeUpperLineIndices: number[] = [];
-        const expandedEdgeLowerCurveIndices: number[] = [];
-        const expandedEdgeLowerLineIndices: number[] = [];
-
-        let textGlyphIndex = 0;
+        const pathIDs = [];
         for (const textRun of this.runs) {
             for (const textGlyph of textRun.glyphs) {
                 const uniqueGlyphIndex = _.sortedIndexBy(uniqueGlyphs, textGlyph, 'index');
-                if (uniqueGlyphIndex < 0)
-                    continue;
-                const firstBVertexIndex = _.sortedIndex(bVertexPathIDs, uniqueGlyphIndex + 1);
-                if (firstBVertexIndex < 0)
-                    continue;
-
-                // Copy over vertices.
-                let bVertexIndex = firstBVertexIndex;
-                const firstExpandedBVertexIndex = expandedBVertexPathIDs.length;
-                while (bVertexIndex < bVertexPathIDs.length &&
-                    bVertexPathIDs[bVertexIndex] === uniqueGlyphIndex + 1) {
-                    expandedBVertexPositions.push(bVertexPositions[bVertexIndex * 2 + 0],
-                                                bVertexPositions[bVertexIndex * 2 + 1]);
-                    expandedBVertexPathIDs.push(textGlyphIndex + 1);
-                    expandedBVertexLoopBlinnData.push(bVertexLoopBlinnData[bVertexIndex]);
-                    bVertexIndex++;
-                }
-
-                // Copy over indices.
-                copyIndices(expandedCoverInteriorIndices,
-                            new Uint32Array(meshes.coverInteriorIndices),
-                            firstExpandedBVertexIndex,
-                            firstBVertexIndex,
-                            bVertexIndex);
-                copyIndices(expandedCoverCurveIndices,
-                            new Uint32Array(meshes.coverCurveIndices),
-                            firstExpandedBVertexIndex,
-                            firstBVertexIndex,
-                            bVertexIndex);
-
-                copyIndices(expandedEdgeUpperLineIndices,
-                            new Uint32Array(meshes.edgeUpperLineIndices),
-                            firstExpandedBVertexIndex,
-                            firstBVertexIndex,
-                            bVertexIndex);
-                copyIndices(expandedEdgeUpperCurveIndices,
-                            new Uint32Array(edgeUpperCurveIndices),
-                            firstExpandedBVertexIndex,
-                            firstBVertexIndex,
-                            bVertexIndex,
-                            indexIndex => indexIndex % 4 < 3);
-                copyIndices(expandedEdgeLowerLineIndices,
-                            new Uint32Array(meshes.edgeLowerLineIndices),
-                            firstExpandedBVertexIndex,
-                            firstBVertexIndex,
-                            bVertexIndex);
-                copyIndices(expandedEdgeLowerCurveIndices,
-                            new Uint32Array(edgeLowerCurveIndices),
-                            firstExpandedBVertexIndex,
-                            firstBVertexIndex,
-                            bVertexIndex,
-                            indexIndex => indexIndex % 4 < 3);
-
-                // Copy over B-quads.
-                let firstBQuadIndex =
-                    _.findIndex(bQuads, bQuad => bVertexPathIDs[bQuad[0]] == uniqueGlyphIndex + 1);
-                if (firstBQuadIndex < 0)
-                    firstBQuadIndex = bQuads.length;
-                const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
-                for (let bQuadIndex = firstBQuadIndex; bQuadIndex < bQuads.length; bQuadIndex++) {
-                    const bQuad = bQuads[bQuadIndex];
-                    if (bVertexPathIDs[bQuad[0]] !== uniqueGlyphIndex + 1)
-                        break;
-                    for (let indexIndex = 0; indexIndex < B_QUAD_SIZE / UINT32_SIZE; indexIndex++) {
-                        const srcIndex = bQuad[indexIndex];
-                        if (srcIndex === UINT32_MAX)
-                            expandedBQuads.push(srcIndex);
-                        else
-                            expandedBQuads.push(srcIndex + indexDelta);
-                    }
-                }
-
-                textGlyphIndex++;
+                if (uniqueGlyphIndex >= 0)
+                    pathIDs.push(uniqueGlyphIndex + 1);
             }
         }
 
         return {
-            meshes: new PathfinderMeshData({
-                bQuads: new Uint32Array(expandedBQuads).buffer as ArrayBuffer,
-                bVertexPositions: new Float32Array(expandedBVertexPositions).buffer as ArrayBuffer,
-                bVertexPathIDs: new Uint16Array(expandedBVertexPathIDs).buffer as ArrayBuffer,
-                bVertexLoopBlinnData: new Uint32Array(expandedBVertexLoopBlinnData).buffer as
-                    ArrayBuffer,
-                coverInteriorIndices: new Uint32Array(expandedCoverInteriorIndices).buffer as
-                    ArrayBuffer,
-                coverCurveIndices: new Uint32Array(expandedCoverCurveIndices).buffer as
-                    ArrayBuffer,
-                edgeUpperCurveIndices: new Uint32Array(expandedEdgeUpperCurveIndices).buffer as
-                    ArrayBuffer,
-                edgeUpperLineIndices: new Uint32Array(expandedEdgeUpperLineIndices).buffer as
-                    ArrayBuffer,
-                edgeLowerCurveIndices: new Uint32Array(expandedEdgeLowerCurveIndices).buffer as
-                    ArrayBuffer,
-                edgeLowerLineIndices: new Uint32Array(expandedEdgeLowerLineIndices).buffer as
-                    ArrayBuffer,
-            })
-        }
+            meshes: meshes.expand(pathIDs),
+        };
     }
 
     get bounds(): glmatrix.vec4 {
@@ -463,34 +351,4 @@ export class Hint {
     readonly xHeight: number;
     readonly hintedXHeight: number;
     private useHinting: boolean;
-}
-
-function copyIndices(destIndices: number[],
-                     srcIndices: Uint32Array,
-                     firstExpandedIndex: number,
-                     firstIndex: number,
-                     lastIndex: number,
-                     validateIndex?: (indexIndex: number) => boolean) {
-    if (firstIndex === lastIndex)
-        return;
-
-    // FIXME(pcwalton): Use binary search instead of linear search.
-    let indexIndex = _.findIndex(srcIndices, srcIndex => {
-        return srcIndex >= firstIndex && srcIndex < lastIndex;
-    });
-    if (indexIndex < 0)
-        return;
-
-    const indexDelta = firstExpandedIndex - firstIndex;
-    while (indexIndex < srcIndices.length) {
-        const index = srcIndices[indexIndex];
-        if (validateIndex == null || validateIndex(indexIndex)) {
-            if (index < firstIndex || index >= lastIndex)
-                break;
-            destIndices.push(index + indexDelta);
-        } else {
-            destIndices.push(index);
-        }
-        indexIndex++;
-    }
 }
