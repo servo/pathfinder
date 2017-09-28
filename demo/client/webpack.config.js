@@ -15,6 +15,15 @@ module.exports = {
         rules: [
             {
                 test: /src\/[a-zA-Z0-9_-]+\.tsx?$/,
+                enforce: 'pre',
+                loader: 'tslint-loader',
+                exclude: /node_modules/,
+                options: {
+                    configFile: "tslint.json",
+                },
+            },
+            {
+                test: /src\/[a-zA-Z0-9_-]+\.tsx?$/,
                 use: 'ts-loader',
                 exclude: /node_modules/,
             },

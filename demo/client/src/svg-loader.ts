@@ -12,8 +12,8 @@ import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
 import 'path-data-polyfill.js';
-import {panic, unwrapNull} from "./utils";
 import {PathfinderMeshData} from "./meshes";
+import {panic, unwrapNull} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
 
@@ -39,6 +39,15 @@ export interface PathInstance {
 }
 
 export class SVGLoader {
+    pathInstances: PathInstance[];
+    scale: number;
+    bounds: glmatrix.vec4;
+
+    private svg: SVGSVGElement;
+    private fileData: ArrayBuffer;
+
+    private paths: any[];
+
     constructor() {
         this.scale = 1.0;
         this.svg = unwrapNull(document.getElementById('pf-svg')) as Element as SVGSVGElement;
@@ -57,6 +66,22 @@ export class SVGLoader {
         this.attachSVG(svgElement);
     }
 
+    partition(pathIndex?: number | undefined): Promise<PathfinderMeshData> {
+        // Make the request.
+        const paths = pathIndex == null ? this.paths : [this.paths[pathIndex]];
+        return window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
+            body: JSON.stringify({ paths: paths }),
+            headers: {'Content-Type': 'application/json'},
+            method: 'POST',
+        }).then(response => response.text()).then(responseText => {
+            const response = JSON.parse(responseText);
+            if (!('Ok' in response))
+                panic("Failed to partition the font!");
+            const meshes = response.Ok.pathData;
+            return new PathfinderMeshData(meshes);
+        });
+    }
+
     private attachSVG(svgElement: SVGSVGElement) {
         // Clear out the current document.
         let kid;
@@ -69,7 +94,7 @@ export class SVGLoader {
 
         // Scan for geometry elements.
         this.pathInstances.length = 0;
-        const queue: Array<Element> = [this.svg];
+        const queue: Element[] = [this.svg];
         let element;
         while ((element = queue.pop()) != null) {
             let kid = element.lastChild;
@@ -86,7 +111,7 @@ export class SVGLoader {
                 if (style.stroke !== 'none') {
                     this.pathInstances.push({
                         element: element,
-                        stroke: parseInt(style.strokeWidth!),
+                        stroke: parseInt(style.strokeWidth!, 10),
                     });
                 }
             }
@@ -134,28 +159,4 @@ export class SVGLoader {
 
         this.bounds = glmatrix.vec4.clone([minX, minY, maxX, maxY]);
     }
-
-    partition(pathIndex?: number | undefined): Promise<PathfinderMeshData> {
-        // Make the request.
-        const paths = pathIndex == null ? this.paths : [this.paths[pathIndex]];
-        return window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ paths: paths }),
-        }).then(response => response.text()).then(responseText => {
-            const response = JSON.parse(responseText);
-            if (!('Ok' in response))
-                panic("Failed to partition the font!");
-            const meshes = response.Ok.pathData;
-            return new PathfinderMeshData(meshes);
-        });
-    }
-
-    private svg: SVGSVGElement;
-    private fileData: ArrayBuffer;
-    scale: number;
-
-    pathInstances: PathInstance[];
-    private paths: any[];
-    bounds: glmatrix.vec4;
 }

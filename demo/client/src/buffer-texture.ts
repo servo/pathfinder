@@ -14,6 +14,13 @@ import {setTextureParameters, UniformMap} from './gl-utils';
 import {expectNotNull} from './utils';
 
 export default class PathfinderBufferTexture {
+    readonly texture: WebGLTexture;
+    readonly uniformName: string;
+
+    private size: glmatrix.vec2;
+    private capacity: glmatrix.vec2;
+    private glType: number;
+
     constructor(gl: WebGLRenderingContext, uniformName: string) {
         this.texture = expectNotNull(gl.createTexture(), "Failed to create buffer texture!");
         this.size = glmatrix.vec2.create();
@@ -28,7 +35,7 @@ export default class PathfinderBufferTexture {
 
         const glType = data instanceof Float32Array ? gl.FLOAT : gl.UNSIGNED_BYTE;
         const area = Math.ceil(data.length / 4);
-        if (glType != this.glType || area > this.capacityArea) {
+        if (glType !== this.glType || area > this.capacityArea) {
             const width = Math.ceil(Math.sqrt(area));
             const height = Math.ceil(area / width);
             this.size = glmatrix.vec2.fromValues(width, height);
@@ -65,7 +72,7 @@ export default class PathfinderBufferTexture {
             // Round data up to a multiple of 4 elements if necessary.
             let remainderLength = data.length - splitIndex;
             let remainder: Float32Array | Uint8Array;
-            if (remainderLength % 4 == 0) {
+            if (remainderLength % 4 === 0) {
                 remainder = data.slice(splitIndex);
             } else {
                 remainderLength += 4 - remainderLength % 4;
@@ -101,11 +108,4 @@ export default class PathfinderBufferTexture {
     private get capacityArea() {
         return this.capacity[0] * this.capacity[1];
     }
-
-    readonly texture: WebGLTexture;
-    readonly uniformName: string;
-    private size: glmatrix.vec2;
-    private capacity: glmatrix.vec2;
-    private glType: number;
 }
-

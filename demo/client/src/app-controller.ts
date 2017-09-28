@@ -9,12 +9,16 @@
 // except according to those terms.
 
 import {AntialiasingStrategyName} from "./aa-strategy";
+import {FilePickerView} from "./file-picker";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
-import {expectNotNull, unwrapUndef, unwrapNull} from './utils';
+import {expectNotNull, unwrapNull, unwrapUndef} from './utils';
 import {PathfinderDemoView, Timings, TIMINGS} from "./view";
-import { FilePickerView } from "./file-picker";
 
 export abstract class AppController {
+    protected canvas: HTMLCanvasElement;
+
+    protected screenshotButton: HTMLButtonElement | null;
+
     start() {
         const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
     }
@@ -36,16 +40,25 @@ export abstract class AppController {
               .then(data => this.fileLoaded(data));
     }
 
-    protected canvas: HTMLCanvasElement;
-
-    protected screenshotButton: HTMLButtonElement | null;
-
     protected abstract fileLoaded(data: ArrayBuffer): void;
 
     protected abstract get defaultFile(): string;
 }
 
 export abstract class DemoAppController<View extends PathfinderDemoView> extends AppController {
+    view: Promise<View>;
+
+    protected abstract readonly builtinFileURI: string;
+
+    protected filePickerView: FilePickerView | null;
+
+    protected commonShaderSource: string | null;
+    protected shaderSources: ShaderMap<ShaderProgramSource> | null;
+
+    private aaLevelSelect: HTMLSelectElement | null;
+    private subpixelAASwitch: HTMLInputElement | null;
+    private fpsLabel: HTMLElement | null;
+
     constructor() {
         super();
     }
@@ -164,13 +177,15 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
         this.fpsLabel.classList.remove('invisible');
     }
 
+    protected abstract createView(): View;
+
     private updateAALevel() {
         let aaType: AntialiasingStrategyName, aaLevel: number;
         if (this.aaLevelSelect != null) {
             const selectedOption = this.aaLevelSelect.selectedOptions[0];
             const aaValues = unwrapNull(/^([a-z-]+)(?:-([0-9]+))?$/.exec(selectedOption.value));
             aaType = aaValues[1] as AntialiasingStrategyName;
-            aaLevel = aaValues[2] === "" ? 1 : parseInt(aaValues[2]);
+            aaLevel = aaValues[2] === "" ? 1 : parseInt(aaValues[2], 10);
         } else {
             aaType = 'none';
             aaLevel = 0;
@@ -204,19 +219,4 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
         // Fetch the file.
         this.fetchFile(selectedOption.value, this.builtinFileURI);
     }
-
-    protected abstract createView(): View;
-
-    protected abstract readonly builtinFileURI: string;
-
-    view: Promise<View>;
-
-    protected filePickerView: FilePickerView | null;
-
-    protected commonShaderSource: string | null;
-    protected shaderSources: ShaderMap<ShaderProgramSource> | null;
-
-    private aaLevelSelect: HTMLSelectElement | null;
-    private subpixelAASwitch: HTMLInputElement | null;
-    private fpsLabel: HTMLElement | null;
 }

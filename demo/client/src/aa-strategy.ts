@@ -15,6 +15,9 @@ import {PathfinderDemoView} from './view';
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'ecaa';
 
 export abstract class AntialiasingStrategy {
+    // True if direct rendering should occur.
+    shouldRenderDirect: boolean;
+
     // Prepares any OpenGL data. This is only called on startup and canvas resize.
     init(view: PathfinderDemoView): void {
         this.setFramebufferSize(view);
@@ -43,12 +46,11 @@ export abstract class AntialiasingStrategy {
     //
     // This usually blits to the real framebuffer.
     abstract resolve(view: PathfinderDemoView): void;
-
-    // True if direct rendering should occur.
-    shouldRenderDirect: boolean;
 }
 
 export class NoAAStrategy extends AntialiasingStrategy {
+    framebufferSize: glmatrix.vec2;
+
     constructor(level: number, subpixelAA: boolean) {
         super();
         this.framebufferSize = glmatrix.vec2.create();
@@ -77,6 +79,4 @@ export class NoAAStrategy extends AntialiasingStrategy {
     get shouldRenderDirect() {
         return true;
     }
-
-    framebufferSize: glmatrix.vec2;
 }

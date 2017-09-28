@@ -10,20 +10,20 @@
 
 import * as base64js from 'base64-js';
 
-import { PathfinderError, expectNotNull, panic, UINT32_SIZE, UINT32_MAX } from './utils';
 import * as _ from 'lodash';
+import { expectNotNull, panic, PathfinderError, UINT32_MAX, UINT32_SIZE } from './utils';
 
 const BUFFER_TYPES: Meshes<BufferType> = {
     bQuads: 'ARRAY_BUFFER',
-    bVertexPositions: 'ARRAY_BUFFER',
-    bVertexPathIDs: 'ARRAY_BUFFER',
     bVertexLoopBlinnData: 'ARRAY_BUFFER',
-    coverInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
+    bVertexPathIDs: 'ARRAY_BUFFER',
+    bVertexPositions: 'ARRAY_BUFFER',
     coverCurveIndices: 'ELEMENT_ARRAY_BUFFER',
-    edgeUpperLineIndices: 'ARRAY_BUFFER',
+    coverInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
+    edgeLowerCurveIndices: 'ARRAY_BUFFER',
     edgeLowerLineIndices: 'ARRAY_BUFFER',
     edgeUpperCurveIndices: 'ARRAY_BUFFER',
-    edgeLowerCurveIndices: 'ARRAY_BUFFER',
+    edgeUpperLineIndices: 'ARRAY_BUFFER',
 };
 
 export const B_QUAD_SIZE: number = 4 * 8;
@@ -54,6 +54,23 @@ export interface Meshes<T> {
 }
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer> {
+    readonly bQuads: ArrayBuffer;
+    readonly bVertexPositions: ArrayBuffer;
+    readonly bVertexPathIDs: ArrayBuffer;
+    readonly bVertexLoopBlinnData: ArrayBuffer;
+    readonly coverInteriorIndices: ArrayBuffer;
+    readonly coverCurveIndices: ArrayBuffer;
+    readonly edgeUpperLineIndices: ArrayBuffer;
+    readonly edgeLowerLineIndices: ArrayBuffer;
+    readonly edgeUpperCurveIndices: ArrayBuffer;
+    readonly edgeLowerCurveIndices: ArrayBuffer;
+
+    readonly bQuadCount: number;
+    readonly edgeUpperLineIndexCount: number;
+    readonly edgeLowerLineIndexCount: number;
+    readonly edgeUpperCurveIndexCount: number;
+    readonly edgeLowerCurveIndexCount: number;
+
     constructor(meshes: Meshes<string | ArrayBuffer>) {
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>) {
             const meshBuffer = meshes[bufferName];
@@ -177,53 +194,26 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
 
         return new PathfinderMeshData({
             bQuads: new Uint32Array(expandedBQuads).buffer as ArrayBuffer,
-            bVertexPositions: new Float32Array(expandedBVertexPositions).buffer as ArrayBuffer,
-            bVertexPathIDs: new Uint16Array(expandedBVertexPathIDs).buffer as ArrayBuffer,
             bVertexLoopBlinnData: new Uint32Array(expandedBVertexLoopBlinnData).buffer as
                 ArrayBuffer,
-            coverInteriorIndices: new Uint32Array(expandedCoverInteriorIndices).buffer as
-                ArrayBuffer,
+            bVertexPathIDs: new Uint16Array(expandedBVertexPathIDs).buffer as ArrayBuffer,
+            bVertexPositions: new Float32Array(expandedBVertexPositions).buffer as ArrayBuffer,
             coverCurveIndices: new Uint32Array(expandedCoverCurveIndices).buffer as ArrayBuffer,
-            edgeUpperCurveIndices: new Uint32Array(expandedEdgeUpperCurveIndices).buffer as
-                ArrayBuffer,
-            edgeUpperLineIndices: new Uint32Array(expandedEdgeUpperLineIndices).buffer as
+            coverInteriorIndices: new Uint32Array(expandedCoverInteriorIndices).buffer as
                 ArrayBuffer,
             edgeLowerCurveIndices: new Uint32Array(expandedEdgeLowerCurveIndices).buffer as
                 ArrayBuffer,
             edgeLowerLineIndices: new Uint32Array(expandedEdgeLowerLineIndices).buffer as
                 ArrayBuffer,
-        })
+            edgeUpperCurveIndices: new Uint32Array(expandedEdgeUpperCurveIndices).buffer as
+                ArrayBuffer,
+            edgeUpperLineIndices: new Uint32Array(expandedEdgeUpperLineIndices).buffer as
+                ArrayBuffer,
+        });
     }
-
-    readonly bQuads: ArrayBuffer;
-    readonly bVertexPositions: ArrayBuffer;
-    readonly bVertexPathIDs: ArrayBuffer;
-    readonly bVertexLoopBlinnData: ArrayBuffer;
-    readonly coverInteriorIndices: ArrayBuffer;
-    readonly coverCurveIndices: ArrayBuffer;
-    readonly edgeUpperLineIndices: ArrayBuffer;
-    readonly edgeLowerLineIndices: ArrayBuffer;
-    readonly edgeUpperCurveIndices: ArrayBuffer;
-    readonly edgeLowerCurveIndices: ArrayBuffer;
-
-    readonly bQuadCount: number;
-    readonly edgeUpperLineIndexCount: number;
-    readonly edgeLowerLineIndexCount: number;
-    readonly edgeUpperCurveIndexCount: number;
-    readonly edgeLowerCurveIndexCount: number;
 }
 
 export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
-    constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
-        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshBuffers>) {
-            const bufferType = gl[BUFFER_TYPES[bufferName]];
-            const buffer = expectNotNull(gl.createBuffer(), "Failed to create buffer!");
-            gl.bindBuffer(bufferType, buffer);
-            gl.bufferData(bufferType, meshData[bufferName], gl.STATIC_DRAW);
-            this[bufferName] = buffer;
-        }
-    }
-
     readonly bQuads: WebGLBuffer;
     readonly bVertexPositions: WebGLBuffer;
     readonly bVertexPathIDs: WebGLBuffer;
@@ -234,6 +224,16 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly edgeUpperCurveIndices: WebGLBuffer;
     readonly edgeLowerLineIndices: WebGLBuffer;
     readonly edgeLowerCurveIndices: WebGLBuffer;
+
+    constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
+        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshBuffers>) {
+            const bufferType = gl[BUFFER_TYPES[bufferName]];
+            const buffer = expectNotNull(gl.createBuffer(), "Failed to create buffer!");
+            gl.bindBuffer(bufferType, buffer);
+            gl.bufferData(bufferType, meshData[bufferName], gl.STATIC_DRAW);
+            this[bufferName] = buffer;
+        }
+    }
 }
 
 function copyIndices(destIndices: number[],
@@ -271,7 +271,7 @@ function findFirstBQuadIndex(bQuads: Uint32Array, queryPathID: number): number |
         const thisPathID = bQuads[mid * B_QUAD_FIELD_COUNT];
         if (queryPathID <= thisPathID)
             high = mid;
-        else 
+        else
             low = mid + 1;
     }
     return bQuads[low * B_QUAD_FIELD_COUNT] === queryPathID ? low : null;

@@ -11,15 +11,19 @@
 import {expectNotNull} from "./utils";
 
 export class FilePickerView {
+    static create(): FilePickerView | null {
+        const element = document.getElementById('pf-file-select') as (HTMLInputElement | null);
+        return element == null ? null : new FilePickerView(element);
+    }
+
+    onFileLoaded: ((fileData: ArrayBuffer) => void) | null;
+
+    private readonly element: HTMLInputElement;
+
     private constructor(element: HTMLInputElement) {
         this.element = element;
         this.onFileLoaded = null;
         element.addEventListener('change', event => this.loadFile(event), false);
-    }
-
-    static create(): FilePickerView | null {
-        const element = document.getElementById('pf-file-select') as (HTMLInputElement | null);
-        return element == null ? null : new FilePickerView(element);
     }
 
     open() {
@@ -36,8 +40,4 @@ export class FilePickerView {
         }, false);
         reader.readAsArrayBuffer(file);
     }
-
-    onFileLoaded: ((fileData: ArrayBuffer) => void) | null;
-
-    private readonly element: HTMLInputElement;
 }

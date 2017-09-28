@@ -11,20 +11,20 @@
 import * as glmatrix from 'gl-matrix';
 import * as opentype from "opentype.js";
 
+import {Font} from 'opentype.js';
 import {AppController} from "./app-controller";
 import {OrthographicCamera} from "./camera";
 import {FilePickerView} from './file-picker';
-import {B_QUAD_SIZE, B_QUAD_UPPER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET} from "./meshes";
-import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, B_QUAD_LOWER_LEFT_VERTEX_OFFSET} from "./meshes";
+import {B_QUAD_LOWER_LEFT_VERTEX_OFFSET, B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_RIGHT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshData} from "./meshes";
-import {SVGLoader, BUILTIN_SVG_URI} from './svg-loader';
+import {B_QUAD_SIZE, B_QUAD_UPPER_LEFT_VERTEX_OFFSET} from "./meshes";
+import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {BUILTIN_FONT_URI, TextRun} from "./text";
-import { GlyphStore, TextFrame, PathfinderFont } from "./text";
-import {unwrapNull, UINT32_SIZE, UINT32_MAX, assert} from "./utils";
+import {GlyphStore, PathfinderFont, TextFrame} from "./text";
+import {assert, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils";
 import {PathfinderView} from "./view";
-import {Font} from 'opentype.js';
 
 const CHARACTER: string = 'A';
 
@@ -49,6 +49,22 @@ const SVG_SCALE: number = 1.0;
 type FileType = 'font' | 'svg';
 
 class MeshDebuggerAppController extends AppController {
+    meshes: PathfinderMeshData | null;
+
+    protected readonly defaultFile: string = FONT;
+
+    private file: PathfinderFont | SVGLoader | null;
+    private fileType: FileType;
+    private fileData: ArrayBuffer | null;
+
+    private openModal: HTMLElement;
+    private openFileSelect: HTMLSelectElement;
+    private fontPathSelectGroup: HTMLElement;
+    private fontPathSelect: HTMLSelectElement;
+
+    private filePicker: FilePickerView;
+    private view: MeshDebuggerView;
+
     start() {
         super.start();
 
@@ -78,6 +94,43 @@ class MeshDebuggerAppController extends AppController {
         this.loadInitialFile(BUILTIN_FONT_URI);
     }
 
+    protected fileLoaded(fileData: ArrayBuffer): void {
+        while (this.fontPathSelect.lastChild != null)
+            this.fontPathSelect.removeChild(this.fontPathSelect.lastChild);
+
+        this.fontPathSelectGroup.classList.remove('pf-display-none');
+
+        if (this.fileType === 'font')
+            this.fontLoaded(fileData);
+        else if (this.fileType === 'svg')
+            this.svgLoaded(fileData);
+    }
+
+    protected loadPath(opentypeGlyph?: opentype.Glyph | null) {
+        window.jQuery(this.openModal).modal('hide');
+
+        let promise: Promise<PathfinderMeshData>;
+
+        if (this.file instanceof PathfinderFont && this.fileData != null) {
+            if (opentypeGlyph == null) {
+                const glyphIndex = parseInt(this.fontPathSelect.selectedOptions[0].value, 10);
+                opentypeGlyph = this.file.opentypeFont.glyphs.get(glyphIndex);
+            }
+
+            const glyphStorage = new GlyphStore(this.file, [(opentypeGlyph as any).index]);
+            promise = glyphStorage.partition().then(result => result.meshes);
+        } else if (this.file instanceof SVGLoader) {
+            promise = this.file.partition(this.fontPathSelect.selectedIndex);
+        } else {
+            return;
+        }
+
+        promise.then(meshes => {
+            this.meshes = meshes;
+            this.view.attachMeshes();
+        });
+    }
+
     private showOpenDialog(): void {
         window.jQuery(this.openModal).modal();
     }
@@ -96,18 +149,6 @@ class MeshDebuggerAppController extends AppController {
             this.filePicker.open();
         else
             this.fetchFile(results[2], BUILTIN_URIS[this.fileType]);
-    }
-
-    protected fileLoaded(fileData: ArrayBuffer): void {
-        while (this.fontPathSelect.lastChild != null)
-            this.fontPathSelect.removeChild(this.fontPathSelect.lastChild);
-
-        this.fontPathSelectGroup.classList.remove('pf-display-none');
-
-        if (this.fileType === 'font')
-            this.fontLoaded(fileData);
-        else if (this.fileType === 'svg')
-            this.svgLoaded(fileData);
     }
 
     private fontLoaded(fileData: ArrayBuffer): void {
@@ -141,50 +182,13 @@ class MeshDebuggerAppController extends AppController {
             this.fontPathSelect.appendChild(newOption);
         }
     }
-
-    protected loadPath(opentypeGlyph?: opentype.Glyph | null) {
-        window.jQuery(this.openModal).modal('hide');
-
-        let promise: Promise<PathfinderMeshData>;
-
-        if (this.file instanceof PathfinderFont && this.fileData != null) {
-            if (opentypeGlyph == null) {
-                const glyphIndex = parseInt(this.fontPathSelect.selectedOptions[0].value);
-                opentypeGlyph = this.file.opentypeFont.glyphs.get(glyphIndex);
-            }
-
-            const glyphStorage = new GlyphStore(this.file, [(opentypeGlyph as any).index]);
-            promise = glyphStorage.partition().then(result => result.meshes);
-        } else if (this.file instanceof SVGLoader) {
-            promise = this.file.partition(this.fontPathSelect.selectedIndex);
-        } else {
-            return;
-        }
-
-        promise.then(meshes => {
-            this.meshes = meshes;
-            this.view.attachMeshes();
-        })
-    }
-
-    protected readonly defaultFile: string = FONT;
-
-    private file: PathfinderFont | SVGLoader | null;
-    private fileType: FileType;
-    private fileData: ArrayBuffer | null;
-
-    meshes: PathfinderMeshData | null;
-
-    private openModal: HTMLElement;
-    private openFileSelect: HTMLSelectElement;
-    private fontPathSelectGroup: HTMLElement;
-    private fontPathSelect: HTMLSelectElement;
-
-    private filePicker: FilePickerView;
-    private view: MeshDebuggerView;
 }
 
 class MeshDebuggerView extends PathfinderView {
+    camera: OrthographicCamera;
+
+    private appController: MeshDebuggerAppController;
+
     constructor(appController: MeshDebuggerAppController) {
         super();
 
@@ -310,14 +314,10 @@ class MeshDebuggerView extends PathfinderView {
 
         context.restore();
     }
-
-    private appController: MeshDebuggerAppController;
-
-    camera: OrthographicCamera;
 }
 
 function getPosition(positions: Float32Array, vertexIndex: number): Float32Array | null {
-    if (vertexIndex == UINT32_MAX)
+    if (vertexIndex === UINT32_MAX)
         return null;
     return new Float32Array([positions[vertexIndex * 2 + 0], -positions[vertexIndex * 2 + 1]]);
 }

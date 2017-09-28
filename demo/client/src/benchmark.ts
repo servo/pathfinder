@@ -11,17 +11,18 @@
 import * as glmatrix from 'gl-matrix';
 import * as opentype from "opentype.js";
 
-import { AppController, DemoAppController } from "./app-controller";
-import {PathfinderMeshData} from "./meshes";
-import { BUILTIN_FONT_URI, TextFrame, TextRun, ExpandedMeshData, GlyphStore, PathfinderFont } from "./text";
-import { assert, unwrapNull, PathfinderError } from "./utils";
-import { PathfinderDemoView, Timings, MonochromePathfinderView } from "./view";
-import { ShaderMap, ShaderProgramSource } from "./shader-loader";
-import { AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy } from "./aa-strategy";
-import SSAAStrategy from './ssaa-strategy';
-import { OrthographicCamera } from './camera';
-import { ECAAStrategy, ECAAMonochromeStrategy } from './ecaa-strategy';
+import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import {AppController, DemoAppController} from "./app-controller";
 import PathfinderBufferTexture from './buffer-texture';
+import {OrthographicCamera} from './camera';
+import {ECAAMonochromeStrategy, ECAAStrategy} from './ecaa-strategy';
+import {PathfinderMeshData} from "./meshes";
+import {ShaderMap, ShaderProgramSource} from "./shader-loader";
+import SSAAStrategy from './ssaa-strategy';
+import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
+import {TextRun} from "./text";
+import {assert, PathfinderError, unwrapNull} from "./utils";
+import {MonochromePathfinderView, PathfinderDemoView, Timings } from "./view";
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -33,9 +34,9 @@ const MIN_FONT_SIZE: number = 6;
 const MAX_FONT_SIZE: number = 200;
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
+    ecaa: ECAAMonochromeStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    ecaa: ECAAMonochromeStrategy,
 };
 
 interface ElapsedTime {
@@ -50,6 +51,24 @@ interface AntialiasingStrategyTable {
 }
 
 class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
+    font: PathfinderFont | null;
+    textRun: TextRun | null;
+
+    protected readonly defaultFile: string = FONT;
+    protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
+
+    private resultsModal: HTMLDivElement;
+    private resultsTableBody: HTMLTableSectionElement;
+    private resultsPartitioningTimeLabel: HTMLSpanElement;
+
+    private glyphStore: GlyphStore;
+    private baseMeshes: PathfinderMeshData;
+    private expandedMeshes: ExpandedMeshData;
+
+    private pixelsPerEm: number;
+    private elapsedTimes: ElapsedTime[];
+    private partitionTime: number;
+
     start() {
         super.start();
 
@@ -104,8 +123,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
                 view.uploadPathTransforms(1);
                 view.uploadHints();
                 view.attachMeshes([expandedMeshes.meshes]);
-            })
-        })
+            });
+        });
     }
 
     protected createView(): BenchmarkTestView {
@@ -128,7 +147,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         renderedPromise.then(elapsedTime => {
             this.elapsedTimes.push({ size: this.pixelsPerEm, time: elapsedTime });
 
-            if (this.pixelsPerEm == MAX_FONT_SIZE) {
+            if (this.pixelsPerEm === MAX_FONT_SIZE) {
                 this.showResults();
                 return;
             }
@@ -156,27 +175,29 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
         window.jQuery(this.resultsModal).modal();
     }
-
-    protected readonly defaultFile: string = FONT;
-    protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
-
-    private resultsModal: HTMLDivElement;
-    private resultsTableBody: HTMLTableSectionElement;
-    private resultsPartitioningTimeLabel: HTMLSpanElement;
-
-    private glyphStore: GlyphStore;
-    private baseMeshes: PathfinderMeshData;
-    private expandedMeshes: ExpandedMeshData;
-
-    private pixelsPerEm: number;
-    private elapsedTimes: ElapsedTime[];
-    private partitionTime: number;
-
-    font: PathfinderFont | null;
-    textRun: TextRun | null;
 }
-    
+
 class BenchmarkTestView extends MonochromePathfinderView {
+    destFramebuffer: WebGLFramebuffer | null = null;
+
+    renderingPromiseCallback: ((time: number) => void) | null;
+
+    readonly bgColor: glmatrix.vec4 = glmatrix.vec4.clone([1.0, 1.0, 1.0, 0.0]);
+    readonly fgColor: glmatrix.vec4 = glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
+
+    protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.clone([1.0, 1.0]);
+
+    protected directCurveProgramName: keyof ShaderMap<void> = 'directCurve';
+    protected directInteriorProgramName: keyof ShaderMap<void> = 'directInterior';
+
+    protected depthFunction: number = this.gl.GREATER;
+
+    protected camera: OrthographicCamera;
+
+    private _pixelsPerEm: number = 32.0;
+
+    private readonly appController: BenchmarkAppController;
+
     constructor(appController: BenchmarkAppController,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
@@ -187,6 +208,15 @@ class BenchmarkTestView extends MonochromePathfinderView {
         this.camera = new OrthographicCamera(this.canvas);
         this.camera.onPan = () => this.setDirty();
         this.camera.onZoom = () => this.setDirty();
+    }
+
+    uploadHints(): void {
+        const glyphCount = unwrapNull(this.appController.textRun).glyphIDs.length;
+        const pathHints = new Float32Array((glyphCount + 1) * 4);
+
+        const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
+        pathHintsBufferTexture.upload(this.gl, pathHints);
+        this.pathHintsBufferTexture = pathHintsBufferTexture;
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
@@ -241,17 +271,6 @@ class BenchmarkTestView extends MonochromePathfinderView {
         }
     }
 
-    uploadHints(): void {
-        const glyphCount = unwrapNull(this.appController.textRun).glyphIDs.length;
-        const pathHints = new Float32Array((glyphCount + 1) * 4);
-
-        const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
-        pathHintsBufferTexture.upload(this.gl, pathHints);
-        this.pathHintsBufferTexture = pathHintsBufferTexture;
-    }
-
-    destFramebuffer: WebGLFramebuffer | null = null;
-
     get destAllocatedSize(): glmatrix.vec2 {
         return glmatrix.vec2.clone([this.canvas.width, this.canvas.height]);
     }
@@ -259,10 +278,6 @@ class BenchmarkTestView extends MonochromePathfinderView {
     get destUsedSize(): glmatrix.vec2 {
         return this.destAllocatedSize;
     }
-
-    private readonly appController: BenchmarkAppController;
-
-    protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.clone([1.0, 1.0]);
 
     protected get worldTransform() {
         const transform = glmatrix.mat4.create();
@@ -293,20 +308,6 @@ class BenchmarkTestView extends MonochromePathfinderView {
         this.uploadPathTransforms(1);
         this.setDirty();
     }
-
-    renderingPromiseCallback: ((time: number) => void) | null;
-
-    private _pixelsPerEm: number = 32.0;
-
-    readonly bgColor: glmatrix.vec4 = glmatrix.vec4.clone([1.0, 1.0, 1.0, 0.0]);
-    readonly fgColor: glmatrix.vec4 = glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
-
-    protected directCurveProgramName: keyof ShaderMap<void> = 'directCurve';
-    protected directInteriorProgramName: keyof ShaderMap<void> = 'directInterior';
-
-    protected depthFunction: number = this.gl.GREATER;
-
-    protected camera: OrthographicCamera;
 }
 
 function main() {

@@ -8,14 +8,14 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-import {Metrics} from 'opentype.js';
 import * as base64js from 'base64-js';
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 import * as opentype from "opentype.js";
+import {Metrics} from 'opentype.js';
 
 import {B_QUAD_SIZE, PathfinderMeshData} from "./meshes";
-import { UINT32_SIZE, UINT32_MAX, assert, panic, unwrapNull } from "./utils";
+import {assert, panic, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils";
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
 
@@ -26,8 +26,8 @@ export interface ExpandedMeshData {
 }
 
 export interface PartitionResult {
-    meshes: PathfinderMeshData,
-    time: number,
+    meshes: PathfinderMeshData;
+    time: number;
 }
 
 export interface PixelMetrics {
@@ -39,7 +39,7 @@ export interface PixelMetrics {
 
 opentype.Font.prototype.isSupported = function() {
     return (this as any).supported;
-}
+};
 
 opentype.Font.prototype.lineHeight = function() {
     const os2Table = this.tables.os2;
@@ -47,6 +47,11 @@ opentype.Font.prototype.lineHeight = function() {
 };
 
 export class PathfinderFont {
+    readonly opentypeFont: opentype.Font;
+    readonly data: ArrayBuffer;
+
+    private metricsCache: Metrics[];
+
     constructor(data: ArrayBuffer) {
         this.data = data;
 
@@ -62,14 +67,15 @@ export class PathfinderFont {
             this.metricsCache[glyphID] = this.opentypeFont.glyphs.get(glyphID).getMetrics();
         return this.metricsCache[glyphID];
     }
-
-    readonly opentypeFont: opentype.Font;
-    readonly data: ArrayBuffer;
-
-    private metricsCache: Metrics[];
 }
 
 export class TextRun {
+    readonly glyphIDs: number[];
+    advances: number[];
+    readonly origin: number[];
+
+    private readonly font: PathfinderFont;
+
     constructor(text: number[] | string, origin: number[], font: PathfinderFont) {
         if (typeof(text) === 'string') {
             this.glyphIDs = font.opentypeFont
@@ -91,12 +97,6 @@ export class TextRun {
             this.advances.push(currentX);
             currentX += this.font.opentypeFont.glyphs.get(glyphID).advanceWidth;
         }
-    }
-
-    private pixelMetricsForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
-                                   PixelMetrics {
-        const metrics = unwrapNull(this.font.metricsForGlyph(index));
-        return calculatePixelMetricsForGlyph(metrics, pixelsPerUnit, hint);
     }
 
     calculatePixelOriginForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
@@ -121,13 +121,19 @@ export class TextRun {
         return lastAdvance + this.font.opentypeFont.glyphs.get(lastGlyphID).advanceWidth;
     }
 
-    readonly glyphIDs: number[];
-    advances: number[];
-    readonly origin: number[];
-    private readonly font: PathfinderFont;
+    private pixelMetricsForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
+                                   PixelMetrics {
+        const metrics = unwrapNull(this.font.metricsForGlyph(index));
+        return calculatePixelMetricsForGlyph(metrics, pixelsPerUnit, hint);
+    }
 }
 
 export class TextFrame {
+    readonly runs: TextRun[];
+    readonly origin: glmatrix.vec3;
+
+    private readonly font: PathfinderFont;
+
     constructor(runs: TextRun[], font: PathfinderFont) {
         this.runs = runs;
         this.origin = glmatrix.vec3.create();
@@ -137,8 +143,7 @@ export class TextFrame {
     expandMeshes(meshes: PathfinderMeshData, glyphIDs: number[]): ExpandedMeshData {
         const pathIDs = [];
         for (const textRun of this.runs) {
-            for (let glyphIndex = 0; glyphIndex < textRun.glyphIDs.length; glyphIndex++) {
-                const glyphID = textRun.glyphIDs[glyphIndex];
+            for (const glyphID of textRun.glyphIDs) {
                 if (glyphID === 0)
                     continue;
                 const pathID = _.sortedIndexOf(glyphIDs, glyphID);
@@ -180,15 +185,13 @@ export class TextFrame {
             glyphIDs.push(...run.glyphIDs);
         return glyphIDs;
     }
-
-    readonly runs: TextRun[];
-    readonly origin: glmatrix.vec3;
-
-    private readonly font: PathfinderFont;
 }
 
 /// Stores one copy of each glyph.
 export class GlyphStore {
+    readonly font: PathfinderFont;
+    readonly glyphIDs: number[];
+
     constructor(font: PathfinderFont, glyphIDs: number[]) {
         this.font = font;
         this.glyphIDs = glyphIDs;
@@ -209,9 +212,9 @@ export class GlyphStore {
 
         // Make the request.
         return window.fetch(PARTITION_FONT_ENDPOINT_URI, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(request),
+            headers: {'Content-Type': 'application/json'},
+            method: 'POST',
         }).then(response => response.text()).then(responseText => {
             const response = JSON.parse(responseText);
             if (!('Ok' in response))
@@ -227,12 +230,11 @@ export class GlyphStore {
         const index = _.sortedIndexOf(this.glyphIDs, glyphID);
         return index >= 0 ? index : null;
     }
-
-    readonly font: PathfinderFont;
-    readonly glyphIDs: number[];
 }
 
 export class SimpleTextLayout {
+    readonly textFrame: TextFrame;
+
     constructor(font: PathfinderFont, text: string) {
         const lineHeight = font.opentypeFont.lineHeight();
         const textRuns: TextRun[] = text.split("\n").map((line, lineNumber) => {
@@ -244,11 +246,14 @@ export class SimpleTextLayout {
     layoutRuns() {
         this.textFrame.runs.forEach(textRun => textRun.layout());
     }
-
-    readonly textFrame: TextFrame;
 }
 
 export class Hint {
+    readonly xHeight: number;
+    readonly hintedXHeight: number;
+
+    private useHinting: boolean;
+
     constructor(font: PathfinderFont, pixelsPerUnit: number, useHinting: boolean) {
         this.useHinting = useHinting;
 
@@ -278,10 +283,6 @@ export class Hint {
         return glmatrix.vec2.fromValues(position[0],
                                         position[1] / this.xHeight * this.hintedXHeight);
     }
-
-    readonly xHeight: number;
-    readonly hintedXHeight: number;
-    private useHinting: boolean;
 }
 
 export function calculatePixelXMin(metrics: Metrics, pixelsPerUnit: number): number {
@@ -296,10 +297,10 @@ function calculatePixelMetricsForGlyph(metrics: Metrics, pixelsPerUnit: number, 
                                        PixelMetrics {
     const top = hint.hintPosition(glmatrix.vec2.fromValues(0, metrics.yMax))[1];
     return {
-        left: calculatePixelXMin(metrics, pixelsPerUnit),
-        right: Math.ceil(metrics.xMax * pixelsPerUnit),
         ascent: Math.ceil(top * pixelsPerUnit),
         descent: calculatePixelDescent(metrics, pixelsPerUnit),
+        left: calculatePixelXMin(metrics, pixelsPerUnit),
+        right: Math.ceil(metrics.xMax * pixelsPerUnit),
     };
 }
 

@@ -9,21 +9,21 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as _ from "lodash";
 import * as opentype from "opentype.js";
 
+import {mat4, vec2} from "gl-matrix";
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {DemoAppController} from "./app-controller";
+import PathfinderBufferTexture from "./buffer-texture";
 import {PerspectiveCamera} from "./camera";
-import {mat4, vec2} from "gl-matrix";
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
-import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
-import { Hint, TextFrame, TextRun, GlyphStore, PathfinderFont } from "./text";
-import {PathfinderError, assert, panic, unwrapNull} from "./utils";
-import {PathfinderDemoView, Timings} from "./view";
 import SSAAStrategy from "./ssaa-strategy";
-import * as _ from "lodash";
-import PathfinderBufferTexture from "./buffer-texture";
+import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
+import {GlyphStore, Hint, PathfinderFont, TextFrame, TextRun} from "./text";
+import {assert, panic, PathfinderError, unwrapNull} from "./utils";
+import {PathfinderDemoView, Timings} from "./view";
 
 const TEXT_AVAILABLE_WIDTH: number = 150000;
 const TEXT_PADDING: number = 2000;
@@ -94,6 +94,14 @@ interface MonumentSide {
 }
 
 class ThreeDController extends DemoAppController<ThreeDView> {
+    textFrames: TextFrame[];
+    glyphStore: GlyphStore;
+
+    private baseMeshes: PathfinderMeshData;
+    private expandedMeshes: ExpandedMeshData[];
+
+    private monumentPromise: Promise<MonumentSide[]>;
+
     start() {
         super.start();
 
@@ -104,15 +112,34 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         this.loadInitialFile(this.builtinFileURI);
     }
 
+    protected fileLoaded(fileData: ArrayBuffer): void {
+        const font = new PathfinderFont(fileData);
+        this.monumentPromise.then(monument => this.layoutMonument(font, fileData, monument));
+    }
+
+    protected createView(): ThreeDView {
+        return new ThreeDView(this,
+                              unwrapNull(this.commonShaderSource),
+                              unwrapNull(this.shaderSources));
+    }
+
+    protected get builtinFileURI(): string {
+        return BUILTIN_FONT_URI;
+    }
+
+    protected get defaultFile(): string {
+        return FONT;
+    }
+
     private parseTextData(textData: any): MonumentSide[] {
         const sides = [];
         for (let sideIndex = 0; sideIndex < 4; sideIndex++)
             sides[sideIndex] = { upper: { lines: [] }, lower: { lines: [] } };
 
         for (const nameData of textData.monument) {
-            const side = parseInt(nameData.side) - 1;
-            const row = parseInt(nameData.row) - 1;
-            const number = parseInt(nameData.number) - 1;
+            const side = parseInt(nameData.side, 10) - 1;
+            const row = parseInt(nameData.row, 10) - 1;
+            const index = parseInt(nameData.number, 10) - 1;
 
             if (sides[side] == null)
                 continue;
@@ -121,15 +148,10 @@ class ThreeDController extends DemoAppController<ThreeDView> {
             if (lines[row] == null)
                 lines[row] = { names: [] };
 
-            lines[row].names[number] = nameData.name;
+            lines[row].names[index] = nameData.name;
         }
 
         return sides.map(side => ({ lines: side.upper.lines.concat(side.lower.lines) }));
-    }
-
-    protected fileLoaded(fileData: ArrayBuffer): void {
-        const font = new PathfinderFont(fileData);
-        this.monumentPromise.then(monument => this.layoutMonument(font, fileData, monument));
     }
 
     private layoutMonument(font: PathfinderFont, fileData: ArrayBuffer, monument: MonumentSide[]) {
@@ -137,13 +159,13 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         let glyphsNeeded: number[] = [];
 
         for (const monumentSide of monument) {
-            let textRuns = [];
+            const textRuns = [];
             for (let lineNumber = 0; lineNumber < monumentSide.lines.length; lineNumber++) {
                 const line = monumentSide.lines[lineNumber];
 
                 const lineY = -lineNumber * font.opentypeFont.lineHeight();
-                const lineGlyphs = line.names.map(string => {
-                    const glyphs = font.opentypeFont.stringToGlyphs(string);
+                const lineGlyphs = line.names.map(name => {
+                    const glyphs = font.opentypeFont.stringToGlyphs(name);
                     const glyphIDs = glyphs.map(glyph => (glyph as any).index);
                     const width = _.sumBy(glyphs, glyph => glyph.advanceWidth);
                     return { glyphs: glyphIDs, width: width };
@@ -156,7 +178,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
                 let currentX = 0.0;
                 for (const glyphInfo of lineGlyphs) {
                     const textRunOrigin = [currentX, lineY];
-                    const textRun = new TextRun(glyphInfo.glyphs, textRunOrigin, font); 
+                    const textRun = new TextRun(glyphInfo.glyphs, textRunOrigin, font);
                     textRun.layout();
                     textRuns.push(textRun);
                     currentX += glyphInfo.width + spacing;
@@ -184,31 +206,27 @@ class ThreeDController extends DemoAppController<ThreeDView> {
             });
         });
     }
-
-    protected createView(): ThreeDView {
-        return new ThreeDView(this,
-                              unwrapNull(this.commonShaderSource),
-                              unwrapNull(this.shaderSources));
-    }
-
-    protected get builtinFileURI(): string {
-        return BUILTIN_FONT_URI;
-    }
-
-    protected get defaultFile(): string {
-        return FONT;
-    }
-
-    textFrames: TextFrame[];
-    glyphStore: GlyphStore;
-
-    private baseMeshes: PathfinderMeshData;
-    private expandedMeshes: ExpandedMeshData[];
-
-    private monumentPromise: Promise<MonumentSide[]>;
 }
 
 class ThreeDView extends PathfinderDemoView {
+    destFramebuffer: WebGLFramebuffer | null = null;
+
+    camera: PerspectiveCamera;
+
+    protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.clone([1.0, 1.0]);
+
+    protected directCurveProgramName: keyof ShaderMap<void> = 'direct3DCurve';
+    protected directInteriorProgramName: keyof ShaderMap<void> = 'direct3DInterior';
+
+    protected depthFunction: number = this.gl.LESS;
+
+    private _scale: number;
+
+    private appController: ThreeDController;
+
+    private cubeVertexPositionBuffer: WebGLBuffer;
+    private cubeIndexBuffer: WebGLBuffer;
+
     constructor(appController: ThreeDController,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
@@ -233,7 +251,7 @@ class ThreeDView extends PathfinderDemoView {
     protected pathColorsForObject(textFrameIndex: number): Uint8Array {
         const textFrame = this.appController.textFrames[textFrameIndex];
         const pathCount = textFrame.totalGlyphCount;
-        
+
         const pathColors = new Uint8Array(4 * (pathCount + 1));
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++)
             pathColors.set(TEXT_COLOR, (pathIndex + 1) * 4);
@@ -244,7 +262,7 @@ class ThreeDView extends PathfinderDemoView {
     protected pathTransformsForObject(textFrameIndex: number): Float32Array {
         const textFrame = this.appController.textFrames[textFrameIndex];
         const pathCount = textFrame.totalGlyphCount;
-        
+
         const hint = new Hint(this.appController.glyphStore.font, PIXELS_PER_UNIT, false);
 
         const pathTransforms = new Float32Array(4 * (pathCount + 1));
@@ -316,17 +334,39 @@ class ThreeDView extends PathfinderDemoView {
         this.appController.newTimingsReceived(_.pick(this.lastTimings, ['rendering']));
     }
 
+    protected clearForDirectRendering(): void {
+        this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        this.gl.clearDepth(1.0);
+        this.gl.depthMask(true);
+        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
+    }
+
+    protected getModelviewTransform(objectIndex: number): glmatrix.mat4 {
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.rotateY(transform, transform, Math.PI / 2.0 * objectIndex);
+        glmatrix.mat4.translate(transform, transform, TEXT_TRANSLATION);
+        return transform;
+    }
+
+    // Cheap but effective backface culling.
+    protected shouldRenderObject(objectIndex: number): boolean {
+        const translation = this.camera.translation;
+        const extent = TEXT_TRANSLATION[2] * TEXT_SCALE[2];
+        switch (objectIndex) {
+        case 0:     return translation[2] < -extent;
+        case 1:     return translation[0] < -extent;
+        case 2:     return translation[2] > extent;
+        default:    return translation[0] > extent;
+        }
+    }
+
     get destAllocatedSize(): glmatrix.vec2 {
         return glmatrix.vec2.fromValues(this.canvas.width, this.canvas.height);
     }
 
-    destFramebuffer: WebGLFramebuffer | null = null;
-
     get destUsedSize(): glmatrix.vec2 {
         return this.destAllocatedSize;
     }
-
-    protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.clone([1.0, 1.0]);
 
     private calculateWorldTransform(modelviewTranslation: glmatrix.vec3,
                                     modelviewScale: glmatrix.vec3):
@@ -349,49 +389,9 @@ class ThreeDView extends PathfinderDemoView {
         return transform;
     }
 
-    protected clearForDirectRendering(): void {
-        this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        this.gl.clearDepth(1.0);
-        this.gl.depthMask(true);
-        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-    }
-
     protected get worldTransform() {
         return this.calculateWorldTransform(glmatrix.vec3.create(), TEXT_SCALE);
     }
-
-    protected getModelviewTransform(objectIndex: number): glmatrix.mat4 {
-        const transform = glmatrix.mat4.create();
-        glmatrix.mat4.rotateY(transform, transform, Math.PI / 2.0 * objectIndex);
-        glmatrix.mat4.translate(transform, transform, TEXT_TRANSLATION);
-        return transform;
-    }
-
-    // Cheap but effective backface culling.
-    protected shouldRenderObject(objectIndex: number): boolean {
-        const translation = this.camera.translation;
-        const extent = TEXT_TRANSLATION[2] * TEXT_SCALE[2];
-        switch (objectIndex) {
-        case 0:     return translation[2] < -extent;
-        case 1:     return translation[0] < -extent;
-        case 2:     return translation[2] > extent;
-        default:    return translation[0] > extent;
-        }
-    }
-
-    protected directCurveProgramName: keyof ShaderMap<void> = 'direct3DCurve';
-    protected directInteriorProgramName: keyof ShaderMap<void> = 'direct3DInterior';
-
-    protected depthFunction: number = this.gl.LESS;
-
-    private _scale: number;
-
-    private appController: ThreeDController;
-
-    private cubeVertexPositionBuffer: WebGLBuffer;
-    private cubeIndexBuffer: WebGLBuffer;
-
-    camera: PerspectiveCamera;
 }
 
 function main() {

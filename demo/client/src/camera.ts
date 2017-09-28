@@ -64,17 +64,30 @@ interface PerspectiveMovementKeys {
 }
 
 export abstract class Camera {
+    protected canvas: HTMLCanvasElement;
+
     constructor(canvas: HTMLCanvasElement) {
         this.canvas = canvas;
     }
 
     abstract zoomIn(): void;
     abstract zoomOut(): void;
-
-    protected canvas: HTMLCanvasElement;
 }
 
 export class OrthographicCamera extends Camera {
+    onPan: (() => void) | null;
+    onZoom: (() => void) | null;
+
+    translation: glmatrix.vec2;
+    scale: number;
+
+    private _bounds: glmatrix.vec4;
+
+    private readonly minScale: number;
+    private readonly maxScale: number;
+    private readonly scaleBounds: boolean;
+    private readonly ignoreBounds: boolean;
+
     constructor(canvas: HTMLCanvasElement, options?: OrthographicCameraOptions) {
         super(canvas);
 
@@ -120,6 +133,31 @@ export class OrthographicCamera extends Camera {
 
         const scale = 1.0 - event.deltaY * window.devicePixelRatio * ORTHOGRAPHIC_ZOOM_SPEED;
         this.zoom(scale, mouseLocation);
+    }
+
+    zoomToFit(): void {
+        const upperLeft = glmatrix.vec2.clone([this._bounds[0], this._bounds[1]]);
+        const lowerRight = glmatrix.vec2.clone([this._bounds[2], this._bounds[3]]);
+        const width = this._bounds[2] - this._bounds[0];
+        const height = Math.abs(this._bounds[1] - this._bounds[3]);
+
+        // Scale appropriately.
+        this.scale = Math.min(this.canvas.width / width, this.canvas.height / height);
+
+        // Center.
+        this.translation = glmatrix.vec2.create();
+        glmatrix.vec2.lerp(this.translation, upperLeft, lowerRight, 0.5);
+        glmatrix.vec2.scale(this.translation, this.translation, -this.scale);
+        this.translation[0] += this.canvas.width * 0.5;
+        this.translation[1] += this.canvas.height * 0.5;
+    }
+
+    zoomIn(): void {
+        this.zoom(ORTHOGRAPHIC_ZOOM_IN_FACTOR, this.centerPoint);
+    }
+
+    zoomOut(): void {
+        this.zoom(ORTHOGRAPHIC_ZOOM_OUT_FACTOR, this.centerPoint);
     }
 
     private onMouseDown(event: MouseEvent): void {
@@ -172,31 +210,6 @@ export class OrthographicCamera extends Camera {
         }
     }
 
-    zoomToFit(): void {
-        const upperLeft = glmatrix.vec2.clone([this._bounds[0], this._bounds[1]]);
-        const lowerRight = glmatrix.vec2.clone([this._bounds[2], this._bounds[3]]);
-        const width = this._bounds[2] - this._bounds[0];
-        const height = Math.abs(this._bounds[1] - this._bounds[3]);
-
-        // Scale appropriately.
-        this.scale = Math.min(this.canvas.width / width, this.canvas.height / height);
-
-        // Center.
-        this.translation = glmatrix.vec2.create();
-        glmatrix.vec2.lerp(this.translation, upperLeft, lowerRight, 0.5);
-        glmatrix.vec2.scale(this.translation, this.translation, -this.scale);
-        this.translation[0] += this.canvas.width * 0.5;
-        this.translation[1] += this.canvas.height * 0.5;
-    }
-
-    zoomIn(): void {
-        this.zoom(ORTHOGRAPHIC_ZOOM_IN_FACTOR, this.centerPoint);
-    }
-
-    zoomOut(): void {
-        this.zoom(ORTHOGRAPHIC_ZOOM_OUT_FACTOR, this.centerPoint);
-    }
-
     private zoom(scale: number, point: glmatrix.vec2): void {
         const absoluteTranslation = glmatrix.vec2.create();
         glmatrix.vec2.sub(absoluteTranslation, this.translation, point);
@@ -227,22 +240,23 @@ export class OrthographicCamera extends Camera {
     set bounds(newBounds: glmatrix.vec4) {
         this._bounds = glmatrix.vec4.clone(newBounds);
     }
-
-    onPan: (() => void) | null;
-    onZoom: (() => void) | null;
-
-    private _bounds: glmatrix.vec4;
-
-    translation: glmatrix.vec2;
-    scale: number;
-
-    private readonly minScale: number;
-    private readonly maxScale: number;
-    private readonly scaleBounds: boolean;
-    private readonly ignoreBounds: boolean;
 }
 
 export class PerspectiveCamera extends Camera {
+    onChange: (() => void) | null;
+
+    translation: glmatrix.vec3;
+
+    /// Yaw and pitch Euler angles.
+    rotation: glmatrix.vec2;
+
+    private movementDelta: glmatrix.vec3;
+    // If W, A, S, D are pressed
+    private wasdPress: PerspectiveMovementKeys;
+    private movementInterval: number | null;
+
+    private readonly innerCollisionExtent: number;
+
     constructor(canvas: HTMLCanvasElement, options?: PerspectiveCameraOptions) {
         super(canvas);
 
@@ -270,6 +284,14 @@ export class PerspectiveCamera extends Camera {
             ['S'.charCodeAt(0), false],
             ['D'.charCodeAt(0), false],
         ]);
+    }
+
+    zoomIn(): void {
+        // TODO(pcwalton)
+    }
+
+    zoomOut(): void {
+        // TODO(pcwalton)
     }
 
     private onMouseDown(event: MouseEvent): void {
@@ -391,26 +413,4 @@ export class PerspectiveCamera extends Camera {
         glmatrix.mat4.rotateY(matrix, matrix, this.rotation[0]);
         return matrix;
     }
-
-    zoomIn(): void {
-        // TODO(pcwalton)
-    }
-
-    zoomOut(): void {
-        // TODO(pcwalton)
-    }
-
-    onChange: (() => void) | null;
-
-    translation: glmatrix.vec3;
-
-    /// Yaw and pitch Euler angles.
-    rotation: glmatrix.vec2;
-
-    private movementDelta: glmatrix.vec3;
-    // If W, A, S, D are pressed
-    private wasdPress:  PerspectiveMovementKeys;
-    private movementInterval: number | null;
-
-    private readonly innerCollisionExtent: number;
 }

@@ -11,11 +11,20 @@
 import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy} from './aa-strategy';
-import {createFramebufferDepthTexture, createFramebuffer, setTextureParameters} from './gl-utils';
+import {createFramebuffer, createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
 import {unwrapNull} from './utils';
 import {PathfinderDemoView} from './view';
 
 export default class SSAAStrategy extends AntialiasingStrategy {
+    private level: number;
+    private subpixelAA: boolean;
+
+    private destFramebufferSize: glmatrix.vec2;
+    private supersampledFramebufferSize: glmatrix.vec2;
+    private supersampledColorTexture: WebGLTexture;
+    private supersampledDepthTexture: WebGLTexture;
+    private supersampledFramebuffer: WebGLFramebuffer;
+
     constructor(level: number, subpixelAA: boolean) {
         super();
         this.level = level;
@@ -111,7 +120,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     }
 
     private get supersampleScale(): glmatrix.vec2 {
-        return glmatrix.vec2.fromValues(this.subpixelAA ? 3 : 2, this.level == 2 ? 1 : 2);
+        return glmatrix.vec2.fromValues(this.subpixelAA ? 3 : 2, this.level === 2 ? 1 : 2);
     }
 
     private usedSupersampledFramebufferSize(view: PathfinderDemoView): glmatrix.vec2 {
@@ -119,14 +128,4 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         glmatrix.vec2.mul(result, view.destUsedSize, this.supersampleScale);
         return result;
     }
-
-    private level: number;
-    private subpixelAA: boolean;
-
-    private destFramebufferSize: glmatrix.vec2;
-    private supersampledFramebufferSize: glmatrix.vec2;
-    private supersampledColorTexture: WebGLTexture;
-    private supersampledDepthTexture: WebGLTexture;
-    private supersampledFramebuffer: WebGLFramebuffer;
 }
-

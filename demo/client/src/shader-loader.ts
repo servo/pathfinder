@@ -9,7 +9,7 @@
 // except according to those terms.
 
 import {AttributeMap, UniformMap} from './gl-utils';
-import {PathfinderError, expectNotNull, unwrapNull} from './utils';
+import {expectNotNull, PathfinderError, unwrapNull} from './utils';
 
 export interface UnlinkedShaderProgram {
     vertex: WebGLShader;
@@ -37,60 +37,60 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
 
 const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     blit: {
-        vertex: "/glsl/gles2/blit.vs.glsl",
         fragment: "/glsl/gles2/blit.fs.glsl",
-    },
-    directCurve: {
-        vertex: "/glsl/gles2/direct-curve.vs.glsl",
-        fragment: "/glsl/gles2/direct-curve.fs.glsl",
-    },
-    directInterior: {
-        vertex: "/glsl/gles2/direct-interior.vs.glsl",
-        fragment: "/glsl/gles2/direct-interior.fs.glsl",
-    },
-    direct3DCurve: {
-        vertex: "/glsl/gles2/direct-3d-curve.vs.glsl",
-        fragment: "/glsl/gles2/direct-curve.fs.glsl",
-    },
-    direct3DInterior: {
-        vertex: "/glsl/gles2/direct-3d-interior.vs.glsl",
-        fragment: "/glsl/gles2/direct-interior.fs.glsl",
-    },
-    ssaaSubpixelResolve: {
-        vertex: "/glsl/gles2/ssaa-subpixel-resolve.vs.glsl",
-        fragment: "/glsl/gles2/ssaa-subpixel-resolve.fs.glsl",
-    },
-    ecaaEdgeDetect: {
-        vertex: "/glsl/gles2/ecaa-edge-detect.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-edge-detect.fs.glsl",
-    },
-    ecaaCover: {
-        vertex: "/glsl/gles2/ecaa-cover.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-cover.fs.glsl",
-    },
-    ecaaLine: {
-        vertex: "/glsl/gles2/ecaa-line.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-line.fs.glsl",
-    },
-    ecaaCurve: {
-        vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
-    },
-    ecaaMonoResolve: {
-        vertex: "/glsl/gles2/ecaa-mono-resolve.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-mono-resolve.fs.glsl",
-    },
-    ecaaMonoSubpixelResolve: {
-        vertex: "/glsl/gles2/ecaa-mono-subpixel-resolve.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-mono-subpixel-resolve.fs.glsl",
-    },
-    ecaaMultiResolve: {
-        vertex: "/glsl/gles2/ecaa-multi-resolve.vs.glsl",
-        fragment: "/glsl/gles2/ecaa-multi-resolve.fs.glsl",
+        vertex: "/glsl/gles2/blit.vs.glsl",
     },
     demo3DMonument: {
-        vertex: "/glsl/gles2/demo-3d-monument.vs.glsl",
         fragment: "/glsl/gles2/demo-3d-monument.fs.glsl",
+        vertex: "/glsl/gles2/demo-3d-monument.vs.glsl",
+    },
+    direct3DCurve: {
+        fragment: "/glsl/gles2/direct-curve.fs.glsl",
+        vertex: "/glsl/gles2/direct-3d-curve.vs.glsl",
+    },
+    direct3DInterior: {
+        fragment: "/glsl/gles2/direct-interior.fs.glsl",
+        vertex: "/glsl/gles2/direct-3d-interior.vs.glsl",
+    },
+    directCurve: {
+        fragment: "/glsl/gles2/direct-curve.fs.glsl",
+        vertex: "/glsl/gles2/direct-curve.vs.glsl",
+    },
+    directInterior: {
+        fragment: "/glsl/gles2/direct-interior.fs.glsl",
+        vertex: "/glsl/gles2/direct-interior.vs.glsl",
+    },
+    ecaaCover: {
+        fragment: "/glsl/gles2/ecaa-cover.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-cover.vs.glsl",
+    },
+    ecaaCurve: {
+        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
+    },
+    ecaaEdgeDetect: {
+        fragment: "/glsl/gles2/ecaa-edge-detect.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-edge-detect.vs.glsl",
+    },
+    ecaaLine: {
+        fragment: "/glsl/gles2/ecaa-line.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-line.vs.glsl",
+    },
+    ecaaMonoResolve: {
+        fragment: "/glsl/gles2/ecaa-mono-resolve.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-mono-resolve.vs.glsl",
+    },
+    ecaaMonoSubpixelResolve: {
+        fragment: "/glsl/gles2/ecaa-mono-subpixel-resolve.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-mono-subpixel-resolve.vs.glsl",
+    },
+    ecaaMultiResolve: {
+        fragment: "/glsl/gles2/ecaa-multi-resolve.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-multi-resolve.vs.glsl",
+    },
+    ssaaSubpixelResolve: {
+        fragment: "/glsl/gles2/ssaa-subpixel-resolve.fs.glsl",
+        vertex: "/glsl/gles2/ssaa-subpixel-resolve.vs.glsl",
     },
 };
 
@@ -122,31 +122,35 @@ interface ShaderProgramURLs {
 }
 
 export class ShaderLoader {
+    common: Promise<string>;
+    shaders: Promise<ShaderMap<ShaderProgramSource>>;
+
     load() {
         this.common = window.fetch(COMMON_SHADER_URL).then(response => response.text());
 
         const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
-        let promises = [];
+        const promises = [];
         for (const shaderKey of shaderKeys) {
             promises.push(Promise.all([
                 window.fetch(SHADER_URLS[shaderKey].vertex).then(response => response.text()),
                 window.fetch(SHADER_URLS[shaderKey].fragment).then(response => response.text()),
-            ]).then(results => { return { vertex: results[0], fragment: results[1] } }));
+            ]).then(results => ({ vertex: results[0], fragment: results[1] })));
         }
 
         this.shaders = Promise.all(promises).then(promises => {
-            let shaderMap: Partial<ShaderMap<ShaderProgramSource>> = {};
+            const shaderMap: Partial<ShaderMap<ShaderProgramSource>> = {};
             for (let keyIndex = 0; keyIndex < shaderKeys.length; keyIndex++)
                 shaderMap[shaderKeys[keyIndex]] = promises[keyIndex];
             return shaderMap as ShaderMap<ShaderProgramSource>;
         });
     }
-
-    common: Promise<string>;
-    shaders: Promise<ShaderMap<ShaderProgramSource>>;
 }
 
 export class PathfinderShaderProgram {
+    readonly uniforms: UniformMap;
+    readonly attributes: AttributeMap;
+    readonly program: WebGLProgram;
+
     constructor(gl: WebGLRenderingContext,
                 programName: string,
                 unlinkedShaderProgram: UnlinkedShaderProgram) {
@@ -155,7 +159,7 @@ export class PathfinderShaderProgram {
             gl.attachShader(this.program, compiledShader);
         gl.linkProgram(this.program);
 
-        if (gl.getProgramParameter(this.program, gl.LINK_STATUS) == 0) {
+        if (gl.getProgramParameter(this.program, gl.LINK_STATUS) === 0) {
             const infoLog = gl.getProgramInfoLog(this.program);
             throw new PathfinderError(`Failed to link program "${programName}":\n${infoLog}`);
         }
@@ -163,8 +167,8 @@ export class PathfinderShaderProgram {
         const uniformCount = gl.getProgramParameter(this.program, gl.ACTIVE_UNIFORMS);
         const attributeCount = gl.getProgramParameter(this.program, gl.ACTIVE_ATTRIBUTES);
 
-        let uniforms: UniformMap = {};
-        let attributes: AttributeMap = {};
+        const uniforms: UniformMap = {};
+        const attributes: AttributeMap = {};
 
         for (let uniformIndex = 0; uniformIndex < uniformCount; uniformIndex++) {
             const uniformName = unwrapNull(gl.getActiveUniform(this.program, uniformIndex)).name;
@@ -179,8 +183,4 @@ export class PathfinderShaderProgram {
         this.uniforms = uniforms;
         this.attributes = attributes;
     }
-
-    readonly uniforms: UniformMap;
-    readonly attributes: AttributeMap;
-    readonly program: WebGLProgram;
 }

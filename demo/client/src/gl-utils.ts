@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {UINT32_SIZE, assert, unwrapNull} from './utils';
+import {assert, UINT32_SIZE, unwrapNull} from './utils';
 
 export type WebGLVertexArrayObject = any;
 
@@ -98,7 +98,7 @@ export function createFramebuffer(gl: WebGLRenderingContext,
                                 0);
     }
 
-    assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER) == gl.FRAMEBUFFER_COMPLETE,
+    assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE,
            "Framebuffer was incomplete!");
     return framebuffer;
 }
