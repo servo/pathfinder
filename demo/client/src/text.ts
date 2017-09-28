@@ -218,7 +218,7 @@ export class GlyphStore {
         }).then(response => response.text()).then(responseText => {
             const response = JSON.parse(responseText);
             if (!('Ok' in response))
-                panic("Failed to partition the font!");
+                panic(`Failed to partition the font: ${response.Err}`);
             return {
                 meshes: new PathfinderMeshData(response.Ok.pathData),
                 time: response.Ok.time,

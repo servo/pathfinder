@@ -1,7 +1,40 @@
 /*
+ * Fonts
+ */
+
+@font-face {
+    font-family: "Inter UI";
+    font-weight: 400;
+    src: url("/woff2/inter-ui/Inter-UI-Regular.woff2") format('woff2');
+}
+
+@font-face {
+    font-family: "Inter UI";
+    font-weight: 700;
+    src: url("/woff2/inter-ui/Inter-UI-Bold.woff2") format('woff2');
+}
+
+@font-face {
+    font-family: "Inter UI";
+    font-weight: 400;
+    font-style: italic;
+    src: url("/woff2/inter-ui/Inter-UI-RegularItalic.woff2") format('woff2');
+}
+
+@font-face {
+    font-family: "Inter UI";
+    font-weight: 700;
+    font-style: italic;
+    src: url("/woff2/inter-ui/Inter-UI-BoldItalic.woff2") format('woff2');
+}
+
+/*
  * Core
  */
 
+body {
+    font-family: "Inter UI", sans-serif;
+}
 body.pf-unscrollable {
     overflow: hidden;
 }

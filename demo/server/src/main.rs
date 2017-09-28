@@ -57,15 +57,17 @@ static STATIC_JS_JQUERY_PATH: &'static str = "../client/node_modules/jquery/dist
 static STATIC_JS_POPPER_JS_PATH: &'static str = "../client/node_modules/popper.js/dist/umd";
 static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
 static STATIC_SVG_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build/svg";
+static STATIC_WOFF2_INTER_UI_PATH: &'static str = "../../resources/fonts/inter-ui";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 static STATIC_DATA_PATH: &'static str = "../../resources/data";
 
 static STATIC_DOC_API_INDEX_URI: &'static str = "/doc/api/pathfinder_font_renderer/index.html";
 
-static BUILTIN_FONTS: [(&'static str, &'static str); 3] = [
+static BUILTIN_FONTS: [(&'static str, &'static str); 4] = [
     ("open-sans", "../../resources/fonts/open-sans/OpenSans-Regular.ttf"),
     ("nimbus-sans", "../../resources/fonts/nimbus-sans/NimbusSanL-Regu.ttf"),
     ("eb-garamond", "../../resources/fonts/eb-garamond/EBGaramond12-Regular.ttf"),
+    ("inter-ui", "../../resources/fonts/inter-ui/Inter-UI-Regular.ttf"),
 ];
 
 static BUILTIN_SVGS: [(&'static str, &'static str); 1] = [
@@ -632,6 +634,10 @@ fn static_js_pathfinder(file: PathBuf) -> Option<NamedFile> {
 fn static_svg_octicons(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_SVG_OCTICONS_PATH).join(file)).ok()
 }
+#[get("/woff2/inter-ui/<file..>")]
+fn static_woff2_inter_ui(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_WOFF2_INTER_UI_PATH).join(file)).ok()
+}
 #[get("/glsl/<file..>")]
 fn static_glsl(file: PathBuf) -> Option<Shader> {
     Shader::open(Path::new(STATIC_GLSL_PATH).join(file)).ok()
@@ -695,6 +701,7 @@ fn main() {
         static_js_popper_js,
         static_js_pathfinder,
         static_svg_octicons,
+        static_woff2_inter_ui,
         static_glsl,
         static_otf_demo,
         static_svg_demo,
