@@ -36,6 +36,8 @@ export const B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET: number = 4 * 6;
 export const B_QUAD_UPPER_INDICES_OFFSET: number = B_QUAD_UPPER_LEFT_VERTEX_OFFSET;
 export const B_QUAD_LOWER_INDICES_OFFSET: number = B_QUAD_LOWER_LEFT_VERTEX_OFFSET;
 
+const B_QUAD_FIELD_COUNT: number = B_QUAD_SIZE / UINT32_SIZE;
+
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
 export interface Meshes<T> {
@@ -71,7 +73,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     }
 
     expand(pathIDs: number[]): PathfinderMeshData {
-        const bQuads = _.chunk(new Uint32Array(this.bQuads), B_QUAD_SIZE / UINT32_SIZE);
+        const bQuads = new Uint32Array(this.bQuads);
         const bVertexPositions = new Float32Array(this.bVertexPositions);
         const bVertexPathIDs = new Uint16Array(this.bVertexPathIDs);
         const bVertexLoopBlinnData = new Uint32Array(this.bVertexLoopBlinnData);
@@ -82,6 +84,11 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
             edgeUpperCurveIndices[indexIndex] = 0;
         for (let indexIndex = 3; indexIndex < edgeLowerCurveIndices.length; indexIndex += 4)
             edgeLowerCurveIndices[indexIndex] = 0;
+
+        const coverInteriorIndices = new Uint32Array(this.coverInteriorIndices);
+        const coverCurveIndices = new Uint32Array(this.coverCurveIndices);
+        const edgeUpperLineIndices = new Uint32Array(this.edgeUpperLineIndices);
+        const edgeLowerLineIndices = new Uint32Array(this.edgeLowerLineIndices);
 
         const expandedBQuads: number[] = [];
         const expandedBVertexPositions: number[] = [];
@@ -114,51 +121,50 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
 
             // Copy over indices.
             copyIndices(expandedCoverInteriorIndices,
-                        new Uint32Array(this.coverInteriorIndices),
+                        coverInteriorIndices,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
                         bVertexIndex);
             copyIndices(expandedCoverCurveIndices,
-                        new Uint32Array(this.coverCurveIndices),
+                        coverCurveIndices,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
                         bVertexIndex);
 
             copyIndices(expandedEdgeUpperLineIndices,
-                        new Uint32Array(this.edgeUpperLineIndices),
+                        edgeUpperLineIndices,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
                         bVertexIndex);
             copyIndices(expandedEdgeUpperCurveIndices,
-                        new Uint32Array(edgeUpperCurveIndices),
+                        edgeUpperCurveIndices,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
                         bVertexIndex,
                         indexIndex => indexIndex % 4 < 3);
             copyIndices(expandedEdgeLowerLineIndices,
-                        new Uint32Array(this.edgeLowerLineIndices),
+                        edgeLowerLineIndices,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
                         bVertexIndex);
             copyIndices(expandedEdgeLowerCurveIndices,
-                        new Uint32Array(edgeLowerCurveIndices),
+                        edgeLowerCurveIndices,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
                         bVertexIndex,
                         indexIndex => indexIndex % 4 < 3);
 
             // Copy over B-quads.
-            let firstBQuadIndex = _.findIndex(bQuads,
-                                              bQuad => bVertexPathIDs[bQuad[0]] === pathID);
-            if (firstBQuadIndex < 0)
+            let firstBQuadIndex = findFirstBQuadIndex(bQuads, pathID);
+            if (firstBQuadIndex == null)
                 firstBQuadIndex = bQuads.length;
             const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
             for (let bQuadIndex = firstBQuadIndex; bQuadIndex < bQuads.length; bQuadIndex++) {
                 const bQuad = bQuads[bQuadIndex];
-                if (bVertexPathIDs[bQuad[0]] !== pathID)
+                if (bVertexPathIDs[bQuads[bQuadIndex * B_QUAD_FIELD_COUNT]] !== pathID)
                     break;
-                for (let indexIndex = 0; indexIndex < B_QUAD_SIZE / UINT32_SIZE; indexIndex++) {
-                    const srcIndex = bQuad[indexIndex];
+                for (let indexIndex = 0; indexIndex < B_QUAD_FIELD_COUNT; indexIndex++) {
+                    const srcIndex = bQuads[bQuadIndex * B_QUAD_FIELD_COUNT + indexIndex];
                     if (srcIndex === UINT32_MAX)
                         expandedBQuads.push(srcIndex);
                     else
@@ -239,10 +245,8 @@ function copyIndices(destIndices: number[],
     if (firstIndex === lastIndex)
         return;
 
-    // FIXME(pcwalton): Use binary search instead of linear search.
-    let indexIndex = _.findIndex(srcIndices, srcIndex => {
-        return srcIndex >= firstIndex && srcIndex < lastIndex;
-    });
+    // FIXME(pcwalton): Speed this up somehow.
+    let indexIndex = srcIndices.findIndex(index => index >= firstIndex && index < lastIndex);
     if (indexIndex < 0)
         return;
 
@@ -258,4 +262,17 @@ function copyIndices(destIndices: number[],
         }
         indexIndex++;
     }
+}
+
+function findFirstBQuadIndex(bQuads: Uint32Array, queryPathID: number): number | null {
+    let low = 0, high = bQuads.length / B_QUAD_FIELD_COUNT;
+    while (low < high) {
+        const mid = low + (high - low) / 2;
+        const thisPathID = bQuads[mid * B_QUAD_FIELD_COUNT];
+        if (queryPathID <= thisPathID)
+            high = mid;
+        else 
+            low = mid + 1;
+    }
+    return bQuads[low * B_QUAD_FIELD_COUNT] === queryPathID ? low : null;
 }
