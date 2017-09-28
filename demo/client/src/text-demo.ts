@@ -503,12 +503,13 @@ class TextDemoView extends MonochromePathfinderView {
                 if (glyphStoreIndex == null)
                     continue;
 
-                atlasGlyphs.push(new AtlasGlyph(glyphStoreIndex, glyphID));
+                const glyphKey = new GlyphKey(glyphID);
+                atlasGlyphs.push(new AtlasGlyph(glyphStoreIndex, glyphKey));
             }
         }
 
-        atlasGlyphs.sort((a, b) => a.glyphID - b.glyphID);
-        atlasGlyphs = _.sortedUniqBy(atlasGlyphs, glyph => glyph.glyphID);
+        atlasGlyphs.sort((a, b) => a.glyphKey.sortKey - b.glyphKey.sortKey);
+        atlasGlyphs = _.sortedUniqBy(atlasGlyphs, glyph => glyph.glyphKey.sortKey);
         if (atlasGlyphs.length === 0)
             return;
 
@@ -554,7 +555,7 @@ class TextDemoView extends MonochromePathfinderView {
         const hint = this.appController.createHint();
         const pixelsPerUnit = this.appController.pixelsPerUnit;
 
-        const atlasGlyphIDs = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphID);
+        const atlasGlyphIDs = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.id);
 
         const glyphTexCoords = new Float32Array(textFrame.totalGlyphCount * 8);
 
@@ -571,7 +572,7 @@ class TextDemoView extends MonochromePathfinderView {
 
                 // Set texture coordinates.
                 const atlasGlyph = atlasGlyphs[atlasGlyphIndex];
-                const atlasGlyphMetrics = font.metricsForGlyph(atlasGlyph.glyphID);
+                const atlasGlyphMetrics = font.metricsForGlyph(atlasGlyph.glyphKey.id);
                 if (atlasGlyphMetrics == null)
                     continue;
 
@@ -668,7 +669,7 @@ class Atlas {
 
         for (const glyph of glyphs) {
             // Place the glyph, and advance the origin.
-            const metrics = font.metricsForGlyph(glyph.glyphID);
+            const metrics = font.metricsForGlyph(glyph.glyphKey.id);
             if (metrics == null)
                 continue;
 
@@ -730,12 +731,12 @@ class Atlas {
 
 class AtlasGlyph {
     readonly glyphStoreIndex: number;
-    readonly glyphID: number;
+    readonly glyphKey: GlyphKey;
     readonly origin: glmatrix.vec2;
 
-    constructor(glyphStoreIndex: number, glyphID: number) {
+    constructor(glyphStoreIndex: number, glyphKey: GlyphKey) {
         this.glyphStoreIndex = glyphStoreIndex;
-        this.glyphID = glyphID;
+        this.glyphKey = glyphKey;
         this.origin = glmatrix.vec2.create();
     }
 
@@ -757,6 +758,18 @@ class AtlasGlyph {
 
     private setPixelOrigin(pixelOrigin: glmatrix.vec2, pixelsPerUnit: number): void {
         glmatrix.vec2.scale(this.origin, pixelOrigin, 1.0 / pixelsPerUnit);
+    }
+}
+
+class GlyphKey {
+    readonly id: number;
+
+    constructor(id: number) {
+        this.id = id;
+    }
+
+    get sortKey(): number {
+        return this.id;
     }
 }
 
