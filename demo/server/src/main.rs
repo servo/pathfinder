@@ -42,6 +42,8 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::u32;
 
+const CUBIC_ERROR_TOLERANCE: f32 = 0.1;
+
 static STATIC_INDEX_PATH: &'static str = "../client/index.html";
 static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text-demo.html";
 static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg-demo.html";
@@ -528,7 +530,8 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                                                 &control_point_1,
                                                 &endpoint_1);
                     last_point = endpoint_1;
-                    stream.extend(cubic.approximate_curve().map(|curve| curve.to_path_segment()));
+                    stream.extend(cubic.approximate_curve(CUBIC_ERROR_TOLERANCE)
+                                       .map(|curve| curve.to_path_segment()));
                 }
                 'Z' => stream.push(PathSegment::ClosePath),
                 _ => return Json(Err(PartitionSvgPathsError::UnknownSvgPathSegmentType)),

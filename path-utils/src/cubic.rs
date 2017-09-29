@@ -14,6 +14,8 @@ use euclid::Point2D;
 
 use curve::Curve;
 
+const MAX_APPROXIMATION_ITERATIONS: u8 = 32;
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct CubicCurve {
     pub endpoints: [Point2D<f32>; 2],
@@ -51,22 +53,23 @@ impl CubicCurve {
          CubicCurve::new(&p0p1p2p3, &p1p2p3, &p2p3, &p3))
     }
 
-    pub fn approximate_curve(&self) -> ApproximateCurveIter {
-        ApproximateCurveIter::new(self)
+    pub fn approximate_curve(&self, error_bound: f32) -> ApproximateCurveIter {
+        ApproximateCurveIter::new(self, error_bound)
     }
 }
 
-// FIXME(pcwalton): Do better. See: https://github.com/googlei18n/cu2qu
 pub struct ApproximateCurveIter {
-    curves: [CubicCurve; 2],
+    curves: Vec<CubicCurve>,
+    error_bound: f32,
     iteration: u8,
 }
 
 impl ApproximateCurveIter {
-    fn new(cubic: &CubicCurve) -> ApproximateCurveIter {
+    fn new(cubic: &CubicCurve, error_bound: f32) -> ApproximateCurveIter {
         let (curve_a, curve_b) = cubic.subdivide(0.5);
         ApproximateCurveIter {
-            curves: [curve_a, curve_b],
+            curves: vec![curve_b, curve_a],
+            error_bound: error_bound,
             iteration: 0,
         }
     }
@@ -76,11 +79,29 @@ impl Iterator for ApproximateCurveIter {
     type Item = Curve;
 
     fn next(&mut self) -> Option<Curve> {
-        let cubic = match self.curves.get(self.iteration as usize) {
-            Some(cubic) => *cubic,
+        let mut cubic = match self.curves.pop() {
+            Some(cubic) => cubic,
             None => return None,
         };
-        self.iteration += 1;
+
+        while self.iteration < MAX_APPROXIMATION_ITERATIONS {
+            self.iteration += 1;
+
+            // See Sederberg § 2.6, "Distance Between Two Bézier Curves".
+            let delta_control_point_0 = (cubic.endpoints[0] - cubic.control_points[0] * 3.0) +
+                (cubic.control_points[1] * 3.0 - cubic.endpoints[1]);
+            let delta_control_point_1 = (cubic.control_points[0] * 3.0 - cubic.endpoints[0]) +
+                (cubic.endpoints[1] - cubic.control_points[1] * 3.0);
+            let max_error = f32::max(delta_control_point_1.length(),
+                                     delta_control_point_0.length()) / 6.0;
+            if max_error < self.error_bound {
+                break
+            }
+
+            let (cubic_a, cubic_b) = cubic.subdivide(0.5);
+            self.curves.push(cubic_b);
+            cubic = cubic_a
+        }
 
         let approx_control_point_0 = (cubic.control_points[0] * 3.0 - cubic.endpoints[0]) * 0.5;
         let approx_control_point_1 = (cubic.control_points[1] * 3.0 - cubic.endpoints[1]) * 0.5;

@@ -17,6 +17,8 @@ use curve::Curve;
 use line::Line;
 use {lerp, sign};
 
+const MAX_ITERATIONS: u8 = 32;
+
 pub trait Intersect {
     fn min_x(&self) -> f32;
     fn max_x(&self) -> f32;
@@ -31,8 +33,11 @@ pub trait Intersect {
     fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Intersect {
         let mut min_x = f32::max(self.min_x(), other.min_x());
         let mut max_x = f32::min(self.max_x(), other.max_x());
+        let mut iteration = 0;
 
-        while max_x - min_x > f32::approx_epsilon() {
+        while iteration < MAX_ITERATIONS && max_x - min_x > f32::approx_epsilon() {
+            iteration += 1;
+
             let mid_x = lerp(min_x, max_x, 0.5);
             let min_sign = sign(self.solve_y_for_x(min_x) - other.solve_y_for_x(min_x));
             let mid_sign = sign(self.solve_y_for_x(mid_x) - other.solve_y_for_x(mid_x));
