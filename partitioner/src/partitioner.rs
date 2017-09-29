@@ -529,12 +529,17 @@ impl<'a> Partitioner<'a> {
             return emission_result
         }
 
+        if !self.should_subdivide_active_edge_at(upper_active_edge_index, right_x) ||
+                !self.should_subdivide_active_edge_at(lower_active_edge_index, right_x) {
+            return emission_result
+        }
+
         let upper_curve = self.subdivide_active_edge_at(upper_active_edge_index,
                                                         right_x,
                                                         SubdivisionType::Upper);
         for active_edge_index in (upper_active_edge_index + 1)..lower_active_edge_index {
-            if self.subdivide_active_edge_at(active_edge_index, right_x, SubdivisionType::Inside)
-                   .is_some() {
+            if self.should_subdivide_active_edge_at(active_edge_index, right_x) {
+                self.subdivide_active_edge_at(active_edge_index, right_x, SubdivisionType::Inside);
                 self.active_edges[active_edge_index as usize].toggle_parity();
             }
         }
@@ -542,13 +547,11 @@ impl<'a> Partitioner<'a> {
                                                         right_x,
                                                         SubdivisionType::Lower);
 
-        if let (Some(upper_curve), Some(lower_curve)) = (upper_curve, lower_curve) {
-            self.emit_b_quads(upper_active_edge_index,
-                              lower_active_edge_index,
-                              &upper_curve,
-                              &lower_curve,
-                              0);
-        }
+        self.emit_b_quads(upper_active_edge_index,
+                          lower_active_edge_index,
+                          &upper_curve,
+                          &lower_curve,
+                          0);
 
         emission_result
     }
@@ -1022,18 +1025,20 @@ impl<'a> Partitioner<'a> {
         }
     }
 
+    fn should_subdivide_active_edge_at(&self, active_edge_index: u32, x: f32) -> bool {
+        let left_curve_left = self.active_edges[active_edge_index as usize].left_vertex_index;
+        let left_point_position = self.b_vertex_positions[left_curve_left as usize];
+        x - left_point_position.x >= f32::approx_epsilon()
+    }
+
     /// Does *not* toggle parity. You must do this after calling this function.
     fn subdivide_active_edge_at(&mut self,
                                 active_edge_index: u32,
                                 x: f32,
                                 subdivision_type: SubdivisionType)
-                                -> Option<SubdividedActiveEdge> {
+                                -> SubdividedActiveEdge {
         let left_curve_left = self.active_edges[active_edge_index as usize].left_vertex_index;
         let left_point_position = self.b_vertex_positions[left_curve_left as usize];
-        if x - left_point_position.x < f32::approx_epsilon() {
-            // Too thin to make a difference. Forget it.
-            return None
-        }
 
         let t = self.solve_active_edge_t_for_x(x, &self.active_edges[active_edge_index as usize]);
 
@@ -1091,11 +1096,11 @@ impl<'a> Partitioner<'a> {
             }
         }
 
-        Some(SubdividedActiveEdge {
+        SubdividedActiveEdge {
             left_curve_left: left_curve_left,
             left_curve_control_point: left_curve_control_point_vertex_index,
             middle_point: active_edge.left_vertex_index,
-        })
+        }
     }
 
     fn prev_endpoint_of(&self, endpoint_index: u32) -> u32 {
