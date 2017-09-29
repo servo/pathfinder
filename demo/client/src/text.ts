@@ -107,11 +107,28 @@ export class TextRun {
         return textGlyphOrigin;
     }
 
-    pixelRectForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint): glmatrix.vec4 {
+    pixelRectForGlyphAt(index: number,
+                        pixelsPerUnit: number,
+                        hint: Hint,
+                        subpixelGranularity: number):
+                        glmatrix.vec4 {
         const metrics = unwrapNull(this.font.metricsForGlyph(this.glyphIDs[index]));
         const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index, pixelsPerUnit, hint);
+
+        textGlyphOrigin[0] *= subpixelGranularity;
         glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
+        textGlyphOrigin[0] /= subpixelGranularity;
+
         return calculatePixelRectForGlyph(metrics, textGlyphOrigin, pixelsPerUnit, hint);
+    }
+
+    subpixelForGlyphAt(index: number,
+                       pixelsPerUnit: number,
+                       hint: Hint,
+                       subpixelGranularity: number):
+                       number {
+        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index, pixelsPerUnit, hint)[0];
+        return Math.abs(Math.round(textGlyphOrigin * subpixelGranularity) % subpixelGranularity);
     }
 
     get measure(): number {
@@ -119,12 +136,6 @@ export class TextRun {
         if (lastGlyphID == null || lastAdvance == null)
             return 0.0;
         return lastAdvance + this.font.opentypeFont.glyphs.get(lastGlyphID).advanceWidth;
-    }
-
-    private pixelMetricsForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
-                                   PixelMetrics {
-        const metrics = unwrapNull(this.font.metricsForGlyph(index));
-        return calculatePixelMetricsForGlyph(metrics, pixelsPerUnit, hint);
     }
 }
 
@@ -293,25 +304,25 @@ export function calculatePixelDescent(metrics: Metrics, pixelsPerUnit: number): 
     return Math.ceil(-metrics.yMin * pixelsPerUnit);
 }
 
-function calculatePixelMetricsForGlyph(metrics: Metrics, pixelsPerUnit: number, hint: Hint):
-                                       PixelMetrics {
+function calculateSubpixelMetricsForGlyph(metrics: Metrics, pixelsPerUnit: number, hint: Hint):
+                                          PixelMetrics {
     const top = hint.hintPosition(glmatrix.vec2.fromValues(0, metrics.yMax))[1];
     return {
-        ascent: Math.ceil(top * pixelsPerUnit),
-        descent: calculatePixelDescent(metrics, pixelsPerUnit),
-        left: calculatePixelXMin(metrics, pixelsPerUnit),
-        right: Math.ceil(metrics.xMax * pixelsPerUnit),
+        ascent: top * pixelsPerUnit,
+        descent: metrics.yMin * pixelsPerUnit,
+        left: metrics.xMin * pixelsPerUnit,
+        right: metrics.xMax * pixelsPerUnit,
     };
 }
 
 export function calculatePixelRectForGlyph(metrics: Metrics,
-                                           pixelOrigin: glmatrix.vec2,
+                                           subpixelOrigin: glmatrix.vec2,
                                            pixelsPerUnit: number,
                                            hint: Hint):
                                            glmatrix.vec4 {
-        const pixelMetrics = calculatePixelMetricsForGlyph(metrics, pixelsPerUnit, hint);
-        return glmatrix.vec4.clone([pixelOrigin[0] + pixelMetrics.left,
-                                    pixelOrigin[1] - pixelMetrics.descent,
-                                    pixelOrigin[0] + pixelMetrics.right,
-                                    pixelOrigin[1] + pixelMetrics.ascent]);
-    }
+    const pixelMetrics = calculateSubpixelMetricsForGlyph(metrics, pixelsPerUnit, hint);
+    return glmatrix.vec4.clone([Math.floor(subpixelOrigin[0] + pixelMetrics.left),
+                                Math.floor(subpixelOrigin[1] + pixelMetrics.descent),
+                                Math.ceil(subpixelOrigin[0] + pixelMetrics.right),
+                                Math.ceil(subpixelOrigin[1] + pixelMetrics.ascent)]);
+}

@@ -29,7 +29,7 @@ import {calculatePixelDescent, calculatePixelRectForGlyph, PathfinderFont} from 
 import {BUILTIN_FONT_URI, calculatePixelXMin, GlyphStore, Hint, SimpleTextLayout} from "./text";
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
-import { MonochromePathfinderView, Timings, TIMINGS } from './view';
+import {MonochromePathfinderView, Timings, TIMINGS} from './view';
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves
@@ -206,17 +206,28 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
         const glyphStore = new GlyphStore(font, uniqueGlyphIDs);
         glyphStore.partition().then(result => {
+            const meshes = this.expandMeshes(result.meshes, uniqueGlyphIDs.length);
+
             this.view.then(view => {
                 this.font = font;
                 this.layout = newLayout;
                 this.glyphStore = glyphStore;
-                this.meshes = result.meshes;
+                this.meshes = meshes;
 
                 view.attachText();
                 view.uploadPathColors(1);
                 view.attachMeshes([this.meshes]);
             });
         });
+    }
+
+    private expandMeshes(meshes: PathfinderMeshData, glyphCount: number): PathfinderMeshData {
+        const pathIDs = [];
+        for (let glyphIndex = 0; glyphIndex < glyphCount; glyphIndex++) {
+            for (let subpixel = 0; subpixel < SUBPIXEL_GRANULARITY; subpixel++)
+                pathIDs.push(glyphIndex + 1);
+        }
+        return meshes.expand(pathIDs);
     }
 
     get atlas(): Atlas {
@@ -242,6 +253,10 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         return this.hintingSelect.selectedIndex !== 0;
     }
 
+    get pathCount(): number {
+        return this.glyphStore.glyphIDs.length * SUBPIXEL_GRANULARITY;
+    }
+
     protected get builtinFileURI(): string {
         return BUILTIN_FONT_URI;
     }
@@ -249,7 +264,6 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     protected get defaultFile(): string {
         return DEFAULT_FONT;
     }
-
 }
 
 class TextDemoView extends MonochromePathfinderView {
@@ -316,8 +330,7 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {
-        const atlasGlyphs = this.appController.atlasGlyphs;
-        const pathCount = atlasGlyphs.length;
+        const pathCount = this.appController.pathCount;
 
         const pathColors = new Uint8Array(4 * (pathCount + 1));
 
@@ -331,15 +344,15 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     protected pathTransformsForObject(objectIndex: number): Float32Array {
-        const glyphCount = this.appController.glyphStore.glyphIDs.length;
+        const pathCount = this.appController.pathCount;
         const atlasGlyphs = this.appController.atlasGlyphs;
         const pixelsPerUnit = this.appController.pixelsPerUnit;
 
-        const transforms = new Float32Array((glyphCount + 1) * 4);
+        const transforms = new Float32Array((pathCount + 1) * 4);
 
         for (const glyph of atlasGlyphs) {
-            const pathID = glyph.glyphStoreIndex + 1;
-            const atlasOrigin = glyph.calculatePixelOrigin(pixelsPerUnit);
+            const pathID = glyph.pathID;
+            const atlasOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
 
             transforms[pathID * 4 + 0] = pixelsPerUnit;
             transforms[pathID * 4 + 1] = pixelsPerUnit;
@@ -451,7 +464,10 @@ class TextDemoView extends MonochromePathfinderView {
             for (let glyphIndex = 0;
                  glyphIndex < run.glyphIDs.length;
                  glyphIndex++, globalGlyphIndex++) {
-                const rect = run.pixelRectForGlyphAt(glyphIndex, pixelsPerUnit, hint);
+                const rect = run.pixelRectForGlyphAt(glyphIndex,
+                                                     pixelsPerUnit,
+                                                     hint,
+                                                     SUBPIXEL_GRANULARITY);
                 glyphPositions.set([
                     rect[0], rect[3],
                     rect[2], rect[3],
@@ -494,7 +510,10 @@ class TextDemoView extends MonochromePathfinderView {
         let atlasGlyphs = [];
         for (const run of textFrame.runs) {
             for (let glyphIndex = 0; glyphIndex < run.glyphIDs.length; glyphIndex++) {
-                const pixelRect = run.pixelRectForGlyphAt(glyphIndex, pixelsPerUnit, hint);
+                const pixelRect = run.pixelRectForGlyphAt(glyphIndex,
+                                                          pixelsPerUnit,
+                                                          hint,
+                                                          SUBPIXEL_GRANULARITY);
                 if (!rectsIntersect(pixelRect, canvasRect))
                     continue;
 
@@ -503,7 +522,11 @@ class TextDemoView extends MonochromePathfinderView {
                 if (glyphStoreIndex == null)
                     continue;
 
-                const glyphKey = new GlyphKey(glyphID);
+                const subpixel = run.subpixelForGlyphAt(glyphIndex,
+                                                        pixelsPerUnit,
+                                                        hint,
+                                                        SUBPIXEL_GRANULARITY);
+                const glyphKey = new GlyphKey(glyphID, subpixel);
                 atlasGlyphs.push(new AtlasGlyph(glyphStoreIndex, glyphKey));
             }
         }
@@ -519,12 +542,12 @@ class TextDemoView extends MonochromePathfinderView {
         this.uploadPathTransforms(1);
 
         // TODO(pcwalton): Regenerate the IBOs to include only the glyphs we care about.
-        const glyphCount = this.appController.glyphStore.glyphIDs.length;
-        const pathHints = new Float32Array((glyphCount + 1) * 4);
+        const pathCount = this.appController.pathCount;
+        const pathHints = new Float32Array((pathCount + 1) * 4);
 
-        for (let glyphID = 0; glyphID < glyphCount; glyphID++) {
-            pathHints[glyphID * 4 + 0] = hint.xHeight;
-            pathHints[glyphID * 4 + 1] = hint.hintedXHeight;
+        for (let pathID = 0; pathID < pathCount; pathID++) {
+            pathHints[pathID * 4 + 0] = hint.xHeight;
+            pathHints[pathID * 4 + 1] = hint.hintedXHeight;
         }
 
         const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
@@ -555,7 +578,7 @@ class TextDemoView extends MonochromePathfinderView {
         const hint = this.appController.createHint();
         const pixelsPerUnit = this.appController.pixelsPerUnit;
 
-        const atlasGlyphIDs = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.id);
+        const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
 
         const glyphTexCoords = new Float32Array(textFrame.totalGlyphCount * 8);
 
@@ -566,7 +589,14 @@ class TextDemoView extends MonochromePathfinderView {
                  glyphIndex++, globalGlyphIndex++) {
                 const textGlyphID = run.glyphIDs[glyphIndex];
 
-                const atlasGlyphIndex = _.sortedIndexOf(atlasGlyphIDs, textGlyphID);
+                const subpixel = run.subpixelForGlyphAt(glyphIndex,
+                                                        pixelsPerUnit,
+                                                        hint,
+                                                        SUBPIXEL_GRANULARITY);
+
+                const glyphKey = new GlyphKey(textGlyphID, subpixel);
+
+                const atlasGlyphIndex = _.sortedIndexOf(atlasGlyphKeys, glyphKey.sortKey);
                 if (atlasGlyphIndex < 0)
                     continue;
 
@@ -576,7 +606,7 @@ class TextDemoView extends MonochromePathfinderView {
                 if (atlasGlyphMetrics == null)
                     continue;
 
-                const atlasGlyphPixelOrigin = atlasGlyph.calculatePixelOrigin(pixelsPerUnit);
+                const atlasGlyphPixelOrigin = atlasGlyph.calculateSubpixelOrigin(pixelsPerUnit);
                 const atlasGlyphRect = calculatePixelRectForGlyph(atlasGlyphMetrics,
                                                                   atlasGlyphPixelOrigin,
                                                                   pixelsPerUnit,
@@ -674,7 +704,7 @@ class Atlas {
                 continue;
 
             glyph.setPixelLowerLeft(nextOrigin, metrics, pixelsPerUnit);
-            let pixelOrigin = glyph.calculatePixelOrigin(pixelsPerUnit);
+            let pixelOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
             nextOrigin[0] = calculatePixelRectForGlyph(metrics,
                                                        pixelOrigin,
                                                        pixelsPerUnit,
@@ -684,7 +714,7 @@ class Atlas {
             if (nextOrigin[0] > ATLAS_SIZE[0]) {
                 nextOrigin = glmatrix.vec2.clone([1.0, shelfBottom + 1.0]);
                 glyph.setPixelLowerLeft(nextOrigin, metrics, pixelsPerUnit);
-                pixelOrigin = glyph.calculatePixelOrigin(pixelsPerUnit);
+                pixelOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
                 nextOrigin[0] = calculatePixelRectForGlyph(metrics,
                                                            pixelOrigin,
                                                            pixelsPerUnit,
@@ -700,7 +730,7 @@ class Atlas {
         }
 
         // FIXME(pcwalton): Could be more precise if we don't have a full row.
-        this._usedSize = glmatrix.vec2.fromValues(ATLAS_SIZE[0], shelfBottom);
+        this._usedSize = glmatrix.vec2.clone([ATLAS_SIZE[0], shelfBottom]);
     }
 
     ensureTexture(gl: WebGLRenderingContext): WebGLTexture {
@@ -740,10 +770,11 @@ class AtlasGlyph {
         this.origin = glmatrix.vec2.create();
     }
 
-    calculatePixelOrigin(pixelsPerUnit: number): glmatrix.vec2 {
+    calculateSubpixelOrigin(pixelsPerUnit: number): glmatrix.vec2 {
         const pixelOrigin = glmatrix.vec2.create();
         glmatrix.vec2.scale(pixelOrigin, this.origin, pixelsPerUnit);
         glmatrix.vec2.round(pixelOrigin, pixelOrigin);
+        pixelOrigin[0] += this.glyphKey.subpixel / SUBPIXEL_GRANULARITY;
         return pixelOrigin;
     }
 
@@ -759,17 +790,23 @@ class AtlasGlyph {
     private setPixelOrigin(pixelOrigin: glmatrix.vec2, pixelsPerUnit: number): void {
         glmatrix.vec2.scale(this.origin, pixelOrigin, 1.0 / pixelsPerUnit);
     }
+
+    get pathID(): number {
+        return this.glyphStoreIndex * SUBPIXEL_GRANULARITY + this.glyphKey.subpixel + 1;
+    }
 }
 
 class GlyphKey {
     readonly id: number;
+    readonly subpixel: number;
 
-    constructor(id: number) {
+    constructor(id: number, subpixel: number) {
         this.id = id;
+        this.subpixel = subpixel;
     }
 
     get sortKey(): number {
-        return this.id;
+        return this.id * SUBPIXEL_GRANULARITY + this.subpixel;
     }
 }
 

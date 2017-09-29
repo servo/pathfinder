@@ -11,7 +11,8 @@
 import * as base64js from 'base64-js';
 
 import * as _ from 'lodash';
-import { expectNotNull, panic, PathfinderError, UINT32_MAX, UINT32_SIZE } from './utils';
+import {expectNotNull, FLOAT32_SIZE, panic, PathfinderError, UINT16_SIZE} from './utils';
+import {UINT32_MAX, UINT32_SIZE} from './utils';
 
 const BUFFER_TYPES: Meshes<BufferType> = {
     bQuads: 'ARRAY_BUFFER',
@@ -172,11 +173,13 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
                         indexIndex => indexIndex % 4 < 3);
 
             // Copy over B-quads.
-            let firstBQuadIndex = findFirstBQuadIndex(bQuads, pathID);
+            let firstBQuadIndex = findFirstBQuadIndex(bQuads, bVertexPathIDs, pathID);
             if (firstBQuadIndex == null)
                 firstBQuadIndex = bQuads.length;
             const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
-            for (let bQuadIndex = firstBQuadIndex; bQuadIndex < bQuads.length; bQuadIndex++) {
+            for (let bQuadIndex = firstBQuadIndex;
+                 bQuadIndex < bQuads.length / B_QUAD_FIELD_COUNT;
+                 bQuadIndex++) {
                 const bQuad = bQuads[bQuadIndex];
                 if (bVertexPathIDs[bQuads[bQuadIndex * B_QUAD_FIELD_COUNT]] !== pathID)
                     break;
@@ -192,23 +195,48 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
             textGlyphIndex++;
         }
 
+        const expandedBQuadsBuffer = new ArrayBuffer(expandedBQuads.length * UINT32_SIZE);
+        const expandedBVertexLoopBlinnDataBuffer =
+            new ArrayBuffer(expandedBVertexLoopBlinnData.length * UINT32_SIZE);
+        const expandedBVertexPathIDsBuffer =
+            new ArrayBuffer(expandedBVertexPathIDs.length * UINT16_SIZE);
+        const expandedBVertexPositionsBuffer =
+            new ArrayBuffer(expandedBVertexPositions.length * FLOAT32_SIZE);
+        const expandedCoverCurveIndicesBuffer =
+            new ArrayBuffer(expandedCoverCurveIndices.length * UINT32_SIZE);
+        const expandedCoverInteriorIndicesBuffer =
+            new ArrayBuffer(expandedCoverInteriorIndices.length * UINT32_SIZE);
+        const expandedEdgeLowerCurveIndicesBuffer =
+            new ArrayBuffer(expandedEdgeLowerCurveIndices.length * UINT32_SIZE);
+        const expandedEdgeLowerLineIndicesBuffer =
+            new ArrayBuffer(expandedEdgeLowerLineIndices.length * UINT32_SIZE);
+        const expandedEdgeUpperCurveIndicesBuffer =
+            new ArrayBuffer(expandedEdgeUpperCurveIndices.length * UINT32_SIZE);
+        const expandedEdgeUpperLineIndicesBuffer =
+            new ArrayBuffer(expandedEdgeUpperLineIndices.length * UINT32_SIZE);
+
+        (new Uint32Array(expandedBQuadsBuffer)).set(expandedBQuads);
+        (new Uint32Array(expandedBVertexLoopBlinnDataBuffer)).set(expandedBVertexLoopBlinnData);
+        (new Uint16Array(expandedBVertexPathIDsBuffer)).set(expandedBVertexPathIDs);
+        (new Float32Array(expandedBVertexPositionsBuffer)).set(expandedBVertexPositions);
+        (new Uint32Array(expandedCoverCurveIndicesBuffer)).set(expandedCoverCurveIndices);
+        (new Uint32Array(expandedCoverInteriorIndicesBuffer)).set(expandedCoverInteriorIndices);
+        (new Uint32Array(expandedEdgeLowerCurveIndicesBuffer)).set(expandedEdgeLowerCurveIndices);
+        (new Uint32Array(expandedEdgeLowerLineIndicesBuffer)).set(expandedEdgeLowerLineIndices);
+        (new Uint32Array(expandedEdgeUpperCurveIndicesBuffer)).set(expandedEdgeUpperCurveIndices);
+        (new Uint32Array(expandedEdgeUpperLineIndicesBuffer)).set(expandedEdgeUpperLineIndices);
+
         return new PathfinderMeshData({
-            bQuads: new Uint32Array(expandedBQuads).buffer as ArrayBuffer,
-            bVertexLoopBlinnData: new Uint32Array(expandedBVertexLoopBlinnData).buffer as
-                ArrayBuffer,
-            bVertexPathIDs: new Uint16Array(expandedBVertexPathIDs).buffer as ArrayBuffer,
-            bVertexPositions: new Float32Array(expandedBVertexPositions).buffer as ArrayBuffer,
-            coverCurveIndices: new Uint32Array(expandedCoverCurveIndices).buffer as ArrayBuffer,
-            coverInteriorIndices: new Uint32Array(expandedCoverInteriorIndices).buffer as
-                ArrayBuffer,
-            edgeLowerCurveIndices: new Uint32Array(expandedEdgeLowerCurveIndices).buffer as
-                ArrayBuffer,
-            edgeLowerLineIndices: new Uint32Array(expandedEdgeLowerLineIndices).buffer as
-                ArrayBuffer,
-            edgeUpperCurveIndices: new Uint32Array(expandedEdgeUpperCurveIndices).buffer as
-                ArrayBuffer,
-            edgeUpperLineIndices: new Uint32Array(expandedEdgeUpperLineIndices).buffer as
-                ArrayBuffer,
+            bQuads: expandedBQuadsBuffer,
+            bVertexLoopBlinnData: expandedBVertexLoopBlinnDataBuffer,
+            bVertexPathIDs: expandedBVertexPathIDsBuffer,
+            bVertexPositions: expandedBVertexPositionsBuffer,
+            coverCurveIndices: expandedCoverCurveIndicesBuffer,
+            coverInteriorIndices: expandedCoverInteriorIndicesBuffer,
+            edgeLowerCurveIndices: expandedEdgeLowerCurveIndicesBuffer,
+            edgeLowerLineIndices: expandedEdgeLowerLineIndicesBuffer,
+            edgeUpperCurveIndices: expandedEdgeUpperCurveIndicesBuffer,
+            edgeUpperLineIndices: expandedEdgeUpperLineIndicesBuffer,
         });
     }
 }
@@ -264,15 +292,14 @@ function copyIndices(destIndices: number[],
     }
 }
 
-function findFirstBQuadIndex(bQuads: Uint32Array, queryPathID: number): number | null {
-    let low = 0, high = bQuads.length / B_QUAD_FIELD_COUNT;
-    while (low < high) {
-        const mid = low + (high - low) / 2;
-        const thisPathID = bQuads[mid * B_QUAD_FIELD_COUNT];
-        if (queryPathID <= thisPathID)
-            high = mid;
-        else
-            low = mid + 1;
+function findFirstBQuadIndex(bQuads: Uint32Array,
+                             bVertexPathIDs: Uint16Array,
+                             queryPathID: number):
+                             number | null {
+    for (let bQuadIndex = 0; bQuadIndex < bQuads.length / B_QUAD_FIELD_COUNT; bQuadIndex++) {
+        const thisPathID = bVertexPathIDs[bQuads[bQuadIndex * B_QUAD_FIELD_COUNT]];
+        if (thisPathID === queryPathID)
+            return bQuadIndex;
     }
-    return bQuads[low * B_QUAD_FIELD_COUNT] === queryPathID ? low : null;
+    return null;
 }
