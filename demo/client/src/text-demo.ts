@@ -79,8 +79,8 @@ const SUBPIXEL_GRANULARITY: number = 4;
 
 const ATLAS_SIZE: glmatrix.vec2 = glmatrix.vec2.fromValues(2048, 4096);
 
-const MIN_SCALE: number = 0.001;
-const MAX_SCALE: number = 10.0;
+const MIN_SCALE: number = 0.0025;
+const MAX_SCALE: number = 0.5;
 
 declare global {
     interface Window {
