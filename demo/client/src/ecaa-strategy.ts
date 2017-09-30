@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {AntialiasingStrategy} from './aa-strategy';
+import { AntialiasingStrategy, SubpixelAAType } from './aa-strategy';
 import PathfinderBufferTexture from './buffer-texture';
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, setTextureParameters, UniformMap} from './gl-utils';
@@ -35,7 +35,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     protected supersampledFramebufferSize: glmatrix.vec2;
     protected destFramebufferSize: glmatrix.vec2;
 
-    protected subpixelAA: boolean;
+    protected subpixelAA: SubpixelAAType;
 
     private bVertexPositionBufferTexture: PathfinderBufferTexture;
     private bVertexPathIDBufferTexture: PathfinderBufferTexture;
@@ -47,7 +47,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     private curveVAOs: UpperAndLower<WebGLVertexArrayObject>;
     private resolveVAO: WebGLVertexArrayObject;
 
-    constructor(level: number, subpixelAA: boolean) {
+    constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
 
         this.subpixelAA = subpixelAA;
@@ -472,13 +472,13 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     protected get supersampleScale(): glmatrix.vec2 {
-        return glmatrix.vec2.fromValues(this.subpixelAA ? 3.0 : 1.0, 1.0);
+        return glmatrix.vec2.fromValues(this.subpixelAA !== 'none' ? 3.0 : 1.0, 1.0);
     }
 }
 
 export class ECAAMonochromeStrategy extends ECAAStrategy {
     protected getResolveProgram(view: MonochromePathfinderView): PathfinderShaderProgram {
-        if (this.subpixelAA)
+        if (this.subpixelAA !== 'none')
             return view.shaderPrograms.ecaaMonoSubpixelResolve;
         return view.shaderPrograms.ecaaMonoResolve;
     }

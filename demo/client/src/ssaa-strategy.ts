@@ -10,14 +10,14 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {AntialiasingStrategy} from './aa-strategy';
+import {AntialiasingStrategy, SubpixelAAType} from './aa-strategy';
 import {createFramebuffer, createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
 import {unwrapNull} from './utils';
 import {PathfinderDemoView} from './view';
 
 export default class SSAAStrategy extends AntialiasingStrategy {
     private level: number;
-    private subpixelAA: boolean;
+    private subpixelAA: SubpixelAAType;
 
     private destFramebufferSize: glmatrix.vec2;
     private supersampledFramebufferSize: glmatrix.vec2;
@@ -25,7 +25,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     private supersampledDepthTexture: WebGLTexture;
     private supersampledFramebuffer: WebGLFramebuffer;
 
-    constructor(level: number, subpixelAA: boolean) {
+    constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
         this.level = level;
         this.subpixelAA = subpixelAA;
@@ -96,7 +96,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
         // Set up the blit program VAO.
         let resolveProgram;
-        if (this.subpixelAA)
+        if (this.subpixelAA !== 'none')
             resolveProgram = view.shaderPrograms.ssaaSubpixelResolve;
         else
             resolveProgram = view.shaderPrograms.blit;
@@ -120,7 +120,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     }
 
     private get supersampleScale(): glmatrix.vec2 {
-        return glmatrix.vec2.fromValues(this.subpixelAA ? 3 : 2, this.level === 2 ? 1 : 2);
+        return glmatrix.vec2.clone([this.subpixelAA !== 'none' ? 3 : 2, this.level === 2 ? 1 : 2]);
     }
 
     private usedSupersampledFramebufferSize(view: PathfinderDemoView): glmatrix.vec2 {

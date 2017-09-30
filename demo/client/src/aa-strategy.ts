@@ -14,6 +14,8 @@ import {PathfinderDemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'ecaa';
 
+export type SubpixelAAType = 'none' | 'medium' | 'strong';
+
 export abstract class AntialiasingStrategy {
     // True if direct rendering should occur.
     shouldRenderDirect: boolean;
@@ -51,7 +53,7 @@ export abstract class AntialiasingStrategy {
 export class NoAAStrategy extends AntialiasingStrategy {
     framebufferSize: glmatrix.vec2;
 
-    constructor(level: number, subpixelAA: boolean) {
+    constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
         this.framebufferSize = glmatrix.vec2.create();
     }

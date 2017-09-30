@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-import {AntialiasingStrategyName} from "./aa-strategy";
+import { AntialiasingStrategyName, SubpixelAAType } from "./aa-strategy";
 import {FilePickerView} from "./file-picker";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapNull, unwrapUndef} from './utils';
@@ -56,7 +56,7 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
     protected shaderSources: ShaderMap<ShaderProgramSource> | null;
 
     private aaLevelSelect: HTMLSelectElement | null;
-    private subpixelAASwitch: HTMLInputElement | null;
+    private subpixelAASelect: HTMLSelectElement | null;
     private fpsLabel: HTMLElement | null;
 
     constructor() {
@@ -143,10 +143,10 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
         if (this.aaLevelSelect != null)
             this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
 
-        this.subpixelAASwitch =
-            document.getElementById('pf-subpixel-aa') as HTMLInputElement | null;
-        if (this.subpixelAASwitch != null)
-            this.subpixelAASwitch.addEventListener('change', () => this.updateAALevel(), false);
+        this.subpixelAASelect =
+            document.getElementById('pf-subpixel-aa-select') as HTMLSelectElement | null;
+        if (this.subpixelAASelect != null)
+            this.subpixelAASelect.addEventListener('change', () => this.updateAALevel(), false);
 
         this.updateAALevel();
     }
@@ -191,7 +191,11 @@ export abstract class DemoAppController<View extends PathfinderDemoView> extends
             aaLevel = 0;
         }
 
-        const subpixelAA = this.subpixelAASwitch == null ? false : this.subpixelAASwitch.checked;
+        let subpixelAA: SubpixelAAType;
+        if (this.subpixelAASelect != null)
+            subpixelAA = this.subpixelAASelect.selectedOptions[0].value as SubpixelAAType;
+        else
+            subpixelAA = 'none';
         this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel, subpixelAA));
     }
 

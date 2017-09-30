@@ -14,6 +14,7 @@ import * as opentype from "opentype.js";
 
 import {mat4, vec2} from "gl-matrix";
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import {SubpixelAAType} from "./aa-strategy";
 import {DemoAppController} from "./app-controller";
 import PathfinderBufferTexture from "./buffer-texture";
 import {PerspectiveCamera} from "./camera";
@@ -285,7 +286,7 @@ class ThreeDView extends PathfinderDemoView {
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
                                aaLevel: number,
-                               subpixelAA: boolean):
+                               subpixelAA: SubpixelAAType):
                                AntialiasingStrategy {
         if (aaType !== 'ecaa')
             return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);

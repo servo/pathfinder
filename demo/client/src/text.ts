@@ -99,27 +99,32 @@ export class TextRun {
         }
     }
 
-    calculatePixelOriginForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
+    calculatePixelOriginForGlyphAt(index: number,
+                                   layoutPixelsPerUnit: number,
+                                   hint: Hint):
                                    glmatrix.vec2 {
         const textGlyphOrigin = glmatrix.vec2.clone(this.origin);
         textGlyphOrigin[0] += this.advances[index];
-        glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, pixelsPerUnit);
+        glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, layoutPixelsPerUnit);
         return textGlyphOrigin;
     }
 
     pixelRectForGlyphAt(index: number,
-                        pixelsPerUnit: number,
+                        layoutPixelsPerUnit: number,
+                        displayPixelsPerUnit: number,
                         hint: Hint,
                         subpixelGranularity: number):
                         glmatrix.vec4 {
         const metrics = unwrapNull(this.font.metricsForGlyph(this.glyphIDs[index]));
-        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index, pixelsPerUnit, hint);
+        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index,
+                                                                    layoutPixelsPerUnit,
+                                                                    hint);
 
         textGlyphOrigin[0] *= subpixelGranularity;
         glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
         textGlyphOrigin[0] /= subpixelGranularity;
 
-        return calculatePixelRectForGlyph(metrics, textGlyphOrigin, pixelsPerUnit, hint);
+        return calculatePixelRectForGlyph(metrics, textGlyphOrigin, displayPixelsPerUnit, hint);
     }
 
     subpixelForGlyphAt(index: number,

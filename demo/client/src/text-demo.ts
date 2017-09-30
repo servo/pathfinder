@@ -14,7 +14,8 @@ import * as _ from 'lodash';
 import * as opentype from 'opentype.js';
 
 import {Metrics} from 'opentype.js';
-import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
+import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import {SubpixelAAType} from './aa-strategy';
 import {DemoAppController} from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from "./camera";
@@ -70,6 +71,11 @@ And the mome raths outgrabe.`;
 const INITIAL_FONT_SIZE: number = 72.0;
 
 const DEFAULT_FONT: string = 'open-sans';
+
+const FONT_DILATION_FACTOR: number = 1.0242;
+
+/// In pixels.
+const MAX_FONT_DILATION: number = 0.3;
 
 const B_POSITION_SIZE: number = 8;
 
@@ -172,10 +178,6 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         window.jQuery(this.editTextModal).modal();
     }
 
-    createHint(): Hint {
-        return new Hint(this.font, this.pixelsPerUnit, this.useHinting);
-    }
-
     protected createView() {
         return new TextDemoView(this,
                                 unwrapNull(this.commonShaderSource),
@@ -245,7 +247,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         this.view.then(view => view.relayoutText());
     }
 
-    get pixelsPerUnit(): number {
+    get layoutPixelsPerUnit(): number {
         return this._fontSize / this.font.opentypeFont.unitsPerEm;
     }
 
@@ -282,6 +284,8 @@ class TextDemoView extends MonochromePathfinderView {
     readonly fgColor: glmatrix.vec4 = glmatrix.vec4.fromValues(0.0, 0.0, 0.0, 1.0);
 
     protected depthFunction: number = this.gl.GREATER;
+
+    private subpixelAA: SubpixelAAType;
 
     constructor(appController: TextDemoController,
                 commonShaderSource: string,
@@ -327,6 +331,17 @@ class TextDemoView extends MonochromePathfinderView {
         this.setDirty();
     }
 
+    setAntialiasingOptions(aaType: AntialiasingStrategyName,
+                           aaLevel: number,
+                           subpixelAA: SubpixelAAType) {
+        super.setAntialiasingOptions(aaType, aaLevel, subpixelAA);
+
+        // Need to relayout because changing AA options can cause font dilation to change...
+        this.layoutText();
+        this.buildAtlasGlyphs();
+        this.setDirty();
+    }
+
     protected initContext() {
         super.initContext();
     }
@@ -348,7 +363,7 @@ class TextDemoView extends MonochromePathfinderView {
     protected pathTransformsForObject(objectIndex: number): Float32Array {
         const pathCount = this.appController.pathCount;
         const atlasGlyphs = this.appController.atlasGlyphs;
-        const pixelsPerUnit = this.appController.pixelsPerUnit;
+        const pixelsPerUnit = this.displayPixelsPerUnit;
 
         const transforms = new Float32Array((pathCount + 1) * 4);
 
@@ -435,13 +450,20 @@ class TextDemoView extends MonochromePathfinderView {
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
                                aaLevel: number,
-                               subpixelAA: boolean):
+                               subpixelAA: SubpixelAAType):
                                AntialiasingStrategy {
+        this.subpixelAA = subpixelAA;
         return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
     protected newTimingsReceived() {
         this.appController.newTimingsReceived(this.lastTimings);
+    }
+
+    private createHint(): Hint {
+        return new Hint(this.appController.font,
+                        this.displayPixelsPerUnit,
+                        this.appController.useHinting);
     }
 
     /// Lays out glyphs on the canvas.
@@ -456,8 +478,9 @@ class TextDemoView extends MonochromePathfinderView {
         const glyphPositions = new Float32Array(totalGlyphCount * 8);
         const glyphIndices = new Uint32Array(totalGlyphCount * 6);
 
-        const hint = this.appController.createHint();
-        const pixelsPerUnit = this.appController.pixelsPerUnit;
+        const hint = this.createHint();
+        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+        const layoutPixelsPerUnit = this.appController.layoutPixelsPerUnit;
 
         let globalGlyphIndex = 0;
         for (const run of layout.textFrame.runs) {
@@ -465,7 +488,8 @@ class TextDemoView extends MonochromePathfinderView {
                  glyphIndex < run.glyphIDs.length;
                  glyphIndex++, globalGlyphIndex++) {
                 const rect = run.pixelRectForGlyphAt(glyphIndex,
-                                                     pixelsPerUnit,
+                                                     layoutPixelsPerUnit,
+                                                     displayPixelsPerUnit,
                                                      hint,
                                                      SUBPIXEL_GRANULARITY);
                 glyphPositions.set([
@@ -495,10 +519,11 @@ class TextDemoView extends MonochromePathfinderView {
     private buildAtlasGlyphs() {
         const font = this.appController.font;
         const glyphStore = this.appController.glyphStore;
-        const pixelsPerUnit = this.appController.pixelsPerUnit;
+        const layoutPixelsPerUnit = this.appController.layoutPixelsPerUnit;
+        const displayPixelsPerUnit = this.displayPixelsPerUnit;
 
         const textFrame = this.appController.layout.textFrame;
-        const hint = this.appController.createHint();
+        const hint = this.createHint();
 
         // Only build glyphs in view.
         const translation = this.camera.translation;
@@ -511,7 +536,8 @@ class TextDemoView extends MonochromePathfinderView {
         for (const run of textFrame.runs) {
             for (let glyphIndex = 0; glyphIndex < run.glyphIDs.length; glyphIndex++) {
                 const pixelRect = run.pixelRectForGlyphAt(glyphIndex,
-                                                          pixelsPerUnit,
+                                                          layoutPixelsPerUnit,
+                                                          displayPixelsPerUnit,
                                                           hint,
                                                           SUBPIXEL_GRANULARITY);
                 if (!rectsIntersect(pixelRect, canvasRect))
@@ -523,7 +549,7 @@ class TextDemoView extends MonochromePathfinderView {
                     continue;
 
                 const subpixel = run.subpixelForGlyphAt(glyphIndex,
-                                                        pixelsPerUnit,
+                                                        layoutPixelsPerUnit,
                                                         hint,
                                                         SUBPIXEL_GRANULARITY);
                 const glyphKey = new GlyphKey(glyphID, subpixel);
@@ -537,7 +563,7 @@ class TextDemoView extends MonochromePathfinderView {
             return;
 
         this.appController.atlasGlyphs = atlasGlyphs;
-        this.appController.atlas.layoutGlyphs(atlasGlyphs, font, pixelsPerUnit, hint);
+        this.appController.atlas.layoutGlyphs(atlasGlyphs, font, displayPixelsPerUnit, hint);
 
         this.uploadPathTransforms(1);
 
@@ -577,8 +603,9 @@ class TextDemoView extends MonochromePathfinderView {
         const font = this.appController.font;
         const atlasGlyphs = this.appController.atlasGlyphs;
 
-        const hint = this.appController.createHint();
-        const pixelsPerUnit = this.appController.pixelsPerUnit;
+        const hint = this.createHint();
+        const layoutPixelsPerUnit = this.appController.layoutPixelsPerUnit;
+        const displayPixelsPerUnit = this.displayPixelsPerUnit;
 
         const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
 
@@ -592,7 +619,7 @@ class TextDemoView extends MonochromePathfinderView {
                 const textGlyphID = run.glyphIDs[glyphIndex];
 
                 const subpixel = run.subpixelForGlyphAt(glyphIndex,
-                                                        pixelsPerUnit,
+                                                        layoutPixelsPerUnit,
                                                         hint,
                                                         SUBPIXEL_GRANULARITY);
 
@@ -608,10 +635,10 @@ class TextDemoView extends MonochromePathfinderView {
                 if (atlasGlyphMetrics == null)
                     continue;
 
-                const atlasGlyphPixelOrigin = atlasGlyph.calculateSubpixelOrigin(pixelsPerUnit);
+                const atlasGlyphPixelOrigin = atlasGlyph.calculateSubpixelOrigin(displayPixelsPerUnit);
                 const atlasGlyphRect = calculatePixelRectForGlyph(atlasGlyphMetrics,
                                                                   atlasGlyphPixelOrigin,
-                                                                  pixelsPerUnit,
+                                                                  displayPixelsPerUnit,
                                                                   hint);
                 const atlasGlyphBL = atlasGlyphRect.slice(0, 2) as glmatrix.vec2;
                 const atlasGlyphTR = atlasGlyphRect.slice(2, 4) as glmatrix.vec2;
@@ -677,6 +704,18 @@ class TextDemoView extends MonochromePathfinderView {
 
     protected get directInteriorProgramName(): keyof ShaderMap<void> {
         return 'directInterior';
+    }
+
+    /// Pixels per unit, including dilation.
+    private get displayPixelsPerUnit(): number {
+        // FIXME(pcwalton): Check against Cocoa and make sure this is what they do.
+        const layoutPixelsPerUnit = this.appController.layoutPixelsPerUnit;
+        if (this.subpixelAA !== 'strong')
+            return layoutPixelsPerUnit;
+
+        const ascender = this.appController.font.opentypeFont.ascender * layoutPixelsPerUnit;
+        const maxFontDilationFactor = (ascender + MAX_FONT_DILATION) / ascender;
+        return Math.min(maxFontDilationFactor, FONT_DILATION_FACTOR) * layoutPixelsPerUnit;
     }
 }
 

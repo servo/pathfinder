@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import { AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy, SubpixelAAType } from "./aa-strategy";
 import PathfinderBufferTexture from './buffer-texture';
 import {Camera} from "./camera";
 import {QUAD_ELEMENTS, UniformMap} from './gl-utils';
@@ -164,13 +164,13 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
         this.wantsScreenshot = false;
 
-        this.antialiasingStrategy = new NoAAStrategy(0, false);
+        this.antialiasingStrategy = new NoAAStrategy(0, 'none');
         this.antialiasingStrategy.init(this);
     }
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
                            aaLevel: number,
-                           subpixelAA: boolean) {
+                           subpixelAA: SubpixelAAType) {
         this.antialiasingStrategy = this.createAAStrategy(aaType, aaLevel, subpixelAA);
 
         const canvas = this.canvas;
@@ -385,7 +385,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
                                         aaLevel: number,
-                                        subpixelAA: boolean):
+                                        subpixelAA: SubpixelAAType):
                                         AntialiasingStrategy;
 
     protected abstract compositeIfNecessary(): void;
