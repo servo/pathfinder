@@ -321,6 +321,8 @@ class TextDemoView extends MonochromePathfinderView {
     }
 
     updateHinting(): void {
+        // Need to relayout the text because the pixel bounds of the glyphs can change from this...
+        this.layoutText();
         this.buildAtlasGlyphs();
         this.setDirty();
     }
@@ -371,8 +373,6 @@ class TextDemoView extends MonochromePathfinderView {
     protected onZoom() {
         this.appController.fontSize = this.camera.scale *
             this.appController.font.opentypeFont.unitsPerEm;
-        this.buildAtlasGlyphs();
-        this.setDirty();
     }
 
     protected compositeIfNecessary() {
@@ -548,6 +548,8 @@ class TextDemoView extends MonochromePathfinderView {
         for (let pathID = 0; pathID < pathCount; pathID++) {
             pathHints[pathID * 4 + 0] = hint.xHeight;
             pathHints[pathID * 4 + 1] = hint.hintedXHeight;
+            pathHints[pathID * 4 + 2] = hint.stemHeight;
+            pathHints[pathID * 4 + 3] = hint.hintedStemHeight;
         }
 
         const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');

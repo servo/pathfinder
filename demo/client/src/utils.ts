@@ -54,6 +54,10 @@ export function scaleRect(rect: glmatrix.vec4, scale: number): glmatrix.vec4 {
     return glmatrix.vec4.clone([upperLeft[0], upperLeft[1], lowerRight[0], lowerRight[1]]);
 }
 
+export function lerp(a: number, b: number, t: number): number {
+    return a + (b - a) * t;
+}
+
 export class PathfinderError extends Error {
     constructor(message?: string | undefined) {
         super(message);

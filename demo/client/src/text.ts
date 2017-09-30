@@ -15,7 +15,7 @@ import * as opentype from "opentype.js";
 import {Metrics} from 'opentype.js';
 
 import {B_QUAD_SIZE, PathfinderMeshData} from "./meshes";
-import {assert, panic, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils";
+import {assert, lerp, panic, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils";
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
 
@@ -262,6 +262,8 @@ export class SimpleTextLayout {
 export class Hint {
     readonly xHeight: number;
     readonly hintedXHeight: number;
+    readonly stemHeight: number;
+    readonly hintedStemHeight: number;
 
     private useHinting: boolean;
 
@@ -270,29 +272,41 @@ export class Hint {
 
         const os2Table = font.opentypeFont.tables.os2;
         this.xHeight = os2Table.sxHeight != null ? os2Table.sxHeight : 0;
+        this.stemHeight = os2Table.sCapHeight != null ? os2Table.sCapHeight : 0;
 
         if (!useHinting) {
             this.hintedXHeight = this.xHeight;
+            this.hintedStemHeight = this.stemHeight;
         } else {
             this.hintedXHeight = Math.ceil(Math.ceil(this.xHeight * pixelsPerUnit) /
                                            pixelsPerUnit);
+            this.hintedStemHeight = Math.ceil(Math.ceil(this.stemHeight * pixelsPerUnit) /
+                                              pixelsPerUnit);
         }
     }
 
+    /// NB: This must match `hintPosition()` in `common.inc.glsl`.
     hintPosition(position: glmatrix.vec2): glmatrix.vec2 {
         if (!this.useHinting)
             return position;
 
-        if (position[1] < 0.0)
-            return position;
-
-        if (position[1] >= this.hintedXHeight) {
-            return glmatrix.vec2.fromValues(position[0],
-                                            position[1] - this.xHeight + this.hintedXHeight);
+        if (position[1] >= this.stemHeight) {
+            const y = position[1] - this.stemHeight + this.hintedStemHeight;
+            return glmatrix.vec2.clone([position[0], y]);
         }
 
-        return glmatrix.vec2.fromValues(position[0],
-                                        position[1] / this.xHeight * this.hintedXHeight);
+        if (position[1] >= this.xHeight) {
+            const y = lerp(this.hintedXHeight, this.hintedStemHeight,
+                           (position[1] - this.xHeight) / (this.stemHeight - this.xHeight));
+            return glmatrix.vec2.clone([position[0], y]);
+        }
+
+        if (position[1] >= 0.0) {
+            const y = lerp(0.0, this.hintedXHeight, position[1] / this.xHeight);
+            return glmatrix.vec2.clone([position[0], y]);
+        }
+
+        return position;
     }
 }
 

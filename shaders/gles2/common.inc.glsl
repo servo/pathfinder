@@ -40,12 +40,24 @@ vec2 transformVertexPositionST(vec2 position, vec4 stTransform) {
     return position * stTransform.xy + stTransform.zw;
 }
 
+/// pathHints.x: xHeight
+/// pathHints.y: hintedXHeight
+/// pathHints.z: stemHeight
+/// pathHints.w: hintedStemHeight
 vec2 hintPosition(vec2 position, vec4 pathHints) {
-    if (position.y <= 0.0)
-        return position;
-    if (position.y >= pathHints.x)
-        return vec2(position.x, position.y - pathHints.x + pathHints.y);
-    return vec2(position.x, position.y / pathHints.x * pathHints.y);
+    float y;
+    if (position.y >= pathHints.z) {
+        y = position.y - pathHints.z + pathHints.w;
+    } else if (position.y >= pathHints.x) {
+        float t = (position.y - pathHints.x) / (pathHints.z - pathHints.x);
+        y = mix(pathHints.y, pathHints.w, t);
+    } else if (position.y >= 0.0) {
+        y = mix(0.0, pathHints.y, position.y / pathHints.x);
+    } else {
+        y = position.y;
+    }
+
+    return vec2(position.x, y);
 }
 
 vec2 convertClipToScreenSpace(vec2 position, ivec2 framebufferSize) {
