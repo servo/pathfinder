@@ -49,6 +49,36 @@ impl MeshLibrary {
         self.edge_indices.clear();
     }
 
+    /// Reverses interior indices so that they draw front-to-back.
+    ///
+    /// This enables early Z optimizations.
+    pub fn optimize(&mut self) {
+        let mut new_cover_interior_indices =
+            Vec::with_capacity(self.cover_indices.interior_indices.len());
+        let mut last_cover_interior_index_index = self.cover_indices.interior_indices.len();
+        while last_cover_interior_index_index != 0 {
+            let mut first_cover_interior_index_index = last_cover_interior_index_index - 1;
+            let path_id =
+                self.b_vertex_path_ids[self.cover_indices
+                                           .interior_indices[first_cover_interior_index_index] as
+                                       usize];
+            while first_cover_interior_index_index != 0 {
+                let prev_path_id = self.b_vertex_path_ids[
+                    self.cover_indices.interior_indices[first_cover_interior_index_index - 1] as
+                    usize];
+                if prev_path_id != path_id {
+                    break
+                }
+                first_cover_interior_index_index -= 1
+            }
+            let range = first_cover_interior_index_index..last_cover_interior_index_index;
+            new_cover_interior_indices.extend_from_slice(&self.cover_indices
+                                                              .interior_indices[range]);
+            last_cover_interior_index_index = first_cover_interior_index_index;
+        }
+        self.cover_indices.interior_indices = new_cover_interior_indices
+    }
+
     /// Writes this mesh library to a RIFF file.
     /// 
     /// RIFF is a dead-simple extensible binary format documented here:
