@@ -15,11 +15,9 @@ extern crate alloc_jemalloc;
 extern crate bit_vec;
 extern crate env_logger;
 extern crate euclid;
-extern crate half;
 #[macro_use]
 extern crate log;
 extern crate pathfinder_path_utils;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 
@@ -29,7 +27,6 @@ use std::u32;
 
 pub mod capi;
 pub mod geometry;
-pub mod legalizer;
 pub mod partitioner;
 
 #[repr(C)]

@@ -2,7 +2,6 @@
 
 use env_logger;
 use euclid::Point2D;
-use legalizer::Legalizer;
 use partitioner::Partitioner;
 use std::mem;
 use std::slice;
@@ -53,87 +52,6 @@ pub struct EdgeIndices {
     pub lower_line_indices_len: u32,
     pub lower_curve_indices: *const CurveIndices,
     pub lower_curve_indices_len: u32,
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_new() -> *mut Legalizer {
-    let mut legalizer = Box::new(Legalizer::new());
-    let legalizer_ptr: *mut Legalizer = &mut *legalizer;
-    mem::forget(legalizer);
-    legalizer_ptr
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_destroy(legalizer: *mut Legalizer) {
-    drop(mem::transmute::<*mut Legalizer, Box<Legalizer>>(legalizer))
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_endpoints(legalizer: *const Legalizer,
-                                            out_endpoint_count: *mut u32)
-                                            -> *const Endpoint {
-    let endpoints = (*legalizer).endpoints();
-    if !out_endpoint_count.is_null() {
-        *out_endpoint_count = endpoints.len() as u32
-    }
-    endpoints.as_ptr()
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_control_points(legalizer: *const Legalizer,
-                                                 out_control_points_count: *mut u32)
-                                                 -> *const Point2DF32 {
-    let control_points = (*legalizer).control_points();
-    if !out_control_points_count.is_null() {
-        *out_control_points_count = control_points.len() as u32
-    }
-    // FIXME(pcwalton): This is unsafe! `Point2D<f32>` and `Point2DF32` may have different layouts!
-    control_points.as_ptr() as *const Point2DF32
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_subpaths(legalizer: *const Legalizer,
-                                           out_subpaths_count: *mut u32)
-                                           -> *const Subpath {
-    let subpaths = (*legalizer).subpaths();
-    if !out_subpaths_count.is_null() {
-        *out_subpaths_count = subpaths.len() as u32
-    }
-    subpaths.as_ptr()
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_move_to(legalizer: *mut Legalizer,
-                                          position: *const Point2DF32) {
-    (*legalizer).move_to(&(*position).to_point2d())
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_close_path(legalizer: *mut Legalizer) {
-    (*legalizer).close_path()
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_line_to(legalizer: *mut Legalizer,
-                                          endpoint: *const Point2DF32) {
-    (*legalizer).line_to(&(*endpoint).to_point2d())
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_quadratic_curve_to(legalizer: *mut Legalizer,
-                                                     control_point: *const Point2DF32,
-                                                     endpoint: *const Point2DF32) {
-    (*legalizer).quadratic_curve_to(&(*control_point).to_point2d(), &(*endpoint).to_point2d())
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_legalizer_bezier_curve_to(legalizer: *mut Legalizer,
-                                                  point1: *const Point2DF32,
-                                                  point2: *const Point2DF32,
-                                                  endpoint: *const Point2DF32) {
-    (*legalizer).bezier_curve_to(&(*point1).to_point2d(),
-                                 &(*point2).to_point2d(),
-                                 &(*endpoint).to_point2d())
 }
 
 #[no_mangle]
