@@ -235,8 +235,9 @@ export class GlyphStore {
             const response = JSON.parse(responseText);
             if (!('Ok' in response))
                 panic(`Failed to partition the font: ${response.Err}`);
+            const meshes = base64js.toByteArray(response.Ok.pathData);
             return {
-                meshes: new PathfinderMeshData(response.Ok.pathData),
+                meshes: new PathfinderMeshData(meshes.buffer as ArrayBuffer),
                 time: response.Ok.time,
             };
         });

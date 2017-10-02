@@ -7,7 +7,6 @@
 
 extern crate app_units;
 extern crate base64;
-extern crate bincode;
 extern crate env_logger;
 extern crate euclid;
 extern crate fontsan;
@@ -16,13 +15,11 @@ extern crate pathfinder_partitioner;
 extern crate pathfinder_path_utils;
 extern crate rocket;
 extern crate rocket_contrib;
-extern crate serde;
 
 #[macro_use]
 extern crate serde_derive;
 
 use app_units::Au;
-use bincode::Infinite;
 use euclid::{Point2D, Size2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
 use pathfinder_partitioner::mesh_library::{MeshLibrary, MeshLibraryIndexRanges};
@@ -35,10 +32,8 @@ use rocket::http::{ContentType, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
 use rocket_contrib::json::Json;
-use serde::Serialize;
 use std::fs::File;
-use std::io::{self, Read};
-use std::mem;
+use std::io::{self, Cursor, Read};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -138,7 +133,7 @@ struct PartitionFontResponse {
     #[serde(rename = "glyphInfo")]
     glyph_info: Vec<PartitionGlyphInfo>,
     #[serde(rename = "pathData")]
-    path_data: PartitionEncodedPathData,
+    path_data: String,
     time: f64,
 }
 
@@ -175,40 +170,6 @@ impl PartitionPathIndices {
             edge_lower_curve_indices: index_ranges.edge_lower_curve_indices,
         }
     }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct PartitionEncodedPathData {
-    // Base64-encoded `bincode`-encoded `BQuad`s.
-    #[serde(rename = "bQuads")]
-    b_quads: String,
-    // Base64-encoded `bincode`-encoded `Point2D<f32>`s.
-    #[serde(rename = "bVertexPositions")]
-    b_vertex_positions: String,
-    // Base64-encoded `bincode`-encoded `u16`s.
-    #[serde(rename = "bVertexPathIDs")]
-    b_vertex_path_ids: String,
-    // Base64-encoded `bincode`-encoded `BVertexLoopBlinnData`s.
-    #[serde(rename = "bVertexLoopBlinnData")]
-    b_vertex_loop_blinn_data: String,
-    // Base64-encoded `u32`s.
-    #[serde(rename = "coverInteriorIndices")]
-    cover_interior_indices: String,
-    // Base64-encoded `u32`s.
-    #[serde(rename = "coverCurveIndices")]
-    cover_curve_indices: String,
-    // Base64-encoded `bincode`-encoded `LineIndices` instances.
-    #[serde(rename = "edgeUpperLineIndices")]
-    edge_upper_line_indices: String,
-    // Base64-encoded `bincode`-encoded `CurveIndices` instances.
-    #[serde(rename = "edgeUpperCurveIndices")]
-    edge_upper_curve_indices: String,
-    // Base64-encoded `bincode`-encoded `LineIndices` instances.
-    #[serde(rename = "edgeLowerLineIndices")]
-    edge_lower_line_indices: String,
-    // Base64-encoded `bincode`-encoded `CurveIndices` instances.
-    #[serde(rename = "edgeLowerCurveIndices")]
-    edge_lower_curve_indices: String,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -255,11 +216,11 @@ struct PartitionSvgPathsResponse {
     #[serde(rename = "pathIndices")]
     path_indices: Vec<PartitionPathIndices>,
     #[serde(rename = "pathData")]
-    path_data: PartitionEncodedPathData,
+    path_data: String,
 }
 
 struct PathPartitioningResult {
-    encoded_data: PartitionEncodedPathData,
+    encoded_data: String,
     indices: Vec<PartitionPathIndices>,
     time: Duration,
 }
@@ -282,6 +243,7 @@ impl PathPartitioningResult {
         }
 
         // Reverse interior indices for early Z optimizations.
+        // FIXME(pcwalton): Reenable!
         /*let mut new_cover_interior_indices = Vec::with_capacity(cover_interior_indices.len());
         for path_indices in path_indices.iter_mut().rev() {
             let old_byte_start = path_indices.cover_interior_indices.start * mem::size_of::<u32>();
@@ -297,46 +259,16 @@ impl PathPartitioningResult {
 
         let time_elapsed = timestamp_before.elapsed();
 
-        let library = mem::replace(partitioner.library_mut(), MeshLibrary::new());
-
-        let b_quads_buffer = serialize(&library.b_quads);
-        let b_vertex_positions_buffer = serialize(&library.b_vertex_positions);
-        let b_vertex_path_ids_buffer = serialize(&library.b_vertex_path_ids);
-        let b_vertex_loop_blinn_data_buffer = serialize(&library.b_vertex_loop_blinn_data);
-        let cover_interior_indices_buffer = serialize(&library.cover_indices.interior_indices);
-        let cover_curve_indices_buffer = serialize(&library.cover_indices.curve_indices);
-        let edge_upper_line_indices_buffer = serialize(&library.edge_indices.upper_line_indices);
-        let edge_upper_curve_indices_buffer = serialize(&library.edge_indices.upper_curve_indices);
-        let edge_lower_line_indices_buffer = serialize(&library.edge_indices.lower_line_indices);
-        let edge_lower_curve_indices_buffer = serialize(&library.edge_indices.lower_curve_indices);
-
-        let encoded_path_data = PartitionEncodedPathData {
-            b_quads: b_quads_buffer,
-            b_vertex_positions: b_vertex_positions_buffer,
-            b_vertex_path_ids: b_vertex_path_ids_buffer,
-            b_vertex_loop_blinn_data: b_vertex_loop_blinn_data_buffer,
-            cover_interior_indices: cover_interior_indices_buffer,
-            cover_curve_indices: cover_curve_indices_buffer,
-            edge_upper_line_indices: edge_upper_line_indices_buffer,
-            edge_upper_curve_indices: edge_upper_curve_indices_buffer,
-            edge_lower_line_indices: edge_lower_line_indices_buffer,
-            edge_lower_curve_indices: edge_lower_curve_indices_buffer,
-        };
+        let mut data_buffer = Cursor::new(vec![]);
+        drop(partitioner.library().serialize_into(&mut data_buffer));
+        let data_string = base64::encode(data_buffer.get_ref());
 
         PathPartitioningResult {
-            encoded_data: encoded_path_data,
+            encoded_data: data_string,
             indices: path_indices,
             time: time_elapsed,
         }
     }
-}
-
-fn serialize<T>(data: &[T]) -> String where T: Serialize {
-    let mut dest = vec![];
-    for datum in data {
-        drop(bincode::serialize_into(&mut dest, datum, Infinite));
-    }
-    base64::encode(&dest)
 }
 
 #[post("/partition-font", format = "application/json", data = "<request>")]

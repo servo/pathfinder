@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+import * as base64js from 'base64-js';
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
@@ -77,8 +78,8 @@ export class SVGLoader {
             const response = JSON.parse(responseText);
             if (!('Ok' in response))
                 panic("Failed to partition the font!");
-            const meshes = response.Ok.pathData;
-            return new PathfinderMeshData(meshes);
+            const meshes = base64js.toByteArray(response.Ok.pathData);
+            return new PathfinderMeshData(meshes.buffer as ArrayBuffer);
         });
     }
 

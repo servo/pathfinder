@@ -14,6 +14,10 @@ import * as _ from 'lodash';
 import {expectNotNull, FLOAT32_SIZE, panic, PathfinderError, UINT16_SIZE} from './utils';
 import {UINT32_MAX, UINT32_SIZE} from './utils';
 
+interface BufferTypeFourCCTable {
+    [fourCC: string]: keyof Meshes<void>;
+}
+
 const BUFFER_TYPES: Meshes<BufferType> = {
     bQuads: 'ARRAY_BUFFER',
     bVertexLoopBlinnData: 'ARRAY_BUFFER',
@@ -25,6 +29,24 @@ const BUFFER_TYPES: Meshes<BufferType> = {
     edgeLowerLineIndices: 'ARRAY_BUFFER',
     edgeUpperCurveIndices: 'ARRAY_BUFFER',
     edgeUpperLineIndices: 'ARRAY_BUFFER',
+};
+
+const RIFF_FOURCC: string = 'RIFF';
+
+const MESH_LIBRARY_FOURCC: string = 'PFML';
+
+// Must match the FourCCs in `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into()`.
+const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
+    bqua: 'bQuads',
+    bvlb: 'bVertexLoopBlinnData',
+    bvpi: 'bVertexPathIDs',
+    bvpo: 'bVertexPositions',
+    cvci: 'coverCurveIndices',
+    cvii: 'coverInteriorIndices',
+    elci: 'edgeLowerCurveIndices',
+    elli: 'edgeLowerLineIndices',
+    euci: 'edgeUpperCurveIndices',
+    euli: 'edgeUpperLineIndices',
 };
 
 export const B_QUAD_SIZE: number = 4 * 8;
@@ -72,15 +94,28 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly edgeUpperCurveIndexCount: number;
     readonly edgeLowerCurveIndexCount: number;
 
-    constructor(meshes: Meshes<string | ArrayBuffer>) {
-        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>) {
-            const meshBuffer = meshes[bufferName];
-            if (typeof(meshBuffer) === 'string')
-                this[bufferName] = base64js.toByteArray(meshBuffer).buffer as ArrayBuffer;
-            else if (meshBuffer instanceof ArrayBuffer)
-                this[bufferName] = meshBuffer;
-            else
-                panic("Unknown buffer type!");
+    constructor(meshes: ArrayBuffer | Meshes<ArrayBuffer>) {
+        if (meshes instanceof ArrayBuffer) {
+            // RIFF encoded data.
+            if (toFourCC(meshes, 0) !== RIFF_FOURCC)
+                panic("Supplied array buffer is not a mesh library (no RIFF header)!");
+            if (toFourCC(meshes, 8) !== MESH_LIBRARY_FOURCC)
+                panic("Supplied array buffer is not a mesh library (no PFML header)!");
+
+            let offset = 12;
+            while (offset < meshes.byteLength) {
+                const fourCC = toFourCC(meshes, offset);
+                const chunkLength = (new Uint32Array(meshes.slice(offset + 4, offset + 8)))[0];
+                if (BUFFER_TYPE_FOURCCS.hasOwnProperty(fourCC)) {
+                    const startOffset = offset + 8;
+                    const endOffset = startOffset + chunkLength;
+                    this[BUFFER_TYPE_FOURCCS[fourCC]] = meshes.slice(startOffset, endOffset);
+                }
+                offset += chunkLength + 8;
+            }
+        } else {
+            for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>)
+                this[bufferName] = meshes[bufferName];
         }
 
         this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
@@ -302,4 +337,12 @@ function findFirstBQuadIndex(bQuads: Uint32Array,
             return bQuadIndex;
     }
     return null;
+}
+
+function toFourCC(buffer: ArrayBuffer, position: number): string {
+    let result = "";
+    const bytes = new Uint8Array(buffer, position, 4);
+    for (const byte of bytes)
+        result += String.fromCharCode(byte);
+    return result;
 }

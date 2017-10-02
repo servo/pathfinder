@@ -8,7 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use bincode::{self, Infinite};
+use byteorder::{LittleEndian, WriteBytesExt};
 use euclid::Point2D;
+use serde::Serialize;
+use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::ops::Range;
 
 use {BQuad, BVertexLoopBlinnData, CurveIndices, LineIndices};
@@ -43,6 +47,54 @@ impl MeshLibrary {
         self.b_vertex_loop_blinn_data.clear();
         self.cover_indices.clear();
         self.edge_indices.clear();
+    }
+
+    /// Writes this mesh library to a RIFF file.
+    /// 
+    /// RIFF is a dead-simple extensible binary format documented here:
+    /// https://msdn.microsoft.com/en-us/library/windows/desktop/ee415713(v=vs.85).aspx
+    pub fn serialize_into<W>(&self, writer: &mut W) -> io::Result<()> where W: Write + Seek {
+        // `PFML` for "Pathfinder Mesh Library".
+        try!(writer.write_all(b"RIFF\0\0\0\0PFML"));
+
+        // NB: The RIFF spec requires that all chunks be padded to an even byte offset. However,
+        // for us, this is guaranteed by construction because each instance of all of the data that
+        // we're writing has a byte size that is a multiple of 4. So we don't bother with doing it
+        // explicitly here.
+        try!(write_chunk(writer, b"bqua", &self.b_quads));
+        try!(write_chunk(writer, b"bvpo", &self.b_vertex_positions));
+        try!(write_chunk(writer, b"bvpi", &self.b_vertex_path_ids));
+        try!(write_chunk(writer, b"bvlb", &self.b_vertex_loop_blinn_data));
+        try!(write_chunk(writer, b"cvii", &self.cover_indices.interior_indices));
+        try!(write_chunk(writer, b"cvci", &self.cover_indices.curve_indices));
+        try!(write_chunk(writer, b"euli", &self.edge_indices.upper_line_indices));
+        try!(write_chunk(writer, b"euci", &self.edge_indices.upper_curve_indices));
+        try!(write_chunk(writer, b"elli", &self.edge_indices.lower_line_indices));
+        try!(write_chunk(writer, b"elci", &self.edge_indices.lower_curve_indices));
+
+        let total_length = try!(writer.seek(SeekFrom::Current(0)));
+        try!(writer.seek(SeekFrom::Start(4)));
+        try!(writer.write_u32::<LittleEndian>((total_length - 8) as u32));
+        return Ok(());
+
+        fn write_chunk<W, T>(writer: &mut W, tag: &[u8; 4], data: &[T]) -> io::Result<()>
+                             where W: Write + Seek, T: Serialize {
+            try!(writer.write_all(tag));
+            try!(writer.write_all(b"\0\0\0\0"));
+
+            let start_position = try!(writer.seek(SeekFrom::Current(0)));
+            for datum in data {
+                try!(bincode::serialize_into(writer, datum, Infinite).map_err(|_| {
+                    io::Error::from(ErrorKind::Other)
+                }));
+            }
+
+            let end_position = try!(writer.seek(SeekFrom::Current(0)));
+            try!(writer.seek(SeekFrom::Start(start_position - 4)));
+            try!(writer.write_u32::<LittleEndian>((end_position - start_position) as u32));
+            try!(writer.seek(SeekFrom::Start(end_position)));
+            Ok(())
+        }
     }
 
     pub(crate) fn snapshot_lengths(&self) -> MeshLibraryLengths {
