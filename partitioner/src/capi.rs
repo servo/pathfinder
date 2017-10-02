@@ -2,9 +2,11 @@
 
 use env_logger;
 use euclid::Point2D;
-use partitioner::Partitioner;
 use std::mem;
 use std::slice;
+
+use mesh_library::MeshLibrary;
+use partitioner::Partitioner;
 use {BQuad, BVertexLoopBlinnData, CurveIndices, Endpoint, LineIndices, Subpath};
 
 #[derive(Clone, Copy)]
@@ -56,7 +58,7 @@ pub struct EdgeIndices {
 
 #[no_mangle]
 pub unsafe extern fn pf_partitioner_new() -> *mut Partitioner<'static> {
-    let mut partitioner = Box::new(Partitioner::new());
+    let mut partitioner = Box::new(Partitioner::new(MeshLibrary::new()));
     let partitioner_ptr: *mut Partitioner<'static> = &mut *partitioner;
     mem::forget(partitioner);
     partitioner_ptr
@@ -86,14 +88,14 @@ pub unsafe extern fn pf_partitioner_partition<'a>(partitioner: *mut Partitioner<
                                                   path_id: u16,
                                                   first_subpath_index: u32,
                                                   last_subpath_index: u32) {
-    (*partitioner).partition(path_id, first_subpath_index, last_subpath_index)
+    (*partitioner).partition(path_id, first_subpath_index, last_subpath_index);
 }
 
 #[no_mangle]
 pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *const Partitioner<'a>,
                                                 out_b_quad_count: *mut u32)
                                                 -> *const BQuad {
-    let b_quads = (*partitioner).b_quads();
+    let b_quads = &(*partitioner).library().b_quads;
     if !out_b_quad_count.is_null() {
         *out_b_quad_count = b_quads.len() as u32
     }
@@ -104,7 +106,7 @@ pub unsafe extern fn pf_partitioner_b_quads<'a>(partitioner: *const Partitioner<
 pub unsafe extern fn pf_partitioner_b_vertex_positions<'a>(partitioner: *const Partitioner<'a>,
                                                            out_b_vertex_count: *mut u32)
                                                            -> *const Point2D<f32> {
-    let b_vertex_positions = (*partitioner).b_vertex_positions();
+    let b_vertex_positions = &(*partitioner).library().b_vertex_positions;
     if !out_b_vertex_count.is_null() {
         *out_b_vertex_count = b_vertex_positions.len() as u32
     }
@@ -115,7 +117,7 @@ pub unsafe extern fn pf_partitioner_b_vertex_positions<'a>(partitioner: *const P
 pub unsafe extern fn pf_partitioner_b_vertex_path_ids<'a>(partitioner: *const Partitioner<'a>,
                                                           out_b_vertex_count: *mut u32)
                                                           -> *const u16 {
-    let b_vertex_path_ids = (*partitioner).b_vertex_path_ids();
+    let b_vertex_path_ids = &(*partitioner).library().b_vertex_path_ids;
     if !out_b_vertex_count.is_null() {
         *out_b_vertex_count = b_vertex_path_ids.len() as u32
     }
@@ -127,7 +129,7 @@ pub unsafe extern fn pf_partitioner_b_vertex_loop_blinn_data<'a>(
         partitioner: *const Partitioner<'a>,
         out_b_vertex_count: *mut u32)
         -> *const BVertexLoopBlinnData {
-    let b_vertex_loop_blinn_data = (*partitioner).b_vertex_loop_blinn_data();
+    let b_vertex_loop_blinn_data = &(*partitioner).library().b_vertex_loop_blinn_data;
     if !out_b_vertex_count.is_null() {
         *out_b_vertex_count = b_vertex_loop_blinn_data.len() as u32
     }
@@ -137,7 +139,7 @@ pub unsafe extern fn pf_partitioner_b_vertex_loop_blinn_data<'a>(
 #[no_mangle]
 pub unsafe extern fn pf_partitioner_cover_indices<'a>(partitioner: *const Partitioner<'a>,
                                                       out_cover_indices: *mut CoverIndices) {
-    let cover_indices = (*partitioner).cover_indices();
+    let cover_indices = &(*partitioner).library().cover_indices;
     (*out_cover_indices).interior_indices = cover_indices.interior_indices.as_ptr();
     (*out_cover_indices).interior_indices_len = cover_indices.interior_indices.len() as u32;
     (*out_cover_indices).curve_indices = cover_indices.curve_indices.as_ptr();
@@ -147,7 +149,7 @@ pub unsafe extern fn pf_partitioner_cover_indices<'a>(partitioner: *const Partit
 #[no_mangle]
 pub unsafe extern fn pf_partitioner_edge_indices<'a>(partitioner: *const Partitioner<'a>,
                                                      out_edge_indices: *mut EdgeIndices) {
-    let edge_indices = (*partitioner).edge_indices();
+    let edge_indices = &(*partitioner).library().edge_indices;
     (*out_edge_indices).upper_line_indices = edge_indices.upper_line_indices.as_ptr();
     (*out_edge_indices).upper_line_indices_len = edge_indices.upper_line_indices.len() as u32;
     (*out_edge_indices).upper_curve_indices = edge_indices.upper_curve_indices.as_ptr();

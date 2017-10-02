@@ -25,6 +25,7 @@ use app_units::Au;
 use bincode::Infinite;
 use euclid::{Point2D, Size2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
+use pathfinder_partitioner::mesh_library::{MeshLibrary, MeshLibraryIndexRanges};
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::cubic::CubicCurve;
 use pathfinder_path_utils::monotonic::MonotonicPathSegmentStream;
@@ -38,6 +39,7 @@ use serde::Serialize;
 use std::fs::File;
 use std::io::{self, Read};
 use std::mem;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::u32;
@@ -82,26 +84,6 @@ struct SubpathRange {
     end: u32,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-struct IndexRange {
-    start: usize,
-    end: usize,
-}
-
-impl IndexRange {
-    fn from_data<T>(dest: &mut Vec<u8>, src: &[T]) -> Result<IndexRange, ()> where T: Serialize {
-        let byte_len_before = dest.len();
-        for src_value in src {
-            try!(bincode::serialize_into(dest, src_value, Infinite).map_err(drop))
-        }
-        let byte_len_after = dest.len();
-        Ok(IndexRange {
-            start: byte_len_before / mem::size_of::<T>(),
-            end: byte_len_after / mem::size_of::<T>(),
-        })
-    }
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionFontRequest {
     face: PartitionFontRequestFace,
@@ -143,7 +125,7 @@ impl PartitionGlyphDimensions {
     }
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct PartitionGlyphInfo {
     id: u32,
     dimensions: PartitionGlyphDimensions,
@@ -160,24 +142,39 @@ struct PartitionFontResponse {
     time: f64,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct PartitionPathIndices {
     #[serde(rename = "bQuadIndices")]
-    b_quad_indices: IndexRange,
+    b_quad_indices: Range<usize>,
     #[serde(rename = "bVertexIndices")]
-    b_vertex_indices: IndexRange,
+    b_vertex_indices: Range<usize>,
     #[serde(rename = "coverInteriorIndices")]
-    cover_interior_indices: IndexRange,
+    cover_interior_indices: Range<usize>,
     #[serde(rename = "coverCurveIndices")]
-    cover_curve_indices: IndexRange,
+    cover_curve_indices: Range<usize>,
     #[serde(rename = "coverUpperLineIndices")]
-    edge_upper_line_indices: IndexRange,
+    edge_upper_line_indices: Range<usize>,
     #[serde(rename = "coverUpperCurveIndices")]
-    edge_upper_curve_indices: IndexRange,
+    edge_upper_curve_indices: Range<usize>,
     #[serde(rename = "coverLowerLineIndices")]
-    edge_lower_line_indices: IndexRange,
+    edge_lower_line_indices: Range<usize>,
     #[serde(rename = "coverLowerCurveIndices")]
-    edge_lower_curve_indices: IndexRange,
+    edge_lower_curve_indices: Range<usize>,
+}
+
+impl PartitionPathIndices {
+    fn new(index_ranges: MeshLibraryIndexRanges) -> PartitionPathIndices {
+        PartitionPathIndices {
+            b_quad_indices: index_ranges.b_quads,
+            b_vertex_indices: index_ranges.b_vertices,
+            cover_interior_indices: index_ranges.cover_interior_indices,
+            cover_curve_indices: index_ranges.cover_curve_indices,
+            edge_upper_line_indices: index_ranges.edge_upper_line_indices,
+            edge_upper_curve_indices: index_ranges.edge_upper_curve_indices,
+            edge_lower_line_indices: index_ranges.edge_lower_line_indices,
+            edge_lower_curve_indices: index_ranges.edge_lower_curve_indices,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -272,82 +269,20 @@ impl PathPartitioningResult {
                -> PathPartitioningResult {
         let timestamp_before = Instant::now();
 
-        let (mut b_quads, mut b_vertex_positions) = (vec![], vec![]);
-        let (mut b_vertex_path_ids, mut b_vertex_loop_blinn_data) = (vec![], vec![]);
-        let (mut cover_interior_indices, mut cover_curve_indices) = (vec![], vec![]);
-        let (mut edge_upper_line_indices, mut edge_upper_curve_indices) = (vec![], vec![]);
-        let (mut edge_lower_line_indices, mut edge_lower_curve_indices) = (vec![], vec![]);
+        partitioner.library_mut().clear();
 
         let mut path_indices = vec![];
 
         for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
-            partitioner.partition((path_index + 1) as u16, subpath_range.start, subpath_range.end);
+            let index_ranges = partitioner.partition((path_index + 1) as u16,
+                                                     subpath_range.start,
+                                                     subpath_range.end);
 
-            let path_b_vertex_positions = partitioner.b_vertex_positions();
-            let path_b_vertex_path_ids = partitioner.b_vertex_path_ids();
-            let path_b_vertex_loop_blinn_data = partitioner.b_vertex_loop_blinn_data();
-            let cover_indices = partitioner.cover_indices();
-            let edge_indices = partitioner.edge_indices();
-
-            let positions_start =
-                IndexRange::from_data(&mut b_vertex_positions,
-                                      path_b_vertex_positions).unwrap().start as u32;
-            IndexRange::from_data(&mut b_vertex_path_ids, path_b_vertex_path_ids).unwrap();
-
-            let mut path_b_quads = partitioner.b_quads().to_vec();
-            let mut path_cover_interior_indices = cover_indices.interior_indices.to_vec();
-            let mut path_cover_curve_indices = cover_indices.curve_indices.to_vec();
-            let mut path_edge_upper_line_indices = edge_indices.upper_line_indices.to_vec();
-            let mut path_edge_upper_curve_indices = edge_indices.upper_curve_indices.to_vec();
-            let mut path_edge_lower_line_indices = edge_indices.lower_line_indices.to_vec();
-            let mut path_edge_lower_curve_indices = edge_indices.lower_curve_indices.to_vec();
-
-            for path_b_quad in &mut path_b_quads {
-                path_b_quad.offset(positions_start);
-            }
-            for path_cover_interior_index in &mut path_cover_interior_indices {
-                *path_cover_interior_index += positions_start
-            }
-            for path_cover_curve_index in &mut path_cover_curve_indices {
-                *path_cover_curve_index += positions_start
-            }
-            for path_edge_upper_line_indices in &mut path_edge_upper_line_indices {
-                path_edge_upper_line_indices.offset(positions_start);
-            }
-            for path_edge_upper_curve_indices in &mut path_edge_upper_curve_indices {
-                path_edge_upper_curve_indices.offset(positions_start);
-            }
-            for path_edge_lower_line_indices in &mut path_edge_lower_line_indices {
-                path_edge_lower_line_indices.offset(positions_start);
-            }
-            for path_edge_lower_curve_indices in &mut path_edge_lower_curve_indices {
-                path_edge_lower_curve_indices.offset(positions_start);
-            }
-
-            path_indices.push(PartitionPathIndices {
-                b_quad_indices: IndexRange::from_data(&mut b_quads, &path_b_quads).unwrap(),
-                b_vertex_indices: IndexRange::from_data(&mut b_vertex_loop_blinn_data,
-                                                        path_b_vertex_loop_blinn_data).unwrap(),
-                cover_interior_indices: IndexRange::from_data(&mut cover_interior_indices,
-                                                            &path_cover_interior_indices).unwrap(),
-                cover_curve_indices: IndexRange::from_data(&mut cover_curve_indices,
-                                                        &path_cover_curve_indices).unwrap(),
-                edge_upper_line_indices:
-                    IndexRange::from_data(&mut edge_upper_line_indices,
-                                          &path_edge_upper_line_indices).unwrap(),
-                edge_upper_curve_indices:
-                    IndexRange::from_data(&mut edge_upper_curve_indices,
-                                        &path_edge_upper_curve_indices).unwrap(),
-                edge_lower_line_indices: IndexRange::from_data(&mut edge_lower_line_indices,
-                                                            &path_edge_lower_line_indices).unwrap(),
-                edge_lower_curve_indices:
-                    IndexRange::from_data(&mut edge_lower_curve_indices,
-                                        &path_edge_lower_curve_indices).unwrap(),
-            })
+            path_indices.push(PartitionPathIndices::new(index_ranges));
         }
 
         // Reverse interior indices for early Z optimizations.
-        let mut new_cover_interior_indices = Vec::with_capacity(cover_interior_indices.len());
+        /*let mut new_cover_interior_indices = Vec::with_capacity(cover_interior_indices.len());
         for path_indices in path_indices.iter_mut().rev() {
             let old_byte_start = path_indices.cover_interior_indices.start * mem::size_of::<u32>();
             let old_byte_end = path_indices.cover_interior_indices.end * mem::size_of::<u32>();
@@ -358,21 +293,34 @@ impl PathPartitioningResult {
             path_indices.cover_interior_indices.start = new_start_index;
             path_indices.cover_interior_indices.end = new_end_index;
         }
-        cover_interior_indices = new_cover_interior_indices;
+        cover_interior_indices = new_cover_interior_indices;*/
 
         let time_elapsed = timestamp_before.elapsed();
 
+        let library = mem::replace(partitioner.library_mut(), MeshLibrary::new());
+
+        let b_quads_buffer = serialize(&library.b_quads);
+        let b_vertex_positions_buffer = serialize(&library.b_vertex_positions);
+        let b_vertex_path_ids_buffer = serialize(&library.b_vertex_path_ids);
+        let b_vertex_loop_blinn_data_buffer = serialize(&library.b_vertex_loop_blinn_data);
+        let cover_interior_indices_buffer = serialize(&library.cover_indices.interior_indices);
+        let cover_curve_indices_buffer = serialize(&library.cover_indices.curve_indices);
+        let edge_upper_line_indices_buffer = serialize(&library.edge_indices.upper_line_indices);
+        let edge_upper_curve_indices_buffer = serialize(&library.edge_indices.upper_curve_indices);
+        let edge_lower_line_indices_buffer = serialize(&library.edge_indices.lower_line_indices);
+        let edge_lower_curve_indices_buffer = serialize(&library.edge_indices.lower_curve_indices);
+
         let encoded_path_data = PartitionEncodedPathData {
-            b_quads: base64::encode(&b_quads),
-            b_vertex_positions: base64::encode(&b_vertex_positions),
-            b_vertex_path_ids: base64::encode(&b_vertex_path_ids),
-            b_vertex_loop_blinn_data: base64::encode(&b_vertex_loop_blinn_data),
-            cover_interior_indices: base64::encode(&cover_interior_indices),
-            cover_curve_indices: base64::encode(&cover_curve_indices),
-            edge_upper_line_indices: base64::encode(&edge_upper_line_indices),
-            edge_upper_curve_indices: base64::encode(&edge_upper_curve_indices),
-            edge_lower_line_indices: base64::encode(&edge_lower_line_indices),
-            edge_lower_curve_indices: base64::encode(&edge_lower_curve_indices),
+            b_quads: b_quads_buffer,
+            b_vertex_positions: b_vertex_positions_buffer,
+            b_vertex_path_ids: b_vertex_path_ids_buffer,
+            b_vertex_loop_blinn_data: b_vertex_loop_blinn_data_buffer,
+            cover_interior_indices: cover_interior_indices_buffer,
+            cover_curve_indices: cover_curve_indices_buffer,
+            edge_upper_line_indices: edge_upper_line_indices_buffer,
+            edge_upper_curve_indices: edge_upper_curve_indices_buffer,
+            edge_lower_line_indices: edge_lower_line_indices_buffer,
+            edge_lower_curve_indices: edge_lower_curve_indices_buffer,
         };
 
         PathPartitioningResult {
@@ -381,6 +329,14 @@ impl PathPartitioningResult {
             time: time_elapsed,
         }
     }
+}
+
+fn serialize<T>(data: &[T]) -> String where T: Serialize {
+    let mut dest = vec![];
+    for datum in data {
+        drop(bincode::serialize_into(&mut dest, datum, Infinite));
+    }
+    base64::encode(&dest)
 }
 
 #[post("/partition-font", format = "application/json", data = "<request>")]
@@ -450,7 +406,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
     }).collect();
 
     // Partition the decoded glyph outlines.
-    let mut partitioner = Partitioner::new();
+    let mut partitioner = Partitioner::new(MeshLibrary::new());
     partitioner.init_with_path_buffer(&path_buffer);
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
                                                                    &subpath_indices);
@@ -476,7 +432,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
         glyph_info.push(PartitionGlyphInfo {
             id: glyph.id,
             dimensions: dimensions,
-            path_indices: *glyph_path_indices,
+            path_indices: (*glyph_path_indices).clone(),
         })
     }
 
@@ -561,7 +517,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     }
 
     // Partition the paths.
-    let mut partitioner = Partitioner::new();
+    let mut partitioner = Partitioner::new(MeshLibrary::new());
     partitioner.init_with_path_buffer(&path_buffer);
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner, &paths);
 

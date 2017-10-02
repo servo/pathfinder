@@ -26,6 +26,7 @@ use pathfinder_path_utils::{Endpoint, Subpath};
 use std::u32;
 
 pub mod capi;
+pub mod mesh_library;
 pub mod partitioner;
 
 #[repr(C)]
