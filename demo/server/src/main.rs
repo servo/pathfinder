@@ -28,7 +28,7 @@ extern crate serde_derive;
 use app_units::Au;
 use euclid::{Point2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
-use pathfinder_partitioner::mesh_library::{MeshLibrary, MeshLibraryIndexRanges};
+use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::cubic::CubicCurve;
 use pathfinder_path_utils::monotonic::MonotonicPathSegmentStream;
@@ -40,7 +40,6 @@ use rocket::response::{NamedFile, Redirect, Responder, Response};
 use rocket_contrib::json::Json;
 use std::fs::File;
 use std::io::{self, Cursor, Read};
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use std::u32;
@@ -116,41 +115,6 @@ struct PartitionFontResponse {
     time: f64,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-struct PartitionPathIndices {
-    #[serde(rename = "bQuadIndices")]
-    b_quad_indices: Range<usize>,
-    #[serde(rename = "bVertexIndices")]
-    b_vertex_indices: Range<usize>,
-    #[serde(rename = "coverInteriorIndices")]
-    cover_interior_indices: Range<usize>,
-    #[serde(rename = "coverCurveIndices")]
-    cover_curve_indices: Range<usize>,
-    #[serde(rename = "coverUpperLineIndices")]
-    edge_upper_line_indices: Range<usize>,
-    #[serde(rename = "coverUpperCurveIndices")]
-    edge_upper_curve_indices: Range<usize>,
-    #[serde(rename = "coverLowerLineIndices")]
-    edge_lower_line_indices: Range<usize>,
-    #[serde(rename = "coverLowerCurveIndices")]
-    edge_lower_curve_indices: Range<usize>,
-}
-
-impl PartitionPathIndices {
-    fn new(index_ranges: MeshLibraryIndexRanges) -> PartitionPathIndices {
-        PartitionPathIndices {
-            b_quad_indices: index_ranges.b_quads,
-            b_vertex_indices: index_ranges.b_vertices,
-            cover_interior_indices: index_ranges.cover_interior_indices,
-            cover_curve_indices: index_ranges.cover_curve_indices,
-            edge_upper_line_indices: index_ranges.edge_upper_line_indices,
-            edge_upper_curve_indices: index_ranges.edge_upper_curve_indices,
-            edge_lower_line_indices: index_ranges.edge_lower_line_indices,
-            edge_lower_curve_indices: index_ranges.edge_lower_curve_indices,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Serialize, Deserialize)]
 enum PartitionFontError {
     UnknownBuiltinFont,
@@ -192,15 +156,12 @@ struct PartitionSvgPathSegment {
 
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionSvgPathsResponse {
-    #[serde(rename = "pathIndices")]
-    path_indices: Vec<PartitionPathIndices>,
     #[serde(rename = "pathData")]
     path_data: String,
 }
 
 struct PathPartitioningResult {
     encoded_data: String,
-    indices: Vec<PartitionPathIndices>,
     time: Duration,
 }
 
@@ -211,14 +172,8 @@ impl PathPartitioningResult {
 
         partitioner.library_mut().clear();
 
-        let mut path_indices = vec![];
-
         for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
-            let index_ranges = partitioner.partition((path_index + 1) as u16,
-                                                     subpath_range.start,
-                                                     subpath_range.end);
-
-            path_indices.push(PartitionPathIndices::new(index_ranges));
+            partitioner.partition((path_index + 1) as u16, subpath_range.start, subpath_range.end);
         }
 
         partitioner.library_mut().optimize();
@@ -231,7 +186,6 @@ impl PathPartitioningResult {
 
         PathPartitioningResult {
             encoded_data: data_string,
-            indices: path_indices,
             time: time_elapsed,
         }
     }
@@ -395,7 +349,6 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
     // Return the response.
     Json(Ok(PartitionSvgPathsResponse {
-        path_indices: path_partitioning_result.indices,
         path_data: path_partitioning_result.encoded_data,
     }))
 }
