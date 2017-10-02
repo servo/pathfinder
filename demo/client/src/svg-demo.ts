@@ -11,7 +11,8 @@
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
-import { AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy, SubpixelAAType } from "./aa-strategy";
+import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import {SubpixelAAType} from "./aa-strategy";
 import {DemoAppController} from './app-controller';
 import PathfinderBufferTexture from "./buffer-texture";
 import {OrthographicCamera} from "./camera";

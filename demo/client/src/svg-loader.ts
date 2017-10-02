@@ -13,7 +13,7 @@ import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
 import 'path-data-polyfill.js';
-import {PathfinderMeshData} from "./meshes";
+import {parseServerTiming, PathfinderMeshData} from "./meshes";
 import {panic, unwrapNull} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
@@ -70,17 +70,15 @@ export class SVGLoader {
     partition(pathIndex?: number | undefined): Promise<PathfinderMeshData> {
         // Make the request.
         const paths = pathIndex == null ? this.paths : [this.paths[pathIndex]];
+        let time = 0;
         return window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
             body: JSON.stringify({ paths: paths }),
             headers: {'Content-Type': 'application/json'},
             method: 'POST',
-        }).then(response => response.text()).then(responseText => {
-            const response = JSON.parse(responseText);
-            if (!('Ok' in response))
-                panic("Failed to partition the font!");
-            const meshes = base64js.toByteArray(response.Ok.pathData);
-            return new PathfinderMeshData(meshes.buffer as ArrayBuffer);
-        });
+        }).then(response => {
+            time = parseServerTiming(response.headers);
+            return response.arrayBuffer();
+        }).then(buffer => new PathfinderMeshData(buffer));
     }
 
     private attachSVG(svgElement: SVGSVGElement) {

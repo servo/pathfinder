@@ -346,3 +346,11 @@ function toFourCC(buffer: ArrayBuffer, position: number): string {
         result += String.fromCharCode(byte);
     return result;
 }
+
+export function parseServerTiming(headers: Headers): number {
+    if (!headers.has('Server-Timing'))
+        return 0.0;
+    const timing = headers.get('Server-Timing')!;
+    const matches = /^Partitioning\s*=\s*([0-9.]+)$/.exec(timing);
+    return matches != null ? parseFloat(matches[1]) / 1000.0 : 0.0;
+}

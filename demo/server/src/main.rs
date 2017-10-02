@@ -34,7 +34,7 @@ use pathfinder_path_utils::cubic::CubicCurve;
 use pathfinder_path_utils::monotonic::MonotonicPathSegmentStream;
 use pathfinder_path_utils::stroke;
 use pathfinder_path_utils::{PathBuffer, PathBufferStream, PathSegment, Transform2DPathStream};
-use rocket::http::{ContentType, Status};
+use rocket::http::{ContentType, Header, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
 use rocket_contrib::json::Json;
@@ -112,10 +112,9 @@ struct PartitionGlyph {
 struct PartitionFontResponse {
     #[serde(rename = "pathData")]
     path_data: String,
-    time: f64,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum PartitionFontError {
     UnknownBuiltinFont,
     Base64DecodingFailed,
@@ -124,7 +123,7 @@ enum PartitionFontError {
     Unimplemented,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum PartitionSvgPathsError {
     UnknownSvgPathSegmentType,
     Unimplemented,
@@ -154,14 +153,8 @@ struct PartitionSvgPathSegment {
     values: Vec<f64>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-struct PartitionSvgPathsResponse {
-    #[serde(rename = "pathData")]
-    path_data: String,
-}
-
 struct PathPartitioningResult {
-    encoded_data: String,
+    encoded_data: Vec<u8>,
     time: Duration,
 }
 
@@ -182,18 +175,36 @@ impl PathPartitioningResult {
 
         let mut data_buffer = Cursor::new(vec![]);
         drop(partitioner.library().serialize_into(&mut data_buffer));
-        let data_string = base64::encode(data_buffer.get_ref());
 
         PathPartitioningResult {
-            encoded_data: data_string,
+            encoded_data: data_buffer.into_inner(),
             time: time_elapsed,
         }
+    }
+
+    fn elapsed_ms(&self) -> f64 {
+        self.time.as_secs() as f64 * 1000.0 + self.time.subsec_nanos() as f64 * 1e-6
+    }
+}
+
+struct PartitionResponder {
+    data: Vec<u8>,
+    time: f64,
+}
+
+impl<'r> Responder<'r> for PartitionResponder {
+    fn respond_to(self, _: &Request) -> Result<Response<'r>, Status> {
+        let mut builder = Response::build();
+        builder.header(ContentType::new("application", "vnd.mozilla.pfml"));
+        builder.header(Header::new("Server-Timing", format!("Partitioning={}", self.time)));
+        builder.sized_body(Cursor::new(self.data));
+        builder.ok()
     }
 }
 
 #[post("/partition-font", format = "application/json", data = "<request>")]
 fn partition_font(request: Json<PartitionFontRequest>)
-                  -> Json<Result<PartitionFontResponse, PartitionFontError>> {
+                  -> Result<PartitionResponder, PartitionFontError> {
     // Fetch the OTF data.
     let otf_data = match request.face {
         PartitionFontRequestFace::Builtin(ref builtin_font_name) => {
@@ -206,20 +217,20 @@ fn partition_font(request: Json<PartitionFontRequest>)
                                     .expect("Couldn't read builtin font!");
                     data
                 }
-                None => return Json(Err(PartitionFontError::UnknownBuiltinFont)),
+                None => return Err(PartitionFontError::UnknownBuiltinFont),
             }
         }
         PartitionFontRequestFace::Custom(ref encoded_data) => {
             // Decode Base64-encoded OTF data.
             let unsafe_otf_data = match base64::decode(encoded_data) {
                 Ok(unsafe_otf_data) => unsafe_otf_data,
-                Err(_) => return Json(Err(PartitionFontError::Base64DecodingFailed)),
+                Err(_) => return Err(PartitionFontError::Base64DecodingFailed),
             };
 
             // Sanitize.
             match fontsan::process(&unsafe_otf_data) {
                 Ok(otf_data) => otf_data,
-                Err(_) => return Json(Err(PartitionFontError::FontSanitizationFailed)),
+                Err(_) => return Err(PartitionFontError::FontSanitizationFailed),
             }
         }
     };
@@ -232,7 +243,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
     };
     let mut font_context = FontContext::new();
     if font_context.add_font_from_memory(&font_key, otf_data, request.font_index).is_err() {
-        return Json(Err(PartitionFontError::FontLoadingFailed))
+        return Err(PartitionFontError::FontLoadingFailed)
     }
 
     // Read glyph info.
@@ -263,19 +274,17 @@ fn partition_font(request: Json<PartitionFontRequest>)
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
                                                                    &subpath_indices);
 
-    let time = path_partitioning_result.time.as_secs() as f64 +
-        path_partitioning_result.time.subsec_nanos() as f64 * 1e-9;
-
     // Return the response.
-    Json(Ok(PartitionFontResponse {
-        path_data: path_partitioning_result.encoded_data,
-        time: time,
-    }))
+    let elapsed_ms = path_partitioning_result.elapsed_ms();
+    Ok(PartitionResponder {
+        data: path_partitioning_result.encoded_data,
+        time: elapsed_ms,
+    })
 }
 
 #[post("/partition-svg-paths", format = "application/json", data = "<request>")]
 fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
-                       -> Json<Result<PartitionSvgPathsResponse, PartitionSvgPathsError>> {
+                       -> Result<PartitionResponder, PartitionSvgPathsError> {
     // Parse the SVG path.
     //
     // The client has already normalized it, so we only have to handle `M`, `L`, `C`, and `Z`
@@ -316,7 +325,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                                        .map(|curve| curve.to_path_segment()));
                 }
                 'Z' => stream.push(PathSegment::ClosePath),
-                _ => return Json(Err(PartitionSvgPathsError::UnknownSvgPathSegmentType)),
+                _ => return Err(PartitionSvgPathsError::UnknownSvgPathSegmentType),
             }
         }
 
@@ -348,9 +357,11 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner, &paths);
 
     // Return the response.
-    Json(Ok(PartitionSvgPathsResponse {
-        path_data: path_partitioning_result.encoded_data,
-    }))
+    let elapsed_ms = path_partitioning_result.elapsed_ms();
+    Ok(PartitionResponder {
+        data: path_partitioning_result.encoded_data,
+        time: elapsed_ms,
+    })
 }
 
 // Static files

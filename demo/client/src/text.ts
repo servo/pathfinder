@@ -14,7 +14,7 @@ import * as _ from 'lodash';
 import * as opentype from "opentype.js";
 import {Metrics} from 'opentype.js';
 
-import {B_QUAD_SIZE, PathfinderMeshData} from "./meshes";
+import {B_QUAD_SIZE, parseServerTiming, PathfinderMeshData} from "./meshes";
 import {assert, lerp, panic, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils";
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
@@ -227,18 +227,18 @@ export class GlyphStore {
         };
 
         // Make the request.
+        let time = 0;
         return window.fetch(PARTITION_FONT_ENDPOINT_URI, {
             body: JSON.stringify(request),
             headers: {'Content-Type': 'application/json'},
             method: 'POST',
-        }).then(response => response.text()).then(responseText => {
-            const response = JSON.parse(responseText);
-            if (!('Ok' in response))
-                panic(`Failed to partition the font: ${response.Err}`);
-            const meshes = base64js.toByteArray(response.Ok.pathData);
+        }).then(response => {
+            time = parseServerTiming(response.headers);
+            return response.arrayBuffer();
+        }).then(buffer => {
             return {
-                meshes: new PathfinderMeshData(meshes.buffer as ArrayBuffer),
-                time: response.Ok.time,
+                meshes: new PathfinderMeshData(buffer),
+                time: time,
             };
         });
     }
