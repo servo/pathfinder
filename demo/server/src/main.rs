@@ -1,6 +1,12 @@
 // pathfinder/demo/server/main.rs
 //
-// Copyright © 2017 Mozilla Foundation
+// Copyright © 2017 The Pathfinder Project Developers.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.// Copyright © 2017 Mozilla Foundation
 
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
@@ -20,7 +26,7 @@ extern crate rocket_contrib;
 extern crate serde_derive;
 
 use app_units::Au;
-use euclid::{Point2D, Size2D, Transform2D};
+use euclid::{Point2D, Transform2D};
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
 use pathfinder_partitioner::mesh_library::{MeshLibrary, MeshLibraryIndexRanges};
 use pathfinder_partitioner::partitioner::Partitioner;
@@ -103,35 +109,8 @@ struct PartitionGlyph {
     transform: Transform2D<f32>,
 }
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-struct PartitionGlyphDimensions {
-    origin: Point2D<i32>,
-    size: Size2D<u32>,
-    advance: f32,
-}
-
-impl PartitionGlyphDimensions {
-    fn dummy() -> PartitionGlyphDimensions {
-        PartitionGlyphDimensions {
-            origin: Point2D::zero(),
-            size: Size2D::zero(),
-            advance: 0.0,
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct PartitionGlyphInfo {
-    id: u32,
-    dimensions: PartitionGlyphDimensions,
-    #[serde(rename = "pathIndices")]
-    path_indices: PartitionPathIndices,
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionFontResponse {
-    #[serde(rename = "glyphInfo")]
-    glyph_info: Vec<PartitionGlyphInfo>,
     #[serde(rename = "pathData")]
     path_data: String,
     time: f64,
@@ -330,37 +309,11 @@ fn partition_font(request: Json<PartitionFontRequest>)
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
                                                                    &subpath_indices);
 
-    // Package up other miscellaneous glyph info.
-    let mut glyph_info = vec![];
-    for (glyph, glyph_path_indices) in request.glyphs
-                                              .iter()
-                                              .zip(path_partitioning_result.indices.iter()) {
-        let glyph_key = GlyphKey::new(glyph.id);
-
-        let dimensions = match font_context.glyph_dimensions(&font_instance_key, &glyph_key) {
-            Some(dimensions) => {
-                PartitionGlyphDimensions {
-                    origin: dimensions.origin,
-                    size: dimensions.size,
-                    advance: dimensions.advance,
-                }
-            }
-            None => PartitionGlyphDimensions::dummy(),
-        };
-
-        glyph_info.push(PartitionGlyphInfo {
-            id: glyph.id,
-            dimensions: dimensions,
-            path_indices: (*glyph_path_indices).clone(),
-        })
-    }
-
     let time = path_partitioning_result.time.as_secs() as f64 +
         path_partitioning_result.time.subsec_nanos() as f64 * 1e-9;
 
     // Return the response.
     Json(Ok(PartitionFontResponse {
-        glyph_info: glyph_info,
         path_data: path_partitioning_result.encoded_data,
         time: time,
     }))
