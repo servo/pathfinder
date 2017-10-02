@@ -11,7 +11,6 @@
 use bit_vec::BitVec;
 use euclid::approxeq::ApproxEq;
 use euclid::Point2D;
-use geometry::SubdividedQuadraticBezier;
 use log::LogLevel;
 use pathfinder_path_utils::PathBuffer;
 use pathfinder_path_utils::curve::Curve;
@@ -1064,33 +1063,34 @@ impl<'a> Partitioner<'a> {
             _ => {
                 let left_endpoint_position =
                     self.b_vertex_positions[active_edge.left_vertex_index as usize];
+                let control_point_position =
+                    self.b_vertex_positions[active_edge.control_point_vertex_index as usize];
                 let right_endpoint_position =
                     self.endpoints[active_edge.right_endpoint_index as usize].position;
-                let subdivided_quadratic_bezier = SubdividedQuadraticBezier::new(
-                    t,
-                    &left_endpoint_position,
-                    &self.b_vertex_positions[active_edge.control_point_vertex_index as usize],
-                    &right_endpoint_position);
+                let original_curve = Curve::new(&left_endpoint_position,
+                                                &control_point_position,
+                                                &right_endpoint_position);
+                let (left_curve, right_curve) = original_curve.subdivide(t);
 
                 left_curve_control_point_vertex_index = self.b_vertex_loop_blinn_data.len() as u32;
                 active_edge.left_vertex_index = left_curve_control_point_vertex_index + 1;
                 active_edge.control_point_vertex_index = left_curve_control_point_vertex_index + 2;
 
                 self.b_vertex_positions.extend([
-                    subdivided_quadratic_bezier.ap1,
-                    subdivided_quadratic_bezier.ap2bp0,
-                    subdivided_quadratic_bezier.bp1,
+                    left_curve.control_point,
+                    left_curve.endpoints[1],
+                    right_curve.control_point,
                 ].into_iter());
                 self.b_vertex_path_ids.extend(iter::repeat(self.path_id).take(3));
                 self.b_vertex_loop_blinn_data.extend([
-                    BVertexLoopBlinnData::control_point(&left_endpoint_position,
-                                                        &subdivided_quadratic_bezier.ap1,
-                                                        &subdivided_quadratic_bezier.ap2bp0,
+                    BVertexLoopBlinnData::control_point(&left_curve.endpoints[0],
+                                                        &left_curve.control_point,
+                                                        &left_curve.endpoints[1],
                                                         bottom),
                     BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
-                    BVertexLoopBlinnData::control_point(&subdivided_quadratic_bezier.ap2bp0,
-                                                        &subdivided_quadratic_bezier.bp1,
-                                                        &right_endpoint_position,
+                    BVertexLoopBlinnData::control_point(&right_curve.endpoints[0],
+                                                        &right_curve.control_point,
+                                                        &right_curve.endpoints[1],
                                                         bottom),
                 ].into_iter());
             }
