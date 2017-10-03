@@ -12,7 +12,7 @@ import { AntialiasingStrategyName, SubpixelAAType } from "./aa-strategy";
 import {FilePickerView} from "./file-picker";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapNull, unwrapUndef} from './utils';
-import {PathfinderDemoView, Timings, TIMINGS} from "./view";
+import {DemoView, Timings, TIMINGS} from "./view";
 
 export abstract class AppController {
     protected canvas: HTMLCanvasElement;
@@ -45,7 +45,7 @@ export abstract class AppController {
     protected abstract get defaultFile(): string;
 }
 
-export abstract class DemoAppController<View extends PathfinderDemoView> extends AppController {
+export abstract class DemoAppController<View extends DemoView> extends AppController {
     view: Promise<View>;
 
     protected abstract readonly builtinFileURI: string;

@@ -18,7 +18,7 @@ import {WebGLVertexArrayObject} from './gl-utils';
 import {B_QUAD_LOWER_INDICES_OFFSET, B_QUAD_SIZE, B_QUAD_UPPER_INDICES_OFFSET} from './meshes';
 import {PathfinderShaderProgram} from './shader-loader';
 import {UINT32_SIZE, unwrapNull} from './utils';
-import {MonochromePathfinderView} from './view';
+import {MonochromeDemoView} from './view';
 
 interface UpperAndLower<T> {
     upper: T;
@@ -56,14 +56,14 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.destFramebufferSize = glmatrix.vec2.create();
     }
 
-    init(view: MonochromePathfinderView) {
+    init(view: MonochromeDemoView) {
         super.init(view);
         this.bVertexPositionBufferTexture = new PathfinderBufferTexture(view.gl,
                                                                         'uBVertexPosition');
         this.bVertexPathIDBufferTexture = new PathfinderBufferTexture(view.gl, 'uBVertexPathID');
     }
 
-    attachMeshes(view: MonochromePathfinderView) {
+    attachMeshes(view: MonochromeDemoView) {
         const bVertexPositions = new Float32Array(view.meshData[0].bVertexPositions);
         const bVertexPathIDs = new Uint8Array(view.meshData[0].bVertexPathIDs);
         this.bVertexPositionBufferTexture.upload(view.gl, bVertexPositions);
@@ -76,7 +76,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.createResolveVAO(view);
     }
 
-    setFramebufferSize(view: MonochromePathfinderView) {
+    setFramebufferSize(view: MonochromeDemoView) {
         this.destFramebufferSize = glmatrix.vec2.clone(view.destAllocatedSize);
         glmatrix.vec2.mul(this.supersampledFramebufferSize,
                           this.destFramebufferSize,
@@ -88,7 +88,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
     }
 
-    prepare(view: MonochromePathfinderView) {
+    prepare(view: MonochromeDemoView) {
         const usedSize = this.supersampledUsedSize(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.directFramebuffer);
         view.gl.viewport(0,
@@ -123,7 +123,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         ]);
     }
 
-    antialias(view: MonochromePathfinderView) {
+    antialias(view: MonochromeDemoView) {
         // Detect edges if necessary.
         this.detectEdgesIfNecessary(view);
 
@@ -135,7 +135,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.antialiasCurves(view);
     }
 
-    resolve(view: MonochromePathfinderView) {
+    resolve(view: MonochromeDemoView) {
         // Resolve the antialiasing.
         this.resolveAA(view);
     }
@@ -144,7 +144,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         return glmatrix.mat4.create();
     }
 
-    protected initDirectFramebuffer(view: MonochromePathfinderView) {
+    protected initDirectFramebuffer(view: MonochromeDemoView) {
         this.directColorTexture = createFramebufferColorTexture(view.gl, this.destFramebufferSize);
         this.directPathIDTexture = createFramebufferColorTexture(view.gl,
                                                                  this.destFramebufferSize);
@@ -155,31 +155,31 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                               this.directDepthTexture);
     }
 
-    protected setCoverDepthState(view: MonochromePathfinderView): void {
+    protected setCoverDepthState(view: MonochromeDemoView): void {
         view.gl.disable(view.gl.DEPTH_TEST);
     }
 
-    protected setResolveDepthState(view: MonochromePathfinderView): void {
+    protected setResolveDepthState(view: MonochromeDemoView): void {
         view.gl.disable(view.gl.DEPTH_TEST);
     }
 
-    protected supersampledUsedSize(view: MonochromePathfinderView): glmatrix.vec2 {
+    protected supersampledUsedSize(view: MonochromeDemoView): glmatrix.vec2 {
         const usedSize = glmatrix.vec2.create();
         glmatrix.vec2.mul(usedSize, view.destUsedSize, this.supersampleScale);
         return usedSize;
     }
 
-    protected abstract getResolveProgram(view: MonochromePathfinderView): PathfinderShaderProgram;
-    protected abstract initEdgeDetectFramebuffer(view: MonochromePathfinderView): void;
-    protected abstract createEdgeDetectVAO(view: MonochromePathfinderView): void;
-    protected abstract detectEdgesIfNecessary(view: MonochromePathfinderView): void;
-    protected abstract clearForCover(view: MonochromePathfinderView): void;
-    protected abstract setAADepthState(view: MonochromePathfinderView): void;
-    protected abstract clearForResolve(view: MonochromePathfinderView): void;
-    protected abstract setResolveUniforms(view: MonochromePathfinderView,
+    protected abstract getResolveProgram(view: MonochromeDemoView): PathfinderShaderProgram;
+    protected abstract initEdgeDetectFramebuffer(view: MonochromeDemoView): void;
+    protected abstract createEdgeDetectVAO(view: MonochromeDemoView): void;
+    protected abstract detectEdgesIfNecessary(view: MonochromeDemoView): void;
+    protected abstract clearForCover(view: MonochromeDemoView): void;
+    protected abstract setAADepthState(view: MonochromeDemoView): void;
+    protected abstract clearForResolve(view: MonochromeDemoView): void;
+    protected abstract setResolveUniforms(view: MonochromeDemoView,
                                           program: PathfinderShaderProgram): void;
 
-    private initAAAlphaFramebuffer(view: MonochromePathfinderView) {
+    private initAAAlphaFramebuffer(view: MonochromeDemoView) {
         this.aaAlphaTexture = unwrapNull(view.gl.createTexture());
         view.gl.activeTexture(view.gl.TEXTURE0);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.aaAlphaTexture);
@@ -203,7 +203,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                                this.aaDepthTexture);
     }
 
-    private createCoverVAO(view: MonochromePathfinderView) {
+    private createCoverVAO(view: MonochromeDemoView) {
         this.coverVAO = view.vertexArrayObjectExt.createVertexArrayOES();
         view.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
 
@@ -235,7 +235,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private createLineVAOs(view: MonochromePathfinderView) {
+    private createLineVAOs(view: MonochromeDemoView) {
         const lineProgram = view.shaderPrograms.ecaaLine;
         const attributes = lineProgram.attributes;
 
@@ -270,7 +270,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.lineVAOs = vaos as UpperAndLower<WebGLVertexArrayObject>;
     }
 
-    private createCurveVAOs(view: MonochromePathfinderView) {
+    private createCurveVAOs(view: MonochromeDemoView) {
         const curveProgram = view.shaderPrograms.ecaaCurve;
         const attributes = curveProgram.attributes;
 
@@ -313,7 +313,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.curveVAOs = vaos as UpperAndLower<WebGLVertexArrayObject>;
     }
 
-    private createResolveVAO(view: MonochromePathfinderView) {
+    private createResolveVAO(view: MonochromeDemoView) {
         this.resolveVAO = view.vertexArrayObjectExt.createVertexArrayOES();
         view.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
 
@@ -324,7 +324,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private cover(view: MonochromePathfinderView) {
+    private cover(view: MonochromeDemoView) {
         // Set state for conservative coverage.
         const coverProgram = view.shaderPrograms.ecaaCover;
         const usedSize = this.supersampledUsedSize(view);
@@ -356,7 +356,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private setAAState(view: MonochromePathfinderView) {
+    private setAAState(view: MonochromeDemoView) {
         const usedSize = this.supersampledUsedSize(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0,
@@ -373,7 +373,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.enable(view.gl.BLEND);
     }
 
-    private setAAUniforms(view: MonochromePathfinderView, uniforms: UniformMap) {
+    private setAAUniforms(view: MonochromeDemoView, uniforms: UniformMap) {
         view.setTransformSTUniform(uniforms, 0);
         view.setFramebufferSizeUniform(uniforms);
         this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
@@ -383,7 +383,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.pathHintsBufferTexture.bind(view.gl, uniforms, 3);
     }
 
-    private antialiasLines(view: MonochromePathfinderView) {
+    private antialiasLines(view: MonochromeDemoView) {
         this.setAAState(view);
 
         const lineProgram = view.shaderPrograms.ecaaLine;
@@ -408,7 +408,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private antialiasCurves(view: MonochromePathfinderView) {
+    private antialiasCurves(view: MonochromeDemoView) {
         this.setAAState(view);
 
         const curveProgram = view.shaderPrograms.ecaaCurve;
@@ -433,7 +433,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private resolveAA(view: MonochromePathfinderView) {
+    private resolveAA(view: MonochromeDemoView) {
         // Set state for ECAA resolve.
         const usedSize = view.destUsedSize;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
@@ -477,34 +477,34 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 }
 
 export class ECAAMonochromeStrategy extends ECAAStrategy {
-    protected getResolveProgram(view: MonochromePathfinderView): PathfinderShaderProgram {
+    protected getResolveProgram(view: MonochromeDemoView): PathfinderShaderProgram {
         if (this.subpixelAA !== 'none')
             return view.shaderPrograms.ecaaMonoSubpixelResolve;
         return view.shaderPrograms.ecaaMonoResolve;
     }
 
-    protected initEdgeDetectFramebuffer(view: MonochromePathfinderView) {}
+    protected initEdgeDetectFramebuffer(view: MonochromeDemoView) {}
 
-    protected createEdgeDetectVAO(view: MonochromePathfinderView) {}
+    protected createEdgeDetectVAO(view: MonochromeDemoView) {}
 
-    protected detectEdgesIfNecessary(view: MonochromePathfinderView) {}
+    protected detectEdgesIfNecessary(view: MonochromeDemoView) {}
 
-    protected clearForCover(view: MonochromePathfinderView) {
+    protected clearForCover(view: MonochromeDemoView) {
         view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         view.gl.clearDepth(0.0);
         view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
     }
 
-    protected setAADepthState(view: MonochromePathfinderView) {
+    protected setAADepthState(view: MonochromeDemoView) {
         view.gl.disable(view.gl.DEPTH_TEST);
     }
 
-    protected clearForResolve(view: MonochromePathfinderView) {
+    protected clearForResolve(view: MonochromeDemoView) {
         view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         view.gl.clear(view.gl.COLOR_BUFFER_BIT);
     }
 
-    protected setResolveUniforms(view: MonochromePathfinderView, program: PathfinderShaderProgram) {
+    protected setResolveUniforms(view: MonochromeDemoView, program: PathfinderShaderProgram) {
         view.gl.uniform4fv(program.uniforms.uBGColor, view.bgColor);
         view.gl.uniform4fv(program.uniforms.uFGColor, view.fgColor);
     }
@@ -522,17 +522,17 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
     private bgColorTexture: WebGLTexture;
     private fgColorTexture: WebGLTexture;
 
-    protected getResolveProgram(view: MonochromePathfinderView): PathfinderShaderProgram {
+    protected getResolveProgram(view: MonochromeDemoView): PathfinderShaderProgram {
         return view.shaderPrograms.ecaaMultiResolve;
     }
 
-    protected initDirectFramebuffer(view: MonochromePathfinderView) {
+    protected initDirectFramebuffer(view: MonochromeDemoView) {
         this._directDepthTexture =
             createFramebufferDepthTexture(view.gl, this.supersampledFramebufferSize);
         super.initDirectFramebuffer(view);
     }
 
-    protected initEdgeDetectFramebuffer(view: MonochromePathfinderView) {
+    protected initEdgeDetectFramebuffer(view: MonochromeDemoView) {
         this.bgColorTexture = createFramebufferColorTexture(view.gl,
                                                             this.supersampledFramebufferSize);
         this.fgColorTexture = createFramebufferColorTexture(view.gl,
@@ -543,7 +543,7 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
                                                        this.aaDepthTexture);
     }
 
-    protected createEdgeDetectVAO(view: MonochromePathfinderView) {
+    protected createEdgeDetectVAO(view: MonochromeDemoView) {
         this.edgeDetectVAO = view.vertexArrayObjectExt.createVertexArrayOES();
         view.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
 
@@ -554,7 +554,7 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    protected detectEdgesIfNecessary(view: MonochromePathfinderView) {
+    protected detectEdgesIfNecessary(view: MonochromeDemoView) {
         // Set state for edge detection.
         const edgeDetectProgram = view.shaderPrograms.ecaaEdgeDetect;
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
@@ -593,32 +593,32 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    protected setCoverDepthState(view: MonochromePathfinderView) {
+    protected setCoverDepthState(view: MonochromeDemoView) {
         view.gl.depthMask(false);
         view.gl.depthFunc(view.gl.ALWAYS);
         view.gl.enable(view.gl.DEPTH_TEST);
     }
 
-    protected clearForCover(view: MonochromePathfinderView) {
+    protected clearForCover(view: MonochromeDemoView) {
         view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         view.gl.clear(view.gl.COLOR_BUFFER_BIT);
     }
 
-    protected setAADepthState(view: MonochromePathfinderView) {
+    protected setAADepthState(view: MonochromeDemoView) {
         view.gl.depthMask(false);
         view.gl.depthFunc(view.gl.EQUAL);
         view.gl.enable(view.gl.DEPTH_TEST);
     }
 
-    protected setResolveDepthState(view: MonochromePathfinderView) {
+    protected setResolveDepthState(view: MonochromeDemoView) {
         view.gl.depthMask(false);
         view.gl.depthFunc(view.gl.NOTEQUAL);
         view.gl.enable(view.gl.DEPTH_TEST);
     }
 
-    protected clearForResolve(view: MonochromePathfinderView) {}
+    protected clearForResolve(view: MonochromeDemoView) {}
 
-    protected setResolveUniforms(view: MonochromePathfinderView, program: PathfinderShaderProgram) {
+    protected setResolveUniforms(view: MonochromeDemoView, program: PathfinderShaderProgram) {
         view.gl.activeTexture(view.gl.TEXTURE1);
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.bgColorTexture);
         view.gl.uniform1i(program.uniforms.uBGColor, 1);

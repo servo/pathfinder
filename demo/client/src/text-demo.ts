@@ -30,7 +30,7 @@ import {calculatePixelDescent, calculatePixelRectForGlyph, PathfinderFont} from 
 import {BUILTIN_FONT_URI, calculatePixelXMin, GlyphStore, Hint, SimpleTextLayout} from "./text";
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
-import {MonochromePathfinderView, Timings, TIMINGS} from './view';
+import {MonochromeDemoView, Timings, TIMINGS} from './view';
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves
@@ -268,7 +268,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     }
 }
 
-class TextDemoView extends MonochromePathfinderView {
+class TextDemoView extends MonochromeDemoView {
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 

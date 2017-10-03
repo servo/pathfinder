@@ -24,7 +24,7 @@ import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
 import {GlyphStore, Hint, PathfinderFont, TextFrame, TextRun} from "./text";
 import {assert, panic, PathfinderError, unwrapNull} from "./utils";
-import {PathfinderDemoView, Timings} from "./view";
+import {DemoView, Timings} from "./view";
 
 const TEXT_AVAILABLE_WIDTH: number = 150000;
 const TEXT_PADDING: number = 2000;
@@ -94,12 +94,19 @@ interface MonumentSide {
     lines: TextLine[];
 }
 
+interface MeshDescriptor {
+    glyphID: number;
+    textFrameIndex: number;
+    positions: glmatrix.vec2[];
+}
+
 class ThreeDController extends DemoAppController<ThreeDView> {
     textFrames: TextFrame[];
     glyphStore: GlyphStore;
+    meshDescriptors: MeshDescriptor[];
 
     private baseMeshes: PathfinderMeshData;
-    private expandedMeshes: ExpandedMeshData[];
+    private expandedMeshes: PathfinderMeshData[];
 
     private monumentPromise: Promise<MonumentSide[]>;
 
@@ -196,20 +203,64 @@ class ThreeDController extends DemoAppController<ThreeDView> {
 
         this.glyphStore = new GlyphStore(font, glyphsNeeded);
         this.glyphStore.partition().then(result => {
+            const hint = new Hint(this.glyphStore.font, PIXELS_PER_UNIT, false);
+
             this.baseMeshes = result.meshes;
-            this.expandedMeshes = this.textFrames.map(textFrame => {
-                return textFrame.expandMeshes(this.baseMeshes, glyphsNeeded);
+
+            this.meshDescriptors = [];
+
+            for (let textFrameIndex = 0;
+                 textFrameIndex < this.textFrames.length;
+                 textFrameIndex++) {
+                const textFrame = this.textFrames[textFrameIndex];
+
+                let glyphDescriptors = [];
+                for (const run of textFrame.runs) {
+                    for (let glyphIndex = 0; glyphIndex < run.glyphIDs.length; glyphIndex++) {
+                        glyphDescriptors.push({
+                            glyphID: run.glyphIDs[glyphIndex],
+                            position: run.calculatePixelOriginForGlyphAt(glyphIndex,
+                                                                         PIXELS_PER_UNIT,
+                                                                         hint),
+                        });
+                    }
+                }
+
+                glyphDescriptors = _.sortBy(glyphDescriptors, descriptor => descriptor.glyphID);
+
+                let currentMeshDescriptor: (MeshDescriptor | null) = null;
+                for (const glyphDescriptor of glyphDescriptors) {
+                    if (currentMeshDescriptor == null ||
+                        glyphDescriptor.glyphID !== currentMeshDescriptor.glyphID) {
+                        if (currentMeshDescriptor != null)
+                            this.meshDescriptors.push(currentMeshDescriptor);
+                        currentMeshDescriptor = {
+                            glyphID: glyphDescriptor.glyphID,
+                            positions: [],
+                            textFrameIndex: textFrameIndex,
+                        };
+                    }
+                    currentMeshDescriptor.positions.push(glyphDescriptor.position);
+                }
+                if (currentMeshDescriptor != null)
+                    this.meshDescriptors.push(currentMeshDescriptor);
+            }
+
+            this.expandedMeshes = this.meshDescriptors.map(meshDescriptor => {
+                const glyphIndex = _.sortedIndexOf(glyphsNeeded, meshDescriptor.glyphID);
+                return this.baseMeshes.expand([glyphIndex + 1]);
             });
+
             this.view.then(view => {
                 view.uploadPathColors(this.expandedMeshes.length);
                 view.uploadPathTransforms(this.expandedMeshes.length);
-                view.attachMeshes(this.expandedMeshes.map(meshes => meshes.meshes));
+                view.attachMeshes(this.expandedMeshes);
             });
         });
     }
 }
 
-class ThreeDView extends PathfinderDemoView {
+class ThreeDView extends DemoView {
     destFramebuffer: WebGLFramebuffer | null = null;
 
     camera: PerspectiveCamera;
@@ -220,6 +271,10 @@ class ThreeDView extends PathfinderDemoView {
     protected directInteriorProgramName: keyof ShaderMap<void> = 'direct3DInterior';
 
     protected depthFunction: number = this.gl.LESS;
+
+    protected get pathIDsAreInstanced(): boolean {
+        return true;
+    }
 
     private _scale: number;
 
@@ -249,38 +304,18 @@ class ThreeDView extends PathfinderDemoView {
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, CUBE_INDICES, this.gl.STATIC_DRAW);
     }
 
-    protected pathColorsForObject(textFrameIndex: number): Uint8Array {
-        const textFrame = this.appController.textFrames[textFrameIndex];
-        const pathCount = textFrame.totalGlyphCount;
-
-        const pathColors = new Uint8Array(4 * (pathCount + 1));
-        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++)
-            pathColors.set(TEXT_COLOR, (pathIndex + 1) * 4);
-
-        return pathColors;
+    protected pathColorsForObject(objectIndex: number): Uint8Array {
+        return TEXT_COLOR;
     }
 
-    protected pathTransformsForObject(textFrameIndex: number): Float32Array {
-        const textFrame = this.appController.textFrames[textFrameIndex];
-        const pathCount = textFrame.totalGlyphCount;
-
-        const hint = new Hint(this.appController.glyphStore.font, PIXELS_PER_UNIT, false);
-
+    protected pathTransformsForObject(objectIndex: number): Float32Array {
+        const meshDescriptor = this.appController.meshDescriptors[objectIndex];
+        const pathCount = meshDescriptor.positions.length;
         const pathTransforms = new Float32Array(4 * (pathCount + 1));
-
-        let globalPathIndex = 0;
-        for (const run of textFrame.runs) {
-            for (let pathIndex = 0;
-                 pathIndex < run.glyphIDs.length;
-                 pathIndex++, globalPathIndex++) {
-                const glyphOrigin = run.calculatePixelOriginForGlyphAt(pathIndex,
-                                                                       PIXELS_PER_UNIT,
-                                                                       hint);
-                pathTransforms.set([1, 1, glyphOrigin[0], glyphOrigin[1]],
-                                   (globalPathIndex + 1) * 4);
-            }
+        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+            const glyphOrigin = meshDescriptor.positions[pathIndex];
+            pathTransforms.set([1, 1, glyphOrigin[0], glyphOrigin[1]], (pathIndex + 1) * 4);
         }
-
         return pathTransforms;
     }
 
@@ -343,22 +378,28 @@ class ThreeDView extends PathfinderDemoView {
     }
 
     protected getModelviewTransform(objectIndex: number): glmatrix.mat4 {
+        const textFrameIndex = this.appController.meshDescriptors[objectIndex].textFrameIndex;
         const transform = glmatrix.mat4.create();
-        glmatrix.mat4.rotateY(transform, transform, Math.PI / 2.0 * objectIndex);
+        glmatrix.mat4.rotateY(transform, transform, Math.PI / 2.0 * textFrameIndex);
         glmatrix.mat4.translate(transform, transform, TEXT_TRANSLATION);
         return transform;
     }
 
     // Cheap but effective backface culling.
     protected shouldRenderObject(objectIndex: number): boolean {
+        const textFrameIndex = this.appController.meshDescriptors[objectIndex].textFrameIndex;
         const translation = this.camera.translation;
         const extent = TEXT_TRANSLATION[2] * TEXT_SCALE[2];
-        switch (objectIndex) {
+        switch (textFrameIndex) {
         case 0:     return translation[2] < -extent;
         case 1:     return translation[0] < -extent;
         case 2:     return translation[2] > extent;
         default:    return translation[0] > extent;
         }
+    }
+
+    protected meshInstanceCountForObject(objectIndex: number): number {
+        return this.appController.meshDescriptors[objectIndex].positions.length;
     }
 
     get destAllocatedSize(): glmatrix.vec2 {

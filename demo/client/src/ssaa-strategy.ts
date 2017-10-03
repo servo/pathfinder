@@ -13,7 +13,7 @@ import * as glmatrix from 'gl-matrix';
 import {AntialiasingStrategy, SubpixelAAType} from './aa-strategy';
 import {createFramebuffer, createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
 import {unwrapNull} from './utils';
-import {PathfinderDemoView} from './view';
+import {DemoView} from './view';
 
 export default class SSAAStrategy extends AntialiasingStrategy {
     private level: number;
@@ -33,9 +33,9 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         this.supersampledFramebufferSize = glmatrix.vec2.create();
     }
 
-    attachMeshes(view: PathfinderDemoView) {}
+    attachMeshes(view: DemoView) {}
 
-    setFramebufferSize(view: PathfinderDemoView) {
+    setFramebufferSize(view: DemoView) {
         this.destFramebufferSize = glmatrix.vec2.clone(view.destAllocatedSize);
 
         this.supersampledFramebufferSize = glmatrix.vec2.create();
@@ -77,7 +77,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         return transform;
     }
 
-    prepare(view: PathfinderDemoView) {
+    prepare(view: DemoView) {
         const framebufferSize = this.supersampledFramebufferSize;
         const usedSize = this.usedSupersampledFramebufferSize(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.supersampledFramebuffer);
@@ -86,9 +86,9 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         view.gl.enable(view.gl.SCISSOR_TEST);
     }
 
-    antialias(view: PathfinderDemoView) {}
+    antialias(view: DemoView) {}
 
-    resolve(view: PathfinderDemoView) {
+    resolve(view: DemoView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
         view.gl.viewport(0, 0, view.destAllocatedSize[0], view.destAllocatedSize[1]);
         view.gl.disable(view.gl.DEPTH_TEST);
@@ -123,7 +123,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         return glmatrix.vec2.clone([this.subpixelAA !== 'none' ? 3 : 2, this.level === 2 ? 1 : 2]);
     }
 
-    private usedSupersampledFramebufferSize(view: PathfinderDemoView): glmatrix.vec2 {
+    private usedSupersampledFramebufferSize(view: DemoView): glmatrix.vec2 {
         const result = glmatrix.vec2.create();
         glmatrix.vec2.mul(result, view.destUsedSize, this.supersampleScale);
         return result;

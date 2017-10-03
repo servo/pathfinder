@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {PathfinderDemoView} from './view';
+import {DemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'ecaa';
 
@@ -21,15 +21,15 @@ export abstract class AntialiasingStrategy {
     shouldRenderDirect: boolean;
 
     // Prepares any OpenGL data. This is only called on startup and canvas resize.
-    init(view: PathfinderDemoView): void {
+    init(view: DemoView): void {
         this.setFramebufferSize(view);
     }
 
     // Uploads any mesh data. This is called whenever a new set of meshes is supplied.
-    abstract attachMeshes(view: PathfinderDemoView): void;
+    abstract attachMeshes(view: DemoView): void;
 
     // This is called whenever the framebuffer has changed.
-    abstract setFramebufferSize(view: PathfinderDemoView): void;
+    abstract setFramebufferSize(view: DemoView): void;
 
     // Returns the transformation matrix that should be applied when directly rendering.
     abstract get transform(): glmatrix.mat4;
@@ -37,17 +37,17 @@ export abstract class AntialiasingStrategy {
     // Called before direct rendering.
     //
     // Typically, this redirects direct rendering to a framebuffer of some sort.
-    abstract prepare(view: PathfinderDemoView): void;
+    abstract prepare(view: DemoView): void;
 
     // Called after direct rendering.
     //
     // This usually performs the actual antialiasing.
-    abstract antialias(view: PathfinderDemoView): void;
+    abstract antialias(view: DemoView): void;
 
     // Called after antialiasing.
     //
     // This usually blits to the real framebuffer.
-    abstract resolve(view: PathfinderDemoView): void;
+    abstract resolve(view: DemoView): void;
 }
 
 export class NoAAStrategy extends AntialiasingStrategy {
@@ -58,9 +58,9 @@ export class NoAAStrategy extends AntialiasingStrategy {
         this.framebufferSize = glmatrix.vec2.create();
     }
 
-    attachMeshes(view: PathfinderDemoView) {}
+    attachMeshes(view: DemoView) {}
 
-    setFramebufferSize(view: PathfinderDemoView) {
+    setFramebufferSize(view: DemoView) {
         this.framebufferSize = view.destAllocatedSize;
     }
 
@@ -68,15 +68,15 @@ export class NoAAStrategy extends AntialiasingStrategy {
         return glmatrix.mat4.create();
     }
 
-    prepare(view: PathfinderDemoView) {
+    prepare(view: DemoView) {
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
         view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
         view.gl.disable(view.gl.SCISSOR_TEST);
     }
 
-    antialias(view: PathfinderDemoView) {}
+    antialias(view: DemoView) {}
 
-    resolve(view: PathfinderDemoView) {}
+    resolve(view: DemoView) {}
 
     get shouldRenderDirect() {
         return true;

@@ -23,7 +23,7 @@ import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
 import {TextRun} from "./text";
 import {assert, PathfinderError, unwrapNull} from "./utils";
-import {MonochromePathfinderView, PathfinderDemoView, Timings } from "./view";
+import {DemoView, MonochromeDemoView, Timings } from "./view";
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -178,7 +178,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     }
 }
 
-class BenchmarkTestView extends MonochromePathfinderView {
+class BenchmarkTestView extends MonochromeDemoView {
     destFramebuffer: WebGLFramebuffer | null = null;
 
     renderingPromiseCallback: ((time: number) => void) | null;

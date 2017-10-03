@@ -22,7 +22,7 @@ import {ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {panic, unwrapNull} from './utils';
-import {PathfinderDemoView, Timings} from './view';
+import {DemoView, Timings} from './view';
 
 const parseColor = require('parse-color');
 
@@ -87,7 +87,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
     }
 }
 
-class SVGDemoView extends PathfinderDemoView {
+class SVGDemoView extends DemoView {
     camera: OrthographicCamera;
 
     protected depthFunction: number = this.gl.GREATER;

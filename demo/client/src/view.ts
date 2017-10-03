@@ -8,9 +8,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+// FIXME(pcwalton): This is turning into a fragile inheritance hierarchy. See if we can refactor to
+// use composition more.
+
 import * as glmatrix from 'gl-matrix';
 
-import { AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy, SubpixelAAType } from "./aa-strategy";
+import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
+import {SubpixelAAType} from "./aa-strategy";
 import PathfinderBufferTexture from './buffer-texture';
 import {Camera} from "./camera";
 import {QUAD_ELEMENTS, UniformMap} from './gl-utils';
@@ -18,6 +22,8 @@ import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, SHADER_NAMES, ShaderMap} from './shader-loader';
 import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
 import {expectNotNull, PathfinderError, UINT32_SIZE, unwrapNull} from './utils';
+
+const MAX_PATHS: number = 65535;
 
 const TIME_INTERVAL_DELAY: number = 32;
 
@@ -115,7 +121,7 @@ export abstract class PathfinderView {
     }
 }
 
-export abstract class PathfinderDemoView extends PathfinderView {
+export abstract class DemoView extends PathfinderView {
     gl: WebGLRenderingContext;
 
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
@@ -143,6 +149,12 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
     protected lastTimings: Timings;
 
+    protected get pathIDsAreInstanced(): boolean {
+        return false;
+    }
+
+    private instancedPathIDVBO: WebGLBuffer | null;
+
     private atlasRenderingTimerQuery: WebGLQuery;
     private compositingTimerQuery: WebGLQuery;
     private timerQueryPollInterval: number | null;
@@ -161,6 +173,9 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
         this.pathTransformBufferTextures = [];
         this.pathColorsBufferTextures = [];
+
+        if (this.pathIDsAreInstanced)
+            this.initInstancedPathIDVBO();
 
         this.wantsScreenshot = false;
 
@@ -390,6 +405,10 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
     protected abstract compositeIfNecessary(): void;
 
+    protected meshInstanceCountForObject(objectIndex: number): number {
+        return 1;
+    }
+
     private compileShaders(commonSource: string, shaderSources: ShaderMap<ShaderProgramSource>):
                            ShaderMap<UnlinkedShaderProgram> {
         const shaders: Partial<ShaderMap<Partial<UnlinkedShaderProgram>>> = {};
@@ -434,6 +453,17 @@ export abstract class PathfinderDemoView extends PathfinderView {
         return shaderProgramMap as ShaderMap<PathfinderShaderProgram>;
     }
 
+    private initInstancedPathIDVBO(): void {
+        const pathIDs = new Uint16Array(MAX_PATHS);
+        for (let pathIndex = 0; pathIndex < MAX_PATHS; pathIndex++)
+            pathIDs[pathIndex] = pathIndex + 1;
+
+        this.instancedPathIDVBO = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instancedPathIDVBO);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, pathIDs, this.gl.STATIC_DRAW);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, null);
+    }
+
     private setTransformUniform(uniforms: UniformMap, objectIndex: number) {
         const transform = glmatrix.mat4.clone(this.worldTransform);
         glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
@@ -447,6 +477,12 @@ export abstract class PathfinderDemoView extends PathfinderView {
 
             const meshes = this.meshes[objectIndex];
 
+            let instanceCount: number | null;
+            if (!this.pathIDsAreInstanced)
+                instanceCount = null;
+            else
+                instanceCount = this.meshInstanceCountForObject(objectIndex);
+
             // Set up implicit cover state.
             this.gl.depthFunc(this.depthFunction);
             this.gl.depthMask(true);
@@ -454,25 +490,12 @@ export abstract class PathfinderDemoView extends PathfinderView {
             this.gl.disable(this.gl.BLEND);
 
             // Set up the implicit cover interior VAO.
+            //
+            // TODO(pcwalton): Cache these.
             const directInteriorProgram = this.shaderPrograms[this.directInteriorProgramName];
-            this.gl.useProgram(directInteriorProgram.program);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPositions);
-            this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
-                                        2,
-                                        this.gl.FLOAT,
-                                        false,
-                                        0,
-                                        0);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
-            this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathID,
-                                        1,
-                                        this.gl.UNSIGNED_SHORT,
-                                        false,
-                                        0,
-                                        0);
-            this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
-            this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
-            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, meshes.coverInteriorIndices);
+            const implicitCoverInteriorVAO = this.vertexArrayObjectExt.createVertexArrayOES();
+            this.vertexArrayObjectExt.bindVertexArrayOES(implicitCoverInteriorVAO);
+            this.initImplicitCoverInteriorVAO(objectIndex);
 
             // Draw direct interior parts.
             this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
@@ -487,7 +510,15 @@ export abstract class PathfinderDemoView extends PathfinderView {
                 this.pathHintsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 2);
             let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                         this.gl.BUFFER_SIZE) / UINT32_SIZE;
-            this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+            if (instanceCount == null) {
+                this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+            } else {
+                this.instancedArraysExt.drawElementsInstancedANGLE(this.gl.TRIANGLES,
+                                                                   indexCount,
+                                                                   this.gl.UNSIGNED_INT,
+                                                                   0,
+                                                                   instanceCount);
+            }
 
             // Set up direct curve state.
             this.gl.depthMask(false);
@@ -497,40 +528,12 @@ export abstract class PathfinderDemoView extends PathfinderView {
                                       this.gl.ONE, this.gl.ONE);
 
             // Set up the direct curve VAO.
+            //
+            // TODO(pcwalton): Cache these.
             const directCurveProgram = this.shaderPrograms[this.directCurveProgramName];
-            this.gl.useProgram(directCurveProgram.program);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPositions);
-            this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
-                                        2,
-                                        this.gl.FLOAT,
-                                        false,
-                                        0,
-                                        0);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
-            this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
-                                        1,
-                                        this.gl.UNSIGNED_SHORT,
-                                        false,
-                                        0,
-                                        0);
-            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexLoopBlinnData);
-            this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
-                                        2,
-                                        this.gl.UNSIGNED_BYTE,
-                                        false,
-                                        B_LOOP_BLINN_DATA_SIZE,
-                                        B_LOOP_BLINN_DATA_TEX_COORD_OFFSET);
-            this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
-                                        1,
-                                        this.gl.BYTE,
-                                        false,
-                                        B_LOOP_BLINN_DATA_SIZE,
-                                        B_LOOP_BLINN_DATA_SIGN_OFFSET);
-            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
-            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
-            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
-            this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
-            this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, meshes.coverCurveIndices);
+            const implicitCoverCurveVAO = this.vertexArrayObjectExt.createVertexArrayOES();
+            this.vertexArrayObjectExt.bindVertexArrayOES(implicitCoverCurveVAO);
+            this.initImplicitCoverCurveVAO(objectIndex);
 
             // Draw direct curve parts.
             this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
@@ -545,8 +548,99 @@ export abstract class PathfinderDemoView extends PathfinderView {
                 this.pathHintsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 2);
             indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
-            this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+            if (instanceCount == null) {
+                this.gl.drawElements(this.gl.TRIANGLES, indexCount, this.gl.UNSIGNED_INT, 0);
+            } else {
+                this.instancedArraysExt.drawElementsInstancedANGLE(this.gl.TRIANGLES,
+                                                                   indexCount,
+                                                                   this.gl.UNSIGNED_INT,
+                                                                   0,
+                                                                   instanceCount);
+            }
+
+            this.vertexArrayObjectExt.bindVertexArrayOES(null);
         }
+    }
+
+    private initImplicitCoverInteriorVAO(objectIndex: number): void {
+        const meshes = this.meshes[objectIndex];
+
+        const directInteriorProgram = this.shaderPrograms[this.directInteriorProgramName];
+        this.gl.useProgram(directInteriorProgram.program);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPositions);
+        this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
+                                    2,
+                                    this.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+
+        if (this.pathIDsAreInstanced)
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instancedPathIDVBO);
+        else
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
+        this.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathID,
+                                    1,
+                                    this.gl.UNSIGNED_SHORT,
+                                    false,
+                                    0,
+                                    0);
+        if (this.pathIDsAreInstanced) {
+            this.instancedArraysExt
+                .vertexAttribDivisorANGLE(directInteriorProgram.attributes.aPathID, 1);
+        }
+
+        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
+        this.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, meshes.coverInteriorIndices);
+    }
+
+    private initImplicitCoverCurveVAO(objectIndex: number): void {
+        const meshes = this.meshes[objectIndex];
+
+        const directCurveProgram = this.shaderPrograms[this.directCurveProgramName];
+        this.gl.useProgram(directCurveProgram.program);
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPositions);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
+                                    2,
+                                    this.gl.FLOAT,
+                                    false,
+                                    0,
+                                    0);
+
+        if (this.pathIDsAreInstanced)
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.instancedPathIDVBO);
+        else
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
+                                    1,
+                                    this.gl.UNSIGNED_SHORT,
+                                    false,
+                                    0,
+                                    0);
+        if (this.pathIDsAreInstanced) {
+            this.instancedArraysExt
+                .vertexAttribDivisorANGLE(directCurveProgram.attributes.aPathID, 1);
+        }
+
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, meshes.bVertexLoopBlinnData);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
+                                    2,
+                                    this.gl.UNSIGNED_BYTE,
+                                    false,
+                                    B_LOOP_BLINN_DATA_SIZE,
+                                    B_LOOP_BLINN_DATA_TEX_COORD_OFFSET);
+        this.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
+                                    1,
+                                    this.gl.BYTE,
+                                    false,
+                                    B_LOOP_BLINN_DATA_SIZE,
+                                    B_LOOP_BLINN_DATA_SIGN_OFFSET);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
+        this.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
+        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, meshes.coverCurveIndices);
     }
 
     private finishTiming() {
@@ -613,7 +707,7 @@ export abstract class PathfinderDemoView extends PathfinderView {
     protected abstract get directInteriorProgramName(): keyof ShaderMap<void>;
 }
 
-export abstract class MonochromePathfinderView extends PathfinderDemoView {
+export abstract class MonochromeDemoView extends DemoView {
     abstract get bgColor(): glmatrix.vec4;
     abstract get fgColor(): glmatrix.vec4;
 }
