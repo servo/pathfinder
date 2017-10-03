@@ -184,8 +184,8 @@ class TextDemoController extends DemoAppController<TextDemoView> {
                                 unwrapNull(this.shaderSources));
     }
 
-    protected fileLoaded(fileData: ArrayBuffer) {
-        const font = new PathfinderFont(fileData);
+    protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null) {
+        const font = new PathfinderFont(fileData, builtinName);
         this.recreateLayout(font);
     }
 

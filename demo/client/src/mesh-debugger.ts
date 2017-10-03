@@ -73,7 +73,7 @@ class MeshDebuggerAppController extends AppController {
         this.view = new MeshDebuggerView(this);
 
         this.filePicker = unwrapNull(FilePickerView.create());
-        this.filePicker.onFileLoaded = fileData => this.fileLoaded(fileData);
+        this.filePicker.onFileLoaded = fileData => this.fileLoaded(fileData, null);
 
         this.openModal = unwrapNull(document.getElementById('pf-open-modal'));
         this.fontPathSelectGroup =
@@ -94,14 +94,14 @@ class MeshDebuggerAppController extends AppController {
         this.loadInitialFile(BUILTIN_FONT_URI);
     }
 
-    protected fileLoaded(fileData: ArrayBuffer): void {
+    protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
         while (this.fontPathSelect.lastChild != null)
             this.fontPathSelect.removeChild(this.fontPathSelect.lastChild);
 
         this.fontPathSelectGroup.classList.remove('pf-display-none');
 
         if (this.fileType === 'font')
-            this.fontLoaded(fileData);
+            this.fontLoaded(fileData, builtinName);
         else if (this.fileType === 'svg')
             this.svgLoaded(fileData);
     }
@@ -151,8 +151,8 @@ class MeshDebuggerAppController extends AppController {
             this.fetchFile(results[2], BUILTIN_URIS[this.fileType]);
     }
 
-    private fontLoaded(fileData: ArrayBuffer): void {
-        this.file = new PathfinderFont(fileData);
+    private fontLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
+        this.file = new PathfinderFont(fileData, builtinName);
         this.fileData = fileData;
 
         const glyphCount = this.file.opentypeFont.numGlyphs;

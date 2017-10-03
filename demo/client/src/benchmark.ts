@@ -94,8 +94,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         this.loadInitialFile(this.builtinFileURI);
     }
 
-    protected fileLoaded(fileData: ArrayBuffer): void {
-        const font = new PathfinderFont(fileData);
+    protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
+        const font = new PathfinderFont(fileData, builtinName);
         this.font = font;
 
         const textRun = new TextRun(STRING, [0, 0], font);

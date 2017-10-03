@@ -49,11 +49,13 @@ opentype.Font.prototype.lineHeight = function() {
 export class PathfinderFont {
     readonly opentypeFont: opentype.Font;
     readonly data: ArrayBuffer;
+    readonly builtinFontName: string | null;
 
     private metricsCache: Metrics[];
 
-    constructor(data: ArrayBuffer) {
+    constructor(data: ArrayBuffer, builtinFontName: string | null) {
         this.data = data;
+        this.builtinFontName = builtinFontName != null ? builtinFontName : null;
 
         this.opentypeFont = opentype.parse(data);
         if (!this.opentypeFont.isSupported())
@@ -215,12 +217,14 @@ export class GlyphStore {
 
     partition(): Promise<PartitionResult> {
         // Build the partitioning request to the server.
-        //
-        // FIXME(pcwalton): If this is a builtin font, don't resend it to the server!
+        let fontFace;
+        if (this.font.builtinFontName != null)
+            fontFace = { Builtin: this.font.builtinFontName };
+        else
+            fontFace = { Custom: base64js.fromByteArray(new Uint8Array(this.font.data)) };
+
         const request = {
-            face: {
-                Custom: base64js.fromByteArray(new Uint8Array(this.font.data)),
-            },
+            face: fontFace,
             fontIndex: 0,
             glyphs: this.glyphIDs.map(id => ({ id: id, transform: [1, 0, 0, 1, 0, 0] })),
             pointSize: this.font.opentypeFont.unitsPerEm,

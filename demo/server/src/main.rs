@@ -16,6 +16,7 @@ extern crate base64;
 extern crate env_logger;
 extern crate euclid;
 extern crate fontsan;
+extern crate lru_cache;
 extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
 extern crate pathfinder_path_utils;
@@ -23,10 +24,13 @@ extern crate rocket;
 extern crate rocket_contrib;
 
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate serde_derive;
 
 use app_units::Au;
 use euclid::{Point2D, Transform2D};
+use lru_cache::LruCache;
 use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
@@ -41,10 +45,19 @@ use rocket_contrib::json::Json;
 use std::fs::File;
 use std::io::{self, Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::u32;
 
 const CUBIC_ERROR_TOLERANCE: f32 = 0.1;
+
+const MESH_LIBRARY_CACHE_SIZE: usize = 16;
+
+lazy_static! {
+    static ref MESH_LIBRARY_CACHE: Mutex<LruCache<MeshLibraryCacheKey, PartitionResponder>> = {
+        Mutex::new(LruCache::new(MESH_LIBRARY_CACHE_SIZE))
+    };
+}
 
 static STATIC_INDEX_PATH: &'static str = "../client/index.html";
 static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text-demo.html";
@@ -77,6 +90,12 @@ static BUILTIN_FONTS: [(&'static str, &'static str); 4] = [
 static BUILTIN_SVGS: [(&'static str, &'static str); 1] = [
     ("tiger", "../../resources/svg/Ghostscript_Tiger.svg"),
 ];
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct MeshLibraryCacheKey {
+    builtin_font_name: String,
+    glyph_ids: Vec<u32>,
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct SubpathRange {
@@ -154,7 +173,7 @@ struct PartitionSvgPathSegment {
 }
 
 struct PathPartitioningResult {
-    encoded_data: Vec<u8>,
+    encoded_data: Arc<Vec<u8>>,
     time: Duration,
 }
 
@@ -177,7 +196,7 @@ impl PathPartitioningResult {
         drop(partitioner.library().serialize_into(&mut data_buffer));
 
         PathPartitioningResult {
-            encoded_data: data_buffer.into_inner(),
+            encoded_data: Arc::new(data_buffer.into_inner()),
             time: time_elapsed,
         }
     }
@@ -187,8 +206,9 @@ impl PathPartitioningResult {
     }
 }
 
+#[derive(Clone)]
 struct PartitionResponder {
-    data: Vec<u8>,
+    data: Arc<Vec<u8>>,
     time: f64,
 }
 
@@ -197,7 +217,9 @@ impl<'r> Responder<'r> for PartitionResponder {
         let mut builder = Response::build();
         builder.header(ContentType::new("application", "vnd.mozilla.pfml"));
         builder.header(Header::new("Server-Timing", format!("Partitioning={}", self.time)));
-        builder.sized_body(Cursor::new(self.data));
+
+        // FIXME(pcwalton): Don't clone! Requires a `Cursor` implementation for `Arc<Vec<u8>>`…
+        builder.sized_body(Cursor::new((*self.data).clone()));
         builder.ok()
     }
 }
@@ -205,6 +227,24 @@ impl<'r> Responder<'r> for PartitionResponder {
 #[post("/partition-font", format = "application/json", data = "<request>")]
 fn partition_font(request: Json<PartitionFontRequest>)
                   -> Result<PartitionResponder, PartitionFontError> {
+    let cache_key = match request.face {
+        PartitionFontRequestFace::Builtin(ref builtin_font_name) => {
+            Some(MeshLibraryCacheKey {
+                builtin_font_name: (*builtin_font_name).clone(),
+                glyph_ids: request.glyphs.iter().map(|glyph| glyph.id).collect(),
+            })
+        }
+        _ => None,
+    };
+
+    if let Some(ref cache_key) = cache_key {
+        if let Ok(mut mesh_library_cache) = MESH_LIBRARY_CACHE.lock() {
+            if let Some(cache_entry) = mesh_library_cache.get_mut(cache_key) {
+                return Ok((*cache_entry).clone())
+            }
+        }
+    }
+
     // Fetch the OTF data.
     let otf_data = match request.face {
         PartitionFontRequestFace::Builtin(ref builtin_font_name) => {
@@ -274,12 +314,20 @@ fn partition_font(request: Json<PartitionFontRequest>)
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
                                                                    &subpath_indices);
 
-    // Return the response.
+    // Build the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
-    Ok(PartitionResponder {
+    let responder = PartitionResponder {
         data: path_partitioning_result.encoded_data,
         time: elapsed_ms,
-    })
+    };
+
+    if let Some(cache_key) = cache_key {
+        if let Ok(mut mesh_library_cache) = MESH_LIBRARY_CACHE.lock() {
+            mesh_library_cache.insert(cache_key, responder.clone());
+        }
+    }
+
+    Ok(responder)
 }
 
 #[post("/partition-svg-paths", format = "application/json", data = "<request>")]

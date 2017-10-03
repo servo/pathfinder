@@ -113,8 +113,8 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         this.loadInitialFile(this.builtinFileURI);
     }
 
-    protected fileLoaded(fileData: ArrayBuffer): void {
-        const font = new PathfinderFont(fileData);
+    protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
+        const font = new PathfinderFont(fileData, builtinName);
         this.monumentPromise.then(monument => this.layoutMonument(font, fileData, monument));
     }
 

@@ -17,10 +17,11 @@ extern crate bit_vec;
 extern crate byteorder;
 extern crate env_logger;
 extern crate euclid;
-#[macro_use]
-extern crate log;
 extern crate pathfinder_path_utils;
 extern crate serde;
+
+#[macro_use]
+extern crate log;
 #[macro_use]
 extern crate serde_derive;
 
