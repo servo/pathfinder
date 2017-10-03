@@ -1,10 +1,14 @@
 // pathfinder/shaders/gles2/direct-curve.fs.glsl
 //
-// Copyright (c) 2017 Mozilla Foundation
+// Copyright (c) 2017 The Pathfinder Project Developers.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
 
-// This shader implements the quadratic Loop-Blinn formulation without writing precise depth.
-// It is therefore unsuitable for ECAA, but it's fast (specifically, preserving early Z) and
-// compatible with OpenGL ES 2.0.
+// This shader implements the quadratic Loop-Blinn formulation.
 
 precision highp float;
 

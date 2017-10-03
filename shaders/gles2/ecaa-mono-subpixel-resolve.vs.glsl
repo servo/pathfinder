@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-subpixel-mono-resolve.vs.glsl
+// pathfinder/shaders/gles2/ecaa-mono-subpixel-resolve.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
