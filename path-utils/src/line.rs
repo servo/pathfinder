@@ -11,7 +11,7 @@
 //! Geometry utilities for straight line segments.
 
 use euclid::approxeq::ApproxEq;
-use euclid::{Point2D, Vector2D};
+use euclid::{Point2D, Vector2D, Vector3D};
 
 use intersection::Intersect;
 
@@ -101,5 +101,32 @@ impl Line {
         }
 
         Some(p + r * t)
+    }
+
+    /// A version of `intersect` that accounts for intersection points at infinity.
+    ///
+    /// See Sederberg § 7.2.1.
+    pub fn intersect_at_infinity(&self, other: &Line) -> Option<Point2D<f32>> {
+        let this_vector_0 = Vector3D::new(self.endpoints[0].x, self.endpoints[0].y, 1.0);
+        let this_vector_1 = Vector3D::new(self.endpoints[1].x, self.endpoints[1].y, 1.0);
+        let other_vector_0 = Vector3D::new(other.endpoints[0].x, other.endpoints[0].y, 1.0);
+        let other_vector_1 = Vector3D::new(other.endpoints[1].x, other.endpoints[1].y, 1.0);
+
+        let this_vector = this_vector_0.cross(this_vector_1);
+        let other_vector = other_vector_0.cross(other_vector_1);
+        let intersection = this_vector.cross(other_vector);
+
+        if intersection.z.approx_eq(&0.0) {
+            None
+        } else {
+            Some(Point2D::new(intersection.x / intersection.z, intersection.y / intersection.z))
+        }
+    }
+
+    // Translates this line in the perpendicular counterclockwise direction by the given length.
+    pub(crate) fn offset(&self, length: f32) -> Line {
+        let vector = self.to_vector();
+        let normal = Vector2D::new(-vector.y, vector.x).normalize() * length;
+        Line::new(&(self.endpoints[0] + normal), &(self.endpoints[1] + normal))
     }
 }

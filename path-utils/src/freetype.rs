@@ -11,7 +11,7 @@
 use euclid::Point2D;
 use freetype_sys::{FT_Fixed, FT_Outline, FT_Pos, FT_Vector};
 
-use PathSegment;
+use PathCommand;
 
 const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
 
@@ -49,9 +49,9 @@ impl<'a> OutlineStream<'a> {
 }
 
 impl<'a> Iterator for OutlineStream<'a> {
-    type Item = PathSegment;
+    type Item = PathCommand;
 
-    fn next(&mut self) -> Option<PathSegment> {
+    fn next(&mut self) -> Option<PathCommand> {
         unsafe {
             let mut control_point_position: Option<Point2D<f32>> = None;
             loop {
@@ -63,13 +63,13 @@ impl<'a> Iterator for OutlineStream<'a> {
                     *self.outline.contours.offset(self.contour_index as isize) as u16; 
                 if self.point_index == last_point_index_in_current_contour + 1 {
                     if let Some(control_point_position) = control_point_position {
-                        return Some(PathSegment::CurveTo(control_point_position,
+                        return Some(PathCommand::CurveTo(control_point_position,
                                                          self.first_position_of_subpath))
                     }
 
                     self.contour_index += 1;
                     self.first_point_index_of_contour = true;
-                    return Some(PathSegment::ClosePath)
+                    return Some(PathCommand::ClosePath)
                 }
 
                 // FIXME(pcwalton): Approximate cubic curves with quadratics.
@@ -80,18 +80,18 @@ impl<'a> Iterator for OutlineStream<'a> {
                     self.first_point_index_of_contour = false;
                     self.first_position_of_subpath = position;
                     self.point_index += 1;
-                    return Some(PathSegment::MoveTo(position));
+                    return Some(PathCommand::MoveTo(position));
                 }
 
                 match (control_point_position, point_on_curve) {
                     (Some(control_point_position), false) => {
                         let on_curve_position = control_point_position.lerp(position, 0.5);
-                        return Some(PathSegment::CurveTo(control_point_position,
+                        return Some(PathCommand::CurveTo(control_point_position,
                                                          on_curve_position))
                     }
                     (Some(control_point_position), true) => {
                         self.point_index += 1;
-                        return Some(PathSegment::CurveTo(control_point_position, position))
+                        return Some(PathCommand::CurveTo(control_point_position, position))
                     }
                     (None, false) => {
                         self.point_index += 1;
@@ -99,7 +99,7 @@ impl<'a> Iterator for OutlineStream<'a> {
                     }
                     (None, true) => {
                         self.point_index += 1;
-                        return Some(PathSegment::LineTo(position))
+                        return Some(PathCommand::LineTo(position))
                     }
                 }
             }

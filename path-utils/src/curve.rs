@@ -14,7 +14,7 @@ use euclid::approxeq::ApproxEq;
 use euclid::Point2D;
 use std::f32;
 
-use PathSegment;
+use PathCommand;
 use intersection::Intersect;
 use line::Line;
 
@@ -58,8 +58,8 @@ impl Curve {
     }
 
     #[inline]
-    pub fn to_path_segment(&self) -> PathSegment {
-        PathSegment::CurveTo(self.control_point, self.endpoints[1])
+    pub fn to_path_segment(&self) -> PathCommand {
+        PathCommand::CurveTo(self.control_point, self.endpoints[1])
     }
 
     pub fn inflection_points(&self) -> (Option<f32>, Option<f32>) {

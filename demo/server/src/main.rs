@@ -35,9 +35,9 @@ use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::cubic::CubicCurve;
-use pathfinder_path_utils::monotonic::MonotonicPathSegmentStream;
-use pathfinder_path_utils::stroke;
-use pathfinder_path_utils::{PathBuffer, PathBufferStream, PathSegment, Transform2DPathStream};
+use pathfinder_path_utils::monotonic::MonotonicPathCommandStream;
+use pathfinder_path_utils::stroke::Stroke;
+use pathfinder_path_utils::{PathBuffer, PathBufferStream, PathCommand, Transform2DPathStream};
 use rocket::http::{ContentType, Header, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
@@ -144,7 +144,7 @@ enum PartitionFontError {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum PartitionSvgPathsError {
-    UnknownSvgPathSegmentType,
+    UnknownSvgPathCommandType,
     Unimplemented,
 }
 
@@ -155,7 +155,7 @@ struct PartitionSvgPathsRequest {
 
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionSvgPath {
-    segments: Vec<PartitionSvgPathSegment>,
+    segments: Vec<PartitionSvgPathCommand>,
     kind: PartitionSvgPathKind,
 }
 
@@ -166,7 +166,7 @@ enum PartitionSvgPathKind {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-struct PartitionSvgPathSegment {
+struct PartitionSvgPathCommand {
     #[serde(rename = "type")]
     kind: char,
     values: Vec<f64>,
@@ -296,7 +296,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
         // This might fail; if so, just leave it blank.
         if let Ok(glyph_outline) = font_context.glyph_outline(&font_instance_key, &glyph_key) {
             let stream = Transform2DPathStream::new(glyph_outline, &glyph.transform);
-            let stream = MonotonicPathSegmentStream::new(stream);
+            let stream = MonotonicPathCommandStream::new(stream);
             path_buffer.add_stream(stream)
         }
 
@@ -350,14 +350,13 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
             match segment.kind {
                 'M' => {
                     last_point = Point2D::new(segment.values[0] as f32, segment.values[1] as f32);
-                    stream.push(PathSegment::MoveTo(last_point))
+                    stream.push(PathCommand::MoveTo(last_point))
                 }
                 'L' => {
                     last_point = Point2D::new(segment.values[0] as f32, segment.values[1] as f32);
-                    stream.push(PathSegment::LineTo(last_point))
+                    stream.push(PathCommand::LineTo(last_point))
                 }
                 'C' => {
-                    // FIXME(pcwalton): Do real cubic-to-quadratic conversion.
                     let control_point_0 = Point2D::new(segment.values[0] as f32,
                                                        segment.values[1] as f32);
                     let control_point_1 = Point2D::new(segment.values[2] as f32,
@@ -372,21 +371,21 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                     stream.extend(cubic.approximate_curve(CUBIC_ERROR_TOLERANCE)
                                        .map(|curve| curve.to_path_segment()));
                 }
-                'Z' => stream.push(PathSegment::ClosePath),
-                _ => return Err(PartitionSvgPathsError::UnknownSvgPathSegmentType),
+                'Z' => stream.push(PathCommand::ClosePath),
+                _ => return Err(PartitionSvgPathsError::UnknownSvgPathCommandType),
             }
         }
 
         match path.kind {
             PartitionSvgPathKind::Fill => {
-                path_buffer.add_stream(MonotonicPathSegmentStream::new(stream.into_iter()))
+                path_buffer.add_stream(MonotonicPathCommandStream::new(stream.into_iter()))
             }
             PartitionSvgPathKind::Stroke(stroke_width) => {
                 let mut temp_path_buffer = PathBuffer::new();
-                stroke::stroke(&mut temp_path_buffer, stream.into_iter(), stroke_width);
+                Stroke::new(stroke_width).apply(&mut temp_path_buffer, stream.into_iter());
 
                 let stream = PathBufferStream::new(&temp_path_buffer);
-                let stream = MonotonicPathSegmentStream::new(stream);
+                let stream = MonotonicPathCommandStream::new(stream);
                 path_buffer.add_stream(stream)
             }
         }

@@ -18,7 +18,7 @@ use freetype_sys::{FT_BBox, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_O
 use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LOAD_NO_HINTING, FT_Library};
 use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
 use freetype_sys::{FT_Set_Char_Size, FT_UInt};
-use pathfinder_path_utils::PathSegment;
+use pathfinder_path_utils::PathCommand;
 use pathfinder_path_utils::freetype::OutlineStream;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
@@ -179,8 +179,8 @@ pub struct GlyphOutline<'a> {
 }
 
 impl<'a> Iterator for GlyphOutline<'a> {
-    type Item = PathSegment;
-    fn next(&mut self) -> Option<PathSegment> {
+    type Item = PathCommand;
+    fn next(&mut self) -> Option<PathCommand> {
         self.stream.next()
     }
 }

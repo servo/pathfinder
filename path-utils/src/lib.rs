@@ -15,6 +15,8 @@ extern crate freetype_sys;
 extern crate serde_derive;
 
 use euclid::{Point2D, Transform2D};
+use std::mem;
+use std::ops::Range;
 use std::u32;
 
 pub mod cubic;
@@ -27,9 +29,10 @@ pub mod stroke;
 pub mod svg;
 
 #[derive(Clone, Copy, Debug)]
-pub enum PathSegment {
+pub enum PathCommand {
     MoveTo(Point2D<f32>),
     LineTo(Point2D<f32>),
+    /// Control point and endpoint, respectively.
     CurveTo(Point2D<f32>, Point2D<f32>),
     ClosePath,
 }
@@ -51,13 +54,13 @@ impl PathBuffer {
         }
     }
 
-    pub fn add_stream<I>(&mut self, stream: I) where I: Iterator<Item = PathSegment> {
+    pub fn add_stream<I>(&mut self, stream: I) where I: Iterator<Item = PathCommand> {
         let mut first_subpath_endpoint_index = self.endpoints.len() as u32;
         for segment in stream {
             match segment {
-                PathSegment::ClosePath => self.close_subpath(&mut first_subpath_endpoint_index),
+                PathCommand::ClosePath => self.close_subpath(&mut first_subpath_endpoint_index),
 
-                PathSegment::MoveTo(position) => {
+                PathCommand::MoveTo(position) => {
                     self.close_subpath(&mut first_subpath_endpoint_index);
                     self.endpoints.push(Endpoint {
                         position: position,
@@ -66,7 +69,7 @@ impl PathBuffer {
                     })
                 }
 
-                PathSegment::LineTo(position) => {
+                PathCommand::LineTo(position) => {
                     self.endpoints.push(Endpoint {
                         position: position,
                         control_point_index: u32::MAX,
@@ -74,7 +77,7 @@ impl PathBuffer {
                     })
                 }
 
-                PathSegment::CurveTo(control_point_position, endpoint_position) => {
+                PathCommand::CurveTo(control_point_position, endpoint_position) => {
                     let control_point_index = self.control_points.len() as u32;
                     self.control_points.push(control_point_position);
                     self.endpoints.push(Endpoint {
@@ -100,6 +103,23 @@ impl PathBuffer {
 
         *first_subpath_endpoint_index = last_subpath_endpoint_index;
     }
+
+    pub fn reverse_subpath(&mut self, subpath_index: u32) {
+        let subpath = &self.subpaths[subpath_index as usize];
+        let endpoint_range = subpath.range();
+        if endpoint_range.start == endpoint_range.end {
+            return
+        }
+
+        self.endpoints[endpoint_range.clone()].reverse();
+
+        for endpoint_index in (endpoint_range.start..(endpoint_range.end - 1)).rev() {
+            let control_point_index = self.endpoints[endpoint_index].control_point_index;
+            self.endpoints[endpoint_index + 1].control_point_index = control_point_index;
+        }
+
+        self.endpoints[endpoint_range.start].control_point_index = u32::MAX;
+    }
 }
 
 pub struct PathBufferStream<'a> {
@@ -119,9 +139,9 @@ impl<'a> PathBufferStream<'a> {
 }
 
 impl<'a> Iterator for PathBufferStream<'a> {
-    type Item = PathSegment;
+    type Item = PathCommand;
 
-    fn next(&mut self) -> Option<PathSegment> {
+    fn next(&mut self) -> Option<PathCommand> {
         if self.subpath_index as usize == self.path_buffer.subpaths.len() {
             return None
         }
@@ -129,7 +149,7 @@ impl<'a> Iterator for PathBufferStream<'a> {
         let subpath = &self.path_buffer.subpaths[self.subpath_index as usize];
         if self.endpoint_index == subpath.last_endpoint_index {
             self.subpath_index += 1;
-            return Some(PathSegment::ClosePath)
+            return Some(PathCommand::ClosePath)
         }
 
         let endpoint_index = self.endpoint_index;
@@ -138,16 +158,16 @@ impl<'a> Iterator for PathBufferStream<'a> {
         let endpoint = &self.path_buffer.endpoints[endpoint_index as usize];
 
         if endpoint_index == subpath.first_endpoint_index {
-            return Some(PathSegment::MoveTo(endpoint.position))
+            return Some(PathCommand::MoveTo(endpoint.position))
         }
 
         if endpoint.control_point_index == u32::MAX {
-            return Some(PathSegment::LineTo(endpoint.position))
+            return Some(PathCommand::LineTo(endpoint.position))
         }
 
         let control_point = &self.path_buffer
                                  .control_points[endpoint.control_point_index as usize];
-        Some(PathSegment::CurveTo(*control_point, endpoint.position))
+        Some(PathCommand::CurveTo(*control_point, endpoint.position))
     }
 }
 
@@ -167,12 +187,78 @@ pub struct Subpath {
     pub last_endpoint_index: u32,
 }
 
+impl Subpath {
+    #[inline]
+    pub fn range(self) -> Range<usize> {
+        (self.first_endpoint_index as usize)..(self.last_endpoint_index as usize)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PathSegment {
+    /// First endpoint and second endpoint, respectively.
+    Line(Point2D<f32>, Point2D<f32>),
+    /// First endpoint, control point, and second endpoint, in that order.
+    Curve(Point2D<f32>, Point2D<f32>, Point2D<f32>),
+}
+
+pub struct PathSegmentStream<I> {
+    inner: I,
+    current_subpath_index: u32,
+    current_point: Point2D<f32>,
+    current_subpath_start_point: Point2D<f32>,
+}
+
+impl<I> PathSegmentStream<I> where I: Iterator<Item = PathCommand> {
+    pub fn new(inner: I) -> PathSegmentStream<I> {
+        PathSegmentStream {
+            inner: inner,
+            current_subpath_index: u32::MAX,
+            current_point: Point2D::zero(),
+            current_subpath_start_point: Point2D::zero(),
+        }
+    }
+}
+
+impl<I> Iterator for PathSegmentStream<I> where I: Iterator<Item = PathCommand> {
+    type Item = (PathSegment, u32);
+
+    fn next(&mut self) -> Option<(PathSegment, u32)> {
+        loop {
+            match self.inner.next() {
+                None => return None,
+                Some(PathCommand::MoveTo(point)) => {
+                    self.current_subpath_index = self.current_subpath_index.wrapping_add(1);
+                    self.current_point = point;
+                    self.current_subpath_start_point = point;
+                }
+                Some(PathCommand::LineTo(endpoint)) => {
+                    let start_point = mem::replace(&mut self.current_point, endpoint);
+                    return Some((PathSegment::Line(start_point, endpoint),
+                                 self.current_subpath_index))
+                }
+                Some(PathCommand::CurveTo(control_point, endpoint)) => {
+                    let start_point = mem::replace(&mut self.current_point, endpoint);
+                    return Some((PathSegment::Curve(start_point, control_point, endpoint),
+                                 self.current_subpath_index))
+                }
+                Some(PathCommand::ClosePath) => {
+                    let start_point = mem::replace(&mut self.current_point,
+                                                   self.current_subpath_start_point);
+                    return Some((PathSegment::Line(start_point, self.current_subpath_start_point),
+                                 self.current_subpath_index))
+                }
+            }
+        }
+    }
+}
+
 pub struct Transform2DPathStream<I> {
     inner: I,
     transform: Transform2D<f32>,
 }
 
-impl<I> Transform2DPathStream<I> where I: Iterator<Item = PathSegment> {
+impl<I> Transform2DPathStream<I> where I: Iterator<Item = PathCommand> {
     pub fn new(inner: I, transform: &Transform2D<f32>) -> Transform2DPathStream<I> {
         Transform2DPathStream {
             inner: inner,
@@ -181,23 +267,23 @@ impl<I> Transform2DPathStream<I> where I: Iterator<Item = PathSegment> {
     }
 }
 
-impl<I> Iterator for Transform2DPathStream<I> where I: Iterator<Item = PathSegment> {
-    type Item = PathSegment;
+impl<I> Iterator for Transform2DPathStream<I> where I: Iterator<Item = PathCommand> {
+    type Item = PathCommand;
 
-    fn next(&mut self) -> Option<PathSegment> {
+    fn next(&mut self) -> Option<PathCommand> {
         match self.inner.next() {
             None => None,
-            Some(PathSegment::MoveTo(position)) => {
-                Some(PathSegment::MoveTo(self.transform.transform_point(&position)))
+            Some(PathCommand::MoveTo(position)) => {
+                Some(PathCommand::MoveTo(self.transform.transform_point(&position)))
             }
-            Some(PathSegment::LineTo(position)) => {
-                Some(PathSegment::LineTo(self.transform.transform_point(&position)))
+            Some(PathCommand::LineTo(position)) => {
+                Some(PathCommand::LineTo(self.transform.transform_point(&position)))
             }
-            Some(PathSegment::CurveTo(control_point_position, endpoint_position)) => {
-                Some(PathSegment::CurveTo(self.transform.transform_point(&control_point_position),
+            Some(PathCommand::CurveTo(control_point_position, endpoint_position)) => {
+                Some(PathCommand::CurveTo(self.transform.transform_point(&control_point_position),
                                           self.transform.transform_point(&endpoint_position)))
             }
-            Some(PathSegment::ClosePath) => Some(PathSegment::ClosePath),
+            Some(PathCommand::ClosePath) => Some(PathCommand::ClosePath),
         }
     }
 }

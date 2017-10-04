@@ -12,18 +12,18 @@ use arrayvec::ArrayVec;
 use euclid::Point2D;
 use std::mem;
 
-use PathSegment;
+use PathCommand;
 use curve::Curve;
 
-pub struct MonotonicPathSegmentStream<I> {
+pub struct MonotonicPathCommandStream<I> {
     inner: I,
-    queue: ArrayVec<[PathSegment; 2]>,
+    queue: ArrayVec<[PathCommand; 2]>,
     prev_point: Point2D<f32>,
 }
 
-impl<I> MonotonicPathSegmentStream<I> where I: Iterator<Item = PathSegment> {
-    pub fn new(inner: I) -> MonotonicPathSegmentStream<I> {
-        MonotonicPathSegmentStream {
+impl<I> MonotonicPathCommandStream<I> where I: Iterator<Item = PathCommand> {
+    pub fn new(inner: I) -> MonotonicPathCommandStream<I> {
+        MonotonicPathCommandStream {
             inner: inner,
             queue: ArrayVec::new(),
             prev_point: Point2D::zero(),
@@ -31,30 +31,30 @@ impl<I> MonotonicPathSegmentStream<I> where I: Iterator<Item = PathSegment> {
     }
 }
 
-impl<I> Iterator for MonotonicPathSegmentStream<I> where I: Iterator<Item = PathSegment> {
-    type Item = PathSegment;
+impl<I> Iterator for MonotonicPathCommandStream<I> where I: Iterator<Item = PathCommand> {
+    type Item = PathCommand;
 
-    fn next(&mut self) -> Option<PathSegment> {
+    fn next(&mut self) -> Option<PathCommand> {
         if !self.queue.is_empty() {
             return Some(self.queue.remove(0))
         }
 
         match self.inner.next() {
             None => None,
-            Some(PathSegment::ClosePath) => Some(PathSegment::ClosePath),
-            Some(PathSegment::MoveTo(point)) => {
+            Some(PathCommand::ClosePath) => Some(PathCommand::ClosePath),
+            Some(PathCommand::MoveTo(point)) => {
                 self.prev_point = point;
-                Some(PathSegment::MoveTo(point))
+                Some(PathCommand::MoveTo(point))
             }
-            Some(PathSegment::LineTo(point)) => {
+            Some(PathCommand::LineTo(point)) => {
                 self.prev_point = point;
-                Some(PathSegment::LineTo(point))
+                Some(PathCommand::LineTo(point))
             }
-            Some(PathSegment::CurveTo(control_point, endpoint)) => {
+            Some(PathCommand::CurveTo(control_point, endpoint)) => {
                 let curve = Curve::new(&self.prev_point, &control_point, &endpoint);
                 self.prev_point = endpoint;
                 match curve.inflection_points() {
-                    (None, None) => Some(PathSegment::CurveTo(control_point, endpoint)),
+                    (None, None) => Some(PathCommand::CurveTo(control_point, endpoint)),
                     (Some(t), None) | (None, Some(t)) => {
                         let (prev_curve, next_curve) = curve.subdivide(t);
                         self.queue.push(next_curve.to_path_segment());
