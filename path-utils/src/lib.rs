@@ -10,7 +10,6 @@
 
 extern crate arrayvec;
 extern crate euclid;
-extern crate freetype_sys;
 #[macro_use]
 extern crate serde_derive;
 
@@ -21,7 +20,6 @@ use std::u32;
 
 pub mod cubic;
 pub mod curve;
-pub mod freetype;
 pub mod intersection;
 pub mod line;
 pub mod monotonic;

@@ -6,12 +6,8 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 [dependencies]
 app_units = "0.5"
 euclid = "0.15"
+freetype-sys = "0.6"
 log = "0.3"
-
-[dependencies.freetype-sys]
-git = "https://github.com/pcwalton/freetype-sys.git"
-branch = "stroker"
-rev = "11c67b2a215ec5d1aefd465a9b0560b9784ca672"
 
 [dependencies.pathfinder_path_utils]
 path = "../path-utils"

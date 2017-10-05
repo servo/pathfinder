@@ -19,13 +19,16 @@ use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LOAD_NO_HINTING,
 use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
 use freetype_sys::{FT_Set_Char_Size, FT_UInt};
 use pathfinder_path_utils::PathCommand;
-use pathfinder_path_utils::freetype::OutlineStream;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
+
+use outline::OutlineStream;
+
+mod outline;
 
 #[cfg(test)]
 mod tests;

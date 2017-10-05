@@ -1,4 +1,4 @@
-// pathfinder/path-utils/src/freetype.rs
+// pathfinder/font-renderer/src/outline.rs
 //
 // Copyright © 2017 The Pathfinder Project Developers.
 //
@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use euclid::Point2D;
-use freetype_sys::{FT_Fixed, FT_Outline, FT_Pos, FT_Vector};
+use freetype_sys::{FT_Outline, FT_Vector};
 
 use PathCommand;
 
@@ -110,17 +110,4 @@ impl<'a> Iterator for OutlineStream<'a> {
 #[inline]
 fn ft_vector_to_f32(ft_vector: FT_Vector) -> Point2D<f32> {
     Point2D::new(ft_vector.x as f32 / 64.0, ft_vector.y as f32 / 64.0)
-}
-
-#[inline]
-pub fn f32_to_ft_vector(point: &Point2D<f32>) -> FT_Vector {
-    FT_Vector {
-        x: (point.x * 64.0).round() as FT_Pos,
-        y: (point.y * 64.0).round() as FT_Pos,
-    }
-}
-
-#[inline]
-pub fn f32_to_26_6_ft_fixed(length: f32) -> FT_Fixed {
-    (length * 64.0).round() as FT_Fixed
 }
