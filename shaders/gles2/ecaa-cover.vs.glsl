@@ -29,7 +29,6 @@ varying vec2 vHorizontalExtents;
 
 void main() {
     // Fetch B-vertex positions.
-    // FIXME(pcwalton): This could be slightly optimized to fetch fewer positions.
     ivec4 pointIndices = ivec4(unpackUInt32Attribute(aUpperPointIndices.xy),
                                unpackUInt32Attribute(aUpperPointIndices.zw),
                                unpackUInt32Attribute(aLowerPointIndices.xy),
@@ -47,44 +46,32 @@ void main() {
                                               pointIndices.w,
                                               uBVertexPositionDimensions);
 
+    upperLeftPosition.y = min(upperLeftPosition.y, upperRightPosition.y);
+    lowerRightPosition.y = max(lowerLeftPosition.y, lowerRightPosition.y);
+
     int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
 
     vec4 hints = fetchFloat4Data(uPathHints, pathID, uPathHintsDimensions);
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
 
     upperLeftPosition = hintPosition(upperLeftPosition, hints);
-    upperRightPosition = hintPosition(upperRightPosition, hints);
-    lowerLeftPosition = hintPosition(lowerLeftPosition, hints);
     lowerRightPosition = hintPosition(lowerRightPosition, hints);
 
     upperLeftPosition = transformVertexPositionST(upperLeftPosition, transform);
-    upperRightPosition = transformVertexPositionST(upperRightPosition, transform);
-    lowerLeftPosition = transformVertexPositionST(lowerLeftPosition, transform);
     lowerRightPosition = transformVertexPositionST(lowerRightPosition, transform);
 
     upperLeftPosition = transformVertexPositionST(upperLeftPosition, uTransformST);
-    upperRightPosition = transformVertexPositionST(upperRightPosition, uTransformST);
-    lowerLeftPosition = transformVertexPositionST(lowerLeftPosition, uTransformST);
     lowerRightPosition = transformVertexPositionST(lowerRightPosition, uTransformST);
 
     upperLeftPosition = convertClipToScreenSpace(upperLeftPosition, uFramebufferSize);
-    upperRightPosition = convertClipToScreenSpace(upperRightPosition, uFramebufferSize);
-    lowerLeftPosition = convertClipToScreenSpace(lowerLeftPosition, uFramebufferSize);
     lowerRightPosition = convertClipToScreenSpace(lowerRightPosition, uFramebufferSize);
 
-    vec4 extents = vec4(min(upperLeftPosition.x, lowerLeftPosition.x),
-                        min(min(upperLeftPosition.y, upperRightPosition.y),
-                            min(lowerLeftPosition.y, lowerRightPosition.y)),
-                        max(upperRightPosition.x, lowerRightPosition.x),
-                        max(max(upperLeftPosition.y, upperRightPosition.y),
-                            max(lowerLeftPosition.y, lowerRightPosition.y)));
-
-    vec4 roundedExtents = vec4(floor(extents.xy), ceil(extents.zw));
+    vec4 roundedExtents = vec4(floor(upperLeftPosition), ceil(lowerRightPosition));
 
     vec2 position = mix(roundedExtents.xy, roundedExtents.zw, aQuadPosition);
     position = convertScreenToClipSpace(position, uFramebufferSize);
     float depth = convertPathIndexToViewportDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);
 
-    vHorizontalExtents = extents.xz;
+    vHorizontalExtents = vec2(upperLeftPosition.x, lowerRightPosition.x);
 }
