@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import { AntialiasingStrategy, SubpixelAAType } from './aa-strategy';
+import {AntialiasingStrategy, SubpixelAAType} from './aa-strategy';
 import PathfinderBufferTexture from './buffer-texture';
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, setTextureParameters, UniformMap} from './gl-utils';

@@ -9,6 +9,7 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as _ from 'lodash';
 import * as opentype from "opentype.js";
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
@@ -22,7 +23,7 @@ import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
 import {TextRun} from "./text";
-import {assert, PathfinderError, unwrapNull} from "./utils";
+import {assert, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
 import {DemoView, MonochromeDemoView, Timings } from "./view";
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -34,16 +35,13 @@ const TEXT_COLOR: number[] = [0, 0, 0, 255];
 const MIN_FONT_SIZE: number = 6;
 const MAX_FONT_SIZE: number = 200;
 
+const RUNS: number = 8;
+
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     ecaa: ECAAMonochromeStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
 };
-
-interface ElapsedTime {
-    size: number;
-    time: number;
-}
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
@@ -67,6 +65,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     private expandedMeshes: ExpandedMeshData;
 
     private pixelsPerEm: number;
+    private currentRun: number;
     private elapsedTimes: ElapsedTime[];
     private partitionTime: number;
 
@@ -81,6 +80,10 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         this.resultsPartitioningTimeLabel =
             unwrapNull(document.getElementById('pf-benchmark-results-partitioning-time')) as
             HTMLSpanElement;
+
+        const resultsSaveCSVButton =
+            unwrapNull(document.getElementById('pf-benchmark-results-save-csv-button'));
+        resultsSaveCSVButton.addEventListener('click', () => this.saveCSV(), false);
 
         const resultsCloseButton =
             unwrapNull(document.getElementById('pf-benchmark-results-close-button'));
@@ -136,6 +139,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
     private runBenchmark(): void {
         this.pixelsPerEm = MIN_FONT_SIZE;
+        this.currentRun = 0;
         this.elapsedTimes = [];
         this.view.then(view => this.runOneBenchmarkTest(view));
     }
@@ -146,14 +150,25 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             view.pixelsPerEm = this.pixelsPerEm;
         });
         renderedPromise.then(elapsedTime => {
-            this.elapsedTimes.push({ size: this.pixelsPerEm, time: elapsedTime });
+            if (this.currentRun === 0)
+                this.elapsedTimes.push(new ElapsedTime(this.pixelsPerEm));
+            unwrapUndef(_.last(this.elapsedTimes)).times.push(elapsedTime);
 
-            if (this.pixelsPerEm === MAX_FONT_SIZE) {
-                this.showResults();
-                return;
+            this.currentRun++;
+
+            if (this.currentRun === RUNS) {
+                unwrapUndef(_.last(this.elapsedTimes)).times.sort((a, b) => a - b);
+
+                this.currentRun = 0;
+
+                if (this.pixelsPerEm === MAX_FONT_SIZE) {
+                    this.showResults();
+                    return;
+                }
+
+                this.pixelsPerEm++;
             }
 
-            this.pixelsPerEm++;
             this.runOneBenchmarkTest(view);
         });
     }
@@ -175,6 +190,26 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         }
 
         window.jQuery(this.resultsModal).modal();
+    }
+
+    private saveCSV(): void {
+        let output = "Font size,Time per glyph\n";
+        for (const elapsedTime of this.elapsedTimes)
+            output += `${elapsedTime.size},${elapsedTime.time}\n`;
+
+        // https://stackoverflow.com/a/30832210
+        const file = new Blob([output], {type: 'text/csv'});
+        const a = document.createElement('a');
+        const url = URL.createObjectURL(file);
+        a.href = url;
+        a.download = "pathfinder-benchmark-results.csv";
+        document.body.appendChild(a);
+        a.click();
+
+        window.setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 0);
     }
 }
 
@@ -308,6 +343,21 @@ class BenchmarkTestView extends MonochromeDemoView {
         this._pixelsPerEm = newPixelsPerEm;
         this.uploadPathTransforms(1);
         this.setDirty();
+    }
+}
+
+class ElapsedTime {
+    readonly size: number;
+    readonly times: number[];
+
+    constructor(size: number) {
+        this.size = size;
+        this.times = [];
+    }
+
+    get time(): number {
+        // TODO(pcwalton): Use interquartile mean instead?
+        return this.times[Math.floor(this.times.length / 2)];
     }
 }
 
