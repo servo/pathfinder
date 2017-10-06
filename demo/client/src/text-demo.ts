@@ -342,6 +342,15 @@ class TextDemoView extends MonochromeDemoView {
         this.setDirty();
     }
 
+    setHintsUniform(uniforms: UniformMap): void {
+        const hint = this.createHint();
+        this.gl.uniform4f(uniforms.uHints,
+                          hint.xHeight,
+                          hint.hintedXHeight,
+                          hint.stemHeight,
+                          hint.hintedStemHeight);
+    }
+
     protected initContext() {
         super.initContext();
     }
@@ -568,19 +577,6 @@ class TextDemoView extends MonochromeDemoView {
         this.uploadPathTransforms(1);
 
         // TODO(pcwalton): Regenerate the IBOs to include only the glyphs we care about.
-        const pathCount = this.appController.pathCount;
-        const pathHints = new Float32Array((pathCount + 1) * 4);
-
-        for (let pathID = 0; pathID < pathCount; pathID++) {
-            pathHints[pathID * 4 + 0] = hint.xHeight;
-            pathHints[pathID * 4 + 1] = hint.hintedXHeight;
-            pathHints[pathID * 4 + 2] = hint.stemHeight;
-            pathHints[pathID * 4 + 3] = hint.hintedStemHeight;
-        }
-
-        const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
-        pathHintsBufferTexture.upload(this.gl, pathHints);
-        this.pathHintsBufferTexture = pathHintsBufferTexture;
 
         this.setGlyphTexCoords();
     }

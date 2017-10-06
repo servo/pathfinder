@@ -25,6 +25,7 @@ import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFram
 import {TextRun} from "./text";
 import {assert, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
 import {DemoView, MonochromeDemoView, Timings } from "./view";
+import { UniformMap } from './gl-utils';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -125,7 +126,6 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             this.view.then(view => {
                 view.uploadPathColors(1);
                 view.uploadPathTransforms(1);
-                view.uploadHints();
                 view.attachMeshes([expandedMeshes.meshes]);
             });
         });
@@ -246,13 +246,8 @@ class BenchmarkTestView extends MonochromeDemoView {
         this.camera.onZoom = () => this.setDirty();
     }
 
-    uploadHints(): void {
-        const glyphCount = unwrapNull(this.appController.textRun).glyphIDs.length;
-        const pathHints = new Float32Array((glyphCount + 1) * 4);
-
-        const pathHintsBufferTexture = new PathfinderBufferTexture(this.gl, 'uPathHints');
-        pathHintsBufferTexture.upload(this.gl, pathHints);
-        this.pathHintsBufferTexture = pathHintsBufferTexture;
+    setHintsUniform(uniforms: UniformMap): void {
+        this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,

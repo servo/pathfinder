@@ -25,6 +25,7 @@ import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
 import {GlyphStore, Hint, PathfinderFont, TextFrame, TextRun} from "./text";
 import {assert, panic, PathfinderError, unwrapNull} from "./utils";
 import {DemoView, Timings} from "./view";
+import { UniformMap } from './gl-utils';
 
 const TEXT_AVAILABLE_WIDTH: number = 150000;
 const TEXT_PADDING: number = 2000;
@@ -302,6 +303,10 @@ class ThreeDView extends DemoView {
         this.cubeIndexBuffer = unwrapNull(this.gl.createBuffer());
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.cubeIndexBuffer);
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, CUBE_INDICES, this.gl.STATIC_DRAW);
+    }
+
+    setHintsUniform(uniforms: UniformMap): void {
+        this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {

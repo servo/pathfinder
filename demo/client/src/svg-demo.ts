@@ -23,6 +23,7 @@ import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {panic, unwrapNull} from './utils';
 import {DemoView, Timings} from './view';
+import { UniformMap } from './gl-utils';
 
 const parseColor = require('parse-color');
 
@@ -118,6 +119,10 @@ class SVGDemoView extends DemoView {
 
     get destUsedSize(): glmatrix.vec2 {
         return this.destAllocatedSize;
+    }
+
+    setHintsUniform(uniforms: UniformMap): void {
+        this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {

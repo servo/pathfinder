@@ -11,15 +11,14 @@
 precision highp float;
 
 uniform vec4 uTransformST;
+uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uBVertexPositionDimensions;
 uniform ivec2 uBVertexPathIDDimensions;
 uniform ivec2 uPathTransformDimensions;
-uniform ivec2 uPathHintsDimensions;
 uniform sampler2D uBVertexPosition;
 uniform sampler2D uBVertexPathID;
 uniform sampler2D uPathTransform;
-uniform sampler2D uPathHints;
 uniform bool uLowerPart;
 
 attribute vec2 aQuadPosition;
@@ -40,7 +39,6 @@ void main() {
 
     int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
 
-    vec4 hints = fetchFloat4Data(uPathHints, pathID, uPathHintsDimensions);
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
 
     // Transform the points, and compute the position of this vertex.
@@ -52,7 +50,7 @@ void main() {
                         uFramebufferSize,
                         transform,
                         uTransformST,
-                        hints);
+                        uHints);
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
 

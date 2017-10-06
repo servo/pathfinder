@@ -139,7 +139,6 @@ export abstract class DemoView extends PathfinderView {
     meshData: PathfinderMeshData[];
 
     pathTransformBufferTextures: PathfinderBufferTexture[];
-    pathHintsBufferTexture: PathfinderBufferTexture | null;
 
     protected timerQueryExt: any;
 
@@ -279,6 +278,8 @@ export abstract class DemoView extends PathfinderView {
             this.pathTransformBufferTextures.push(pathTransformBufferTexture);
         }
     }
+
+    abstract setHintsUniform(uniforms: UniformMap): void;
 
     protected resized(): void {
         super.resized();
@@ -500,14 +501,13 @@ export abstract class DemoView extends PathfinderView {
             // Draw direct interior parts.
             this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
+            this.setHintsUniform(directInteriorProgram.uniforms);
             this.pathColorsBufferTextures[objectIndex].bind(this.gl,
                                                             directInteriorProgram.uniforms,
                                                             0);
             this.pathTransformBufferTextures[objectIndex].bind(this.gl,
                                                                directInteriorProgram.uniforms,
                                                                1);
-            if (this.pathHintsBufferTexture != null)
-                this.pathHintsBufferTexture.bind(this.gl, directInteriorProgram.uniforms, 2);
             let indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                         this.gl.BUFFER_SIZE) / UINT32_SIZE;
             if (instanceCount == null) {
@@ -538,14 +538,13 @@ export abstract class DemoView extends PathfinderView {
             // Draw direct curve parts.
             this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directCurveProgram.uniforms);
+            this.setHintsUniform(directInteriorProgram.uniforms);
             this.pathColorsBufferTextures[objectIndex].bind(this.gl,
                                                             directCurveProgram.uniforms,
                                                             0);
             this.pathTransformBufferTextures[objectIndex].bind(this.gl,
                                                                directCurveProgram.uniforms,
                                                                1);
-            if (this.pathHintsBufferTexture != null)
-                this.pathHintsBufferTexture.bind(this.gl, directCurveProgram.uniforms, 2);
             indexCount = this.gl.getBufferParameter(this.gl.ELEMENT_ARRAY_BUFFER,
                                                     this.gl.BUFFER_SIZE) / UINT32_SIZE;
             if (instanceCount == null) {
