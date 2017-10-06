@@ -7,7 +7,7 @@ use std::slice;
 
 use mesh_library::MeshLibrary;
 use partitioner::Partitioner;
-use {BQuad, BVertexLoopBlinnData, CurveIndices, Endpoint, LineIndices, Subpath};
+use {BQuad, BVertexLoopBlinnData, Endpoint, Subpath};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -41,19 +41,6 @@ pub struct CoverIndices {
     pub interior_indices_len: u32,
     pub curve_indices: *const u32,
     pub curve_indices_len: u32,
-}
-
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct EdgeIndices {
-    pub upper_line_indices: *const LineIndices,
-    pub upper_line_indices_len: u32,
-    pub upper_curve_indices: *const CurveIndices,
-    pub upper_curve_indices_len: u32,
-    pub lower_line_indices: *const LineIndices,
-    pub lower_line_indices_len: u32,
-    pub lower_curve_indices: *const CurveIndices,
-    pub lower_curve_indices_len: u32,
 }
 
 #[no_mangle]
@@ -144,20 +131,6 @@ pub unsafe extern fn pf_partitioner_cover_indices<'a>(partitioner: *const Partit
     (*out_cover_indices).interior_indices_len = cover_indices.interior_indices.len() as u32;
     (*out_cover_indices).curve_indices = cover_indices.curve_indices.as_ptr();
     (*out_cover_indices).curve_indices_len = cover_indices.curve_indices.len() as u32;
-}
-
-#[no_mangle]
-pub unsafe extern fn pf_partitioner_edge_indices<'a>(partitioner: *const Partitioner<'a>,
-                                                     out_edge_indices: *mut EdgeIndices) {
-    let edge_indices = &(*partitioner).library().edge_indices;
-    (*out_edge_indices).upper_line_indices = edge_indices.upper_line_indices.as_ptr();
-    (*out_edge_indices).upper_line_indices_len = edge_indices.upper_line_indices.len() as u32;
-    (*out_edge_indices).upper_curve_indices = edge_indices.upper_curve_indices.as_ptr();
-    (*out_edge_indices).upper_curve_indices_len = edge_indices.upper_curve_indices.len() as u32;
-    (*out_edge_indices).lower_line_indices = edge_indices.lower_line_indices.as_ptr();
-    (*out_edge_indices).lower_line_indices_len = edge_indices.lower_line_indices.len() as u32;
-    (*out_edge_indices).lower_curve_indices = edge_indices.lower_curve_indices.as_ptr();
-    (*out_edge_indices).lower_curve_indices_len = edge_indices.lower_curve_indices.len() as u32;
 }
 
 #[no_mangle]

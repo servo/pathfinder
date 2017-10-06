@@ -14,8 +14,9 @@ use euclid::Point2D;
 use serde::Serialize;
 use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::ops::Range;
+use std::u32;
 
-use {BQuad, BVertexLoopBlinnData, CurveIndices, LineIndices};
+use {BQuad, BVertexLoopBlinnData};
 
 #[derive(Debug, Clone)]
 pub struct MeshLibrary {
@@ -24,7 +25,7 @@ pub struct MeshLibrary {
     pub b_vertex_path_ids: Vec<u16>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
     pub cover_indices: MeshLibraryCoverIndices,
-    pub edge_indices: MeshLibraryEdgeIndices,
+    pub edge_data: MeshLibraryEdgeData,
 }
 
 impl MeshLibrary {
@@ -36,7 +37,7 @@ impl MeshLibrary {
             b_vertex_path_ids: vec![],
             b_vertex_loop_blinn_data: vec![],
             cover_indices: MeshLibraryCoverIndices::new(),
-            edge_indices: MeshLibraryEdgeIndices::new(),
+            edge_data: MeshLibraryEdgeData::new(),
         }
     }
 
@@ -46,7 +47,69 @@ impl MeshLibrary {
         self.b_vertex_path_ids.clear();
         self.b_vertex_loop_blinn_data.clear();
         self.cover_indices.clear();
-        self.edge_indices.clear();
+        self.edge_data.clear();
+    }
+
+    pub(crate) fn add_b_quad(&mut self, b_quad: &BQuad) {
+        self.b_quads.push(*b_quad);
+
+        let path_id = self.b_vertex_path_ids[b_quad.upper_left_vertex_index as usize];
+
+        let upper_left_position =
+            &self.b_vertex_positions[b_quad.upper_left_vertex_index as usize];
+        let upper_right_position =
+            &self.b_vertex_positions[b_quad.upper_right_vertex_index as usize];
+        let lower_left_position =
+            &self.b_vertex_positions[b_quad.lower_left_vertex_index as usize];
+        let lower_right_position =
+            &self.b_vertex_positions[b_quad.lower_right_vertex_index as usize];
+
+        let upper_left_bounding_box_position =
+            Point2D::new(upper_left_position.x,
+                         f32::min(upper_left_position.y, upper_right_position.y));
+        let lower_right_bounding_box_position =
+            Point2D::new(lower_right_position.x,
+                         f32::max(lower_left_position.y, lower_right_position.y));
+
+        self.edge_data.bounding_box_vertex_positions.push(EdgeBoundingBoxVertexPositions {
+            upper_left: upper_left_bounding_box_position,
+            lower_right: lower_right_bounding_box_position,
+        });
+        self.edge_data.bounding_box_path_ids.push(path_id);
+
+        if b_quad.upper_control_point_vertex_index == u32::MAX {
+            self.edge_data.upper_line_vertex_positions.push(EdgeLineVertexPositions {
+                left: *upper_left_position,
+                right: *upper_right_position,
+            });
+            self.edge_data.upper_line_path_ids.push(path_id);
+        } else {
+            let upper_control_point_position =
+                &self.b_vertex_positions[b_quad.upper_control_point_vertex_index as usize];
+            self.edge_data.upper_curve_vertex_positions.push(EdgeCurveVertexPositions {
+                left: *upper_left_position,
+                control_point: *upper_control_point_position,
+                right: *upper_right_position,
+            });
+            self.edge_data.upper_curve_path_ids.push(path_id);
+        }
+
+        if b_quad.lower_control_point_vertex_index == u32::MAX {
+            self.edge_data.lower_line_vertex_positions.push(EdgeLineVertexPositions {
+                left: *lower_left_position,
+                right: *lower_right_position,
+            });
+            self.edge_data.lower_line_path_ids.push(path_id);
+        } else {
+            let lower_control_point_position =
+                &self.b_vertex_positions[b_quad.lower_control_point_vertex_index as usize];
+            self.edge_data.lower_curve_vertex_positions.push(EdgeCurveVertexPositions {
+                left: *lower_left_position,
+                control_point: *lower_control_point_position,
+                right: *lower_right_position,
+            });
+            self.edge_data.lower_curve_path_ids.push(path_id);
+        }
     }
 
     /// Reverses interior indices so that they draw front-to-back.
@@ -97,10 +160,16 @@ impl MeshLibrary {
         try!(write_chunk(writer, b"bvlb", &self.b_vertex_loop_blinn_data));
         try!(write_chunk(writer, b"cvii", &self.cover_indices.interior_indices));
         try!(write_chunk(writer, b"cvci", &self.cover_indices.curve_indices));
-        try!(write_chunk(writer, b"euli", &self.edge_indices.upper_line_indices));
-        try!(write_chunk(writer, b"euci", &self.edge_indices.upper_curve_indices));
-        try!(write_chunk(writer, b"elli", &self.edge_indices.lower_line_indices));
-        try!(write_chunk(writer, b"elci", &self.edge_indices.lower_curve_indices));
+        try!(write_chunk(writer, b"ebbv", &self.edge_data.bounding_box_vertex_positions));
+        try!(write_chunk(writer, b"eulv", &self.edge_data.upper_line_vertex_positions));
+        try!(write_chunk(writer, b"ellv", &self.edge_data.lower_line_vertex_positions));
+        try!(write_chunk(writer, b"eucv", &self.edge_data.upper_curve_vertex_positions));
+        try!(write_chunk(writer, b"elcv", &self.edge_data.lower_curve_vertex_positions));
+        try!(write_chunk(writer, b"ebbp", &self.edge_data.bounding_box_path_ids));
+        try!(write_chunk(writer, b"eulp", &self.edge_data.upper_line_path_ids));
+        try!(write_chunk(writer, b"ellp", &self.edge_data.lower_line_path_ids));
+        try!(write_chunk(writer, b"eucp", &self.edge_data.upper_curve_path_ids));
+        try!(write_chunk(writer, b"elcp", &self.edge_data.lower_curve_path_ids));
 
         let total_length = try!(writer.seek(SeekFrom::Current(0)));
         try!(writer.seek(SeekFrom::Start(4)));
@@ -133,10 +202,11 @@ impl MeshLibrary {
             b_vertices: self.b_vertex_positions.len(),
             cover_interior_indices: self.cover_indices.interior_indices.len(),
             cover_curve_indices: self.cover_indices.curve_indices.len(),
-            edge_upper_line_indices: self.edge_indices.upper_line_indices.len(),
-            edge_upper_curve_indices: self.edge_indices.upper_curve_indices.len(),
-            edge_lower_line_indices: self.edge_indices.lower_line_indices.len(),
-            edge_lower_curve_indices: self.edge_indices.lower_curve_indices.len(),
+            edge_bounding_box_indices: self.edge_data.bounding_box_vertex_positions.len(),
+            edge_upper_line_indices: self.edge_data.upper_line_vertex_positions.len(),
+            edge_upper_curve_indices: self.edge_data.upper_curve_vertex_positions.len(),
+            edge_lower_line_indices: self.edge_data.lower_line_vertex_positions.len(),
+            edge_lower_curve_indices: self.edge_data.lower_curve_vertex_positions.len(),
         }
     }
 }
@@ -162,38 +232,12 @@ impl MeshLibraryCoverIndices {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct MeshLibraryEdgeIndices {
-    pub upper_line_indices: Vec<LineIndices>,
-    pub upper_curve_indices: Vec<CurveIndices>,
-    pub lower_line_indices: Vec<LineIndices>,
-    pub lower_curve_indices: Vec<CurveIndices>,
-}
-
-impl MeshLibraryEdgeIndices {
-    #[inline]
-    fn new() -> MeshLibraryEdgeIndices {
-        MeshLibraryEdgeIndices {
-            upper_line_indices: vec![],
-            upper_curve_indices: vec![],
-            lower_line_indices: vec![],
-            lower_curve_indices: vec![],
-        }
-    }
-
-    fn clear(&mut self) {
-        self.upper_line_indices.clear();
-        self.upper_curve_indices.clear();
-        self.lower_line_indices.clear();
-        self.lower_curve_indices.clear();
-    }
-}
-
 pub(crate) struct MeshLibraryLengths {
     b_quads: usize,
     b_vertices: usize,
     cover_interior_indices: usize,
     cover_curve_indices: usize,
+    edge_bounding_box_indices: usize,
     edge_upper_line_indices: usize,
     edge_upper_curve_indices: usize,
     edge_lower_line_indices: usize,
@@ -205,6 +249,7 @@ pub struct MeshLibraryIndexRanges {
     pub b_vertices: Range<usize>,
     pub cover_interior_indices: Range<usize>,
     pub cover_curve_indices: Range<usize>,
+    pub edge_bounding_box_indices: Range<usize>,
     pub edge_upper_line_indices: Range<usize>,
     pub edge_upper_curve_indices: Range<usize>,
     pub edge_lower_line_indices: Range<usize>,
@@ -219,10 +264,75 @@ impl MeshLibraryIndexRanges {
             b_vertices: start.b_vertices..end.b_vertices,
             cover_interior_indices: start.cover_interior_indices..end.cover_interior_indices,
             cover_curve_indices: start.cover_curve_indices..end.cover_curve_indices,
+            edge_bounding_box_indices:
+                start.edge_bounding_box_indices..end.edge_bounding_box_indices,
             edge_upper_line_indices: start.edge_upper_line_indices..end.edge_upper_line_indices,
             edge_upper_curve_indices: start.edge_upper_curve_indices..end.edge_upper_curve_indices,
             edge_lower_line_indices: start.edge_lower_line_indices..end.edge_lower_line_indices,
             edge_lower_curve_indices: start.edge_lower_curve_indices..end.edge_lower_curve_indices,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct MeshLibraryEdgeData {
+    pub bounding_box_vertex_positions: Vec<EdgeBoundingBoxVertexPositions>,
+    pub upper_line_vertex_positions: Vec<EdgeLineVertexPositions>,
+    pub lower_line_vertex_positions: Vec<EdgeLineVertexPositions>,
+    pub upper_curve_vertex_positions: Vec<EdgeCurveVertexPositions>,
+    pub lower_curve_vertex_positions: Vec<EdgeCurveVertexPositions>,
+    pub bounding_box_path_ids: Vec<u16>,
+    pub upper_line_path_ids: Vec<u16>,
+    pub lower_line_path_ids: Vec<u16>,
+    pub upper_curve_path_ids: Vec<u16>,
+    pub lower_curve_path_ids: Vec<u16>,
+}
+
+impl MeshLibraryEdgeData {
+    fn new() -> MeshLibraryEdgeData {
+        MeshLibraryEdgeData {
+            bounding_box_vertex_positions: vec![],
+            upper_line_vertex_positions: vec![],
+            lower_line_vertex_positions: vec![],
+            upper_curve_vertex_positions: vec![],
+            lower_curve_vertex_positions: vec![],
+            bounding_box_path_ids: vec![],
+            upper_line_path_ids: vec![],
+            lower_line_path_ids: vec![],
+            upper_curve_path_ids: vec![],
+            lower_curve_path_ids: vec![],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.bounding_box_vertex_positions.clear();
+        self.upper_line_vertex_positions.clear();
+        self.upper_curve_vertex_positions.clear();
+        self.lower_line_vertex_positions.clear();
+        self.lower_curve_vertex_positions.clear();
+        self.bounding_box_path_ids.clear();
+        self.upper_line_path_ids.clear();
+        self.upper_curve_path_ids.clear();
+        self.lower_line_path_ids.clear();
+        self.lower_curve_path_ids.clear();
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct EdgeBoundingBoxVertexPositions {
+    pub upper_left: Point2D<f32>,
+    pub lower_right: Point2D<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct EdgeLineVertexPositions {
+    pub left: Point2D<f32>,
+    pub right: Point2D<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct EdgeCurveVertexPositions {
+    pub left: Point2D<f32>,
+    pub control_point: Point2D<f32>,
+    pub right: Point2D<f32>,
 }

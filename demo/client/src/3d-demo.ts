@@ -18,6 +18,7 @@ import {SubpixelAAType} from "./aa-strategy";
 import {DemoAppController} from "./app-controller";
 import PathfinderBufferTexture from "./buffer-texture";
 import {PerspectiveCamera} from "./camera";
+import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from "./ssaa-strategy";
@@ -25,7 +26,6 @@ import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
 import {GlyphStore, Hint, PathfinderFont, TextFrame, TextRun} from "./text";
 import {assert, panic, PathfinderError, unwrapNull} from "./utils";
 import {DemoView, Timings} from "./view";
-import { UniformMap } from './gl-utils';
 
 const TEXT_AVAILABLE_WIDTH: number = 150000;
 const TEXT_PADDING: number = 2000;

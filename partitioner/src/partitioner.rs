@@ -22,8 +22,7 @@ use std::iter;
 use std::u32;
 
 use mesh_library::{MeshLibrary, MeshLibraryIndexRanges};
-use {BQuad, BVertexLoopBlinnData, BVertexKind, CurveIndices, Endpoint, FillRule};
-use {LineIndices, Subpath};
+use {BQuad, BVertexLoopBlinnData, BVertexKind, Endpoint, FillRule, Subpath};
 
 const MAX_B_QUAD_SUBDIVISIONS: u8 = 8;
 
@@ -610,41 +609,6 @@ impl<'a> Partitioner<'a> {
             }
         }
 
-        match upper_shape {
-            Shape::Flat => {
-                self.library
-                    .edge_indices
-                    .upper_line_indices
-                    .push(LineIndices::new(upper_subdivision.left_curve_left,
-                                           upper_subdivision.middle_point))
-            }
-            Shape::Convex | Shape::Concave => {
-                self.library
-                    .edge_indices
-                    .upper_curve_indices
-                    .push(CurveIndices::new(upper_subdivision.left_curve_left,
-                                            upper_subdivision.left_curve_control_point,
-                                            upper_subdivision.middle_point))
-            }
-        }
-        match lower_shape {
-            Shape::Flat => {
-                self.library
-                    .edge_indices
-                    .lower_line_indices
-                    .push(LineIndices::new(lower_subdivision.left_curve_left,
-                                           lower_subdivision.middle_point))
-            }
-            Shape::Convex | Shape::Concave => {
-                self.library
-                    .edge_indices
-                    .lower_curve_indices
-                    .push(CurveIndices::new(lower_subdivision.left_curve_left,
-                                            lower_subdivision.left_curve_control_point,
-                                            lower_subdivision.middle_point))
-            }
-        }
-
         debug!("... emitting B-quad: UL {} BL {} UR {} BR {}",
                upper_subdivision.left_curve_left,
                lower_subdivision.left_curve_left,
@@ -773,12 +737,12 @@ impl<'a> Partitioner<'a> {
             }
         }
 
-        self.library.b_quads.push(BQuad::new(upper_subdivision.left_curve_left,
-                                             upper_subdivision.left_curve_control_point,
-                                             upper_subdivision.middle_point,
-                                             lower_subdivision.left_curve_left,
-                                             lower_subdivision.left_curve_control_point,
-                                             lower_subdivision.middle_point))
+        self.library.add_b_quad(&BQuad::new(upper_subdivision.left_curve_left,
+                                            upper_subdivision.left_curve_control_point,
+                                            upper_subdivision.middle_point,
+                                            lower_subdivision.left_curve_left,
+                                            lower_subdivision.left_curve_control_point,
+                                            lower_subdivision.middle_point))
     }
 
     fn subdivide_active_edge_again_at_t(&mut self,

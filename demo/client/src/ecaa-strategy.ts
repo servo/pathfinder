@@ -17,7 +17,7 @@ import {createFramebufferDepthTexture, setTextureParameters, UniformMap} from '.
 import {WebGLVertexArrayObject} from './gl-utils';
 import {B_QUAD_LOWER_INDICES_OFFSET, B_QUAD_SIZE, B_QUAD_UPPER_INDICES_OFFSET} from './meshes';
 import {PathfinderShaderProgram} from './shader-loader';
-import {UINT32_SIZE, unwrapNull} from './utils';
+import {FLOAT32_SIZE, UINT32_SIZE, unwrapNull} from './utils';
 import {MonochromeDemoView} from './view';
 
 interface UpperAndLower<T> {
@@ -37,8 +37,6 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 
     protected subpixelAA: SubpixelAAType;
 
-    private bVertexPositionBufferTexture: PathfinderBufferTexture;
-    private bVertexPathIDBufferTexture: PathfinderBufferTexture;
     private directFramebuffer: WebGLFramebuffer;
     private aaAlphaTexture: WebGLTexture;
     private aaFramebuffer: WebGLFramebuffer;
@@ -58,16 +56,11 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 
     init(view: MonochromeDemoView) {
         super.init(view);
-        this.bVertexPositionBufferTexture = new PathfinderBufferTexture(view.gl,
-                                                                        'uBVertexPosition');
-        this.bVertexPathIDBufferTexture = new PathfinderBufferTexture(view.gl, 'uBVertexPathID');
     }
 
     attachMeshes(view: MonochromeDemoView) {
         const bVertexPositions = new Float32Array(view.meshData[0].bVertexPositions);
         const bVertexPathIDs = new Uint8Array(view.meshData[0].bVertexPathIDs);
-        this.bVertexPositionBufferTexture.upload(view.gl, bVertexPositions);
-        this.bVertexPathIDBufferTexture.upload(view.gl, bVertexPathIDs);
 
         this.createEdgeDetectVAO(view);
         this.createCoverVAO(view);
@@ -212,24 +205,33 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.useProgram(coverProgram.program);
         view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
         view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
-        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.meshes[0].bQuads);
-        view.gl.vertexAttribPointer(attributes.aUpperPointIndices,
-                                    4,
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.meshes[0].edgeBoundingBoxVertexPositions);
+        view.gl.vertexAttribPointer(attributes.aUpperLeftPosition,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 4,
+                                    0);
+        view.gl.vertexAttribPointer(attributes.aLowerRightPosition,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 4,
+                                    FLOAT32_SIZE * 2);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.meshes[0].edgeBoundingBoxPathIDs);
+        view.gl.vertexAttribPointer(attributes.aPathID,
+                                    1,
                                     view.gl.UNSIGNED_SHORT,
                                     false,
-                                    B_QUAD_SIZE,
-                                    B_QUAD_UPPER_INDICES_OFFSET);
-        view.gl.vertexAttribPointer(attributes.aLowerPointIndices,
-                                    4,
-                                    view.gl.UNSIGNED_SHORT,
-                                    false,
-                                    B_QUAD_SIZE,
-                                    B_QUAD_LOWER_INDICES_OFFSET);
+                                    0,
+                                    0);
         view.gl.enableVertexAttribArray(attributes.aQuadPosition);
-        view.gl.enableVertexAttribArray(attributes.aUpperPointIndices);
-        view.gl.enableVertexAttribArray(attributes.aLowerPointIndices);
-        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aUpperPointIndices, 1);
-        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLowerPointIndices, 1);
+        view.gl.enableVertexAttribArray(attributes.aUpperLeftPosition);
+        view.gl.enableVertexAttribArray(attributes.aLowerRightPosition);
+        view.gl.enableVertexAttribArray(attributes.aPathID);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aUpperLeftPosition, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLowerRightPosition, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
         view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
@@ -244,24 +246,45 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             vaos[direction] = view.vertexArrayObjectExt.createVertexArrayOES();
             view.vertexArrayObjectExt.bindVertexArrayOES(vaos[direction]);
 
-            const lineIndexBuffer = {
-                lower: view.meshes[0].edgeLowerLineIndices,
-                upper: view.meshes[0].edgeUpperLineIndices,
+            const lineVertexPositionsBuffer = {
+                lower: view.meshes[0].edgeLowerLineVertexPositions,
+                upper: view.meshes[0].edgeUpperLineVertexPositions,
+            }[direction];
+            const linePathIDsBuffer = {
+                lower: view.meshes[0].edgeLowerLinePathIDs,
+                upper: view.meshes[0].edgeUpperLinePathIDs,
             }[direction];
 
             view.gl.useProgram(lineProgram.program);
             view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
             view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
-            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineIndexBuffer);
-            view.gl.vertexAttribPointer(attributes.aLineIndices,
-                                        4,
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineVertexPositionsBuffer);
+            view.gl.vertexAttribPointer(attributes.aLeftPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 4,
+                                        0);
+            view.gl.vertexAttribPointer(attributes.aRightPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 4,
+                                        FLOAT32_SIZE * 2);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, linePathIDsBuffer);
+            view.gl.vertexAttribPointer(attributes.aPathID,
+                                        1,
                                         view.gl.UNSIGNED_SHORT,
                                         false,
                                         0,
                                         0);
             view.gl.enableVertexAttribArray(attributes.aQuadPosition);
-            view.gl.enableVertexAttribArray(attributes.aLineIndices);
-            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLineIndices, 1);
+            view.gl.enableVertexAttribArray(attributes.aLeftPosition);
+            view.gl.enableVertexAttribArray(attributes.aRightPosition);
+            view.gl.enableVertexAttribArray(attributes.aPathID);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
             view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
         }
 
@@ -279,32 +302,53 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             vaos[direction] = view.vertexArrayObjectExt.createVertexArrayOES();
             view.vertexArrayObjectExt.bindVertexArrayOES(vaos[direction]);
 
-            const curveIndexBuffer = {
-                lower: view.meshes[0].edgeLowerCurveIndices,
-                upper: view.meshes[0].edgeUpperCurveIndices,
+            const curveVertexPositionsBuffer = {
+                lower: view.meshes[0].edgeLowerCurveVertexPositions,
+                upper: view.meshes[0].edgeUpperCurveVertexPositions,
+            }[direction];
+            const curvePathIDsBuffer = {
+                lower: view.meshes[0].edgeLowerCurvePathIDs,
+                upper: view.meshes[0].edgeUpperCurvePathIDs,
             }[direction];
 
             view.gl.useProgram(curveProgram.program);
             view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
             view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
-            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveIndexBuffer);
-            view.gl.vertexAttribPointer(attributes.aCurveEndpointIndices,
-                                        4,
-                                        view.gl.UNSIGNED_SHORT,
-                                        false,
-                                        UINT32_SIZE * 4,
-                                        0);
-            view.gl.vertexAttribPointer(attributes.aCurveControlPointIndex,
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveVertexPositionsBuffer);
+            view.gl.vertexAttribPointer(attributes.aLeftPosition,
                                         2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 6,
+                                        0);
+            view.gl.vertexAttribPointer(attributes.aControlPointPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 6,
+                                        FLOAT32_SIZE * 2);
+            view.gl.vertexAttribPointer(attributes.aRightPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 6,
+                                        FLOAT32_SIZE * 4);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curvePathIDsBuffer);
+            view.gl.vertexAttribPointer(attributes.aPathID,
+                                        1,
                                         view.gl.UNSIGNED_SHORT,
                                         false,
-                                        UINT32_SIZE * 4,
-                                        UINT32_SIZE * 2);
+                                        0,
+                                        0);
             view.gl.enableVertexAttribArray(attributes.aQuadPosition);
-            view.gl.enableVertexAttribArray(attributes.aCurveEndpointIndices);
-            view.gl.enableVertexAttribArray(attributes.aCurveControlPointIndex);
-            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aCurveEndpointIndices, 1);
-            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aCurveControlPointIndex, 1);
+            view.gl.enableVertexAttribArray(attributes.aLeftPosition);
+            view.gl.enableVertexAttribArray(attributes.aControlPointPosition);
+            view.gl.enableVertexAttribArray(attributes.aRightPosition);
+            view.gl.enableVertexAttribArray(attributes.aPathID);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aControlPointPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
             view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
         }
 
@@ -376,9 +420,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     private setAAUniforms(view: MonochromeDemoView, uniforms: UniformMap) {
         view.setTransformSTUniform(uniforms, 0);
         view.setFramebufferSizeUniform(uniforms);
-        this.bVertexPositionBufferTexture.bind(view.gl, uniforms, 0);
-        this.bVertexPathIDBufferTexture.bind(view.gl, uniforms, 1);
-        view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 2);
+        view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 0);
         view.setHintsUniform(uniforms);
     }
 
@@ -394,8 +436,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.vertexArrayObjectExt.bindVertexArrayOES(this.lineVAOs[direction]);
             view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
             const count = {
-                lower: view.meshData[0].edgeLowerLineIndexCount,
-                upper: view.meshData[0].edgeUpperLineIndexCount,
+                lower: view.meshData[0].edgeLowerLineCount,
+                upper: view.meshData[0].edgeUpperLineCount,
             }[direction];
             view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                                6,
@@ -419,8 +461,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.vertexArrayObjectExt.bindVertexArrayOES(this.curveVAOs[direction]);
             view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
             const count = {
-                lower: view.meshData[0].edgeLowerCurveIndexCount,
-                upper: view.meshData[0].edgeUpperCurveIndexCount,
+                lower: view.meshData[0].edgeLowerCurveCount,
+                upper: view.meshData[0].edgeUpperCurveCount,
             }[direction];
             view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
                                                                6,

@@ -192,27 +192,9 @@ int unpackUInt16(vec2 packedValue) {
     return valueBytes.y * 256 + valueBytes.x;
 }
 
-int unpackUInt32Attribute(vec2 packedValue) {
-    ivec2 valueWords = ivec2(packedValue);
-    return valueWords.y * 65536 + valueWords.x;
-}
-
 vec4 fetchFloat4Data(sampler2D dataTexture, int index, ivec2 dimensions) {
     ivec2 pixelCoord = ivec2(imod(index, dimensions.x), index / dimensions.x);
     return texture2D(dataTexture, (vec2(pixelCoord) + 0.5) / vec2(dimensions));
-}
-
-vec4 fetchFloat4NormIndexedData(sampler2D dataTexture, float normIndex, ivec2 dimensions) {
-    return fetchFloat4Data(dataTexture, int(normIndex * float(dimensions.x)), dimensions);
-}
-
-vec2 fetchFloat2Data(sampler2D dataTexture, int index, ivec2 dimensions) {
-    vec4 float4Data = fetchFloat4Data(dataTexture, index / 2, dimensions);
-    return index / 2 * 2 == index ? float4Data.xy : float4Data.zw;
-}
-
-int fetchUInt16Data(sampler2D dataTexture, int index, ivec2 dimensions) {
-    return unpackUInt16(fetchFloat2Data(dataTexture, index, dimensions));
 }
 
 vec2 packPathID(int pathID) {

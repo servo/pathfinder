@@ -13,37 +13,24 @@ precision highp float;
 uniform vec4 uTransformST;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
-uniform ivec2 uBVertexPositionDimensions;
-uniform ivec2 uBVertexPathIDDimensions;
 uniform ivec2 uPathTransformDimensions;
-uniform sampler2D uBVertexPosition;
-uniform sampler2D uBVertexPathID;
 uniform sampler2D uPathTransform;
 uniform bool uLowerPart;
 
 attribute vec2 aQuadPosition;
-attribute vec4 aCurveEndpointIndices;
-attribute vec2 aCurveControlPointIndex;
+attribute vec2 aLeftPosition;
+attribute vec2 aControlPointPosition;
+attribute vec2 aRightPosition;
+attribute float aPathID;
 
 varying vec4 vEndpoints;
 varying vec2 vControlPoint;
 
 void main() {
-    // Fetch B-vertex positions.
-    ivec3 pointIndices = ivec3(unpackUInt32Attribute(aCurveEndpointIndices.xy),
-                               unpackUInt32Attribute(aCurveEndpointIndices.zw),
-                               unpackUInt32Attribute(aCurveControlPointIndex));
-    vec2 leftPosition = fetchFloat2Data(uBVertexPosition,
-                                        pointIndices.x,
-                                        uBVertexPositionDimensions);
-    vec2 rightPosition = fetchFloat2Data(uBVertexPosition,
-                                         pointIndices.y,
-                                         uBVertexPositionDimensions);
-    vec2 controlPointPosition = fetchFloat2Data(uBVertexPosition,
-                                                pointIndices.z,
-                                                uBVertexPositionDimensions);
-
-    int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
+    vec2 leftPosition = aLeftPosition;
+    vec2 controlPointPosition = aControlPointPosition;
+    vec2 rightPosition = aRightPosition;
+    int pathID = int(aPathID);
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
 
@@ -57,7 +44,7 @@ void main() {
                             transform,
                             uTransformST,
                             uHints)) {
-        controlPointPosition = hintPosition(controlPointPosition, uHints);
+        controlPointPosition = hintPosition(aControlPointPosition, uHints);
         controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
         controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
         controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);

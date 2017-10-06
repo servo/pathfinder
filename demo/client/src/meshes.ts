@@ -18,35 +18,36 @@ interface BufferTypeFourCCTable {
     [fourCC: string]: keyof Meshes<void>;
 }
 
-const BUFFER_TYPES: Meshes<BufferType> = {
-    bQuads: 'ARRAY_BUFFER',
-    bVertexLoopBlinnData: 'ARRAY_BUFFER',
-    bVertexPathIDs: 'ARRAY_BUFFER',
-    bVertexPositions: 'ARRAY_BUFFER',
-    coverCurveIndices: 'ELEMENT_ARRAY_BUFFER',
-    coverInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
-    edgeLowerCurveIndices: 'ARRAY_BUFFER',
-    edgeLowerLineIndices: 'ARRAY_BUFFER',
-    edgeUpperCurveIndices: 'ARRAY_BUFFER',
-    edgeUpperLineIndices: 'ARRAY_BUFFER',
-};
+interface ArrayLike<T> {
+    [index: number]: T;
+}
 
-const RIFF_FOURCC: string = 'RIFF';
+interface VertexExpansionDescriptor<T> {
+    expanded: T[];
+    original: ArrayLike<T>;
+    size: number;
+}
 
-const MESH_LIBRARY_FOURCC: string = 'PFML';
+interface VertexCopyResult {
+    originalStartIndex: number;
+    originalEndIndex: number;
+    expandedStartIndex: number;
+    expandedEndIndex: number;
+}
 
-// Must match the FourCCs in `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into()`.
-const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
-    bqua: 'bQuads',
-    bvlb: 'bVertexLoopBlinnData',
-    bvpi: 'bVertexPathIDs',
-    bvpo: 'bVertexPositions',
-    cvci: 'coverCurveIndices',
-    cvii: 'coverInteriorIndices',
-    elci: 'edgeLowerCurveIndices',
-    elli: 'edgeLowerLineIndices',
-    euci: 'edgeUpperCurveIndices',
-    euli: 'edgeUpperLineIndices',
+type PrimitiveType = 'Uint16' | 'Uint32' | 'Float32';
+
+type PrimitiveTypeArray = Float32Array | Uint16Array | Uint32Array;
+
+interface MeshBufferTypeDescriptor {
+    type: PrimitiveType;
+    size: number;
+}
+
+const PRIMITIVE_TYPE_ARRAY_CONSTRUCTORS = {
+    Float32: Float32Array,
+    Uint16: Uint16Array,
+    Uint32: Uint32Array,
 };
 
 export const B_QUAD_SIZE: number = 4 * 8;
@@ -61,6 +62,70 @@ export const B_QUAD_LOWER_INDICES_OFFSET: number = B_QUAD_LOWER_LEFT_VERTEX_OFFS
 
 const B_QUAD_FIELD_COUNT: number = B_QUAD_SIZE / UINT32_SIZE;
 
+const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
+    bQuads: { type: 'Uint32', size: B_QUAD_FIELD_COUNT },
+    bVertexLoopBlinnData: { type: 'Uint32', size: 1 },
+    bVertexPathIDs: { type: 'Uint16', size: 1 },
+    bVertexPositions: { type: 'Float32', size: 2 },
+    coverCurveIndices: { type: 'Uint32', size: 1 },
+    coverInteriorIndices: { type: 'Uint32', size: 1 },
+    edgeBoundingBoxPathIDs: { type: 'Uint16', size: 1 },
+    edgeBoundingBoxVertexPositions: { type: 'Float32', size: 4 },
+    edgeLowerCurvePathIDs: { type: 'Uint16', size: 1 },
+    edgeLowerCurveVertexPositions: { type: 'Float32', size: 6 },
+    edgeLowerLinePathIDs: { type: 'Uint16', size: 1 },
+    edgeLowerLineVertexPositions: { type: 'Float32', size: 4 },
+    edgeUpperCurvePathIDs: { type: 'Uint16', size: 1 },
+    edgeUpperCurveVertexPositions: { type: 'Float32', size: 6 },
+    edgeUpperLinePathIDs: { type: 'Uint16', size: 1 },
+    edgeUpperLineVertexPositions: { type: 'Float32', size: 4 },
+};
+
+const BUFFER_TYPES: Meshes<BufferType> = {
+    bQuads: 'ARRAY_BUFFER',
+    bVertexLoopBlinnData: 'ARRAY_BUFFER',
+    bVertexPathIDs: 'ARRAY_BUFFER',
+    bVertexPositions: 'ARRAY_BUFFER',
+    coverCurveIndices: 'ELEMENT_ARRAY_BUFFER',
+    coverInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
+    edgeBoundingBoxPathIDs: 'ARRAY_BUFFER',
+    edgeBoundingBoxVertexPositions: 'ARRAY_BUFFER',
+    edgeLowerCurvePathIDs: 'ARRAY_BUFFER',
+    edgeLowerCurveVertexPositions: 'ARRAY_BUFFER',
+    edgeLowerLinePathIDs: 'ARRAY_BUFFER',
+    edgeLowerLineVertexPositions: 'ARRAY_BUFFER',
+    edgeUpperCurvePathIDs: 'ARRAY_BUFFER',
+    edgeUpperCurveVertexPositions: 'ARRAY_BUFFER',
+    edgeUpperLinePathIDs: 'ARRAY_BUFFER',
+    edgeUpperLineVertexPositions: 'ARRAY_BUFFER',
+};
+
+const EDGE_BUFFER_NAMES = ['BoundingBox', 'UpperLine', 'UpperCurve', 'LowerLine', 'LowerCurve'];
+
+const RIFF_FOURCC: string = 'RIFF';
+
+const MESH_LIBRARY_FOURCC: string = 'PFML';
+
+// Must match the FourCCs in `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into()`.
+const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
+    bqua: 'bQuads',
+    bvlb: 'bVertexLoopBlinnData',
+    bvpi: 'bVertexPathIDs',
+    bvpo: 'bVertexPositions',
+    cvci: 'coverCurveIndices',
+    cvii: 'coverInteriorIndices',
+    ebbp: 'edgeBoundingBoxPathIDs',
+    ebbv: 'edgeBoundingBoxVertexPositions',
+    elcp: 'edgeLowerCurvePathIDs',
+    elcv: 'edgeLowerCurveVertexPositions',
+    ellp: 'edgeLowerLinePathIDs',
+    ellv: 'edgeLowerLineVertexPositions',
+    eucp: 'edgeUpperCurvePathIDs',
+    eucv: 'edgeUpperCurveVertexPositions',
+    eulp: 'edgeUpperLinePathIDs',
+    eulv: 'edgeUpperLineVertexPositions',
+};
+
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
 export interface Meshes<T> {
@@ -70,10 +135,16 @@ export interface Meshes<T> {
     readonly bVertexLoopBlinnData: T;
     readonly coverInteriorIndices: T;
     readonly coverCurveIndices: T;
-    readonly edgeUpperLineIndices: T;
-    readonly edgeLowerLineIndices: T;
-    readonly edgeUpperCurveIndices: T;
-    readonly edgeLowerCurveIndices: T;
+    readonly edgeBoundingBoxPathIDs: T;
+    readonly edgeBoundingBoxVertexPositions: T;
+    readonly edgeLowerCurvePathIDs: T;
+    readonly edgeLowerCurveVertexPositions: T;
+    readonly edgeLowerLinePathIDs: T;
+    readonly edgeLowerLineVertexPositions: T;
+    readonly edgeUpperCurvePathIDs: T;
+    readonly edgeUpperCurveVertexPositions: T;
+    readonly edgeUpperLinePathIDs: T;
+    readonly edgeUpperLineVertexPositions: T;
 }
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer> {
@@ -83,16 +154,22 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly bVertexLoopBlinnData: ArrayBuffer;
     readonly coverInteriorIndices: ArrayBuffer;
     readonly coverCurveIndices: ArrayBuffer;
-    readonly edgeUpperLineIndices: ArrayBuffer;
-    readonly edgeLowerLineIndices: ArrayBuffer;
-    readonly edgeUpperCurveIndices: ArrayBuffer;
-    readonly edgeLowerCurveIndices: ArrayBuffer;
+    readonly edgeBoundingBoxPathIDs: ArrayBuffer;
+    readonly edgeBoundingBoxVertexPositions: ArrayBuffer;
+    readonly edgeLowerCurvePathIDs: ArrayBuffer;
+    readonly edgeLowerCurveVertexPositions: ArrayBuffer;
+    readonly edgeLowerLinePathIDs: ArrayBuffer;
+    readonly edgeLowerLineVertexPositions: ArrayBuffer;
+    readonly edgeUpperCurvePathIDs: ArrayBuffer;
+    readonly edgeUpperCurveVertexPositions: ArrayBuffer;
+    readonly edgeUpperLinePathIDs: ArrayBuffer;
+    readonly edgeUpperLineVertexPositions: ArrayBuffer;
 
     readonly bQuadCount: number;
-    readonly edgeUpperLineIndexCount: number;
-    readonly edgeLowerLineIndexCount: number;
-    readonly edgeUpperCurveIndexCount: number;
-    readonly edgeLowerCurveIndexCount: number;
+    readonly edgeLowerCurveCount: number;
+    readonly edgeUpperCurveCount: number;
+    readonly edgeLowerLineCount: number;
+    readonly edgeUpperLineCount: number;
 
     constructor(meshes: ArrayBuffer | Meshes<ArrayBuffer>) {
         if (meshes instanceof ArrayBuffer) {
@@ -119,160 +196,104 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
         }
 
         this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
-        this.edgeUpperLineIndexCount = this.edgeUpperLineIndices.byteLength / 8;
-        this.edgeLowerLineIndexCount = this.edgeLowerLineIndices.byteLength / 8;
-        this.edgeUpperCurveIndexCount = this.edgeUpperCurveIndices.byteLength / 16;
-        this.edgeLowerCurveIndexCount = this.edgeLowerCurveIndices.byteLength / 16;
+        this.edgeUpperLineCount = this.edgeUpperLinePathIDs.byteLength / 2;
+        this.edgeLowerLineCount = this.edgeLowerLinePathIDs.byteLength / 2;
+        this.edgeUpperCurveCount = this.edgeUpperCurvePathIDs.byteLength / 2;
+        this.edgeLowerCurveCount = this.edgeLowerCurvePathIDs.byteLength / 2;
     }
 
     expand(pathIDs: number[]): PathfinderMeshData {
-        const bQuads = new Uint32Array(this.bQuads);
-        const bVertexPositions = new Float32Array(this.bVertexPositions);
-        const bVertexPathIDs = new Uint16Array(this.bVertexPathIDs);
-        const bVertexLoopBlinnData = new Uint32Array(this.bVertexLoopBlinnData);
+        const tempOriginalBuffers: any = {}, tempExpandedArrays: any = {};
+        for (const key of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>) {
+            const arrayConstructor = PRIMITIVE_TYPE_ARRAY_CONSTRUCTORS[MESH_TYPES[key].type];
+            tempOriginalBuffers[key] = new arrayConstructor(this[key]);
+            tempExpandedArrays[key] = [];
+        }
 
-        const edgeUpperCurveIndices = new Uint32Array(this.edgeUpperCurveIndices);
-        const edgeLowerCurveIndices = new Uint32Array(this.edgeLowerCurveIndices);
-        for (let indexIndex = 3; indexIndex < edgeUpperCurveIndices.length; indexIndex += 4)
-            edgeUpperCurveIndices[indexIndex] = 0;
-        for (let indexIndex = 3; indexIndex < edgeLowerCurveIndices.length; indexIndex += 4)
-            edgeLowerCurveIndices[indexIndex] = 0;
+        const originalBuffers: Meshes<PrimitiveTypeArray> = tempOriginalBuffers;
+        const expandedArrays: Meshes<number[]> = tempExpandedArrays;
 
-        const coverInteriorIndices = new Uint32Array(this.coverInteriorIndices);
-        const coverCurveIndices = new Uint32Array(this.coverCurveIndices);
-        const edgeUpperLineIndices = new Uint32Array(this.edgeUpperLineIndices);
-        const edgeLowerLineIndices = new Uint32Array(this.edgeLowerLineIndices);
+        for (let newPathIndex = 0; newPathIndex < pathIDs.length; newPathIndex++) {
+            const expandedPathID = newPathIndex + 1;
+            const originalPathID = pathIDs[newPathIndex];
 
-        const expandedBQuads: number[] = [];
-        const expandedBVertexPositions: number[] = [];
-        const expandedBVertexPathIDs: number[] = [];
-        const expandedBVertexLoopBlinnData: number[] = [];
-        const expandedCoverInteriorIndices: number[] = [];
-        const expandedCoverCurveIndices: number[] = [];
-        const expandedEdgeUpperCurveIndices: number[] = [];
-        const expandedEdgeUpperLineIndices: number[] = [];
-        const expandedEdgeLowerCurveIndices: number[] = [];
-        const expandedEdgeLowerLineIndices: number[] = [];
+            const bVertexCopyResult =
+                copyVertices(['bVertexPositions', 'bVertexLoopBlinnData'],
+                             'bVertexPathIDs',
+                             expandedArrays,
+                             originalBuffers,
+                             expandedPathID,
+                             originalPathID);
 
-        let textGlyphIndex = 0;
-        for (const pathID of pathIDs) {
-            const firstBVertexIndex = _.sortedIndex(bVertexPathIDs, pathID);
-            if (firstBVertexIndex < 0)
+            if (bVertexCopyResult == null)
                 continue;
 
-            // Copy over vertices.
-            let bVertexIndex = firstBVertexIndex;
-            const firstExpandedBVertexIndex = expandedBVertexPathIDs.length;
-            while (bVertexIndex < bVertexPathIDs.length &&
-                bVertexPathIDs[bVertexIndex] === pathID) {
-                expandedBVertexPositions.push(bVertexPositions[bVertexIndex * 2 + 0],
-                                            bVertexPositions[bVertexIndex * 2 + 1]);
-                expandedBVertexPathIDs.push(textGlyphIndex + 1);
-                expandedBVertexLoopBlinnData.push(bVertexLoopBlinnData[bVertexIndex]);
-                bVertexIndex++;
+            const firstExpandedBVertexIndex = bVertexCopyResult.expandedStartIndex;
+            const firstBVertexIndex = bVertexCopyResult.originalStartIndex;
+            const lastBVertexIndex = bVertexCopyResult.originalEndIndex;
+
+            // Copy over edge data.
+            for (const edgeBufferName of EDGE_BUFFER_NAMES) {
+                copyVertices([`edge${edgeBufferName}VertexPositions` as keyof Meshes<void>],
+                             `edge${edgeBufferName}PathIDs` as keyof Meshes<void>,
+                             expandedArrays,
+                             originalBuffers,
+                             expandedPathID,
+                             originalPathID);
             }
 
             // Copy over indices.
-            copyIndices(expandedCoverInteriorIndices,
-                        coverInteriorIndices,
+            copyIndices(expandedArrays.coverInteriorIndices,
+                        originalBuffers.coverInteriorIndices as Uint32Array,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
-                        bVertexIndex);
-            copyIndices(expandedCoverCurveIndices,
-                        coverCurveIndices,
+                        lastBVertexIndex);
+            copyIndices(expandedArrays.coverCurveIndices,
+                        originalBuffers.coverCurveIndices as Uint32Array,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
-                        bVertexIndex);
-
-            copyIndices(expandedEdgeUpperLineIndices,
-                        edgeUpperLineIndices,
-                        firstExpandedBVertexIndex,
-                        firstBVertexIndex,
-                        bVertexIndex);
-            copyIndices(expandedEdgeUpperCurveIndices,
-                        edgeUpperCurveIndices,
-                        firstExpandedBVertexIndex,
-                        firstBVertexIndex,
-                        bVertexIndex,
-                        indexIndex => indexIndex % 4 < 3);
-            copyIndices(expandedEdgeLowerLineIndices,
-                        edgeLowerLineIndices,
-                        firstExpandedBVertexIndex,
-                        firstBVertexIndex,
-                        bVertexIndex);
-            copyIndices(expandedEdgeLowerCurveIndices,
-                        edgeLowerCurveIndices,
-                        firstExpandedBVertexIndex,
-                        firstBVertexIndex,
-                        bVertexIndex,
-                        indexIndex => indexIndex % 4 < 3);
+                        lastBVertexIndex);
 
             // Copy over B-quads.
-            let firstBQuadIndex = findFirstBQuadIndex(bQuads, bVertexPathIDs, pathID);
+            let firstBQuadIndex =
+                findFirstBQuadIndex(originalBuffers.bQuads as Uint32Array,
+                                    originalBuffers.bVertexPathIDs as Uint16Array,
+                                    originalPathID);
             if (firstBQuadIndex == null)
-                firstBQuadIndex = bQuads.length;
+                firstBQuadIndex = originalBuffers.bQuads.length;
             const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
             for (let bQuadIndex = firstBQuadIndex;
-                 bQuadIndex < bQuads.length / B_QUAD_FIELD_COUNT;
+                 bQuadIndex < originalBuffers.bQuads.length / B_QUAD_FIELD_COUNT;
                  bQuadIndex++) {
-                const bQuad = bQuads[bQuadIndex];
-                if (bVertexPathIDs[bQuads[bQuadIndex * B_QUAD_FIELD_COUNT]] !== pathID)
+                const bQuad = originalBuffers.bQuads[bQuadIndex];
+                if (originalBuffers.bVertexPathIDs[originalBuffers.bQuads[bQuadIndex *
+                                                                          B_QUAD_FIELD_COUNT]] !==
+                                                                          originalPathID) {
                     break;
+                }
                 for (let indexIndex = 0; indexIndex < B_QUAD_FIELD_COUNT; indexIndex++) {
-                    const srcIndex = bQuads[bQuadIndex * B_QUAD_FIELD_COUNT + indexIndex];
+                    const srcIndex = originalBuffers.bQuads[bQuadIndex * B_QUAD_FIELD_COUNT +
+                                                            indexIndex];
                     if (srcIndex === UINT32_MAX)
-                        expandedBQuads.push(srcIndex);
+                        expandedArrays.bQuads.push(srcIndex);
                     else
-                        expandedBQuads.push(srcIndex + indexDelta);
+                        expandedArrays.bQuads.push(srcIndex + indexDelta);
                 }
             }
-
-            textGlyphIndex++;
         }
 
-        const expandedBQuadsBuffer = new ArrayBuffer(expandedBQuads.length * UINT32_SIZE);
-        const expandedBVertexLoopBlinnDataBuffer =
-            new ArrayBuffer(expandedBVertexLoopBlinnData.length * UINT32_SIZE);
-        const expandedBVertexPathIDsBuffer =
-            new ArrayBuffer(expandedBVertexPathIDs.length * UINT16_SIZE);
-        const expandedBVertexPositionsBuffer =
-            new ArrayBuffer(expandedBVertexPositions.length * FLOAT32_SIZE);
-        const expandedCoverCurveIndicesBuffer =
-            new ArrayBuffer(expandedCoverCurveIndices.length * UINT32_SIZE);
-        const expandedCoverInteriorIndicesBuffer =
-            new ArrayBuffer(expandedCoverInteriorIndices.length * UINT32_SIZE);
-        const expandedEdgeLowerCurveIndicesBuffer =
-            new ArrayBuffer(expandedEdgeLowerCurveIndices.length * UINT32_SIZE);
-        const expandedEdgeLowerLineIndicesBuffer =
-            new ArrayBuffer(expandedEdgeLowerLineIndices.length * UINT32_SIZE);
-        const expandedEdgeUpperCurveIndicesBuffer =
-            new ArrayBuffer(expandedEdgeUpperCurveIndices.length * UINT32_SIZE);
-        const expandedEdgeUpperLineIndicesBuffer =
-            new ArrayBuffer(expandedEdgeUpperLineIndices.length * UINT32_SIZE);
+        const tempExpandedBuffers: any = {};
+        for (const key of Object.keys(MESH_TYPES) as Array<keyof Meshes<void>>) {
+            const bufferType = MESH_TYPES[key].type;
+            const arrayConstructor = PRIMITIVE_TYPE_ARRAY_CONSTRUCTORS[bufferType];
+            const expandedBuffer = new ArrayBuffer(expandedArrays[key].length *
+                                                   sizeOfPrimitive(bufferType));
+            (new arrayConstructor(expandedBuffer)).set(expandedArrays[key]);
+            tempExpandedBuffers[key] = expandedBuffer;
+        }
 
-        (new Uint32Array(expandedBQuadsBuffer)).set(expandedBQuads);
-        (new Uint32Array(expandedBVertexLoopBlinnDataBuffer)).set(expandedBVertexLoopBlinnData);
-        (new Uint16Array(expandedBVertexPathIDsBuffer)).set(expandedBVertexPathIDs);
-        (new Float32Array(expandedBVertexPositionsBuffer)).set(expandedBVertexPositions);
-        (new Uint32Array(expandedCoverCurveIndicesBuffer)).set(expandedCoverCurveIndices);
-        (new Uint32Array(expandedCoverInteriorIndicesBuffer)).set(expandedCoverInteriorIndices);
-        (new Uint32Array(expandedEdgeLowerCurveIndicesBuffer)).set(expandedEdgeLowerCurveIndices);
-        (new Uint32Array(expandedEdgeLowerLineIndicesBuffer)).set(expandedEdgeLowerLineIndices);
-        (new Uint32Array(expandedEdgeUpperCurveIndicesBuffer)).set(expandedEdgeUpperCurveIndices);
-        (new Uint32Array(expandedEdgeUpperLineIndicesBuffer)).set(expandedEdgeUpperLineIndices);
-
-        return new PathfinderMeshData({
-            bQuads: expandedBQuadsBuffer,
-            bVertexLoopBlinnData: expandedBVertexLoopBlinnDataBuffer,
-            bVertexPathIDs: expandedBVertexPathIDsBuffer,
-            bVertexPositions: expandedBVertexPositionsBuffer,
-            coverCurveIndices: expandedCoverCurveIndicesBuffer,
-            coverInteriorIndices: expandedCoverInteriorIndicesBuffer,
-            edgeLowerCurveIndices: expandedEdgeLowerCurveIndicesBuffer,
-            edgeLowerLineIndices: expandedEdgeLowerLineIndicesBuffer,
-            edgeUpperCurveIndices: expandedEdgeUpperCurveIndicesBuffer,
-            edgeUpperLineIndices: expandedEdgeUpperLineIndicesBuffer,
-        });
+        const expandedBuffers = tempExpandedBuffers as Meshes<ArrayBuffer>;
+        return new PathfinderMeshData(expandedBuffers);
     }
 }
 
@@ -283,10 +304,16 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly bVertexLoopBlinnData: WebGLBuffer;
     readonly coverInteriorIndices: WebGLBuffer;
     readonly coverCurveIndices: WebGLBuffer;
-    readonly edgeUpperLineIndices: WebGLBuffer;
-    readonly edgeUpperCurveIndices: WebGLBuffer;
-    readonly edgeLowerLineIndices: WebGLBuffer;
-    readonly edgeLowerCurveIndices: WebGLBuffer;
+    readonly edgeBoundingBoxPathIDs: WebGLBuffer;
+    readonly edgeBoundingBoxVertexPositions: WebGLBuffer;
+    readonly edgeLowerCurvePathIDs: WebGLBuffer;
+    readonly edgeLowerCurveVertexPositions: WebGLBuffer;
+    readonly edgeLowerLinePathIDs: WebGLBuffer;
+    readonly edgeLowerLineVertexPositions: WebGLBuffer;
+    readonly edgeUpperCurvePathIDs: WebGLBuffer;
+    readonly edgeUpperCurveVertexPositions: WebGLBuffer;
+    readonly edgeUpperLinePathIDs: WebGLBuffer;
+    readonly edgeUpperLineVertexPositions: WebGLBuffer;
 
     constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshBuffers>) {
@@ -297,6 +324,48 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
             this[bufferName] = buffer;
         }
     }
+}
+
+function copyVertices<T>(vertexBufferNames: Array<keyof Meshes<void>>,
+                         pathIDBufferName: keyof Meshes<void>,
+                         expandedMeshes: Meshes<number[]>,
+                         originalMeshes: Meshes<PrimitiveTypeArray>,
+                         expandedPathID: number,
+                         originalPathID: number):
+                         VertexCopyResult | null {
+    const expandedPathIDs = expandedMeshes[pathIDBufferName];
+    const originalPathIDs = originalMeshes[pathIDBufferName];
+
+    const firstOriginalVertexIndex = _.sortedIndex(originalPathIDs, originalPathID);
+    if (firstOriginalVertexIndex < 0)
+        return null;
+
+    const firstExpandedVertexIndex = expandedPathIDs.length;
+    let lastOriginalVertexIndex = firstOriginalVertexIndex;
+
+    while (lastOriginalVertexIndex < originalPathIDs.length &&
+           originalPathIDs[lastOriginalVertexIndex] === originalPathID) {
+        for (const vertexBufferName of vertexBufferNames) {
+            const expanded = expandedMeshes[vertexBufferName];
+            const original = originalMeshes[vertexBufferName];
+            const size = MESH_TYPES[vertexBufferName].size;
+            for (let elementIndex = 0; elementIndex < size; elementIndex++) {
+                const globalIndex = size * lastOriginalVertexIndex + elementIndex;
+                expanded.push(original[globalIndex]);
+            }
+        }
+
+        expandedPathIDs.push(expandedPathID);
+
+        lastOriginalVertexIndex++;
+    }
+
+    return {
+        expandedEndIndex: expandedPathIDs.length,
+        expandedStartIndex: firstExpandedVertexIndex,
+        originalEndIndex: lastOriginalVertexIndex,
+        originalStartIndex: firstOriginalVertexIndex,
+    };
 }
 
 function copyIndices(destIndices: number[],
@@ -324,6 +393,14 @@ function copyIndices(destIndices: number[],
             destIndices.push(index);
         }
         indexIndex++;
+    }
+}
+
+function sizeOfPrimitive(primitiveType: PrimitiveType): number {
+    switch (primitiveType) {
+    case 'Uint16':  return UINT16_SIZE;
+    case 'Uint32':  return UINT32_SIZE;
+    case 'Float32': return FLOAT32_SIZE;
     }
 }
 

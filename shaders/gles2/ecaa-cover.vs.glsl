@@ -13,47 +13,23 @@ precision highp float;
 uniform vec4 uTransformST;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
-uniform ivec2 uBVertexPositionDimensions;
-uniform ivec2 uBVertexPathIDDimensions;
 uniform ivec2 uPathTransformDimensions;
-uniform sampler2D uBVertexPosition;
-uniform sampler2D uBVertexPathID;
 uniform sampler2D uPathTransform;
 
 attribute vec2 aQuadPosition;
-attribute vec4 aUpperPointIndices;
-attribute vec4 aLowerPointIndices;
+attribute vec2 aUpperLeftPosition;
+attribute vec2 aLowerRightPosition;
+attribute float aPathID;
 
 varying vec2 vHorizontalExtents;
 
 void main() {
-    // Fetch B-vertex positions.
-    ivec4 pointIndices = ivec4(unpackUInt32Attribute(aUpperPointIndices.xy),
-                               unpackUInt32Attribute(aUpperPointIndices.zw),
-                               unpackUInt32Attribute(aLowerPointIndices.xy),
-                               unpackUInt32Attribute(aLowerPointIndices.zw));
-    vec2 upperLeftPosition = fetchFloat2Data(uBVertexPosition,
-                                             pointIndices.x,
-                                             uBVertexPositionDimensions);
-    vec2 upperRightPosition = fetchFloat2Data(uBVertexPosition,
-                                              pointIndices.y,
-                                              uBVertexPositionDimensions);
-    vec2 lowerLeftPosition = fetchFloat2Data(uBVertexPosition,
-                                             pointIndices.z,
-                                             uBVertexPositionDimensions);
-    vec2 lowerRightPosition = fetchFloat2Data(uBVertexPosition,
-                                              pointIndices.w,
-                                              uBVertexPositionDimensions);
-
-    upperLeftPosition.y = min(upperLeftPosition.y, upperRightPosition.y);
-    lowerRightPosition.y = max(lowerLeftPosition.y, lowerRightPosition.y);
-
-    int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
+    int pathID = int(aPathID);
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
 
-    upperLeftPosition = hintPosition(upperLeftPosition, uHints);
-    lowerRightPosition = hintPosition(lowerRightPosition, uHints);
+    vec2 upperLeftPosition = hintPosition(aUpperLeftPosition, uHints);
+    vec2 lowerRightPosition = hintPosition(aLowerRightPosition, uHints);
 
     upperLeftPosition = transformVertexPositionST(upperLeftPosition, transform);
     lowerRightPosition = transformVertexPositionST(lowerRightPosition, transform);

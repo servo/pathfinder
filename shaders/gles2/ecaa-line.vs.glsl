@@ -13,31 +13,21 @@ precision highp float;
 uniform vec4 uTransformST;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
-uniform ivec2 uBVertexPositionDimensions;
-uniform ivec2 uBVertexPathIDDimensions;
 uniform ivec2 uPathTransformDimensions;
-uniform sampler2D uBVertexPosition;
-uniform sampler2D uBVertexPathID;
 uniform sampler2D uPathTransform;
 uniform bool uLowerPart;
 
 attribute vec2 aQuadPosition;
-attribute vec4 aLineIndices;
+attribute vec2 aLeftPosition;
+attribute vec2 aRightPosition;
+attribute float aPathID;
 
 varying vec4 vEndpoints;
 
 void main() {
-    // Fetch B-vertex positions.
-    ivec2 pointIndices = ivec2(unpackUInt32Attribute(aLineIndices.xy),
-                               unpackUInt32Attribute(aLineIndices.zw));
-    vec2 leftPosition = fetchFloat2Data(uBVertexPosition,
-                                        pointIndices.x,
-                                        uBVertexPositionDimensions);
-    vec2 rightPosition = fetchFloat2Data(uBVertexPosition,
-                                         pointIndices.y,
-                                         uBVertexPositionDimensions);
-
-    int pathID = fetchUInt16Data(uBVertexPathID, pointIndices.x, uBVertexPathIDDimensions);
+    vec2 leftPosition = aLeftPosition;
+    vec2 rightPosition = aRightPosition;
+    int pathID = int(aPathID);
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
 
