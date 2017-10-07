@@ -15,14 +15,18 @@ The project features:
   generate them at runtime.
 
 * High quality antialiasing. Pathfinder can compute exact fractional trapezoidal area coverage on a
-  per-pixel basis for crisp antialiasing, provided that either OpenGL 3.0+ or a few common
-  extensions are available. Supersampling is available as an alternative for 3D scenes and/or
-  lower-end hardware.
+  per-pixel basis for the highest-quality antialiasing, provided that either OpenGL 3.0+ or a few
+  common extensions are available. Supersampling is available as an alternative for 3D scenes
+  and/or lower-end hardware.
 
 * Fast rendering, even at small pixel sizes. Even on lower-end GPUs, Pathfinder typically matches
   or exceeds the performance of the best CPU rasterizers. The difference is particularly pronouced
   at large sizes, where Pathfinder regularly achieves multi-factor speedups. All shaders have no
   loops and minimal branching.
+
+* Advanced font rendering. Pathfinder can render fonts with slight hinting and can perform subpixel
+  antialiasing on LCD screens. It also has experimental support for sRGB (gamma correction) and
+  stem darkening/font dilation.
 
 * Support for full vector scenes. Pathfinder 2 is designed to efficiently handle workloads that
   consist of many overlapping vector paths, such as those commonly found in SVG and PDF files. It
