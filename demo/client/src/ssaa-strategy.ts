@@ -48,11 +48,11 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
         view.gl.texImage2D(view.gl.TEXTURE_2D,
                            0,
-                           view.gl.RGBA,
+                           view.colorAlphaFormat,
                            this.supersampledFramebufferSize[0],
                            this.supersampledFramebufferSize[1],
                            0,
-                           view.gl.RGBA,
+                           view.colorAlphaFormat,
                            view.gl.UNSIGNED_BYTE,
                            null);
         setTextureParameters(view.gl, view.gl.LINEAR);

@@ -30,7 +30,7 @@ import {calculatePixelDescent, calculatePixelRectForGlyph, PathfinderFont} from 
 import {BUILTIN_FONT_URI, calculatePixelXMin, GlyphStore, Hint, SimpleTextLayout} from "./text";
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
-import {MonochromeDemoView, Timings, TIMINGS} from './view';
+import {DemoView, MonochromeDemoView, Timings, TIMINGS} from './view';
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves
@@ -441,7 +441,7 @@ class TextDemoView extends MonochromeDemoView {
         // Blit.
         this.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
         this.gl.activeTexture(this.gl.TEXTURE0);
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.appController.atlas.ensureTexture(this.gl));
+        this.gl.bindTexture(this.gl.TEXTURE_2D, this.appController.atlas.ensureTexture(this));
         this.gl.uniform1i(blitProgram.uniforms.uSource, 0);
         this.setIdentityTexScaleUniform(blitProgram.uniforms);
         this.gl.drawElements(this.gl.TRIANGLES,
@@ -582,7 +582,7 @@ class TextDemoView extends MonochromeDemoView {
     }
 
     private createAtlasFramebuffer() {
-        const atlasColorTexture = this.appController.atlas.ensureTexture(this.gl);
+        const atlasColorTexture = this.appController.atlas.ensureTexture(this);
         this.atlasDepthTexture = createFramebufferDepthTexture(this.gl, ATLAS_SIZE);
         this.atlasFramebuffer = createFramebuffer(this.gl,
                                                   this.drawBuffersExt,
@@ -770,23 +770,23 @@ class Atlas {
         this._usedSize = glmatrix.vec2.clone([ATLAS_SIZE[0], shelfBottom]);
     }
 
-    ensureTexture(gl: WebGLRenderingContext): WebGLTexture {
+    ensureTexture(view: DemoView): WebGLTexture {
         if (this._texture != null)
             return this._texture;
 
-        const texture = unwrapNull(gl.createTexture());
+        const texture = unwrapNull(view.gl.createTexture());
         this._texture = texture;
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(gl.TEXTURE_2D,
-                      0,
-                      gl.RGBA,
-                      ATLAS_SIZE[0],
-                      ATLAS_SIZE[1],
-                      0,
-                      gl.RGBA,
-                      gl.UNSIGNED_BYTE,
-                      null);
-        setTextureParameters(gl, gl.NEAREST);
+        view.gl.bindTexture(view.gl.TEXTURE_2D, texture);
+        view.gl.texImage2D(view.gl.TEXTURE_2D,
+                           0,
+                           view.colorAlphaFormat,
+                           ATLAS_SIZE[0],
+                           ATLAS_SIZE[1],
+                           0,
+                           view.colorAlphaFormat,
+                           view.gl.UNSIGNED_BYTE,
+                           null);
+        setTextureParameters(view.gl, view.gl.NEAREST);
 
         return texture;
     }

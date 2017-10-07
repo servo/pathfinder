@@ -138,9 +138,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     protected initDirectFramebuffer(view: MonochromeDemoView) {
-        this.directColorTexture = createFramebufferColorTexture(view.gl, this.destFramebufferSize);
-        this.directPathIDTexture = createFramebufferColorTexture(view.gl,
-                                                                 this.destFramebufferSize);
+        this.directColorTexture = createFramebufferColorTexture(view, this.destFramebufferSize);
+        this.directPathIDTexture = createFramebufferColorTexture(view, this.destFramebufferSize);
         this.directFramebuffer =
             createFramebuffer(view.gl,
                               view.drawBuffersExt,
@@ -574,9 +573,9 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
     }
 
     protected initEdgeDetectFramebuffer(view: MonochromeDemoView) {
-        this.bgColorTexture = createFramebufferColorTexture(view.gl,
+        this.bgColorTexture = createFramebufferColorTexture(view,
                                                             this.supersampledFramebufferSize);
-        this.fgColorTexture = createFramebufferColorTexture(view.gl,
+        this.fgColorTexture = createFramebufferColorTexture(view,
                                                             this.supersampledFramebufferSize);
         this.edgeDetectFramebuffer = createFramebuffer(view.gl,
                                                        view.drawBuffersExt,

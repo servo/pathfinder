@@ -140,6 +140,11 @@ export abstract class DemoView extends PathfinderView {
 
     pathTransformBufferTextures: PathfinderBufferTexture[];
 
+    get colorAlphaFormat(): number {
+        return this.sRGBExt == null ? this.gl.RGBA : this.sRGBExt.SRGB_ALPHA_EXT;
+    }
+
+    protected sRGBExt: any;
     protected timerQueryExt: any;
 
     protected antialiasingStrategy: AntialiasingStrategy | null;
@@ -295,6 +300,7 @@ export abstract class DemoView extends PathfinderView {
         this.drawBuffersExt = this.gl.getExtension('WEBGL_draw_buffers');
         this.colorBufferHalfFloatExt = this.gl.getExtension('EXT_color_buffer_half_float');
         this.instancedArraysExt = this.gl.getExtension('ANGLE_instanced_arrays');
+        this.sRGBExt = this.gl.getExtension('EXT_sRGB');
         this.textureHalfFloatExt = this.gl.getExtension('OES_texture_half_float');
         this.timerQueryExt = this.gl.getExtension('EXT_disjoint_timer_query');
         this.vertexArrayObjectExt = this.gl.getExtension('OES_vertex_array_object');

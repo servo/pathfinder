@@ -11,6 +11,7 @@
 import * as glmatrix from 'gl-matrix';
 
 import {assert, UINT32_SIZE, unwrapNull} from './utils';
+import { DemoView } from './view';
 
 export type WebGLVertexArrayObject = any;
 
@@ -24,25 +25,24 @@ export interface UniformMap {
 
 export const QUAD_ELEMENTS: Uint8Array = new Uint8Array([2, 0, 1, 1, 3, 2]);
 
-export function createFramebufferColorTexture(gl: WebGLRenderingContext, size: glmatrix.vec2):
-                                              WebGLTexture {
+export function createFramebufferColorTexture(view: DemoView, size: glmatrix.vec2): WebGLTexture {
     // Firefox seems to have a bug whereby textures don't get marked as initialized when cleared
     // if they're anything other than the first attachment of an FBO. To work around this, supply
     // zero data explicitly when initializing the texture.
     const zeroes = new Uint8Array(size[0] * size[1] * UINT32_SIZE);
-    const texture = unwrapNull(gl.createTexture());
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D,
+    const texture = unwrapNull(view.gl.createTexture());
+    view.gl.activeTexture(view.gl.TEXTURE0);
+    view.gl.bindTexture(view.gl.TEXTURE_2D, texture);
+    view.gl.texImage2D(view.gl.TEXTURE_2D,
                   0,
-                  gl.RGBA,
+                  view.colorAlphaFormat,
                   size[0],
                   size[1],
                   0,
-                  gl.RGBA,
-                  gl.UNSIGNED_BYTE,
+                  view.colorAlphaFormat,
+                  view.gl.UNSIGNED_BYTE,
                   zeroes);
-    setTextureParameters(gl, gl.NEAREST);
+    setTextureParameters(view.gl, view.gl.NEAREST);
     return texture;
 }
 
