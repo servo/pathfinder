@@ -1,0 +1,44 @@
+sudo: false
+language: rust
+cache: cargo
+
+os:
+  - linux
+  - osx
+
+rust:
+  - stable
+  - beta
+  - nightly
+
+addons:
+  apt:
+    sources:
+      - george-edison55-precise-backports
+    packages:
+      # Newer cmake required on precise
+      - cmake
+      - cmake-data
+      # Pathfinder requires some X libraries
+      - libxcursor-dev
+      - libxinerama-dev
+      - libxrandr-dev
+      - libxxf86vm-dev
+
+env:
+  global:
+    - TRAVIS_CARGO_NIGHTLY_FEATURE=""
+
+before_script:
+  - pip install 'travis-cargo<0.2' --user
+  - export PATH=$HOME/Library/Python/2.7/bin:$PATH # required for osx
+
+script:
+  - travis-cargo build -- --release
+  - travis-cargo --only nightly test -- --release
+  - travis-cargo --only stable doc -- --release
+  - travis-cargo bench
+
+notifications:
+  email:
+    on_success: never

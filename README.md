@@ -1,4 +1,4 @@
-# Pathfinder
+# Pathfinder [![Build Status](https://travis-ci.org/jdub/pathfinder.svg?branch=travis-ci)](https://travis-ci.org/jdub/pathfinder) [![Build status](https://ci.appveyor.com/api/projects/status/41o9gfvmhrf2w0q9?svg=true)](https://ci.appveyor.com/project/jdub/pathfinder)
 
 Pathfinder is a fast, practical GPU-based rasterizer for OpenType fonts using OpenGL 4.3. It
 features:
