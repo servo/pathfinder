@@ -79,6 +79,12 @@ const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
     edgeUpperCurveVertexPositions: { type: 'Float32', size: 6 },
     edgeUpperLinePathIDs: { type: 'Uint16', size: 1 },
     edgeUpperLineVertexPositions: { type: 'Float32', size: 4 },
+    segmentCurveNormals: { type: 'Float32', size: 3 },
+    segmentCurvePathIDs: { type: 'Uint16', size: 1 },
+    segmentCurves: { type: 'Float32', size: 6 },
+    segmentLineNormals: { type: 'Float32', size: 2 },
+    segmentLinePathIDs: { type: 'Uint16', size: 1 },
+    segmentLines: { type: 'Float32', size: 4 },
 };
 
 const BUFFER_TYPES: Meshes<BufferType> = {
@@ -98,9 +104,15 @@ const BUFFER_TYPES: Meshes<BufferType> = {
     edgeUpperCurveVertexPositions: 'ARRAY_BUFFER',
     edgeUpperLinePathIDs: 'ARRAY_BUFFER',
     edgeUpperLineVertexPositions: 'ARRAY_BUFFER',
+    segmentCurveNormals: 'ARRAY_BUFFER',
+    segmentCurvePathIDs: 'ARRAY_BUFFER',
+    segmentCurves: 'ARRAY_BUFFER',
+    segmentLineNormals: 'ARRAY_BUFFER',
+    segmentLinePathIDs: 'ARRAY_BUFFER',
+    segmentLines: 'ARRAY_BUFFER',
 };
 
-const EDGE_BUFFER_NAMES = ['BoundingBox', 'UpperLine', 'UpperCurve', 'LowerLine', 'LowerCurve'];
+const EDGE_BUFFER_NAMES = ['UpperLine', 'UpperCurve', 'LowerLine', 'LowerCurve'];
 
 const RIFF_FOURCC: string = 'RIFF';
 
@@ -124,6 +136,12 @@ const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
     eucv: 'edgeUpperCurveVertexPositions',
     eulp: 'edgeUpperLinePathIDs',
     eulv: 'edgeUpperLineVertexPositions',
+    scpi: 'segmentCurvePathIDs',
+    scur: 'segmentCurves',
+    slin: 'segmentLines',
+    slpi: 'segmentLinePathIDs',
+    sncu: 'segmentCurveNormals',
+    snli: 'segmentLineNormals',
 };
 
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
@@ -145,6 +163,12 @@ export interface Meshes<T> {
     readonly edgeUpperCurveVertexPositions: T;
     readonly edgeUpperLinePathIDs: T;
     readonly edgeUpperLineVertexPositions: T;
+    readonly segmentLines: T;
+    readonly segmentCurves: T;
+    readonly segmentLinePathIDs: T;
+    readonly segmentCurvePathIDs: T;
+    readonly segmentLineNormals: T;
+    readonly segmentCurveNormals: T;
 }
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer> {
@@ -164,12 +188,20 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly edgeUpperCurveVertexPositions: ArrayBuffer;
     readonly edgeUpperLinePathIDs: ArrayBuffer;
     readonly edgeUpperLineVertexPositions: ArrayBuffer;
+    readonly segmentLines: ArrayBuffer;
+    readonly segmentCurves: ArrayBuffer;
+    readonly segmentLinePathIDs: ArrayBuffer;
+    readonly segmentCurvePathIDs: ArrayBuffer;
+    readonly segmentLineNormals: ArrayBuffer;
+    readonly segmentCurveNormals: ArrayBuffer;
 
     readonly bQuadCount: number;
     readonly edgeLowerCurveCount: number;
     readonly edgeUpperCurveCount: number;
     readonly edgeLowerLineCount: number;
     readonly edgeUpperLineCount: number;
+    readonly segmentLineCount: number;
+    readonly segmentCurveCount: number;
 
     constructor(meshes: ArrayBuffer | Meshes<ArrayBuffer>) {
         if (meshes instanceof ArrayBuffer) {
@@ -200,6 +232,8 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
         this.edgeLowerLineCount = this.edgeLowerLinePathIDs.byteLength / 2;
         this.edgeUpperCurveCount = this.edgeUpperCurvePathIDs.byteLength / 2;
         this.edgeLowerCurveCount = this.edgeLowerCurvePathIDs.byteLength / 2;
+        this.segmentCurveCount = this.segmentCurvePathIDs.byteLength / 2;
+        this.segmentLineCount = this.segmentLinePathIDs.byteLength / 2;
     }
 
     expand(pathIDs: number[]): PathfinderMeshData {
@@ -233,6 +267,12 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
             const lastBVertexIndex = bVertexCopyResult.originalEndIndex;
 
             // Copy over edge data.
+            copyVertices(['edgeBoundingBoxVertexPositions'],
+                         'edgeBoundingBoxPathIDs',
+                         expandedArrays,
+                         originalBuffers,
+                         expandedPathID,
+                         originalPathID);
             for (const edgeBufferName of EDGE_BUFFER_NAMES) {
                 copyVertices([`edge${edgeBufferName}VertexPositions` as keyof Meshes<void>],
                              `edge${edgeBufferName}PathIDs` as keyof Meshes<void>,
@@ -271,6 +311,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
                                                                           originalPathID) {
                     break;
                 }
+
                 for (let indexIndex = 0; indexIndex < B_QUAD_FIELD_COUNT; indexIndex++) {
                     const srcIndex = originalBuffers.bQuads[bQuadIndex * B_QUAD_FIELD_COUNT +
                                                             indexIndex];
@@ -280,6 +321,20 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
                         expandedArrays.bQuads.push(srcIndex + indexDelta);
                 }
             }
+
+            // Copy over segments.
+            copySegments(['segmentLines', 'segmentLineNormals'],
+                         'segmentLinePathIDs',
+                         expandedArrays,
+                         originalBuffers,
+                         expandedPathID,
+                         originalPathID);
+            copySegments(['segmentCurves', 'segmentCurveNormals'],
+                         'segmentCurvePathIDs',
+                         expandedArrays,
+                         originalBuffers,
+                         expandedPathID,
+                         originalPathID);
         }
 
         const tempExpandedBuffers: any = {};
@@ -314,6 +369,12 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly edgeUpperCurveVertexPositions: WebGLBuffer;
     readonly edgeUpperLinePathIDs: WebGLBuffer;
     readonly edgeUpperLineVertexPositions: WebGLBuffer;
+    readonly segmentLines: WebGLBuffer;
+    readonly segmentCurves: WebGLBuffer;
+    readonly segmentLinePathIDs: WebGLBuffer;
+    readonly segmentCurvePathIDs: WebGLBuffer;
+    readonly segmentLineNormals: WebGLBuffer;
+    readonly segmentCurveNormals: WebGLBuffer;
 
     constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshBuffers>) {
@@ -326,13 +387,13 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     }
 }
 
-function copyVertices<T>(vertexBufferNames: Array<keyof Meshes<void>>,
-                         pathIDBufferName: keyof Meshes<void>,
-                         expandedMeshes: Meshes<number[]>,
-                         originalMeshes: Meshes<PrimitiveTypeArray>,
-                         expandedPathID: number,
-                         originalPathID: number):
-                         VertexCopyResult | null {
+function copyVertices(vertexBufferNames: Array<keyof Meshes<void>>,
+                      pathIDBufferName: keyof Meshes<void>,
+                      expandedMeshes: Meshes<number[]>,
+                      originalMeshes: Meshes<PrimitiveTypeArray>,
+                      expandedPathID: number,
+                      originalPathID: number):
+                      VertexCopyResult | null {
     const expandedPathIDs = expandedMeshes[pathIDBufferName];
     const originalPathIDs = originalMeshes[pathIDBufferName];
 
@@ -393,6 +454,31 @@ function copyIndices(destIndices: number[],
             destIndices.push(index);
         }
         indexIndex++;
+    }
+}
+
+function copySegments(segmentBufferNames: Array<keyof Meshes<void>>,
+                      pathIDBufferName: keyof Meshes<void>,
+                      expandedMeshes: Meshes<number[]>,
+                      originalMeshes: Meshes<PrimitiveTypeArray>,
+                      expandedPathID: number,
+                      originalPathID: number):
+                      void {
+    let segmentIndex = _.indexOf(originalMeshes[pathIDBufferName] as Uint16Array, originalPathID);
+    while (segmentIndex < originalMeshes[pathIDBufferName].length) {
+        if (originalMeshes[pathIDBufferName][segmentIndex] !== originalPathID)
+            break;
+        for (const segmentBufferName of segmentBufferNames) {
+            if (originalMeshes[segmentBufferName].length === 0)
+                continue;
+            const size = MESH_TYPES[segmentBufferName].size;
+            for (let fieldIndex = 0; fieldIndex < size; fieldIndex++) {
+                const srcIndex = size * segmentIndex + fieldIndex;
+                expandedMeshes[segmentBufferName].push(originalMeshes[segmentBufferName][srcIndex]);
+            }
+        }
+        expandedMeshes[pathIDBufferName].push(expandedPathID);
+        segmentIndex++;
     }
 }
 

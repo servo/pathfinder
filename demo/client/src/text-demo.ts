@@ -15,11 +15,10 @@ import * as opentype from 'opentype.js';
 
 import {Metrics} from 'opentype.js';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
-import {SubpixelAAType} from './aa-strategy';
+import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import {DemoAppController} from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from "./camera";
-import {ECAAMonochromeStrategy, ECAAStrategy} from './ecaa-strategy';
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from './gl-utils';
 import {UniformMap} from './gl-utils';
@@ -27,10 +26,12 @@ import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
 import {calculatePixelDescent, calculatePixelRectForGlyph, PathfinderFont} from "./text";
-import {BUILTIN_FONT_URI, calculatePixelXMin, GlyphStore, Hint, SimpleTextLayout} from "./text";
+import {BUILTIN_FONT_URI, calculatePixelXMin, computeStemDarkeningAmount} from "./text";
+import {GlyphStore, Hint, SimpleTextLayout, UnitMetrics} from "./text";
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
 import {DemoView, MonochromeDemoView, Timings, TIMINGS} from './view';
+import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves
@@ -71,11 +72,6 @@ And the mome raths outgrabe.`;
 const INITIAL_FONT_SIZE: number = 72.0;
 
 const DEFAULT_FONT: string = 'open-sans';
-
-const FONT_DILATION_FACTOR: number = 1.0242;
-
-/// In pixels.
-const MAX_FONT_DILATION: number = 0.3;
 
 const B_POSITION_SIZE: number = 8;
 
@@ -280,12 +276,27 @@ class TextDemoView extends MonochromeDemoView {
 
     camera: OrthographicCamera;
 
+    get emboldenAmount(): glmatrix.vec2 {
+        return this.stemDarkeningAmount;
+    }
+
+    private get stemDarkeningAmount(): glmatrix.vec2 {
+        if (this.stemDarkening === 'dark') {
+            return computeStemDarkeningAmount(this.appController.fontSize,
+                                              this.appController.layoutPixelsPerUnit);
+        }
+        return glmatrix.vec2.create();
+    }
+
     readonly bgColor: glmatrix.vec4 = glmatrix.vec4.fromValues(1.0, 1.0, 1.0, 0.0);
     readonly fgColor: glmatrix.vec4 = glmatrix.vec4.fromValues(0.0, 0.0, 0.0, 1.0);
 
     protected depthFunction: number = this.gl.GREATER;
 
     private subpixelAA: SubpixelAAType;
+    private stemDarkening: StemDarkeningMode;
+
+    private glyphBounds: Float32Array;
 
     constructor(appController: TextDemoController,
                 commonShaderSource: string,
@@ -333,8 +344,9 @@ class TextDemoView extends MonochromeDemoView {
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
                            aaLevel: number,
-                           subpixelAA: SubpixelAAType) {
-        super.setAntialiasingOptions(aaType, aaLevel, subpixelAA);
+                           subpixelAA: SubpixelAAType,
+                           stemDarkening: StemDarkeningMode) {
+        super.setAntialiasingOptions(aaType, aaLevel, subpixelAA, stemDarkening);
 
         // Need to relayout because changing AA options can cause font dilation to change...
         this.layoutText();
@@ -349,6 +361,35 @@ class TextDemoView extends MonochromeDemoView {
                           hint.hintedXHeight,
                           hint.stemHeight,
                           hint.hintedStemHeight);
+    }
+
+    pathBoundingRects(objectIndex: number): Float32Array {
+        const pathCount = this.appController.pathCount;
+        const atlasGlyphs = this.appController.atlasGlyphs;
+        const pixelsPerUnit = this.displayPixelsPerUnit;
+        const font = this.appController.font;
+        const hint = this.createHint();
+
+        const boundingRects = new Float32Array((pathCount + 1) * 4);
+
+        for (const glyph of atlasGlyphs) {
+            const atlasGlyphMetrics = font.metricsForGlyph(glyph.glyphKey.id);
+            if (atlasGlyphMetrics == null)
+                continue;
+            const atlasUnitMetrics = new UnitMetrics(atlasGlyphMetrics, this.stemDarkeningAmount);
+
+            const pathID = glyph.pathID;
+            boundingRects[pathID * 4 + 0] = atlasUnitMetrics.left;
+            boundingRects[pathID * 4 + 1] = atlasUnitMetrics.descent;
+            boundingRects[pathID * 4 + 2] = atlasUnitMetrics.right;
+            boundingRects[pathID * 4 + 3] = atlasUnitMetrics.ascent;
+        }
+
+        return boundingRects;
+    }
+
+    pathCountForObject(objectIndex: number): number {
+        return this.appController.pathCount;
     }
 
     protected initContext() {
@@ -459,9 +500,11 @@ class TextDemoView extends MonochromeDemoView {
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
                                aaLevel: number,
-                               subpixelAA: SubpixelAAType):
+                               subpixelAA: SubpixelAAType,
+                               stemDarkening: StemDarkeningMode):
                                AntialiasingStrategy {
         this.subpixelAA = subpixelAA;
+        this.stemDarkening = stemDarkening;
         return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
@@ -500,6 +543,7 @@ class TextDemoView extends MonochromeDemoView {
                                                      layoutPixelsPerUnit,
                                                      displayPixelsPerUnit,
                                                      hint,
+                                                     this.stemDarkeningAmount,
                                                      SUBPIXEL_GRANULARITY);
                 glyphPositions.set([
                     rect[0], rect[3],
@@ -548,6 +592,7 @@ class TextDemoView extends MonochromeDemoView {
                                                           layoutPixelsPerUnit,
                                                           displayPixelsPerUnit,
                                                           hint,
+                                                          this.stemDarkeningAmount,
                                                           SUBPIXEL_GRANULARITY);
                 if (!rectsIntersect(pixelRect, canvasRect))
                     continue;
@@ -572,7 +617,11 @@ class TextDemoView extends MonochromeDemoView {
             return;
 
         this.appController.atlasGlyphs = atlasGlyphs;
-        this.appController.atlas.layoutGlyphs(atlasGlyphs, font, displayPixelsPerUnit, hint);
+        this.appController.atlas.layoutGlyphs(atlasGlyphs,
+                                              font,
+                                              displayPixelsPerUnit,
+                                              hint,
+                                              this.stemDarkeningAmount);
 
         this.uploadPathTransforms(1);
 
@@ -605,7 +654,7 @@ class TextDemoView extends MonochromeDemoView {
 
         const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
 
-        const glyphTexCoords = new Float32Array(textFrame.totalGlyphCount * 8);
+        this.glyphBounds = new Float32Array(textFrame.totalGlyphCount * 8);
 
         let globalGlyphIndex = 0;
         for (const run of textFrame.runs) {
@@ -631,8 +680,11 @@ class TextDemoView extends MonochromeDemoView {
                 if (atlasGlyphMetrics == null)
                     continue;
 
+                const atlasGlyphUnitMetrics = new UnitMetrics(atlasGlyphMetrics,
+                                                              this.stemDarkeningAmount);
+
                 const atlasGlyphPixelOrigin = atlasGlyph.calculateSubpixelOrigin(displayPixelsPerUnit);
-                const atlasGlyphRect = calculatePixelRectForGlyph(atlasGlyphMetrics,
+                const atlasGlyphRect = calculatePixelRectForGlyph(atlasGlyphUnitMetrics,
                                                                   atlasGlyphPixelOrigin,
                                                                   displayPixelsPerUnit,
                                                                   hint);
@@ -641,7 +693,7 @@ class TextDemoView extends MonochromeDemoView {
                 glmatrix.vec2.div(atlasGlyphBL, atlasGlyphBL, ATLAS_SIZE);
                 glmatrix.vec2.div(atlasGlyphTR, atlasGlyphTR, ATLAS_SIZE);
 
-                glyphTexCoords.set([
+                this.glyphBounds.set([
                     atlasGlyphBL[0], atlasGlyphTR[1],
                     atlasGlyphTR[0], atlasGlyphTR[1],
                     atlasGlyphBL[0], atlasGlyphBL[1],
@@ -652,7 +704,7 @@ class TextDemoView extends MonochromeDemoView {
 
         this.glyphTexCoordsBuffer = unwrapNull(this.gl.createBuffer());
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.glyphTexCoordsBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, glyphTexCoords, this.gl.STATIC_DRAW);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, this.glyphBounds, this.gl.STATIC_DRAW);
     }
 
     private setIdentityTexScaleUniform(uniforms: UniformMap) {
@@ -704,21 +756,14 @@ class TextDemoView extends MonochromeDemoView {
 
     /// Pixels per unit, including dilation.
     private get displayPixelsPerUnit(): number {
-        // FIXME(pcwalton): Check against Cocoa and make sure this is what they do.
-        const layoutPixelsPerUnit = this.appController.layoutPixelsPerUnit;
-        if (this.subpixelAA !== 'strong')
-            return layoutPixelsPerUnit;
-
-        const ascender = this.appController.font.opentypeFont.ascender * layoutPixelsPerUnit;
-        const maxFontDilationFactor = (ascender + MAX_FONT_DILATION) / ascender;
-        return Math.min(maxFontDilationFactor, FONT_DILATION_FACTOR) * layoutPixelsPerUnit;
+        return this.appController.layoutPixelsPerUnit;
     }
 }
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    ecaa: typeof ECAAStrategy;
+    xcaa: typeof AdaptiveMonochromeXCAAStrategy;
 }
 
 class Atlas {
@@ -730,7 +775,8 @@ class Atlas {
         this._usedSize = glmatrix.vec2.create();
     }
 
-    layoutGlyphs(glyphs: AtlasGlyph[], font: PathfinderFont, pixelsPerUnit: number, hint: Hint) {
+    layoutGlyphs(glyphs: AtlasGlyph[],
+                 font: PathfinderFont, pixelsPerUnit: number, hint: Hint, stemDarkeningAmount: glmatrix.vec2) {
         let nextOrigin = glmatrix.vec2.fromValues(1.0, 1.0);
         let shelfBottom = 2.0;
 
@@ -740,9 +786,11 @@ class Atlas {
             if (metrics == null)
                 continue;
 
-            glyph.setPixelLowerLeft(nextOrigin, metrics, pixelsPerUnit);
+            const unitMetrics = new UnitMetrics(metrics, stemDarkeningAmount);
+
+            glyph.setPixelLowerLeft(nextOrigin, unitMetrics, pixelsPerUnit);
             let pixelOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
-            nextOrigin[0] = calculatePixelRectForGlyph(metrics,
+            nextOrigin[0] = calculatePixelRectForGlyph(unitMetrics,
                                                        pixelOrigin,
                                                        pixelsPerUnit,
                                                        hint)[2] + 1.0;
@@ -750,16 +798,16 @@ class Atlas {
             // If the glyph overflowed the shelf, make a new one and reposition the glyph.
             if (nextOrigin[0] > ATLAS_SIZE[0]) {
                 nextOrigin = glmatrix.vec2.clone([1.0, shelfBottom + 1.0]);
-                glyph.setPixelLowerLeft(nextOrigin, metrics, pixelsPerUnit);
+                glyph.setPixelLowerLeft(nextOrigin, unitMetrics, pixelsPerUnit);
                 pixelOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
-                nextOrigin[0] = calculatePixelRectForGlyph(metrics,
+                nextOrigin[0] = calculatePixelRectForGlyph(unitMetrics,
                                                            pixelOrigin,
                                                            pixelsPerUnit,
                                                            hint)[2] + 1.0;
             }
 
             // Grow the shelf as necessary.
-            const glyphBottom = calculatePixelRectForGlyph(metrics,
+            const glyphBottom = calculatePixelRectForGlyph(unitMetrics,
                                                            pixelOrigin,
                                                            pixelsPerUnit,
                                                            hint)[3];
@@ -815,7 +863,7 @@ class AtlasGlyph {
         return pixelOrigin;
     }
 
-    setPixelLowerLeft(pixelLowerLeft: glmatrix.vec2, metrics: Metrics, pixelsPerUnit: number):
+    setPixelLowerLeft(pixelLowerLeft: glmatrix.vec2, metrics: UnitMetrics, pixelsPerUnit: number):
                       void {
         const pixelXMin = calculatePixelXMin(metrics, pixelsPerUnit);
         const pixelDescent = calculatePixelDescent(metrics, pixelsPerUnit);
@@ -848,9 +896,9 @@ class GlyphKey {
 }
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
-    ecaa: ECAAMonochromeStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
+    xcaa: AdaptiveMonochromeXCAAStrategy,
 };
 
 function main() {

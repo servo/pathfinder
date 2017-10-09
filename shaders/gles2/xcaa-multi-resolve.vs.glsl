@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-multi-resolve.fs.glsl
+// pathfinder/shaders/gles2/xcaa-multi-resolve.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -10,15 +10,15 @@
 
 precision highp float;
 
-uniform sampler2D uBGColor;
-uniform sampler2D uFGColor;
-uniform sampler2D uAAAlpha;
+uniform vec4 uTransformST;
+uniform vec2 uTexScale;
+
+attribute vec2 aPosition;
+attribute vec2 aTexCoord;
 
 varying vec2 vTexCoord;
 
 void main() {
-    vec4 bgColor = texture2D(uBGColor, vTexCoord);
-    vec4 fgColor = texture2D(uFGColor, vTexCoord);
-    float alpha = clamp(texture2D(uAAAlpha, vTexCoord).r, 0.0, 1.0);
-    gl_FragColor = mix(bgColor, fgColor, alpha);
+    gl_Position = vec4(transformVertexPositionST(aPosition, uTransformST), -1.0, 1.0);
+    vTexCoord = aTexCoord * uTexScale;
 }

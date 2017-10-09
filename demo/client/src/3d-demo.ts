@@ -309,13 +309,22 @@ class ThreeDView extends DemoView {
         this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
+    pathBoundingRects(objectIndex: number): Float32Array {
+        panic("ThreeDView.pathBoundingRects(): TODO");
+        return glmatrix.vec4.create();
+    }
+
+    pathCountForObject(objectIndex: number): number {
+        return this.appController.meshDescriptors[objectIndex].positions.length;
+    }
+
     protected pathColorsForObject(objectIndex: number): Uint8Array {
         return TEXT_COLOR;
     }
 
     protected pathTransformsForObject(objectIndex: number): Float32Array {
         const meshDescriptor = this.appController.meshDescriptors[objectIndex];
-        const pathCount = meshDescriptor.positions.length;
+        const pathCount = this.pathCountForObject(objectIndex);
         const pathTransforms = new Float32Array(4 * (pathCount + 1));
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
             const glyphOrigin = meshDescriptor.positions[pathIndex];
@@ -328,7 +337,7 @@ class ThreeDView extends DemoView {
                                aaLevel: number,
                                subpixelAA: SubpixelAAType):
                                AntialiasingStrategy {
-        if (aaType !== 'ecaa')
+        if (aaType !== 'xcaa')
             return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
         throw new PathfinderError("Unsupported antialiasing type!");
     }

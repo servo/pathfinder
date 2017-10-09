@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-import { AntialiasingStrategyName, SubpixelAAType } from "./aa-strategy";
+import {AntialiasingStrategyName, StemDarkeningMode, SubpixelAAType} from "./aa-strategy";
 import {FilePickerView} from "./file-picker";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapNull, unwrapUndef} from './utils';
@@ -56,7 +56,8 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
     protected shaderSources: ShaderMap<ShaderProgramSource> | null;
 
     private aaLevelSelect: HTMLSelectElement | null;
-    private subpixelAASelect: HTMLSelectElement | null;
+    private subpixelAARadioButton: HTMLInputElement | null;
+    private stemDarkeningRadioButton: HTMLInputElement | null;
     private fpsLabel: HTMLElement | null;
 
     constructor() {
@@ -84,10 +85,16 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             }, false);
         }
         if (settingsCard != null) {
-            document.body.addEventListener('click', () => {
+            document.body.addEventListener('click', event => {
+                let element = event.target as Element | null;
+                while (element != null) {
+                    if (element === settingsCard)
+                        return;
+                    element = element.parentElement;
+                }
+
                 settingsCard.classList.add('pf-invisible');
             }, false);
-            settingsCard.addEventListener('click', event => event.stopPropagation(), false);
         }
 
         const screenshotButton = document.getElementById('pf-screenshot-button') as
@@ -143,10 +150,29 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         if (this.aaLevelSelect != null)
             this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
 
-        this.subpixelAASelect =
-            document.getElementById('pf-subpixel-aa-select') as HTMLSelectElement | null;
-        if (this.subpixelAASelect != null)
-            this.subpixelAASelect.addEventListener('change', () => this.updateAALevel(), false);
+        // The event listeners here use `window.setTimeout()` because jQuery won't fire the "live"
+        // click listener that Bootstrap sets up until the event bubbles up to the document. This
+        // click listener is what toggles the `checked` attribute, so we have to wait until it
+        // fires before updating the antialiasing settings.
+        this.subpixelAARadioButton =
+            document.getElementById('pf-subpixel-aa-select-on') as HTMLInputElement | null;
+        const subpixelAAButtons =
+            document.getElementById('pf-subpixel-aa-buttons') as HTMLElement | null;
+        if (subpixelAAButtons != null) {
+            subpixelAAButtons.addEventListener('click', () => {
+                window.setTimeout(() => this.updateAALevel(), 0);
+            }, false);
+        }
+
+        this.stemDarkeningRadioButton =
+            document.getElementById('pf-stem-darkening-select-on') as HTMLInputElement | null;
+        const stemDarkeningButtons =
+            document.getElementById('pf-stem-darkening-buttons') as HTMLElement | null;
+        if (stemDarkeningButtons != null) {
+            stemDarkeningButtons.addEventListener('click', () => {
+                window.setTimeout(() => this.updateAALevel(), 0);
+            }, false);
+        }
 
         this.updateAALevel();
     }
@@ -192,11 +218,20 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         }
 
         let subpixelAA: SubpixelAAType;
-        if (this.subpixelAASelect != null)
-            subpixelAA = this.subpixelAASelect.selectedOptions[0].value as SubpixelAAType;
+        if (this.subpixelAARadioButton != null && this.subpixelAARadioButton.checked)
+            subpixelAA = 'medium';
         else
             subpixelAA = 'none';
-        this.view.then(view => view.setAntialiasingOptions(aaType, aaLevel, subpixelAA));
+
+        let stemDarkening: StemDarkeningMode;
+        if (this.stemDarkeningRadioButton != null && this.stemDarkeningRadioButton.checked)
+            stemDarkening = 'dark';
+        else
+            stemDarkening = 'none';
+
+        this.view.then(view => {
+            view.setAntialiasingOptions(aaType, aaLevel, subpixelAA, stemDarkening);
+        });
     }
 
     private fileSelectionChanged(event: Event) {

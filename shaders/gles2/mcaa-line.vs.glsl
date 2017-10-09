@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-line.vs.glsl
+// pathfinder/shaders/gles2/mcaa-line.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -14,17 +14,13 @@ uniform vec4 uTransformST;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathTransformDimensions;
-uniform ivec2 uPathBoundsDimensions;
 uniform sampler2D uPathTransform;
-uniform sampler2D uPathBounds;
-uniform vec2 uEmboldenAmount;
+uniform bool uWinding;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
 attribute vec2 aRightPosition;
 attribute float aPathID;
-attribute float aLeftNormalAngle;
-attribute float aRightNormalAngle;
 
 varying vec4 vEndpoints;
 varying float vWinding;
@@ -33,32 +29,23 @@ void main() {
     vec2 leftPosition = aLeftPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
-    float leftNormalAngle = aLeftNormalAngle;
-    float rightNormalAngle = aRightNormalAngle;
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
-    vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);
 
     // Transform the points, and compute the position of this vertex.
     vec2 position;
-    float winding;
-    computeECAAQuadPosition(position,
-                            winding,
+    computeMCAAQuadPosition(position,
                             leftPosition,
                             rightPosition,
                             aQuadPosition,
                             uFramebufferSize,
                             transform,
                             uTransformST,
-                            uHints,
-                            bounds,
-                            leftNormalAngle,
-                            rightNormalAngle,
-                            uEmboldenAmount);
+                            uHints);
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
 
     gl_Position = vec4(position, depth, 1.0);
     vEndpoints = vec4(leftPosition, rightPosition);
-    vWinding = winding;
+    vWinding = uWinding ? 1.0 : -1.0;
 }

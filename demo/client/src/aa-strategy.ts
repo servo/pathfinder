@@ -12,9 +12,11 @@ import * as glmatrix from 'gl-matrix';
 
 import {DemoView} from './view';
 
-export type AntialiasingStrategyName = 'none' | 'ssaa' | 'ecaa';
+export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
 
-export type SubpixelAAType = 'none' | 'medium' | 'strong';
+export type SubpixelAAType = 'none' | 'medium';
+
+export type StemDarkeningMode = 'none' | 'dark';
 
 export abstract class AntialiasingStrategy {
     // True if direct rendering should occur.

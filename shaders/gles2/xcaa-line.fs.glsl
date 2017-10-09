@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-line.fs.glsl
+// pathfinder/shaders/gles2/xcaa-line.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -10,9 +10,8 @@
 
 precision highp float;
 
-uniform bool uLowerPart;
-
 varying vec4 vEndpoints;
+varying float vWinding;
 
 void main() {
     // Unpack.
@@ -21,12 +20,13 @@ void main() {
 
     // Set up Liang-Barsky clipping.
     vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
-    vec4 p = (p1 - p0).xxyy, q = pixelExtents - p0.xxyy;
+    vec2 dp = p1 - p0;
+    vec4 q = pixelExtents - p0.xxyy;
 
     // Use Liang-Barsky to clip to the left and right sides of this pixel.
-    vec2 t = clamp(q.xy / p.xy, 0.0, 1.0);
-    vec2 spanP0 = p0 + p.yw * t.x, spanP1 = p0 + p.yw * t.y;
+    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
+    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
 
     // Compute area.
-    gl_FragColor = vec4(computeCoverage(p0, p1, spanP0, spanP1, t, pixelExtents, p, q, uLowerPart));
+    gl_FragColor = vec4(computeCoverage(p0, dp, center, vWinding));
 }

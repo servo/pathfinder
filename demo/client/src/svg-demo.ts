@@ -16,7 +16,6 @@ import {SubpixelAAType} from "./aa-strategy";
 import {DemoAppController} from './app-controller';
 import PathfinderBufferTexture from "./buffer-texture";
 import {OrthographicCamera} from "./camera";
-import {ECAAMulticolorStrategy, ECAAStrategy} from "./ecaa-strategy";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
@@ -24,6 +23,7 @@ import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {panic, unwrapNull} from './utils';
 import {DemoView, Timings} from './view';
+import {MCAAMulticolorStrategy, XCAAStrategy} from "./xcaa-strategy";
 
 const parseColor = require('parse-color');
 
@@ -32,15 +32,15 @@ const SVG_NS: string = "http://www.w3.org/2000/svg";
 const DEFAULT_FILE: string = 'tiger';
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
-    ecaa: ECAAMulticolorStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
+    xcaa: MCAAMulticolorStrategy,
 };
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    ecaa: typeof ECAAStrategy;
+    xcaa: typeof XCAAStrategy;
 }
 
 class SVGDemoController extends DemoAppController<SVGDemoView> {
@@ -123,6 +123,15 @@ class SVGDemoView extends DemoView {
 
     setHintsUniform(uniforms: UniformMap): void {
         this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
+    }
+
+    pathBoundingRects(objectIndex: number): Float32Array {
+        panic("SVGDemoView.pathBoundingRects(): TODO");
+        return glmatrix.vec4.create();
+    }
+
+    pathCountForObject(objectIndex: number): number {
+        return this.appController.loader.pathInstances.length;
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {

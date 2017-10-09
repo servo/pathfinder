@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-curve.fs.glsl
+// pathfinder/shaders/gles2/xcaa-curve.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -10,10 +10,9 @@
 
 precision highp float;
 
-uniform bool uLowerPart;
-
 varying vec4 vEndpoints;
 varying vec2 vControlPoint;
+varying float vWinding;
 
 // Solve the equation:
 //
@@ -46,17 +45,9 @@ void main() {
     vec2 t = vec2(p0.x < pixelExtents.x ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.x) : 0.0,
                   p1.x > pixelExtents.y ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.y) : 1.0);
 
-    vec2 spanP0 = mix(mix(p0, cp, t.x), mix(cp, p1, t.x), t.x);
-    vec2 spanP1 = mix(mix(p0, cp, t.y), mix(cp, p1, t.y), t.y);
-    p0 = spanP0;
-    p1 = spanP1;
-
-    // Set up Liang-Barsky clipping.
-    vec4 p = (p1 - p0).xxyy, q = pixelExtents - p0.xxyy;
-    t = clamp(q.xy / p.xy, 0.0, 1.0);
-    spanP0 = p0 + p.yw * t.x;
-    spanP1 = p0 + p.yw * t.y;
+    vec2 clippedP0 = mix(mix(p0, cp, t.x), mix(cp, p1, t.x), t.x);
+    vec2 clippedP1 = mix(mix(p0, cp, t.y), mix(cp, p1, t.y), t.y);
 
     // Compute area.
-    gl_FragColor = vec4(computeCoverage(p0, p1, spanP0, spanP1, t, pixelExtents, p, q, uLowerPart));
+    gl_FragColor = vec4(computeCoverage(clippedP0, clippedP1 - clippedP0, center, vWinding));
 }

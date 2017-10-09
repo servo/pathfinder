@@ -14,7 +14,7 @@
 import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
-import {SubpixelAAType} from "./aa-strategy";
+import {StemDarkeningMode, SubpixelAAType} from "./aa-strategy";
 import PathfinderBufferTexture from './buffer-texture';
 import {Camera} from "./camera";
 import {QUAD_ELEMENTS, UniformMap} from './gl-utils';
@@ -140,6 +140,10 @@ export abstract class DemoView extends PathfinderView {
 
     pathTransformBufferTextures: PathfinderBufferTexture[];
 
+    get emboldenAmount(): glmatrix.vec2 {
+        return glmatrix.vec2.create();
+    }
+
     get colorAlphaFormat(): number {
         return this.sRGBExt == null ? this.gl.RGBA : this.sRGBExt.SRGB_ALPHA_EXT;
     }
@@ -189,8 +193,12 @@ export abstract class DemoView extends PathfinderView {
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
                            aaLevel: number,
-                           subpixelAA: SubpixelAAType) {
-        this.antialiasingStrategy = this.createAAStrategy(aaType, aaLevel, subpixelAA);
+                           subpixelAA: SubpixelAAType,
+                           stemDarkening: StemDarkeningMode) {
+        this.antialiasingStrategy = this.createAAStrategy(aaType,
+                                                          aaLevel,
+                                                          subpixelAA,
+                                                          stemDarkening);
 
         const canvas = this.canvas;
         this.antialiasingStrategy.init(this);
@@ -285,6 +293,8 @@ export abstract class DemoView extends PathfinderView {
     }
 
     abstract setHintsUniform(uniforms: UniformMap): void;
+    abstract pathBoundingRects(objectIndex: number): Float32Array;
+    abstract pathCountForObject(objectIndex: number): number;
 
     protected resized(): void {
         super.resized();
@@ -407,7 +417,8 @@ export abstract class DemoView extends PathfinderView {
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
                                         aaLevel: number,
-                                        subpixelAA: SubpixelAAType):
+                                        subpixelAA: SubpixelAAType,
+                                        stemDarkening: StemDarkeningMode):
                                         AntialiasingStrategy;
 
     protected abstract compositeIfNecessary(): void;
@@ -434,7 +445,7 @@ export abstract class DemoView extends PathfinderView {
 
                 this.gl.shaderSource(shader, commonSource + "\n#line 1\n" + source);
                 this.gl.compileShader(shader);
-                if (this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS) === 0) {
+                if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
                     const infoLog = this.gl.getShaderInfoLog(shader);
                     throw new PathfinderError(`Failed to compile ${typeName} shader ` +
                                               `"${shaderKey}":\n${infoLog}`);

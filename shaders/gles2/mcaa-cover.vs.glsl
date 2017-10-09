@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-cover.vs.glsl
+// pathfinder/shaders/gles2/mcaa-cover.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -40,7 +40,8 @@ void main() {
     upperLeftPosition = convertClipToScreenSpace(upperLeftPosition, uFramebufferSize);
     lowerRightPosition = convertClipToScreenSpace(lowerRightPosition, uFramebufferSize);
 
-    vec4 roundedExtents = vec4(floor(upperLeftPosition), ceil(lowerRightPosition));
+    vec4 roundedExtents = vec4(floor(upperLeftPosition.x), ceil(upperLeftPosition.y),
+                               ceil(lowerRightPosition));
 
     vec2 position = mix(roundedExtents.xy, roundedExtents.zw, aQuadPosition);
     position = convertScreenToClipSpace(position, uFramebufferSize);

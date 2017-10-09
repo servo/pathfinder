@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-cover.fs.glsl
+// pathfinder/shaders/gles2/mcaa-cover.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //

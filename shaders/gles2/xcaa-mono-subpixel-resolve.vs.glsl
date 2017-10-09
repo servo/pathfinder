@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-mono-resolve.fs.glsl
+// pathfinder/shaders/gles2/xcaa-mono-subpixel-resolve.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -8,15 +8,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-precision mediump float;
+precision highp float;
 
-uniform vec4 uBGColor;
-uniform vec4 uFGColor;
-uniform sampler2D uAAAlpha;
+uniform vec4 uTransformST;
+uniform vec2 uTexScale;
+
+attribute vec2 aPosition;
+attribute vec2 aTexCoord;
 
 varying vec2 vTexCoord;
 
 void main() {
-    float alpha = clamp(texture2D(uAAAlpha, vTexCoord).r, 0.0, 1.0);
-    gl_FragColor = vec4(uFGColor.rgb, uFGColor.a * alpha);
+    gl_Position = vec4(transformVertexPositionST(aPosition, uTransformST), -1.0, 1.0);
+    vTexCoord = aTexCoord * uTexScale;
 }

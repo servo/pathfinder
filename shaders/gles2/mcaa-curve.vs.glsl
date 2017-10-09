@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-curve.vs.glsl
+// pathfinder/shaders/gles2/mcaa-curve.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -14,16 +14,13 @@ uniform vec4 uTransformST;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathTransformDimensions;
-uniform ivec2 uPathBoundsDimensions;
 uniform sampler2D uPathTransform;
-uniform sampler2D uPathBounds;
-uniform vec2 uEmboldenAmount;
+uniform bool uWinding;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
 attribute vec2 aControlPointPosition;
 attribute vec2 aRightPosition;
-attribute vec3 aNormalAngles;
 attribute float aPathID;
 
 varying vec4 vEndpoints;
@@ -35,31 +32,19 @@ void main() {
     vec2 controlPointPosition = aControlPointPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
-    float leftNormalAngle = aNormalAngles.x;
-    float controlPointNormalAngle = aNormalAngles.y;
-    float rightNormalAngle = aNormalAngles.z;
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
-    vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);
 
     // Transform the points, and compute the position of this vertex.
     vec2 position;
-    float winding;
-    if (computeECAAQuadPosition(position,
-                                winding,
+    if (computeMCAAQuadPosition(position,
                                 leftPosition,
                                 rightPosition,
                                 aQuadPosition,
                                 uFramebufferSize,
                                 transform,
                                 uTransformST,
-                                uHints,
-                                bounds,
-                                leftNormalAngle,
-                                rightNormalAngle,
-                                uEmboldenAmount)) {
-        controlPointPosition += vec2(cos(controlPointNormalAngle),
-                                     -sin(controlPointNormalAngle)) * uEmboldenAmount;
+                                uHints)) {
         controlPointPosition = hintPosition(aControlPointPosition, uHints);
         controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
         controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
@@ -71,5 +56,5 @@ void main() {
     gl_Position = vec4(position, depth, 1.0);
     vEndpoints = vec4(leftPosition, rightPosition);
     vControlPoint = controlPointPosition;
-    vWinding = winding;
+    vWinding = uWinding ? 1.0 : -1.0;
 }

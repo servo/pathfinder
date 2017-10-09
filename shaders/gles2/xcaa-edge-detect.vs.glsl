@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-mono-resolve.vs.glsl
+// pathfinder/shaders/gles2/xcaa-edge-detect.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -19,6 +19,6 @@ attribute vec2 aTexCoord;
 varying vec2 vTexCoord;
 
 void main() {
-    gl_Position = vec4(transformVertexPositionST(aPosition, uTransformST), -1.0, 1.0);
+    gl_Position = vec4(transformVertexPositionST(aPosition, uTransformST), 0.0, 1.0);
     vTexCoord = aTexCoord * uTexScale;
 }

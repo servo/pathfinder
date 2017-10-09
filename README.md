@@ -25,8 +25,9 @@ The project features:
   loops and minimal branching.
 
 * Advanced font rendering. Pathfinder can render fonts with slight hinting and can perform subpixel
-  antialiasing on LCD screens. It also has experimental support for sRGB (gamma correction) and
-  stem darkening/font dilation.
+  antialiasing on LCD screens. It can do stem darkening/font dilation like macOS and FreeType in
+  order to make text easier to read at small sizes. The library also has experimental support for
+  sRGB (gamma correction).
 
 * Support for full vector scenes. Pathfinder 2 is designed to efficiently handle workloads that
   consist of many overlapping vector paths, such as those commonly found in SVG and PDF files. It

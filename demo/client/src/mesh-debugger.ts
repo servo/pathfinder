@@ -35,9 +35,21 @@ const POINT_LABEL_FONT_SIZE: number = 12.0;
 const POINT_LABEL_OFFSET: glmatrix.vec2 = glmatrix.vec2.fromValues(12.0, 12.0);
 const POINT_RADIUS: number = 2.0;
 
+const SEGMENT_POINT_RADIUS: number = 3.0;
+const SEGMENT_STROKE_WIDTH: number = 1.0;
+const SEGMENT_CONTROL_POINT_STROKE_WIDTH: number = 1.0;
+
+const NORMAL_LENGTH: number = 14.0;
+const NORMAL_ARROWHEAD_LENGTH: number = 4.0;
+const NORMAL_ARROWHEAD_ANGLE: number = Math.PI * 5.0 / 6.0;
+
+const SEGMENT_POINT_FILL_STYLE: string = "rgb(0, 0, 128)";
+
 const LIGHT_STROKE_STYLE: string = "rgb(192, 192, 192)";
 const LINE_STROKE_STYLE: string = "rgb(0, 128, 0)";
 const CURVE_STROKE_STYLE: string = "rgb(128, 0, 0)";
+const NORMAL_STROKE_STYLE: string = '#cc5500';
+const SEGMENT_CONTROL_POINT_STROKE_STYLE: string = "rgb(0, 0, 128)";
 
 const BUILTIN_URIS = {
     font: BUILTIN_FONT_URI,
@@ -47,6 +59,13 @@ const BUILTIN_URIS = {
 const SVG_SCALE: number = 1.0;
 
 type FileType = 'font' | 'svg';
+
+interface NormalsTable<T> {
+    lowerCurve: T;
+    lowerLine: T;
+    upperCurve: T;
+    upperLine: T;
+}
 
 class MeshDebuggerAppController extends AppController {
     meshes: PathfinderMeshData | null;
@@ -225,8 +244,16 @@ class MeshDebuggerView extends PathfinderView {
         const bQuads = new Uint32Array(meshes.bQuads);
         const positions = new Float32Array(meshes.bVertexPositions);
 
-        const markedVertices: boolean[] = [];
+        const normals: NormalsTable<Float32Array> = {
+            lowerCurve: new Float32Array(0),
+            lowerLine: new Float32Array(0),
+            upperCurve: new Float32Array(0),
+            upperLine: new Float32Array(0),
+        };
 
+        const drawnVertices: boolean[] = [], drawnNormals: boolean[] = [];
+
+        // Draw B-quads.
         for (let bQuadIndex = 0; bQuadIndex < meshes.bQuadCount; bQuadIndex++) {
             const bQuadStartOffset = (B_QUAD_SIZE * bQuadIndex) / UINT32_SIZE;
 
@@ -250,26 +277,53 @@ class MeshDebuggerView extends PathfinderView {
             const lowerRightPosition = unwrapNull(getPosition(positions, lowerRightIndex));
             const lowerControlPointPosition = getPosition(positions, lowerControlPointIndex);
 
+            /*const upperCurve = upperControlPointPosition != null;
+            const lowerCurve = lowerControlPointPosition != null;
+            const upperNormals = getNormals(normals, normalIndices, upperCurve, 'upper');
+            const lowerNormals = getNormals(normals, normalIndices, lowerCurve, 'lower');*/
+
             drawVertexIfNecessary(context,
-                                  markedVertices,
+                                  drawnVertices,
                                   upperLeftIndex,
                                   upperLeftPosition,
                                   invScaleFactor);
             drawVertexIfNecessary(context,
-                                  markedVertices,
+                                  drawnVertices,
                                   upperRightIndex,
                                   upperRightPosition,
                                   invScaleFactor);
             drawVertexIfNecessary(context,
-                                  markedVertices,
+                                  drawnVertices,
                                   lowerLeftIndex,
                                   lowerLeftPosition,
                                   invScaleFactor);
             drawVertexIfNecessary(context,
-                                  markedVertices,
+                                  drawnVertices,
                                   lowerRightIndex,
                                   lowerRightPosition,
                                   invScaleFactor);
+
+                                  /*
+            drawNormalIfNecessary(context,
+                                  drawnNormals,
+                                  upperLeftPosition,
+                                  upperNormals.left,
+                                  invScaleFactor);
+            drawNormalIfNecessary(context,
+                                  drawnNormals,
+                                  upperRightPosition,
+                                  upperNormals.right,
+                                  invScaleFactor);
+            drawNormalIfNecessary(context,
+                                  drawnNormals,
+                                  lowerLeftPosition,
+                                  lowerNormals.left,
+                                  invScaleFactor);
+            drawNormalIfNecessary(context,
+                                  drawnNormals,
+                                  lowerRightPosition,
+                                  lowerNormals.right,
+                                  invScaleFactor);*/
 
             context.beginPath();
             context.moveTo(upperLeftPosition[0], upperLeftPosition[1]);
@@ -312,6 +366,24 @@ class MeshDebuggerView extends PathfinderView {
             context.stroke();
         }
 
+        // Draw segments.
+        drawSegmentVertices(context,
+                            new Float32Array(meshes.segmentLines),
+                            new Float32Array(meshes.segmentLineNormals),
+                            meshes.segmentLineCount,
+                            [0, 1],
+                            null,
+                            2,
+                            invScaleFactor);
+        drawSegmentVertices(context,
+                            new Float32Array(meshes.segmentCurves),
+                            new Float32Array(meshes.segmentCurveNormals),
+                            meshes.segmentCurveCount,
+                            [0, 2],
+                            1,
+                            3,
+                            invScaleFactor);
+
         context.restore();
     }
 }
@@ -320,6 +392,70 @@ function getPosition(positions: Float32Array, vertexIndex: number): Float32Array
     if (vertexIndex === UINT32_MAX)
         return null;
     return new Float32Array([positions[vertexIndex * 2 + 0], -positions[vertexIndex * 2 + 1]]);
+}
+
+function getNormals(normals: NormalsTable<Float32Array>,
+                    normalIndices: NormalsTable<number>,
+                    isCurve: boolean,
+                    side: 'upper' | 'lower'):
+                    { left: number, right: number } {
+    const key: keyof NormalsTable<void> = (side + (isCurve ? 'Curve' : 'Line')) as keyof
+        NormalsTable<void>;
+    const startOffset = normalIndices[key];
+    normalIndices[key]++;
+    return {
+        left: normals[key][startOffset * 2 + 0],
+        right: normals[key][startOffset * 2 + 1],
+    };
+}
+
+function drawSegmentVertices(context: CanvasRenderingContext2D,
+                             segments: Float32Array,
+                             normals: Float32Array,
+                             segmentCount: number,
+                             endpointOffsets: number[],
+                             controlPointOffset: number | null,
+                             segmentSize: number,
+                             invScaleFactor: number) {
+    for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+        const positionStartOffset = segmentSize * 2 * segmentIndex;
+        const normalStartOffset = segmentSize * segmentIndex;
+
+        const position0 =
+            glmatrix.vec2.clone([segments[positionStartOffset + endpointOffsets[0] * 2 + 0],
+                                 segments[positionStartOffset + endpointOffsets[0] * 2 + 1]]);
+        const position1 =
+            glmatrix.vec2.clone([segments[positionStartOffset + endpointOffsets[1] * 2 + 0],
+                                 segments[positionStartOffset + endpointOffsets[1] * 2 + 1]]);
+
+        let controlPoint: glmatrix.vec2 | null;
+        if (controlPointOffset != null) {
+            controlPoint =
+                glmatrix.vec2.clone([segments[positionStartOffset + controlPointOffset * 2 + 0],
+                                     segments[positionStartOffset + controlPointOffset * 2 + 1]]);
+        } else {
+            controlPoint = null;
+        }
+
+        const normal0 = normals[normalStartOffset + endpointOffsets[0]];
+        const normal1 = normals[normalStartOffset + endpointOffsets[1]];
+
+        let normalControlPoint: number | null;
+        if (controlPointOffset != null)
+            normalControlPoint = normals[normalStartOffset + controlPointOffset];
+        else
+            normalControlPoint = null;
+
+        drawSegmentVertex(context, position0, invScaleFactor);
+        drawSegmentVertex(context, position1, invScaleFactor);
+        if (controlPoint != null)
+            drawSegmentControlPoint(context, controlPoint, invScaleFactor);
+
+        drawNormal(context, position0, normal0, invScaleFactor);
+        drawNormal(context, position1, normal1, invScaleFactor);
+        if (controlPoint != null && normalControlPoint != null)
+            drawNormal(context, controlPoint, normalControlPoint, invScaleFactor);
+    }
 }
 
 function drawVertexIfNecessary(context: CanvasRenderingContext2D,
@@ -341,6 +477,63 @@ function drawVertexIfNecessary(context: CanvasRenderingContext2D,
     context.fillText("" + vertexIndex,
                      position[0] / invScaleFactor + POINT_LABEL_OFFSET[0],
                      position[1] / invScaleFactor + POINT_LABEL_OFFSET[1]);
+    context.restore();
+}
+
+function drawSegmentVertex(context: CanvasRenderingContext2D,
+                           position: glmatrix.vec2,
+                           invScaleFactor: number) {
+    context.save();
+    context.fillStyle = SEGMENT_POINT_FILL_STYLE;
+    context.lineWidth = invScaleFactor * SEGMENT_STROKE_WIDTH;
+    context.beginPath();
+    context.arc(position[0],
+                -position[1],
+                SEGMENT_POINT_RADIUS * invScaleFactor,
+                0,
+                2.0 * Math.PI);
+    context.fill();
+    context.restore();
+}
+
+function drawSegmentControlPoint(context: CanvasRenderingContext2D,
+                                 position: glmatrix.vec2,
+                                 invScaleFactor: number) {
+    context.save();
+    context.strokeStyle = SEGMENT_CONTROL_POINT_STROKE_STYLE;
+    context.lineWidth = invScaleFactor * SEGMENT_CONTROL_POINT_STROKE_WIDTH;
+    context.beginPath();
+    context.arc(position[0],
+                -position[1],
+                SEGMENT_POINT_RADIUS * invScaleFactor,
+                0,
+                2.0 * Math.PI);
+    context.stroke();
+    context.restore();
+}
+
+function drawNormal(context: CanvasRenderingContext2D,
+                    position: glmatrix.vec2,
+                    normalAngle: number,
+                    invScaleFactor: number) {
+    const length = invScaleFactor * NORMAL_LENGTH;
+    const arrowheadLength = invScaleFactor * NORMAL_ARROWHEAD_LENGTH;
+    const endpoint = glmatrix.vec2.clone([position[0] + length * Math.cos(normalAngle),
+                                          -position[1] + length * Math.sin(normalAngle)]);
+
+    context.save();
+    context.strokeStyle = NORMAL_STROKE_STYLE;
+    context.beginPath();
+    context.moveTo(position[0], -position[1]);
+    context.lineTo(endpoint[0], endpoint[1]);
+    context.lineTo(endpoint[0] + arrowheadLength * Math.cos(NORMAL_ARROWHEAD_ANGLE + normalAngle),
+                   endpoint[1] + arrowheadLength * Math.sin(NORMAL_ARROWHEAD_ANGLE + normalAngle));
+    context.stroke();
+    context.beginPath();
+    context.moveTo(endpoint[0], endpoint[1]);
+    context.lineTo(endpoint[0] + arrowheadLength * Math.cos(normalAngle - NORMAL_ARROWHEAD_ANGLE),
+                   endpoint[1] + arrowheadLength * Math.sin(normalAngle - NORMAL_ARROWHEAD_ANGLE));
+    context.stroke();
     context.restore();
 }
 

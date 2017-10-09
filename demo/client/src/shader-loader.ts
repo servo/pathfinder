@@ -25,13 +25,15 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'direct3DCurve',
     'direct3DInterior',
     'ssaaSubpixelResolve',
-    'ecaaEdgeDetect',
-    'ecaaCover',
+    'xcaaEdgeDetect',
+    'mcaaCover',
+    'mcaaLine',
+    'mcaaCurve',
     'ecaaLine',
     'ecaaCurve',
-    'ecaaMonoResolve',
-    'ecaaMonoSubpixelResolve',
-    'ecaaMultiResolve',
+    'xcaaMonoResolve',
+    'xcaaMonoSubpixelResolve',
+    'xcaaMultiResolve',
     'demo3DMonument',
 ];
 
@@ -60,55 +62,65 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         fragment: "/glsl/gles2/direct-interior.fs.glsl",
         vertex: "/glsl/gles2/direct-interior.vs.glsl",
     },
-    ecaaCover: {
-        fragment: "/glsl/gles2/ecaa-cover.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-cover.vs.glsl",
-    },
     ecaaCurve: {
-        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
+        fragment: "/glsl/gles2/xcaa-curve.fs.glsl",
         vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
     },
-    ecaaEdgeDetect: {
-        fragment: "/glsl/gles2/ecaa-edge-detect.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-edge-detect.vs.glsl",
-    },
     ecaaLine: {
-        fragment: "/glsl/gles2/ecaa-line.fs.glsl",
+        fragment: "/glsl/gles2/xcaa-line.fs.glsl",
         vertex: "/glsl/gles2/ecaa-line.vs.glsl",
     },
-    ecaaMonoResolve: {
-        fragment: "/glsl/gles2/ecaa-mono-resolve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-mono-resolve.vs.glsl",
+    mcaaCover: {
+        fragment: "/glsl/gles2/mcaa-cover.fs.glsl",
+        vertex: "/glsl/gles2/mcaa-cover.vs.glsl",
     },
-    ecaaMonoSubpixelResolve: {
-        fragment: "/glsl/gles2/ecaa-mono-subpixel-resolve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-mono-subpixel-resolve.vs.glsl",
+    mcaaCurve: {
+        fragment: "/glsl/gles2/xcaa-curve.fs.glsl",
+        vertex: "/glsl/gles2/mcaa-curve.vs.glsl",
     },
-    ecaaMultiResolve: {
-        fragment: "/glsl/gles2/ecaa-multi-resolve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-multi-resolve.vs.glsl",
+    mcaaLine: {
+        fragment: "/glsl/gles2/xcaa-line.fs.glsl",
+        vertex: "/glsl/gles2/mcaa-line.vs.glsl",
     },
     ssaaSubpixelResolve: {
         fragment: "/glsl/gles2/ssaa-subpixel-resolve.fs.glsl",
         vertex: "/glsl/gles2/ssaa-subpixel-resolve.vs.glsl",
     },
+    xcaaEdgeDetect: {
+        fragment: "/glsl/gles2/xcaa-edge-detect.fs.glsl",
+        vertex: "/glsl/gles2/xcaa-edge-detect.vs.glsl",
+    },
+    xcaaMonoResolve: {
+        fragment: "/glsl/gles2/xcaa-mono-resolve.fs.glsl",
+        vertex: "/glsl/gles2/xcaa-mono-resolve.vs.glsl",
+    },
+    xcaaMonoSubpixelResolve: {
+        fragment: "/glsl/gles2/xcaa-mono-subpixel-resolve.fs.glsl",
+        vertex: "/glsl/gles2/xcaa-mono-subpixel-resolve.vs.glsl",
+    },
+    xcaaMultiResolve: {
+        fragment: "/glsl/gles2/xcaa-multi-resolve.fs.glsl",
+        vertex: "/glsl/gles2/xcaa-multi-resolve.vs.glsl",
+    },
 };
 
 export interface ShaderMap<T> {
     blit: T;
+    demo3DMonument: T;
     directCurve: T;
     directInterior: T;
     direct3DCurve: T;
     direct3DInterior: T;
-    ssaaSubpixelResolve: T;
-    ecaaEdgeDetect: T;
-    ecaaCover: T;
     ecaaLine: T;
     ecaaCurve: T;
-    ecaaMonoResolve: T;
-    ecaaMonoSubpixelResolve: T;
-    ecaaMultiResolve: T;
-    demo3DMonument: T;
+    mcaaCover: T;
+    mcaaLine: T;
+    mcaaCurve: T;
+    ssaaSubpixelResolve: T;
+    xcaaEdgeDetect: T;
+    xcaaMonoResolve: T;
+    xcaaMonoSubpixelResolve: T;
+    xcaaMultiResolve: T;
 }
 
 export interface ShaderProgramSource {

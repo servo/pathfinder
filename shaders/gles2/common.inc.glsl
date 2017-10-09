@@ -82,14 +82,14 @@ float convertPathIndexToWindowDepthValue(int pathIndex) {
     return float(pathIndex) / float(MAX_PATHS);
 }
 
-bool computeQuadPosition(out vec2 outPosition,
-                         inout vec2 leftPosition,
-                         inout vec2 rightPosition,
-                         vec2 quadPosition,
-                         ivec2 framebufferSize,
-                         vec4 localTransformST,
-                         vec4 globalTransformST,
-                         vec4 hints) {
+bool computeMCAAQuadPosition(out vec2 outPosition,
+                             inout vec2 leftPosition,
+                             inout vec2 rightPosition,
+                             vec2 quadPosition,
+                             ivec2 framebufferSize,
+                             vec4 localTransformST,
+                             vec4 globalTransformST,
+                             vec4 hints) {
     leftPosition = hintPosition(leftPosition, hints);
     rightPosition = hintPosition(rightPosition, hints);
 
@@ -118,64 +118,120 @@ bool computeQuadPosition(out vec2 outPosition,
     return true;
 }
 
+// FIXME(pcwalton): Clean up this signature somehow?
+bool computeECAAQuadPosition(out vec2 outPosition,
+                             out float outWinding,
+                             inout vec2 leftPosition,
+                             inout vec2 rightPosition,
+                             vec2 quadPosition,
+                             ivec2 framebufferSize,
+                             vec4 localTransformST,
+                             vec4 globalTransformST,
+                             vec4 hints,
+                             vec4 bounds,
+                             float leftNormalAngle,
+                             float rightNormalAngle,
+                             vec2 emboldenAmount) {
+    leftPosition += vec2(cos(leftNormalAngle), -sin(leftNormalAngle)) * emboldenAmount;
+    rightPosition += vec2(cos(rightNormalAngle), -sin(rightNormalAngle)) * emboldenAmount;
+
+    leftPosition = hintPosition(leftPosition, hints);
+    rightPosition = hintPosition(rightPosition, hints);
+    vec2 edgePosition = hintPosition(bounds.zw, hints);
+
+    leftPosition = transformVertexPositionST(leftPosition, localTransformST);
+    rightPosition = transformVertexPositionST(rightPosition, localTransformST);
+    edgePosition = transformVertexPositionST(edgePosition, localTransformST);
+
+    leftPosition = transformVertexPositionST(leftPosition, globalTransformST);
+    rightPosition = transformVertexPositionST(rightPosition, globalTransformST);
+    edgePosition = transformVertexPositionST(edgePosition, globalTransformST);
+
+    leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
+    rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
+    edgePosition = convertClipToScreenSpace(edgePosition, framebufferSize);
+
+    float winding = sign(leftPosition.x - rightPosition.x);
+    if (winding > 0.0) {
+        vec2 tmp = leftPosition;
+        leftPosition = rightPosition;
+        rightPosition = tmp;
+    }
+    outWinding = winding;
+
+    if (rightPosition.x - leftPosition.x <= EPSILON) {
+        outPosition = vec2(0.0);
+        return false;
+    }
+
+    vec4 roundedExtents = vec4(floor(leftPosition.x),
+                               floor(min(leftPosition.y, rightPosition.y)),
+                               ceil(rightPosition.x),
+                               ceil(edgePosition.y));
+
+    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
+    outPosition = convertScreenToClipSpace(position, framebufferSize);
+    return true;
+}
+
 // Computes the area of the polygon covering the pixel with the given boundaries.
 //
-// * `p0` and `p1` are the endpoints of the line.
-// * `spanP0` and `spanP1` are the endpoints of the line, clipped to the left and right edges of
-//   the pixel.
-// * `t` is the times of `spanP0` and `spanP1` relative to `p0` and `p1` respectively.
-// * `pixelExtents` are the boundaries of the pixel (left/right/bottom/top respectively).
-// * `p` and `q` are the Liang-Barsky clipping distances.
-// * `lowerPart` is true if this is the lower half of the B-quad.
-//
-// FIXME(pcwalton): This API is ludicrous. Clean it up!
-float computeCoverage(vec2 p0,
-                      vec2 p1,
-                      vec2 spanP0,
-                      vec2 spanP1,
-                      vec2 t,
-                      vec4 pixelExtents,
-                      vec4 p,
-                      vec4 q,
-                      bool lowerPart) {
-    bool slopeNegative = p0.y > p1.y;
+// * `p0` is the start point of the line.
+// * `dp` is the vector from the start point to the endpoint of the line.
+// * `center` is the center of the pixel in window coordinates (i.e. `gl_FragCoord.xy`).
+// * `winding` is the winding number (1 or -1).
+float computeCoverage(vec2 p0, vec2 dp, vec2 center, float winding) {
+    // Set some flags.
+    bool slopeNegative = dp.y < -0.001;
+    bool slopeZero = abs(dp.y) < 0.001;
 
-    // Clip to the bottom and top.
-    if (p.z != 0.0) {
-        vec2 tVertical = q.zw / p.zw;
+    // Determine the bounds of this pixel.
+    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
+
+    // Set up Liang-Barsky clipping.
+    vec4 q = pixelExtents - p0.xxyy;
+
+    // Use Liang-Barsky to clip to the left and right sides of this pixel.
+    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
+    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
+
+    // Likewise, clip to the to the bottom and top.
+    if (!slopeZero) {
+        vec2 tVertical = q.zw / dp.yy;
         if (slopeNegative)
             tVertical.xy = tVertical.yx;    // FIXME(pcwalton): Can this be removed?
         t = vec2(max(t.x, tVertical.x), min(t.y, tVertical.y));
     }
 
     // If the line doesn't pass through this pixel, detect that and bail.
-    if (t.x >= t.y) {
-        bool fill = lowerPart ? spanP0.y < pixelExtents.z : spanP0.y > pixelExtents.w;
-        return fill ? spanP1.x - spanP0.x : 0.0;
-    }
+    //
+    // This should be worth a branch because it's very common for fragment blocks to all hit this
+    // path.
+    if (t.x >= t.y || (slopeZero && (p0.y < pixelExtents.z || p0.y > pixelExtents.w)))
+        return spanP0.y < pixelExtents.z ? winding * (spanP1.x - spanP0.x) : 0.0;
 
     // Calculate A2.x.
     float a2x;
-    if (xor(lowerPart, slopeNegative)) {
+    if (slopeNegative) {
+        a2x = spanP1.x;
+    } else {
         a2x = spanP0.x;
         t.xy = t.yx;
-    } else {
-        a2x = spanP1.x;
     }
 
     // Calculate A3.y.
-    float a3y = lowerPart ? pixelExtents.w : pixelExtents.z;
+    float a3y = pixelExtents.w;
 
     // Calculate A0-A5.
-    vec2 a0 = p0 + p.yw * t.x;
-    vec2 a1 = p0 + p.yw * t.y;
+    vec2 a0 = p0 + dp * t.x;
+    vec2 a1 = p0 + dp * t.y;
     vec2 a2 = vec2(a2x, a1.y);
     vec2 a3 = vec2(a2x, a3y);
     vec2 a4 = vec2(a0.x, a3y);
 
     // Calculate area with the shoelace formula.
     float area = det2(a0, a1) + det2(a1, a2) + det2(a2, a3) + det2(a3, a4) + det2(a4, a0); 
-    return area * (slopeNegative ? 0.5 : -0.5);
+    return abs(area) * winding * 0.5;
 }
 
 // https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html

@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-edge-detect.fs.glsl
+// pathfinder/shaders/gles2/xcaa-edge-detect.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //

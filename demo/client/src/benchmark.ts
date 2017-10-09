@@ -17,15 +17,15 @@ import {SubpixelAAType} from "./aa-strategy";
 import {AppController, DemoAppController} from "./app-controller";
 import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from './camera';
-import {ECAAMonochromeStrategy, ECAAStrategy} from './ecaa-strategy';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
-import {TextRun} from "./text";
+import {computeStemDarkeningAmount, TextRun} from "./text";
 import {assert, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
-import {DemoView, MonochromeDemoView, Timings } from "./view";
+import {DemoView, MonochromeDemoView, Timings} from "./view";
+import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -39,15 +39,15 @@ const MAX_FONT_SIZE: number = 200;
 const RUNS: number = 8;
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
-    ecaa: ECAAMonochromeStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
+    xcaa: AdaptiveMonochromeXCAAStrategy,
 };
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    ecaa: typeof ECAAStrategy;
+    xcaa: typeof AdaptiveMonochromeXCAAStrategy;
 }
 
 class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
@@ -234,6 +234,14 @@ class BenchmarkTestView extends MonochromeDemoView {
 
     private readonly appController: BenchmarkAppController;
 
+    get emboldenAmount(): glmatrix.vec2 {
+        return this.stemDarkeningAmount;
+    }
+
+    private get stemDarkeningAmount(): glmatrix.vec2 {
+        return computeStemDarkeningAmount(this._pixelsPerEm, this.pixelsPerUnit);
+    }
+
     constructor(appController: BenchmarkAppController,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
@@ -248,6 +256,31 @@ class BenchmarkTestView extends MonochromeDemoView {
 
     setHintsUniform(uniforms: UniformMap): void {
         this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
+    }
+
+    pathBoundingRects(objectIndex: number): Float32Array {
+        const font = unwrapNull(this.appController.font);
+
+        const boundingRects = new Float32Array((STRING.length + 1) * 4);
+
+        for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
+            const glyphID = unwrapNull(this.appController.textRun).glyphIDs[glyphIndex];
+
+            const metrics = font.metricsForGlyph(glyphID);
+            if (metrics == null)
+                continue;
+
+            boundingRects[(glyphIndex + 1) * 4 + 0] = metrics.xMin;
+            boundingRects[(glyphIndex + 1) * 4 + 1] = metrics.yMin;
+            boundingRects[(glyphIndex + 1) * 4 + 2] = metrics.xMax;
+            boundingRects[(glyphIndex + 1) * 4 + 3] = metrics.yMax;
+        }
+
+        return boundingRects;
+    }
+
+    pathCountForObject(objectIndex: number): number {
+        return STRING.length;
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,

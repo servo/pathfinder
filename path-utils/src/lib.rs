@@ -13,6 +13,7 @@ extern crate euclid;
 #[macro_use]
 extern crate serde_derive;
 
+use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Transform2D};
 use std::mem;
 use std::ops::Range;
@@ -124,14 +125,30 @@ pub struct PathBufferStream<'a> {
     path_buffer: &'a PathBuffer,
     endpoint_index: u32,
     subpath_index: u32,
+    last_subpath_index: u32,
 }
 
 impl<'a> PathBufferStream<'a> {
+    #[inline]
     pub fn new<'b>(path_buffer: &'b PathBuffer) -> PathBufferStream<'b> {
         PathBufferStream {
             path_buffer: path_buffer,
             endpoint_index: 0,
             subpath_index: 0,
+            last_subpath_index: path_buffer.subpaths.len() as u32,
+        }
+    }
+
+    #[inline]
+    pub fn subpath_range<'b>(path_buffer: &'b PathBuffer, subpath_range: Range<u32>)
+                             -> PathBufferStream<'b> {
+        let first_endpoint_index = path_buffer.subpaths[subpath_range.start as usize]
+                                              .first_endpoint_index;
+        PathBufferStream {
+            path_buffer: path_buffer,
+            endpoint_index: first_endpoint_index,
+            subpath_index: subpath_range.start,
+            last_subpath_index: subpath_range.end,
         }
     }
 }
@@ -140,7 +157,7 @@ impl<'a> Iterator for PathBufferStream<'a> {
     type Item = PathCommand;
 
     fn next(&mut self) -> Option<PathCommand> {
-        if self.subpath_index as usize == self.path_buffer.subpaths.len() {
+        if self.subpath_index == self.last_subpath_index {
             return None
         }
 
@@ -231,22 +248,34 @@ impl<I> Iterator for PathSegmentStream<I> where I: Iterator<Item = PathCommand> 
                     self.current_subpath_start_point = point;
                 }
                 Some(PathCommand::LineTo(endpoint)) => {
-                    let start_point = mem::replace(&mut self.current_point, endpoint);
-                    return Some((PathSegment::Line(start_point, endpoint),
-                                 self.current_subpath_index))
+                    if points_are_sufficiently_far_apart(&self.current_point, &endpoint) {
+                        let start_point = mem::replace(&mut self.current_point, endpoint);
+                        return Some((PathSegment::Line(start_point, endpoint),
+                                    self.current_subpath_index))
+                    }
                 }
                 Some(PathCommand::CurveTo(control_point, endpoint)) => {
-                    let start_point = mem::replace(&mut self.current_point, endpoint);
-                    return Some((PathSegment::Curve(start_point, control_point, endpoint),
-                                 self.current_subpath_index))
+                    if points_are_sufficiently_far_apart(&self.current_point, &endpoint) {
+                        let start_point = mem::replace(&mut self.current_point, endpoint);
+                        return Some((PathSegment::Curve(start_point, control_point, endpoint),
+                                    self.current_subpath_index))
+                    }
                 }
                 Some(PathCommand::ClosePath) => {
-                    let start_point = mem::replace(&mut self.current_point,
-                                                   self.current_subpath_start_point);
-                    return Some((PathSegment::Line(start_point, self.current_subpath_start_point),
-                                 self.current_subpath_index))
+                    let endpoint = self.current_subpath_start_point;
+                    if points_are_sufficiently_far_apart(&self.current_point, &endpoint) {
+                        let start_point = mem::replace(&mut self.current_point, endpoint);
+                        return Some((PathSegment::Line(start_point, endpoint),
+                                     self.current_subpath_index))
+                    }
                 }
             }
+        }
+
+        fn points_are_sufficiently_far_apart(point_a: &Point2D<f32>, point_b: &Point2D<f32>)
+                                             -> bool {
+            (point_a.x - point_b.x).abs() > 0.001 ||
+                (point_a.y - point_b.y).abs() > 0.001
         }
     }
 }

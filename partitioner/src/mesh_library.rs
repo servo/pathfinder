@@ -11,11 +11,13 @@
 use bincode::{self, Infinite};
 use byteorder::{LittleEndian, WriteBytesExt};
 use euclid::Point2D;
+use pathfinder_path_utils::{PathCommand, PathSegment, PathSegmentStream};
 use serde::Serialize;
 use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::u32;
 
+use bold;
 use {BQuad, BVertexLoopBlinnData};
 
 #[derive(Debug, Clone)]
@@ -26,6 +28,8 @@ pub struct MeshLibrary {
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
     pub cover_indices: MeshLibraryCoverIndices,
     pub edge_data: MeshLibraryEdgeData,
+    pub segments: MeshLibrarySegments,
+    pub segment_normals: MeshLibrarySegmentNormals,
 }
 
 impl MeshLibrary {
@@ -38,6 +42,8 @@ impl MeshLibrary {
             b_vertex_loop_blinn_data: vec![],
             cover_indices: MeshLibraryCoverIndices::new(),
             edge_data: MeshLibraryEdgeData::new(),
+            segments: MeshLibrarySegments::new(),
+            segment_normals: MeshLibrarySegmentNormals::new(),
         }
     }
 
@@ -48,6 +54,8 @@ impl MeshLibrary {
         self.b_vertex_loop_blinn_data.clear();
         self.cover_indices.clear();
         self.edge_data.clear();
+        self.segments.clear();
+        self.segment_normals.clear();
     }
 
     pub(crate) fn add_b_quad(&mut self, b_quad: &BQuad) {
@@ -66,7 +74,7 @@ impl MeshLibrary {
 
         let upper_left_bounding_box_position =
             Point2D::new(upper_left_position.x,
-                         f32::min(upper_left_position.y, upper_right_position.y));
+                         f32::max(upper_left_position.y, upper_right_position.y));
         let lower_right_bounding_box_position =
             Point2D::new(lower_right_position.x,
                          f32::max(lower_left_position.y, lower_right_position.y));
@@ -142,6 +150,35 @@ impl MeshLibrary {
         self.cover_indices.interior_indices = new_cover_interior_indices
     }
 
+    pub fn push_segments<I>(&mut self, path_id: u16, stream: I)
+                            where I: Iterator<Item = PathCommand> {
+        let stream = PathSegmentStream::new(stream);
+        for (segment, _) in stream {
+            match segment {
+                PathSegment::Line(endpoint_0, endpoint_1) => {
+                    self.segments.lines.push(LineSegment {
+                        endpoint_0: endpoint_0,
+                        endpoint_1: endpoint_1,
+                    });
+                    self.segments.line_path_ids.push(path_id);
+                }
+                PathSegment::Curve(endpoint_0, control_point, endpoint_1) => {
+                    self.segments.curves.push(CurveSegment {
+                        endpoint_0: endpoint_0,
+                        control_point: control_point,
+                        endpoint_1: endpoint_1,
+                    });
+                    self.segments.curve_path_ids.push(path_id);
+                }
+            }
+        }
+    }
+
+    /// Computes vertex normals necessary for emboldening and/or stem darkening.
+    pub fn push_normals<I>(&mut self, stream: I) where I: Iterator<Item = PathCommand> {
+        bold::push_normals(self, stream)
+    }
+
     /// Writes this mesh library to a RIFF file.
     /// 
     /// RIFF is a dead-simple extensible binary format documented here:
@@ -170,6 +207,12 @@ impl MeshLibrary {
         try!(write_chunk(writer, b"ellp", &self.edge_data.lower_line_path_ids));
         try!(write_chunk(writer, b"eucp", &self.edge_data.upper_curve_path_ids));
         try!(write_chunk(writer, b"elcp", &self.edge_data.lower_curve_path_ids));
+        try!(write_chunk(writer, b"slin", &self.segments.lines));
+        try!(write_chunk(writer, b"scur", &self.segments.curves));
+        try!(write_chunk(writer, b"slpi", &self.segments.line_path_ids));
+        try!(write_chunk(writer, b"scpi", &self.segments.curve_path_ids));
+        try!(write_chunk(writer, b"snli", &self.segment_normals.line_normals));
+        try!(write_chunk(writer, b"sncu", &self.segment_normals.curve_normals));
 
         let total_length = try!(writer.seek(SeekFrom::Current(0)));
         try!(writer.seek(SeekFrom::Start(4)));
@@ -318,6 +361,52 @@ impl MeshLibraryEdgeData {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MeshLibrarySegments {
+    pub lines: Vec<LineSegment>,
+    pub curves: Vec<CurveSegment>,
+    pub line_path_ids: Vec<u16>,
+    pub curve_path_ids: Vec<u16>,
+}
+
+impl MeshLibrarySegments {
+    fn new() -> MeshLibrarySegments {
+        MeshLibrarySegments {
+            lines: vec![],
+            curves: vec![],
+            line_path_ids: vec![],
+            curve_path_ids: vec![],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.lines.clear();
+        self.curves.clear();
+        self.line_path_ids.clear();
+        self.curve_path_ids.clear();
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MeshLibrarySegmentNormals {
+    pub line_normals: Vec<LineSegmentNormals>,
+    pub curve_normals: Vec<CurveSegmentNormals>,
+}
+
+impl MeshLibrarySegmentNormals {
+    fn new() -> MeshLibrarySegmentNormals {
+        MeshLibrarySegmentNormals {
+            line_normals: vec![],
+            curve_normals: vec![],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.line_normals.clear();
+        self.curve_normals.clear();
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct EdgeBoundingBoxVertexPositions {
     pub upper_left: Point2D<f32>,
@@ -335,4 +424,30 @@ pub struct EdgeCurveVertexPositions {
     pub left: Point2D<f32>,
     pub control_point: Point2D<f32>,
     pub right: Point2D<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct LineSegment {
+    pub endpoint_0: Point2D<f32>,
+    pub endpoint_1: Point2D<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct CurveSegment {
+    pub endpoint_0: Point2D<f32>,
+    pub control_point: Point2D<f32>,
+    pub endpoint_1: Point2D<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct LineSegmentNormals {
+    pub endpoint_0: f32,
+    pub endpoint_1: f32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct CurveSegmentNormals {
+    pub endpoint_0: f32,
+    pub control_point: f32,
+    pub endpoint_1: f32,
 }

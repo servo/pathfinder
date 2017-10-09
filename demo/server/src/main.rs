@@ -44,6 +44,7 @@ use rocket::response::{NamedFile, Redirect, Responder, Response};
 use rocket_contrib::json::Json;
 use std::fs::File;
 use std::io::{self, Cursor, Read};
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -95,12 +96,6 @@ static BUILTIN_SVGS: [(&'static str, &'static str); 1] = [
 struct MeshLibraryCacheKey {
     builtin_font_name: String,
     glyph_ids: Vec<u32>,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-struct SubpathRange {
-    start: u32,
-    end: u32,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -178,11 +173,9 @@ struct PathPartitioningResult {
 }
 
 impl PathPartitioningResult {
-    fn compute(partitioner: &mut Partitioner, subpath_indices: &[SubpathRange])
+    fn compute(partitioner: &mut Partitioner, subpath_indices: &[Range<u32>])
                -> PathPartitioningResult {
         let timestamp_before = Instant::now();
-
-        partitioner.library_mut().clear();
 
         for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
             partitioner.partition((path_index + 1) as u16, subpath_range.start, subpath_range.end);
@@ -302,14 +295,19 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
         let last_subpath_index = path_buffer.subpaths.len();
 
-        SubpathRange {
-            start: first_subpath_index as u32,
-            end: last_subpath_index as u32,
-        }
+        (first_subpath_index as u32)..(last_subpath_index as u32)
     }).collect();
 
     // Partition the decoded glyph outlines.
-    let mut partitioner = Partitioner::new(MeshLibrary::new());
+    let mut library = MeshLibrary::new();
+    for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
+        let stream = PathBufferStream::subpath_range(&path_buffer, (*subpath_range).clone());
+        library.push_segments((path_index + 1) as u16, stream);
+        let stream = PathBufferStream::subpath_range(&path_buffer, (*subpath_range).clone());
+        library.push_normals(stream);
+    }
+
+    let mut partitioner = Partitioner::new(library);
     partitioner.init_with_path_buffer(&path_buffer);
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
                                                                    &subpath_indices);
@@ -392,10 +390,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
         let last_subpath_index = path_buffer.subpaths.len() as u32;
 
-        paths.push(SubpathRange {
-            start: first_subpath_index,
-            end: last_subpath_index,
-        })
+        paths.push(first_subpath_index..last_subpath_index)
     }
 
     // Partition the paths.

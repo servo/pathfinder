@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-multi-resolve.vs.glsl
+// pathfinder/shaders/gles2/xcaa-mono-resolve.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
