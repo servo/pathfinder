@@ -199,7 +199,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.coverVAO = view.vertexArrayObjectExt.createVertexArrayOES();
         view.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
 
-        const coverProgram = view.shaderPrograms.ecaaCover;
+        const coverProgram = view.shaderPrograms.ecaaFastCover;
         const attributes = coverProgram.attributes;
         view.gl.useProgram(coverProgram.program);
         view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
@@ -237,7 +237,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     private createLineVAOs(view: MonochromeDemoView) {
-        const lineProgram = view.shaderPrograms.ecaaLine;
+        const lineProgram = view.shaderPrograms.ecaaFastLine;
         const attributes = lineProgram.attributes;
 
         const vaos: Partial<UpperAndLower<WebGLVertexArrayObject>> = {};
@@ -293,7 +293,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     private createCurveVAOs(view: MonochromeDemoView) {
-        const curveProgram = view.shaderPrograms.ecaaCurve;
+        const curveProgram = view.shaderPrograms.ecaaFastCurve;
         const attributes = curveProgram.attributes;
 
         const vaos: Partial<UpperAndLower<WebGLVertexArrayObject>> = {};
@@ -369,7 +369,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 
     private cover(view: MonochromeDemoView) {
         // Set state for conservative coverage.
-        const coverProgram = view.shaderPrograms.ecaaCover;
+        const coverProgram = view.shaderPrograms.ecaaFastCover;
         const usedSize = this.supersampledUsedSize(view);
         view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.aaFramebuffer);
         view.gl.viewport(0,
@@ -426,7 +426,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     private antialiasLines(view: MonochromeDemoView) {
         this.setAAState(view);
 
-        const lineProgram = view.shaderPrograms.ecaaLine;
+        const lineProgram = view.shaderPrograms.ecaaFastLine;
         view.gl.useProgram(lineProgram.program);
         const uniforms = lineProgram.uniforms;
         this.setAAUniforms(view, uniforms);
@@ -451,7 +451,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     private antialiasCurves(view: MonochromeDemoView) {
         this.setAAState(view);
 
-        const curveProgram = view.shaderPrograms.ecaaCurve;
+        const curveProgram = view.shaderPrograms.ecaaFastCurve;
         view.gl.useProgram(curveProgram.program);
         const uniforms = curveProgram.uniforms;
         this.setAAUniforms(view, uniforms);

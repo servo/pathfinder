@@ -26,9 +26,9 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'direct3DInterior',
     'ssaaSubpixelResolve',
     'ecaaEdgeDetect',
-    'ecaaCover',
-    'ecaaLine',
-    'ecaaCurve',
+    'ecaaFastCover',
+    'ecaaFastLine',
+    'ecaaFastCurve',
     'ecaaMonoResolve',
     'ecaaMonoSubpixelResolve',
     'ecaaMultiResolve',
@@ -60,21 +60,21 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         fragment: "/glsl/gles2/direct-interior.fs.glsl",
         vertex: "/glsl/gles2/direct-interior.vs.glsl",
     },
-    ecaaCover: {
-        fragment: "/glsl/gles2/ecaa-cover.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-cover.vs.glsl",
-    },
-    ecaaCurve: {
-        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
-    },
     ecaaEdgeDetect: {
         fragment: "/glsl/gles2/ecaa-edge-detect.fs.glsl",
         vertex: "/glsl/gles2/ecaa-edge-detect.vs.glsl",
     },
-    ecaaLine: {
+    ecaaFastCover: {
+        fragment: "/glsl/gles2/ecaa-fast-cover.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-fast-cover.vs.glsl",
+    },
+    ecaaFastCurve: {
+        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-fast-curve.vs.glsl",
+    },
+    ecaaFastLine: {
         fragment: "/glsl/gles2/ecaa-line.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-line.vs.glsl",
+        vertex: "/glsl/gles2/ecaa-fast-line.vs.glsl",
     },
     ecaaMonoResolve: {
         fragment: "/glsl/gles2/ecaa-mono-resolve.fs.glsl",
@@ -102,9 +102,9 @@ export interface ShaderMap<T> {
     direct3DInterior: T;
     ssaaSubpixelResolve: T;
     ecaaEdgeDetect: T;
-    ecaaCover: T;
-    ecaaLine: T;
-    ecaaCurve: T;
+    ecaaFastCover: T;
+    ecaaFastLine: T;
+    ecaaFastCurve: T;
     ecaaMonoResolve: T;
     ecaaMonoSubpixelResolve: T;
     ecaaMultiResolve: T;
