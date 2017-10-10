@@ -434,7 +434,7 @@ export abstract class DemoView extends PathfinderView {
 
                 this.gl.shaderSource(shader, commonSource + "\n#line 1\n" + source);
                 this.gl.compileShader(shader);
-                if (this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS) === 0) {
+                if (!this.gl.getShaderParameter(shader, this.gl.COMPILE_STATUS)) {
                     const infoLog = this.gl.getShaderInfoLog(shader);
                     throw new PathfinderError(`Failed to compile ${typeName} shader ` +
                                               `"${shaderKey}":\n${infoLog}`);

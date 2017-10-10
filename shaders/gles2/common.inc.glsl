@@ -118,6 +118,42 @@ bool computeQuadPosition(out vec2 outPosition,
     return true;
 }
 
+bool computeQuadPositionSlow(out vec2 outPosition,
+                             inout vec2 leftPosition,
+                             inout vec2 rightPosition,
+                             vec2 quadPosition,
+                             ivec2 framebufferSize,
+                             vec4 localTransformST,
+                             vec4 globalTransformST,
+                             vec4 hints) {
+    leftPosition = hintPosition(leftPosition, hints);
+    rightPosition = hintPosition(rightPosition, hints);
+
+    leftPosition = transformVertexPositionST(leftPosition, localTransformST);
+    rightPosition = transformVertexPositionST(rightPosition, localTransformST);
+
+    leftPosition = transformVertexPositionST(leftPosition, globalTransformST);
+    rightPosition = transformVertexPositionST(rightPosition, globalTransformST);
+
+    leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
+    rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
+
+    if (abs(leftPosition.x - rightPosition.x) <= EPSILON) {
+        outPosition = vec2(0.0);
+        return false;
+    }
+
+    vec4 roundedExtents = vec4(floor(leftPosition.x),
+                               floor(min(leftPosition.y, rightPosition.y)),
+                               ceil(rightPosition.x),
+                               float(framebufferSize.y));
+    //roundedExtents.w = ceil(min(leftPosition.y, rightPosition.y)) + 24.0;
+
+    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
+    outPosition = convertScreenToClipSpace(position, framebufferSize);
+    return true;
+}
+
 // Computes the area of the polygon covering the pixel with the given boundaries.
 //
 // * `p0` and `p1` are the endpoints of the line.
@@ -139,9 +175,10 @@ float computeCoverage(vec2 p0,
                       vec4 q,
                       bool lowerPart) {
     bool slopeNegative = p0.y > p1.y;
+    bool slopeZero = abs(p.z) < 0.01;
 
     // Clip to the bottom and top.
-    if (p.z != 0.0) {
+    if (!slopeZero) {
         vec2 tVertical = q.zw / p.zw;
         if (slopeNegative)
             tVertical.xy = tVertical.yx;    // FIXME(pcwalton): Can this be removed?
@@ -149,7 +186,7 @@ float computeCoverage(vec2 p0,
     }
 
     // If the line doesn't pass through this pixel, detect that and bail.
-    if (t.x >= t.y) {
+    if (t.x >= t.y || (slopeZero && (spanP0.y < pixelExtents.z || spanP0.y > pixelExtents.w))) {
         bool fill = lowerPart ? spanP0.y < pixelExtents.z : spanP0.y > pixelExtents.w;
         return fill ? spanP1.x - spanP0.x : 0.0;
     }

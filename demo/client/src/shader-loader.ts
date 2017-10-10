@@ -29,6 +29,8 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'ecaaFastCover',
     'ecaaFastLine',
     'ecaaFastCurve',
+    'ecaaBoldLine',
+    'ecaaBoldCurve',
     'ecaaMonoResolve',
     'ecaaMonoSubpixelResolve',
     'ecaaMultiResolve',
@@ -59,6 +61,14 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     directInterior: {
         fragment: "/glsl/gles2/direct-interior.fs.glsl",
         vertex: "/glsl/gles2/direct-interior.vs.glsl",
+    },
+    ecaaBoldCurve: {
+        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-bold-curve.vs.glsl",
+    },
+    ecaaBoldLine: {
+        fragment: "/glsl/gles2/ecaa-line.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-bold-line.vs.glsl",
     },
     ecaaEdgeDetect: {
         fragment: "/glsl/gles2/ecaa-edge-detect.fs.glsl",
@@ -105,6 +115,8 @@ export interface ShaderMap<T> {
     ecaaFastCover: T;
     ecaaFastLine: T;
     ecaaFastCurve: T;
+    ecaaBoldLine: T;
+    ecaaBoldCurve: T;
     ecaaMonoResolve: T;
     ecaaMonoSubpixelResolve: T;
     ecaaMultiResolve: T;
