@@ -287,6 +287,8 @@ class TextDemoView extends MonochromeDemoView {
 
     private subpixelAA: SubpixelAAType;
 
+    private glyphBounds: Float32Array;
+
     constructor(appController: TextDemoController,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
@@ -349,6 +351,34 @@ class TextDemoView extends MonochromeDemoView {
                           hint.hintedXHeight,
                           hint.stemHeight,
                           hint.hintedStemHeight);
+    }
+
+    pathBoundingRects(objectIndex: number): Float32Array {
+        const pathCount = this.appController.pathCount;
+        const atlasGlyphs = this.appController.atlasGlyphs;
+        const pixelsPerUnit = this.displayPixelsPerUnit;
+        const font = this.appController.font;
+        const hint = this.createHint();
+
+        const boundingRects = new Float32Array((pathCount + 1) * 4);
+
+        for (const glyph of atlasGlyphs) {
+            const atlasGlyphMetrics = font.metricsForGlyph(glyph.glyphKey.id);
+            if (atlasGlyphMetrics == null)
+                continue;
+
+            const pathID = glyph.pathID;
+            boundingRects[pathID * 4 + 0] = atlasGlyphMetrics.xMin;
+            boundingRects[pathID * 4 + 1] = atlasGlyphMetrics.yMin;
+            boundingRects[pathID * 4 + 2] = atlasGlyphMetrics.xMax;
+            boundingRects[pathID * 4 + 3] = atlasGlyphMetrics.yMax;
+        }
+
+        return boundingRects;
+    }
+
+    pathCountForObject(objectIndex: number): number {
+        return this.appController.pathCount;
     }
 
     protected initContext() {
@@ -605,7 +635,7 @@ class TextDemoView extends MonochromeDemoView {
 
         const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
 
-        const glyphTexCoords = new Float32Array(textFrame.totalGlyphCount * 8);
+        this.glyphBounds = new Float32Array(textFrame.totalGlyphCount * 8);
 
         let globalGlyphIndex = 0;
         for (const run of textFrame.runs) {
@@ -641,7 +671,7 @@ class TextDemoView extends MonochromeDemoView {
                 glmatrix.vec2.div(atlasGlyphBL, atlasGlyphBL, ATLAS_SIZE);
                 glmatrix.vec2.div(atlasGlyphTR, atlasGlyphTR, ATLAS_SIZE);
 
-                glyphTexCoords.set([
+                this.glyphBounds.set([
                     atlasGlyphBL[0], atlasGlyphTR[1],
                     atlasGlyphTR[0], atlasGlyphTR[1],
                     atlasGlyphBL[0], atlasGlyphBL[1],
@@ -652,7 +682,7 @@ class TextDemoView extends MonochromeDemoView {
 
         this.glyphTexCoordsBuffer = unwrapNull(this.gl.createBuffer());
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.glyphTexCoordsBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, glyphTexCoords, this.gl.STATIC_DRAW);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, this.glyphBounds, this.gl.STATIC_DRAW);
     }
 
     private setIdentityTexScaleUniform(uniforms: UniformMap) {

@@ -24,7 +24,7 @@ import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
 import {TextRun} from "./text";
-import {assert, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
+import {assert, PathfinderError, unwrapNull, unwrapUndef, panic} from "./utils";
 import {DemoView, MonochromeDemoView, Timings } from "./view";
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -248,6 +248,31 @@ class BenchmarkTestView extends MonochromeDemoView {
 
     setHintsUniform(uniforms: UniformMap): void {
         this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
+    }
+
+    pathBoundingRects(objectIndex: number): Float32Array {
+        const font = unwrapNull(this.appController.font);
+
+        const boundingRects = new Float32Array((STRING.length + 1) * 4);
+
+        for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
+            const glyphID = unwrapNull(this.appController.textRun).glyphIDs[glyphIndex];
+
+            const metrics = font.metricsForGlyph(glyphID);
+            if (metrics == null)
+                continue;
+
+            boundingRects[(glyphIndex + 1) * 4 + 0] = metrics.xMin;
+            boundingRects[(glyphIndex + 1) * 4 + 1] = metrics.yMin;
+            boundingRects[(glyphIndex + 1) * 4 + 2] = metrics.xMax;
+            boundingRects[(glyphIndex + 1) * 4 + 3] = metrics.yMax;
+        }
+
+        return boundingRects;
+    }
+
+    pathCountForObject(objectIndex: number): number {
+        return STRING.length;
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,

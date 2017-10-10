@@ -285,6 +285,8 @@ export abstract class DemoView extends PathfinderView {
     }
 
     abstract setHintsUniform(uniforms: UniformMap): void;
+    abstract pathBoundingRects(objectIndex: number): Float32Array;
+    abstract pathCountForObject(objectIndex: number): number;
 
     protected resized(): void {
         super.resized();

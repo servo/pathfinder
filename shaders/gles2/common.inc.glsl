@@ -125,18 +125,23 @@ bool computeQuadPositionSlow(out vec2 outPosition,
                              ivec2 framebufferSize,
                              vec4 localTransformST,
                              vec4 globalTransformST,
-                             vec4 hints) {
+                             vec4 hints,
+                             vec4 bounds) {
     leftPosition = hintPosition(leftPosition, hints);
     rightPosition = hintPosition(rightPosition, hints);
+    vec2 edgePosition = bounds.zw;
 
     leftPosition = transformVertexPositionST(leftPosition, localTransformST);
     rightPosition = transformVertexPositionST(rightPosition, localTransformST);
+    edgePosition = transformVertexPositionST(edgePosition, localTransformST);
 
     leftPosition = transformVertexPositionST(leftPosition, globalTransformST);
     rightPosition = transformVertexPositionST(rightPosition, globalTransformST);
+    edgePosition = transformVertexPositionST(edgePosition, globalTransformST);
 
     leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
     rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
+    edgePosition = convertClipToScreenSpace(edgePosition, framebufferSize);
 
     if (abs(leftPosition.x - rightPosition.x) <= EPSILON) {
         outPosition = vec2(0.0);
@@ -146,8 +151,7 @@ bool computeQuadPositionSlow(out vec2 outPosition,
     vec4 roundedExtents = vec4(floor(leftPosition.x),
                                floor(min(leftPosition.y, rightPosition.y)),
                                ceil(rightPosition.x),
-                               float(framebufferSize.y));
-    //roundedExtents.w = ceil(min(leftPosition.y, rightPosition.y)) + 24.0;
+                               ceil(edgePosition.y));
 
     vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
     outPosition = convertScreenToClipSpace(position, framebufferSize);

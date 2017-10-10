@@ -39,6 +39,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     protected directPathIDTexture: WebGLTexture;
     protected aaDepthTexture: WebGLTexture;
 
+    protected pathBoundsBufferTexture: PathfinderBufferTexture;
+
     protected supersampledFramebufferSize: glmatrix.vec2;
     protected destFramebufferSize: glmatrix.vec2;
 
@@ -129,9 +131,12 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         // Detect edges if necessary.
         this.detectEdgesIfNecessary(view);
 
-        // Conservatively cover.
+        // Set up antialiasing.
         this.prepareAA(view);
-        //this.cover(view);
+
+        // Conservatively cover if needed.
+        if (this.mode === 'fast')
+            this.cover(view);
 
         // Antialias.
         this.antialiasLines(view);
@@ -203,6 +208,12 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                                view.drawBuffersExt,
                                                [this.aaAlphaTexture],
                                                this.aaDepthTexture);
+    }
+
+    private createPathBoundsBufferTexture(view: MonochromeDemoView) {
+        const pathBounds = view.pathBoundingRects(0);
+        this.pathBoundsBufferTexture = new PathfinderBufferTexture(view.gl, 'uPathBounds');
+        this.pathBoundsBufferTexture.upload(view.gl, pathBounds);
     }
 
     private createCoverVAO(view: MonochromeDemoView) {
@@ -409,6 +420,8 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.gl.enable(view.gl.BLEND);
 
         this.clearForCover(view);
+
+        this.createPathBoundsBufferTexture(view);
     }
 
     private cover(view: MonochromeDemoView): void {
@@ -452,6 +465,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.setTransformSTUniform(uniforms, 0);
         view.setFramebufferSizeUniform(uniforms);
         view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 0);
+        this.pathBoundsBufferTexture.bind(view.gl, uniforms, 1);
         view.setHintsUniform(uniforms);
     }
 

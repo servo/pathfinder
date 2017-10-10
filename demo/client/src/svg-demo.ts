@@ -125,6 +125,15 @@ class SVGDemoView extends DemoView {
         this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
+    pathBoundingRects(objectIndex: number): Float32Array {
+        panic("SVGDemoView.pathBoundingRects(): TODO");
+        return glmatrix.vec4.create();
+    }
+
+    pathCountForObject(objectIndex: number): number {
+        return this.appController.loader.pathInstances.length;
+    }
+
     protected pathColorsForObject(objectIndex: number): Uint8Array {
         const instances = this.appController.loader.pathInstances;
         const pathColors = new Uint8Array(4 * (instances.length + 1));
