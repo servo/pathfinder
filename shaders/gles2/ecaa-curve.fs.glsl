@@ -10,10 +10,9 @@
 
 precision highp float;
 
-uniform bool uLowerPart;
-
 varying vec4 vEndpoints;
 varying vec2 vControlPoint;
+varying float vWinding;
 
 // Solve the equation:
 //
@@ -72,5 +71,10 @@ void main() {
     vec2 spanP0 = p0 + p.yw * t.x, spanP1 = p0 + p.yw * t.y;
 
     // Compute area.
-    gl_FragColor = vec4(computeCoverage(p0, p1, spanP0, spanP1, t, pixelExtents, p, q, uLowerPart));
+    gl_FragColor = vec4(computeCoverage(p0, p1,
+                                        spanP0, spanP1,
+                                        t,
+                                        pixelExtents,
+                                        p, q,
+                                        vWinding < 0.0));
 }

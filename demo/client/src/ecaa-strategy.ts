@@ -535,7 +535,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     }
 
     private setBlendModeForAA(view: MonochromeDemoView, direction: Direction) {
-        if (direction === 'upper' && this.mode === 'bold')
+        if (this.mode === 'bold')
             view.gl.blendEquation(view.gl.FUNC_ADD);
         else
             view.gl.blendEquation(view.gl.FUNC_REVERSE_SUBTRACT);
@@ -571,8 +571,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
             this.setBlendModeForAA(view, direction);
-            const fillBelow = direction === 'lower' || this.mode === 'bold';
-            view.gl.uniform1i(uniforms.uLowerPart, fillBelow ? 1 : 0);
+            view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
 
             const count = {
                 lower: view.meshData[0].edgeLowerLineCount,
@@ -606,8 +605,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
             view.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
             this.setBlendModeForAA(view, direction);
-            const fillBelow = direction === 'lower' || this.mode === 'bold';
-            view.gl.uniform1i(uniforms.uLowerPart, fillBelow ? 1 : 0);
+            view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
 
             const count = {
                 lower: view.meshData[0].edgeLowerCurveCount,

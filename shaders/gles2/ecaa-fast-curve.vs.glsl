@@ -25,6 +25,7 @@ attribute float aPathID;
 
 varying vec4 vEndpoints;
 varying vec2 vControlPoint;
+varying float vWinding;
 
 void main() {
     vec2 leftPosition = aLeftPosition;
@@ -55,4 +56,5 @@ void main() {
     gl_Position = vec4(position, depth, 1.0);
     vEndpoints = vec4(leftPosition, rightPosition);
     vControlPoint = controlPointPosition;
+    vWinding = uLowerPart ? -1.0 : 1.0;
 }

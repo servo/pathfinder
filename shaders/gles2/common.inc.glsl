@@ -119,6 +119,7 @@ bool computeQuadPosition(out vec2 outPosition,
 }
 
 bool computeQuadPositionSlow(out vec2 outPosition,
+                             out float outWinding,
                              inout vec2 leftPosition,
                              inout vec2 rightPosition,
                              vec2 quadPosition,
@@ -143,8 +144,8 @@ bool computeQuadPositionSlow(out vec2 outPosition,
         rightPosition = tmp;
     }*/
 
-    leftPosition.y = min(leftPosition.y, edgePosition.y);
-    rightPosition.y = min(rightPosition.y, edgePosition.y);
+    /*leftPosition.y = min(leftPosition.y, edgePosition.y);
+    rightPosition.y = min(rightPosition.y, edgePosition.y);*/
 
     leftPosition = transformVertexPositionST(leftPosition, localTransformST);
     rightPosition = transformVertexPositionST(rightPosition, localTransformST);
@@ -158,10 +159,18 @@ bool computeQuadPositionSlow(out vec2 outPosition,
     rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
     edgePosition = convertClipToScreenSpace(edgePosition, framebufferSize);
 
-    /*if (rightPosition.x - leftPosition.x <= EPSILON) {
+    float winding = sign(rightPosition.x - leftPosition.x);
+    if (winding < 0.0) {
+        vec2 tmp = leftPosition;
+        leftPosition = rightPosition;
+        rightPosition = tmp;
+    }
+    outWinding = -winding;
+
+    if (rightPosition.x - leftPosition.x <= EPSILON) {
         outPosition = vec2(0.0);
         return false;
-    }*/
+    }
 
     vec4 roundedExtents = vec4(floor(leftPosition.x),
                                floor(min(leftPosition.y, rightPosition.y)),
@@ -206,8 +215,9 @@ float computeCoverage(vec2 p0,
 
     // If the line doesn't pass through this pixel, detect that and bail.
     if (t.x >= t.y || (slopeZero && (spanP0.y < pixelExtents.z || spanP0.y > pixelExtents.w))) {
-        bool fill = lowerPart ? spanP0.y < pixelExtents.z : spanP0.y > pixelExtents.w;
-        return fill ? spanP1.x - spanP0.x : 0.0;
+        bool fill = /*lowerPart ? */spanP0.y < pixelExtents.z /*: spanP0.y > pixelExtents.w*/;
+        float areaSign = lowerPart ? 1.0 : -1.0;
+        return fill ? (areaSign * (spanP1.x - spanP0.x)) : 0.0;
     }
 
     // Calculate A2.x.
@@ -220,7 +230,7 @@ float computeCoverage(vec2 p0,
     }
 
     // Calculate A3.y.
-    float a3y = lowerPart ? pixelExtents.w : pixelExtents.z;
+    float a3y = /*lowerPart ? */pixelExtents.w/* : pixelExtents.z*/;
 
     // Calculate A0-A5.
     vec2 a0 = p0 + p.yw * t.x;

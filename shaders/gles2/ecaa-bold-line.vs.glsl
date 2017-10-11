@@ -30,18 +30,30 @@ attribute float aRightNormalAngle;
 attribute float aPathID;
 
 varying vec4 vEndpoints;
+varying float vWinding;
 
 void main() {
     vec2 leftPosition = aLeftPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
+    float leftNormalAngle = aLeftNormalAngle;
+    float rightNormalAngle = aRightNormalAngle;
+
+    if (uLowerPart) {
+        leftPosition = aRightPosition;
+        rightPosition = aLeftPosition;
+        leftNormalAngle = aRightNormalAngle;
+        rightNormalAngle = aLeftNormalAngle;
+    }
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
     vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);
 
     // Transform the points, and compute the position of this vertex.
     vec2 position;
+    float winding;
     computeQuadPositionSlow(position,
+                            winding,
                             leftPosition,
                             rightPosition,
                             aQuadPosition,
@@ -50,13 +62,14 @@ void main() {
                             uTransformST,
                             uHints,
                             bounds,
-                            aLeftNormalAngle,
-                            aRightNormalAngle,
+                            leftNormalAngle,
+                            rightNormalAngle,
                             uEmboldenAmount);
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
 
     gl_Position = vec4(position, depth, 1.0);
     vEndpoints = vec4(leftPosition, rightPosition);
+    vWinding = winding;
 }
 
