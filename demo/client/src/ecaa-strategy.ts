@@ -550,7 +550,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 0);
         this.pathBoundsBufferTexture.bind(view.gl, uniforms, 1);
         view.setHintsUniform(uniforms);
-        view.gl.uniform1f(uniforms.uEmboldenAmount, 50.0);
+        view.gl.uniform1f(uniforms.uEmboldenAmount, 25.0);
     }
 
     private antialiasLines(view: MonochromeDemoView) {

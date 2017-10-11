@@ -134,8 +134,17 @@ bool computeQuadPositionSlow(out vec2 outPosition,
     rightPosition = hintPosition(rightPosition, hints);
     vec2 edgePosition = bounds.zw;
 
-    leftPosition += vec2(cos(leftNormalAngle), sin(leftNormalAngle)) * emboldenAmount;
-    rightPosition += vec2(cos(rightNormalAngle), sin(rightNormalAngle)) * emboldenAmount;
+    leftPosition += vec2(cos(leftNormalAngle), -sin(leftNormalAngle)) * emboldenAmount;
+    rightPosition += vec2(cos(rightNormalAngle), -sin(rightNormalAngle)) * emboldenAmount;
+
+    /*if (leftPosition.x > rightPosition.x) {
+        vec2 tmp = leftPosition;
+        leftPosition = rightPosition;
+        rightPosition = tmp;
+    }*/
+
+    leftPosition.y = min(leftPosition.y, edgePosition.y);
+    rightPosition.y = min(rightPosition.y, edgePosition.y);
 
     leftPosition = transformVertexPositionST(leftPosition, localTransformST);
     rightPosition = transformVertexPositionST(rightPosition, localTransformST);
@@ -149,10 +158,10 @@ bool computeQuadPositionSlow(out vec2 outPosition,
     rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
     edgePosition = convertClipToScreenSpace(edgePosition, framebufferSize);
 
-    if (abs(leftPosition.x - rightPosition.x) <= EPSILON) {
+    /*if (rightPosition.x - leftPosition.x <= EPSILON) {
         outPosition = vec2(0.0);
         return false;
-    }
+    }*/
 
     vec4 roundedExtents = vec4(floor(leftPosition.x),
                                floor(min(leftPosition.y, rightPosition.y)),

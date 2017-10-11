@@ -35,9 +35,14 @@ const POINT_LABEL_FONT_SIZE: number = 12.0;
 const POINT_LABEL_OFFSET: glmatrix.vec2 = glmatrix.vec2.fromValues(12.0, 12.0);
 const POINT_RADIUS: number = 2.0;
 
+const NORMAL_LENGTH: number = 16.0;
+const NORMAL_ARROWHEAD_LENGTH: number = 4.0;
+const NORMAL_ARROWHEAD_ANGLE: number = Math.PI * 5.0 / 6.0;
+
 const LIGHT_STROKE_STYLE: string = "rgb(192, 192, 192)";
 const LINE_STROKE_STYLE: string = "rgb(0, 128, 0)";
 const CURVE_STROKE_STYLE: string = "rgb(128, 0, 0)";
+const NORMAL_STROKE_STYLE: string = '#cc5500';
 
 const BUILTIN_URIS = {
     font: BUILTIN_FONT_URI,
@@ -47,6 +52,13 @@ const BUILTIN_URIS = {
 const SVG_SCALE: number = 1.0;
 
 type FileType = 'font' | 'svg';
+
+interface NormalsTable<T> {
+    lowerCurve: T;
+    lowerLine: T;
+    upperCurve: T;
+    upperLine: T;
+}
 
 class MeshDebuggerAppController extends AppController {
     meshes: PathfinderMeshData | null;
@@ -225,7 +237,21 @@ class MeshDebuggerView extends PathfinderView {
         const bQuads = new Uint32Array(meshes.bQuads);
         const positions = new Float32Array(meshes.bVertexPositions);
 
-        const markedVertices: boolean[] = [];
+        const normals: NormalsTable<Float32Array> = {
+            lowerCurve: new Float32Array(meshes.edgeLowerCurveNormals),
+            lowerLine: new Float32Array(meshes.edgeLowerLineNormals),
+            upperCurve: new Float32Array(meshes.edgeUpperCurveNormals),
+            upperLine: new Float32Array(meshes.edgeUpperLineNormals),
+        };
+
+        const drawnVertices: boolean[] = [], drawnNormals: boolean[] = [];
+
+        const normalIndices: NormalsTable<number> = {
+            lowerCurve: 0,
+            lowerLine: 0,
+            upperCurve: 0,
+            upperLine: 0,
+        };
 
         for (let bQuadIndex = 0; bQuadIndex < meshes.bQuadCount; bQuadIndex++) {
             const bQuadStartOffset = (B_QUAD_SIZE * bQuadIndex) / UINT32_SIZE;
@@ -250,25 +276,51 @@ class MeshDebuggerView extends PathfinderView {
             const lowerRightPosition = unwrapNull(getPosition(positions, lowerRightIndex));
             const lowerControlPointPosition = getPosition(positions, lowerControlPointIndex);
 
+            const upperCurve = upperControlPointPosition != null;
+            const lowerCurve = lowerControlPointPosition != null;
+            const upperNormals = getNormals(normals, normalIndices, upperCurve, 'upper');
+            const lowerNormals = getNormals(normals, normalIndices, lowerCurve, 'lower');
+
             drawVertexIfNecessary(context,
-                                  markedVertices,
+                                  drawnVertices,
                                   upperLeftIndex,
                                   upperLeftPosition,
                                   invScaleFactor);
             drawVertexIfNecessary(context,
-                                  markedVertices,
+                                  drawnVertices,
                                   upperRightIndex,
                                   upperRightPosition,
                                   invScaleFactor);
             drawVertexIfNecessary(context,
-                                  markedVertices,
+                                  drawnVertices,
                                   lowerLeftIndex,
                                   lowerLeftPosition,
                                   invScaleFactor);
             drawVertexIfNecessary(context,
-                                  markedVertices,
+                                  drawnVertices,
                                   lowerRightIndex,
                                   lowerRightPosition,
+                                  invScaleFactor);
+
+            drawNormalIfNecessary(context,
+                                  drawnNormals,
+                                  upperLeftPosition,
+                                  upperNormals.left,
+                                  invScaleFactor);
+            drawNormalIfNecessary(context,
+                                  drawnNormals,
+                                  upperRightPosition,
+                                  upperNormals.right,
+                                  invScaleFactor);
+            drawNormalIfNecessary(context,
+                                  drawnNormals,
+                                  lowerLeftPosition,
+                                  lowerNormals.left,
+                                  invScaleFactor);
+            drawNormalIfNecessary(context,
+                                  drawnNormals,
+                                  lowerRightPosition,
+                                  lowerNormals.right,
                                   invScaleFactor);
 
             context.beginPath();
@@ -322,6 +374,21 @@ function getPosition(positions: Float32Array, vertexIndex: number): Float32Array
     return new Float32Array([positions[vertexIndex * 2 + 0], -positions[vertexIndex * 2 + 1]]);
 }
 
+function getNormals(normals: NormalsTable<Float32Array>,
+                    normalIndices: NormalsTable<number>,
+                    isCurve: boolean,
+                    side: 'upper' | 'lower'):
+                    { left: number, right: number } {
+    const key: keyof NormalsTable<void> = (side + (isCurve ? 'Curve' : 'Line')) as keyof
+        NormalsTable<void>;
+    const startOffset = normalIndices[key];
+    normalIndices[key]++;
+    return {
+        left: normals[key][startOffset * 2 + 0],
+        right: normals[key][startOffset * 2 + 1],
+    };
+}
+
 function drawVertexIfNecessary(context: CanvasRenderingContext2D,
                                markedVertices: boolean[],
                                vertexIndex: number,
@@ -341,6 +408,32 @@ function drawVertexIfNecessary(context: CanvasRenderingContext2D,
     context.fillText("" + vertexIndex,
                      position[0] / invScaleFactor + POINT_LABEL_OFFSET[0],
                      position[1] / invScaleFactor + POINT_LABEL_OFFSET[1]);
+    context.restore();
+}
+
+function drawNormalIfNecessary(context: CanvasRenderingContext2D,
+                               drawnNormals: boolean[],
+                               position: Float32Array,
+                               normalAngle: number,
+                               invScaleFactor: number) {
+    const length = invScaleFactor * NORMAL_LENGTH;
+    const arrowheadLength = invScaleFactor * NORMAL_ARROWHEAD_LENGTH;
+    const endpoint = glmatrix.vec2.clone([position[0] + length * Math.cos(normalAngle),
+                                          position[1] + length * Math.sin(normalAngle)]);
+
+    context.save();
+    context.strokeStyle = NORMAL_STROKE_STYLE;
+    context.beginPath();
+    context.moveTo(position[0], position[1]);
+    context.lineTo(endpoint[0], endpoint[1]);
+    context.lineTo(endpoint[0] + arrowheadLength * Math.cos(NORMAL_ARROWHEAD_ANGLE + normalAngle),
+                   endpoint[1] + arrowheadLength * Math.sin(NORMAL_ARROWHEAD_ANGLE + normalAngle));
+    context.stroke();
+    context.beginPath();
+    context.moveTo(endpoint[0], endpoint[1]);
+    context.lineTo(endpoint[0] + arrowheadLength * Math.cos(normalAngle - NORMAL_ARROWHEAD_ANGLE),
+                   endpoint[1] + arrowheadLength * Math.sin(normalAngle - NORMAL_ARROWHEAD_ANGLE));
+    context.stroke();
     context.restore();
 }
 
