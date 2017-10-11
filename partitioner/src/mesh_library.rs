@@ -22,13 +22,12 @@ use {BQuad, BVertexLoopBlinnData};
 #[derive(Debug, Clone)]
 pub struct MeshLibrary {
     pub b_quads: Vec<BQuad>,
-    pub b_quad_normals: Vec<BQuadNormals>,
     pub b_vertex_positions: Vec<Point2D<f32>>,
     pub b_vertex_path_ids: Vec<u16>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
-    pub b_vertex_normal_angles: Vec<f32>,
     pub cover_indices: MeshLibraryCoverIndices,
     pub edge_data: MeshLibraryEdgeData,
+    pub edge_normals: MeshLibraryEdgeNormals,
 }
 
 impl MeshLibrary {
@@ -36,25 +35,23 @@ impl MeshLibrary {
     pub fn new() -> MeshLibrary {
         MeshLibrary {
             b_quads: vec![],
-            b_quad_normals: vec![],
             b_vertex_positions: vec![],
             b_vertex_path_ids: vec![],
             b_vertex_loop_blinn_data: vec![],
-            b_vertex_normal_angles: vec![],
             cover_indices: MeshLibraryCoverIndices::new(),
             edge_data: MeshLibraryEdgeData::new(),
+            edge_normals: MeshLibraryEdgeNormals::new(),
         }
     }
 
     pub fn clear(&mut self) {
         self.b_quads.clear();
-        self.b_quad_normals.clear();
         self.b_vertex_positions.clear();
         self.b_vertex_path_ids.clear();
         self.b_vertex_loop_blinn_data.clear();
-        self.b_vertex_normal_angles.clear();
         self.cover_indices.clear();
         self.edge_data.clear();
+        self.edge_normals.clear();
     }
 
     pub(crate) fn add_b_quad(&mut self, b_quad: &BQuad) {
@@ -167,11 +164,9 @@ impl MeshLibrary {
         // we're writing has a byte size that is a multiple of 4. So we don't bother with doing it
         // explicitly here.
         try!(write_chunk(writer, b"bqua", &self.b_quads));
-        try!(write_chunk(writer, b"bqno", &self.b_quad_normals));
         try!(write_chunk(writer, b"bvpo", &self.b_vertex_positions));
         try!(write_chunk(writer, b"bvpi", &self.b_vertex_path_ids));
         try!(write_chunk(writer, b"bvlb", &self.b_vertex_loop_blinn_data));
-        try!(write_chunk(writer, b"bvna", &self.b_vertex_normal_angles));
         try!(write_chunk(writer, b"cvii", &self.cover_indices.interior_indices));
         try!(write_chunk(writer, b"cvci", &self.cover_indices.curve_indices));
         try!(write_chunk(writer, b"ebbv", &self.edge_data.bounding_box_vertex_positions));
@@ -184,6 +179,10 @@ impl MeshLibrary {
         try!(write_chunk(writer, b"ellp", &self.edge_data.lower_line_path_ids));
         try!(write_chunk(writer, b"eucp", &self.edge_data.upper_curve_path_ids));
         try!(write_chunk(writer, b"elcp", &self.edge_data.lower_curve_path_ids));
+        try!(write_chunk(writer, b"euln", &self.edge_normals.upper_line_normals));
+        try!(write_chunk(writer, b"elln", &self.edge_normals.lower_line_normals));
+        try!(write_chunk(writer, b"eucn", &self.edge_normals.upper_curve_normals));
+        try!(write_chunk(writer, b"elcn", &self.edge_normals.lower_curve_normals));
 
         let total_length = try!(writer.seek(SeekFrom::Current(0)));
         try!(writer.seek(SeekFrom::Start(4)));
@@ -223,15 +222,6 @@ impl MeshLibrary {
             edge_lower_curve_indices: self.edge_data.lower_curve_vertex_positions.len(),
         }
     }
-}
-
-// TODO(pcwalton): Control points.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BQuadNormals {
-    pub upper_left_vertex_normal_angle: f32,
-    pub upper_right_vertex_normal_angle: f32,
-    pub lower_left_vertex_normal_angle: f32,
-    pub lower_right_vertex_normal_angle: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -341,6 +331,32 @@ impl MeshLibraryEdgeData {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct MeshLibraryEdgeNormals {
+    pub upper_line_normals: Vec<EdgeLineNormals>,
+    pub lower_line_normals: Vec<EdgeLineNormals>,
+    pub upper_curve_normals: Vec<EdgeCurveNormals>,
+    pub lower_curve_normals: Vec<EdgeCurveNormals>,
+}
+
+impl MeshLibraryEdgeNormals {
+    fn new() -> MeshLibraryEdgeNormals {
+        MeshLibraryEdgeNormals {
+            upper_line_normals: vec![],
+            lower_line_normals: vec![],
+            upper_curve_normals: vec![],
+            lower_curve_normals: vec![],
+        }
+    }
+
+    fn clear(&mut self) {
+        self.upper_line_normals.clear();
+        self.lower_line_normals.clear();
+        self.upper_curve_normals.clear();
+        self.lower_curve_normals.clear();
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct EdgeBoundingBoxVertexPositions {
     pub upper_left: Point2D<f32>,
@@ -358,4 +374,17 @@ pub struct EdgeCurveVertexPositions {
     pub left: Point2D<f32>,
     pub control_point: Point2D<f32>,
     pub right: Point2D<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct EdgeLineNormals {
+    pub left: f32,
+    pub right: f32,
+}
+
+// TODO(pcwalton): Control point.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct EdgeCurveNormals {
+    pub left: f32,
+    pub right: f32,
 }

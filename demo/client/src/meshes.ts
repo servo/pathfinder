@@ -63,7 +63,6 @@ export const B_QUAD_LOWER_INDICES_OFFSET: number = B_QUAD_LOWER_LEFT_VERTEX_OFFS
 const B_QUAD_FIELD_COUNT: number = B_QUAD_SIZE / UINT32_SIZE;
 
 const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
-    bQuadNormals: { type: 'Float32', size: 4 },
     bQuads: { type: 'Uint32', size: B_QUAD_FIELD_COUNT },
     bVertexLoopBlinnData: { type: 'Uint32', size: 1 },
     bVertexPathIDs: { type: 'Uint16', size: 1 },
@@ -72,19 +71,22 @@ const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
     coverInteriorIndices: { type: 'Uint32', size: 1 },
     edgeBoundingBoxPathIDs: { type: 'Uint16', size: 1 },
     edgeBoundingBoxVertexPositions: { type: 'Float32', size: 4 },
+    edgeLowerCurveNormals: { type: 'Float32', size: 2 },
     edgeLowerCurvePathIDs: { type: 'Uint16', size: 1 },
     edgeLowerCurveVertexPositions: { type: 'Float32', size: 6 },
+    edgeLowerLineNormals: { type: 'Float32', size: 2 },
     edgeLowerLinePathIDs: { type: 'Uint16', size: 1 },
     edgeLowerLineVertexPositions: { type: 'Float32', size: 4 },
+    edgeUpperCurveNormals: { type: 'Float32', size: 2 },
     edgeUpperCurvePathIDs: { type: 'Uint16', size: 1 },
     edgeUpperCurveVertexPositions: { type: 'Float32', size: 6 },
+    edgeUpperLineNormals: { type: 'Float32', size: 2 },
     edgeUpperLinePathIDs: { type: 'Uint16', size: 1 },
     edgeUpperLineVertexPositions: { type: 'Float32', size: 4 },
 };
 
 const BUFFER_TYPES: Meshes<BufferType> = {
     bQuads: 'ARRAY_BUFFER',
-    bQuadNormals: 'ARRAY_BUFFER',
     bVertexLoopBlinnData: 'ARRAY_BUFFER',
     bVertexPathIDs: 'ARRAY_BUFFER',
     bVertexPositions: 'ARRAY_BUFFER',
@@ -92,17 +94,21 @@ const BUFFER_TYPES: Meshes<BufferType> = {
     coverInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
     edgeBoundingBoxPathIDs: 'ARRAY_BUFFER',
     edgeBoundingBoxVertexPositions: 'ARRAY_BUFFER',
+    edgeLowerCurveNormals: 'ARRAY_BUFFER',
     edgeLowerCurvePathIDs: 'ARRAY_BUFFER',
     edgeLowerCurveVertexPositions: 'ARRAY_BUFFER',
+    edgeLowerLineNormals: 'ARRAY_BUFFER',
     edgeLowerLinePathIDs: 'ARRAY_BUFFER',
     edgeLowerLineVertexPositions: 'ARRAY_BUFFER',
+    edgeUpperCurveNormals: 'ARRAY_BUFFER',
     edgeUpperCurvePathIDs: 'ARRAY_BUFFER',
     edgeUpperCurveVertexPositions: 'ARRAY_BUFFER',
+    edgeUpperLineNormals: 'ARRAY_BUFFER',
     edgeUpperLinePathIDs: 'ARRAY_BUFFER',
     edgeUpperLineVertexPositions: 'ARRAY_BUFFER',
 };
 
-const EDGE_BUFFER_NAMES = ['BoundingBox', 'UpperLine', 'UpperCurve', 'LowerLine', 'LowerCurve'];
+const EDGE_BUFFER_NAMES = ['UpperLine', 'UpperCurve', 'LowerLine', 'LowerCurve'];
 
 const RIFF_FOURCC: string = 'RIFF';
 
@@ -111,7 +117,6 @@ const MESH_LIBRARY_FOURCC: string = 'PFML';
 // Must match the FourCCs in `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into()`.
 const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
     bqua: 'bQuads',
-    bqno: 'bQuadNormals',
     bvlb: 'bVertexLoopBlinnData',
     bvpi: 'bVertexPathIDs',
     bvpo: 'bVertexPositions',
@@ -119,12 +124,16 @@ const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
     cvii: 'coverInteriorIndices',
     ebbp: 'edgeBoundingBoxPathIDs',
     ebbv: 'edgeBoundingBoxVertexPositions',
+    elcn: 'edgeLowerCurveNormals',
     elcp: 'edgeLowerCurvePathIDs',
     elcv: 'edgeLowerCurveVertexPositions',
+    elln: 'edgeLowerLineNormals',
     ellp: 'edgeLowerLinePathIDs',
     ellv: 'edgeLowerLineVertexPositions',
+    eucn: 'edgeUpperCurveNormals',
     eucp: 'edgeUpperCurvePathIDs',
     eucv: 'edgeUpperCurveVertexPositions',
+    euln: 'edgeUpperLineNormals',
     eulp: 'edgeUpperLinePathIDs',
     eulv: 'edgeUpperLineVertexPositions',
 };
@@ -133,7 +142,6 @@ type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
 export interface Meshes<T> {
     readonly bQuads: T;
-    readonly bQuadNormals: T;
     readonly bVertexPositions: T;
     readonly bVertexPathIDs: T;
     readonly bVertexLoopBlinnData: T;
@@ -141,12 +149,16 @@ export interface Meshes<T> {
     readonly coverCurveIndices: T;
     readonly edgeBoundingBoxPathIDs: T;
     readonly edgeBoundingBoxVertexPositions: T;
+    readonly edgeLowerCurveNormals: T;
     readonly edgeLowerCurvePathIDs: T;
     readonly edgeLowerCurveVertexPositions: T;
+    readonly edgeLowerLineNormals: T;
     readonly edgeLowerLinePathIDs: T;
     readonly edgeLowerLineVertexPositions: T;
+    readonly edgeUpperCurveNormals: T;
     readonly edgeUpperCurvePathIDs: T;
     readonly edgeUpperCurveVertexPositions: T;
+    readonly edgeUpperLineNormals: T;
     readonly edgeUpperLinePathIDs: T;
     readonly edgeUpperLineVertexPositions: T;
 }
@@ -161,12 +173,16 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly coverCurveIndices: ArrayBuffer;
     readonly edgeBoundingBoxPathIDs: ArrayBuffer;
     readonly edgeBoundingBoxVertexPositions: ArrayBuffer;
+    readonly edgeLowerCurveNormals: ArrayBuffer;
     readonly edgeLowerCurvePathIDs: ArrayBuffer;
     readonly edgeLowerCurveVertexPositions: ArrayBuffer;
+    readonly edgeLowerLineNormals: ArrayBuffer;
     readonly edgeLowerLinePathIDs: ArrayBuffer;
     readonly edgeLowerLineVertexPositions: ArrayBuffer;
+    readonly edgeUpperCurveNormals: ArrayBuffer;
     readonly edgeUpperCurvePathIDs: ArrayBuffer;
     readonly edgeUpperCurveVertexPositions: ArrayBuffer;
+    readonly edgeUpperLineNormals: ArrayBuffer;
     readonly edgeUpperLinePathIDs: ArrayBuffer;
     readonly edgeUpperLineVertexPositions: ArrayBuffer;
 
@@ -238,8 +254,15 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
             const lastBVertexIndex = bVertexCopyResult.originalEndIndex;
 
             // Copy over edge data.
+            copyVertices(['edgeBoundingBoxVertexPositions'],
+                         'edgeBoundingBoxPathIDs',
+                         expandedArrays,
+                         originalBuffers,
+                         expandedPathID,
+                         originalPathID);
             for (const edgeBufferName of EDGE_BUFFER_NAMES) {
-                copyVertices([`edge${edgeBufferName}VertexPositions` as keyof Meshes<void>],
+                copyVertices([`edge${edgeBufferName}VertexPositions` as keyof Meshes<void>,
+                              `edge${edgeBufferName}Normals` as keyof Meshes<void>],
                              `edge${edgeBufferName}PathIDs` as keyof Meshes<void>,
                              expandedArrays,
                              originalBuffers,
@@ -285,11 +308,6 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
                     else
                         expandedArrays.bQuads.push(srcIndex + indexDelta);
                 }
-
-                for (let angleIndex = 0; angleIndex < 4; angleIndex++) {
-                    const srcAngle = originalBuffers.bQuadNormals[bQuadIndex * 4 + angleIndex];
-                    expandedArrays.bQuadNormals.push(srcAngle);
-                }
             }
         }
 
@@ -310,7 +328,6 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
 
 export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly bQuads: WebGLBuffer;
-    readonly bQuadNormals: WebGLBuffer;
     readonly bVertexPositions: WebGLBuffer;
     readonly bVertexPathIDs: WebGLBuffer;
     readonly bVertexLoopBlinnData: WebGLBuffer;
@@ -318,12 +335,16 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly coverCurveIndices: WebGLBuffer;
     readonly edgeBoundingBoxPathIDs: WebGLBuffer;
     readonly edgeBoundingBoxVertexPositions: WebGLBuffer;
+    readonly edgeLowerCurveNormals: WebGLBuffer;
     readonly edgeLowerCurvePathIDs: WebGLBuffer;
     readonly edgeLowerCurveVertexPositions: WebGLBuffer;
+    readonly edgeLowerLineNormals: WebGLBuffer;
     readonly edgeLowerLinePathIDs: WebGLBuffer;
     readonly edgeLowerLineVertexPositions: WebGLBuffer;
+    readonly edgeUpperCurveNormals: WebGLBuffer;
     readonly edgeUpperCurvePathIDs: WebGLBuffer;
     readonly edgeUpperCurveVertexPositions: WebGLBuffer;
+    readonly edgeUpperLineNormals: WebGLBuffer;
     readonly edgeUpperLinePathIDs: WebGLBuffer;
     readonly edgeUpperLineVertexPositions: WebGLBuffer;
 

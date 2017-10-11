@@ -279,6 +279,16 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                     upper: view.meshes[0].edgeUpperLinePathIDs,
                 }[direction];
 
+                let lineNormalsBuffer;
+                if (kind === 'bold') {
+                    lineNormalsBuffer = {
+                        lower: view.meshes[0].edgeLowerLineNormals,
+                        upper: view.meshes[0].edgeUpperLineNormals,
+                    }[direction];
+                } else {
+                    lineNormalsBuffer = null;
+                }
+
                 view.gl.useProgram(lineProgram.program);
                 view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
                 view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
@@ -302,13 +312,44 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                             false,
                                             0,
                                             0);
+
+                if (lineNormalsBuffer != null) {
+                    view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineNormalsBuffer);
+                    view.gl.vertexAttribPointer(attributes.aLeftNormalAngle,
+                                                1,
+                                                view.gl.FLOAT,
+                                                false,
+                                                FLOAT32_SIZE * 2,
+                                                0);
+                    view.gl.vertexAttribPointer(attributes.aRightNormalAngle,
+                                                1,
+                                                view.gl.FLOAT,
+                                                false,
+                                                FLOAT32_SIZE * 2,
+                                                FLOAT32_SIZE);
+                }
+
                 view.gl.enableVertexAttribArray(attributes.aQuadPosition);
                 view.gl.enableVertexAttribArray(attributes.aLeftPosition);
                 view.gl.enableVertexAttribArray(attributes.aRightPosition);
                 view.gl.enableVertexAttribArray(attributes.aPathID);
+
+                if (lineNormalsBuffer != null) {
+                    view.gl.enableVertexAttribArray(attributes.aLeftNormalAngle);
+                    view.gl.enableVertexAttribArray(attributes.aRightNormalAngle);
+                }
+
                 view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
                 view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
                 view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
+
+                if (lineNormalsBuffer != null) {
+                    view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftNormalAngle,
+                                                                     1);
+                    view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightNormalAngle,
+                                                                     1);
+                }
+
                 view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 
                 vaos[kind + _.upperFirst(direction)] = vao;
@@ -342,6 +383,16 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                     upper: view.meshes[0].edgeUpperCurvePathIDs,
                 }[direction];
 
+                let curveNormalsBuffer;
+                if (kind === 'bold') {
+                    curveNormalsBuffer = {
+                        lower: view.meshes[0].edgeLowerCurveNormals,
+                        upper: view.meshes[0].edgeUpperCurveNormals,
+                    }[direction];
+                } else {
+                    curveNormalsBuffer = null;
+                }
+
                 view.gl.useProgram(curveProgram.program);
                 view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
                 view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
@@ -371,15 +422,47 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                             false,
                                             0,
                                             0);
+
+                if (curveNormalsBuffer != null) {
+                    view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveNormalsBuffer);
+                    view.gl.vertexAttribPointer(attributes.aLeftNormalAngle,
+                                                1,
+                                                view.gl.FLOAT,
+                                                false,
+                                                FLOAT32_SIZE * 2,
+                                                0);
+                    view.gl.vertexAttribPointer(attributes.aRightNormalAngle,
+                                                1,
+                                                view.gl.FLOAT,
+                                                false,
+                                                FLOAT32_SIZE * 2,
+                                                FLOAT32_SIZE);
+                }
+
                 view.gl.enableVertexAttribArray(attributes.aQuadPosition);
                 view.gl.enableVertexAttribArray(attributes.aLeftPosition);
                 view.gl.enableVertexAttribArray(attributes.aControlPointPosition);
                 view.gl.enableVertexAttribArray(attributes.aRightPosition);
                 view.gl.enableVertexAttribArray(attributes.aPathID);
+
+                if (curveNormalsBuffer != null) {
+                    view.gl.enableVertexAttribArray(attributes.aLeftNormalAngle);
+                    view.gl.enableVertexAttribArray(attributes.aRightNormalAngle);
+                }
+
                 view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
-                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aControlPointPosition, 1);
+                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aControlPointPosition,
+                                                                 1);
                 view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
                 view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
+
+                if (curveNormalsBuffer != null) {
+                    view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftNormalAngle,
+                                                                     1);
+                    view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightNormalAngle,
+                                                                     1);
+                }
+
                 view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 
                 vaos[kind + _.upperFirst(direction)] = vao;
@@ -467,7 +550,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 0);
         this.pathBoundsBufferTexture.bind(view.gl, uniforms, 1);
         view.setHintsUniform(uniforms);
-        view.gl.uniform1f(uniforms.uEmboldenAmount, 150.0);
+        view.gl.uniform1f(uniforms.uEmboldenAmount, 50.0);
     }
 
     private antialiasLines(view: MonochromeDemoView) {
@@ -584,8 +667,6 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 }
 
 export class ECAAMonochromeStrategy extends ECAAStrategy {
-
-
     protected getResolveProgram(view: MonochromeDemoView): PathfinderShaderProgram {
         if (this.subpixelAA !== 'none')
             return view.shaderPrograms.ecaaMonoSubpixelResolve;
