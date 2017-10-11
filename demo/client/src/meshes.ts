@@ -63,6 +63,7 @@ export const B_QUAD_LOWER_INDICES_OFFSET: number = B_QUAD_LOWER_LEFT_VERTEX_OFFS
 const B_QUAD_FIELD_COUNT: number = B_QUAD_SIZE / UINT32_SIZE;
 
 const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
+    bQuadNormals: { type: 'Float32', size: 4 },
     bQuads: { type: 'Uint32', size: B_QUAD_FIELD_COUNT },
     bVertexLoopBlinnData: { type: 'Uint32', size: 1 },
     bVertexPathIDs: { type: 'Uint16', size: 1 },
@@ -83,6 +84,7 @@ const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
 
 const BUFFER_TYPES: Meshes<BufferType> = {
     bQuads: 'ARRAY_BUFFER',
+    bQuadNormals: 'ARRAY_BUFFER',
     bVertexLoopBlinnData: 'ARRAY_BUFFER',
     bVertexPathIDs: 'ARRAY_BUFFER',
     bVertexPositions: 'ARRAY_BUFFER',
@@ -109,6 +111,7 @@ const MESH_LIBRARY_FOURCC: string = 'PFML';
 // Must match the FourCCs in `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into()`.
 const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
     bqua: 'bQuads',
+    bqno: 'bQuadNormals',
     bvlb: 'bVertexLoopBlinnData',
     bvpi: 'bVertexPathIDs',
     bvpo: 'bVertexPositions',
@@ -130,6 +133,7 @@ type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
 export interface Meshes<T> {
     readonly bQuads: T;
+    readonly bQuadNormals: T;
     readonly bVertexPositions: T;
     readonly bVertexPathIDs: T;
     readonly bVertexLoopBlinnData: T;
@@ -149,6 +153,7 @@ export interface Meshes<T> {
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly bQuads: ArrayBuffer;
+    readonly bQuadNormals: ArrayBuffer;
     readonly bVertexPositions: ArrayBuffer;
     readonly bVertexPathIDs: ArrayBuffer;
     readonly bVertexLoopBlinnData: ArrayBuffer;
@@ -271,6 +276,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
                                                                           originalPathID) {
                     break;
                 }
+
                 for (let indexIndex = 0; indexIndex < B_QUAD_FIELD_COUNT; indexIndex++) {
                     const srcIndex = originalBuffers.bQuads[bQuadIndex * B_QUAD_FIELD_COUNT +
                                                             indexIndex];
@@ -278,6 +284,11 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
                         expandedArrays.bQuads.push(srcIndex);
                     else
                         expandedArrays.bQuads.push(srcIndex + indexDelta);
+                }
+
+                for (let angleIndex = 0; angleIndex < 4; angleIndex++) {
+                    const srcAngle = originalBuffers.bQuadNormals[bQuadIndex * 4 + angleIndex];
+                    expandedArrays.bQuadNormals.push(srcAngle);
                 }
             }
         }
@@ -299,6 +310,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
 
 export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly bQuads: WebGLBuffer;
+    readonly bQuadNormals: WebGLBuffer;
     readonly bVertexPositions: WebGLBuffer;
     readonly bVertexPathIDs: WebGLBuffer;
     readonly bVertexLoopBlinnData: WebGLBuffer;

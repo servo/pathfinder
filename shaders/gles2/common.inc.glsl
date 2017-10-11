@@ -126,10 +126,16 @@ bool computeQuadPositionSlow(out vec2 outPosition,
                              vec4 localTransformST,
                              vec4 globalTransformST,
                              vec4 hints,
-                             vec4 bounds) {
+                             vec4 bounds,
+                             float leftNormalAngle,
+                             float rightNormalAngle,
+                             float emboldenAmount) {
     leftPosition = hintPosition(leftPosition, hints);
     rightPosition = hintPosition(rightPosition, hints);
     vec2 edgePosition = bounds.zw;
+
+    leftPosition += vec2(cos(leftNormalAngle), sin(leftNormalAngle)) * emboldenAmount;
+    rightPosition += vec2(cos(rightNormalAngle), sin(rightNormalAngle)) * emboldenAmount;
 
     leftPosition = transformVertexPositionST(leftPosition, localTransformST);
     rightPosition = transformVertexPositionST(rightPosition, localTransformST);

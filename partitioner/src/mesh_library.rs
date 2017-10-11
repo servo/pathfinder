@@ -16,14 +16,17 @@ use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::u32;
 
+use bold;
 use {BQuad, BVertexLoopBlinnData};
 
 #[derive(Debug, Clone)]
 pub struct MeshLibrary {
     pub b_quads: Vec<BQuad>,
+    pub b_quad_normals: Vec<BQuadNormals>,
     pub b_vertex_positions: Vec<Point2D<f32>>,
     pub b_vertex_path_ids: Vec<u16>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
+    pub b_vertex_normal_angles: Vec<f32>,
     pub cover_indices: MeshLibraryCoverIndices,
     pub edge_data: MeshLibraryEdgeData,
 }
@@ -33,9 +36,11 @@ impl MeshLibrary {
     pub fn new() -> MeshLibrary {
         MeshLibrary {
             b_quads: vec![],
+            b_quad_normals: vec![],
             b_vertex_positions: vec![],
             b_vertex_path_ids: vec![],
             b_vertex_loop_blinn_data: vec![],
+            b_vertex_normal_angles: vec![],
             cover_indices: MeshLibraryCoverIndices::new(),
             edge_data: MeshLibraryEdgeData::new(),
         }
@@ -43,9 +48,11 @@ impl MeshLibrary {
 
     pub fn clear(&mut self) {
         self.b_quads.clear();
+        self.b_quad_normals.clear();
         self.b_vertex_positions.clear();
         self.b_vertex_path_ids.clear();
         self.b_vertex_loop_blinn_data.clear();
+        self.b_vertex_normal_angles.clear();
         self.cover_indices.clear();
         self.edge_data.clear();
     }
@@ -142,6 +149,11 @@ impl MeshLibrary {
         self.cover_indices.interior_indices = new_cover_interior_indices
     }
 
+    /// Computes vertex normals necessary for emboldening and/or stem darkening.
+    pub fn compute_normals(&mut self) {
+        bold::compute_normals(self)
+    }
+
     /// Writes this mesh library to a RIFF file.
     /// 
     /// RIFF is a dead-simple extensible binary format documented here:
@@ -155,9 +167,11 @@ impl MeshLibrary {
         // we're writing has a byte size that is a multiple of 4. So we don't bother with doing it
         // explicitly here.
         try!(write_chunk(writer, b"bqua", &self.b_quads));
+        try!(write_chunk(writer, b"bqno", &self.b_quad_normals));
         try!(write_chunk(writer, b"bvpo", &self.b_vertex_positions));
         try!(write_chunk(writer, b"bvpi", &self.b_vertex_path_ids));
         try!(write_chunk(writer, b"bvlb", &self.b_vertex_loop_blinn_data));
+        try!(write_chunk(writer, b"bvna", &self.b_vertex_normal_angles));
         try!(write_chunk(writer, b"cvii", &self.cover_indices.interior_indices));
         try!(write_chunk(writer, b"cvci", &self.cover_indices.curve_indices));
         try!(write_chunk(writer, b"ebbv", &self.edge_data.bounding_box_vertex_positions));
@@ -209,6 +223,15 @@ impl MeshLibrary {
             edge_lower_curve_indices: self.edge_data.lower_curve_vertex_positions.len(),
         }
     }
+}
+
+// TODO(pcwalton): Control points.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BQuadNormals {
+    pub upper_left_vertex_normal_angle: f32,
+    pub upper_right_vertex_normal_angle: f32,
+    pub lower_left_vertex_normal_angle: f32,
+    pub lower_right_vertex_normal_angle: f32,
 }
 
 #[derive(Debug, Clone)]

@@ -33,6 +33,8 @@ pub mod capi;
 pub mod mesh_library;
 pub mod partitioner;
 
+mod bold;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum FillRule {

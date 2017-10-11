@@ -19,12 +19,15 @@ uniform ivec2 uPathTransformDimensions;
 uniform ivec2 uPathBoundsDimensions;
 uniform sampler2D uPathTransform;
 uniform sampler2D uPathBounds;
+uniform float uEmboldenAmount;
 uniform bool uLowerPart;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
 attribute vec2 aControlPointPosition;
 attribute vec2 aRightPosition;
+attribute float aLeftNormalAngle;
+attribute float aRightNormalAngle;
 attribute float aPathID;
 
 varying vec4 vEndpoints;
@@ -49,7 +52,10 @@ void main() {
                                 transform,
                                 uTransformST,
                                 uHints,
-                                bounds)) {
+                                bounds,
+                                aLeftNormalAngle,
+                                aRightNormalAngle,
+                                uEmboldenAmount)) {
         controlPointPosition = hintPosition(aControlPointPosition, uHints);
         controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
         controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);

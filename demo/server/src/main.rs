@@ -189,6 +189,7 @@ impl PathPartitioningResult {
         }
 
         partitioner.library_mut().optimize();
+        partitioner.library_mut().compute_normals();
 
         let time_elapsed = timestamp_before.elapsed();
 
