@@ -54,7 +54,7 @@ pub fn push_normals<I>(library: &mut MeshLibrary, stream: I)
         };
         let next_vector = match next_segment {
             PathSegment::Line(endpoint_0, endpoint_1) => endpoint_1 - endpoint_0,
-            PathSegment::Curve(_, control_point, endpoint_1) => endpoint_1 - control_point,
+            PathSegment::Curve(endpoint_0, control_point, _) => control_point - endpoint_0,
         };
 
         let prev_edge_normal = Vector2D::new(-prev_vector.y, prev_vector.x).normalize();
