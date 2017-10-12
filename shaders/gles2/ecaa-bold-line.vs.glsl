@@ -20,13 +20,10 @@ uniform ivec2 uPathBoundsDimensions;
 uniform sampler2D uPathTransform;
 uniform sampler2D uPathBounds;
 uniform float uEmboldenAmount;
-uniform bool uLowerPart;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
 attribute vec2 aRightPosition;
-attribute float aLeftNormalAngle;
-attribute float aRightNormalAngle;
 attribute float aPathID;
 
 varying vec4 vEndpoints;
@@ -36,15 +33,8 @@ void main() {
     vec2 leftPosition = aLeftPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
-    float leftNormalAngle = aLeftNormalAngle;
-    float rightNormalAngle = aRightNormalAngle;
-
-    if (uLowerPart) {
-        leftPosition = aRightPosition;
-        rightPosition = aLeftPosition;
-        leftNormalAngle = aRightNormalAngle;
-        rightNormalAngle = aLeftNormalAngle;
-    }
+    float leftNormalAngle = 0.0;
+    float rightNormalAngle = 0.0;
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
     vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);

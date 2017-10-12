@@ -135,8 +135,8 @@ bool computeQuadPositionSlow(out vec2 outPosition,
     rightPosition = hintPosition(rightPosition, hints);
     vec2 edgePosition = bounds.zw;
 
-    leftPosition += vec2(cos(leftNormalAngle), -sin(leftNormalAngle)) * emboldenAmount;
-    rightPosition += vec2(cos(rightNormalAngle), -sin(rightNormalAngle)) * emboldenAmount;
+    /*leftPosition += vec2(cos(leftNormalAngle), -sin(leftNormalAngle)) * emboldenAmount;
+    rightPosition += vec2(cos(rightNormalAngle), -sin(rightNormalAngle)) * emboldenAmount;*/
 
     /*if (leftPosition.x > rightPosition.x) {
         vec2 tmp = leftPosition;
@@ -165,7 +165,7 @@ bool computeQuadPositionSlow(out vec2 outPosition,
         leftPosition = rightPosition;
         rightPosition = tmp;
     }
-    outWinding = -winding;
+    outWinding = winding;
 
     if (rightPosition.x - leftPosition.x <= EPSILON) {
         outPosition = vec2(0.0);

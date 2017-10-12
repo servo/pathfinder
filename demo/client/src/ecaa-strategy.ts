@@ -21,11 +21,9 @@ import {PathfinderShaderProgram} from './shader-loader';
 import {FLOAT32_SIZE, UINT32_SIZE, unwrapNull} from './utils';
 import {MonochromeDemoView} from './view';
 
-interface EdgeVAOs {
-    fastUpper: WebGLVertexArrayObject;
-    fastLower: WebGLVertexArrayObject;
-    boldUpper: WebGLVertexArrayObject;
-    boldLower: WebGLVertexArrayObject;
+interface FastEdgeVAOs {
+    upper: WebGLVertexArrayObject;
+    lower: WebGLVertexArrayObject;
 }
 
 type Direction = 'upper' | 'lower';
@@ -50,8 +48,10 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     private aaAlphaTexture: WebGLTexture;
     private aaFramebuffer: WebGLFramebuffer;
     private coverVAO: WebGLVertexArrayObject;
-    private lineVAOs: EdgeVAOs;
-    private curveVAOs: EdgeVAOs;
+    private fastLineVAOs: FastEdgeVAOs;
+    private fastCurveVAOs: FastEdgeVAOs;
+    private boldLineVAO: WebGLVertexArrayObject;
+    private boldCurveVAO: WebGLVertexArrayObject;
     private resolveVAO: WebGLVertexArrayObject;
 
     private mode: 'fast' | 'bold' = 'bold';
@@ -75,8 +75,10 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 
         this.createEdgeDetectVAO(view);
         this.createCoverVAO(view);
-        this.createLineVAOs(view);
-        this.createCurveVAOs(view);
+        this.createFastLineVAOs(view);
+        this.createFastCurveVAOs(view);
+        this.createBoldLineVAO(view);
+        this.createBoldCurveVAO(view);
         this.createResolveVAO(view);
     }
 
@@ -134,13 +136,15 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         // Set up antialiasing.
         this.prepareAA(view);
 
-        // Conservatively cover if needed.
-        if (this.mode === 'fast')
+        // Conservatively cover if needed, and antialias.
+        if (this.mode === 'fast') {
             this.cover(view);
-
-        // Antialias.
-        this.antialiasLines(view);
-        this.antialiasCurves(view);
+            this.antialiasLines(view);
+            this.antialiasCurves(view);
+        } else {
+            this.antialiasLinesBold(view);
+            this.antialiasCurvesBold(view);
+        }
     }
 
     resolve(view: MonochromeDemoView) {
@@ -257,221 +261,245 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private createLineVAOs(view: MonochromeDemoView) {
-        const fastLineProgram = view.shaderPrograms.ecaaFastLine;
+    private createFastLineVAOs(view: MonochromeDemoView) {
         const boldLineProgram = view.shaderPrograms.ecaaBoldLine;
 
-        const vaos: any = {};
-        for (const kind of ['fast', 'bold'] as Array<'fast' | 'bold'>) {
-            const lineProgram = kind === 'fast' ? fastLineProgram : boldLineProgram;
-            const attributes = lineProgram.attributes;
+        const vaos: Partial<FastEdgeVAOs> = {};
+        const lineProgram = boldLineProgram;
+        const attributes = lineProgram.attributes;
 
-            for (const direction of DIRECTIONS) {
-                const vao = view.vertexArrayObjectExt.createVertexArrayOES();
-                view.vertexArrayObjectExt.bindVertexArrayOES(vao);
+        for (const direction of DIRECTIONS) {
+            const vao = view.vertexArrayObjectExt.createVertexArrayOES();
+            view.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
-                const lineVertexPositionsBuffer = {
-                    lower: view.meshes[0].edgeLowerLineVertexPositions,
-                    upper: view.meshes[0].edgeUpperLineVertexPositions,
-                }[direction];
-                const linePathIDsBuffer = {
-                    lower: view.meshes[0].edgeLowerLinePathIDs,
-                    upper: view.meshes[0].edgeUpperLinePathIDs,
-                }[direction];
+            const lineVertexPositionsBuffer = {
+                lower: view.meshes[0].edgeLowerLineVertexPositions,
+                upper: view.meshes[0].edgeUpperLineVertexPositions,
+            }[direction];
+            const linePathIDsBuffer = {
+                lower: view.meshes[0].edgeLowerLinePathIDs,
+                upper: view.meshes[0].edgeUpperLinePathIDs,
+            }[direction];
 
-                let lineNormalsBuffer;
-                if (kind === 'bold') {
-                    lineNormalsBuffer = {
-                        lower: view.meshes[0].edgeLowerLineNormals,
-                        upper: view.meshes[0].edgeUpperLineNormals,
-                    }[direction];
-                } else {
-                    lineNormalsBuffer = null;
-                }
+            view.gl.useProgram(lineProgram.program);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+            view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineVertexPositionsBuffer);
+            view.gl.vertexAttribPointer(attributes.aLeftPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 4,
+                                        0);
+            view.gl.vertexAttribPointer(attributes.aRightPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 4,
+                                        FLOAT32_SIZE * 2);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, linePathIDsBuffer);
+            view.gl.vertexAttribPointer(attributes.aPathID,
+                                        1,
+                                        view.gl.UNSIGNED_SHORT,
+                                        false,
+                                        0,
+                                        0);
 
-                view.gl.useProgram(lineProgram.program);
-                view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
-                view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
-                view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineVertexPositionsBuffer);
-                view.gl.vertexAttribPointer(attributes.aLeftPosition,
-                                            2,
-                                            view.gl.FLOAT,
-                                            false,
-                                            FLOAT32_SIZE * 4,
-                                            0);
-                view.gl.vertexAttribPointer(attributes.aRightPosition,
-                                            2,
-                                            view.gl.FLOAT,
-                                            false,
-                                            FLOAT32_SIZE * 4,
-                                            FLOAT32_SIZE * 2);
-                view.gl.bindBuffer(view.gl.ARRAY_BUFFER, linePathIDsBuffer);
-                view.gl.vertexAttribPointer(attributes.aPathID,
-                                            1,
-                                            view.gl.UNSIGNED_SHORT,
-                                            false,
-                                            0,
-                                            0);
+            view.gl.enableVertexAttribArray(attributes.aQuadPosition);
+            view.gl.enableVertexAttribArray(attributes.aLeftPosition);
+            view.gl.enableVertexAttribArray(attributes.aRightPosition);
+            view.gl.enableVertexAttribArray(attributes.aPathID);
 
-                if (lineNormalsBuffer != null) {
-                    view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineNormalsBuffer);
-                    view.gl.vertexAttribPointer(attributes.aLeftNormalAngle,
-                                                1,
-                                                view.gl.FLOAT,
-                                                false,
-                                                FLOAT32_SIZE * 2,
-                                                0);
-                    view.gl.vertexAttribPointer(attributes.aRightNormalAngle,
-                                                1,
-                                                view.gl.FLOAT,
-                                                false,
-                                                FLOAT32_SIZE * 2,
-                                                FLOAT32_SIZE);
-                }
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
 
-                view.gl.enableVertexAttribArray(attributes.aQuadPosition);
-                view.gl.enableVertexAttribArray(attributes.aLeftPosition);
-                view.gl.enableVertexAttribArray(attributes.aRightPosition);
-                view.gl.enableVertexAttribArray(attributes.aPathID);
+            view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 
-                if (lineNormalsBuffer != null) {
-                    view.gl.enableVertexAttribArray(attributes.aLeftNormalAngle);
-                    view.gl.enableVertexAttribArray(attributes.aRightNormalAngle);
-                }
-
-                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
-                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
-                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
-
-                if (lineNormalsBuffer != null) {
-                    view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftNormalAngle,
-                                                                     1);
-                    view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightNormalAngle,
-                                                                     1);
-                }
-
-                view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
-
-                vaos[kind + _.upperFirst(direction)] = vao;
-            }
+            vaos[direction] = vao;
         }
 
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
 
-        this.lineVAOs = vaos as EdgeVAOs;
+        this.fastLineVAOs = vaos as FastEdgeVAOs;
     }
 
-    private createCurveVAOs(view: MonochromeDemoView) {
-        const fastCurveProgram = view.shaderPrograms.ecaaFastCurve;
-        const boldCurveProgram = view.shaderPrograms.ecaaBoldCurve;
+    private createFastCurveVAOs(view: MonochromeDemoView) {
+        const vaos: Partial<FastEdgeVAOs> = {};
+        const curveProgram = view.shaderPrograms.ecaaFastCurve;
+        const attributes = curveProgram.attributes;
 
-        const vaos: any = {};
-        for (const kind of ['fast', 'bold'] as Array<'fast' | 'bold'>) {
-            const curveProgram = kind === 'fast' ? fastCurveProgram : boldCurveProgram;
-            const attributes = curveProgram.attributes;
+        for (const direction of DIRECTIONS) {
+            const vao = view.vertexArrayObjectExt.createVertexArrayOES();
+            view.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
-            for (const direction of DIRECTIONS) {
-                const vao = view.vertexArrayObjectExt.createVertexArrayOES();
-                view.vertexArrayObjectExt.bindVertexArrayOES(vao);
+            const curveVertexPositionsBuffer = {
+                lower: view.meshes[0].edgeLowerCurveVertexPositions,
+                upper: view.meshes[0].edgeUpperCurveVertexPositions,
+            }[direction];
+            const curvePathIDsBuffer = {
+                lower: view.meshes[0].edgeLowerCurvePathIDs,
+                upper: view.meshes[0].edgeUpperCurvePathIDs,
+            }[direction];
 
-                const curveVertexPositionsBuffer = {
-                    lower: view.meshes[0].edgeLowerCurveVertexPositions,
-                    upper: view.meshes[0].edgeUpperCurveVertexPositions,
-                }[direction];
-                const curvePathIDsBuffer = {
-                    lower: view.meshes[0].edgeLowerCurvePathIDs,
-                    upper: view.meshes[0].edgeUpperCurvePathIDs,
-                }[direction];
+            view.gl.useProgram(curveProgram.program);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+            view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveVertexPositionsBuffer);
+            view.gl.vertexAttribPointer(attributes.aLeftPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 6,
+                                        0);
+            view.gl.vertexAttribPointer(attributes.aControlPointPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 6,
+                                        FLOAT32_SIZE * 2);
+            view.gl.vertexAttribPointer(attributes.aRightPosition,
+                                        2,
+                                        view.gl.FLOAT,
+                                        false,
+                                        FLOAT32_SIZE * 6,
+                                        FLOAT32_SIZE * 4);
+            view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curvePathIDsBuffer);
+            view.gl.vertexAttribPointer(attributes.aPathID,
+                                        1,
+                                        view.gl.UNSIGNED_SHORT,
+                                        false,
+                                        0,
+                                        0);
 
-                let curveNormalsBuffer;
-                if (kind === 'bold') {
-                    curveNormalsBuffer = {
-                        lower: view.meshes[0].edgeLowerCurveNormals,
-                        upper: view.meshes[0].edgeUpperCurveNormals,
-                    }[direction];
-                } else {
-                    curveNormalsBuffer = null;
-                }
+            view.gl.enableVertexAttribArray(attributes.aQuadPosition);
+            view.gl.enableVertexAttribArray(attributes.aLeftPosition);
+            view.gl.enableVertexAttribArray(attributes.aControlPointPosition);
+            view.gl.enableVertexAttribArray(attributes.aRightPosition);
+            view.gl.enableVertexAttribArray(attributes.aPathID);
 
-                view.gl.useProgram(curveProgram.program);
-                view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
-                view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
-                view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveVertexPositionsBuffer);
-                view.gl.vertexAttribPointer(attributes.aLeftPosition,
-                                            2,
-                                            view.gl.FLOAT,
-                                            false,
-                                            FLOAT32_SIZE * 6,
-                                            0);
-                view.gl.vertexAttribPointer(attributes.aControlPointPosition,
-                                            2,
-                                            view.gl.FLOAT,
-                                            false,
-                                            FLOAT32_SIZE * 6,
-                                            FLOAT32_SIZE * 2);
-                view.gl.vertexAttribPointer(attributes.aRightPosition,
-                                            2,
-                                            view.gl.FLOAT,
-                                            false,
-                                            FLOAT32_SIZE * 6,
-                                            FLOAT32_SIZE * 4);
-                view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curvePathIDsBuffer);
-                view.gl.vertexAttribPointer(attributes.aPathID,
-                                            1,
-                                            view.gl.UNSIGNED_SHORT,
-                                            false,
-                                            0,
-                                            0);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aControlPointPosition,
+                                                                1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
+            view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
 
-                if (curveNormalsBuffer != null) {
-                    view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveNormalsBuffer);
-                    view.gl.vertexAttribPointer(attributes.aLeftNormalAngle,
-                                                1,
-                                                view.gl.FLOAT,
-                                                false,
-                                                FLOAT32_SIZE * 2,
-                                                0);
-                    view.gl.vertexAttribPointer(attributes.aRightNormalAngle,
-                                                1,
-                                                view.gl.FLOAT,
-                                                false,
-                                                FLOAT32_SIZE * 2,
-                                                FLOAT32_SIZE);
-                }
+            view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 
-                view.gl.enableVertexAttribArray(attributes.aQuadPosition);
-                view.gl.enableVertexAttribArray(attributes.aLeftPosition);
-                view.gl.enableVertexAttribArray(attributes.aControlPointPosition);
-                view.gl.enableVertexAttribArray(attributes.aRightPosition);
-                view.gl.enableVertexAttribArray(attributes.aPathID);
-
-                if (curveNormalsBuffer != null) {
-                    view.gl.enableVertexAttribArray(attributes.aLeftNormalAngle);
-                    view.gl.enableVertexAttribArray(attributes.aRightNormalAngle);
-                }
-
-                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
-                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aControlPointPosition,
-                                                                 1);
-                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
-                view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
-
-                if (curveNormalsBuffer != null) {
-                    view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftNormalAngle,
-                                                                     1);
-                    view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightNormalAngle,
-                                                                     1);
-                }
-
-                view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
-
-                vaos[kind + _.upperFirst(direction)] = vao;
-            }
+            vaos[direction] = vao;
         }
 
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
 
-        this.curveVAOs = vaos as EdgeVAOs;
+        this.fastCurveVAOs = vaos as FastEdgeVAOs;
+    }
+
+    private createBoldLineVAO(view: MonochromeDemoView) {
+        const lineProgram = view.shaderPrograms.ecaaBoldLine;
+        const attributes = lineProgram.attributes;
+
+        const vao = view.vertexArrayObjectExt.createVertexArrayOES();
+        view.vertexArrayObjectExt.bindVertexArrayOES(vao);
+
+        const lineVertexPositionsBuffer = view.meshes[0].segmentLines;
+        const linePathIDsBuffer = view.meshes[0].segmentLinePathIDs;
+
+        view.gl.useProgram(lineProgram.program);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+        view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineVertexPositionsBuffer);
+        view.gl.vertexAttribPointer(attributes.aLeftPosition,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 4,
+                                    0);
+        view.gl.vertexAttribPointer(attributes.aRightPosition,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 4,
+                                    FLOAT32_SIZE * 2);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, linePathIDsBuffer);
+        view.gl.vertexAttribPointer(attributes.aPathID,
+                                    1,
+                                    view.gl.UNSIGNED_SHORT,
+                                    false,
+                                    0,
+                                    0);
+
+        view.gl.enableVertexAttribArray(attributes.aQuadPosition);
+        view.gl.enableVertexAttribArray(attributes.aLeftPosition);
+        view.gl.enableVertexAttribArray(attributes.aRightPosition);
+        view.gl.enableVertexAttribArray(attributes.aPathID);
+
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
+
+        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+
+        this.boldLineVAO = vao;
+    }
+
+    private createBoldCurveVAO(view: MonochromeDemoView) {
+        const curveProgram = view.shaderPrograms.ecaaBoldCurve;
+        const attributes = curveProgram.attributes;
+
+        const vao = view.vertexArrayObjectExt.createVertexArrayOES();
+        view.vertexArrayObjectExt.bindVertexArrayOES(vao);
+
+        const curveVertexPositionsBuffer = view.meshes[0].segmentCurves;
+        const curvePathIDsBuffer = view.meshes[0].segmentCurvePathIDs;
+
+        view.gl.useProgram(curveProgram.program);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
+        view.gl.vertexAttribPointer(attributes.aQuadPosition, 2, view.gl.FLOAT, false, 0, 0);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveVertexPositionsBuffer);
+        view.gl.vertexAttribPointer(attributes.aLeftPosition,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 6,
+                                    0);
+        view.gl.vertexAttribPointer(attributes.aControlPointPosition,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 6,
+                                    FLOAT32_SIZE * 2);
+        view.gl.vertexAttribPointer(attributes.aRightPosition,
+                                    2,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 6,
+                                    FLOAT32_SIZE * 4);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curvePathIDsBuffer);
+        view.gl.vertexAttribPointer(attributes.aPathID,
+                                    1,
+                                    view.gl.UNSIGNED_SHORT,
+                                    false,
+                                    0,
+                                    0);
+
+        view.gl.enableVertexAttribArray(attributes.aQuadPosition);
+        view.gl.enableVertexAttribArray(attributes.aLeftPosition);
+        view.gl.enableVertexAttribArray(attributes.aControlPointPosition);
+        view.gl.enableVertexAttribArray(attributes.aRightPosition);
+        view.gl.enableVertexAttribArray(attributes.aPathID);
+
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aControlPointPosition, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
+
+        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+
+        this.boldCurveVAO = vao;
     }
 
     private createResolveVAO(view: MonochromeDemoView) {
@@ -534,7 +562,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         this.setAADepthState(view);
     }
 
-    private setBlendModeForAA(view: MonochromeDemoView, direction: Direction) {
+    private setBlendModeForAA(view: MonochromeDemoView) {
         if (this.mode === 'bold')
             view.gl.blendEquation(view.gl.FUNC_ADD);
         else
@@ -550,27 +578,23 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 0);
         this.pathBoundsBufferTexture.bind(view.gl, uniforms, 1);
         view.setHintsUniform(uniforms);
-        view.gl.uniform1f(uniforms.uEmboldenAmount, 25.0);
+        view.gl.uniform1f(uniforms.uEmboldenAmount, /*25.0*/0.0);
     }
 
     private antialiasLines(view: MonochromeDemoView) {
         this.setAAState(view);
 
-        let lineProgram;
-        if (this.mode === 'fast')
-            lineProgram = view.shaderPrograms.ecaaFastLine;
-        else
-            lineProgram = view.shaderPrograms.ecaaBoldLine;
+        const lineProgram = view.shaderPrograms.ecaaFastLine;
 
         view.gl.useProgram(lineProgram.program);
         const uniforms = lineProgram.uniforms;
         this.setAAUniforms(view, uniforms);
 
         for (const direction of DIRECTIONS) {
-            const vao = (this.lineVAOs as any)[this.mode + _.upperFirst(direction)];
+            const vao = this.fastLineVAOs[direction];
             view.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
-            this.setBlendModeForAA(view, direction);
+            this.setBlendModeForAA(view);
             view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
 
             const count = {
@@ -590,21 +614,17 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
     private antialiasCurves(view: MonochromeDemoView) {
         this.setAAState(view);
 
-        let curveProgram;
-        if (this.mode === 'fast')
-            curveProgram = view.shaderPrograms.ecaaFastCurve;
-        else
-            curveProgram = view.shaderPrograms.ecaaBoldCurve;
+        const curveProgram = view.shaderPrograms.ecaaFastCurve;
 
         view.gl.useProgram(curveProgram.program);
         const uniforms = curveProgram.uniforms;
         this.setAAUniforms(view, uniforms);
 
         for (const direction of DIRECTIONS) {
-            const vao = (this.curveVAOs as any)[this.mode + _.upperFirst(direction)];
+            const vao = this.fastCurveVAOs[direction];
             view.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
-            this.setBlendModeForAA(view, direction);
+            this.setBlendModeForAA(view);
             view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
 
             const count = {
@@ -617,6 +637,55 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                                                0,
                                                                count);
         }
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    private antialiasLinesBold(view: MonochromeDemoView) {
+        this.setAAState(view);
+
+        const lineProgram = view.shaderPrograms.ecaaBoldLine;
+
+        view.gl.useProgram(lineProgram.program);
+        const uniforms = lineProgram.uniforms;
+        this.setAAUniforms(view, uniforms);
+
+        const vao = this.boldLineVAO;
+        view.vertexArrayObjectExt.bindVertexArrayOES(vao);
+
+        this.setBlendModeForAA(view);
+
+        const count = view.meshData[0].segmentLineCount;
+        view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
+                                                           6,
+                                                           view.gl.UNSIGNED_BYTE,
+                                                           0,
+                                                           count);
+
+        view.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    private antialiasCurvesBold(view: MonochromeDemoView) {
+        this.setAAState(view);
+
+        const curveProgram = view.shaderPrograms.ecaaBoldCurve;
+
+        view.gl.useProgram(curveProgram.program);
+        const uniforms = curveProgram.uniforms;
+        this.setAAUniforms(view, uniforms);
+
+        const vao = this.boldCurveVAO;
+        view.vertexArrayObjectExt.bindVertexArrayOES(vao);
+
+        this.setBlendModeForAA(view);
+
+        const count = view.meshData[0].segmentCurveCount;
+        view.instancedArraysExt.drawElementsInstancedANGLE(view.gl.TRIANGLES,
+                                                           6,
+                                                           view.gl.UNSIGNED_BYTE,
+                                                           0,
+                                                           count);
+        console.log("drew", count, "curves");
 
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }

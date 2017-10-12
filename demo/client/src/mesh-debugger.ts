@@ -238,10 +238,10 @@ class MeshDebuggerView extends PathfinderView {
         const positions = new Float32Array(meshes.bVertexPositions);
 
         const normals: NormalsTable<Float32Array> = {
-            lowerCurve: new Float32Array(meshes.edgeLowerCurveNormals),
-            lowerLine: new Float32Array(meshes.edgeLowerLineNormals),
-            upperCurve: new Float32Array(meshes.edgeUpperCurveNormals),
-            upperLine: new Float32Array(meshes.edgeUpperLineNormals),
+            lowerCurve: new Float32Array(0),
+            lowerLine: new Float32Array(0),
+            upperCurve: new Float32Array(0),
+            upperLine: new Float32Array(0),
         };
 
         const drawnVertices: boolean[] = [], drawnNormals: boolean[] = [];
@@ -276,10 +276,10 @@ class MeshDebuggerView extends PathfinderView {
             const lowerRightPosition = unwrapNull(getPosition(positions, lowerRightIndex));
             const lowerControlPointPosition = getPosition(positions, lowerControlPointIndex);
 
-            const upperCurve = upperControlPointPosition != null;
+            /*const upperCurve = upperControlPointPosition != null;
             const lowerCurve = lowerControlPointPosition != null;
             const upperNormals = getNormals(normals, normalIndices, upperCurve, 'upper');
-            const lowerNormals = getNormals(normals, normalIndices, lowerCurve, 'lower');
+            const lowerNormals = getNormals(normals, normalIndices, lowerCurve, 'lower');*/
 
             drawVertexIfNecessary(context,
                                   drawnVertices,
@@ -302,6 +302,7 @@ class MeshDebuggerView extends PathfinderView {
                                   lowerRightPosition,
                                   invScaleFactor);
 
+                                  /*
             drawNormalIfNecessary(context,
                                   drawnNormals,
                                   upperLeftPosition,
@@ -321,7 +322,7 @@ class MeshDebuggerView extends PathfinderView {
                                   drawnNormals,
                                   lowerRightPosition,
                                   lowerNormals.right,
-                                  invScaleFactor);
+                                  invScaleFactor);*/
 
             context.beginPath();
             context.moveTo(upperLeftPosition[0], upperLeftPosition[1]);

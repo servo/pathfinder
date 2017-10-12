@@ -124,14 +124,30 @@ pub struct PathBufferStream<'a> {
     path_buffer: &'a PathBuffer,
     endpoint_index: u32,
     subpath_index: u32,
+    last_subpath_index: u32,
 }
 
 impl<'a> PathBufferStream<'a> {
+    #[inline]
     pub fn new<'b>(path_buffer: &'b PathBuffer) -> PathBufferStream<'b> {
         PathBufferStream {
             path_buffer: path_buffer,
             endpoint_index: 0,
             subpath_index: 0,
+            last_subpath_index: path_buffer.subpaths.len() as u32,
+        }
+    }
+
+    #[inline]
+    pub fn subpath_range<'b>(path_buffer: &'b PathBuffer, subpath_range: Range<u32>)
+                             -> PathBufferStream<'b> {
+        let first_endpoint_index = path_buffer.subpaths[subpath_range.start as usize]
+                                              .first_endpoint_index;
+        PathBufferStream {
+            path_buffer: path_buffer,
+            endpoint_index: first_endpoint_index,
+            subpath_index: subpath_range.start,
+            last_subpath_index: subpath_range.end,
         }
     }
 }
@@ -140,7 +156,7 @@ impl<'a> Iterator for PathBufferStream<'a> {
     type Item = PathCommand;
 
     fn next(&mut self) -> Option<PathCommand> {
-        if self.subpath_index as usize == self.path_buffer.subpaths.len() {
+        if self.subpath_index == self.last_subpath_index {
             return None
         }
 
