@@ -19,7 +19,6 @@ import {SubpixelAAType} from './aa-strategy';
 import {DemoAppController} from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from "./camera";
-import {ECAAMonochromeStrategy, ECAAStrategy} from './ecaa-strategy';
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from './gl-utils';
 import {UniformMap} from './gl-utils';
@@ -31,6 +30,7 @@ import {BUILTIN_FONT_URI, calculatePixelXMin, GlyphStore, Hint, SimpleTextLayout
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
 import {DemoView, MonochromeDemoView, Timings, TIMINGS} from './view';
+import {ECAAMonochromeStrategy, ECAAStrategy} from './xcaa-strategy';
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves

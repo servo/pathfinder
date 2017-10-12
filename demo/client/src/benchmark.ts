@@ -17,7 +17,6 @@ import {SubpixelAAType} from "./aa-strategy";
 import {AppController, DemoAppController} from "./app-controller";
 import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from './camera';
-import {ECAAMonochromeStrategy, ECAAStrategy} from './ecaa-strategy';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
@@ -26,6 +25,7 @@ import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFram
 import {TextRun} from "./text";
 import {assert, PathfinderError, unwrapNull, unwrapUndef, panic} from "./utils";
 import {DemoView, MonochromeDemoView, Timings } from "./view";
+import {ECAAMonochromeStrategy, ECAAStrategy} from './xcaa-strategy';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 

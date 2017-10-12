@@ -16,7 +16,6 @@ import {SubpixelAAType} from "./aa-strategy";
 import {DemoAppController} from './app-controller';
 import PathfinderBufferTexture from "./buffer-texture";
 import {OrthographicCamera} from "./camera";
-import {ECAAMulticolorStrategy, ECAAStrategy} from "./ecaa-strategy";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
@@ -24,6 +23,7 @@ import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {panic, unwrapNull} from './utils';
 import {DemoView, Timings} from './view';
+import {ECAAMulticolorStrategy, ECAAStrategy} from "./xcaa-strategy";
 
 const parseColor = require('parse-color');
 
