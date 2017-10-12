@@ -503,33 +503,25 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                     0,
                                     0);
         view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveNormalsBuffer);
-        view.gl.vertexAttribPointer(attributes.aLeftNormalAngle,
-                                    1,
+        view.gl.vertexAttribPointer(attributes.aNormalAngles,
+                                    3,
                                     view.gl.FLOAT,
                                     false,
-                                    FLOAT32_SIZE * 2,
+                                    FLOAT32_SIZE * 3,
                                     0);
-        view.gl.vertexAttribPointer(attributes.aRightNormalAngle,
-                                    1,
-                                    view.gl.FLOAT,
-                                    false,
-                                    FLOAT32_SIZE * 2,
-                                    FLOAT32_SIZE);
 
         view.gl.enableVertexAttribArray(attributes.aQuadPosition);
         view.gl.enableVertexAttribArray(attributes.aLeftPosition);
         view.gl.enableVertexAttribArray(attributes.aControlPointPosition);
         view.gl.enableVertexAttribArray(attributes.aRightPosition);
         view.gl.enableVertexAttribArray(attributes.aPathID);
-        view.gl.enableVertexAttribArray(attributes.aLeftNormalAngle);
-        view.gl.enableVertexAttribArray(attributes.aRightNormalAngle);
+        view.gl.enableVertexAttribArray(attributes.aNormalAngles);
 
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aControlPointPosition, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
-        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftNormalAngle, 1);
-        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightNormalAngle, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aNormalAngles, 1);
 
         view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 

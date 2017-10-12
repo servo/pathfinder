@@ -215,6 +215,9 @@ impl MeshLibrary {
         try!(write_chunk(writer, b"sncu", &self.segment_normals.curve_normals));
         println!("{}", self.segments.lines.len());
         println!("{}", self.segments.curves.len());
+        println!("{}", self.segment_normals.line_normals.len());
+        println!("{}", self.segment_normals.curve_normals.len());
+        println!("--");
 
         let total_length = try!(writer.seek(SeekFrom::Current(0)));
         try!(writer.seek(SeekFrom::Start(4)));
@@ -447,9 +450,9 @@ pub struct LineSegmentNormals {
     pub endpoint_1: f32,
 }
 
-// TODO(pcwalton): Control point.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct CurveSegmentNormals {
     pub endpoint_0: f32,
+    pub control_point: f32,
     pub endpoint_1: f32,
 }

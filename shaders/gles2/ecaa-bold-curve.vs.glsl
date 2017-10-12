@@ -25,9 +25,8 @@ attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
 attribute vec2 aControlPointPosition;
 attribute vec2 aRightPosition;
+attribute vec3 aNormalAngles;
 attribute float aPathID;
-attribute float aLeftNormalAngle;
-attribute float aRightNormalAngle;
 
 varying vec4 vEndpoints;
 varying vec2 vControlPoint;
@@ -38,8 +37,9 @@ void main() {
     vec2 controlPointPosition = aControlPointPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
-    float leftNormalAngle = aLeftNormalAngle;
-    float rightNormalAngle = aRightNormalAngle;
+    float leftNormalAngle = aNormalAngles.x;
+    float controlPointNormalAngle = aNormalAngles.y;
+    float rightNormalAngle = aNormalAngles.z;
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
     vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);
@@ -61,6 +61,8 @@ void main() {
                                 rightNormalAngle,
                                 uEmboldenAmount)) {
         controlPointPosition = hintPosition(aControlPointPosition, uHints);
+        controlPointPosition += vec2(cos(controlPointNormalAngle),
+                                     -sin(controlPointNormalAngle)) * uEmboldenAmount;
         controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
         controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
         controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);

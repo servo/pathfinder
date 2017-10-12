@@ -79,7 +79,7 @@ const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
     edgeUpperCurveVertexPositions: { type: 'Float32', size: 6 },
     edgeUpperLinePathIDs: { type: 'Uint16', size: 1 },
     edgeUpperLineVertexPositions: { type: 'Float32', size: 4 },
-    segmentCurveNormals: { type: 'Float32', size: 2 },
+    segmentCurveNormals: { type: 'Float32', size: 3 },
     segmentCurvePathIDs: { type: 'Uint16', size: 1 },
     segmentCurves: { type: 'Float32', size: 6 },
     segmentLineNormals: { type: 'Float32', size: 2 },
