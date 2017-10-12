@@ -403,6 +403,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 
         const lineVertexPositionsBuffer = view.meshes[0].segmentLines;
         const linePathIDsBuffer = view.meshes[0].segmentLinePathIDs;
+        const lineNormalsBuffer = view.meshes[0].segmentLineNormals;
 
         view.gl.useProgram(lineProgram.program);
         view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
@@ -427,15 +428,32 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                     false,
                                     0,
                                     0);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, lineNormalsBuffer);
+        view.gl.vertexAttribPointer(attributes.aLeftNormalAngle,
+                                    1,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 2,
+                                    0);
+        view.gl.vertexAttribPointer(attributes.aRightNormalAngle,
+                                    1,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 2,
+                                    FLOAT32_SIZE);
 
         view.gl.enableVertexAttribArray(attributes.aQuadPosition);
         view.gl.enableVertexAttribArray(attributes.aLeftPosition);
         view.gl.enableVertexAttribArray(attributes.aRightPosition);
         view.gl.enableVertexAttribArray(attributes.aPathID);
+        view.gl.enableVertexAttribArray(attributes.aLeftNormalAngle);
+        view.gl.enableVertexAttribArray(attributes.aRightNormalAngle);
 
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftNormalAngle, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightNormalAngle, 1);
 
         view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 
@@ -453,6 +471,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
 
         const curveVertexPositionsBuffer = view.meshes[0].segmentCurves;
         const curvePathIDsBuffer = view.meshes[0].segmentCurvePathIDs;
+        const curveNormalsBuffer = view.meshes[0].segmentCurveNormals;
 
         view.gl.useProgram(curveProgram.program);
         view.gl.bindBuffer(view.gl.ARRAY_BUFFER, view.quadPositionsBuffer);
@@ -483,17 +502,34 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
                                     false,
                                     0,
                                     0);
+        view.gl.bindBuffer(view.gl.ARRAY_BUFFER, curveNormalsBuffer);
+        view.gl.vertexAttribPointer(attributes.aLeftNormalAngle,
+                                    1,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 2,
+                                    0);
+        view.gl.vertexAttribPointer(attributes.aRightNormalAngle,
+                                    1,
+                                    view.gl.FLOAT,
+                                    false,
+                                    FLOAT32_SIZE * 2,
+                                    FLOAT32_SIZE);
 
         view.gl.enableVertexAttribArray(attributes.aQuadPosition);
         view.gl.enableVertexAttribArray(attributes.aLeftPosition);
         view.gl.enableVertexAttribArray(attributes.aControlPointPosition);
         view.gl.enableVertexAttribArray(attributes.aRightPosition);
         view.gl.enableVertexAttribArray(attributes.aPathID);
+        view.gl.enableVertexAttribArray(attributes.aLeftNormalAngle);
+        view.gl.enableVertexAttribArray(attributes.aRightNormalAngle);
 
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftPosition, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aControlPointPosition, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
         view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftNormalAngle, 1);
+        view.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightNormalAngle, 1);
 
         view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
 
@@ -578,7 +614,7 @@ export abstract class ECAAStrategy extends AntialiasingStrategy {
         view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 0);
         this.pathBoundsBufferTexture.bind(view.gl, uniforms, 1);
         view.setHintsUniform(uniforms);
-        view.gl.uniform1f(uniforms.uEmboldenAmount, /*25.0*/0.0);
+        view.gl.uniform1f(uniforms.uEmboldenAmount, 25.0);
     }
 
     private antialiasLines(view: MonochromeDemoView) {

@@ -182,7 +182,6 @@ impl PathPartitioningResult {
         }
 
         partitioner.library_mut().optimize();
-        partitioner.library_mut().compute_normals();
 
         let time_elapsed = timestamp_before.elapsed();
 
@@ -304,6 +303,8 @@ fn partition_font(request: Json<PartitionFontRequest>)
     for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
         let stream = PathBufferStream::subpath_range(&path_buffer, (*subpath_range).clone());
         library.push_segments((path_index + 1) as u16, stream);
+        let stream = PathBufferStream::subpath_range(&path_buffer, (*subpath_range).clone());
+        library.push_normals(stream);
     }
 
     let mut partitioner = Partitioner::new(library);

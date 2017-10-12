@@ -25,6 +25,8 @@ attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
 attribute vec2 aRightPosition;
 attribute float aPathID;
+attribute float aLeftNormalAngle;
+attribute float aRightNormalAngle;
 
 varying vec4 vEndpoints;
 varying float vWinding;
@@ -33,8 +35,8 @@ void main() {
     vec2 leftPosition = aLeftPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
-    float leftNormalAngle = 0.0;
-    float rightNormalAngle = 0.0;
+    float leftNormalAngle = aLeftNormalAngle;
+    float rightNormalAngle = aRightNormalAngle;
 
     vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
     vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);

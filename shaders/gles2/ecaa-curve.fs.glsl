@@ -27,7 +27,6 @@ float solveCurveT(float p0x, float p1x, float p2x, float x) {
 }
 
 void main() {
-#if 0
     // Unpack.
     vec2 center = gl_FragCoord.xy;
     vec2 p0 = vEndpoints.xy, p1 = vEndpoints.zw;
@@ -56,19 +55,6 @@ void main() {
     t = clamp(q.xy / p.xy, 0.0, 1.0);
     spanP0 = p0 + p.yw * t.x;
     spanP1 = p0 + p.yw * t.y;
-#endif
-
-    // Unpack.
-    vec2 center = gl_FragCoord.xy;
-    vec2 p0 = vEndpoints.xy, p1 = vEndpoints.zw;
-
-    // Set up Liang-Barsky clipping.
-    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
-    vec4 p = (p1 - p0).xxyy, q = pixelExtents - p0.xxyy;
-
-    // Use Liang-Barsky to clip to the left and right sides of this pixel.
-    vec2 t = clamp(q.xy / p.xy, 0.0, 1.0);
-    vec2 spanP0 = p0 + p.yw * t.x, spanP1 = p0 + p.yw * t.y;
 
     // Compute area.
     gl_FragColor = vec4(computeCoverage(p0, p1,

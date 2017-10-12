@@ -11,7 +11,7 @@
 use bincode::{self, Infinite};
 use byteorder::{LittleEndian, WriteBytesExt};
 use euclid::Point2D;
-use pathfinder_path_utils::{PathBuffer, PathCommand, PathSegment, PathSegmentStream};
+use pathfinder_path_utils::{PathCommand, PathSegment, PathSegmentStream};
 use serde::Serialize;
 use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::ops::Range;
@@ -150,12 +150,6 @@ impl MeshLibrary {
         self.cover_indices.interior_indices = new_cover_interior_indices
     }
 
-    /// Computes vertex normals necessary for emboldening and/or stem darkening.
-    pub fn compute_normals(&mut self) {
-        // FIXME(pcwalton): Reenable.
-        //bold::compute_normals(self)
-    }
-
     pub fn push_segments<I>(&mut self, path_id: u16, stream: I)
                             where I: Iterator<Item = PathCommand> {
         let stream = PathSegmentStream::new(stream);
@@ -178,6 +172,11 @@ impl MeshLibrary {
                 }
             }
         }
+    }
+
+    /// Computes vertex normals necessary for emboldening and/or stem darkening.
+    pub fn push_normals<I>(&mut self, stream: I) where I: Iterator<Item = PathCommand> {
+        bold::push_normals(self, stream)
     }
 
     /// Writes this mesh library to a RIFF file.
