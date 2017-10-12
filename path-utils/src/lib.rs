@@ -13,6 +13,7 @@ extern crate euclid;
 #[macro_use]
 extern crate serde_derive;
 
+use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Transform2D};
 use std::mem;
 use std::ops::Range;
@@ -247,22 +248,34 @@ impl<I> Iterator for PathSegmentStream<I> where I: Iterator<Item = PathCommand> 
                     self.current_subpath_start_point = point;
                 }
                 Some(PathCommand::LineTo(endpoint)) => {
-                    let start_point = mem::replace(&mut self.current_point, endpoint);
-                    return Some((PathSegment::Line(start_point, endpoint),
-                                 self.current_subpath_index))
+                    if points_are_sufficiently_far_apart(&self.current_point, &endpoint) {
+                        let start_point = mem::replace(&mut self.current_point, endpoint);
+                        return Some((PathSegment::Line(start_point, endpoint),
+                                    self.current_subpath_index))
+                    }
                 }
                 Some(PathCommand::CurveTo(control_point, endpoint)) => {
-                    let start_point = mem::replace(&mut self.current_point, endpoint);
-                    return Some((PathSegment::Curve(start_point, control_point, endpoint),
-                                 self.current_subpath_index))
+                    if points_are_sufficiently_far_apart(&self.current_point, &endpoint) {
+                        let start_point = mem::replace(&mut self.current_point, endpoint);
+                        return Some((PathSegment::Curve(start_point, control_point, endpoint),
+                                    self.current_subpath_index))
+                    }
                 }
                 Some(PathCommand::ClosePath) => {
-                    let start_point = mem::replace(&mut self.current_point,
-                                                   self.current_subpath_start_point);
-                    return Some((PathSegment::Line(start_point, self.current_subpath_start_point),
-                                 self.current_subpath_index))
+                    let endpoint = self.current_subpath_start_point;
+                    if points_are_sufficiently_far_apart(&self.current_point, &endpoint) {
+                        let start_point = mem::replace(&mut self.current_point, endpoint);
+                        return Some((PathSegment::Line(start_point, endpoint),
+                                     self.current_subpath_index))
+                    }
                 }
             }
+        }
+
+        fn points_are_sufficiently_far_apart(point_a: &Point2D<f32>, point_b: &Point2D<f32>)
+                                             -> bool {
+            (point_a.x - point_b.x).abs() > 0.001 ||
+                (point_a.y - point_b.y).abs() > 0.001
         }
     }
 }

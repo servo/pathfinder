@@ -24,6 +24,8 @@ pub fn push_normals<I>(library: &mut MeshLibrary, stream: I)
     let mut index_of_prev_segment = None;
 
     while let Some((prev_segment, prev_subpath_index)) = stream.next() {
+        println!("{:?} {:?}", prev_segment, prev_subpath_index);
+
         let is_first_segment = index_of_first_segment_of_subpath.is_none();
         let is_last_segment = match stream.peek() {
             Some(&(_, next_subpath_index)) => prev_subpath_index != next_subpath_index,
@@ -115,6 +117,7 @@ pub fn push_normals<I>(library: &mut MeshLibrary, stream: I)
                     library.segment_normals.curve_normals[index].endpoint_0 = next_vertex_angle
                 }
             }
+            index_of_first_segment_of_subpath = None;
         }
     }
 }
