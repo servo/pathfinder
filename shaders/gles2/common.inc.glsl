@@ -184,64 +184,65 @@ bool computeQuadPositionSlow(out vec2 outPosition,
 
 // Computes the area of the polygon covering the pixel with the given boundaries.
 //
-// * `p0` and `p1` are the endpoints of the line.
+// * `p0` is the start point of the line.
 // * `spanP0` and `spanP1` are the endpoints of the line, clipped to the left and right edges of
 //   the pixel.
 // * `t` is the times of `spanP0` and `spanP1` relative to `p0` and `p1` respectively.
 // * `pixelExtents` are the boundaries of the pixel (left/right/bottom/top respectively).
+// * `dp` is (p1 - p0).
 // * `p` and `q` are the Liang-Barsky clipping distances.
-// * `lowerPart` is true if this is the lower half of the B-quad.
+// * `winding` is true if the winding number is 1 or false if the winding number is -1.
 //
 // FIXME(pcwalton): This API is ludicrous. Clean it up!
 float computeCoverage(vec2 p0,
-                      vec2 p1,
                       vec2 spanP0,
                       vec2 spanP1,
                       vec2 t,
                       vec4 pixelExtents,
-                      vec4 p,
+                      vec2 dp,
                       vec4 q,
-                      bool lowerPart) {
-    bool slopeNegative = p0.y > p1.y;
-    bool slopeZero = abs(p.z) < 0.01;
+                      bool winding) {
+    bool slopeNegative = dp.y < -0.001;
+    bool slopeZero = abs(dp.y) < 0.001;
 
     // Clip to the bottom and top.
     if (!slopeZero) {
-        vec2 tVertical = q.zw / p.zw;
+        vec2 tVertical = q.zw / dp.yy;
         if (slopeNegative)
             tVertical.xy = tVertical.yx;    // FIXME(pcwalton): Can this be removed?
         t = vec2(max(t.x, tVertical.x), min(t.y, tVertical.y));
     }
 
     // If the line doesn't pass through this pixel, detect that and bail.
-    if (t.x >= t.y || (slopeZero && (spanP0.y < pixelExtents.z || spanP0.y > pixelExtents.w))) {
-        bool fill = /*lowerPart ? */spanP0.y < pixelExtents.z /*: spanP0.y > pixelExtents.w*/;
-        float areaSign = lowerPart ? 1.0 : -1.0;
-        return fill ? (areaSign * (spanP1.x - spanP0.x)) : 0.0;
+    if (t.x >= t.y || (slopeZero && (p0.y < pixelExtents.z || p0.y > pixelExtents.w))) {
+        bool fill = spanP0.y < pixelExtents.z;
+        float areaSign = winding ? 1.0 : -1.0;
+        return fill ? areaSign * (spanP1.x - spanP0.x) : 0.0;
+        //return 0.0;
     }
 
     // Calculate A2.x.
     float a2x;
-    if (xor(lowerPart, slopeNegative)) {
+    if (slopeNegative) {
+        a2x = spanP1.x;
+    } else {
         a2x = spanP0.x;
         t.xy = t.yx;
-    } else {
-        a2x = spanP1.x;
     }
 
     // Calculate A3.y.
-    float a3y = /*lowerPart ? */pixelExtents.w/* : pixelExtents.z*/;
+    float a3y = pixelExtents.w;
 
     // Calculate A0-A5.
-    vec2 a0 = p0 + p.yw * t.x;
-    vec2 a1 = p0 + p.yw * t.y;
+    vec2 a0 = p0 + dp * t.x;
+    vec2 a1 = p0 + dp * t.y;
     vec2 a2 = vec2(a2x, a1.y);
     vec2 a3 = vec2(a2x, a3y);
     vec2 a4 = vec2(a0.x, a3y);
 
     // Calculate area with the shoelace formula.
     float area = det2(a0, a1) + det2(a1, a2) + det2(a2, a3) + det2(a3, a4) + det2(a4, a0); 
-    return area * (slopeNegative ? 0.5 : -0.5);
+    return abs(area) * (winding ? 0.5 : -0.5);
 }
 
 // https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html

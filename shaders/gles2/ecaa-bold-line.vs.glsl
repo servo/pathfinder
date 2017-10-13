@@ -64,4 +64,3 @@ void main() {
     vEndpoints = vec4(leftPosition, rightPosition);
     vWinding = winding;
 }
-

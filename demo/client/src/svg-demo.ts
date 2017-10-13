@@ -23,7 +23,7 @@ import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {panic, unwrapNull} from './utils';
 import {DemoView, Timings} from './view';
-import {ECAAMulticolorStrategy, ECAAStrategy} from "./xcaa-strategy";
+import {MCAAMulticolorStrategy, XCAAStrategy} from "./xcaa-strategy";
 
 const parseColor = require('parse-color');
 
@@ -32,7 +32,7 @@ const SVG_NS: string = "http://www.w3.org/2000/svg";
 const DEFAULT_FILE: string = 'tiger';
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
-    ecaa: ECAAMulticolorStrategy,
+    ecaa: MCAAMulticolorStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
 };
@@ -40,7 +40,7 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    ecaa: typeof ECAAStrategy;
+    ecaa: typeof XCAAStrategy;
 }
 
 class SVGDemoController extends DemoAppController<SVGDemoView> {

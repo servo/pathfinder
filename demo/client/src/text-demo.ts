@@ -30,7 +30,7 @@ import {BUILTIN_FONT_URI, calculatePixelXMin, GlyphStore, Hint, SimpleTextLayout
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
 import {DemoView, MonochromeDemoView, Timings, TIMINGS} from './view';
-import {ECAAMonochromeStrategy, ECAAStrategy} from './xcaa-strategy';
+import {MCAAMonochromeStrategy, XCAAStrategy} from './xcaa-strategy';
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves
@@ -748,7 +748,7 @@ class TextDemoView extends MonochromeDemoView {
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    ecaa: typeof ECAAStrategy;
+    ecaa: typeof XCAAStrategy;
 }
 
 class Atlas {
@@ -878,7 +878,7 @@ class GlyphKey {
 }
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
-    ecaa: ECAAMonochromeStrategy,
+    ecaa: MCAAMonochromeStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
 };

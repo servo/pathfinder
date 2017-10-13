@@ -369,10 +369,8 @@ export abstract class MCAAStrategy extends XCAAStrategy {
     }
 
     private createLineVAOs(view: MonochromeDemoView) {
-        const boldLineProgram = view.shaderPrograms.ecaaBoldLine;
-
         const vaos: Partial<FastEdgeVAOs> = {};
-        const lineProgram = boldLineProgram;
+        const lineProgram = view.shaderPrograms.ecaaFastLine;
         const attributes = lineProgram.attributes;
 
         for (const direction of DIRECTIONS) {
@@ -515,8 +513,8 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private setBlendModeForAA(view: MonochromeDemoView) {
-        view.gl.blendEquation(view.gl.FUNC_REVERSE_SUBTRACT);
+    private setBlendModeForAA(view: MonochromeDemoView, direction: 'upper' | 'lower') {
+        view.gl.blendEquation(view.gl.FUNC_ADD);
         view.gl.blendFunc(view.gl.ONE, view.gl.ONE);
         view.gl.enable(view.gl.BLEND);
     }
@@ -534,8 +532,8 @@ export abstract class MCAAStrategy extends XCAAStrategy {
             const vao = this.lineVAOs[direction];
             view.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
-            this.setBlendModeForAA(view);
-            view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
+            this.setBlendModeForAA(view, direction);
+            view.gl.uniform1i(uniforms.uWinding, direction === 'upper' ? 1 : 0);
 
             const count = {
                 lower: view.meshData[0].edgeLowerLineCount,
@@ -564,8 +562,8 @@ export abstract class MCAAStrategy extends XCAAStrategy {
             const vao = this.curveVAOs[direction];
             view.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
-            this.setBlendModeForAA(view);
-            view.gl.uniform1i(uniforms.uLowerPart, direction === 'lower' ? 1 : 0);
+            this.setBlendModeForAA(view, direction);
+            view.gl.uniform1i(uniforms.uWinding, direction === 'upper' ? 1 : 0);
 
             const count = {
                 lower: view.meshData[0].edgeLowerCurveCount,
@@ -582,9 +580,13 @@ export abstract class MCAAStrategy extends XCAAStrategy {
     }
 }
 
-export abstract class ECAAStrategy extends XCAAStrategy {
+export class ECAAStrategy extends XCAAStrategy {
     private boldLineVAO: WebGLVertexArrayObject;
     private boldCurveVAO: WebGLVertexArrayObject;
+
+    get shouldRenderDirect() {
+        return false;
+    }
 
     attachMeshes(view: MonochromeDemoView) {
         super.attachMeshes(view);
@@ -604,6 +606,38 @@ export abstract class ECAAStrategy extends XCAAStrategy {
     protected setAAUniforms(view: MonochromeDemoView, uniforms: UniformMap) {
         super.setAAUniforms(view, uniforms);
         view.gl.uniform1f(uniforms.uEmboldenAmount, 25.0);
+    }
+
+    protected getResolveProgram(view: MonochromeDemoView): PathfinderShaderProgram {
+        if (this.subpixelAA !== 'none')
+            return view.shaderPrograms.ecaaMonoSubpixelResolve;
+        return view.shaderPrograms.ecaaMonoResolve;
+    }
+
+    protected initEdgeDetectFramebuffer(view: MonochromeDemoView) {}
+
+    protected createEdgeDetectVAO(view: MonochromeDemoView) {}
+
+    protected detectEdgesIfNecessary(view: MonochromeDemoView) {}
+
+    protected clear(view: MonochromeDemoView) {
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        view.gl.clearDepth(0.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT | view.gl.DEPTH_BUFFER_BIT);
+    }
+
+    protected setAADepthState(view: MonochromeDemoView) {
+        view.gl.disable(view.gl.DEPTH_TEST);
+    }
+
+    protected clearForResolve(view: MonochromeDemoView) {
+        view.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        view.gl.clear(view.gl.COLOR_BUFFER_BIT);
+    }
+
+    protected setResolveUniforms(view: MonochromeDemoView, program: PathfinderShaderProgram) {
+        view.gl.uniform4fv(program.uniforms.uBGColor, view.bgColor);
+        view.gl.uniform4fv(program.uniforms.uFGColor, view.fgColor);
     }
 
     private setBlendModeForAA(view: MonochromeDemoView) {
@@ -798,7 +832,7 @@ export abstract class ECAAStrategy extends XCAAStrategy {
     }
 }
 
-export class ECAAMonochromeStrategy extends ECAAStrategy {
+export class MCAAMonochromeStrategy extends MCAAStrategy {
     protected getResolveProgram(view: MonochromeDemoView): PathfinderShaderProgram {
         if (this.subpixelAA !== 'none')
             return view.shaderPrograms.ecaaMonoSubpixelResolve;
@@ -836,7 +870,7 @@ export class ECAAMonochromeStrategy extends ECAAStrategy {
     }
 }
 
-export class ECAAMulticolorStrategy extends ECAAStrategy {
+export class MCAAMulticolorStrategy extends MCAAStrategy {
     private _directDepthTexture: WebGLTexture;
 
     private edgeDetectFramebuffer: WebGLFramebuffer;

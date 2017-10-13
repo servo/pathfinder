@@ -15,7 +15,7 @@ uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathTransformDimensions;
 uniform sampler2D uPathTransform;
-uniform bool uLowerPart;
+uniform bool uWinding;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
@@ -47,5 +47,5 @@ void main() {
 
     gl_Position = vec4(position, depth, 1.0);
     vEndpoints = vec4(leftPosition, rightPosition);
-    vWinding = uLowerPart ? -1.0 : 1.0;
+    vWinding = uWinding ? 1.0 : -1.0;
 }

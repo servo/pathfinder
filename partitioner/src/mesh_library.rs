@@ -74,7 +74,7 @@ impl MeshLibrary {
 
         let upper_left_bounding_box_position =
             Point2D::new(upper_left_position.x,
-                         f32::min(upper_left_position.y, upper_right_position.y));
+                         f32::max(upper_left_position.y, upper_right_position.y));
         let lower_right_bounding_box_position =
             Point2D::new(lower_right_position.x,
                          f32::max(lower_left_position.y, lower_right_position.y));

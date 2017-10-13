@@ -25,7 +25,7 @@ import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFram
 import {TextRun} from "./text";
 import {assert, PathfinderError, unwrapNull, unwrapUndef, panic} from "./utils";
 import {DemoView, MonochromeDemoView, Timings } from "./view";
-import {ECAAMonochromeStrategy, ECAAStrategy} from './xcaa-strategy';
+import {MCAAMonochromeStrategy, XCAAStrategy} from './xcaa-strategy';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -39,7 +39,7 @@ const MAX_FONT_SIZE: number = 200;
 const RUNS: number = 8;
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
-    ecaa: ECAAMonochromeStrategy,
+    ecaa: MCAAMonochromeStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
 };
@@ -47,7 +47,7 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    ecaa: typeof ECAAStrategy;
+    ecaa: typeof XCAAStrategy;
 }
 
 class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {

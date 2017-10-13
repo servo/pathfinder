@@ -51,16 +51,17 @@ void main() {
     p1 = spanP1;
 
     // Set up Liang-Barsky clipping.
-    vec4 p = (p1 - p0).xxyy, q = pixelExtents - p0.xxyy;
-    t = clamp(q.xy / p.xy, 0.0, 1.0);
-    spanP0 = p0 + p.yw * t.x;
-    spanP1 = p0 + p.yw * t.y;
+    vec2 dp = p1 - p0;
+    vec4 q = pixelExtents - p0.xxyy;
+    t = clamp(q.xy / dp.xx, 0.0, 1.0);
+    spanP0 = p0 + dp * t.x;
+    spanP1 = p0 + dp * t.y;
 
     // Compute area.
-    gl_FragColor = vec4(computeCoverage(p0, p1,
+    gl_FragColor = vec4(computeCoverage(p0,
                                         spanP0, spanP1,
                                         t,
                                         pixelExtents,
-                                        p, q,
-                                        vWinding < 0.0));
+                                        dp, q,
+                                        vWinding > 0.0));
 }
