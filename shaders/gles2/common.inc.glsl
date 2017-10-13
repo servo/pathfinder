@@ -212,6 +212,9 @@ float computeCoverage(vec2 p0, vec2 dp, vec2 center, float winding) {
     }
 
     // If the line doesn't pass through this pixel, detect that and bail.
+    //
+    // This should be worth a branch because it's very common for fragment blocks to all hit this
+    // path.
     if (t.x >= t.y || (slopeZero && (p0.y < pixelExtents.z || p0.y > pixelExtents.w)))
         return spanP0.y < pixelExtents.z ? winding * (spanP1.x - spanP0.x) : 0.0;
 
