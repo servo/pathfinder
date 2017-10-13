@@ -45,23 +45,9 @@ void main() {
     vec2 t = vec2(p0.x < pixelExtents.x ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.x) : 0.0,
                   p1.x > pixelExtents.y ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.y) : 1.0);
 
-    vec2 spanP0 = mix(mix(p0, cp, t.x), mix(cp, p1, t.x), t.x);
-    vec2 spanP1 = mix(mix(p0, cp, t.y), mix(cp, p1, t.y), t.y);
-    p0 = spanP0;
-    p1 = spanP1;
-
-    // Set up Liang-Barsky clipping.
-    vec2 dp = p1 - p0;
-    vec4 q = pixelExtents - p0.xxyy;
-    t = clamp(q.xy / dp.xx, 0.0, 1.0);
-    spanP0 = p0 + dp * t.x;
-    spanP1 = p0 + dp * t.y;
+    vec2 clippedP0 = mix(mix(p0, cp, t.x), mix(cp, p1, t.x), t.x);
+    vec2 clippedP1 = mix(mix(p0, cp, t.y), mix(cp, p1, t.y), t.y);
 
     // Compute area.
-    gl_FragColor = vec4(computeCoverage(p0,
-                                        spanP0, spanP1,
-                                        t,
-                                        pixelExtents,
-                                        dp, q,
-                                        vWinding > 0.0));
+    gl_FragColor = vec4(computeCoverage(clippedP0, clippedP1 - clippedP0, center, vWinding));
 }

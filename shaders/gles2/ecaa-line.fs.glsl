@@ -28,10 +28,5 @@ void main() {
     vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
 
     // Compute area.
-    gl_FragColor = vec4(computeCoverage(p0,
-                                        spanP0, spanP1,
-                                        t,
-                                        pixelExtents,
-                                        dp, q,
-                                        vWinding > 0.0));
+    gl_FragColor = vec4(computeCoverage(p0, dp, center, vWinding));
 }

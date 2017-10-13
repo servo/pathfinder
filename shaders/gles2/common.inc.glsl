@@ -185,27 +185,25 @@ bool computeQuadPositionSlow(out vec2 outPosition,
 // Computes the area of the polygon covering the pixel with the given boundaries.
 //
 // * `p0` is the start point of the line.
-// * `spanP0` and `spanP1` are the endpoints of the line, clipped to the left and right edges of
-//   the pixel.
-// * `t` is the times of `spanP0` and `spanP1` relative to `p0` and `p1` respectively.
-// * `pixelExtents` are the boundaries of the pixel (left/right/bottom/top respectively).
-// * `dp` is (p1 - p0).
-// * `p` and `q` are the Liang-Barsky clipping distances.
-// * `winding` is true if the winding number is 1 or false if the winding number is -1.
-//
-// FIXME(pcwalton): This API is ludicrous. Clean it up!
-float computeCoverage(vec2 p0,
-                      vec2 spanP0,
-                      vec2 spanP1,
-                      vec2 t,
-                      vec4 pixelExtents,
-                      vec2 dp,
-                      vec4 q,
-                      bool winding) {
+// * `dp` is the vector from the start point to the endpoint of the line.
+// * `center` is the center of the pixel in window coordinates (i.e. `gl_FragCoord.xy`).
+// * `winding` is the winding number (1 or -1).
+float computeCoverage(vec2 p0, vec2 dp, vec2 center, float winding) {
+    // Set some flags.
     bool slopeNegative = dp.y < -0.001;
     bool slopeZero = abs(dp.y) < 0.001;
 
-    // Clip to the bottom and top.
+    // Determine the bounds of this pixel.
+    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
+
+    // Set up Liang-Barsky clipping.
+    vec4 q = pixelExtents - p0.xxyy;
+
+    // Use Liang-Barsky to clip to the left and right sides of this pixel.
+    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
+    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
+
+    // Likewise, clip to the to the bottom and top.
     if (!slopeZero) {
         vec2 tVertical = q.zw / dp.yy;
         if (slopeNegative)
@@ -214,12 +212,8 @@ float computeCoverage(vec2 p0,
     }
 
     // If the line doesn't pass through this pixel, detect that and bail.
-    if (t.x >= t.y || (slopeZero && (p0.y < pixelExtents.z || p0.y > pixelExtents.w))) {
-        bool fill = spanP0.y < pixelExtents.z;
-        float areaSign = winding ? 1.0 : -1.0;
-        return fill ? areaSign * (spanP1.x - spanP0.x) : 0.0;
-        //return 0.0;
-    }
+    if (t.x >= t.y || (slopeZero && (p0.y < pixelExtents.z || p0.y > pixelExtents.w)))
+        return spanP0.y < pixelExtents.z ? winding * (spanP1.x - spanP0.x) : 0.0;
 
     // Calculate A2.x.
     float a2x;
@@ -242,7 +236,7 @@ float computeCoverage(vec2 p0,
 
     // Calculate area with the shoelace formula.
     float area = det2(a0, a1) + det2(a1, a2) + det2(a2, a3) + det2(a3, a4) + det2(a4, a0); 
-    return abs(area) * (winding ? 0.5 : -0.5);
+    return abs(area) * winding * 0.5;
 }
 
 // https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html
