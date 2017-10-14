@@ -25,7 +25,7 @@ import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFram
 import {TextRun} from "./text";
 import {assert, PathfinderError, unwrapNull, unwrapUndef, panic} from "./utils";
 import {DemoView, MonochromeDemoView, Timings } from "./view";
-import {MCAAMonochromeStrategy, XCAAStrategy} from './xcaa-strategy';
+import {MCAAMonochromeStrategy, XCAAStrategy, ECAAStrategy} from './xcaa-strategy';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -39,7 +39,7 @@ const MAX_FONT_SIZE: number = 200;
 const RUNS: number = 8;
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
-    ecaa: MCAAMonochromeStrategy,
+    ecaa: ECAAStrategy,
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
 };

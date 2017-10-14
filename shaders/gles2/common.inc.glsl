@@ -130,22 +130,13 @@ bool computeQuadPositionSlow(out vec2 outPosition,
                              vec4 bounds,
                              float leftNormalAngle,
                              float rightNormalAngle,
-                             float emboldenAmount) {
-    leftPosition = hintPosition(leftPosition, hints);
-    rightPosition = hintPosition(rightPosition, hints);
-    vec2 edgePosition = bounds.zw;
-
+                             vec2 emboldenAmount) {
     leftPosition += vec2(cos(leftNormalAngle), -sin(leftNormalAngle)) * emboldenAmount;
     rightPosition += vec2(cos(rightNormalAngle), -sin(rightNormalAngle)) * emboldenAmount;
 
-    /*if (leftPosition.x > rightPosition.x) {
-        vec2 tmp = leftPosition;
-        leftPosition = rightPosition;
-        rightPosition = tmp;
-    }*/
-
-    /*leftPosition.y = min(leftPosition.y, edgePosition.y);
-    rightPosition.y = min(rightPosition.y, edgePosition.y);*/
+    leftPosition = hintPosition(leftPosition, hints);
+    rightPosition = hintPosition(rightPosition, hints);
+    vec2 edgePosition = hintPosition(bounds.zw, hints);
 
     leftPosition = transformVertexPositionST(leftPosition, localTransformST);
     rightPosition = transformVertexPositionST(rightPosition, localTransformST);
@@ -159,8 +150,8 @@ bool computeQuadPositionSlow(out vec2 outPosition,
     rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
     edgePosition = convertClipToScreenSpace(edgePosition, framebufferSize);
 
-    float winding = sign(rightPosition.x - leftPosition.x);
-    if (winding < 0.0) {
+    float winding = sign(leftPosition.x - rightPosition.x);
+    if (winding > 0.0) {
         vec2 tmp = leftPosition;
         leftPosition = rightPosition;
         rightPosition = tmp;

@@ -19,7 +19,7 @@ uniform ivec2 uPathTransformDimensions;
 uniform ivec2 uPathBoundsDimensions;
 uniform sampler2D uPathTransform;
 uniform sampler2D uPathBounds;
-uniform float uEmboldenAmount;
+uniform vec2 uEmboldenAmount;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
@@ -60,9 +60,9 @@ void main() {
                                 leftNormalAngle,
                                 rightNormalAngle,
                                 uEmboldenAmount)) {
-        controlPointPosition = hintPosition(aControlPointPosition, uHints);
         controlPointPosition += vec2(cos(controlPointNormalAngle),
                                      -sin(controlPointNormalAngle)) * uEmboldenAmount;
+        controlPointPosition = hintPosition(aControlPointPosition, uHints);
         controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
         controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
         controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);

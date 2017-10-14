@@ -18,8 +18,9 @@ import {createFramebufferDepthTexture, setTextureParameters, UniformMap} from '.
 import {WebGLVertexArrayObject} from './gl-utils';
 import {B_QUAD_LOWER_INDICES_OFFSET, B_QUAD_SIZE, B_QUAD_UPPER_INDICES_OFFSET} from './meshes';
 import {PathfinderShaderProgram} from './shader-loader';
-import {FLOAT32_SIZE, UINT32_SIZE, unwrapNull} from './utils';
+import {FLOAT32_SIZE, UINT32_SIZE, unwrapNull, lerp} from './utils';
 import {MonochromeDemoView} from './view';
+import { computeStemDarkeningAmount } from './text';
 
 interface FastEdgeVAOs {
     upper: WebGLVertexArrayObject;
@@ -63,9 +64,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
     }
 
     attachMeshes(view: MonochromeDemoView) {
-        const bVertexPositions = new Float32Array(view.meshData[0].bVertexPositions);
-        const bVertexPathIDs = new Uint8Array(view.meshData[0].bVertexPathIDs);
-
         this.createEdgeDetectVAO(view);
         this.createResolveVAO(view);
     }
@@ -190,7 +188,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         view.pathTransformBufferTextures[0].bind(view.gl, uniforms, 0);
         this.pathBoundsBufferTexture.bind(view.gl, uniforms, 1);
         view.setHintsUniform(uniforms);
-        view.gl.uniform1f(uniforms.uEmboldenAmount, 25.0);
     }
 
     protected abstract clear(view: MonochromeDemoView): void;
@@ -605,7 +602,8 @@ export class ECAAStrategy extends XCAAStrategy {
 
     protected setAAUniforms(view: MonochromeDemoView, uniforms: UniformMap) {
         super.setAAUniforms(view, uniforms);
-        view.gl.uniform1f(uniforms.uEmboldenAmount, 25.0);
+        const emboldenAmount = view.emboldenAmount;
+        view.gl.uniform2f(uniforms.uEmboldenAmount, emboldenAmount[0], emboldenAmount[1]);
     }
 
     protected getResolveProgram(view: MonochromeDemoView): PathfinderShaderProgram {
@@ -826,7 +824,6 @@ export class ECAAStrategy extends XCAAStrategy {
                                                            view.gl.UNSIGNED_BYTE,
                                                            0,
                                                            count);
-        console.log("drew", count, "curves");
 
         view.vertexArrayObjectExt.bindVertexArrayOES(null);
     }

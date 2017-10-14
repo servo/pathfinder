@@ -140,6 +140,10 @@ export abstract class DemoView extends PathfinderView {
 
     pathTransformBufferTextures: PathfinderBufferTexture[];
 
+    get emboldenAmount(): glmatrix.vec2 {
+        return glmatrix.vec2.create();
+    }
+
     get colorAlphaFormat(): number {
         return this.sRGBExt == null ? this.gl.RGBA : this.sRGBExt.SRGB_ALPHA_EXT;
     }

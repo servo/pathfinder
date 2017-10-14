@@ -19,6 +19,10 @@ import {assert, lerp, panic, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils"
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
 
+const STEM_DARKENING_FACTOR: glmatrix.vec2 = glmatrix.vec2.clone([0.0121, 0.015125]);
+
+const MIN_STEM_DARKENING_AMOUNT: glmatrix.vec2 = glmatrix.vec2.clone([0.3, 0.3]);
+
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
 
 export interface ExpandedMeshData {
@@ -115,9 +119,11 @@ export class TextRun {
                         layoutPixelsPerUnit: number,
                         displayPixelsPerUnit: number,
                         hint: Hint,
+                        stemDarkeningAmount: glmatrix.vec2,
                         subpixelGranularity: number):
                         glmatrix.vec4 {
         const metrics = unwrapNull(this.font.metricsForGlyph(this.glyphIDs[index]));
+        const unitMetrics = new UnitMetrics(metrics, stemDarkeningAmount);
         const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index,
                                                                     layoutPixelsPerUnit,
                                                                     hint);
@@ -126,7 +132,10 @@ export class TextRun {
         glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
         textGlyphOrigin[0] /= subpixelGranularity;
 
-        return calculatePixelRectForGlyph(metrics, textGlyphOrigin, displayPixelsPerUnit, hint);
+        return calculatePixelRectForGlyph(unitMetrics,
+                                          textGlyphOrigin,
+                                          displayPixelsPerUnit,
+                                          hint);
     }
 
     subpixelForGlyphAt(index: number,
@@ -320,26 +329,40 @@ export class Hint {
     }
 }
 
-export function calculatePixelXMin(metrics: Metrics, pixelsPerUnit: number): number {
-    return Math.floor(metrics.xMin * pixelsPerUnit);
+export class UnitMetrics {
+    left: number;
+    right: number;
+    ascent: number;
+    descent: number;
+
+    constructor(metrics: Metrics, stemDarkeningAmount: glmatrix.vec2) {
+        this.left = metrics.xMin - stemDarkeningAmount[0];
+        this.right = metrics.xMax + stemDarkeningAmount[0];
+        this.ascent = metrics.yMax + stemDarkeningAmount[1];
+        this.descent = metrics.yMin - stemDarkeningAmount[1];
+    }
 }
 
-export function calculatePixelDescent(metrics: Metrics, pixelsPerUnit: number): number {
-    return Math.ceil(-metrics.yMin * pixelsPerUnit);
+export function calculatePixelXMin(metrics: UnitMetrics, pixelsPerUnit: number): number {
+    return Math.floor(metrics.left * pixelsPerUnit);
 }
 
-function calculateSubpixelMetricsForGlyph(metrics: Metrics, pixelsPerUnit: number, hint: Hint):
+export function calculatePixelDescent(metrics: UnitMetrics, pixelsPerUnit: number): number {
+    return Math.ceil(-metrics.descent * pixelsPerUnit);
+}
+
+function calculateSubpixelMetricsForGlyph(metrics: UnitMetrics, pixelsPerUnit: number, hint: Hint):
                                           PixelMetrics {
-    const top = hint.hintPosition(glmatrix.vec2.fromValues(0, metrics.yMax))[1];
+    const ascent = hint.hintPosition(glmatrix.vec2.fromValues(0, metrics.ascent))[1];
     return {
-        ascent: top * pixelsPerUnit,
-        descent: metrics.yMin * pixelsPerUnit,
-        left: metrics.xMin * pixelsPerUnit,
-        right: metrics.xMax * pixelsPerUnit,
+        ascent: ascent * pixelsPerUnit,
+        descent: metrics.descent * pixelsPerUnit,
+        left: metrics.left * pixelsPerUnit,
+        right: metrics.right * pixelsPerUnit,
     };
 }
 
-export function calculatePixelRectForGlyph(metrics: Metrics,
+export function calculatePixelRectForGlyph(metrics: UnitMetrics,
                                            subpixelOrigin: glmatrix.vec2,
                                            pixelsPerUnit: number,
                                            hint: Hint):
@@ -349,4 +372,15 @@ export function calculatePixelRectForGlyph(metrics: Metrics,
                                 Math.floor(subpixelOrigin[1] + pixelMetrics.descent),
                                 Math.ceil(subpixelOrigin[0] + pixelMetrics.right),
                                 Math.ceil(subpixelOrigin[1] + pixelMetrics.ascent)]);
+}
+
+export function computeStemDarkeningAmount(pixelsPerEm: number, pixelsPerUnit: number):
+                                           glmatrix.vec2 {
+    const amount = glmatrix.vec2.create();
+    glmatrix.vec2.scale(amount, STEM_DARKENING_FACTOR, pixelsPerEm);
+    glmatrix.vec2.min(amount, amount, MIN_STEM_DARKENING_AMOUNT);
+    // Convert diameter to radius.
+    glmatrix.vec2.scale(amount, amount, 0.5);
+    glmatrix.vec2.scale(amount, amount, 1.0 / pixelsPerUnit);
+    return amount;
 }

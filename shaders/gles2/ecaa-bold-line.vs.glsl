@@ -19,7 +19,7 @@ uniform ivec2 uPathTransformDimensions;
 uniform ivec2 uPathBoundsDimensions;
 uniform sampler2D uPathTransform;
 uniform sampler2D uPathBounds;
-uniform float uEmboldenAmount;
+uniform vec2 uEmboldenAmount;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
