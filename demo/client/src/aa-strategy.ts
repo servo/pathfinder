@@ -14,7 +14,9 @@ import {DemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'ecaa';
 
-export type SubpixelAAType = 'none' | 'medium' | 'strong';
+export type SubpixelAAType = 'none' | 'medium';
+
+export type StemDarkeningMode = 'none' | 'dark';
 
 export abstract class AntialiasingStrategy {
     // True if direct rendering should occur.

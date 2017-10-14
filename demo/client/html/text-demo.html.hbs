@@ -51,16 +51,7 @@
                                         <option value="none">None</option>
                                         <option value="ssaa-2">2&times;SSAA</option>
                                         <option value="ssaa-4">4&times;SSAA</option>
-                                        <option value="ecaa" selected>ECAA</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label for="pf-subpixel-aa-select">Subpixel AA</label>
-                                    <select id="pf-subpixel-aa-select"
-                                     class="form-control custom-select">
-                                        <option value="none">None</option>
-                                        <option value="medium" selected>Medium</option>
-                                        <option value="strong">Strong</option>
+                                        <option value="ecaa" selected>MCAA/ECAA</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -70,6 +61,43 @@
                                         <option value="none">None</option>
                                         <option value="slight" selected>Slight</option>
                                     </select>
+                                </div>
+                                <div class="form-group row justify-content-between">
+                                    <label for="pf-subpixel-aa-select"
+                                     class="col-form-label col-auto">
+                                        Subpixel AA
+                                    </label>
+                                    <div class="col-auto btn-group" id="pf-subpixel-aa-buttons"
+                                     data-toggle="buttons">
+                                        <label class="btn btn-outline-secondary active">
+                                            <input type="radio" name="pf-subpixel-aa"
+                                             id="pf-subpixel-aa-select-on" autocomplete="off"
+                                             checked>On
+                                        </label>
+                                        <label class="btn btn-outline-secondary">
+                                            <input type="radio" name="pf-subpixel-aa"
+                                             autocomplete="off" id="pf-subpixel-aa-select-off">Off
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-group row justify-content-between">
+                                    <label for="pf-stem-darkening-select"
+                                     class="col-form-label col-auto">
+                                        Stem Darkening
+                                    </label>
+                                    <div class="col-auto btn-group" id="pf-stem-darkening-buttons"
+                                     data-toggle="buttons">
+                                        <label class="btn btn-outline-secondary active">
+                                            <input type="radio" name="pf-stem-darkening"
+                                             id="pf-stem-darkening-select-on" autocomplete="off"
+                                             checked>On
+                                        </label>
+                                        <label class="btn btn-outline-secondary">
+                                            <input type="radio" name="pf-stem-darkening"
+                                             id="pf-stem-darkening-select-off"
+                                             autocomplete="off">Off
+                                        </label>
+                                    </div>
                                 </div>
                             </form>
                         </div>

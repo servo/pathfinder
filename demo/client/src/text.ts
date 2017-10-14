@@ -19,8 +19,10 @@ import {assert, lerp, panic, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils"
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
 
+// Matches macOS 10.13 High Sierra.
 const STEM_DARKENING_FACTOR: glmatrix.vec2 = glmatrix.vec2.clone([0.0121, 0.015125]);
 
+// Likewise.
 const MIN_STEM_DARKENING_AMOUNT: glmatrix.vec2 = glmatrix.vec2.clone([0.3, 0.3]);
 
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
@@ -292,6 +294,7 @@ export class Hint {
         const os2Table = font.opentypeFont.tables.os2;
         this.xHeight = os2Table.sxHeight != null ? os2Table.sxHeight : 0;
         this.stemHeight = os2Table.sCapHeight != null ? os2Table.sCapHeight : 0;
+        console.log("xHeight", this.xHeight, "stemHeight", this.stemHeight);
 
         if (!useHinting) {
             this.hintedXHeight = this.xHeight;
@@ -379,6 +382,7 @@ export function computeStemDarkeningAmount(pixelsPerEm: number, pixelsPerUnit: n
     const amount = glmatrix.vec2.create();
     glmatrix.vec2.scale(amount, STEM_DARKENING_FACTOR, pixelsPerEm);
     glmatrix.vec2.min(amount, amount, MIN_STEM_DARKENING_AMOUNT);
+
     // Convert diameter to radius.
     glmatrix.vec2.scale(amount, amount, 0.5);
     glmatrix.vec2.scale(amount, amount, 1.0 / pixelsPerUnit);

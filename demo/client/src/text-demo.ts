@@ -15,7 +15,7 @@ import * as opentype from 'opentype.js';
 
 import {Metrics} from 'opentype.js';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
-import {SubpixelAAType} from './aa-strategy';
+import {SubpixelAAType, StemDarkeningMode} from './aa-strategy';
 import {DemoAppController} from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from "./camera";
@@ -280,7 +280,7 @@ class TextDemoView extends MonochromeDemoView {
     }
 
     private get stemDarkeningAmount(): glmatrix.vec2 {
-        if (this.subpixelAA === 'strong') {
+        if (this.stemDarkening === 'dark') {
             return computeStemDarkeningAmount(this.appController.fontSize,
                                               this.appController.layoutPixelsPerUnit);
         }
@@ -293,6 +293,7 @@ class TextDemoView extends MonochromeDemoView {
     protected depthFunction: number = this.gl.GREATER;
 
     private subpixelAA: SubpixelAAType;
+    private stemDarkening: StemDarkeningMode;
 
     private glyphBounds: Float32Array;
 
@@ -342,8 +343,9 @@ class TextDemoView extends MonochromeDemoView {
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
                            aaLevel: number,
-                           subpixelAA: SubpixelAAType) {
-        super.setAntialiasingOptions(aaType, aaLevel, subpixelAA);
+                           subpixelAA: SubpixelAAType,
+                           stemDarkening: StemDarkeningMode) {
+        super.setAntialiasingOptions(aaType, aaLevel, subpixelAA, stemDarkening);
 
         // Need to relayout because changing AA options can cause font dilation to change...
         this.layoutText();
@@ -497,9 +499,11 @@ class TextDemoView extends MonochromeDemoView {
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
                                aaLevel: number,
-                               subpixelAA: SubpixelAAType):
+                               subpixelAA: SubpixelAAType,
+                               stemDarkening: StemDarkeningMode):
                                AntialiasingStrategy {
         this.subpixelAA = subpixelAA;
+        this.stemDarkening = stemDarkening;
         return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 

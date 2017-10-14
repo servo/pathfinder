@@ -14,7 +14,7 @@
 import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
-import {SubpixelAAType} from "./aa-strategy";
+import {SubpixelAAType, StemDarkeningMode} from "./aa-strategy";
 import PathfinderBufferTexture from './buffer-texture';
 import {Camera} from "./camera";
 import {QUAD_ELEMENTS, UniformMap} from './gl-utils';
@@ -193,8 +193,12 @@ export abstract class DemoView extends PathfinderView {
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
                            aaLevel: number,
-                           subpixelAA: SubpixelAAType) {
-        this.antialiasingStrategy = this.createAAStrategy(aaType, aaLevel, subpixelAA);
+                           subpixelAA: SubpixelAAType,
+                           stemDarkening: StemDarkeningMode) {
+        this.antialiasingStrategy = this.createAAStrategy(aaType,
+                                                          aaLevel,
+                                                          subpixelAA,
+                                                          stemDarkening);
 
         const canvas = this.canvas;
         this.antialiasingStrategy.init(this);
@@ -413,7 +417,8 @@ export abstract class DemoView extends PathfinderView {
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
                                         aaLevel: number,
-                                        subpixelAA: SubpixelAAType):
+                                        subpixelAA: SubpixelAAType,
+                                        stemDarkening: StemDarkeningMode):
                                         AntialiasingStrategy;
 
     protected abstract compositeIfNecessary(): void;
