@@ -14,7 +14,7 @@ module.exports = {
     module: {
         rules: [
             {
-                test: /src\/[a-zA-Z0-9_-]+\.tsx?$/,
+                test: /src(\/|\\)[a-zA-Z0-9_-]+\.tsx?$/,
                 enforce: 'pre',
                 loader: 'tslint-loader',
                 exclude: /node_modules/,
@@ -23,7 +23,7 @@ module.exports = {
                 },
             },
             {
-                test: /src\/[a-zA-Z0-9_-]+\.tsx?$/,
+                test: /src(\/|\\)[a-zA-Z0-9_-]+\.tsx?$/,
                 use: 'ts-loader',
                 exclude: /node_modules/,
             },
