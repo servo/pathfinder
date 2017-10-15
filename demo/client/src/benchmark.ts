@@ -23,7 +23,7 @@ import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
 import {computeStemDarkeningAmount, TextRun} from "./text";
-import {assert, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
+import {assert, lerp, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
 import {DemoView, MonochromeDemoView, Timings} from "./view";
 import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
 
@@ -36,7 +36,9 @@ const TEXT_COLOR: number[] = [0, 0, 0, 255];
 const MIN_FONT_SIZE: number = 6;
 const MAX_FONT_SIZE: number = 200;
 
-const RUNS: number = 8;
+// In milliseconds.
+const MIN_RUNTIME: number = 100;
+const MAX_RUNTIME: number = 3000;
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
@@ -67,6 +69,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
     private pixelsPerEm: number;
     private currentRun: number;
+    private startTime: number;
     private elapsedTimes: ElapsedTime[];
     private partitionTime: number;
 
@@ -137,11 +140,34 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
                                      unwrapNull(this.shaderSources));
     }
 
-    private runBenchmark(): void {
-        this.pixelsPerEm = MIN_FONT_SIZE;
+    private reset(): void {
         this.currentRun = 0;
+        this.startTime = Date.now();
+    }
+
+    private runBenchmark(): void {
+        this.reset();
         this.elapsedTimes = [];
+        this.pixelsPerEm = MIN_FONT_SIZE;
         this.view.then(view => this.runOneBenchmarkTest(view));
+    }
+
+    private runDone(): boolean {
+        const totalElapsedTime = Date.now() - this.startTime;
+        if (totalElapsedTime < MIN_RUNTIME)
+            return false;
+        if (totalElapsedTime >= MAX_RUNTIME)
+            return true;
+
+        // Compute median absolute devation.
+        const elapsedTime = unwrapUndef(_.last(this.elapsedTimes));
+        elapsedTime.times.sort((a, b) => a - b);
+        const median = unwrapNull(computeMedian(elapsedTime.times));
+        const absoluteDeviations = elapsedTime.times.map(time => Math.abs(time - median));
+        absoluteDeviations.sort((a, b) => a - b);
+        const medianAbsoluteDeviation = unwrapNull(computeMedian(absoluteDeviations));
+        const medianAbsoluteDeviationFraction = medianAbsoluteDeviation / median;
+        return medianAbsoluteDeviationFraction <= 0.01;
     }
 
     private runOneBenchmarkTest(view: BenchmarkTestView): void {
@@ -155,11 +181,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             unwrapUndef(_.last(this.elapsedTimes)).times.push(elapsedTime);
 
             this.currentRun++;
-
-            if (this.currentRun === RUNS) {
-                unwrapUndef(_.last(this.elapsedTimes)).times.sort((a, b) => a - b);
-
-                this.currentRun = 0;
+            if (this.runDone()) {
+                this.reset();
 
                 if (this.pixelsPerEm === MAX_FONT_SIZE) {
                     this.showResults();
@@ -374,6 +397,15 @@ class BenchmarkTestView extends MonochromeDemoView {
     }
 }
 
+function computeMedian(values: number[]): number | null {
+    if (values.length === 0)
+        return null;
+    const mid = values.length / 2;
+    if (values.length % 2 === 1)
+        return values[Math.floor(mid)];
+    return lerp(values[mid - 1], values[mid], 0.5);
+}
+
 class ElapsedTime {
     readonly size: number;
     readonly times: number[];
@@ -384,8 +416,8 @@ class ElapsedTime {
     }
 
     get time(): number {
-        // TODO(pcwalton): Use interquartile mean instead?
-        return this.times[Math.floor(this.times.length / 2)];
+        const median = computeMedian(this.times);
+        return median == null ? 0.0 : median;
     }
 }
 
