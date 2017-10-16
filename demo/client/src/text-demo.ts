@@ -30,7 +30,7 @@ import {BUILTIN_FONT_URI, calculatePixelXMin, computeStemDarkeningAmount} from "
 import {GlyphStore, Hint, SimpleTextLayout, UnitMetrics} from "./text";
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
-import {DemoView, MonochromeDemoView, Timings, TIMINGS} from './view';
+import {DemoView, Timings, TIMINGS} from './view';
 import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
 
 const DEFAULT_TEXT: string =
@@ -264,7 +264,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     }
 }
 
-class TextDemoView extends MonochromeDemoView {
+class TextDemoView extends DemoView {
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 

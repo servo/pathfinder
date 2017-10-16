@@ -731,11 +731,6 @@ export abstract class DemoView extends PathfinderView implements Renderer {
     protected abstract get directInteriorProgramName(): keyof ShaderMap<void>;
 }
 
-export abstract class MonochromeDemoView extends DemoView {
-    abstract get bgColor(): glmatrix.vec4;
-    abstract get fgColor(): glmatrix.vec4;
-}
-
 export interface Renderer {
     /// The OpenGL context.
     readonly gl: WebGLRenderingContext;

@@ -20,7 +20,7 @@ import {B_QUAD_LOWER_INDICES_OFFSET, B_QUAD_SIZE, B_QUAD_UPPER_INDICES_OFFSET} f
 import {PathfinderShaderProgram} from './shader-loader';
 import {computeStemDarkeningAmount} from './text';
 import {FLOAT32_SIZE, lerp, UINT32_SIZE, unwrapNull} from './utils';
-import {MonochromeDemoView, Renderer} from './view';
+import {Renderer} from './view';
 
 interface FastEdgeVAOs {
     upper: WebGLVertexArrayObject;

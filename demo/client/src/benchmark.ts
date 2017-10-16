@@ -24,7 +24,7 @@ import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
 import {computeStemDarkeningAmount, TextRun} from "./text";
 import {assert, lerp, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
-import {DemoView, MonochromeDemoView, Timings} from "./view";
+import {DemoView, Timings} from "./view";
 import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -236,7 +236,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     }
 }
 
-class BenchmarkTestView extends MonochromeDemoView {
+class BenchmarkTestView extends DemoView {
     destFramebuffer: WebGLFramebuffer | null = null;
 
     renderingPromiseCallback: ((time: number) => void) | null;
