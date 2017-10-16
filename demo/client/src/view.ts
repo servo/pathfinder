@@ -121,7 +121,7 @@ export abstract class PathfinderView {
     }
 }
 
-export abstract class DemoView extends PathfinderView implements Renderer {
+export abstract class DemoView extends PathfinderView implements Renderer, RenderContext {
     gl: WebGLRenderingContext;
 
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
@@ -154,6 +154,10 @@ export abstract class DemoView extends PathfinderView implements Renderer {
 
     get colorAlphaFormat(): GLenum {
         return this.sRGBExt == null ? this.gl.RGBA : this.sRGBExt.SRGB_ALPHA_EXT;
+    }
+
+    get renderContext(): RenderContext {
+        return this;
     }
 
     protected sRGBExt: EXTsRGB;
@@ -731,7 +735,7 @@ export abstract class DemoView extends PathfinderView implements Renderer {
     protected abstract get directInteriorProgramName(): keyof ShaderMap<void>;
 }
 
-export interface Renderer {
+export interface RenderContext {
     /// The OpenGL context.
     readonly gl: WebGLRenderingContext;
 
@@ -745,6 +749,12 @@ export interface Renderer {
 
     readonly quadPositionsBuffer: WebGLBuffer;
     readonly quadElementsBuffer: WebGLBuffer;
+
+    initQuadVAO(attributes: any): void;
+}
+
+export interface Renderer {
+    readonly renderContext: RenderContext;
 
     readonly destFramebuffer: WebGLFramebuffer | null;
     readonly pathTransformBufferTextures: PathfinderBufferTexture[];
@@ -761,8 +771,6 @@ export interface Renderer {
 
     readonly bgColor: glmatrix.vec4 | null;
     readonly fgColor: glmatrix.vec4 | null;
-
-    initQuadVAO(attributes: any): void;
 
     pathBoundingRects(objectIndex: number): Float32Array;
 
