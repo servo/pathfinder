@@ -63,41 +63,12 @@
                                     </select>
                                 </div>
                                 <div class="form-group row justify-content-between">
-                                    <label for="pf-subpixel-aa-select"
-                                     class="col-form-label col-auto">
-                                        Subpixel AA
-                                    </label>
-                                    <div class="col-auto btn-group" id="pf-subpixel-aa-buttons"
-                                     data-toggle="buttons">
-                                        <label class="btn btn-outline-secondary active">
-                                            <input type="radio" name="pf-subpixel-aa"
-                                             id="pf-subpixel-aa-select-on" autocomplete="off"
-                                             checked>On
-                                        </label>
-                                        <label class="btn btn-outline-secondary">
-                                            <input type="radio" name="pf-subpixel-aa"
-                                             autocomplete="off" id="pf-subpixel-aa-select-off">Off
-                                        </label>
-                                    </div>
+                                    {{>partials/switch.html id="pf-subpixel-aa"
+                                      title="Subpixel AA"}}
                                 </div>
                                 <div class="form-group row justify-content-between">
-                                    <label for="pf-stem-darkening-select"
-                                     class="col-form-label col-auto">
-                                        Stem Darkening
-                                    </label>
-                                    <div class="col-auto btn-group" id="pf-stem-darkening-buttons"
-                                     data-toggle="buttons">
-                                        <label class="btn btn-outline-secondary active">
-                                            <input type="radio" name="pf-stem-darkening"
-                                             id="pf-stem-darkening-select-on" autocomplete="off"
-                                             checked>On
-                                        </label>
-                                        <label class="btn btn-outline-secondary">
-                                            <input type="radio" name="pf-stem-darkening"
-                                             id="pf-stem-darkening-select-off"
-                                             autocomplete="off">Off
-                                        </label>
-                                    </div>
+                                    {{>partials/switch.html id="pf-stem-darkening"
+                                      title="Stem Darkening"}}
                                 </div>
                             </form>
                         </div>

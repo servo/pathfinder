@@ -13,15 +13,17 @@
          class="fixed-bottom mb-3 pt-3 d-flex justify-content-between align-items-end pf-pointer-events-none border border-right-0 border-bottom-0 border-left-0">
             <div class="container ml-3 pf-pointer-events-auto">
                 <div class="row">
-                    <label for="pf-aa-level-select" class="col-form-label">Antialiasing</label>
-                    <div class="col-md-auto">
-                        <select id="pf-aa-level-select" class="form-control custom-select">
+                    <form class="form-inline">
+                        <label for="pf-aa-level-select"
+                         class="col-form-label mr-sm-2">Antialiasing</label>
+                        <select id="pf-aa-level-select" class="form-control custom-select mr-sm-3">
                             <option value="none" selected>None</option>
                             <option value="ssaa-2">2&times;SSAA</option>
                             <option value="ssaa-4">4&times;SSAA</option>
                             <option value="xcaa">XCAA</option>
                         </select>
-                    </div>
+                        {{>partials/switch.html id="pf-subpixel-aa" title="Subpixel AA"}}
+                    </form>
                 </div>
             </div>
             <div id="pf-toolbar">

@@ -241,8 +241,13 @@ class BenchmarkTestView extends MonochromeDemoView {
 
     renderingPromiseCallback: ((time: number) => void) | null;
 
-    readonly bgColor: glmatrix.vec4 = glmatrix.vec4.clone([1.0, 1.0, 1.0, 0.0]);
-    readonly fgColor: glmatrix.vec4 = glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
+    get bgColor(): glmatrix.vec4 {
+        return glmatrix.vec4.clone([1.0, 1.0, 1.0, 0.0]);
+    }
+
+    get fgColor(): glmatrix.vec4 {
+        return glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
+    }
 
     protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.clone([1.0, 1.0]);
 
