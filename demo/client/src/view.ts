@@ -17,7 +17,7 @@ import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa
 import {StemDarkeningMode, SubpixelAAType} from "./aa-strategy";
 import PathfinderBufferTexture from './buffer-texture';
 import {Camera} from "./camera";
-import {QUAD_ELEMENTS, UniformMap} from './gl-utils';
+import {EXTDisjointTimerQuery, QUAD_ELEMENTS, UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {PathfinderShaderProgram, SHADER_NAMES, ShaderMap} from './shader-loader';
 import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
@@ -121,15 +121,15 @@ export abstract class PathfinderView {
     }
 }
 
-export abstract class DemoView extends PathfinderView {
+export abstract class DemoView extends PathfinderView implements Renderer {
     gl: WebGLRenderingContext;
 
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
 
-    drawBuffersExt: any;
-    instancedArraysExt: any;
-    textureHalfFloatExt: any;
-    vertexArrayObjectExt: any;
+    drawBuffersExt: WebGLDrawBuffers;
+    instancedArraysExt: ANGLEInstancedArrays;
+    textureHalfFloatExt: OESTextureHalfFloat;
+    vertexArrayObjectExt: OESVertexArrayObject;
 
     quadPositionsBuffer: WebGLBuffer;
     quadTexCoordsBuffer: WebGLBuffer;
@@ -140,16 +140,24 @@ export abstract class DemoView extends PathfinderView {
 
     pathTransformBufferTextures: PathfinderBufferTexture[];
 
+    get bgColor(): glmatrix.vec4 | null {
+        return null;
+    }
+
+    get fgColor(): glmatrix.vec4 | null {
+        return null;
+    }
+
     get emboldenAmount(): glmatrix.vec2 {
         return glmatrix.vec2.create();
     }
 
-    get colorAlphaFormat(): number {
+    get colorAlphaFormat(): GLenum {
         return this.sRGBExt == null ? this.gl.RGBA : this.sRGBExt.SRGB_ALPHA_EXT;
     }
 
-    protected sRGBExt: any;
-    protected timerQueryExt: any;
+    protected sRGBExt: EXTsRGB;
+    protected timerQueryExt: EXTDisjointTimerQuery;
 
     protected antialiasingStrategy: AntialiasingStrategy | null;
     protected colorBufferHalfFloatExt: any;
@@ -216,7 +224,7 @@ export abstract class DemoView extends PathfinderView {
         this.setDirty();
     }
 
-    initQuadVAO(attributes: any) {
+    initQuadVAO(attributes: any): void {
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadPositionsBuffer);
         this.gl.vertexAttribPointer(attributes.aPosition, 2, this.gl.FLOAT, false, 0, 0);
         this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.quadTexCoordsBuffer);
@@ -246,13 +254,13 @@ export abstract class DemoView extends PathfinderView {
                           transform[13]);
     }
 
-    setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap) {
+    setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap): void {
         const usedSize = this.usedSizeFactor;
         this.gl.uniform4f(uniforms.uTransformST, 2.0 * usedSize[0], 2.0 * usedSize[1], -1.0, -1.0);
         this.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
-    setTransformAndTexScaleUniformsForDest(uniforms: UniformMap) {
+    setTransformAndTexScaleUniformsForDest(uniforms: UniformMap): void {
         const usedSize = this.usedSizeFactor;
 
         const transform = glmatrix.mat4.create();
@@ -726,4 +734,46 @@ export abstract class DemoView extends PathfinderView {
 export abstract class MonochromeDemoView extends DemoView {
     abstract get bgColor(): glmatrix.vec4;
     abstract get fgColor(): glmatrix.vec4;
+}
+
+export interface Renderer {
+    /// The OpenGL context.
+    readonly gl: WebGLRenderingContext;
+
+    /// The `WEBGL_draw_buffers` extension.
+    readonly drawBuffersExt: WebGLDrawBuffers;
+    readonly instancedArraysExt: ANGLEInstancedArrays;
+    readonly textureHalfFloatExt: OESTextureHalfFloat;
+    readonly vertexArrayObjectExt: OESVertexArrayObject;
+
+    readonly shaderPrograms: ShaderMap<PathfinderShaderProgram>;
+
+    readonly quadPositionsBuffer: WebGLBuffer;
+    readonly quadElementsBuffer: WebGLBuffer;
+
+    readonly destFramebuffer: WebGLFramebuffer | null;
+    readonly pathTransformBufferTextures: PathfinderBufferTexture[];
+
+    readonly meshes: PathfinderMeshBuffers[];
+    readonly meshData: PathfinderMeshData[];
+
+    readonly colorAlphaFormat: GLenum;
+
+    readonly destAllocatedSize: glmatrix.vec2;
+    readonly destUsedSize: glmatrix.vec2;
+
+    readonly emboldenAmount: glmatrix.vec2;
+
+    readonly bgColor: glmatrix.vec4 | null;
+    readonly fgColor: glmatrix.vec4 | null;
+
+    initQuadVAO(attributes: any): void;
+
+    pathBoundingRects(objectIndex: number): Float32Array;
+
+    setFramebufferSizeUniform(uniforms: UniformMap): void;
+    setHintsUniform(uniforms: UniformMap): void;
+    setTransformAndTexScaleUniformsForDest(uniforms: UniformMap): void;
+    setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap): void;
+    setTransformSTUniform(uniforms: UniformMap, objectIndex: number): void;
 }

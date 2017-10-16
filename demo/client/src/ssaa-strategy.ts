@@ -13,7 +13,7 @@ import * as glmatrix from 'gl-matrix';
 import {AntialiasingStrategy, SubpixelAAType} from './aa-strategy';
 import {createFramebuffer, createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
 import {unwrapNull} from './utils';
-import {DemoView} from './view';
+import {DemoView, Renderer} from './view';
 
 export default class SSAAStrategy extends AntialiasingStrategy {
     private level: number;
@@ -33,39 +33,39 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         this.supersampledFramebufferSize = glmatrix.vec2.create();
     }
 
-    attachMeshes(view: DemoView) {}
+    attachMeshes(renderer: Renderer) {}
 
-    setFramebufferSize(view: DemoView) {
-        this.destFramebufferSize = glmatrix.vec2.clone(view.destAllocatedSize);
+    setFramebufferSize(renderer: Renderer) {
+        this.destFramebufferSize = glmatrix.vec2.clone(renderer.destAllocatedSize);
 
         this.supersampledFramebufferSize = glmatrix.vec2.create();
         glmatrix.vec2.mul(this.supersampledFramebufferSize,
                           this.destFramebufferSize,
                           this.supersampleScale);
 
-        this.supersampledColorTexture = unwrapNull(view.gl.createTexture());
-        view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
-        view.gl.texImage2D(view.gl.TEXTURE_2D,
-                           0,
-                           view.colorAlphaFormat,
-                           this.supersampledFramebufferSize[0],
-                           this.supersampledFramebufferSize[1],
-                           0,
-                           view.colorAlphaFormat,
-                           view.gl.UNSIGNED_BYTE,
-                           null);
-        setTextureParameters(view.gl, view.gl.LINEAR);
+        this.supersampledColorTexture = unwrapNull(renderer.gl.createTexture());
+        renderer.gl.activeTexture(renderer.gl.TEXTURE0);
+        renderer.gl.bindTexture(renderer.gl.TEXTURE_2D, this.supersampledColorTexture);
+        renderer.gl.texImage2D(renderer.gl.TEXTURE_2D,
+                               0,
+                               renderer.colorAlphaFormat,
+                               this.supersampledFramebufferSize[0],
+                               this.supersampledFramebufferSize[1],
+                               0,
+                               renderer.colorAlphaFormat,
+                               renderer.gl.UNSIGNED_BYTE,
+                               null);
+        setTextureParameters(renderer.gl, renderer.gl.LINEAR);
 
         this.supersampledDepthTexture =
-            createFramebufferDepthTexture(view.gl, this.supersampledFramebufferSize);
+            createFramebufferDepthTexture(renderer.gl, this.supersampledFramebufferSize);
 
-        this.supersampledFramebuffer = createFramebuffer(view.gl,
-                                                         view.drawBuffersExt,
+        this.supersampledFramebuffer = createFramebuffer(renderer.gl,
+                                                         renderer.drawBuffersExt,
                                                          [this.supersampledColorTexture],
                                                          this.supersampledDepthTexture);
 
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, null);
+        renderer.gl.bindFramebuffer(renderer.gl.FRAMEBUFFER, null);
     }
 
     get transform(): glmatrix.mat4 {
@@ -77,42 +77,42 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         return transform;
     }
 
-    prepare(view: DemoView) {
+    prepare(renderer: Renderer) {
         const framebufferSize = this.supersampledFramebufferSize;
-        const usedSize = this.usedSupersampledFramebufferSize(view);
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, this.supersampledFramebuffer);
-        view.gl.viewport(0, 0, framebufferSize[0], framebufferSize[1]);
-        view.gl.scissor(0, 0, usedSize[0], usedSize[1]);
-        view.gl.enable(view.gl.SCISSOR_TEST);
+        const usedSize = this.usedSupersampledFramebufferSize(renderer);
+        renderer.gl.bindFramebuffer(renderer.gl.FRAMEBUFFER, this.supersampledFramebuffer);
+        renderer.gl.viewport(0, 0, framebufferSize[0], framebufferSize[1]);
+        renderer.gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        renderer.gl.enable(renderer.gl.SCISSOR_TEST);
     }
 
-    antialias(view: DemoView) {}
+    antialias(renderer: Renderer) {}
 
-    resolve(view: DemoView) {
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
-        view.gl.viewport(0, 0, view.destAllocatedSize[0], view.destAllocatedSize[1]);
-        view.gl.disable(view.gl.DEPTH_TEST);
-        view.gl.disable(view.gl.BLEND);
+    resolve(renderer: Renderer) {
+        renderer.gl.bindFramebuffer(renderer.gl.FRAMEBUFFER, renderer.destFramebuffer);
+        renderer.gl.viewport(0, 0, renderer.destAllocatedSize[0], renderer.destAllocatedSize[1]);
+        renderer.gl.disable(renderer.gl.DEPTH_TEST);
+        renderer.gl.disable(renderer.gl.BLEND);
 
         // Set up the blit program VAO.
         let resolveProgram;
         if (this.subpixelAA !== 'none')
-            resolveProgram = view.shaderPrograms.ssaaSubpixelResolve;
+            resolveProgram = renderer.shaderPrograms.ssaaSubpixelResolve;
         else
-            resolveProgram = view.shaderPrograms.blit;
-        view.gl.useProgram(resolveProgram.program);
-        view.initQuadVAO(resolveProgram.attributes);
+            resolveProgram = renderer.shaderPrograms.blit;
+        renderer.gl.useProgram(resolveProgram.program);
+        renderer.initQuadVAO(resolveProgram.attributes);
 
         // Resolve framebuffer.
-        view.gl.activeTexture(view.gl.TEXTURE0);
-        view.gl.bindTexture(view.gl.TEXTURE_2D, this.supersampledColorTexture);
-        view.gl.uniform1i(resolveProgram.uniforms.uSource, 0);
-        view.gl.uniform2i(resolveProgram.uniforms.uSourceDimensions,
+        renderer.gl.activeTexture(renderer.gl.TEXTURE0);
+        renderer.gl.bindTexture(renderer.gl.TEXTURE_2D, this.supersampledColorTexture);
+        renderer.gl.uniform1i(resolveProgram.uniforms.uSource, 0);
+        renderer.gl.uniform2i(resolveProgram.uniforms.uSourceDimensions,
                           this.supersampledFramebufferSize[0],
                           this.supersampledFramebufferSize[1]);
-        view.setTransformAndTexScaleUniformsForDest(resolveProgram.uniforms);
-        view.gl.bindBuffer(view.gl.ELEMENT_ARRAY_BUFFER, view.quadElementsBuffer);
-        view.gl.drawElements(view.gl.TRIANGLES, 6, view.gl.UNSIGNED_BYTE, 0);
+        renderer.setTransformAndTexScaleUniformsForDest(resolveProgram.uniforms);
+        renderer.gl.bindBuffer(renderer.gl.ELEMENT_ARRAY_BUFFER, renderer.quadElementsBuffer);
+        renderer.gl.drawElements(renderer.gl.TRIANGLES, 6, renderer.gl.UNSIGNED_BYTE, 0);
     }
 
     get shouldRenderDirect() {
@@ -123,9 +123,9 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         return glmatrix.vec2.clone([this.subpixelAA !== 'none' ? 3 : 2, this.level === 2 ? 1 : 2]);
     }
 
-    private usedSupersampledFramebufferSize(view: DemoView): glmatrix.vec2 {
+    private usedSupersampledFramebufferSize(renderer: Renderer): glmatrix.vec2 {
         const result = glmatrix.vec2.create();
-        glmatrix.vec2.mul(result, view.destUsedSize, this.supersampleScale);
+        glmatrix.vec2.mul(result, renderer.destUsedSize, this.supersampleScale);
         return result;
     }
 }

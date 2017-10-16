@@ -11,7 +11,7 @@
 import * as glmatrix from 'gl-matrix';
 
 import {assert, UINT32_SIZE, unwrapNull} from './utils';
-import { DemoView } from './view';
+import {DemoView} from './view';
 
 export type WebGLVertexArrayObject = any;
 
@@ -23,26 +23,49 @@ export interface UniformMap {
     [uniformName: string]: WebGLUniformLocation;
 }
 
+export interface EXTDisjointTimerQuery {
+    readonly QUERY_COUNTER_BITS_EXT: GLenum;
+    readonly CURRENT_QUERY_EXT: GLenum;
+    readonly QUERY_RESULT_EXT: GLenum;
+    readonly QUERY_RESULT_AVAILABLE_EXT: GLenum;
+    readonly TIME_ELAPSED_EXT: GLenum;
+    readonly TIMESTAMP_EXT: GLenum;
+    readonly GPU_DISJOINT_EXT: GLenum;
+    createQueryEXT(): WebGLQuery;
+    deleteQueryEXT(query: WebGLQuery): void;
+    isQueryEXT(query: any): GLboolean;
+    beginQueryEXT(target: GLenum, query: WebGLQuery): void;
+    endQueryEXT(target: GLenum): void;
+    queryCounterEXT(query: WebGLQuery, target: GLenum): void;
+    getQueryEXT(target: GLenum, pname: GLenum): any;
+    getQueryObjectEXT(query: WebGLQuery, pname: GLenum): any;
+}
+
+export class WebGLQuery {}
+
 export const QUAD_ELEMENTS: Uint8Array = new Uint8Array([2, 0, 1, 1, 3, 2]);
 
-export function createFramebufferColorTexture(view: DemoView, size: glmatrix.vec2): WebGLTexture {
+export function createFramebufferColorTexture(gl: WebGLRenderingContext,
+                                              size: glmatrix.vec2,
+                                              colorAlphaFormat: GLenum):
+                                              WebGLTexture {
     // Firefox seems to have a bug whereby textures don't get marked as initialized when cleared
     // if they're anything other than the first attachment of an FBO. To work around this, supply
     // zero data explicitly when initializing the texture.
     const zeroes = new Uint8Array(size[0] * size[1] * UINT32_SIZE);
-    const texture = unwrapNull(view.gl.createTexture());
-    view.gl.activeTexture(view.gl.TEXTURE0);
-    view.gl.bindTexture(view.gl.TEXTURE_2D, texture);
-    view.gl.texImage2D(view.gl.TEXTURE_2D,
+    const texture = unwrapNull(gl.createTexture());
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texImage2D(gl.TEXTURE_2D,
                   0,
-                  view.colorAlphaFormat,
+                  colorAlphaFormat,
                   size[0],
                   size[1],
                   0,
-                  view.colorAlphaFormat,
-                  view.gl.UNSIGNED_BYTE,
+                  colorAlphaFormat,
+                  gl.UNSIGNED_BYTE,
                   zeroes);
-    setTextureParameters(view.gl, view.gl.NEAREST);
+    setTextureParameters(gl, gl.NEAREST);
     return texture;
 }
 
@@ -72,7 +95,7 @@ export function setTextureParameters(gl: WebGLRenderingContext, filter: number) 
 }
 
 export function createFramebuffer(gl: WebGLRenderingContext,
-                                  drawBuffersExt: any,
+                                  drawBuffersExt: WebGLDrawBuffers,
                                   colorAttachments: WebGLTexture[],
                                   depthAttachment: WebGLTexture | null):
                                   WebGLFramebuffer {
@@ -83,11 +106,9 @@ export function createFramebuffer(gl: WebGLRenderingContext,
     for (let colorAttachmentIndex = 0;
          colorAttachmentIndex < colorAttachmentCount;
          colorAttachmentIndex++) {
-        gl.framebufferTexture2D(gl.FRAMEBUFFER,
-                                drawBuffersExt[`COLOR_ATTACHMENT${colorAttachmentIndex}_WEBGL`],
-                                gl.TEXTURE_2D,
-                                colorAttachments[colorAttachmentIndex],
-                                0);
+        const glEnum = (drawBuffersExt as any)[`COLOR_ATTACHMENT${colorAttachmentIndex}_WEBGL`];
+        const attachment = colorAttachments[colorAttachmentIndex];
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, glEnum, gl.TEXTURE_2D, attachment, 0);
     }
 
     if (depthAttachment != null) {

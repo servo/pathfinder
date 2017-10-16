@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {DemoView} from './view';
+import {DemoView, Renderer} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
 
@@ -23,15 +23,15 @@ export abstract class AntialiasingStrategy {
     shouldRenderDirect: boolean;
 
     // Prepares any OpenGL data. This is only called on startup and canvas resize.
-    init(view: DemoView): void {
-        this.setFramebufferSize(view);
+    init(renderer: Renderer): void {
+        this.setFramebufferSize(renderer);
     }
 
     // Uploads any mesh data. This is called whenever a new set of meshes is supplied.
-    abstract attachMeshes(view: DemoView): void;
+    abstract attachMeshes(renderer: Renderer): void;
 
     // This is called whenever the framebuffer has changed.
-    abstract setFramebufferSize(view: DemoView): void;
+    abstract setFramebufferSize(renderer: Renderer): void;
 
     // Returns the transformation matrix that should be applied when directly rendering.
     abstract get transform(): glmatrix.mat4;
@@ -39,17 +39,17 @@ export abstract class AntialiasingStrategy {
     // Called before direct rendering.
     //
     // Typically, this redirects direct rendering to a framebuffer of some sort.
-    abstract prepare(view: DemoView): void;
+    abstract prepare(renderer: Renderer): void;
 
     // Called after direct rendering.
     //
     // This usually performs the actual antialiasing.
-    abstract antialias(view: DemoView): void;
+    abstract antialias(renderer: Renderer): void;
 
     // Called after antialiasing.
     //
     // This usually blits to the real framebuffer.
-    abstract resolve(view: DemoView): void;
+    abstract resolve(renderer: Renderer): void;
 }
 
 export class NoAAStrategy extends AntialiasingStrategy {
@@ -60,25 +60,25 @@ export class NoAAStrategy extends AntialiasingStrategy {
         this.framebufferSize = glmatrix.vec2.create();
     }
 
-    attachMeshes(view: DemoView) {}
+    attachMeshes(renderer: Renderer) {}
 
-    setFramebufferSize(view: DemoView) {
-        this.framebufferSize = view.destAllocatedSize;
+    setFramebufferSize(renderer: Renderer) {
+        this.framebufferSize = renderer.destAllocatedSize;
     }
 
     get transform(): glmatrix.mat4 {
         return glmatrix.mat4.create();
     }
 
-    prepare(view: DemoView) {
-        view.gl.bindFramebuffer(view.gl.FRAMEBUFFER, view.destFramebuffer);
-        view.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
-        view.gl.disable(view.gl.SCISSOR_TEST);
+    prepare(renderer: Renderer) {
+        renderer.gl.bindFramebuffer(renderer.gl.FRAMEBUFFER, renderer.destFramebuffer);
+        renderer.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        renderer.gl.disable(renderer.gl.SCISSOR_TEST);
     }
 
-    antialias(view: DemoView) {}
+    antialias(renderer: Renderer) {}
 
-    resolve(view: DemoView) {}
+    resolve(renderer: Renderer) {}
 
     get shouldRenderDirect() {
         return true;

@@ -7,7 +7,8 @@
             "gl-matrix",
             "lodash",
             "node",
-            "opentype.js"
+            "opentype.js",
+            "webgl-ext"
         ],
         "typeRoots": [
             "node_modules/@types"
