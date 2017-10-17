@@ -63,10 +63,23 @@ interface PerspectiveMovementKeys {
     [keyCode: number]: boolean;
 }
 
-export abstract class Camera {
-    protected canvas: HTMLCanvasElement;
+export interface CameraView {
+    readonly width: number;
+    readonly height: number;
+    readonly classList: DOMTokenList | null;
 
-    constructor(canvas: HTMLCanvasElement) {
+    addEventListener<K extends keyof HTMLElementEventMap>(type: K,
+                                                          listener: (this: HTMLCanvasElement,
+                                                                     ev: HTMLElementEventMap[K]) =>
+                                                                     any,
+                                                          useCapture?: boolean): void;
+    getBoundingClientRect(): ClientRect;
+}
+
+export abstract class Camera {
+    protected canvas: CameraView;
+
+    constructor(canvas: CameraView) {
         this.canvas = canvas;
     }
 
@@ -88,7 +101,7 @@ export class OrthographicCamera extends Camera {
     private readonly scaleBounds: boolean;
     private readonly ignoreBounds: boolean;
 
-    constructor(canvas: HTMLCanvasElement, options?: OrthographicCameraOptions) {
+    constructor(canvas: CameraView, options?: OrthographicCameraOptions) {
         super(canvas);
 
         if (options == null)
@@ -104,16 +117,21 @@ export class OrthographicCamera extends Camera {
 
         this._bounds = glmatrix.vec4.create();
 
-        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
-        this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
-        this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
-        this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
+        if (this.canvas != null) {
+            this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
+            this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
+            this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
+            this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
+        }
 
         this.onPan = null;
         this.onZoom = null;
     }
 
     onWheel(event: MouseWheelEvent): void {
+        if (this.canvas == null)
+            throw new Error("onWheel() with no canvas?!");
+
         event.preventDefault();
 
         if (!event.ctrlKey) {
@@ -161,11 +179,13 @@ export class OrthographicCamera extends Camera {
     }
 
     private onMouseDown(event: MouseEvent): void {
-        this.canvas.classList.add('pf-grabbing');
+        if (this.canvas.classList != null)
+            this.canvas.classList.add('pf-grabbing');
     }
 
     private onMouseUp(event: MouseEvent): void {
-        this.canvas.classList.remove('pf-grabbing');
+        if (this.canvas.classList != null)
+            this.canvas.classList.remove('pf-grabbing');
     }
 
     private onMouseMove(event: MouseEvent): void {
@@ -243,6 +263,8 @@ export class OrthographicCamera extends Camera {
 }
 
 export class PerspectiveCamera extends Camera {
+    canvas: HTMLCanvasElement;
+
     onChange: (() => void) | null;
 
     translation: glmatrix.vec3;

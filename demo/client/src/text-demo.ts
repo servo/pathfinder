@@ -19,7 +19,7 @@ import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import {DemoAppController} from './app-controller';
 import {Atlas, AtlasGlyph, SUBPIXEL_GRANULARITY} from './atlas';
 import PathfinderBufferTexture from './buffer-texture';
-import {OrthographicCamera} from "./camera";
+import {CameraView, OrthographicCamera} from "./camera";
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from './gl-utils';
 import {UniformMap} from './gl-utils';
@@ -259,6 +259,10 @@ class TextDemoView extends DemoView implements TextRenderContext {
     renderer: TextRenderer;
 
     appController: TextDemoController;
+
+    get cameraView(): CameraView {
+        return this.canvas;
+    }
 
     get atlasGlyphs(): AtlasGlyph[] {
         return this.appController.atlasGlyphs;

@@ -14,7 +14,7 @@ import * as _ from 'lodash';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
 import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey, SUBPIXEL_GRANULARITY} from './atlas';
-import {OrthographicCamera} from './camera';
+import {CameraView, OrthographicCamera} from './camera';
 import {createFramebuffer, createFramebufferDepthTexture, QUAD_ELEMENTS} from './gl-utils';
 import {UniformMap} from './gl-utils';
 import {Renderer} from './renderer';
@@ -44,6 +44,7 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
 export interface TextRenderContext extends RenderContext {
     atlasGlyphs: AtlasGlyph[];
 
+    readonly cameraView: CameraView;
     readonly atlas: Atlas;
     readonly layout: SimpleTextLayout;
     readonly glyphStore: GlyphStore;
@@ -52,9 +53,6 @@ export interface TextRenderContext extends RenderContext {
     readonly pathCount: number;
     readonly layoutPixelsPerUnit: number;
     readonly useHinting: boolean;
-
-    // TODO(pcwalton): Remove this.
-    readonly canvas: HTMLCanvasElement;
 
     newTimingsReceived(timings: Timings): void;
 }
@@ -139,7 +137,7 @@ export class TextRenderer extends Renderer {
     constructor(renderContext: TextRenderContext) {
         super(renderContext);
 
-        this.camera = new OrthographicCamera(this.renderContext.canvas, {
+        this.camera = new OrthographicCamera(this.renderContext.cameraView, {
             maxScale: MAX_SCALE,
             minScale: MIN_SCALE,
         });
@@ -244,8 +242,8 @@ export class TextRenderer extends Renderer {
         this.renderContext.gl.bindFramebuffer(this.renderContext.gl.FRAMEBUFFER, null);
         this.renderContext.gl.viewport(0,
                                        0,
-                                       this.renderContext.canvas.width,
-                                       this.renderContext.canvas.height);
+                                       this.renderContext.cameraView.width,
+                                       this.renderContext.cameraView.height);
         this.renderContext.gl.disable(this.renderContext.gl.DEPTH_TEST);
         this.renderContext.gl.disable(this.renderContext.gl.SCISSOR_TEST);
         this.renderContext.gl.blendEquation(this.renderContext.gl.FUNC_ADD);
@@ -288,8 +286,8 @@ export class TextRenderer extends Renderer {
         const transform = glmatrix.mat4.create();
         glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
         glmatrix.mat4.scale(transform, transform, [
-            2.0 / this.renderContext.canvas.width,
-            2.0 / this.renderContext.canvas.height,
+            2.0 / this.renderContext.cameraView.width,
+            2.0 / this.renderContext.cameraView.height,
             1.0,
         ]);
         glmatrix.mat4.translate(transform,
@@ -439,8 +437,8 @@ export class TextRenderer extends Renderer {
         const canvasRect = glmatrix.vec4.clone([
             -translation[0],
             -translation[1],
-            -translation[0] + this.renderContext.canvas.width,
-            -translation[1] + this.renderContext.canvas.height,
+            -translation[0] + this.renderContext.cameraView.width,
+            -translation[1] + this.renderContext.cameraView.height,
         ]);
 
         let atlasGlyphs = [];
