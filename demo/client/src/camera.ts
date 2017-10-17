@@ -117,12 +117,10 @@ export class OrthographicCamera extends Camera {
 
         this._bounds = glmatrix.vec4.create();
 
-        if (this.canvas != null) {
-            this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
-            this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
-            this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
-            this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
-        }
+        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
+        this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
+        this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
+        this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
 
         this.onPan = null;
         this.onZoom = null;
