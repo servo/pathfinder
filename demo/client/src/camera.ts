@@ -352,7 +352,9 @@ export class PerspectiveCamera extends Camera {
         let empty = true;
         for (const key of KEYCODES) {
             if (this.wasdPress[key]) {
-                glmatrix.vec3.add(this.movementDelta, this.movementDelta, PERSPECTIVE_MOVEMENT_VECTORS[key]);
+                glmatrix.vec3.add(this.movementDelta,
+                                  this.movementDelta,
+                                  PERSPECTIVE_MOVEMENT_VECTORS[key]);
                 empty = false;
             }
         }
@@ -361,7 +363,8 @@ export class PerspectiveCamera extends Camera {
 
     private startMoving(): void {
         if (this.movementInterval == null)
-            this.movementInterval = window.setInterval(() => this.move(), PERSPECTIVE_MOVEMENT_INTERVAL_DELAY);
+            this.movementInterval = window.setInterval(() => this.move(),
+                                                       PERSPECTIVE_MOVEMENT_INTERVAL_DELAY);
     }
 
     private stopMoving(): void {

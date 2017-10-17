@@ -361,7 +361,8 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         const coverProgram = renderContext.shaderPrograms.mcaaCover;
         const attributes = coverProgram.attributes;
         renderContext.gl.useProgram(coverProgram.program);
-        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, renderContext.quadPositionsBuffer);
+        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER,
+                                    renderContext.quadPositionsBuffer);
         renderContext.gl.vertexAttribPointer(attributes.aQuadPosition,
                                              2,
                                              renderContext.gl.FLOAT,
@@ -545,7 +546,8 @@ export abstract class MCAAStrategy extends XCAAStrategy {
                          .vertexAttribDivisorANGLE(attributes.aRightPosition, 1);
             renderContext.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
 
-            renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);
+            renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                        renderContext.quadElementsBuffer);
 
             vaos[direction] = vao;
         }
@@ -791,7 +793,8 @@ export class ECAAStrategy extends XCAAStrategy {
         renderContext.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aLeftNormalAngle, 1);
         renderContext.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aRightNormalAngle, 1);
 
-        renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);
+        renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                    renderContext.quadElementsBuffer);
 
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
 
@@ -812,7 +815,8 @@ export class ECAAStrategy extends XCAAStrategy {
         const curveNormalsBuffer = renderer.meshes[0].segmentCurveNormals;
 
         renderContext.gl.useProgram(curveProgram.program);
-        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, renderContext.quadPositionsBuffer);
+        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER,
+                                    renderContext.quadPositionsBuffer);
         renderContext.gl.vertexAttribPointer(attributes.aQuadPosition,
                                              2,
                                              renderContext.gl.FLOAT,

@@ -295,7 +295,8 @@ export abstract class Renderer {
             // TODO(pcwalton): Cache these.
             const directInteriorProgram =
                 renderContext.shaderPrograms[this.directInteriorProgramName];
-            const implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt.createVertexArrayOES();
+            const implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt
+                                                          .createVertexArrayOES();
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(implicitCoverInteriorVAO);
             this.initImplicitCoverInteriorVAO(objectIndex);
 

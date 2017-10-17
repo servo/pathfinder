@@ -15,7 +15,8 @@ import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa
 import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey, SUBPIXEL_GRANULARITY} from './atlas';
 import {OrthographicCamera} from './camera';
-import {createFramebuffer, createFramebufferDepthTexture, QUAD_ELEMENTS, UniformMap} from './gl-utils';
+import {createFramebuffer, createFramebufferDepthTexture, QUAD_ELEMENTS} from './gl-utils';
+import {UniformMap} from './gl-utils';
 import {Renderer} from './renderer';
 import {ShaderMap} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
@@ -241,7 +242,10 @@ export class TextRenderer extends Renderer {
     protected compositeIfNecessary() {
         // Set up composite state.
         this.renderContext.gl.bindFramebuffer(this.renderContext.gl.FRAMEBUFFER, null);
-        this.renderContext.gl.viewport(0, 0, this.renderContext.canvas.width, this.renderContext.canvas.height);
+        this.renderContext.gl.viewport(0,
+                                       0,
+                                       this.renderContext.canvas.width,
+                                       this.renderContext.canvas.height);
         this.renderContext.gl.disable(this.renderContext.gl.DEPTH_TEST);
         this.renderContext.gl.disable(this.renderContext.gl.SCISSOR_TEST);
         this.renderContext.gl.blendEquation(this.renderContext.gl.FUNC_ADD);

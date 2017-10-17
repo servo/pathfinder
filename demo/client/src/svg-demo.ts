@@ -188,7 +188,8 @@ class SVGDemoRenderer extends Renderer {
     }
 
     protected newTimingsReceived(): void {
-        this.renderContext.appController.newTimingsReceived(_.pick(this.lastTimings, ['rendering']));
+        this.renderContext.appController.newTimingsReceived(_.pick(this.lastTimings,
+                                                                   ['rendering']));
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {

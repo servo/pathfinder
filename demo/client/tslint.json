@@ -21,7 +21,8 @@
         "new-parens": false,
         "no-conditional-assignment": false,
         "no-shadowed-variable": false,
-        "no-var-requires": false
+        "no-var-requires": false,
+        "max-line-length": [true, 100]
     },
     "rulesDirectory": []
 }
