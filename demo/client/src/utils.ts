@@ -63,3 +63,21 @@ export class PathfinderError extends Error {
         super(message);
     }
 }
+
+export class Range {
+    start: number;
+    end: number;
+
+    get isEmpty(): boolean {
+        return this.start >= this.end;
+    }
+
+    get length(): number {
+        return this.end - this.start;
+    }
+
+    constructor(start: number, end: number) {
+        this.start = start;
+        this.end = end;
+    }
+}

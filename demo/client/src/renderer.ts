@@ -16,7 +16,7 @@ import PathfinderBufferTexture from "./buffer-texture";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from "./meshes";
 import {ShaderMap} from './shader-loader';
-import {UINT32_SIZE, unwrapNull} from './utils';
+import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull} from './utils';
 import {RenderContext, Timings} from "./view";
 
 const MAX_PATHS: number = 65535;
@@ -258,13 +258,9 @@ export abstract class Renderer {
         return glmatrix.mat4.create();
     }
 
-    protected meshInstanceCountForObject(objectIndex: number): number {
-        return 1;
-    }
-
-    // FIXME(pcwalton): Merge with `meshInstanceCountForObject`?
-    protected shouldRenderObject(objectIndex: number): boolean {
-        return true;
+    /// If non-instanced, returns instance 0. An empty range skips rendering the object entirely.
+    protected instanceRangeForObject(objectIndex: number): Range {
+        return new Range(0, 1);
     }
 
     /// Called whenever new GPU timing statistics are available.
@@ -273,16 +269,11 @@ export abstract class Renderer {
     private renderDirect() {
         const renderContext = this.renderContext;
         for (let objectIndex = 0; objectIndex < this.meshes.length; objectIndex++) {
-            if (!this.shouldRenderObject(objectIndex))
+            const instanceRange = this.instanceRangeForObject(objectIndex);
+            if (instanceRange.isEmpty)
                 continue;
 
             const meshes = this.meshes[objectIndex];
-
-            let instanceCount: number | null;
-            if (!this.pathIDsAreInstanced)
-                instanceCount = null;
-            else
-                instanceCount = this.meshInstanceCountForObject(objectIndex);
 
             // Set up implicit cover state.
             renderContext.gl.depthFunc(this.depthFunction);
@@ -298,7 +289,7 @@ export abstract class Renderer {
             const implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt
                                                           .createVertexArrayOES();
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(implicitCoverInteriorVAO);
-            this.initImplicitCoverInteriorVAO(objectIndex);
+            this.initImplicitCoverInteriorVAO(objectIndex, instanceRange);
 
             // Draw direct interior parts.
             this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
@@ -313,7 +304,7 @@ export abstract class Renderer {
             let indexCount =
                 renderContext.gl.getBufferParameter(renderContext.gl.ELEMENT_ARRAY_BUFFER,
                                                     renderContext.gl.BUFFER_SIZE) / UINT32_SIZE;
-            if (instanceCount == null) {
+            if (!this.pathIDsAreInstanced) {
                 renderContext.gl.drawElements(renderContext.gl.TRIANGLES,
                                               indexCount,
                                               renderContext.gl.UNSIGNED_INT,
@@ -324,7 +315,7 @@ export abstract class Renderer {
                                                          indexCount,
                                                          renderContext.gl.UNSIGNED_INT,
                                                          0,
-                                                         instanceCount);
+                                                         instanceRange.length);
             }
 
             // Set up direct curve state.
@@ -342,7 +333,7 @@ export abstract class Renderer {
             const directCurveProgram = renderContext.shaderPrograms[this.directCurveProgramName];
             const implicitCoverCurveVAO = renderContext.vertexArrayObjectExt.createVertexArrayOES();
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(implicitCoverCurveVAO);
-            this.initImplicitCoverCurveVAO(objectIndex);
+            this.initImplicitCoverCurveVAO(objectIndex, instanceRange);
 
             // Draw direct curve parts.
             this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
@@ -357,7 +348,7 @@ export abstract class Renderer {
             indexCount =
                 renderContext.gl.getBufferParameter(renderContext.gl.ELEMENT_ARRAY_BUFFER,
                                                     renderContext.gl.BUFFER_SIZE) / UINT32_SIZE;
-            if (instanceCount == null) {
+            if (!this.pathIDsAreInstanced) {
                 renderContext.gl.drawElements(renderContext.gl.TRIANGLES,
                                               indexCount,
                                               renderContext.gl.UNSIGNED_INT,
@@ -368,7 +359,7 @@ export abstract class Renderer {
                                                          indexCount,
                                                          renderContext.gl.UNSIGNED_INT,
                                                          0,
-                                                         instanceCount);
+                                                         instanceRange.length);
             }
 
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
@@ -415,7 +406,7 @@ export abstract class Renderer {
         }, TIME_INTERVAL_DELAY);
     }
 
-    private initImplicitCoverCurveVAO(objectIndex: number): void {
+    private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {
         const renderContext = this.renderContext;
         const meshes = this.meshes[objectIndex];
 
@@ -438,10 +429,10 @@ export abstract class Renderer {
                                              renderContext.gl.UNSIGNED_SHORT,
                                              false,
                                              0,
-                                             0);
+                                             instanceRange.start * UINT16_SIZE);
         if (this.pathIDsAreInstanced) {
             renderContext.instancedArraysExt
-                .vertexAttribDivisorANGLE(directCurveProgram.attributes.aPathID, 1);
+                         .vertexAttribDivisorANGLE(directCurveProgram.attributes.aPathID, 1);
         }
 
         renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, meshes.bVertexLoopBlinnData);
@@ -465,7 +456,7 @@ export abstract class Renderer {
                                     meshes.coverCurveIndices);
     }
 
-    private initImplicitCoverInteriorVAO(objectIndex: number): void {
+    private initImplicitCoverInteriorVAO(objectIndex: number, instanceRange: Range): void {
         const renderContext = this.renderContext;
         const meshes = this.meshes[objectIndex];
 
@@ -488,7 +479,7 @@ export abstract class Renderer {
                                              renderContext.gl.UNSIGNED_SHORT,
                                              false,
                                              0,
-                                             0);
+                                             instanceRange.start * UINT16_SIZE);
         if (this.pathIDsAreInstanced) {
             renderContext.instancedArraysExt
                          .vertexAttribDivisorANGLE(directInteriorProgram.attributes.aPathID, 1);

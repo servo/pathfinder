@@ -226,6 +226,7 @@ export abstract class TextRenderer extends Renderer {
                                               this.stemDarkeningAmount);
 
         this.uploadPathTransforms(1);
+        this.uploadPathColors(1);
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {

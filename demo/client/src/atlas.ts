@@ -118,7 +118,8 @@ export class AtlasGlyph {
         const pixelOrigin = glmatrix.vec2.create();
         glmatrix.vec2.scale(pixelOrigin, this.origin, pixelsPerUnit);
         glmatrix.vec2.round(pixelOrigin, pixelOrigin);
-        pixelOrigin[0] += this.glyphKey.subpixel / SUBPIXEL_GRANULARITY;
+        if (this.glyphKey.subpixel != null)
+            pixelOrigin[0] += this.glyphKey.subpixel / SUBPIXEL_GRANULARITY;
         return pixelOrigin;
     }
 
@@ -136,20 +137,22 @@ export class AtlasGlyph {
     }
 
     get pathID(): number {
+        if (this.glyphKey.subpixel == null)
+            return this.glyphStoreIndex + 1;
         return this.glyphStoreIndex * SUBPIXEL_GRANULARITY + this.glyphKey.subpixel + 1;
     }
 }
 
 export class GlyphKey {
     readonly id: number;
-    readonly subpixel: number;
+    readonly subpixel: number | null;
 
-    constructor(id: number, subpixel: number) {
+    constructor(id: number, subpixel: number | null) {
         this.id = id;
         this.subpixel = subpixel;
     }
 
     get sortKey(): number {
-        return this.id * SUBPIXEL_GRANULARITY + this.subpixel;
+        return this.subpixel == null ? this.id : this.id * SUBPIXEL_GRANULARITY + this.subpixel;
     }
 }

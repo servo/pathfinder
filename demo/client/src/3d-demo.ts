@@ -16,16 +16,19 @@ import {mat4, vec2} from "gl-matrix";
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {SubpixelAAType} from "./aa-strategy";
 import {DemoAppController} from "./app-controller";
+import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey} from './atlas';
 import PathfinderBufferTexture from "./buffer-texture";
-import {PerspectiveCamera} from "./camera";
+import {CameraView, PerspectiveCamera} from "./camera";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
 import {Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
-import {GlyphStore, Hint, PathfinderFont, TextFrame, TextRun} from "./text";
-import {assert, panic, PathfinderError, unwrapNull} from "./utils";
+import {calculatePixelRectForGlyph, GlyphStore, Hint, PathfinderFont} from "./text";
+import {SimpleTextLayout, TextFrame, TextRun, UnitMetrics} from "./text";
+import {TextRenderContext, TextRenderer} from './text-renderer';
+import {assert, FLOAT32_SIZE, panic, PathfinderError, Range, unwrapNull} from "./utils";
 import {DemoView, Timings} from "./view";
 
 const TEXT_AVAILABLE_WIDTH: number = 150000;
@@ -42,6 +45,10 @@ const PIXELS_PER_UNIT: number = 1.0;
 const FOV: number = 45.0;
 const NEAR_CLIP_PLANE: number = 0.1;
 const FAR_CLIP_PLANE: number = 10000.0;
+
+const ATLAS_FONT_SIZE: number = 48;
+
+const MAX_DISTANCE: number = 200.0;
 
 const TEXT_TRANSLATION: number[] = [
     -TEXT_AVAILABLE_WIDTH * 0.5,
@@ -103,17 +110,23 @@ interface MeshDescriptor {
 }
 
 class ThreeDController extends DemoAppController<ThreeDView> {
+    font: PathfinderFont;
     textFrames: TextFrame[];
     glyphStore: GlyphStore;
     meshDescriptors: MeshDescriptor[];
 
-    private baseMeshes: PathfinderMeshData;
+    atlasGlyphs: AtlasGlyph[];
+    atlas: Atlas;
+
+    baseMeshes: PathfinderMeshData;
     private expandedMeshes: PathfinderMeshData[];
 
     private monumentPromise: Promise<MonumentSide[]>;
 
     start() {
         super.start();
+
+        this.atlas = new Atlas;
 
         this.monumentPromise = window.fetch(TEXT_DATA_URI)
                                      .then(response => response.json())
@@ -123,8 +136,8 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     }
 
     protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
-        const font = new PathfinderFont(fileData, builtinName);
-        this.monumentPromise.then(monument => this.layoutMonument(font, fileData, monument));
+        this.font = new PathfinderFont(fileData, builtinName);
+        this.monumentPromise.then(monument => this.layoutMonument(fileData, monument));
     }
 
     protected createView(): ThreeDView {
@@ -164,7 +177,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         return sides.map(side => ({ lines: side.upper.lines.concat(side.lower.lines) }));
     }
 
-    private layoutMonument(font: PathfinderFont, fileData: ArrayBuffer, monument: MonumentSide[]) {
+    private layoutMonument(fileData: ArrayBuffer, monument: MonumentSide[]) {
         this.textFrames = [];
         let glyphsNeeded: number[] = [];
 
@@ -173,9 +186,9 @@ class ThreeDController extends DemoAppController<ThreeDView> {
             for (let lineNumber = 0; lineNumber < monumentSide.lines.length; lineNumber++) {
                 const line = monumentSide.lines[lineNumber];
 
-                const lineY = -lineNumber * font.opentypeFont.lineHeight();
+                const lineY = -lineNumber * this.font.opentypeFont.lineHeight();
                 const lineGlyphs = line.names.map(name => {
-                    const glyphs = font.opentypeFont.stringToGlyphs(name);
+                    const glyphs = this.font.opentypeFont.stringToGlyphs(name);
                     const glyphIDs = glyphs.map(glyph => (glyph as any).index);
                     const width = _.sumBy(glyphs, glyph => glyph.advanceWidth);
                     return { glyphs: glyphIDs, width: width };
@@ -188,14 +201,14 @@ class ThreeDController extends DemoAppController<ThreeDView> {
                 let currentX = 0.0;
                 for (const glyphInfo of lineGlyphs) {
                     const textRunOrigin = [currentX, lineY];
-                    const textRun = new TextRun(glyphInfo.glyphs, textRunOrigin, font);
+                    const textRun = new TextRun(glyphInfo.glyphs, textRunOrigin, this.font);
                     textRun.layout();
                     textRuns.push(textRun);
                     currentX += glyphInfo.width + spacing;
                 }
             }
 
-            const textFrame = new TextFrame(textRuns, font);
+            const textFrame = new TextFrame(textRuns, this.font);
             this.textFrames.push(textFrame);
             glyphsNeeded.push(...textFrame.allGlyphIDs);
         }
@@ -203,8 +216,17 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         glyphsNeeded.sort((a, b) => a - b);
         glyphsNeeded = _.sortedUniq(glyphsNeeded);
 
-        this.glyphStore = new GlyphStore(font, glyphsNeeded);
+        this.glyphStore = new GlyphStore(this.font, glyphsNeeded);
         this.glyphStore.partition().then(result => {
+            // Build the atlas glyphs needed.
+            this.atlasGlyphs = [];
+            for (const glyphID of glyphsNeeded) {
+                const glyphKey = new GlyphKey(glyphID, null);
+                const glyphStoreIndex = this.glyphStore.indexOfGlyphWithID(glyphID);
+                if (glyphStoreIndex != null)
+                    this.atlasGlyphs.push(new AtlasGlyph(glyphStoreIndex, glyphKey));
+            }
+
             const hint = new Hint(this.glyphStore.font, PIXELS_PER_UNIT, false);
 
             this.baseMeshes = result.meshes;
@@ -258,7 +280,41 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     }
 }
 
-class ThreeDView extends DemoView {
+class ThreeDView extends DemoView implements TextRenderContext {
+    cameraView: CameraView;
+
+    get atlas(): Atlas {
+        return this.appController.atlas;
+    }
+
+    get atlasGlyphs(): AtlasGlyph[] {
+        return this.appController.atlasGlyphs;
+    }
+
+    set atlasGlyphs(newAtlasGlyphs: AtlasGlyph[]) {
+        this.appController.atlasGlyphs = newAtlasGlyphs;
+    }
+
+    get glyphStore(): GlyphStore {
+        return this.appController.glyphStore;
+    }
+
+    get font(): PathfinderFont {
+        return this.appController.font;
+    }
+
+    get fontSize(): number {
+        return ATLAS_FONT_SIZE;
+    }
+
+    get useHinting(): boolean {
+        return false;
+    }
+
+    get atlasPixelsPerUnit(): number {
+        return ATLAS_FONT_SIZE / this.font.opentypeFont.unitsPerEm;
+    }
+
     renderer: ThreeDRenderer;
 
     appController: ThreeDController;
@@ -272,11 +328,15 @@ class ThreeDView extends DemoView {
                 shaderSources: ShaderMap<ShaderProgramSource>) {
         super(commonShaderSource, shaderSources);
 
+        this.cameraView = new ThreeDAtlasCameraView;
+
         this.appController = appController;
         this.renderer = new ThreeDRenderer(this);
 
         this.resizeToFit(true);
     }
+
+    newTimingsReceived(timings: Timings): void {}
 }
 
 class ThreeDRenderer extends Renderer {
@@ -307,7 +367,7 @@ class ThreeDRenderer extends Renderer {
         return 'direct3DInterior';
     }
 
-    protected get depthFunction(): number {
+    protected get depthFunction(): GLenum {
         return this.renderContext.gl.LESS;
     }
 
@@ -325,6 +385,11 @@ class ThreeDRenderer extends Renderer {
 
     private cubeVertexPositionBuffer: WebGLBuffer;
     private cubeIndexBuffer: WebGLBuffer;
+    private glyphPositionsBuffer: WebGLBuffer;
+    private glyphPositions: number[];
+    private glyphPositionRanges: Range[];
+    private glyphTexCoords: glmatrix.vec4[];
+    private glyphSizes: glmatrix.vec2[];
 
     constructor(renderContext: ThreeDView) {
         super(renderContext);
@@ -350,8 +415,12 @@ class ThreeDRenderer extends Renderer {
     attachMeshes(expandedMeshes: PathfinderMeshData[]) {
         super.attachMeshes(expandedMeshes);
 
+        this.renderAtlasGlyphs(this.renderContext.appController.atlasGlyphs);
+
         this.uploadPathColors(expandedMeshes.length);
         this.uploadPathTransforms(expandedMeshes.length);
+
+        this.uploadGlyphPositions();
     }
 
     pathCountForObject(objectIndex: number): number {
@@ -368,46 +437,15 @@ class ThreeDRenderer extends Renderer {
     }
 
     protected drawSceneryIfNecessary(): void {
-        // Set up the cube VBO.
-        const shaderProgram = this.renderContext.shaderPrograms.demo3DMonument;
-        this.renderContext.gl.useProgram(shaderProgram.program);
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
-                                         this.cubeVertexPositionBuffer);
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                         this.cubeIndexBuffer);
-        this.renderContext.gl.vertexAttribPointer(shaderProgram.attributes.aPosition,
-                                    3,
-                                    this.renderContext.gl.FLOAT,
-                                    false,
-                                    0,
-                                    0);
-        this.renderContext.gl.enableVertexAttribArray(shaderProgram.attributes.aPosition);
+        const gl = this.renderContext.gl;
 
-        // Set uniforms for the monument.
-        const transform = this.calculateWorldTransform(MONUMENT_TRANSLATION, MONUMENT_SCALE);
-        this.renderContext.gl.uniformMatrix4fv(shaderProgram.uniforms.uTransform,
-                                               false,
-                                               transform);
-        this.renderContext.gl.uniform4f(shaderProgram.uniforms.uColor,
-                                        MONUMENT_COLOR[0],
-                                        MONUMENT_COLOR[1],
-                                        MONUMENT_COLOR[2],
-                                        1.0);
-
-        // Set state for the monument.
-        this.renderContext.gl.enable(this.renderContext.gl.DEPTH_TEST);
-        this.renderContext.gl.depthMask(true);
-        this.renderContext.gl.disable(this.renderContext.gl.SCISSOR_TEST);
-
-        // Draw the monument!
-        this.renderContext.gl.drawElements(this.renderContext.gl.TRIANGLES,
-                                           CUBE_INDICES.length,
-                                           this.renderContext.gl.UNSIGNED_SHORT,
-                                           0);
+        this.drawMonument();
 
         // Clear to avoid Z-fighting.
-        this.renderContext.gl.clearDepth(1.0);
-        this.renderContext.gl.clear(this.renderContext.gl.DEPTH_BUFFER_BIT);
+        gl.clearDepth(1.0);
+        gl.clear(gl.DEPTH_BUFFER_BIT);
+
+        this.drawDistantGlyphs();
     }
 
     protected compositeIfNecessary(): void {}
@@ -441,11 +479,11 @@ class ThreeDRenderer extends Renderer {
     }
 
     protected clearForDirectRendering(): void {
-        this.renderContext.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        this.renderContext.gl.clearDepth(1.0);
-        this.renderContext.gl.depthMask(true);
-        this.renderContext.gl.clear(this.renderContext.gl.COLOR_BUFFER_BIT |
-                                    this.renderContext.gl.DEPTH_BUFFER_BIT);
+        const gl = this.renderContext.gl;
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.depthMask(true);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
     protected getModelviewTransform(objectIndex: number): glmatrix.mat4 {
@@ -460,8 +498,35 @@ class ThreeDRenderer extends Renderer {
         return transform;
     }
 
+    protected instanceRangeForObject(glyphDescriptorIndex: number): Range {
+        if (!this.objectIsVisible(glyphDescriptorIndex))
+            return new Range(0, 0);
+
+        const totalLength =
+            this.renderContext.appController.meshDescriptors[glyphDescriptorIndex].positions.length;
+
+        const cameraTransform = this.calculateCameraTransform(glmatrix.vec3.create(), TEXT_SCALE);
+        const worldTransform = this.calculateWorldTransform(glmatrix.vec3.create(), TEXT_SCALE);
+        const glyphsTransform = glmatrix.mat4.clone(cameraTransform);
+        const renderTransform = glmatrix.mat4.clone(worldTransform);
+        const modelviewTransform = this.getModelviewTransform(glyphDescriptorIndex);
+        glmatrix.mat4.mul(glyphsTransform, cameraTransform, modelviewTransform);
+        glmatrix.mat4.mul(renderTransform, renderTransform, modelviewTransform);
+
+        const nearbyRange = this.findNearbyGlyphPositions(glyphsTransform, glyphDescriptorIndex);
+        const glyphPositionRange = this.glyphPositionRanges[glyphDescriptorIndex];
+        nearbyRange.start -= glyphPositionRange.start;
+        nearbyRange.end -= glyphPositionRange.start;
+        return nearbyRange;
+    }
+
+    protected newTimingsReceived(): void {
+        const newTimings: Timings = _.pick(this.lastTimings, ['rendering']);
+        this.renderContext.appController.newTimingsReceived(newTimings);
+    }
+
     // Cheap but effective backface culling.
-    protected shouldRenderObject(objectIndex: number): boolean {
+    private objectIsVisible(objectIndex: number): boolean {
         const textFrameIndex = this.renderContext
                                    .appController
                                    .meshDescriptors[objectIndex]
@@ -476,9 +541,200 @@ class ThreeDRenderer extends Renderer {
         default:    return translation[0] > extent;
         }
     }
-    protected newTimingsReceived() {
-        const newTimings: Timings = _.pick(this.lastTimings, ['rendering']);
-        this.renderContext.appController.newTimingsReceived(newTimings);
+
+    private uploadGlyphPositions(): void {
+        const gl = this.renderContext.gl;
+        const font = this.renderContext.font;
+        const meshDescriptors = this.renderContext.appController.meshDescriptors;
+
+        this.glyphPositions = [];
+        this.glyphPositionRanges = [];
+        for (const meshDescriptor of meshDescriptors) {
+            const glyphIndex = this.renderContext.atlasGlyphs.findIndex(atlasGlyph => {
+                return atlasGlyph.glyphKey.id === meshDescriptor.glyphID;
+            });
+            const glyph = this.renderContext.atlasGlyphs[glyphIndex];
+            const glyphMetrics = unwrapNull(font.metricsForGlyph(glyph.glyphKey.id));
+            const glyphUnitMetrics = new UnitMetrics(glyphMetrics, glmatrix.vec2.create());
+
+            const firstPosition = this.glyphPositions.length / 2;
+
+            for (const position of meshDescriptor.positions) {
+                this.glyphPositions.push(position[0] + glyphUnitMetrics.left,
+                                         position[1] + glyphUnitMetrics.descent);
+            }
+
+            const lastPosition = this.glyphPositions.length / 2;
+            this.glyphPositionRanges.push(new Range(firstPosition, lastPosition));
+        }
+
+        this.glyphPositionsBuffer = unwrapNull(gl.createBuffer());
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.glyphPositions), gl.STATIC_DRAW);
+    }
+
+    private drawMonument(): void {
+        const gl = this.renderContext.gl;
+
+        // Set up the cube VBO.
+        const monumentProgram = this.renderContext.shaderPrograms.demo3DMonument;
+        this.renderContext.gl.useProgram(monumentProgram.program);
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.cubeVertexPositionBuffer);
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                         this.cubeIndexBuffer);
+        this.renderContext.gl.vertexAttribPointer(monumentProgram.attributes.aPosition,
+                                                  3,
+                                                  this.renderContext.gl.FLOAT,
+                                                  false,
+                                                  0,
+                                                  0);
+        this.renderContext.gl.enableVertexAttribArray(monumentProgram.attributes.aPosition);
+
+        // Set uniforms for the monument.
+        const transform = this.calculateWorldTransform(MONUMENT_TRANSLATION, MONUMENT_SCALE);
+        gl.uniformMatrix4fv(monumentProgram.uniforms.uTransform, false, transform);
+        gl.uniform4f(monumentProgram.uniforms.uColor,
+                     MONUMENT_COLOR[0],
+                     MONUMENT_COLOR[1],
+                     MONUMENT_COLOR[2],
+                     1.0);
+
+        // Set state for the monument.
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(this.depthFunction);
+        gl.depthMask(true);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.disable(gl.BLEND);
+
+        // Draw the monument!
+        gl.drawElements(gl.TRIANGLES, CUBE_INDICES.length, gl.UNSIGNED_SHORT, 0);
+    }
+
+    private drawDistantGlyphs(): void {
+        const appController = this.renderContext.appController;
+        const gl = this.renderContext.gl;
+
+        // Prepare the distant glyph VAO.
+        const vao = this.renderContext.vertexArrayObjectExt.createVertexArrayOES();
+        this.renderContext.vertexArrayObjectExt.bindVertexArrayOES(vao);
+        const distantGlyphProgram = this.renderContext.shaderPrograms.demo3DDistantGlyph;
+        gl.useProgram(distantGlyphProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.renderContext.quadPositionsBuffer);
+        gl.vertexAttribPointer(distantGlyphProgram.attributes.aQuadPosition,
+                               2,
+                               gl.FLOAT,
+                               false,
+                               0,
+                               0);
+        gl.enableVertexAttribArray(distantGlyphProgram.attributes.aQuadPosition);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.renderContext.quadElementsBuffer);
+
+        // Set global uniforms.
+        gl.uniform4fv(distantGlyphProgram.uniforms.uColor,
+                      _.map(TEXT_COLOR, number => number / 0xff));
+        const atlasTexture = this.renderContext.atlas.ensureTexture(this.renderContext);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, atlasTexture);
+        gl.uniform1i(distantGlyphProgram.uniforms.uAtlas, 0);
+
+        // Set state.
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.enable(gl.BLEND);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+
+        // Draw textures for distant glyphs.
+        const cameraTransform = this.calculateCameraTransform(glmatrix.vec3.create(), TEXT_SCALE);
+        const worldTransform = this.calculateWorldTransform(glmatrix.vec3.create(), TEXT_SCALE);
+
+        for (let glyphDescriptorIndex = 0;
+             glyphDescriptorIndex < this.glyphPositionRanges.length;
+             glyphDescriptorIndex++) {
+            if (!this.objectIsVisible(glyphDescriptorIndex))
+                continue;
+
+            const meshDescriptor = appController.meshDescriptors[glyphDescriptorIndex];
+            const glyphIndex = this.renderContext.atlasGlyphs.findIndex(glyph => {
+                return glyph.glyphKey.id === meshDescriptor.glyphID;
+            });
+
+            // Calculate transforms.
+            const glyphsTransform = glmatrix.mat4.clone(cameraTransform);
+            const renderTransform = glmatrix.mat4.clone(worldTransform);
+            const modelviewTransform = this.getModelviewTransform(glyphDescriptorIndex);
+            glmatrix.mat4.mul(glyphsTransform, cameraTransform, modelviewTransform);
+            glmatrix.mat4.mul(renderTransform, renderTransform, modelviewTransform);
+
+            const glyphPositionRange = this.glyphPositionRanges[glyphDescriptorIndex];
+            const nearbyGlyphPositionRange = this.findNearbyGlyphPositions(glyphsTransform,
+                                                                           glyphDescriptorIndex);
+
+            // Set uniforms.
+            gl.uniformMatrix4fv(distantGlyphProgram.uniforms.uTransform, false, renderTransform);
+
+            const glyphTexCoords = this.glyphTexCoords[glyphIndex];
+            gl.uniform4f(distantGlyphProgram.uniforms.uGlyphTexCoords,
+                         glyphTexCoords[0],
+                         glyphTexCoords[1],
+                         glyphTexCoords[2],
+                         glyphTexCoords[3]);
+            const glyphSize = this.glyphSizes[glyphIndex];
+            gl.uniform2f(distantGlyphProgram.uniforms.uGlyphSize, glyphSize[0], glyphSize[1]);
+
+            const rangeBefore = new Range(glyphPositionRange.start,
+                                          nearbyGlyphPositionRange.start);
+            if (!rangeBefore.isEmpty) {
+                // Would be nice to have `glDrawElementsInstancedBaseInstance`...
+                // FIXME(pcwalton): Cache VAOs?
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
+                gl.vertexAttribPointer(distantGlyphProgram.attributes.aPosition,
+                                       2,
+                                       gl.FLOAT,
+                                       false,
+                                       0,
+                                       rangeBefore.start * FLOAT32_SIZE * 2);
+                gl.enableVertexAttribArray(distantGlyphProgram.attributes.aPosition);
+                this.renderContext
+                    .instancedArraysExt
+                    .vertexAttribDivisorANGLE(distantGlyphProgram.attributes.aPosition, 1);
+
+                this.renderContext
+                    .instancedArraysExt
+                    .drawElementsInstancedANGLE(gl.TRIANGLES,
+                                                6,
+                                                gl.UNSIGNED_BYTE,
+                                                0,
+                                                rangeBefore.length);
+            }
+
+            const rangeAfter = new Range(nearbyGlyphPositionRange.end, glyphPositionRange.end);
+            if (!rangeAfter.isEmpty) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
+                gl.vertexAttribPointer(distantGlyphProgram.attributes.aPosition,
+                                       2,
+                                       gl.FLOAT,
+                                       false,
+                                       0,
+                                       rangeAfter.start * FLOAT32_SIZE * 2);
+                gl.enableVertexAttribArray(distantGlyphProgram.attributes.aPosition);
+                this.renderContext
+                    .instancedArraysExt
+                    .vertexAttribDivisorANGLE(distantGlyphProgram.attributes.aPosition, 1);
+
+                this.renderContext
+                    .instancedArraysExt
+                    .drawElementsInstancedANGLE(gl.TRIANGLES,
+                                                6,
+                                                gl.UNSIGNED_BYTE,
+                                                0,
+                                                rangeAfter.length);
+            }
+        }
+
+        this.renderContext.vertexArrayObjectExt.deleteVertexArrayOES(vao);
+        this.renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
     private calculateWorldTransform(modelviewTranslation: glmatrix.vec3,
@@ -501,6 +757,162 @@ class ThreeDRenderer extends Renderer {
         const transform = glmatrix.mat4.create();
         glmatrix.mat4.mul(transform, projection, modelview);
         return transform;
+    }
+
+    private calculateCameraTransform(modelviewTranslation: glmatrix.vec3,
+                                     modelviewScale: glmatrix.vec3):
+                                     glmatrix.mat4 {
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.translate(transform, transform, this.camera.translation);
+        glmatrix.mat4.translate(transform, transform, modelviewTranslation);
+        glmatrix.mat4.scale(transform, transform, modelviewScale);
+        return transform;
+    }
+
+    private renderAtlasGlyphs(atlasGlyphs: AtlasGlyph[]): void {
+        const hint = new Hint(this.renderContext.font,
+                              this.renderContext.atlasPixelsPerUnit,
+                              false);
+        this.renderContext.atlas.layoutGlyphs(atlasGlyphs,
+                                              this.renderContext.font,
+                                              this.renderContext.atlasPixelsPerUnit,
+                                              hint,
+                                              glmatrix.vec2.create());
+
+        const atlasRenderer = new ThreeDAtlasRenderer(this.renderContext, atlasGlyphs);
+        atlasRenderer.attachMeshes([this.renderContext.appController.baseMeshes]);
+        atlasRenderer.renderAtlas();
+        this.glyphTexCoords = atlasRenderer.glyphTexCoords;
+        this.glyphSizes = atlasRenderer.glyphSizes;
+    }
+
+    private findNearbyGlyphPositions(transform: glmatrix.mat4, glyphDescriptorIndex: number):
+                                     Range {
+        const glyphPositionRange = this.glyphPositionRanges[glyphDescriptorIndex];
+        const startPosition = this.findFirstGlyphPositionInRange(transform,
+                                                                 glyphPositionRange,
+                                                                 -MAX_DISTANCE);
+        const endPosition = this.findFirstGlyphPositionInRange(transform,
+                                                               new Range(startPosition,
+                                                                         glyphPositionRange.end),
+                                                               MAX_DISTANCE);
+        return new Range(startPosition, endPosition);
+    }
+
+    private findFirstGlyphPositionInRange(transform: glmatrix.mat4,
+                                          range: Range,
+                                          maxDistance: number):
+                                          number {
+        let lo = range.start, hi = range.end;
+        while (lo < hi) {
+            const mid = lo + ((hi - lo) >> 1);
+            const glyphPosition = this.calculateTransformedGlyphPosition(transform, mid);
+            const glyphDistance = -glyphPosition[1];
+            if (glyphDistance < maxDistance)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        return lo;
+    }
+
+    private calculateTransformedGlyphPosition(transform: glmatrix.mat4,
+                                              glyphPositionIndex: number):
+                                              glmatrix.vec4 {
+        const position = glmatrix.vec4.clone([
+            this.glyphPositions[glyphPositionIndex * 2 + 0],
+            this.glyphPositions[glyphPositionIndex * 2 + 1],
+            0.0,
+            1.0,
+        ]);
+        glmatrix.vec4.transformMat4(position, position, transform);
+        return position;
+    }
+}
+
+class ThreeDAtlasRenderer extends TextRenderer {
+    glyphTexCoords: glmatrix.vec4[];
+    glyphSizes: glmatrix.vec2[];
+
+    private allAtlasGlyphs: AtlasGlyph[];
+
+    constructor(renderContext: ThreeDView, atlasGlyphs: AtlasGlyph[]) {
+        super(renderContext);
+        this.allAtlasGlyphs = atlasGlyphs;
+    }
+
+    renderAtlas(): void {
+        this.createAtlasFramebuffer();
+        this.buildAtlasGlyphs(this.allAtlasGlyphs);
+        this.redraw();
+        this.calculateGlyphTexCoords();
+    }
+
+    protected compositeIfNecessary(): void {}
+
+    private calculateGlyphTexCoords(): void {
+        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+        const glyphCount = this.renderContext.atlasGlyphs.length;
+        const font = this.renderContext.font;
+        const hint = this.createHint();
+
+        this.glyphTexCoords = [];
+        this.glyphSizes = [];
+
+        for (let glyphIndex = 0; glyphIndex < glyphCount; glyphIndex++) {
+            const glyph = this.renderContext.atlasGlyphs[glyphIndex];
+            const glyphPixelOrigin = glyph.calculateSubpixelOrigin(displayPixelsPerUnit);
+            const glyphMetrics = font.metricsForGlyph(glyph.glyphKey.id);
+            if (glyphMetrics == null)
+                continue;
+
+            const glyphUnitMetrics = new UnitMetrics(glyphMetrics, glmatrix.vec2.create());
+            const atlasGlyphRect = calculatePixelRectForGlyph(glyphUnitMetrics,
+                                                              glyphPixelOrigin,
+                                                              displayPixelsPerUnit,
+                                                              hint);
+
+            this.glyphSizes.push(glmatrix.vec2.clone([
+                glyphUnitMetrics.right - glyphUnitMetrics.left,
+                glyphUnitMetrics.ascent - glyphUnitMetrics.descent,
+            ]));
+
+            const atlasGlyphBL = atlasGlyphRect.slice(0, 2) as glmatrix.vec2;
+            const atlasGlyphTR = atlasGlyphRect.slice(2, 4) as glmatrix.vec2;
+            glmatrix.vec2.div(atlasGlyphBL, atlasGlyphBL, ATLAS_SIZE);
+            glmatrix.vec2.div(atlasGlyphTR, atlasGlyphTR, ATLAS_SIZE);
+
+            this.glyphTexCoords.push(glmatrix.vec4.clone([
+                atlasGlyphBL[0],
+                atlasGlyphBL[1],
+                atlasGlyphTR[0],
+                atlasGlyphTR[1],
+            ]));
+        }
+    }
+}
+
+class ThreeDAtlasCameraView implements CameraView {
+    get width(): number {
+        return ATLAS_SIZE[0];
+    }
+
+    get height(): number {
+        return ATLAS_SIZE[1];
+    }
+
+    get classList(): DOMTokenList | null {
+        return null;
+    }
+
+    addEventListener<K extends keyof HTMLElementEventMap>(type: K,
+                                                          listener: (this: HTMLCanvasElement,
+                                                                     ev: HTMLElementEventMap[K]) =>
+                                                                     any,
+                                                          useCapture?: boolean): void {}
+
+    getBoundingClientRect(): ClientRect {
+        return new ClientRect();
     }
 }
 

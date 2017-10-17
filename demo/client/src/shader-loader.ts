@@ -34,6 +34,7 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'xcaaMonoResolve',
     'xcaaMonoSubpixelResolve',
     'xcaaMultiResolve',
+    'demo3DDistantGlyph',
     'demo3DMonument',
 ];
 
@@ -41,6 +42,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     blit: {
         fragment: "/glsl/gles2/blit.fs.glsl",
         vertex: "/glsl/gles2/blit.vs.glsl",
+    },
+    demo3DDistantGlyph: {
+        fragment: "/glsl/gles2/demo-3d-distant-glyph.fs.glsl",
+        vertex: "/glsl/gles2/demo-3d-distant-glyph.vs.glsl",
     },
     demo3DMonument: {
         fragment: "/glsl/gles2/demo-3d-monument.fs.glsl",
@@ -106,6 +111,7 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
 
 export interface ShaderMap<T> {
     blit: T;
+    demo3DDistantGlyph: T;
     demo3DMonument: T;
     directCurve: T;
     directInterior: T;

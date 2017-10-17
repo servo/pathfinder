@@ -204,7 +204,6 @@ class TextDemoController extends DemoAppController<TextDemoView> {
                 this.meshes = meshes;
 
                 view.attachText();
-                view.renderer.uploadPathColors(1);
                 view.attachMeshes([this.meshes]);
             });
         });
