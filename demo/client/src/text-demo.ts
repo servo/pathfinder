@@ -17,7 +17,7 @@ import {Metrics} from 'opentype.js';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import {DemoAppController} from './app-controller';
-import {Atlas, AtlasGlyph, SUBPIXEL_GRANULARITY} from './atlas';
+import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey, SUBPIXEL_GRANULARITY} from './atlas';
 import PathfinderBufferTexture from './buffer-texture';
 import {CameraView, OrthographicCamera} from "./camera";
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
@@ -256,7 +256,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 }
 
 class TextDemoView extends DemoView implements TextRenderContext {
-    renderer: TextRenderer;
+    renderer: TextDemoRenderer;
 
     appController: TextDemoController;
 
@@ -274,10 +274,6 @@ class TextDemoView extends DemoView implements TextRenderContext {
 
     get atlas(): Atlas {
         return this.appController.atlas;
-    }
-
-    get layout(): SimpleTextLayout {
-        return this.appController.layout;
     }
 
     get glyphStore(): GlyphStore {
@@ -314,7 +310,7 @@ class TextDemoView extends DemoView implements TextRenderContext {
         super(commonShaderSource, shaderSources);
 
         this.appController = appController;
-        this.renderer = new TextRenderer(this);
+        this.renderer = new TextDemoRenderer(this);
 
         this.canvas.addEventListener('dblclick', () => this.appController.showTextEditor(), false);
 
@@ -355,7 +351,320 @@ class TextDemoView extends DemoView implements TextRenderContext {
     }
 }
 
-function main() {
+class TextDemoRenderer extends TextRenderer {
+    renderContext: TextDemoView;
+
+    glyphPositionsBuffer: WebGLBuffer;
+    glyphTexCoordsBuffer: WebGLBuffer;
+    glyphElementsBuffer: WebGLBuffer;
+
+    get layout(): SimpleTextLayout {
+        return this.renderContext.appController.layout;
+    }
+
+    private glyphBounds: Float32Array;
+
+    prepareToAttachText(): void {
+        if (this.atlasFramebuffer == null)
+            this.createAtlasFramebuffer();
+
+        this.layoutText();
+    }
+
+    finishAttachingText(): void {
+        this.buildGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    setAntialiasingOptions(aaType: AntialiasingStrategyName,
+                           aaLevel: number,
+                           subpixelAA: SubpixelAAType,
+                           stemDarkening: StemDarkeningMode):
+                           void {
+        super.setAntialiasingOptions(aaType, aaLevel, subpixelAA, stemDarkening);
+
+        // Need to relayout because changing AA options can cause font dilation to change...
+        this.layoutText();
+        this.buildGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    relayoutText(): void {
+        this.layoutText();
+        this.buildGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    updateHinting(): void {
+        // Need to relayout the text because the pixel bounds of the glyphs can change from this...
+        this.layoutText();
+        this.buildGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    viewPanned(): void {
+        this.buildGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    protected compositeIfNecessary(): void {
+        // Set up composite state.
+        this.renderContext.gl.bindFramebuffer(this.renderContext.gl.FRAMEBUFFER, null);
+        this.renderContext.gl.viewport(0,
+                                       0,
+                                       this.renderContext.cameraView.width,
+                                       this.renderContext.cameraView.height);
+        this.renderContext.gl.disable(this.renderContext.gl.DEPTH_TEST);
+        this.renderContext.gl.disable(this.renderContext.gl.SCISSOR_TEST);
+        this.renderContext.gl.blendEquation(this.renderContext.gl.FUNC_ADD);
+        this.renderContext.gl.blendFuncSeparate(this.renderContext.gl.SRC_ALPHA,
+                                                this.renderContext.gl.ONE_MINUS_SRC_ALPHA,
+                                                this.renderContext.gl.ONE,
+                                                this.renderContext.gl.ONE);
+        this.renderContext.gl.enable(this.renderContext.gl.BLEND);
+
+        // Clear.
+        this.renderContext.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        this.renderContext.gl.clear(this.renderContext.gl.COLOR_BUFFER_BIT);
+
+        // Set up the composite VAO.
+        const blitProgram = this.renderContext.shaderPrograms.blit;
+        const attributes = blitProgram.attributes;
+        this.renderContext.gl.useProgram(blitProgram.program);
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphPositionsBuffer);
+        this.renderContext.gl.vertexAttribPointer(attributes.aPosition,
+                                                  2,
+                                                  this.renderContext.gl.FLOAT,
+                                                  false,
+                                                  0,
+                                                  0);
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphTexCoordsBuffer);
+        this.renderContext.gl.vertexAttribPointer(attributes.aTexCoord,
+                                                  2,
+                                                  this.renderContext.gl.FLOAT,
+                                                  false,
+                                                  0,
+                                                  0);
+        this.renderContext.gl.enableVertexAttribArray(attributes.aPosition);
+        this.renderContext.gl.enableVertexAttribArray(attributes.aTexCoord);
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                         this.glyphElementsBuffer);
+
+        // Create the transform.
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform, transform, [
+            2.0 / this.renderContext.cameraView.width,
+            2.0 / this.renderContext.cameraView.height,
+            1.0,
+        ]);
+        glmatrix.mat4.translate(transform,
+                                transform,
+                                [this.camera.translation[0], this.camera.translation[1], 0.0]);
+
+        // Blit.
+        this.renderContext.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
+        this.renderContext.gl.activeTexture(this.renderContext.gl.TEXTURE0);
+        const destTexture = this.renderContext
+                                .atlas
+                                .ensureTexture(this.renderContext);
+        this.renderContext.gl.bindTexture(this.renderContext.gl.TEXTURE_2D, destTexture);
+        this.renderContext.gl.uniform1i(blitProgram.uniforms.uSource, 0);
+        this.setIdentityTexScaleUniform(blitProgram.uniforms);
+        const totalGlyphCount = this.layout.textFrame.totalGlyphCount;
+        this.renderContext.gl.drawElements(this.renderContext.gl.TRIANGLES,
+                                           totalGlyphCount * 6,
+                                           this.renderContext.gl.UNSIGNED_INT,
+                                           0);
+    }
+
+    private layoutText(): void {
+        this.layout.layoutRuns();
+
+        const textBounds = this.layout.textFrame.bounds;
+        this.camera.bounds = textBounds;
+
+        const totalGlyphCount = this.layout.textFrame.totalGlyphCount;
+        const glyphPositions = new Float32Array(totalGlyphCount * 8);
+        const glyphIndices = new Uint32Array(totalGlyphCount * 6);
+
+        const hint = this.createHint();
+        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+        const layoutPixelsPerUnit = this.layoutPixelsPerUnit;
+
+        let globalGlyphIndex = 0;
+        for (const run of this.layout.textFrame.runs) {
+            for (let glyphIndex = 0;
+                 glyphIndex < run.glyphIDs.length;
+                 glyphIndex++, globalGlyphIndex++) {
+                const rect = run.pixelRectForGlyphAt(glyphIndex,
+                                                     layoutPixelsPerUnit,
+                                                     displayPixelsPerUnit,
+                                                     hint,
+                                                     this.stemDarkeningAmount,
+                                                     SUBPIXEL_GRANULARITY);
+                glyphPositions.set([
+                    rect[0], rect[3],
+                    rect[2], rect[3],
+                    rect[0], rect[1],
+                    rect[2], rect[1],
+                ], globalGlyphIndex * 8);
+
+                for (let glyphIndexIndex = 0;
+                    glyphIndexIndex < QUAD_ELEMENTS.length;
+                    glyphIndexIndex++) {
+                    glyphIndices[glyphIndexIndex + globalGlyphIndex * 6] =
+                        QUAD_ELEMENTS[glyphIndexIndex] + 4 * globalGlyphIndex;
+                }
+            }
+        }
+
+        this.glyphPositionsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphPositionsBuffer);
+        this.renderContext.gl.bufferData(this.renderContext.gl.ARRAY_BUFFER,
+                                         glyphPositions,
+                                         this.renderContext.gl.STATIC_DRAW);
+        this.glyphElementsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                         this.glyphElementsBuffer);
+        this.renderContext.gl.bufferData(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                         glyphIndices,
+                                         this.renderContext.gl.STATIC_DRAW);
+    }
+
+    private buildGlyphs(): void {
+        const font = this.renderContext.font;
+        const glyphStore = this.renderContext.glyphStore;
+        const layoutPixelsPerUnit = this.layoutPixelsPerUnit;
+        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+
+        const textFrame = this.layout.textFrame;
+        const hint = this.createHint();
+
+        // Only build glyphs in view.
+        const translation = this.camera.translation;
+        const canvasRect = glmatrix.vec4.clone([
+            -translation[0],
+            -translation[1],
+            -translation[0] + this.renderContext.cameraView.width,
+            -translation[1] + this.renderContext.cameraView.height,
+        ]);
+
+        const atlasGlyphs = [];
+        for (const run of textFrame.runs) {
+            for (let glyphIndex = 0; glyphIndex < run.glyphIDs.length; glyphIndex++) {
+                const pixelRect = run.pixelRectForGlyphAt(glyphIndex,
+                                                          layoutPixelsPerUnit,
+                                                          displayPixelsPerUnit,
+                                                          hint,
+                                                          this.stemDarkeningAmount,
+                                                          SUBPIXEL_GRANULARITY);
+                if (!rectsIntersect(pixelRect, canvasRect))
+                    continue;
+
+                const glyphID = run.glyphIDs[glyphIndex];
+                const glyphStoreIndex = glyphStore.indexOfGlyphWithID(glyphID);
+                if (glyphStoreIndex == null)
+                    continue;
+
+                const subpixel = run.subpixelForGlyphAt(glyphIndex,
+                                                        layoutPixelsPerUnit,
+                                                        hint,
+                                                        SUBPIXEL_GRANULARITY);
+                const glyphKey = new GlyphKey(glyphID, subpixel);
+                atlasGlyphs.push(new AtlasGlyph(glyphStoreIndex, glyphKey));
+            }
+        }
+
+        this.buildAtlasGlyphs(atlasGlyphs);
+
+        // TODO(pcwalton): Regenerate the IBOs to include only the glyphs we care about.
+
+        this.setGlyphTexCoords();
+    }
+
+    private setGlyphTexCoords(): void {
+        const textFrame = this.layout.textFrame;
+        const font = this.renderContext.font;
+        const atlasGlyphs = this.renderContext.atlasGlyphs;
+
+        const hint = this.createHint();
+        const layoutPixelsPerUnit = this.layoutPixelsPerUnit;
+        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+
+        const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
+
+        this.glyphBounds = new Float32Array(textFrame.totalGlyphCount * 8);
+
+        let globalGlyphIndex = 0;
+        for (const run of textFrame.runs) {
+            for (let glyphIndex = 0;
+                 glyphIndex < run.glyphIDs.length;
+                 glyphIndex++, globalGlyphIndex++) {
+                const textGlyphID = run.glyphIDs[glyphIndex];
+
+                const subpixel = run.subpixelForGlyphAt(glyphIndex,
+                                                        layoutPixelsPerUnit,
+                                                        hint,
+                                                        SUBPIXEL_GRANULARITY);
+
+                const glyphKey = new GlyphKey(textGlyphID, subpixel);
+
+                const atlasGlyphIndex = _.sortedIndexOf(atlasGlyphKeys, glyphKey.sortKey);
+                if (atlasGlyphIndex < 0)
+                    continue;
+
+                // Set texture coordinates.
+                const atlasGlyph = atlasGlyphs[atlasGlyphIndex];
+                const atlasGlyphMetrics = font.metricsForGlyph(atlasGlyph.glyphKey.id);
+                if (atlasGlyphMetrics == null)
+                    continue;
+
+                const atlasGlyphUnitMetrics = new UnitMetrics(atlasGlyphMetrics,
+                                                              this.stemDarkeningAmount);
+
+                const atlasGlyphPixelOrigin =
+                    atlasGlyph.calculateSubpixelOrigin(displayPixelsPerUnit);
+                const atlasGlyphRect = calculatePixelRectForGlyph(atlasGlyphUnitMetrics,
+                                                                  atlasGlyphPixelOrigin,
+                                                                  displayPixelsPerUnit,
+                                                                  hint);
+                const atlasGlyphBL = atlasGlyphRect.slice(0, 2) as glmatrix.vec2;
+                const atlasGlyphTR = atlasGlyphRect.slice(2, 4) as glmatrix.vec2;
+                glmatrix.vec2.div(atlasGlyphBL, atlasGlyphBL, ATLAS_SIZE);
+                glmatrix.vec2.div(atlasGlyphTR, atlasGlyphTR, ATLAS_SIZE);
+
+                this.glyphBounds.set([
+                    atlasGlyphBL[0], atlasGlyphTR[1],
+                    atlasGlyphTR[0], atlasGlyphTR[1],
+                    atlasGlyphBL[0], atlasGlyphBL[1],
+                    atlasGlyphTR[0], atlasGlyphBL[1],
+                ], globalGlyphIndex * 8);
+            }
+        }
+
+        this.glyphTexCoordsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphTexCoordsBuffer);
+        this.renderContext.gl.bufferData(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphBounds,
+                                         this.renderContext.gl.STATIC_DRAW);
+    }
+
+    private setIdentityTexScaleUniform(uniforms: UniformMap): void {
+        this.renderContext.gl.uniform2f(uniforms.uTexScale, 1.0, 1.0);
+    }
+}
+
+/// The separating axis theorem.
+function rectsIntersect(a: glmatrix.vec4, b: glmatrix.vec4): boolean {
+    return a[2] > b[0] && a[3] > b[1] && a[0] < b[2] && a[1] < b[3];
+}
+
+function main(): void {
     const controller = new TextDemoController;
     window.addEventListener('load', () => controller.start(), false);
 }
