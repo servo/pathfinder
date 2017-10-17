@@ -10,7 +10,8 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {DemoView, Renderer} from './view';
+import {Renderer} from './renderer';
+import {DemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
 

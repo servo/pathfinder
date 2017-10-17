@@ -12,8 +12,9 @@ import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy, SubpixelAAType} from './aa-strategy';
 import {createFramebuffer, createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
+import {Renderer} from './renderer';
 import {unwrapNull} from './utils';
-import {DemoView, Renderer} from './view';
+import {DemoView} from './view';
 
 export default class SSAAStrategy extends AntialiasingStrategy {
     private level: number;
@@ -50,11 +51,11 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.supersampledColorTexture);
         renderContext.gl.texImage2D(renderContext.gl.TEXTURE_2D,
                                     0,
-                                    renderer.colorAlphaFormat,
+                                    renderContext.colorAlphaFormat,
                                     this.supersampledFramebufferSize[0],
                                     this.supersampledFramebufferSize[1],
                                     0,
-                                    renderer.colorAlphaFormat,
+                                    renderContext.colorAlphaFormat,
                                     renderContext.gl.UNSIGNED_BYTE,
                                     null);
         setTextureParameters(renderContext.gl, renderContext.gl.LINEAR);

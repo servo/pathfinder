@@ -19,6 +19,7 @@ import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
+import {Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
@@ -127,8 +128,6 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             this.expandedMeshes = expandedMeshes;
 
             this.view.then(view => {
-                view.uploadPathColors(1);
-                view.uploadPathTransforms(1);
                 view.attachMeshes([expandedMeshes.meshes]);
             });
         });
@@ -237,9 +236,43 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 }
 
 class BenchmarkTestView extends DemoView {
-    destFramebuffer: WebGLFramebuffer | null = null;
+    readonly renderer: BenchmarkRenderer;
+    readonly appController: BenchmarkAppController;
+
+    get camera(): OrthographicCamera {
+        return this.renderer.camera;
+    }
+
+    set pixelsPerEm(newPPEM: number) {
+        this.renderer.pixelsPerEm = newPPEM;
+    }
+
+    set renderingPromiseCallback(newCallback: (time: number) => void) {
+        this.renderer.renderingPromiseCallback = newCallback;
+    }
+
+    constructor(appController: BenchmarkAppController,
+                commonShaderSource: string,
+                shaderSources: ShaderMap<ShaderProgramSource>) {
+        super(commonShaderSource, shaderSources);
+
+        this.appController = appController;
+        this.renderer = new BenchmarkRenderer(this);
+
+        this.resizeToFit(true);
+    }
+}
+
+class BenchmarkRenderer extends Renderer {
+    renderContext: BenchmarkTestView;
+
+    camera: OrthographicCamera;
 
     renderingPromiseCallback: ((time: number) => void) | null;
+
+    get destFramebuffer(): WebGLFramebuffer | null {
+        return null;
+    }
 
     get bgColor(): glmatrix.vec4 {
         return glmatrix.vec4.clone([1.0, 1.0, 1.0, 0.0]);
@@ -249,50 +282,99 @@ class BenchmarkTestView extends DemoView {
         return glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
     }
 
-    protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.clone([1.0, 1.0]);
+    get destAllocatedSize(): glmatrix.vec2 {
+        const canvas = this.renderContext.canvas;
+        return glmatrix.vec2.clone([canvas.width, canvas.height]);
+    }
 
-    protected directCurveProgramName: keyof ShaderMap<void> = 'directCurve';
-    protected directInteriorProgramName: keyof ShaderMap<void> = 'directInterior';
-
-    protected depthFunction: number = this.gl.GREATER;
-
-    protected camera: OrthographicCamera;
-
-    private _pixelsPerEm: number = 32.0;
-
-    private readonly appController: BenchmarkAppController;
+    get destUsedSize(): glmatrix.vec2 {
+        return this.destAllocatedSize;
+    }
 
     get emboldenAmount(): glmatrix.vec2 {
         return this.stemDarkeningAmount;
+    }
+
+    get pixelsPerEm(): number {
+        return this._pixelsPerEm;
+    }
+
+    set pixelsPerEm(newPixelsPerEm: number) {
+        this._pixelsPerEm = newPixelsPerEm;
+        this.uploadPathTransforms(1);
+        this.renderContext.setDirty();
+    }
+
+    protected get usedSizeFactor(): glmatrix.vec2 {
+        return glmatrix.vec2.clone([1.0, 1.0]);
+    }
+
+    protected get directCurveProgramName(): keyof ShaderMap<void> {
+        return 'directCurve';
+    }
+
+    protected get directInteriorProgramName(): keyof ShaderMap<void> {
+        return 'directInterior';
+    }
+
+    protected get depthFunction(): number {
+        return this.renderContext.gl.GREATER;
+    }
+
+    protected get worldTransform() {
+        const canvas = this.renderContext.canvas;
+
+        const transform = glmatrix.mat4.create();
+        const translation = this.camera.translation;
+        glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform, transform, [2.0 / canvas.width, 2.0 / canvas.height, 1.0]);
+        glmatrix.mat4.translate(transform, transform, [translation[0], translation[1], 0]);
+        glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
+
+        const pixelsPerUnit = this.pixelsPerUnit;
+        glmatrix.mat4.scale(transform, transform, [pixelsPerUnit, pixelsPerUnit, 1.0]);
+
+        return transform;
+    }
+
+    private _pixelsPerEm: number = 32.0;
+
+    private get pixelsPerUnit(): number {
+        const font = unwrapNull(this.renderContext.appController.font);
+        return this._pixelsPerEm / font.opentypeFont.unitsPerEm;
     }
 
     private get stemDarkeningAmount(): glmatrix.vec2 {
         return computeStemDarkeningAmount(this._pixelsPerEm, this.pixelsPerUnit);
     }
 
-    constructor(appController: BenchmarkAppController,
-                commonShaderSource: string,
-                shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(commonShaderSource, shaderSources);
+    constructor(renderContext: BenchmarkTestView) {
+        super(renderContext);
 
-        this.appController = appController;
-
-        this.camera = new OrthographicCamera(this.canvas);
-        this.camera.onPan = () => this.setDirty();
-        this.camera.onZoom = () => this.setDirty();
+        this.camera = new OrthographicCamera(renderContext.canvas);
+        this.camera.onPan = () => renderContext.setDirty();
+        this.camera.onZoom = () => renderContext.setDirty();
     }
 
-    setHintsUniform(uniforms: UniformMap): void {
-        this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
+    attachMeshes(meshes: PathfinderMeshData[]): void {
+        super.attachMeshes(meshes);
+
+        this.uploadPathColors(1);
+        this.uploadPathTransforms(1);
+    }
+
+    pathCountForObject(objectIndex: number): number {
+        return STRING.length;
     }
 
     pathBoundingRects(objectIndex: number): Float32Array {
-        const font = unwrapNull(this.appController.font);
+        const appController = this.renderContext.appController;
+        const font = unwrapNull(appController.font);
 
         const boundingRects = new Float32Array((STRING.length + 1) * 4);
 
         for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
-            const glyphID = unwrapNull(this.appController.textRun).glyphIDs[glyphIndex];
+            const glyphID = unwrapNull(appController.textRun).glyphIDs[glyphIndex];
 
             const metrics = font.metricsForGlyph(glyphID);
             if (metrics == null)
@@ -307,8 +389,8 @@ class BenchmarkTestView extends DemoView {
         return boundingRects;
     }
 
-    pathCountForObject(objectIndex: number): number {
-        return STRING.length;
+    setHintsUniform(uniforms: UniformMap): void {
+        this.renderContext.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
@@ -324,6 +406,14 @@ class BenchmarkTestView extends DemoView {
         // TODO(pcwalton)
     }
 
+    protected renderingFinished(): void {
+        if (this.renderingPromiseCallback == null)
+            return;
+        const glyphCount = unwrapNull(this.renderContext.appController.textRun).glyphIDs.length;
+        const usPerGlyph = this.lastTimings.rendering * 1000.0 / glyphCount;
+        this.renderingPromiseCallback(usPerGlyph);
+    }
+
     protected pathColorsForObject(objectIndex: number): Uint8Array {
         const pathColors = new Uint8Array(4 * (STRING.length + 1));
         for (let pathIndex = 0; pathIndex < STRING.length; pathIndex++)
@@ -332,20 +422,21 @@ class BenchmarkTestView extends DemoView {
     }
 
     protected pathTransformsForObject(objectIndex: number): Float32Array {
+        const appController = this.renderContext.appController;
+        const canvas = this.renderContext.canvas;
+        const font = unwrapNull(appController.font);
+
         const pathTransforms = new Float32Array(4 * (STRING.length + 1));
 
         let currentX = 0, currentY = 0;
-        const availableWidth = this.canvas.width / this.pixelsPerUnit;
-        const lineHeight = unwrapNull(this.appController.font).opentypeFont.lineHeight();
+        const availableWidth = canvas.width / this.pixelsPerUnit;
+        const lineHeight = font.opentypeFont.lineHeight();
 
         for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
-            const glyphID = unwrapNull(this.appController.textRun).glyphIDs[glyphIndex];
+            const glyphID = unwrapNull(appController.textRun).glyphIDs[glyphIndex];
             pathTransforms.set([1, 1, currentX, currentY], (glyphIndex + 1) * 4);
 
-            currentX += unwrapNull(this.appController.font).opentypeFont
-                                                           .glyphs
-                                                           .get(glyphID)
-                                                           .advanceWidth;
+            currentX += font.opentypeFont.glyphs.get(glyphID).advanceWidth;
             if (currentX > availableWidth) {
                 currentX = 0;
                 currentY += lineHeight;
@@ -353,52 +444,6 @@ class BenchmarkTestView extends DemoView {
         }
 
         return pathTransforms;
-    }
-
-    protected renderingFinished(): void {
-        if (this.renderingPromiseCallback != null) {
-            const glyphCount = unwrapNull(this.appController.textRun).glyphIDs.length;
-            const usPerGlyph = this.lastTimings.rendering * 1000.0 / glyphCount;
-            this.renderingPromiseCallback(usPerGlyph);
-        }
-    }
-
-    get destAllocatedSize(): glmatrix.vec2 {
-        return glmatrix.vec2.clone([this.canvas.width, this.canvas.height]);
-    }
-
-    get destUsedSize(): glmatrix.vec2 {
-        return this.destAllocatedSize;
-    }
-
-    protected get worldTransform() {
-        const transform = glmatrix.mat4.create();
-        const translation = this.camera.translation;
-        glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
-        glmatrix.mat4.scale(transform,
-                            transform,
-                            [2.0 / this.canvas.width, 2.0 / this.canvas.height, 1.0]);
-        glmatrix.mat4.translate(transform, transform, [translation[0], translation[1], 0]);
-        glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
-
-        const pixelsPerUnit = this.pixelsPerUnit;
-        glmatrix.mat4.scale(transform, transform, [pixelsPerUnit, pixelsPerUnit, 1.0]);
-
-        return transform;
-    }
-
-    private get pixelsPerUnit(): number {
-        return this._pixelsPerEm / unwrapNull(this.appController.font).opentypeFont.unitsPerEm;
-    }
-
-    get pixelsPerEm(): number {
-        return this._pixelsPerEm;
-    }
-
-    set pixelsPerEm(newPixelsPerEm: number) {
-        this._pixelsPerEm = newPixelsPerEm;
-        this.uploadPathTransforms(1);
-        this.setDirty();
     }
 }
 

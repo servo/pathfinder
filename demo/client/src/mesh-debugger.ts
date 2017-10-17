@@ -216,6 +216,8 @@ class MeshDebuggerView extends PathfinderView {
 
         this.camera.onPan = () => this.setDirty();
         this.camera.onZoom = () => this.setDirty();
+
+        this.resizeToFit(true);
     }
 
     attachMeshes() {
@@ -277,11 +279,6 @@ class MeshDebuggerView extends PathfinderView {
             const lowerRightPosition = unwrapNull(getPosition(positions, lowerRightIndex));
             const lowerControlPointPosition = getPosition(positions, lowerControlPointIndex);
 
-            /*const upperCurve = upperControlPointPosition != null;
-            const lowerCurve = lowerControlPointPosition != null;
-            const upperNormals = getNormals(normals, normalIndices, upperCurve, 'upper');
-            const lowerNormals = getNormals(normals, normalIndices, lowerCurve, 'lower');*/
-
             drawVertexIfNecessary(context,
                                   drawnVertices,
                                   upperLeftIndex,
@@ -302,28 +299,6 @@ class MeshDebuggerView extends PathfinderView {
                                   lowerRightIndex,
                                   lowerRightPosition,
                                   invScaleFactor);
-
-                                  /*
-            drawNormalIfNecessary(context,
-                                  drawnNormals,
-                                  upperLeftPosition,
-                                  upperNormals.left,
-                                  invScaleFactor);
-            drawNormalIfNecessary(context,
-                                  drawnNormals,
-                                  upperRightPosition,
-                                  upperNormals.right,
-                                  invScaleFactor);
-            drawNormalIfNecessary(context,
-                                  drawnNormals,
-                                  lowerLeftPosition,
-                                  lowerNormals.left,
-                                  invScaleFactor);
-            drawNormalIfNecessary(context,
-                                  drawnNormals,
-                                  lowerRightPosition,
-                                  lowerNormals.right,
-                                  invScaleFactor);*/
 
             context.beginPath();
             context.moveTo(upperLeftPosition[0], upperLeftPosition[1]);

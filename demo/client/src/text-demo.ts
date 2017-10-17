@@ -23,6 +23,7 @@ import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from './gl-utils';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
+import {Renderer} from './renderer';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
 import {calculatePixelDescent, calculatePixelRectForGlyph, PathfinderFont} from "./text";
@@ -186,7 +187,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     }
 
     private hintingChanged(): void {
-        this.view.then(view => view.updateHinting());
+        this.view.then(view => view.renderer.updateHinting());
     }
 
     private updateText(): void {
@@ -213,7 +214,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
                 this.meshes = meshes;
 
                 view.attachText();
-                view.uploadPathColors(1);
+                view.renderer.uploadPathColors(1);
                 view.attachMeshes([this.meshes]);
             });
         });
@@ -240,7 +241,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     /// The font size in pixels per em.
     set fontSize(newFontSize: number) {
         this._fontSize = newFontSize;
-        this.view.then(view => view.relayoutText());
+        this.view.then(view => view.renderer.relayoutText());
     }
 
     get layoutPixelsPerUnit(): number {
@@ -265,6 +266,62 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 }
 
 class TextDemoView extends DemoView {
+    renderer: TextDemoRenderer;
+
+    appController: TextDemoController;
+
+    protected get camera(): OrthographicCamera {
+        return this.renderer.camera;
+    }
+
+    constructor(appController: TextDemoController,
+                commonShaderSource: string,
+                shaderSources: ShaderMap<ShaderProgramSource>) {
+        super(commonShaderSource, shaderSources);
+
+        this.appController = appController;
+        this.renderer = new TextDemoRenderer(this);
+
+        this.canvas.addEventListener('dblclick', () => this.appController.showTextEditor(), false);
+
+        this.resizeToFit(true);
+    }
+
+    attachText() {
+        this.panZoomEventsEnabled = false;
+        this.renderer.prepareToAttachText();
+        this.renderer.camera.zoomToFit();
+        this.appController.fontSize = this.renderer.camera.scale *
+            this.appController.font.opentypeFont.unitsPerEm;
+        this.renderer.finishAttachingText();
+        this.panZoomEventsEnabled = true;
+    }
+
+    protected onPan() {
+        this.renderer.viewPanned();
+    }
+
+    protected onZoom() {
+        this.appController.fontSize = this.renderer.camera.scale *
+            this.appController.font.opentypeFont.unitsPerEm;
+    }
+
+    private set panZoomEventsEnabled(flag: boolean) {
+        if (flag) {
+            this.renderer.camera.onPan = () => this.onPan();
+            this.renderer.camera.onZoom = () => this.onZoom();
+        } else {
+            this.renderer.camera.onPan = null;
+            this.renderer.camera.onZoom = null;
+        }
+    }
+}
+
+class TextDemoRenderer extends Renderer {
+    renderContext: TextDemoView;
+
+    camera: OrthographicCamera;
+
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 
@@ -272,20 +329,20 @@ class TextDemoView extends DemoView {
     glyphTexCoordsBuffer: WebGLBuffer;
     glyphElementsBuffer: WebGLBuffer;
 
-    appController: TextDemoController;
+    get destFramebuffer(): WebGLFramebuffer {
+        return this.atlasFramebuffer;
+    }
 
-    camera: OrthographicCamera;
+    get destAllocatedSize(): glmatrix.vec2 {
+        return ATLAS_SIZE;
+    }
+
+    get destUsedSize(): glmatrix.vec2 {
+        return this.renderContext.appController.atlas.usedSize;
+    }
 
     get emboldenAmount(): glmatrix.vec2 {
         return this.stemDarkeningAmount;
-    }
-
-    private get stemDarkeningAmount(): glmatrix.vec2 {
-        if (this.stemDarkening === 'dark') {
-            return computeStemDarkeningAmount(this.appController.fontSize,
-                                              this.appController.layoutPixelsPerUnit);
-        }
-        return glmatrix.vec2.create();
     }
 
     get bgColor(): glmatrix.vec4 {
@@ -296,55 +353,55 @@ class TextDemoView extends DemoView {
         return glmatrix.vec4.fromValues(0.0, 0.0, 0.0, 1.0);
     }
 
-    protected depthFunction: number = this.gl.GREATER;
+    protected get worldTransform(): glmatrix.mat4 {
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform, transform, [2.0 / ATLAS_SIZE[0], 2.0 / ATLAS_SIZE[1], 1.0]);
+        return transform;
+    }
 
-    private subpixelAA: SubpixelAAType;
-    private stemDarkening: StemDarkeningMode;
+    protected get directCurveProgramName(): keyof ShaderMap<void> {
+        return 'directCurve';
+    }
+
+    protected get directInteriorProgramName(): keyof ShaderMap<void> {
+        return 'directInterior';
+    }
+
+    protected get depthFunction(): number {
+        return this.renderContext.gl.GREATER;
+    }
+
+    protected get usedSizeFactor(): glmatrix.vec2 {
+        const usedSize = glmatrix.vec2.create();
+        glmatrix.vec2.div(usedSize, this.renderContext.appController.atlas.usedSize, ATLAS_SIZE);
+        return usedSize;
+    }
+
+    private get stemDarkeningAmount(): glmatrix.vec2 {
+        const appController = this.renderContext.appController;
+        if (this.stemDarkening === 'dark') {
+            return computeStemDarkeningAmount(appController.fontSize,
+                                              appController.layoutPixelsPerUnit);
+        }
+        return glmatrix.vec2.create();
+    }
 
     private glyphBounds: Float32Array;
+    private stemDarkening: StemDarkeningMode;
+    private subpixelAA: SubpixelAAType;
 
-    constructor(appController: TextDemoController,
-                commonShaderSource: string,
-                shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(commonShaderSource, shaderSources);
+    private get displayPixelsPerUnit(): number {
+        return this.renderContext.appController.layoutPixelsPerUnit;
+    }
 
-        this.appController = appController;
+    constructor(renderContext: TextDemoView) {
+        super(renderContext);
 
-        this.camera = new OrthographicCamera(this.canvas, {
+        this.camera = new OrthographicCamera(this.renderContext.canvas, {
             maxScale: MAX_SCALE,
             minScale: MIN_SCALE,
         });
-
-        this.canvas.addEventListener('dblclick', () => this.appController.showTextEditor(), false);
-    }
-
-    attachText() {
-        this.panZoomEventsEnabled = false;
-
-        if (this.atlasFramebuffer == null)
-            this.createAtlasFramebuffer();
-
-        this.layoutText();
-        this.camera.zoomToFit();
-        this.appController.fontSize = this.camera.scale *
-            this.appController.font.opentypeFont.unitsPerEm;
-        this.buildAtlasGlyphs();
-        this.setDirty();
-
-        this.panZoomEventsEnabled = true;
-    }
-
-    relayoutText() {
-        this.layoutText();
-        this.buildAtlasGlyphs();
-        this.setDirty();
-    }
-
-    updateHinting(): void {
-        // Need to relayout the text because the pixel bounds of the glyphs can change from this...
-        this.layoutText();
-        this.buildAtlasGlyphs();
-        this.setDirty();
     }
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
@@ -356,23 +413,53 @@ class TextDemoView extends DemoView {
         // Need to relayout because changing AA options can cause font dilation to change...
         this.layoutText();
         this.buildAtlasGlyphs();
-        this.setDirty();
+        this.renderContext.setDirty();
     }
 
     setHintsUniform(uniforms: UniformMap): void {
         const hint = this.createHint();
-        this.gl.uniform4f(uniforms.uHints,
-                          hint.xHeight,
-                          hint.hintedXHeight,
-                          hint.stemHeight,
-                          hint.hintedStemHeight);
+        this.renderContext.gl.uniform4f(uniforms.uHints,
+                                        hint.xHeight,
+                                        hint.hintedXHeight,
+                                        hint.stemHeight,
+                                        hint.hintedStemHeight);
+    }
+
+    prepareToAttachText(): void {
+        if (this.atlasFramebuffer == null)
+            this.createAtlasFramebuffer();
+
+        this.layoutText();
+    }
+
+    finishAttachingText(): void {
+        this.buildAtlasGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    relayoutText(): void {
+        this.layoutText();
+        this.buildAtlasGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    updateHinting(): void {
+        // Need to relayout the text because the pixel bounds of the glyphs can change from this...
+        this.layoutText();
+        this.buildAtlasGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    viewPanned(): void {
+        this.buildAtlasGlyphs();
+        this.renderContext.setDirty();
     }
 
     pathBoundingRects(objectIndex: number): Float32Array {
-        const pathCount = this.appController.pathCount;
-        const atlasGlyphs = this.appController.atlasGlyphs;
+        const pathCount = this.renderContext.appController.pathCount;
+        const atlasGlyphs = this.renderContext.appController.atlasGlyphs;
         const pixelsPerUnit = this.displayPixelsPerUnit;
-        const font = this.appController.font;
+        const font = this.renderContext.appController.font;
         const hint = this.createHint();
 
         const boundingRects = new Float32Array((pathCount + 1) * 4);
@@ -393,16 +480,97 @@ class TextDemoView extends DemoView {
         return boundingRects;
     }
 
-    pathCountForObject(objectIndex: number): number {
-        return this.appController.pathCount;
+    protected createAAStrategy(aaType: AntialiasingStrategyName,
+                               aaLevel: number,
+                               subpixelAA: SubpixelAAType,
+                               stemDarkening: StemDarkeningMode):
+                               AntialiasingStrategy {
+        this.subpixelAA = subpixelAA;
+        this.stemDarkening = stemDarkening;
+        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
-    protected initContext() {
-        super.initContext();
+    protected clearForDirectRendering(): void {
+        this.renderContext.gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        this.renderContext.gl.clearDepth(0.0);
+        this.renderContext.gl.depthMask(true);
+        this.renderContext.gl.clear(this.renderContext.gl.COLOR_BUFFER_BIT |
+                                    this.renderContext.gl.DEPTH_BUFFER_BIT);
+    }
+
+    protected compositeIfNecessary() {
+        // Set up composite state.
+        this.renderContext.gl.bindFramebuffer(this.renderContext.gl.FRAMEBUFFER, null);
+        this.renderContext.gl.viewport(0, 0, this.renderContext.canvas.width, this.renderContext.canvas.height);
+        this.renderContext.gl.disable(this.renderContext.gl.DEPTH_TEST);
+        this.renderContext.gl.disable(this.renderContext.gl.SCISSOR_TEST);
+        this.renderContext.gl.blendEquation(this.renderContext.gl.FUNC_ADD);
+        this.renderContext.gl.blendFuncSeparate(this.renderContext.gl.SRC_ALPHA,
+                                                this.renderContext.gl.ONE_MINUS_SRC_ALPHA,
+                                                this.renderContext.gl.ONE,
+                                                this.renderContext.gl.ONE);
+        this.renderContext.gl.enable(this.renderContext.gl.BLEND);
+
+        // Clear.
+        this.renderContext.gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        this.renderContext.gl.clear(this.renderContext.gl.COLOR_BUFFER_BIT);
+
+        // Set up the composite VAO.
+        const blitProgram = this.renderContext.shaderPrograms.blit;
+        const attributes = blitProgram.attributes;
+        this.renderContext.gl.useProgram(blitProgram.program);
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphPositionsBuffer);
+        this.renderContext.gl.vertexAttribPointer(attributes.aPosition,
+                                                  2,
+                                                  this.renderContext.gl.FLOAT,
+                                                  false,
+                                                  0,
+                                                  0);
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphTexCoordsBuffer);
+        this.renderContext.gl.vertexAttribPointer(attributes.aTexCoord,
+                                                  2,
+                                                  this.renderContext.gl.FLOAT,
+                                                  false,
+                                                  0,
+                                                  0);
+        this.renderContext.gl.enableVertexAttribArray(attributes.aPosition);
+        this.renderContext.gl.enableVertexAttribArray(attributes.aTexCoord);
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                         this.glyphElementsBuffer);
+
+        // Create the transform.
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform, transform, [
+            2.0 / this.renderContext.canvas.width,
+            2.0 / this.renderContext.canvas.height,
+            1.0,
+        ]);
+        glmatrix.mat4.translate(transform,
+                                transform,
+                                [this.camera.translation[0], this.camera.translation[1], 0.0]);
+
+        // Blit.
+        this.renderContext.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
+        this.renderContext.gl.activeTexture(this.renderContext.gl.TEXTURE0);
+        const destTexture = this.renderContext
+                                .appController
+                                .atlas
+                                .ensureTexture(this.renderContext);
+        this.renderContext.gl.bindTexture(this.renderContext.gl.TEXTURE_2D, destTexture);
+        this.renderContext.gl.uniform1i(blitProgram.uniforms.uSource, 0);
+        this.setIdentityTexScaleUniform(blitProgram.uniforms);
+        const totalGlyphCount = this.renderContext.appController.layout.textFrame.totalGlyphCount;
+        this.renderContext.gl.drawElements(this.renderContext.gl.TRIANGLES,
+                                           totalGlyphCount * 6,
+                                           this.renderContext.gl.UNSIGNED_INT,
+                                           0);
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {
-        const pathCount = this.appController.pathCount;
+        const pathCount = this.renderContext.appController.pathCount;
 
         const pathColors = new Uint8Array(4 * (pathCount + 1));
 
@@ -416,8 +584,8 @@ class TextDemoView extends DemoView {
     }
 
     protected pathTransformsForObject(objectIndex: number): Float32Array {
-        const pathCount = this.appController.pathCount;
-        const atlasGlyphs = this.appController.atlasGlyphs;
+        const pathCount = this.renderContext.appController.pathCount;
+        const atlasGlyphs = this.renderContext.appController.atlasGlyphs;
         const pixelsPerUnit = this.displayPixelsPerUnit;
 
         const transforms = new Float32Array((pathCount + 1) * 4);
@@ -435,97 +603,33 @@ class TextDemoView extends DemoView {
         return transforms;
     }
 
-    protected onPan() {
-        this.buildAtlasGlyphs();
-        this.setDirty();
-    }
-
-    protected onZoom() {
-        this.appController.fontSize = this.camera.scale *
-            this.appController.font.opentypeFont.unitsPerEm;
-    }
-
-    protected compositeIfNecessary() {
-        // Set up composite state.
-        this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, null);
-        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-        this.gl.disable(this.gl.DEPTH_TEST);
-        this.gl.disable(this.gl.SCISSOR_TEST);
-        this.gl.blendEquation(this.gl.FUNC_ADD);
-        this.gl.blendFuncSeparate(this.gl.SRC_ALPHA, this.gl.ONE_MINUS_SRC_ALPHA,
-                                  this.gl.ONE, this.gl.ONE);
-        this.gl.enable(this.gl.BLEND);
-
-        // Clear.
-        this.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        this.gl.clear(this.gl.COLOR_BUFFER_BIT);
-
-        // Set up the composite VAO.
-        const blitProgram = this.shaderPrograms.blit;
-        const attributes = blitProgram.attributes;
-        this.gl.useProgram(blitProgram.program);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
-        this.gl.vertexAttribPointer(attributes.aPosition, 2, this.gl.FLOAT, false, 0, 0);
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.glyphTexCoordsBuffer);
-        this.gl.vertexAttribPointer(attributes.aTexCoord, 2, this.gl.FLOAT, false, 0, 0);
-        this.gl.enableVertexAttribArray(attributes.aPosition);
-        this.gl.enableVertexAttribArray(attributes.aTexCoord);
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.glyphElementsBuffer);
-
-        // Create the transform.
-        const transform = glmatrix.mat4.create();
-        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
-        glmatrix.mat4.scale(transform,
-                            transform,
-                            [2.0 / this.canvas.width, 2.0 / this.canvas.height, 1.0]);
-        glmatrix.mat4.translate(transform,
-                                transform,
-                                [this.camera.translation[0],
-                                 this.camera.translation[1],
-                                 0.0]);
-
-        // Blit.
-        this.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
-        this.gl.activeTexture(this.gl.TEXTURE0);
-        this.gl.bindTexture(this.gl.TEXTURE_2D, this.appController.atlas.ensureTexture(this));
-        this.gl.uniform1i(blitProgram.uniforms.uSource, 0);
-        this.setIdentityTexScaleUniform(blitProgram.uniforms);
-        this.gl.drawElements(this.gl.TRIANGLES,
-                             this.appController.layout.textFrame.totalGlyphCount * 6,
-                             this.gl.UNSIGNED_INT,
-                             0);
-    }
-
-    protected clearForDirectRendering(): void {
-        this.gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        this.gl.clearDepth(0.0);
-        this.gl.depthMask(true);
-        this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-    }
-
-    protected createAAStrategy(aaType: AntialiasingStrategyName,
-                               aaLevel: number,
-                               subpixelAA: SubpixelAAType,
-                               stemDarkening: StemDarkeningMode):
-                               AntialiasingStrategy {
-        this.subpixelAA = subpixelAA;
-        this.stemDarkening = stemDarkening;
-        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
-    }
-
     protected newTimingsReceived() {
-        this.appController.newTimingsReceived(this.lastTimings);
+        this.renderContext.appController.newTimingsReceived(this.lastTimings);
+    }
+
+    private createAtlasFramebuffer() {
+        const appController = this.renderContext.appController;
+
+        const atlasColorTexture = appController.atlas.ensureTexture(this.renderContext);
+        this.atlasDepthTexture = createFramebufferDepthTexture(this.renderContext.gl, ATLAS_SIZE);
+        this.atlasFramebuffer = createFramebuffer(this.renderContext.gl,
+                                                  this.renderContext.drawBuffersExt,
+                                                  [atlasColorTexture],
+                                                  this.atlasDepthTexture);
+
+        // Allow the antialiasing strategy to set up framebuffers as necessary.
+        if (this.antialiasingStrategy != null)
+            this.antialiasingStrategy.setFramebufferSize(this);
     }
 
     private createHint(): Hint {
-        return new Hint(this.appController.font,
+        return new Hint(this.renderContext.appController.font,
                         this.displayPixelsPerUnit,
-                        this.appController.useHinting);
+                        this.renderContext.appController.useHinting);
     }
 
-    /// Lays out glyphs on the canvas.
     private layoutText() {
-        const layout = this.appController.layout;
+        const layout = this.renderContext.appController.layout;
         layout.layoutRuns();
 
         const textBounds = layout.textFrame.bounds;
@@ -537,7 +641,7 @@ class TextDemoView extends DemoView {
 
         const hint = this.createHint();
         const displayPixelsPerUnit = this.displayPixelsPerUnit;
-        const layoutPixelsPerUnit = this.appController.layoutPixelsPerUnit;
+        const layoutPixelsPerUnit = this.renderContext.appController.layoutPixelsPerUnit;
 
         let globalGlyphIndex = 0;
         for (const run of layout.textFrame.runs) {
@@ -566,29 +670,38 @@ class TextDemoView extends DemoView {
             }
         }
 
-        this.glyphPositionsBuffer = unwrapNull(this.gl.createBuffer());
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, glyphPositions, this.gl.STATIC_DRAW);
-        this.glyphElementsBuffer = unwrapNull(this.gl.createBuffer());
-        this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.glyphElementsBuffer);
-        this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, glyphIndices, this.gl.STATIC_DRAW);
+        this.glyphPositionsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphPositionsBuffer);
+        this.renderContext.gl.bufferData(this.renderContext.gl.ARRAY_BUFFER,
+                                         glyphPositions,
+                                         this.renderContext.gl.STATIC_DRAW);
+        this.glyphElementsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                         this.glyphElementsBuffer);
+        this.renderContext.gl.bufferData(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
+                                         glyphIndices,
+                                         this.renderContext.gl.STATIC_DRAW);
     }
 
     private buildAtlasGlyphs() {
-        const font = this.appController.font;
-        const glyphStore = this.appController.glyphStore;
-        const layoutPixelsPerUnit = this.appController.layoutPixelsPerUnit;
+        const appController = this.renderContext.appController;
+        const font = appController.font;
+        const glyphStore = appController.glyphStore;
+        const layoutPixelsPerUnit = appController.layoutPixelsPerUnit;
         const displayPixelsPerUnit = this.displayPixelsPerUnit;
 
-        const textFrame = this.appController.layout.textFrame;
+        const textFrame = appController.layout.textFrame;
         const hint = this.createHint();
 
         // Only build glyphs in view.
         const translation = this.camera.translation;
-        const canvasRect = glmatrix.vec4.fromValues(-translation[0],
-                                                    -translation[1],
-                                                    -translation[0] + this.canvas.width,
-                                                    -translation[1] + this.canvas.height);
+        const canvasRect = glmatrix.vec4.clone([
+            -translation[0],
+            -translation[1],
+            -translation[0] + this.renderContext.canvas.width,
+            -translation[1] + this.renderContext.canvas.height,
+        ]);
 
         let atlasGlyphs = [];
         for (const run of textFrame.runs) {
@@ -621,12 +734,12 @@ class TextDemoView extends DemoView {
         if (atlasGlyphs.length === 0)
             return;
 
-        this.appController.atlasGlyphs = atlasGlyphs;
-        this.appController.atlas.layoutGlyphs(atlasGlyphs,
-                                              font,
-                                              displayPixelsPerUnit,
-                                              hint,
-                                              this.stemDarkeningAmount);
+        appController.atlasGlyphs = atlasGlyphs;
+        appController.atlas.layoutGlyphs(atlasGlyphs,
+                                         font,
+                                         displayPixelsPerUnit,
+                                         hint,
+                                         this.stemDarkeningAmount);
 
         this.uploadPathTransforms(1);
 
@@ -635,26 +748,14 @@ class TextDemoView extends DemoView {
         this.setGlyphTexCoords();
     }
 
-    private createAtlasFramebuffer() {
-        const atlasColorTexture = this.appController.atlas.ensureTexture(this);
-        this.atlasDepthTexture = createFramebufferDepthTexture(this.gl, ATLAS_SIZE);
-        this.atlasFramebuffer = createFramebuffer(this.gl,
-                                                  this.drawBuffersExt,
-                                                  [atlasColorTexture],
-                                                  this.atlasDepthTexture);
-
-        // Allow the antialiasing strategy to set up framebuffers as necessary.
-        if (this.antialiasingStrategy != null)
-            this.antialiasingStrategy.setFramebufferSize(this);
-    }
-
     private setGlyphTexCoords() {
-        const textFrame = this.appController.layout.textFrame;
-        const font = this.appController.font;
-        const atlasGlyphs = this.appController.atlasGlyphs;
+        const appController = this.renderContext.appController;
+        const textFrame = appController.layout.textFrame;
+        const font = appController.font;
+        const atlasGlyphs = appController.atlasGlyphs;
 
         const hint = this.createHint();
-        const layoutPixelsPerUnit = this.appController.layoutPixelsPerUnit;
+        const layoutPixelsPerUnit = appController.layoutPixelsPerUnit;
         const displayPixelsPerUnit = this.displayPixelsPerUnit;
 
         const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
@@ -707,61 +808,16 @@ class TextDemoView extends DemoView {
             }
         }
 
-        this.glyphTexCoordsBuffer = unwrapNull(this.gl.createBuffer());
-        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.glyphTexCoordsBuffer);
-        this.gl.bufferData(this.gl.ARRAY_BUFFER, this.glyphBounds, this.gl.STATIC_DRAW);
+        this.glyphTexCoordsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
+        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphTexCoordsBuffer);
+        this.renderContext.gl.bufferData(this.renderContext.gl.ARRAY_BUFFER,
+                                         this.glyphBounds,
+                                         this.renderContext.gl.STATIC_DRAW);
     }
 
     private setIdentityTexScaleUniform(uniforms: UniformMap) {
-        this.gl.uniform2f(uniforms.uTexScale, 1.0, 1.0);
-    }
-
-    protected get usedSizeFactor(): glmatrix.vec2 {
-        const usedSize = glmatrix.vec2.create();
-        glmatrix.vec2.div(usedSize, this.appController.atlas.usedSize, ATLAS_SIZE);
-        return usedSize;
-    }
-
-    private set panZoomEventsEnabled(flag: boolean) {
-        if (flag) {
-            this.camera.onPan = () => this.onPan();
-            this.camera.onZoom = () => this.onZoom();
-        } else {
-            this.camera.onPan = null;
-            this.camera.onZoom = null;
-        }
-    }
-
-    get destFramebuffer(): WebGLFramebuffer {
-        return this.atlasFramebuffer;
-    }
-
-    get destAllocatedSize(): glmatrix.vec2 {
-        return ATLAS_SIZE;
-    }
-
-    get destUsedSize(): glmatrix.vec2 {
-        return this.appController.atlas.usedSize;
-    }
-
-    protected get worldTransform(): glmatrix.mat4 {
-        const transform = glmatrix.mat4.create();
-        glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
-        glmatrix.mat4.scale(transform, transform, [2.0 / ATLAS_SIZE[0], 2.0 / ATLAS_SIZE[1], 1.0]);
-        return transform;
-    }
-
-    protected get directCurveProgramName(): keyof ShaderMap<void> {
-        return 'directCurve';
-    }
-
-    protected get directInteriorProgramName(): keyof ShaderMap<void> {
-        return 'directInterior';
-    }
-
-    /// Pixels per unit, including dilation.
-    private get displayPixelsPerUnit(): number {
-        return this.appController.layoutPixelsPerUnit;
+        this.renderContext.gl.uniform2f(uniforms.uTexScale, 1.0, 1.0);
     }
 }
 

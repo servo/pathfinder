@@ -17,10 +17,11 @@ import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, setTextureParameters, UniformMap} from './gl-utils';
 import {WebGLVertexArrayObject} from './gl-utils';
 import {B_QUAD_LOWER_INDICES_OFFSET, B_QUAD_SIZE, B_QUAD_UPPER_INDICES_OFFSET} from './meshes';
+import {Renderer} from './renderer';
 import {PathfinderShaderProgram} from './shader-loader';
 import {computeStemDarkeningAmount} from './text';
 import {FLOAT32_SIZE, lerp, UINT32_SIZE, unwrapNull} from './utils';
-import {RenderContext, Renderer} from './view';
+import {RenderContext} from './view';
 
 interface FastEdgeVAOs {
     upper: WebGLVertexArrayObject;
@@ -145,10 +146,10 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         const renderContext = renderer.renderContext;
         this.directColorTexture = createFramebufferColorTexture(renderContext.gl,
                                                                 this.destFramebufferSize,
-                                                                renderer.colorAlphaFormat);
+                                                                renderContext.colorAlphaFormat);
         this.directPathIDTexture = createFramebufferColorTexture(renderContext.gl,
                                                                  this.destFramebufferSize,
-                                                                 renderer.colorAlphaFormat);
+                                                                 renderContext.colorAlphaFormat);
         this.directFramebuffer =
             createFramebuffer(renderContext.gl,
                               renderContext.drawBuffersExt,
@@ -1049,10 +1050,10 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         const renderContext = renderer.renderContext;
         this.bgColorTexture = createFramebufferColorTexture(renderContext.gl,
                                                             this.supersampledFramebufferSize,
-                                                            renderer.colorAlphaFormat);
+                                                            renderContext.colorAlphaFormat);
         this.fgColorTexture = createFramebufferColorTexture(renderContext.gl,
                                                             this.supersampledFramebufferSize,
-                                                            renderer.colorAlphaFormat);
+                                                            renderContext.colorAlphaFormat);
         this.edgeDetectFramebuffer = createFramebuffer(renderContext.gl,
                                                        renderContext.drawBuffersExt,
                                                        [this.bgColorTexture, this.fgColorTexture],

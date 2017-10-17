@@ -18,6 +18,7 @@ import PathfinderBufferTexture from "./buffer-texture";
 import {OrthographicCamera} from "./camera";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
+import {Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
@@ -78,24 +79,19 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
 
     private meshesReceived(): void {
         this.view.then(view => {
-            view.uploadPathColors(1);
-            view.uploadPathTransforms(1);
             view.attachMeshes([this.meshes]);
-
-            view.camera.bounds = this.loader.bounds;
-            view.camera.zoomToFit();
+            view.initCameraBounds(this.loader.bounds);
         });
     }
 }
 
 class SVGDemoView extends DemoView {
-    camera: OrthographicCamera;
+    renderer: SVGDemoRenderer;
+    appController: SVGDemoController;
 
-    protected depthFunction: number = this.gl.GREATER;
-
-    protected usedSizeFactor: glmatrix.vec2 = glmatrix.vec2.fromValues(1.0, 1.0);
-
-    private appController: SVGDemoController;
+    get camera(): OrthographicCamera {
+        return this.renderer.camera;
+    }
 
     constructor(appController: SVGDemoController,
                 commonShaderSource: string,
@@ -103,14 +99,26 @@ class SVGDemoView extends DemoView {
         super(commonShaderSource, shaderSources);
 
         this.appController = appController;
+        this.renderer = new SVGDemoRenderer(this);
 
-        this.camera = new OrthographicCamera(this.canvas, { scaleBounds: true });
-        this.camera.onPan = () => this.setDirty();
-        this.camera.onZoom = () => this.setDirty();
+        this.resizeToFit(true);
     }
 
+    initCameraBounds(bounds: glmatrix.vec4): void {
+        this.renderer.initCameraBounds(bounds);
+    }
+}
+
+class SVGDemoRenderer extends Renderer {
+    renderContext: SVGDemoView;
+
+    camera: OrthographicCamera;
+
     get destAllocatedSize(): glmatrix.vec2 {
-        return glmatrix.vec2.fromValues(this.canvas.width, this.canvas.height);
+        return glmatrix.vec2.clone([
+            this.renderContext.canvas.width,
+            this.renderContext.canvas.height,
+        ]);
     }
 
     get destFramebuffer(): WebGLFramebuffer | null {
@@ -121,21 +129,70 @@ class SVGDemoView extends DemoView {
         return this.destAllocatedSize;
     }
 
+    constructor(renderContext: SVGDemoView) {
+        super(renderContext);
+
+        this.camera = new OrthographicCamera(renderContext.canvas, { scaleBounds: true });
+        this.camera.onPan = () => this.renderContext.setDirty();
+        this.camera.onZoom = () => this.renderContext.setDirty();
+    }
+
     setHintsUniform(uniforms: UniformMap): void {
-        this.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
+        this.renderContext.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
     pathBoundingRects(objectIndex: number): Float32Array {
-        panic("SVGDemoView.pathBoundingRects(): TODO");
+        panic("SVGDemoRenderer.pathBoundingRects(): TODO");
         return glmatrix.vec4.create();
     }
 
-    pathCountForObject(objectIndex: number): number {
-        return this.appController.loader.pathInstances.length;
+    attachMeshes(meshes: PathfinderMeshData[]): void {
+        super.attachMeshes(meshes);
+        this.uploadPathColors(1);
+        this.uploadPathTransforms(1);
+    }
+
+    initCameraBounds(bounds: glmatrix.vec4): void {
+        this.camera.bounds = bounds;
+        this.camera.zoomToFit();
+    }
+
+    protected get depthFunction(): number {
+        return this.renderContext.gl.GREATER;
+    }
+
+    protected get usedSizeFactor(): glmatrix.vec2 {
+        return glmatrix.vec2.clone([1.0, 1.0]);
+    }
+
+    protected get worldTransform(): glmatrix.mat4 {
+        const transform = glmatrix.mat4.create();
+        const translation = this.camera.translation;
+        glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.scale(transform, transform, [
+            2.0 / this.renderContext.canvas.width,
+            2.0 / this.renderContext.canvas.height,
+            1.0,
+        ]);
+        glmatrix.mat4.translate(transform, transform, [translation[0], translation[1], 0]);
+        glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
+        return transform;
+    }
+
+    protected get directCurveProgramName(): keyof ShaderMap<void> {
+        return 'directCurve';
+    }
+
+    protected get directInteriorProgramName(): keyof ShaderMap<void> {
+        return 'directInterior';
+    }
+
+    protected newTimingsReceived(): void {
+        this.renderContext.appController.newTimingsReceived(_.pick(this.lastTimings, ['rendering']));
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {
-        const instances = this.appController.loader.pathInstances;
+        const instances = this.renderContext.appController.loader.pathInstances;
         const pathColors = new Uint8Array(4 * (instances.length + 1));
 
         for (let pathIndex = 0; pathIndex < instances.length; pathIndex++) {
@@ -154,7 +211,7 @@ class SVGDemoView extends DemoView {
     }
 
     protected pathTransformsForObject(objectIndex: number): Float32Array {
-        const instances = this.appController.loader.pathInstances;
+        const instances = this.renderContext.appController.loader.pathInstances;
         const pathTransforms = new Float32Array(4 * (instances.length + 1));
 
         for (let pathIndex = 0; pathIndex < instances.length; pathIndex++) {
@@ -174,30 +231,6 @@ class SVGDemoView extends DemoView {
     }
 
     protected compositeIfNecessary(): void {}
-
-    protected newTimingsReceived() {
-        this.appController.newTimingsReceived(_.pick(this.lastTimings, ['rendering']));
-    }
-
-    protected get worldTransform() {
-        const transform = glmatrix.mat4.create();
-        const translation = this.camera.translation;
-        glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
-        glmatrix.mat4.scale(transform,
-                            transform,
-                            [2.0 / this.canvas.width, 2.0 / this.canvas.height, 1.0]);
-        glmatrix.mat4.translate(transform, transform, [translation[0], translation[1], 0]);
-        glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
-        return transform;
-    }
-
-    protected get directCurveProgramName(): keyof ShaderMap<void> {
-        return 'directCurve';
-    }
-
-    protected get directInteriorProgramName(): keyof ShaderMap<void> {
-        return 'directInterior';
-    }
 }
 
 function main() {
