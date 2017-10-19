@@ -211,29 +211,37 @@ export abstract class Renderer {
 
     uploadPathColors(objectCount: number) {
         const renderContext = this.renderContext;
-
-        this.pathColorsBufferTextures = [];
-
         for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
-            const pathColorsBufferTexture = new PathfinderBufferTexture(renderContext.gl,
-                                                                        'uPathColors');
             const pathColors = this.pathColorsForObject(objectIndex);
+
+            let pathColorsBufferTexture;
+            if (objectIndex >= this.pathColorsBufferTextures.length) {
+                pathColorsBufferTexture = new PathfinderBufferTexture(renderContext.gl,
+                                                                      'uPathColors');
+                this.pathColorsBufferTextures[objectIndex] = pathColorsBufferTexture;
+            } else {
+                pathColorsBufferTexture = this.pathColorsBufferTextures[objectIndex];
+            }
+
             pathColorsBufferTexture.upload(renderContext.gl, pathColors);
-            this.pathColorsBufferTextures.push(pathColorsBufferTexture);
         }
     }
 
     uploadPathTransforms(objectCount: number) {
         const renderContext = this.renderContext;
-
-        this.pathTransformBufferTextures.splice(0);
         for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
-            const pathTransformBufferTexture = new PathfinderBufferTexture(renderContext.gl,
-                                                                           'uPathTransform');
-
             const pathTransforms = this.pathTransformsForObject(objectIndex);
+
+            let pathTransformBufferTexture;
+            if (objectIndex >= this.pathTransformBufferTextures.length) {
+                pathTransformBufferTexture = new PathfinderBufferTexture(renderContext.gl,
+                                                                         'uPathTransform');
+                this.pathTransformBufferTextures[objectIndex] = pathTransformBufferTexture;
+            } else {
+                pathTransformBufferTexture = this.pathTransformBufferTextures[objectIndex];
+            }
+
             pathTransformBufferTexture.upload(renderContext.gl, pathTransforms);
-            this.pathTransformBufferTextures.push(pathTransformBufferTexture);
         }
     }
 

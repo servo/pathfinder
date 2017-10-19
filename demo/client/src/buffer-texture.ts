@@ -11,49 +11,67 @@
 import * as glmatrix from 'gl-matrix';
 
 import {setTextureParameters, UniformMap} from './gl-utils';
-import {expectNotNull} from './utils';
+import {assert, expectNotNull} from './utils';
 
 export default class PathfinderBufferTexture {
     readonly texture: WebGLTexture;
     readonly uniformName: string;
 
     private size: glmatrix.vec2;
-    private capacity: glmatrix.vec2;
     private glType: number;
+    private destroyed: boolean;
 
     constructor(gl: WebGLRenderingContext, uniformName: string) {
         this.texture = expectNotNull(gl.createTexture(), "Failed to create buffer texture!");
         this.size = glmatrix.vec2.create();
-        this.capacity = glmatrix.vec2.create();
         this.uniformName = uniformName;
         this.glType = 0;
+        this.destroyed = false;
     }
 
-    upload(gl: WebGLRenderingContext, data: Float32Array | Uint8Array) {
+    destroy(gl: WebGLRenderingContext): void {
+        assert(!this.destroyed, "Buffer texture destroyed!");
+        gl.deleteTexture(this.texture);
+        this.destroyed = true;
+    }
+
+    upload(gl: WebGLRenderingContext, data: Float32Array | Uint8Array): void {
+        assert(!this.destroyed, "Buffer texture destroyed!");
+
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
 
         const glType = data instanceof Float32Array ? gl.FLOAT : gl.UNSIGNED_BYTE;
-        const area = Math.ceil(data.length / 4);
-        if (glType !== this.glType || area > this.capacityArea) {
-            const width = Math.ceil(Math.sqrt(area));
-            const height = Math.ceil(area / width);
-            this.size = glmatrix.vec2.fromValues(width, height);
-            this.capacity = this.size;
+        const areaNeeded = Math.ceil(data.length / 4);
+        if (glType !== this.glType || areaNeeded > this.area) {
+            const sideLength = nextPowerOfTwo(Math.ceil(Math.sqrt(areaNeeded)));
+            this.size = glmatrix.vec2.clone([sideLength, sideLength]);
             this.glType = glType;
 
-            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, glType, null);
+            gl.texImage2D(gl.TEXTURE_2D,
+                          0,
+                          gl.RGBA,
+                          sideLength,
+                          sideLength,
+                          0,
+                          gl.RGBA,
+                          glType,
+                          null);
             setTextureParameters(gl, gl.NEAREST);
         }
 
-        const mainDimensions = glmatrix.vec4.fromValues(0,
-                                                        0,
-                                                        this.capacity[0],
-                                                        Math.floor(area / this.capacity[0]));
-        const remainderDimensions = glmatrix.vec4.fromValues(0,
-                                                             mainDimensions[3],
-                                                             area % this.capacity[0],
-                                                             1);
+        const mainDimensions = glmatrix.vec4.clone([
+            0,
+            0,
+            this.size[0],
+            (areaNeeded / this.size[0]) | 0,
+        ]);
+        const remainderDimensions = glmatrix.vec4.clone([
+            0,
+            mainDimensions[3],
+            areaNeeded % this.size[0],
+            1,
+        ]);
         const splitIndex = mainDimensions[2] * mainDimensions[3] * 4;
 
         if (mainDimensions[2] > 0 && mainDimensions[3] > 0) {
@@ -92,20 +110,28 @@ export default class PathfinderBufferTexture {
         }
     }
 
-    bind(gl: WebGLRenderingContext, uniforms: UniformMap, textureUnit: number) {
+    bind(gl: WebGLRenderingContext, uniforms: UniformMap, textureUnit: number): void {
+        assert(!this.destroyed, "Buffer texture destroyed!");
+
         gl.activeTexture(gl.TEXTURE0 + textureUnit);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
-        gl.uniform2i(uniforms[`${this.uniformName}Dimensions`],
-                     this.capacity[0],
-                     this.capacity[1]);
+        gl.uniform2i(uniforms[`${this.uniformName}Dimensions`], this.size[0], this.size[1]);
         gl.uniform1i(uniforms[this.uniformName], textureUnit);
     }
 
-    private get area() {
+    private get area(): number {
+        assert(!this.destroyed, "Buffer texture destroyed!");
         return this.size[0] * this.size[1];
     }
+}
 
-    private get capacityArea() {
-        return this.capacity[0] * this.capacity[1];
-    }
+/// https://stackoverflow.com/a/466242
+function nextPowerOfTwo(n: number): number {
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    return n + 1;
 }
