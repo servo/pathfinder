@@ -385,11 +385,14 @@ class ThreeDRenderer extends Renderer {
 
     private cubeVertexPositionBuffer: WebGLBuffer;
     private cubeIndexBuffer: WebGLBuffer;
+
     private glyphPositionsBuffer: WebGLBuffer;
     private glyphPositions: number[];
     private glyphPositionRanges: Range[];
     private glyphTexCoords: glmatrix.vec4[];
     private glyphSizes: glmatrix.vec2[];
+
+    private distantGlyphVAO: WebGLVertexArrayObjectOES | null;
 
     constructor(renderContext: ThreeDView) {
         super(renderContext);
@@ -616,8 +619,9 @@ class ThreeDRenderer extends Renderer {
         const gl = this.renderContext.gl;
 
         // Prepare the distant glyph VAO.
-        const vao = this.renderContext.vertexArrayObjectExt.createVertexArrayOES();
-        this.renderContext.vertexArrayObjectExt.bindVertexArrayOES(vao);
+        if (this.distantGlyphVAO == null)
+            this.distantGlyphVAO = this.renderContext.vertexArrayObjectExt.createVertexArrayOES();
+        this.renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.distantGlyphVAO);
         const distantGlyphProgram = this.renderContext.shaderPrograms.demo3DDistantGlyph;
         gl.useProgram(distantGlyphProgram.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.renderContext.quadPositionsBuffer);
@@ -733,7 +737,6 @@ class ThreeDRenderer extends Renderer {
             }
         }
 
-        this.renderContext.vertexArrayObjectExt.deleteVertexArrayOES(vao);
         this.renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 

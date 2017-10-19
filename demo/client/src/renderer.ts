@@ -65,6 +65,9 @@ export abstract class Renderer {
     protected abstract get usedSizeFactor(): glmatrix.vec2;
     protected abstract get worldTransform(): glmatrix.mat4;
 
+    private implicitCoverInteriorVAO: WebGLVertexArrayObjectOES | null;
+    private implicitCoverCurveVAO: WebGLVertexArrayObjectOES | null;
+
     private instancedPathIDVBO: WebGLBuffer | null;
     private timerQueryPollInterval: number | null;
 
@@ -282,13 +285,13 @@ export abstract class Renderer {
             renderContext.gl.disable(renderContext.gl.BLEND);
 
             // Set up the implicit cover interior VAO.
-            //
-            // TODO(pcwalton): Cache these.
             const directInteriorProgram =
                 renderContext.shaderPrograms[this.directInteriorProgramName];
-            const implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt
-                                                          .createVertexArrayOES();
-            renderContext.vertexArrayObjectExt.bindVertexArrayOES(implicitCoverInteriorVAO);
+            if (this.implicitCoverInteriorVAO == null) {
+                this.implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt
+                                                             .createVertexArrayOES();
+            }
+            renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverInteriorVAO);
             this.initImplicitCoverInteriorVAO(objectIndex, instanceRange);
 
             // Draw direct interior parts.
@@ -331,8 +334,11 @@ export abstract class Renderer {
             //
             // TODO(pcwalton): Cache these.
             const directCurveProgram = renderContext.shaderPrograms[this.directCurveProgramName];
-            const implicitCoverCurveVAO = renderContext.vertexArrayObjectExt.createVertexArrayOES();
-            renderContext.vertexArrayObjectExt.bindVertexArrayOES(implicitCoverCurveVAO);
+            if (this.implicitCoverCurveVAO == null) {
+                this.implicitCoverCurveVAO = renderContext.vertexArrayObjectExt
+                                                          .createVertexArrayOES();
+            }
+            renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverCurveVAO);
             this.initImplicitCoverCurveVAO(objectIndex, instanceRange);
 
             // Draw direct curve parts.
