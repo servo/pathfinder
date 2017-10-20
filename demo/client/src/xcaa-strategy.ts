@@ -20,7 +20,7 @@ import {B_QUAD_LOWER_INDICES_OFFSET, B_QUAD_SIZE, B_QUAD_UPPER_INDICES_OFFSET} f
 import {Renderer} from './renderer';
 import {PathfinderShaderProgram} from './shader-loader';
 import {computeStemDarkeningAmount} from './text';
-import {FLOAT32_SIZE, lerp, UINT32_SIZE, unwrapNull} from './utils';
+import {assert, FLOAT32_SIZE, lerp, UINT32_SIZE, unwrapNull} from './utils';
 import {RenderContext} from './view';
 
 interface FastEdgeVAOs {
@@ -46,10 +46,11 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
 
     protected subpixelAA: SubpixelAAType;
 
+    protected resolveVAO: WebGLVertexArrayObject;
+    protected aaAlphaTexture: WebGLTexture;
+
     private directFramebuffer: WebGLFramebuffer;
-    private aaAlphaTexture: WebGLTexture;
     private aaFramebuffer: WebGLFramebuffer;
-    private resolveVAO: WebGLVertexArrayObject;
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
@@ -79,8 +80,8 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
                           this.supersampleScale);
 
         this.initDirectFramebuffer(renderer);
-        this.initEdgeDetectFramebuffer(renderer);
         this.initAAAlphaFramebuffer(renderer);
+        this.initEdgeDetectFramebuffer(renderer);
         renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, null);
     }
 
@@ -149,17 +150,12 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
                                                                 renderContext.colorAlphaFormat);
         this.directPathIDTexture = createFramebufferColorTexture(renderContext.gl,
                                                                  this.destFramebufferSize,
-                                                                 renderContext.colorAlphaFormat);
+                                                                 renderContext.gl.RGBA);
         this.directFramebuffer =
             createFramebuffer(renderContext.gl,
                               renderContext.drawBuffersExt,
                               [this.directColorTexture, this.directPathIDTexture],
                               this.directDepthTexture);
-    }
-
-    protected setResolveDepthState(renderer: Renderer): void {
-        const renderContext = renderer.renderContext;
-        renderContext.gl.disable(renderContext.gl.DEPTH_TEST);
     }
 
     protected supersampledUsedSize(renderer: Renderer): glmatrix.vec2 {
@@ -206,6 +202,48 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         renderer.setHintsUniform(uniforms);
     }
 
+    protected resolveAA(renderer: Renderer) {
+        const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
+
+        // Set state for ECAA resolve.
+        const usedSize = renderer.destUsedSize;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
+        gl.viewport(0, 0, this.destFramebufferSize[0], this.destFramebufferSize[1]);
+        gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        gl.enable(gl.SCISSOR_TEST);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
+        if (renderer.destFramebuffer != null) {
+            renderContext.drawBuffersExt
+                         .drawBuffersWEBGL([renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
+        } else {
+            renderContext.drawBuffersExt.drawBuffersWEBGL([gl.BACK]);
+        }
+
+        // Clear out the resolve buffer, if necessary.
+        this.clearForResolve(renderer);
+
+        // Resolve.
+        const resolveProgram = this.getResolveProgram(renderContext);
+        gl.useProgram(resolveProgram.program);
+        renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
+        renderer.setFramebufferSizeUniform(resolveProgram.uniforms);
+        gl.activeTexture(renderContext.gl.TEXTURE0);
+        gl.bindTexture(renderContext.gl.TEXTURE_2D, this.aaAlphaTexture);
+        gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 0);
+        gl.uniform2i(resolveProgram.uniforms.uAAAlphaDimensions,
+                     this.supersampledFramebufferSize[0],
+                     this.supersampledFramebufferSize[1]);
+        if (renderer.bgColor != null)
+            gl.uniform4fv(resolveProgram.uniforms.uBGColor, renderer.bgColor);
+        if (renderer.fgColor != null)
+            gl.uniform4fv(resolveProgram.uniforms.uFGColor, renderer.fgColor);
+        renderer.setTransformSTAndTexScaleUniformsForDest(resolveProgram.uniforms);
+        gl.drawElements(renderContext.gl.TRIANGLES, 6, renderContext.gl.UNSIGNED_BYTE, 0);
+        renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
     protected abstract clear(renderer: Renderer): void;
     protected abstract getResolveProgram(renderContext: RenderContext): PathfinderShaderProgram;
     protected abstract initEdgeDetectFramebuffer(renderer: Renderer): void;
@@ -213,8 +251,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
     protected abstract detectEdgesIfNecessary(renderer: Renderer): void;
     protected abstract setAADepthState(renderer: Renderer): void;
     protected abstract clearForResolve(renderer: Renderer): void;
-    protected abstract setResolveUniforms(renderer: Renderer, program: PathfinderShaderProgram):
-                                          void;
 
     private initAAAlphaFramebuffer(renderer: Renderer) {
         const renderContext = renderer.renderContext;
@@ -258,46 +294,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         renderContext.gl.useProgram(resolveProgram.program);
         renderContext.initQuadVAO(resolveProgram.attributes);
 
-        renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
-    }
-
-    private resolveAA(renderer: Renderer) {
-        // Set state for ECAA resolve.
-        const renderContext = renderer.renderContext;
-        const usedSize = renderer.destUsedSize;
-        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, renderer.destFramebuffer);
-        renderContext.gl.viewport(0, 0, this.destFramebufferSize[0], this.destFramebufferSize[1]);
-        renderContext.gl.scissor(0, 0, usedSize[0], usedSize[1]);
-        renderContext.gl.enable(renderContext.gl.SCISSOR_TEST);
-        this.setResolveDepthState(renderer);
-        renderContext.gl.disable(renderContext.gl.BLEND);
-        if (renderer.destFramebuffer != null) {
-            renderContext.drawBuffersExt
-                         .drawBuffersWEBGL([renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
-        } else {
-            renderContext.drawBuffersExt.drawBuffersWEBGL([renderContext.gl.BACK]);
-        }
-
-        // Clear out the resolve buffer, if necessary.
-        this.clearForResolve(renderer);
-
-        // Resolve.
-        const resolveProgram = this.getResolveProgram(renderContext);
-        renderContext.gl.useProgram(resolveProgram.program);
-        renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
-        renderer.setFramebufferSizeUniform(resolveProgram.uniforms);
-        renderContext.gl.activeTexture(renderContext.gl.TEXTURE0);
-        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.aaAlphaTexture);
-        renderContext.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 0);
-        renderContext.gl.uniform2i(resolveProgram.uniforms.uAAAlphaDimensions,
-                                   this.supersampledFramebufferSize[0],
-                                   this.supersampledFramebufferSize[1]);
-        this.setResolveUniforms(renderer, resolveProgram);
-        renderer.setTransformSTAndTexScaleUniformsForDest(resolveProgram.uniforms);
-        renderContext.gl.drawElements(renderContext.gl.TRIANGLES,
-                                      6,
-                                      renderContext.gl.UNSIGNED_BYTE,
-                                      0);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
@@ -709,14 +705,6 @@ export class ECAAStrategy extends XCAAStrategy {
         renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT);
     }
 
-    protected setResolveUniforms(renderer: Renderer, program: PathfinderShaderProgram) {
-        const renderContext = renderer.renderContext;
-        if (renderer.bgColor != null)
-            renderContext.gl.uniform4fv(program.uniforms.uBGColor, renderer.bgColor);
-        if (renderer.fgColor != null)
-            renderContext.gl.uniform4fv(program.uniforms.uFGColor, renderer.fgColor);
-    }
-
     private setBlendModeForAA(renderer: Renderer) {
         const renderContext = renderer.renderContext;
         renderContext.gl.blendEquation(renderContext.gl.FUNC_ADD);
@@ -964,14 +952,6 @@ export class MCAAMonochromeStrategy extends MCAAStrategy {
         renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT);
     }
 
-    protected setResolveUniforms(renderer: Renderer, program: PathfinderShaderProgram) {
-        const renderContext = renderer.renderContext;
-        if (renderer.bgColor != null)
-            renderContext.gl.uniform4fv(program.uniforms.uBGColor, renderer.bgColor);
-        if (renderer.fgColor != null)
-            renderContext.gl.uniform4fv(program.uniforms.uFGColor, renderer.fgColor);
-    }
-
     get shouldRenderDirect() {
         return false;
     }
@@ -1036,8 +1016,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
 
     private edgeDetectFramebuffer: WebGLFramebuffer;
     private edgeDetectVAO: WebGLVertexArrayObject;
-    private bgColorTexture: WebGLTexture;
-    private fgColorTexture: WebGLTexture;
+    private edgePathIDTexture: WebGLTexture;
 
     protected getResolveProgram(renderContext: RenderContext): PathfinderShaderProgram {
         return renderContext.shaderPrograms.xcaaMultiResolve;
@@ -1052,15 +1031,12 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
 
     protected initEdgeDetectFramebuffer(renderer: Renderer) {
         const renderContext = renderer.renderContext;
-        this.bgColorTexture = createFramebufferColorTexture(renderContext.gl,
-                                                            this.supersampledFramebufferSize,
-                                                            renderContext.colorAlphaFormat);
-        this.fgColorTexture = createFramebufferColorTexture(renderContext.gl,
-                                                            this.supersampledFramebufferSize,
-                                                            renderContext.colorAlphaFormat);
+        this.edgePathIDTexture = createFramebufferColorTexture(renderContext.gl,
+                                                               this.supersampledFramebufferSize,
+                                                               renderContext.gl.RGBA);
         this.edgeDetectFramebuffer = createFramebuffer(renderContext.gl,
                                                        renderContext.drawBuffersExt,
-                                                       [this.bgColorTexture, this.fgColorTexture],
+                                                       [this.edgePathIDTexture],
                                                        this.aaDepthTexture);
     }
 
@@ -1077,54 +1053,92 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
 
     protected detectEdgesIfNecessary(renderer: Renderer) {
         const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
 
         // Set state for edge detection.
         const edgeDetectProgram = renderContext.shaderPrograms.xcaaEdgeDetect;
-        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
-        renderContext.gl.viewport(0,
-                             0,
-                             this.supersampledFramebufferSize[0],
-                             this.supersampledFramebufferSize[1]);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.edgeDetectFramebuffer);
+        gl.viewport(0,
+                    0,
+                    this.supersampledFramebufferSize[0],
+                    this.supersampledFramebufferSize[1]);
 
         renderContext.drawBuffersExt.drawBuffersWEBGL([
             renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
         ]);
 
-        renderContext.gl.depthMask(true);
-        renderContext.gl.depthFunc(renderContext.gl.ALWAYS);
-        renderContext.gl.enable(renderContext.gl.DEPTH_TEST);
-        renderContext.gl.disable(renderContext.gl.BLEND);
+        gl.depthMask(true);
+        gl.depthFunc(renderContext.gl.ALWAYS);
+        gl.enable(renderContext.gl.DEPTH_TEST);
+        gl.disable(renderContext.gl.BLEND);
 
-        renderContext.gl.clearDepth(0.0);
-        renderContext.gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT |
-                               renderContext.gl.DEPTH_BUFFER_BIT);
+        gl.clearDepth(0.0);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         // Perform edge detection.
-        renderContext.gl.useProgram(edgeDetectProgram.program);
+        gl.useProgram(edgeDetectProgram.program);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.edgeDetectVAO);
         renderer.setFramebufferSizeUniform(edgeDetectProgram.uniforms);
         renderer.setTransformSTAndTexScaleUniformsForDest(edgeDetectProgram.uniforms);
+        renderer.setPathColorsUniform(0, edgeDetectProgram.uniforms, 0);
+        gl.activeTexture(renderContext.gl.TEXTURE1);
+        gl.bindTexture(renderContext.gl.TEXTURE_2D, this.directPathIDTexture);
+        gl.uniform1i(edgeDetectProgram.uniforms.uPathID, 1);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);
+        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
+
+        renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
+    }
+
+    protected resolveAA(renderer: Renderer) {
+        const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
+
+        // Set state for ECAA resolve.
+        const usedSize = renderer.destUsedSize;
+        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, renderer.destFramebuffer);
+        renderContext.gl.viewport(0, 0, this.destFramebufferSize[0], this.destFramebufferSize[1]);
+        renderContext.gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        renderContext.gl.enable(renderContext.gl.SCISSOR_TEST);
+        renderContext.gl.disable(renderContext.gl.DEPTH_TEST);
+        renderContext.gl.disable(renderContext.gl.BLEND);
+        if (renderer.destFramebuffer != null) {
+            renderContext.drawBuffersExt
+                         .drawBuffersWEBGL([renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
+        } else {
+            renderContext.drawBuffersExt.drawBuffersWEBGL([renderContext.gl.BACK]);
+        }
+
+        // Resolve.
+        const resolveProgram = this.getResolveProgram(renderContext);
+        renderContext.gl.useProgram(resolveProgram.program);
+        renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
+        renderer.setFramebufferSizeUniform(resolveProgram.uniforms);
         renderContext.gl.activeTexture(renderContext.gl.TEXTURE0);
-        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.directColorTexture);
-        renderContext.gl.uniform1i(edgeDetectProgram.uniforms.uColor, 0);
+        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.aaAlphaTexture);
+        renderContext.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 0);
+        renderContext.gl.uniform2i(resolveProgram.uniforms.uAAAlphaDimensions,
+                                   this.supersampledFramebufferSize[0],
+                                   this.supersampledFramebufferSize[1]);
         renderContext.gl.activeTexture(renderContext.gl.TEXTURE1);
-        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.directPathIDTexture);
-        renderContext.gl.uniform1i(edgeDetectProgram.uniforms.uPathID, 1);
-        renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                    renderContext.quadElementsBuffer);
+        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.edgePathIDTexture);
+        renderContext.gl.uniform1i(resolveProgram.uniforms.uBGFGPathID, 1);
+        renderer.setPathColorsUniform(0, resolveProgram.uniforms, 2);
+        renderer.setTransformSTAndTexScaleUniformsForDest(resolveProgram.uniforms);
         renderContext.gl.drawElements(renderContext.gl.TRIANGLES,
                                       6,
                                       renderContext.gl.UNSIGNED_BYTE,
                                       0);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
+
+        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, null);
     }
 
     protected setCoverDepthState(renderer: Renderer) {
         const renderContext = renderer.renderContext;
         renderContext.gl.depthMask(false);
-        renderContext.gl.depthFunc(renderContext.gl.ALWAYS);
+        renderContext.gl.depthFunc(renderContext.gl.EQUAL);
         renderContext.gl.enable(renderContext.gl.DEPTH_TEST);
     }
 
@@ -1141,24 +1155,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         renderContext.gl.enable(renderContext.gl.DEPTH_TEST);
     }
 
-    protected setResolveDepthState(renderer: Renderer) {
-        const renderContext = renderer.renderContext;
-        renderContext.gl.depthMask(false);
-        renderContext.gl.depthFunc(renderContext.gl.NOTEQUAL);
-        renderContext.gl.enable(renderContext.gl.DEPTH_TEST);
-    }
-
     protected clearForResolve(renderer: Renderer) {}
-
-    protected setResolveUniforms(renderer: Renderer, program: PathfinderShaderProgram) {
-        const renderContext = renderer.renderContext;
-        renderContext.gl.activeTexture(renderContext.gl.TEXTURE1);
-        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.bgColorTexture);
-        renderContext.gl.uniform1i(program.uniforms.uBGColor, 1);
-        renderContext.gl.activeTexture(renderContext.gl.TEXTURE2);
-        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.fgColorTexture);
-        renderContext.gl.uniform1i(program.uniforms.uFGColor, 2);
-    }
 
     get shouldRenderDirect() {
         return true;

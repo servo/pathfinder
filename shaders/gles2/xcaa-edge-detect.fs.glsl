@@ -11,8 +11,9 @@
 precision highp float;
 
 uniform ivec2 uFramebufferSize;
-uniform sampler2D uColor;
+uniform ivec2 uPathColorsDimensions;
 uniform sampler2D uPathID;
+uniform sampler2D uPathColors;
 
 varying vec2 vTexCoord;
 
@@ -21,6 +22,21 @@ void checkFG(out vec2 fgPosition, out int fgPathID, vec2 queryPosition, int quer
         fgPosition = queryPosition;
         fgPathID = queryPathID;
     }
+}
+
+void updateMinMaxInt(inout ivec2 minMax, int value) {
+    if (value < minMax.x)
+        minMax.x = value;
+    if (value > minMax.y)
+        minMax.y = value;
+}
+
+ivec2 minMaxIVec4(ivec4 values) {
+    ivec2 minMax = ivec2(values.x);
+    updateMinMaxInt(minMax, values.y);
+    updateMinMaxInt(minMax, values.z);
+    updateMinMaxInt(minMax, values.w);
+    return minMax;
 }
 
 void main() {
@@ -34,45 +50,30 @@ void main() {
     vec2 positionB = position + vec2(0.0, -onePixel.y);
     vec2 positionT = position + vec2(0.0,  onePixel.y);
 
-    // Determine the topmost path.
+    // Determine the topmost and bottommost paths.
     int centerPathID = unpackPathID(texture2D(uPathID, position).rg);
     ivec4 neighborPathIDs = ivec4(unpackPathID(texture2D(uPathID, positionL).rg),
                                   unpackPathID(texture2D(uPathID, positionR).rg),
                                   unpackPathID(texture2D(uPathID, positionB).rg),
                                   unpackPathID(texture2D(uPathID, positionT).rg));
-
-    // Determine the position of the foreground color.
-    vec2 fgPosition = position;
-    int fgPathID = centerPathID;
-    checkFG(fgPosition, fgPathID, positionL, neighborPathIDs.x);
-    checkFG(fgPosition, fgPathID, positionR, neighborPathIDs.y);
-    checkFG(fgPosition, fgPathID, positionB, neighborPathIDs.z);
-    checkFG(fgPosition, fgPathID, positionT, neighborPathIDs.w);
-
-    // Determine the position of the background color.
-    vec2 bgPosition;
-    if (fgPathID != centerPathID)
-        bgPosition = position;
-    else if (fgPathID != neighborPathIDs.x)
-        bgPosition = positionL;
-    else if (fgPathID != neighborPathIDs.y)
-        bgPosition = positionR;
-    else if (fgPathID != neighborPathIDs.z)
-        bgPosition = positionB;
-    else
-        bgPosition = positionT;
-
-    // Determine the foreground and background colors.
-    vec4 fgColor = texture2D(uColor, fgPosition);
-    vec4 bgColor = texture2D(uColor, bgPosition);
+    ivec2 pathIDsBGFG = minMaxIVec4(neighborPathIDs);
 
     // Determine the depth.
     //
     // If all colors are the same, avoid touching this pixel in any further passes.
-    float outDepth = fgColor == bgColor ? -1.0 : convertPathIndexToWindowDepthValue(fgPathID);
+    float outDepth;
+    if (pathIDsBGFG.x == pathIDsBGFG.y)
+        outDepth = 1.0;
+    else
+        outDepth = convertPathIndexToWindowDepthValue(pathIDsBGFG.y);
+
+    // FIXME(pcwalton): Fetch the background color.
+    // FIXME(pcwalton): Output path ID for debugging. Switch to BG color.
+    //vec2 color = pathIDsBGFG.x == pathIDsBGFG.y ? vec2(1.0) : packPathID(pathIDsBGFG.y);
+    //vec4 color = fetchFloat4Data(uPathColors, pathIDsBGFG.x, uPathColorsDimensions);
 
     // Output results.
-    gl_FragData[0] = bgColor;
-    gl_FragData[1] = fgColor;
+    //gl_FragColor = vec4(packPathID(pathIDsBGFG.x), 0.0, 1.0);
+    gl_FragColor = vec4(packPathID(pathIDsBGFG.x), packPathID(pathIDsBGFG.y));
     gl_FragDepthEXT = outDepth;
 }

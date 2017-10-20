@@ -117,6 +117,12 @@ export function createFramebuffer(gl: WebGLRenderingContext,
                                 gl.TEXTURE_2D,
                                 depthAttachment,
                                 0);
+        assert(gl.getFramebufferAttachmentParameter(gl.FRAMEBUFFER,
+                                                    gl.DEPTH_ATTACHMENT,
+                                                    gl.FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE) ===
+                                                    gl.TEXTURE,
+               "Failed to attach depth texture!");
+
     }
 
     assert(gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE,

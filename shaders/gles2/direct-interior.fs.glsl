@@ -15,5 +15,5 @@ varying vec2 vPathID;
 
 void main() {
     gl_FragData[0] = vColor;
-    gl_FragData[1] = vec4(vPathID, 1.0, 1.0);
+    gl_FragData[1] = vec4(vPathID, 0.0, 1.0);
 }

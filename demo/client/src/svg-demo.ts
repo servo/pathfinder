@@ -142,8 +142,8 @@ class SVGDemoRenderer extends Renderer {
     }
 
     pathBoundingRects(objectIndex: number): Float32Array {
-        panic("SVGDemoRenderer.pathBoundingRects(): TODO");
-        return glmatrix.vec4.create();
+        // TODO
+        return new Float32Array(0);
     }
 
     attachMeshes(meshes: PathfinderMeshData[]): void {

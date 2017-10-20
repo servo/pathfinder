@@ -245,6 +245,12 @@ export abstract class Renderer {
         }
     }
 
+    setPathColorsUniform(objectIndex: number, uniforms: UniformMap, textureUnit: number): void {
+        this.pathColorsBufferTextures[objectIndex].bind(this.renderContext.gl,
+                                                        uniforms,
+                                                        textureUnit);
+    }
+
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
                                         aaLevel: number,
                                         subpixelAA: SubpixelAAType,
@@ -258,11 +264,28 @@ export abstract class Renderer {
 
     protected clearForDirectRendering(): void {
         const renderContext = this.renderContext;
-        renderContext.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        renderContext.gl.clearDepth(0.0);
-        renderContext.gl.depthMask(true);
-        renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT |
-                               renderContext.gl.DEPTH_BUFFER_BIT);
+        const gl = renderContext.gl;
+
+        renderContext.drawBuffersExt.drawBuffersWEBGL([
+            renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
+        ]);
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clearDepth(0.0);
+        gl.depthMask(true);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        // Clear out the path ID buffer.
+        renderContext.drawBuffersExt.drawBuffersWEBGL([
+            renderContext.gl.NONE,
+            renderContext.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
+        ]);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        renderContext.drawBuffersExt.drawBuffersWEBGL([
+            renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
+            renderContext.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
+        ]);
     }
 
     protected getModelviewTransform(pathIndex: number): glmatrix.mat4 {
@@ -306,9 +329,7 @@ export abstract class Renderer {
             this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
             this.setHintsUniform(directInteriorProgram.uniforms);
-            this.pathColorsBufferTextures[objectIndex].bind(renderContext.gl,
-                                                            directInteriorProgram.uniforms,
-                                                            0);
+            this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
             this.pathTransformBufferTextures[objectIndex].bind(renderContext.gl,
                                                                directInteriorProgram.uniforms,
                                                                1);
@@ -352,10 +373,11 @@ export abstract class Renderer {
             // Draw direct curve parts.
             this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directCurveProgram.uniforms);
-            this.setHintsUniform(directInteriorProgram.uniforms);
+            this.setHintsUniform(directCurveProgram.uniforms);
             this.pathColorsBufferTextures[objectIndex].bind(renderContext.gl,
                                                             directCurveProgram.uniforms,
                                                             0);
+            this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
             this.pathTransformBufferTextures[objectIndex].bind(renderContext.gl,
                                                                directCurveProgram.uniforms,
                                                                1);

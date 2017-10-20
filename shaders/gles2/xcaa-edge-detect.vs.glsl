@@ -10,15 +10,12 @@
 
 precision highp float;
 
-uniform vec4 uTransformST;
-uniform vec2 uTexScale;
-
 attribute vec2 aPosition;
 attribute vec2 aTexCoord;
 
 varying vec2 vTexCoord;
 
 void main() {
-    gl_Position = vec4(transformVertexPositionST(aPosition, uTransformST), 0.0, 1.0);
-    vTexCoord = aTexCoord * uTexScale;
+    gl_Position = vec4(mix(vec2(-1.0), vec2(1.0), aPosition), 0.0, 1.0);
+    vTexCoord = aTexCoord;
 }

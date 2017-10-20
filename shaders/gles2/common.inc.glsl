@@ -75,7 +75,7 @@ vec2 convertScreenToClipSpace(vec2 position, ivec2 framebufferSize) {
 }
 
 float convertPathIndexToViewportDepthValue(int pathIndex) {
-    return mix(-1.0, 1.0, float(pathIndex) / float(MAX_PATHS));
+    return float(pathIndex) / float(MAX_PATHS) * 2.0 - 1.0;
 }
 
 float convertPathIndexToWindowDepthValue(int pathIndex) {
