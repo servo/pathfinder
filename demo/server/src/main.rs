@@ -248,7 +248,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
                     File::open(path).expect("Couldn't find builtin font!")
                                     .read_to_end(&mut data)
                                     .expect("Couldn't read builtin font!");
-                    data
+                    Arc::new(data)
                 }
                 None => return Err(PartitionFontError::UnknownBuiltinFont),
             }
@@ -262,7 +262,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
             // Sanitize.
             match fontsan::process(&unsafe_otf_data) {
-                Ok(otf_data) => otf_data,
+                Ok(otf_data) => Arc::new(otf_data),
                 Err(_) => return Err(PartitionFontError::FontSanitizationFailed),
             }
         }

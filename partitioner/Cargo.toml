@@ -5,7 +5,6 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [lib]
 name = "pathfinder_partitioner"
-crate-type = ["dylib", "rlib"]
 
 [dependencies]
 bincode = "0.8"
