@@ -181,8 +181,7 @@ export abstract class TextRenderer extends Renderer {
         const atlasColorTexture = this.renderContext.atlas.ensureTexture(this.renderContext);
         this.atlasDepthTexture = createFramebufferDepthTexture(this.renderContext.gl, ATLAS_SIZE);
         this.atlasFramebuffer = createFramebuffer(this.renderContext.gl,
-                                                  this.renderContext.drawBuffersExt,
-                                                  [atlasColorTexture],
+                                                  atlasColorTexture,
                                                   this.atlasDepthTexture);
 
         // Allow the antialiasing strategy to set up framebuffers as necessary.

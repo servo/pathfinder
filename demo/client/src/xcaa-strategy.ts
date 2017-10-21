@@ -11,7 +11,7 @@
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
-import {AntialiasingStrategy, SubpixelAAType} from './aa-strategy';
+import {AntialiasingStrategy, DirectRenderingMode, SubpixelAAType} from './aa-strategy';
 import PathfinderBufferTexture from './buffer-texture';
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, setTextureParameters, UniformMap} from './gl-utils';
@@ -33,10 +33,9 @@ type Direction = 'upper' | 'lower';
 const DIRECTIONS: Direction[] = ['upper', 'lower'];
 
 export abstract class XCAAStrategy extends AntialiasingStrategy {
-    abstract shouldRenderDirect: boolean;
+    abstract readonly directRenderingMode: DirectRenderingMode;
 
-    protected directColorTexture: WebGLTexture;
-    protected directPathIDTexture: WebGLTexture;
+    protected directTexture: WebGLTexture;
     protected aaDepthTexture: WebGLTexture;
 
     protected pathBoundsBufferTexture: PathfinderBufferTexture;
@@ -87,40 +86,22 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
 
     prepare(renderer: Renderer) {
         const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
 
         const usedSize = this.supersampledUsedSize(renderer);
-        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, this.directFramebuffer);
-        renderContext.gl.viewport(0,
-                             0,
-                             this.supersampledFramebufferSize[0],
-                             this.supersampledFramebufferSize[1]);
-        renderContext.gl.scissor(0, 0, usedSize[0], usedSize[1]);
-        renderContext.gl.enable(renderContext.gl.SCISSOR_TEST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.directFramebuffer);
+        gl.viewport(0,
+                    0,
+                    this.supersampledFramebufferSize[0],
+                    this.supersampledFramebufferSize[1]);
+        gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        gl.enable(gl.SCISSOR_TEST);
 
         // Clear out the color and depth textures.
-        renderContext.drawBuffersExt.drawBuffersWEBGL([
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
-            renderContext.gl.NONE,
-        ]);
-        renderContext.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        renderContext.gl.clearDepth(0.0);
-        renderContext.gl.depthMask(true);
-        renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT |
-                               renderContext.gl.DEPTH_BUFFER_BIT);
-
-        // Clear out the path ID texture.
-        renderContext.drawBuffersExt.drawBuffersWEBGL([
-            renderContext.gl.NONE,
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
-        ]);
-        renderContext.gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT);
-
-        // Render to both textures.
-        renderContext.drawBuffersExt.drawBuffersWEBGL([
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
-        ]);
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clearDepth(0.0);
+        gl.depthMask(true);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
     antialias(renderer: Renderer) {
@@ -145,17 +126,20 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
 
     protected initDirectFramebuffer(renderer: Renderer) {
         const renderContext = renderer.renderContext;
-        this.directColorTexture = createFramebufferColorTexture(renderContext.gl,
-                                                                this.destFramebufferSize,
-                                                                renderContext.colorAlphaFormat);
-        this.directPathIDTexture = createFramebufferColorTexture(renderContext.gl,
-                                                                 this.destFramebufferSize,
-                                                                 renderContext.gl.RGBA);
-        this.directFramebuffer =
-            createFramebuffer(renderContext.gl,
-                              renderContext.drawBuffersExt,
-                              [this.directColorTexture, this.directPathIDTexture],
-                              this.directDepthTexture);
+        const gl = renderContext.gl;
+
+        let textureFormat;
+        if (this.directRenderingMode === 'pathID')
+            textureFormat = gl.RGBA;
+        else
+            textureFormat = renderContext.colorAlphaFormat;
+
+        this.directTexture = createFramebufferColorTexture(gl,
+                                                           this.destFramebufferSize,
+                                                           textureFormat);
+        this.directFramebuffer = createFramebuffer(renderContext.gl,
+                                                   this.directTexture,
+                                                   this.directDepthTexture);
     }
 
     protected supersampledUsedSize(renderer: Renderer): glmatrix.vec2 {
@@ -214,12 +198,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         gl.enable(gl.SCISSOR_TEST);
         gl.disable(gl.DEPTH_TEST);
         gl.disable(gl.BLEND);
-        if (renderer.destFramebuffer != null) {
-            renderContext.drawBuffersExt
-                         .drawBuffersWEBGL([renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
-        } else {
-            renderContext.drawBuffersExt.drawBuffersWEBGL([gl.BACK]);
-        }
 
         // Clear out the resolve buffer, if necessary.
         this.clearForResolve(renderer);
@@ -272,8 +250,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
                                                             this.supersampledFramebufferSize);
 
         this.aaFramebuffer = createFramebuffer(renderContext.gl,
-                                               renderContext.drawBuffersExt,
-                                               [this.aaAlphaTexture],
+                                               this.aaAlphaTexture,
                                                this.aaDepthTexture);
     }
 
@@ -647,8 +624,8 @@ export class ECAAStrategy extends XCAAStrategy {
     private lineVAO: WebGLVertexArrayObject;
     private curveVAO: WebGLVertexArrayObject;
 
-    get shouldRenderDirect() {
-        return false;
+    get directRenderingMode(): DirectRenderingMode {
+        return 'none';
     }
 
     attachMeshes(renderer: Renderer) {
@@ -952,8 +929,8 @@ export class MCAAMonochromeStrategy extends MCAAStrategy {
         renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT);
     }
 
-    get shouldRenderDirect() {
-        return false;
+    get directRenderingMode(): DirectRenderingMode {
+        return 'none';
     }
 }
 
@@ -964,8 +941,8 @@ export class AdaptiveMonochromeXCAAStrategy implements AntialiasingStrategy {
     private mcaaStrategy: MCAAMonochromeStrategy;
     private ecaaStrategy: ECAAStrategy;
 
-    get shouldRenderDirect(): boolean {
-        return false;
+    get directRenderingMode(): DirectRenderingMode {
+        return 'none';
     }
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
@@ -1035,8 +1012,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
                                                                this.supersampledFramebufferSize,
                                                                renderContext.gl.RGBA);
         this.edgeDetectFramebuffer = createFramebuffer(renderContext.gl,
-                                                       renderContext.drawBuffersExt,
-                                                       [this.edgePathIDTexture],
+                                                       this.edgePathIDTexture,
                                                        this.aaDepthTexture);
     }
 
@@ -1063,10 +1039,6 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
                     this.supersampledFramebufferSize[0],
                     this.supersampledFramebufferSize[1]);
 
-        renderContext.drawBuffersExt.drawBuffersWEBGL([
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
-        ]);
-
         gl.depthMask(true);
         gl.depthFunc(renderContext.gl.ALWAYS);
         gl.enable(renderContext.gl.DEPTH_TEST);
@@ -1083,7 +1055,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         renderer.setTransformSTAndTexScaleUniformsForDest(edgeDetectProgram.uniforms);
         renderer.setPathColorsUniform(0, edgeDetectProgram.uniforms, 0);
         gl.activeTexture(renderContext.gl.TEXTURE1);
-        gl.bindTexture(renderContext.gl.TEXTURE_2D, this.directPathIDTexture);
+        gl.bindTexture(renderContext.gl.TEXTURE_2D, this.directTexture);
         gl.uniform1i(edgeDetectProgram.uniforms.uPathID, 1);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
@@ -1103,12 +1075,6 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         renderContext.gl.enable(renderContext.gl.SCISSOR_TEST);
         renderContext.gl.disable(renderContext.gl.DEPTH_TEST);
         renderContext.gl.disable(renderContext.gl.BLEND);
-        if (renderer.destFramebuffer != null) {
-            renderContext.drawBuffersExt
-                         .drawBuffersWEBGL([renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL]);
-        } else {
-            renderContext.drawBuffersExt.drawBuffersWEBGL([renderContext.gl.BACK]);
-        }
 
         // Resolve.
         const resolveProgram = this.getResolveProgram(renderContext);
@@ -1157,8 +1123,8 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
 
     protected clearForResolve(renderer: Renderer) {}
 
-    get shouldRenderDirect() {
-        return true;
+    get directRenderingMode(): DirectRenderingMode {
+        return 'pathID';
     }
 
     protected get directDepthTexture(): WebGLTexture {

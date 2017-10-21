@@ -119,7 +119,7 @@ export abstract class Renderer {
         this.drawSceneryIfNecessary();
 
         // Perform direct rendering (Loop-Blinn).
-        if (antialiasingStrategy.shouldRenderDirect)
+        if (antialiasingStrategy.directRenderingMode !== 'none')
             this.renderDirect();
 
         // Antialias.
@@ -263,29 +263,26 @@ export abstract class Renderer {
     protected drawSceneryIfNecessary(): void {}
 
     protected clearForDirectRendering(): void {
+        const renderingMode = unwrapNull(this.antialiasingStrategy).directRenderingMode;
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
-        renderContext.drawBuffersExt.drawBuffersWEBGL([
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
-        ]);
-        gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        gl.clearDepth(0.0);
-        gl.depthMask(true);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-        // Clear out the path ID buffer.
-        renderContext.drawBuffersExt.drawBuffersWEBGL([
-            renderContext.gl.NONE,
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
-        ]);
-        gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        renderContext.drawBuffersExt.drawBuffersWEBGL([
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT0_WEBGL,
-            renderContext.drawBuffersExt.COLOR_ATTACHMENT1_WEBGL,
-        ]);
+        switch (renderingMode) {
+        case 'color':
+            gl.clearColor(1.0, 1.0, 1.0, 1.0);
+            gl.clearDepth(0.0);
+            gl.depthMask(true);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            break;
+        case 'pathID':
+            gl.clearColor(0.0, 0.0, 0.0, 0.0);
+            gl.clearDepth(0.0);
+            gl.depthMask(true);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            break;
+        case 'none':
+            // Nothing to do.
+        }
     }
 
     protected getModelviewTransform(pathIndex: number): glmatrix.mat4 {
@@ -301,7 +298,10 @@ export abstract class Renderer {
     protected newTimingsReceived() {}
 
     private renderDirect() {
+        const renderingMode = unwrapNull(this.antialiasingStrategy).directRenderingMode;
         const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
         for (let objectIndex = 0; objectIndex < this.meshes.length; objectIndex++) {
             const instanceRange = this.instanceRangeForObject(objectIndex);
             if (instanceRange.isEmpty)
@@ -310,10 +310,10 @@ export abstract class Renderer {
             const meshes = this.meshes[objectIndex];
 
             // Set up implicit cover state.
-            renderContext.gl.depthFunc(this.depthFunction);
-            renderContext.gl.depthMask(true);
-            renderContext.gl.enable(renderContext.gl.DEPTH_TEST);
-            renderContext.gl.disable(renderContext.gl.BLEND);
+            gl.depthFunc(this.depthFunction);
+            gl.depthMask(true);
+            gl.enable(gl.DEPTH_TEST);
+            gl.disable(gl.BLEND);
 
             // Set up the implicit cover interior VAO.
             const directInteriorProgram =
@@ -329,35 +329,27 @@ export abstract class Renderer {
             this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
             this.setHintsUniform(directInteriorProgram.uniforms);
-            this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
-            this.pathTransformBufferTextures[objectIndex].bind(renderContext.gl,
-                                                               directInteriorProgram.uniforms,
-                                                               1);
-            let indexCount =
-                renderContext.gl.getBufferParameter(renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                                    renderContext.gl.BUFFER_SIZE) / UINT32_SIZE;
+            if (renderingMode === 'color')
+                this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
+            this.pathTransformBufferTextures[objectIndex]
+                .bind(gl, directInteriorProgram.uniforms, 1);
+            let indexCount = gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE) /
+                    UINT32_SIZE;
             if (!this.pathIDsAreInstanced) {
-                renderContext.gl.drawElements(renderContext.gl.TRIANGLES,
-                                              indexCount,
-                                              renderContext.gl.UNSIGNED_INT,
-                                              0);
+                gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
             } else {
-                renderContext.instancedArraysExt
-                             .drawElementsInstancedANGLE(renderContext.gl.TRIANGLES,
-                                                         indexCount,
-                                                         renderContext.gl.UNSIGNED_INT,
-                                                         0,
-                                                         instanceRange.length);
+                renderContext.instancedArraysExt.drawElementsInstancedANGLE(gl.TRIANGLES,
+                                                                            indexCount,
+                                                                            gl.UNSIGNED_INT,
+                                                                            0,
+                                                                            instanceRange.length);
             }
 
             // Set up direct curve state.
-            renderContext.gl.depthMask(false);
-            renderContext.gl.enable(renderContext.gl.BLEND);
-            renderContext.gl.blendEquation(renderContext.gl.FUNC_ADD);
-            renderContext.gl.blendFuncSeparate(renderContext.gl.SRC_ALPHA,
-                                               renderContext.gl.ONE_MINUS_SRC_ALPHA,
-                                               renderContext.gl.ONE,
-                                               renderContext.gl.ONE);
+            gl.depthMask(false);
+            gl.enable(gl.BLEND);
+            gl.blendEquation(gl.FUNC_ADD);
+            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
             // Set up the direct curve VAO.
             //
@@ -374,28 +366,19 @@ export abstract class Renderer {
             this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directCurveProgram.uniforms);
             this.setHintsUniform(directCurveProgram.uniforms);
-            this.pathColorsBufferTextures[objectIndex].bind(renderContext.gl,
-                                                            directCurveProgram.uniforms,
-                                                            0);
-            this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
-            this.pathTransformBufferTextures[objectIndex].bind(renderContext.gl,
-                                                               directCurveProgram.uniforms,
-                                                               1);
-            indexCount =
-                renderContext.gl.getBufferParameter(renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                                    renderContext.gl.BUFFER_SIZE) / UINT32_SIZE;
+            if (renderingMode === 'color')
+                this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
+            this.pathTransformBufferTextures[objectIndex].bind(gl, directCurveProgram.uniforms, 1);
+            indexCount = gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE) /
+                UINT32_SIZE;
             if (!this.pathIDsAreInstanced) {
-                renderContext.gl.drawElements(renderContext.gl.TRIANGLES,
-                                              indexCount,
-                                              renderContext.gl.UNSIGNED_INT,
-                                              0);
+                gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
             } else {
-                renderContext.instancedArraysExt
-                             .drawElementsInstancedANGLE(renderContext.gl.TRIANGLES,
-                                                         indexCount,
-                                                         renderContext.gl.UNSIGNED_INT,
-                                                         0,
-                                                         instanceRange.length);
+                renderContext.instancedArraysExt.drawElementsInstancedANGLE(gl.TRIANGLES,
+                                                                            indexCount,
+                                                                            gl.UNSIGNED_INT,
+                                                                            0,
+                                                                            instanceRange.length);
             }
 
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);

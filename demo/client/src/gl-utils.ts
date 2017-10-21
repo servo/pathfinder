@@ -95,21 +95,17 @@ export function setTextureParameters(gl: WebGLRenderingContext, filter: number) 
 }
 
 export function createFramebuffer(gl: WebGLRenderingContext,
-                                  drawBuffersExt: WebGLDrawBuffers,
-                                  colorAttachments: WebGLTexture[],
+                                  colorAttachment: WebGLTexture,
                                   depthAttachment: WebGLTexture | null):
                                   WebGLFramebuffer {
     const framebuffer = unwrapNull(gl.createFramebuffer());
     gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
 
-    const colorAttachmentCount = colorAttachments.length;
-    for (let colorAttachmentIndex = 0;
-         colorAttachmentIndex < colorAttachmentCount;
-         colorAttachmentIndex++) {
-        const glEnum = (drawBuffersExt as any)[`COLOR_ATTACHMENT${colorAttachmentIndex}_WEBGL`];
-        const attachment = colorAttachments[colorAttachmentIndex];
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, glEnum, gl.TEXTURE_2D, attachment, 0);
-    }
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,
+                            gl.COLOR_ATTACHMENT0,
+                            gl.TEXTURE_2D,
+                            colorAttachment,
+                            0);
 
     if (depthAttachment != null) {
         gl.framebufferTexture2D(gl.FRAMEBUFFER,

@@ -10,7 +10,6 @@
 
 #version 100
 
-#extension GL_EXT_draw_buffers : require
 #extension GL_EXT_frag_depth : require
 
 #define LCD_FILTER_FACTOR_0     (86.0 / 255.0)

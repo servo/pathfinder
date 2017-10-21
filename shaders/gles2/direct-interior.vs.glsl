@@ -21,7 +21,6 @@ attribute vec2 aPosition;
 attribute float aPathID;
 
 varying vec4 vColor;
-varying vec2 vPathID;
 
 void main() {
     int pathID = int(aPathID);
@@ -36,5 +35,4 @@ void main() {
     gl_Position = vec4(position, depth, 1.0);
 
     vColor = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
-    vPathID = packPathID(pathID);
 }

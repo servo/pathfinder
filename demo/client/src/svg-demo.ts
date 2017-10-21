@@ -157,7 +157,7 @@ class SVGDemoRenderer extends Renderer {
         this.camera.zoomToFit();
     }
 
-    protected get depthFunction(): number {
+    protected get depthFunction(): GLenum {
         return this.renderContext.gl.GREATER;
     }
 
@@ -180,10 +180,14 @@ class SVGDemoRenderer extends Renderer {
     }
 
     protected get directCurveProgramName(): keyof ShaderMap<void> {
+        if (this.antialiasingStrategy instanceof XCAAStrategy)
+            return 'xcaaMultiDirectCurve';
         return 'directCurve';
     }
 
     protected get directInteriorProgramName(): keyof ShaderMap<void> {
+        if (this.antialiasingStrategy instanceof XCAAStrategy)
+            return 'xcaaMultiDirectInterior';
         return 'directInterior';
     }
 

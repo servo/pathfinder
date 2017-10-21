@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/direct-curve.fs.glsl
+// pathfinder/shaders/gles2/xcaa-multi-direct-curve.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -12,12 +12,12 @@
 
 precision highp float;
 
-varying vec4 vColor;
+varying vec2 vPathID;
 varying vec2 vTexCoord;
 varying float vSign;
 
 void main() {
     float side = vTexCoord.x * vTexCoord.x - vTexCoord.y;
     float alpha = float(sign(side) == sign(vSign));
-    gl_FragColor = vec4(vColor.rgb, vColor.a * alpha);
+    gl_FragColor = vec4(vPathID, 0.0, alpha);
 }

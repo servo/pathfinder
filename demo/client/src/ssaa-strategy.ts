@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {AntialiasingStrategy, SubpixelAAType} from './aa-strategy';
+import {AntialiasingStrategy, DirectRenderingMode, SubpixelAAType} from './aa-strategy';
 import {createFramebuffer, createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
 import {Renderer} from './renderer';
 import {unwrapNull} from './utils';
@@ -64,8 +64,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
             createFramebufferDepthTexture(renderContext.gl, this.supersampledFramebufferSize);
 
         this.supersampledFramebuffer = createFramebuffer(renderContext.gl,
-                                                         renderContext.drawBuffersExt,
-                                                         [this.supersampledColorTexture],
+                                                         this.supersampledColorTexture,
                                                          this.supersampledDepthTexture);
 
         renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, null);
@@ -128,8 +127,8 @@ export default class SSAAStrategy extends AntialiasingStrategy {
                                       0);
     }
 
-    get shouldRenderDirect() {
-        return true;
+    get directRenderingMode(): DirectRenderingMode {
+        return 'color';
     }
 
     private get supersampleScale(): glmatrix.vec2 {

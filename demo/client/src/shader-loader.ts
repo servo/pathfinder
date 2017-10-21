@@ -11,6 +11,28 @@
 import {AttributeMap, UniformMap} from './gl-utils';
 import {expectNotNull, PathfinderError, unwrapNull} from './utils';
 
+export interface ShaderMap<T> {
+    blit: T;
+    demo3DDistantGlyph: T;
+    demo3DMonument: T;
+    directCurve: T;
+    directInterior: T;
+    direct3DCurve: T;
+    direct3DInterior: T;
+    ecaaLine: T;
+    ecaaCurve: T;
+    mcaaCover: T;
+    mcaaLine: T;
+    mcaaCurve: T;
+    ssaaSubpixelResolve: T;
+    xcaaEdgeDetect: T;
+    xcaaMonoResolve: T;
+    xcaaMonoSubpixelResolve: T;
+    xcaaMultiDirectCurve: T;
+    xcaaMultiDirectInterior: T;
+    xcaaMultiResolve: T;
+}
+
 export interface UnlinkedShaderProgram {
     vertex: WebGLShader;
     fragment: WebGLShader;
@@ -33,6 +55,8 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'ecaaCurve',
     'xcaaMonoResolve',
     'xcaaMonoSubpixelResolve',
+    'xcaaMultiDirectCurve',
+    'xcaaMultiDirectInterior',
     'xcaaMultiResolve',
     'demo3DDistantGlyph',
     'demo3DMonument',
@@ -103,31 +127,19 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         fragment: "/glsl/gles2/xcaa-mono-subpixel-resolve.fs.glsl",
         vertex: "/glsl/gles2/xcaa-mono-subpixel-resolve.vs.glsl",
     },
+    xcaaMultiDirectCurve: {
+        fragment: "/glsl/gles2/xcaa-multi-direct-curve.fs.glsl",
+        vertex: "/glsl/gles2/xcaa-multi-direct-curve.vs.glsl",
+    },
+    xcaaMultiDirectInterior: {
+        fragment: "/glsl/gles2/xcaa-multi-direct-interior.fs.glsl",
+        vertex: "/glsl/gles2/xcaa-multi-direct-interior.vs.glsl",
+    },
     xcaaMultiResolve: {
         fragment: "/glsl/gles2/xcaa-multi-resolve.fs.glsl",
         vertex: "/glsl/gles2/xcaa-multi-resolve.vs.glsl",
     },
 };
-
-export interface ShaderMap<T> {
-    blit: T;
-    demo3DDistantGlyph: T;
-    demo3DMonument: T;
-    directCurve: T;
-    directInterior: T;
-    direct3DCurve: T;
-    direct3DInterior: T;
-    ecaaLine: T;
-    ecaaCurve: T;
-    mcaaCover: T;
-    mcaaLine: T;
-    mcaaCurve: T;
-    ssaaSubpixelResolve: T;
-    xcaaEdgeDetect: T;
-    xcaaMonoResolve: T;
-    xcaaMonoSubpixelResolve: T;
-    xcaaMultiResolve: T;
-}
 
 export interface ShaderProgramSource {
     vertex: string;

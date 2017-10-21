@@ -15,13 +15,15 @@ import {DemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
 
+export type DirectRenderingMode = 'none' | 'color' | 'pathID';
+
 export type SubpixelAAType = 'none' | 'medium';
 
 export type StemDarkeningMode = 'none' | 'dark';
 
 export abstract class AntialiasingStrategy {
-    // True if direct rendering should occur.
-    shouldRenderDirect: boolean;
+    // The type of direct rendering that should occur, if any.
+    abstract readonly directRenderingMode: DirectRenderingMode;
 
     // Prepares any OpenGL data. This is only called on startup and canvas resize.
     init(renderer: Renderer): void {
@@ -82,7 +84,7 @@ export class NoAAStrategy extends AntialiasingStrategy {
 
     resolve(renderer: Renderer) {}
 
-    get shouldRenderDirect() {
-        return true;
+    get directRenderingMode(): DirectRenderingMode {
+        return 'color';
     }
 }

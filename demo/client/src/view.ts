@@ -115,7 +115,6 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
 
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
 
-    drawBuffersExt: WebGLDrawBuffers;
     instancedArraysExt: ANGLEInstancedArrays;
     textureHalfFloatExt: OESTextureHalfFloat;
     timerQueryExt: EXTDisjointTimerQuery;
@@ -192,7 +191,6 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         // Initialize the OpenGL context.
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
-        this.drawBuffersExt = this.gl.getExtension('WEBGL_draw_buffers');
         this.colorBufferHalfFloatExt = this.gl.getExtension('EXT_color_buffer_half_float');
         this.instancedArraysExt = this.gl.getExtension('ANGLE_instanced_arrays');
         this.sRGBExt = this.gl.getExtension('EXT_sRGB');
@@ -303,8 +301,6 @@ export interface RenderContext {
     /// The OpenGL context.
     readonly gl: WebGLRenderingContext;
 
-    /// The `WEBGL_draw_buffers` extension.
-    readonly drawBuffersExt: WebGLDrawBuffers;
     readonly instancedArraysExt: ANGLEInstancedArrays;
     readonly textureHalfFloatExt: OESTextureHalfFloat;
     readonly timerQueryExt: EXTDisjointTimerQuery;
