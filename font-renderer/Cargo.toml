@@ -19,7 +19,7 @@ optional = true
 [dependencies.pathfinder_path_utils]
 path = "../path-utils"
 
-[target.'not(cfg(target_os = "macos"))'.dependencies]
+[target.'cfg(not(target_os = "macos"))'.dependencies]
 freetype-sys = "0.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
