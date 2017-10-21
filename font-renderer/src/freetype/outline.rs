@@ -1,4 +1,4 @@
-// pathfinder/font-renderer/src/outline.rs
+// pathfinder/font-renderer/src/freetype/outline.rs
 //
 // Copyright © 2017 The Pathfinder Project Developers.
 //
@@ -10,8 +10,7 @@
 
 use euclid::Point2D;
 use freetype_sys::{FT_Outline, FT_Vector};
-
-use PathCommand;
+use pathfinder_path_utils::PathCommand;
 
 const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
 

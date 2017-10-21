@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use FontKey;
+use {FontKey, FontInstanceKey, GlyphDimensions, GlyphKey};
 use app_units::Au;
 use euclid::{Point2D, Size2D};
 use freetype_sys::{FT_BBox, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_OUTLINE};
@@ -23,7 +23,7 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use outline::OutlineStream;
+use self::outline::OutlineStream;
 
 mod outline;
 
@@ -56,7 +56,7 @@ impl FontContext {
     }
 
     pub fn add_font_from_memory(&mut self,
-                                font_key: &FontKey
+                                font_key: &FontKey,
                                 bytes: Arc<Vec<u8>>,
                                 font_index: u32)
                                 -> Result<(), ()> {
