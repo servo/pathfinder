@@ -25,17 +25,19 @@ use {FontInstanceKey, FontKey, GlyphDimensions, GlyphKey};
 
 const CURVE_APPROX_ERROR_BOUND: f32 = 0.1;
 
+pub type GlyphOutline = Vec<PathCommand>;
+
 pub struct FontContext {
     core_graphics_fonts: BTreeMap<FontKey, CGFont>,
     core_text_fonts: BTreeMap<FontInstanceKey, CTFont>,
 }
 
 impl FontContext {
-    pub fn new() -> FontContext {
-        FontContext {
+    pub fn new() -> Result<FontContext, ()> {
+        Ok(FontContext {
             core_graphics_fonts: BTreeMap::new(),
             core_text_fonts: BTreeMap::new(),
-        }
+        })
     }
 
     pub fn add_font_from_memory(&mut self, font_key: &FontKey, bytes: Arc<Vec<u8>>, _: u32)
@@ -111,37 +113,7 @@ impl FontContext {
         let core_text_font = try!(self.ensure_core_text_font(font_instance));
         let path = try!(core_text_font.create_path_for_glyph(glyph_key.glyph_index as CGGlyph,
                                                              &CG_AFFINE_TRANSFORM_IDENTITY));
-        Ok(GlyphOutline::new(&path))
-    }
-}
 
-impl FontInstanceKey {
-    fn instantiate(&self, core_graphics_font: &CGFont) -> Result<CTFont, ()> {
-        Ok(core_text::font::new_from_CGFont(core_graphics_font, self.size.to_f64_px()))
-    }
-}
-
-pub struct GlyphOutline {
-    commands: Vec<PathCommand>,
-    index: usize,
-}
-
-impl Iterator for GlyphOutline {
-    type Item = PathCommand;
-
-    fn next(&mut self) -> Option<PathCommand> {
-        match self.commands.get(self.index) {
-            None => None,
-            Some(command) => {
-                self.index += 1;
-                Some(*command)
-            }
-        }
-    }
-}
-
-impl GlyphOutline {
-    fn new(path: &CGPath) -> GlyphOutline {
         let mut commands = vec![];
         path.apply(&|element| {
             let points = element.points();
@@ -170,13 +142,16 @@ impl GlyphOutline {
 
         let approx_commands: Vec<_> = approx_stream.collect();
 
-        return GlyphOutline {
-            commands: approx_commands,
-            index: 0,
-        };
+        return Ok(approx_commands);
 
         fn convert_point(core_graphics_point: &CGPoint) -> Point2D<f32> {
             Point2D::new(core_graphics_point.x as f32, core_graphics_point.y as f32)
         }
+    }
+}
+
+impl FontInstanceKey {
+    fn instantiate(&self, core_graphics_font: &CGFont) -> Result<CTFont, ()> {
+        Ok(core_text::font::new_from_CGFont(core_graphics_font, self.size.to_f64_px()))
     }
 }

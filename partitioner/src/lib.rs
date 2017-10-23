@@ -8,10 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![feature(alloc_jemalloc)]
-
-// needed to work around a problem with `heapsize`
-extern crate alloc_jemalloc;
 extern crate bincode;
 extern crate bit_vec;
 extern crate byteorder;

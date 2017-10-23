@@ -43,16 +43,18 @@ pub struct FontContext {
 }
 
 impl FontContext {
-    pub fn new() -> FontContext {
+    pub fn new() -> Result<FontContext, ()> {
         let mut library: FT_Library = ptr::null_mut();
         unsafe {
             let result = FT_Init_FreeType(&mut library);
-            assert!(result == 0, "Unable to initialize FreeType");
+            if result != 0 {
+                return Err(())
+            }
         }
-        FontContext {
+        Ok(FontContext {
             library: library,
             faces: BTreeMap::new(),
-        }
+        })
     }
 
     pub fn add_font_from_memory(&mut self,

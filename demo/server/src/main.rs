@@ -274,8 +274,15 @@ fn partition_font(request: Json<PartitionFontRequest>)
         font_key: font_key,
         size: Au::from_f64_px(request.point_size),
     };
-    let mut font_context = FontContext::new();
+    let mut font_context = match FontContext::new() {
+        Ok(font_context) => font_context,
+        Err(_) => {
+            println!("Failed to create a font context!");
+            return Err(PartitionFontError::FontLoadingFailed)
+        }
+    };
     if font_context.add_font_from_memory(&font_key, otf_data, request.font_index).is_err() {
+        println!("Failed to add font from memory!");
         return Err(PartitionFontError::FontLoadingFailed)
     }
 
@@ -288,7 +295,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
         // This might fail; if so, just leave it blank.
         if let Ok(glyph_outline) = font_context.glyph_outline(&font_instance_key, &glyph_key) {
-            let stream = Transform2DPathStream::new(glyph_outline, &glyph.transform);
+            let stream = Transform2DPathStream::new(glyph_outline.into_iter(), &glyph.transform);
             let stream = MonotonicPathCommandStream::new(stream);
             path_buffer.add_stream(stream)
         }

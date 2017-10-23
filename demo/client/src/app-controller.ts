@@ -177,7 +177,7 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         this.updateAALevel();
     }
 
-    newTimingsReceived(timings: Timings) {
+    newTimingsReceived(timings: Partial<Timings>) {
         if (this.fpsLabel == null)
             return;
 
