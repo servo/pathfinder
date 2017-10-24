@@ -13,7 +13,6 @@ extern crate euclid;
 #[macro_use]
 extern crate serde_derive;
 
-use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Transform2D};
 use std::mem;
 use std::ops::Range;

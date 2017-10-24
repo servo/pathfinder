@@ -13,6 +13,7 @@
 use euclid::Point2D;
 
 use curve::Curve;
+use PathCommand;
 
 const MAX_APPROXIMATION_ITERATIONS: u8 = 32;
 
@@ -53,21 +54,97 @@ impl CubicCurve {
          CubicCurve::new(&p0p1p2p3, &p1p2p3, &p2p3, &p3))
     }
 
-    pub fn approximate_curve(&self, error_bound: f32) -> ApproximateCurveIter {
-        ApproximateCurveIter::new(self, error_bound)
+    pub fn approx_curve(&self, error_bound: f32) -> ApproxCurveIter {
+        ApproxCurveIter::new(self, error_bound)
     }
 }
 
-pub struct ApproximateCurveIter {
+/// A series of path commands that can contain cubic Bézier segments.
+#[derive(Clone, Copy, Debug)]
+pub enum CubicPathCommand {
+    MoveTo(Point2D<f32>),
+    LineTo(Point2D<f32>),
+    QuadCurveTo(Point2D<f32>, Point2D<f32>),
+    CubicCurveTo(Point2D<f32>, Point2D<f32>, Point2D<f32>),
+    ClosePath,
+}
+
+pub struct CubicPathCommandApproxStream<I> {
+    inner: I,
+    error_bound: f32,
+    last_endpoint: Point2D<f32>,
+    approx_curve_iter: Option<ApproxCurveIter>,
+}
+
+impl<I> CubicPathCommandApproxStream<I> where I: Iterator<Item = CubicPathCommand> {
+    #[inline]
+    pub fn new(inner: I, error_bound: f32) -> CubicPathCommandApproxStream<I> {
+        CubicPathCommandApproxStream {
+            inner: inner,
+            error_bound: error_bound,
+            last_endpoint: Point2D::zero(),
+            approx_curve_iter: None,
+        }
+    }
+}
+
+impl<I> Iterator for CubicPathCommandApproxStream<I> where I: Iterator<Item = CubicPathCommand> {
+    type Item = PathCommand;
+
+    fn next(&mut self) -> Option<PathCommand> {
+        loop {
+            if let Some(ref mut approx_curve_iter) = self.approx_curve_iter {
+                if let Some(curve) = approx_curve_iter.next() {
+                    return Some(curve.to_path_segment())
+                }
+            }
+            self.approx_curve_iter = None;
+
+            let next_command = match self.inner.next() {
+                None => return None,
+                Some(next_command) => next_command,
+            };
+
+            match next_command {
+                CubicPathCommand::ClosePath => {
+                    self.last_endpoint = Point2D::zero();
+                    return Some(PathCommand::ClosePath)
+                }
+                CubicPathCommand::MoveTo(endpoint) => {
+                    self.last_endpoint = endpoint;
+                    return Some(PathCommand::MoveTo(endpoint))
+                }
+                CubicPathCommand::LineTo(endpoint) => {
+                    self.last_endpoint = endpoint;
+                    return Some(PathCommand::LineTo(endpoint))
+                }
+                CubicPathCommand::QuadCurveTo(control_point, endpoint) => {
+                    self.last_endpoint = endpoint;
+                    return Some(PathCommand::CurveTo(control_point, endpoint))
+                }
+                CubicPathCommand::CubicCurveTo(control_point_0, control_point_1, endpoint) => {
+                    let curve = CubicCurve::new(&self.last_endpoint,
+                                                &control_point_0,
+                                                &control_point_1,
+                                                &endpoint);
+                    self.last_endpoint = endpoint;
+                    self.approx_curve_iter = Some(ApproxCurveIter::new(&curve, self.error_bound));
+                }
+            }
+        }
+    }
+}
+
+pub struct ApproxCurveIter {
     curves: Vec<CubicCurve>,
     error_bound: f32,
     iteration: u8,
 }
 
-impl ApproximateCurveIter {
-    fn new(cubic: &CubicCurve, error_bound: f32) -> ApproximateCurveIter {
+impl ApproxCurveIter {
+    fn new(cubic: &CubicCurve, error_bound: f32) -> ApproxCurveIter {
         let (curve_a, curve_b) = cubic.subdivide(0.5);
-        ApproximateCurveIter {
+        ApproxCurveIter {
             curves: vec![curve_b, curve_a],
             error_bound: error_bound,
             iteration: 0,
@@ -75,7 +152,7 @@ impl ApproximateCurveIter {
     }
 }
 
-impl Iterator for ApproximateCurveIter {
+impl Iterator for ApproxCurveIter {
     type Item = Curve;
 
     fn next(&mut self) -> Option<Curve> {
