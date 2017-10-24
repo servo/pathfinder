@@ -16,11 +16,14 @@ use core_graphics_sys::path::{CGPath, CGPathElementType};
 use core_text::font::CTFont;
 use core_text;
 use euclid::{Point2D, Size2D};
+use pathfinder_path_utils::cubic::{CubicPathCommand, CubicPathCommandApproxStream};
 use pathfinder_path_utils::PathCommand;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::sync::Arc;
 use {FontInstanceKey, FontKey, GlyphDimensions, GlyphKey};
+
+const CURVE_APPROX_ERROR_BOUND: f32 = 0.1;
 
 pub struct FontContext {
     core_graphics_fonts: BTreeMap<FontKey, CGFont>,
@@ -105,7 +108,6 @@ impl FontContext {
 
     pub fn glyph_outline(&mut self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
                          -> Result<GlyphOutline, ()> {
-        //println!("GlyphOutline({:?})", font_instance);
         let core_text_font = try!(self.ensure_core_text_font(font_instance));
         let path = try!(core_text_font.create_path_for_glyph(glyph_key.glyph_index as CGGlyph,
                                                              &CG_AFFINE_TRANSFORM_IDENTITY));
@@ -145,24 +147,31 @@ impl GlyphOutline {
             let points = element.points();
             commands.push(match element.element_type {
                 CGPathElementType::MoveToPoint => {
-                    PathCommand::MoveTo(convert_point(&points[0]))
+                    CubicPathCommand::MoveTo(convert_point(&points[0]))
                 }
                 CGPathElementType::AddLineToPoint => {
-                    PathCommand::LineTo(convert_point(&points[0]))
+                    CubicPathCommand::LineTo(convert_point(&points[0]))
                 }
                 CGPathElementType::AddQuadCurveToPoint => {
-                    PathCommand::CurveTo(convert_point(&points[0]), convert_point(&points[1]))
+                    CubicPathCommand::QuadCurveTo(convert_point(&points[0]),
+                                                  convert_point(&points[1]))
                 }
                 CGPathElementType::AddCurveToPoint => {
-                    // FIXME(pcwalton)
-                    PathCommand::CurveTo(convert_point(&points[0]), convert_point(&points[2]))
+                    CubicPathCommand::CubicCurveTo(convert_point(&points[0]),
+                                                   convert_point(&points[1]),
+                                                   convert_point(&points[2]))
                 }
-                CGPathElementType::CloseSubpath => PathCommand::ClosePath,
+                CGPathElementType::CloseSubpath => CubicPathCommand::ClosePath,
             });
         });
-        //println!("{:?}", commands);
+
+        let approx_stream = CubicPathCommandApproxStream::new(commands.into_iter(),
+                                                              CURVE_APPROX_ERROR_BOUND);
+
+        let approx_commands: Vec<_> = approx_stream.collect();
+
         return GlyphOutline {
-            commands: commands,
+            commands: approx_commands,
             index: 0,
         };
 
