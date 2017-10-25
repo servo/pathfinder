@@ -192,7 +192,7 @@ class SVGDemoRenderer extends Renderer {
     }
 
     protected newTimingsReceived(): void {
-        this.renderContext.appController.newTimingsReceived(_.pick(this.lastTimings,
+        this.renderContext.appController.newTimingsReceived(_.pick(this.lastTimings as any,
                                                                    ['rendering']));
     }
 
