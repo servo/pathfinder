@@ -524,7 +524,7 @@ class ThreeDRenderer extends Renderer {
     }
 
     protected newTimingsReceived(): void {
-        const newTimings: Timings = _.pick(this.lastTimings, ['rendering']);
+        const newTimings: Timings = _.pick(this.lastTimings, ['rendering']) as any;
         this.renderContext.appController.newTimingsReceived(newTimings);
     }
 
