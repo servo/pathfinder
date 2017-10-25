@@ -54,6 +54,8 @@ export abstract class PathfinderView {
 
     private dirty: boolean;
 
+    private pulseHandle: number;
+
     constructor() {
         this.dirty = false;
         this.canvas = unwrapNull(document.getElementById('pf-canvas')) as HTMLCanvasElement;
@@ -73,6 +75,25 @@ export abstract class PathfinderView {
 
     zoomOut(): void {
         this.camera.zoomOut();
+    }
+
+    zoomPulse(): void {
+        if (this.pulseHandle) {
+            window.cancelAnimationFrame(this.pulseHandle);
+            this.pulseHandle = 0;
+            return;
+        }
+        let c = 0;
+        let d = 0.005;
+        const self = this;
+        function tick() {
+            self.camera.zoom(1 + d);
+            if (c++ % 200 === 0) {
+                d *= -1;
+            }
+            self.pulseHandle = window.requestAnimationFrame(tick);
+        }
+        this.pulseHandle = window.requestAnimationFrame(tick);
     }
 
     protected resized(): void {
