@@ -12,7 +12,7 @@ use core_graphics_sys::data_provider::CGDataProvider;
 use core_graphics_sys::font::{CGFont, CGGlyph};
 use core_graphics_sys::geometry::{CG_AFFINE_TRANSFORM_IDENTITY, CGPoint, CGRect};
 use core_graphics_sys::geometry::{CGSize, CG_ZERO_POINT};
-use core_graphics_sys::path::{CGPath, CGPathElementType};
+use core_graphics_sys::path::CGPathElementType;
 use core_text::font::CTFont;
 use core_text;
 use euclid::{Point2D, Size2D};
@@ -45,7 +45,7 @@ impl FontContext {
         match self.core_graphics_fonts.entry(*font_key) {
             Entry::Occupied(_) => Ok(()),
             Entry::Vacant(entry) => {
-                let data_provider = CGDataProvider::from_buffer(&**bytes);
+                let data_provider = CGDataProvider::from_buffer(bytes);
                 let core_graphics_font = try!(CGFont::from_data_provider(data_provider));
                 entry.insert(core_graphics_font);
                 Ok(())
@@ -141,7 +141,6 @@ impl FontContext {
                                                               CURVE_APPROX_ERROR_BOUND);
 
         let approx_commands: Vec<_> = approx_stream.collect();
-
         return Ok(approx_commands);
 
         fn convert_point(core_graphics_point: &CGPoint) -> Point2D<f32> {

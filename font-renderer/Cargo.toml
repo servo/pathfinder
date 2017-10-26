@@ -24,10 +24,14 @@ path = "../path-utils"
 freetype-sys = "0.6"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-core-graphics = "0.11"
+
+[target.'cfg(target_os = "macos")'.dependencies.core-graphics]
+git = "https://github.com/pcwalton/rust-core-graphics.git"
+branch = "cg-data-provider-fix"
 
 [target.'cfg(target_os = "macos")'.dependencies.core-text]
-git = "https://github.com/servo/core-text-rs.git"
+git = "https://github.com/pcwalton/rust-core-text.git"
+branch = "cg-data-provider-fix"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 dwrite-sys = "0.2"
