@@ -163,11 +163,9 @@ export abstract class Renderer {
     }
 
     setFramebufferSizeUniform(uniforms: UniformMap) {
-        const renderContext = this.renderContext;
-        const currentViewport = renderContext.gl.getParameter(renderContext.gl.VIEWPORT);
-        renderContext.gl.uniform2i(uniforms.uFramebufferSize,
-                                   currentViewport[2],
-                                   currentViewport[3]);
+        this.renderContext.gl.uniform2i(uniforms.uFramebufferSize,
+                                        this.destAllocatedSize[0],
+                                        this.destAllocatedSize[1]);
     }
 
     setTransformAndTexScaleUniformsForDest(uniforms: UniformMap): void {
@@ -307,7 +305,7 @@ export abstract class Renderer {
             if (instanceRange.isEmpty)
                 continue;
 
-            const meshes = this.meshes[objectIndex];
+            const meshData = this.meshData[objectIndex];
 
             // Set up implicit cover state.
             gl.depthFunc(this.depthFunction);
@@ -333,8 +331,7 @@ export abstract class Renderer {
                 this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
             this.pathTransformBufferTextures[objectIndex]
                 .bind(gl, directInteriorProgram.uniforms, 1);
-            let indexCount = gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE) /
-                    UINT32_SIZE;
+            let indexCount = meshData.coverInteriorIndices.byteLength / UINT32_SIZE;
             if (!this.pathIDsAreInstanced) {
                 gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
             } else {
@@ -369,8 +366,7 @@ export abstract class Renderer {
             if (renderingMode === 'color')
                 this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
             this.pathTransformBufferTextures[objectIndex].bind(gl, directCurveProgram.uniforms, 1);
-            indexCount = gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE) /
-                UINT32_SIZE;
+            indexCount = meshData.coverCurveIndices.byteLength / UINT32_SIZE;
             if (!this.pathIDsAreInstanced) {
                 gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
             } else {

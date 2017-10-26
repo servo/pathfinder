@@ -179,8 +179,12 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
 
     protected setAAUniforms(renderer: Renderer, uniforms: UniformMap) {
         const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
+
         renderer.setTransformSTUniform(uniforms, 0);
-        renderer.setFramebufferSizeUniform(uniforms);
+        gl.uniform2i(uniforms.uFramebufferSize,
+                     this.supersampledFramebufferSize[0],
+                     this.supersampledFramebufferSize[1]);
         renderer.pathTransformBufferTextures[0].bind(renderContext.gl, uniforms, 0);
         this.pathBoundsBufferTexture.bind(renderContext.gl, uniforms, 1);
         renderer.setHintsUniform(uniforms);
@@ -206,7 +210,9 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         const resolveProgram = this.getResolveProgram(renderContext);
         gl.useProgram(resolveProgram.program);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
-        renderer.setFramebufferSizeUniform(resolveProgram.uniforms);
+        gl.uniform2i(resolveProgram.uniforms.uFramebufferSize,
+                     this.destFramebufferSize[0],
+                     this.destFramebufferSize[1]);
         gl.activeTexture(renderContext.gl.TEXTURE0);
         gl.bindTexture(renderContext.gl.TEXTURE_2D, this.aaAlphaTexture);
         gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 0);
@@ -1078,9 +1084,11 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
 
         // Resolve.
         const resolveProgram = this.getResolveProgram(renderContext);
-        renderContext.gl.useProgram(resolveProgram.program);
+        gl.useProgram(resolveProgram.program);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
-        renderer.setFramebufferSizeUniform(resolveProgram.uniforms);
+        gl.uniform2i(resolveProgram.uniforms.uFramebufferSize,
+                     this.destFramebufferSize[0],
+                     this.destFramebufferSize[1]);
         renderContext.gl.activeTexture(renderContext.gl.TEXTURE0);
         renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.aaAlphaTexture);
         renderContext.gl.uniform1i(resolveProgram.uniforms.uAAAlpha, 0);
