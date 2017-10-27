@@ -121,6 +121,14 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             }, false);
         }
 
+        const zoomPulseButton = document.getElementById('pf-zoom-pulse-button') as
+            HTMLButtonElement | null;
+        if (zoomPulseButton != null) {
+            zoomPulseButton.addEventListener('click', () => {
+                this.view.then(view => view.zoomPulse());
+            }, false);
+        }
+
         this.filePickerView = FilePickerView.create();
         if (this.filePickerView != null) {
             this.filePickerView.onFileLoaded = fileData => this.fileLoaded(fileData, null);

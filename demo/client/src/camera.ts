@@ -83,6 +83,7 @@ export abstract class Camera {
         this.canvas = canvas;
     }
 
+    abstract zoom(scale: number): void;
     abstract zoomIn(): void;
     abstract zoomOut(): void;
 }
@@ -148,7 +149,7 @@ export class OrthographicCamera extends Camera {
         glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
 
         const scale = 1.0 - event.deltaY * window.devicePixelRatio * ORTHOGRAPHIC_ZOOM_SPEED;
-        this.zoom(scale, mouseLocation);
+        this._zoom(scale, mouseLocation);
     }
 
     zoomToFit(): void {
@@ -168,12 +169,16 @@ export class OrthographicCamera extends Camera {
         this.translation[1] += this.canvas.height * 0.5;
     }
 
+    zoom(scale: number): void {
+        this._zoom(scale, this.centerPoint);
+    }
+
     zoomIn(): void {
-        this.zoom(ORTHOGRAPHIC_ZOOM_IN_FACTOR, this.centerPoint);
+        this._zoom(ORTHOGRAPHIC_ZOOM_IN_FACTOR, this.centerPoint);
     }
 
     zoomOut(): void {
-        this.zoom(ORTHOGRAPHIC_ZOOM_OUT_FACTOR, this.centerPoint);
+        this._zoom(ORTHOGRAPHIC_ZOOM_OUT_FACTOR, this.centerPoint);
     }
 
     private onMouseDown(event: MouseEvent): void {
@@ -228,7 +233,7 @@ export class OrthographicCamera extends Camera {
         }
     }
 
-    private zoom(scale: number, point: glmatrix.vec2): void {
+    private _zoom(scale: number, point: glmatrix.vec2): void {
         const absoluteTranslation = glmatrix.vec2.create();
         glmatrix.vec2.sub(absoluteTranslation, this.translation, point);
         glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
@@ -304,6 +309,10 @@ export class PerspectiveCamera extends Camera {
             ['S'.charCodeAt(0), false],
             ['D'.charCodeAt(0), false],
         ]);
+    }
+
+    zoom(scale: number): void {
+        // TODO(pcwalton)
     }
 
     zoomIn(): void {
