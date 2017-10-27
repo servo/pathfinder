@@ -34,7 +34,7 @@ use winapi::{IDWriteFontFileStreamVtbl, IDWriteGdiInterop, IDWriteGeometrySink, 
 use winapi::{IUnknownVtbl, TRUE, UINT16, UINT32, UINT64, UINT};
 
 use self::com::{PathfinderCoclass, PathfinderComObject, PathfinderComPtr};
-use {FontInstanceKey, FontKey, GlyphDimensions, GlyphKey};
+use {FontInstance, FontKey, GlyphDimensions, GlyphKey};
 
 mod com;
 
@@ -182,7 +182,7 @@ impl FontContext {
         self.dwrite_font_faces.remove(font_key);
     }
 
-    pub fn glyph_dimensions(&self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
+    pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                             -> Option<GlyphDimensions> {
         unsafe {
             let font_face = match self.dwrite_font_faces.get(&font_instance.font_key) {
@@ -207,7 +207,7 @@ impl FontContext {
         }
     }
 
-    pub fn glyph_outline(&mut self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
+    pub fn glyph_outline(&mut self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                          -> Result<GlyphOutline, ()> {
         unsafe {
             let font_face = match self.dwrite_font_faces.get(&font_instance.font_key) {

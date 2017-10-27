@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use {FontKey, FontInstanceKey, GlyphDimensions, GlyphKey};
+use {FontKey, FontInstance, GlyphDimensions, GlyphKey};
 use app_units::Au;
 use euclid::{Point2D, Size2D};
 use freetype_sys::{FT_BBox, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_OUTLINE};
@@ -90,14 +90,14 @@ impl FontContext {
         self.faces.remove(font_key);
     }
 
-    pub fn glyph_dimensions(&self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
+    pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                             -> Option<GlyphDimensions> {
         self.load_glyph(font_instance, glyph_key).and_then(|glyph_slot| {
             self.glyph_dimensions_from_slot(font_instance, glyph_key, glyph_slot)
         })
     }
 
-    pub fn glyph_outline<'a>(&'a mut self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
+    pub fn glyph_outline<'a>(&'a mut self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                              -> Result<GlyphOutline<'a>, ()> {
         self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
             unsafe {
@@ -109,7 +109,7 @@ impl FontContext {
         })
     }
 
-    fn load_glyph(&self, font_instance: &FontInstanceKey, glyph_key: &GlyphKey)
+    fn load_glyph(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                   -> Option<FT_GlyphSlot> {
         let face = match self.faces.get(&font_instance.font_key) {
             None => return None,
@@ -134,7 +134,7 @@ impl FontContext {
     }
 
     fn glyph_dimensions_from_slot(&self,
-                                  font_instance: &FontInstanceKey,
+                                  font_instance: &FontInstance,
                                   glyph_key: &GlyphKey,
                                   glyph_slot: FT_GlyphSlot)
                                   -> Option<GlyphDimensions> {
@@ -160,7 +160,7 @@ impl FontContext {
     // Returns the bounding box for a glyph, accounting for subpixel positioning as appropriate.
     //
     // TODO(pcwalton): Subpixel positioning.
-    fn bounding_box_from_slot(&self, _: &FontInstanceKey, _: &GlyphKey, glyph_slot: FT_GlyphSlot)
+    fn bounding_box_from_slot(&self, _: &FontInstance, _: &GlyphKey, glyph_slot: FT_GlyphSlot)
                               -> FT_BBox {
         let mut bounding_box: FT_BBox;
         unsafe {

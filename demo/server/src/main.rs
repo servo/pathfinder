@@ -31,7 +31,7 @@ extern crate serde_derive;
 use app_units::Au;
 use euclid::{Point2D, Transform2D};
 use lru_cache::LruCache;
-use pathfinder_font_renderer::{FontContext, FontInstanceKey, FontKey, GlyphKey};
+use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::cubic::CubicCurve;
@@ -270,7 +270,7 @@ fn partition_font(request: Json<PartitionFontRequest>)
 
     // Parse glyph data.
     let font_key = FontKey::new();
-    let font_instance_key = FontInstanceKey {
+    let font_instance = FontInstance {
         font_key: font_key,
         size: Au::from_f64_px(request.point_size),
     };
@@ -289,12 +289,12 @@ fn partition_font(request: Json<PartitionFontRequest>)
     // Read glyph info.
     let mut path_buffer = PathBuffer::new();
     let subpath_indices: Vec<_> = request.glyphs.iter().map(|glyph| {
-        let glyph_key = GlyphKey::new(glyph.id);
+        let glyph_key = GlyphKey::new(glyph.id, SubpixelOffset(0));
 
         let first_subpath_index = path_buffer.subpaths.len();
 
         // This might fail; if so, just leave it blank.
-        if let Ok(glyph_outline) = font_context.glyph_outline(&font_instance_key, &glyph_key) {
+        if let Ok(glyph_outline) = font_context.glyph_outline(&font_instance, &glyph_key) {
             let stream = Transform2DPathStream::new(glyph_outline.into_iter(), &glyph.transform);
             let stream = MonotonicPathCommandStream::new(stream);
             path_buffer.add_stream(stream)

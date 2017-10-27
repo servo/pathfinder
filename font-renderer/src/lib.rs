@@ -12,10 +12,14 @@ extern crate app_units;
 extern crate euclid;
 extern crate libc;
 extern crate pathfinder_path_utils;
+extern crate serde;
 
 #[allow(unused_imports)]
 #[macro_use]
 extern crate log;
+
+#[macro_use]
+extern crate serde_derive;
 
 #[cfg(test)]
 extern crate env_logger;
@@ -57,7 +61,9 @@ mod directwrite;
 #[cfg(any(target_os = "linux", feature = "freetype"))]
 mod freetype;
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+const SUBPIXEL_GRANULARITY: u8 = 4;
+
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub struct FontKey {
     id: usize,
 }
@@ -71,39 +77,78 @@ impl FontKey {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub struct FontInstanceKey {
-    pub font_key: FontKey,
-    pub size: Au,
+    id: usize,
 }
 
 impl FontInstanceKey {
     #[inline]
-    pub fn new(font_key: &FontKey, size: Au) -> FontInstanceKey {
+    pub fn new() -> FontInstanceKey {
+        static NEXT_FONT_INSTANCE_KEY_ID: AtomicUsize = ATOMIC_USIZE_INIT;
         FontInstanceKey {
+            id: NEXT_FONT_INSTANCE_KEY_ID.fetch_add(1, Ordering::Relaxed),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
+pub struct FontInstance {
+    pub font_key: FontKey,
+
+    // The font size is in *device* pixels, not logical pixels.
+    // It is stored as an Au since we need sub-pixel sizes, but
+    // we can't store an f32 due to use of this type as a hash key.
+    // TODO(gw): Perhaps consider having LogicalAu and DeviceAu
+    //           or something similar to that.
+    pub size: Au,
+}
+
+impl FontInstance {
+    #[inline]
+    pub fn new(font_key: &FontKey, size: Au) -> FontInstance {
+        FontInstance {
             font_key: *font_key,
             size: size,
         }
     }
 }
 
-// FIXME(pcwalton): Subpixel offsets?
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SubpixelOffset(pub u8);
+
+impl Into<f32> for SubpixelOffset {
+    #[inline]
+    fn into(self) -> f32 {
+        self.0 as f32 / SUBPIXEL_GRANULARITY as f32
+    }
+}
+
+impl Into<f64> for SubpixelOffset {
+    #[inline]
+    fn into(self) -> f64 {
+        self.0 as f64 / SUBPIXEL_GRANULARITY as f64
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GlyphKey {
     pub glyph_index: u32,
+    pub subpixel_offset: SubpixelOffset,
 }
 
 impl GlyphKey {
     #[inline]
-    pub fn new(glyph_index: u32) -> GlyphKey {
+    pub fn new(glyph_index: u32, subpixel_offset: SubpixelOffset) -> GlyphKey {
         GlyphKey {
             glyph_index: glyph_index,
+            subpixel_offset: subpixel_offset,
         }
     }
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GlyphDimensions {
     pub origin: Point2D<i32>,
     pub size: Size2D<u32>,
