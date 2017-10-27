@@ -171,6 +171,22 @@ button > svg path {
 	margin-right: -15px;
 }
 
+#pf-zoom-pulse-button {
+    padding: 16px 30px 16px 14px;
+}
+
+/* https://www.h3xed.com/web-development/how-to-make-css-play-pause-icons-with-a-single-div */
+#pf-play-icon {
+    position: absolute;
+    display: block;
+    width: 0;
+    height: 0;
+    margin: -6px 3px 0;
+    border-top: 6px solid transparent;
+    border-left: 12px solid currentColor;
+    border-bottom: 6px solid transparent;
+}
+
 .github-corner {
     display: block;
     position: absolute;
