@@ -129,6 +129,10 @@ class SVGDemoRenderer extends Renderer {
         return this.destAllocatedSize;
     }
 
+    protected get backgroundColor(): glmatrix.vec4 {
+        return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
+    }
+
     constructor(renderContext: SVGDemoView) {
         super(renderContext);
 

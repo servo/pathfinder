@@ -16,7 +16,7 @@ uniform ivec2 uSourceDimensions;
 varying vec2 vTexCoord;
 
 float sampleSource(float deltaX) {
-    return texture2D(uSource, vec2(vTexCoord.s + deltaX, vTexCoord.y)).a;
+    return texture2D(uSource, vec2(vTexCoord.s + deltaX, vTexCoord.y)).r;
 }
 
 void main() {
@@ -34,7 +34,5 @@ void main() {
                       lcdFilter(shadeL.y, shadeL.x, shade0,   shadeR.x, shadeR.y),
                       lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z));
 
-    // FIXME(pcwalton): This can be wrong in some cases. Need subpixel-aware compositing in the
-    // text demo...
-    gl_FragColor = vec4(vec3(1.0) - color, any(greaterThan(color, vec3(0.0))) ? 1.0 : 0.0);
+    gl_FragColor = vec4(color, any(greaterThan(color, vec3(0.0))) ? 1.0 : 0.0);
 }

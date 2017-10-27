@@ -407,24 +407,21 @@ class TextDemoRenderer extends TextRenderer {
     }
 
     protected compositeIfNecessary(): void {
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
         // Set up composite state.
-        this.renderContext.gl.bindFramebuffer(this.renderContext.gl.FRAMEBUFFER, null);
-        this.renderContext.gl.viewport(0,
-                                       0,
-                                       this.renderContext.cameraView.width,
-                                       this.renderContext.cameraView.height);
-        this.renderContext.gl.disable(this.renderContext.gl.DEPTH_TEST);
-        this.renderContext.gl.disable(this.renderContext.gl.SCISSOR_TEST);
-        this.renderContext.gl.blendEquation(this.renderContext.gl.FUNC_ADD);
-        this.renderContext.gl.blendFuncSeparate(this.renderContext.gl.SRC_ALPHA,
-                                                this.renderContext.gl.ONE_MINUS_SRC_ALPHA,
-                                                this.renderContext.gl.ONE,
-                                                this.renderContext.gl.ONE);
-        this.renderContext.gl.enable(this.renderContext.gl.BLEND);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, renderContext.cameraView.width, renderContext.cameraView.height);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.SCISSOR_TEST);
+        gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+        gl.enable(gl.BLEND);
 
         // Clear.
-        this.renderContext.gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        this.renderContext.gl.clear(this.renderContext.gl.COLOR_BUFFER_BIT);
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
 
         // Set up the composite VAO.
         const blitProgram = this.renderContext.shaderPrograms.blit;

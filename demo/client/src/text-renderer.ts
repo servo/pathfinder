@@ -79,11 +79,11 @@ export abstract class TextRenderer extends Renderer {
     }
 
     get bgColor(): glmatrix.vec4 {
-        return glmatrix.vec4.fromValues(1.0, 1.0, 1.0, 0.0);
+        return glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
     }
 
     get fgColor(): glmatrix.vec4 {
-        return glmatrix.vec4.fromValues(0.0, 0.0, 0.0, 1.0);
+        return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
     }
 
     protected get layoutPixelsPerUnit(): number {
@@ -200,11 +200,12 @@ export abstract class TextRenderer extends Renderer {
     }
 
     protected clearForDirectRendering(): void {
-        this.renderContext.gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        this.renderContext.gl.clearDepth(0.0);
-        this.renderContext.gl.depthMask(true);
-        this.renderContext.gl.clear(this.renderContext.gl.COLOR_BUFFER_BIT |
-                                    this.renderContext.gl.DEPTH_BUFFER_BIT);
+        const gl = this.renderContext.gl;
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(0.0);
+        gl.depthMask(true);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
     protected buildAtlasGlyphs(atlasGlyphs: AtlasGlyph[]): void {
@@ -235,7 +236,7 @@ export abstract class TextRenderer extends Renderer {
 
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
             for (let channel = 0; channel < 3; channel++)
-                pathColors[(pathIndex + 1) * 4 + channel] = 0x00; // RGB
+                pathColors[(pathIndex + 1) * 4 + channel] = 0xff; // RGB
             pathColors[(pathIndex + 1) * 4 + 3] = 0xff;           // alpha
         }
 

@@ -81,13 +81,14 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
     prepare(renderer: Renderer) {
         const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
+
         const framebufferSize = this.supersampledFramebufferSize;
         const usedSize = this.usedSupersampledFramebufferSize(renderer);
-        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER,
-                                         this.supersampledFramebuffer);
-        renderContext.gl.viewport(0, 0, framebufferSize[0], framebufferSize[1]);
-        renderContext.gl.scissor(0, 0, usedSize[0], usedSize[1]);
-        renderContext.gl.enable(renderContext.gl.SCISSOR_TEST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.supersampledFramebuffer);
+        gl.viewport(0, 0, framebufferSize[0], framebufferSize[1]);
+        gl.scissor(0, 0, usedSize[0], usedSize[1]);
+        gl.enable(gl.SCISSOR_TEST);
     }
 
     antialias(renderer: Renderer) {}

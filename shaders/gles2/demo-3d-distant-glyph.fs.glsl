@@ -16,5 +16,5 @@ uniform sampler2D uAtlas;
 varying vec2 vTexCoord;
 
 void main() {
-    gl_FragColor = uColor * texture2D(uAtlas, vTexCoord).aaaa;
+    gl_FragColor = uColor * texture2D(uAtlas, vTexCoord).rrrr;
 }

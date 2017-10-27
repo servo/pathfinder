@@ -59,6 +59,10 @@ export abstract class Renderer {
         return false;
     }
 
+    protected get backgroundColor(): glmatrix.vec4 {
+        return glmatrix.vec4.create();
+    }
+
     protected abstract get depthFunction(): GLenum;
     protected abstract get directCurveProgramName(): keyof ShaderMap<void>;
     protected abstract get directInteriorProgramName(): keyof ShaderMap<void>;
@@ -267,7 +271,8 @@ export abstract class Renderer {
 
         switch (renderingMode) {
         case 'color':
-            gl.clearColor(1.0, 1.0, 1.0, 1.0);
+            const clearColor = this.backgroundColor;
+            gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
             gl.clearDepth(0.0);
             gl.depthMask(true);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -293,9 +298,9 @@ export abstract class Renderer {
     }
 
     /// Called whenever new GPU timing statistics are available.
-    protected newTimingsReceived() {}
+    protected newTimingsReceived(): void {}
 
-    private renderDirect() {
+    private renderDirect(): void {
         const renderingMode = unwrapNull(this.antialiasingStrategy).directRenderingMode;
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
