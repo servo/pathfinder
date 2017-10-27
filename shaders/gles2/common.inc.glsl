@@ -22,33 +22,51 @@
 
 precision highp float;
 
-// https://stackoverflow.com/a/36078859
+/// Computes `ia % ib`.
+///
+/// This function is not in OpenGL ES 2 but can be polyfilled.
+/// See: https://stackoverflow.com/a/36078859
 int imod(int ia, int ib) {
     float a = float(ia), b = float(ib);
     float m = a - floor((a + 0.5) / b) * b;
     return int(floor(m + 0.5));
 }
 
-bool xor(bool a, bool b) {
-    return (a && !b) || (!a && b);
-}
-
+/// Returns the determinant of the 2D matrix [a, b].
+/// This is equivalent to: cross(vec3(a, 0.0), vec3(b, 0.0)).z
 float det2(vec2 a, vec2 b) {
     return a.x * b.y - b.x * a.y;
 }
 
+/// Returns the *2D* result of transforming the given 2D point with the given 4D transformation
+/// matrix.
+///
+/// The z and w coordinates are treated as 0.0 and 1.0, respectively.
 vec2 transformVertexPosition(vec2 position, mat4 transform) {
     return (transform * vec4(position, 0.0, 1.0)).xy;
 }
 
+/// Returns the 2D result of transforming the given 2D position by the given ST-transform.
+///
+/// An ST-transform is a combined 2D scale and translation, where the (x, y) coordinates specify
+/// the scale and and the (z, w) coordinates specify the translation.
 vec2 transformVertexPositionST(vec2 position, vec4 stTransform) {
     return position * stTransform.xy + stTransform.zw;
 }
 
-/// pathHints.x: xHeight
-/// pathHints.y: hintedXHeight
-/// pathHints.z: stemHeight
-/// pathHints.w: hintedStemHeight
+/// Interpolates the given 2D position in the vertical direction using the given ultra-slight
+/// hints.
+///
+/// Similar in spirit to the `IUP[y]` TrueType command, but minimal.
+///
+///     pathHints.x: xHeight
+///     pathHints.y: hintedXHeight
+///     pathHints.z: stemHeight
+///     pathHints.w: hintedStemHeight
+///
+/// TODO(pcwalton): Do something smarter with overshoots and the blue zone.
+/// TODO(pcwalton): Support interpolating relative to arbitrary horizontal stems, not just the
+/// baseline, x-height, and stem height.
 vec2 hintPosition(vec2 position, vec4 pathHints) {
     float y;
     if (position.y >= pathHints.z) {
@@ -65,18 +83,28 @@ vec2 hintPosition(vec2 position, vec4 pathHints) {
     return vec2(position.x, y);
 }
 
+/// Converts the given 2D position in clip space to device pixel space (with origin in the lower
+/// left).
 vec2 convertClipToScreenSpace(vec2 position, ivec2 framebufferSize) {
     return (position + 1.0) * 0.5 * vec2(framebufferSize);
 }
 
+/// Converts the given 2D position in device pixel space (with origin in the lower left) to clip
+/// space.
 vec2 convertScreenToClipSpace(vec2 position, ivec2 framebufferSize) {
     return position / vec2(framebufferSize) * 2.0 - 1.0;
 }
 
+/// Packs the given path ID into a floating point value suitable for storage in the depth buffer.
+/// This function returns values in clip space (i.e. what `gl_Position` is in).
 float convertPathIndexToViewportDepthValue(int pathIndex) {
     return float(pathIndex) / float(MAX_PATHS) * 2.0 - 1.0;
 }
 
+/// Packs the given path ID into a floating point value suitable for storage in the depth buffer.
+///
+/// This function returns values in window space (i.e. what `gl_FragDepth`/`gl_FragDepthEXT` is
+/// in).
 float convertPathIndexToWindowDepthValue(int pathIndex) {
     return float(pathIndex) / float(MAX_PATHS);
 }

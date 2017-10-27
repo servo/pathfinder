@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+/// A trivial shader that does nothing more than blit a texture.
+
 precision mediump float;
 
 uniform sampler2D uSource;
