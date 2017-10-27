@@ -39,7 +39,11 @@ const SEGMENT_POINT_RADIUS: number = 3.0;
 const SEGMENT_STROKE_WIDTH: number = 1.0;
 const SEGMENT_CONTROL_POINT_STROKE_WIDTH: number = 1.0;
 
-const NORMAL_LENGTH: number = 14.0;
+const NORMAL_LENGTHS: NormalStyleParameter<number> = {
+    bVertex: 10.0,
+    edge: 14.0,
+};
+
 const NORMAL_ARROWHEAD_LENGTH: number = 4.0;
 const NORMAL_ARROWHEAD_ANGLE: number = Math.PI * 5.0 / 6.0;
 
@@ -48,8 +52,12 @@ const SEGMENT_POINT_FILL_STYLE: string = "rgb(0, 0, 128)";
 const LIGHT_STROKE_STYLE: string = "rgb(192, 192, 192)";
 const LINE_STROKE_STYLE: string = "rgb(0, 128, 0)";
 const CURVE_STROKE_STYLE: string = "rgb(128, 0, 0)";
-const NORMAL_STROKE_STYLE: string = '#cc5500';
 const SEGMENT_CONTROL_POINT_STROKE_STYLE: string = "rgb(0, 0, 128)";
+
+const NORMAL_STROKE_STYLES: NormalStyleParameter<string> = {
+    bVertex: '#e6aa00',
+    edge: '#cc5500',
+};
 
 const BUILTIN_URIS = {
     font: BUILTIN_FONT_URI,
@@ -59,6 +67,13 @@ const BUILTIN_URIS = {
 const SVG_SCALE: number = 1.0;
 
 type FileType = 'font' | 'svg';
+
+type NormalType = 'edge' | 'bVertex';
+
+interface NormalStyleParameter<T> {
+    edge: T;
+    bVertex: T;
+}
 
 interface NormalsTable<T> {
     lowerCurve: T;
@@ -245,6 +260,7 @@ class MeshDebuggerView extends PathfinderView {
 
         const bQuads = new Uint32Array(meshes.bQuads);
         const positions = new Float32Array(meshes.bVertexPositions);
+        const bVertexNormals = new Float32Array(meshes.bVertexNormals);
 
         const normals: NormalsTable<Float32Array> = {
             lowerCurve: new Float32Array(0),
@@ -301,44 +317,54 @@ class MeshDebuggerView extends PathfinderView {
                                   invScaleFactor);
 
             context.beginPath();
-            context.moveTo(upperLeftPosition[0], upperLeftPosition[1]);
+            context.moveTo(upperLeftPosition[0], -upperLeftPosition[1]);
             if (upperControlPointPosition != null) {
                 context.strokeStyle = CURVE_STROKE_STYLE;
                 context.quadraticCurveTo(upperControlPointPosition[0],
-                                         upperControlPointPosition[1],
+                                         -upperControlPointPosition[1],
                                          upperRightPosition[0],
-                                         upperRightPosition[1]);
+                                         -upperRightPosition[1]);
             } else {
                 context.strokeStyle = LINE_STROKE_STYLE;
-                context.lineTo(upperRightPosition[0], upperRightPosition[1]);
+                context.lineTo(upperRightPosition[0], -upperRightPosition[1]);
             }
             context.stroke();
 
             context.strokeStyle = LIGHT_STROKE_STYLE;
             context.beginPath();
-            context.moveTo(upperRightPosition[0], upperRightPosition[1]);
-            context.lineTo(lowerRightPosition[0], lowerRightPosition[1]);
+            context.moveTo(upperRightPosition[0], -upperRightPosition[1]);
+            context.lineTo(lowerRightPosition[0], -lowerRightPosition[1]);
             context.stroke();
 
             context.beginPath();
-            context.moveTo(lowerRightPosition[0], lowerRightPosition[1]);
+            context.moveTo(lowerRightPosition[0], -lowerRightPosition[1]);
             if (lowerControlPointPosition != null) {
                 context.strokeStyle = CURVE_STROKE_STYLE;
                 context.quadraticCurveTo(lowerControlPointPosition[0],
-                                         lowerControlPointPosition[1],
+                                         -lowerControlPointPosition[1],
                                          lowerLeftPosition[0],
-                                         lowerLeftPosition[1]);
+                                         -lowerLeftPosition[1]);
             } else {
                 context.strokeStyle = LINE_STROKE_STYLE;
-                context.lineTo(lowerLeftPosition[0], lowerLeftPosition[1]);
+                context.lineTo(lowerLeftPosition[0], -lowerLeftPosition[1]);
             }
             context.stroke();
 
             context.strokeStyle = LIGHT_STROKE_STYLE;
             context.beginPath();
-            context.moveTo(lowerLeftPosition[0], lowerLeftPosition[1]);
-            context.lineTo(upperLeftPosition[0], upperLeftPosition[1]);
+            context.moveTo(lowerLeftPosition[0], -lowerLeftPosition[1]);
+            context.lineTo(upperLeftPosition[0], -upperLeftPosition[1]);
             context.stroke();
+
+            // Draw B-quad normals.
+            const lowerLeftNormal = bVertexNormals[lowerLeftIndex];
+            const lowerRightNormal = bVertexNormals[lowerRightIndex];
+            const upperLeftNormal = bVertexNormals[upperLeftIndex];
+            const upperRightNormal = bVertexNormals[upperRightIndex];
+            drawNormal(context, lowerLeftPosition, lowerLeftNormal, invScaleFactor, 'bVertex');
+            drawNormal(context, lowerRightPosition, lowerRightNormal, invScaleFactor, 'bVertex');
+            drawNormal(context, upperLeftPosition, upperLeftNormal, invScaleFactor, 'bVertex');
+            drawNormal(context, upperRightPosition, upperRightNormal, invScaleFactor, 'bVertex');
         }
 
         // Draw segments.
@@ -363,10 +389,10 @@ class MeshDebuggerView extends PathfinderView {
     }
 }
 
-function getPosition(positions: Float32Array, vertexIndex: number): Float32Array | null {
+function getPosition(positions: Float32Array, vertexIndex: number): glmatrix.vec2 | null {
     if (vertexIndex === UINT32_MAX)
         return null;
-    return new Float32Array([positions[vertexIndex * 2 + 0], -positions[vertexIndex * 2 + 1]]);
+    return glmatrix.vec2.clone([positions[vertexIndex * 2 + 0], positions[vertexIndex * 2 + 1]]);
 }
 
 function getNormals(normals: NormalsTable<Float32Array>,
@@ -426,10 +452,10 @@ function drawSegmentVertices(context: CanvasRenderingContext2D,
         if (controlPoint != null)
             drawSegmentControlPoint(context, controlPoint, invScaleFactor);
 
-        drawNormal(context, position0, normal0, invScaleFactor);
-        drawNormal(context, position1, normal1, invScaleFactor);
+        drawNormal(context, position0, normal0, invScaleFactor, 'edge');
+        drawNormal(context, position1, normal1, invScaleFactor, 'edge');
         if (controlPoint != null && normalControlPoint != null)
-            drawNormal(context, controlPoint, normalControlPoint, invScaleFactor);
+            drawNormal(context, controlPoint, normalControlPoint, invScaleFactor, 'edge');
     }
 }
 
@@ -443,15 +469,15 @@ function drawVertexIfNecessary(context: CanvasRenderingContext2D,
     markedVertices[vertexIndex] = true;
 
     context.beginPath();
-    context.moveTo(position[0], position[1]);
-    context.arc(position[0], position[1], POINT_RADIUS * invScaleFactor, 0, 2.0 * Math.PI);
+    context.moveTo(position[0], -position[1]);
+    context.arc(position[0], -position[1], POINT_RADIUS * invScaleFactor, 0, 2.0 * Math.PI);
     context.fill();
 
     context.save();
     context.scale(invScaleFactor, invScaleFactor);
     context.fillText("" + vertexIndex,
                      position[0] / invScaleFactor + POINT_LABEL_OFFSET[0],
-                     position[1] / invScaleFactor + POINT_LABEL_OFFSET[1]);
+                     -position[1] / invScaleFactor + POINT_LABEL_OFFSET[1]);
     context.restore();
 }
 
@@ -490,14 +516,15 @@ function drawSegmentControlPoint(context: CanvasRenderingContext2D,
 function drawNormal(context: CanvasRenderingContext2D,
                     position: glmatrix.vec2,
                     normalAngle: number,
-                    invScaleFactor: number) {
-    const length = invScaleFactor * NORMAL_LENGTH;
+                    invScaleFactor: number,
+                    normalType: NormalType) {
+    const length = invScaleFactor * NORMAL_LENGTHS[normalType];
     const arrowheadLength = invScaleFactor * NORMAL_ARROWHEAD_LENGTH;
     const endpoint = glmatrix.vec2.clone([position[0] + length * Math.cos(normalAngle),
                                           -position[1] + length * Math.sin(normalAngle)]);
 
     context.save();
-    context.strokeStyle = NORMAL_STROKE_STYLE;
+    context.strokeStyle = NORMAL_STROKE_STYLES[normalType];
     context.beginPath();
     context.moveTo(position[0], -position[1]);
     context.lineTo(endpoint[0], endpoint[1]);

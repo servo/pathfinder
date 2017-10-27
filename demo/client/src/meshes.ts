@@ -65,6 +65,7 @@ const B_QUAD_FIELD_COUNT: number = B_QUAD_SIZE / UINT32_SIZE;
 const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
     bQuads: { type: 'Uint32', size: B_QUAD_FIELD_COUNT },
     bVertexLoopBlinnData: { type: 'Uint32', size: 1 },
+    bVertexNormals: { type: 'Float32', size: 1 },
     bVertexPathIDs: { type: 'Uint16', size: 1 },
     bVertexPositions: { type: 'Float32', size: 2 },
     coverCurveIndices: { type: 'Uint32', size: 1 },
@@ -90,6 +91,7 @@ const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
 const BUFFER_TYPES: Meshes<BufferType> = {
     bQuads: 'ARRAY_BUFFER',
     bVertexLoopBlinnData: 'ARRAY_BUFFER',
+    bVertexNormals: 'ARRAY_BUFFER',
     bVertexPathIDs: 'ARRAY_BUFFER',
     bVertexPositions: 'ARRAY_BUFFER',
     coverCurveIndices: 'ELEMENT_ARRAY_BUFFER',
@@ -122,6 +124,7 @@ const MESH_LIBRARY_FOURCC: string = 'PFML';
 const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
     bqua: 'bQuads',
     bvlb: 'bVertexLoopBlinnData',
+    bvno: 'bVertexNormals',
     bvpi: 'bVertexPathIDs',
     bvpo: 'bVertexPositions',
     cvci: 'coverCurveIndices',
@@ -151,6 +154,7 @@ export interface Meshes<T> {
     readonly bVertexPositions: T;
     readonly bVertexPathIDs: T;
     readonly bVertexLoopBlinnData: T;
+    readonly bVertexNormals: T;
     readonly coverInteriorIndices: T;
     readonly coverCurveIndices: T;
     readonly edgeBoundingBoxPathIDs: T;
@@ -176,6 +180,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly bVertexPositions: ArrayBuffer;
     readonly bVertexPathIDs: ArrayBuffer;
     readonly bVertexLoopBlinnData: ArrayBuffer;
+    readonly bVertexNormals: ArrayBuffer;
     readonly coverInteriorIndices: ArrayBuffer;
     readonly coverCurveIndices: ArrayBuffer;
     readonly edgeBoundingBoxPathIDs: ArrayBuffer;
@@ -357,6 +362,7 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly bVertexPositions: WebGLBuffer;
     readonly bVertexPathIDs: WebGLBuffer;
     readonly bVertexLoopBlinnData: WebGLBuffer;
+    readonly bVertexNormals: WebGLBuffer;
     readonly coverInteriorIndices: WebGLBuffer;
     readonly coverCurveIndices: WebGLBuffer;
     readonly edgeBoundingBoxPathIDs: WebGLBuffer;

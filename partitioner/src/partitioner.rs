@@ -10,7 +10,7 @@
 
 use bit_vec::BitVec;
 use euclid::approxeq::ApproxEq;
-use euclid::Point2D;
+use euclid::{Point2D, Vector2D};
 use log::LogLevel;
 use pathfinder_path_utils::PathBuffer;
 use pathfinder_path_utils::curve::Curve;
@@ -19,9 +19,11 @@ use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use std::f32;
 use std::iter;
+use std::ops::{Add, AddAssign};
 use std::u32;
 
 use mesh_library::{MeshLibrary, MeshLibraryIndexRanges};
+use normal;
 use {BQuad, BVertexLoopBlinnData, BVertexKind, Endpoint, FillRule, Subpath};
 
 const MAX_B_QUAD_SUBDIVISIONS: u8 = 8;
@@ -38,6 +40,7 @@ pub struct Partitioner<'a> {
     heap: BinaryHeap<Point>,
     visited_points: BitVec,
     active_edges: Vec<ActiveEdge>,
+    vertex_normals: Vec<VertexNormal>,
     path_id: u16,
 }
 
@@ -56,6 +59,7 @@ impl<'a> Partitioner<'a> {
             heap: BinaryHeap::new(),
             visited_points: BitVec::new(),
             active_edges: vec![],
+            vertex_normals: vec![],
             path_id: 0,
         }
     }
@@ -112,10 +116,14 @@ impl<'a> Partitioner<'a> {
 
         while self.process_next_point() {}
 
-        debug_assert!(self.library.b_vertex_loop_blinn_data.len() ==
-                      self.library.b_vertex_path_ids.len());
-        debug_assert!(self.library.b_vertex_loop_blinn_data.len() ==
-                      self.library.b_vertex_positions.len());
+        self.write_normals_to_library();
+
+        debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
+                         self.library.b_vertex_path_ids.len());
+        debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
+                         self.library.b_vertex_positions.len());
+        debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
+                         self.library.b_vertex_normals.len());
 
         let end_lengths = self.library.snapshot_lengths();
         MeshLibraryIndexRanges::new(&start_lengths, &end_lengths)
@@ -209,10 +217,11 @@ impl<'a> Partitioner<'a> {
                 active_edge.left_vertex_index = self.library.b_vertex_loop_blinn_data.len() as u32;
                 active_edge.control_point_vertex_index = active_edge.left_vertex_index + 1;
 
-                self.library.b_vertex_positions.push(endpoint_position);
-                self.library.b_vertex_path_ids.push(self.path_id);
-                self.library.b_vertex_loop_blinn_data.push(BVertexLoopBlinnData::new(
-                    active_edge.endpoint_kind()));
+                // FIXME(pcwalton): Normal
+                self.library.add_b_vertex(&endpoint_position,
+                                          self.path_id,
+                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
+                                          0.0);
 
                 active_edge.toggle_parity();
             }
@@ -251,9 +260,12 @@ impl<'a> Partitioner<'a> {
                     &control_point_position,
                     &new_point.position,
                     bottom);
-                self.library.b_vertex_positions.push(*control_point_position);
-                self.library.b_vertex_path_ids.push(self.path_id);
-                self.library.b_vertex_loop_blinn_data.push(control_point_b_vertex_loop_blinn_data);
+
+                // FIXME(pcwalton): Normal
+                self.library.add_b_vertex(control_point_position,
+                                          self.path_id,
+                                          &control_point_b_vertex_loop_blinn_data,
+                                          0.0);
             }
         }
     }
@@ -315,6 +327,25 @@ impl<'a> Partitioner<'a> {
         }
     }
 
+    fn write_normals_to_library(&mut self) {
+        for (b_vertex_index, vertex_normal) in self.vertex_normals.iter().enumerate() {
+            debug_assert!(b_vertex_index <= self.library.b_vertex_normals.len());
+
+            let angle = vertex_normal.angle();
+            if b_vertex_index == self.library.b_vertex_normals.len() {
+                self.library.b_vertex_normals.push(angle)
+            } else {
+                self.library.b_vertex_normals[b_vertex_index as usize] = angle
+            }
+        }
+
+        let remaining_b_vertex_count = self.library.b_vertex_positions.len() -
+            self.library.b_vertex_normals.len();
+        if remaining_b_vertex_count > 0 {
+            self.library.b_vertex_normals.extend(iter::repeat(0.0).take(remaining_b_vertex_count))
+        }
+    }
+
     fn add_new_edges_for_min_point(&mut self, endpoint_index: u32, next_active_edge_index: u32) {
         // FIXME(pcwalton): This is twice as slow as it needs to be.
         self.active_edges.insert(next_active_edge_index as usize, ActiveEdge::default());
@@ -330,11 +361,12 @@ impl<'a> Partitioner<'a> {
         new_active_edges[0].left_vertex_index = left_vertex_index;
         new_active_edges[1].left_vertex_index = left_vertex_index;
 
+        // FIXME(pcwalton): Normal
         let position = self.endpoints[endpoint_index as usize].position;
-        self.library.b_vertex_positions.push(position);
-        self.library.b_vertex_path_ids.push(self.path_id);
-        self.library.b_vertex_loop_blinn_data
-            .push(BVertexLoopBlinnData::new(BVertexKind::Endpoint0));
+        self.library.add_b_vertex(&position,
+                                  self.path_id,
+                                  &BVertexLoopBlinnData::new(BVertexKind::Endpoint0),
+                                  0.0);
 
         new_active_edges[0].toggle_parity();
         new_active_edges[1].toggle_parity();
@@ -382,9 +414,12 @@ impl<'a> Partitioner<'a> {
                                                         &control_point_position,
                                                         &right_vertex_position,
                                                         false);
-                self.library.b_vertex_positions.push(control_point_position);
-                self.library.b_vertex_path_ids.push(self.path_id);
-                self.library.b_vertex_loop_blinn_data.push(control_point_b_vertex_loop_blinn_data);
+
+                // FIXME(pcwalton): Normal
+                self.library.add_b_vertex(&control_point_position,
+                                          self.path_id,
+                                          &control_point_b_vertex_loop_blinn_data,
+                                          0.0)
             }
         }
 
@@ -403,9 +438,12 @@ impl<'a> Partitioner<'a> {
                                                         &control_point_position,
                                                         &right_vertex_position,
                                                         true);
-                self.library.b_vertex_positions.push(control_point_position);
-                self.library.b_vertex_path_ids.push(self.path_id);
-                self.library.b_vertex_loop_blinn_data.push(control_point_b_vertex_loop_blinn_data);
+
+                // FIXME(pcwalton): Normal
+                self.library.add_b_vertex(&control_point_position,
+                                          self.path_id,
+                                          &control_point_b_vertex_loop_blinn_data,
+                                          0.0)
             }
         }
     }
@@ -737,12 +775,16 @@ impl<'a> Partitioner<'a> {
             }
         }
 
-        self.library.add_b_quad(&BQuad::new(upper_subdivision.left_curve_left,
-                                            upper_subdivision.left_curve_control_point,
-                                            upper_subdivision.middle_point,
-                                            lower_subdivision.left_curve_left,
-                                            lower_subdivision.left_curve_control_point,
-                                            lower_subdivision.middle_point))
+        let b_quad = BQuad::new(upper_subdivision.left_curve_left,
+                                upper_subdivision.left_curve_control_point,
+                                upper_subdivision.middle_point,
+                                lower_subdivision.left_curve_left,
+                                lower_subdivision.left_curve_control_point,
+                                lower_subdivision.middle_point);
+
+        self.update_vertex_normals_for_new_b_quad(&b_quad);
+
+        self.library.add_b_quad(&b_quad);
     }
 
     fn subdivide_active_edge_again_at_t(&mut self,
@@ -778,6 +820,8 @@ impl<'a> Partitioner<'a> {
                                                 &right_curve.endpoints[1],
                                                 bottom),
         ].into_iter());
+
+        // FIXME(pcwalton): Normal
 
         (SubdividedActiveEdge {
             left_curve_left: subdivision.left_curve_left,
@@ -1001,14 +1045,15 @@ impl<'a> Partitioner<'a> {
                 let path_id = self.library.b_vertex_path_ids[left_curve_left as usize];
                 let right_point = self.endpoints[active_edge.right_endpoint_index as usize]
                                       .position;
-                let middle_point = left_point_position.to_vector().lerp(right_point.to_vector(), t);
+                let middle_point = left_point_position.to_vector()
+                                                      .lerp(right_point.to_vector(), t);
 
+                // FIXME(pcwalton): Normal
                 active_edge.left_vertex_index = self.library.b_vertex_loop_blinn_data.len() as u32;
-                self.library.b_vertex_positions.push(middle_point.to_point());
-                self.library.b_vertex_path_ids.push(path_id);
-                self.library
-                    .b_vertex_loop_blinn_data
-                    .push(BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
+                self.library.add_b_vertex(&middle_point.to_point(),
+                                          path_id,
+                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
+                                          0.0);
 
                 left_curve_control_point_vertex_index = u32::MAX;
             }
@@ -1030,23 +1075,27 @@ impl<'a> Partitioner<'a> {
                 active_edge.left_vertex_index = left_curve_control_point_vertex_index + 1;
                 active_edge.control_point_vertex_index = left_curve_control_point_vertex_index + 2;
 
-                self.library.b_vertex_positions.extend([
-                    left_curve.control_point,
-                    left_curve.endpoints[1],
-                    right_curve.control_point,
-                ].into_iter());
-                self.library.b_vertex_path_ids.extend(iter::repeat(self.path_id).take(3));
-                self.library.b_vertex_loop_blinn_data.extend([
-                    BVertexLoopBlinnData::control_point(&left_curve.endpoints[0],
-                                                        &left_curve.control_point,
-                                                        &left_curve.endpoints[1],
-                                                        bottom),
-                    BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
-                    BVertexLoopBlinnData::control_point(&right_curve.endpoints[0],
-                                                        &right_curve.control_point,
-                                                        &right_curve.endpoints[1],
-                                                        bottom),
-                ].into_iter());
+                // FIXME(pcwalton): Normals
+                self.library
+                    .add_b_vertex(&left_curve.control_point,
+                                  self.path_id,
+                                  &BVertexLoopBlinnData::control_point(&left_curve.endpoints[0],
+                                                                       &left_curve.control_point,
+                                                                       &left_curve.endpoints[1],
+                                                                       bottom),
+                                  0.0);
+                self.library.add_b_vertex(&left_curve.endpoints[1],
+                                          self.path_id,
+                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
+                                          0.0);
+                self.library
+                    .add_b_vertex(&right_curve.control_point,
+                                  self.path_id,
+                                  &BVertexLoopBlinnData::control_point(&right_curve.endpoints[0],
+                                                                       &right_curve.control_point,
+                                                                       &right_curve.endpoints[1],
+                                                                       bottom),
+                                  0.0);
             }
         }
 
@@ -1055,6 +1104,55 @@ impl<'a> Partitioner<'a> {
             left_curve_control_point: left_curve_control_point_vertex_index,
             middle_point: active_edge.left_vertex_index,
         }
+    }
+
+    fn update_vertex_normals_for_new_b_quad(&mut self, b_quad: &BQuad) {
+        self.update_vertex_normal_for_b_quad_edge(b_quad.upper_left_vertex_index,
+                                                  b_quad.upper_control_point_vertex_index,
+                                                  b_quad.upper_right_vertex_index);
+        self.update_vertex_normal_for_b_quad_edge(b_quad.lower_right_vertex_index,
+                                                  b_quad.lower_control_point_vertex_index,
+                                                  b_quad.lower_left_vertex_index);
+    }
+
+    fn update_vertex_normal_for_b_quad_edge(&mut self,
+                                            prev_vertex_index: u32,
+                                            control_point_vertex_index: u32,
+                                            next_vertex_index: u32) {
+        if control_point_vertex_index == u32::MAX {
+            let normal_vector = self.calculate_normal_for_edge(prev_vertex_index,
+                                                               next_vertex_index);
+            self.update_normal_for_vertex(prev_vertex_index, &normal_vector);
+            self.update_normal_for_vertex(next_vertex_index, &normal_vector);
+            return
+        }
+
+        let prev_normal_vector = self.calculate_normal_for_edge(prev_vertex_index,
+                                                                control_point_vertex_index);
+        let next_normal_vector = self.calculate_normal_for_edge(control_point_vertex_index,
+                                                                next_vertex_index);
+        self.update_normal_for_vertex(prev_vertex_index, &prev_normal_vector);
+        self.update_normal_for_vertex(control_point_vertex_index, &prev_normal_vector);
+        self.update_normal_for_vertex(control_point_vertex_index, &next_normal_vector);
+        self.update_normal_for_vertex(next_vertex_index, &next_normal_vector);
+    }
+
+    fn update_normal_for_vertex(&mut self, vertex_index: u32, normal_vector: &VertexNormal) {
+        let vertex_normal_count = self.vertex_normals.len();
+        if vertex_index as usize >= vertex_normal_count {
+            let new_vertex_normal_count = vertex_index as usize - vertex_normal_count + 1;
+            self.vertex_normals
+                .extend(iter::repeat(VertexNormal::zero()).take(new_vertex_normal_count));
+        }
+
+        self.vertex_normals[vertex_index as usize] += *normal_vector
+    }
+
+    fn calculate_normal_for_edge(&self, left_vertex_index: u32, right_vertex_index: u32)
+                                 -> VertexNormal {
+        let left_vertex_position = &self.library.b_vertex_positions[left_vertex_index as usize];
+        let right_vertex_position = &self.library.b_vertex_positions[right_vertex_index as usize];
+        VertexNormal::new(left_vertex_position, right_vertex_position)
     }
 
     fn prev_endpoint_of(&self, endpoint_index: u32) -> u32 {
@@ -1256,4 +1354,45 @@ enum SubdivisionType {
     Upper,
     Inside,
     Lower,
+}
+
+/// TODO(pcwalton): This could possibly be improved:
+/// https://en.wikipedia.org/wiki/Mean_of_circular_quantities
+#[derive(Debug, Clone, Copy)]
+struct VertexNormal {
+    sum: Vector2D<f32>,
+}
+
+impl VertexNormal {
+    fn new(vertex_a: &Point2D<f32>, vertex_b: &Point2D<f32>) -> VertexNormal {
+        let vector = *vertex_a - *vertex_b;
+        VertexNormal {
+            sum: Vector2D::new(-vector.y, vector.x).normalize(),
+        }
+    }
+
+    fn zero() -> VertexNormal {
+        VertexNormal {
+            sum: Vector2D::zero(),
+        }
+    }
+
+    fn angle(&self) -> f32 {
+        normal::calculate_normal_angle(&self.sum)
+    }
+}
+
+impl Add<VertexNormal> for VertexNormal {
+    type Output = VertexNormal;
+    fn add(self, rhs: VertexNormal) -> VertexNormal {
+        VertexNormal {
+            sum: self.sum + rhs.sum,
+        }
+    }
+}
+
+impl AddAssign<VertexNormal> for VertexNormal {
+    fn add_assign(&mut self, rhs: VertexNormal) {
+        *self = *self + rhs
+    }
 }

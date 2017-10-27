@@ -17,7 +17,7 @@ use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::u32;
 
-use bold;
+use normal;
 use {BQuad, BVertexLoopBlinnData};
 
 #[derive(Debug, Clone)]
@@ -26,6 +26,7 @@ pub struct MeshLibrary {
     pub b_vertex_positions: Vec<Point2D<f32>>,
     pub b_vertex_path_ids: Vec<u16>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
+    pub b_vertex_normals: Vec<f32>,
     pub cover_indices: MeshLibraryCoverIndices,
     pub edge_data: MeshLibraryEdgeData,
     pub segments: MeshLibrarySegments,
@@ -40,6 +41,7 @@ impl MeshLibrary {
             b_vertex_positions: vec![],
             b_vertex_path_ids: vec![],
             b_vertex_loop_blinn_data: vec![],
+            b_vertex_normals: vec![],
             cover_indices: MeshLibraryCoverIndices::new(),
             edge_data: MeshLibraryEdgeData::new(),
             segments: MeshLibrarySegments::new(),
@@ -52,10 +54,22 @@ impl MeshLibrary {
         self.b_vertex_positions.clear();
         self.b_vertex_path_ids.clear();
         self.b_vertex_loop_blinn_data.clear();
+        self.b_vertex_normals.clear();
         self.cover_indices.clear();
         self.edge_data.clear();
         self.segments.clear();
         self.segment_normals.clear();
+    }
+
+    pub(crate) fn add_b_vertex(&mut self,
+                               position: &Point2D<f32>,
+                               path_id: u16,
+                               loop_blinn_data: &BVertexLoopBlinnData,
+                               normal: f32) {
+        self.b_vertex_positions.push(*position);
+        self.b_vertex_path_ids.push(path_id);
+        self.b_vertex_loop_blinn_data.push(*loop_blinn_data);
+        self.b_vertex_normals.push(normal);
     }
 
     pub(crate) fn add_b_quad(&mut self, b_quad: &BQuad) {
@@ -176,7 +190,7 @@ impl MeshLibrary {
 
     /// Computes vertex normals necessary for emboldening and/or stem darkening.
     pub fn push_normals<I>(&mut self, stream: I) where I: Iterator<Item = PathCommand> {
-        bold::push_normals(self, stream)
+        normal::push_normals(self, stream)
     }
 
     /// Writes this mesh library to a RIFF file.
@@ -195,6 +209,7 @@ impl MeshLibrary {
         try!(write_chunk(writer, b"bvpo", &self.b_vertex_positions));
         try!(write_chunk(writer, b"bvpi", &self.b_vertex_path_ids));
         try!(write_chunk(writer, b"bvlb", &self.b_vertex_loop_blinn_data));
+        try!(write_chunk(writer, b"bvno", &self.b_vertex_normals));
         try!(write_chunk(writer, b"cvii", &self.cover_indices.interior_indices));
         try!(write_chunk(writer, b"cvci", &self.cover_indices.curve_indices));
         try!(write_chunk(writer, b"ebbv", &self.edge_data.bounding_box_vertex_positions));

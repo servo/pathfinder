@@ -29,7 +29,7 @@ pub mod capi;
 pub mod mesh_library;
 pub mod partitioner;
 
-mod bold;
+mod normal;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

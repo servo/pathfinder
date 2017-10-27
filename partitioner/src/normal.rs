@@ -1,4 +1,4 @@
-// pathfinder/partitioner/src/bold.rs
+// pathfinder/partitioner/src/normal.rs
 //
 // Copyright © 2017 The Pathfinder Project Developers.
 //
@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Infrastructure to enable on-GPU emboldening and stem darkening.
+//! Utility functions for vertex normals.
 
 use euclid::{Point2D, Vector2D};
 use pathfinder_path_utils::{PathCommand, PathSegment, PathSegmentStream};
@@ -48,20 +48,20 @@ pub fn push_normals<I>(library: &mut MeshLibrary, stream: I)
             };
         }
 
-        let prev_vector = match prev_segment {
-            PathSegment::Line(endpoint_0, endpoint_1) => endpoint_1 - endpoint_0,
-            PathSegment::Curve(_, control_point, endpoint_1) => endpoint_1 - control_point,
-        };
-        let next_vector = match next_segment {
-            PathSegment::Line(endpoint_0, endpoint_1) => endpoint_1 - endpoint_0,
-            PathSegment::Curve(endpoint_0, control_point, _) => control_point - endpoint_0,
+        let next_vertex_normal = match (&prev_segment, &next_segment) {
+            (&PathSegment::Line(ref prev_endpoint, ref vertex_endpoint),
+             &PathSegment::Line(_, ref next_endpoint)) |
+            (&PathSegment::Curve(_, ref prev_endpoint, ref vertex_endpoint),
+             &PathSegment::Line(_, ref next_endpoint)) |
+            (&PathSegment::Line(ref prev_endpoint, ref vertex_endpoint),
+             &PathSegment::Curve(_, ref next_endpoint, _)) |
+            (&PathSegment::Curve(_, ref prev_endpoint, ref vertex_endpoint),
+             &PathSegment::Curve(_, ref next_endpoint, _)) => {
+                calculate_vertex_normal(prev_endpoint, vertex_endpoint, next_endpoint)
+            }
         };
 
-        let prev_edge_normal = Vector2D::new(-prev_vector.y, prev_vector.x).normalize();
-        let next_edge_normal = Vector2D::new(-next_vector.y, next_vector.x).normalize();
-
-        let next_vertex_normal = (prev_edge_normal + next_edge_normal) * 0.5;
-        let next_vertex_angle = (-next_vertex_normal.y).atan2(next_vertex_normal.x);
+        let next_vertex_angle = calculate_normal_angle(&next_vertex_normal);
 
         let prev_vertex_angle = if !is_first_segment {
             match index_of_prev_segment.unwrap() {
@@ -86,14 +86,12 @@ pub fn push_normals<I>(library: &mut MeshLibrary, stream: I)
                     endpoint_1: next_vertex_angle,
                 });
             }
-            PathSegment::Curve(endpoint_0, control_point, _) => {
-                let prev_prev_vector = control_point - endpoint_0;
-                let prev_prev_edge_normal = Vector2D::new(-prev_prev_vector.y,
-                                                          prev_prev_vector.x).normalize();
-
-                let control_point_vertex_normal = (prev_prev_edge_normal + prev_edge_normal) * 0.5;
+            PathSegment::Curve(endpoint_0, control_point, endpoint_1) => {
+                let control_point_vertex_normal = calculate_vertex_normal(&endpoint_0,
+                                                                          &control_point,
+                                                                          &endpoint_1);
                 let control_point_vertex_angle =
-                    (-control_point_vertex_normal.y).atan2(control_point_vertex_normal.x);
+                    calculate_normal_angle(&control_point_vertex_normal);
 
                 index_of_prev_segment =
                     Some(SegmentIndex::Curve(library.segment_normals.curve_normals.len()));
@@ -118,6 +116,23 @@ pub fn push_normals<I>(library: &mut MeshLibrary, stream: I)
             index_of_first_segment_of_subpath = None;
         }
     }
+}
+
+pub fn calculate_vertex_normal(prev_position: &Point2D<f32>,
+                               vertex_position: &Point2D<f32>,
+                               next_position: &Point2D<f32>)
+                               -> Vector2D<f32> {
+    let prev_edge_vector = *vertex_position - *prev_position;
+    let next_edge_vector = *next_position - *vertex_position;
+
+    let prev_edge_normal = Vector2D::new(-prev_edge_vector.y, prev_edge_vector.x).normalize();
+    let next_edge_normal = Vector2D::new(-next_edge_vector.y, next_edge_vector.x).normalize();
+
+    (prev_edge_normal + next_edge_normal) * 0.5
+}
+
+pub fn calculate_normal_angle(normal: &Vector2D<f32>) -> f32 {
+    (-normal.y).atan2(normal.x)
 }
 
 #[derive(Clone, Copy, Debug)]
