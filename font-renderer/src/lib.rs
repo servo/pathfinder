@@ -47,6 +47,9 @@ use app_units::Au;
 use euclid::{Point2D, Size2D};
 use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 
+#[cfg(test)]
+mod tests;
+
 #[cfg(all(target_os = "macos", not(feature = "freetype")))]
 pub use core_graphics::FontContext;
 #[cfg(all(target_os = "windows", not(feature = "freetype")))]

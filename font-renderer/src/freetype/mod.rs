@@ -27,9 +27,6 @@ use self::outline::OutlineStream;
 
 mod outline;
 
-#[cfg(test)]
-mod tests;
-
 // Default to no hinting.
 //
 // TODO(pcwalton): Make this configurable.
