@@ -4,12 +4,13 @@ use app_units::Au;
 use env_logger;
 use euclid::Size2D;
 use euclid::approxeq::ApproxEq;
-use pathfinder_partitioner::Subpath;
+use pathfinder_path_utils::{PathBuffer, Subpath};
 use std::fs::File;
 use std::io::Read;
-use {FontContext, FontInstanceKey, FontKey, GlyphDimensions, GlyphKey, GlyphOutlineBuffer};
+use std::sync::Arc;
+use {FontContext, FontInstance, FontKey, GlyphDimensions, GlyphKey, SubpixelOffset};
 
-static TEST_FONT_PATH: &'static str = "resources/tests/nimbus-sans/NimbusSanL-Regu.ttf";
+static TEST_FONT_PATH: &'static str = "../resources/fonts/nimbus-sans/NimbusSanL-Regu.ttf";
 const TEST_FONT_SIZE: Au = Au(60 * 16);
 const TEST_GLYPH_ID: u32 = 68;  // 'a'
 
@@ -99,15 +100,15 @@ static EXPECTED_GLYPH_SUBPATHS: [Subpath; 2] = [
 
 #[test]
 fn test_font_context_glyph_dimensions() {
-    let mut font_context = FontContext::new();
+    let mut font_context = FontContext::new().unwrap();
 
     let font_key = FontKey::new();
     let mut bytes = vec![];
     File::open(TEST_FONT_PATH).unwrap().read_to_end(&mut bytes).unwrap();
-    font_context.add_font_from_memory(&font_key, bytes, 0).unwrap();
+    font_context.add_font_from_memory(&font_key, Arc::new(bytes), 0).unwrap();
 
-    let font_instance = FontInstanceKey::new(&font_key, TEST_FONT_SIZE);
-    let glyph_key = GlyphKey::new(TEST_GLYPH_ID);
+    let font_instance = FontInstance::new(&font_key, TEST_FONT_SIZE);
+    let glyph_key = GlyphKey::new(TEST_GLYPH_ID, SubpixelOffset(0));
     let glyph_dimensions = font_context.glyph_dimensions(&font_instance, &glyph_key).unwrap();
 
     assert_eq!(glyph_dimensions, GlyphDimensions {
@@ -121,18 +122,18 @@ fn test_font_context_glyph_dimensions() {
 fn test_font_context_glyph_outline() {
     drop(env_logger::init());
 
-    let mut font_context = FontContext::new();
+    let mut font_context = FontContext::new().unwrap();
 
     let font_key = FontKey::new();
     let mut bytes = vec![];
     File::open(TEST_FONT_PATH).unwrap().read_to_end(&mut bytes).unwrap();
-    font_context.add_font_from_memory(&font_key, bytes, 0).unwrap();
+    font_context.add_font_from_memory(&font_key, Arc::new(bytes), 0).unwrap();
 
-    let font_instance = FontInstanceKey::new(&font_key, TEST_FONT_SIZE);
-    let glyph_key = GlyphKey::new(TEST_GLYPH_ID);
-    let mut glyph_outline_buffer = GlyphOutlineBuffer::new();
-    font_context.push_glyph_outline(&font_instance, &glyph_key, &mut glyph_outline_buffer)
-                .unwrap();
+    let font_instance = FontInstance::new(&font_key, TEST_FONT_SIZE);
+    let glyph_key = GlyphKey::new(TEST_GLYPH_ID, SubpixelOffset(0));
+    let glyph_outline = font_context.glyph_outline(&font_instance, &glyph_key).unwrap();
+    let mut glyph_outline_buffer = PathBuffer::new();
+    glyph_outline_buffer.add_stream(glyph_outline);
 
     info!("endpoints: {:#?}", glyph_outline_buffer.endpoints);
     info!("control points: {:#?}", glyph_outline_buffer.control_points);
