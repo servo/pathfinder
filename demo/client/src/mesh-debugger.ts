@@ -53,6 +53,7 @@ const LIGHT_STROKE_STYLE: string = "rgb(192, 192, 192)";
 const LINE_STROKE_STYLE: string = "rgb(0, 128, 0)";
 const CURVE_STROKE_STYLE: string = "rgb(128, 0, 0)";
 const SEGMENT_CONTROL_POINT_STROKE_STYLE: string = "rgb(0, 0, 128)";
+const SEGMENT_CONTROL_POINT_HULL_STROKE_STYLE: string = "rgba(128, 128, 128, 0.5)";
 
 const NORMAL_STROKE_STYLES: NormalStyleParameter<string> = {
     bVertex: '#e6aa00',
@@ -449,8 +450,18 @@ function drawSegmentVertices(context: CanvasRenderingContext2D,
 
         drawSegmentVertex(context, position0, invScaleFactor);
         drawSegmentVertex(context, position1, invScaleFactor);
-        if (controlPoint != null)
+        if (controlPoint != null) {
+            context.save();
+            context.strokeStyle = SEGMENT_CONTROL_POINT_HULL_STROKE_STYLE;
+            context.setLineDash([2 * invScaleFactor, 2 * invScaleFactor]);
+            context.beginPath();
+            context.moveTo(position0[0], -position0[1]);
+            context.lineTo(controlPoint[0], -controlPoint[1]);
+            context.lineTo(position1[0], -position1[1]);
+            context.stroke();
+            context.restore();
             drawSegmentControlPoint(context, controlPoint, invScaleFactor);
+        }
 
         drawNormal(context, position0, normal0, invScaleFactor, 'edge');
         drawNormal(context, position1, normal1, invScaleFactor, 'edge');
