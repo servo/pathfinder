@@ -52,7 +52,9 @@ const SEGMENT_POINT_FILL_STYLE: string = "rgb(0, 0, 128)";
 const LIGHT_STROKE_STYLE: string = "rgb(192, 192, 192)";
 const LINE_STROKE_STYLE: string = "rgb(0, 128, 0)";
 const CURVE_STROKE_STYLE: string = "rgb(128, 0, 0)";
+const SEGMENT_CONTROL_POINT_FILL_STYLE: string = "rgb(255, 255, 255)";
 const SEGMENT_CONTROL_POINT_STROKE_STYLE: string = "rgb(0, 0, 128)";
+const SEGMENT_CONTROL_POINT_HULL_STROKE_STYLE: string = "rgba(128, 128, 128, 0.5)";
 
 const NORMAL_STROKE_STYLES: NormalStyleParameter<string> = {
     bVertex: '#e6aa00',
@@ -223,6 +225,10 @@ class MeshDebuggerView extends PathfinderView {
 
     private appController: MeshDebuggerAppController;
 
+    private drawControl: boolean = true;
+    private drawNormals: boolean = true;
+    private drawVertices: boolean = true;
+
     constructor(appController: MeshDebuggerAppController) {
         super();
 
@@ -231,6 +237,8 @@ class MeshDebuggerView extends PathfinderView {
 
         this.camera.onPan = () => this.setDirty();
         this.camera.onZoom = () => this.setDirty();
+
+        window.addEventListener('keypress', event => this.onKeyPress(event), false);
 
         this.resizeToFit(true);
     }
@@ -295,27 +303,28 @@ class MeshDebuggerView extends PathfinderView {
             const lowerRightPosition = unwrapNull(getPosition(positions, lowerRightIndex));
             const lowerControlPointPosition = getPosition(positions, lowerControlPointIndex);
 
-            drawVertexIfNecessary(context,
-                                  drawnVertices,
-                                  upperLeftIndex,
-                                  upperLeftPosition,
-                                  invScaleFactor);
-            drawVertexIfNecessary(context,
-                                  drawnVertices,
-                                  upperRightIndex,
-                                  upperRightPosition,
-                                  invScaleFactor);
-            drawVertexIfNecessary(context,
-                                  drawnVertices,
-                                  lowerLeftIndex,
-                                  lowerLeftPosition,
-                                  invScaleFactor);
-            drawVertexIfNecessary(context,
-                                  drawnVertices,
-                                  lowerRightIndex,
-                                  lowerRightPosition,
-                                  invScaleFactor);
-
+            if (this.drawVertices) {
+                drawVertexIfNecessary(context,
+                                    drawnVertices,
+                                    upperLeftIndex,
+                                    upperLeftPosition,
+                                    invScaleFactor);
+                drawVertexIfNecessary(context,
+                                    drawnVertices,
+                                    upperRightIndex,
+                                    upperRightPosition,
+                                    invScaleFactor);
+                drawVertexIfNecessary(context,
+                                    drawnVertices,
+                                    lowerLeftIndex,
+                                    lowerLeftPosition,
+                                    invScaleFactor);
+                drawVertexIfNecessary(context,
+                                    drawnVertices,
+                                    lowerRightIndex,
+                                    lowerRightPosition,
+                                    invScaleFactor);
+            }
             context.beginPath();
             context.moveTo(upperLeftPosition[0], -upperLeftPosition[1]);
             if (upperControlPointPosition != null) {
@@ -361,31 +370,58 @@ class MeshDebuggerView extends PathfinderView {
             const lowerRightNormal = bVertexNormals[lowerRightIndex];
             const upperLeftNormal = bVertexNormals[upperLeftIndex];
             const upperRightNormal = bVertexNormals[upperRightIndex];
-            drawNormal(context, lowerLeftPosition, lowerLeftNormal, invScaleFactor, 'bVertex');
-            drawNormal(context, lowerRightPosition, lowerRightNormal, invScaleFactor, 'bVertex');
-            drawNormal(context, upperLeftPosition, upperLeftNormal, invScaleFactor, 'bVertex');
-            drawNormal(context, upperRightPosition, upperRightNormal, invScaleFactor, 'bVertex');
+            if (this.drawVertices && this.drawNormals) {
+                drawNormal(context, lowerLeftPosition, lowerLeftNormal, invScaleFactor,
+                    'bVertex');
+                drawNormal(context, lowerRightPosition, lowerRightNormal, invScaleFactor,
+                    'bVertex');
+                drawNormal(context, upperLeftPosition, upperLeftNormal, invScaleFactor,
+                    'bVertex');
+                drawNormal(context, upperRightPosition, upperRightNormal, invScaleFactor,
+                    'bVertex');
+            }
         }
 
         // Draw segments.
-        drawSegmentVertices(context,
-                            new Float32Array(meshes.segmentLines),
-                            new Float32Array(meshes.segmentLineNormals),
-                            meshes.segmentLineCount,
-                            [0, 1],
-                            null,
-                            2,
-                            invScaleFactor);
-        drawSegmentVertices(context,
-                            new Float32Array(meshes.segmentCurves),
-                            new Float32Array(meshes.segmentCurveNormals),
-                            meshes.segmentCurveCount,
-                            [0, 2],
-                            1,
-                            3,
-                            invScaleFactor);
-
+        if (this.drawVertices) {
+            drawSegmentVertices(context,
+                                new Float32Array(meshes.segmentLines),
+                                new Float32Array(meshes.segmentLineNormals),
+                                meshes.segmentLineCount,
+                                [0, 1],
+                                null,
+                                2,
+                                invScaleFactor,
+                                this.drawControl,
+                                this.drawNormals);
+            drawSegmentVertices(context,
+                                new Float32Array(meshes.segmentCurves),
+                                new Float32Array(meshes.segmentCurveNormals),
+                                meshes.segmentCurveCount,
+                                [0, 2],
+                                1,
+                                3,
+                                invScaleFactor,
+                                this.drawControl,
+                                this.drawNormals);
+        }
         context.restore();
+    }
+
+    private onKeyPress(event: KeyboardEvent): void {
+        if (event.key === "c") {
+            this.drawControl = !this.drawControl;
+        } else if (event.key === "n") {
+            this.drawNormals = !this.drawNormals;
+        } else if (event.key === "v") {
+            this.drawVertices = !this.drawVertices;
+        } else if (event.key === "r") {
+            // Reset
+            this.drawControl = true;
+            this.drawNormals = true;
+            this.drawVertices = true;
+        }
+        this.setDirty();
     }
 }
 
@@ -417,7 +453,9 @@ function drawSegmentVertices(context: CanvasRenderingContext2D,
                              endpointOffsets: number[],
                              controlPointOffset: number | null,
                              segmentSize: number,
-                             invScaleFactor: number) {
+                             invScaleFactor: number,
+                             drawControl: boolean,
+                             drawNormals: boolean) {
     for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
         const positionStartOffset = segmentSize * 2 * segmentIndex;
         const normalStartOffset = segmentSize * segmentIndex;
@@ -447,15 +485,27 @@ function drawSegmentVertices(context: CanvasRenderingContext2D,
         else
             normalControlPoint = null;
 
+        if (drawNormals) {
+            drawNormal(context, position0, normal0, invScaleFactor, 'edge');
+            drawNormal(context, position1, normal1, invScaleFactor, 'edge');
+            if (drawControl && controlPoint != null && normalControlPoint != null)
+                drawNormal(context, controlPoint, normalControlPoint, invScaleFactor, 'edge');
+        }
+
         drawSegmentVertex(context, position0, invScaleFactor);
         drawSegmentVertex(context, position1, invScaleFactor);
-        if (controlPoint != null)
+        if (drawControl && controlPoint != null) {
+            context.save();
+            context.strokeStyle = SEGMENT_CONTROL_POINT_HULL_STROKE_STYLE;
+            context.setLineDash([2 * invScaleFactor, 2 * invScaleFactor]);
+            context.beginPath();
+            context.moveTo(position0[0], -position0[1]);
+            context.lineTo(controlPoint[0], -controlPoint[1]);
+            context.lineTo(position1[0], -position1[1]);
+            context.stroke();
+            context.restore();
             drawSegmentControlPoint(context, controlPoint, invScaleFactor);
-
-        drawNormal(context, position0, normal0, invScaleFactor, 'edge');
-        drawNormal(context, position1, normal1, invScaleFactor, 'edge');
-        if (controlPoint != null && normalControlPoint != null)
-            drawNormal(context, controlPoint, normalControlPoint, invScaleFactor, 'edge');
+        }
     }
 }
 
@@ -502,6 +552,7 @@ function drawSegmentControlPoint(context: CanvasRenderingContext2D,
                                  invScaleFactor: number) {
     context.save();
     context.strokeStyle = SEGMENT_CONTROL_POINT_STROKE_STYLE;
+    context.fillStyle = SEGMENT_CONTROL_POINT_FILL_STYLE;
     context.lineWidth = invScaleFactor * SEGMENT_CONTROL_POINT_STROKE_WIDTH;
     context.beginPath();
     context.arc(position[0],
@@ -509,6 +560,7 @@ function drawSegmentControlPoint(context: CanvasRenderingContext2D,
                 SEGMENT_POINT_RADIUS * invScaleFactor,
                 0,
                 2.0 * Math.PI);
+    context.fill();
     context.stroke();
     context.restore();
 }
