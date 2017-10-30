@@ -106,9 +106,11 @@ button > svg path {
 }
 #pf-canvas.pf-draggable {
     cursor: grab;
+    cursor: -webkit-grab;
 }
 #pf-canvas.pf-draggable.pf-grabbing {
     cursor: grabbing;
+    cursor: -webkit-grabbing;
 }
 #pf-fps-label {
     color: white;
