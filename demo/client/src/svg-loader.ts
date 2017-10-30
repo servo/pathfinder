@@ -18,6 +18,8 @@ import {panic, unwrapNull} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
 
+const parseColor = require('parse-color');
+
 const PARTITION_SVG_PATHS_ENDPOINT_URL: string = "/partition-svg-paths";
 
 /// The minimum size of a stroke.
@@ -105,9 +107,9 @@ export class SVGLoader {
 
             if (element instanceof SVGPathElement) {
                 const style = window.getComputedStyle(element);
-                if (style.fill !== 'none')
+                if (hasRenderingOperation(style.fill))
                     this.pathInstances.push({ element: element, stroke: 'fill' });
-                if (style.stroke !== 'none') {
+                if (hasRenderingOperation(style.stroke)) {
                     this.pathInstances.push({
                         element: element,
                         stroke: parseInt(style.strokeWidth!, 10),
@@ -158,4 +160,8 @@ export class SVGLoader {
 
         this.bounds = glmatrix.vec4.clone([minX, minY, maxX, maxY]);
     }
+}
+
+function hasRenderingOperation(style: string | null): boolean {
+    return style != null && style !== 'none' && parseColor(style).rgba[3] > 0.0;
 }

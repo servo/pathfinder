@@ -18,6 +18,7 @@ import {PathfinderMeshBuffers, PathfinderMeshData} from "./meshes";
 import {ShaderMap} from './shader-loader';
 import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull} from './utils';
 import {RenderContext, Timings} from "./view";
+import {MCAAMulticolorStrategy} from './xcaa-strategy';
 
 const MAX_PATHS: number = 65535;
 
@@ -64,8 +65,6 @@ export abstract class Renderer {
     }
 
     protected abstract get depthFunction(): GLenum;
-    protected abstract get directCurveProgramName(): keyof ShaderMap<void>;
-    protected abstract get directInteriorProgramName(): keyof ShaderMap<void>;
     protected abstract get usedSizeFactor(): glmatrix.vec2;
     protected abstract get worldTransform(): glmatrix.mat4;
 
@@ -112,22 +111,22 @@ export abstract class Renderer {
                                                       renderContext.atlasRenderingTimerQuery);
         }
 
-        // Prepare for direct rendering.
+        // Draw "scenery" (used in the 3D view).
+        this.drawSceneryIfNecessary();
+
+        // Antialias.
         const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
-        antialiasingStrategy.prepare(this);
+        antialiasingStrategy.antialias(this);
+
+        // Prepare for direct rendering.
+        antialiasingStrategy.prepareForDirectRendering(this);
 
         // Clear.
         this.clearForDirectRendering();
 
-        // Draw "scenery" (used in the 3D view).
-        this.drawSceneryIfNecessary();
-
         // Perform direct rendering (Loop-Blinn).
         if (antialiasingStrategy.directRenderingMode !== 'none')
-            this.renderDirect();
-
-        // Antialias.
-        antialiasingStrategy.antialias(this);
+            this.renderDirect(0);
 
         // End the timer, and start a new one.
         if (this.timerQueryPollInterval == null) {
@@ -137,6 +136,9 @@ export abstract class Renderer {
         }
 
         antialiasingStrategy.resolve(this);
+
+        if (antialiasingStrategy.directRenderingMode === 'two-pass')
+            this.renderDirect(1);
 
         // Draw the glyphs with the resolved atlas to the default framebuffer.
         this.compositeIfNecessary();
@@ -167,9 +169,10 @@ export abstract class Renderer {
     }
 
     setFramebufferSizeUniform(uniforms: UniformMap) {
-        this.renderContext.gl.uniform2i(uniforms.uFramebufferSize,
-                                        this.destAllocatedSize[0],
-                                        this.destAllocatedSize[1]);
+        const gl = this.renderContext.gl;
+        gl.uniform2i(uniforms.uFramebufferSize,
+                     this.destAllocatedSize[0],
+                     this.destAllocatedSize[1]);
     }
 
     setTransformAndTexScaleUniformsForDest(uniforms: UniformMap): void {
@@ -186,29 +189,29 @@ export abstract class Renderer {
 
     setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap): void {
         const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
         const usedSize = this.usedSizeFactor;
-        renderContext.gl.uniform4f(uniforms.uTransformST,
-                                   2.0 * usedSize[0],
-                                   2.0 * usedSize[1],
-                                   -1.0,
-                                   -1.0);
-        renderContext.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
+        gl.uniform4f(uniforms.uTransformST, 2.0 * usedSize[0], 2.0 * usedSize[1], -1.0, -1.0);
+        gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
     setTransformSTUniform(uniforms: UniformMap, objectIndex: number) {
         // FIXME(pcwalton): Lossy conversion from a 4x4 matrix to an ST matrix is ugly and fragile.
         // Refactor.
         const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
         const transform = glmatrix.mat4.clone(this.worldTransform);
         glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
 
         const translation = glmatrix.vec4.clone([transform[12], transform[13], 0.0, 1.0]);
 
-        renderContext.gl.uniform4f(uniforms.uTransformST,
-                                   transform[0],
-                                   transform[5],
-                                   transform[12],
-                                   transform[13]);
+        gl.uniform4f(uniforms.uTransformST,
+                     transform[0],
+                     transform[5],
+                     transform[12],
+                     transform[13]);
     }
 
     uploadPathColors(objectCount: number) {
@@ -248,9 +251,8 @@ export abstract class Renderer {
     }
 
     setPathColorsUniform(objectIndex: number, uniforms: UniformMap, textureUnit: number): void {
-        this.pathColorsBufferTextures[objectIndex].bind(this.renderContext.gl,
-                                                        uniforms,
-                                                        textureUnit);
+        const gl = this.renderContext.gl;
+        this.pathColorsBufferTextures[objectIndex].bind(gl, uniforms, textureUnit);
     }
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
@@ -262,6 +264,9 @@ export abstract class Renderer {
     protected abstract pathColorsForObject(objectIndex: number): Uint8Array;
     protected abstract pathTransformsForObject(objectIndex: number): Float32Array;
 
+    protected abstract directCurveProgramNameForPass(pass: number): keyof ShaderMap<void>;
+    protected abstract directInteriorProgramNameForPass(pass: number): keyof ShaderMap<void>;
+
     protected drawSceneryIfNecessary(): void {}
 
     protected clearForDirectRendering(): void {
@@ -269,22 +274,21 @@ export abstract class Renderer {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
+        const clearColor = this.backgroundColor;
+        gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+
         switch (renderingMode) {
         case 'color':
-            const clearColor = this.backgroundColor;
-            gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
             gl.clearDepth(0.0);
             gl.depthMask(true);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             break;
-        case 'pathID':
-            gl.clearColor(0.0, 0.0, 0.0, 0.0);
-            gl.clearDepth(0.0);
-            gl.depthMask(true);
-            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        case 'two-pass':
+            gl.clear(gl.COLOR_BUFFER_BIT);
             break;
         case 'none':
             // Nothing to do.
+            break;
         }
     }
 
@@ -300,10 +304,12 @@ export abstract class Renderer {
     /// Called whenever new GPU timing statistics are available.
     protected newTimingsReceived(): void {}
 
-    private renderDirect(): void {
-        const renderingMode = unwrapNull(this.antialiasingStrategy).directRenderingMode;
+    private renderDirect(pass: number): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
+
+        const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
+        const renderingMode = antialiasingStrategy.directRenderingMode;
 
         for (let objectIndex = 0; objectIndex < this.meshes.length; objectIndex++) {
             const instanceRange = this.instanceRangeForObject(objectIndex);
@@ -319,23 +325,26 @@ export abstract class Renderer {
             gl.disable(gl.BLEND);
 
             // Set up the implicit cover interior VAO.
-            const directInteriorProgram =
-                renderContext.shaderPrograms[this.directInteriorProgramName];
+            const directInteriorProgramName = this.directInteriorProgramNameForPass(pass);
+            const directInteriorProgram = renderContext.shaderPrograms[directInteriorProgramName];
             if (this.implicitCoverInteriorVAO == null) {
                 this.implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt
                                                              .createVertexArrayOES();
             }
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverInteriorVAO);
-            this.initImplicitCoverInteriorVAO(objectIndex, instanceRange);
+            this.initImplicitCoverInteriorVAO(pass, objectIndex, instanceRange);
 
             // Draw direct interior parts.
             this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
             this.setHintsUniform(directInteriorProgram.uniforms);
-            if (renderingMode === 'color')
-                this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
+            this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
             this.pathTransformBufferTextures[objectIndex]
                 .bind(gl, directInteriorProgram.uniforms, 1);
+            if (renderingMode === 'two-pass') {
+                const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
+                strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 2);
+            }
             let indexCount = meshData.coverInteriorIndices.byteLength / UINT32_SIZE;
             if (!this.pathIDsAreInstanced) {
                 gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
@@ -356,21 +365,25 @@ export abstract class Renderer {
             // Set up the direct curve VAO.
             //
             // TODO(pcwalton): Cache these.
-            const directCurveProgram = renderContext.shaderPrograms[this.directCurveProgramName];
+            const directCurveProgramName = this.directCurveProgramNameForPass(pass);
+            const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
             if (this.implicitCoverCurveVAO == null) {
                 this.implicitCoverCurveVAO = renderContext.vertexArrayObjectExt
                                                           .createVertexArrayOES();
             }
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverCurveVAO);
-            this.initImplicitCoverCurveVAO(objectIndex, instanceRange);
+            this.initImplicitCoverCurveVAO(pass, objectIndex, instanceRange);
 
             // Draw direct curve parts.
             this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
             this.setFramebufferSizeUniform(directCurveProgram.uniforms);
             this.setHintsUniform(directCurveProgram.uniforms);
-            if (renderingMode === 'color')
-                this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
+            this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
             this.pathTransformBufferTextures[objectIndex].bind(gl, directCurveProgram.uniforms, 1);
+            if (renderingMode === 'two-pass') {
+                const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
+                strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 2);
+            }
             indexCount = meshData.coverCurveIndices.byteLength / UINT32_SIZE;
             if (!this.pathIDsAreInstanced) {
                 gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
@@ -426,104 +439,104 @@ export abstract class Renderer {
         }, TIME_INTERVAL_DELAY);
     }
 
-    private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {
+    private initImplicitCoverCurveVAO(pass: number, objectIndex: number, instanceRange: Range):
+                                      void {
         const renderContext = this.renderContext;
+        const gl = renderContext.gl;
         const meshes = this.meshes[objectIndex];
 
-        const directCurveProgram = renderContext.shaderPrograms[this.directCurveProgramName];
-        renderContext.gl.useProgram(directCurveProgram.program);
-        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, meshes.bVertexPositions);
-        renderContext.gl.vertexAttribPointer(directCurveProgram.attributes.aPosition,
-                                             2,
-                                             renderContext.gl.FLOAT,
-                                             false,
-                                             0,
-                                             0);
+        const directCurveProgramName = this.directCurveProgramNameForPass(pass);
+        const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
+        gl.useProgram(directCurveProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexPositions);
+        gl.vertexAttribPointer(directCurveProgram.attributes.aPosition, 2, gl.FLOAT, false, 0, 0);
 
         if (this.pathIDsAreInstanced)
-            renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, this.instancedPathIDVBO);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.instancedPathIDVBO);
         else
-            renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
-        renderContext.gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
-                                             1,
-                                             renderContext.gl.UNSIGNED_SHORT,
-                                             false,
-                                             0,
-                                             instanceRange.start * UINT16_SIZE);
+            gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
+        gl.vertexAttribPointer(directCurveProgram.attributes.aPathID,
+                               1,
+                               gl.UNSIGNED_SHORT,
+                               false,
+                               0,
+                               instanceRange.start * UINT16_SIZE);
         if (this.pathIDsAreInstanced) {
             renderContext.instancedArraysExt
                          .vertexAttribDivisorANGLE(directCurveProgram.attributes.aPathID, 1);
         }
 
-        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, meshes.bVertexLoopBlinnData);
-        renderContext.gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
-                                             2,
-                                             renderContext.gl.UNSIGNED_BYTE,
-                                             false,
-                                             B_LOOP_BLINN_DATA_SIZE,
-                                             B_LOOP_BLINN_DATA_TEX_COORD_OFFSET);
-        renderContext.gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
-                                             1,
-                                             renderContext.gl.BYTE,
-                                             false,
-                                             B_LOOP_BLINN_DATA_SIZE,
-                                             B_LOOP_BLINN_DATA_SIGN_OFFSET);
-        renderContext.gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
-        renderContext.gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
-        renderContext.gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
-        renderContext.gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
-        renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                    meshes.coverCurveIndices);
+        gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexLoopBlinnData);
+        gl.vertexAttribPointer(directCurveProgram.attributes.aTexCoord,
+                               2,
+                               gl.UNSIGNED_BYTE,
+                               false,
+                               B_LOOP_BLINN_DATA_SIZE,
+                               B_LOOP_BLINN_DATA_TEX_COORD_OFFSET);
+        gl.vertexAttribPointer(directCurveProgram.attributes.aSign,
+                               1,
+                               gl.BYTE,
+                               false,
+                               B_LOOP_BLINN_DATA_SIZE,
+                               B_LOOP_BLINN_DATA_SIGN_OFFSET);
+        gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
+        gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
+        gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
+        gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshes.coverCurveIndices);
     }
 
-    private initImplicitCoverInteriorVAO(objectIndex: number, instanceRange: Range): void {
+    private initImplicitCoverInteriorVAO(pass: number,
+                                         objectIndex: number,
+                                         instanceRange: Range):
+                                         void {
         const renderContext = this.renderContext;
+        const gl = renderContext.gl;
         const meshes = this.meshes[objectIndex];
 
-        const directInteriorProgram = renderContext.shaderPrograms[this.directInteriorProgramName];
-        renderContext.gl.useProgram(directInteriorProgram.program);
-        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, meshes.bVertexPositions);
-        renderContext.gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
-                                             2,
-                                             renderContext.gl.FLOAT,
-                                             false,
-                                             0,
-                                             0);
+        const directInteriorProgramName = this.directInteriorProgramNameForPass(pass);
+        const directInteriorProgram = renderContext.shaderPrograms[directInteriorProgramName];
+        gl.useProgram(directInteriorProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexPositions);
+        gl.vertexAttribPointer(directInteriorProgram.attributes.aPosition,
+                               2,
+                               gl.FLOAT,
+                               false,
+                               0,
+                               0);
 
         if (this.pathIDsAreInstanced)
-            renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, this.instancedPathIDVBO);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.instancedPathIDVBO);
         else
-            renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
-        renderContext.gl.vertexAttribPointer(directInteriorProgram.attributes.aPathID,
-                                             1,
-                                             renderContext.gl.UNSIGNED_SHORT,
-                                             false,
-                                             0,
-                                             instanceRange.start * UINT16_SIZE);
+            gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexPathIDs);
+        gl.vertexAttribPointer(directInteriorProgram.attributes.aPathID,
+                               1,
+                               gl.UNSIGNED_SHORT,
+                               false,
+                               0,
+                               instanceRange.start * UINT16_SIZE);
         if (this.pathIDsAreInstanced) {
             renderContext.instancedArraysExt
                          .vertexAttribDivisorANGLE(directInteriorProgram.attributes.aPathID, 1);
         }
 
-        renderContext.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
-        renderContext.gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
-        renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                    meshes.coverInteriorIndices);
+        gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
+        gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshes.coverInteriorIndices);
     }
 
     private initInstancedPathIDVBO(): void {
         const renderContext = this.renderContext;
+        const gl = renderContext.gl;
 
         const pathIDs = new Uint16Array(MAX_PATHS);
         for (let pathIndex = 0; pathIndex < MAX_PATHS; pathIndex++)
             pathIDs[pathIndex] = pathIndex + 1;
 
         this.instancedPathIDVBO = renderContext.gl.createBuffer();
-        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, this.instancedPathIDVBO);
-        renderContext.gl.bufferData(renderContext.gl.ARRAY_BUFFER,
-                                    pathIDs,
-                                    renderContext.gl.STATIC_DRAW);
-        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, null);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.instancedPathIDVBO);
+        gl.bufferData(gl.ARRAY_BUFFER, pathIDs, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
     private setTransformUniform(uniforms: UniformMap, objectIndex: number) {

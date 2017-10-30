@@ -115,10 +115,8 @@ class SVGDemoRenderer extends Renderer {
     camera: OrthographicCamera;
 
     get destAllocatedSize(): glmatrix.vec2 {
-        return glmatrix.vec2.clone([
-            this.renderContext.canvas.width,
-            this.renderContext.canvas.height,
-        ]);
+        const canvas = this.renderContext.canvas;
+        return glmatrix.vec2.clone([canvas.width, canvas.height]);
     }
 
     get destFramebuffer(): WebGLFramebuffer | null {
@@ -183,15 +181,15 @@ class SVGDemoRenderer extends Renderer {
         return transform;
     }
 
-    protected get directCurveProgramName(): keyof ShaderMap<void> {
-        if (this.antialiasingStrategy instanceof XCAAStrategy)
-            return 'xcaaMultiDirectCurve';
+    protected directCurveProgramNameForPass(pass: number): keyof ShaderMap<void> {
+        if (this.antialiasingStrategy instanceof XCAAStrategy && pass === 0)
+            return 'xcaaMultiBGDirectCurve';
         return 'directCurve';
     }
 
-    protected get directInteriorProgramName(): keyof ShaderMap<void> {
-        if (this.antialiasingStrategy instanceof XCAAStrategy)
-            return 'xcaaMultiDirectInterior';
+    protected directInteriorProgramNameForPass(pass: number): keyof ShaderMap<void> {
+        if (this.antialiasingStrategy instanceof XCAAStrategy && pass === 0)
+            return 'xcaaMultiBGDirectInterior';
         return 'directInterior';
     }
 

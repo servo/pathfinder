@@ -11,20 +11,17 @@
 precision highp float;
 
 uniform ivec2 uPathColorsDimensions;
-uniform sampler2D uBGFGPathID;
 uniform sampler2D uAAAlpha;
+uniform sampler2D uAADepth;
 uniform sampler2D uPathColors;
 
 varying vec2 vTexCoord;
 
 void main() {
-    vec4 packedPathIDsBGFG = texture2D(uBGFGPathID, vTexCoord);
-    int pathIDBG = unpackPathID(packedPathIDsBGFG.xy);
-    int pathIDFG = unpackPathID(packedPathIDsBGFG.zw);
-    vec4 bgColor = fetchFloat4Data(uPathColors, pathIDBG, uPathColorsDimensions);
-    vec4 fgColor = fetchFloat4Data(uPathColors, pathIDFG, uPathColorsDimensions);
-    float alpha = clamp(texture2D(uAAAlpha, vTexCoord).r, 0.0, 1.0);
-    gl_FragColor = mix(bgColor, fgColor, alpha);
-    //gl_FragColor = vec4(vec3(alpha), 1.0);
-    //gl_FragColor = bgColor != fgColor ? vec4(1.0, 0.0, 0.0, 1.0) : vec4(1.0);
+    float edgeDepth = texture2D(uAADepth, vTexCoord).r;
+    int edgePathID = convertWindowDepthValueToPathIndex(edgeDepth);
+    vec4 edgeColor = fetchFloat4Data(uPathColors, edgePathID, uPathColorsDimensions);
+    float edgeAlpha = texture2D(uAAAlpha, vTexCoord).r;
+    gl_FragColor = vec4(edgeColor.rgb, edgeColor.a * edgeAlpha);
+    gl_FragDepthEXT = edgeDepth;
 }

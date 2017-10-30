@@ -359,14 +359,6 @@ class ThreeDRenderer extends Renderer {
         return this.destAllocatedSize;
     }
 
-    protected get directCurveProgramName(): keyof ShaderMap<void> {
-        return 'direct3DCurve';
-    }
-
-    protected get directInteriorProgramName(): keyof ShaderMap<void> {
-        return 'direct3DInterior';
-    }
-
     protected get depthFunction(): GLenum {
         return this.renderContext.gl.LESS;
     }
@@ -526,6 +518,14 @@ class ThreeDRenderer extends Renderer {
     protected newTimingsReceived(): void {
         const newTimings: Partial<Timings> = _.pick(this.lastTimings, ['rendering']);
         this.renderContext.appController.newTimingsReceived(newTimings);
+    }
+
+    protected directCurveProgramNameForPass(pass: number): keyof ShaderMap<void> {
+        return 'direct3DCurve';
+    }
+
+    protected directInteriorProgramNameForPass(pass: number): keyof ShaderMap<void> {
+        return 'direct3DInterior';
     }
 
     // Cheap but effective backface culling.

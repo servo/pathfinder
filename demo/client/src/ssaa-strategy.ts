@@ -38,6 +38,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
     setFramebufferSize(renderer: Renderer) {
         const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
 
         this.destFramebufferSize = glmatrix.vec2.clone(renderer.destAllocatedSize);
 
@@ -46,28 +47,28 @@ export default class SSAAStrategy extends AntialiasingStrategy {
                           this.destFramebufferSize,
                           this.supersampleScale);
 
-        this.supersampledColorTexture = unwrapNull(renderContext.gl.createTexture());
-        renderContext.gl.activeTexture(renderContext.gl.TEXTURE0);
-        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.supersampledColorTexture);
-        renderContext.gl.texImage2D(renderContext.gl.TEXTURE_2D,
-                                    0,
-                                    renderContext.colorAlphaFormat,
-                                    this.supersampledFramebufferSize[0],
-                                    this.supersampledFramebufferSize[1],
-                                    0,
-                                    renderContext.colorAlphaFormat,
-                                    renderContext.gl.UNSIGNED_BYTE,
-                                    null);
-        setTextureParameters(renderContext.gl, renderContext.gl.LINEAR);
+        this.supersampledColorTexture = unwrapNull(gl.createTexture());
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.supersampledColorTexture);
+        gl.texImage2D(gl.TEXTURE_2D,
+                      0,
+                      renderContext.colorAlphaFormat,
+                      this.supersampledFramebufferSize[0],
+                      this.supersampledFramebufferSize[1],
+                      0,
+                      renderContext.colorAlphaFormat,
+                      gl.UNSIGNED_BYTE,
+                      null);
+        setTextureParameters(gl, gl.LINEAR);
 
         this.supersampledDepthTexture =
-            createFramebufferDepthTexture(renderContext.gl, this.supersampledFramebufferSize);
+            createFramebufferDepthTexture(gl, this.supersampledFramebufferSize);
 
-        this.supersampledFramebuffer = createFramebuffer(renderContext.gl,
+        this.supersampledFramebuffer = createFramebuffer(gl,
                                                          this.supersampledColorTexture,
                                                          this.supersampledDepthTexture);
 
-        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
     get transform(): glmatrix.mat4 {
@@ -79,7 +80,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         return transform;
     }
 
-    prepare(renderer: Renderer) {
+    prepareForDirectRendering(renderer: Renderer) {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -95,13 +96,12 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
     resolve(renderer: Renderer) {
         const renderContext = renderer.renderContext;
-        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, renderer.destFramebuffer);
-        renderContext.gl.viewport(0,
-                                  0,
-                                  renderer.destAllocatedSize[0],
-                                  renderer.destAllocatedSize[1]);
-        renderContext.gl.disable(renderContext.gl.DEPTH_TEST);
-        renderContext.gl.disable(renderContext.gl.BLEND);
+        const gl = renderContext.gl;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
+        gl.viewport(0, 0, renderer.destAllocatedSize[0], renderer.destAllocatedSize[1]);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
 
         // Set up the blit program VAO.
         let resolveProgram;
@@ -109,23 +109,19 @@ export default class SSAAStrategy extends AntialiasingStrategy {
             resolveProgram = renderContext.shaderPrograms.ssaaSubpixelResolve;
         else
             resolveProgram = renderContext.shaderPrograms.blit;
-        renderContext.gl.useProgram(resolveProgram.program);
+        gl.useProgram(resolveProgram.program);
         renderContext.initQuadVAO(resolveProgram.attributes);
 
         // Resolve framebuffer.
-        renderContext.gl.activeTexture(renderContext.gl.TEXTURE0);
-        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, this.supersampledColorTexture);
-        renderContext.gl.uniform1i(resolveProgram.uniforms.uSource, 0);
-        renderContext.gl.uniform2i(resolveProgram.uniforms.uSourceDimensions,
-                                   this.supersampledFramebufferSize[0],
-                                   this.supersampledFramebufferSize[1]);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.supersampledColorTexture);
+        gl.uniform1i(resolveProgram.uniforms.uSource, 0);
+        gl.uniform2i(resolveProgram.uniforms.uSourceDimensions,
+                     this.supersampledFramebufferSize[0],
+                     this.supersampledFramebufferSize[1]);
         renderer.setTransformAndTexScaleUniformsForDest(resolveProgram.uniforms);
-        renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                    renderContext.quadElementsBuffer);
-        renderContext.gl.drawElements(renderContext.gl.TRIANGLES,
-                                      6,
-                                      renderContext.gl.UNSIGNED_BYTE,
-                                      0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);
+        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
     }
 
     get directRenderingMode(): DirectRenderingMode {

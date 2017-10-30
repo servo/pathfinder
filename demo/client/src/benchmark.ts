@@ -309,14 +309,6 @@ class BenchmarkRenderer extends Renderer {
         return glmatrix.vec2.clone([1.0, 1.0]);
     }
 
-    protected get directCurveProgramName(): keyof ShaderMap<void> {
-        return 'directCurve';
-    }
-
-    protected get directInteriorProgramName(): keyof ShaderMap<void> {
-        return 'directInterior';
-    }
-
     protected get depthFunction(): number {
         return this.renderContext.gl.GREATER;
     }
@@ -444,6 +436,14 @@ class BenchmarkRenderer extends Renderer {
         }
 
         return pathTransforms;
+    }
+
+    protected directCurveProgramNameForPass(pass: number): keyof ShaderMap<void> {
+        return 'directCurve';
+    }
+
+    protected directInteriorProgramNameForPass(pass: number): keyof ShaderMap<void> {
+        return 'directInterior';
     }
 }
 

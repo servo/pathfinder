@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/xcaa-multi-direct-curve.fs.glsl
+// pathfinder/shaders/gles2/xcaa-multi-bg-direct-curve.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -12,12 +12,23 @@
 
 precision highp float;
 
-varying vec2 vPathID;
+uniform ivec2 uFramebufferSize;
+uniform sampler2D uEdgeDepth;
+
+varying vec4 vColor;
 varying vec2 vTexCoord;
 varying float vSign;
 
 void main() {
+    vec2 center = floor(gl_FragCoord.xy);
+    float depth = gl_FragCoord.z;
+    vec2 texCoord = floor(center) / vec2(uFramebufferSize);
+
+    // TODO(pcwalton): Remove this if possible?
+    if (depth >= texture2D(uEdgeDepth, texCoord).r)
+        discard;
+
     float side = vTexCoord.x * vTexCoord.x - vTexCoord.y;
     float alpha = float(sign(side) == sign(vSign));
-    gl_FragColor = vec4(vPathID, 0.0, alpha);
+    gl_FragColor = vec4(vColor.rgb, vColor.a * alpha);
 }

@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/xcaa-multi-direct-interior.vs.glsl
+// pathfinder/shaders/gles2/xcaa-multi-bg-direct-interior.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -12,13 +12,16 @@ precision highp float;
 
 uniform mat4 uTransform;
 uniform vec4 uHints;
+uniform ivec2 uPathColorsDimensions;
 uniform ivec2 uPathTransformDimensions;
+uniform sampler2D uPathColors;
 uniform sampler2D uPathTransform;
 
 attribute vec2 aPosition;
 attribute float aPathID;
 
-varying vec2 vPathID;
+varying vec4 vColor;
+varying float vSign;
 
 void main() {
     int pathID = int(aPathID);
@@ -32,5 +35,5 @@ void main() {
     float depth = convertPathIndexToViewportDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);
 
-    vPathID = packPathID(pathID);
+    vColor = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
 }

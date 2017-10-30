@@ -15,7 +15,7 @@ import {DemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
 
-export type DirectRenderingMode = 'none' | 'color' | 'pathID';
+export type DirectRenderingMode = 'none' | 'color' | 'two-pass';
 
 export type SubpixelAAType = 'none' | 'medium';
 
@@ -42,7 +42,7 @@ export abstract class AntialiasingStrategy {
     // Called before direct rendering.
     //
     // Typically, this redirects direct rendering to a framebuffer of some sort.
-    abstract prepare(renderer: Renderer): void;
+    abstract prepareForDirectRendering(renderer: Renderer): void;
 
     // Called after direct rendering.
     //
@@ -73,7 +73,7 @@ export class NoAAStrategy extends AntialiasingStrategy {
         return glmatrix.mat4.create();
     }
 
-    prepare(renderer: Renderer) {
+    prepareForDirectRendering(renderer: Renderer) {
         const renderContext = renderer.renderContext;
         renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, renderer.destFramebuffer);
         renderContext.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);

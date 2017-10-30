@@ -109,6 +109,11 @@ float convertPathIndexToWindowDepthValue(int pathIndex) {
     return float(pathIndex) / float(MAX_PATHS);
 }
 
+int convertWindowDepthValueToPathIndex(float depthValue) {
+    float pathIndex = floor(depthValue * float(MAX_PATHS));
+    return int(pathIndex);
+}
+
 bool computeMCAAQuadPosition(out vec2 outPosition,
                              inout vec2 leftPosition,
                              inout vec2 rightPosition,
@@ -259,6 +264,37 @@ float computeCoverage(vec2 p0, vec2 dp, vec2 center, float winding) {
     // Calculate area with the shoelace formula.
     float area = det2(a0, a1) + det2(a1, a2) + det2(a2, a3) + det2(a3, a4) + det2(a4, a0); 
     return abs(area) * winding * 0.5;
+}
+
+// FIXME(pcwalton): Combine with `computeCoverage`.
+bool isPartiallyCovered(vec2 p0, vec2 dp, vec2 center, float winding) {
+    // Set some flags.
+    bool slopeNegative = dp.y < -0.001;
+    bool slopeZero = abs(dp.y) < 0.001;
+
+    // Determine the bounds of this pixel.
+    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
+
+    // Set up Liang-Barsky clipping.
+    vec4 q = pixelExtents - p0.xxyy;
+
+    // Use Liang-Barsky to clip to the left and right sides of this pixel.
+    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
+    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
+
+    // Likewise, clip to the to the bottom and top.
+    if (!slopeZero) {
+        vec2 tVertical = q.zw / dp.yy;
+        if (slopeNegative)
+            tVertical.xy = tVertical.yx;    // FIXME(pcwalton): Can this be removed?
+        t = vec2(max(t.x, tVertical.x), min(t.y, tVertical.y));
+    }
+
+    // If the line doesn't pass through this pixel, detect that and bail.
+    //
+    // This should be worth a branch because it's very common for fragment blocks to all hit this
+    // path.
+    return !(t.x >= t.y || (slopeZero && (p0.y < pixelExtents.z || p0.y > pixelExtents.w)));
 }
 
 // https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html
