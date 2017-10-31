@@ -520,11 +520,11 @@ class ThreeDRenderer extends Renderer {
         this.renderContext.appController.newTimingsReceived(newTimings);
     }
 
-    protected directCurveProgramNameForPass(pass: number): keyof ShaderMap<void> {
+    protected directCurveProgramName(): keyof ShaderMap<void> {
         return 'direct3DCurve';
     }
 
-    protected directInteriorProgramNameForPass(pass: number): keyof ShaderMap<void> {
+    protected directInteriorProgramName(): keyof ShaderMap<void> {
         return 'direct3DInterior';
     }
 

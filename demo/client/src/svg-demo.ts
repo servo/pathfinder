@@ -181,15 +181,15 @@ class SVGDemoRenderer extends Renderer {
         return transform;
     }
 
-    protected directCurveProgramNameForPass(pass: number): keyof ShaderMap<void> {
-        if (this.antialiasingStrategy instanceof XCAAStrategy && pass === 0)
-            return 'xcaaMultiBGDirectCurve';
+    protected directCurveProgramName(): keyof ShaderMap<void> {
+        if (this.antialiasingStrategy instanceof XCAAStrategy)
+            return 'xcaaMultiDirectCurve';
         return 'directCurve';
     }
 
-    protected directInteriorProgramNameForPass(pass: number): keyof ShaderMap<void> {
-        if (this.antialiasingStrategy instanceof XCAAStrategy && pass === 0)
-            return 'xcaaMultiBGDirectInterior';
+    protected directInteriorProgramName(): keyof ShaderMap<void> {
+        if (this.antialiasingStrategy instanceof XCAAStrategy)
+            return 'xcaaMultiDirectInterior';
         return 'directInterior';
     }
 

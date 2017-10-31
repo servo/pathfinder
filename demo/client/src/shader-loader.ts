@@ -27,8 +27,8 @@ export interface ShaderMap<T> {
     ssaaSubpixelResolve: T;
     xcaaMonoResolve: T;
     xcaaMonoSubpixelResolve: T;
-    xcaaMultiBGDirectCurve: T;
-    xcaaMultiBGDirectInterior: T;
+    xcaaMultiDirectCurve: T;
+    xcaaMultiDirectInterior: T;
     xcaaMultiEdgeMaskCurve: T;
     xcaaMultiEdgeMaskLine: T;
     xcaaMultiResolve: T;
@@ -55,8 +55,8 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'ecaaCurve',
     'xcaaMonoResolve',
     'xcaaMonoSubpixelResolve',
-    'xcaaMultiBGDirectCurve',
-    'xcaaMultiBGDirectInterior',
+    'xcaaMultiDirectCurve',
+    'xcaaMultiDirectInterior',
     'xcaaMultiEdgeMaskCurve',
     'xcaaMultiEdgeMaskLine',
     'xcaaMultiResolve',
@@ -125,13 +125,13 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         fragment: "/glsl/gles2/xcaa-mono-subpixel-resolve.fs.glsl",
         vertex: "/glsl/gles2/xcaa-mono-subpixel-resolve.vs.glsl",
     },
-    xcaaMultiBGDirectCurve: {
-        fragment: "/glsl/gles2/xcaa-multi-bg-direct-curve.fs.glsl",
-        vertex: "/glsl/gles2/xcaa-multi-bg-direct-curve.vs.glsl",
+    xcaaMultiDirectCurve: {
+        fragment: "/glsl/gles2/xcaa-multi-direct-curve.fs.glsl",
+        vertex: "/glsl/gles2/xcaa-multi-direct-curve.vs.glsl",
     },
-    xcaaMultiBGDirectInterior: {
-        fragment: "/glsl/gles2/xcaa-multi-bg-direct-interior.fs.glsl",
-        vertex: "/glsl/gles2/xcaa-multi-bg-direct-interior.vs.glsl",
+    xcaaMultiDirectInterior: {
+        fragment: "/glsl/gles2/xcaa-multi-direct-interior.fs.glsl",
+        vertex: "/glsl/gles2/xcaa-multi-direct-interior.vs.glsl",
     },
     xcaaMultiEdgeMaskCurve: {
         fragment: "/glsl/gles2/xcaa-multi-edge-mask-curve.fs.glsl",

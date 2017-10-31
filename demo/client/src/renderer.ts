@@ -126,7 +126,7 @@ export abstract class Renderer {
 
         // Perform direct rendering (Loop-Blinn).
         if (antialiasingStrategy.directRenderingMode !== 'none')
-            this.renderDirect(0);
+            this.renderDirect();
 
         // End the timer, and start a new one.
         if (this.timerQueryPollInterval == null) {
@@ -136,9 +136,6 @@ export abstract class Renderer {
         }
 
         antialiasingStrategy.resolve(this);
-
-        if (antialiasingStrategy.directRenderingMode === 'two-pass')
-            this.renderDirect(1);
 
         // Draw the glyphs with the resolved atlas to the default framebuffer.
         this.compositeIfNecessary();
@@ -264,8 +261,8 @@ export abstract class Renderer {
     protected abstract pathColorsForObject(objectIndex: number): Uint8Array;
     protected abstract pathTransformsForObject(objectIndex: number): Float32Array;
 
-    protected abstract directCurveProgramNameForPass(pass: number): keyof ShaderMap<void>;
-    protected abstract directInteriorProgramNameForPass(pass: number): keyof ShaderMap<void>;
+    protected abstract directCurveProgramName(): keyof ShaderMap<void>;
+    protected abstract directInteriorProgramName(): keyof ShaderMap<void>;
 
     protected drawSceneryIfNecessary(): void {}
 
@@ -283,7 +280,7 @@ export abstract class Renderer {
             gl.depthMask(true);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             break;
-        case 'two-pass':
+        case 'color-depth':
             gl.clear(gl.COLOR_BUFFER_BIT);
             break;
         case 'none':
@@ -304,7 +301,7 @@ export abstract class Renderer {
     /// Called whenever new GPU timing statistics are available.
     protected newTimingsReceived(): void {}
 
-    private renderDirect(pass: number): void {
+    private renderDirect(): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
@@ -325,14 +322,14 @@ export abstract class Renderer {
             gl.disable(gl.BLEND);
 
             // Set up the implicit cover interior VAO.
-            const directInteriorProgramName = this.directInteriorProgramNameForPass(pass);
+            const directInteriorProgramName = this.directInteriorProgramName();
             const directInteriorProgram = renderContext.shaderPrograms[directInteriorProgramName];
             if (this.implicitCoverInteriorVAO == null) {
                 this.implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt
                                                              .createVertexArrayOES();
             }
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverInteriorVAO);
-            this.initImplicitCoverInteriorVAO(pass, objectIndex, instanceRange);
+            this.initImplicitCoverInteriorVAO(objectIndex, instanceRange);
 
             // Draw direct interior parts.
             this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
@@ -341,7 +338,7 @@ export abstract class Renderer {
             this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
             this.pathTransformBufferTextures[objectIndex]
                 .bind(gl, directInteriorProgram.uniforms, 1);
-            if (renderingMode === 'two-pass') {
+            if (renderingMode === 'color-depth') {
                 const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
                 strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 2);
             }
@@ -357,22 +354,27 @@ export abstract class Renderer {
             }
 
             // Set up direct curve state.
-            gl.depthMask(false);
-            gl.enable(gl.BLEND);
-            gl.blendEquation(gl.FUNC_ADD);
-            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+            if (renderingMode === 'color-depth') {
+                gl.depthMask(true);
+                gl.disable(gl.BLEND);
+            } else {
+                gl.depthMask(false);
+                gl.enable(gl.BLEND);
+                gl.blendEquation(gl.FUNC_ADD);
+                gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+            }
 
             // Set up the direct curve VAO.
             //
             // TODO(pcwalton): Cache these.
-            const directCurveProgramName = this.directCurveProgramNameForPass(pass);
+            const directCurveProgramName = this.directCurveProgramName();
             const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
             if (this.implicitCoverCurveVAO == null) {
                 this.implicitCoverCurveVAO = renderContext.vertexArrayObjectExt
                                                           .createVertexArrayOES();
             }
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverCurveVAO);
-            this.initImplicitCoverCurveVAO(pass, objectIndex, instanceRange);
+            this.initImplicitCoverCurveVAO(objectIndex, instanceRange);
 
             // Draw direct curve parts.
             this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
@@ -380,7 +382,7 @@ export abstract class Renderer {
             this.setHintsUniform(directCurveProgram.uniforms);
             this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
             this.pathTransformBufferTextures[objectIndex].bind(gl, directCurveProgram.uniforms, 1);
-            if (renderingMode === 'two-pass') {
+            if (renderingMode === 'color-depth') {
                 const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
                 strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 2);
             }
@@ -439,13 +441,12 @@ export abstract class Renderer {
         }, TIME_INTERVAL_DELAY);
     }
 
-    private initImplicitCoverCurveVAO(pass: number, objectIndex: number, instanceRange: Range):
-                                      void {
+    private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
         const meshes = this.meshes[objectIndex];
 
-        const directCurveProgramName = this.directCurveProgramNameForPass(pass);
+        const directCurveProgramName = this.directCurveProgramName();
         const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
         gl.useProgram(directCurveProgram.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexPositions);
@@ -486,15 +487,12 @@ export abstract class Renderer {
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshes.coverCurveIndices);
     }
 
-    private initImplicitCoverInteriorVAO(pass: number,
-                                         objectIndex: number,
-                                         instanceRange: Range):
-                                         void {
+    private initImplicitCoverInteriorVAO(objectIndex: number, instanceRange: Range): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
         const meshes = this.meshes[objectIndex];
 
-        const directInteriorProgramName = this.directInteriorProgramNameForPass(pass);
+        const directInteriorProgramName = this.directInteriorProgramName();
         const directInteriorProgram = renderContext.shaderPrograms[directInteriorProgramName];
         gl.useProgram(directInteriorProgram.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexPositions);

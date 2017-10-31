@@ -1081,7 +1081,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         const gl = renderContext.gl;
 
         gl.depthMask(true);
-        gl.depthFunc(gl.GREATER);
+        gl.depthFunc(gl.GEQUAL);
         gl.enable(gl.DEPTH_TEST);
 
         gl.blendEquation(gl.FUNC_ADD);
@@ -1106,7 +1106,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
     }
 
     get directRenderingMode(): DirectRenderingMode {
-        return 'two-pass';
+        return 'color-depth';
     }
 
     protected get directDepthTexture(): WebGLTexture | null {

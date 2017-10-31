@@ -265,11 +265,11 @@ export abstract class TextRenderer extends Renderer {
                         this.renderContext.useHinting);
     }
 
-    protected directCurveProgramNameForPass(pass: number): keyof ShaderMap<void> {
+    protected directCurveProgramName(): keyof ShaderMap<void> {
         return 'directCurve';
     }
 
-    protected directInteriorProgramNameForPass(pass: number): keyof ShaderMap<void> {
+    protected directInteriorProgramName(): keyof ShaderMap<void> {
         return 'directInterior';
     }
 }
