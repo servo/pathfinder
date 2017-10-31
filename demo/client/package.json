@@ -4,6 +4,7 @@
   "description": "Demo for Pathfinder 2",
   "scripts": {
     "build": "webpack",
+    "build-watch": "webpack --watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Patrick Walton <pcwalton@mimiga.net>",
