@@ -157,3 +157,8 @@ pub struct GlyphDimensions {
     pub size: Size2D<u32>,
     pub advance: f32,
 }
+
+pub struct GlyphImage {
+    pub dimensions: GlyphDimensions,
+    pub pixels: Vec<u8>,
+}

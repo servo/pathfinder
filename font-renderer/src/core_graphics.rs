@@ -24,7 +24,7 @@ use pathfinder_path_utils::PathCommand;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::sync::Arc;
-use {FontInstance, FontKey, GlyphDimensions, GlyphKey};
+use {FontInstance, FontKey, GlyphDimensions, GlyphImage, GlyphKey};
 
 const CG_ZERO_RECT: CGRect = CGRect {
     origin: CG_ZERO_POINT,
@@ -268,9 +268,4 @@ impl FontInstance {
     fn instantiate(&self, core_graphics_font: &CGFont) -> Result<CTFont, ()> {
         Ok(core_text::font::new_from_CGFont(core_graphics_font, self.size.to_f64_px()))
     }
-}
-
-pub struct GlyphImage {
-    pub dimensions: GlyphDimensions,
-    pub pixels: Vec<u8>,
 }
