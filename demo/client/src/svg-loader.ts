@@ -36,13 +36,37 @@ declare global {
     }
 }
 
-export interface PathInstance {
+export abstract class SVGPath {
     element: SVGPathElement;
-    stroke: number | 'fill';
+    color: glmatrix.vec4;
+
+    constructor(element: SVGPathElement, colorProperty: keyof CSSStyleDeclaration) {
+        this.element = element;
+
+        const style = window.getComputedStyle(element);
+        this.color = glmatrix.vec4.clone(parseColor(style[colorProperty]).rgba);
+    }
+}
+
+export class SVGFill extends SVGPath {
+    constructor(element: SVGPathElement) {
+        super(element, 'fill');
+    }
+}
+
+export class SVGStroke extends SVGPath {
+    width: number;
+
+    constructor(element: SVGPathElement) {
+        super(element, 'stroke');
+
+        const style = window.getComputedStyle(element);
+        this.width = parseInt(style.strokeWidth!, 10);
+    }
 }
 
 export class SVGLoader {
-    pathInstances: PathInstance[];
+    pathInstances: SVGPath[];
     scale: number;
     bounds: glmatrix.vec4;
 
@@ -108,13 +132,9 @@ export class SVGLoader {
             if (element instanceof SVGPathElement) {
                 const style = window.getComputedStyle(element);
                 if (hasRenderingOperation(style.fill))
-                    this.pathInstances.push({ element: element, stroke: 'fill' });
-                if (hasRenderingOperation(style.stroke)) {
-                    this.pathInstances.push({
-                        element: element,
-                        stroke: parseInt(style.strokeWidth!, 10),
-                    });
-                }
+                    this.pathInstances.push(new SVGFill(element));
+                if (hasRenderingOperation(style.stroke))
+                    this.pathInstances.push(new SVGStroke(element));
             }
         }
 
@@ -149,13 +169,14 @@ export class SVGLoader {
                 };
             });
 
-            let kind;
-            if (instance.stroke === 'fill')
-                kind = 'Fill';
-            else
-                kind = { Stroke: Math.max(HAIRLINE_STROKE_WIDTH, instance.stroke) };
-
-            this.paths.push({ segments: segments, kind: kind });
+            if (instance instanceof SVGFill) {
+                this.paths.push({ segments: segments, kind: 'Fill' });
+            } else if (instance instanceof SVGStroke) {
+                this.paths.push({
+                    kind: { Stroke: Math.max(HAIRLINE_STROKE_WIDTH, instance.width) },
+                    segments: segments,
+                });
+            }
         }
 
         this.bounds = glmatrix.vec4.clone([minX, minY, maxX, maxY]);

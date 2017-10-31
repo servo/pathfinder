@@ -205,11 +205,8 @@ class SVGDemoRenderer extends Renderer {
             const startOffset = (pathIndex + 1) * 4;
 
             // Set color.
-            const style = window.getComputedStyle(instances[pathIndex].element);
-            const property = instances[pathIndex].stroke === 'fill' ? 'fill' : 'stroke';
-            const color: number[] =
-                style[property] === 'none' ? [0, 0, 0, 0] : parseColor(style[property]).rgba;
-            pathColors.set(color.slice(0, 3), startOffset);
+            const color: ArrayLike<number> = instances[pathIndex].color;
+            pathColors.set(instances[pathIndex].color, startOffset);
             pathColors[startOffset + 3] = color[3] * 255;
         }
 
