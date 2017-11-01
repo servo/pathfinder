@@ -14,7 +14,7 @@ import * as _ from 'lodash';
 
 import 'path-data-polyfill.js';
 import {parseServerTiming, PathfinderMeshData} from "./meshes";
-import {panic, unwrapNull} from "./utils";
+import {panic, Range, unwrapNull, unwrapUndef} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
 
@@ -44,7 +44,7 @@ export abstract class SVGPath {
         this.element = element;
 
         const style = window.getComputedStyle(element);
-        this.color = glmatrix.vec4.clone(parseColor(style[colorProperty]).rgba);
+        this.color = unwrapNull(colorFromStyle(style[colorProperty]));
     }
 }
 
@@ -65,7 +65,26 @@ export class SVGStroke extends SVGPath {
     }
 }
 
+export type SVGRenderTaskType = 'color' | 'clip';
+
+export class SVGRenderTask {
+    type: SVGRenderTaskType;
+    instanceIndices: Range;
+    clipIndex: number | null;
+
+    constructor(type: SVGRenderTaskType, instanceIndices: Range, clipIndex?: number) {
+        this.type = type;
+        this.instanceIndices = instanceIndices;
+        this.clipIndex = clipIndex != null ? clipIndex : null;
+    }
+}
+
+interface ClipPathIDTable {
+    [id: string]: number;
+}
+
 export class SVGLoader {
+    renderTasks: SVGRenderTask[];
     pathInstances: SVGPath[];
     scale: number;
     bounds: glmatrix.vec4;
@@ -74,13 +93,15 @@ export class SVGLoader {
     private fileData: ArrayBuffer;
 
     private paths: any[];
+    private clipPathIDs: ClipPathIDTable;
 
     constructor() {
         this.scale = 1.0;
-        this.svg = unwrapNull(document.getElementById('pf-svg')) as Element as SVGSVGElement;
+        this.renderTasks = [];
         this.pathInstances = [];
         this.paths = [];
         this.bounds = glmatrix.vec4.create();
+        this.svg = unwrapNull(document.getElementById('pf-svg')) as Element as SVGSVGElement;
     }
 
     loadFile(fileData: ArrayBuffer) {
@@ -118,25 +139,12 @@ export class SVGLoader {
             this.svg.appendChild(kid);
 
         // Scan for geometry elements.
+        this.renderTasks.length = 0;
         this.pathInstances.length = 0;
-        const queue: Element[] = [this.svg];
-        let element;
-        while ((element = queue.pop()) != null) {
-            let kid = element.lastChild;
-            while (kid != null) {
-                if (kid instanceof Element)
-                    queue.push(kid);
-                kid = kid.previousSibling;
-            }
-
-            if (element instanceof SVGPathElement) {
-                const style = window.getComputedStyle(element);
-                if (hasRenderingOperation(style.fill))
-                    this.pathInstances.push(new SVGFill(element));
-                if (hasRenderingOperation(style.stroke))
-                    this.pathInstances.push(new SVGStroke(element));
-            }
-        }
+        this.clipPathIDs = {};
+        this.pushNewRenderTask('color');
+        this.scanElement(this.svg);
+        this.popTopRenderTaskIfEmpty();
 
         let minX = 0, minY = 0, maxX = 0, maxY = 0;
         this.paths = [];
@@ -151,7 +159,7 @@ export class SVGLoader {
             glmatrix.mat2d.scale(ctm, ctm, [1.0, -1.0]);
             glmatrix.mat2d.scale(ctm, ctm, [this.scale, this.scale]);
 
-            const segments = element.getPathData({normalize: true}).map(segment => {
+            const segments = element.getPathData({ normalize: true }).map(segment => {
                 const newValues = _.flatMap(_.chunk(segment.values, 2), coords => {
                     const point = glmatrix.vec2.create();
                     glmatrix.vec2.transformMat2d(point, coords, ctm);
@@ -181,8 +189,74 @@ export class SVGLoader {
 
         this.bounds = glmatrix.vec4.clone([minX, minY, maxX, maxY]);
     }
+
+    private scanElement(element: Element): void {
+        const currentRenderTask = unwrapUndef(_.last(this.renderTasks));
+        const style = window.getComputedStyle(element);
+
+        let hasClip = style.clipPath != null && style.clipPath !== 'none';
+        if (hasClip) {
+            const matches = /^url\("#([^"]+)"\)$/.exec(unwrapNull(style.clipPath));
+            if (matches == null ||
+                matches[1] == null ||
+                !this.clipPathIDs.hasOwnProperty(matches[1])) {
+                hasClip = false;
+            } else {
+                currentRenderTask.clipIndex = this.clipPathIDs[matches[1]];
+            }
+        }
+
+        if (element instanceof SVGPathElement) {
+            if (colorFromStyle(style.fill) != null)
+                this.addPathInstance(new SVGFill(element));
+            if (colorFromStyle(style.stroke) != null)
+                this.addPathInstance(new SVGStroke(element));
+        }
+
+        if (element instanceof SVGClipPathElement) {
+            this.pushNewRenderTask('clip');
+            this.clipPathIDs[element.id] = this.renderTasks.length - 1;
+        }
+
+        for (const kid of element.childNodes) {
+            if (kid instanceof Element)
+                this.scanElement(kid);
+        }
+
+        if (element instanceof SVGClipPathElement || hasClip)
+            this.pushNewRenderTask('color');
+    }
+
+    private addPathInstance(pathInstance: SVGPath): void {
+        const currentRenderTask = unwrapUndef(_.last(this.renderTasks));
+        this.pathInstances.push(pathInstance);
+        currentRenderTask.instanceIndices.end = Math.max(currentRenderTask.instanceIndices.end,
+                                                         this.pathInstances.length);
+    }
+
+    private popTopRenderTaskIfEmpty(): void {
+        const lastRenderTask = _.last(this.renderTasks);
+        if (lastRenderTask != null && lastRenderTask.instanceIndices.isEmpty)
+            this.renderTasks.pop();
+    }
+
+    private pushNewRenderTask(taskType: SVGRenderTaskType): void {
+        this.popTopRenderTaskIfEmpty();
+        const emptyRange = new Range(this.pathInstances.length, this.pathInstances.length);
+        this.renderTasks.push(new SVGRenderTask(taskType, emptyRange));
+    }
 }
 
-function hasRenderingOperation(style: string | null): boolean {
-    return style != null && style !== 'none' && parseColor(style).rgba[3] > 0.0;
+function colorFromStyle(style: string | null): glmatrix.vec4 | null {
+    if (style == null || style === 'none')
+        return null;
+
+    // TODO(pcwalton): Gradients?
+    const color = parseColor(style);
+    if (color.rgba == null)
+        return glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
+
+    if (color.rgba[3] === 0.0)
+        return null;
+    return glmatrix.vec4.clone(color.rgba);
 }
