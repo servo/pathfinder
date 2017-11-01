@@ -309,10 +309,6 @@ class BenchmarkRenderer extends Renderer {
         return glmatrix.vec2.clone([1.0, 1.0]);
     }
 
-    protected get depthFunction(): number {
-        return this.renderContext.gl.GREATER;
-    }
-
     protected get worldTransform() {
         const canvas = this.renderContext.canvas;
 
@@ -327,6 +323,10 @@ class BenchmarkRenderer extends Renderer {
         glmatrix.mat4.scale(transform, transform, [pixelsPerUnit, pixelsPerUnit, 1.0]);
 
         return transform;
+    }
+
+    protected get objectCount(): number {
+        return this.meshes.length;
     }
 
     private _pixelsPerEm: number = 32.0;

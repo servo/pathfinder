@@ -60,16 +60,16 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         this.destFramebufferSize = glmatrix.vec2.create();
     }
 
-    init(renderer: Renderer) {
+    init(renderer: Renderer): void {
         super.init(renderer);
     }
 
-    attachMeshes(renderer: Renderer) {
+    attachMeshes(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         this.createResolveVAO(renderer);
     }
 
-    setFramebufferSize(renderer: Renderer) {
+    setFramebufferSize(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
 
         this.destFramebufferSize = glmatrix.vec2.clone(renderer.destAllocatedSize);
@@ -82,7 +82,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, null);
     }
 
-    prepareForDirectRendering(renderer: Renderer) {
+    prepareForRendering(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -102,7 +102,16 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
-    antialias(renderer: Renderer) {
+    prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void {
+        // TODO(pcwalton)
+        this.prepareForRendering(renderer);
+    }
+
+    finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {
+        // TODO(pcwalton)
+    }
+
+    antialias(renderer: Renderer): void {
         // Perform early preparations.
         this.createPathBoundsBufferTexture(renderer);
 
@@ -116,7 +125,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         this.clearForAA(renderer);
     }
 
-    resolve(renderer: Renderer) {
+    resolve(renderer: Renderer): void {
         // Resolve the antialiasing.
         this.resolveAA(renderer);
     }
@@ -125,7 +134,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         return glmatrix.mat4.create();
     }
 
-    protected initDirectFramebufferIfNecessary(renderer: Renderer) {
+    protected initDirectFramebufferIfNecessary(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -156,7 +165,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         renderContext.gl.enable(renderContext.gl.SCISSOR_TEST);
     }
 
-    protected setAAState(renderer: Renderer) {
+    protected setAAState(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const usedSize = this.supersampledUsedSize(renderer);
         renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, this.aaFramebuffer);
@@ -170,7 +179,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         this.setAADepthState(renderer);
     }
 
-    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap) {
+    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -183,7 +192,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         renderer.setHintsUniform(uniforms);
     }
 
-    protected resolveAA(renderer: Renderer) {
+    protected resolveAA(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -238,7 +247,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
     protected abstract setAADepthState(renderer: Renderer): void;
     protected abstract clearForResolve(renderer: Renderer): void;
 
-    private initAAAlphaFramebuffer(renderer: Renderer) {
+    private initAAAlphaFramebuffer(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         this.aaAlphaTexture = unwrapNull(renderContext.gl.createTexture());
         renderContext.gl.activeTexture(renderContext.gl.TEXTURE0);
@@ -262,7 +271,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
                                                this.aaDepthTexture);
     }
 
-    private createPathBoundsBufferTexture(renderer: Renderer) {
+    private createPathBoundsBufferTexture(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const pathBounds = renderer.pathBoundingRects(0);
         this.pathBoundsBufferTexture = new PathfinderBufferTexture(renderContext.gl,
@@ -270,7 +279,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         this.pathBoundsBufferTexture.upload(renderContext.gl, pathBounds);
     }
 
-    private createResolveVAO(renderer: Renderer) {
+    private createResolveVAO(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         this.resolveVAO = renderContext.vertexArrayObjectExt.createVertexArrayOES();
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.resolveVAO);
@@ -296,7 +305,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
     private lineVAOs: FastEdgeVAOs;
     private curveVAOs: FastEdgeVAOs;
 
-    attachMeshes(renderer: Renderer) {
+    attachMeshes(renderer: Renderer): void {
         super.attachMeshes(renderer);
 
         this.createCoverVAO(renderer);
@@ -304,7 +313,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         this.createCurveVAOs(renderer);
     }
 
-    antialias(renderer: Renderer) {
+    antialias(renderer: Renderer): void {
         super.antialias(renderer);
 
         // Conservatively cover.
@@ -391,7 +400,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private createCoverVAO(renderer: Renderer) {
+    private createCoverVAO(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
 
         this.coverVAO = renderContext.vertexArrayObjectExt.createVertexArrayOES();
@@ -445,7 +454,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private createLineVAOs(renderer: Renderer) {
+    private createLineVAOs(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const vaos: Partial<FastEdgeVAOs> = {};
         const lineProgram = renderContext.shaderPrograms.mcaaLine;
@@ -517,7 +526,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         this.lineVAOs = vaos as FastEdgeVAOs;
     }
 
-    private createCurveVAOs(renderer: Renderer) {
+    private createCurveVAOs(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const vaos: Partial<FastEdgeVAOs> = {};
         const curveProgram = renderContext.shaderPrograms.mcaaCurve;
@@ -612,14 +621,14 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private setBlendModeForAA(renderer: Renderer, direction: 'upper' | 'lower') {
+    private setBlendModeForAA(renderer: Renderer, direction: 'upper' | 'lower'): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.blendEquation(renderContext.gl.FUNC_ADD);
         renderContext.gl.blendFunc(renderContext.gl.ONE, renderContext.gl.ONE);
         renderContext.gl.enable(renderContext.gl.BLEND);
     }
 
-    private antialiasLines(renderer: Renderer) {
+    private antialiasLines(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         this.setAAState(renderer);
 
@@ -630,7 +639,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         this.antialiasLinesWithProgram(renderer, lineProgram);
     }
 
-    private antialiasCurves(renderer: Renderer) {
+    private antialiasCurves(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
 
         this.setAAState(renderer);
@@ -641,7 +650,6 @@ export abstract class MCAAStrategy extends XCAAStrategy {
 
         this.antialiasCurvesWithProgram(renderer, curveProgram);
     }
-
 }
 
 export class ECAAStrategy extends XCAAStrategy {
@@ -652,14 +660,14 @@ export class ECAAStrategy extends XCAAStrategy {
         return 'none';
     }
 
-    attachMeshes(renderer: Renderer) {
+    attachMeshes(renderer: Renderer): void {
         super.attachMeshes(renderer);
 
         this.createLineVAO(renderer);
         this.createCurveVAO(renderer);
     }
 
-    antialias(renderer: Renderer) {
+    antialias(renderer: Renderer): void {
         super.antialias(renderer);
 
         // Antialias.
@@ -667,7 +675,7 @@ export class ECAAStrategy extends XCAAStrategy {
         this.antialiasCurves(renderer);
     }
 
-    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap) {
+    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap): void {
         super.setAAUniforms(renderer, uniforms);
 
         const renderContext = renderer.renderContext;
@@ -681,9 +689,9 @@ export class ECAAStrategy extends XCAAStrategy {
         return renderContext.shaderPrograms.xcaaMonoResolve;
     }
 
-    protected maskEdgesIfNecessary(renderer: Renderer) {}
+    protected maskEdgesIfNecessary(renderer: Renderer): void {}
 
-    protected clearForAA(renderer: Renderer) {
+    protected clearForAA(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         renderContext.gl.clearDepth(0.0);
@@ -691,25 +699,25 @@ export class ECAAStrategy extends XCAAStrategy {
                                renderContext.gl.DEPTH_BUFFER_BIT);
     }
 
-    protected setAADepthState(renderer: Renderer) {
+    protected setAADepthState(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.disable(renderContext.gl.DEPTH_TEST);
     }
 
-    protected clearForResolve(renderer: Renderer) {
+    protected clearForResolve(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT);
     }
 
-    private setBlendModeForAA(renderer: Renderer) {
+    private setBlendModeForAA(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.blendEquation(renderContext.gl.FUNC_ADD);
         renderContext.gl.blendFunc(renderContext.gl.ONE, renderContext.gl.ONE);
         renderContext.gl.enable(renderContext.gl.BLEND);
     }
 
-    private createLineVAO(renderer: Renderer) {
+    private createLineVAO(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
 
         const lineProgram = renderContext.shaderPrograms.ecaaLine;
@@ -786,7 +794,7 @@ export class ECAAStrategy extends XCAAStrategy {
         this.lineVAO = vao;
     }
 
-    private createCurveVAO(renderer: Renderer) {
+    private createCurveVAO(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
 
         const curveProgram = renderContext.shaderPrograms.ecaaCurve;
@@ -864,7 +872,7 @@ export class ECAAStrategy extends XCAAStrategy {
         this.curveVAO = vao;
     }
 
-    private antialiasLines(renderer: Renderer) {
+    private antialiasLines(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
 
         this.setAAState(renderer);
@@ -890,7 +898,7 @@ export class ECAAStrategy extends XCAAStrategy {
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private antialiasCurves(renderer: Renderer) {
+    private antialiasCurves(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
 
         this.setAAState(renderer);
@@ -924,9 +932,9 @@ export class MCAAMonochromeStrategy extends MCAAStrategy {
         return renderContext.shaderPrograms.xcaaMonoResolve;
     }
 
-    protected maskEdgesIfNecessary(renderer: Renderer) {}
+    protected maskEdgesIfNecessary(renderer: Renderer): void {}
 
-    protected clearForAA(renderer: Renderer) {
+    protected clearForAA(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         renderContext.gl.clearDepth(0.0);
@@ -934,12 +942,12 @@ export class MCAAMonochromeStrategy extends MCAAStrategy {
                                renderContext.gl.DEPTH_BUFFER_BIT);
     }
 
-    protected setAADepthState(renderer: Renderer) {
+    protected setAADepthState(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.disable(renderContext.gl.DEPTH_TEST);
     }
 
-    protected clearForResolve(renderer: Renderer) {
+    protected clearForResolve(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.clearColor(0.0, 0.0, 0.0, 0.0);
         renderContext.gl.clear(renderContext.gl.COLOR_BUFFER_BIT);
@@ -985,8 +993,16 @@ export class AdaptiveMonochromeXCAAStrategy implements AntialiasingStrategy {
         return this.mcaaStrategy.transform;
     }
 
-    prepareForDirectRendering(renderer: Renderer): void {
-        this.getAppropriateStrategy(renderer).prepareForDirectRendering(renderer);
+    prepareForRendering(renderer: Renderer): void {
+        this.getAppropriateStrategy(renderer).prepareForRendering(renderer);
+    }
+
+    prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void {
+        this.getAppropriateStrategy(renderer).prepareToDirectlyRenderObject(renderer, objectIndex);
+    }
+
+    finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {
+        this.getAppropriateStrategy(renderer).finishDirectlyRenderingObject(renderer, objectIndex);
     }
 
     antialias(renderer: Renderer): void {
@@ -1018,9 +1034,9 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         return renderContext.shaderPrograms.xcaaMultiResolve;
     }
 
-    protected initDirectFramebufferIfNecessary(renderer: Renderer) {}
+    protected initDirectFramebufferIfNecessary(renderer: Renderer): void {}
 
-    protected maskEdgesIfNecessary(renderer: Renderer) {
+    protected maskEdgesIfNecessary(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -1053,14 +1069,14 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    protected setCoverDepthState(renderer: Renderer) {
+    protected setCoverDepthState(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         renderContext.gl.depthMask(false);
         renderContext.gl.depthFunc(renderContext.gl.EQUAL);
         renderContext.gl.enable(renderContext.gl.DEPTH_TEST);
     }
 
-    protected clearForAA(renderer: Renderer) {
+    protected clearForAA(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -1068,7 +1084,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         gl.clear(gl.COLOR_BUFFER_BIT);
     }
 
-    protected setAADepthState(renderer: Renderer) {
+    protected setAADepthState(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -1089,7 +1105,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         gl.enable(gl.BLEND);
     }
 
-    protected clearForResolve(renderer: Renderer) {}
+    protected clearForResolve(renderer: Renderer): void {}
 
     protected setAdditionalStateForResolveIfNecessary(renderer: Renderer,
                                                       resolveProgram: PathfinderShaderProgram,

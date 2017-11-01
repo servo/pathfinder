@@ -10,7 +10,10 @@
 
 import * as glmatrix from 'gl-matrix';
 
+import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
+import {createFramebufferDepthTexture} from './gl-utils';
 import {Renderer} from './renderer';
+import {unwrapNull} from './utils';
 import {DemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
@@ -42,7 +45,12 @@ export abstract class AntialiasingStrategy {
     // Called before direct rendering.
     //
     // Typically, this redirects direct rendering to a framebuffer of some sort.
-    abstract prepareForDirectRendering(renderer: Renderer): void;
+    abstract prepareForRendering(renderer: Renderer): void;
+
+    // Called before directly rendering a single object.
+    abstract prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void;
+
+    abstract finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void;
 
     // Called after direct rendering.
     //
@@ -58,9 +66,16 @@ export abstract class AntialiasingStrategy {
 export class NoAAStrategy extends AntialiasingStrategy {
     framebufferSize: glmatrix.vec2;
 
+    private renderTargetColorTextures: WebGLTexture[];
+    private renderTargetDepthTextures: WebGLTexture[];
+    private renderTargetFramebuffers: WebGLFramebuffer[];
+
     constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
         this.framebufferSize = glmatrix.vec2.create();
+        this.renderTargetColorTextures = [];
+        this.renderTargetDepthTextures = [];
+        this.renderTargetFramebuffers = [];
     }
 
     attachMeshes(renderer: Renderer) {}
@@ -73,11 +88,61 @@ export class NoAAStrategy extends AntialiasingStrategy {
         return glmatrix.mat4.create();
     }
 
-    prepareForDirectRendering(renderer: Renderer) {
+    prepareForRendering(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
-        renderContext.gl.bindFramebuffer(renderContext.gl.FRAMEBUFFER, renderer.destFramebuffer);
-        renderContext.gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
-        renderContext.gl.disable(renderContext.gl.SCISSOR_TEST);
+        const gl = renderContext.gl;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
+        gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        gl.disable(gl.SCISSOR_TEST);
+    }
+
+    prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void {
+        const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
+
+        if (renderer.usesIntermediateRenderTargets &&
+            (renderer.renderTaskTypeForObject(objectIndex) === 'clip' ||
+             renderer.compositingOperationForObject(objectIndex) != null)) {
+            if (this.renderTargetColorTextures[objectIndex] == null) {
+                this.renderTargetColorTextures[objectIndex] =
+                    createFramebufferColorTexture(gl,
+                                                  this.framebufferSize,
+                                                  renderContext.colorAlphaFormat);
+            }
+            if (this.renderTargetDepthTextures[objectIndex] == null) {
+                this.renderTargetDepthTextures[objectIndex] =
+                    createFramebufferDepthTexture(gl, this.framebufferSize);
+            }
+            if (this.renderTargetFramebuffers[objectIndex] == null) {
+                this.renderTargetFramebuffers[objectIndex] =
+                    createFramebuffer(gl,
+                                      this.renderTargetColorTextures[objectIndex],
+                                      this.renderTargetDepthTextures[objectIndex]);
+            }
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.renderTargetFramebuffers[objectIndex]);
+        } else {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
+        }
+
+        gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        gl.disable(gl.SCISSOR_TEST);
+    }
+
+    finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {
+        if (!renderer.usesIntermediateRenderTargets)
+            return;
+
+        const compositingOperation = renderer.compositingOperationForObject(objectIndex);
+        if (compositingOperation == null)
+            return;
+
+        const gl = renderer.renderContext.gl;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
+        gl.viewport(0, 0, renderer.destAllocatedSize[0], renderer.destAllocatedSize[1]);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
+
+        compositingOperation.composite(renderer, objectIndex, this.renderTargetColorTextures);
     }
 
     antialias(renderer: Renderer) {}

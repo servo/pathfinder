@@ -80,7 +80,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         return transform;
     }
 
-    prepareForDirectRendering(renderer: Renderer) {
+    prepareForRendering(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -90,6 +90,18 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         gl.viewport(0, 0, framebufferSize[0], framebufferSize[1]);
         gl.scissor(0, 0, usedSize[0], usedSize[1]);
         gl.enable(gl.SCISSOR_TEST);
+
+        const clearColor = renderer.backgroundColor;
+        gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+
+    prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void {
+        // TODO(pcwalton)
+    }
+
+    finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {
+        // TODO(pcwalton)
     }
 
     antialias(renderer: Renderer) {}

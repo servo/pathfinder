@@ -9,14 +9,16 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as _ from 'lodash';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
 import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import PathfinderBufferTexture from "./buffer-texture";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from "./meshes";
+import {CompositingOperation, RenderTaskType} from './render-task';
 import {ShaderMap} from './shader-loader';
-import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull} from './utils';
+import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull, unwrapUndef} from './utils';
 import {RenderContext, Timings} from "./view";
 import {MCAAMulticolorStrategy} from './xcaa-strategy';
 
@@ -48,6 +50,14 @@ export abstract class Renderer {
         return null;
     }
 
+    get backgroundColor(): glmatrix.vec4 {
+        return glmatrix.vec4.create();
+    }
+
+    get usesIntermediateRenderTargets(): boolean {
+        return false;
+    }
+
     abstract get destFramebuffer(): WebGLFramebuffer | null;
     abstract get destAllocatedSize(): glmatrix.vec2;
     abstract get destUsedSize(): glmatrix.vec2;
@@ -60,11 +70,7 @@ export abstract class Renderer {
         return false;
     }
 
-    protected get backgroundColor(): glmatrix.vec4 {
-        return glmatrix.vec4.create();
-    }
-
-    protected abstract get depthFunction(): GLenum;
+    protected abstract get objectCount(): number;
     protected abstract get usedSizeFactor(): glmatrix.vec2;
     protected abstract get worldTransform(): glmatrix.mat4;
 
@@ -111,18 +117,16 @@ export abstract class Renderer {
                                                       renderContext.atlasRenderingTimerQuery);
         }
 
-        // Antialias.
+        this.clearDestFramebuffer();
+
         const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
-        antialiasingStrategy.antialias(this);
-
-        // Prepare for direct rendering.
-        antialiasingStrategy.prepareForDirectRendering(this);
-
-        // Clear.
-        this.clearForDirectRendering();
+        antialiasingStrategy.prepareForRendering(this);
 
         // Draw "scenery" (used in the 3D view).
         this.drawSceneryIfNecessary();
+
+        // Antialias.
+        antialiasingStrategy.antialias(this);
 
         // Perform direct rendering (Loop-Blinn).
         if (antialiasingStrategy.directRenderingMode !== 'none')
@@ -249,7 +253,20 @@ export abstract class Renderer {
 
     setPathColorsUniform(objectIndex: number, uniforms: UniformMap, textureUnit: number): void {
         const gl = this.renderContext.gl;
-        this.pathColorsBufferTextures[objectIndex].bind(gl, uniforms, textureUnit);
+        const meshIndex = this.meshIndexForObject(objectIndex);
+        this.pathColorsBufferTextures[meshIndex].bind(gl, uniforms, textureUnit);
+    }
+
+    renderTaskTypeForObject(objectIndex: number): RenderTaskType {
+        return 'color';
+    }
+
+    compositingOperationForObject(objectIndex: number): CompositingOperation | null {
+        return null;
+    }
+
+    protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
+        return glmatrix.vec4.create();
     }
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
@@ -266,12 +283,26 @@ export abstract class Renderer {
 
     protected drawSceneryIfNecessary(): void {}
 
-    protected clearForDirectRendering(): void {
-        const renderingMode = unwrapNull(this.antialiasingStrategy).directRenderingMode;
+    protected clearDestFramebuffer(): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
         const clearColor = this.backgroundColor;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.destFramebuffer);
+        gl.viewport(0, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
+        gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    }
+
+    protected clearForDirectRendering(objectIndex: number): void {
+        const renderingMode = unwrapNull(this.antialiasingStrategy).directRenderingMode;
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
+        const clearColor = this.clearColorForObject(objectIndex);
+        if (clearColor == null)
+            return;
+
         gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
 
         switch (renderingMode) {
@@ -298,6 +329,15 @@ export abstract class Renderer {
         return new Range(0, 1);
     }
 
+    protected meshIndexForObject(objectIndex: number): number {
+        return objectIndex;
+    }
+
+    protected pathRangeForObject(objectIndex: number): Range {
+        const bVertexPathRanges = this.meshes[objectIndex].bVertexPathRanges;
+        return new Range(1, bVertexPathRanges.length + 1);
+    }
+
     /// Called whenever new GPU timing statistics are available.
     protected newTimingsReceived(): void {}
 
@@ -307,16 +347,27 @@ export abstract class Renderer {
 
         const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
         const renderingMode = antialiasingStrategy.directRenderingMode;
+        const objectCount = this.objectCount;
 
-        for (let objectIndex = 0; objectIndex < this.meshes.length; objectIndex++) {
+        for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
             const instanceRange = this.instanceRangeForObject(objectIndex);
             if (instanceRange.isEmpty)
                 continue;
 
-            const meshData = this.meshData[objectIndex];
+            const pathRange = this.pathRangeForObject(objectIndex);
+            const meshIndex = this.meshIndexForObject(objectIndex);
+
+            // Prepare for direct rendering.
+            antialiasingStrategy.prepareToDirectlyRenderObject(this, objectIndex);
+
+            // Clear.
+            this.clearForDirectRendering(objectIndex);
+
+            const meshes = this.meshes[meshIndex];
+            const meshData = this.meshData[meshIndex];
 
             // Set up implicit cover state.
-            gl.depthFunc(this.depthFunction);
+            gl.depthFunc(gl.GREATER);
             gl.depthMask(true);
             gl.enable(gl.DEPTH_TEST);
             gl.disable(gl.BLEND);
@@ -336,21 +387,26 @@ export abstract class Renderer {
             this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
             this.setHintsUniform(directInteriorProgram.uniforms);
             this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
-            this.pathTransformBufferTextures[objectIndex]
+            this.pathTransformBufferTextures[meshIndex]
                 .bind(gl, directInteriorProgram.uniforms, 1);
             if (renderingMode === 'color-depth') {
                 const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
                 strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 2);
             }
-            let indexCount = meshData.coverInteriorIndices.byteLength / UINT32_SIZE;
+            const coverInteriorRange = getMeshIndexRange(meshes.coverInteriorIndexRanges,
+                                                         pathRange);
             if (!this.pathIDsAreInstanced) {
-                gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
+                gl.drawElements(gl.TRIANGLES,
+                                coverInteriorRange.length,
+                                gl.UNSIGNED_INT,
+                                coverInteriorRange.start * UINT32_SIZE);
             } else {
-                renderContext.instancedArraysExt.drawElementsInstancedANGLE(gl.TRIANGLES,
-                                                                            indexCount,
-                                                                            gl.UNSIGNED_INT,
-                                                                            0,
-                                                                            instanceRange.length);
+                renderContext.instancedArraysExt
+                             .drawElementsInstancedANGLE(gl.TRIANGLES,
+                                                         coverInteriorRange.length,
+                                                         gl.UNSIGNED_INT,
+                                                         0,
+                                                         instanceRange.length);
             }
 
             // Set up direct curve state.
@@ -381,23 +437,29 @@ export abstract class Renderer {
             this.setFramebufferSizeUniform(directCurveProgram.uniforms);
             this.setHintsUniform(directCurveProgram.uniforms);
             this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
-            this.pathTransformBufferTextures[objectIndex].bind(gl, directCurveProgram.uniforms, 1);
+            this.pathTransformBufferTextures[meshIndex].bind(gl, directCurveProgram.uniforms, 1);
             if (renderingMode === 'color-depth') {
                 const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
                 strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 2);
             }
-            indexCount = meshData.coverCurveIndices.byteLength / UINT32_SIZE;
+            const coverCurveRange = getMeshIndexRange(meshes.coverCurveIndexRanges, pathRange);
             if (!this.pathIDsAreInstanced) {
-                gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
+                gl.drawElements(gl.TRIANGLES,
+                                coverCurveRange.length,
+                                gl.UNSIGNED_INT,
+                                coverCurveRange.start * UINT32_SIZE);
             } else {
                 renderContext.instancedArraysExt.drawElementsInstancedANGLE(gl.TRIANGLES,
-                                                                            indexCount,
+                                                                            coverCurveRange.length,
                                                                             gl.UNSIGNED_INT,
                                                                             0,
                                                                             instanceRange.length);
             }
 
             renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
+
+            // Finish direct rendering. Right now, this performs compositing if necessary.
+            antialiasingStrategy.finishDirectlyRenderingObject(this, objectIndex);
         }
     }
 
@@ -444,7 +506,9 @@ export abstract class Renderer {
     private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
-        const meshes = this.meshes[objectIndex];
+
+        const meshIndex = this.meshIndexForObject(objectIndex);
+        const meshes = this.meshes[meshIndex];
 
         const directCurveProgramName = this.directCurveProgramName();
         const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
@@ -490,7 +554,9 @@ export abstract class Renderer {
     private initImplicitCoverInteriorVAO(objectIndex: number, instanceRange: Range): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
-        const meshes = this.meshes[objectIndex];
+
+        const meshIndex = this.meshIndexForObject(objectIndex);
+        const meshes = this.meshes[meshIndex];
 
         const directInteriorProgramName = this.directInteriorProgramName();
         const directInteriorProgram = renderContext.shaderPrograms[directInteriorProgramName];
@@ -542,4 +608,23 @@ export abstract class Renderer {
         glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
         this.renderContext.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
+}
+
+function getMeshIndexRange(indexRanges: Range[], pathRange: Range): Range {
+    if (indexRanges.length === 0)
+        return new Range(0, 0);
+
+    let firstIndex;
+    if (pathRange.start - 1 >= indexRanges.length)
+        firstIndex = unwrapUndef(_.last(indexRanges)).end;
+    else
+        firstIndex = indexRanges[pathRange.start - 1].start;
+
+    let lastIndex;
+    if (pathRange.end - 1 >= indexRanges.length)
+        lastIndex = unwrapUndef(_.last(indexRanges)).end;
+    else
+        lastIndex = indexRanges[pathRange.end - 1].start;
+
+    return new Range(firstIndex, lastIndex);
 }

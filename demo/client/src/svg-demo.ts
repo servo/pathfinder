@@ -18,11 +18,12 @@ import PathfinderBufferTexture from "./buffer-texture";
 import {OrthographicCamera} from "./camera";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
+import {CompositingOperation, RenderTaskType} from './render-task';
 import {Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
-import {panic, unwrapNull} from './utils';
+import {panic, Range, unwrapNull} from './utils';
 import {DemoView, Timings} from './view';
 import {MCAAMulticolorStrategy, XCAAStrategy} from "./xcaa-strategy";
 
@@ -127,8 +128,17 @@ class SVGDemoRenderer extends Renderer {
         return this.destAllocatedSize;
     }
 
-    protected get backgroundColor(): glmatrix.vec4 {
+    get usesIntermediateRenderTargets(): boolean {
+        return true;
+    }
+
+    get backgroundColor(): glmatrix.vec4 {
         return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
+    }
+
+    protected get objectCount(): number {
+        const loader = this.renderContext.appController.loader;
+        return loader.renderTasks.length;
     }
 
     constructor(renderContext: SVGDemoView) {
@@ -159,8 +169,14 @@ class SVGDemoRenderer extends Renderer {
         this.camera.zoomToFit();
     }
 
-    protected get depthFunction(): GLenum {
-        return this.renderContext.gl.GREATER;
+    renderTaskTypeForObject(objectIndex: number): RenderTaskType {
+        const loader = this.renderContext.appController.loader;
+        return loader.renderTasks[objectIndex].type;
+    }
+
+    compositingOperationForObject(objectIndex: number): CompositingOperation | null {
+        const loader = this.renderContext.appController.loader;
+        return loader.renderTasks[objectIndex].compositingOperation;
     }
 
     protected get usedSizeFactor(): glmatrix.vec2 {
@@ -191,6 +207,15 @@ class SVGDemoRenderer extends Renderer {
         if (this.antialiasingStrategy instanceof XCAAStrategy)
             return 'xcaaMultiDirectInterior';
         return 'directInterior';
+    }
+
+    protected meshIndexForObject(objectIndex: number): number {
+        return 0;
+    }
+
+    protected pathRangeForObject(objectIndex: number): Range {
+        const loader = this.renderContext.appController.loader;
+        return loader.renderTasks[objectIndex].instanceIndices;
     }
 
     protected newTimingsReceived(): void {

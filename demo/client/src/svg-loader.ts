@@ -14,6 +14,7 @@ import * as _ from 'lodash';
 
 import 'path-data-polyfill.js';
 import {parseServerTiming, PathfinderMeshData} from "./meshes";
+import {AlphaMaskCompositingOperation, RenderTask, RenderTaskType} from './render-task';
 import {panic, Range, unwrapNull, unwrapUndef} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
@@ -65,26 +66,12 @@ export class SVGStroke extends SVGPath {
     }
 }
 
-export type SVGRenderTaskType = 'color' | 'clip';
-
-export class SVGRenderTask {
-    type: SVGRenderTaskType;
-    instanceIndices: Range;
-    clipIndex: number | null;
-
-    constructor(type: SVGRenderTaskType, instanceIndices: Range, clipIndex?: number) {
-        this.type = type;
-        this.instanceIndices = instanceIndices;
-        this.clipIndex = clipIndex != null ? clipIndex : null;
-    }
-}
-
 interface ClipPathIDTable {
     [id: string]: number;
 }
 
 export class SVGLoader {
-    renderTasks: SVGRenderTask[];
+    renderTasks: RenderTask[];
     pathInstances: SVGPath[];
     scale: number;
     bounds: glmatrix.vec4;
@@ -202,7 +189,8 @@ export class SVGLoader {
                 !this.clipPathIDs.hasOwnProperty(matches[1])) {
                 hasClip = false;
             } else {
-                currentRenderTask.clipIndex = this.clipPathIDs[matches[1]];
+                currentRenderTask.compositingOperation =
+                    new AlphaMaskCompositingOperation(this.clipPathIDs[matches[1]]);
             }
         }
 
@@ -231,7 +219,7 @@ export class SVGLoader {
         const currentRenderTask = unwrapUndef(_.last(this.renderTasks));
         this.pathInstances.push(pathInstance);
         currentRenderTask.instanceIndices.end = Math.max(currentRenderTask.instanceIndices.end,
-                                                         this.pathInstances.length);
+                                                         this.pathInstances.length + 1);
     }
 
     private popTopRenderTaskIfEmpty(): void {
@@ -240,10 +228,10 @@ export class SVGLoader {
             this.renderTasks.pop();
     }
 
-    private pushNewRenderTask(taskType: SVGRenderTaskType): void {
+    private pushNewRenderTask(taskType: RenderTaskType): void {
         this.popTopRenderTaskIfEmpty();
-        const emptyRange = new Range(this.pathInstances.length, this.pathInstances.length);
-        this.renderTasks.push(new SVGRenderTask(taskType, emptyRange));
+        const emptyRange = new Range(this.pathInstances.length + 1, this.pathInstances.length + 1);
+        this.renderTasks.push(new RenderTask(taskType, emptyRange));
     }
 }
 

@@ -203,6 +203,20 @@ const RANGE_TO_RANGE_BUFFER_TABLE: RangeToRangeBufferTable = {
     segmentLineRanges: 'segmentLinePathIDs',
 };
 
+const RANGE_KEYS: Array<keyof PathRanges> = [
+    'bQuadPathRanges',
+    'bVertexPathRanges',
+    'coverInteriorIndexRanges',
+    'coverCurveIndexRanges',
+    'edgeBoundingBoxRanges',
+    'edgeUpperLineIndexRanges',
+    'edgeUpperCurveIndexRanges',
+    'edgeLowerLineIndexRanges',
+    'edgeLowerCurveIndexRanges',
+    'segmentCurveRanges',
+    'segmentLineRanges',
+];
+
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
 export interface Meshes<T> {
@@ -375,7 +389,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
             tempOriginalRanges[key] = this[key];
 
             const newExpandedRanges = [];
-            for (const newPathID of pathIDs)
+            for (const pathIndex of pathIDs)
                 newExpandedRanges.push(new Range(0, 0));
             tempExpandedRanges[key] = newExpandedRanges;
         }
@@ -544,7 +558,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
     }
 }
 
-export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
+export class PathfinderMeshBuffers implements Meshes<WebGLBuffer>, PathRanges {
     readonly bQuads: WebGLBuffer;
     readonly bVertexPositions: WebGLBuffer;
     readonly bVertexPathIDs: WebGLBuffer;
@@ -569,6 +583,18 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly segmentLineNormals: WebGLBuffer;
     readonly segmentCurveNormals: WebGLBuffer;
 
+    readonly bQuadPathRanges: Range[];
+    readonly bVertexPathRanges: Range[];
+    readonly coverInteriorIndexRanges: Range[];
+    readonly coverCurveIndexRanges: Range[];
+    readonly edgeBoundingBoxRanges: Range[];
+    readonly edgeUpperLineIndexRanges: Range[];
+    readonly edgeUpperCurveIndexRanges: Range[];
+    readonly edgeLowerLineIndexRanges: Range[];
+    readonly edgeLowerCurveIndexRanges: Range[];
+    readonly segmentCurveRanges: Range[];
+    readonly segmentLineRanges: Range[];
+
     constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>) {
             const bufferType = gl[BUFFER_TYPES[bufferName]];
@@ -577,6 +603,9 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
             gl.bufferData(bufferType, meshData[bufferName], gl.STATIC_DRAW);
             this[bufferName] = buffer;
         }
+
+        for (const rangeName of RANGE_KEYS)
+            this[rangeName] = meshData[rangeName];
     }
 }
 
@@ -656,7 +685,7 @@ function copyIndices(destIndices: number[],
 
     const lastDestIndex = destIndices.length;
 
-    destRanges[expandedPathID + 1] = new Range(firstExpandedIndex, lastDestIndex - firstDestIndex);
+    destRanges[expandedPathID - 1] = new Range(firstDestIndex, lastDestIndex);
 }
 
 function copySegments(segmentBufferNames: Array<keyof Meshes<void>>,

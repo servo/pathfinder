@@ -359,8 +359,8 @@ class ThreeDRenderer extends Renderer {
         return this.destAllocatedSize;
     }
 
-    protected get depthFunction(): GLenum {
-        return this.renderContext.gl.LESS;
+    get backgroundColor(): glmatrix.vec4 {
+        return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
     }
 
     protected get pathIDsAreInstanced(): boolean {
@@ -373,6 +373,10 @@ class ThreeDRenderer extends Renderer {
 
     protected get usedSizeFactor(): glmatrix.vec2 {
         return glmatrix.vec2.clone([1.0, 1.0]);
+    }
+
+    protected get objectCount(): number {
+        return this.meshes.length;
     }
 
     private cubeVertexPositionBuffer: WebGLBuffer;
@@ -431,8 +435,16 @@ class ThreeDRenderer extends Renderer {
         this.renderContext.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
+    protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
+        return null;
+    }
+
     protected drawSceneryIfNecessary(): void {
         const gl = this.renderContext.gl;
+
+        // Set up the depth buffer for drawing the monument.
+        gl.clearDepth(1.0);
+        gl.clear(gl.DEPTH_BUFFER_BIT);
 
         this.drawMonument();
 
@@ -441,6 +453,10 @@ class ThreeDRenderer extends Renderer {
         gl.clear(gl.DEPTH_BUFFER_BIT);
 
         this.drawDistantGlyphs();
+
+        // Set up the depth buffer for direct rendering.
+        gl.clearDepth(0.0);
+        gl.clear(gl.DEPTH_BUFFER_BIT);
     }
 
     protected compositeIfNecessary(): void {}
@@ -473,8 +489,12 @@ class ThreeDRenderer extends Renderer {
         throw new PathfinderError("Unsupported antialiasing type!");
     }
 
-    protected clearForDirectRendering(): void {
+    protected clearDestFramebuffer(): void {
         const gl = this.renderContext.gl;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.destFramebuffer);
+        gl.viewport(0, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
+
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
         gl.clearDepth(1.0);
         gl.depthMask(true);
@@ -605,7 +625,7 @@ class ThreeDRenderer extends Renderer {
 
         // Set state for the monument.
         gl.enable(gl.DEPTH_TEST);
-        gl.depthFunc(this.depthFunction);
+        gl.depthFunc(gl.LESS);
         gl.depthMask(true);
         gl.disable(gl.SCISSOR_TEST);
         gl.disable(gl.BLEND);

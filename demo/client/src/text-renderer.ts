@@ -109,10 +109,6 @@ export abstract class TextRenderer extends Renderer {
         return glmatrix.vec2.create();
     }
 
-    protected get depthFunction(): number {
-        return this.renderContext.gl.GREATER;
-    }
-
     protected get usedSizeFactor(): glmatrix.vec2 {
         const usedSize = glmatrix.vec2.create();
         glmatrix.vec2.div(usedSize, this.renderContext.atlas.usedSize, ATLAS_SIZE);
@@ -121,6 +117,10 @@ export abstract class TextRenderer extends Renderer {
 
     private get pathCount(): number {
         return this.renderContext.glyphStore.glyphIDs.length * SUBPIXEL_GRANULARITY;
+    }
+
+    protected get objectCount(): number {
+        return this.meshes.length;
     }
 
     private stemDarkening: StemDarkeningMode;
