@@ -426,27 +426,14 @@ class TextDemoRenderer extends TextRenderer {
         // Set up the composite VAO.
         const blitProgram = this.renderContext.shaderPrograms.blit;
         const attributes = blitProgram.attributes;
-        this.renderContext.gl.useProgram(blitProgram.program);
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
-                                         this.glyphPositionsBuffer);
-        this.renderContext.gl.vertexAttribPointer(attributes.aPosition,
-                                                  2,
-                                                  this.renderContext.gl.FLOAT,
-                                                  false,
-                                                  0,
-                                                  0);
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
-                                         this.glyphTexCoordsBuffer);
-        this.renderContext.gl.vertexAttribPointer(attributes.aTexCoord,
-                                                  2,
-                                                  this.renderContext.gl.FLOAT,
-                                                  false,
-                                                  0,
-                                                  0);
-        this.renderContext.gl.enableVertexAttribArray(attributes.aPosition);
-        this.renderContext.gl.enableVertexAttribArray(attributes.aTexCoord);
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                         this.glyphElementsBuffer);
+        gl.useProgram(blitProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
+        gl.vertexAttribPointer(attributes.aPosition, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphTexCoordsBuffer);
+        gl.vertexAttribPointer(attributes.aTexCoord, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(attributes.aPosition);
+        gl.enableVertexAttribArray(attributes.aTexCoord);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.glyphElementsBuffer);
 
         // Create the transform.
         const transform = glmatrix.mat4.create();
@@ -461,22 +448,22 @@ class TextDemoRenderer extends TextRenderer {
                                 [this.camera.translation[0], this.camera.translation[1], 0.0]);
 
         // Blit.
-        this.renderContext.gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
-        this.renderContext.gl.activeTexture(this.renderContext.gl.TEXTURE0);
+        gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
+        gl.activeTexture(gl.TEXTURE0);
         const destTexture = this.renderContext
                                 .atlas
                                 .ensureTexture(this.renderContext);
-        this.renderContext.gl.bindTexture(this.renderContext.gl.TEXTURE_2D, destTexture);
-        this.renderContext.gl.uniform1i(blitProgram.uniforms.uSource, 0);
+        gl.bindTexture(gl.TEXTURE_2D, destTexture);
+        gl.uniform1i(blitProgram.uniforms.uSource, 0);
         this.setIdentityTexScaleUniform(blitProgram.uniforms);
         const totalGlyphCount = this.layout.textFrame.totalGlyphCount;
-        this.renderContext.gl.drawElements(this.renderContext.gl.TRIANGLES,
-                                           totalGlyphCount * 6,
-                                           this.renderContext.gl.UNSIGNED_INT,
-                                           0);
+        gl.drawElements(gl.TRIANGLES, totalGlyphCount * 6, gl.UNSIGNED_INT, 0);
     }
 
     private layoutText(): void {
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
         this.layout.layoutRuns();
 
         const textBounds = this.layout.textFrame.bounds;
@@ -517,18 +504,12 @@ class TextDemoRenderer extends TextRenderer {
             }
         }
 
-        this.glyphPositionsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
-                                         this.glyphPositionsBuffer);
-        this.renderContext.gl.bufferData(this.renderContext.gl.ARRAY_BUFFER,
-                                         glyphPositions,
-                                         this.renderContext.gl.STATIC_DRAW);
-        this.glyphElementsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                         this.glyphElementsBuffer);
-        this.renderContext.gl.bufferData(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                         glyphIndices,
-                                         this.renderContext.gl.STATIC_DRAW);
+        this.glyphPositionsBuffer = unwrapNull(gl.createBuffer());
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, glyphPositions, gl.STATIC_DRAW);
+        this.glyphElementsBuffer = unwrapNull(gl.createBuffer());
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.glyphElementsBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, glyphIndices, gl.STATIC_DRAW);
     }
 
     private buildGlyphs(): void {

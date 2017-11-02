@@ -22,7 +22,7 @@ use std::iter;
 use std::ops::{Add, AddAssign};
 use std::u32;
 
-use mesh_library::{MeshLibrary, MeshLibraryIndexRanges};
+use mesh_library::MeshLibrary;
 use normal;
 use {BQuad, BVertexLoopBlinnData, BVertexKind, Endpoint, FillRule, Subpath};
 
@@ -103,8 +103,7 @@ impl<'a> Partitioner<'a> {
         self.fill_rule = new_fill_rule
     }
 
-    pub fn partition(&mut self, path_id: u16, first_subpath_index: u32, last_subpath_index: u32)
-                     -> MeshLibraryIndexRanges {
+    pub fn partition(&mut self, path_id: u16, first_subpath_index: u32, last_subpath_index: u32) {
         self.heap.clear();
         self.active_edges.clear();
 
@@ -119,14 +118,14 @@ impl<'a> Partitioner<'a> {
         self.write_normals_to_library();
 
         debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
-                         self.library.b_vertex_path_ids.len());
-        debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
                          self.library.b_vertex_positions.len());
         debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
                          self.library.b_vertex_normals.len());
 
         let end_lengths = self.library.snapshot_lengths();
-        MeshLibraryIndexRanges::new(&start_lengths, &end_lengths)
+
+        let path_ranges = self.library.ensure_path_ranges(path_id);
+        path_ranges.set_partitioning_lengths(&start_lengths, &end_lengths);
     }
 
     fn process_next_point(&mut self) -> bool {
@@ -219,7 +218,6 @@ impl<'a> Partitioner<'a> {
 
                 // FIXME(pcwalton): Normal
                 self.library.add_b_vertex(&endpoint_position,
-                                          self.path_id,
                                           &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
                                           0.0);
 
@@ -263,7 +261,6 @@ impl<'a> Partitioner<'a> {
 
                 // FIXME(pcwalton): Normal
                 self.library.add_b_vertex(control_point_position,
-                                          self.path_id,
                                           &control_point_b_vertex_loop_blinn_data,
                                           0.0);
             }
@@ -364,7 +361,6 @@ impl<'a> Partitioner<'a> {
         // FIXME(pcwalton): Normal
         let position = self.endpoints[endpoint_index as usize].position;
         self.library.add_b_vertex(&position,
-                                  self.path_id,
                                   &BVertexLoopBlinnData::new(BVertexKind::Endpoint0),
                                   0.0);
 
@@ -417,7 +413,6 @@ impl<'a> Partitioner<'a> {
 
                 // FIXME(pcwalton): Normal
                 self.library.add_b_vertex(&control_point_position,
-                                          self.path_id,
                                           &control_point_b_vertex_loop_blinn_data,
                                           0.0)
             }
@@ -441,7 +436,6 @@ impl<'a> Partitioner<'a> {
 
                 // FIXME(pcwalton): Normal
                 self.library.add_b_vertex(&control_point_position,
-                                          self.path_id,
                                           &control_point_b_vertex_loop_blinn_data,
                                           0.0)
             }
@@ -805,8 +799,6 @@ impl<'a> Partitioner<'a> {
             right_curve.control_point,
         ].into_iter());
 
-        self.library.b_vertex_path_ids.extend(iter::repeat(self.path_id).take(3));
-
         // Initially, assume that the parity is false. We will modify the Loop-Blinn data later if
         // that is incorrect.
         self.library.b_vertex_loop_blinn_data.extend([
@@ -1042,7 +1034,6 @@ impl<'a> Partitioner<'a> {
         let left_curve_control_point_vertex_index;
         match active_edge.control_point_vertex_index {
             u32::MAX => {
-                let path_id = self.library.b_vertex_path_ids[left_curve_left as usize];
                 let right_point = self.endpoints[active_edge.right_endpoint_index as usize]
                                       .position;
                 let middle_point = left_point_position.to_vector()
@@ -1051,7 +1042,6 @@ impl<'a> Partitioner<'a> {
                 // FIXME(pcwalton): Normal
                 active_edge.left_vertex_index = self.library.b_vertex_loop_blinn_data.len() as u32;
                 self.library.add_b_vertex(&middle_point.to_point(),
-                                          path_id,
                                           &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
                                           0.0);
 
@@ -1078,19 +1068,16 @@ impl<'a> Partitioner<'a> {
                 // FIXME(pcwalton): Normals
                 self.library
                     .add_b_vertex(&left_curve.control_point,
-                                  self.path_id,
                                   &BVertexLoopBlinnData::control_point(&left_curve.endpoints[0],
                                                                        &left_curve.control_point,
                                                                        &left_curve.endpoints[1],
                                                                        bottom),
                                   0.0);
                 self.library.add_b_vertex(&left_curve.endpoints[1],
-                                          self.path_id,
                                           &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
                                           0.0);
                 self.library
                     .add_b_vertex(&right_curve.control_point,
-                                  self.path_id,
                                   &BVertexLoopBlinnData::control_point(&right_curve.endpoints[0],
                                                                        &right_curve.control_point,
                                                                        &right_curve.endpoints[1],

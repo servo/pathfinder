@@ -11,11 +11,23 @@
 import * as base64js from 'base64-js';
 
 import * as _ from 'lodash';
-import {expectNotNull, FLOAT32_SIZE, panic, PathfinderError, UINT16_SIZE} from './utils';
-import {UINT32_MAX, UINT32_SIZE} from './utils';
+import {expectNotNull, FLOAT32_SIZE, panic, PathfinderError, Range, UINT16_SIZE} from './utils';
+import {UINT32_MAX, UINT32_SIZE, unwrapNull, unwrapUndef} from './utils';
 
 interface BufferTypeFourCCTable {
     [fourCC: string]: keyof Meshes<void>;
+}
+
+interface PathRangeTypeFourCCTable {
+    [fourCC: string]: keyof PathRanges;
+}
+
+interface RangeToCountTable {
+    [rangeKey: string]: keyof MeshDataCounts;
+}
+
+interface RangeToRangeBufferTable {
+    [rangeKey: string]: keyof Meshes<void>;
 }
 
 interface ArrayLike<T> {
@@ -61,6 +73,17 @@ export const B_QUAD_UPPER_INDICES_OFFSET: number = B_QUAD_UPPER_LEFT_VERTEX_OFFS
 export const B_QUAD_LOWER_INDICES_OFFSET: number = B_QUAD_LOWER_LEFT_VERTEX_OFFSET;
 
 const B_QUAD_FIELD_COUNT: number = B_QUAD_SIZE / UINT32_SIZE;
+
+// FIXME(pcwalton): This duplicates information below in `MESH_TYPES`.
+const INDEX_SIZE: number = 4;
+const B_VERTEX_POSITION_SIZE: number = 4 * 2;
+const EDGE_BOUNDING_BOX_VERTEX_POSITION_SIZE: number = 4 * 4;
+const EDGE_UPPER_LINE_VERTEX_POSITION_SIZE: number = 4 * 4;
+const EDGE_LOWER_LINE_VERTEX_POSITION_SIZE: number = 4 * 4;
+const EDGE_UPPER_CURVE_VERTEX_POSITION_SIZE: number = 4 * 6;
+const EDGE_LOWER_CURVE_VERTEX_POSITION_SIZE: number = 4 * 6;
+const SEGMENT_LINE_SIZE: number = 4 * 4;
+const SEGMENT_CURVE_SIZE: number = 4 * 6;
 
 const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
     bQuads: { type: 'Uint32', size: B_QUAD_FIELD_COUNT },
@@ -125,26 +148,59 @@ const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
     bqua: 'bQuads',
     bvlb: 'bVertexLoopBlinnData',
     bvno: 'bVertexNormals',
-    bvpi: 'bVertexPathIDs',
     bvpo: 'bVertexPositions',
     cvci: 'coverCurveIndices',
     cvii: 'coverInteriorIndices',
-    ebbp: 'edgeBoundingBoxPathIDs',
     ebbv: 'edgeBoundingBoxVertexPositions',
-    elcp: 'edgeLowerCurvePathIDs',
     elcv: 'edgeLowerCurveVertexPositions',
-    ellp: 'edgeLowerLinePathIDs',
     ellv: 'edgeLowerLineVertexPositions',
-    eucp: 'edgeUpperCurvePathIDs',
     eucv: 'edgeUpperCurveVertexPositions',
-    eulp: 'edgeUpperLinePathIDs',
     eulv: 'edgeUpperLineVertexPositions',
-    scpi: 'segmentCurvePathIDs',
     scur: 'segmentCurves',
     slin: 'segmentLines',
-    slpi: 'segmentLinePathIDs',
     sncu: 'segmentCurveNormals',
     snli: 'segmentLineNormals',
+};
+
+// Must match the FourCCs in
+// `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into::write_path_ranges()`.
+const PATH_RANGE_TYPE_FOURCCS: PathRangeTypeFourCCTable = {
+    bqua: 'bQuadPathRanges',
+    bver: 'bVertexPathRanges',
+    cvci: 'coverCurveIndexRanges',
+    cvii: 'coverInteriorIndexRanges',
+    ebbo: 'edgeBoundingBoxRanges',
+    elci: 'edgeLowerCurveIndexRanges',
+    elli: 'edgeLowerLineIndexRanges',
+    euci: 'edgeUpperCurveIndexRanges',
+    euli: 'edgeUpperLineIndexRanges',
+    scur: 'segmentCurveRanges',
+    slin: 'segmentLineRanges',
+};
+
+const RANGE_TO_COUNT_TABLE: RangeToCountTable = {
+    bQuadPathRanges: 'bQuadCount',
+    bVertexPathRanges: 'bVertexCount',
+    coverCurveIndexRanges: 'coverCurveCount',
+    coverInteriorIndexRanges: 'coverInteriorCount',
+    edgeBoundingBoxRanges: 'edgeBoundingBoxCount',
+    edgeLowerCurveIndexRanges: 'edgeLowerCurveCount',
+    edgeLowerLineIndexRanges: 'edgeLowerLineCount',
+    edgeUpperCurveIndexRanges: 'edgeUpperCurveCount',
+    edgeUpperLineIndexRanges: 'edgeUpperLineCount',
+    segmentCurveRanges: 'segmentCurveCount',
+    segmentLineRanges: 'segmentLineCount',
+};
+
+const RANGE_TO_RANGE_BUFFER_TABLE: RangeToRangeBufferTable = {
+    bVertexPathRanges: 'bVertexPathIDs',
+    edgeBoundingBoxRanges: 'edgeBoundingBoxPathIDs',
+    edgeLowerCurveIndexRanges: 'edgeLowerCurvePathIDs',
+    edgeLowerLineIndexRanges: 'edgeLowerLinePathIDs',
+    edgeUpperCurveIndexRanges: 'edgeUpperCurvePathIDs',
+    edgeUpperLineIndexRanges: 'edgeUpperLinePathIDs',
+    segmentCurveRanges: 'segmentCurvePathIDs',
+    segmentLineRanges: 'segmentLinePathIDs',
 };
 
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
@@ -152,55 +208,80 @@ type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 export interface Meshes<T> {
     readonly bQuads: T;
     readonly bVertexPositions: T;
-    readonly bVertexPathIDs: T;
     readonly bVertexLoopBlinnData: T;
     readonly bVertexNormals: T;
     readonly coverInteriorIndices: T;
     readonly coverCurveIndices: T;
-    readonly edgeBoundingBoxPathIDs: T;
     readonly edgeBoundingBoxVertexPositions: T;
-    readonly edgeLowerCurvePathIDs: T;
     readonly edgeLowerCurveVertexPositions: T;
-    readonly edgeLowerLinePathIDs: T;
     readonly edgeLowerLineVertexPositions: T;
-    readonly edgeUpperCurvePathIDs: T;
     readonly edgeUpperCurveVertexPositions: T;
-    readonly edgeUpperLinePathIDs: T;
     readonly edgeUpperLineVertexPositions: T;
     readonly segmentLines: T;
     readonly segmentCurves: T;
-    readonly segmentLinePathIDs: T;
-    readonly segmentCurvePathIDs: T;
     readonly segmentLineNormals: T;
     readonly segmentCurveNormals: T;
+
+    bVertexPathIDs: T;
+    edgeBoundingBoxPathIDs: T;
+    segmentLinePathIDs: T;
+    segmentCurvePathIDs: T;
+    edgeLowerCurvePathIDs: T;
+    edgeLowerLinePathIDs: T;
+    edgeUpperCurvePathIDs: T;
+    edgeUpperLinePathIDs: T;
 }
 
-export class PathfinderMeshData implements Meshes<ArrayBuffer> {
+interface MeshDataCounts {
+    readonly bQuadCount: number;
+    readonly bVertexCount: number;
+    readonly coverCurveCount: number;
+    readonly coverInteriorCount: number;
+    readonly edgeBoundingBoxCount: number;
+    readonly edgeLowerCurveCount: number;
+    readonly edgeUpperCurveCount: number;
+    readonly edgeLowerLineCount: number;
+    readonly edgeUpperLineCount: number;
+    readonly segmentLineCount: number;
+    readonly segmentCurveCount: number;
+}
+
+interface PathRanges {
+    bQuadPathRanges: Range[];
+    bVertexPathRanges: Range[];
+    coverInteriorIndexRanges: Range[];
+    coverCurveIndexRanges: Range[];
+    edgeBoundingBoxRanges: Range[];
+    edgeUpperLineIndexRanges: Range[];
+    edgeUpperCurveIndexRanges: Range[];
+    edgeLowerLineIndexRanges: Range[];
+    edgeLowerCurveIndexRanges: Range[];
+    segmentCurveRanges: Range[];
+    segmentLineRanges: Range[];
+}
+
+export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, PathRanges {
     readonly bQuads: ArrayBuffer;
     readonly bVertexPositions: ArrayBuffer;
-    readonly bVertexPathIDs: ArrayBuffer;
     readonly bVertexLoopBlinnData: ArrayBuffer;
     readonly bVertexNormals: ArrayBuffer;
     readonly coverInteriorIndices: ArrayBuffer;
     readonly coverCurveIndices: ArrayBuffer;
-    readonly edgeBoundingBoxPathIDs: ArrayBuffer;
     readonly edgeBoundingBoxVertexPositions: ArrayBuffer;
-    readonly edgeLowerCurvePathIDs: ArrayBuffer;
     readonly edgeLowerCurveVertexPositions: ArrayBuffer;
-    readonly edgeLowerLinePathIDs: ArrayBuffer;
     readonly edgeLowerLineVertexPositions: ArrayBuffer;
-    readonly edgeUpperCurvePathIDs: ArrayBuffer;
     readonly edgeUpperCurveVertexPositions: ArrayBuffer;
-    readonly edgeUpperLinePathIDs: ArrayBuffer;
     readonly edgeUpperLineVertexPositions: ArrayBuffer;
     readonly segmentLines: ArrayBuffer;
     readonly segmentCurves: ArrayBuffer;
-    readonly segmentLinePathIDs: ArrayBuffer;
-    readonly segmentCurvePathIDs: ArrayBuffer;
     readonly segmentLineNormals: ArrayBuffer;
     readonly segmentCurveNormals: ArrayBuffer;
 
     readonly bQuadCount: number;
+    readonly bVertexCount: number;
+    readonly coverCurveCount: number;
+    readonly coverInteriorCount: number;
+    readonly edgeBoundingBoxCount: number;
     readonly edgeLowerCurveCount: number;
     readonly edgeUpperCurveCount: number;
     readonly edgeLowerLineCount: number;
@@ -208,7 +289,28 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
     readonly segmentLineCount: number;
     readonly segmentCurveCount: number;
 
-    constructor(meshes: ArrayBuffer | Meshes<ArrayBuffer>) {
+    bVertexPathIDs: ArrayBuffer;
+    edgeBoundingBoxPathIDs: ArrayBuffer;
+    edgeLowerCurvePathIDs: ArrayBuffer;
+    edgeLowerLinePathIDs: ArrayBuffer;
+    edgeUpperCurvePathIDs: ArrayBuffer;
+    edgeUpperLinePathIDs: ArrayBuffer;
+    segmentCurvePathIDs: ArrayBuffer;
+    segmentLinePathIDs: ArrayBuffer;
+
+    bQuadPathRanges: Range[];
+    bVertexPathRanges: Range[];
+    coverInteriorIndexRanges: Range[];
+    coverCurveIndexRanges: Range[];
+    edgeBoundingBoxRanges: Range[];
+    edgeUpperLineIndexRanges: Range[];
+    edgeUpperCurveIndexRanges: Range[];
+    edgeLowerLineIndexRanges: Range[];
+    edgeLowerCurveIndexRanges: Range[];
+    segmentCurveRanges: Range[];
+    segmentLineRanges: Range[];
+
+    constructor(meshes: ArrayBuffer | Meshes<ArrayBuffer>, optionalRanges?: PathRanges) {
         if (meshes instanceof ArrayBuffer) {
             // RIFF encoded data.
             if (toFourCC(meshes, 0) !== RIFF_FOURCC)
@@ -219,26 +321,44 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
             let offset = 12;
             while (offset < meshes.byteLength) {
                 const fourCC = toFourCC(meshes, offset);
-                const chunkLength = (new Uint32Array(meshes.slice(offset + 4, offset + 8)))[0];
-                if (BUFFER_TYPE_FOURCCS.hasOwnProperty(fourCC)) {
-                    const startOffset = offset + 8;
-                    const endOffset = startOffset + chunkLength;
+                const chunkLength = readUInt32(meshes, offset + 4);
+                const startOffset = offset + 8;
+                const endOffset = startOffset + chunkLength;
+
+                if (BUFFER_TYPE_FOURCCS.hasOwnProperty(fourCC))
                     this[BUFFER_TYPE_FOURCCS[fourCC]] = meshes.slice(startOffset, endOffset);
-                }
-                offset += chunkLength + 8;
+                else if (fourCC === 'prng')
+                    this.readPathRanges(meshes.slice(startOffset, endOffset));
+
+                offset = endOffset;
             }
         } else {
             for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>)
                 this[bufferName] = meshes[bufferName];
+
+            const ranges = unwrapUndef(optionalRanges);
+            for (const range of Object.keys(RANGE_TO_COUNT_TABLE) as Array<keyof PathRanges>)
+                this[range] = ranges[range];
         }
 
         this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
-        this.edgeUpperLineCount = this.edgeUpperLinePathIDs.byteLength / 2;
-        this.edgeLowerLineCount = this.edgeLowerLinePathIDs.byteLength / 2;
-        this.edgeUpperCurveCount = this.edgeUpperCurvePathIDs.byteLength / 2;
-        this.edgeLowerCurveCount = this.edgeLowerCurvePathIDs.byteLength / 2;
-        this.segmentCurveCount = this.segmentCurvePathIDs.byteLength / 2;
-        this.segmentLineCount = this.segmentLinePathIDs.byteLength / 2;
+        this.bVertexCount = this.bVertexPositions.byteLength / B_VERTEX_POSITION_SIZE;
+        this.coverCurveCount = this.coverCurveIndices.byteLength / INDEX_SIZE;
+        this.coverInteriorCount = this.coverInteriorIndices.byteLength / INDEX_SIZE;
+        this.edgeBoundingBoxCount = this.edgeBoundingBoxVertexPositions.byteLength /
+            EDGE_BOUNDING_BOX_VERTEX_POSITION_SIZE;
+        this.edgeUpperLineCount = this.edgeUpperLineVertexPositions.byteLength /
+            EDGE_UPPER_LINE_VERTEX_POSITION_SIZE;
+        this.edgeLowerLineCount = this.edgeLowerLineVertexPositions.byteLength /
+            EDGE_LOWER_LINE_VERTEX_POSITION_SIZE;
+        this.edgeUpperCurveCount = this.edgeUpperCurveVertexPositions.byteLength /
+            EDGE_UPPER_CURVE_VERTEX_POSITION_SIZE;
+        this.edgeLowerCurveCount = this.edgeLowerCurveVertexPositions.byteLength /
+            EDGE_LOWER_CURVE_VERTEX_POSITION_SIZE;
+        this.segmentCurveCount = this.segmentCurves.byteLength / SEGMENT_CURVE_SIZE;
+        this.segmentLineCount = this.segmentLines.byteLength / SEGMENT_LINE_SIZE;
+
+        this.rebuildPathIDBuffers();
     }
 
     expand(pathIDs: number[]): PathfinderMeshData {
@@ -249,20 +369,34 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
             tempExpandedArrays[key] = [];
         }
 
+        const tempOriginalRanges: Partial<PathRanges> = {};
+        const tempExpandedRanges: Partial<PathRanges> = {};
+        for (const key of Object.keys(RANGE_TO_COUNT_TABLE) as Array<keyof PathRanges>) {
+            tempOriginalRanges[key] = this[key];
+
+            const newExpandedRanges = [];
+            for (const newPathID of pathIDs)
+                newExpandedRanges.push(new Range(0, 0));
+            tempExpandedRanges[key] = newExpandedRanges;
+        }
+
         const originalBuffers: Meshes<PrimitiveTypeArray> = tempOriginalBuffers;
+        const originalRanges: PathRanges = tempOriginalRanges as PathRanges;
         const expandedArrays: Meshes<number[]> = tempExpandedArrays;
+        const expandedRanges: PathRanges = tempExpandedRanges as PathRanges;
 
         for (let newPathIndex = 0; newPathIndex < pathIDs.length; newPathIndex++) {
             const expandedPathID = newPathIndex + 1;
             const originalPathID = pathIDs[newPathIndex];
 
-            const bVertexCopyResult =
-                copyVertices(['bVertexPositions', 'bVertexLoopBlinnData'],
-                             'bVertexPathIDs',
-                             expandedArrays,
-                             originalBuffers,
-                             expandedPathID,
-                             originalPathID);
+            const bVertexCopyResult = copyVertices(['bVertexPositions', 'bVertexLoopBlinnData'],
+                                                   'bVertexPathRanges',
+                                                   expandedArrays,
+                                                   expandedRanges,
+                                                   originalBuffers,
+                                                   originalRanges,
+                                                   expandedPathID,
+                                                   originalPathID);
 
             if (bVertexCopyResult == null)
                 continue;
@@ -273,31 +407,39 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
 
             // Copy over edge data.
             copyVertices(['edgeBoundingBoxVertexPositions'],
-                         'edgeBoundingBoxPathIDs',
+                         'edgeBoundingBoxRanges',
                          expandedArrays,
+                         expandedRanges,
                          originalBuffers,
+                         originalRanges,
                          expandedPathID,
                          originalPathID);
             for (const edgeBufferName of EDGE_BUFFER_NAMES) {
                 copyVertices([`edge${edgeBufferName}VertexPositions` as keyof Meshes<void>],
-                             `edge${edgeBufferName}PathIDs` as keyof Meshes<void>,
+                             `edge${edgeBufferName}IndexRanges` as keyof PathRanges,
                              expandedArrays,
+                             expandedRanges,
                              originalBuffers,
+                             originalRanges,
                              expandedPathID,
                              originalPathID);
             }
 
             // Copy over indices.
             copyIndices(expandedArrays.coverInteriorIndices,
+                        expandedRanges.coverInteriorIndexRanges,
                         originalBuffers.coverInteriorIndices as Uint32Array,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
-                        lastBVertexIndex);
+                        lastBVertexIndex,
+                        expandedPathID);
             copyIndices(expandedArrays.coverCurveIndices,
+                        expandedRanges.coverCurveIndexRanges,
                         originalBuffers.coverCurveIndices as Uint32Array,
                         firstExpandedBVertexIndex,
                         firstBVertexIndex,
-                        lastBVertexIndex);
+                        lastBVertexIndex,
+                        expandedPathID);
 
             // Copy over B-quads.
             let firstBQuadIndex =
@@ -329,15 +471,19 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
 
             // Copy over segments.
             copySegments(['segmentLines', 'segmentLineNormals'],
-                         'segmentLinePathIDs',
+                         'segmentLineRanges',
                          expandedArrays,
+                         expandedRanges,
                          originalBuffers,
+                         originalRanges,
                          expandedPathID,
                          originalPathID);
             copySegments(['segmentCurves', 'segmentCurveNormals'],
-                         'segmentCurvePathIDs',
+                         'segmentCurveRanges',
                          expandedArrays,
+                         expandedRanges,
                          originalBuffers,
+                         originalRanges,
                          expandedPathID,
                          originalPathID);
         }
@@ -353,7 +499,48 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer> {
         }
 
         const expandedBuffers = tempExpandedBuffers as Meshes<ArrayBuffer>;
-        return new PathfinderMeshData(expandedBuffers);
+        return new PathfinderMeshData(expandedBuffers, expandedRanges);
+    }
+
+    private readPathRanges(meshes: ArrayBuffer): void {
+        let offset = 0;
+        while (offset < meshes.byteLength) {
+            const fourCC = toFourCC(meshes, offset);
+            const chunkLength = readUInt32(meshes, offset + 4);
+            const startOffset = offset + 8;
+            const endOffset = startOffset + chunkLength;
+
+            if (PATH_RANGE_TYPE_FOURCCS.hasOwnProperty(fourCC)) {
+                const key = PATH_RANGE_TYPE_FOURCCS[fourCC];
+                const ranges = new Uint32Array(meshes.slice(startOffset, endOffset));
+                this[key] = _.chunk(ranges, 2).map(range => new Range(range[0], range[1]));
+            }
+
+            offset = endOffset;
+        }
+    }
+
+    private rebuildPathIDBuffers(): void {
+        for (const rangeKey of Object.keys(RANGE_TO_COUNT_TABLE) as
+             Array<keyof RangeToCountTable>) {
+            if (!RANGE_TO_RANGE_BUFFER_TABLE.hasOwnProperty(rangeKey))
+                continue;
+
+            const count = this[RANGE_TO_COUNT_TABLE[rangeKey]];
+            const ranges = this[rangeKey as keyof PathRanges];
+
+            const destBuffer = new Uint16Array(count);
+            let destIndex = 0;
+            for (let pathIndex = 0; pathIndex < ranges.length; pathIndex++) {
+                const range = ranges[pathIndex];
+                for (let subindex = range.start; subindex < range.end; subindex++) {
+                    destBuffer[destIndex] = pathIndex + 1;
+                    destIndex++;
+                }
+            }
+
+            (this as any)[RANGE_TO_RANGE_BUFFER_TABLE[rangeKey]] = destBuffer;
+        }
     }
 }
 
@@ -383,7 +570,7 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
     readonly segmentCurveNormals: WebGLBuffer;
 
     constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
-        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof PathfinderMeshBuffers>) {
+        for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>) {
             const bufferType = gl[BUFFER_TYPES[bufferName]];
             const buffer = expectNotNull(gl.createBuffer(), "Failed to create buffer!");
             gl.bindBuffer(bufferType, buffer);
@@ -394,62 +581,66 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer> {
 }
 
 function copyVertices(vertexBufferNames: Array<keyof Meshes<void>>,
-                      pathIDBufferName: keyof Meshes<void>,
+                      rangesName: keyof PathRanges,
                       expandedMeshes: Meshes<number[]>,
+                      expandedRanges: PathRanges,
                       originalMeshes: Meshes<PrimitiveTypeArray>,
+                      originalRanges: PathRanges,
                       expandedPathID: number,
                       originalPathID: number):
                       VertexCopyResult | null {
-    const expandedPathIDs = expandedMeshes[pathIDBufferName];
-    const originalPathIDs = originalMeshes[pathIDBufferName];
+    const originalRange = originalRanges[rangesName][originalPathID - 1];
 
-    const firstOriginalVertexIndex = _.sortedIndex(originalPathIDs, originalPathID);
-    if (firstOriginalVertexIndex < 0)
-        return null;
+    const firstExpandedVertexIndex = _.reduce(expandedRanges[rangesName],
+                                              (maxIndex, range) => Math.max(maxIndex, range.end),
+                                              0);
 
-    const firstExpandedVertexIndex = expandedPathIDs.length;
-    let lastOriginalVertexIndex = firstOriginalVertexIndex;
-
-    while (lastOriginalVertexIndex < originalPathIDs.length &&
-           originalPathIDs[lastOriginalVertexIndex] === originalPathID) {
+    for (let originalVertexIndex = originalRange.start;
+         originalVertexIndex < originalRange.end;
+         originalVertexIndex++) {
         for (const vertexBufferName of vertexBufferNames) {
             const expanded = expandedMeshes[vertexBufferName];
             const original = originalMeshes[vertexBufferName];
             const size = MESH_TYPES[vertexBufferName].size;
             for (let elementIndex = 0; elementIndex < size; elementIndex++) {
-                const globalIndex = size * lastOriginalVertexIndex + elementIndex;
+                const globalIndex = size * originalVertexIndex + elementIndex;
                 expanded.push(original[globalIndex]);
             }
         }
-
-        expandedPathIDs.push(expandedPathID);
-
-        lastOriginalVertexIndex++;
     }
 
+    const lastExpandedVertexIndex = firstExpandedVertexIndex + originalRange.length;
+
+    expandedRanges[rangesName][expandedPathID - 1] = new Range(firstExpandedVertexIndex,
+                                                               lastExpandedVertexIndex);
+
     return {
-        expandedEndIndex: expandedPathIDs.length,
+        expandedEndIndex: lastExpandedVertexIndex,
         expandedStartIndex: firstExpandedVertexIndex,
-        originalEndIndex: lastOriginalVertexIndex,
-        originalStartIndex: firstOriginalVertexIndex,
+        originalEndIndex: originalRange.end,
+        originalStartIndex: originalRange.start,
     };
 }
 
 function copyIndices(destIndices: number[],
+                     destRanges: Range[],
                      srcIndices: Uint32Array,
                      firstExpandedIndex: number,
                      firstIndex: number,
                      lastIndex: number,
+                     expandedPathID: number,
                      validateIndex?: (indexIndex: number) => boolean) {
     if (firstIndex === lastIndex)
         return;
 
-    // FIXME(pcwalton): Speed this up somehow.
+    // FIXME(pcwalton): Speed this up using the original ranges.
     let indexIndex = srcIndices.findIndex(index => index >= firstIndex && index < lastIndex);
     if (indexIndex < 0)
         return;
 
+    const firstDestIndex = destIndices.length;
     const indexDelta = firstExpandedIndex - firstIndex;
+
     while (indexIndex < srcIndices.length) {
         const index = srcIndices[indexIndex];
         if (validateIndex == null || validateIndex(indexIndex)) {
@@ -459,33 +650,47 @@ function copyIndices(destIndices: number[],
         } else {
             destIndices.push(index);
         }
+
         indexIndex++;
     }
+
+    const lastDestIndex = destIndices.length;
+
+    destRanges[expandedPathID + 1] = new Range(firstExpandedIndex, lastDestIndex - firstDestIndex);
 }
 
 function copySegments(segmentBufferNames: Array<keyof Meshes<void>>,
-                      pathIDBufferName: keyof Meshes<void>,
+                      rangesName: keyof PathRanges,
                       expandedMeshes: Meshes<number[]>,
+                      expandedRanges: PathRanges,
                       originalMeshes: Meshes<PrimitiveTypeArray>,
+                      originalRanges: PathRanges,
                       expandedPathID: number,
                       originalPathID: number):
                       void {
-    let segmentIndex = _.indexOf(originalMeshes[pathIDBufferName] as Uint16Array, originalPathID);
-    while (segmentIndex < originalMeshes[pathIDBufferName].length) {
-        if (originalMeshes[pathIDBufferName][segmentIndex] !== originalPathID)
-            break;
+    const originalRange = originalRanges[rangesName][originalPathID - 1];
+
+    const firstExpandedSegmentIndex = _.reduce(expandedRanges[rangesName],
+                                               (maxIndex, range) => Math.max(maxIndex, range.end),
+                                               0);
+
+    for (let originalSegmentIndex = originalRange.start;
+         originalSegmentIndex < originalRange.end;
+         originalSegmentIndex++) {
         for (const segmentBufferName of segmentBufferNames) {
             if (originalMeshes[segmentBufferName].length === 0)
                 continue;
             const size = MESH_TYPES[segmentBufferName].size;
             for (let fieldIndex = 0; fieldIndex < size; fieldIndex++) {
-                const srcIndex = size * segmentIndex + fieldIndex;
+                const srcIndex = size * originalSegmentIndex + fieldIndex;
                 expandedMeshes[segmentBufferName].push(originalMeshes[segmentBufferName][srcIndex]);
             }
         }
-        expandedMeshes[pathIDBufferName].push(expandedPathID);
-        segmentIndex++;
     }
+
+    const lastExpandedSegmentIndex = firstExpandedSegmentIndex + originalRange.length;
+    expandedRanges[rangesName][expandedPathID - 1] = new Range(firstExpandedSegmentIndex,
+                                                               lastExpandedSegmentIndex);
 }
 
 function sizeOfPrimitive(primitiveType: PrimitiveType): number {
@@ -522,4 +727,8 @@ export function parseServerTiming(headers: Headers): number {
     const timing = headers.get('Server-Timing')!;
     const matches = /^Partitioning\s*=\s*([0-9.]+)$/.exec(timing);
     return matches != null ? parseFloat(matches[1]) / 1000.0 : 0.0;
+}
+
+function readUInt32(buffer: ArrayBuffer, offset: number): number {
+    return (new Uint32Array(buffer.slice(offset, offset + 4)))[0];
 }

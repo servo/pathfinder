@@ -101,17 +101,6 @@ pub unsafe extern fn pf_partitioner_b_vertex_positions<'a>(partitioner: *const P
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_partitioner_b_vertex_path_ids<'a>(partitioner: *const Partitioner<'a>,
-                                                          out_b_vertex_count: *mut u32)
-                                                          -> *const u16 {
-    let b_vertex_path_ids = &(*partitioner).library().b_vertex_path_ids;
-    if !out_b_vertex_count.is_null() {
-        *out_b_vertex_count = b_vertex_path_ids.len() as u32
-    }
-    b_vertex_path_ids.as_ptr() as *const u16
-}
-
-#[no_mangle]
 pub unsafe extern fn pf_partitioner_b_vertex_loop_blinn_data<'a>(
         partitioner: *const Partitioner<'a>,
         out_b_vertex_count: *mut u32)

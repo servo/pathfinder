@@ -22,9 +22,9 @@ use {BQuad, BVertexLoopBlinnData};
 
 #[derive(Debug, Clone)]
 pub struct MeshLibrary {
+    pub path_ranges: Vec<PathRanges>,
     pub b_quads: Vec<BQuad>,
     pub b_vertex_positions: Vec<Point2D<f32>>,
-    pub b_vertex_path_ids: Vec<u16>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
     pub b_vertex_normals: Vec<f32>,
     pub cover_indices: MeshLibraryCoverIndices,
@@ -37,9 +37,9 @@ impl MeshLibrary {
     #[inline]
     pub fn new() -> MeshLibrary {
         MeshLibrary {
+            path_ranges: vec![],
             b_quads: vec![],
             b_vertex_positions: vec![],
-            b_vertex_path_ids: vec![],
             b_vertex_loop_blinn_data: vec![],
             b_vertex_normals: vec![],
             cover_indices: MeshLibraryCoverIndices::new(),
@@ -50,9 +50,9 @@ impl MeshLibrary {
     }
 
     pub fn clear(&mut self) {
+        self.path_ranges.clear();
         self.b_quads.clear();
         self.b_vertex_positions.clear();
-        self.b_vertex_path_ids.clear();
         self.b_vertex_loop_blinn_data.clear();
         self.b_vertex_normals.clear();
         self.cover_indices.clear();
@@ -61,21 +61,25 @@ impl MeshLibrary {
         self.segment_normals.clear();
     }
 
+    pub(crate) fn ensure_path_ranges(&mut self, path_id: u16) -> &mut PathRanges {
+        let path_index = (path_id as usize) - 1;
+        while path_index >= self.path_ranges.len() {
+            self.path_ranges.push(PathRanges::new())
+        }
+        &mut self.path_ranges[path_index]
+    }
+
     pub(crate) fn add_b_vertex(&mut self,
                                position: &Point2D<f32>,
-                               path_id: u16,
                                loop_blinn_data: &BVertexLoopBlinnData,
                                normal: f32) {
         self.b_vertex_positions.push(*position);
-        self.b_vertex_path_ids.push(path_id);
         self.b_vertex_loop_blinn_data.push(*loop_blinn_data);
         self.b_vertex_normals.push(normal);
     }
 
     pub(crate) fn add_b_quad(&mut self, b_quad: &BQuad) {
         self.b_quads.push(*b_quad);
-
-        let path_id = self.b_vertex_path_ids[b_quad.upper_left_vertex_index as usize];
 
         let upper_left_position =
             &self.b_vertex_positions[b_quad.upper_left_vertex_index as usize];
@@ -97,14 +101,12 @@ impl MeshLibrary {
             upper_left: upper_left_bounding_box_position,
             lower_right: lower_right_bounding_box_position,
         });
-        self.edge_data.bounding_box_path_ids.push(path_id);
 
         if b_quad.upper_control_point_vertex_index == u32::MAX {
             self.edge_data.upper_line_vertex_positions.push(EdgeLineVertexPositions {
                 left: *upper_left_position,
                 right: *upper_right_position,
             });
-            self.edge_data.upper_line_path_ids.push(path_id);
         } else {
             let upper_control_point_position =
                 &self.b_vertex_positions[b_quad.upper_control_point_vertex_index as usize];
@@ -113,7 +115,6 @@ impl MeshLibrary {
                 control_point: *upper_control_point_position,
                 right: *upper_right_position,
             });
-            self.edge_data.upper_curve_path_ids.push(path_id);
         }
 
         if b_quad.lower_control_point_vertex_index == u32::MAX {
@@ -121,7 +122,6 @@ impl MeshLibrary {
                 left: *lower_left_position,
                 right: *lower_right_position,
             });
-            self.edge_data.lower_line_path_ids.push(path_id);
         } else {
             let lower_control_point_position =
                 &self.b_vertex_positions[b_quad.lower_control_point_vertex_index as usize];
@@ -130,7 +130,6 @@ impl MeshLibrary {
                 control_point: *lower_control_point_position,
                 right: *lower_right_position,
             });
-            self.edge_data.lower_curve_path_ids.push(path_id);
         }
     }
 
@@ -138,34 +137,27 @@ impl MeshLibrary {
     ///
     /// This enables early Z optimizations.
     pub fn optimize(&mut self) {
-        let mut new_cover_interior_indices =
+        let mut new_interior_indices =
             Vec::with_capacity(self.cover_indices.interior_indices.len());
-        let mut last_cover_interior_index_index = self.cover_indices.interior_indices.len();
-        while last_cover_interior_index_index != 0 {
-            let mut first_cover_interior_index_index = last_cover_interior_index_index - 1;
-            let path_id =
-                self.b_vertex_path_ids[self.cover_indices
-                                           .interior_indices[first_cover_interior_index_index] as
-                                       usize];
-            while first_cover_interior_index_index != 0 {
-                let prev_path_id = self.b_vertex_path_ids[
-                    self.cover_indices.interior_indices[first_cover_interior_index_index - 1] as
-                    usize];
-                if prev_path_id != path_id {
-                    break
-                }
-                first_cover_interior_index_index -= 1
-            }
-            let range = first_cover_interior_index_index..last_cover_interior_index_index;
-            new_cover_interior_indices.extend_from_slice(&self.cover_indices
-                                                              .interior_indices[range]);
-            last_cover_interior_index_index = first_cover_interior_index_index;
+
+        for path_range in &mut self.path_ranges {
+            let old_interior_indices = &self.cover_indices.interior_indices[..];
+            let old_range = path_range.cover_interior_indices.clone();
+            let old_range = (old_range.start as usize)..(old_range.end as usize);
+            let new_start_index = new_interior_indices.len() as u32;
+            new_interior_indices.extend_from_slice(&old_interior_indices[old_range]);
+            let new_end_index = new_interior_indices.len() as u32;
+            path_range.cover_interior_indices = new_start_index..new_end_index;
         }
-        self.cover_indices.interior_indices = new_cover_interior_indices
+
+        self.cover_indices.interior_indices = new_interior_indices
     }
 
     pub fn push_segments<I>(&mut self, path_id: u16, stream: I)
                             where I: Iterator<Item = PathCommand> {
+        let first_line_index = self.segments.lines.len() as u32;
+        let first_curve_index = self.segments.curves.len() as u32;
+
         let stream = PathSegmentStream::new(stream);
         for (segment, _) in stream {
             match segment {
@@ -174,7 +166,6 @@ impl MeshLibrary {
                         endpoint_0: endpoint_0,
                         endpoint_1: endpoint_1,
                     });
-                    self.segments.line_path_ids.push(path_id);
                 }
                 PathSegment::Curve(endpoint_0, control_point, endpoint_1) => {
                     self.segments.curves.push(CurveSegment {
@@ -182,10 +173,16 @@ impl MeshLibrary {
                         control_point: control_point,
                         endpoint_1: endpoint_1,
                     });
-                    self.segments.curve_path_ids.push(path_id);
                 }
             }
         }
+
+        let last_line_index = self.segments.lines.len() as u32;
+        let last_curve_index = self.segments.curves.len() as u32;
+
+        let path_ranges = self.ensure_path_ranges(path_id);
+        path_ranges.segment_curves = first_curve_index..last_curve_index;
+        path_ranges.segment_lines = first_line_index..last_line_index;
     }
 
     /// Computes vertex normals necessary for emboldening and/or stem darkening.
@@ -205,46 +202,36 @@ impl MeshLibrary {
         // for us, this is guaranteed by construction because each instance of all of the data that
         // we're writing has a byte size that is a multiple of 4. So we don't bother with doing it
         // explicitly here.
-        try!(write_chunk(writer, b"bqua", &self.b_quads));
-        try!(write_chunk(writer, b"bvpo", &self.b_vertex_positions));
-        try!(write_chunk(writer, b"bvpi", &self.b_vertex_path_ids));
-        try!(write_chunk(writer, b"bvlb", &self.b_vertex_loop_blinn_data));
-        try!(write_chunk(writer, b"bvno", &self.b_vertex_normals));
-        try!(write_chunk(writer, b"cvii", &self.cover_indices.interior_indices));
-        try!(write_chunk(writer, b"cvci", &self.cover_indices.curve_indices));
-        try!(write_chunk(writer, b"ebbv", &self.edge_data.bounding_box_vertex_positions));
-        try!(write_chunk(writer, b"eulv", &self.edge_data.upper_line_vertex_positions));
-        try!(write_chunk(writer, b"ellv", &self.edge_data.lower_line_vertex_positions));
-        try!(write_chunk(writer, b"eucv", &self.edge_data.upper_curve_vertex_positions));
-        try!(write_chunk(writer, b"elcv", &self.edge_data.lower_curve_vertex_positions));
-        try!(write_chunk(writer, b"ebbp", &self.edge_data.bounding_box_path_ids));
-        try!(write_chunk(writer, b"eulp", &self.edge_data.upper_line_path_ids));
-        try!(write_chunk(writer, b"ellp", &self.edge_data.lower_line_path_ids));
-        try!(write_chunk(writer, b"eucp", &self.edge_data.upper_curve_path_ids));
-        try!(write_chunk(writer, b"elcp", &self.edge_data.lower_curve_path_ids));
-        try!(write_chunk(writer, b"slin", &self.segments.lines));
-        try!(write_chunk(writer, b"scur", &self.segments.curves));
-        try!(write_chunk(writer, b"slpi", &self.segments.line_path_ids));
-        try!(write_chunk(writer, b"scpi", &self.segments.curve_path_ids));
-        try!(write_chunk(writer, b"snli", &self.segment_normals.line_normals));
-        try!(write_chunk(writer, b"sncu", &self.segment_normals.curve_normals));
+        try!(write_chunk(writer, b"prng", |writer| write_path_ranges(writer, &self.path_ranges)));
+
+        try!(write_simple_chunk(writer, b"bqua", &self.b_quads));
+        try!(write_simple_chunk(writer, b"bvpo", &self.b_vertex_positions));
+        try!(write_simple_chunk(writer, b"bvlb", &self.b_vertex_loop_blinn_data));
+        try!(write_simple_chunk(writer, b"bvno", &self.b_vertex_normals));
+        try!(write_simple_chunk(writer, b"cvii", &self.cover_indices.interior_indices));
+        try!(write_simple_chunk(writer, b"cvci", &self.cover_indices.curve_indices));
+        try!(write_simple_chunk(writer, b"ebbv", &self.edge_data.bounding_box_vertex_positions));
+        try!(write_simple_chunk(writer, b"eulv", &self.edge_data.upper_line_vertex_positions));
+        try!(write_simple_chunk(writer, b"ellv", &self.edge_data.lower_line_vertex_positions));
+        try!(write_simple_chunk(writer, b"eucv", &self.edge_data.upper_curve_vertex_positions));
+        try!(write_simple_chunk(writer, b"elcv", &self.edge_data.lower_curve_vertex_positions));
+        try!(write_simple_chunk(writer, b"slin", &self.segments.lines));
+        try!(write_simple_chunk(writer, b"scur", &self.segments.curves));
+        try!(write_simple_chunk(writer, b"snli", &self.segment_normals.line_normals));
+        try!(write_simple_chunk(writer, b"sncu", &self.segment_normals.curve_normals));
 
         let total_length = try!(writer.seek(SeekFrom::Current(0)));
         try!(writer.seek(SeekFrom::Start(4)));
         try!(writer.write_u32::<LittleEndian>((total_length - 8) as u32));
         return Ok(());
 
-        fn write_chunk<W, T>(writer: &mut W, tag: &[u8; 4], data: &[T]) -> io::Result<()>
-                             where W: Write + Seek, T: Serialize {
+        fn write_chunk<W, F>(writer: &mut W, tag: &[u8; 4], mut closure: F) -> io::Result<()>
+                             where W: Write + Seek, F: FnMut(&mut W) -> io::Result<()> {
             try!(writer.write_all(tag));
             try!(writer.write_all(b"\0\0\0\0"));
 
             let start_position = try!(writer.seek(SeekFrom::Current(0)));
-            for datum in data {
-                try!(bincode::serialize_into(writer, datum, Infinite).map_err(|_| {
-                    io::Error::from(ErrorKind::Other)
-                }));
-            }
+            try!(closure(writer));
 
             let end_position = try!(writer.seek(SeekFrom::Current(0)));
             try!(writer.seek(SeekFrom::Start(start_position - 4)));
@@ -252,19 +239,84 @@ impl MeshLibrary {
             try!(writer.seek(SeekFrom::Start(end_position)));
             Ok(())
         }
+
+        fn write_simple_chunk<W, T>(writer: &mut W, tag: &[u8; 4], data: &[T]) -> io::Result<()>
+                                    where W: Write + Seek, T: Serialize {
+            write_chunk(writer, tag, |writer| {
+                for datum in data {
+                    try!(bincode::serialize_into(writer, datum, Infinite).map_err(|_| {
+                        io::Error::from(ErrorKind::Other)
+                    }));
+                }
+                Ok(())
+            })
+        }
+
+        fn write_path_ranges<W>(writer: &mut W, path_ranges: &[PathRanges]) -> io::Result<()>
+                                where W: Write + Seek {
+            try!(write_path_range(writer, b"bqua", path_ranges, |ranges| &ranges.b_quads));
+            try!(write_path_range(writer, b"bver", path_ranges, |ranges| &ranges.b_vertices));
+            try!(write_path_range(writer,
+                                  b"cvii",
+                                  path_ranges,
+                                  |ranges| &ranges.cover_interior_indices));
+            try!(write_path_range(writer,
+                                  b"cvci",
+                                  path_ranges,
+                                  |ranges| &ranges.cover_curve_indices));
+            try!(write_path_range(writer,
+                                  b"ebbo",
+                                  path_ranges,
+                                  |ranges| &ranges.edge_bounding_box_indices));
+            try!(write_path_range(writer,
+                                  b"euli",
+                                  path_ranges,
+                                  |ranges| &ranges.edge_upper_line_indices));
+            try!(write_path_range(writer,
+                                  b"euci",
+                                  path_ranges,
+                                  |ranges| &ranges.edge_upper_curve_indices));
+            try!(write_path_range(writer,
+                                  b"elli",
+                                  path_ranges,
+                                  |ranges| &ranges.edge_lower_line_indices));
+            try!(write_path_range(writer,
+                                  b"elci",
+                                  path_ranges,
+                                  |ranges| &ranges.edge_lower_curve_indices));
+            try!(write_path_range(writer, b"slin", path_ranges, |ranges| &ranges.segment_lines));
+            try!(write_path_range(writer, b"scur", path_ranges, |ranges| &ranges.segment_curves));
+            Ok(())
+        }
+
+        fn write_path_range<W, F>(writer: &mut W,
+                                  tag: &[u8; 4],
+                                  all_path_ranges: &[PathRanges],
+                                  mut get_range: F)
+                                  -> io::Result<()>
+                                  where W: Write + Seek, F: FnMut(&PathRanges) -> &Range<u32> {
+            write_chunk(writer, tag, |writer| {
+                for path_ranges in all_path_ranges {
+                    let range = get_range(path_ranges);
+                    try!(writer.write_u32::<LittleEndian>(range.start));
+                    try!(writer.write_u32::<LittleEndian>(range.end));
+                }
+                Ok(())
+            })
+        }
     }
 
     pub(crate) fn snapshot_lengths(&self) -> MeshLibraryLengths {
         MeshLibraryLengths {
-            b_quads: self.b_quads.len(),
-            b_vertices: self.b_vertex_positions.len(),
-            cover_interior_indices: self.cover_indices.interior_indices.len(),
-            cover_curve_indices: self.cover_indices.curve_indices.len(),
-            edge_bounding_box_indices: self.edge_data.bounding_box_vertex_positions.len(),
-            edge_upper_line_indices: self.edge_data.upper_line_vertex_positions.len(),
-            edge_upper_curve_indices: self.edge_data.upper_curve_vertex_positions.len(),
-            edge_lower_line_indices: self.edge_data.lower_line_vertex_positions.len(),
-            edge_lower_curve_indices: self.edge_data.lower_curve_vertex_positions.len(),
+            b_quads: self.b_quads.len() as u32,
+            b_vertices: self.b_vertex_positions.len() as u32,
+            cover_interior_indices: self.cover_indices.interior_indices.len() as u32,
+            cover_curve_indices: self.cover_indices.curve_indices.len() as u32,
+            edge_bounding_box_indices: self.edge_data.bounding_box_vertex_positions.len() as u32,
+            edge_upper_line_indices: self.edge_data.upper_line_vertex_positions.len() as u32,
+            edge_upper_curve_indices: self.edge_data.upper_curve_vertex_positions.len() as u32,
+            edge_lower_line_indices: self.edge_data.lower_line_vertex_positions.len() as u32,
+            edge_lower_curve_indices: self.edge_data.lower_curve_vertex_positions.len() as u32,
         }
     }
 }
@@ -291,44 +343,64 @@ impl MeshLibraryCoverIndices {
 }
 
 pub(crate) struct MeshLibraryLengths {
-    b_quads: usize,
-    b_vertices: usize,
-    cover_interior_indices: usize,
-    cover_curve_indices: usize,
-    edge_bounding_box_indices: usize,
-    edge_upper_line_indices: usize,
-    edge_upper_curve_indices: usize,
-    edge_lower_line_indices: usize,
-    edge_lower_curve_indices: usize,
+    b_quads: u32,
+    b_vertices: u32,
+    cover_interior_indices: u32,
+    cover_curve_indices: u32,
+    edge_bounding_box_indices: u32,
+    edge_upper_line_indices: u32,
+    edge_upper_curve_indices: u32,
+    edge_lower_line_indices: u32,
+    edge_lower_curve_indices: u32,
 }
 
-pub struct MeshLibraryIndexRanges {
-    pub b_quads: Range<usize>,
-    pub b_vertices: Range<usize>,
-    pub cover_interior_indices: Range<usize>,
-    pub cover_curve_indices: Range<usize>,
-    pub edge_bounding_box_indices: Range<usize>,
-    pub edge_upper_line_indices: Range<usize>,
-    pub edge_upper_curve_indices: Range<usize>,
-    pub edge_lower_line_indices: Range<usize>,
-    pub edge_lower_curve_indices: Range<usize>,
+#[derive(Clone, Debug)]
+pub struct PathRanges {
+    pub b_quads: Range<u32>,
+    pub b_vertices: Range<u32>,
+    pub cover_interior_indices: Range<u32>,
+    pub cover_curve_indices: Range<u32>,
+    pub edge_bounding_box_indices: Range<u32>,
+    pub edge_upper_line_indices: Range<u32>,
+    pub edge_upper_curve_indices: Range<u32>,
+    pub edge_lower_line_indices: Range<u32>,
+    pub edge_lower_curve_indices: Range<u32>,
+    pub segment_lines: Range<u32>,
+    pub segment_curves: Range<u32>,
 }
 
-impl MeshLibraryIndexRanges {
-    pub(crate) fn new(start: &MeshLibraryLengths, end: &MeshLibraryLengths)
-                      -> MeshLibraryIndexRanges {
-        MeshLibraryIndexRanges {
-            b_quads: start.b_quads..end.b_quads,
-            b_vertices: start.b_vertices..end.b_vertices,
-            cover_interior_indices: start.cover_interior_indices..end.cover_interior_indices,
-            cover_curve_indices: start.cover_curve_indices..end.cover_curve_indices,
-            edge_bounding_box_indices:
-                start.edge_bounding_box_indices..end.edge_bounding_box_indices,
-            edge_upper_line_indices: start.edge_upper_line_indices..end.edge_upper_line_indices,
-            edge_upper_curve_indices: start.edge_upper_curve_indices..end.edge_upper_curve_indices,
-            edge_lower_line_indices: start.edge_lower_line_indices..end.edge_lower_line_indices,
-            edge_lower_curve_indices: start.edge_lower_curve_indices..end.edge_lower_curve_indices,
+impl PathRanges {
+    fn new() -> PathRanges {
+        PathRanges {
+            b_quads: 0..0,
+            b_vertices: 0..0,
+            cover_interior_indices: 0..0,
+            cover_curve_indices: 0..0,
+            edge_bounding_box_indices: 0..0,
+            edge_upper_line_indices: 0..0,
+            edge_upper_curve_indices: 0..0,
+            edge_lower_line_indices: 0..0,
+            edge_lower_curve_indices: 0..0,
+            segment_lines: 0..0,
+            segment_curves: 0..0,
         }
+    }
+
+    pub(crate) fn set_partitioning_lengths(&mut self,
+                                           start: &MeshLibraryLengths,
+                                           end: &MeshLibraryLengths) {
+        self.b_quads = start.b_quads..end.b_quads;
+        self.b_vertices = start.b_vertices..end.b_vertices;
+        self.cover_interior_indices = start.cover_interior_indices..end.cover_interior_indices;
+        self.cover_curve_indices = start.cover_curve_indices..end.cover_curve_indices;
+        self.edge_bounding_box_indices =
+            start.edge_bounding_box_indices..end.edge_bounding_box_indices;
+        self.edge_upper_line_indices = start.edge_upper_line_indices..end.edge_upper_line_indices;
+        self.edge_upper_curve_indices =
+            start.edge_upper_curve_indices..end.edge_upper_curve_indices;
+        self.edge_lower_line_indices = start.edge_lower_line_indices..end.edge_lower_line_indices;
+        self.edge_lower_curve_indices =
+            start.edge_lower_curve_indices..end.edge_lower_curve_indices;
     }
 }
 
@@ -339,11 +411,6 @@ pub struct MeshLibraryEdgeData {
     pub lower_line_vertex_positions: Vec<EdgeLineVertexPositions>,
     pub upper_curve_vertex_positions: Vec<EdgeCurveVertexPositions>,
     pub lower_curve_vertex_positions: Vec<EdgeCurveVertexPositions>,
-    pub bounding_box_path_ids: Vec<u16>,
-    pub upper_line_path_ids: Vec<u16>,
-    pub lower_line_path_ids: Vec<u16>,
-    pub upper_curve_path_ids: Vec<u16>,
-    pub lower_curve_path_ids: Vec<u16>,
 }
 
 impl MeshLibraryEdgeData {
@@ -354,11 +421,6 @@ impl MeshLibraryEdgeData {
             lower_line_vertex_positions: vec![],
             upper_curve_vertex_positions: vec![],
             lower_curve_vertex_positions: vec![],
-            bounding_box_path_ids: vec![],
-            upper_line_path_ids: vec![],
-            lower_line_path_ids: vec![],
-            upper_curve_path_ids: vec![],
-            lower_curve_path_ids: vec![],
         }
     }
 
@@ -368,11 +430,6 @@ impl MeshLibraryEdgeData {
         self.upper_curve_vertex_positions.clear();
         self.lower_line_vertex_positions.clear();
         self.lower_curve_vertex_positions.clear();
-        self.bounding_box_path_ids.clear();
-        self.upper_line_path_ids.clear();
-        self.upper_curve_path_ids.clear();
-        self.lower_line_path_ids.clear();
-        self.lower_curve_path_ids.clear();
     }
 }
 
@@ -380,8 +437,6 @@ impl MeshLibraryEdgeData {
 pub struct MeshLibrarySegments {
     pub lines: Vec<LineSegment>,
     pub curves: Vec<CurveSegment>,
-    pub line_path_ids: Vec<u16>,
-    pub curve_path_ids: Vec<u16>,
 }
 
 impl MeshLibrarySegments {
@@ -389,16 +444,12 @@ impl MeshLibrarySegments {
         MeshLibrarySegments {
             lines: vec![],
             curves: vec![],
-            line_path_ids: vec![],
-            curve_path_ids: vec![],
         }
     }
 
     fn clear(&mut self) {
         self.lines.clear();
         self.curves.clear();
-        self.line_path_ids.clear();
-        self.curve_path_ids.clear();
     }
 }
 
