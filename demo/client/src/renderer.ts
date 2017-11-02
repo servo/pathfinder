@@ -111,9 +111,6 @@ export abstract class Renderer {
                                                       renderContext.atlasRenderingTimerQuery);
         }
 
-        // Draw "scenery" (used in the 3D view).
-        this.drawSceneryIfNecessary();
-
         // Antialias.
         const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
         antialiasingStrategy.antialias(this);
@@ -123,6 +120,9 @@ export abstract class Renderer {
 
         // Clear.
         this.clearForDirectRendering();
+
+        // Draw "scenery" (used in the 3D view).
+        this.drawSceneryIfNecessary();
 
         // Perform direct rendering (Loop-Blinn).
         if (antialiasingStrategy.directRenderingMode !== 'none')
