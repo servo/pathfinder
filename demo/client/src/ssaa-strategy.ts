@@ -11,7 +11,8 @@
 import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy, DirectRenderingMode, SubpixelAAType} from './aa-strategy';
-import {createFramebuffer, createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
+import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
+import {createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
 import {Renderer} from './renderer';
 import {unwrapNull} from './utils';
 import {DemoView} from './view';
@@ -25,13 +26,21 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     private supersampledColorTexture: WebGLTexture;
     private supersampledDepthTexture: WebGLTexture;
     private supersampledFramebuffer: WebGLFramebuffer;
+    private renderTargetColorTextures: WebGLTexture[];
+    private renderTargetDepthTextures: WebGLTexture[];
+    private renderTargetFramebuffers: WebGLFramebuffer[];
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
+
         this.level = level;
         this.subpixelAA = subpixelAA;
         this.destFramebufferSize = glmatrix.vec2.create();
         this.supersampledFramebufferSize = glmatrix.vec2.create();
+
+        this.renderTargetColorTextures = [];
+        this.renderTargetDepthTextures = [];
+        this.renderTargetFramebuffers = [];
     }
 
     attachMeshes(renderer: Renderer) {}
@@ -97,11 +106,58 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     }
 
     prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void {
-        // TODO(pcwalton)
+        const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
+
+        if (renderer.usesIntermediateRenderTargets &&
+            (renderer.renderTaskTypeForObject(objectIndex) === 'clip' ||
+             renderer.compositingOperationForObject(objectIndex) != null)) {
+            if (this.renderTargetColorTextures[objectIndex] == null) {
+                this.renderTargetColorTextures[objectIndex] =
+                    createFramebufferColorTexture(gl,
+                                                  this.supersampledFramebufferSize,
+                                                  renderContext.colorAlphaFormat);
+            }
+            if (this.renderTargetDepthTextures[objectIndex] == null) {
+                this.renderTargetDepthTextures[objectIndex] =
+                    createFramebufferDepthTexture(gl, this.supersampledFramebufferSize);
+            }
+            if (this.renderTargetFramebuffers[objectIndex] == null) {
+                this.renderTargetFramebuffers[objectIndex] =
+                    createFramebuffer(gl,
+                                      this.renderTargetColorTextures[objectIndex],
+                                      this.renderTargetDepthTextures[objectIndex]);
+            }
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.renderTargetFramebuffers[objectIndex]);
+        } else {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.supersampledFramebuffer);
+        }
+
+        gl.viewport(0,
+                    0,
+                    this.supersampledFramebufferSize[0],
+                    this.supersampledFramebufferSize[1]);
+        gl.disable(gl.SCISSOR_TEST);
     }
 
     finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {
-        // TODO(pcwalton)
+        if (!renderer.usesIntermediateRenderTargets)
+            return;
+
+        const compositingOperation = renderer.compositingOperationForObject(objectIndex);
+        if (compositingOperation == null)
+            return;
+
+        const gl = renderer.renderContext.gl;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.supersampledFramebuffer);
+        gl.viewport(0,
+                    0,
+                    this.supersampledFramebufferSize[0],
+                    this.supersampledFramebufferSize[1]);
+        gl.disable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
+
+        compositingOperation.composite(renderer, objectIndex, this.renderTargetColorTextures);
     }
 
     antialias(renderer: Renderer) {}
