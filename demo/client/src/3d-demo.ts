@@ -28,7 +28,8 @@ import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
 import {calculatePixelRectForGlyph, GlyphStore, Hint, PathfinderFont} from "./text";
 import {SimpleTextLayout, TextFrame, TextRun, UnitMetrics} from "./text";
 import {TextRenderContext, TextRenderer} from './text-renderer';
-import {assert, FLOAT32_SIZE, panic, PathfinderError, Range, unwrapNull} from "./utils";
+import {assert, FLOAT32_SIZE, panic, PathfinderError, Range, UINT16_SIZE} from "./utils";
+import {unwrapNull} from "./utils";
 import {DemoView, Timings} from "./view";
 
 const TEXT_AVAILABLE_WIDTH: number = 150000;
@@ -63,7 +64,12 @@ const MONUMENT_SCALE: glmatrix.vec3 =
                              (TEXT_AVAILABLE_WIDTH * 0.5 + TEXT_PADDING) * TEXT_SCALE[2]);
 
 const TEXT_COLOR: Uint8Array = new Uint8Array([0xf2, 0xf8, 0xf8, 0xff]);
-const MONUMENT_COLOR: number[] = [0x70 / 0xff, 0x80 / 0xff, 0x80 / 0xff];
+
+const AMBIENT_COLOR: glmatrix.vec3 = glmatrix.vec3.clone([0.063, 0.063, 0.063]);
+const DIFFUSE_COLOR: glmatrix.vec3 = glmatrix.vec3.clone([0.356, 0.264, 0.136]);
+const SPECULAR_COLOR: glmatrix.vec3 = glmatrix.vec3.clone([0.490, 0.420, 0.324]);
+
+const MONUMENT_SHININESS: number = 32.0;
 
 const CUBE_VERTEX_POSITIONS: Float32Array = new Float32Array([
     -1.0, -1.0, -1.0,  // 0
@@ -84,6 +90,15 @@ const CUBE_INDICES: Uint16Array = new Uint16Array([
     2, 7, 3, 2, 6, 7,   // back
     4, 5, 6, 6, 5, 7,   // top
 ]);
+
+const MONUMENT_NORMALS: glmatrix.vec4[] = [
+    glmatrix.vec4.clone([ 0.0, -1.0,  0.0, 1.0]),
+    glmatrix.vec4.clone([ 0.0,  0.0, -1.0, 1.0]),
+    glmatrix.vec4.clone([-1.0,  0.0,  0.0, 1.0]),
+    glmatrix.vec4.clone([ 1.0,  0.0,  0.0, 1.0]),
+    glmatrix.vec4.clone([ 0.0,  0.0,  1.0, 1.0]),
+    glmatrix.vec4.clone([ 0.0,  1.0,  0.0, 1.0]),
+];
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
@@ -393,22 +408,20 @@ class ThreeDRenderer extends Renderer {
     constructor(renderContext: ThreeDView) {
         super(renderContext);
 
+        const gl = renderContext.gl;
+
         this.camera = new PerspectiveCamera(renderContext.canvas, {
             innerCollisionExtent: MONUMENT_SCALE[0],
         });
         this.camera.onChange = () => renderContext.setDirty();
 
-        this.cubeVertexPositionBuffer = unwrapNull(renderContext.gl.createBuffer());
-        renderContext.gl.bindBuffer(renderContext.gl.ARRAY_BUFFER, this.cubeVertexPositionBuffer);
-        renderContext.gl.bufferData(renderContext.gl.ARRAY_BUFFER,
-                                    CUBE_VERTEX_POSITIONS,
-                                    renderContext.gl.STATIC_DRAW);
+        this.cubeVertexPositionBuffer = unwrapNull(gl.createBuffer());
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.cubeVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, CUBE_VERTEX_POSITIONS, gl.STATIC_DRAW);
 
-        this.cubeIndexBuffer = unwrapNull(renderContext.gl.createBuffer());
-        renderContext.gl.bindBuffer(renderContext.gl.ELEMENT_ARRAY_BUFFER, this.cubeIndexBuffer);
-        renderContext.gl.bufferData(renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                    CUBE_INDICES,
-                                    renderContext.gl.STATIC_DRAW);
+        this.cubeIndexBuffer = unwrapNull(gl.createBuffer());
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.cubeIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, CUBE_INDICES, gl.STATIC_DRAW);
     }
 
     attachMeshes(expandedMeshes: PathfinderMeshData[]) {
@@ -597,31 +610,33 @@ class ThreeDRenderer extends Renderer {
     }
 
     private drawMonument(): void {
-        const gl = this.renderContext.gl;
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
 
         // Set up the cube VBO.
         const monumentProgram = this.renderContext.shaderPrograms.demo3DMonument;
-        this.renderContext.gl.useProgram(monumentProgram.program);
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
-                                         this.cubeVertexPositionBuffer);
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ELEMENT_ARRAY_BUFFER,
-                                         this.cubeIndexBuffer);
-        this.renderContext.gl.vertexAttribPointer(monumentProgram.attributes.aPosition,
-                                                  3,
-                                                  this.renderContext.gl.FLOAT,
-                                                  false,
-                                                  0,
-                                                  0);
-        this.renderContext.gl.enableVertexAttribArray(monumentProgram.attributes.aPosition);
+        gl.useProgram(monumentProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.cubeVertexPositionBuffer);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.cubeIndexBuffer);
+        gl.vertexAttribPointer(monumentProgram.attributes.aPosition, 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(monumentProgram.attributes.aPosition);
 
         // Set uniforms for the monument.
-        const transform = this.calculateWorldTransform(MONUMENT_TRANSLATION, MONUMENT_SCALE);
-        gl.uniformMatrix4fv(monumentProgram.uniforms.uTransform, false, transform);
-        gl.uniform4f(monumentProgram.uniforms.uColor,
-                     MONUMENT_COLOR[0],
-                     MONUMENT_COLOR[1],
-                     MONUMENT_COLOR[2],
-                     1.0);
+        const projection = this.calculateProjectionTransform();
+        const modelview = this.calculateModelviewTransform(MONUMENT_TRANSLATION, MONUMENT_SCALE);
+        gl.uniformMatrix4fv(monumentProgram.uniforms.uProjection, false, projection);
+        gl.uniformMatrix4fv(monumentProgram.uniforms.uModelview, false, modelview);
+        const cameraModelview = this.calculateCameraModelviewTransform();
+        const lightPosition = glmatrix.vec4.clone([-1750.0, -700.0, 1750.0, 1.0]);
+        glmatrix.vec4.transformMat4(lightPosition, lightPosition, cameraModelview);
+        gl.uniform3f(monumentProgram.uniforms.uLightPosition,
+                     lightPosition[0] / lightPosition[3],
+                     lightPosition[1] / lightPosition[3],
+                     lightPosition[2] / lightPosition[3]);
+        gl.uniform3fv(monumentProgram.uniforms.uAmbientColor, AMBIENT_COLOR);
+        gl.uniform3fv(monumentProgram.uniforms.uDiffuseColor, DIFFUSE_COLOR);
+        gl.uniform3fv(monumentProgram.uniforms.uSpecularColor, SPECULAR_COLOR);
+        gl.uniform1f(monumentProgram.uniforms.uShininess, MONUMENT_SHININESS);
 
         // Set state for the monument.
         gl.enable(gl.DEPTH_TEST);
@@ -630,8 +645,19 @@ class ThreeDRenderer extends Renderer {
         gl.disable(gl.SCISSOR_TEST);
         gl.disable(gl.BLEND);
 
-        // Draw the monument!
-        gl.drawElements(gl.TRIANGLES, CUBE_INDICES.length, gl.UNSIGNED_SHORT, 0);
+        // Loop over each face.
+        for (let face = 0; face < 6; face++) {
+            // Set the uniforms for this face.
+            const normal = glmatrix.vec4.clone(MONUMENT_NORMALS[face]);
+            glmatrix.vec4.transformMat4(normal, normal, this.camera.rotationMatrix);
+            gl.uniform3f(monumentProgram.uniforms.uNormal,
+                         normal[0] / normal[3],
+                         normal[1] / normal[3],
+                         normal[2] / normal[3]);
+
+            // Draw the face!
+            gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, face * 6 * UINT16_SIZE);
+        }
     }
 
     private drawDistantGlyphs(): void {
@@ -760,9 +786,7 @@ class ThreeDRenderer extends Renderer {
         this.renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    private calculateWorldTransform(modelviewTranslation: glmatrix.vec3,
-                                    modelviewScale: glmatrix.vec3):
-                                    glmatrix.mat4 {
+    private calculateProjectionTransform(): glmatrix.mat4 {
         const canvas = this.renderContext.canvas;
         const projection = glmatrix.mat4.create();
         glmatrix.mat4.perspective(projection,
@@ -770,12 +794,30 @@ class ThreeDRenderer extends Renderer {
                                   canvas.width / canvas.height,
                                   NEAR_CLIP_PLANE,
                                   FAR_CLIP_PLANE);
+        return projection;
+    }
 
+    private calculateCameraModelviewTransform(): glmatrix.mat4 {
         const modelview = glmatrix.mat4.create();
         glmatrix.mat4.mul(modelview, modelview, this.camera.rotationMatrix);
         glmatrix.mat4.translate(modelview, modelview, this.camera.translation);
+        return modelview;
+    }
+
+    private calculateModelviewTransform(modelviewTranslation: glmatrix.vec3,
+                                        modelviewScale: glmatrix.vec3):
+                                        glmatrix.mat4 {
+        const modelview = this.calculateCameraModelviewTransform();
         glmatrix.mat4.translate(modelview, modelview, modelviewTranslation);
         glmatrix.mat4.scale(modelview, modelview, modelviewScale);
+        return modelview;
+    }
+
+    private calculateWorldTransform(modelviewTranslation: glmatrix.vec3,
+                                    modelviewScale: glmatrix.vec3):
+                                    glmatrix.mat4 {
+        const projection = this.calculateProjectionTransform();
+        const modelview = this.calculateModelviewTransform(modelviewTranslation, modelviewScale);
 
         const transform = glmatrix.mat4.create();
         glmatrix.mat4.mul(transform, projection, modelview);

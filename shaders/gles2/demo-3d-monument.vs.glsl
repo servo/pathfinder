@@ -10,10 +10,15 @@
 
 precision mediump float;
 
-uniform mat4 uTransform;
+uniform mat4 uProjection;
+uniform mat4 uModelview;
 
 attribute vec3 aPosition;
 
+varying vec3 vPosition;
+
 void main() {
-    gl_Position = uTransform * vec4(aPosition, 1.0);
+    vec4 position = uModelview * vec4(aPosition, 1.0);
+    vPosition = position.xyz / position.w;
+    gl_Position = uProjection * position;
 }
