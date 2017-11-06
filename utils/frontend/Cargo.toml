@@ -1,0 +1,19 @@
+[package]
+name = "pathfinder"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]
+app_units = "0.5"
+clap = "2.27"
+freetype-sys = "0.6"
+
+[dependencies.pathfinder_font_renderer]
+path = "../../font-renderer"
+features = ["freetype"]
+
+[dependencies.pathfinder_partitioner]
+path = "../../partitioner"
+
+[dependencies.pathfinder_path_utils]
+path = "../../path-utils"

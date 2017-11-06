@@ -141,8 +141,11 @@ impl<'a> PathBufferStream<'a> {
     #[inline]
     pub fn subpath_range<'b>(path_buffer: &'b PathBuffer, subpath_range: Range<u32>)
                              -> PathBufferStream<'b> {
-        let first_endpoint_index = path_buffer.subpaths[subpath_range.start as usize]
-                                              .first_endpoint_index;
+        let first_endpoint_index = if subpath_range.start == subpath_range.end {
+            0
+        } else {
+            path_buffer.subpaths[subpath_range.start as usize].first_endpoint_index
+        };
         PathBufferStream {
             path_buffer: path_buffer,
             endpoint_index: first_endpoint_index,
