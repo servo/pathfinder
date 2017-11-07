@@ -135,6 +135,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
     protected createView(): BenchmarkTestView {
         return new BenchmarkTestView(this,
+                                     unwrapNull(this.gammaLUT),
                                      unwrapNull(this.commonShaderSource),
                                      unwrapNull(this.shaderSources));
     }
@@ -252,9 +253,10 @@ class BenchmarkTestView extends DemoView {
     }
 
     constructor(appController: BenchmarkAppController,
+                gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(commonShaderSource, shaderSources);
+        super(gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
         this.renderer = new BenchmarkRenderer(this);

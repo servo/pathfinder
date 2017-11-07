@@ -135,6 +135,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     gl: WebGLRenderingContext;
 
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
+    gammaLUT: HTMLImageElement;
 
     instancedArraysExt: ANGLEInstancedArrays;
     textureHalfFloatExt: OESTextureHalfFloat;
@@ -162,16 +163,21 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     protected sRGBExt: EXTsRGB;
 
     protected colorBufferHalfFloatExt: any;
+
     private wantsScreenshot: boolean;
 
     /// NB: All subclasses are responsible for creating a renderer in their constructors.
-    constructor(commonShaderSource: string, shaderSources: ShaderMap<ShaderProgramSource>) {
+    constructor(gammaLUT: HTMLImageElement,
+                commonShaderSource: string,
+                shaderSources: ShaderMap<ShaderProgramSource>) {
         super();
 
         this.initContext();
 
         const shaderSource = this.compileShaders(commonShaderSource, shaderSources);
         this.shaderPrograms = this.linkShaders(shaderSource);
+
+        this.gammaLUT = gammaLUT;
 
         this.wantsScreenshot = false;
     }
@@ -330,6 +336,7 @@ export interface RenderContext {
     readonly colorAlphaFormat: GLenum;
 
     readonly shaderPrograms: ShaderMap<PathfinderShaderProgram>;
+    readonly gammaLUT: HTMLImageElement;
 
     readonly quadPositionsBuffer: WebGLBuffer;
     readonly quadElementsBuffer: WebGLBuffer;

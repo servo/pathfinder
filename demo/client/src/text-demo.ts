@@ -167,6 +167,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     protected createView() {
         return new TextDemoView(this,
+                                unwrapNull(this.gammaLUT),
                                 unwrapNull(this.commonShaderSource),
                                 unwrapNull(this.shaderSources));
     }
@@ -304,9 +305,10 @@ class TextDemoView extends DemoView implements TextRenderContext {
     }
 
     constructor(appController: TextDemoController,
+                gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(commonShaderSource, shaderSources);
+        super(gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
         this.renderer = new TextDemoRenderer(this);

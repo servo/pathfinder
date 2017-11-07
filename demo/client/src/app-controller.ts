@@ -14,6 +14,8 @@ import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapNull, unwrapUndef} from './utils';
 import {DemoView, Timings, TIMINGS} from "./view";
 
+const GAMMA_LUT_URI: string = "/textures/gamma-lut.png";
+
 export abstract class AppController {
     protected canvas: HTMLCanvasElement;
 
@@ -54,6 +56,7 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
 
     protected commonShaderSource: string | null;
     protected shaderSources: ShaderMap<ShaderProgramSource> | null;
+    protected gammaLUT: HTMLImageElement;
 
     private aaLevelSelect: HTMLSelectElement | null;
     private subpixelAARadioButton: HTMLInputElement | null;
@@ -147,9 +150,13 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         const shaderLoader = new ShaderLoader;
         shaderLoader.load();
 
-        this.view = Promise.all([shaderLoader.common, shaderLoader.shaders]).then(allShaders => {
-            this.commonShaderSource = allShaders[0];
-            this.shaderSources = allShaders[1];
+        const gammaLUTPromise = this.loadGammaLUT();
+
+        const promises: any[] = [gammaLUTPromise, shaderLoader.common, shaderLoader.shaders];
+        this.view = Promise.all(promises).then(assets => {
+            this.gammaLUT = assets[0];
+            this.commonShaderSource = assets[1];
+            this.shaderSources = assets[2];
             return this.createView();
         });
 
@@ -212,6 +219,16 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
     }
 
     protected abstract createView(): View;
+
+    private loadGammaLUT(): Promise<HTMLImageElement> {
+        return window.fetch(GAMMA_LUT_URI)
+                     .then(response => response.blob())
+                     .then(blob => {
+                         const imgElement = document.createElement('img');
+                         imgElement.src = URL.createObjectURL(blob);
+                         return imgElement;
+                     });
+    }
 
     private updateAALevel() {
         let aaType: AntialiasingStrategyName, aaLevel: number;

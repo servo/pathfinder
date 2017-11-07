@@ -157,6 +157,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
 
     protected createView(): ThreeDView {
         return new ThreeDView(this,
+                              unwrapNull(this.gammaLUT),
                               unwrapNull(this.commonShaderSource),
                               unwrapNull(this.shaderSources));
     }
@@ -339,9 +340,10 @@ class ThreeDView extends DemoView implements TextRenderContext {
     }
 
     constructor(appController: ThreeDController,
+                gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(commonShaderSource, shaderSources);
+        super(gammaLUT, commonShaderSource, shaderSources);
 
         this.cameraView = new ThreeDAtlasCameraView;
 

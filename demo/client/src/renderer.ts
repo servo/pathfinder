@@ -77,6 +77,8 @@ export abstract class Renderer {
     private implicitCoverInteriorVAO: WebGLVertexArrayObjectOES | null;
     private implicitCoverCurveVAO: WebGLVertexArrayObjectOES | null;
 
+    private gammaLUTTexture: WebGLTexture | null;
+
     private instancedPathIDVBO: WebGLBuffer | null;
     private timerQueryPollInterval: number | null;
 
@@ -90,6 +92,8 @@ export abstract class Renderer {
 
         if (this.pathIDsAreInstanced)
             this.initInstancedPathIDVBO();
+
+        this.initGammaLUTTexture();
 
         this.antialiasingStrategy = new NoAAStrategy(0, 'none');
         this.antialiasingStrategy.init(this);
@@ -501,6 +505,16 @@ export abstract class Renderer {
             window.clearInterval(this.timerQueryPollInterval!);
             this.timerQueryPollInterval = null;
         }, TIME_INTERVAL_DELAY);
+    }
+
+    private initGammaLUTTexture(): void {
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
+        const gammaLUT = renderContext.gammaLUT;
+        const texture = unwrapNull(gl.createTexture());
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, gammaLUT);
     }
 
     private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {

@@ -70,6 +70,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
 
     protected createView() {
         return new SVGDemoView(this,
+                               unwrapNull(this.gammaLUT),
                                unwrapNull(this.commonShaderSource),
                                unwrapNull(this.shaderSources));
     }
@@ -95,9 +96,10 @@ class SVGDemoView extends DemoView {
     }
 
     constructor(appController: SVGDemoController,
+                gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(commonShaderSource, shaderSources);
+        super(gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
         this.renderer = new SVGDemoRenderer(this);

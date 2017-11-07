@@ -167,7 +167,7 @@ export class ShaderLoader {
     common: Promise<string>;
     shaders: Promise<ShaderMap<ShaderProgramSource>>;
 
-    load() {
+    load(): void {
         this.common = window.fetch(COMMON_SHADER_URL).then(response => response.text());
 
         const shaderKeys = Object.keys(SHADER_URLS) as Array<keyof ShaderMap<string>>;
