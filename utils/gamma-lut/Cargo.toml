@@ -4,4 +4,6 @@ version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
+clap = "2.27"
+image = "0.17"
 log = "0.3"

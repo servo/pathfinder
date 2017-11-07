@@ -165,22 +165,6 @@ impl ColorLut for ColorU {
     }
 }
 
-// This will invert the gamma applied by CoreGraphics,
-// so we can get linear values.
-// CoreGraphics obscurely defaults to 2.0 as the smoothing gamma value.
-// The color space used does not appear to affect this choice.
-#[cfg(target_os="macos")]
-fn get_inverse_gamma_table_coregraphics_smoothing() -> [u8; 256] {
-    let mut table = [0u8; 256];
-
-    for (i, v) in table.iter_mut().enumerate() {
-        let x = i as f32 / 255.0;
-        *v = round_to_u8(x * x * 255.0);
-    }
-
-    table
-}
-
 // A value of 0.5 for SK_GAMMA_CONTRAST appears to be a good compromise.
 // With lower values small text appears washed out (though correctly so).
 // With higher values lcd fringing is worse and the smoothing effect of
@@ -252,8 +236,6 @@ pub fn build_gamma_correcting_lut(table: &mut [u8; 256], src: u8, contrast: f32,
 
 pub struct GammaLut {
     pub tables: [[u8; 256]; 1 << LUM_BITS],
-    #[cfg(target_os="macos")]
-    cg_inverse_gamma: [u8; 256],
 }
 
 impl GammaLut {
@@ -282,12 +264,6 @@ impl GammaLut {
     }
 
     pub fn new(contrast: f32, paint_gamma: f32, device_gamma: f32) -> GammaLut {
-        #[cfg(target_os="macos")]
-        let mut table = GammaLut {
-            tables: [[0; 256]; 1 << LUM_BITS],
-            cg_inverse_gamma: get_inverse_gamma_table_coregraphics_smoothing(),
-        };
-        #[cfg(not(target_os="macos"))]
         let mut table = GammaLut {
             tables: [[0; 256]; 1 << LUM_BITS],
         };
@@ -309,15 +285,6 @@ impl GammaLut {
             pixel[1] = g;
             pixel[2] = r;
             pixel[3] = max(max(b, g), r);
-        }
-    }
-
-    #[cfg(target_os="macos")]
-    pub fn coregraphics_convert_to_linear(&self, pixels: &mut [u8]) {
-        for pixel in pixels.chunks_mut(4) {
-            pixel[0] = self.cg_inverse_gamma[pixel[0] as usize];
-            pixel[1] = self.cg_inverse_gamma[pixel[1] as usize];
-            pixel[2] = self.cg_inverse_gamma[pixel[2] as usize];
         }
     }
 

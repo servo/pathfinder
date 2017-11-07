@@ -78,6 +78,7 @@ static STATIC_SVG_OCTICONS_PATH: &'static str = "../client/node_modules/octicons
 static STATIC_WOFF2_INTER_UI_PATH: &'static str = "../../resources/fonts/inter-ui";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 static STATIC_DATA_PATH: &'static str = "../../resources/data";
+static STATIC_TEXTURES_PATH: &'static str = "../../resources/textures";
 
 static STATIC_DOC_API_INDEX_URI: &'static str = "/doc/api/pathfinder_font_renderer/index.html";
 
@@ -504,6 +505,10 @@ fn static_svg_demo(svg_name: String) -> Option<NamedFile> {
 fn static_data(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_DATA_PATH).join(file)).ok()
 }
+#[get("/textures/<file..>")]
+fn static_textures(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_TEXTURES_PATH).join(file)).ok()
+}
 
 struct Shader {
     file: File,
@@ -550,5 +555,6 @@ fn main() {
         static_otf_demo,
         static_svg_demo,
         static_data,
+        static_textures,
     ]).launch();
 }
