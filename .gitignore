@@ -2,6 +2,7 @@
 /partitioner/target
 /path-utils/target
 /utils/frontend/target
+/utils/gamma-lut/target
 /demo/client/target
 /demo/client/*.html
 /demo/client/*.js

@@ -1,0 +1,7 @@
+[package]
+name = "generate-gamma-lut"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]
+log = "0.3"
