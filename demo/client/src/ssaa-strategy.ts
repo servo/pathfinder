@@ -1,4 +1,4 @@
-// pathfinder/client/src/ssaa-strategy.ts
+// pathfinder/demo/client/src/ssaa-strategy.ts
 //
 // Copyright © 2017 The Pathfinder Project Developers.
 //
@@ -43,9 +43,9 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         this.renderTargetFramebuffers = [];
     }
 
-    attachMeshes(renderer: Renderer) {}
+    attachMeshes(renderer: Renderer): void {}
 
-    setFramebufferSize(renderer: Renderer) {
+    setFramebufferSize(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -105,7 +105,9 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         gl.clear(gl.COLOR_BUFFER_BIT);
     }
 
-    prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void {
+    prepareForDirectRendering(renderer: Renderer): void {}
+
+    prepareToRenderObject(renderer: Renderer, objectIndex: number): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -160,9 +162,11 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         compositingOperation.composite(renderer, objectIndex, this.renderTargetColorTextures);
     }
 
-    antialias(renderer: Renderer) {}
+    antialiasObject(renderer: Renderer): void {}
 
-    resolve(renderer: Renderer) {
+    resolveAAForObject(renderer: Renderer): void {}
+
+    resolve(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 

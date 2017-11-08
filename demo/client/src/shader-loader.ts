@@ -1,4 +1,4 @@
-// pathfinder/client/src/shader-loader.ts
+// pathfinder/demo/client/src/shader-loader.ts
 //
 // Copyright © 2017 The Pathfinder Project Developers.
 //

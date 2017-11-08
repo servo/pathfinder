@@ -181,6 +181,15 @@ class SVGDemoRenderer extends Renderer {
         return loader.renderTasks[objectIndex].compositingOperation;
     }
 
+    meshIndexForObject(objectIndex: number): number {
+        return 0;
+    }
+
+    pathRangeForObject(objectIndex: number): Range {
+        const loader = this.renderContext.appController.loader;
+        return loader.renderTasks[objectIndex].instanceIndices;
+    }
+
     protected get usedSizeFactor(): glmatrix.vec2 {
         return glmatrix.vec2.clone([1.0, 1.0]);
     }
@@ -209,15 +218,6 @@ class SVGDemoRenderer extends Renderer {
         if (this.antialiasingStrategy instanceof XCAAStrategy)
             return 'xcaaMultiDirectInterior';
         return 'directInterior';
-    }
-
-    protected meshIndexForObject(objectIndex: number): number {
-        return 0;
-    }
-
-    protected pathRangeForObject(objectIndex: number): Range {
-        const loader = this.renderContext.appController.loader;
-        return loader.renderTasks[objectIndex].instanceIndices;
     }
 
     protected newTimingsReceived(): void {

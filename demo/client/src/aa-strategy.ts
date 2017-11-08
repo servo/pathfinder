@@ -44,20 +44,28 @@ export abstract class AntialiasingStrategy {
     // Returns the transformation matrix that should be applied when directly rendering.
     abstract get transform(): glmatrix.mat4;
 
-    // Called before direct rendering.
+    // Called before rendering.
     //
-    // Typically, this redirects direct rendering to a framebuffer of some sort.
+    // Typically, this redirects rendering to a framebuffer of some sort.
     abstract prepareForRendering(renderer: Renderer): void;
 
+    // Called before directly rendering.
+    //
+    // Typically, this redirects rendering to a framebuffer of some sort.
+    abstract prepareForDirectRendering(renderer: Renderer): void;
+
     // Called before directly rendering a single object.
-    abstract prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void;
+    abstract prepareToRenderObject(renderer: Renderer, objectIndex: number): void;
 
     abstract finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void;
 
     // Called after direct rendering.
     //
     // This usually performs the actual antialiasing.
-    abstract antialias(renderer: Renderer): void;
+    abstract antialiasObject(renderer: Renderer, objectIndex: number): void;
+
+    // Called after antialiasing each object.
+    abstract resolveAAForObject(renderer: Renderer, objectIndex: number): void;
 
     // Called after antialiasing.
     //
@@ -98,7 +106,9 @@ export class NoAAStrategy extends AntialiasingStrategy {
         gl.disable(gl.SCISSOR_TEST);
     }
 
-    prepareToDirectlyRenderObject(renderer: Renderer, objectIndex: number): void {
+    prepareForDirectRendering(renderer: Renderer): void {}
+
+    prepareToRenderObject(renderer: Renderer, objectIndex: number): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -147,9 +157,11 @@ export class NoAAStrategy extends AntialiasingStrategy {
         compositingOperation.composite(renderer, objectIndex, this.renderTargetColorTextures);
     }
 
-    antialias(renderer: Renderer) {}
+    antialiasObject(renderer: Renderer, objectIndex: number): void {}
 
-    resolve(renderer: Renderer) {}
+    resolveAAForObject(renderer: Renderer): void {}
+
+    resolve(renderer: Renderer): void {}
 
     get directRenderingMode(): DirectRenderingMode {
         return 'color';

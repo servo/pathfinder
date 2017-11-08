@@ -301,7 +301,7 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         });
     }
 
-    private fileSelectionChanged(event: Event) {
+    private fileSelectionChanged(event: Event): void {
         const selectFileElement = event.currentTarget as HTMLSelectElement;
         const selectedOption = selectFileElement.selectedOptions[0] as HTMLOptionElement;
 

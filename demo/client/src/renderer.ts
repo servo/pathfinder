@@ -102,6 +102,7 @@ export abstract class Renderer {
 
         this.antialiasingStrategy = new NoAAStrategy(0, 'none');
         this.antialiasingStrategy.init(this);
+        this.antialiasingStrategy.setFramebufferSize(this);
     }
 
     attachMeshes(meshes: PathfinderMeshData[]): void {
@@ -134,12 +135,27 @@ export abstract class Renderer {
         // Draw "scenery" (used in the 3D view).
         this.drawSceneryIfNecessary();
 
-        // Antialias.
-        antialiasingStrategy.antialias(this);
-
-        // Perform direct rendering (Loop-Blinn).
         if (antialiasingStrategy.directRenderingMode !== 'none')
-            this.renderDirect();
+            antialiasingStrategy.prepareForDirectRendering(this);
+
+        const objectCount = this.objectCount;
+        for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
+            // Antialias.
+            antialiasingStrategy.antialiasObject(this, objectIndex);
+
+            // Prepare for direct rendering.
+            antialiasingStrategy.prepareToRenderObject(this, objectIndex);
+
+            // Perform direct rendering (Loop-Blinn).
+            if (antialiasingStrategy.directRenderingMode !== 'none') {
+                // Clear.
+                this.clearForDirectRendering(objectIndex);
+
+                this.directlyRenderObject(objectIndex);
+            }
+
+            antialiasingStrategy.resolveAAForObject(this, objectIndex);
+        }
 
         // End the timer, and start a new one.
         if (this.timerQueryPollInterval == null) {
@@ -171,6 +187,7 @@ export abstract class Renderer {
         this.antialiasingStrategy.init(this);
         if (this.meshData != null)
             this.antialiasingStrategy.attachMeshes(this);
+        this.antialiasingStrategy.setFramebufferSize(this);
 
         this.renderContext.setDirty();
     }
@@ -276,6 +293,15 @@ export abstract class Renderer {
         return null;
     }
 
+    meshIndexForObject(objectIndex: number): number {
+        return objectIndex;
+    }
+
+    pathRangeForObject(objectIndex: number): Range {
+        const bVertexPathRanges = this.meshes[objectIndex].bVertexPathRanges;
+        return new Range(1, bVertexPathRanges.length + 1);
+    }
+
     protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
         return glmatrix.vec4.create();
     }
@@ -352,19 +378,10 @@ export abstract class Renderer {
         return new Range(0, 1);
     }
 
-    protected meshIndexForObject(objectIndex: number): number {
-        return objectIndex;
-    }
-
-    protected pathRangeForObject(objectIndex: number): Range {
-        const bVertexPathRanges = this.meshes[objectIndex].bVertexPathRanges;
-        return new Range(1, bVertexPathRanges.length + 1);
-    }
-
     /// Called whenever new GPU timing statistics are available.
     protected newTimingsReceived(): void {}
 
-    private renderDirect(): void {
+    private directlyRenderObject(objectIndex: number): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
@@ -372,118 +389,110 @@ export abstract class Renderer {
         const renderingMode = antialiasingStrategy.directRenderingMode;
         const objectCount = this.objectCount;
 
-        for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
-            const instanceRange = this.instanceRangeForObject(objectIndex);
-            if (instanceRange.isEmpty)
-                continue;
+        const instanceRange = this.instanceRangeForObject(objectIndex);
+        if (instanceRange.isEmpty)
+            return;
 
-            const pathRange = this.pathRangeForObject(objectIndex);
-            const meshIndex = this.meshIndexForObject(objectIndex);
+        const pathRange = this.pathRangeForObject(objectIndex);
+        const meshIndex = this.meshIndexForObject(objectIndex);
 
-            // Prepare for direct rendering.
-            antialiasingStrategy.prepareToDirectlyRenderObject(this, objectIndex);
+        const meshes = this.meshes[meshIndex];
+        const meshData = this.meshData[meshIndex];
 
-            // Clear.
-            this.clearForDirectRendering(objectIndex);
+        // Set up implicit cover state.
+        gl.depthFunc(gl.GREATER);
+        gl.depthMask(true);
+        gl.enable(gl.DEPTH_TEST);
+        gl.disable(gl.BLEND);
 
-            const meshes = this.meshes[meshIndex];
-            const meshData = this.meshData[meshIndex];
-
-            // Set up implicit cover state.
-            gl.depthFunc(gl.GREATER);
-            gl.depthMask(true);
-            gl.enable(gl.DEPTH_TEST);
-            gl.disable(gl.BLEND);
-
-            // Set up the implicit cover interior VAO.
-            const directInteriorProgramName = this.directInteriorProgramName();
-            const directInteriorProgram = renderContext.shaderPrograms[directInteriorProgramName];
-            if (this.implicitCoverInteriorVAO == null) {
-                this.implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt
-                                                             .createVertexArrayOES();
-            }
-            renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverInteriorVAO);
-            this.initImplicitCoverInteriorVAO(objectIndex, instanceRange);
-
-            // Draw direct interior parts.
-            this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
-            this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
-            this.setHintsUniform(directInteriorProgram.uniforms);
-            this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
-            this.pathTransformBufferTextures[meshIndex]
-                .bind(gl, directInteriorProgram.uniforms, 1);
-            if (renderingMode === 'color-depth') {
-                const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
-                strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 2);
-            }
-            const coverInteriorRange = getMeshIndexRange(meshes.coverInteriorIndexRanges,
-                                                         pathRange);
-            if (!this.pathIDsAreInstanced) {
-                gl.drawElements(gl.TRIANGLES,
-                                coverInteriorRange.length,
-                                gl.UNSIGNED_INT,
-                                coverInteriorRange.start * UINT32_SIZE);
-            } else {
-                renderContext.instancedArraysExt
-                             .drawElementsInstancedANGLE(gl.TRIANGLES,
-                                                         coverInteriorRange.length,
-                                                         gl.UNSIGNED_INT,
-                                                         0,
-                                                         instanceRange.length);
-            }
-
-            // Set up direct curve state.
-            if (renderingMode === 'color-depth') {
-                gl.depthMask(true);
-                gl.disable(gl.BLEND);
-            } else {
-                gl.depthMask(false);
-                gl.enable(gl.BLEND);
-                gl.blendEquation(gl.FUNC_ADD);
-                gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
-            }
-
-            // Set up the direct curve VAO.
-            //
-            // TODO(pcwalton): Cache these.
-            const directCurveProgramName = this.directCurveProgramName();
-            const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
-            if (this.implicitCoverCurveVAO == null) {
-                this.implicitCoverCurveVAO = renderContext.vertexArrayObjectExt
-                                                          .createVertexArrayOES();
-            }
-            renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverCurveVAO);
-            this.initImplicitCoverCurveVAO(objectIndex, instanceRange);
-
-            // Draw direct curve parts.
-            this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
-            this.setFramebufferSizeUniform(directCurveProgram.uniforms);
-            this.setHintsUniform(directCurveProgram.uniforms);
-            this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
-            this.pathTransformBufferTextures[meshIndex].bind(gl, directCurveProgram.uniforms, 1);
-            if (renderingMode === 'color-depth') {
-                const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
-                strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 2);
-            }
-            const coverCurveRange = getMeshIndexRange(meshes.coverCurveIndexRanges, pathRange);
-            if (!this.pathIDsAreInstanced) {
-                gl.drawElements(gl.TRIANGLES,
-                                coverCurveRange.length,
-                                gl.UNSIGNED_INT,
-                                coverCurveRange.start * UINT32_SIZE);
-            } else {
-                renderContext.instancedArraysExt.drawElementsInstancedANGLE(gl.TRIANGLES,
-                                                                            coverCurveRange.length,
-                                                                            gl.UNSIGNED_INT,
-                                                                            0,
-                                                                            instanceRange.length);
-            }
-
-            renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
-
-            // Finish direct rendering. Right now, this performs compositing if necessary.
-            antialiasingStrategy.finishDirectlyRenderingObject(this, objectIndex);
+        // Set up the implicit cover interior VAO.
+        const directInteriorProgramName = this.directInteriorProgramName();
+        const directInteriorProgram = renderContext.shaderPrograms[directInteriorProgramName];
+        if (this.implicitCoverInteriorVAO == null) {
+            this.implicitCoverInteriorVAO = renderContext.vertexArrayObjectExt
+                                                         .createVertexArrayOES();
         }
+        renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverInteriorVAO);
+        this.initImplicitCoverInteriorVAO(objectIndex, instanceRange);
+
+        // Draw direct interior parts.
+        this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
+        this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
+        this.setHintsUniform(directInteriorProgram.uniforms);
+        this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
+        this.pathTransformBufferTextures[meshIndex]
+            .bind(gl, directInteriorProgram.uniforms, 1);
+        if (renderingMode === 'color-depth') {
+            const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
+            strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 2);
+        }
+        const coverInteriorRange = getMeshIndexRange(meshes.coverInteriorIndexRanges,
+                                                        pathRange);
+        if (!this.pathIDsAreInstanced) {
+            gl.drawElements(gl.TRIANGLES,
+                            coverInteriorRange.length,
+                            gl.UNSIGNED_INT,
+                            coverInteriorRange.start * UINT32_SIZE);
+        } else {
+            renderContext.instancedArraysExt
+                            .drawElementsInstancedANGLE(gl.TRIANGLES,
+                                                        coverInteriorRange.length,
+                                                        gl.UNSIGNED_INT,
+                                                        0,
+                                                        instanceRange.length);
+        }
+
+        // Set up direct curve state.
+        if (renderingMode === 'color-depth') {
+            gl.depthMask(true);
+            gl.disable(gl.BLEND);
+        } else {
+            gl.depthMask(false);
+            gl.enable(gl.BLEND);
+            gl.blendEquation(gl.FUNC_ADD);
+            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+        }
+
+        // Set up the direct curve VAO.
+        //
+        // TODO(pcwalton): Cache these.
+        const directCurveProgramName = this.directCurveProgramName();
+        const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
+        if (this.implicitCoverCurveVAO == null) {
+            this.implicitCoverCurveVAO = renderContext.vertexArrayObjectExt
+                                                        .createVertexArrayOES();
+        }
+        renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverCurveVAO);
+        this.initImplicitCoverCurveVAO(objectIndex, instanceRange);
+
+        // Draw direct curve parts.
+        this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
+        this.setFramebufferSizeUniform(directCurveProgram.uniforms);
+        this.setHintsUniform(directCurveProgram.uniforms);
+        this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
+        this.pathTransformBufferTextures[meshIndex].bind(gl, directCurveProgram.uniforms, 1);
+        if (renderingMode === 'color-depth') {
+            const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
+            strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 2);
+        }
+        const coverCurveRange = getMeshIndexRange(meshes.coverCurveIndexRanges, pathRange);
+        if (!this.pathIDsAreInstanced) {
+            gl.drawElements(gl.TRIANGLES,
+                            coverCurveRange.length,
+                            gl.UNSIGNED_INT,
+                            coverCurveRange.start * UINT32_SIZE);
+        } else {
+            renderContext.instancedArraysExt.drawElementsInstancedANGLE(gl.TRIANGLES,
+                                                                        coverCurveRange.length,
+                                                                        gl.UNSIGNED_INT,
+                                                                        0,
+                                                                        instanceRange.length);
+        }
+
+        renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
+
+        // Finish direct rendering. Right now, this performs compositing if necessary.
+        antialiasingStrategy.finishDirectlyRenderingObject(this, objectIndex);
     }
 
     private finishTiming() {
