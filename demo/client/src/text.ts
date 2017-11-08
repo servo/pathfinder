@@ -302,10 +302,10 @@ export class Hint {
             this.hintedXHeight = this.xHeight;
             this.hintedStemHeight = this.stemHeight;
         } else {
-            this.hintedXHeight = Math.ceil(Math.ceil(this.xHeight * pixelsPerUnit) /
-                                           pixelsPerUnit);
-            this.hintedStemHeight = Math.ceil(Math.ceil(this.stemHeight * pixelsPerUnit) /
-                                              pixelsPerUnit);
+            this.hintedXHeight = Math.round(Math.round(this.xHeight * pixelsPerUnit) /
+                                            pixelsPerUnit);
+            this.hintedStemHeight = Math.round(Math.round(this.stemHeight * pixelsPerUnit) /
+                                               pixelsPerUnit);
         }
     }
 
