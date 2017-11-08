@@ -306,6 +306,17 @@ float lcdFilter(float shadeL2, float shadeL1, float shade0, float shadeR1, float
         LCD_FILTER_FACTOR_2 * shadeR2;
 }
 
+float gammaCorrectChannel(float fgColor, float bgColor, sampler2D gammaLUT) {
+    return texture2D(gammaLUT, vec2(fgColor, 1.0 - bgColor)).r;
+}
+
+// `fgColor` is in linear space.
+vec3 gammaCorrect(vec3 fgColor, vec3 bgColor, sampler2D gammaLUT) {
+    return vec3(gammaCorrectChannel(fgColor.r, bgColor.r, gammaLUT),
+                gammaCorrectChannel(fgColor.g, bgColor.g, gammaLUT),
+                gammaCorrectChannel(fgColor.b, bgColor.b, gammaLUT));
+}
+
 int unpackUInt16(vec2 packedValue) {
     ivec2 valueBytes = ivec2(floor(packedValue * 255.0));
     return valueBytes.y * 256 + valueBytes.x;

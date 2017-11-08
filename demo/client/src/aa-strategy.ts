@@ -22,6 +22,8 @@ export type DirectRenderingMode = 'none' | 'color' | 'color-depth';
 
 export type SubpixelAAType = 'none' | 'medium';
 
+export type GammaCorrectionMode = 'off' | 'on';
+
 export type StemDarkeningMode = 'none' | 'dark';
 
 export abstract class AntialiasingStrategy {

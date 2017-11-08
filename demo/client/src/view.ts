@@ -12,6 +12,7 @@ import * as glmatrix from 'gl-matrix';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {StemDarkeningMode, SubpixelAAType} from "./aa-strategy";
+import {AAOptions} from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import {Camera} from "./camera";
 import {EXTDisjointTimerQuery, QUAD_ELEMENTS, UniformMap} from './gl-utils';
@@ -153,14 +154,12 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     meshData: PathfinderMeshData[];
 
     get colorAlphaFormat(): GLenum {
-        return this.sRGBExt == null ? this.gl.RGBA : this.sRGBExt.SRGB_ALPHA_EXT;
+        return this.gl.RGBA;
     }
 
     get renderContext(): RenderContext {
         return this;
     }
-
-    protected sRGBExt: EXTsRGB;
 
     protected colorBufferHalfFloatExt: any;
 
@@ -204,9 +203,9 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
                            aaLevel: number,
-                           subpixelAA: SubpixelAAType,
-                           stemDarkening: StemDarkeningMode) {
-        this.renderer.setAntialiasingOptions(aaType, aaLevel, subpixelAA, stemDarkening);
+                           aaOptions: AAOptions):
+                           void {
+        this.renderer.setAntialiasingOptions(aaType, aaLevel, aaOptions);
     }
 
     protected resized(): void {
@@ -220,7 +219,6 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
                                 "Failed to initialize WebGL! Check that your browser supports it.");
         this.colorBufferHalfFloatExt = this.gl.getExtension('EXT_color_buffer_half_float');
         this.instancedArraysExt = this.gl.getExtension('ANGLE_instanced_arrays');
-        this.sRGBExt = this.gl.getExtension('EXT_sRGB');
         this.textureHalfFloatExt = this.gl.getExtension('OES_texture_half_float');
         this.timerQueryExt = this.gl.getExtension('EXT_disjoint_timer_query');
         this.vertexArrayObjectExt = this.gl.getExtension('OES_vertex_array_object');

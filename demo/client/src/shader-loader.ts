@@ -12,7 +12,8 @@ import {AttributeMap, UniformMap} from './gl-utils';
 import {expectNotNull, PathfinderError, unwrapNull} from './utils';
 
 export interface ShaderMap<T> {
-    blit: T;
+    blitLinear: T;
+    blitGamma: T;
     compositeAlphaMask: T;
     demo3DDistantGlyph: T;
     demo3DMonument: T;
@@ -43,7 +44,8 @@ export interface UnlinkedShaderProgram {
 const COMMON_SHADER_URL: string = '/glsl/gles2/common.inc.glsl';
 
 export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
-    'blit',
+    'blitLinear',
+    'blitGamma',
     'compositeAlphaMask',
     'directCurve',
     'directInterior',
@@ -67,8 +69,12 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
 ];
 
 const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
-    blit: {
-        fragment: "/glsl/gles2/blit.fs.glsl",
+    blitGamma: {
+        fragment: "/glsl/gles2/blit-gamma.fs.glsl",
+        vertex: "/glsl/gles2/blit.vs.glsl",
+    },
+    blitLinear: {
+        fragment: "/glsl/gles2/blit-linear.fs.glsl",
         vertex: "/glsl/gles2/blit.vs.glsl",
     },
     compositeAlphaMask: {

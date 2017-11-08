@@ -386,10 +386,7 @@ export function computeStemDarkeningAmount(pixelsPerEm: number, pixelsPerUnit: n
         return amount;
 
     glmatrix.vec2.scale(amount, STEM_DARKENING_FACTORS, pixelsPerEm);
-    glmatrix.vec2.min(amount, amount, MIN_STEM_DARKENING_AMOUNT);
-
-    // Convert diameter to radius.
-    glmatrix.vec2.scale(amount, amount, 0.5);
+    glmatrix.vec2.max(amount, amount, MIN_STEM_DARKENING_AMOUNT);
     glmatrix.vec2.scale(amount, amount, 1.0 / pixelsPerUnit);
     return amount;
 }

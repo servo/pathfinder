@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/blit.fs.glsl
+// pathfinder/shaders/gles2/blit-gamma.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -8,14 +8,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-/// A trivial shader that does nothing more than blit a texture.
+/// Blits a texture, applying gamma correction.
 
 precision mediump float;
 
 uniform sampler2D uSource;
 
+uniform vec3 uBGColor;
+uniform sampler2D uGammaLUT;
+
 varying vec2 vTexCoord;
 
 void main() {
-    gl_FragColor = texture2D(uSource, vTexCoord);
+    vec4 source = texture2D(uSource, vTexCoord);
+    gl_FragColor = vec4(gammaCorrect(source.rgb, uBGColor, uGammaLUT), source.a);
 }

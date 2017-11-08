@@ -16,7 +16,7 @@ import * as opentype from 'opentype.js';
 import {Metrics} from 'opentype.js';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
-import {DemoAppController} from './app-controller';
+import {AAOptions, DemoAppController} from './app-controller';
 import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey, SUBPIXEL_GRANULARITY} from './atlas';
 import PathfinderBufferTexture from './buffer-texture';
 import {CameraView, OrthographicCamera} from "./camera";
@@ -379,10 +379,9 @@ class TextDemoRenderer extends TextRenderer {
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
                            aaLevel: number,
-                           subpixelAA: SubpixelAAType,
-                           stemDarkening: StemDarkeningMode):
+                           aaOptions: AAOptions):
                            void {
-        super.setAntialiasingOptions(aaType, aaLevel, subpixelAA, stemDarkening);
+        super.setAntialiasingOptions(aaType, aaLevel, aaOptions);
 
         // Need to relayout because changing AA options can cause font dilation to change...
         this.layoutText();
@@ -425,8 +424,11 @@ class TextDemoRenderer extends TextRenderer {
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
+        // Set the appropriate program.
+        const programName = this.gammaCorrectionMode === 'off' ? 'blitLinear' : 'blitGamma';
+        const blitProgram = this.renderContext.shaderPrograms[programName];
+
         // Set up the composite VAO.
-        const blitProgram = this.renderContext.shaderPrograms.blit;
         const attributes = blitProgram.attributes;
         gl.useProgram(blitProgram.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
@@ -458,6 +460,7 @@ class TextDemoRenderer extends TextRenderer {
         gl.bindTexture(gl.TEXTURE_2D, destTexture);
         gl.uniform1i(blitProgram.uniforms.uSource, 0);
         this.setIdentityTexScaleUniform(blitProgram.uniforms);
+        this.bindGammaLUT(glmatrix.vec3.clone([1.0, 1.0, 1.0]), 1, blitProgram.uniforms);
         const totalGlyphCount = this.layout.textFrame.totalGlyphCount;
         gl.drawElements(gl.TRIANGLES, totalGlyphCount * 6, gl.UNSIGNED_INT, 0);
     }

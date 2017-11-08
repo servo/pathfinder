@@ -11,8 +11,9 @@
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
-import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
-import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
+import {AntialiasingStrategy, AntialiasingStrategyName, GammaCorrectionMode} from './aa-strategy';
+import {NoAAStrategy, StemDarkeningMode, SubpixelAAType} from './aa-strategy';
+import {AAOptions} from './app-controller';
 import PathfinderBufferTexture from "./buffer-texture";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from "./meshes";
@@ -42,8 +43,8 @@ export abstract class Renderer {
         return glmatrix.vec2.create();
     }
 
-    get bgColor(): glmatrix.vec4 | null {
-        return null;
+    get bgColor(): glmatrix.vec4 {
+        return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
     }
 
     get fgColor(): glmatrix.vec4 | null {
@@ -66,6 +67,8 @@ export abstract class Renderer {
     protected lastTimings: Timings;
     protected pathColorsBufferTextures: PathfinderBufferTexture[];
 
+    protected gammaCorrectionMode: GammaCorrectionMode;
+
     protected get pathIDsAreInstanced(): boolean {
         return false;
     }
@@ -86,6 +89,8 @@ export abstract class Renderer {
         this.renderContext = renderContext;
 
         this.lastTimings = { rendering: 0, compositing: 0 };
+
+        this.gammaCorrectionMode = 'on';
 
         this.pathTransformBufferTextures = [];
         this.pathColorsBufferTextures = [];
@@ -154,12 +159,14 @@ export abstract class Renderer {
 
     setAntialiasingOptions(aaType: AntialiasingStrategyName,
                            aaLevel: number,
-                           subpixelAA: SubpixelAAType,
-                           stemDarkening: StemDarkeningMode) {
+                           aaOptions: AAOptions):
+                           void {
+        this.gammaCorrectionMode = aaOptions.gammaCorrection;
+
         this.antialiasingStrategy = this.createAAStrategy(aaType,
                                                           aaLevel,
-                                                          subpixelAA,
-                                                          stemDarkening);
+                                                          aaOptions.subpixelAA,
+                                                          aaOptions.stemDarkening);
 
         this.antialiasingStrategy.init(this);
         if (this.meshData != null)
@@ -168,12 +175,12 @@ export abstract class Renderer {
         this.renderContext.setDirty();
     }
 
-    canvasResized() {
+    canvasResized(): void {
         if (this.antialiasingStrategy != null)
             this.antialiasingStrategy.init(this);
     }
 
-    setFramebufferSizeUniform(uniforms: UniformMap) {
+    setFramebufferSizeUniform(uniforms: UniformMap): void {
         const gl = this.renderContext.gl;
         gl.uniform2i(uniforms.uFramebufferSize,
                      this.destAllocatedSize[0],
@@ -201,7 +208,7 @@ export abstract class Renderer {
         gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
-    setTransformSTUniform(uniforms: UniformMap, objectIndex: number) {
+    setTransformSTUniform(uniforms: UniformMap, objectIndex: number): void {
         // FIXME(pcwalton): Lossy conversion from a 4x4 matrix to an ST matrix is ugly and fragile.
         // Refactor.
         const renderContext = this.renderContext;
@@ -219,7 +226,7 @@ export abstract class Renderer {
                      transform[13]);
     }
 
-    uploadPathColors(objectCount: number) {
+    uploadPathColors(objectCount: number): void {
         const renderContext = this.renderContext;
         for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
             const pathColors = this.pathColorsForObject(objectIndex);
@@ -237,7 +244,7 @@ export abstract class Renderer {
         }
     }
 
-    uploadPathTransforms(objectCount: number) {
+    uploadPathTransforms(objectCount: number): void {
         const renderContext = this.renderContext;
         for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
             const pathTransforms = this.pathTransformsForObject(objectIndex);
@@ -271,6 +278,18 @@ export abstract class Renderer {
 
     protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
         return glmatrix.vec4.create();
+    }
+
+    protected bindGammaLUT(bgColor: glmatrix.vec3, textureUnit: number, uniforms: UniformMap):
+                           void {
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
+        gl.activeTexture(gl.TEXTURE0 + textureUnit);
+        gl.bindTexture(gl.TEXTURE_2D, this.gammaLUTTexture);
+        gl.uniform1i(uniforms.uGammaLUT, textureUnit);
+
+        gl.uniform3f(uniforms.uBGColor, bgColor[0], bgColor[1], bgColor[2]);
     }
 
     protected abstract createAAStrategy(aaType: AntialiasingStrategyName,
@@ -515,6 +534,12 @@ export abstract class Renderer {
         const texture = unwrapNull(gl.createTexture());
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, gammaLUT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        this.gammaLUTTexture = texture;
     }
 
     private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {

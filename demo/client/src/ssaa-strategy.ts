@@ -176,7 +176,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         if (this.subpixelAA !== 'none')
             resolveProgram = renderContext.shaderPrograms.ssaaSubpixelResolve;
         else
-            resolveProgram = renderContext.shaderPrograms.blit;
+            resolveProgram = renderContext.shaderPrograms.blitLinear;
         gl.useProgram(resolveProgram.program);
         renderContext.initQuadVAO(resolveProgram.attributes);
 

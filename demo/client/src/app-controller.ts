@@ -8,13 +8,60 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-import {AntialiasingStrategyName, StemDarkeningMode, SubpixelAAType} from "./aa-strategy";
+import {AntialiasingStrategyName, GammaCorrectionMode, StemDarkeningMode} from "./aa-strategy";
+import {SubpixelAAType} from "./aa-strategy";
 import {FilePickerView} from "./file-picker";
 import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapNull, unwrapUndef} from './utils';
 import {DemoView, Timings, TIMINGS} from "./view";
 
 const GAMMA_LUT_URI: string = "/textures/gamma-lut.png";
+
+const SWITCHES: SwitchMap = {
+    gammaCorrection: {
+        id: 'pf-gamma-correction',
+        offValue: 'off',
+        onValue: 'on',
+        radioButtonName: 'gammaCorrectionRadioButton',
+    },
+    stemDarkening: {
+        id: 'pf-stem-darkening',
+        offValue: 'none',
+        onValue: 'dark',
+        radioButtonName: 'stemDarkeningRadioButton',
+    },
+    subpixelAA: {
+        id: 'pf-subpixel-aa',
+        offValue: 'none',
+        onValue: 'medium',
+        radioButtonName: 'subpixelAARadioButton',
+    },
+};
+
+interface SwitchDescriptor {
+    id: string;
+    radioButtonName: keyof Switches;
+    onValue: string;
+    offValue: string;
+}
+
+interface SwitchMap {
+    gammaCorrection: SwitchDescriptor;
+    stemDarkening: SwitchDescriptor;
+    subpixelAA: SwitchDescriptor;
+}
+
+export interface AAOptions {
+    gammaCorrection: GammaCorrectionMode;
+    stemDarkening: StemDarkeningMode;
+    subpixelAA: SubpixelAAType;
+}
+
+interface Switches {
+    subpixelAARadioButton: HTMLInputElement | null;
+    gammaCorrectionRadioButton: HTMLInputElement | null;
+    stemDarkeningRadioButton: HTMLInputElement | null;
+}
 
 export abstract class AppController {
     protected canvas: HTMLCanvasElement;
@@ -47,8 +94,13 @@ export abstract class AppController {
     protected abstract get defaultFile(): string;
 }
 
-export abstract class DemoAppController<View extends DemoView> extends AppController {
+export abstract class DemoAppController<View extends DemoView> extends AppController
+                                                               implements Switches {
     view: Promise<View>;
+
+    subpixelAARadioButton: HTMLInputElement | null;
+    gammaCorrectionRadioButton: HTMLInputElement | null;
+    stemDarkeningRadioButton: HTMLInputElement | null;
 
     protected abstract readonly builtinFileURI: string;
 
@@ -59,8 +111,6 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
     protected gammaLUT: HTMLImageElement;
 
     private aaLevelSelect: HTMLSelectElement | null;
-    private subpixelAARadioButton: HTMLInputElement | null;
-    private stemDarkeningRadioButton: HTMLInputElement | null;
     private fpsLabel: HTMLElement | null;
 
     constructor() {
@@ -169,22 +219,15 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         // click listener that Bootstrap sets up until the event bubbles up to the document. This
         // click listener is what toggles the `checked` attribute, so we have to wait until it
         // fires before updating the antialiasing settings.
-        this.subpixelAARadioButton =
-            document.getElementById('pf-subpixel-aa-select-on') as HTMLInputElement | null;
-        const subpixelAAButtons =
-            document.getElementById('pf-subpixel-aa-buttons') as HTMLElement | null;
-        if (subpixelAAButtons != null) {
-            subpixelAAButtons.addEventListener('click', () => {
-                window.setTimeout(() => this.updateAALevel(), 0);
-            }, false);
-        }
-
-        this.stemDarkeningRadioButton =
-            document.getElementById('pf-stem-darkening-select-on') as HTMLInputElement | null;
-        const stemDarkeningButtons =
-            document.getElementById('pf-stem-darkening-buttons') as HTMLElement | null;
-        if (stemDarkeningButtons != null) {
-            stemDarkeningButtons.addEventListener('click', () => {
+        for (const switchName of Object.keys(SWITCHES) as Array<keyof SwitchMap>) {
+            const radioButtonName = SWITCHES[switchName].radioButtonName;
+            const switchID = SWITCHES[switchName].id;
+            this[radioButtonName] = document.getElementById(`${switchID}-select-on`) as
+                HTMLInputElement | null;
+            const buttons = document.getElementById(`${switchID}-buttons`) as HTMLElement | null;
+            if (buttons == null)
+                continue;
+            buttons.addEventListener('click', () => {
                 window.setTimeout(() => this.updateAALevel(), 0);
             }, false);
         }
@@ -242,20 +285,19 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             aaLevel = 0;
         }
 
-        let subpixelAA: SubpixelAAType;
-        if (this.subpixelAARadioButton != null && this.subpixelAARadioButton.checked)
-            subpixelAA = 'medium';
-        else
-            subpixelAA = 'none';
-
-        let stemDarkening: StemDarkeningMode;
-        if (this.stemDarkeningRadioButton != null && this.stemDarkeningRadioButton.checked)
-            stemDarkening = 'dark';
-        else
-            stemDarkening = 'none';
+        const aaOptions: Partial<AAOptions> = {};
+        for (const switchName of Object.keys(SWITCHES) as Array<keyof SwitchMap>) {
+            const switchDescriptor = SWITCHES[switchName];
+            const radioButtonName = switchDescriptor.radioButtonName;
+            const radioButton = this[radioButtonName];
+            if (radioButton != null && radioButton.checked)
+                aaOptions[switchName] = switchDescriptor.onValue as any;
+            else
+                aaOptions[switchName] = switchDescriptor.offValue as any;
+        }
 
         this.view.then(view => {
-            view.setAntialiasingOptions(aaType, aaLevel, subpixelAA, stemDarkening);
+            view.setAntialiasingOptions(aaType, aaLevel, aaOptions as AAOptions);
         });
     }
 
