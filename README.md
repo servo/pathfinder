@@ -10,9 +10,10 @@ The project features:
 * Low setup time. Typical glyph outlines can be prepared for GPU rendering in about 5 microseconds
   each (typically O(n log n) in the number of vertices), making Pathfinder suitable for dynamic
   environments. The setup process is lossless and fully resolution independent; paths need only be
-  prepared once and can thereafter be rendered at any zoom level without any loss in quality. For
-  static paths such as game assets, the resulting meshes can be saved to disk to avoid having to
-  generate them at runtime.
+  prepared once and can thereafter be rendered at any zoom level without any loss in quality.
+  Pathfinder can also render outlines without any mesh at all, reducing the setup time to nearly
+  zero, at the cost of some runtime performance. For static paths such as game assets, the
+  resulting meshes can be saved to disk to avoid having to generate them at runtime.
 
 * High quality antialiasing. Pathfinder can compute exact fractional trapezoidal area coverage on a
   per-pixel basis for the highest-quality antialiasing, provided that either OpenGL 3.0+ or a few
@@ -26,8 +27,8 @@ The project features:
 
 * Advanced font rendering. Pathfinder can render fonts with slight hinting and can perform subpixel
   antialiasing on LCD screens. It can do stem darkening/font dilation like macOS and FreeType in
-  order to make text easier to read at small sizes. The library also has experimental support for
-  sRGB (gamma correction).
+  order to make text easier to read at small sizes. The library also has support for gamma
+  correction.
 
 * Support for full vector scenes. Pathfinder 2 is designed to efficiently handle workloads that
   consist of many overlapping vector paths, such as those commonly found in SVG and PDF files. It
