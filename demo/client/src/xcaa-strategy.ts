@@ -487,7 +487,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
                                false,
                                FLOAT32_SIZE * 4,
                                FLOAT32_SIZE * 4 * offset + FLOAT32_SIZE * 2);
-        gl.bindBuffer(gl.ARRAY_BUFFER, renderer.meshes[0].edgeBoundingBoxPathIDs);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderer.meshes[meshIndex].edgeBoundingBoxPathIDs);
         gl.vertexAttribPointer(attributes.aPathID,
                                1,
                                gl.UNSIGNED_SHORT,

@@ -456,23 +456,16 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
                         expandedPathID);
 
             // Copy over B-quads.
-            let firstBQuadIndex =
-                findFirstBQuadIndex(originalBuffers.bQuads as Uint32Array,
-                                    originalBuffers.bVertexPathIDs as Uint16Array,
-                                    originalPathID);
-            if (firstBQuadIndex == null)
-                firstBQuadIndex = originalBuffers.bQuads.length;
+            const originalBQuadRange = originalRanges.bQuadPathRanges[originalPathID - 1];
+            const firstExpandedBQuadIndex = expandedArrays.bQuads.length / B_QUAD_FIELD_COUNT;
+            expandedRanges.bQuadPathRanges[expandedPathID - 1] =
+                new Range(firstExpandedBQuadIndex,
+                          firstExpandedBQuadIndex + originalBQuadRange.length);
             const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
-            for (let bQuadIndex = firstBQuadIndex;
-                 bQuadIndex < originalBuffers.bQuads.length / B_QUAD_FIELD_COUNT;
+            for (let bQuadIndex = originalBQuadRange.start;
+                 bQuadIndex < originalBQuadRange.end;
                  bQuadIndex++) {
                 const bQuad = originalBuffers.bQuads[bQuadIndex];
-                if (originalBuffers.bVertexPathIDs[originalBuffers.bQuads[bQuadIndex *
-                                                                          B_QUAD_FIELD_COUNT]] !==
-                                                                          originalPathID) {
-                    break;
-                }
-
                 for (let indexIndex = 0; indexIndex < B_QUAD_FIELD_COUNT; indexIndex++) {
                     const srcIndex = originalBuffers.bQuads[bQuadIndex * B_QUAD_FIELD_COUNT +
                                                             indexIndex];
@@ -728,18 +721,6 @@ function sizeOfPrimitive(primitiveType: PrimitiveType): number {
     case 'Uint32':  return UINT32_SIZE;
     case 'Float32': return FLOAT32_SIZE;
     }
-}
-
-function findFirstBQuadIndex(bQuads: Uint32Array,
-                             bVertexPathIDs: Uint16Array,
-                             queryPathID: number):
-                             number | null {
-    for (let bQuadIndex = 0; bQuadIndex < bQuads.length / B_QUAD_FIELD_COUNT; bQuadIndex++) {
-        const thisPathID = bVertexPathIDs[bQuads[bQuadIndex * B_QUAD_FIELD_COUNT]];
-        if (thisPathID === queryPathID)
-            return bQuadIndex;
-    }
-    return null;
 }
 
 function toFourCC(buffer: ArrayBuffer, position: number): string {
