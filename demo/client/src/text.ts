@@ -248,7 +248,7 @@ export class GlyphStore {
         let time = 0;
         return window.fetch(PARTITION_FONT_ENDPOINT_URI, {
             body: JSON.stringify(request),
-            headers: {'Content-Type': 'application/json'},
+            headers: [['Content-Type', 'application/json']],
             method: 'POST',
         }).then(response => {
             time = parseServerTiming(response.headers);

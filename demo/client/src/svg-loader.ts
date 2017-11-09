@@ -107,7 +107,7 @@ export class SVGLoader {
         let time = 0;
         return window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
             body: JSON.stringify({ paths: paths }),
-            headers: {'Content-Type': 'application/json'},
+            headers: [['Content-Type', 'application/json']],
             method: 'POST',
         }).then(response => {
             time = parseServerTiming(response.headers);
