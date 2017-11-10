@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Integration Test &mdash; Pathfinder</title>
+        <meta charset="utf-8">
+        {{>partials/header.html}}
+        <script type="text/javascript" src="/js/pathfinder/integration-test.js"></script>
+    </head>
+    <body class="pf-unscrollable">
+        {{>partials/navbar.html isTool=true}}
+        <div id="pf-test-pane">
+            <form>
+                Font
+            </form>
+        </div>
+        <canvas id="pf-center-canvas" class="pf-draggable" width="300" height="400"></canvas>
+        <canvas id="pf-right-canvas" class="pf-draggable" width="300" height="400"></canvas>
+    </body>
+</html>

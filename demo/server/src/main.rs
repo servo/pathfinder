@@ -67,6 +67,7 @@ static STATIC_TEXT_DEMO_PATH: &'static str = "../client/text-demo.html";
 static STATIC_SVG_DEMO_PATH: &'static str = "../client/svg-demo.html";
 static STATIC_3D_DEMO_PATH: &'static str = "../client/3d-demo.html";
 static STATIC_TOOLS_BENCHMARK_PATH: &'static str = "../client/benchmark.html";
+static STATIC_TOOLS_INTEGRATION_TEST_PATH: &'static str = "../client/integration-test.html";
 static STATIC_TOOLS_MESH_DEBUGGER_PATH: &'static str = "../client/mesh-debugger.html";
 static STATIC_DOC_API_PATH: &'static str = "../../font-renderer/target/doc";
 static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/css";
@@ -437,6 +438,10 @@ fn static_demo_3d() -> io::Result<NamedFile> {
 fn static_tools_benchmark() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_TOOLS_BENCHMARK_PATH)
 }
+#[get("/tools/integration-test")]
+fn static_tools_integration_test() -> io::Result<NamedFile> {
+    NamedFile::open(STATIC_TOOLS_INTEGRATION_TEST_PATH)
+}
 #[get("/tools/mesh-debugger")]
 fn static_tools_mesh_debugger() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_TOOLS_MESH_DEBUGGER_PATH)
@@ -553,6 +558,7 @@ fn main() {
         static_demo_svg,
         static_demo_3d,
         static_tools_benchmark,
+        static_tools_integration_test,
         static_tools_mesh_debugger,
         static_doc_api_index,
         static_doc_api,
