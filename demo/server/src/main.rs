@@ -50,6 +50,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::u32;
 
+const SUGGESTED_JSON_SIZE_LIMIT: u64 = 32 * 1024 * 1024;
+
 const CUBIC_ERROR_TOLERANCE: f32 = 0.1;
 
 const MESH_LIBRARY_CACHE_SIZE: usize = 16;
@@ -531,7 +533,19 @@ impl<'a> Responder<'a> for Shader {
 fn main() {
     drop(env_logger::init());
 
-    rocket::ignite().mount("/", routes![
+    let rocket = rocket::ignite();
+
+    match rocket.config().limits.get("json") {
+        Some(size) if size >= SUGGESTED_JSON_SIZE_LIMIT => {}
+        None | Some(_) => {
+            eprintln!("warning: the JSON size limit is small; many SVGs will not upload properly");
+            eprintln!("warning: adding the following to `Rocket.toml` is suggested:");
+            eprintln!("warning:    [development]");
+            eprintln!("warning:    limits = {{ json = 33554432 }}");
+        }
+    }
+
+    rocket.mount("/", routes![
         partition_font,
         partition_svg_paths,
         static_index,
