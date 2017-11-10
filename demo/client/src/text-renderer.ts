@@ -32,6 +32,8 @@ interface AntialiasingStrategyTable {
     xcaa: typeof AdaptiveMonochromeXCAAStrategy;
 }
 
+const SQRT_1_2: number = 1.0 / Math.sqrt(2.0);
+
 const MIN_SCALE: number = 0.0025;
 const MAX_SCALE: number = 0.5;
 
@@ -240,11 +242,20 @@ export abstract class TextRenderer extends Renderer {
         const atlasGlyphs = this.renderContext.atlasGlyphs;
         const pixelsPerUnit = this.displayPixelsPerUnit;
 
-        // FIXME(pcwalton): This is a hack that tries to align glyphs on their baselines after
-        // stem darkening. It's better than nothing, but we should really do better.
-        const stemDarkeningOffset = glmatrix.vec2.clone(this.stemDarkeningAmount);
+        // FIXME(pcwalton): This is a hack that tries to preserve the vertical extents of the glyph
+        // after stem darkening. It's better than nothing, but we should really do better.
+        //
+        // This hack seems to produce *better* results than what macOS does on sans-serif fonts;
+        // the ascenders and x-heights of the glyphs are pixel snapped, while they aren't on macOS.
+        // But we should really figure out what macOS does…
+        const ascender = this.renderContext.font.opentypeFont.ascender;
+        const stemDarkeningAmount = this.stemDarkeningAmount;
+        const stemDarkeningYScale = (ascender + stemDarkeningAmount[1]) / ascender;
+
+        const stemDarkeningOffset = glmatrix.vec2.clone(stemDarkeningAmount);
         glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, pixelsPerUnit);
-        glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, 1.0 / Math.sqrt(2.0));
+        glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, SQRT_1_2);
+        glmatrix.vec2.mul(stemDarkeningOffset, stemDarkeningOffset, [1, stemDarkeningYScale]);
 
         const transforms = new Float32Array((pathCount + 1) * 4);
 
@@ -253,7 +264,7 @@ export abstract class TextRenderer extends Renderer {
             const atlasOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
 
             transforms[pathID * 4 + 0] = pixelsPerUnit;
-            transforms[pathID * 4 + 1] = pixelsPerUnit;
+            transforms[pathID * 4 + 1] = pixelsPerUnit * stemDarkeningYScale;
             transforms[pathID * 4 + 2] = atlasOrigin[0] + stemDarkeningOffset[0];
             transforms[pathID * 4 + 3] = atlasOrigin[1] + stemDarkeningOffset[1];
         }
