@@ -240,6 +240,12 @@ export abstract class TextRenderer extends Renderer {
         const atlasGlyphs = this.renderContext.atlasGlyphs;
         const pixelsPerUnit = this.displayPixelsPerUnit;
 
+        // FIXME(pcwalton): This is a hack that tries to align glyphs on their baselines after
+        // stem darkening. It's better than nothing, but we should really do better.
+        const stemDarkeningOffset = glmatrix.vec2.clone(this.stemDarkeningAmount);
+        glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, pixelsPerUnit);
+        glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, 1.0 / Math.sqrt(2.0));
+
         const transforms = new Float32Array((pathCount + 1) * 4);
 
         for (const glyph of atlasGlyphs) {
@@ -248,8 +254,8 @@ export abstract class TextRenderer extends Renderer {
 
             transforms[pathID * 4 + 0] = pixelsPerUnit;
             transforms[pathID * 4 + 1] = pixelsPerUnit;
-            transforms[pathID * 4 + 2] = atlasOrigin[0];
-            transforms[pathID * 4 + 3] = atlasOrigin[1];
+            transforms[pathID * 4 + 2] = atlasOrigin[0] + stemDarkeningOffset[0];
+            transforms[pathID * 4 + 3] = atlasOrigin[1] + stemDarkeningOffset[1];
         }
 
         return transforms;
