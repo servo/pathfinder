@@ -221,7 +221,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         this.setAADepthState(renderer);
     }
 
-    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap): void {
+    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap, objectIndex: number): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -395,7 +395,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
 
         gl.useProgram(lineProgram.program);
         const uniforms = lineProgram.uniforms;
-        this.setAAUniforms(renderer, uniforms);
+        this.setAAUniforms(renderer, uniforms, objectIndex);
 
         for (const direction of DIRECTIONS) {
             const vao = this.lineVAOs[direction];
@@ -431,7 +431,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
 
         gl.useProgram(curveProgram.program);
         const uniforms = curveProgram.uniforms;
-        this.setAAUniforms(renderer, uniforms);
+        this.setAAUniforms(renderer, uniforms, objectIndex);
 
         for (const direction of DIRECTIONS) {
             const vao = this.curveVAOs[direction];
@@ -687,7 +687,7 @@ export abstract class MCAAStrategy extends XCAAStrategy {
         const coverProgram = renderContext.shaderPrograms.mcaaCover;
         gl.useProgram(coverProgram.program);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.coverVAO);
-        this.setAAUniforms(renderer, coverProgram.uniforms);
+        this.setAAUniforms(renderer, coverProgram.uniforms, objectIndex);
 
         const bQuadRange = renderer.meshData[meshIndex].bQuadPathRanges;
         const count = calculateCountFromIndexRanges(pathRange, bQuadRange);
@@ -751,12 +751,9 @@ export class ECAAStrategy extends XCAAStrategy {
         this.antialiasCurvesOfObject(renderer, objectIndex);
     }
 
-    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap): void {
-        super.setAAUniforms(renderer, uniforms);
-
-        const renderContext = renderer.renderContext;
-        const emboldenAmount = renderer.emboldenAmount;
-        renderContext.gl.uniform2f(uniforms.uEmboldenAmount, emboldenAmount[0], emboldenAmount[1]);
+    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap, objectIndex: number): void {
+        super.setAAUniforms(renderer, uniforms, objectIndex);
+        renderer.setEmboldenAmountUniform(objectIndex, uniforms);
     }
 
     protected getResolveProgram(renderContext: RenderContext): PathfinderShaderProgram {
@@ -929,7 +926,7 @@ export class ECAAStrategy extends XCAAStrategy {
 
         gl.useProgram(lineProgram.program);
         const uniforms = lineProgram.uniforms;
-        this.setAAUniforms(renderer, uniforms);
+        this.setAAUniforms(renderer, uniforms, objectIndex);
 
         const vao = this.lineVAO;
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(vao);
@@ -957,7 +954,7 @@ export class ECAAStrategy extends XCAAStrategy {
 
         gl.useProgram(curveProgram.program);
         const uniforms = curveProgram.uniforms;
-        this.setAAUniforms(renderer, uniforms);
+        this.setAAUniforms(renderer, uniforms, objectIndex);
 
         const vao = this.curveVAO;
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(vao);

@@ -114,6 +114,10 @@ int convertWindowDepthValueToPathIndex(float depthValue) {
     return int(pathIndex);
 }
 
+vec2 dilatePosition(vec2 position, float normalAngle, vec2 amount) {
+    return position + vec2(cos(normalAngle), -sin(normalAngle)) * amount;
+}
+
 bool computeMCAAQuadPosition(out vec2 outPosition,
                              inout vec2 leftPosition,
                              inout vec2 rightPosition,
@@ -164,8 +168,8 @@ bool computeECAAQuadPosition(out vec2 outPosition,
                              float leftNormalAngle,
                              float rightNormalAngle,
                              vec2 emboldenAmount) {
-    leftPosition += vec2(cos(leftNormalAngle), -sin(leftNormalAngle)) * emboldenAmount;
-    rightPosition += vec2(cos(rightNormalAngle), -sin(rightNormalAngle)) * emboldenAmount;
+    leftPosition = dilatePosition(leftPosition, leftNormalAngle, emboldenAmount);
+    rightPosition = dilatePosition(rightPosition, rightNormalAngle, emboldenAmount);
 
     leftPosition = hintPosition(leftPosition, hints);
     rightPosition = hintPosition(rightPosition, hints);

@@ -177,9 +177,23 @@ impl<'a> Partitioner<'a> {
         let next_active_edge_index = self.find_point_between_active_edges(endpoint_index);
 
         let endpoint = &self.endpoints[endpoint_index as usize];
-        self.emit_b_quads_around_active_edge(next_active_edge_index, endpoint.position.x);
+        let emission_result = self.emit_b_quads_around_active_edge(next_active_edge_index,
+                                                                   endpoint.position.x);
 
         self.add_new_edges_for_min_point(endpoint_index, next_active_edge_index);
+
+        // Add supporting interior triangles if necessary.
+        match emission_result {
+            BQuadEmissionResult::BQuadEmittedAbove | BQuadEmissionResult::BQuadEmittedAround => {
+                self.add_supporting_interior_triangle(next_active_edge_index,
+                                                      next_active_edge_index - 1,
+                                                      next_active_edge_index + 2);
+                self.add_supporting_interior_triangle(next_active_edge_index + 1,
+                                                      next_active_edge_index - 1,
+                                                      next_active_edge_index + 2);
+            }
+            _ => {}
+        }
 
         let prev_endpoint_index = self.prev_endpoint_of(endpoint_index);
         let next_endpoint_index = self.next_endpoint_of(endpoint_index);
@@ -277,8 +291,28 @@ impl<'a> Partitioner<'a> {
 
         // TODO(pcwalton): Collapse the two duplicate endpoints that this will create together if
         // possible (i.e. if they have the same parity).
-        self.emit_b_quads_around_active_edge(active_edge_indices[0], endpoint.position.x);
-        self.emit_b_quads_around_active_edge(active_edge_indices[1], endpoint.position.x);
+        let b_quad_emission_results = [
+            self.emit_b_quads_around_active_edge(active_edge_indices[0], endpoint.position.x),
+            self.emit_b_quads_around_active_edge(active_edge_indices[1], endpoint.position.x),
+        ];
+
+        // Add supporting interior triangles if necessary.
+        match b_quad_emission_results[0] {
+            BQuadEmissionResult::BQuadEmittedAbove | BQuadEmissionResult::BQuadEmittedAround => {
+                self.add_supporting_interior_triangle(active_edge_indices[0],
+                                                      active_edge_indices[0] - 1,
+                                                      active_edge_indices[0] + 2)
+            }
+            _ => {}
+        }
+        match b_quad_emission_results[1] {
+            BQuadEmissionResult::BQuadEmittedBelow | BQuadEmissionResult::BQuadEmittedAround => {
+                self.add_supporting_interior_triangle(active_edge_indices[1],
+                                                      active_edge_indices[1] - 2,
+                                                      active_edge_indices[1] + 1)
+            }
+            _ => {}
+        }
 
         self.heap.pop();
 
@@ -837,6 +871,17 @@ impl<'a> Partitioner<'a> {
         self.subdivide_active_edge_again_at_t(subdivision, t, bottom)
     }
 
+    fn add_supporting_interior_triangle(&mut self,
+                                        active_edge_index: u32,
+                                        upper_active_edge_index: u32,
+                                        lower_active_edge_index: u32) {
+        self.library.cover_indices.interior_indices.extend([
+            self.active_edges[active_edge_index as usize].left_vertex_index,
+            self.active_edges[upper_active_edge_index as usize].left_vertex_index,
+            self.active_edges[lower_active_edge_index as usize].left_vertex_index,
+        ].into_iter());
+    }
+
     fn already_visited_point(&self, point: &Point) -> bool {
         // FIXME(pcwalton): This makes the visited vector too big.
         let index = point.endpoint_index as usize;
@@ -1093,6 +1138,9 @@ impl<'a> Partitioner<'a> {
         }
     }
 
+    // FIXME(pcwalton): This creates incorrect normals for vertical lines. I think we should
+    // probably calculate normals for the path vertices first and then lerp them to calculate these
+    // B-vertex normals. That would be simpler, faster, and more correct, I suspect.
     fn update_vertex_normals_for_new_b_quad(&mut self, b_quad: &BQuad) {
         self.update_vertex_normal_for_b_quad_edge(b_quad.upper_left_vertex_index,
                                                   b_quad.upper_control_point_vertex_index,

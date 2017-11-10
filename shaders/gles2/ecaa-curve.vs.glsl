@@ -58,9 +58,10 @@ void main() {
                                 leftNormalAngle,
                                 rightNormalAngle,
                                 uEmboldenAmount)) {
-        controlPointPosition += vec2(cos(controlPointNormalAngle),
-                                     -sin(controlPointNormalAngle)) * uEmboldenAmount;
-        controlPointPosition = hintPosition(aControlPointPosition, uHints);
+        controlPointPosition = dilatePosition(controlPointPosition,
+                                              controlPointNormalAngle,
+                                              uEmboldenAmount);
+        controlPointPosition = hintPosition(controlPointPosition, uHints);
         controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
         controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
         controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);

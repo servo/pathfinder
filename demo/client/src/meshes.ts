@@ -403,7 +403,9 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
             const expandedPathID = newPathIndex + 1;
             const originalPathID = pathIDs[newPathIndex];
 
-            const bVertexCopyResult = copyVertices(['bVertexPositions', 'bVertexLoopBlinnData'],
+            const bVertexCopyResult = copyVertices(['bVertexPositions',
+                                                    'bVertexLoopBlinnData',
+                                                    'bVertexNormals'],
                                                    'bVertexPathRanges',
                                                    expandedArrays,
                                                    expandedRanges,

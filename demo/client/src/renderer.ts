@@ -285,6 +285,12 @@ export abstract class Renderer {
         this.pathColorsBufferTextures[meshIndex].bind(gl, uniforms, textureUnit);
     }
 
+    setEmboldenAmountUniform(objectIndex: number, uniforms: UniformMap): void {
+        const gl = this.renderContext.gl;
+        const emboldenAmount = this.emboldenAmount;
+        gl.uniform2f(uniforms.uEmboldenAmount, emboldenAmount[0], emboldenAmount[1]);
+    }
+
     renderTaskTypeForObject(objectIndex: number): RenderTaskType {
         return 'color';
     }
@@ -420,14 +426,14 @@ export abstract class Renderer {
         this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
         this.setHintsUniform(directInteriorProgram.uniforms);
         this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
+        this.setEmboldenAmountUniform(objectIndex, directInteriorProgram.uniforms);
         this.pathTransformBufferTextures[meshIndex]
             .bind(gl, directInteriorProgram.uniforms, 1);
         if (renderingMode === 'color-depth') {
             const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
             strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 2);
         }
-        const coverInteriorRange = getMeshIndexRange(meshes.coverInteriorIndexRanges,
-                                                        pathRange);
+        const coverInteriorRange = getMeshIndexRange(meshes.coverInteriorIndexRanges, pathRange);
         if (!this.pathIDsAreInstanced) {
             gl.drawElements(gl.TRIANGLES,
                             coverInteriorRange.length,
@@ -458,10 +464,8 @@ export abstract class Renderer {
         // TODO(pcwalton): Cache these.
         const directCurveProgramName = this.directCurveProgramName();
         const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
-        if (this.implicitCoverCurveVAO == null) {
-            this.implicitCoverCurveVAO = renderContext.vertexArrayObjectExt
-                                                        .createVertexArrayOES();
-        }
+        if (this.implicitCoverCurveVAO == null)
+            this.implicitCoverCurveVAO = renderContext.vertexArrayObjectExt.createVertexArrayOES();
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.implicitCoverCurveVAO);
         this.initImplicitCoverCurveVAO(objectIndex, instanceRange);
 
@@ -470,6 +474,7 @@ export abstract class Renderer {
         this.setFramebufferSizeUniform(directCurveProgram.uniforms);
         this.setHintsUniform(directCurveProgram.uniforms);
         this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
+        this.setEmboldenAmountUniform(objectIndex, directCurveProgram.uniforms);
         this.pathTransformBufferTextures[meshIndex].bind(gl, directCurveProgram.uniforms, 1);
         if (renderingMode === 'color-depth') {
             const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
@@ -592,10 +597,18 @@ export abstract class Renderer {
                                false,
                                B_LOOP_BLINN_DATA_SIZE,
                                B_LOOP_BLINN_DATA_SIGN_OFFSET);
+        gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexNormals);
+        gl.vertexAttribPointer(directCurveProgram.attributes.aNormalAngle,
+                               1,
+                               gl.FLOAT,
+                               false,
+                               FLOAT32_SIZE,
+                               0);
         gl.enableVertexAttribArray(directCurveProgram.attributes.aPosition);
         gl.enableVertexAttribArray(directCurveProgram.attributes.aTexCoord);
         gl.enableVertexAttribArray(directCurveProgram.attributes.aPathID);
         gl.enableVertexAttribArray(directCurveProgram.attributes.aSign);
+        gl.enableVertexAttribArray(directCurveProgram.attributes.aNormalAngle);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshes.coverCurveIndices);
     }
 
@@ -632,8 +645,17 @@ export abstract class Renderer {
                          .vertexAttribDivisorANGLE(directInteriorProgram.attributes.aPathID, 1);
         }
 
+        gl.bindBuffer(gl.ARRAY_BUFFER, meshes.bVertexNormals);
+        gl.vertexAttribPointer(directInteriorProgram.attributes.aNormalAngle,
+                               1,
+                               gl.FLOAT,
+                               false,
+                               FLOAT32_SIZE,
+                               0);
+
         gl.enableVertexAttribArray(directInteriorProgram.attributes.aPosition);
         gl.enableVertexAttribArray(directInteriorProgram.attributes.aPathID);
+        gl.enableVertexAttribArray(directInteriorProgram.attributes.aNormalAngle);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, meshes.coverInteriorIndices);
     }
 
