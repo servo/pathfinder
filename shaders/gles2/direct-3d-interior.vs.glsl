@@ -11,6 +11,7 @@
 precision highp float;
 
 uniform mat4 uTransform;
+uniform vec2 uEmboldenAmount;
 uniform ivec2 uPathColorsDimensions;
 uniform ivec2 uPathTransformDimensions;
 uniform sampler2D uPathColors;
@@ -18,6 +19,7 @@ uniform sampler2D uPathTransform;
 
 attribute vec2 aPosition;
 attribute float aPathID;
+attribute float aNormalAngle;
 
 varying vec4 vColor;
 varying vec2 vPathID;
@@ -27,7 +29,8 @@ void main() {
 
     vec4 pathTransform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
 
-    vec2 position = transformVertexPositionST(aPosition, pathTransform);
+    vec2 position = dilatePosition(aPosition, aNormalAngle, uEmboldenAmount);
+    position = transformVertexPositionST(position, pathTransform);
 
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 
