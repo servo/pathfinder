@@ -32,12 +32,6 @@ int imod(int ia, int ib) {
     return int(floor(m + 0.5));
 }
 
-/// Returns the determinant of the 2D matrix [a, b].
-/// This is equivalent to: cross(vec3(a, 0.0), vec3(b, 0.0)).z
-float det2(vec2 a, vec2 b) {
-    return a.x * b.y - b.x * a.y;
-}
-
 /// Returns the *2D* result of transforming the given 2D point with the given 4D transformation
 /// matrix.
 ///
@@ -210,6 +204,48 @@ bool computeECAAQuadPosition(out vec2 outPosition,
     return true;
 }
 
+bool slopeIsNegative(vec2 dp) {
+    return dp.y < -0.001;
+}
+
+bool slopeIsZero(vec2 dp) {
+    return abs(dp.y) < 0.001;
+}
+
+vec2 clipToPixelBounds(vec2 p0,
+                       vec2 dp,
+                       vec2 center,
+                       out vec4 outQ,
+                       out vec4 outPixelExtents,
+                       out vec2 outSpanP0,
+                       out vec2 outSpanP1) {
+    // Determine the bounds of this pixel.
+    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
+
+    // Set up Liang-Barsky clipping.
+    vec4 q = pixelExtents - p0.xxyy;
+
+    // Use Liang-Barsky to clip to the left and right sides of this pixel.
+    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
+    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
+
+    // Likewise, clip to the to the bottom and top.
+    if (!slopeIsZero(dp)) {
+        vec2 tVertical = (slopeIsNegative(dp) ? q.wz : q.zw) / dp.yy;
+        t = vec2(max(t.x, tVertical.x), min(t.y, tVertical.y));
+    }
+
+    outQ = q;
+    outPixelExtents = pixelExtents;
+    outSpanP0 = spanP0;
+    outSpanP1 = spanP1;
+    return t;
+}
+
+bool lineDoesNotPassThroughPixel(vec2 p0, vec2 dp, vec2 t, vec4 pixelExtents) {
+    return t.x >= t.y || (slopeIsZero(dp) && (p0.y < pixelExtents.z || p0.y > pixelExtents.w));
+}
+
 // Computes the area of the polygon covering the pixel with the given boundaries.
 //
 // * `p0` is the start point of the line.
@@ -217,88 +253,67 @@ bool computeECAAQuadPosition(out vec2 outPosition,
 // * `center` is the center of the pixel in window coordinates (i.e. `gl_FragCoord.xy`).
 // * `winding` is the winding number (1 or -1).
 float computeCoverage(vec2 p0, vec2 dp, vec2 center, float winding) {
-    // Set some flags.
-    bool slopeNegative = dp.y < -0.001;
-    bool slopeZero = abs(dp.y) < 0.001;
-
-    // Determine the bounds of this pixel.
-    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
-
-    // Set up Liang-Barsky clipping.
-    vec4 q = pixelExtents - p0.xxyy;
-
-    // Use Liang-Barsky to clip to the left and right sides of this pixel.
-    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
-    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
-
-    // Likewise, clip to the to the bottom and top.
-    if (!slopeZero) {
-        vec2 tVertical = q.zw / dp.yy;
-        if (slopeNegative)
-            tVertical.xy = tVertical.yx;    // FIXME(pcwalton): Can this be removed?
-        t = vec2(max(t.x, tVertical.x), min(t.y, tVertical.y));
-    }
+    // Clip to the pixel bounds.
+    vec4 q, pixelExtents;
+    vec2 spanP0, spanP1;
+    vec2 t = clipToPixelBounds(p0, dp, center, q, pixelExtents, spanP0, spanP1);
 
     // If the line doesn't pass through this pixel, detect that and bail.
     //
     // This should be worth a branch because it's very common for fragment blocks to all hit this
     // path.
-    if (t.x >= t.y || (slopeZero && (p0.y < pixelExtents.z || p0.y > pixelExtents.w)))
+    if (lineDoesNotPassThroughPixel(p0, dp, t, pixelExtents))
         return spanP0.y < pixelExtents.z ? winding * (spanP1.x - spanP0.x) : 0.0;
 
-    // Calculate A2.x.
+    // Calculate point A2, and swap the two clipped endpoints around if necessary.
     float a2x;
-    if (slopeNegative) {
+    if (slopeIsNegative(dp)) {
         a2x = spanP1.x;
     } else {
         a2x = spanP0.x;
         t.xy = t.yx;
     }
 
-    // Calculate A3.y.
+    // Calculate points A0-A3.
+    vec2 a0 = p0 + dp * t.x, a1 = p0 + dp * t.y;
     float a3y = pixelExtents.w;
 
-    // Calculate A0-A5.
-    vec2 a0 = p0 + dp * t.x;
-    vec2 a1 = p0 + dp * t.y;
-    vec2 a2 = vec2(a2x, a1.y);
-    vec2 a3 = vec2(a2x, a3y);
-    vec2 a4 = vec2(a0.x, a3y);
-
     // Calculate area with the shoelace formula.
-    float area = det2(a0, a1) + det2(a1, a2) + det2(a2, a3) + det2(a3, a4) + det2(a4, a0); 
+    // This is conceptually the sum of 5 determinants for points A0-A5, where A2-A5 are:
+    //
+    //      A2 = (a2.x, a1.y)
+    //      A3 = (a2.x, a3.y)
+    //      A4 = (a0.x, a3.y)
+    //
+    // The formula is optimized. See: http://geomalgorithms.com/a01-_area.html
+    float area = a0.x * (a0.y + a1.y - 2.0 * a3y) +
+                 a1.x * (a1.y - a0.y) +
+                 2.0 * a2x * (a3y - a1.y);
     return abs(area) * winding * 0.5;
 }
 
-// FIXME(pcwalton): Combine with `computeCoverage`.
+// * `p0` is the start point of the line.
+// * `dp` is the vector from the start point to the endpoint of the line.
+// * `center` is the center of the pixel in window coordinates (i.e. `gl_FragCoord.xy`).
+// * `winding` is the winding number (1 or -1).
 bool isPartiallyCovered(vec2 p0, vec2 dp, vec2 center, float winding) {
-    // Set some flags.
-    bool slopeNegative = dp.y < -0.001;
-    bool slopeZero = abs(dp.y) < 0.001;
+    // Clip to the pixel bounds.
+    vec4 q, pixelExtents;
+    vec2 spanP0, spanP1;
+    vec2 t = clipToPixelBounds(p0, dp, center, q, pixelExtents, spanP0, spanP1);
+    return !lineDoesNotPassThroughPixel(p0, dp, t, pixelExtents);
+}
 
-    // Determine the bounds of this pixel.
-    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
-
-    // Set up Liang-Barsky clipping.
-    vec4 q = pixelExtents - p0.xxyy;
-
-    // Use Liang-Barsky to clip to the left and right sides of this pixel.
-    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
-    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
-
-    // Likewise, clip to the to the bottom and top.
-    if (!slopeZero) {
-        vec2 tVertical = q.zw / dp.yy;
-        if (slopeNegative)
-            tVertical.xy = tVertical.yx;    // FIXME(pcwalton): Can this be removed?
-        t = vec2(max(t.x, tVertical.x), min(t.y, tVertical.y));
-    }
-
-    // If the line doesn't pass through this pixel, detect that and bail.
-    //
-    // This should be worth a branch because it's very common for fragment blocks to all hit this
-    // path.
-    return !(t.x >= t.y || (slopeZero && (p0.y < pixelExtents.z || p0.y > pixelExtents.w)));
+// Solve the equation:
+//
+//    x = p0x + t^2 * (p0x - 2*p1x + p2x) + t*(2*p1x - 2*p0x)
+//
+// We use the Citardauq Formula to avoid floating point precision issues.
+vec2 solveCurveT(float p0x, float p1x, float p2x, vec2 x) {
+    float a = p0x - 2.0 * p1x + p2x;
+    float b = 2.0 * p1x - 2.0 * p0x;
+    vec2 c = p0x - x;
+    return 2.0 * c / (-b - sqrt(b * b - 4.0 * a * c));
 }
 
 // https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html
