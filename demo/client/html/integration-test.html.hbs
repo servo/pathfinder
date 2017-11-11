@@ -8,12 +8,31 @@
     </head>
     <body class="pf-unscrollable">
         {{>partials/navbar.html isTool=true}}
-        <div id="pf-test-pane">
-            <form>
-                Font
-            </form>
+        <div class="container-fluid">
+            <div class="row py-3">
+                <div id="pf-test-pane" class="col">
+                    <form>
+                        <div class="form-group">
+                            <label for="pf-select-file">Font</label>
+                            <select id="pf-select-file" class="form-control custom-select">
+                                <option value="open-sans">Open Sans</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pf-font-size">Font Size</label>
+                            <div class="input-group">
+                                <input id="pf-font-size" type="number" class="form-control"
+                                 value="32">
+                                <div class="input-group-addon">px</div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <canvas id="pf-reference-pane" class="pf-draggable col" width="300" height="400">
+                </canvas>
+                <canvas id="pf-rendering-pane" class="pf-draggable col" width="300" height="400">
+                </canvas>
+            </div>
         </div>
-        <canvas id="pf-center-canvas" class="pf-draggable" width="300" height="400"></canvas>
-        <canvas id="pf-right-canvas" class="pf-draggable" width="300" height="400"></canvas>
     </body>
 </html>

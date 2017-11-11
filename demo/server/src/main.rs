@@ -16,6 +16,7 @@ extern crate base64;
 extern crate env_logger;
 extern crate euclid;
 extern crate fontsan;
+extern crate image;
 extern crate lru_cache;
 extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
@@ -30,6 +31,7 @@ extern crate serde_derive;
 
 use app_units::Au;
 use euclid::{Point2D, Transform2D};
+use image::{DynamicImage, ImageBuffer, ImageFormat, ImageLuma8};
 use lru_cache::LruCache;
 use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::mesh_library::MeshLibrary;
@@ -104,7 +106,7 @@ struct MeshLibraryCacheKey {
 
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionFontRequest {
-    face: PartitionFontRequestFace,
+    face: FontRequestFace,
     #[serde(rename = "fontIndex")]
     font_index: u32,
     glyphs: Vec<PartitionGlyph>,
@@ -113,11 +115,22 @@ struct PartitionFontRequest {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-enum PartitionFontRequestFace {
+enum FontRequestFace {
     /// One of the builtin fonts in `BUILTIN_FONTS`.
     Builtin(String),
     /// Base64-encoded OTF data.
     Custom(String),
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct RenderReferenceRequest {
+    face: FontRequestFace,
+    #[serde(rename = "fontIndex")]
+    font_index: u32,
+    glyph: u32,
+
+    #[serde(rename = "pointSize")]
+    point_size: f64,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -133,11 +146,12 @@ struct PartitionFontResponse {
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-enum PartitionFontError {
+enum FontError {
     UnknownBuiltinFont,
     Base64DecodingFailed,
     FontSanitizationFailed,
     FontLoadingFailed,
+    RasterizationFailed,
     Unimplemented,
 }
 
@@ -221,11 +235,72 @@ impl<'r> Responder<'r> for PartitionResponder {
     }
 }
 
+#[derive(Clone)]
+struct ReferenceImage {
+    image: DynamicImage,
+}
+
+impl<'r> Responder<'r> for ReferenceImage {
+    fn respond_to(self, _: &Request) -> Result<Response<'r>, Status> {
+        let mut builder = Response::build();
+        builder.header(ContentType::PNG);
+
+        let mut bytes = vec![];
+        try!(self.image
+                 .save(&mut bytes, ImageFormat::PNG)
+                 .map_err(|_| Status::InternalServerError));
+        builder.sized_body(Cursor::new(bytes));
+        builder.ok()
+    }
+}
+
+fn add_font_from_request(font_context: &mut FontContext, face: &FontRequestFace, font_index: u32)
+                         -> Result<FontKey, FontError> {
+    // Fetch the OTF data.
+    let otf_data = match *face {
+        FontRequestFace::Builtin(ref builtin_font_name) => {
+            // Read in the builtin font.
+            match BUILTIN_FONTS.iter().filter(|& &(name, _)| name == builtin_font_name).next() {
+                Some(&(_, path)) => {
+                    let mut data = vec![];
+                    File::open(path).expect("Couldn't find builtin font!")
+                                    .read_to_end(&mut data)
+                                    .expect("Couldn't read builtin font!");
+                    Arc::new(data)
+                }
+                None => return Err(FontError::UnknownBuiltinFont),
+            }
+        }
+        FontRequestFace::Custom(ref encoded_data) => {
+            // Decode Base64-encoded OTF data.
+            let unsafe_otf_data = match base64::decode(encoded_data) {
+                Ok(unsafe_otf_data) => unsafe_otf_data,
+                Err(_) => return Err(FontError::Base64DecodingFailed),
+            };
+
+            // Sanitize.
+            match fontsan::process(&unsafe_otf_data) {
+                Ok(otf_data) => Arc::new(otf_data),
+                Err(_) => return Err(FontError::FontSanitizationFailed),
+            }
+        }
+    };
+
+    // Parse glyph data.
+    let font_key = FontKey::new();
+    if font_context.add_font_from_memory(&font_key, otf_data, font_index).is_err() {
+        println!("Failed to add font from memory!");
+        return Err(FontError::FontLoadingFailed)
+    }
+
+    Ok(font_key)
+}
+
 #[post("/partition-font", format = "application/json", data = "<request>")]
-fn partition_font(request: Json<PartitionFontRequest>)
-                  -> Result<PartitionResponder, PartitionFontError> {
+fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionResponder, FontError> {
+    // Check the cache.
     let cache_key = match request.face {
-        PartitionFontRequestFace::Builtin(ref builtin_font_name) => {
+        FontRequestFace::Builtin(ref builtin_font_name) => {
             Some(MeshLibraryCacheKey {
                 builtin_font_name: (*builtin_font_name).clone(),
                 glyph_ids: request.glyphs.iter().map(|glyph| glyph.id).collect(),
@@ -242,53 +317,21 @@ fn partition_font(request: Json<PartitionFontRequest>)
         }
     }
 
-    // Fetch the OTF data.
-    let otf_data = match request.face {
-        PartitionFontRequestFace::Builtin(ref builtin_font_name) => {
-            // Read in the builtin font.
-            match BUILTIN_FONTS.iter().filter(|& &(name, _)| name == builtin_font_name).next() {
-                Some(&(_, path)) => {
-                    let mut data = vec![];
-                    File::open(path).expect("Couldn't find builtin font!")
-                                    .read_to_end(&mut data)
-                                    .expect("Couldn't read builtin font!");
-                    Arc::new(data)
-                }
-                None => return Err(PartitionFontError::UnknownBuiltinFont),
-            }
-        }
-        PartitionFontRequestFace::Custom(ref encoded_data) => {
-            // Decode Base64-encoded OTF data.
-            let unsafe_otf_data = match base64::decode(encoded_data) {
-                Ok(unsafe_otf_data) => unsafe_otf_data,
-                Err(_) => return Err(PartitionFontError::Base64DecodingFailed),
-            };
-
-            // Sanitize.
-            match fontsan::process(&unsafe_otf_data) {
-                Ok(otf_data) => Arc::new(otf_data),
-                Err(_) => return Err(PartitionFontError::FontSanitizationFailed),
-            }
-        }
-    };
-
     // Parse glyph data.
-    let font_key = FontKey::new();
-    let font_instance = FontInstance {
-        font_key: font_key,
-        size: Au::from_f64_px(request.point_size),
-    };
     let mut font_context = match FontContext::new() {
         Ok(font_context) => font_context,
         Err(_) => {
             println!("Failed to create a font context!");
-            return Err(PartitionFontError::FontLoadingFailed)
+            return Err(FontError::FontLoadingFailed)
         }
     };
-    if font_context.add_font_from_memory(&font_key, otf_data, request.font_index).is_err() {
-        println!("Failed to add font from memory!");
-        return Err(PartitionFontError::FontLoadingFailed)
-    }
+    let font_key = try!(add_font_from_request(&mut font_context,
+                                              &request.face,
+                                              request.font_index));
+    let font_instance = FontInstance {
+        font_key: font_key,
+        size: Au::from_f64_px(request.point_size),
+    };
 
     // Read glyph info.
     let mut path_buffer = PathBuffer::new();
@@ -415,6 +458,41 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
         data: path_partitioning_result.encoded_data,
         time: elapsed_ms,
     })
+}
+
+#[post("/render-reference", format = "application/json", data = "<request>")]
+fn render_reference(request: Json<RenderReferenceRequest>)
+                    -> Result<ReferenceImage, FontError> {
+    // Load the font.
+    let mut font_context = match FontContext::new() {
+        Ok(font_context) => font_context,
+        Err(_) => {
+            println!("Failed to create a font context!");
+            return Err(FontError::FontLoadingFailed)
+        }
+    };
+    let font_key = try!(add_font_from_request(&mut font_context,
+                                              &request.face,
+                                              request.font_index));
+    let font_instance = FontInstance {
+        font_key: font_key,
+        size: Au::from_f64_px(request.point_size),
+    };
+
+    // Render the image. 
+    let glyph_key = GlyphKey::new(request.glyph, SubpixelOffset(0));
+    let glyph_image = try!(font_context.rasterize_glyph_with_native_rasterizer(&font_instance,
+                                                                               &glyph_key)
+                                       .map_err(|_| FontError::RasterizationFailed));
+    let dimensions = &glyph_image.dimensions;
+    let image_buffer = ImageBuffer::from_raw(dimensions.size.width,
+                                             dimensions.size.height,
+                                             glyph_image.pixels).unwrap();
+    let reference_image = ReferenceImage {
+        image: ImageLuma8(image_buffer),
+    };
+
+    Ok(reference_image)
 }
 
 // Static files
@@ -553,6 +631,7 @@ fn main() {
     rocket.mount("/", routes![
         partition_font,
         partition_svg_paths,
+        render_reference,
         static_index,
         static_demo_text,
         static_demo_svg,
