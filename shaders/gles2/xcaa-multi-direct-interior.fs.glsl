@@ -11,6 +11,7 @@
 precision highp float;
 
 uniform ivec2 uFramebufferSize;
+uniform sampler2D uEdgeAlpha;
 uniform sampler2D uEdgeDepth;
 
 varying vec4 vColor;
@@ -20,9 +21,9 @@ void main() {
     float depth = gl_FragCoord.z;
     vec2 texCoord = floor(center) / vec2(uFramebufferSize);
 
-    // TODO(pcwalton): Get back early Z somehow?
+    vec4 color = vColor;
     if (depth == texture2D(uEdgeDepth, texCoord).r)
-        discard;
+        color.a = texture2D(uEdgeAlpha, texCoord).r;
 
     gl_FragColor = vColor;
 }

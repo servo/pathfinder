@@ -1084,6 +1084,9 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         gl.activeTexture(gl.TEXTURE0 + textureUnit);
         gl.bindTexture(gl.TEXTURE_2D, this.aaDepthTexture);
         gl.uniform1i(uniforms.uEdgeDepth, textureUnit);
+        gl.activeTexture(gl.TEXTURE0 + textureUnit + 1);
+        gl.bindTexture(gl.TEXTURE_2D, this.aaAlphaTexture);
+        gl.uniform1i(uniforms.uEdgeAlpha, textureUnit);
     }
 
     protected getResolveProgram(renderContext: RenderContext): PathfinderShaderProgram {
@@ -1153,7 +1156,7 @@ export class MCAAMulticolorStrategy extends MCAAStrategy {
         const gl = renderContext.gl;
 
         gl.depthMask(true);
-        gl.depthFunc(gl.GEQUAL);
+        gl.depthFunc(gl.GREATER);
         gl.enable(gl.DEPTH_TEST);
 
         gl.blendEquation(gl.FUNC_ADD);

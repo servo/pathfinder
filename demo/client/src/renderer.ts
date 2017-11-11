@@ -449,15 +449,10 @@ export abstract class Renderer {
         }
 
         // Set up direct curve state.
-        if (renderingMode === 'color-depth') {
-            gl.depthMask(true);
-            gl.disable(gl.BLEND);
-        } else {
-            gl.depthMask(false);
-            gl.enable(gl.BLEND);
-            gl.blendEquation(gl.FUNC_ADD);
-            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
-        }
+        gl.depthMask(renderingMode === 'color-depth');
+        gl.enable(gl.BLEND);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
         // Set up the direct curve VAO.
         //
