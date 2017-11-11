@@ -23,7 +23,7 @@ export const BUILTIN_FONT_URI: string = "/otf/demo";
 const STEM_DARKENING_FACTORS: glmatrix.vec2 = glmatrix.vec2.clone([0.0121, 0.0121 * 1.25]);
 
 // Likewise.
-const MIN_STEM_DARKENING_AMOUNT: glmatrix.vec2 = glmatrix.vec2.clone([0.3, 0.3]);
+const MAX_STEM_DARKENING_AMOUNT: glmatrix.vec2 = glmatrix.vec2.clone([0.3, 0.3]);
 
 // This value is a subjective cutoff. Above this ppem value, no stem darkening is performed.
 const MAX_STEM_DARKENING_PIXELS_PER_EM: number = 48.0;
@@ -386,7 +386,7 @@ export function computeStemDarkeningAmount(pixelsPerEm: number, pixelsPerUnit: n
         return amount;
 
     glmatrix.vec2.scale(amount, STEM_DARKENING_FACTORS, pixelsPerEm);
-    glmatrix.vec2.max(amount, amount, MIN_STEM_DARKENING_AMOUNT);
+    glmatrix.vec2.min(amount, amount, MAX_STEM_DARKENING_AMOUNT);
     glmatrix.vec2.scale(amount, amount, 1.0 / pixelsPerUnit);
     return amount;
 }
