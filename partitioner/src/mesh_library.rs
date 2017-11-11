@@ -140,7 +140,7 @@ impl MeshLibrary {
         let mut new_interior_indices =
             Vec::with_capacity(self.cover_indices.interior_indices.len());
 
-        for path_range in &mut self.path_ranges {
+        for path_range in self.path_ranges.iter_mut().rev() {
             let old_interior_indices = &self.cover_indices.interior_indices[..];
             let old_range = path_range.cover_interior_indices.clone();
             let old_range = (old_range.start as usize)..(old_range.end as usize);
