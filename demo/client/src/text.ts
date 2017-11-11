@@ -19,11 +19,19 @@ import {assert, lerp, panic, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils"
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
 
-// Matches macOS 10.13 High Sierra.
-const STEM_DARKENING_FACTORS: glmatrix.vec2 = glmatrix.vec2.clone([0.0121, 0.0121 * 1.25]);
+const SQRT_2: number = Math.sqrt(2.0);
+
+// Should match macOS 10.13 High Sierra.
+//
+// We multiply by sqrt(2) to compensate for the fact that dilation amounts are relative to the
+// pixel square on macOS and relative to the vertex normal in Pathfinder.
+const STEM_DARKENING_FACTORS: glmatrix.vec2 = glmatrix.vec2.clone([
+    0.0121 * SQRT_2,
+    0.0121 * 1.25 * SQRT_2,
+]);
 
 // Likewise.
-const MAX_STEM_DARKENING_AMOUNT: glmatrix.vec2 = glmatrix.vec2.clone([0.3, 0.3]);
+const MAX_STEM_DARKENING_AMOUNT: glmatrix.vec2 = glmatrix.vec2.clone([0.3 * SQRT_2, 0.3 * SQRT_2]);
 
 // This value is a subjective cutoff. Above this ppem value, no stem darkening is performed.
 const MAX_STEM_DARKENING_PIXELS_PER_EM: number = 72.0;
