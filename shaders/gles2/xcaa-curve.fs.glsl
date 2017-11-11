@@ -29,9 +29,11 @@ void main() {
     // it's worth it to do this, though, given that the maximum error doing it this way will always
     // be less than a pixel, and it saves a lot of time.)
     vec2 t = solveCurveT(p0.x, cp.x, p1.x, pixelExtents);
-    if (p0.x > pixelExtents.x)
+
+    // Handle endpoints properly. These tests are negated to handle NaNs.
+    if (!(p0.x < pixelExtents.x))
         t.x = 0.0;
-    if (p1.x < pixelExtents.y)
+    if (!(p1.x > pixelExtents.y))
         t.y = 1.0;
 
     vec2 clippedP0 = mix(mix(p0, cp, t.x), mix(cp, p1, t.x), t.x);
