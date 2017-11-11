@@ -14,18 +14,6 @@ varying vec4 vEndpoints;
 varying vec2 vControlPoint;
 varying float vWinding;
 
-// Solve the equation:
-//
-//    x = p0x + t^2 * (p0x - 2*p1x + p2x) + t*(2*p1x - 2*p0x)
-//
-// We use the Citardauq Formula to avoid floating point precision issues.
-vec2 solveCurveT(float p0x, float p1x, float p2x, vec2 x) {
-    float a = p0x - 2.0 * p1x + p2x;
-    float b = 2.0 * p1x - 2.0 * p0x;
-    vec2 c = p0x - x;
-    return 2.0 * c / (-b - sqrt(b * b - 4.0 * a * c));
-}
-
 void main() {
     // Unpack.
     vec2 center = gl_FragCoord.xy;

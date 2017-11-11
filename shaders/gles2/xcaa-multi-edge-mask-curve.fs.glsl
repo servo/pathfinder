@@ -14,18 +14,6 @@ varying vec4 vEndpoints;
 varying vec2 vControlPoint;
 varying float vWinding;
 
-// Solve the equation:
-//
-//    x = p0x + t^2 * (p0x - 2*p1x + p2x) + t*(2*p1x - 2*p0x)
-//
-// We use the Citardauq Formula to avoid floating point precision issues.
-float solveCurveT(float p0x, float p1x, float p2x, float x) {
-    float a = p0x - 2.0 * p1x + p2x;
-    float b = 2.0 * p1x - 2.0 * p0x;
-    float c = p0x - x;
-    return 2.0 * c / (-b - sqrt(b * b - 4.0 * a * c));
-}
-
 void main() {
     // Unpack.
     vec2 center = gl_FragCoord.xy;
@@ -33,17 +21,18 @@ void main() {
     vec2 cp = vControlPoint;
 
     // Compute pixel extents.
-    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
+    vec2 pixelExtents = center.xx + vec2(-0.5, 0.5);
 
     // Clip the curve to the left and right edges to create a line.
     //
     // TODO(pcwalton): Consider clipping to the bottom and top edges properly too. (I kind of doubt
     // it's worth it to do this, though, given that the maximum error doing it this way will always
     // be less than a pixel, and it saves a lot of time.)
-    //
-    // FIXME(pcwalton): Factor out shared terms to avoid computing them multiple times.
-    vec2 t = vec2(p0.x < pixelExtents.x ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.x) : 0.0,
-                  p1.x > pixelExtents.y ? solveCurveT(p0.x, cp.x, p1.x, pixelExtents.y) : 1.0);
+    vec2 t = solveCurveT(p0.x, cp.x, p1.x, pixelExtents);
+    if (p0.x > pixelExtents.x)
+        t.x = 0.0;
+    if (p1.x < pixelExtents.y)
+        t.y = 1.0;
 
     vec2 clippedP0 = mix(mix(p0, cp, t.x), mix(cp, p1, t.x), t.x);
     vec2 clippedP1 = mix(mix(p0, cp, t.y), mix(cp, p1, t.y), t.y);
@@ -53,4 +42,3 @@ void main() {
         discard;
     gl_FragColor = vec4(1.0);
 }
-

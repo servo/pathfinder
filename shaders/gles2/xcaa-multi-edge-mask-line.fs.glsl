@@ -18,17 +18,8 @@ void main() {
     vec2 center = gl_FragCoord.xy;
     vec2 p0 = vEndpoints.xy, p1 = vEndpoints.zw;
 
-    // Set up Liang-Barsky clipping.
-    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
-    vec2 dp = p1 - p0;
-    vec4 q = pixelExtents - p0.xxyy;
-
-    // Use Liang-Barsky to clip to the left and right sides of this pixel.
-    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
-    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
-
     // Discard if not edge.
-    if (!isPartiallyCovered(p0, dp, center, vWinding))
+    if (!isPartiallyCovered(p0, p1 - p0, center, vWinding))
         discard;
     gl_FragColor = vec4(1.0);
 }
