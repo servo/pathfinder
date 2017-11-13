@@ -63,7 +63,7 @@ export abstract class PathfinderView {
         window.addEventListener('resize', () => this.resizeToFit(false), false);
     }
 
-    setDirty() {
+    setDirty(): void {
         if (this.dirty)
             return;
         this.dirty = true;
@@ -101,30 +101,34 @@ export abstract class PathfinderView {
         this.setDirty();
     }
 
-    protected redraw() {
+    protected redraw(): void {
         this.dirty = false;
     }
 
-    protected resizeToFit(initialSize: boolean) {
-        const width = window.innerWidth;
+    protected resizeToFit(initialSize: boolean): void {
+        if (!this.canvas.classList.contains('pf-pane')) {
+            const windowWidth = window.innerWidth;
+            const canvasTop = this.canvas.getBoundingClientRect().top;
+            let height = window.scrollY + window.innerHeight - canvasTop;
 
-        let height = window.scrollY + window.innerHeight - this.canvas.getBoundingClientRect().top;
-        const nonoverlappingBottomBar = document.getElementById('pf-nonoverlapping-bottom-bar');
-        if (nonoverlappingBottomBar != null) {
-            const rect = nonoverlappingBottomBar.getBoundingClientRect();
-            height -= window.innerHeight - rect.top;
+            const nonoverlappingBottomBar =
+                document.getElementById('pf-nonoverlapping-bottom-bar');
+            if (nonoverlappingBottomBar != null) {
+                const rect = nonoverlappingBottomBar.getBoundingClientRect();
+                height -= window.innerHeight - rect.top;
+            }
+
+            const devicePixelRatio = window.devicePixelRatio;
+
+            const canvasSize = new Float32Array([windowWidth, height]) as glmatrix.vec2;
+            glmatrix.vec2.scale(canvasSize, canvasSize, devicePixelRatio);
+            glmatrix.vec2.round(canvasSize, canvasSize);
+
+            this.canvas.style.width = windowWidth + 'px';
+            this.canvas.style.height = height + 'px';
+            this.canvas.width = canvasSize[0];
+            this.canvas.height = canvasSize[1];
         }
-
-        const devicePixelRatio = window.devicePixelRatio;
-
-        const canvasSize = new Float32Array([width, height]) as glmatrix.vec2;
-        glmatrix.vec2.scale(canvasSize, canvasSize, devicePixelRatio);
-        glmatrix.vec2.round(canvasSize, canvasSize);
-
-        this.canvas.style.width = width + 'px';
-        this.canvas.style.height = height + 'px';
-        this.canvas.width = canvasSize[0];
-        this.canvas.height = canvasSize[1];
 
         this.resized();
     }
@@ -196,7 +200,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.quadElementsBuffer);
     }
 
-    queueScreenshot() {
+    queueScreenshot(): void {
         this.wantsScreenshot = true;
         this.setDirty();
     }
@@ -213,7 +217,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.renderer.canvasResized();
     }
 
-    protected initContext() {
+    protected initContext(): void {
         // Initialize the OpenGL context.
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
@@ -243,7 +247,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.compositingTimerQuery = this.timerQueryExt.createQueryEXT();
     }
 
-    protected redraw() {
+    protected redraw(): void {
         super.redraw();
 
         this.renderer.redraw();
@@ -304,7 +308,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         return shaderProgramMap as ShaderMap<PathfinderShaderProgram>;
     }
 
-    private takeScreenshot() {
+    private takeScreenshot(): void {
         const width = this.canvas.width, height = this.canvas.height;
         const scratchCanvas = document.createElement('canvas');
         scratchCanvas.width = width;

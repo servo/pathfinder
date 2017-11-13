@@ -68,9 +68,7 @@ export abstract class AppController {
 
     protected screenshotButton: HTMLButtonElement | null;
 
-    start() {
-        const canvas = document.getElementById('pf-canvas') as HTMLCanvasElement;
-    }
+    start(): void {}
 
     protected loadInitialFile(builtinFileURI: string) {
         const selectFileElement = document.getElementById('pf-select-file') as

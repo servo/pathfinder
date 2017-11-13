@@ -74,7 +74,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     private elapsedTimes: ElapsedTime[];
     private partitionTime: number;
 
-    start() {
+    start(): void {
         super.start();
 
         this.resultsModal = unwrapNull(document.getElementById('pf-benchmark-results-modal')) as

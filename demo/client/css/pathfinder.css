@@ -99,7 +99,7 @@ button > svg path {
 #pf-rendering-options-group {
     right: 1em;
 }
-#pf-canvas {
+.pf-maximized-canvas {
     display: block;
     position: absolute;
     touch-action: none;
