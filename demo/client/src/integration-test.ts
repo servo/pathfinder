@@ -36,6 +36,8 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
 
 const STRING: string = "A";
 
+const RENDER_REFERENCE_URI: string = "/render-reference";
+
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
@@ -53,8 +55,13 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: ExpandedMeshData;
 
+    private referenceCanvas: HTMLCanvasElement;
+
     start(): void {
         super.start();
+
+        this.referenceCanvas = unwrapNull(document.getElementById('pf-reference-canvas')) as
+            HTMLCanvasElement;
 
         this.loadInitialFile(this.builtinFileURI);
     }
@@ -88,6 +95,32 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
             this.view.then(view => {
                 view.attachMeshes([expandedMeshes.meshes]);
             });
+        });
+
+        this.loadInitialReference();
+    }
+
+    private loadInitialReference(): void {
+        const request = {
+            face: {
+                Builtin: unwrapNull(this.font).builtinFontName,
+            },
+            fontIndex: 0,
+            glyph: this.glyphStore.glyphIDs[0],
+            pointSize: 32.0,
+        };
+
+        window.fetch(RENDER_REFERENCE_URI, {
+            body: JSON.stringify(request),
+            headers: {'Content-Type': 'application/json'} as any,
+            method: 'POST',
+        }).then(response => response.blob()).then(blob => {
+            const imgElement = document.createElement('img');
+            imgElement.src = URL.createObjectURL(blob);
+            imgElement.addEventListener('load', () => {
+                const context = unwrapNull(this.referenceCanvas.getContext('2d'));
+                context.drawImage(imgElement, 0, 0);
+            }, false);
         });
     }
 }
@@ -226,7 +259,9 @@ class IntegrationTestRenderer extends Renderer {
                                aaLevel: number,
                                subpixelAA: SubpixelAAType):
                                AntialiasingStrategy {
-        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
+        // FIXME(pcwalton)
+        // return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
+        return new ANTIALIASING_STRATEGIES.xcaa(aaLevel, 'medium');
     }
 
     protected compositeIfNecessary(): void {}
