@@ -31,7 +31,7 @@ extern crate serde_derive;
 
 use app_units::Au;
 use euclid::{Point2D, Transform2D};
-use image::{DynamicImage, ImageBuffer, ImageFormat, ImageLuma8};
+use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
 use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::mesh_library::MeshLibrary;
@@ -489,7 +489,7 @@ fn render_reference(request: Json<RenderReferenceRequest>)
                                              dimensions.size.height,
                                              glyph_image.pixels).unwrap();
     let reference_image = ReferenceImage {
-        image: ImageLuma8(image_buffer),
+        image: ImageRgba8(image_buffer),
     };
 
     Ok(reference_image)

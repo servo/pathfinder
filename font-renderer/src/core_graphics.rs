@@ -18,7 +18,7 @@ use core_graphics_sys::geometry::{CGSize, CG_ZERO_POINT};
 use core_graphics_sys::path::CGPathElementType;
 use core_text::font::CTFont;
 use core_text;
-use euclid::{Point2D, Size2D, Vector2D};
+use euclid::{Point2D, Rect, Size2D, Vector2D};
 use pathfinder_path_utils::cubic::{CubicPathCommand, CubicPathCommandApproxStream};
 use pathfinder_path_utils::PathCommand;
 use std::collections::BTreeMap;
@@ -120,7 +120,12 @@ impl FontContext {
         let subpixel_offset = Point2D::new(glyph_key.subpixel_offset.into(), 0.0);
 
         // Round out to pixel boundaries.
-        let bounding_box = &bounding_boxes[0];
+        let scale = 1.0 / font_instance.size.to_f64_px();
+        let bounding_box =
+            Rect::new(Point2D::new(bounding_boxes[0].origin.x,
+                                   bounding_boxes[0].origin.y),
+                      Size2D::new(bounding_boxes[0].size.width,
+                                  bounding_boxes[0].size.height)).scale(scale, scale);
         let mut lower_left = Point2D::new(bounding_box.origin.x.floor() as i32,
                                           bounding_box.origin.y.floor() as i32);
         let mut upper_right = Point2D::new((bounding_box.origin.x + bounding_box.size.width +
