@@ -120,7 +120,8 @@ impl FontContext {
         let subpixel_offset = Point2D::new(glyph_key.subpixel_offset.into(), 0.0);
 
         // Round out to pixel boundaries.
-        let scale = 1.0 / font_instance.size.to_f64_px();
+        let units_per_em = core_graphics_font.get_units_per_em();
+        let scale = font_instance.size.to_f64_px() / (units_per_em as f64);
         let bounding_box =
             Rect::new(Point2D::new(bounding_boxes[0].origin.x,
                                    bounding_boxes[0].origin.y),

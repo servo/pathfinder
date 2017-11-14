@@ -20,6 +20,7 @@ import {Renderer} from "./renderer";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, computeStemDarkeningAmount, ExpandedMeshData, GlyphStore} from "./text";
+import {Hint} from "./text";
 import {PathfinderFont, TextFrame, TextRun} from "./text";
 import {unwrapNull} from "./utils";
 import {DemoView} from "./view";
@@ -92,9 +93,7 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
             const expandedMeshes = textFrame.expandMeshes(this.baseMeshes, glyphIDs);
             this.expandedMeshes = expandedMeshes;
 
-            this.view.then(view => {
-                view.attachMeshes([expandedMeshes.meshes]);
-            });
+            this.view.then(view => view.attachMeshes([expandedMeshes.meshes]));
         });
 
         this.loadInitialReference();
@@ -277,22 +276,29 @@ class IntegrationTestRenderer extends Renderer {
         const appController = this.renderContext.appController;
         const canvas = this.renderContext.canvas;
         const font = unwrapNull(appController.font);
+        const hint = new Hint(font, this.pixelsPerUnit, true);
+        const canvasHeight = canvas.height;
 
         const pathTransforms = new Float32Array(4 * (STRING.length + 1));
 
-        let currentX = 0, currentY = 0;
+        let currentX = 0;
         const availableWidth = canvas.width / this.pixelsPerUnit;
         const lineHeight = font.opentypeFont.lineHeight();
 
         for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
-            const glyphID = unwrapNull(appController.textRun).glyphIDs[glyphIndex];
-            pathTransforms.set([1, 1, currentX, currentY], (glyphIndex + 1) * 4);
+            const textRun = unwrapNull(appController.textRun);
+            const glyphID = textRun.glyphIDs[glyphIndex];
+            const pixelRect = textRun.pixelRectForGlyphAt(glyphIndex,
+                                                          this.pixelsPerUnit,
+                                                          this.pixelsPerUnit,
+                                                          hint,
+                                                          this.stemDarkeningAmount,
+                                                          0);
+
+            const y = (canvasHeight - pixelRect[3]) / this.pixelsPerUnit;
+            pathTransforms.set([1, 1, currentX, y], (glyphIndex + 1) * 4);
 
             currentX += font.opentypeFont.glyphs.get(glyphID).advanceWidth;
-            if (currentX > availableWidth) {
-                currentX = 0;
-                currentY += lineHeight;
-            }
         }
 
         return pathTransforms;
