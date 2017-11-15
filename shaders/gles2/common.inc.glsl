@@ -205,103 +205,92 @@ bool computeECAAQuadPosition(out vec2 outPosition,
 }
 
 bool slopeIsNegative(vec2 dp) {
-    return dp.y < -0.001;
-}
-
-bool slopeIsZero(vec2 dp) {
-    return abs(dp.y) < 0.001;
+    return dp.y < 0.0;
 }
 
 vec2 clipToPixelBounds(vec2 p0,
-                       vec2 dp,
+                       vec2 dP,
                        vec2 center,
-                       out vec4 outQ,
-                       out vec4 outPixelExtents,
-                       out vec2 outSpanP0,
-                       out vec2 outSpanP1) {
+                       out float outPixelTop,
+                       out vec2 outLeftIntercept,
+                       out float outHorizontalSpan) {
     // Determine the bounds of this pixel.
-    vec4 pixelExtents = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
+    vec4 pixelSides = center.xxyy + vec4(-0.5, 0.5, -0.5, 0.5);
 
     // Set up Liang-Barsky clipping.
-    vec4 q = pixelExtents - p0.xxyy;
+    vec4 q = pixelSides - p0.xxyy;
 
-    // Use Liang-Barsky to clip to the left and right sides of this pixel.
-    vec2 t = clamp(q.xy / dp.xx, 0.0, 1.0);
-    vec2 spanP0 = p0 + dp * t.x, spanP1 = p0 + dp * t.y;
+    // Use Liang-Barsky to clip to the sides of the pixel.
+    //
+    // These can be yield -Infinity or -Infinity in the case of horizontal lines, but the math all
+    // works out in the end.
+    vec2 tX = clamp(q.xy / dP.xx, 0.0, 1.0);
+    vec2 tY = (slopeIsNegative(dP) ? q.wz : q.zw) / dP.yy;
+    vec2 t = vec2(max(tX.x, tY.x), min(tX.y, tY.y));
 
-    // Likewise, clip to the to the bottom and top.
-    if (!slopeIsZero(dp)) {
-        vec2 tVertical = (slopeIsNegative(dp) ? q.wz : q.zw) / dp.yy;
-        t = vec2(max(t.x, tVertical.x), min(t.y, tVertical.y));
-    }
-
-    outQ = q;
-    outPixelExtents = pixelExtents;
-    outSpanP0 = spanP0;
-    outSpanP1 = spanP1;
+    outPixelTop = pixelSides.w;
+    outLeftIntercept = p0 + dP * tX.x;
+    outHorizontalSpan = dP.x * (tX.y - tX.x);
     return t;
 }
 
-bool lineDoesNotPassThroughPixel(vec2 p0, vec2 dp, vec2 t, vec4 pixelExtents) {
-    return t.x >= t.y || (slopeIsZero(dp) && (p0.y < pixelExtents.z || p0.y > pixelExtents.w));
+bool lineDoesNotPassThroughPixel(vec2 t) {
+    return t.x >= t.y;
 }
 
 // Computes the area of the polygon covering the pixel with the given boundaries.
 //
 // * `p0` is the start point of the line.
-// * `dp` is the vector from the start point to the endpoint of the line.
+// * `dP` is the vector from the start point to the endpoint of the line.
 // * `center` is the center of the pixel in window coordinates (i.e. `gl_FragCoord.xy`).
 // * `winding` is the winding number (1 or -1).
-float computeCoverage(vec2 p0, vec2 dp, vec2 center, float winding) {
+float computeCoverage(vec2 p0, vec2 dP, vec2 center, float winding) {
     // Clip to the pixel bounds.
-    vec4 q, pixelExtents;
-    vec2 spanP0, spanP1;
-    vec2 t = clipToPixelBounds(p0, dp, center, q, pixelExtents, spanP0, spanP1);
+    vec2 leftIntercept;
+    float horizontalSpan, pixelTop;
+    vec2 t = clipToPixelBounds(p0, dP, center, pixelTop, leftIntercept, horizontalSpan);
 
     // If the line doesn't pass through this pixel, detect that and bail.
     //
     // This should be worth a branch because it's very common for fragment blocks to all hit this
     // path.
-    if (lineDoesNotPassThroughPixel(p0, dp, t, pixelExtents))
-        return spanP0.y < pixelExtents.z ? winding * (spanP1.x - spanP0.x) : 0.0;
+    if (lineDoesNotPassThroughPixel(t))
+        return leftIntercept.y < pixelTop ? winding * horizontalSpan : 0.0;
 
     // Calculate point A2, and swap the two clipped endpoints around if necessary.
-    float a2x;
-    if (slopeIsNegative(dp)) {
-        a2x = spanP1.x;
-    } else {
-        a2x = spanP0.x;
+    float a2x = leftIntercept.x;
+    if (slopeIsNegative(dP))
+        a2x += horizontalSpan;
+    else
         t.xy = t.yx;
-    }
 
-    // Calculate points A0-A3.
-    vec2 a0 = p0 + dp * t.x, a1 = p0 + dp * t.y;
-    float a3y = pixelExtents.w;
+    // Calculate clipped points.
+    vec2 a0 = p0 + dP * t.x, a1 = p0 + dP * t.y;
 
     // Calculate area with the shoelace formula.
     // This is conceptually the sum of 5 determinants for points A0-A5, where A2-A5 are:
     //
     //      A2 = (a2.x, a1.y)
-    //      A3 = (a2.x, a3.y)
-    //      A4 = (a0.x, a3.y)
+    //      A3 = (a2.x, top)
+    //      A4 = (a0.x, top)
     //
     // The formula is optimized. See: http://geomalgorithms.com/a01-_area.html
-    float area = a0.x * (a0.y + a1.y - 2.0 * a3y) +
+    float area = a0.x * (a0.y + a1.y - 2.0 * pixelTop) +
                  a1.x * (a1.y - a0.y) +
-                 2.0 * a2x * (a3y - a1.y);
+                 2.0 * a2x * (pixelTop - a1.y);
     return abs(area) * winding * 0.5;
 }
 
 // * `p0` is the start point of the line.
-// * `dp` is the vector from the start point to the endpoint of the line.
+// * `dP` is the vector from the start point to the endpoint of the line.
 // * `center` is the center of the pixel in window coordinates (i.e. `gl_FragCoord.xy`).
 // * `winding` is the winding number (1 or -1).
-bool isPartiallyCovered(vec2 p0, vec2 dp, vec2 center, float winding) {
+bool isPartiallyCovered(vec2 p0, vec2 dP, vec2 center, float winding) {
     // Clip to the pixel bounds.
-    vec4 q, pixelExtents;
-    vec2 spanP0, spanP1;
-    vec2 t = clipToPixelBounds(p0, dp, center, q, pixelExtents, spanP0, spanP1);
-    return !lineDoesNotPassThroughPixel(p0, dp, t, pixelExtents);
+    vec2 leftIntercept;
+    float horizontalSpan, top;
+    vec2 t = clipToPixelBounds(p0, dP, center, top, leftIntercept, horizontalSpan);
+    return !lineDoesNotPassThroughPixel(t);
 }
 
 // Solve the equation:
