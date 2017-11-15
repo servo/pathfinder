@@ -33,7 +33,8 @@ use app_units::Au;
 use euclid::{Point2D, Transform2D};
 use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
-use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphKey, SubpixelOffset};
+use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphImage};
+use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::cubic::CubicCurve;
@@ -51,6 +52,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::u32;
+
+#[cfg(target_os = "macos")]
+use pathfinder_font_renderer::core_graphics;
 
 const SUGGESTED_JSON_SIZE_LIMIT: u64 = 32 * 1024 * 1024;
 
@@ -83,6 +87,7 @@ static STATIC_SVG_OCTICONS_PATH: &'static str = "../client/node_modules/octicons
 static STATIC_WOFF2_INTER_UI_PATH: &'static str = "../../resources/fonts/inter-ui";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 static STATIC_DATA_PATH: &'static str = "../../resources/data";
+static STATIC_TEST_DATA_PATH: &'static str = "../../resources/tests";
 static STATIC_TEXTURES_PATH: &'static str = "../../resources/textures";
 
 static STATIC_DOC_API_INDEX_URI: &'static str = "/doc/api/pathfinder_font_renderer/index.html";
@@ -122,6 +127,14 @@ enum FontRequestFace {
     Custom(String),
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
+enum ReferenceRenderer {
+    #[serde(rename = "freetype")]
+    FreeType,
+    #[serde(rename = "core-graphics")]
+    CoreGraphics,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 struct RenderReferenceRequest {
     face: FontRequestFace,
@@ -131,6 +144,7 @@ struct RenderReferenceRequest {
 
     #[serde(rename = "pointSize")]
     point_size: f64,
+    renderer: ReferenceRenderer,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -152,6 +166,7 @@ enum FontError {
     FontSanitizationFailed,
     FontLoadingFailed,
     RasterizationFailed,
+    ReferenceRasterizerUnavailable,
     Unimplemented,
 }
 
@@ -254,10 +269,9 @@ impl<'r> Responder<'r> for ReferenceImage {
     }
 }
 
-fn add_font_from_request(font_context: &mut FontContext, face: &FontRequestFace, font_index: u32)
-                         -> Result<FontKey, FontError> {
-    // Fetch the OTF data.
-    let otf_data = match *face {
+// Fetches the OTF data.
+fn otf_data_from_request(face: &FontRequestFace) -> Result<Arc<Vec<u8>>, FontError> {
+    match *face {
         FontRequestFace::Builtin(ref builtin_font_name) => {
             // Read in the builtin font.
             match BUILTIN_FONTS.iter().filter(|& &(name, _)| name == builtin_font_name).next() {
@@ -266,7 +280,7 @@ fn add_font_from_request(font_context: &mut FontContext, face: &FontRequestFace,
                     File::open(path).expect("Couldn't find builtin font!")
                                     .read_to_end(&mut data)
                                     .expect("Couldn't read builtin font!");
-                    Arc::new(data)
+                    Ok(Arc::new(data))
                 }
                 None => return Err(FontError::UnknownBuiltinFont),
             }
@@ -280,20 +294,36 @@ fn add_font_from_request(font_context: &mut FontContext, face: &FontRequestFace,
 
             // Sanitize.
             match fontsan::process(&unsafe_otf_data) {
-                Ok(otf_data) => Arc::new(otf_data),
+                Ok(otf_data) => Ok(Arc::new(otf_data)),
                 Err(_) => return Err(FontError::FontSanitizationFailed),
             }
         }
-    };
-
-    // Parse glyph data.
-    let font_key = FontKey::new();
-    if font_context.add_font_from_memory(&font_key, otf_data, font_index).is_err() {
-        println!("Failed to add font from memory!");
-        return Err(FontError::FontLoadingFailed)
     }
+}
 
-    Ok(font_key)
+#[cfg(target_os = "macos")]
+fn rasterize_glyph_with_core_graphics(font_key: &FontKey,
+                                      font_index: u32,
+                                      otf_data: Arc<Vec<u8>>,
+                                      font_instance: &FontInstance,
+                                      glyph_key: &GlyphKey)
+                                      -> Result<GlyphImage, FontError> {
+    let mut font_context =
+        try!(core_graphics::FontContext::new().map_err(|_| FontError::FontLoadingFailed));
+    try!(font_context.add_font_from_memory(font_key, otf_data, font_index)
+                     .map_err(|_| FontError::FontLoadingFailed));
+    font_context.rasterize_glyph_with_native_rasterizer(&font_instance, &glyph_key, true)
+                .map_err(|_| FontError::RasterizationFailed)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn rasterize_glyph_with_core_graphics(_: &FontKey,
+                                      _: u32,
+                                      _: Arc<Vec<u8>>,
+                                      _: &FontInstance,
+                                      _: &GlyphKey)
+                                      -> Result<GlyphImage, FontError> {
+    Err(FontError::ReferenceRasterizerUnavailable)
 }
 
 #[post("/partition-font", format = "application/json", data = "<request>")]
@@ -325,9 +355,13 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
             return Err(FontError::FontLoadingFailed)
         }
     };
-    let font_key = try!(add_font_from_request(&mut font_context,
-                                              &request.face,
-                                              request.font_index));
+
+    let font_key = FontKey::new();
+    let otf_data = try!(otf_data_from_request(&request.face));
+    if font_context.add_font_from_memory(&font_key, otf_data, request.font_index).is_err() {
+        return Err(FontError::FontLoadingFailed)
+    }
+
     let font_instance = FontInstance {
         font_key: font_key,
         size: Au::from_f64_px(request.point_size),
@@ -463,27 +497,35 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 #[post("/render-reference", format = "application/json", data = "<request>")]
 fn render_reference(request: Json<RenderReferenceRequest>)
                     -> Result<ReferenceImage, FontError> {
-    // Load the font.
-    let mut font_context = match FontContext::new() {
-        Ok(font_context) => font_context,
-        Err(_) => {
-            println!("Failed to create a font context!");
-            return Err(FontError::FontLoadingFailed)
-        }
-    };
-    let font_key = try!(add_font_from_request(&mut font_context,
-                                              &request.face,
-                                              request.font_index));
+    let font_key = FontKey::new();
+    let otf_data = try!(otf_data_from_request(&request.face));
     let font_instance = FontInstance {
         font_key: font_key,
         size: Au::from_f64_px(request.point_size),
     };
-
-    // Render the image. 
     let glyph_key = GlyphKey::new(request.glyph, SubpixelOffset(0));
-    let glyph_image = try!(font_context.rasterize_glyph_with_native_rasterizer(&font_instance,
-                                                                               &glyph_key)
-                                       .map_err(|_| FontError::RasterizationFailed));
+
+    // Rasterize the glyph using the right rasterizer.
+    let glyph_image = match request.renderer {
+        ReferenceRenderer::FreeType => {
+            let mut font_context =
+                try!(FontContext::new().map_err(|_| FontError::FontLoadingFailed));
+            try!(font_context.add_font_from_memory(&font_key, otf_data, request.font_index)
+                             .map_err(|_| FontError::FontLoadingFailed));
+            try!(font_context.rasterize_glyph_with_native_rasterizer(&font_instance,
+                                                                     &glyph_key,
+                                                                     true)
+                             .map_err(|_| FontError::RasterizationFailed))
+        }
+        ReferenceRenderer::CoreGraphics => {
+            try!(rasterize_glyph_with_core_graphics(&font_key,
+                                                    request.font_index,
+                                                    otf_data,
+                                                    &font_instance,
+                                                    &glyph_key))
+        }
+    };
+
     let dimensions = &glyph_image.dimensions;
     let image_buffer = ImageBuffer::from_raw(dimensions.size.width,
                                              dimensions.size.height,
@@ -590,6 +632,10 @@ fn static_svg_demo(svg_name: String) -> Option<NamedFile> {
 fn static_data(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_DATA_PATH).join(file)).ok()
 }
+#[get("/test-data/<file..>")]
+fn static_test_data(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_TEST_DATA_PATH).join(file)).ok()
+}
 #[get("/textures/<file..>")]
 fn static_textures(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_TEXTURES_PATH).join(file)).ok()
@@ -654,6 +700,7 @@ fn main() {
         static_otf_demo,
         static_svg_demo,
         static_data,
+        static_test_data,
         static_textures,
     ]).launch();
 }

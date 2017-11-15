@@ -9,10 +9,14 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as imageSSIM from 'image-ssim';
+import * as _ from 'lodash';
+import * as papaparse from 'papaparse';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
 import {SubpixelAAType} from './aa-strategy';
 import {DemoAppController} from "./app-controller";
+import {SUBPIXEL_GRANULARITY} from './atlas';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from './meshes';
@@ -35,9 +39,27 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     xcaa: AdaptiveMonochromeXCAAStrategy,
 };
 
-const STRING: string = "A";
-
 const RENDER_REFERENCE_URI: string = "/render-reference";
+const TEST_DATA_URI: string = "/test-data/integration-test-text.csv";
+
+const SSIM_TOLERANCE: number = 0.01;
+const SSIM_WINDOW_SIZE: number = 8;
+
+interface IntegrationTestGroup {
+    font: string;
+    tests: IntegrationTestCase[];
+}
+
+interface IntegrationTestCase {
+    size: number;
+    character: string;
+    aaMode: keyof AntialiasingStrategyTable;
+    subpixel: boolean;
+    referenceRenderer: ReferenceRenderer;
+    expectedSSIM: number;
+}
+
+type ReferenceRenderer = 'core-graphics' | 'freetype';
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
@@ -49,6 +71,10 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
     font: PathfinderFont | null;
     textRun: TextRun | null;
 
+    referenceCanvas: HTMLCanvasElement;
+
+    tests: Promise<IntegrationTestGroup[]>;
+
     protected readonly defaultFile: string = FONT;
     protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
 
@@ -56,15 +82,153 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: ExpandedMeshData;
 
-    private referenceCanvas: HTMLCanvasElement;
+    private fontSizeInput: HTMLInputElement;
+    private characterInput: HTMLInputElement;
+    private referenceRendererSelect: HTMLSelectElement;
+    private ssimLabel: HTMLElement;
+    private runTestsButton: HTMLButtonElement;
+    private resultsTable: HTMLTableElement;
+
+    private differenceCanvas: HTMLCanvasElement;
+
+    private currentTestGroupIndex: number | null;
+    private currentTestCaseIndex: number | null;
+    private currentGlobalTestCaseIndex: number | null;
+
+    get currentFontSize(): number {
+        return parseInt(this.fontSizeInput.value, 10);
+    }
+
+    set currentFontSize(newFontSize: number) {
+        this.fontSizeInput.value = "" + newFontSize;
+    }
+
+    get currentCharacter(): string {
+        return this.characterInput.value;
+    }
+
+    set currentCharacter(newCharacter: string) {
+        this.characterInput.value = newCharacter;
+    }
+
+    get currentReferenceRenderer(): ReferenceRenderer {
+        return this.referenceRendererSelect.value as ReferenceRenderer;
+    }
+
+    set currentReferenceRenderer(newReferenceRenderer: ReferenceRenderer) {
+        this.referenceRendererSelect.value = newReferenceRenderer;
+    }
 
     start(): void {
+        this.referenceRendererSelect =
+            unwrapNull(document.getElementById('pf-reference-renderer')) as HTMLSelectElement;
+        this.referenceRendererSelect.addEventListener('change', () => {
+            this.view.then(view => this.runSingleTest());
+        }, false);
+
         super.start();
+
+        this.currentTestGroupIndex = null;
+        this.currentTestCaseIndex = null;
+        this.currentGlobalTestCaseIndex = null;
 
         this.referenceCanvas = unwrapNull(document.getElementById('pf-reference-canvas')) as
             HTMLCanvasElement;
 
+        this.fontSizeInput = unwrapNull(document.getElementById('pf-font-size')) as
+            HTMLInputElement;
+        this.fontSizeInput.addEventListener('change', () => {
+            this.view.then(view => this.runSingleTest());
+        }, false);
+
+        this.characterInput = unwrapNull(document.getElementById('pf-character')) as
+            HTMLInputElement;
+        this.characterInput.addEventListener('change', () => {
+            this.view.then(view => this.runSingleTest());
+        }, false);
+
+        this.ssimLabel = unwrapNull(document.getElementById('pf-ssim-label'));
+
+        this.resultsTable = unwrapNull(document.getElementById('pf-results-table')) as
+            HTMLTableElement;
+
+        this.runTestsButton = unwrapNull(document.getElementById('pf-run-tests-button')) as
+            HTMLButtonElement;
+        this.runTestsButton.addEventListener('click', () => {
+            this.view.then(view => this.runTests());
+        }, false);
+
+        this.differenceCanvas = unwrapNull(document.getElementById('pf-difference-canvas')) as
+            HTMLCanvasElement;
+
+        this.loadTestData();
+        this.populateResultsTable();
+
         this.loadInitialFile(this.builtinFileURI);
+    }
+
+    runNextTestIfNecessary(tests: IntegrationTestGroup[]): void {
+        if (this.currentTestGroupIndex == null || this.currentTestCaseIndex == null ||
+            this.currentGlobalTestCaseIndex == null) {
+            return;
+        }
+
+        this.currentTestCaseIndex++;
+        this.currentGlobalTestCaseIndex++;
+        if (this.currentTestCaseIndex === tests[this.currentTestGroupIndex].tests.length) {
+            this.currentTestCaseIndex = 0;
+            this.currentTestGroupIndex++;
+            if (this.currentTestGroupIndex === tests.length) {
+                // Done running tests.
+                this.currentTestCaseIndex = null;
+                this.currentTestGroupIndex = null;
+                this.currentGlobalTestCaseIndex = null;
+                this.view.then(view => view.suppressAutomaticRedraw = false);
+                return;
+            }
+        }
+
+        this.loadFontForTestGroupIfNecessary(tests).then(() => {
+            this.setOptionsForCurrentTest(tests).then(() => this.runSingleTest());
+        });
+    }
+
+    recordSSIMResult(tests: IntegrationTestGroup[], ssimResult: imageSSIM.IResult): void {
+        const formattedSSIM: string = "" + (Math.round(ssimResult.ssim * 1000.0) / 1000.0);
+        this.ssimLabel.textContent = formattedSSIM;
+
+        if (this.currentTestGroupIndex == null || this.currentTestCaseIndex == null ||
+            this.currentGlobalTestCaseIndex == null) {
+            return;
+        }
+
+        const testGroup = tests[this.currentTestGroupIndex];
+        const expectedSSIM = testGroup.tests[this.currentTestCaseIndex].expectedSSIM;
+        const passed = Math.abs(expectedSSIM - ssimResult.ssim) <= SSIM_TOLERANCE;
+
+        const resultsBody: Element = unwrapNull(this.resultsTable.lastElementChild);
+        let resultsRow = unwrapNull(resultsBody.firstElementChild);
+        for (let rowIndex = 0; rowIndex < this.currentGlobalTestCaseIndex; rowIndex++)
+            resultsRow = unwrapNull(resultsRow.nextElementSibling);
+
+        const passCell = unwrapNull(resultsRow.firstElementChild);
+        const resultsCell = unwrapNull(resultsRow.lastElementChild);
+        resultsCell.textContent = formattedSSIM;
+        passCell.textContent = passed ? "✓" : "✗";
+
+        resultsRow.classList.remove('table-success', 'table-danger');
+        resultsRow.classList.add(passed ? 'table-success' : 'table-danger');
+    }
+
+    drawDifferenceImage(differenceImage: imageSSIM.IImage): void {
+        const canvas = this.differenceCanvas;
+        const context = unwrapNull(canvas.getContext('2d'));
+        context.fillStyle = 'white';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
+        const data = new Uint8ClampedArray(differenceImage.data);
+        const imageData = new ImageData(data, differenceImage.width, differenceImage.height);
+        context.putImageData(imageData, 0, 0);
     }
 
     protected createView(): IntegrationTestView {
@@ -78,38 +242,158 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
         const font = new PathfinderFont(fileData, builtinName);
         this.font = font;
 
-        const textRun = new TextRun(STRING, [0, 0], font);
-        textRun.layout();
-        this.textRun = textRun;
-        const textFrame = new TextFrame([textRun], font);
-
-        const glyphIDs = textFrame.allGlyphIDs;
-        glyphIDs.sort((a, b) => a - b);
-        this.glyphStore = new GlyphStore(font, glyphIDs);
-
-        this.glyphStore.partition().then(result => {
-            this.baseMeshes = result.meshes;
-
-            const expandedMeshes = textFrame.expandMeshes(this.baseMeshes, glyphIDs);
-            this.expandedMeshes = expandedMeshes;
-
-            this.view.then(view => view.attachMeshes([expandedMeshes.meshes]));
-        });
-
-        this.loadInitialReference();
+        // Don't automatically run the test unless this is a custom test.
+        if (this.currentGlobalTestCaseIndex == null)
+            this.runSingleTest();
     }
 
-    private loadInitialReference(): void {
+    private loadTestData(): void {
+        this.tests = window.fetch(TEST_DATA_URI)
+                           .then(response => response.text())
+                           .then(testDataText => {
+            const fontNames = [];
+            const groups: {[font: string]: IntegrationTestCase[]} = {};
+
+            const testData = papaparse.parse(testDataText, {
+                comments: "#",
+                header: true,
+                skipEmptyLines: true,
+            });
+
+            for (const row of testData.data) {
+                if (!groups.hasOwnProperty(row.Font)) {
+                    fontNames.push(row.Font);
+                    groups[row.Font] = [];
+                }
+                groups[row.Font].push({
+                    aaMode: row['AA Mode'] as keyof AntialiasingStrategyTable,
+                    character: row.Character,
+                    expectedSSIM: parseFloat(row['Expected SSIM']),
+                    referenceRenderer: row['Reference Renderer'],
+                    size: parseInt(row.Size, 10),
+                    subpixel: !!row.Subpixel,
+                });
+            }
+            return fontNames.map(fontName => {
+                return {
+                    font: fontName,
+                    tests: groups[fontName],
+                };
+            });
+        });
+    }
+
+    private populateResultsTable(): void {
+        this.tests.then(tests => {
+            const resultsBody: Element = unwrapNull(this.resultsTable.lastElementChild);
+            for (const testGroup of tests) {
+                for (const test of testGroup.tests) {
+                    const row = document.createElement('tr');
+                    addCell(row, "");
+                    addCell(row, testGroup.font);
+                    addCell(row, test.character);
+                    addCell(row, "" + test.size);
+                    addCell(row, "" + test.aaMode);
+                    addCell(row, test.subpixel ? "Y" : "N");
+                    addCell(row, test.referenceRenderer);
+                    addCell(row, "" + test.expectedSSIM);
+                    addCell(row, "");
+                    resultsBody.appendChild(row);
+                }
+            }
+        });
+    }
+
+    private runSingleTest(): void {
+        this.setUpTextRun();
+        this.loadReference().then(() => this.loadRendering());
+    }
+
+    private runTests(): void {
+        this.view.then(view => {
+            view.suppressAutomaticRedraw = true;
+            this.tests.then(tests => {
+                this.currentTestGroupIndex = 0;
+                this.currentTestCaseIndex = 0;
+                this.currentGlobalTestCaseIndex = 0;
+
+                this.loadFontForTestGroupIfNecessary(tests).then(() => {
+                    this.setOptionsForCurrentTest(tests).then(() => this.runSingleTest());
+                });
+            });
+        });
+    }
+
+    private loadFontForTestGroupIfNecessary(tests: IntegrationTestGroup[]): Promise<void> {
+        return new Promise(resolve => {
+            if (this.currentTestGroupIndex == null) {
+                resolve();
+                return;
+            }
+
+            this.fetchFile(tests[this.currentTestGroupIndex].font, BUILTIN_FONT_URI).then(() => {
+                resolve();
+            });
+        });
+    }
+
+    private setOptionsForCurrentTest(tests: IntegrationTestGroup[]): Promise<void> {
+        if (this.currentTestGroupIndex == null || this.currentTestCaseIndex == null)
+            return new Promise(resolve => resolve());
+
+        const currentTestCase = tests[this.currentTestGroupIndex].tests[this.currentTestCaseIndex];
+        this.currentFontSize = currentTestCase.size;
+        this.currentCharacter = currentTestCase.character;
+        this.currentReferenceRenderer = currentTestCase.referenceRenderer;
+
+        const aaLevelSelect = unwrapNull(this.aaLevelSelect);
+        aaLevelSelect.selectedIndex = _.findIndex(aaLevelSelect.options, option => {
+            return option.value.startsWith(currentTestCase.aaMode);
+        });
+
+        unwrapNull(this.subpixelAARadioButton).checked = currentTestCase.subpixel;
+        return this.updateAALevel();
+    }
+
+    private setUpTextRun(): void {
+        const font = unwrapNull(this.font);
+
+        const textRun = new TextRun(this.currentCharacter, [0, 0], font);
+        textRun.layout();
+        this.textRun = textRun;
+
+        this.glyphStore = new GlyphStore(font, [textRun.glyphIDs[0]]);
+    }
+
+    private loadRendering(): void {
+        this.glyphStore.partition().then(result => {
+            const textRun = unwrapNull(this.textRun);
+
+            this.baseMeshes = result.meshes;
+
+            const textFrame = new TextFrame([textRun], unwrapNull(this.font));
+            const expandedMeshes = textFrame.expandMeshes(this.baseMeshes, [textRun.glyphIDs[0]]);
+            this.expandedMeshes = expandedMeshes;
+
+            this.view.then(view => {
+                view.attachMeshes([expandedMeshes.meshes]);
+                view.redraw();
+            });
+        });
+    }
+
+    private loadReference(): Promise<void> {
         const request = {
             face: {
                 Builtin: unwrapNull(this.font).builtinFontName,
             },
             fontIndex: 0,
             glyph: this.glyphStore.glyphIDs[0],
-            pointSize: 32.0,
+            pointSize: this.currentFontSize,
+            renderer: this.currentReferenceRenderer,
         };
 
-        window.fetch(RENDER_REFERENCE_URI, {
+        return window.fetch(RENDER_REFERENCE_URI, {
             body: JSON.stringify(request),
             headers: {'Content-Type': 'application/json'} as any,
             method: 'POST',
@@ -117,7 +401,10 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
             const imgElement = document.createElement('img');
             imgElement.src = URL.createObjectURL(blob);
             imgElement.addEventListener('load', () => {
-                const context = unwrapNull(this.referenceCanvas.getContext('2d'));
+                const canvas = this.referenceCanvas;
+                const context = unwrapNull(canvas.getContext('2d'));
+                context.fillStyle = 'white';
+                context.fillRect(0, 0, canvas.width, canvas.height);
                 context.drawImage(imgElement, 0, 0);
             }, false);
         });
@@ -143,13 +430,44 @@ class IntegrationTestView extends DemoView {
 
         this.resizeToFit(true);
     }
+
+    protected renderingFinished(): void {
+        const gl = this.renderContext.gl;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        const pixelRect = this.renderer.getPixelRectForGlyphAt(0);
+
+        const canvasHeight = this.canvas.height;
+        const width = pixelRect[2] - pixelRect[0], height = pixelRect[3] - pixelRect[1];
+        const originY = Math.max(canvasHeight - height, 0);
+        const flippedBuffer = new Uint8Array(width * height * 4);
+        gl.readPixels(0, originY, width, height, gl.RGBA, gl.UNSIGNED_BYTE, flippedBuffer);
+
+        const buffer = new Uint8Array(width * height * 4);
+        for (let y = 0; y < height; y++) {
+            const destRowStart = y * width * 4;
+            const srcRowStart = (height - y - 1) * width * 4;
+            buffer.set(flippedBuffer.slice(srcRowStart, srcRowStart + width * 4),
+                       destRowStart);
+        }
+
+        const renderedImage = createSSIMImage(buffer, pixelRect);
+
+        this.appController.tests.then(tests => {
+            const referenceImage = createSSIMImage(this.appController.referenceCanvas,
+                                                   pixelRect);
+            const ssimResult = imageSSIM.compare(referenceImage, renderedImage, SSIM_WINDOW_SIZE);
+            const differenceImage = generateDifferenceImage(referenceImage, renderedImage);
+            this.appController.recordSSIMResult(tests, ssimResult);
+            this.appController.drawDifferenceImage(differenceImage);
+            this.appController.runNextTestIfNecessary(tests);
+        });
+    }
 }
 
 class IntegrationTestRenderer extends Renderer {
     renderContext: IntegrationTestView;
     camera: OrthographicCamera;
-
-    private _pixelsPerEm: number = 32.0;
 
     get destFramebuffer(): WebGLFramebuffer | null {
         return null;
@@ -177,7 +495,7 @@ class IntegrationTestRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.meshes.length;
+        return this.meshes == null ? 0 : this.meshes.length;
     }
 
     protected get usedSizeFactor(): glmatrix.vec2 {
@@ -201,12 +519,14 @@ class IntegrationTestRenderer extends Renderer {
     }
 
     private get pixelsPerUnit(): number {
-        const font = unwrapNull(this.renderContext.appController.font);
-        return this._pixelsPerEm / font.opentypeFont.unitsPerEm;
+        const appController = this.renderContext.appController;
+        const font = unwrapNull(appController.font);
+        return appController.currentFontSize / font.opentypeFont.unitsPerEm;
     }
 
     private get stemDarkeningAmount(): glmatrix.vec2 {
-        return computeStemDarkeningAmount(this._pixelsPerEm, this.pixelsPerUnit);
+        const appController = this.renderContext.appController;
+        return computeStemDarkeningAmount(appController.currentFontSize, this.pixelsPerUnit);
     }
 
     constructor(renderContext: IntegrationTestView) {
@@ -225,27 +545,23 @@ class IntegrationTestRenderer extends Renderer {
     }
 
     pathCountForObject(objectIndex: number): number {
-        return STRING.length;
+        return 1;
     }
 
     pathBoundingRects(objectIndex: number): Float32Array {
         const appController = this.renderContext.appController;
         const font = unwrapNull(appController.font);
 
-        const boundingRects = new Float32Array((STRING.length + 1) * 4);
+        const boundingRects = new Float32Array(2 * 4);
 
-        for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
-            const glyphID = unwrapNull(appController.textRun).glyphIDs[glyphIndex];
+        const glyphID = unwrapNull(appController.textRun).glyphIDs[0];
 
-            const metrics = font.metricsForGlyph(glyphID);
-            if (metrics == null)
-                continue;
+        const metrics = unwrapNull(font.metricsForGlyph(glyphID));
 
-            boundingRects[(glyphIndex + 1) * 4 + 0] = metrics.xMin;
-            boundingRects[(glyphIndex + 1) * 4 + 1] = metrics.yMin;
-            boundingRects[(glyphIndex + 1) * 4 + 2] = metrics.xMax;
-            boundingRects[(glyphIndex + 1) * 4 + 3] = metrics.yMax;
-        }
+        boundingRects[4 + 0] = metrics.xMin;
+        boundingRects[4 + 1] = metrics.yMin;
+        boundingRects[4 + 2] = metrics.xMax;
+        boundingRects[4 + 3] = metrics.yMax;
 
         return boundingRects;
     }
@@ -254,21 +570,33 @@ class IntegrationTestRenderer extends Renderer {
         this.renderContext.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
+    getPixelRectForGlyphAt(glyphIndex: number): glmatrix.vec4 {
+        const appController = this.renderContext.appController;
+        const font = unwrapNull(appController.font);
+        const hint = new Hint(font, this.pixelsPerUnit, true);
+
+        const textRun = unwrapNull(appController.textRun);
+        const glyphID = textRun.glyphIDs[glyphIndex];
+        return textRun.pixelRectForGlyphAt(glyphIndex,
+                                           this.pixelsPerUnit,
+                                           this.pixelsPerUnit,
+                                           hint,
+                                           this.stemDarkeningAmount,
+                                           SUBPIXEL_GRANULARITY);
+    }
+
     protected createAAStrategy(aaType: AntialiasingStrategyName,
                                aaLevel: number,
                                subpixelAA: SubpixelAAType):
                                AntialiasingStrategy {
-        // FIXME(pcwalton)
-        // return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
-        return new ANTIALIASING_STRATEGIES.xcaa(aaLevel, 'medium');
+        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
     protected compositeIfNecessary(): void {}
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {
-        const pathColors = new Uint8Array(4 * (STRING.length + 1));
-        for (let pathIndex = 0; pathIndex < STRING.length; pathIndex++)
-            pathColors.set(TEXT_COLOR, (pathIndex + 1) * 4);
+        const pathColors = new Uint8Array(4 * 2);
+        pathColors.set(TEXT_COLOR, 1 * 4);
         return pathColors;
     }
 
@@ -277,29 +605,22 @@ class IntegrationTestRenderer extends Renderer {
         const canvas = this.renderContext.canvas;
         const font = unwrapNull(appController.font);
         const hint = new Hint(font, this.pixelsPerUnit, true);
-        const canvasHeight = canvas.height;
 
-        const pathTransforms = new Float32Array(4 * (STRING.length + 1));
+        const pathTransforms = new Float32Array(4 * 2);
 
-        let currentX = 0;
-        const availableWidth = canvas.width / this.pixelsPerUnit;
-        const lineHeight = font.opentypeFont.lineHeight();
+        const textRun = unwrapNull(appController.textRun);
+        const glyphID = textRun.glyphIDs[0];
+        const pixelRect = textRun.pixelRectForGlyphAt(0,
+                                                      this.pixelsPerUnit,
+                                                      this.pixelsPerUnit,
+                                                      hint,
+                                                      glmatrix.vec2.create(),
+                                                      SUBPIXEL_GRANULARITY);
 
-        for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
-            const textRun = unwrapNull(appController.textRun);
-            const glyphID = textRun.glyphIDs[glyphIndex];
-            const pixelRect = textRun.pixelRectForGlyphAt(glyphIndex,
-                                                          this.pixelsPerUnit,
-                                                          this.pixelsPerUnit,
-                                                          hint,
-                                                          this.stemDarkeningAmount,
-                                                          0);
+        const x = -pixelRect[0] / this.pixelsPerUnit;
+        const y = (canvas.height - (pixelRect[3] - pixelRect[1])) / this.pixelsPerUnit;
 
-            const y = (canvasHeight - pixelRect[3]) / this.pixelsPerUnit;
-            pathTransforms.set([1, 1, currentX, y], (glyphIndex + 1) * 4);
-
-            currentX += font.opentypeFont.glyphs.get(glyphID).advanceWidth;
-        }
+        pathTransforms.set([1, 1, x, y], 1 * 4);
 
         return pathTransforms;
     }
@@ -311,6 +632,71 @@ class IntegrationTestRenderer extends Renderer {
     protected directInteriorProgramName(): keyof ShaderMap<void> {
         return 'directInterior';
     }
+}
+
+function createSSIMImage(image: HTMLCanvasElement | Uint8Array, rect: glmatrix.vec4):
+                         imageSSIM.IImage {
+    const size = glmatrix.vec2.clone([rect[2] - rect[0], rect[3] - rect[1]]);
+
+    let data;
+    if (image instanceof HTMLCanvasElement) {
+        const context = unwrapNull(image.getContext('2d'));
+        data = new Uint8Array(context.getImageData(0, 0, size[0], size[1]).data);
+    } else {
+        data = image;
+    }
+
+    return {
+        channels: imageSSIM.Channels.RGBAlpha,
+        data: data,
+        height: size[1],
+        width: size[0],
+    };
+}
+
+function generateDifferenceImage(referenceImage: imageSSIM.IImage,
+                                 renderedImage: imageSSIM.IImage):
+                                 imageSSIM.IImage {
+    const differenceImage = new Uint8Array(referenceImage.width * referenceImage.height * 4);
+    for (let y = 0; y < referenceImage.height; y++) {
+        const rowStart = y * referenceImage.width * 4;
+        for (let x = 0; x < referenceImage.width; x++) {
+            const pixelStart = rowStart + x * 4;
+
+            let differenceSum = 0;
+            for (let channel = 0; channel < 3; channel++) {
+                differenceSum += Math.abs(referenceImage.data[pixelStart + channel] -
+                                          renderedImage.data[pixelStart + channel]);
+            }
+
+            if (differenceSum === 0) {
+                // Lighten to indicate no difference.
+                for (let channel = 0; channel < 4; channel++) {
+                    differenceImage[pixelStart + channel] =
+                        Math.floor(referenceImage.data[pixelStart + channel] / 2) + 128;
+                }
+                continue;
+            }
+
+            // Draw differences in red.
+            const differenceMean = differenceSum / 3;
+            differenceImage[pixelStart + 0] = 127 + Math.round(differenceMean / 2);
+            differenceImage[pixelStart + 1] = differenceImage[pixelStart + 2] = 0;
+            differenceImage[pixelStart + 3] = 255;
+        }
+    }
+    return {
+        channels: referenceImage.channels,
+        data: differenceImage,
+        height: referenceImage.height,
+        width: referenceImage.width,
+    };
+}
+
+function addCell(row: HTMLTableRowElement, text: string): void {
+    const tableCell = document.createElement('td');
+    tableCell.textContent = text;
+    row.appendChild(tableCell);
 }
 
 function main() {

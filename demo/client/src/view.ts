@@ -51,6 +51,8 @@ declare class WebGLQuery {}
 export abstract class PathfinderView {
     canvas: HTMLCanvasElement;
 
+    suppressAutomaticRedraw: boolean;
+
     protected abstract get camera(): Camera;
 
     private dirty: boolean;
@@ -59,12 +61,13 @@ export abstract class PathfinderView {
 
     constructor() {
         this.dirty = false;
+        this.suppressAutomaticRedraw = false;
         this.canvas = unwrapNull(document.getElementById('pf-canvas')) as HTMLCanvasElement;
         window.addEventListener('resize', () => this.resizeToFit(false), false);
     }
 
     setDirty(): void {
-        if (this.dirty)
+        if (this.dirty || this.suppressAutomaticRedraw)
             return;
         this.dirty = true;
         window.requestAnimationFrame(() => this.redraw());
@@ -97,16 +100,16 @@ export abstract class PathfinderView {
         this.pulseHandle = window.requestAnimationFrame(tick);
     }
 
+    redraw(): void {
+        this.dirty = false;
+    }
+
     protected resized(): void {
         this.setDirty();
     }
 
-    protected redraw(): void {
-        this.dirty = false;
-    }
-
     protected resizeToFit(initialSize: boolean): void {
-        if (!this.canvas.classList.contains('pf-pane')) {
+        if (!this.canvas.classList.contains('pf-no-autoresize')) {
             const windowWidth = window.innerWidth;
             const canvasTop = this.canvas.getBoundingClientRect().top;
             let height = window.scrollY + window.innerHeight - canvasTop;
@@ -212,6 +215,46 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.renderer.setAntialiasingOptions(aaType, aaLevel, aaOptions);
     }
 
+    snapshot(rect: glmatrix.vec4): Uint8Array {
+        const gl = this.renderContext.gl;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        const canvasHeight = this.canvas.height;
+        const width = rect[2] - rect[0], height = rect[3] - rect[1];
+        const originX = Math.max(rect[0], 0);
+        const originY = Math.max(canvasHeight - height, 0);
+        const flippedBuffer = new Uint8Array(width * height * 4);
+        gl.readPixels(originX, originY, width, height, gl.RGBA, gl.UNSIGNED_BYTE, flippedBuffer);
+
+        const buffer = new Uint8Array(width * height * 4);
+        for (let y = 0; y < height; y++) {
+            const destRowStart = y * width * 4;
+            const srcRowStart = (height - y - 1) * width * 4;
+            buffer.set(flippedBuffer.slice(srcRowStart, srcRowStart + width * 4),
+                       destRowStart);
+        }
+
+        return buffer;
+    }
+
+    redraw(): void {
+        super.redraw();
+
+        if (!this.renderer.meshesAttached)
+            return;
+
+        this.renderer.redraw();
+
+        // Invoke the post-render hook.
+        this.renderingFinished();
+
+        // Take a screenshot if desired.
+        if (this.wantsScreenshot) {
+            this.wantsScreenshot = false;
+            this.takeScreenshot();
+        }
+    }
+
     protected resized(): void {
         super.resized();
         this.renderer.canvasResized();
@@ -245,21 +288,6 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         // Set up our timer queries for profiling.
         this.atlasRenderingTimerQuery = this.timerQueryExt.createQueryEXT();
         this.compositingTimerQuery = this.timerQueryExt.createQueryEXT();
-    }
-
-    protected redraw(): void {
-        super.redraw();
-
-        this.renderer.redraw();
-
-        // Invoke the post-render hook.
-        this.renderingFinished();
-
-        // Take a screenshot if desired.
-        if (this.wantsScreenshot) {
-            this.wantsScreenshot = false;
-            this.takeScreenshot();
-        }
     }
 
     protected renderingFinished(): void {}

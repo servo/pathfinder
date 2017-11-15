@@ -19,18 +19,21 @@ const GAMMA_LUT_URI: string = "/textures/gamma-lut.png";
 
 const SWITCHES: SwitchMap = {
     gammaCorrection: {
+        defaultValue: 'on',
         id: 'pf-gamma-correction',
         offValue: 'off',
         onValue: 'on',
         radioButtonName: 'gammaCorrectionRadioButton',
     },
     stemDarkening: {
+        defaultValue: 'dark',
         id: 'pf-stem-darkening',
         offValue: 'none',
         onValue: 'dark',
         radioButtonName: 'stemDarkeningRadioButton',
     },
     subpixelAA: {
+        defaultValue: 'none',
         id: 'pf-subpixel-aa',
         offValue: 'none',
         onValue: 'medium',
@@ -43,6 +46,7 @@ interface SwitchDescriptor {
     radioButtonName: keyof Switches;
     onValue: string;
     offValue: string;
+    defaultValue: string;
 }
 
 interface SwitchMap {
@@ -66,25 +70,33 @@ interface Switches {
 export abstract class AppController {
     protected canvas: HTMLCanvasElement;
 
+    protected selectFileElement: HTMLSelectElement | null;
+
     protected screenshotButton: HTMLButtonElement | null;
 
-    start(): void {}
+    start(): void {
+        this.selectFileElement = document.getElementById('pf-select-file') as HTMLSelectElement |
+            null;
+    }
 
-    protected loadInitialFile(builtinFileURI: string) {
-        const selectFileElement = document.getElementById('pf-select-file') as
-            (HTMLSelectElement | null);
-        if (selectFileElement != null) {
-            const selectedOption = selectFileElement.selectedOptions[0] as HTMLOptionElement;
+    protected loadInitialFile(builtinFileURI: string): void {
+        if (this.selectFileElement != null) {
+            const selectedOption = this.selectFileElement.selectedOptions[0] as HTMLOptionElement;
             this.fetchFile(selectedOption.value, builtinFileURI);
         } else {
             this.fetchFile(this.defaultFile, builtinFileURI);
         }
     }
 
-    protected fetchFile(file: string, builtinFileURI: string) {
-        window.fetch(`${builtinFileURI}/${file}`)
-              .then(response => response.arrayBuffer())
-              .then(data => this.fileLoaded(data, file));
+    protected fetchFile(file: string, builtinFileURI: string): Promise<void> {
+        return new Promise(resolve => {
+            window.fetch(`${builtinFileURI}/${file}`)
+                  .then(response => response.arrayBuffer())
+                  .then(data => {
+                      this.fileLoaded(data, file);
+                      resolve();
+                  });
+        });
     }
 
     protected abstract fileLoaded(data: ArrayBuffer, builtinName: string | null): void;
@@ -108,7 +120,8 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
     protected shaderSources: ShaderMap<ShaderProgramSource> | null;
     protected gammaLUT: HTMLImageElement;
 
-    private aaLevelSelect: HTMLSelectElement | null;
+    protected aaLevelSelect: HTMLSelectElement | null;
+
     private fpsLabel: HTMLElement | null;
 
     constructor() {
@@ -185,12 +198,9 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             this.filePickerView.onFileLoaded = fileData => this.fileLoaded(fileData, null);
         }
 
-        const selectFileElement = document.getElementById('pf-select-file') as
-            (HTMLSelectElement | null);
-        if (selectFileElement != null) {
-            selectFileElement.addEventListener('click',
-                                               event => this.fileSelectionChanged(event),
-                                               false);
+        if (this.selectFileElement != null) {
+            this.selectFileElement
+                .addEventListener('click', event => this.fileSelectionChanged(event), false);
         }
 
         this.fpsLabel = document.getElementById('pf-fps-label');
@@ -261,17 +271,7 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
 
     protected abstract createView(): View;
 
-    private loadGammaLUT(): Promise<HTMLImageElement> {
-        return window.fetch(GAMMA_LUT_URI)
-                     .then(response => response.blob())
-                     .then(blob => {
-                         const imgElement = document.createElement('img');
-                         imgElement.src = URL.createObjectURL(blob);
-                         return imgElement;
-                     });
-    }
-
-    private updateAALevel() {
+    protected updateAALevel(): Promise<void> {
         let aaType: AntialiasingStrategyName, aaLevel: number;
         if (this.aaLevelSelect != null) {
             const selectedOption = this.aaLevelSelect.selectedOptions[0];
@@ -288,15 +288,27 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             const switchDescriptor = SWITCHES[switchName];
             const radioButtonName = switchDescriptor.radioButtonName;
             const radioButton = this[radioButtonName];
-            if (radioButton != null && radioButton.checked)
+            if (radioButton == null)
+                aaOptions[switchName] = switchDescriptor.defaultValue as any;
+            else if (radioButton.checked)
                 aaOptions[switchName] = switchDescriptor.onValue as any;
             else
                 aaOptions[switchName] = switchDescriptor.offValue as any;
         }
 
-        this.view.then(view => {
+        return this.view.then(view => {
             view.setAntialiasingOptions(aaType, aaLevel, aaOptions as AAOptions);
         });
+    }
+
+    private loadGammaLUT(): Promise<HTMLImageElement> {
+        return window.fetch(GAMMA_LUT_URI)
+                     .then(response => response.blob())
+                     .then(blob => {
+                         const imgElement = document.createElement('img');
+                         imgElement.src = URL.createObjectURL(blob);
+                         return imgElement;
+                     });
     }
 
     private fileSelectionChanged(event: Event): void {

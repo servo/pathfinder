@@ -25,6 +25,7 @@ git = "https://github.com/servo/fontsan.git"
 
 [dependencies.pathfinder_font_renderer]
 path = "../../font-renderer"
+features = ["freetype"]
 
 [dependencies.pathfinder_partitioner]
 path = "../../partitioner"

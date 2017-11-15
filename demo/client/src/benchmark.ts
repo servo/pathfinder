@@ -328,7 +328,7 @@ class BenchmarkRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.meshes.length;
+        return this.meshes == null ? 0 : this.meshes.length;
     }
 
     private _pixelsPerEm: number = 32.0;

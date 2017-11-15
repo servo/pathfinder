@@ -127,7 +127,7 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     },
     ssaaSubpixelResolve: {
         fragment: "/glsl/gles2/ssaa-subpixel-resolve.fs.glsl",
-        vertex: "/glsl/gles2/ssaa-subpixel-resolve.vs.glsl",
+        vertex: "/glsl/gles2/blit.vs.glsl",
     },
     xcaaMonoResolve: {
         fragment: "/glsl/gles2/xcaa-mono-resolve.fs.glsl",

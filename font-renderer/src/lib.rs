@@ -24,10 +24,10 @@ extern crate serde_derive;
 #[cfg(test)]
 extern crate env_logger;
 
-#[cfg(all(target_os = "macos", not(feature = "freetype")))]
+#[cfg(target_os = "macos")]
 extern crate core_graphics as core_graphics_sys;
 
-#[cfg(all(target_os = "macos", not(feature = "freetype")))]
+#[cfg(target_os = "macos")]
 extern crate core_text;
 
 #[cfg(any(target_os = "linux", feature = "freetype"))]
@@ -57,8 +57,8 @@ pub use directwrite::FontContext;
 #[cfg(any(target_os = "linux", feature = "freetype"))]
 pub use freetype::FontContext;
 
-#[cfg(all(target_os = "macos", not(feature = "freetype")))]
-mod core_graphics;
+#[cfg(target_os = "macos")]
+pub mod core_graphics;
 #[cfg(all(target_os = "windows", not(feature = "freetype")))]
 mod directwrite;
 #[cfg(any(target_os = "linux", feature = "freetype"))]

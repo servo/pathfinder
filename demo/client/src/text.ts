@@ -349,10 +349,10 @@ export class UnitMetrics {
     descent: number;
 
     constructor(metrics: Metrics, stemDarkeningAmount: glmatrix.vec2) {
-        this.left = metrics.xMin - stemDarkeningAmount[0];
-        this.right = metrics.xMax + stemDarkeningAmount[0];
-        this.ascent = metrics.yMax + stemDarkeningAmount[1];
-        this.descent = metrics.yMin - stemDarkeningAmount[1];
+        this.left = metrics.xMin;
+        this.right = metrics.xMax + stemDarkeningAmount[0] * 2;
+        this.ascent = metrics.yMax + stemDarkeningAmount[1] * 2;
+        this.descent = metrics.yMin;
     }
 }
 

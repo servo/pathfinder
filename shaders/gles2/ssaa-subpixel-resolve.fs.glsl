@@ -16,7 +16,7 @@ uniform ivec2 uSourceDimensions;
 varying vec2 vTexCoord;
 
 float sampleSource(float deltaX) {
-    return texture2D(uSource, vec2(vTexCoord.s + deltaX, vTexCoord.y)).r;
+    return texture2D(uSource, vec2(vTexCoord.x + deltaX, vTexCoord.y)).r;
 }
 
 void main() {
@@ -34,5 +34,5 @@ void main() {
                       lcdFilter(shadeL.y, shadeL.x, shade0,   shadeR.x, shadeR.y),
                       lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z));
 
-    gl_FragColor = vec4(color, any(greaterThan(color, vec3(0.0))) ? 1.0 : 0.0);
+    gl_FragColor = vec4(color, 1.0);
 }

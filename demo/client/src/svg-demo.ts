@@ -208,6 +208,10 @@ class SVGDemoRenderer extends Renderer {
         return transform;
     }
 
+    protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
+        return glmatrix.vec4.create();
+    }
+
     protected directCurveProgramName(): keyof ShaderMap<void> {
         if (this.antialiasingStrategy instanceof XCAAStrategy)
             return 'xcaaMultiDirectCurve';

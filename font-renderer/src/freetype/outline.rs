@@ -20,19 +20,17 @@ pub struct OutlineStream<'a> {
     contour_index: u16,
     first_position_of_subpath: Point2D<f32>,
     first_point_index_of_contour: bool,
-    dpi: f32,
 }
 
 impl<'a> OutlineStream<'a> {
     #[inline]
-    pub unsafe fn new(outline: &FT_Outline, dpi: f32) -> OutlineStream {
+    pub unsafe fn new(outline: &FT_Outline) -> OutlineStream {
         OutlineStream {
             outline: outline,
             point_index: 0,
             contour_index: 0,
             first_position_of_subpath: Point2D::zero(),
             first_point_index_of_contour: true,
-            dpi: dpi,
         }
     }
 
@@ -42,7 +40,7 @@ impl<'a> OutlineStream<'a> {
             let point_offset = self.point_index as isize;
             let position = ft_vector_to_f32(*self.outline.points.offset(point_offset));
             let tag = *self.outline.tags.offset(point_offset);
-            (position * self.dpi, tag)
+            (position, tag)
         }
     }
 }

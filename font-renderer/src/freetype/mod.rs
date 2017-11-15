@@ -103,7 +103,7 @@ impl FontContext {
         self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
             unsafe {
                 GlyphOutline {
-                    stream: OutlineStream::new(&(*glyph_slot).outline, 72.0),
+                    stream: OutlineStream::new(&(*glyph_slot).outline),
                     phantom: PhantomData,
                 }
             }
@@ -113,7 +113,8 @@ impl FontContext {
     /// Uses the FreeType library to rasterize a glyph on CPU.
     pub fn rasterize_glyph_with_native_rasterizer(&self,
                                                   font_instance: &FontInstance,
-                                                  glyph_key: &GlyphKey)
+                                                  glyph_key: &GlyphKey,
+                                                  _: bool)
                                                   -> Result<GlyphImage, ()> {
         // Load the glyph.
         let slot = match self.load_glyph(font_instance, glyph_key) {
@@ -165,19 +166,21 @@ impl FontContext {
             let pixel_origin = Point2D::new((*slot).bitmap_left, (*slot).bitmap_top);
 
             // Allocate the RGBA8 buffer.
-            let area = pixel_size.area() as usize;
-            let mut dest_pixels: Vec<u32> = vec![0; area];
-            let src_pixels = slice::from_raw_parts((*bitmap).buffer, area * 3);
+            let src_stride = (*bitmap).pitch as usize;
+            let dest_stride = pixel_size.width as usize;
+            let src_area = src_stride * ((*bitmap).rows as usize);
+            let dest_area = pixel_size.area() as usize;
+            let mut dest_pixels: Vec<u32> = vec![0; dest_area];
+            let src_pixels = slice::from_raw_parts((*bitmap).buffer, src_area);
 
             // Convert to RGBA8.
-            let pixel_width = pixel_size.width as usize;
             for y in 0..(pixel_size.height as usize) {
-                let dest_row = &mut dest_pixels[(y * pixel_width)..((y + 1) * pixel_width)];
-                let src_row = &src_pixels[(y * pixel_width * 3)..((y + 1) * pixel_width * 3)];
+                let dest_row = &mut dest_pixels[(y * dest_stride)..((y + 1) * dest_stride)];
+                let src_row = &src_pixels[(y * src_stride)..((y + 1) * src_stride)];
                 for (x, dest) in dest_row.iter_mut().enumerate() {
-                    *dest = (src_row[x * 3 + 2] as u32) |
-                        ((src_row[x * 3 + 1] as u32) << 8) |
-                        ((src_row[x * 3 + 0] as u32) << 16) |
+                    *dest = ((255 - src_row[x * 3 + 2]) as u32) |
+                        (((255 - src_row[x * 3 + 1]) as u32) << 8) |
+                        (((255 - src_row[x * 3 + 0]) as u32) << 16) |
                         (0xff << 24)
                 }
             }
@@ -202,7 +205,7 @@ impl FontContext {
         };
 
         unsafe {
-            let point_size = (font_instance.size.to_f64_px() / (DPI as f64)).to_ft_f26dot6();
+            let point_size = font_instance.size.to_ft_f26dot6();
             FT_Set_Char_Size(face.face, point_size, 0, DPI, 0);
 
             if FT_Load_Glyph(face.face, glyph_key.glyph_index as FT_UInt, GLYPH_LOAD_FLAGS) != 0 {

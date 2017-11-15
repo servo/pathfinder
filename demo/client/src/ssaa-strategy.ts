@@ -102,7 +102,8 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
         const clearColor = renderer.backgroundColor;
         gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
-        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.clearDepth(0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
     prepareForDirectRendering(renderer: Renderer): void {}

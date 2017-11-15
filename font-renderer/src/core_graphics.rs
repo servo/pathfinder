@@ -101,7 +101,7 @@ impl FontContext {
         }
     }
 
-    pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
+    pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey, exact: bool)
                             -> Result<GlyphDimensions, ()> {
         let core_graphics_font = match self.core_graphics_fonts.get(&font_instance.font_key) {
             None => return Err(()),
@@ -138,10 +138,12 @@ impl FontContext {
         // the values seem to be 1.21% in the X direction and 1.5125% in the Y direction. Make sure
         // that there's enough room to account for this. We round the values up to 2% to account
         // for the possibility that Apple might tweak this later.
-        let font_dilation_radius = (font_instance.size.to_f32_px() * FONT_DILATION_AMOUNT *
-                                    0.5).ceil() as i32;
-        lower_left += Vector2D::new(-font_dilation_radius, -font_dilation_radius);
-        upper_right += Vector2D::new(font_dilation_radius, font_dilation_radius);
+        if !exact {
+            let font_dilation_radius = (font_instance.size.to_f32_px() *
+                                        FONT_DILATION_AMOUNT * 0.5).ceil() as i32;
+            lower_left += Vector2D::new(-font_dilation_radius, -font_dilation_radius);
+            upper_right += Vector2D::new(font_dilation_radius, font_dilation_radius);
+        }
 
         Ok(GlyphDimensions {
             origin: lower_left,
@@ -194,14 +196,15 @@ impl FontContext {
     /// Uses the native Core Graphics library to rasterize a glyph on CPU.
     pub fn rasterize_glyph_with_native_rasterizer(&self,
                                                   font_instance: &FontInstance,
-                                                  glyph_key: &GlyphKey)
+                                                  glyph_key: &GlyphKey,
+                                                  exact: bool)
                                                   -> Result<GlyphImage, ()> {
         let core_graphics_font = match self.core_graphics_fonts.get(&font_instance.font_key) {
             None => return Err(()),
             Some(core_graphics_font) => core_graphics_font,
         };
 
-        let dimensions = try!(self.glyph_dimensions(font_instance, glyph_key));
+        let dimensions = try!(self.glyph_dimensions(font_instance, glyph_key, exact));
 
         // TODO(pcwalton): Add support for non-subpixel render modes.
         let bitmap_context_flags = kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst;
@@ -260,7 +263,14 @@ impl FontContext {
         // Draw the glyph, and extract the pixels.
         core_graphics_context.show_glyphs_at_positions(&[glyph_key.glyph_index as CGGlyph],
                                                        &[origin]);
-        let pixels = core_graphics_context.data().to_vec();
+        let mut pixels = core_graphics_context.data().to_vec();
+
+        // Swap BGRA to RGBA.
+        for pixel in pixels.chunks_mut(4) {
+            let (b, r) = (pixel[0], pixel[2]);
+            pixel[0] = r;
+            pixel[2] = b;
+        }
 
         // Return the image.
         Ok(GlyphImage {

@@ -36,8 +36,8 @@ export abstract class Renderer {
 
     readonly pathTransformBufferTextures: PathfinderBufferTexture[];
 
-    meshes: PathfinderMeshBuffers[];
-    meshData: PathfinderMeshData[];
+    meshes: PathfinderMeshBuffers[] | null;
+    meshData: PathfinderMeshData[] | null;
 
     get emboldenAmount(): glmatrix.vec2 {
         return glmatrix.vec2.create();
@@ -52,11 +52,15 @@ export abstract class Renderer {
     }
 
     get backgroundColor(): glmatrix.vec4 {
-        return glmatrix.vec4.create();
+        return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
     }
 
     get usesIntermediateRenderTargets(): boolean {
         return false;
+    }
+
+    get meshesAttached(): boolean {
+        return this.meshes != null && this.meshData != null;
     }
 
     abstract get destFramebuffer(): WebGLFramebuffer | null;
@@ -87,6 +91,9 @@ export abstract class Renderer {
 
     constructor(renderContext: RenderContext) {
         this.renderContext = renderContext;
+
+        this.meshData = null;
+        this.meshes = null;
 
         this.lastTimings = { rendering: 0, compositing: 0 };
 
@@ -304,12 +311,14 @@ export abstract class Renderer {
     }
 
     pathRangeForObject(objectIndex: number): Range {
+        if (this.meshes == null)
+            return new Range(0, 0);
         const bVertexPathRanges = this.meshes[objectIndex].bVertexPathRanges;
         return new Range(1, bVertexPathRanges.length + 1);
     }
 
     protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
-        return glmatrix.vec4.create();
+        return null;
     }
 
     protected bindGammaLUT(bgColor: glmatrix.vec3, textureUnit: number, uniforms: UniformMap):
@@ -344,9 +353,11 @@ export abstract class Renderer {
 
         const clearColor = this.backgroundColor;
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.destFramebuffer);
+        gl.depthMask(true);
         gl.viewport(0, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
         gl.clearColor(clearColor[0], clearColor[1], clearColor[2], clearColor[3]);
-        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.clearDepth(0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     }
 
     protected clearForDirectRendering(objectIndex: number): void {
@@ -388,6 +399,9 @@ export abstract class Renderer {
     protected newTimingsReceived(): void {}
 
     private directlyRenderObject(objectIndex: number): void {
+        if (this.meshes == null || this.meshData == null)
+            return;
+
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
@@ -552,6 +566,9 @@ export abstract class Renderer {
     }
 
     private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {
+        if (this.meshes == null)
+            return;
+
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
@@ -608,6 +625,9 @@ export abstract class Renderer {
     }
 
     private initImplicitCoverInteriorVAO(objectIndex: number, instanceRange: Range): void {
+        if (this.meshes == null)
+            return;
+
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 

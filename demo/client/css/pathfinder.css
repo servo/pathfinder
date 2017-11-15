@@ -36,7 +36,11 @@ body {
     font-family: "Inter UI", sans-serif;
 }
 body.pf-unscrollable {
-    overflow: hidden;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
 }
 nav {
     -moz-user-select: none;
@@ -69,6 +73,9 @@ nav {
     pointer-events: auto;
 }
 .pf-toolbar-button {
+    pointer-events: auto;
+}
+#pf-test-pane {
     pointer-events: auto;
 }
 .pf-toolbar-button.btn-outline-secondary:not(:hover) {
@@ -119,6 +126,18 @@ button > svg path {
 }
 #pf-svg, #pf-svg * {
     visibility: hidden !important;
+}
+#pf-outer-container {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+#pf-inner-container {
+    overflow: scroll;
 }
 .pf-spinner {
     position: absolute;

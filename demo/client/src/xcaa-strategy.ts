@@ -385,6 +385,9 @@ export abstract class MCAAStrategy extends XCAAStrategy {
                                                 objectIndex: number,
                                                 lineProgram: PathfinderShaderProgram):
                                                 void {
+        if (renderer.meshData == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -421,6 +424,9 @@ export abstract class MCAAStrategy extends XCAAStrategy {
                                                  objectIndex: number,
                                                  curveProgram: PathfinderShaderProgram):
                                                  void {
+        if (renderer.meshData == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -458,6 +464,9 @@ export abstract class MCAAStrategy extends XCAAStrategy {
     }
 
     private initCoverVAOForObject(renderer: Renderer, objectIndex: number): void {
+        if (renderer.meshes == null || renderer.meshData == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -518,6 +527,9 @@ export abstract class MCAAStrategy extends XCAAStrategy {
     }
 
     private initLineVAOsForObject(renderer: Renderer, objectIndex: number): void {
+        if (renderer.meshes == null || renderer.meshData == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -597,6 +609,9 @@ export abstract class MCAAStrategy extends XCAAStrategy {
     }
 
     private initCurveVAOsForObject(renderer: Renderer, objectIndex: number): void {
+        if (renderer.meshes == null || renderer.meshData == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -675,6 +690,9 @@ export abstract class MCAAStrategy extends XCAAStrategy {
     }
 
     private coverObject(renderer: Renderer, objectIndex: number): void {
+        if (renderer.meshes == null || renderer.meshData == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -796,6 +814,9 @@ export class ECAAStrategy extends XCAAStrategy {
     }
 
     private createLineVAO(renderer: Renderer): void {
+        if (renderer.meshes == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -857,6 +878,9 @@ export class ECAAStrategy extends XCAAStrategy {
     }
 
     private createCurveVAO(renderer: Renderer): void {
+        if (renderer.meshes == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -914,6 +938,9 @@ export class ECAAStrategy extends XCAAStrategy {
     }
 
     private antialiasLinesOfObject(renderer: Renderer, objectIndex: number): void {
+        if (renderer.meshData == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -942,6 +969,9 @@ export class ECAAStrategy extends XCAAStrategy {
     }
 
     private antialiasCurvesOfObject(renderer: Renderer, objectIndex: number): void {
+        if (renderer.meshData == null)
+            return;
+
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 

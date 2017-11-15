@@ -359,11 +359,15 @@ class TextDemoRenderer extends TextRenderer {
     glyphTexCoordsBuffer: WebGLBuffer;
     glyphElementsBuffer: WebGLBuffer;
 
+    private glyphBounds: Float32Array;
+
     get layout(): SimpleTextLayout {
         return this.renderContext.appController.layout;
     }
 
-    private glyphBounds: Float32Array;
+    get backgroundColor(): glmatrix.vec4 {
+        return glmatrix.vec4.create();
+    }
 
     prepareToAttachText(): void {
         if (this.atlasFramebuffer == null)

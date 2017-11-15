@@ -6,33 +6,119 @@
         {{>partials/header.html}}
         <script type="text/javascript" src="/js/pathfinder/integration-test.js"></script>
     </head>
-    <body class="pf-unscrollable">
-        {{>partials/navbar.html isTool=true}}
-        <div class="container-fluid">
-            <div class="row py-3">
-                <div id="pf-test-pane" class="col">
-                    <form>
-                        <div class="form-group">
-                            <label for="pf-select-file">Font</label>
-                            <select id="pf-select-file" class="form-control custom-select">
-                                <option value="open-sans">Open Sans</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="pf-font-size">Font Size</label>
-                            <div class="input-group">
-                                <input id="pf-font-size" type="number" class="form-control"
-                                 value="32">
-                                <div class="input-group-addon">px</div>
+    <body>
+        <div id="pf-outer-container" class="w-100">
+            <div class="w-100">
+                {{>partials/navbar.html isTool=true}}
+            </div>
+            <div id="pf-inner-container" class="container-fluid">
+                <div class="row">
+                    <div id="pf-integration-test-sidebar" class="col">
+                        <ul class="nav nav-tabs" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link" id="pf-test-suite-tab" data-toggle="tab"
+                                href="#pf-test-suite" role="tab" aria-controls="pf-test-suite"
+                                aria-selected="false">Test Suite</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link active" id="pf-custom-test-tab"
+                                 data-toggle="tab"
+                                 href="#pf-custom-test" role="tab" aria-controls="pf-custom-test"
+                                 aria-selected="true">Custom Test</a>
+                            </li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane p-3" id="pf-test-suite" role="tabpanel"
+                            aria-labelledby="pf-test-suite-tab">
+                                <button id="pf-run-tests-button" class="btn btn-primary m-2">
+                                    Run Tests
+                                </button>
+                                <table id="pf-results-table" class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col"></th>
+                                            <th scope="col">Font</th>
+                                            <th scope="col">Char.</th>
+                                            <th scope="col">Size</th>
+                                            <th scope="col">AA</th>
+                                            <th scope="col">Subpixel</th>
+                                            <th scope="col">Reference</th>
+                                            <th scope="col">Expected SSIM</th>
+                                            <th scope="col">Actual SSIM</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div class="tab-pane show active p-3" id="pf-custom-test"
+                             role="tabpanel" aria-labelledby="pf-custom-test-tab">
+                                <form>
+                                    <div class="form-group">
+                                        <label for="pf-select-file">Font</label>
+                                        <select id="pf-select-file"
+                                         class="form-control custom-select">
+                                            <option value="open-sans">Open Sans</option>
+                                            <option value="eb-garamond">EB Garamond</option>
+                                            <option value="nimbus-sans">Nimbus Sans</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pf-font-size">Font Size</label>
+                                        <div class="input-group">
+                                            <input id="pf-font-size" type="number"
+                                             class="form-control" value="32">
+                                            <div class="input-group-addon">px</div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pf-character">Character</label>
+                                        <input id="pf-character" type="text" maxlength="1" class="form-control"
+                                        value="B">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pf-aa-level-select">Antialiasing</label>
+                                        <select id="pf-aa-level-select"
+                                        class="form-control custom-select">
+                                            <option value="none">None</option>
+                                            <option value="ssaa-4">4&times;SSAA</option>
+                                            <option value="xcaa" selected>XCAA</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group row justify-content-between">
+                                        {{>partials/switch.html id="pf-subpixel-aa"
+                                        title="Subpixel AA"}}
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pf-reference-renderer">
+                                            Reference Renderer
+                                        </label>
+                                        <select id="pf-reference-renderer"
+                                        class="form-control custom-select">
+                                            <option value="freetype">FreeType</option>
+                                            <option value="core-graphics">Core Graphics</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pf-ssim-label">SSIM</label>
+                                        <div id="pf-ssim-label">&mdash;</div>
+                                    </div>
+                                </form>
                             </div>
                         </div>
-                    </form>
+                    </div>
+                    <div class="col">
+                        <div class="row">
+                            <canvas id="pf-reference-canvas" class="pf-draggable border"
+                             width="300" height="400"></canvas>
+                            <canvas id="pf-canvas" class="pf-draggable pf-no-autoresize border"
+                            width="300" height="400"></canvas>
+                        </div>
+                        <div class="row">
+                            <canvas id="pf-difference-canvas" class="pf-draggable border"
+                             width="300" height="400"></canvas>
+                        </div>
+                    </div>
                 </div>
-                <canvas id="pf-reference-canvas" class="pf-draggable pf-pane col" width="300"
-                 height="400">
-                </canvas>
-                <canvas id="pf-canvas" class="pf-draggable pf-pane col" width="300"
-                 height="400"></canvas>
             </div>
         </div>
     </body>

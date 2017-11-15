@@ -393,7 +393,7 @@ class ThreeDRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.meshes.length;
+        return this.meshes == null ? 0 : this.meshes.length;
     }
 
     private cubeVertexPositionBuffer: WebGLBuffer;

@@ -122,7 +122,7 @@ export abstract class TextRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.meshes.length;
+        return this.meshes == null ? 0 : this.meshes.length;
     }
 
     private stemDarkening: StemDarkeningMode;
@@ -193,14 +193,7 @@ export abstract class TextRenderer extends Renderer {
         return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
     }
 
-    protected clearForDirectRendering(): void {
-        const gl = this.renderContext.gl;
-
-        gl.clearColor(0.0, 0.0, 0.0, 1.0);
-        gl.clearDepth(0.0);
-        gl.depthMask(true);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    }
+    protected clearForDirectRendering(): void {}
 
     protected buildAtlasGlyphs(atlasGlyphs: AtlasGlyph[]): void {
         const font = this.renderContext.font;
