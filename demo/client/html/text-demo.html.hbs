@@ -16,20 +16,20 @@
                 <div class="btn-group" role="group" aria-label="Zoom">
                     <button id="pf-zoom-out-button" type="button"
                      class="btn btn-outline-secondary pf-toolbar-button">
-                        {{octicon "dash"}}
+                        <span class="pf-material-icons">remove</span>
                     </button>
                     <button id="pf-zoom-in-button" type="button"
                      class="btn btn-outline-secondary pf-toolbar-button">
-                        {{octicon "plus"}}
+                        <span class="pf-material-icons">add</span>
                     </button>
                 </div>
                 <button id="pf-zoom-pulse-button" type="button" title="Pulse Zoom"
                  class="btn btn-outline-secondary pf-toolbar-button">
-                    <span id="pf-play-icon"></span>
+                    <span class="pf-material-icons">play_arrow</span>
                 </button>
                 <button id="pf-screenshot-button" type="button"
                  class="btn btn-outline-secondary pf-toolbar-button">
-                    {{octicon "device-camera"}}
+                    <span class="pf-material-icons">photo_camera</span>
                 </button>
                 <div id="pf-settings-container">
                     <div id="pf-settings" class="card mb-4 pf-invisible">
@@ -86,7 +86,9 @@
                 </div>
                 <button id="pf-settings-button" type="button"
                  class="btn btn-outline-secondary pf-toolbar-button" aria-expanded="false"
-                 aria-controls="#pf-settings">{{octicon "gear"}}</button>
+                 aria-controls="#pf-settings">
+                    <span class="pf-material-icons">settings</span>
+                </button>
             </div>
         </div>
         <div class="modal fade" id="pf-edit-text-modal" tabindex="-1" role="dialog"

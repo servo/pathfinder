@@ -131,35 +131,8 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
     start() {
         super.start();
 
-        const settingsCard = document.getElementById('pf-settings') as (HTMLElement | null);
-        const settingsButton = document.getElementById('pf-settings-button') as
-            (HTMLButtonElement | null);
-        const settingsCloseButton = document.getElementById('pf-settings-close-button') as
-            (HTMLButtonElement | null);
-
-        if (settingsButton != null) {
-            settingsButton.addEventListener('click', event => {
-                event.stopPropagation();
-                unwrapNull(settingsCard).classList.toggle('pf-invisible');
-            }, false);
-        }
-        if (settingsCloseButton != null) {
-            settingsCloseButton.addEventListener('click', () => {
-                unwrapNull(settingsCard).classList.add('pf-invisible');
-            }, false);
-        }
-        if (settingsCard != null) {
-            document.body.addEventListener('click', event => {
-                let element = event.target as Element | null;
-                while (element != null) {
-                    if (element === settingsCard)
-                        return;
-                    element = element.parentElement;
-                }
-
-                settingsCard.classList.add('pf-invisible');
-            }, false);
-        }
+        this.initPopup('pf-settings', 'pf-settings-button', 'pf-settings-close-button');
+        this.initPopup('pf-rotate-slider-card', 'pf-rotate-button', 'pf-rotate-close-button');
 
         const screenshotButton = document.getElementById('pf-screenshot-button') as
             HTMLButtonElement | null;
@@ -190,6 +163,16 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         if (zoomPulseButton != null) {
             zoomPulseButton.addEventListener('click', () => {
                 this.view.then(view => view.zoomPulse());
+            }, false);
+        }
+
+        const rotateSlider = document.getElementById('pf-rotate-slider') as HTMLInputElement |
+            null;
+        if (rotateSlider != null) {
+            rotateSlider.addEventListener('input', event => {
+                this.view.then(view => {
+                    view.rotate((event.target as HTMLInputElement).valueAsNumber);
+                });
             }, false);
         }
 
@@ -299,6 +282,38 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         return this.view.then(view => {
             view.setAntialiasingOptions(aaType, aaLevel, aaOptions as AAOptions);
         });
+    }
+
+    private initPopup(cardID: string, popupButtonID: string, closeButtonID: string): void {
+        const card = document.getElementById(cardID) as HTMLElement | null;
+        const button = document.getElementById(popupButtonID) as HTMLButtonElement | null;
+        const closeButton = document.getElementById(closeButtonID) as HTMLButtonElement | null;
+
+        if (button != null) {
+            button.addEventListener('click', event => {
+                event.stopPropagation();
+                unwrapNull(card).classList.toggle('pf-invisible');
+            }, false);
+        }
+        if (closeButton != null) {
+            closeButton.addEventListener('click', () => {
+                unwrapNull(card).classList.add('pf-invisible');
+            }, false);
+        }
+
+        if (card == null)
+            return;
+
+        document.body.addEventListener('click', event => {
+            let element = event.target as Element | null;
+            while (element != null) {
+                if (element === card)
+                    return;
+                element = element.parentElement;
+            }
+
+            card.classList.add('pf-invisible');
+        }, false);
     }
 
     private loadGammaLUT(): Promise<HTMLImageElement> {

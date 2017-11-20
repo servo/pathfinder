@@ -86,14 +86,17 @@ export abstract class Camera {
     abstract zoom(scale: number): void;
     abstract zoomIn(): void;
     abstract zoomOut(): void;
+    abstract rotate(newAngle: number): void;
 }
 
 export class OrthographicCamera extends Camera {
     onPan: (() => void) | null;
     onZoom: (() => void) | null;
+    onRotate: (() => void) | null;
 
     translation: glmatrix.vec2;
     scale: number;
+    rotationAngle: number;
 
     private _bounds: glmatrix.vec4;
 
@@ -115,6 +118,7 @@ export class OrthographicCamera extends Camera {
 
         this.translation = glmatrix.vec2.create();
         this.scale = 1.0;
+        this.rotationAngle = 0.0;
 
         this._bounds = glmatrix.vec4.create();
 
@@ -125,6 +129,7 @@ export class OrthographicCamera extends Camera {
 
         this.onPan = null;
         this.onZoom = null;
+        this.onRotate = null;
     }
 
     onWheel(event: MouseWheelEvent): void {
@@ -149,7 +154,7 @@ export class OrthographicCamera extends Camera {
         glmatrix.vec2.scale(mouseLocation, mouseLocation, window.devicePixelRatio);
 
         const scale = 1.0 - event.deltaY * window.devicePixelRatio * ORTHOGRAPHIC_ZOOM_SPEED;
-        this._zoom(scale, mouseLocation);
+        this.doZoom(scale, mouseLocation);
     }
 
     zoomToFit(): void {
@@ -170,15 +175,22 @@ export class OrthographicCamera extends Camera {
     }
 
     zoom(scale: number): void {
-        this._zoom(scale, this.centerPoint);
+        this.doZoom(scale, this.centerPoint);
     }
 
     zoomIn(): void {
-        this._zoom(ORTHOGRAPHIC_ZOOM_IN_FACTOR, this.centerPoint);
+        this.doZoom(ORTHOGRAPHIC_ZOOM_IN_FACTOR, this.centerPoint);
     }
 
     zoomOut(): void {
-        this._zoom(ORTHOGRAPHIC_ZOOM_OUT_FACTOR, this.centerPoint);
+        this.doZoom(ORTHOGRAPHIC_ZOOM_OUT_FACTOR, this.centerPoint);
+    }
+
+    rotate(newAngle: number): void {
+        this.rotationAngle = newAngle;
+
+        if (this.onRotate != null)
+            this.onRotate();
     }
 
     private onMouseDown(event: MouseEvent): void {
@@ -233,7 +245,7 @@ export class OrthographicCamera extends Camera {
         }
     }
 
-    private _zoom(scale: number, point: glmatrix.vec2): void {
+    private doZoom(scale: number, point: glmatrix.vec2): void {
         const absoluteTranslation = glmatrix.vec2.create();
         glmatrix.vec2.sub(absoluteTranslation, this.translation, point);
         glmatrix.vec2.scale(absoluteTranslation, absoluteTranslation, 1.0 / this.scale);
@@ -320,6 +332,10 @@ export class PerspectiveCamera extends Camera {
     }
 
     zoomOut(): void {
+        // TODO(pcwalton)
+    }
+
+    rotate(newAngle: number): void {
         // TODO(pcwalton)
     }
 

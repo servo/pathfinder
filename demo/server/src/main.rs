@@ -77,14 +77,13 @@ static STATIC_TOOLS_INTEGRATION_TEST_PATH: &'static str = "../client/integration
 static STATIC_TOOLS_MESH_DEBUGGER_PATH: &'static str = "../client/mesh-debugger.html";
 static STATIC_DOC_API_PATH: &'static str = "../../font-renderer/target/doc";
 static STATIC_CSS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/css";
-static STATIC_CSS_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build";
 static STATIC_CSS_PATHFINDER_PATH: &'static str = "../client/css/pathfinder.css";
 static STATIC_JS_BOOTSTRAP_PATH: &'static str = "../client/node_modules/bootstrap/dist/js";
 static STATIC_JS_JQUERY_PATH: &'static str = "../client/node_modules/jquery/dist";
 static STATIC_JS_POPPER_JS_PATH: &'static str = "../client/node_modules/popper.js/dist/umd";
 static STATIC_JS_PATHFINDER_PATH: &'static str = "../client";
-static STATIC_SVG_OCTICONS_PATH: &'static str = "../client/node_modules/octicons/build/svg";
 static STATIC_WOFF2_INTER_UI_PATH: &'static str = "../../resources/fonts/inter-ui";
+static STATIC_WOFF2_MATERIAL_ICONS_PATH: &'static str = "../../resources/fonts/material-icons";
 static STATIC_GLSL_PATH: &'static str = "../../shaders";
 static STATIC_DATA_PATH: &'static str = "../../resources/data";
 static STATIC_TEST_DATA_PATH: &'static str = "../../resources/tests";
@@ -578,10 +577,6 @@ fn static_doc_api(file: PathBuf) -> Option<NamedFile> {
 fn static_css_bootstrap(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_CSS_BOOTSTRAP_PATH).join(file)).ok()
 }
-#[get("/css/octicons/<file..>")]
-fn static_css_octicons(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_CSS_OCTICONS_PATH).join(file)).ok()
-}
 #[get("/css/pathfinder.css")]
 fn static_css_pathfinder_css() -> io::Result<NamedFile> {
     NamedFile::open(STATIC_CSS_PATHFINDER_PATH)
@@ -602,13 +597,13 @@ fn static_js_popper_js(file: PathBuf) -> Option<NamedFile> {
 fn static_js_pathfinder(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_JS_PATHFINDER_PATH).join(file)).ok()
 }
-#[get("/svg/octicons/<file..>")]
-fn static_svg_octicons(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_SVG_OCTICONS_PATH).join(file)).ok()
-}
 #[get("/woff2/inter-ui/<file..>")]
 fn static_woff2_inter_ui(file: PathBuf) -> Option<NamedFile> {
     NamedFile::open(Path::new(STATIC_WOFF2_INTER_UI_PATH).join(file)).ok()
+}
+#[get("/woff2/material-icons/<file..>")]
+fn static_woff2_material_icons(file: PathBuf) -> Option<NamedFile> {
+    NamedFile::open(Path::new(STATIC_WOFF2_MATERIAL_ICONS_PATH).join(file)).ok()
 }
 #[get("/glsl/<file..>")]
 fn static_glsl(file: PathBuf) -> Option<Shader> {
@@ -688,14 +683,13 @@ fn main() {
         static_doc_api_index,
         static_doc_api,
         static_css_bootstrap,
-        static_css_octicons,
         static_css_pathfinder_css,
         static_js_bootstrap,
         static_js_jquery,
         static_js_popper_js,
         static_js_pathfinder,
-        static_svg_octicons,
         static_woff2_inter_ui,
+        static_woff2_material_icons,
         static_glsl,
         static_otf_demo,
         static_svg_demo,

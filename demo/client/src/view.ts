@@ -100,6 +100,10 @@ export abstract class PathfinderView {
         this.pulseHandle = window.requestAnimationFrame(tick);
     }
 
+    rotate(newAngle: number): void {
+        this.camera.rotate(newAngle);
+    }
+
     redraw(): void {
         this.dirty = false;
     }

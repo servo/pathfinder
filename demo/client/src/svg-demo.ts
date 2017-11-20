@@ -149,6 +149,7 @@ class SVGDemoRenderer extends Renderer {
         this.camera = new OrthographicCamera(renderContext.canvas, { scaleBounds: true });
         this.camera.onPan = () => this.renderContext.setDirty();
         this.camera.onZoom = () => this.renderContext.setDirty();
+        this.camera.onRotate = () => this.renderContext.setDirty();
     }
 
     setHintsUniform(uniforms: UniformMap): void {
@@ -195,14 +196,22 @@ class SVGDemoRenderer extends Renderer {
     }
 
     protected get worldTransform(): glmatrix.mat4 {
+        const canvas = this.renderContext.canvas;
+
         const transform = glmatrix.mat4.create();
-        const translation = this.camera.translation;
+
         glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
-        glmatrix.mat4.scale(transform, transform, [
-            2.0 / this.renderContext.canvas.width,
-            2.0 / this.renderContext.canvas.height,
-            1.0,
-        ]);
+        glmatrix.mat4.scale(transform, transform, [2.0 / canvas.width, 2.0 / canvas.height, 1.0]);
+
+        if (!(this.antialiasingStrategy instanceof XCAAStrategy)) {
+            const centerPoint = glmatrix.vec3.clone([canvas.width * 0.5, canvas.height * 0.5, 0.0]);
+            glmatrix.mat4.translate(transform, transform, centerPoint);
+            glmatrix.mat4.rotateZ(transform, transform, this.camera.rotationAngle);
+            glmatrix.vec3.negate(centerPoint, centerPoint);
+            glmatrix.mat4.translate(transform, transform, centerPoint);
+        }
+
+        const translation = this.camera.translation;
         glmatrix.mat4.translate(transform, transform, [translation[0], translation[1], 0]);
         glmatrix.mat4.scale(transform, transform, [this.camera.scale, this.camera.scale, 1.0]);
         return transform;

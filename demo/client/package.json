@@ -27,7 +27,6 @@
     "image-ssim": "^0.2.0",
     "jquery": "^3.2.1",
     "lodash": "^4.17.4",
-    "octicons": "^6.0.1",
     "opentype.js": "^0.7.3",
     "papaparse": "^4.3.6",
     "parse-color": "^1.0.0",
