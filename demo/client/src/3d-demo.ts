@@ -903,6 +903,10 @@ class ThreeDAtlasRenderer extends TextRenderer {
 
     private allAtlasGlyphs: AtlasGlyph[];
 
+    get backgroundColor(): glmatrix.vec4 {
+        return glmatrix.vec4.create();
+    }
+
     constructor(renderContext: ThreeDView, atlasGlyphs: AtlasGlyph[]) {
         super(renderContext);
         this.allAtlasGlyphs = atlasGlyphs;
