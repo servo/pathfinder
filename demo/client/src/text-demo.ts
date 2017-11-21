@@ -183,8 +183,9 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     private updateText(): void {
         this.text = this.editTextArea.value;
-
         window.jQuery(this.editTextModal).modal('hide');
+
+        this.recreateLayout(this.font);
     }
 
     private recreateLayout(font: PathfinderFont) {
