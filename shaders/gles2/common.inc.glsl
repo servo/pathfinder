@@ -231,7 +231,6 @@ vec4 clipLineToPixelRow(vec2 p0, vec2 dP, float pixelCenterY, out float outPixel
     outPixelTop = pixelRowBounds.y;
     vec2 qY = pixelRowBounds - p0.yy;
     vec2 tY = clamp((slopeIsNegative(dP) ? qY.yx : qY.xy) / dP.yy, 0.0, 1.0);
-    //vec2 tY = clamp(vec2(min(qY.x, qY.y), max(qY.x, qY.y)) / dP.yy, 0.0, 1.0);
     return vec4(p0 + dP * tY.x, dP * (tY.y - tY.x));
 }
 
