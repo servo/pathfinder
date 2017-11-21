@@ -1,4 +1,4 @@
-// pathfinder/client/src/integration-test.ts
+// pathfinder/client/src/reference-test.ts
 //
 // Copyright © 2017 The Pathfinder Project Developers.
 //
@@ -40,17 +40,17 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
 };
 
 const RENDER_REFERENCE_URI: string = "/render-reference";
-const TEST_DATA_URI: string = "/test-data/integration-test-text.csv";
+const TEST_DATA_URI: string = "/test-data/reference-test-text.csv";
 
 const SSIM_TOLERANCE: number = 0.01;
 const SSIM_WINDOW_SIZE: number = 8;
 
-interface IntegrationTestGroup {
+interface ReferenceTestGroup {
     font: string;
-    tests: IntegrationTestCase[];
+    tests: ReferenceTestCase[];
 }
 
-interface IntegrationTestCase {
+interface ReferenceTestCase {
     size: number;
     character: string;
     aaMode: keyof AntialiasingStrategyTable;
@@ -67,13 +67,13 @@ interface AntialiasingStrategyTable {
     xcaa: typeof AdaptiveMonochromeXCAAStrategy;
 }
 
-class IntegrationTestAppController extends DemoAppController<IntegrationTestView> {
+class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     font: PathfinderFont | null;
     textRun: TextRun | null;
 
     referenceCanvas: HTMLCanvasElement;
 
-    tests: Promise<IntegrationTestGroup[]>;
+    tests: Promise<ReferenceTestGroup[]>;
 
     protected readonly defaultFile: string = FONT;
     protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
@@ -167,7 +167,7 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
         this.loadInitialFile(this.builtinFileURI);
     }
 
-    runNextTestIfNecessary(tests: IntegrationTestGroup[]): void {
+    runNextTestIfNecessary(tests: ReferenceTestGroup[]): void {
         if (this.currentTestGroupIndex == null || this.currentTestCaseIndex == null ||
             this.currentGlobalTestCaseIndex == null) {
             return;
@@ -193,7 +193,7 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
         });
     }
 
-    recordSSIMResult(tests: IntegrationTestGroup[], ssimResult: imageSSIM.IResult): void {
+    recordSSIMResult(tests: ReferenceTestGroup[], ssimResult: imageSSIM.IResult): void {
         const formattedSSIM: string = "" + (Math.round(ssimResult.ssim * 1000.0) / 1000.0);
         this.ssimLabel.textContent = formattedSSIM;
 
@@ -234,8 +234,8 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
     protected createView(gammaLUT: HTMLImageElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>):
-                         IntegrationTestView {
-        return new IntegrationTestView(this, gammaLUT, commonShaderSource, shaderSources);
+                         ReferenceTestView {
+        return new ReferenceTestView(this, gammaLUT, commonShaderSource, shaderSources);
     }
 
     protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
@@ -252,7 +252,7 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
                            .then(response => response.text())
                            .then(testDataText => {
             const fontNames = [];
-            const groups: {[font: string]: IntegrationTestCase[]} = {};
+            const groups: {[font: string]: ReferenceTestCase[]} = {};
 
             const testData = papaparse.parse(testDataText, {
                 comments: "#",
@@ -324,7 +324,7 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
         });
     }
 
-    private loadFontForTestGroupIfNecessary(tests: IntegrationTestGroup[]): Promise<void> {
+    private loadFontForTestGroupIfNecessary(tests: ReferenceTestGroup[]): Promise<void> {
         return new Promise(resolve => {
             if (this.currentTestGroupIndex == null) {
                 resolve();
@@ -337,7 +337,7 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
         });
     }
 
-    private setOptionsForCurrentTest(tests: IntegrationTestGroup[]): Promise<void> {
+    private setOptionsForCurrentTest(tests: ReferenceTestGroup[]): Promise<void> {
         if (this.currentTestGroupIndex == null || this.currentTestCaseIndex == null)
             return new Promise(resolve => resolve());
 
@@ -411,22 +411,22 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
     }
 }
 
-class IntegrationTestView extends DemoView {
-    readonly renderer: IntegrationTestRenderer;
-    readonly appController: IntegrationTestAppController;
+class ReferenceTestView extends DemoView {
+    readonly renderer: ReferenceTestRenderer;
+    readonly appController: ReferenceTestAppController;
 
     get camera(): OrthographicCamera {
         return this.renderer.camera;
     }
 
-    constructor(appController: IntegrationTestAppController,
+    constructor(appController: ReferenceTestAppController,
                 gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
         super(gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
-        this.renderer = new IntegrationTestRenderer(this);
+        this.renderer = new ReferenceTestRenderer(this);
 
         this.resizeToFit(true);
     }
@@ -465,8 +465,8 @@ class IntegrationTestView extends DemoView {
     }
 }
 
-class IntegrationTestRenderer extends Renderer {
-    renderContext: IntegrationTestView;
+class ReferenceTestRenderer extends Renderer {
+    renderContext: ReferenceTestView;
     camera: OrthographicCamera;
 
     get destFramebuffer(): WebGLFramebuffer | null {
@@ -529,7 +529,7 @@ class IntegrationTestRenderer extends Renderer {
         return computeStemDarkeningAmount(appController.currentFontSize, this.pixelsPerUnit);
     }
 
-    constructor(renderContext: IntegrationTestView) {
+    constructor(renderContext: ReferenceTestView) {
         super(renderContext);
 
         this.camera = new OrthographicCamera(renderContext.canvas);
@@ -700,7 +700,7 @@ function addCell(row: HTMLTableRowElement, text: string): void {
 }
 
 function main() {
-    const controller = new IntegrationTestAppController;
+    const controller = new ReferenceTestAppController;
     window.addEventListener('load', () => controller.start(), false);
 }
 
