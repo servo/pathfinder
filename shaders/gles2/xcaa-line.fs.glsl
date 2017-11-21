@@ -15,9 +15,13 @@ varying float vWinding;
 
 void main() {
     // Unpack.
-    vec2 center = gl_FragCoord.xy;
+    vec2 pixelCenter = gl_FragCoord.xy;
     vec2 p0 = vEndpoints.xy, p1 = vEndpoints.zw;
 
+    // Clip to left and right pixel boundaries.
+    vec2 dP = p1 - p0;
+    vec4 p0DPX = clipLineToPixelColumn(p0, dP, pixelCenter.x);
+
     // Compute area.
-    gl_FragColor = vec4(computeCoverage(p0, p1 - p0, center, vWinding));
+    gl_FragColor = vec4(computeCoverage(p0DPX.xy, p0DPX.zw, pixelCenter.y, vWinding));
 }
