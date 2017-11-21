@@ -133,11 +133,11 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         });
     }
 
-    protected createView(): BenchmarkTestView {
-        return new BenchmarkTestView(this,
-                                     unwrapNull(this.gammaLUT),
-                                     unwrapNull(this.commonShaderSource),
-                                     unwrapNull(this.shaderSources));
+    protected createView(gammaLUT: HTMLImageElement,
+                         commonShaderSource: string,
+                         shaderSources: ShaderMap<ShaderProgramSource>):
+                         BenchmarkTestView {
+        return new BenchmarkTestView(this, gammaLUT, commonShaderSource, shaderSources);
     }
 
     private reset(): void {

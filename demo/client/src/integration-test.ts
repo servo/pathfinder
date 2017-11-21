@@ -231,11 +231,11 @@ class IntegrationTestAppController extends DemoAppController<IntegrationTestView
         context.putImageData(imageData, 0, 0);
     }
 
-    protected createView(): IntegrationTestView {
-        return new IntegrationTestView(this,
-                                       unwrapNull(this.gammaLUT),
-                                       unwrapNull(this.commonShaderSource),
-                                       unwrapNull(this.shaderSources));
+    protected createView(gammaLUT: HTMLImageElement,
+                         commonShaderSource: string,
+                         shaderSources: ShaderMap<ShaderProgramSource>):
+                         IntegrationTestView {
+        return new IntegrationTestView(this, gammaLUT, commonShaderSource, shaderSources);
     }
 
     protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {

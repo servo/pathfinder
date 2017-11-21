@@ -116,10 +116,6 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
 
     protected filePickerView: FilePickerView | null;
 
-    protected commonShaderSource: string | null;
-    protected shaderSources: ShaderMap<ShaderProgramSource> | null;
-    protected gammaLUT: HTMLImageElement;
-
     protected aaLevelSelect: HTMLSelectElement | null;
 
     private fpsLabel: HTMLElement | null;
@@ -195,10 +191,7 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
 
         const promises: any[] = [gammaLUTPromise, shaderLoader.common, shaderLoader.shaders];
         this.view = Promise.all(promises).then(assets => {
-            this.gammaLUT = assets[0];
-            this.commonShaderSource = assets[1];
-            this.shaderSources = assets[2];
-            return this.createView();
+            return this.createView(assets[0], assets[1], assets[2]);
         });
 
         this.aaLevelSelect = document.getElementById('pf-aa-level-select') as
@@ -252,7 +245,10 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         this.fpsLabel.classList.remove('invisible');
     }
 
-    protected abstract createView(): View;
+    protected abstract createView(gammaLUT: HTMLImageElement,
+                                  commonShaderSource: string,
+                                  shaderSources: ShaderMap<ShaderProgramSource>):
+                                  View;
 
     protected updateAALevel(): Promise<void> {
         let aaType: AntialiasingStrategyName, aaLevel: number;
@@ -322,7 +318,12 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
                      .then(blob => {
                          const imgElement = document.createElement('img');
                          imgElement.src = URL.createObjectURL(blob);
-                         return imgElement;
+                         const promise: Promise<HTMLImageElement> = new Promise(resolve => {
+                             imgElement.addEventListener('load', () => {
+                                 resolve(imgElement);
+                             }, false);
+                         });
+                         return promise;
                      });
     }
 

@@ -165,11 +165,11 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         window.jQuery(this.editTextModal).modal();
     }
 
-    protected createView() {
-        return new TextDemoView(this,
-                                unwrapNull(this.gammaLUT),
-                                unwrapNull(this.commonShaderSource),
-                                unwrapNull(this.shaderSources));
+    protected createView(gammaLUT: HTMLImageElement,
+                         commonShaderSource: string,
+                         shaderSources: ShaderMap<ShaderProgramSource>):
+                         TextDemoView {
+        return new TextDemoView(this, gammaLUT, commonShaderSource, shaderSources);
     }
 
     protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null) {

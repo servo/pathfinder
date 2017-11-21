@@ -155,11 +155,11 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         this.monumentPromise.then(monument => this.layoutMonument(fileData, monument));
     }
 
-    protected createView(): ThreeDView {
-        return new ThreeDView(this,
-                              unwrapNull(this.gammaLUT),
-                              unwrapNull(this.commonShaderSource),
-                              unwrapNull(this.shaderSources));
+    protected createView(gammaLUT: HTMLImageElement,
+                         commonShaderSource: string,
+                         shaderSources: ShaderMap<ShaderProgramSource>):
+                         ThreeDView {
+        return new ThreeDView(this, gammaLUT, commonShaderSource, shaderSources);
     }
 
     protected get builtinFileURI(): string {
