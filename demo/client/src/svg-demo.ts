@@ -25,7 +25,7 @@ import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {panic, Range, unwrapNull} from './utils';
 import {DemoView, Timings} from './view';
-import {MCAAMulticolorStrategy, XCAAStrategy} from "./xcaa-strategy";
+import {ECAAMulticolorStrategy, XCAAStrategy} from "./xcaa-strategy";
 
 const parseColor = require('parse-color');
 
@@ -36,7 +36,7 @@ const DEFAULT_FILE: string = 'tiger';
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    xcaa: MCAAMulticolorStrategy,
+    xcaa: ECAAMulticolorStrategy,
 };
 
 interface AntialiasingStrategyTable {
@@ -82,7 +82,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
     private meshesReceived(): void {
         this.view.then(view => {
             view.attachMeshes([this.meshes]);
-            view.initCameraBounds(this.loader.bounds);
+            view.initCameraBounds(this.loader.svgBounds);
         });
     }
 }
@@ -157,8 +157,11 @@ class SVGDemoRenderer extends Renderer {
     }
 
     pathBoundingRects(objectIndex: number): Float32Array {
-        // TODO
-        return new Float32Array(0);
+        const loader = this.renderContext.appController.loader;
+        const boundingRectsBuffer = new Float32Array((loader.pathBounds.length + 1) * 4);
+        for (let pathIndex = 0; pathIndex < loader.pathBounds.length; pathIndex++)
+            boundingRectsBuffer.set(loader.pathBounds[pathIndex], (pathIndex + 1) * 4);
+        return boundingRectsBuffer;
     }
 
     attachMeshes(meshes: PathfinderMeshData[]): void {
@@ -203,13 +206,11 @@ class SVGDemoRenderer extends Renderer {
         glmatrix.mat4.translate(transform, transform, [-1.0, -1.0, 0.0]);
         glmatrix.mat4.scale(transform, transform, [2.0 / canvas.width, 2.0 / canvas.height, 1.0]);
 
-        if (!(this.antialiasingStrategy instanceof XCAAStrategy)) {
-            const centerPoint = glmatrix.vec3.clone([canvas.width * 0.5, canvas.height * 0.5, 0.0]);
-            glmatrix.mat4.translate(transform, transform, centerPoint);
-            glmatrix.mat4.rotateZ(transform, transform, this.camera.rotationAngle);
-            glmatrix.vec3.negate(centerPoint, centerPoint);
-            glmatrix.mat4.translate(transform, transform, centerPoint);
-        }
+        const centerPoint = glmatrix.vec3.clone([canvas.width * 0.5, canvas.height * 0.5, 0.0]);
+        glmatrix.mat4.translate(transform, transform, centerPoint);
+        glmatrix.mat4.rotateZ(transform, transform, this.camera.rotationAngle);
+        glmatrix.vec3.negate(centerPoint, centerPoint);
+        glmatrix.mat4.translate(transform, transform, centerPoint);
 
         const translation = this.camera.translation;
         glmatrix.mat4.translate(transform, transform, [translation[0], translation[1], 0]);

@@ -10,7 +10,7 @@
 
 precision highp float;
 
-uniform vec4 uTransformST;
+uniform mat4 uTransform;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathTransformDimensions;
@@ -49,7 +49,7 @@ void main() {
                             aQuadPosition,
                             uFramebufferSize,
                             transform,
-                            uTransformST,
+                            uTransform,
                             uHints,
                             bounds,
                             leftNormalAngle,

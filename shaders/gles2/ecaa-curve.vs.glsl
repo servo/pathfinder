@@ -10,7 +10,7 @@
 
 precision highp float;
 
-uniform vec4 uTransformST;
+uniform mat4 uTransform;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathTransformDimensions;
@@ -23,8 +23,8 @@ attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
 attribute vec2 aControlPointPosition;
 attribute vec2 aRightPosition;
-attribute vec3 aNormalAngles;
 attribute float aPathID;
+attribute vec3 aNormalAngles;
 
 varying vec4 vEndpoints;
 varying vec2 vControlPoint;
@@ -52,7 +52,7 @@ void main() {
                                 aQuadPosition,
                                 uFramebufferSize,
                                 transform,
-                                uTransformST,
+                                uTransform,
                                 uHints,
                                 bounds,
                                 leftNormalAngle,
@@ -63,7 +63,7 @@ void main() {
                                               uEmboldenAmount);
         controlPointPosition = hintPosition(controlPointPosition, uHints);
         controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
-        controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
+        controlPointPosition = transformVertexPosition(controlPointPosition, uTransform);
         controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);
     }
 

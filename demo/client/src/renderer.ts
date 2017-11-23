@@ -21,7 +21,7 @@ import {CompositingOperation, RenderTaskType} from './render-task';
 import {ShaderMap} from './shader-loader';
 import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull, unwrapUndef} from './utils';
 import {RenderContext, Timings} from "./view";
-import {MCAAMulticolorStrategy} from './xcaa-strategy';
+import {ECAAMulticolorStrategy} from './xcaa-strategy';
 
 const MAX_PATHS: number = 65535;
 
@@ -230,6 +230,12 @@ export abstract class Renderer {
         const usedSize = this.usedSizeFactor;
         gl.uniform4f(uniforms.uTransformST, 2.0 * usedSize[0], 2.0 * usedSize[1], -1.0, -1.0);
         gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
+    }
+
+    setTransformUniform(uniforms: UniformMap, objectIndex: number) {
+        const transform = glmatrix.mat4.clone(this.worldTransform);
+        glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
+        this.renderContext.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
 
     setTransformSTUniform(uniforms: UniformMap, objectIndex: number): void {
@@ -444,7 +450,7 @@ export abstract class Renderer {
         this.pathTransformBufferTextures[meshIndex]
             .bind(gl, directInteriorProgram.uniforms, 1);
         if (renderingMode === 'color-depth') {
-            const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
+            const strategy = antialiasingStrategy as ECAAMulticolorStrategy;
             strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 2);
         }
         const coverInteriorRange = getMeshIndexRange(meshes.coverInteriorIndexRanges, pathRange);
@@ -486,7 +492,7 @@ export abstract class Renderer {
         this.setEmboldenAmountUniform(objectIndex, directCurveProgram.uniforms);
         this.pathTransformBufferTextures[meshIndex].bind(gl, directCurveProgram.uniforms, 1);
         if (renderingMode === 'color-depth') {
-            const strategy = antialiasingStrategy as MCAAMulticolorStrategy;
+            const strategy = antialiasingStrategy as ECAAMulticolorStrategy;
             strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 2);
         }
         const coverCurveRange = getMeshIndexRange(meshes.coverCurveIndexRanges, pathRange);
@@ -686,12 +692,6 @@ export abstract class Renderer {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.instancedPathIDVBO);
         gl.bufferData(gl.ARRAY_BUFFER, pathIDs, gl.STATIC_DRAW);
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    }
-
-    private setTransformUniform(uniforms: UniformMap, objectIndex: number) {
-        const transform = glmatrix.mat4.clone(this.worldTransform);
-        glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
-        this.renderContext.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
 }
 

@@ -160,48 +160,60 @@ bool computeECAAQuadPosition(out vec2 outPosition,
                              vec2 quadPosition,
                              ivec2 framebufferSize,
                              vec4 localTransformST,
-                             vec4 globalTransformST,
+                             mat4 globalTransform,
                              vec4 hints,
                              vec4 bounds,
                              float leftNormalAngle,
                              float rightNormalAngle,
                              vec2 emboldenAmount) {
+    vec2 edgeBL = bounds.xy, edgeTL = bounds.xw, edgeTR = bounds.zw, edgeBR = bounds.zy;
+
     leftPosition = dilatePosition(leftPosition, leftNormalAngle, emboldenAmount);
     rightPosition = dilatePosition(rightPosition, rightNormalAngle, emboldenAmount);
 
     leftPosition = hintPosition(leftPosition, hints);
     rightPosition = hintPosition(rightPosition, hints);
-    vec2 edgePosition = hintPosition(bounds.zw, hints);
 
     leftPosition = transformVertexPositionST(leftPosition, localTransformST);
     rightPosition = transformVertexPositionST(rightPosition, localTransformST);
-    edgePosition = transformVertexPositionST(edgePosition, localTransformST);
+    edgeBL = transformVertexPositionST(edgeBL, localTransformST);
+    edgeTL = transformVertexPositionST(edgeTL, localTransformST);
+    edgeBR = transformVertexPositionST(edgeBR, localTransformST);
+    edgeTR = transformVertexPositionST(edgeTR, localTransformST);
 
-    leftPosition = transformVertexPositionST(leftPosition, globalTransformST);
-    rightPosition = transformVertexPositionST(rightPosition, globalTransformST);
-    edgePosition = transformVertexPositionST(edgePosition, globalTransformST);
+    leftPosition = transformVertexPosition(leftPosition, globalTransform);
+    rightPosition = transformVertexPosition(rightPosition, globalTransform);
+    edgeBL = transformVertexPosition(edgeBL, globalTransform);
+    edgeTL = transformVertexPosition(edgeTL, globalTransform);
+    edgeBR = transformVertexPosition(edgeBR, globalTransform);
+    edgeTR = transformVertexPosition(edgeTR, globalTransform);
 
     leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
     rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
-    edgePosition = convertClipToScreenSpace(edgePosition, framebufferSize);
 
     float winding = sign(leftPosition.x - rightPosition.x);
+    outWinding = winding;
     if (winding > 0.0) {
         vec2 tmp = leftPosition;
         leftPosition = rightPosition;
         rightPosition = tmp;
     }
-    outWinding = winding;
 
     if (rightPosition.x - leftPosition.x <= EPSILON) {
         outPosition = vec2(0.0);
         return false;
     }
 
+    // Find the bottom of the path, and convert to clip space.
+    //
+    // FIXME(pcwalton): Speed this up somehow?
+    float pathBottomY = max(max(edgeBL.y, edgeBR.y), max(edgeTL.y, edgeTR.y));
+    pathBottomY = (pathBottomY + 1.0) * 0.5 * float(framebufferSize.y);
+
     vec4 roundedExtents = vec4(floor(leftPosition.x),
                                floor(min(leftPosition.y, rightPosition.y)),
                                ceil(rightPosition.x),
-                               ceil(edgePosition.y));
+                               ceil(pathBottomY));
 
     vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
     outPosition = convertScreenToClipSpace(position, framebufferSize);

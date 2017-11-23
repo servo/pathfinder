@@ -147,11 +147,11 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     },
     xcaaMultiEdgeMaskCurve: {
         fragment: "/glsl/gles2/xcaa-multi-edge-mask-curve.fs.glsl",
-        vertex: "/glsl/gles2/mcaa-curve.vs.glsl",
+        vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
     },
     xcaaMultiEdgeMaskLine: {
         fragment: "/glsl/gles2/xcaa-multi-edge-mask-line.fs.glsl",
-        vertex: "/glsl/gles2/mcaa-line.vs.glsl",
+        vertex: "/glsl/gles2/ecaa-line.vs.glsl",
     },
     xcaaMultiResolve: {
         fragment: "/glsl/gles2/xcaa-multi-resolve.fs.glsl",
@@ -198,10 +198,13 @@ export class PathfinderShaderProgram {
     readonly uniforms: UniformMap;
     readonly attributes: AttributeMap;
     readonly program: WebGLProgram;
+    readonly programName: string;
 
     constructor(gl: WebGLRenderingContext,
                 programName: string,
                 unlinkedShaderProgram: UnlinkedShaderProgram) {
+        this.programName = programName;
+
         this.program = expectNotNull(gl.createProgram(), "Failed to create shader program!");
         for (const compiledShader of Object.values(unlinkedShaderProgram))
             gl.attachShader(this.program, compiledShader);

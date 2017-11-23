@@ -21,7 +21,7 @@ void main() {
     float edgeDepth = texture2D(uAADepth, vTexCoord).r;
     int edgePathID = convertWindowDepthValueToPathIndex(edgeDepth);
     vec4 edgeColor = fetchFloat4Data(uPathColors, edgePathID, uPathColorsDimensions);
-    float edgeAlpha = texture2D(uAAAlpha, vTexCoord).r;
+    float edgeAlpha = abs(texture2D(uAAAlpha, vTexCoord).r);
     gl_FragColor = vec4(edgeColor.rgb, edgeColor.a * edgeAlpha);
     gl_FragDepthEXT = edgeDepth;
 }

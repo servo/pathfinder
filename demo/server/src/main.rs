@@ -425,8 +425,9 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     let mut path_buffer = PathBuffer::new();
     let mut paths = vec![];
     let mut last_point = Point2D::zero();
+    let mut library = MeshLibrary::new();
 
-    for path in &request.paths {
+    for (path_index, path) in request.paths.iter().enumerate() {
         let mut stream = vec![];
 
         let first_subpath_index = path_buffer.subpaths.len() as u32;
@@ -463,7 +464,9 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
         match path.kind {
             PartitionSvgPathKind::Fill => {
-                path_buffer.add_stream(MonotonicPathCommandStream::new(stream.into_iter()))
+                let stream = MonotonicPathCommandStream::new(stream.into_iter());
+                library.push_segments((path_index + 1) as u16, stream.clone());
+                path_buffer.add_stream(stream)
             }
             PartitionSvgPathKind::Stroke(stroke_width) => {
                 let mut temp_path_buffer = PathBuffer::new();
@@ -471,6 +474,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
                 let stream = PathBufferStream::new(&temp_path_buffer);
                 let stream = MonotonicPathCommandStream::new(stream);
+                library.push_segments((path_index + 1) as u16, stream.clone());
                 path_buffer.add_stream(stream)
             }
         }
@@ -481,7 +485,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     }
 
     // Partition the paths.
-    let mut partitioner = Partitioner::new(MeshLibrary::new());
+    let mut partitioner = Partitioner::new(library);
     partitioner.init_with_path_buffer(&path_buffer);
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner, &paths);
 

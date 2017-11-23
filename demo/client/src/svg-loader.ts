@@ -74,7 +74,8 @@ export class SVGLoader {
     renderTasks: RenderTask[];
     pathInstances: SVGPath[];
     scale: number;
-    bounds: glmatrix.vec4;
+    pathBounds: glmatrix.vec4[];
+    svgBounds: glmatrix.vec4;
 
     private svg: SVGSVGElement;
     private fileData: ArrayBuffer;
@@ -86,8 +87,8 @@ export class SVGLoader {
         this.scale = 1.0;
         this.renderTasks = [];
         this.pathInstances = [];
-        this.paths = [];
-        this.bounds = glmatrix.vec4.create();
+        this.pathBounds = [];
+        this.svgBounds = glmatrix.vec4.create();
         this.svg = unwrapNull(document.getElementById('pf-svg')) as Element as SVGSVGElement;
     }
 
@@ -133,10 +134,10 @@ export class SVGLoader {
         this.scanElement(this.svg);
         this.popTopRenderTaskIfEmpty();
 
-        let minX = 0, minY = 0, maxX = 0, maxY = 0;
         this.paths = [];
 
-        // Extract, normalize, and transform the path data.
+        const svgBottomLeft = glmatrix.vec2.create(), svgTopRight = glmatrix.vec2.create();
+
         for (const instance of this.pathInstances) {
             const element = instance.element;
             const svgCTM = element.getCTM();
@@ -146,15 +147,16 @@ export class SVGLoader {
             glmatrix.mat2d.scale(ctm, ctm, [1.0, -1.0]);
             glmatrix.mat2d.scale(ctm, ctm, [this.scale, this.scale]);
 
+            const bottomLeft = glmatrix.vec2.create();
+            const topRight = glmatrix.vec2.create();
+
             const segments = element.getPathData({ normalize: true }).map(segment => {
                 const newValues = _.flatMap(_.chunk(segment.values, 2), coords => {
                     const point = glmatrix.vec2.create();
                     glmatrix.vec2.transformMat2d(point, coords, ctm);
 
-                    minX = Math.min(point[0], minX);
-                    minY = Math.min(point[1], minY);
-                    maxX = Math.max(point[0], maxX);
-                    maxY = Math.max(point[1], maxY);
+                    glmatrix.vec2.min(bottomLeft, bottomLeft, point);
+                    glmatrix.vec2.max(topRight, topRight, point);
 
                     return [point[0], point[1]];
                 });
@@ -164,17 +166,30 @@ export class SVGLoader {
                 };
             });
 
+            const pathBounds = glmatrix.vec4.clone([
+                bottomLeft[0], bottomLeft[1],
+                topRight[0], topRight[1],
+            ]);
+
+            glmatrix.vec2.min(svgBottomLeft, svgBottomLeft, bottomLeft);
+            glmatrix.vec2.max(svgTopRight, svgTopRight, topRight);
+
             if (instance instanceof SVGFill) {
                 this.paths.push({ segments: segments, kind: 'Fill' });
+                this.pathBounds.push(pathBounds);
             } else if (instance instanceof SVGStroke) {
                 this.paths.push({
                     kind: { Stroke: Math.max(HAIRLINE_STROKE_WIDTH, instance.width) },
                     segments: segments,
                 });
+                this.pathBounds.push(pathBounds);
             }
         }
 
-        this.bounds = glmatrix.vec4.clone([minX, minY, maxX, maxY]);
+        this.svgBounds = glmatrix.vec4.clone([
+            svgBottomLeft[0], svgBottomLeft[1],
+            svgTopRight[0], svgTopRight[1],
+        ]);
     }
 
     private scanElement(element: Element): void {

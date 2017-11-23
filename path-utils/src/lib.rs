@@ -120,6 +120,7 @@ impl PathBuffer {
     }
 }
 
+#[derive(Clone)]
 pub struct PathBufferStream<'a> {
     path_buffer: &'a PathBuffer,
     endpoint_index: u32,

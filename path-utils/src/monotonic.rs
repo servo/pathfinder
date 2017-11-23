@@ -15,6 +15,7 @@ use std::mem;
 use PathCommand;
 use curve::Curve;
 
+#[derive(Clone)]
 pub struct MonotonicPathCommandStream<I> {
     inner: I,
     queue: ArrayVec<[PathCommand; 2]>,
