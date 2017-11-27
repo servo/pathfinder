@@ -23,7 +23,7 @@ void main() {
     vec4 p0DPX = clipLineToPixelColumn(p0, dP, pixelCenter.x);
 
     // Discard if not edge.
-    if (!isPartiallyCovered(p0DPX.xy, p0DPX.zw - p0DPX.xy, pixelCenter.y))
+    if (!isPartiallyCovered(p0DPX.xy, p0DPX.zw, pixelCenter.y))
         discard;
     gl_FragColor = vec4(1.0);
 }
