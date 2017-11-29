@@ -31,10 +31,15 @@ const B_LOOP_BLINN_DATA_SIZE: number = 4;
 const B_LOOP_BLINN_DATA_TEX_COORD_OFFSET: number = 0;
 const B_LOOP_BLINN_DATA_SIGN_OFFSET: number = 2;
 
+export interface PathTransformBuffers<T> {
+    st: T;
+    ext: T;
+}
+
 export abstract class Renderer {
     readonly renderContext: RenderContext;
 
-    readonly pathTransformBufferTextures: PathfinderBufferTexture[];
+    readonly pathTransformBufferTextures: Array<PathTransformBuffers<PathfinderBufferTexture>>;
 
     meshes: PathfinderMeshBuffers[] | null;
     meshData: PathfinderMeshData[] | null;
@@ -279,16 +284,19 @@ export abstract class Renderer {
         for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
             const pathTransforms = this.pathTransformsForObject(objectIndex);
 
-            let pathTransformBufferTexture;
+            let pathTransformBufferTextures;
             if (objectIndex >= this.pathTransformBufferTextures.length) {
-                pathTransformBufferTexture = new PathfinderBufferTexture(renderContext.gl,
-                                                                         'uPathTransform');
-                this.pathTransformBufferTextures[objectIndex] = pathTransformBufferTexture;
+                pathTransformBufferTextures = {
+                    ext: new PathfinderBufferTexture(renderContext.gl, 'uPathTransformExt'),
+                    st: new PathfinderBufferTexture(renderContext.gl, 'uPathTransformST'),
+                };
+                this.pathTransformBufferTextures[objectIndex] = pathTransformBufferTextures;
             } else {
-                pathTransformBufferTexture = this.pathTransformBufferTextures[objectIndex];
+                pathTransformBufferTextures = this.pathTransformBufferTextures[objectIndex];
             }
 
-            pathTransformBufferTexture.upload(renderContext.gl, pathTransforms);
+            pathTransformBufferTextures.st.upload(renderContext.gl, pathTransforms.st);
+            pathTransformBufferTextures.ext.upload(renderContext.gl, pathTransforms.ext);
         }
     }
 
@@ -346,7 +354,8 @@ export abstract class Renderer {
                                         AntialiasingStrategy;
     protected abstract compositeIfNecessary(): void;
     protected abstract pathColorsForObject(objectIndex: number): Uint8Array;
-    protected abstract pathTransformsForObject(objectIndex: number): Float32Array;
+    protected abstract pathTransformsForObject(objectIndex: number):
+                                               PathTransformBuffers<Float32Array>;
 
     protected abstract directCurveProgramName(): keyof ShaderMap<void>;
     protected abstract directInteriorProgramName(): keyof ShaderMap<void>;
@@ -404,6 +413,14 @@ export abstract class Renderer {
     /// Called whenever new GPU timing statistics are available.
     protected newTimingsReceived(): void {}
 
+    protected createPathTransformBuffers(pathCount: number): PathTransformBuffers<Float32Array> {
+        pathCount += 1;
+        return {
+            ext: new Float32Array((pathCount + (pathCount & 1)) * 2),
+            st: new Float32Array(pathCount * 4),
+        };
+    }
+
     private directlyRenderObject(objectIndex: number): void {
         if (this.meshes == null || this.meshData == null)
             return;
@@ -447,11 +464,13 @@ export abstract class Renderer {
         this.setHintsUniform(directInteriorProgram.uniforms);
         this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
         this.setEmboldenAmountUniform(objectIndex, directInteriorProgram.uniforms);
+        this.pathTransformBufferTextures[meshIndex].st.bind(gl, directInteriorProgram.uniforms, 1);
         this.pathTransformBufferTextures[meshIndex]
-            .bind(gl, directInteriorProgram.uniforms, 1);
+            .ext
+            .bind(gl, directInteriorProgram.uniforms, 2);
         if (renderingMode === 'color-depth') {
             const strategy = antialiasingStrategy as ECAAMulticolorStrategy;
-            strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 2);
+            strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 3);
         }
         const coverInteriorRange = getMeshIndexRange(meshes.coverInteriorIndexRanges, pathRange);
         if (!this.pathIDsAreInstanced) {
@@ -490,10 +509,11 @@ export abstract class Renderer {
         this.setHintsUniform(directCurveProgram.uniforms);
         this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);
         this.setEmboldenAmountUniform(objectIndex, directCurveProgram.uniforms);
-        this.pathTransformBufferTextures[meshIndex].bind(gl, directCurveProgram.uniforms, 1);
+        this.pathTransformBufferTextures[meshIndex].st.bind(gl, directCurveProgram.uniforms, 1);
+        this.pathTransformBufferTextures[meshIndex].ext.bind(gl, directCurveProgram.uniforms, 2);
         if (renderingMode === 'color-depth') {
             const strategy = antialiasingStrategy as ECAAMulticolorStrategy;
-            strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 2);
+            strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 3);
         }
         const coverCurveRange = getMeshIndexRange(meshes.coverCurveIndexRanges, pathRange);
         if (!this.pathIDsAreInstanced) {

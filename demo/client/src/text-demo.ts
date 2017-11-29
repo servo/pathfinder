@@ -131,6 +131,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     private meshes: PathfinderMeshData;
 
     private _fontSize: number;
+    private _rotationAngle: number;
 
     private text: string;
 
@@ -144,6 +145,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         super.start();
 
         this._fontSize = INITIAL_FONT_SIZE;
+        this._rotationAngle = 0.0;
 
         this.hintingSelect = unwrapNull(document.getElementById('pf-hinting-select')) as
             HTMLSelectElement;
@@ -232,6 +234,15 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     /// The font size in pixels per em.
     set fontSize(newFontSize: number) {
         this._fontSize = newFontSize;
+        this.view.then(view => view.renderer.relayoutText());
+    }
+
+    get rotationAngle(): number {
+        return this._rotationAngle;
+    }
+
+    set rotationAngle(newRotationAngle: number) {
+        this._rotationAngle = newRotationAngle;
         this.view.then(view => view.renderer.relayoutText());
     }
 
@@ -333,22 +344,28 @@ class TextDemoView extends DemoView implements TextRenderContext {
         this.appController.newTimingsReceived(newTimings);
     }
 
-    protected onPan() {
+    protected onPan(): void {
         this.renderer.viewPanned();
     }
 
-    protected onZoom() {
+    protected onZoom(): void {
         this.appController.fontSize = this.renderer.camera.scale *
             this.appController.font.opentypeFont.unitsPerEm;
+    }
+
+    protected onRotate(): void {
+        this.appController.rotationAngle = this.renderer.camera.rotationAngle;
     }
 
     private set panZoomEventsEnabled(flag: boolean) {
         if (flag) {
             this.renderer.camera.onPan = () => this.onPan();
             this.renderer.camera.onZoom = () => this.onZoom();
+            this.renderer.camera.onRotate = () => this.onRotate();
         } else {
             this.renderer.camera.onPan = null;
             this.renderer.camera.onZoom = null;
+            this.renderer.camera.onRotate = null;
         }
     }
 }
@@ -368,6 +385,10 @@ class TextDemoRenderer extends TextRenderer {
 
     get backgroundColor(): glmatrix.vec4 {
         return glmatrix.vec4.create();
+    }
+
+    get rotationAngle(): number {
+        return this.renderContext.appController.rotationAngle;
     }
 
     prepareToAttachText(): void {

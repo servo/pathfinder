@@ -48,8 +48,12 @@ vec2 transformVertexPosition(vec2 position, mat4 transform) {
 ///
 /// An ST-transform is a combined 2D scale and translation, where the (x, y) coordinates specify
 /// the scale and and the (z, w) coordinates specify the translation.
-vec2 transformVertexPositionST(vec2 position, vec4 stTransform) {
-    return position * stTransform.xy + stTransform.zw;
+vec2 transformVertexPositionST(vec2 position, vec4 transformST) {
+    return position * transformST.xy + transformST.zw;
+}
+
+vec2 transformVertexPositionAffine(vec2 position, vec4 transformST, vec2 transformExt) {
+    return position * transformST.xy + position.yx * transformExt + transformST.zw;
 }
 
 /// Interpolates the given 2D position in the vertical direction using the given ultra-slight
@@ -160,6 +164,7 @@ bool computeECAAQuadPosition(out vec2 outPosition,
                              vec2 quadPosition,
                              ivec2 framebufferSize,
                              vec4 localTransformST,
+                             vec2 localTransformExt,
                              mat4 globalTransform,
                              vec4 hints,
                              vec4 bounds,
@@ -174,12 +179,16 @@ bool computeECAAQuadPosition(out vec2 outPosition,
     leftPosition = hintPosition(leftPosition, hints);
     rightPosition = hintPosition(rightPosition, hints);
 
-    leftPosition = transformVertexPositionST(leftPosition, localTransformST);
-    rightPosition = transformVertexPositionST(rightPosition, localTransformST);
-    edgeBL = transformVertexPositionST(edgeBL, localTransformST);
-    edgeTL = transformVertexPositionST(edgeTL, localTransformST);
-    edgeBR = transformVertexPositionST(edgeBR, localTransformST);
-    edgeTR = transformVertexPositionST(edgeTR, localTransformST);
+    leftPosition = transformVertexPositionAffine(leftPosition,
+                                                 localTransformST,
+                                                 localTransformExt);
+    rightPosition = transformVertexPositionAffine(rightPosition, 
+                                                  localTransformST,
+                                                  localTransformExt);
+    edgeBL = transformVertexPositionAffine(edgeBL, localTransformST, localTransformExt);
+    edgeTL = transformVertexPositionAffine(edgeTL, localTransformST, localTransformExt);
+    edgeBR = transformVertexPositionAffine(edgeBR, localTransformST, localTransformExt);
+    edgeTR = transformVertexPositionAffine(edgeTR, localTransformST, localTransformExt);
 
     leftPosition = transformVertexPosition(leftPosition, globalTransform);
     rightPosition = transformVertexPosition(rightPosition, globalTransform);
@@ -226,9 +235,14 @@ bool computeECAAMultiEdgeMaskQuadPosition(out vec2 outPosition,
                                           vec2 quadPosition,
                                           ivec2 framebufferSize,
                                           vec4 localTransformST,
+                                          vec2 localTransformExt,
                                           mat4 globalTransform) {
-    leftPosition = transformVertexPositionST(leftPosition, localTransformST);
-    rightPosition = transformVertexPositionST(rightPosition, localTransformST);
+    leftPosition = transformVertexPositionAffine(leftPosition,
+                                                 localTransformST,
+                                                 localTransformExt);
+    rightPosition = transformVertexPositionAffine(rightPosition,
+                                                  localTransformST,
+                                                  localTransformExt);
 
     leftPosition = transformVertexPosition(leftPosition, globalTransform);
     rightPosition = transformVertexPosition(rightPosition, globalTransform);
@@ -395,6 +409,24 @@ int unpackUInt16(vec2 packedValue) {
 vec4 fetchFloat4Data(sampler2D dataTexture, int index, ivec2 dimensions) {
     ivec2 pixelCoord = ivec2(imod(index, dimensions.x), index / dimensions.x);
     return texture2D(dataTexture, (vec2(pixelCoord) + 0.5) / vec2(dimensions));
+}
+
+vec2 fetchFloat2Data(sampler2D dataTexture, int index, ivec2 dimensions) {
+    int texelIndex = index / 2;
+    vec4 texel = fetchFloat4Data(dataTexture, texelIndex, dimensions);
+    return texelIndex * 2 == index ? texel.xy : texel.zw;
+}
+
+vec4 fetchPathAffineTransform(out vec2 outPathTransformExt,
+                              sampler2D pathTransformSTTexture,
+                              ivec2 pathTransformSTDimensions,
+                              sampler2D pathTransformExtTexture,
+                              ivec2 pathTransformExtDimensions,
+                              int pathID) {
+    outPathTransformExt = fetchFloat2Data(pathTransformExtTexture,
+                                          pathID,
+                                          pathTransformExtDimensions);
+    return fetchFloat4Data(pathTransformSTTexture, pathID, pathTransformSTDimensions);
 }
 
 vec2 packPathID(int pathID) {

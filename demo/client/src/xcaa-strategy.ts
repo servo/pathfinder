@@ -235,8 +235,9 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         gl.uniform2i(uniforms.uFramebufferSize,
                      this.supersampledFramebufferSize[0],
                      this.supersampledFramebufferSize[1]);
-        renderer.pathTransformBufferTextures[0].bind(gl, uniforms, 0);
-        this.pathBoundsBufferTexture.bind(gl, uniforms, 1);
+        renderer.pathTransformBufferTextures[0].ext.bind(gl, uniforms, 0);
+        renderer.pathTransformBufferTextures[0].st.bind(gl, uniforms, 1);
+        this.pathBoundsBufferTexture.bind(gl, uniforms, 2);
         renderer.setHintsUniform(uniforms);
     }
 

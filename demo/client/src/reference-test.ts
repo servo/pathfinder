@@ -20,7 +20,7 @@ import {SUBPIXEL_GRANULARITY} from './atlas';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from './meshes';
-import {Renderer} from "./renderer";
+import {PathTransformBuffers, Renderer} from "./renderer";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, computeStemDarkeningAmount, ExpandedMeshData, GlyphStore} from "./text";
@@ -600,13 +600,13 @@ class ReferenceTestRenderer extends Renderer {
         return pathColors;
     }
 
-    protected pathTransformsForObject(objectIndex: number): Float32Array {
+    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
         const appController = this.renderContext.appController;
         const canvas = this.renderContext.canvas;
         const font = unwrapNull(appController.font);
         const hint = new Hint(font, this.pixelsPerUnit, true);
 
-        const pathTransforms = new Float32Array(4 * 2);
+        const pathTransforms = this.createPathTransformBuffers(1);
 
         const textRun = unwrapNull(appController.textRun);
         const glyphID = textRun.glyphIDs[0];
@@ -620,7 +620,7 @@ class ReferenceTestRenderer extends Renderer {
         const x = -pixelRect[0] / this.pixelsPerUnit;
         const y = (canvas.height - (pixelRect[3] - pixelRect[1])) / this.pixelsPerUnit;
 
-        pathTransforms.set([1, 1, x, y], 1 * 4);
+        pathTransforms.st.set([1, 1, x, y], 1 * 4);
 
         return pathTransforms;
     }

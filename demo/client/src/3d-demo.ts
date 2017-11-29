@@ -21,7 +21,7 @@ import PathfinderBufferTexture from "./buffer-texture";
 import {CameraView, PerspectiveCamera} from "./camera";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
-import {Renderer} from './renderer';
+import {PathTransformBuffers, Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
@@ -480,13 +480,13 @@ class ThreeDRenderer extends Renderer {
         return TEXT_COLOR;
     }
 
-    protected pathTransformsForObject(objectIndex: number): Float32Array {
+    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
         const meshDescriptor = this.renderContext.appController.meshDescriptors[objectIndex];
         const pathCount = this.pathCountForObject(objectIndex);
-        const pathTransforms = new Float32Array(4 * (pathCount + 1));
+        const pathTransforms = this.createPathTransformBuffers(pathCount);
         for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
             const glyphOrigin = meshDescriptor.positions[pathIndex];
-            pathTransforms.set([1, 1, glyphOrigin[0], glyphOrigin[1]], (pathIndex + 1) * 4);
+            pathTransforms.st.set([1, 1, glyphOrigin[0], glyphOrigin[1]], (pathIndex + 1) * 4);
         }
         return pathTransforms;
     }

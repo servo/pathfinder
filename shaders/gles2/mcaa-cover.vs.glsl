@@ -13,8 +13,8 @@ precision highp float;
 uniform vec4 uTransformST;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
-uniform ivec2 uPathTransformDimensions;
-uniform sampler2D uPathTransform;
+uniform ivec2 uPathTransformSTDimensions;
+uniform sampler2D uPathTransformST;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aUpperLeftPosition;
@@ -26,13 +26,13 @@ varying vec2 vHorizontalExtents;
 void main() {
     int pathID = int(aPathID);
 
-    vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
+    vec4 transformST = fetchFloat4Data(uPathTransformST, pathID, uPathTransformSTDimensions);
 
     vec2 upperLeftPosition = hintPosition(aUpperLeftPosition, uHints);
     vec2 lowerRightPosition = hintPosition(aLowerRightPosition, uHints);
 
-    upperLeftPosition = transformVertexPositionST(upperLeftPosition, transform);
-    lowerRightPosition = transformVertexPositionST(lowerRightPosition, transform);
+    upperLeftPosition = transformVertexPositionST(upperLeftPosition, transformST);
+    lowerRightPosition = transformVertexPositionST(lowerRightPosition, transformST);
 
     upperLeftPosition = transformVertexPositionST(upperLeftPosition, uTransformST);
     lowerRightPosition = transformVertexPositionST(lowerRightPosition, uTransformST);

@@ -19,7 +19,7 @@ import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
-import {Renderer} from './renderer';
+import {PathTransformBuffers, Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
@@ -415,12 +415,12 @@ class BenchmarkRenderer extends Renderer {
         return pathColors;
     }
 
-    protected pathTransformsForObject(objectIndex: number): Float32Array {
+    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
         const appController = this.renderContext.appController;
         const canvas = this.renderContext.canvas;
         const font = unwrapNull(appController.font);
 
-        const pathTransforms = new Float32Array(4 * (STRING.length + 1));
+        const pathTransforms = this.createPathTransformBuffers(STRING.length);
 
         let currentX = 0, currentY = 0;
         const availableWidth = canvas.width / this.pixelsPerUnit;
@@ -428,7 +428,7 @@ class BenchmarkRenderer extends Renderer {
 
         for (let glyphIndex = 0; glyphIndex < STRING.length; glyphIndex++) {
             const glyphID = unwrapNull(appController.textRun).glyphIDs[glyphIndex];
-            pathTransforms.set([1, 1, currentX, currentY], (glyphIndex + 1) * 4);
+            pathTransforms.st.set([1, 1, currentX, currentY], (glyphIndex + 1) * 4);
 
             currentX += font.opentypeFont.glyphs.get(glyphID).advanceWidth;
             if (currentX > availableWidth) {

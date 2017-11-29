@@ -13,8 +13,8 @@ precision highp float;
 uniform vec4 uTransformST;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
-uniform ivec2 uPathTransformDimensions;
-uniform sampler2D uPathTransform;
+uniform ivec2 uPathTransformSTDimensions;
+uniform sampler2D uPathTransformST;
 uniform bool uWinding;
 
 attribute vec2 aQuadPosition;
@@ -33,7 +33,7 @@ void main() {
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
 
-    vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
+    vec4 transformST = fetchFloat4Data(uPathTransformST, pathID, uPathTransformSTDimensions);
 
     // Transform the points, and compute the position of this vertex.
     vec2 position;
@@ -42,11 +42,11 @@ void main() {
                                 rightPosition,
                                 aQuadPosition,
                                 uFramebufferSize,
-                                transform,
+                                transformST,
                                 uTransformST,
                                 uHints)) {
         controlPointPosition = hintPosition(aControlPointPosition, uHints);
-        controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
+        controlPointPosition = transformVertexPositionST(controlPointPosition, transformST);
         controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
         controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);
     }

@@ -24,25 +24,7 @@
                         <span class="pf-material-icons">add</span>
                     </button>
                 </div>
-                <div id="pf-rotate-slider-container">
-                    <div id="pf-rotate-slider-card" class="card mb-4 pf-invisible">
-                        <div class="card-body">
-                            <form class="d-inline mr-3">
-                                <input id="pf-rotate-slider" type="range" min="-3.14159"
-                                 max="3.14159" step="0.006136" value="0.0" autocomplete="off">
-                            </form>
-                            <button id="pf-rotate-close-button" type="button" class="close"
-                            aria-label="Close">
-                                <span aria-hidden="true">&times;</span>
-                            </button>
-                        </div>
-                        <div class="pf-arrow-box"></div>
-                    </div>
-                </div>
-                <button id="pf-rotate-button" type="button" title="Rotate"
-                 class="btn btn-outline-secondary pf-toolbar-button">
-                    <span class="pf-material-icons">rotate_left</span>
-                </button>
+                {{>partials/rotate.html}}
                 <button id="pf-zoom-pulse-button" type="button" title="Pulse Zoom"
                  class="btn btn-outline-secondary pf-toolbar-button">
                     <span class="pf-material-icons">play_arrow</span>

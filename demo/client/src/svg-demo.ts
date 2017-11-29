@@ -19,7 +19,7 @@ import {OrthographicCamera} from "./camera";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
 import {CompositingOperation, RenderTaskType} from './render-task';
-import {Renderer} from './renderer';
+import {PathTransformBuffers, Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
@@ -254,14 +254,14 @@ class SVGDemoRenderer extends Renderer {
         return pathColors;
     }
 
-    protected pathTransformsForObject(objectIndex: number): Float32Array {
+    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
         const instances = this.renderContext.appController.loader.pathInstances;
-        const pathTransforms = new Float32Array(4 * (instances.length + 1));
+        const pathTransforms = this.createPathTransformBuffers(instances.length);
 
         for (let pathIndex = 0; pathIndex < instances.length; pathIndex++) {
             // TODO(pcwalton): Set transform.
             const startOffset = (pathIndex + 1) * 4;
-            pathTransforms.set([1, 1, 0, 0], startOffset);
+            pathTransforms.st.set([1, 1, 0, 0], startOffset);
         }
 
         return pathTransforms;

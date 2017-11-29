@@ -13,9 +13,11 @@ precision highp float;
 uniform mat4 uTransform;
 uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
-uniform ivec2 uPathTransformDimensions;
+uniform ivec2 uPathTransformSTDimensions;
+uniform sampler2D uPathTransformST;
+uniform ivec2 uPathTransformExtDimensions;
+uniform sampler2D uPathTransformExt;
 uniform ivec2 uPathBoundsDimensions;
-uniform sampler2D uPathTransform;
 uniform sampler2D uPathBounds;
 uniform vec2 uEmboldenAmount;
 
@@ -39,7 +41,13 @@ void main() {
     float controlPointNormalAngle = aNormalAngles.y;
     float rightNormalAngle = aNormalAngles.z;
 
-    vec4 transform = fetchFloat4Data(uPathTransform, pathID, uPathTransformDimensions);
+    vec2 pathTransformExt;
+    vec4 pathTransformST = fetchPathAffineTransform(pathTransformExt,
+                                                    uPathTransformST,
+                                                    uPathTransformSTDimensions,
+                                                    uPathTransformExt,
+                                                    uPathTransformExtDimensions,
+                                                    pathID);
     vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);
 
     // Transform the points, and compute the position of this vertex.
@@ -51,7 +59,8 @@ void main() {
                                 rightPosition,
                                 aQuadPosition,
                                 uFramebufferSize,
-                                transform,
+                                pathTransformST,
+                                pathTransformExt,
                                 uTransform,
                                 uHints,
                                 bounds,
@@ -62,7 +71,9 @@ void main() {
                                               controlPointNormalAngle,
                                               uEmboldenAmount);
         controlPointPosition = hintPosition(controlPointPosition, uHints);
-        controlPointPosition = transformVertexPositionST(controlPointPosition, transform);
+        controlPointPosition = transformVertexPositionAffine(controlPointPosition,
+                                                             pathTransformST,
+                                                             pathTransformExt);
         controlPointPosition = transformVertexPosition(controlPointPosition, uTransform);
         controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);
     }
