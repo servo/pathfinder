@@ -12,7 +12,6 @@ precision highp float;
 
 varying vec4 vEndpoints;
 varying vec2 vControlPoint;
-varying float vWinding;
 
 void main() {
     // Unpack.

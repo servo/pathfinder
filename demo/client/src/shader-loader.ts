@@ -147,11 +147,11 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     },
     xcaaMultiEdgeMaskCurve: {
         fragment: "/glsl/gles2/xcaa-multi-edge-mask-curve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
+        vertex: "/glsl/gles2/ecaa-multi-edge-mask-curve.vs.glsl",
     },
     xcaaMultiEdgeMaskLine: {
         fragment: "/glsl/gles2/xcaa-multi-edge-mask-line.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-line.vs.glsl",
+        vertex: "/glsl/gles2/ecaa-multi-edge-mask-line.vs.glsl",
     },
     xcaaMultiResolve: {
         fragment: "/glsl/gles2/xcaa-multi-resolve.fs.glsl",

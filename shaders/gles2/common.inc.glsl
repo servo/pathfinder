@@ -220,6 +220,45 @@ bool computeECAAQuadPosition(out vec2 outPosition,
     return true;
 }
 
+bool computeECAAMultiEdgeMaskQuadPosition(out vec2 outPosition,
+                                          inout vec2 leftPosition,
+                                          inout vec2 rightPosition,
+                                          vec2 quadPosition,
+                                          ivec2 framebufferSize,
+                                          vec4 localTransformST,
+                                          mat4 globalTransform) {
+    leftPosition = transformVertexPositionST(leftPosition, localTransformST);
+    rightPosition = transformVertexPositionST(rightPosition, localTransformST);
+
+    leftPosition = transformVertexPosition(leftPosition, globalTransform);
+    rightPosition = transformVertexPosition(rightPosition, globalTransform);
+
+    leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
+    rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
+
+    float winding = sign(leftPosition.x - rightPosition.x);
+    if (winding > 0.0) {
+        vec2 tmp = leftPosition;
+        leftPosition = rightPosition;
+        rightPosition = tmp;
+    }
+
+    if (rightPosition.x - leftPosition.x <= EPSILON) {
+        outPosition = vec2(0.0);
+        return false;
+    }
+
+    vec2 verticalExtents = vec2(min(leftPosition.y, rightPosition.y),
+                                max(leftPosition.y, rightPosition.y));
+
+    vec4 roundedExtents = vec4(floor(vec2(leftPosition.x, verticalExtents.x)),
+                               ceil(vec2(rightPosition.x, verticalExtents.y)));
+
+    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
+    outPosition = convertScreenToClipSpace(position, framebufferSize);
+    return true;
+}
+
 bool slopeIsNegative(vec2 dp) {
     return dp.y < 0.0;
 }
