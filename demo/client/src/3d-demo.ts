@@ -253,6 +253,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
                  textFrameIndex < this.textFrames.length;
                  textFrameIndex++) {
                 const textFrame = this.textFrames[textFrameIndex];
+                const textBounds = textFrame.bounds;
 
                 let glyphDescriptors = [];
                 for (const run of textFrame.runs) {
@@ -261,7 +262,9 @@ class ThreeDController extends DemoAppController<ThreeDView> {
                             glyphID: run.glyphIDs[glyphIndex],
                             position: run.calculatePixelOriginForGlyphAt(glyphIndex,
                                                                          PIXELS_PER_UNIT,
-                                                                         hint),
+                                                                         0.0,
+                                                                         hint,
+                                                                         textBounds),
                         });
                     }
                 }
@@ -360,6 +363,10 @@ class ThreeDRenderer extends Renderer {
     renderContext: ThreeDView;
 
     camera: PerspectiveCamera;
+
+    get usesSTTransform(): boolean {
+        return this.camera.usesSTTransform;
+    }
 
     get destFramebuffer(): WebGLFramebuffer | null {
         return null;
@@ -593,7 +600,7 @@ class ThreeDRenderer extends Renderer {
             });
             const glyph = this.renderContext.atlasGlyphs[glyphIndex];
             const glyphMetrics = unwrapNull(font.metricsForGlyph(glyph.glyphKey.id));
-            const glyphUnitMetrics = new UnitMetrics(glyphMetrics, glmatrix.vec2.create());
+            const glyphUnitMetrics = new UnitMetrics(glyphMetrics, 0.0, glmatrix.vec2.create());
 
             const firstPosition = this.glyphPositions.length / 2;
 
@@ -843,6 +850,7 @@ class ThreeDRenderer extends Renderer {
         this.renderContext.atlas.layoutGlyphs(atlasGlyphs,
                                               this.renderContext.font,
                                               this.renderContext.atlasPixelsPerUnit,
+                                              0.0,
                                               hint,
                                               glmatrix.vec2.create());
 
@@ -937,7 +945,7 @@ class ThreeDAtlasRenderer extends TextRenderer {
             if (glyphMetrics == null)
                 continue;
 
-            const glyphUnitMetrics = new UnitMetrics(glyphMetrics, glmatrix.vec2.create());
+            const glyphUnitMetrics = new UnitMetrics(glyphMetrics, 0.0, glmatrix.vec2.create());
             const atlasGlyphRect = calculatePixelRectForGlyph(glyphUnitMetrics,
                                                               glyphPixelOrigin,
                                                               pixelsPerUnit,

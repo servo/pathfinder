@@ -44,6 +44,8 @@ export abstract class Renderer {
     meshes: PathfinderMeshBuffers[] | null;
     meshData: PathfinderMeshData[] | null;
 
+    abstract get usesSTTransform(): boolean;
+
     get emboldenAmount(): glmatrix.vec2 {
         return glmatrix.vec2.create();
     }

@@ -11,6 +11,7 @@
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
+import {EPSILON} from "./utils";
 import {PathfinderView} from "./view";
 
 const PIXELS_PER_LINE: number = 16.0;
@@ -79,6 +80,8 @@ export interface CameraView {
 export abstract class Camera {
     protected canvas: CameraView;
 
+    abstract get usesSTTransform(): boolean;
+
     constructor(canvas: CameraView) {
         this.canvas = canvas;
     }
@@ -104,6 +107,10 @@ export class OrthographicCamera extends Camera {
     private readonly maxScale: number;
     private readonly scaleBounds: boolean;
     private readonly ignoreBounds: boolean;
+
+    get usesSTTransform(): boolean {
+        return Math.abs(this.rotationAngle) < EPSILON;
+    }
 
     constructor(canvas: CameraView, options?: OrthographicCameraOptions) {
         super(canvas);
@@ -279,6 +286,10 @@ export class OrthographicCamera extends Camera {
 
 export class PerspectiveCamera extends Camera {
     canvas: HTMLCanvasElement;
+
+    get usesSTTransform(): boolean {
+        return false;
+    }
 
     onChange: (() => void) | null;
 

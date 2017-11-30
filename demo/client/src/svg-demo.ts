@@ -117,6 +117,10 @@ class SVGDemoRenderer extends Renderer {
 
     camera: OrthographicCamera;
 
+    get usesSTTransform(): boolean {
+        return this.camera.usesSTTransform;
+    }
+
     get destAllocatedSize(): glmatrix.vec2 {
         const canvas = this.renderContext.canvas;
         return glmatrix.vec2.clone([canvas.width, canvas.height]);

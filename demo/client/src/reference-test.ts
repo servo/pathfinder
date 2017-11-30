@@ -469,6 +469,10 @@ class ReferenceTestRenderer extends Renderer {
     renderContext: ReferenceTestView;
     camera: OrthographicCamera;
 
+    get usesSTTransform(): boolean {
+        return this.camera.usesSTTransform;
+    }
+
     get destFramebuffer(): WebGLFramebuffer | null {
         return null;
     }
@@ -571,17 +575,8 @@ class ReferenceTestRenderer extends Renderer {
     }
 
     getPixelRectForGlyphAt(glyphIndex: number): glmatrix.vec4 {
-        const appController = this.renderContext.appController;
-        const font = unwrapNull(appController.font);
-        const hint = new Hint(font, this.pixelsPerUnit, true);
-
-        const textRun = unwrapNull(appController.textRun);
-        const glyphID = textRun.glyphIDs[glyphIndex];
-        return textRun.pixelRectForGlyphAt(glyphIndex,
-                                           this.pixelsPerUnit,
-                                           hint,
-                                           this.stemDarkeningAmount,
-                                           SUBPIXEL_GRANULARITY);
+        const textRun = unwrapNull(this.renderContext.appController.textRun);
+        return textRun.pixelRectForGlyphAt(glyphIndex);
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,
@@ -609,11 +604,13 @@ class ReferenceTestRenderer extends Renderer {
 
         const textRun = unwrapNull(appController.textRun);
         const glyphID = textRun.glyphIDs[0];
-        const pixelRect = textRun.pixelRectForGlyphAt(0,
-                                                      this.pixelsPerUnit,
-                                                      hint,
-                                                      glmatrix.vec2.create(),
-                                                      SUBPIXEL_GRANULARITY);
+        textRun.recalculatePixelRects(this.pixelsPerUnit,
+                                      0.0,
+                                      hint,
+                                      glmatrix.vec2.create(),
+                                      SUBPIXEL_GRANULARITY,
+                                      glmatrix.vec4.create());
+        const pixelRect = textRun.pixelRectForGlyphAt(0);
 
         const x = -pixelRect[0] / this.pixelsPerUnit;
         const y = (canvas.height - (pixelRect[3] - pixelRect[1])) / this.pixelsPerUnit;

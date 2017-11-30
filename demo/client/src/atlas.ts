@@ -33,6 +33,7 @@ export class Atlas {
     layoutGlyphs(glyphs: AtlasGlyph[],
                  font: PathfinderFont,
                  pixelsPerUnit: number,
+                 rotationAngle: number,
                  hint: Hint,
                  stemDarkeningAmount: glmatrix.vec2):
                  void {
@@ -45,9 +46,9 @@ export class Atlas {
             if (metrics == null)
                 continue;
 
-            const unitMetrics = new UnitMetrics(metrics, stemDarkeningAmount);
-
+            const unitMetrics = new UnitMetrics(metrics, rotationAngle, stemDarkeningAmount);
             glyph.setPixelLowerLeft(nextOrigin, unitMetrics, pixelsPerUnit);
+
             let pixelOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
             nextOrigin[0] = calculatePixelRectForGlyph(unitMetrics,
                                                        pixelOrigin,
@@ -128,7 +129,7 @@ export class AtlasGlyph {
         const pixelXMin = calculatePixelXMin(metrics, pixelsPerUnit);
         const pixelDescent = calculatePixelDescent(metrics, pixelsPerUnit);
         const pixelOrigin = glmatrix.vec2.clone([pixelLowerLeft[0] - pixelXMin,
-                                                 pixelLowerLeft[1] + pixelDescent]);
+                                                 pixelLowerLeft[1] - pixelDescent]);
         this.setPixelOrigin(pixelOrigin, pixelsPerUnit);
     }
 

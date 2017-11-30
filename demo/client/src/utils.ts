@@ -17,6 +17,8 @@ export const UINT16_SIZE: number = 2;
 export const UINT32_MAX: number = 0xffffffff;
 export const UINT32_SIZE: number = 4;
 
+export const EPSILON: number = 0.001;
+
 export function panic(message: string): never {
     throw new PathfinderError(message);
 }

@@ -64,6 +64,10 @@ export abstract class TextRenderer extends Renderer {
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 
+    get usesSTTransform(): boolean {
+        return this.camera.usesSTTransform;
+    }
+
     get destFramebuffer(): WebGLFramebuffer {
         return this.atlasFramebuffer;
     }
@@ -148,6 +152,7 @@ export abstract class TextRenderer extends Renderer {
         const pathCount = this.pathCount;
         const atlasGlyphs = this.renderContext.atlasGlyphs;
         const pixelsPerUnit = this.pixelsPerUnit;
+        const rotationAngle = this.rotationAngle;
         const font = this.renderContext.font;
         const hint = this.createHint();
 
@@ -157,7 +162,9 @@ export abstract class TextRenderer extends Renderer {
             const atlasGlyphMetrics = font.metricsForGlyph(glyph.glyphKey.id);
             if (atlasGlyphMetrics == null)
                 continue;
-            const atlasUnitMetrics = new UnitMetrics(atlasGlyphMetrics, this.stemDarkeningAmount);
+            const atlasUnitMetrics = new UnitMetrics(atlasGlyphMetrics,
+                                                     0.0,
+                                                     this.stemDarkeningAmount);
 
             const pathID = glyph.pathID;
             boundingRects[pathID * 4 + 0] = atlasUnitMetrics.left;
@@ -196,6 +203,7 @@ export abstract class TextRenderer extends Renderer {
     protected buildAtlasGlyphs(atlasGlyphs: AtlasGlyph[]): void {
         const font = this.renderContext.font;
         const pixelsPerUnit = this.pixelsPerUnit;
+        const rotationAngle = this.rotationAngle;
         const hint = this.createHint();
 
         atlasGlyphs.sort((a, b) => a.glyphKey.sortKey - b.glyphKey.sortKey);
@@ -207,6 +215,7 @@ export abstract class TextRenderer extends Renderer {
         this.renderContext.atlas.layoutGlyphs(atlasGlyphs,
                                               font,
                                               pixelsPerUnit,
+                                              rotationAngle,
                                               hint,
                                               this.stemDarkeningAmount);
 

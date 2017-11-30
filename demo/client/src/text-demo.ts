@@ -27,7 +27,7 @@ import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
 import {Renderer} from './renderer';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
-import {calculatePixelDescent, calculatePixelRectForGlyph, PathfinderFont} from "./text";
+import {calculatePixelRectForGlyph, PathfinderFont} from "./text";
 import {BUILTIN_FONT_URI, calculatePixelXMin, computeStemDarkeningAmount} from "./text";
 import {GlyphStore, Hint, SimpleTextLayout, UnitMetrics} from "./text";
 import {TextRenderContext, TextRenderer} from './text-renderer';
@@ -506,17 +506,21 @@ class TextDemoRenderer extends TextRenderer {
 
         const hint = this.createHint();
         const pixelsPerUnit = this.pixelsPerUnit;
+        const rotationAngle = this.rotationAngle;
 
         let globalGlyphIndex = 0;
         for (const run of this.layout.textFrame.runs) {
+            run.recalculatePixelRects(pixelsPerUnit,
+                                      rotationAngle,
+                                      hint,
+                                      this.stemDarkeningAmount,
+                                      SUBPIXEL_GRANULARITY,
+                                      textBounds);
+
             for (let glyphIndex = 0;
                  glyphIndex < run.glyphIDs.length;
                  glyphIndex++, globalGlyphIndex++) {
-                const rect = run.pixelRectForGlyphAt(glyphIndex,
-                                                     pixelsPerUnit,
-                                                     hint,
-                                                     this.stemDarkeningAmount,
-                                                     SUBPIXEL_GRANULARITY);
+                const rect = run.pixelRectForGlyphAt(glyphIndex);
                 glyphPositions.set([
                     rect[0], rect[3],
                     rect[2], rect[3],
@@ -545,8 +549,10 @@ class TextDemoRenderer extends TextRenderer {
         const font = this.renderContext.font;
         const glyphStore = this.renderContext.glyphStore;
         const pixelsPerUnit = this.pixelsPerUnit;
+        const rotationAngle = this.rotationAngle;
 
         const textFrame = this.layout.textFrame;
+        const textBounds = textFrame.bounds;
         const hint = this.createHint();
 
         // Only build glyphs in view.
@@ -561,11 +567,7 @@ class TextDemoRenderer extends TextRenderer {
         const atlasGlyphs = [];
         for (const run of textFrame.runs) {
             for (let glyphIndex = 0; glyphIndex < run.glyphIDs.length; glyphIndex++) {
-                const pixelRect = run.pixelRectForGlyphAt(glyphIndex,
-                                                          pixelsPerUnit,
-                                                          hint,
-                                                          this.stemDarkeningAmount,
-                                                          SUBPIXEL_GRANULARITY);
+                const pixelRect = run.pixelRectForGlyphAt(glyphIndex);
                 if (!rectsIntersect(pixelRect, canvasRect))
                     continue;
 
@@ -576,8 +578,10 @@ class TextDemoRenderer extends TextRenderer {
 
                 const subpixel = run.subpixelForGlyphAt(glyphIndex,
                                                         pixelsPerUnit,
+                                                        rotationAngle,
                                                         hint,
-                                                        SUBPIXEL_GRANULARITY);
+                                                        SUBPIXEL_GRANULARITY,
+                                                        textBounds);
                 const glyphKey = new GlyphKey(glyphID, subpixel);
                 atlasGlyphs.push(new AtlasGlyph(glyphStoreIndex, glyphKey));
             }
@@ -586,17 +590,21 @@ class TextDemoRenderer extends TextRenderer {
         this.buildAtlasGlyphs(atlasGlyphs);
 
         // TODO(pcwalton): Regenerate the IBOs to include only the glyphs we care about.
-
         this.setGlyphTexCoords();
     }
 
     private setGlyphTexCoords(): void {
+        const gl = this.renderContext.gl;
+
         const textFrame = this.layout.textFrame;
+        const textBounds = textFrame.bounds;
+
         const font = this.renderContext.font;
         const atlasGlyphs = this.renderContext.atlasGlyphs;
 
         const hint = this.createHint();
         const pixelsPerUnit = this.pixelsPerUnit;
+        const rotationAngle = this.rotationAngle;
 
         const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
 
@@ -611,8 +619,10 @@ class TextDemoRenderer extends TextRenderer {
 
                 const subpixel = run.subpixelForGlyphAt(glyphIndex,
                                                         pixelsPerUnit,
+                                                        rotationAngle,
                                                         hint,
-                                                        SUBPIXEL_GRANULARITY);
+                                                        SUBPIXEL_GRANULARITY,
+                                                        textBounds);
 
                 const glyphKey = new GlyphKey(textGlyphID, subpixel);
 
@@ -627,6 +637,7 @@ class TextDemoRenderer extends TextRenderer {
                     continue;
 
                 const atlasGlyphUnitMetrics = new UnitMetrics(atlasGlyphMetrics,
+                                                              rotationAngle,
                                                               this.stemDarkeningAmount);
 
                 const atlasGlyphPixelOrigin =
@@ -649,12 +660,9 @@ class TextDemoRenderer extends TextRenderer {
             }
         }
 
-        this.glyphTexCoordsBuffer = unwrapNull(this.renderContext.gl.createBuffer());
-        this.renderContext.gl.bindBuffer(this.renderContext.gl.ARRAY_BUFFER,
-                                         this.glyphTexCoordsBuffer);
-        this.renderContext.gl.bufferData(this.renderContext.gl.ARRAY_BUFFER,
-                                         this.glyphBounds,
-                                         this.renderContext.gl.STATIC_DRAW);
+        this.glyphTexCoordsBuffer = unwrapNull(gl.createBuffer());
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphTexCoordsBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, this.glyphBounds, gl.STATIC_DRAW);
     }
 
     private setIdentityTexScaleUniform(uniforms: UniformMap): void {

@@ -1169,8 +1169,11 @@ export class AdaptiveMonochromeXCAAStrategy implements AntialiasingStrategy {
     }
 
     private getAppropriateStrategy(renderer: Renderer): AntialiasingStrategy {
-        if (glmatrix.vec2.equals(renderer.emboldenAmount, [0.0, 0.0]))
+        if (glmatrix.vec2.equals(renderer.emboldenAmount, [0.0, 0.0]) &&
+            renderer.usesSTTransform) {
             return this.mcaaStrategy;
+        }
+
         return this.ecaaStrategy;
     }
 }

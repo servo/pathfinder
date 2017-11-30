@@ -272,6 +272,10 @@ class BenchmarkRenderer extends Renderer {
 
     renderingPromiseCallback: ((time: number) => void) | null;
 
+    get usesSTTransform(): boolean {
+        return this.camera.usesSTTransform;
+    }
+
     get destFramebuffer(): WebGLFramebuffer | null {
         return null;
     }

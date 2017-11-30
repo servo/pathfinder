@@ -94,6 +94,7 @@ export class TextRun {
     readonly origin: number[];
 
     private readonly font: PathfinderFont;
+    private pixelRects: glmatrix.vec4[];
 
     constructor(text: number[] | string, origin: number[], font: PathfinderFont) {
         if (typeof(text) === 'string') {
@@ -107,6 +108,7 @@ export class TextRun {
         this.origin = origin;
         this.advances = [];
         this.font = font;
+        this.pixelRects = [];
     }
 
     layout() {
@@ -118,38 +120,77 @@ export class TextRun {
         }
     }
 
-    calculatePixelOriginForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
+    calculatePixelOriginForGlyphAt(index: number,
+                                   pixelsPerUnit: number,
+                                   rotationAngle: number,
+                                   hint: Hint,
+                                   textFrameBounds: glmatrix.vec4):
                                    glmatrix.vec2 {
-        const textGlyphOrigin = glmatrix.vec2.clone(this.origin);
-        textGlyphOrigin[0] += this.advances[index];
+        const textFrameCenter = glmatrix.vec2.clone([
+            0.5 * (textFrameBounds[0] + textFrameBounds[2]),
+            0.5 * (textFrameBounds[1] + textFrameBounds[3]),
+        ]);
+
+        const transform = glmatrix.mat2d.create();
+        glmatrix.mat2d.fromTranslation(transform, textFrameCenter);
+        glmatrix.mat2d.rotate(transform, transform, -rotationAngle);
+        glmatrix.vec2.negate(textFrameCenter, textFrameCenter);
+        glmatrix.mat2d.translate(transform, transform, textFrameCenter);
+
+        const textGlyphOrigin = glmatrix.vec2.create();
+        glmatrix.vec2.add(textGlyphOrigin, [this.advances[index], 0.0], this.origin);
+        glmatrix.vec2.transformMat2d(textGlyphOrigin, textGlyphOrigin, transform);
+
         glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, pixelsPerUnit);
         return textGlyphOrigin;
     }
 
-    pixelRectForGlyphAt(index: number,
-                        pixelsPerUnit: number,
-                        hint: Hint,
-                        stemDarkeningAmount: glmatrix.vec2,
-                        subpixelGranularity: number):
-                        glmatrix.vec4 {
-        const metrics = unwrapNull(this.font.metricsForGlyph(this.glyphIDs[index]));
-        const unitMetrics = new UnitMetrics(metrics, stemDarkeningAmount);
-        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index, pixelsPerUnit, hint);
-
-        textGlyphOrigin[0] *= subpixelGranularity;
-        glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
-        textGlyphOrigin[0] /= subpixelGranularity;
-
-        return calculatePixelRectForGlyph(unitMetrics, textGlyphOrigin, pixelsPerUnit, hint);
+    pixelRectForGlyphAt(index: number): glmatrix.vec4 {
+        return this.pixelRects[index];
     }
 
     subpixelForGlyphAt(index: number,
                        pixelsPerUnit: number,
+                       rotationAngle: number,
                        hint: Hint,
-                       subpixelGranularity: number):
+                       subpixelGranularity: number,
+                       textFrameBounds: glmatrix.vec4):
                        number {
-        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index, pixelsPerUnit, hint)[0];
+        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index,
+                                                                    pixelsPerUnit,
+                                                                    rotationAngle,
+                                                                    hint,
+                                                                    textFrameBounds)[0];
         return Math.abs(Math.round(textGlyphOrigin * subpixelGranularity) % subpixelGranularity);
+    }
+
+    recalculatePixelRects(pixelsPerUnit: number,
+                          rotationAngle: number,
+                          hint: Hint,
+                          stemDarkeningAmount: glmatrix.vec2,
+                          subpixelGranularity: number,
+                          textFrameBounds: glmatrix.vec4):
+                          void {
+        for (let index = 0; index < this.glyphIDs.length; index++) {
+            const metrics = unwrapNull(this.font.metricsForGlyph(this.glyphIDs[index]));
+            const unitMetrics = new UnitMetrics(metrics, rotationAngle, stemDarkeningAmount);
+            const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index,
+                                                                        pixelsPerUnit,
+                                                                        rotationAngle,
+                                                                        hint,
+                                                                        textFrameBounds);
+
+            textGlyphOrigin[0] *= subpixelGranularity;
+            glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
+            textGlyphOrigin[0] /= subpixelGranularity;
+
+            const pixelRect = calculatePixelRectForGlyph(unitMetrics,
+                                                         textGlyphOrigin,
+                                                         pixelsPerUnit,
+                                                         hint);
+
+            this.pixelRects[index] = pixelRect;
+        }
     }
 
     get measure(): number {
@@ -340,11 +381,29 @@ export class UnitMetrics {
     ascent: number;
     descent: number;
 
-    constructor(metrics: Metrics, stemDarkeningAmount: glmatrix.vec2) {
-        this.left = metrics.xMin;
-        this.right = metrics.xMax + stemDarkeningAmount[0] * 2;
-        this.ascent = metrics.yMax + stemDarkeningAmount[1] * 2;
-        this.descent = metrics.yMin;
+    constructor(metrics: Metrics, rotationAngle: number, stemDarkeningAmount: glmatrix.vec2) {
+        const left = metrics.xMin;
+        const bottom = metrics.yMin;
+        const right = metrics.xMax + stemDarkeningAmount[0] * 2;
+        const top = metrics.yMax + stemDarkeningAmount[1] * 2;
+
+        const transform = glmatrix.mat2.create();
+        glmatrix.mat2.fromRotation(transform, -rotationAngle);
+
+        const lowerLeft = glmatrix.vec2.clone([Infinity, Infinity]);
+        const upperRight = glmatrix.vec2.clone([-Infinity, -Infinity]);
+        const points = [[left, bottom], [left, top], [right, top], [right, bottom]];
+        const transformedPoint = glmatrix.vec2.create();
+        for (const point of points) {
+            glmatrix.vec2.transformMat2(transformedPoint, point, transform);
+            glmatrix.vec2.min(lowerLeft, lowerLeft, transformedPoint);
+            glmatrix.vec2.max(upperRight, upperRight, transformedPoint);
+        }
+
+        this.left = lowerLeft[0];
+        this.right = upperRight[0];
+        this.ascent = upperRight[1];
+        this.descent = lowerLeft[1];
     }
 }
 
@@ -353,7 +412,7 @@ export function calculatePixelXMin(metrics: UnitMetrics, pixelsPerUnit: number):
 }
 
 export function calculatePixelDescent(metrics: UnitMetrics, pixelsPerUnit: number): number {
-    return Math.ceil(-metrics.descent * pixelsPerUnit);
+    return Math.floor(metrics.descent * pixelsPerUnit);
 }
 
 function calculateSubpixelMetricsForGlyph(metrics: UnitMetrics, pixelsPerUnit: number, hint: Hint):
