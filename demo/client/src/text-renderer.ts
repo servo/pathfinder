@@ -92,12 +92,8 @@ export abstract class TextRenderer extends Renderer {
         return 0.0;
     }
 
-    protected get layoutPixelsPerUnit(): number {
+    protected get pixelsPerUnit(): number {
         return this.renderContext.fontSize / this.renderContext.font.opentypeFont.unitsPerEm;
-    }
-
-    protected get displayPixelsPerUnit(): number {
-        return this.layoutPixelsPerUnit;
     }
 
     protected get worldTransform(): glmatrix.mat4 {
@@ -108,10 +104,8 @@ export abstract class TextRenderer extends Renderer {
     }
 
     protected get stemDarkeningAmount(): glmatrix.vec2 {
-        if (this.stemDarkening === 'dark') {
-            return computeStemDarkeningAmount(this.renderContext.fontSize,
-                                              this.layoutPixelsPerUnit);
-        }
+        if (this.stemDarkening === 'dark')
+            return computeStemDarkeningAmount(this.renderContext.fontSize, this.pixelsPerUnit);
         return glmatrix.vec2.create();
     }
 
@@ -153,7 +147,7 @@ export abstract class TextRenderer extends Renderer {
     pathBoundingRects(objectIndex: number): Float32Array {
         const pathCount = this.pathCount;
         const atlasGlyphs = this.renderContext.atlasGlyphs;
-        const pixelsPerUnit = this.displayPixelsPerUnit;
+        const pixelsPerUnit = this.pixelsPerUnit;
         const font = this.renderContext.font;
         const hint = this.createHint();
 
@@ -201,7 +195,7 @@ export abstract class TextRenderer extends Renderer {
 
     protected buildAtlasGlyphs(atlasGlyphs: AtlasGlyph[]): void {
         const font = this.renderContext.font;
-        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+        const pixelsPerUnit = this.pixelsPerUnit;
         const hint = this.createHint();
 
         atlasGlyphs.sort((a, b) => a.glyphKey.sortKey - b.glyphKey.sortKey);
@@ -212,7 +206,7 @@ export abstract class TextRenderer extends Renderer {
         this.renderContext.atlasGlyphs = atlasGlyphs;
         this.renderContext.atlas.layoutGlyphs(atlasGlyphs,
                                               font,
-                                              displayPixelsPerUnit,
+                                              pixelsPerUnit,
                                               hint,
                                               this.stemDarkeningAmount);
 
@@ -237,7 +231,7 @@ export abstract class TextRenderer extends Renderer {
     protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
         const pathCount = this.pathCount;
         const atlasGlyphs = this.renderContext.atlasGlyphs;
-        const pixelsPerUnit = this.displayPixelsPerUnit;
+        const pixelsPerUnit = this.pixelsPerUnit;
         const rotationAngle = this.rotationAngle;
 
         // FIXME(pcwalton): This is a hack that tries to preserve the vertical extents of the glyph
@@ -288,7 +282,7 @@ export abstract class TextRenderer extends Renderer {
 
     protected createHint(): Hint {
         return new Hint(this.renderContext.font,
-                        this.displayPixelsPerUnit,
+                        this.pixelsPerUnit,
                         this.renderContext.useHinting);
     }
 

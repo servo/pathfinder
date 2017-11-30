@@ -922,7 +922,7 @@ class ThreeDAtlasRenderer extends TextRenderer {
     protected compositeIfNecessary(): void {}
 
     private calculateGlyphTexCoords(): void {
-        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+        const pixelsPerUnit = this.pixelsPerUnit;
         const glyphCount = this.renderContext.atlasGlyphs.length;
         const font = this.renderContext.font;
         const hint = this.createHint();
@@ -932,7 +932,7 @@ class ThreeDAtlasRenderer extends TextRenderer {
 
         for (let glyphIndex = 0; glyphIndex < glyphCount; glyphIndex++) {
             const glyph = this.renderContext.atlasGlyphs[glyphIndex];
-            const glyphPixelOrigin = glyph.calculateSubpixelOrigin(displayPixelsPerUnit);
+            const glyphPixelOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
             const glyphMetrics = font.metricsForGlyph(glyph.glyphKey.id);
             if (glyphMetrics == null)
                 continue;
@@ -940,7 +940,7 @@ class ThreeDAtlasRenderer extends TextRenderer {
             const glyphUnitMetrics = new UnitMetrics(glyphMetrics, glmatrix.vec2.create());
             const atlasGlyphRect = calculatePixelRectForGlyph(glyphUnitMetrics,
                                                               glyphPixelOrigin,
-                                                              displayPixelsPerUnit,
+                                                              pixelsPerUnit,
                                                               hint);
 
             this.glyphSizes.push(glmatrix.vec2.clone([

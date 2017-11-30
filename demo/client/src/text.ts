@@ -118,37 +118,29 @@ export class TextRun {
         }
     }
 
-    calculatePixelOriginForGlyphAt(index: number,
-                                   layoutPixelsPerUnit: number,
-                                   hint: Hint):
+    calculatePixelOriginForGlyphAt(index: number, pixelsPerUnit: number, hint: Hint):
                                    glmatrix.vec2 {
         const textGlyphOrigin = glmatrix.vec2.clone(this.origin);
         textGlyphOrigin[0] += this.advances[index];
-        glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, layoutPixelsPerUnit);
+        glmatrix.vec2.scale(textGlyphOrigin, textGlyphOrigin, pixelsPerUnit);
         return textGlyphOrigin;
     }
 
     pixelRectForGlyphAt(index: number,
-                        layoutPixelsPerUnit: number,
-                        displayPixelsPerUnit: number,
+                        pixelsPerUnit: number,
                         hint: Hint,
                         stemDarkeningAmount: glmatrix.vec2,
                         subpixelGranularity: number):
                         glmatrix.vec4 {
         const metrics = unwrapNull(this.font.metricsForGlyph(this.glyphIDs[index]));
         const unitMetrics = new UnitMetrics(metrics, stemDarkeningAmount);
-        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index,
-                                                                    layoutPixelsPerUnit,
-                                                                    hint);
+        const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index, pixelsPerUnit, hint);
 
         textGlyphOrigin[0] *= subpixelGranularity;
         glmatrix.vec2.round(textGlyphOrigin, textGlyphOrigin);
         textGlyphOrigin[0] /= subpixelGranularity;
 
-        return calculatePixelRectForGlyph(unitMetrics,
-                                          textGlyphOrigin,
-                                          displayPixelsPerUnit,
-                                          hint);
+        return calculatePixelRectForGlyph(unitMetrics, textGlyphOrigin, pixelsPerUnit, hint);
     }
 
     subpixelForGlyphAt(index: number,

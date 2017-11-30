@@ -579,7 +579,6 @@ class ReferenceTestRenderer extends Renderer {
         const glyphID = textRun.glyphIDs[glyphIndex];
         return textRun.pixelRectForGlyphAt(glyphIndex,
                                            this.pixelsPerUnit,
-                                           this.pixelsPerUnit,
                                            hint,
                                            this.stemDarkeningAmount,
                                            SUBPIXEL_GRANULARITY);
@@ -611,7 +610,6 @@ class ReferenceTestRenderer extends Renderer {
         const textRun = unwrapNull(appController.textRun);
         const glyphID = textRun.glyphIDs[0];
         const pixelRect = textRun.pixelRectForGlyphAt(0,
-                                                      this.pixelsPerUnit,
                                                       this.pixelsPerUnit,
                                                       hint,
                                                       glmatrix.vec2.create(),

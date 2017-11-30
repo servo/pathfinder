@@ -246,7 +246,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         this.view.then(view => view.renderer.relayoutText());
     }
 
-    get layoutPixelsPerUnit(): number {
+    get pixelsPerUnit(): number {
         return this._fontSize / this.font.opentypeFont.unitsPerEm;
     }
 
@@ -304,8 +304,8 @@ class TextDemoView extends DemoView implements TextRenderContext {
         return this.appController.pathCount;
     }
 
-    get layoutPixelsPerUnit(): number {
-        return this.appController.layoutPixelsPerUnit;
+    get pixelsPerUnit(): number {
+        return this.appController.pixelsPerUnit;
     }
 
     get useHinting(): boolean {
@@ -505,8 +505,7 @@ class TextDemoRenderer extends TextRenderer {
         const glyphIndices = new Uint32Array(totalGlyphCount * 6);
 
         const hint = this.createHint();
-        const displayPixelsPerUnit = this.displayPixelsPerUnit;
-        const layoutPixelsPerUnit = this.layoutPixelsPerUnit;
+        const pixelsPerUnit = this.pixelsPerUnit;
 
         let globalGlyphIndex = 0;
         for (const run of this.layout.textFrame.runs) {
@@ -514,8 +513,7 @@ class TextDemoRenderer extends TextRenderer {
                  glyphIndex < run.glyphIDs.length;
                  glyphIndex++, globalGlyphIndex++) {
                 const rect = run.pixelRectForGlyphAt(glyphIndex,
-                                                     layoutPixelsPerUnit,
-                                                     displayPixelsPerUnit,
+                                                     pixelsPerUnit,
                                                      hint,
                                                      this.stemDarkeningAmount,
                                                      SUBPIXEL_GRANULARITY);
@@ -546,8 +544,7 @@ class TextDemoRenderer extends TextRenderer {
     private buildGlyphs(): void {
         const font = this.renderContext.font;
         const glyphStore = this.renderContext.glyphStore;
-        const layoutPixelsPerUnit = this.layoutPixelsPerUnit;
-        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+        const pixelsPerUnit = this.pixelsPerUnit;
 
         const textFrame = this.layout.textFrame;
         const hint = this.createHint();
@@ -565,8 +562,7 @@ class TextDemoRenderer extends TextRenderer {
         for (const run of textFrame.runs) {
             for (let glyphIndex = 0; glyphIndex < run.glyphIDs.length; glyphIndex++) {
                 const pixelRect = run.pixelRectForGlyphAt(glyphIndex,
-                                                          layoutPixelsPerUnit,
-                                                          displayPixelsPerUnit,
+                                                          pixelsPerUnit,
                                                           hint,
                                                           this.stemDarkeningAmount,
                                                           SUBPIXEL_GRANULARITY);
@@ -579,7 +575,7 @@ class TextDemoRenderer extends TextRenderer {
                     continue;
 
                 const subpixel = run.subpixelForGlyphAt(glyphIndex,
-                                                        layoutPixelsPerUnit,
+                                                        pixelsPerUnit,
                                                         hint,
                                                         SUBPIXEL_GRANULARITY);
                 const glyphKey = new GlyphKey(glyphID, subpixel);
@@ -600,8 +596,7 @@ class TextDemoRenderer extends TextRenderer {
         const atlasGlyphs = this.renderContext.atlasGlyphs;
 
         const hint = this.createHint();
-        const layoutPixelsPerUnit = this.layoutPixelsPerUnit;
-        const displayPixelsPerUnit = this.displayPixelsPerUnit;
+        const pixelsPerUnit = this.pixelsPerUnit;
 
         const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
 
@@ -615,7 +610,7 @@ class TextDemoRenderer extends TextRenderer {
                 const textGlyphID = run.glyphIDs[glyphIndex];
 
                 const subpixel = run.subpixelForGlyphAt(glyphIndex,
-                                                        layoutPixelsPerUnit,
+                                                        pixelsPerUnit,
                                                         hint,
                                                         SUBPIXEL_GRANULARITY);
 
@@ -635,10 +630,10 @@ class TextDemoRenderer extends TextRenderer {
                                                               this.stemDarkeningAmount);
 
                 const atlasGlyphPixelOrigin =
-                    atlasGlyph.calculateSubpixelOrigin(displayPixelsPerUnit);
+                    atlasGlyph.calculateSubpixelOrigin(pixelsPerUnit);
                 const atlasGlyphRect = calculatePixelRectForGlyph(atlasGlyphUnitMetrics,
                                                                   atlasGlyphPixelOrigin,
-                                                                  displayPixelsPerUnit,
+                                                                  pixelsPerUnit,
                                                                   hint);
                 const atlasGlyphBL = atlasGlyphRect.slice(0, 2) as glmatrix.vec2;
                 const atlasGlyphTR = atlasGlyphRect.slice(2, 4) as glmatrix.vec2;
