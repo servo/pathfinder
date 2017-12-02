@@ -37,9 +37,8 @@ void main() {
     vec2 controlPointPosition = aControlPointPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
-    float leftNormalAngle = aNormalAngles.x;
+    vec2 leftRightNormalAngles = aNormalAngles.xz;
     float controlPointNormalAngle = aNormalAngles.y;
-    float rightNormalAngle = aNormalAngles.z;
 
     vec2 pathTransformExt;
     vec4 pathTransformST = fetchPathAffineTransform(pathTransformExt,
@@ -64,8 +63,7 @@ void main() {
                                 uTransform,
                                 uHints,
                                 bounds,
-                                leftNormalAngle,
-                                rightNormalAngle,
+                                leftRightNormalAngles,
                                 uEmboldenAmount)) {
         controlPointPosition = computeECAAPosition(controlPointPosition,
                                                    controlPointNormalAngle,

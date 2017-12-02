@@ -35,8 +35,7 @@ void main() {
     vec2 leftPosition = aLeftPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
-    float leftNormalAngle = aLeftNormalAngle;
-    float rightNormalAngle = aRightNormalAngle;
+    vec2 leftRightNormalAngles = vec2(aLeftNormalAngle, aRightNormalAngle);
 
     vec2 pathTransformExt;
     vec4 pathTransformST = fetchPathAffineTransform(pathTransformExt,
@@ -61,8 +60,7 @@ void main() {
                             uTransform,
                             uHints,
                             bounds,
-                            leftNormalAngle,
-                            rightNormalAngle,
+                            leftRightNormalAngles,
                             uEmboldenAmount);
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
