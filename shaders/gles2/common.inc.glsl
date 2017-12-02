@@ -120,6 +120,34 @@ vec2 dilatePosition(vec2 position, float normalAngle, vec2 amount) {
     return position + vec2(cos(normalAngle), -sin(normalAngle)) * amount;
 }
 
+vec2 computeXCAAClipSpaceQuadPosition(vec4 extents, vec2 quadPosition, ivec2 framebufferSize) {
+    // FIXME(pcwalton): Could be optimized to do only one floor/ceil per vertex.
+    vec2 position = mix(floor(extents.xy), ceil(extents.zw), quadPosition);
+    return convertScreenToClipSpace(position, framebufferSize);
+}
+
+vec2 computeXCAAEdgeBoundedClipSpaceQuadPosition(vec2 leftPosition,
+                                                 vec2 rightPosition,
+                                                 vec2 quadPosition,
+                                                 ivec2 framebufferSize) {
+    vec4 extents = vec4(leftPosition.x,
+                        min(leftPosition.y, rightPosition.y),
+                        rightPosition.x,
+                        max(leftPosition.y, rightPosition.y));
+    return computeXCAAClipSpaceQuadPosition(extents, quadPosition, framebufferSize);
+}
+
+vec2 computeMCAAPosition(vec2 position,
+                         vec4 hints,
+                         vec4 localTransformST,
+                         vec4 globalTransformST,
+                         ivec2 framebufferSize) {
+    position = hintPosition(position, hints);
+    position = transformVertexPositionST(position, localTransformST);
+    position = transformVertexPositionST(position, globalTransformST);
+    return convertClipToScreenSpace(position, framebufferSize);
+}
+
 bool computeMCAAQuadPosition(out vec2 outPosition,
                              inout vec2 leftPosition,
                              inout vec2 rightPosition,
@@ -128,32 +156,76 @@ bool computeMCAAQuadPosition(out vec2 outPosition,
                              vec4 localTransformST,
                              vec4 globalTransformST,
                              vec4 hints) {
-    leftPosition = hintPosition(leftPosition, hints);
-    rightPosition = hintPosition(rightPosition, hints);
-
-    leftPosition = transformVertexPositionST(leftPosition, localTransformST);
-    rightPosition = transformVertexPositionST(rightPosition, localTransformST);
-
-    leftPosition = transformVertexPositionST(leftPosition, globalTransformST);
-    rightPosition = transformVertexPositionST(rightPosition, globalTransformST);
-
-    leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
-    rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
+    leftPosition = computeMCAAPosition(leftPosition,
+                                       hints,
+                                       localTransformST,
+                                       globalTransformST,
+                                       framebufferSize);
+    rightPosition = computeMCAAPosition(rightPosition,
+                                        hints,
+                                        localTransformST,
+                                        globalTransformST,
+                                        framebufferSize);
 
     if (abs(leftPosition.x - rightPosition.x) <= EPSILON) {
         outPosition = vec2(0.0);
         return false;
     }
 
-    vec2 verticalExtents = vec2(min(leftPosition.y, rightPosition.y),
-                                max(leftPosition.y, rightPosition.y));
-
-    vec4 roundedExtents = vec4(floor(vec2(leftPosition.x, verticalExtents.x)),
-                               ceil(vec2(rightPosition.x, verticalExtents.y)));
-
-    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
-    outPosition = convertScreenToClipSpace(position, framebufferSize);
+    outPosition = computeXCAAEdgeBoundedClipSpaceQuadPosition(leftPosition,
+                                                              rightPosition,
+                                                              quadPosition,
+                                                              framebufferSize);
     return true;
+}
+
+vec2 transformECAAPosition(vec2 position,
+                           vec4 localTransformST,
+                           vec2 localTransformExt,
+                           mat4 globalTransform) {
+    position = transformVertexPositionAffine(position, localTransformST, localTransformExt);
+    return transformVertexPosition(position, globalTransform);
+}
+
+vec2 transformECAAPositionToScreenSpace(vec2 position,
+                                        vec4 localTransformST,
+                                        vec2 localTransformExt,
+                                        mat4 globalTransform,
+                                        ivec2 framebufferSize) {
+    position = transformECAAPosition(position,
+                                     localTransformST,
+                                     localTransformExt,
+                                     globalTransform);
+    return convertClipToScreenSpace(position, framebufferSize);
+}
+
+vec2 computeECAAPosition(vec2 position,
+                         float normalAngle,
+                         vec2 emboldenAmount,
+                         vec4 hints,
+                         vec4 localTransformST,
+                         vec2 localTransformExt,
+                         mat4 globalTransform,
+                         ivec2 framebufferSize) {
+    position = dilatePosition(position, normalAngle, emboldenAmount);
+    position = hintPosition(position, hints);
+    position = transformECAAPositionToScreenSpace(position,
+                                                  localTransformST,
+                                                  localTransformExt,
+                                                  globalTransform,
+                                                  framebufferSize);
+    return position;
+}
+
+float computeECAAWinding(inout vec2 leftPosition, inout vec2 rightPosition) {
+    float winding = sign(leftPosition.x - rightPosition.x);
+    if (winding > 0.0) {
+        vec2 tmp = leftPosition;
+        leftPosition = rightPosition;
+        rightPosition = tmp;
+    }
+
+    return rightPosition.x - leftPosition.x > EPSILON ? winding : 0.0;
 }
 
 // FIXME(pcwalton): Clean up this signature somehow?
@@ -171,44 +243,32 @@ bool computeECAAQuadPosition(out vec2 outPosition,
                              float leftNormalAngle,
                              float rightNormalAngle,
                              vec2 emboldenAmount) {
+    leftPosition = computeECAAPosition(leftPosition,
+                                       leftNormalAngle,
+                                       emboldenAmount,
+                                       hints,
+                                       localTransformST,
+                                       localTransformExt,
+                                       globalTransform,
+                                       framebufferSize);
+    rightPosition = computeECAAPosition(rightPosition,
+                                        rightNormalAngle,
+                                        emboldenAmount,
+                                        hints,
+                                        localTransformST,
+                                        localTransformExt,
+                                        globalTransform,
+                                        framebufferSize);
+
     vec2 edgeBL = bounds.xy, edgeTL = bounds.xw, edgeTR = bounds.zw, edgeBR = bounds.zy;
+    edgeBL = transformECAAPosition(edgeBL, localTransformST, localTransformExt, globalTransform);
+    edgeBR = transformECAAPosition(edgeBR, localTransformST, localTransformExt, globalTransform);
+    edgeTL = transformECAAPosition(edgeTL, localTransformST, localTransformExt, globalTransform);
+    edgeTR = transformECAAPosition(edgeTR, localTransformST, localTransformExt, globalTransform);
 
-    leftPosition = dilatePosition(leftPosition, leftNormalAngle, emboldenAmount);
-    rightPosition = dilatePosition(rightPosition, rightNormalAngle, emboldenAmount);
-
-    leftPosition = hintPosition(leftPosition, hints);
-    rightPosition = hintPosition(rightPosition, hints);
-
-    leftPosition = transformVertexPositionAffine(leftPosition,
-                                                 localTransformST,
-                                                 localTransformExt);
-    rightPosition = transformVertexPositionAffine(rightPosition, 
-                                                  localTransformST,
-                                                  localTransformExt);
-    edgeBL = transformVertexPositionAffine(edgeBL, localTransformST, localTransformExt);
-    edgeTL = transformVertexPositionAffine(edgeTL, localTransformST, localTransformExt);
-    edgeBR = transformVertexPositionAffine(edgeBR, localTransformST, localTransformExt);
-    edgeTR = transformVertexPositionAffine(edgeTR, localTransformST, localTransformExt);
-
-    leftPosition = transformVertexPosition(leftPosition, globalTransform);
-    rightPosition = transformVertexPosition(rightPosition, globalTransform);
-    edgeBL = transformVertexPosition(edgeBL, globalTransform);
-    edgeTL = transformVertexPosition(edgeTL, globalTransform);
-    edgeBR = transformVertexPosition(edgeBR, globalTransform);
-    edgeTR = transformVertexPosition(edgeTR, globalTransform);
-
-    leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
-    rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
-
-    float winding = sign(leftPosition.x - rightPosition.x);
+    float winding = computeECAAWinding(leftPosition, rightPosition);
     outWinding = winding;
-    if (winding > 0.0) {
-        vec2 tmp = leftPosition;
-        leftPosition = rightPosition;
-        rightPosition = tmp;
-    }
-
-    if (rightPosition.x - leftPosition.x <= EPSILON) {
+    if (winding == 0.0) {
         outPosition = vec2(0.0);
         return false;
     }
@@ -219,13 +279,11 @@ bool computeECAAQuadPosition(out vec2 outPosition,
     float pathBottomY = max(max(edgeBL.y, edgeBR.y), max(edgeTL.y, edgeTR.y));
     pathBottomY = (pathBottomY + 1.0) * 0.5 * float(framebufferSize.y);
 
-    vec4 roundedExtents = vec4(floor(leftPosition.x),
-                               floor(min(leftPosition.y, rightPosition.y)),
-                               ceil(rightPosition.x),
-                               ceil(pathBottomY));
-
-    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
-    outPosition = convertScreenToClipSpace(position, framebufferSize);
+    vec4 extents = vec4(leftPosition.x,
+                        min(leftPosition.y, rightPosition.y),
+                        rightPosition.x,
+                        pathBottomY);
+    outPosition = computeXCAAClipSpaceQuadPosition(extents, quadPosition, framebufferSize);
     return true;
 }
 
@@ -237,39 +295,27 @@ bool computeECAAMultiEdgeMaskQuadPosition(out vec2 outPosition,
                                           vec4 localTransformST,
                                           vec2 localTransformExt,
                                           mat4 globalTransform) {
-    leftPosition = transformVertexPositionAffine(leftPosition,
-                                                 localTransformST,
-                                                 localTransformExt);
-    rightPosition = transformVertexPositionAffine(rightPosition,
-                                                  localTransformST,
-                                                  localTransformExt);
+    leftPosition = transformECAAPositionToScreenSpace(leftPosition,
+                                                      localTransformST,
+                                                      localTransformExt,
+                                                      globalTransform,
+                                                      framebufferSize);
+    rightPosition = transformECAAPositionToScreenSpace(rightPosition,
+                                                       localTransformST,
+                                                       localTransformExt,
+                                                       globalTransform,
+                                                       framebufferSize);
 
-    leftPosition = transformVertexPosition(leftPosition, globalTransform);
-    rightPosition = transformVertexPosition(rightPosition, globalTransform);
-
-    leftPosition = convertClipToScreenSpace(leftPosition, framebufferSize);
-    rightPosition = convertClipToScreenSpace(rightPosition, framebufferSize);
-
-    float winding = sign(leftPosition.x - rightPosition.x);
-    if (winding > 0.0) {
-        vec2 tmp = leftPosition;
-        leftPosition = rightPosition;
-        rightPosition = tmp;
-    }
-
-    if (rightPosition.x - leftPosition.x <= EPSILON) {
+    float winding = computeECAAWinding(leftPosition, rightPosition);
+    if (winding == 0.0) {
         outPosition = vec2(0.0);
         return false;
     }
 
-    vec2 verticalExtents = vec2(min(leftPosition.y, rightPosition.y),
-                                max(leftPosition.y, rightPosition.y));
-
-    vec4 roundedExtents = vec4(floor(vec2(leftPosition.x, verticalExtents.x)),
-                               ceil(vec2(rightPosition.x, verticalExtents.y)));
-
-    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, quadPosition);
-    outPosition = convertScreenToClipSpace(position, framebufferSize);
+    outPosition = computeXCAAEdgeBoundedClipSpaceQuadPosition(leftPosition,
+                                                              rightPosition,
+                                                              quadPosition,
+                                                              framebufferSize);
     return true;
 }
 
