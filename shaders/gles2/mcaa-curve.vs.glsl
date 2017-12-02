@@ -45,10 +45,11 @@ void main() {
                                 transformST,
                                 uTransformST,
                                 uHints)) {
-        controlPointPosition = hintPosition(aControlPointPosition, uHints);
-        controlPointPosition = transformVertexPositionST(controlPointPosition, transformST);
-        controlPointPosition = transformVertexPositionST(controlPointPosition, uTransformST);
-        controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);
+        controlPointPosition = computeMCAAPosition(controlPointPosition,
+                                                   uHints,
+                                                   transformST,
+                                                   uTransformST,
+                                                   uFramebufferSize);
     }
 
     float depth = convertPathIndexToViewportDepthValue(pathID);

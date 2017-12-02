@@ -67,15 +67,14 @@ void main() {
                                 leftNormalAngle,
                                 rightNormalAngle,
                                 uEmboldenAmount)) {
-        controlPointPosition = dilatePosition(controlPointPosition,
-                                              controlPointNormalAngle,
-                                              uEmboldenAmount);
-        controlPointPosition = hintPosition(controlPointPosition, uHints);
-        controlPointPosition = transformVertexPositionAffine(controlPointPosition,
-                                                             pathTransformST,
-                                                             pathTransformExt);
-        controlPointPosition = transformVertexPosition(controlPointPosition, uTransform);
-        controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);
+        controlPointPosition = computeECAAPosition(controlPointPosition,
+                                                   controlPointNormalAngle,
+                                                   uEmboldenAmount,
+                                                   uHints,
+                                                   pathTransformST,
+                                                   pathTransformExt,
+                                                   uTransform,
+                                                   uFramebufferSize);
     }
 
     float depth = convertPathIndexToViewportDepthValue(pathID);

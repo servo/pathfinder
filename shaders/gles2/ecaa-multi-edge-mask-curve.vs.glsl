@@ -50,11 +50,11 @@ void main() {
                                              pathTransformST,
                                              pathTransformExt,
                                              uTransform)) {
-        controlPointPosition = transformVertexPositionAffine(controlPointPosition,
-                                                             pathTransformST,
-                                                             pathTransformExt);
-        controlPointPosition = transformVertexPosition(controlPointPosition, uTransform);
-        controlPointPosition = convertClipToScreenSpace(controlPointPosition, uFramebufferSize);
+        controlPointPosition = transformECAAPositionToScreenSpace(controlPointPosition,
+                                                                  pathTransformST,
+                                                                  pathTransformExt,
+                                                                  uTransform,
+                                                                  uFramebufferSize);
     }
 
     float depth = convertPathIndexToViewportDepthValue(pathID);

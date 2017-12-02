@@ -28,25 +28,22 @@ void main() {
 
     vec4 transformST = fetchFloat4Data(uPathTransformST, pathID, uPathTransformSTDimensions);
 
-    vec2 upperLeftPosition = hintPosition(aUpperLeftPosition, uHints);
-    vec2 lowerRightPosition = hintPosition(aLowerRightPosition, uHints);
-
-    upperLeftPosition = transformVertexPositionST(upperLeftPosition, transformST);
-    lowerRightPosition = transformVertexPositionST(lowerRightPosition, transformST);
-
-    upperLeftPosition = transformVertexPositionST(upperLeftPosition, uTransformST);
-    lowerRightPosition = transformVertexPositionST(lowerRightPosition, uTransformST);
-
-    upperLeftPosition = convertClipToScreenSpace(upperLeftPosition, uFramebufferSize);
-    lowerRightPosition = convertClipToScreenSpace(lowerRightPosition, uFramebufferSize);
-
-    vec4 roundedExtents = vec4(floor(upperLeftPosition.x), ceil(upperLeftPosition.y),
-                               ceil(lowerRightPosition));
-
-    vec2 position = mix(roundedExtents.xy, roundedExtents.zw, aQuadPosition);
-    position = convertScreenToClipSpace(position, uFramebufferSize);
-    float depth = convertPathIndexToViewportDepthValue(pathID);
-    gl_Position = vec4(position, depth, 1.0);
+    vec2 upperLeftPosition = computeMCAAPosition(aUpperLeftPosition,
+                                                 uHints,
+                                                 transformST,
+                                                 uTransformST,
+                                                 uFramebufferSize);
+    vec2 lowerRightPosition = computeMCAAPosition(aLowerRightPosition,
+                                                  uHints,
+                                                  transformST,
+                                                  uTransformST,
+                                                  uFramebufferSize);
 
     vHorizontalExtents = vec2(upperLeftPosition.x, lowerRightPosition.x);
+
+    vec4 extents = vec4(upperLeftPosition.x, ceil(upperLeftPosition.y), lowerRightPosition);
+    vec2 position = computeXCAAClipSpaceQuadPosition(extents, aQuadPosition, uFramebufferSize);
+    float depth = convertPathIndexToViewportDepthValue(pathID);
+
+    gl_Position = vec4(position, depth, 1.0);
 }
