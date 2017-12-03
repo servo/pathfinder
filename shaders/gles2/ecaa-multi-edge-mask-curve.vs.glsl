@@ -16,6 +16,7 @@ uniform ivec2 uPathTransformSTDimensions;
 uniform sampler2D uPathTransformST;
 uniform ivec2 uPathTransformExtDimensions;
 uniform sampler2D uPathTransformExt;
+uniform int uPassIndex;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
@@ -40,22 +41,34 @@ void main() {
                                                     uPathTransformExtDimensions,
                                                     pathID);
 
-    // Transform the points, and compute the position of this vertex.
-    vec2 position;
-    if (computeECAAMultiEdgeMaskQuadPosition(position,
-                                             leftPosition,
-                                             rightPosition,
-                                             aQuadPosition,
-                                             uFramebufferSize,
-                                             pathTransformST,
-                                             pathTransformExt,
-                                             uTransform)) {
-        controlPointPosition = transformECAAPositionToScreenSpace(controlPointPosition,
-                                                                  pathTransformST,
-                                                                  pathTransformExt,
-                                                                  uTransform,
-                                                                  uFramebufferSize);
+    // Transform the points.
+    leftPosition = transformECAAPositionToScreenSpace(leftPosition,
+                                                      pathTransformST,
+                                                      pathTransformExt,
+                                                      uTransform,
+                                                      uFramebufferSize);
+    rightPosition = transformECAAPositionToScreenSpace(rightPosition,
+                                                       pathTransformST,
+                                                       pathTransformExt,
+                                                       uTransform,
+                                                       uFramebufferSize);
+    controlPointPosition = transformECAAPositionToScreenSpace(controlPointPosition,
+                                                              pathTransformST,
+                                                              pathTransformExt,
+                                                              uTransform,
+                                                              uFramebufferSize);
+
+    float winding = computeECAAWinding(leftPosition, rightPosition);
+    if (winding == 0.0) {
+        gl_Position = vec4(0.0);
+        return;
     }
+
+    vec4 extents = vec4(leftPosition.x,
+                        min(leftPosition.y, rightPosition.y),
+                        rightPosition.y,
+                        max(leftPosition.y, rightPosition.y));
+    vec2 position = computeXCAAClipSpaceQuadPosition(extents, aQuadPosition, uFramebufferSize);
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
 

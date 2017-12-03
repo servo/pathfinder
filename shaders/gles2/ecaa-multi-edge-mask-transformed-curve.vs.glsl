@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/ecaa-multi-edge-mask-line.vs.glsl
+// pathfinder/shaders/gles2/ecaa-multi-edge-mask-transformed-curve.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -11,22 +11,25 @@
 precision highp float;
 
 uniform mat4 uTransform;
-uniform vec4 uHints;
 uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathTransformSTDimensions;
 uniform sampler2D uPathTransformST;
 uniform ivec2 uPathTransformExtDimensions;
 uniform sampler2D uPathTransformExt;
+uniform int uPassIndex;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
+attribute vec2 aControlPointPosition;
 attribute vec2 aRightPosition;
 attribute float aPathID;
 
 varying vec4 vEndpoints;
+varying vec2 vControlPoint;
 
 void main() {
     vec2 leftPosition = aLeftPosition;
+    vec2 controlPointPosition = aControlPointPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
 
@@ -49,21 +52,32 @@ void main() {
                                                        pathTransformExt,
                                                        uTransform,
                                                        uFramebufferSize);
+    controlPointPosition = transformECAAPositionToScreenSpace(controlPointPosition,
+                                                              pathTransformST,
+                                                              pathTransformExt,
+                                                              uTransform,
+                                                              uFramebufferSize);
 
-    float winding = computeECAAWinding(leftPosition, rightPosition);
-    if (winding == 0.0) {
+    float winding;
+    vec3 leftTopRightEdges;
+    if (!splitCurveAndComputeECAAWinding(winding,
+                                         leftTopRightEdges,
+                                         leftPosition,
+                                         rightPosition,
+                                         controlPointPosition,
+                                         uPassIndex)) {
         gl_Position = vec4(0.0);
         return;
     }
 
-    vec4 extents = vec4(min(leftPosition.x, rightPosition.x),
-                        min(leftPosition.y, rightPosition.y),
-                        max(rightPosition.x, rightPosition.x),
-                        max(leftPosition.y, rightPosition.y));
+    vec4 extents = vec4(leftTopRightEdges,
+                        max(max(leftPosition.y, rightPosition.y), controlPointPosition.y));
     vec2 position = computeXCAAClipSpaceQuadPosition(extents, aQuadPosition, uFramebufferSize);
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
 
     gl_Position = vec4(position, depth, 1.0);
     vEndpoints = vec4(leftPosition, rightPosition);
+    vControlPoint = controlPointPosition;
 }
+

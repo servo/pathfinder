@@ -781,9 +781,10 @@ export abstract class ECAAStrategy extends XCAAStrategy {
         this.antialiasLinesOfObjectWithProgram(renderer,
                                                objectIndex,
                                                this.lineShaderProgramNames[0]);
-        this.antialiasCurvesOfObjectWithProgram(renderer,
-                                                objectIndex,
-                                                this.curveShaderProgramNames[0]);
+        this.antialiasCurvesOfObjectWithPrograms(renderer,
+                                                 objectIndex,
+                                                 this.curveShaderProgramNames[0],
+                                                 this.curveShaderProgramNames[1]);
     }
 
     protected setAAUniforms(renderer: Renderer, uniforms: UniformMap, objectIndex: number): void {
@@ -850,10 +851,25 @@ export abstract class ECAAStrategy extends XCAAStrategy {
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
 
-    protected antialiasCurvesOfObjectWithProgram(renderer: Renderer,
-                                                 objectIndex: number,
-                                                 programName: keyof ShaderMap<void>):
-                                                 void {
+    protected antialiasCurvesOfObjectWithPrograms(renderer: Renderer,
+                                                  objectIndex: number,
+                                                  stProgram: keyof ShaderMap<void>,
+                                                  transformedProgram: keyof ShaderMap<void>):
+                                                  void {
+        if (renderer.usesSTTransform) {
+            this.antialiasCurvesOfObjectWithProgram(renderer, objectIndex, stProgram, 0);
+            return;
+        }
+
+        this.antialiasCurvesOfObjectWithProgram(renderer, objectIndex, transformedProgram, 0);
+        this.antialiasCurvesOfObjectWithProgram(renderer, objectIndex, transformedProgram, 1);
+    }
+
+    private antialiasCurvesOfObjectWithProgram(renderer: Renderer,
+                                               objectIndex: number,
+                                               programName: keyof ShaderMap<void>,
+                                               passIndex: number):
+                                               void {
         if (renderer.meshData == null)
             return;
 
@@ -867,6 +883,7 @@ export abstract class ECAAStrategy extends XCAAStrategy {
         gl.useProgram(curveProgram.program);
         const uniforms = curveProgram.uniforms;
         this.setAAUniforms(renderer, uniforms, objectIndex);
+        gl.uniform1i(uniforms.uPassIndex, passIndex);
 
         const vao = this.curveVAOs[programName];
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(vao);
@@ -1061,7 +1078,7 @@ export class ECAAMonochromeStrategy extends ECAAStrategy {
     }
 
     protected get curveShaderProgramNames(): Array<keyof ShaderMap<void>> {
-        return ['ecaaCurve'];
+        return ['ecaaCurve', 'ecaaTransformedCurve'];
     }
 }
 
@@ -1188,7 +1205,12 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
     }
 
     protected get curveShaderProgramNames(): Array<keyof ShaderMap<void>> {
-        return ['ecaaCurve', 'xcaaMultiEdgeMaskCurve'];
+        return [
+            'ecaaCurve',
+            'ecaaTransformedCurve',
+            'xcaaMultiEdgeMaskCurve',
+            'xcaaMultiEdgeMaskTransformedCurve',
+        ];
     }
 
     private edgeMaskVAO: WebGLVertexArrayObject;
@@ -1233,7 +1255,10 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
         // Perform edge masking.
         gl.colorMask(false, false, false, false);
         this.antialiasLinesOfObjectWithProgram(renderer, objectIndex, 'xcaaMultiEdgeMaskLine');
-        this.antialiasCurvesOfObjectWithProgram(renderer, objectIndex, 'xcaaMultiEdgeMaskCurve');
+        this.antialiasCurvesOfObjectWithPrograms(renderer,
+                                                 objectIndex,
+                                                 'xcaaMultiEdgeMaskCurve',
+                                                 'xcaaMultiEdgeMaskTransformedCurve');
 
         gl.colorMask(true, true, true, true);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);

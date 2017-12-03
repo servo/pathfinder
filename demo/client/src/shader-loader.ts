@@ -23,6 +23,7 @@ export interface ShaderMap<T> {
     direct3DInterior: T;
     ecaaLine: T;
     ecaaCurve: T;
+    ecaaTransformedCurve: T;
     mcaaCover: T;
     mcaaLine: T;
     mcaaCurve: T;
@@ -32,6 +33,7 @@ export interface ShaderMap<T> {
     xcaaMultiDirectCurve: T;
     xcaaMultiDirectInterior: T;
     xcaaMultiEdgeMaskCurve: T;
+    xcaaMultiEdgeMaskTransformedCurve: T;
     xcaaMultiEdgeMaskLine: T;
     xcaaMultiResolve: T;
 }
@@ -57,11 +59,13 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'mcaaCurve',
     'ecaaLine',
     'ecaaCurve',
+    'ecaaTransformedCurve',
     'xcaaMonoResolve',
     'xcaaMonoSubpixelResolve',
     'xcaaMultiDirectCurve',
     'xcaaMultiDirectInterior',
     'xcaaMultiEdgeMaskCurve',
+    'xcaaMultiEdgeMaskTransformedCurve',
     'xcaaMultiEdgeMaskLine',
     'xcaaMultiResolve',
     'demo3DDistantGlyph',
@@ -113,6 +117,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         fragment: "/glsl/gles2/xcaa-line.fs.glsl",
         vertex: "/glsl/gles2/ecaa-line.vs.glsl",
     },
+    ecaaTransformedCurve: {
+        fragment: "/glsl/gles2/xcaa-curve.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-transformed-curve.vs.glsl",
+    },
     mcaaCover: {
         fragment: "/glsl/gles2/mcaa-cover.fs.glsl",
         vertex: "/glsl/gles2/mcaa-cover.vs.glsl",
@@ -152,6 +160,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     xcaaMultiEdgeMaskLine: {
         fragment: "/glsl/gles2/xcaa-multi-edge-mask-line.fs.glsl",
         vertex: "/glsl/gles2/ecaa-multi-edge-mask-line.vs.glsl",
+    },
+    xcaaMultiEdgeMaskTransformedCurve: {
+        fragment: "/glsl/gles2/xcaa-multi-edge-mask-curve.fs.glsl",
+        vertex: "/glsl/gles2/ecaa-multi-edge-mask-transformed-curve.vs.glsl",
     },
     xcaaMultiResolve: {
         fragment: "/glsl/gles2/xcaa-multi-resolve.fs.glsl",

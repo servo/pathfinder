@@ -126,17 +126,6 @@ vec2 computeXCAAClipSpaceQuadPosition(vec4 extents, vec2 quadPosition, ivec2 fra
     return convertScreenToClipSpace(position, framebufferSize);
 }
 
-vec2 computeXCAAEdgeBoundedClipSpaceQuadPosition(vec2 leftPosition,
-                                                 vec2 rightPosition,
-                                                 vec2 quadPosition,
-                                                 ivec2 framebufferSize) {
-    vec4 extents = vec4(leftPosition.x,
-                        min(leftPosition.y, rightPosition.y),
-                        rightPosition.x,
-                        max(leftPosition.y, rightPosition.y));
-    return computeXCAAClipSpaceQuadPosition(extents, quadPosition, framebufferSize);
-}
-
 vec2 computeMCAAPosition(vec2 position,
                          vec4 hints,
                          vec4 localTransformST,
@@ -172,10 +161,11 @@ bool computeMCAAQuadPosition(out vec2 outPosition,
         return false;
     }
 
-    outPosition = computeXCAAEdgeBoundedClipSpaceQuadPosition(leftPosition,
-                                                              rightPosition,
-                                                              quadPosition,
-                                                              framebufferSize);
+    vec4 extents = vec4(leftPosition.x,
+                        min(leftPosition.y, rightPosition.y),
+                        rightPosition.x,
+                        max(leftPosition.y, rightPosition.y));
+    outPosition = computeXCAAClipSpaceQuadPosition(extents, quadPosition, framebufferSize);
     return true;
 }
 
@@ -228,6 +218,31 @@ float computeECAAWinding(inout vec2 leftPosition, inout vec2 rightPosition) {
     return rightPosition.x - leftPosition.x > EPSILON ? winding : 0.0;
 }
 
+vec2 computeECAAQuadPositionFromTransformedPositions(vec2 leftPosition,
+                                                     vec2 rightPosition,
+                                                     vec2 quadPosition,
+                                                     ivec2 framebufferSize,
+                                                     vec4 localTransformST,
+                                                     vec2 localTransformExt,
+                                                     mat4 globalTransform,
+                                                     vec4 bounds,
+                                                     vec3 leftTopRightEdges) {
+    vec2 edgeBL = bounds.xy, edgeTL = bounds.xw, edgeTR = bounds.zw, edgeBR = bounds.zy;
+    edgeBL = transformECAAPosition(edgeBL, localTransformST, localTransformExt, globalTransform);
+    edgeBR = transformECAAPosition(edgeBR, localTransformST, localTransformExt, globalTransform);
+    edgeTL = transformECAAPosition(edgeTL, localTransformST, localTransformExt, globalTransform);
+    edgeTR = transformECAAPosition(edgeTR, localTransformST, localTransformExt, globalTransform);
+
+    // Find the bottom of the path, and convert to clip space.
+    //
+    // FIXME(pcwalton): Speed this up somehow?
+    float pathBottomY = max(max(edgeBL.y, edgeBR.y), max(edgeTL.y, edgeTR.y));
+    pathBottomY = (pathBottomY + 1.0) * 0.5 * float(framebufferSize.y);
+
+    vec4 extents = vec4(leftTopRightEdges, pathBottomY);
+    return computeXCAAClipSpaceQuadPosition(extents, quadPosition, framebufferSize);
+}
+
 // FIXME(pcwalton): Clean up this signature somehow?
 bool computeECAAQuadPosition(out vec2 outPosition,
                              out float outWinding,
@@ -259,12 +274,6 @@ bool computeECAAQuadPosition(out vec2 outPosition,
                                         globalTransform,
                                         framebufferSize);
 
-    vec2 edgeBL = bounds.xy, edgeTL = bounds.xw, edgeTR = bounds.zw, edgeBR = bounds.zy;
-    edgeBL = transformECAAPosition(edgeBL, localTransformST, localTransformExt, globalTransform);
-    edgeBR = transformECAAPosition(edgeBR, localTransformST, localTransformExt, globalTransform);
-    edgeTL = transformECAAPosition(edgeTL, localTransformST, localTransformExt, globalTransform);
-    edgeTR = transformECAAPosition(edgeTR, localTransformST, localTransformExt, globalTransform);
-
     float winding = computeECAAWinding(leftPosition, rightPosition);
     outWinding = winding;
     if (winding == 0.0) {
@@ -272,49 +281,54 @@ bool computeECAAQuadPosition(out vec2 outPosition,
         return false;
     }
 
-    // Find the bottom of the path, and convert to clip space.
-    //
-    // FIXME(pcwalton): Speed this up somehow?
-    float pathBottomY = max(max(edgeBL.y, edgeBR.y), max(edgeTL.y, edgeTR.y));
-    pathBottomY = (pathBottomY + 1.0) * 0.5 * float(framebufferSize.y);
-
-    vec4 extents = vec4(leftPosition.x,
-                        min(leftPosition.y, rightPosition.y),
-                        rightPosition.x,
-                        pathBottomY);
-    outPosition = computeXCAAClipSpaceQuadPosition(extents, quadPosition, framebufferSize);
+    vec3 leftTopRightEdges = vec3(leftPosition.x,
+                                  min(leftPosition.y, rightPosition.y),
+                                  rightPosition.x);
+    outPosition = computeECAAQuadPositionFromTransformedPositions(leftPosition,
+                                                                  rightPosition,
+                                                                  quadPosition,
+                                                                  framebufferSize,
+                                                                  localTransformST,
+                                                                  localTransformExt,
+                                                                  globalTransform,
+                                                                  bounds,
+                                                                  leftTopRightEdges);
     return true;
 }
 
-bool computeECAAMultiEdgeMaskQuadPosition(out vec2 outPosition,
-                                          inout vec2 leftPosition,
-                                          inout vec2 rightPosition,
-                                          vec2 quadPosition,
-                                          ivec2 framebufferSize,
-                                          vec4 localTransformST,
-                                          vec2 localTransformExt,
-                                          mat4 globalTransform) {
-    leftPosition = transformECAAPositionToScreenSpace(leftPosition,
-                                                      localTransformST,
-                                                      localTransformExt,
-                                                      globalTransform,
-                                                      framebufferSize);
-    rightPosition = transformECAAPositionToScreenSpace(rightPosition,
-                                                       localTransformST,
-                                                       localTransformExt,
-                                                       globalTransform,
-                                                       framebufferSize);
-
-    float winding = computeECAAWinding(leftPosition, rightPosition);
-    if (winding == 0.0) {
-        outPosition = vec2(0.0);
+bool splitCurveAndComputeECAAWinding(out float outWinding,
+                                     out vec3 outLeftTopRightEdges,
+                                     inout vec2 leftPosition,
+                                     inout vec2 rightPosition,
+                                     vec2 controlPointPosition,
+                                     int passIndex) {
+    // Split at the X inflection point if necessary.
+    float num = leftPosition.x - controlPointPosition.x;
+    float denom = leftPosition.x - 2.0 * controlPointPosition.x + rightPosition.x;
+    float inflectionT = num / denom;
+    if (inflectionT > EPSILON && inflectionT < 1.0 - EPSILON) {
+        vec2 newCP0 = mix(leftPosition, controlPointPosition, inflectionT);
+        vec2 newCP1 = mix(controlPointPosition, rightPosition, inflectionT);
+        vec2 inflectionPoint = mix(newCP0, newCP1, inflectionT);
+        if (passIndex == 0) {
+            controlPointPosition = newCP0;
+            rightPosition = inflectionPoint;
+        } else {
+            controlPointPosition = newCP1;
+            leftPosition = inflectionPoint;
+        }
+    } else if (passIndex != 0) {
         return false;
     }
 
-    outPosition = computeXCAAEdgeBoundedClipSpaceQuadPosition(leftPosition,
-                                                              rightPosition,
-                                                              quadPosition,
-                                                              framebufferSize);
+    float winding = computeECAAWinding(leftPosition, rightPosition);
+    outWinding = winding;
+    if (winding == 0.0)
+        return false;
+
+    outLeftTopRightEdges = vec3(min(leftPosition.x, controlPointPosition.x),
+                                min(min(leftPosition.y, controlPointPosition.y), rightPosition.y),
+                                max(rightPosition.x, controlPointPosition.x));
     return true;
 }
 
