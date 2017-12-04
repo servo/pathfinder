@@ -1273,13 +1273,7 @@ export class ECAAMulticolorStrategy extends ECAAStrategy {
         gl.enable(gl.DEPTH_TEST);
     }
 
-    protected clearForAA(renderer: Renderer): void {
-        /*const renderContext = renderer.renderContext;
-        const gl = renderContext.gl;
-
-        gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);*/
-    }
+    protected clearForAA(renderer: Renderer): void {}
 
     protected setAADepthState(renderer: Renderer): void {
         const renderContext = renderer.renderContext;
