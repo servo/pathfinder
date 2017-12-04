@@ -122,6 +122,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     atlasGlyphs: AtlasGlyph[];
 
     private hintingSelect: HTMLSelectElement;
+    private emboldenInput: HTMLInputElement;
 
     private editTextModal: HTMLElement;
     private editTextArea: HTMLTextAreaElement;
@@ -132,6 +133,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     private _fontSize: number;
     private _rotationAngle: number;
+    private _emboldenAmount: number;
 
     private text: string;
 
@@ -146,10 +148,15 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
         this._fontSize = INITIAL_FONT_SIZE;
         this._rotationAngle = 0.0;
+        this._emboldenAmount = 0.0;
 
         this.hintingSelect = unwrapNull(document.getElementById('pf-hinting-select')) as
             HTMLSelectElement;
         this.hintingSelect.addEventListener('change', () => this.hintingChanged(), false);
+
+        this.emboldenInput = unwrapNull(document.getElementById('pf-embolden')) as
+            HTMLInputElement;
+        this.emboldenInput.addEventListener('input', () => this.emboldenAmountChanged(), false);
 
         this.editTextModal = unwrapNull(document.getElementById('pf-edit-text-modal'));
         this.editTextArea = unwrapNull(document.getElementById('pf-edit-text-area')) as
@@ -167,6 +174,10 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         window.jQuery(this.editTextModal).modal();
     }
 
+    get emboldenAmount(): number {
+        return this._emboldenAmount;
+    }
+
     protected createView(gammaLUT: HTMLImageElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>):
@@ -181,6 +192,11 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     private hintingChanged(): void {
         this.view.then(view => view.renderer.updateHinting());
+    }
+
+    private emboldenAmountChanged(): void {
+        this._emboldenAmount = parseFloat(this.emboldenInput.value);
+        this.view.then(view => view.renderer.updateEmboldenAmount());
     }
 
     private updateText(): void {
@@ -246,8 +262,12 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         this.view.then(view => view.renderer.relayoutText());
     }
 
+    get unitsPerEm(): number {
+        return this.font.opentypeFont.unitsPerEm;
+    }
+
     get pixelsPerUnit(): number {
-        return this._fontSize / this.font.opentypeFont.unitsPerEm;
+        return this._fontSize / this.unitsPerEm;
     }
 
     get useHinting(): boolean {
@@ -391,6 +411,12 @@ class TextDemoRenderer extends TextRenderer {
         return this.renderContext.appController.rotationAngle;
     }
 
+    protected get extraEmboldenAmount(): glmatrix.vec2 {
+        const appController = this.renderContext.appController;
+        const emboldenLength = appController.emboldenAmount * appController.unitsPerEm;
+        return glmatrix.vec2.clone([emboldenLength, emboldenLength]);
+    }
+
     prepareToAttachText(): void {
         if (this.atlasFramebuffer == null)
             this.createAtlasFramebuffer();
@@ -423,6 +449,13 @@ class TextDemoRenderer extends TextRenderer {
 
     updateHinting(): void {
         // Need to relayout the text because the pixel bounds of the glyphs can change from this...
+        this.layoutText();
+        this.buildGlyphs();
+        this.renderContext.setDirty();
+    }
+
+    updateEmboldenAmount(): void {
+        // Likewise, need to relayout the text.
         this.layoutText();
         this.buildGlyphs();
         this.renderContext.setDirty();
@@ -513,7 +546,7 @@ class TextDemoRenderer extends TextRenderer {
             run.recalculatePixelRects(pixelsPerUnit,
                                       rotationAngle,
                                       hint,
-                                      this.stemDarkeningAmount,
+                                      this.emboldenAmount,
                                       SUBPIXEL_GRANULARITY,
                                       textBounds);
 
@@ -638,7 +671,7 @@ class TextDemoRenderer extends TextRenderer {
 
                 const atlasGlyphUnitMetrics = new UnitMetrics(atlasGlyphMetrics,
                                                               rotationAngle,
-                                                              this.stemDarkeningAmount);
+                                                              this.emboldenAmount);
 
                 const atlasGlyphPixelOrigin =
                     atlasGlyph.calculateSubpixelOrigin(pixelsPerUnit);

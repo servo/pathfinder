@@ -167,13 +167,13 @@ export class TextRun {
     recalculatePixelRects(pixelsPerUnit: number,
                           rotationAngle: number,
                           hint: Hint,
-                          stemDarkeningAmount: glmatrix.vec2,
+                          emboldenAmount: glmatrix.vec2,
                           subpixelGranularity: number,
                           textFrameBounds: glmatrix.vec4):
                           void {
         for (let index = 0; index < this.glyphIDs.length; index++) {
             const metrics = unwrapNull(this.font.metricsForGlyph(this.glyphIDs[index]));
-            const unitMetrics = new UnitMetrics(metrics, rotationAngle, stemDarkeningAmount);
+            const unitMetrics = new UnitMetrics(metrics, rotationAngle, emboldenAmount);
             const textGlyphOrigin = this.calculatePixelOriginForGlyphAt(index,
                                                                         pixelsPerUnit,
                                                                         rotationAngle,
@@ -381,11 +381,11 @@ export class UnitMetrics {
     ascent: number;
     descent: number;
 
-    constructor(metrics: Metrics, rotationAngle: number, stemDarkeningAmount: glmatrix.vec2) {
+    constructor(metrics: Metrics, rotationAngle: number, emboldenAmount: glmatrix.vec2) {
         const left = metrics.xMin;
         const bottom = metrics.yMin;
-        const right = metrics.xMax + stemDarkeningAmount[0] * 2;
-        const top = metrics.yMax + stemDarkeningAmount[1] * 2;
+        const right = metrics.xMax + emboldenAmount[0] * 2;
+        const top = metrics.yMax + emboldenAmount[1] * 2;
 
         const transform = glmatrix.mat2.create();
         glmatrix.mat2.fromRotation(transform, -rotationAngle);

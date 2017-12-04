@@ -81,7 +81,9 @@ export abstract class TextRenderer extends Renderer {
     }
 
     get emboldenAmount(): glmatrix.vec2 {
-        return this.stemDarkeningAmount;
+        const emboldenAmount = glmatrix.vec2.create();
+        glmatrix.vec2.add(emboldenAmount, this.extraEmboldenAmount, this.stemDarkeningAmount);
+        return emboldenAmount;
     }
 
     get bgColor(): glmatrix.vec4 {
@@ -127,6 +129,10 @@ export abstract class TextRenderer extends Renderer {
         return this.meshes == null ? 0 : this.meshes.length;
     }
 
+    protected get extraEmboldenAmount(): glmatrix.vec2 {
+        return glmatrix.vec2.create();
+    }
+
     private stemDarkening: StemDarkeningMode;
     private subpixelAA: SubpixelAAType;
 
@@ -162,9 +168,7 @@ export abstract class TextRenderer extends Renderer {
             const atlasGlyphMetrics = font.metricsForGlyph(glyph.glyphKey.id);
             if (atlasGlyphMetrics == null)
                 continue;
-            const atlasUnitMetrics = new UnitMetrics(atlasGlyphMetrics,
-                                                     0.0,
-                                                     this.stemDarkeningAmount);
+            const atlasUnitMetrics = new UnitMetrics(atlasGlyphMetrics, 0.0, this.emboldenAmount);
 
             const pathID = glyph.pathID;
             boundingRects[pathID * 4 + 0] = atlasUnitMetrics.left;
@@ -201,7 +205,8 @@ export abstract class TextRenderer extends Renderer {
     protected clearForDirectRendering(): void {}
 
     protected buildAtlasGlyphs(atlasGlyphs: AtlasGlyph[]): void {
-        const font = this.renderContext.font;
+        const renderContext = this.renderContext;
+        const font = renderContext.font;
         const pixelsPerUnit = this.pixelsPerUnit;
         const rotationAngle = this.rotationAngle;
         const hint = this.createHint();
@@ -211,13 +216,13 @@ export abstract class TextRenderer extends Renderer {
         if (atlasGlyphs.length === 0)
             return;
 
-        this.renderContext.atlasGlyphs = atlasGlyphs;
-        this.renderContext.atlas.layoutGlyphs(atlasGlyphs,
-                                              font,
-                                              pixelsPerUnit,
-                                              rotationAngle,
-                                              hint,
-                                              this.stemDarkeningAmount);
+        renderContext.atlasGlyphs = atlasGlyphs;
+        renderContext.atlas.layoutGlyphs(atlasGlyphs,
+                                         font,
+                                         pixelsPerUnit,
+                                         rotationAngle,
+                                         hint,
+                                         this.emboldenAmount);
 
         this.uploadPathTransforms(1);
         this.uploadPathColors(1);
@@ -250,10 +255,10 @@ export abstract class TextRenderer extends Renderer {
         // the ascenders and x-heights of the glyphs are pixel snapped, while they aren't on macOS.
         // But we should really figure out what macOS does…
         const ascender = this.renderContext.font.opentypeFont.ascender;
-        const stemDarkeningAmount = this.stemDarkeningAmount;
-        const stemDarkeningYScale = (ascender + stemDarkeningAmount[1]) / ascender;
+        const emboldenAmount = this.emboldenAmount;
+        const stemDarkeningYScale = (ascender + emboldenAmount[1]) / ascender;
 
-        const stemDarkeningOffset = glmatrix.vec2.clone(stemDarkeningAmount);
+        const stemDarkeningOffset = glmatrix.vec2.clone(emboldenAmount);
         glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, pixelsPerUnit);
         glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, SQRT_1_2);
         glmatrix.vec2.mul(stemDarkeningOffset, stemDarkeningOffset, [1, stemDarkeningYScale]);

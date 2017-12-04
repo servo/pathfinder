@@ -35,7 +35,7 @@ export class Atlas {
                  pixelsPerUnit: number,
                  rotationAngle: number,
                  hint: Hint,
-                 stemDarkeningAmount: glmatrix.vec2):
+                 emboldenAmount: glmatrix.vec2):
                  void {
         let nextOrigin = glmatrix.vec2.fromValues(1.0, 1.0);
         let shelfBottom = 2.0;
@@ -46,7 +46,7 @@ export class Atlas {
             if (metrics == null)
                 continue;
 
-            const unitMetrics = new UnitMetrics(metrics, rotationAngle, stemDarkeningAmount);
+            const unitMetrics = new UnitMetrics(metrics, rotationAngle, emboldenAmount);
             glyph.setPixelLowerLeft(nextOrigin, unitMetrics, pixelsPerUnit);
 
             let pixelOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
