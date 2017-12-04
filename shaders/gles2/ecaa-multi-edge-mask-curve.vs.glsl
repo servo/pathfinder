@@ -16,7 +16,6 @@ uniform ivec2 uPathTransformSTDimensions;
 uniform sampler2D uPathTransformST;
 uniform ivec2 uPathTransformExtDimensions;
 uniform sampler2D uPathTransformExt;
-uniform int uPassIndex;
 
 attribute vec2 aQuadPosition;
 attribute vec2 aLeftPosition;
@@ -66,7 +65,7 @@ void main() {
 
     vec4 extents = vec4(leftPosition.x,
                         min(leftPosition.y, rightPosition.y),
-                        rightPosition.y,
+                        rightPosition.x,
                         max(leftPosition.y, rightPosition.y));
     vec2 position = computeXCAAClipSpaceQuadPosition(extents, aQuadPosition, uFramebufferSize);
 
