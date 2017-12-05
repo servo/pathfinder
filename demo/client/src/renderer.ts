@@ -44,6 +44,8 @@ export abstract class Renderer {
     meshes: PathfinderMeshBuffers[] | null;
     meshData: PathfinderMeshData[] | null;
 
+    lastTimings: Timings;
+
     abstract get usesSTTransform(): boolean;
 
     get emboldenAmount(): glmatrix.vec2 {
@@ -75,7 +77,6 @@ export abstract class Renderer {
     abstract get destUsedSize(): glmatrix.vec2;
 
     protected antialiasingStrategy: AntialiasingStrategy | null;
-    protected lastTimings: Timings;
     protected pathColorsBufferTextures: PathfinderBufferTexture[];
 
     protected gammaCorrectionMode: GammaCorrectionMode;

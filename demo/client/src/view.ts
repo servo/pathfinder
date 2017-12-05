@@ -116,14 +116,7 @@ export abstract class PathfinderView {
         if (!this.canvas.classList.contains('pf-no-autoresize')) {
             const windowWidth = window.innerWidth;
             const canvasTop = this.canvas.getBoundingClientRect().top;
-            let height = window.scrollY + window.innerHeight - canvasTop;
-
-            const nonoverlappingBottomBar =
-                document.getElementById('pf-nonoverlapping-bottom-bar');
-            if (nonoverlappingBottomBar != null) {
-                const rect = nonoverlappingBottomBar.getBoundingClientRect();
-                height -= window.innerHeight - rect.top;
-            }
+            const height = window.scrollY + window.innerHeight - canvasTop;
 
             const devicePixelRatio = window.devicePixelRatio;
 

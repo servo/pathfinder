@@ -60,6 +60,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     protected readonly defaultFile: string = FONT;
     protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
 
+    private optionsModal: HTMLDivElement;
+
     private resultsModal: HTMLDivElement;
     private resultsTableBody: HTMLTableSectionElement;
     private resultsPartitioningTimeLabel: HTMLSpanElement;
@@ -76,6 +78,9 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
     start(): void {
         super.start();
+
+        this.optionsModal = unwrapNull(document.getElementById('pf-benchmark-modal')) as
+            HTMLDivElement;
 
         this.resultsModal = unwrapNull(document.getElementById('pf-benchmark-results-modal')) as
             HTMLDivElement;
@@ -98,6 +103,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
         const runBenchmarkButton = unwrapNull(document.getElementById('pf-run-benchmark-button'));
         runBenchmarkButton.addEventListener('click', () => this.runBenchmark(), false);
+
+        window.jQuery(this.optionsModal).modal();
 
         this.loadInitialFile(this.builtinFileURI);
     }
@@ -146,6 +153,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     }
 
     private runBenchmark(): void {
+        window.jQuery(this.optionsModal).modal('hide');
+
         this.reset();
         this.elapsedTimes = [];
         this.pixelsPerEm = MIN_FONT_SIZE;
@@ -240,16 +249,14 @@ class BenchmarkTestView extends DemoView {
     readonly renderer: BenchmarkRenderer;
     readonly appController: BenchmarkAppController;
 
+    renderingPromiseCallback: ((time: number) => void) | null;
+
     get camera(): OrthographicCamera {
         return this.renderer.camera;
     }
 
     set pixelsPerEm(newPPEM: number) {
         this.renderer.pixelsPerEm = newPPEM;
-    }
-
-    set renderingPromiseCallback(newCallback: (time: number) => void) {
-        this.renderer.renderingPromiseCallback = newCallback;
     }
 
     constructor(appController: BenchmarkAppController,
@@ -263,14 +270,21 @@ class BenchmarkTestView extends DemoView {
 
         this.resizeToFit(true);
     }
+
+    protected renderingFinished(): void {
+        if (this.renderingPromiseCallback == null)
+            return;
+
+        const glyphCount = unwrapNull(this.appController.textRun).glyphIDs.length;
+        const usPerGlyph = this.renderer.lastTimings.rendering * 1000.0 / glyphCount;
+        this.renderingPromiseCallback(usPerGlyph);
+    }
 }
 
 class BenchmarkRenderer extends Renderer {
     renderContext: BenchmarkTestView;
 
     camera: OrthographicCamera;
-
-    renderingPromiseCallback: ((time: number) => void) | null;
 
     get usesSTTransform(): boolean {
         return this.camera.usesSTTransform;
@@ -402,14 +416,6 @@ class BenchmarkRenderer extends Renderer {
 
     protected updateTimings(timings: Timings): void {
         // TODO(pcwalton)
-    }
-
-    protected renderingFinished(): void {
-        if (this.renderingPromiseCallback == null)
-            return;
-        const glyphCount = unwrapNull(this.renderContext.appController.textRun).glyphIDs.length;
-        const usPerGlyph = this.lastTimings.rendering * 1000.0 / glyphCount;
-        this.renderingPromiseCallback(usPerGlyph);
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {
