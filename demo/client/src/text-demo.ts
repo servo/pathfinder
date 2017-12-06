@@ -24,7 +24,6 @@ import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from './gl-utils';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
-import {Renderer} from './renderer';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
 import {calculatePixelRectForGlyph, PathfinderFont} from "./text";
@@ -86,8 +85,14 @@ declare global {
     }
 }
 
+interface TabShownEvent {
+    target: EventTarget;
+    relatedTarget: EventTarget;
+}
+
 interface JQuerySubset {
     modal(options?: any): void;
+    on(name: 'shown.bs.tab', handler: (event: TabShownEvent) => void): void;
 }
 
 type Matrix4D = Float32Array;

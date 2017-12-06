@@ -21,7 +21,7 @@ import PathfinderBufferTexture from "./buffer-texture";
 import {CameraView, PerspectiveCamera} from "./camera";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
-import {PathTransformBuffers, Renderer} from './renderer';
+import {BaseRenderer, PathTransformBuffers} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from "./ssaa-strategy";
 import {BUILTIN_FONT_URI, ExpandedMeshData} from "./text";
@@ -359,7 +359,7 @@ class ThreeDView extends DemoView implements TextRenderContext {
     newTimingsReceived(timings: Timings): void {}
 }
 
-class ThreeDRenderer extends Renderer {
+class ThreeDRenderer extends BaseRenderer {
     renderContext: ThreeDView;
 
     camera: PerspectiveCamera;

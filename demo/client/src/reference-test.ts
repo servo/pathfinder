@@ -20,7 +20,7 @@ import {SUBPIXEL_GRANULARITY} from './atlas';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from './meshes';
-import {PathTransformBuffers, Renderer} from "./renderer";
+import {BaseRenderer, PathTransformBuffers} from "./renderer";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_FONT_URI, computeStemDarkeningAmount, ExpandedMeshData, GlyphStore} from "./text";
@@ -465,7 +465,7 @@ class ReferenceTestView extends DemoView {
     }
 }
 
-class ReferenceTestRenderer extends Renderer {
+class ReferenceTestRenderer extends BaseRenderer {
     renderContext: ReferenceTestView;
     camera: OrthographicCamera;
 

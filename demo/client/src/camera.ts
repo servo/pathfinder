@@ -123,9 +123,7 @@ export class OrthographicCamera extends Camera {
         this.scaleBounds = !!options.scaleBounds;
         this.ignoreBounds = !!options.ignoreBounds;
 
-        this.translation = glmatrix.vec2.create();
-        this.scale = 1.0;
-        this.rotationAngle = 0.0;
+        this.reset();
 
         this._bounds = glmatrix.vec4.create();
 
@@ -137,6 +135,12 @@ export class OrthographicCamera extends Camera {
         this.onPan = null;
         this.onZoom = null;
         this.onRotate = null;
+    }
+
+    reset(): void {
+        this.translation = glmatrix.vec2.create();
+        this.scale = 1.0;
+        this.rotationAngle = 0.0;
     }
 
     onWheel(event: MouseWheelEvent): void {
@@ -174,6 +178,13 @@ export class OrthographicCamera extends Camera {
         this.scale = Math.min(this.canvas.width / width, this.canvas.height / height);
 
         // Center.
+        this.center();
+    }
+
+    center(): void {
+        const upperLeft = glmatrix.vec2.clone([this._bounds[0], this._bounds[1]]);
+        const lowerRight = glmatrix.vec2.clone([this._bounds[2], this._bounds[3]]);
+
         this.translation = glmatrix.vec2.create();
         glmatrix.vec2.lerp(this.translation, upperLeft, lowerRight, 0.5);
         glmatrix.vec2.scale(this.translation, this.translation, -this.scale);
@@ -269,7 +280,7 @@ export class OrthographicCamera extends Camera {
     }
 
     private get centerPoint(): glmatrix.vec2 {
-        return glmatrix.vec2.fromValues(this.canvas.width * 0.5, this.canvas.height * 0.5);
+        return glmatrix.vec2.clone([this.canvas.width * 0.5, this.canvas.height * 0.5]);
     }
 
     get bounds(): glmatrix.vec4 {

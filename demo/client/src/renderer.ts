@@ -36,7 +36,43 @@ export interface PathTransformBuffers<T> {
     ext: T;
 }
 
-export abstract class Renderer {
+export interface Renderer {
+    readonly renderContext: RenderContext;
+    readonly pathTransformBufferTextures: Array<PathTransformBuffers<PathfinderBufferTexture>>;
+    readonly meshes: PathfinderMeshBuffers[] | null;
+    readonly meshData: PathfinderMeshData[] | null;
+    readonly usesSTTransform: boolean;
+    readonly emboldenAmount: glmatrix.vec2;
+    readonly bgColor: glmatrix.vec4;
+    readonly fgColor: glmatrix.vec4 | null;
+    readonly backgroundColor: glmatrix.vec4;
+    readonly meshesAttached: boolean;
+    readonly usesIntermediateRenderTargets: boolean;
+    readonly destFramebuffer: WebGLFramebuffer | null;
+    readonly destAllocatedSize: glmatrix.vec2;
+    readonly destUsedSize: glmatrix.vec2;
+    attachMeshes(meshes: PathfinderMeshData[]): void;
+    pathBoundingRects(objectIndex: number): Float32Array;
+    setHintsUniform(uniforms: UniformMap): void;
+    setPathColorsUniform(objectIndex: number, uniforms: UniformMap, textureUnit: number): void;
+    setEmboldenAmountUniform(objectIndex: number, uniforms: UniformMap): void;
+    setAntialiasingOptions(aaType: AntialiasingStrategyName,
+                           aaLevel: number,
+                           aaOptions: AAOptions):
+                           void;
+    redraw(): void;
+    canvasResized(): void;
+    meshIndexForObject(objectIndex: number): number;
+    pathRangeForObject(objectIndex: number): Range;
+    renderTaskTypeForObject(objectIndex: number): RenderTaskType;
+    compositingOperationForObject(objectIndex: number): CompositingOperation | null;
+    setTransformAndTexScaleUniformsForDest(uniforms: UniformMap): void;
+    setTransformSTAndTexScaleUniformsForDest(uniforms: UniformMap): void;
+    setTransformUniform(uniforms: UniformMap, objectIndex: number): void;
+    setTransformSTUniform(uniforms: UniformMap, objectIndex: number): void;
+}
+
+export abstract class BaseRenderer implements Renderer {
     readonly renderContext: RenderContext;
 
     readonly pathTransformBufferTextures: Array<PathTransformBuffers<PathfinderBufferTexture>>;
@@ -240,7 +276,7 @@ export abstract class Renderer {
         gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
-    setTransformUniform(uniforms: UniformMap, objectIndex: number) {
+    setTransformUniform(uniforms: UniformMap, objectIndex: number): void {
         const transform = glmatrix.mat4.clone(this.worldTransform);
         glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
         this.renderContext.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);

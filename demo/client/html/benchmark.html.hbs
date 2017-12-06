@@ -8,7 +8,9 @@
     </head>
     <body class="pf-unscrollable">
         {{>partials/navbar.html isTool=true}}
-        <canvas id="pf-canvas" class="pf-draggable" width="400" height="300"></canvas>
+        <canvas id="pf-canvas" class="pf-maximized-canvas pf-draggable" width="400"
+         height="300"></canvas>
+        <svg id="pf-svg" xmlns="http://www.w3.org/2000/svg" width="400" height="300"></svg>
         <div class="modal fade" id="pf-benchmark-modal" tabindex="-1" role="dialog"
          aria-labelledby="pf-benchmark-label" aria-hidden="false">
             <div class="modal-dialog" role="document">
@@ -21,22 +23,44 @@
                         </button>
                     </div>
                     <div class="modal-body">
-                        <form class="form">
-                            <div class="form-group">
-                                <label for="pf-aa-level-select"
-                                class="col-form-label mr-sm-2">Antialiasing</label>
-                                <select id="pf-aa-level-select"
-                                class="form-control custom-select mr-sm-3">
-                                    <option value="none" selected>None</option>
-                                    <option value="ssaa-2">2&times;SSAA</option>
-                                    <option value="ssaa-4">4&times;SSAA</option>
-                                    <option value="xcaa">XCAA</option>
-                                </select>
+                        <ul class="nav nav-tabs" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active" id="pf-benchmark-text-tab"
+                                 data-toggle="tab" href="#pf-benchmark-text" role="tab"
+                                 aria-controls="pf-benchmark-text" aria-selected="true">Text</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" id="pf-benchmark-svg-tab" data-toggle="tab"
+                                 href="#pf-benchmark-svg" role="tab"
+                                 aria-controls="pf-benchmark-svg" aria-selected="false">SVG</a>
+                            </li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane show active pt-3" id="pf-benchmark-text"
+                             role="tabpanel" aria-labelledby="pf-benchmark-text-tab">
+                                <form class="form" id="pf-benchmark-text-form">
+                                    <div class="form-group" id="pf-aa-level-form-group">
+                                        <label for="pf-aa-level-select"
+                                        class="col-form-label mr-sm-2">Antialiasing</label>
+                                        <select id="pf-aa-level-select"
+                                        class="form-control custom-select mr-sm-3">
+                                            <option value="none" selected>None</option>
+                                            <option value="ssaa-2">2&times;SSAA</option>
+                                            <option value="ssaa-4">4&times;SSAA</option>
+                                            <option value="xcaa">XCAA</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group row justify-content-between">
+                                        {{>partials/switch.html id="pf-subpixel-aa" title="Subpixel AA"}}
+                                    </div>
+                                </form>
                             </div>
-                            <div class="form-group row justify-content-between">
-                                {{>partials/switch.html id="pf-subpixel-aa" title="Subpixel AA"}}
+                            <div class="tab-pane pt-3" id="pf-benchmark-svg"
+                             role="tabpanel" aria-labelledby="pf-benchmark-svg-tab">
+                                <form class="form" id="pf-benchmark-svg-form">
+                                </form>
                             </div>
-                        </form>
+                        </div>
                         <div class="d-flex justify-content-end">
                             <button id="pf-run-benchmark-button" type="button"
                             class="btn btn-primary">
@@ -67,7 +91,7 @@
                             <span id="pf-benchmark-results-partitioning-time">0</span> µs/glyph
                         </div>
                         <table class="table table-striped">
-                            <thead class="thead-default">
+                            <thead class="thead-default" id="pf-benchmark-results-table-header">
                                 <tr><th>Font size (px)</th><th>GPU time per glyph (µs)</th></tr>
                             </thead>
                             <tbody id="pf-benchmark-results-table-body"></tbody>

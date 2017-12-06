@@ -19,9 +19,11 @@ import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
-import {PathTransformBuffers, Renderer} from './renderer';
+import {BaseRenderer, PathTransformBuffers} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
+import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
+import {SVGRenderer} from './svg-renderer';
 import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFrame} from "./text";
 import {computeStemDarkeningAmount, TextRun} from "./text";
 import {assert, lerp, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
@@ -30,7 +32,8 @@ import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
-const FONT: string = 'nimbus-sans';
+const DEFAULT_FONT: string = 'nimbus-sans';
+const DEFAULT_SVG_FILE: string = 'tiger';
 
 const TEXT_COLOR: number[] = [0, 0, 0, 255];
 
@@ -47,22 +50,48 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     xcaa: AdaptiveMonochromeXCAAStrategy,
 };
 
+interface BenchmarkModeMap<T> {
+    text: T;
+    svg: T;
+}
+
+type BenchmarkMode = 'text' | 'svg';
+
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
     xcaa: typeof AdaptiveMonochromeXCAAStrategy;
 }
 
+const DISPLAY_HEADER_LABELS: BenchmarkModeMap<string[]> = {
+    svg: ["Size (px)", "GPU time (ms)"],
+    text: ["Font size (px)", "GPU time per glyph (µs)"],
+};
+
 class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     font: PathfinderFont | null;
     textRun: TextRun | null;
 
-    protected readonly defaultFile: string = FONT;
-    protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
+    svgLoader: SVGLoader;
+
+    mode: BenchmarkMode;
+
+    protected get defaultFile(): string {
+        if (this.mode === 'text')
+            return DEFAULT_FONT;
+        return DEFAULT_SVG_FILE;
+    }
+
+    protected get builtinFileURI(): string {
+        if (this.mode === 'text')
+            return BUILTIN_FONT_URI;
+        return BUILTIN_SVG_URI;
+    }
 
     private optionsModal: HTMLDivElement;
 
     private resultsModal: HTMLDivElement;
+    private resultsTableHeader: HTMLTableSectionElement;
     private resultsTableBody: HTMLTableSectionElement;
     private resultsPartitioningTimeLabel: HTMLSpanElement;
 
@@ -79,11 +108,16 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     start(): void {
         super.start();
 
+        this.mode = 'text';
+
         this.optionsModal = unwrapNull(document.getElementById('pf-benchmark-modal')) as
             HTMLDivElement;
 
         this.resultsModal = unwrapNull(document.getElementById('pf-benchmark-results-modal')) as
             HTMLDivElement;
+        this.resultsTableHeader =
+            unwrapNull(document.getElementById('pf-benchmark-results-table-header')) as
+            HTMLTableSectionElement;
         this.resultsTableBody =
             unwrapNull(document.getElementById('pf-benchmark-results-table-body')) as
             HTMLTableSectionElement;
@@ -104,12 +138,56 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         const runBenchmarkButton = unwrapNull(document.getElementById('pf-run-benchmark-button'));
         runBenchmarkButton.addEventListener('click', () => this.runBenchmark(), false);
 
+        const aaLevelFormGroup = unwrapNull(document.getElementById('pf-aa-level-form-group')) as
+            HTMLDivElement;
+        const benchmarkTextForm = unwrapNull(document.getElementById('pf-benchmark-text-form')) as
+            HTMLFormElement;
+        const benchmarkSVGForm = unwrapNull(document.getElementById('pf-benchmark-svg-form')) as
+            HTMLFormElement;
+
         window.jQuery(this.optionsModal).modal();
+
+        const benchmarkTextTab = document.getElementById('pf-benchmark-text-tab') as
+            HTMLAnchorElement;
+        const benchmarkSVGTab = document.getElementById('pf-benchmark-svg-tab') as
+            HTMLAnchorElement;
+        window.jQuery(benchmarkTextTab).on('shown.bs.tab', event => {
+            this.mode = 'text';
+            if (aaLevelFormGroup.parentElement != null)
+                aaLevelFormGroup.parentElement.removeChild(aaLevelFormGroup);
+            benchmarkTextForm.insertBefore(aaLevelFormGroup, benchmarkTextForm.firstChild);
+            this.loadInitialFile(this.builtinFileURI);
+        });
+        window.jQuery(benchmarkSVGTab).on('shown.bs.tab', event => {
+            this.mode = 'svg';
+            if (aaLevelFormGroup.parentElement != null)
+                aaLevelFormGroup.parentElement.removeChild(aaLevelFormGroup);
+            benchmarkSVGForm.insertBefore(aaLevelFormGroup, benchmarkSVGForm.firstChild);
+            this.loadInitialFile(this.builtinFileURI);
+        });
 
         this.loadInitialFile(this.builtinFileURI);
     }
 
     protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
+        switch (this.mode) {
+        case 'text':
+            this.textFileLoaded(fileData, builtinName);
+            return;
+        case 'svg':
+            this.svgFileLoaded(fileData, builtinName);
+            return;
+        }
+    }
+
+    protected createView(gammaLUT: HTMLImageElement,
+                         commonShaderSource: string,
+                         shaderSources: ShaderMap<ShaderProgramSource>):
+                         BenchmarkTestView {
+        return new BenchmarkTestView(this, gammaLUT, commonShaderSource, shaderSources);
+    }
+
+    private textFileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
         const font = new PathfinderFont(fileData, builtinName);
         this.font = font;
 
@@ -135,16 +213,22 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             this.expandedMeshes = expandedMeshes;
 
             this.view.then(view => {
+                view.recreateRenderer();
                 view.attachMeshes([expandedMeshes.meshes]);
             });
         });
     }
 
-    protected createView(gammaLUT: HTMLImageElement,
-                         commonShaderSource: string,
-                         shaderSources: ShaderMap<ShaderProgramSource>):
-                         BenchmarkTestView {
-        return new BenchmarkTestView(this, gammaLUT, commonShaderSource, shaderSources);
+    private svgFileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
+        this.svgLoader = new SVGLoader;
+        this.svgLoader.loadFile(fileData);
+        this.svgLoader.partition().then(meshes => {
+            this.view.then(view => {
+                view.recreateRenderer();
+                view.attachMeshes([meshes]);
+                view.initCameraBounds(this.svgLoader.svgBounds);
+            });
+        });
     }
 
     private reset(): void {
@@ -206,15 +290,26 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     }
 
     private showResults(): void {
+        while (this.resultsTableHeader.lastChild != null)
+            this.resultsTableHeader.removeChild(this.resultsTableHeader.lastChild);
         while (this.resultsTableBody.lastChild != null)
             this.resultsTableBody.removeChild(this.resultsTableBody.lastChild);
+
+        const tr = document.createElement('tr');
+        for (const headerLabel of DISPLAY_HEADER_LABELS[this.mode]) {
+            const th = document.createElement('th');
+            th.appendChild(document.createTextNode(headerLabel));
+            tr.appendChild(th);
+        }
+        this.resultsTableHeader.appendChild(tr);
 
         for (const elapsedTime of this.elapsedTimes) {
             const tr = document.createElement('tr');
             const sizeTH = document.createElement('th');
             const timeTD = document.createElement('td');
             sizeTH.appendChild(document.createTextNode("" + elapsedTime.size));
-            timeTD.appendChild(document.createTextNode("" + elapsedTime.time));
+            const time = this.mode === 'svg' ? elapsedTime.timeInMS : elapsedTime.time;
+            timeTD.appendChild(document.createTextNode("" + time));
             sizeTH.scope = 'row';
             tr.appendChild(sizeTH);
             tr.appendChild(timeTD);
@@ -246,7 +341,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 }
 
 class BenchmarkTestView extends DemoView {
-    readonly renderer: BenchmarkRenderer;
+    renderer: BenchmarkTextRenderer | BenchmarkSVGRenderer;
+
     readonly appController: BenchmarkAppController;
 
     renderingPromiseCallback: ((time: number) => void) | null;
@@ -256,7 +352,14 @@ class BenchmarkTestView extends DemoView {
     }
 
     set pixelsPerEm(newPPEM: number) {
-        this.renderer.pixelsPerEm = newPPEM;
+        if (this.renderer instanceof BenchmarkTextRenderer) {
+            this.renderer.pixelsPerEm = newPPEM;
+        } else if (this.renderer instanceof BenchmarkSVGRenderer) {
+            const camera = this.renderer.camera;
+            camera.reset();
+            camera.zoom(newPPEM / 100.0);
+            camera.center();
+        }
     }
 
     constructor(appController: BenchmarkAppController,
@@ -264,24 +367,40 @@ class BenchmarkTestView extends DemoView {
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
         super(gammaLUT, commonShaderSource, shaderSources);
-
         this.appController = appController;
-        this.renderer = new BenchmarkRenderer(this);
-
+        this.recreateRenderer();
         this.resizeToFit(true);
+    }
+
+    recreateRenderer(): void {
+        switch (this.appController.mode) {
+        case 'svg':
+            this.renderer = new BenchmarkSVGRenderer(this);
+            break;
+        case 'text':
+            this.renderer = new BenchmarkTextRenderer(this);
+            break;
+        }
+    }
+
+    initCameraBounds(bounds: glmatrix.vec4): void {
+        if (this.renderer instanceof BenchmarkSVGRenderer)
+            this.renderer.initCameraBounds(bounds);
     }
 
     protected renderingFinished(): void {
         if (this.renderingPromiseCallback == null)
             return;
 
-        const glyphCount = unwrapNull(this.appController.textRun).glyphIDs.length;
-        const usPerGlyph = this.renderer.lastTimings.rendering * 1000.0 / glyphCount;
-        this.renderingPromiseCallback(usPerGlyph);
+        const appController = this.appController;
+        let time = this.renderer.lastTimings.rendering * 1000.0;
+        if (appController.mode === 'text')
+            time /= unwrapNull(appController.textRun).glyphIDs.length;
+        this.renderingPromiseCallback(time);
     }
 }
 
-class BenchmarkRenderer extends Renderer {
+class BenchmarkTextRenderer extends BaseRenderer {
     renderContext: BenchmarkTestView;
 
     camera: OrthographicCamera;
@@ -459,6 +578,22 @@ class BenchmarkRenderer extends Renderer {
     }
 }
 
+class BenchmarkSVGRenderer extends SVGRenderer {
+    renderContext: BenchmarkTestView;
+
+    protected get loader(): SVGLoader {
+        return this.renderContext.appController.svgLoader;
+    }
+
+    protected get canvas(): HTMLCanvasElement {
+        return this.renderContext.canvas;
+    }
+
+    constructor(renderContext: BenchmarkTestView) {
+        super(renderContext);
+    }
+}
+
 function computeMedian(values: number[]): number | null {
     if (values.length === 0)
         return null;
@@ -480,6 +615,10 @@ class ElapsedTime {
     get time(): number {
         const median = computeMedian(this.times);
         return median == null ? 0.0 : median;
+    }
+
+    get timeInMS(): number {
+        return this.time / 1000.0;
     }
 }
 

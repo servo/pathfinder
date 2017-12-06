@@ -787,7 +787,8 @@ export abstract class ECAAStrategy extends XCAAStrategy {
                                                  this.curveShaderProgramNames[1]);
     }
 
-    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap, objectIndex: number): void {
+    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap, objectIndex: number):
+                            void {
         super.setAAUniforms(renderer, uniforms, objectIndex);
         renderer.setEmboldenAmountUniform(objectIndex, uniforms);
     }

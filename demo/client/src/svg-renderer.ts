@@ -16,7 +16,7 @@ import {OrthographicCamera} from "./camera";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from './meshes';
 import {CompositingOperation, RenderTaskType} from './render-task';
-import {PathTransformBuffers, Renderer} from "./renderer";
+import {BaseRenderer, PathTransformBuffers} from "./renderer";
 import {ShaderMap} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
 import {SVGLoader} from './svg-loader';
@@ -36,7 +36,7 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     xcaa: ECAAMulticolorStrategy,
 };
 
-export abstract class SVGRenderer extends Renderer {
+export abstract class SVGRenderer extends BaseRenderer {
     renderContext: RenderContext;
 
     camera: OrthographicCamera;
