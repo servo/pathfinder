@@ -245,12 +245,7 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         this.fpsLabel.classList.remove('invisible');
     }
 
-    protected abstract createView(gammaLUT: HTMLImageElement,
-                                  commonShaderSource: string,
-                                  shaderSources: ShaderMap<ShaderProgramSource>):
-                                  View;
-
-    protected updateAALevel(): Promise<void> {
+    updateAALevel(): Promise<void> {
         let aaType: AntialiasingStrategyName, aaLevel: number;
         if (this.aaLevelSelect != null) {
             const selectedOption = this.aaLevelSelect.selectedOptions[0];
@@ -279,6 +274,11 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             view.setAntialiasingOptions(aaType, aaLevel, aaOptions as AAOptions);
         });
     }
+
+    protected abstract createView(gammaLUT: HTMLImageElement,
+                                  commonShaderSource: string,
+                                  shaderSources: ShaderMap<ShaderProgramSource>):
+                                  View;
 
     private initPopup(cardID: string, popupButtonID: string, closeButtonID: string): void {
         const card = document.getElementById(cardID) as HTMLElement | null;

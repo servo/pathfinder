@@ -164,14 +164,14 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             if (aaLevelFormGroup.parentElement != null)
                 aaLevelFormGroup.parentElement.removeChild(aaLevelFormGroup);
             benchmarkTextForm.insertBefore(aaLevelFormGroup, benchmarkTextForm.firstChild);
-            this.loadInitialFile(this.builtinFileURI);
+            this.modeChanged();
         });
         window.jQuery(benchmarkSVGTab).on('shown.bs.tab', event => {
             this.mode = 'svg';
             if (aaLevelFormGroup.parentElement != null)
                 aaLevelFormGroup.parentElement.removeChild(aaLevelFormGroup);
             benchmarkSVGForm.insertBefore(aaLevelFormGroup, benchmarkSVGForm.firstChild);
-            this.loadInitialFile(this.builtinFileURI);
+            this.modeChanged();
         });
 
         this.loadInitialFile(this.builtinFileURI);
@@ -193,6 +193,15 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
                          shaderSources: ShaderMap<ShaderProgramSource>):
                          BenchmarkTestView {
         return new BenchmarkTestView(this, gammaLUT, commonShaderSource, shaderSources);
+    }
+
+    private modeChanged(): void {
+        this.loadInitialFile(this.builtinFileURI);
+        if (this.aaLevelSelect != null)
+            this.aaLevelSelect.selectedIndex = 0;
+        if (this.subpixelAARadioButton != null)
+            this.subpixelAARadioButton.checked = false;
+        this.updateAALevel();
     }
 
     private textFileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
