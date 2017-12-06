@@ -358,10 +358,6 @@ vec4 clipLineToPixelRow(vec2 p0, vec2 dP, float pixelCenterY, out float outPixel
     return vec4(p0 + dP * tY.x, dP * (tY.y - tY.x));
 }
 
-bool lineDoesNotPassThroughPixel(vec2 t) {
-    return t.x >= t.y;
-}
-
 /// Computes the area of the polygon covering the pixel with the given boundaries.
 ///
 /// The line must run left-to-right and must already be clipped to the left and right sides of the
@@ -383,7 +379,11 @@ float computeCoverage(vec2 p0X, vec2 dPX, float pixelCenterY, float winding) {
     //
     // This should be worth a branch because it's very common for fragment blocks to all hit this
     // path.
-    if (isNearZero(dP.x) && isNearZero(dP.y))
+    //
+    // The variable is required to work around a bug in the macOS Nvidia drivers.
+    // Without moving the condition in a variable, the early return is ignored. See #51.
+    bool lineDoesNotPassThroughPixel = isNearZero(dP.x) && isNearZero(dP.y);
+    if (lineDoesNotPassThroughPixel)
         return p0X.y < pixelTop ? winding * dPX.x : 0.0;
 
     // Calculate points A0-A2.
