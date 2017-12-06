@@ -137,12 +137,6 @@ export class OrthographicCamera extends Camera {
         this.onRotate = null;
     }
 
-    reset(): void {
-        this.translation = glmatrix.vec2.create();
-        this.scale = 1.0;
-        this.rotationAngle = 0.0;
-    }
-
     onWheel(event: MouseWheelEvent): void {
         if (this.canvas == null)
             throw new Error("onWheel() with no canvas?!");
@@ -169,15 +163,8 @@ export class OrthographicCamera extends Camera {
     }
 
     zoomToFit(): void {
-        const upperLeft = glmatrix.vec2.clone([this._bounds[0], this._bounds[1]]);
-        const lowerRight = glmatrix.vec2.clone([this._bounds[2], this._bounds[3]]);
-        const width = this._bounds[2] - this._bounds[0];
-        const height = Math.abs(this._bounds[1] - this._bounds[3]);
-
-        // Scale appropriately.
-        this.scale = Math.min(this.canvas.width / width, this.canvas.height / height);
-
-        // Center.
+        const size = this.objectSize();
+        this.scale = Math.min(this.canvas.width / size[0], this.canvas.height / size[1]);
         this.center();
     }
 
@@ -190,6 +177,14 @@ export class OrthographicCamera extends Camera {
         glmatrix.vec2.scale(this.translation, this.translation, -this.scale);
         this.translation[0] += this.canvas.width * 0.5;
         this.translation[1] += this.canvas.height * 0.5;
+    }
+
+    zoomToSize(newSize: number): void {
+        this.reset();
+
+        const size = this.objectSize();
+        const length = Math.max(size[0], size[1]);
+        this.zoom(newSize / length);
     }
 
     zoom(scale: number): void {
@@ -209,6 +204,20 @@ export class OrthographicCamera extends Camera {
 
         if (this.onRotate != null)
             this.onRotate();
+    }
+
+    private objectSize(): glmatrix.vec2 {
+        const upperLeft = glmatrix.vec2.clone([this._bounds[0], this._bounds[1]]);
+        const lowerRight = glmatrix.vec2.clone([this._bounds[2], this._bounds[3]]);
+        const width = this._bounds[2] - this._bounds[0];
+        const height = Math.abs(this._bounds[1] - this._bounds[3]);
+        return glmatrix.vec2.clone([width, height]);
+    }
+
+    private reset(): void {
+        this.translation = glmatrix.vec2.create();
+        this.scale = 1.0;
+        this.rotationAngle = 0.0;
     }
 
     private onMouseDown(event: MouseEvent): void {

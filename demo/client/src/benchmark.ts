@@ -37,9 +37,6 @@ const DEFAULT_SVG_FILE: string = 'tiger';
 
 const TEXT_COLOR: number[] = [0, 0, 0, 255];
 
-const MIN_FONT_SIZE: number = 6;
-const MAX_FONT_SIZE: number = 200;
-
 // In milliseconds.
 const MIN_RUNTIME: number = 100;
 const MAX_RUNTIME: number = 3000;
@@ -63,9 +60,20 @@ interface AntialiasingStrategyTable {
     xcaa: typeof AdaptiveMonochromeXCAAStrategy;
 }
 
+interface TestParameter {
+    start: number;
+    stop: number;
+    step: number;
+}
+
 const DISPLAY_HEADER_LABELS: BenchmarkModeMap<string[]> = {
     svg: ["Size (px)", "GPU time (ms)"],
     text: ["Font size (px)", "GPU time per glyph (µs)"],
+};
+
+const TEST_SIZES: BenchmarkModeMap<TestParameter> = {
+    svg: { start: 64, stop: 2048, step: 16 },
+    text: { start: 6, stop: 200, step: 1 },
 };
 
 class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
@@ -99,7 +107,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     private baseMeshes: PathfinderMeshData;
     private expandedMeshes: ExpandedMeshData;
 
-    private pixelsPerEm: number;
+    private size: number;
     private currentRun: number;
     private startTime: number;
     private elapsedTimes: ElapsedTime[];
@@ -241,7 +249,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 
         this.reset();
         this.elapsedTimes = [];
-        this.pixelsPerEm = MIN_FONT_SIZE;
+        this.size = TEST_SIZES[this.mode].start;
         this.view.then(view => this.runOneBenchmarkTest(view));
     }
 
@@ -266,23 +274,23 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     private runOneBenchmarkTest(view: BenchmarkTestView): void {
         const renderedPromise = new Promise<number>((resolve, reject) => {
             view.renderingPromiseCallback = resolve;
-            view.pixelsPerEm = this.pixelsPerEm;
+            view.size = this.size;
         });
         renderedPromise.then(elapsedTime => {
             if (this.currentRun === 0)
-                this.elapsedTimes.push(new ElapsedTime(this.pixelsPerEm));
+                this.elapsedTimes.push(new ElapsedTime(this.size));
             unwrapUndef(_.last(this.elapsedTimes)).times.push(elapsedTime);
 
             this.currentRun++;
             if (this.runDone()) {
                 this.reset();
 
-                if (this.pixelsPerEm === MAX_FONT_SIZE) {
+                if (this.size >= TEST_SIZES[this.mode].stop) {
                     this.showResults();
                     return;
                 }
 
-                this.pixelsPerEm++;
+                this.size += TEST_SIZES[this.mode].step;
             }
 
             this.runOneBenchmarkTest(view);
@@ -320,9 +328,11 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     }
 
     private saveCSV(): void {
-        let output = "Font size,Time per glyph\n";
-        for (const elapsedTime of this.elapsedTimes)
-            output += `${elapsedTime.size},${elapsedTime.time}\n`;
+        let output = "Size,Time\n";
+        for (const elapsedTime of this.elapsedTimes) {
+            const time = this.mode === 'svg' ? elapsedTime.timeInMS : elapsedTime.time;
+            output += `${elapsedTime.size},${time}\n`;
+        }
 
         // https://stackoverflow.com/a/30832210
         const file = new Blob([output], {type: 'text/csv'});
@@ -351,13 +361,12 @@ class BenchmarkTestView extends DemoView {
         return this.renderer.camera;
     }
 
-    set pixelsPerEm(newPPEM: number) {
+    set size(newSize: number) {
         if (this.renderer instanceof BenchmarkTextRenderer) {
-            this.renderer.pixelsPerEm = newPPEM;
+            this.renderer.pixelsPerEm = newSize;
         } else if (this.renderer instanceof BenchmarkSVGRenderer) {
             const camera = this.renderer.camera;
-            camera.reset();
-            camera.zoom(newPPEM / 100.0);
+            camera.zoomToSize(newSize);
             camera.center();
         }
     }
