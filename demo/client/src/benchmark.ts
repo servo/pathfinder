@@ -19,7 +19,7 @@ import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from "./meshes";
-import {BaseRenderer, PathTransformBuffers} from './renderer';
+import {PathTransformBuffers, Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
@@ -400,7 +400,7 @@ class BenchmarkTestView extends DemoView {
     }
 }
 
-class BenchmarkTextRenderer extends BaseRenderer {
+class BenchmarkTextRenderer extends Renderer {
     renderContext: BenchmarkTestView;
 
     camera: OrthographicCamera;

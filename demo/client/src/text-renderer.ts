@@ -17,7 +17,7 @@ import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey, SUBPIXEL_GRANULARITY} from './a
 import {CameraView, OrthographicCamera} from './camera';
 import {createFramebuffer, createFramebufferDepthTexture, QUAD_ELEMENTS} from './gl-utils';
 import {UniformMap} from './gl-utils';
-import {BaseRenderer, PathTransformBuffers} from './renderer';
+import {PathTransformBuffers, Renderer} from './renderer';
 import {ShaderMap} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
 import {calculatePixelRectForGlyph, computeStemDarkeningAmount, GlyphStore, Hint} from "./text";
@@ -56,7 +56,7 @@ export interface TextRenderContext extends RenderContext {
     newTimingsReceived(timings: Timings): void;
 }
 
-export abstract class TextRenderer extends BaseRenderer {
+export abstract class TextRenderer extends Renderer {
     renderContext: TextRenderContext;
 
     camera: OrthographicCamera;
