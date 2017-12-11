@@ -82,19 +82,20 @@ export class Atlas {
         if (this._texture != null)
             return this._texture;
 
-        const texture = unwrapNull(renderContext.gl.createTexture());
+        const gl = renderContext.gl;
+        const texture = unwrapNull(gl.createTexture());
         this._texture = texture;
-        renderContext.gl.bindTexture(renderContext.gl.TEXTURE_2D, texture);
-        renderContext.gl.texImage2D(renderContext.gl.TEXTURE_2D,
-                                    0,
-                                    renderContext.colorAlphaFormat,
-                                    ATLAS_SIZE[0],
-                                    ATLAS_SIZE[1],
-                                    0,
-                                    renderContext.colorAlphaFormat,
-                                    renderContext.gl.UNSIGNED_BYTE,
-                                    null);
-        setTextureParameters(renderContext.gl, renderContext.gl.NEAREST);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D,
+                      0,
+                      gl.RGBA,
+                      ATLAS_SIZE[0],
+                      ATLAS_SIZE[1],
+                      0,
+                      gl.RGBA,
+                      gl.UNSIGNED_BYTE,
+                      null);
+        setTextureParameters(gl, gl.NEAREST);
 
         return texture;
     }

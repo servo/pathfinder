@@ -56,19 +56,11 @@ export default class SSAAStrategy extends AntialiasingStrategy {
                           this.destFramebufferSize,
                           this.supersampleScale);
 
-        this.supersampledColorTexture = unwrapNull(gl.createTexture());
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.supersampledColorTexture);
-        gl.texImage2D(gl.TEXTURE_2D,
-                      0,
-                      renderContext.colorAlphaFormat,
-                      this.supersampledFramebufferSize[0],
-                      this.supersampledFramebufferSize[1],
-                      0,
-                      renderContext.colorAlphaFormat,
-                      gl.UNSIGNED_BYTE,
-                      null);
-        setTextureParameters(gl, gl.LINEAR);
+        this.supersampledColorTexture =
+            createFramebufferColorTexture(gl,
+                                          this.supersampledFramebufferSize,
+                                          renderContext.colorAlphaFormat,
+                                          gl.LINEAR);
 
         this.supersampledDepthTexture =
             createFramebufferDepthTexture(gl, this.supersampledFramebufferSize);

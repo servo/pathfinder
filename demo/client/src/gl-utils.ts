@@ -9,9 +9,10 @@
 // except according to those terms.
 
 import * as glmatrix from 'gl-matrix';
+import * as _ from 'lodash';
 
 import {assert, UINT32_SIZE, unwrapNull} from './utils';
-import {DemoView} from './view';
+import {ColorAlphaFormat, DemoView} from './view';
 
 export type WebGLVertexArrayObject = any;
 
@@ -47,25 +48,30 @@ export const QUAD_ELEMENTS: Uint8Array = new Uint8Array([2, 0, 1, 1, 3, 2]);
 
 export function createFramebufferColorTexture(gl: WebGLRenderingContext,
                                               size: glmatrix.vec2,
-                                              colorAlphaFormat: GLenum):
+                                              colorAlphaFormat: ColorAlphaFormat,
+                                              filter?: number):
                                               WebGLTexture {
     // Firefox seems to have a bug whereby textures don't get marked as initialized when cleared
     // if they're anything other than the first attachment of an FBO. To work around this, supply
     // zero data explicitly when initializing the texture.
-    const zeroes = new Uint8Array(size[0] * size[1] * UINT32_SIZE);
+    let format, type, internalFormat, bitDepth, zeroes;
+    if (colorAlphaFormat === 'RGBA8') {
+        format = internalFormat = gl.RGBA;
+        type = gl.UNSIGNED_BYTE;
+        bitDepth = 32;
+        zeroes = new Uint8Array(size[0] * size[1] * 4);
+    } else {
+        format = internalFormat = gl.RGBA;
+        type = gl.UNSIGNED_SHORT_5_5_5_1;
+        bitDepth = 16;
+        zeroes = new Uint16Array(size[0] * size[1] * 4);
+    }
+
     const texture = unwrapNull(gl.createTexture());
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texImage2D(gl.TEXTURE_2D,
-                  0,
-                  colorAlphaFormat,
-                  size[0],
-                  size[1],
-                  0,
-                  colorAlphaFormat,
-                  gl.UNSIGNED_BYTE,
-                  zeroes);
-    setTextureParameters(gl, gl.NEAREST);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, size[0], size[1], 0, format, type, zeroes);
+    setTextureParameters(gl, _.defaultTo(filter, gl.NEAREST));
     return texture;
 }
 

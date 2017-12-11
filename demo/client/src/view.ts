@@ -46,6 +46,8 @@ export interface Timings {
     rendering: number;
 }
 
+export type ColorAlphaFormat = 'RGBA8' | 'RGB5_A1';
+
 declare class WebGLQuery {}
 
 export abstract class PathfinderView {
@@ -157,8 +159,10 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     meshes: PathfinderMeshBuffers[];
     meshData: PathfinderMeshData[];
 
-    get colorAlphaFormat(): GLenum {
-        return this.gl.RGBA;
+    get colorAlphaFormat(): ColorAlphaFormat {
+        // On macOS, RGBA framebuffers seem to cause driver stalls when switching between rendering
+        // and texturing. Work around this by using RGB5A1 instead.
+        return navigator.platform === 'MacIntel' ? 'RGB5_A1' : 'RGBA8';
     }
 
     get renderContext(): RenderContext {
@@ -360,7 +364,7 @@ export interface RenderContext {
     readonly timerQueryExt: EXTDisjointTimerQuery;
     readonly vertexArrayObjectExt: OESVertexArrayObject;
 
-    readonly colorAlphaFormat: GLenum;
+    readonly colorAlphaFormat: ColorAlphaFormat;
 
     readonly shaderPrograms: ShaderMap<PathfinderShaderProgram>;
     readonly gammaLUT: HTMLImageElement;
