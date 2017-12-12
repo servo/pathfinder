@@ -204,14 +204,14 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         const tileInfo = this.tileInfoForPass(pass);
         const usedSize = renderer.destUsedSize;
         const transform = glmatrix.mat4.create();
-        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 1.0]);
+        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
         glmatrix.mat4.scale(transform, transform, [tileInfo.size[0], tileInfo.size[1], 1.0]);
         glmatrix.mat4.translate(transform, transform, [
             -tileInfo.position[0] / tileInfo.size[0] * 2.0,
             -tileInfo.position[1] / tileInfo.size[1] * 2.0,
             0.0,
         ]);
-        glmatrix.mat4.translate(transform, transform, [1.0, 1.0, 1.0]);
+        glmatrix.mat4.translate(transform, transform, [1.0, 1.0, 0.0]);
         return transform;
     }
 
