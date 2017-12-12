@@ -10,7 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {AntialiasingStrategy, DirectRenderingMode, SubpixelAAType} from './aa-strategy';
+import {AntialiasingStrategy, DirectRenderingMode, SubpixelAAType, TileInfo} from './aa-strategy';
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, setTextureParameters} from './gl-utils';
 import {Renderer} from './renderer';
@@ -18,6 +18,16 @@ import {unwrapNull} from './utils';
 import {DemoView} from './view';
 
 export default class SSAAStrategy extends AntialiasingStrategy {
+    get passCount(): number {
+        switch (this.level) {
+        case 16:
+            return 4;
+        case 8:
+            return 2;
+        }
+        return 1;
+    }
+
     private level: number;
     private subpixelAA: SubpixelAAType;
 
@@ -159,7 +169,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
     resolveAAForObject(renderer: Renderer): void {}
 
-    resolve(renderer: Renderer): void {
+    resolve(pass: number, renderer: Renderer): void {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
@@ -184,9 +194,33 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         gl.uniform2i(resolveProgram.uniforms.uSourceDimensions,
                      this.supersampledFramebufferSize[0],
                      this.supersampledFramebufferSize[1]);
-        renderer.setTransformAndTexScaleUniformsForDest(resolveProgram.uniforms);
+        const tileInfo = this.tileInfoForPass(pass);
+        renderer.setTransformAndTexScaleUniformsForDest(resolveProgram.uniforms, tileInfo);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
+    }
+
+    worldTransformForPass(renderer: Renderer, pass: number): glmatrix.mat4 {
+        const tileInfo = this.tileInfoForPass(pass);
+        const usedSize = renderer.destUsedSize;
+        const transform = glmatrix.mat4.create();
+        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 1.0]);
+        glmatrix.mat4.scale(transform, transform, [tileInfo.size[0], tileInfo.size[1], 1.0]);
+        glmatrix.mat4.translate(transform, transform, [
+            -tileInfo.position[0] / tileInfo.size[0] * 2.0,
+            -tileInfo.position[1] / tileInfo.size[1] * 2.0,
+            0.0,
+        ]);
+        glmatrix.mat4.translate(transform, transform, [1.0, 1.0, 1.0]);
+        return transform;
+    }
+
+    private tileInfoForPass(pass: number): TileInfo {
+        const tileSize = this.tileSize;
+        return {
+            position: glmatrix.vec2.clone([pass % tileSize[0], Math.floor(pass / tileSize[0])]),
+            size: tileSize,
+        };
     }
 
     get directRenderingMode(): DirectRenderingMode {
@@ -195,6 +229,16 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
     private get supersampleScale(): glmatrix.vec2 {
         return glmatrix.vec2.clone([this.subpixelAA !== 'none' ? 3 : 2, this.level === 2 ? 1 : 2]);
+    }
+
+    private get tileSize(): glmatrix.vec2 {
+        switch (this.level) {
+        case 16:
+            return glmatrix.vec2.clone([2.0, 2.0]);
+        case 8:
+            return glmatrix.vec2.clone([2.0, 1.0]);
+        }
+        return glmatrix.vec2.clone([1.0, 1.0]);
     }
 
     private usedSupersampledFramebufferSize(renderer: Renderer): glmatrix.vec2 {

@@ -36,6 +36,10 @@ const DIRECTIONS: Direction[] = ['upper', 'lower'];
 export abstract class XCAAStrategy extends AntialiasingStrategy {
     abstract readonly directRenderingMode: DirectRenderingMode;
 
+    get passCount(): number {
+        return 1;
+    }
+
     protected abstract get usesDilationTransforms(): boolean;
 
     protected pathBoundsBufferTexture: PathfinderBufferTexture;
@@ -180,7 +184,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         compositingOperation.composite(renderer, objectIndex, this.renderTargetColorTextures);
     }
 
-    resolve(renderer: Renderer): void {}
+    resolve(pass: number, renderer: Renderer): void {}
 
     get transform(): glmatrix.mat4 {
         return glmatrix.mat4.create();
@@ -230,7 +234,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         if (this.usesDilationTransforms)
             renderer.setTransformSTUniform(uniforms, 0);
         else
-            renderer.setTransformUniform(uniforms, 0);
+            renderer.setTransformUniform(uniforms, 0, 0);
 
         gl.uniform2i(uniforms.uFramebufferSize,
                      this.supersampledFramebufferSize[0],
@@ -1134,6 +1138,10 @@ export class AdaptiveMonochromeXCAAStrategy implements AntialiasingStrategy {
         return 'none';
     }
 
+    get passCount(): number {
+        return 1;
+    }
+
     constructor(level: number, subpixelAA: SubpixelAAType) {
         this.mcaaStrategy = new MCAAMonochromeStrategy(level, subpixelAA);
         this.ecaaStrategy = new ECAAMonochromeStrategy(level, subpixelAA);
@@ -1182,8 +1190,12 @@ export class AdaptiveMonochromeXCAAStrategy implements AntialiasingStrategy {
         this.getAppropriateStrategy(renderer).resolveAAForObject(renderer, objectIndex);
     }
 
-    resolve(renderer: Renderer): void {
-        this.getAppropriateStrategy(renderer).resolve(renderer);
+    resolve(pass: number, renderer: Renderer): void {
+        this.getAppropriateStrategy(renderer).resolve(pass, renderer);
+    }
+
+    worldTransformForPass(renderer: Renderer, pass: number): glmatrix.mat4 {
+        return glmatrix.mat4.create();
     }
 
     private getAppropriateStrategy(renderer: Renderer): AntialiasingStrategy {

@@ -12,6 +12,7 @@ import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, GammaCorrectionMode} from './aa-strategy';
+import {TileInfo} from './aa-strategy';
 import {NoAAStrategy, StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import {AAOptions} from './app-controller';
 import PathfinderBufferTexture from "./buffer-texture";
@@ -150,36 +151,40 @@ export abstract class Renderer {
         // Draw "scenery" (used in the 3D view).
         this.drawSceneryIfNecessary();
 
-        if (antialiasingStrategy.directRenderingMode !== 'none')
-            antialiasingStrategy.prepareForDirectRendering(this);
+        const passCount = antialiasingStrategy.passCount;
+        for (let pass = 0; pass < passCount; pass++) {
+            if (antialiasingStrategy.directRenderingMode !== 'none')
+                antialiasingStrategy.prepareForDirectRendering(this);
 
-        const objectCount = this.objectCount;
-        for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
-            // Antialias.
-            antialiasingStrategy.antialiasObject(this, objectIndex);
+            const objectCount = this.objectCount;
+            for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
+                // Antialias.
+                antialiasingStrategy.antialiasObject(this, objectIndex);
 
-            // Prepare for direct rendering.
-            antialiasingStrategy.prepareToRenderObject(this, objectIndex);
+                // Prepare for direct rendering.
+                antialiasingStrategy.prepareToRenderObject(this, objectIndex);
 
-            // Perform direct rendering (Loop-Blinn).
-            if (antialiasingStrategy.directRenderingMode !== 'none') {
-                // Clear.
-                this.clearForDirectRendering(objectIndex);
+                // Perform direct rendering (Loop-Blinn).
+                if (antialiasingStrategy.directRenderingMode !== 'none') {
+                    // Clear.
+                    this.clearForDirectRendering(objectIndex);
 
-                this.directlyRenderObject(objectIndex);
+                    this.directlyRenderObject(pass, objectIndex);
+                }
+
+                antialiasingStrategy.resolveAAForObject(this, objectIndex);
             }
 
-            antialiasingStrategy.resolveAAForObject(this, objectIndex);
+            antialiasingStrategy.resolve(pass, this);
         }
 
         // End the timer, and start a new one.
+        // FIXME(pcwalton): Removed this for multipass; get it split out again somehow.
         if (this.timerQueryPollInterval == null) {
             renderContext.timerQueryExt.endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
             renderContext.timerQueryExt.beginQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT,
                                                       renderContext.compositingTimerQuery);
         }
-
-        antialiasingStrategy.resolve(this);
 
         // Draw the glyphs with the resolved atlas to the default framebuffer.
         this.compositeIfNecessary();
@@ -219,13 +224,27 @@ export abstract class Renderer {
                      this.destAllocatedSize[1]);
     }
 
-    setTransformAndTexScaleUniformsForDest(uniforms: UniformMap): void {
+    setTransformAndTexScaleUniformsForDest(uniforms: UniformMap, tileInfo?: TileInfo): void {
         const renderContext = this.renderContext;
         const usedSize = this.usedSizeFactor;
 
+        let tileSize, tilePosition;
+        if (tileInfo == null) {
+            tileSize = glmatrix.vec2.clone([1.0, 1.0]);
+            tilePosition = glmatrix.vec2.create();
+        } else {
+            tileSize = tileInfo.size;
+            tilePosition = tileInfo.position;
+        }
+
         const transform = glmatrix.mat4.create();
-        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
+        glmatrix.mat4.fromTranslation(transform, [
+            -1.0 + tilePosition[0] / tileSize[0] * 2.0,
+            -1.0 + tilePosition[1] / tileSize[1] * 2.0,
+            0.0,
+        ]);
         glmatrix.mat4.scale(transform, transform, [2.0 * usedSize[0], 2.0 * usedSize[1], 1.0]);
+        glmatrix.mat4.scale(transform, transform, [1.0 / tileSize[0], 1.0 / tileSize[1], 1.0]);
         renderContext.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
 
         renderContext.gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
@@ -240,8 +259,14 @@ export abstract class Renderer {
         gl.uniform2f(uniforms.uTexScale, usedSize[0], usedSize[1]);
     }
 
-    setTransformUniform(uniforms: UniformMap, objectIndex: number): void {
-        const transform = glmatrix.mat4.clone(this.worldTransform);
+    setTransformUniform(uniforms: UniformMap, pass: number, objectIndex: number): void {
+        let transform;
+        if (this.antialiasingStrategy == null)
+            transform = glmatrix.mat4.create();
+        else
+            transform = this.antialiasingStrategy.worldTransformForPass(this, pass);
+
+        glmatrix.mat4.mul(transform, transform, this.worldTransform);
         glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
         this.renderContext.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
@@ -424,7 +449,7 @@ export abstract class Renderer {
         };
     }
 
-    private directlyRenderObject(objectIndex: number): void {
+    private directlyRenderObject(pass: number, objectIndex: number): void {
         if (this.meshes == null || this.meshData == null)
             return;
 
@@ -462,7 +487,7 @@ export abstract class Renderer {
         this.initImplicitCoverInteriorVAO(objectIndex, instanceRange);
 
         // Draw direct interior parts.
-        this.setTransformUniform(directInteriorProgram.uniforms, objectIndex);
+        this.setTransformUniform(directInteriorProgram.uniforms, pass, objectIndex);
         this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
         this.setHintsUniform(directInteriorProgram.uniforms);
         this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
@@ -507,7 +532,7 @@ export abstract class Renderer {
         this.initImplicitCoverCurveVAO(objectIndex, instanceRange);
 
         // Draw direct curve parts.
-        this.setTransformUniform(directCurveProgram.uniforms, objectIndex);
+        this.setTransformUniform(directCurveProgram.uniforms, pass, objectIndex);
         this.setFramebufferSizeUniform(directCurveProgram.uniforms);
         this.setHintsUniform(directCurveProgram.uniforms);
         this.setPathColorsUniform(objectIndex, directCurveProgram.uniforms, 0);

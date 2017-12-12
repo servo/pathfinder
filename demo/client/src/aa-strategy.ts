@@ -26,9 +26,17 @@ export type GammaCorrectionMode = 'off' | 'on';
 
 export type StemDarkeningMode = 'none' | 'dark';
 
+export interface TileInfo {
+    size: glmatrix.vec2;
+    position: glmatrix.vec2;
+}
+
 export abstract class AntialiasingStrategy {
     // The type of direct rendering that should occur, if any.
     abstract readonly directRenderingMode: DirectRenderingMode;
+
+    // How many rendering passes this AA strategy requires.
+    abstract readonly passCount: number;
 
     // Prepares any OpenGL data. This is only called on startup and canvas resize.
     init(renderer: Renderer): void {
@@ -70,11 +78,19 @@ export abstract class AntialiasingStrategy {
     // Called after antialiasing.
     //
     // This usually blits to the real framebuffer.
-    abstract resolve(renderer: Renderer): void;
+    abstract resolve(pass: number, renderer: Renderer): void;
+
+    worldTransformForPass(renderer: Renderer, pass: number): glmatrix.mat4 {
+        return glmatrix.mat4.create();
+    }
 }
 
 export class NoAAStrategy extends AntialiasingStrategy {
     framebufferSize: glmatrix.vec2;
+
+    get passCount(): number {
+        return 1;
+    }
 
     private renderTargetColorTextures: WebGLTexture[];
     private renderTargetDepthTextures: WebGLTexture[];
@@ -161,7 +177,7 @@ export class NoAAStrategy extends AntialiasingStrategy {
 
     resolveAAForObject(renderer: Renderer): void {}
 
-    resolve(renderer: Renderer): void {}
+    resolve(pass: number, renderer: Renderer): void {}
 
     get directRenderingMode(): DirectRenderingMode {
         return 'color';
