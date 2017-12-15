@@ -167,6 +167,8 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
     antialiasObject(renderer: Renderer): void {}
 
+    finishAntialiasingObject(renderer: Renderer, objectIndex: number): void {}
+
     resolveAAForObject(renderer: Renderer): void {}
 
     resolve(pass: number, renderer: Renderer): void {

@@ -18,7 +18,7 @@ import {DemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
 
-export type DirectRenderingMode = 'none' | 'color' | 'color-depth';
+export type DirectRenderingMode = 'none' | 'color';
 
 export type SubpixelAAType = 'none' | 'medium';
 
@@ -73,6 +73,9 @@ export abstract class AntialiasingStrategy {
     abstract antialiasObject(renderer: Renderer, objectIndex: number): void;
 
     // Called after antialiasing each object.
+    abstract finishAntialiasingObject(renderer: Renderer, objectIndex: number): void;
+
+    // Called before rendering each object directly.
     abstract resolveAAForObject(renderer: Renderer, objectIndex: number): void;
 
     // Called after antialiasing.
@@ -174,6 +177,8 @@ export class NoAAStrategy extends AntialiasingStrategy {
     }
 
     antialiasObject(renderer: Renderer, objectIndex: number): void {}
+
+    finishAntialiasingObject(renderer: Renderer, objectIndex: number): void {}
 
     resolveAAForObject(renderer: Renderer): void {}
 

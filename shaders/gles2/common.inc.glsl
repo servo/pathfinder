@@ -131,10 +131,37 @@ vec2 computeMCAAPosition(vec2 position,
                          vec4 localTransformST,
                          vec4 globalTransformST,
                          ivec2 framebufferSize) {
+    if (position == vec2(0.0))
+        return position;
+
     position = hintPosition(position, hints);
     position = transformVertexPositionST(position, localTransformST);
     position = transformVertexPositionST(position, globalTransformST);
     return convertClipToScreenSpace(position, framebufferSize);
+}
+
+vec2 computeMCAASnappedPosition(vec2 position,
+                                vec4 hints,
+                                vec4 localTransformST,
+                                vec4 globalTransformST,
+                                ivec2 framebufferSize,
+                                float tanTheta) {
+    position = hintPosition(position, hints);
+    position = transformVertexPositionST(position, localTransformST);
+    position = transformVertexPositionST(position, globalTransformST);
+    position = convertClipToScreenSpace(position, framebufferSize);
+    //position.x = abs(mod(position.x, 1.0)) < 0.5 ? floor(position.x) : ceil(position.x);
+
+    float xNudge = fract(position.x);
+    if (xNudge < 0.5)
+        xNudge = -xNudge;
+    else
+        xNudge = 1.0 - xNudge;
+
+    position.x += xNudge;
+    position.y += xNudge * tanTheta;
+
+    return position;
 }
 
 bool computeMCAAQuadPosition(out vec2 outPosition,
@@ -438,6 +465,13 @@ vec2 solveCurveT(float p0x, float p1x, float p2x, vec2 x) {
     float b = 2.0 * p1x - 2.0 * p0x;
     vec2 c = p0x - x;
     return 2.0 * c / (-b - sqrt(b * b - 4.0 * a * c));
+}
+
+vec2 solveCurveT1(float p0x, float p1x, float p2x, vec2 x) {
+    float a = p0x - 2.0 * p1x + p2x;
+    float b = 2.0 * p1x - 2.0 * p0x;
+    vec2 c = p0x - x;
+    return (-b + sqrt(b * b - 4.0 * a * c)) / (2.0 * a);
 }
 
 // https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html

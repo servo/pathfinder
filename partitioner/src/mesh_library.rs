@@ -24,6 +24,8 @@ use {BQuad, BVertexLoopBlinnData};
 pub struct MeshLibrary {
     pub path_ranges: Vec<PathRanges>,
     pub b_quads: Vec<BQuad>,
+    // FIXME(pcwalton): Merge with `b_vertex_positions` below.
+    pub b_quad_vertex_positions: Vec<Point2D<f32>>,
     pub b_vertex_positions: Vec<Point2D<f32>>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
     pub b_vertex_normals: Vec<f32>,
@@ -39,6 +41,7 @@ impl MeshLibrary {
         MeshLibrary {
             path_ranges: vec![],
             b_quads: vec![],
+            b_quad_vertex_positions: vec![],
             b_vertex_positions: vec![],
             b_vertex_loop_blinn_data: vec![],
             b_vertex_normals: vec![],
@@ -52,6 +55,7 @@ impl MeshLibrary {
     pub fn clear(&mut self) {
         self.path_ranges.clear();
         self.b_quads.clear();
+        self.b_quad_vertex_positions.clear();
         self.b_vertex_positions.clear();
         self.b_vertex_loop_blinn_data.clear();
         self.b_vertex_normals.clear();
@@ -90,6 +94,13 @@ impl MeshLibrary {
         let lower_right_position =
             &self.b_vertex_positions[b_quad.lower_right_vertex_index as usize];
 
+        self.b_quad_vertex_positions.extend_from_slice(&[
+            *upper_left_position,
+            *upper_right_position,
+            *lower_left_position,
+            *lower_right_position,
+        ]);
+
         let upper_left_bounding_box_position =
             Point2D::new(upper_left_position.x,
                          f32::max(upper_left_position.y, upper_right_position.y));
@@ -103,6 +114,7 @@ impl MeshLibrary {
         });
 
         if b_quad.upper_control_point_vertex_index == u32::MAX {
+            self.b_quad_vertex_positions.push(Point2D::zero());
             self.edge_data.upper_line_vertex_positions.push(EdgeLineVertexPositions {
                 left: *upper_left_position,
                 right: *upper_right_position,
@@ -110,6 +122,7 @@ impl MeshLibrary {
         } else {
             let upper_control_point_position =
                 &self.b_vertex_positions[b_quad.upper_control_point_vertex_index as usize];
+            self.b_quad_vertex_positions.push(*upper_control_point_position);
             self.edge_data.upper_curve_vertex_positions.push(EdgeCurveVertexPositions {
                 left: *upper_left_position,
                 control_point: *upper_control_point_position,
@@ -118,6 +131,7 @@ impl MeshLibrary {
         }
 
         if b_quad.lower_control_point_vertex_index == u32::MAX {
+            self.b_quad_vertex_positions.push(Point2D::zero());
             self.edge_data.lower_line_vertex_positions.push(EdgeLineVertexPositions {
                 left: *lower_left_position,
                 right: *lower_right_position,
@@ -125,6 +139,7 @@ impl MeshLibrary {
         } else {
             let lower_control_point_position =
                 &self.b_vertex_positions[b_quad.lower_control_point_vertex_index as usize];
+            self.b_quad_vertex_positions.push(*lower_control_point_position);
             self.edge_data.lower_curve_vertex_positions.push(EdgeCurveVertexPositions {
                 left: *lower_left_position,
                 control_point: *lower_control_point_position,
@@ -205,6 +220,7 @@ impl MeshLibrary {
         try!(write_chunk(writer, b"prng", |writer| write_path_ranges(writer, &self.path_ranges)));
 
         try!(write_simple_chunk(writer, b"bqua", &self.b_quads));
+        try!(write_simple_chunk(writer, b"bqvp", &self.b_quad_vertex_positions));
         try!(write_simple_chunk(writer, b"bvpo", &self.b_vertex_positions));
         try!(write_simple_chunk(writer, b"bvlb", &self.b_vertex_loop_blinn_data));
         try!(write_simple_chunk(writer, b"bvno", &self.b_vertex_normals));
@@ -255,6 +271,10 @@ impl MeshLibrary {
         fn write_path_ranges<W>(writer: &mut W, path_ranges: &[PathRanges]) -> io::Result<()>
                                 where W: Write + Seek {
             try!(write_path_range(writer, b"bqua", path_ranges, |ranges| &ranges.b_quads));
+            try!(write_path_range(writer,
+                                  b"bqvp",
+                                  path_ranges,
+                                  |ranges| &ranges.b_quad_vertex_positions));
             try!(write_path_range(writer, b"bver", path_ranges, |ranges| &ranges.b_vertices));
             try!(write_path_range(writer,
                                   b"cvii",
@@ -309,6 +329,7 @@ impl MeshLibrary {
     pub(crate) fn snapshot_lengths(&self) -> MeshLibraryLengths {
         MeshLibraryLengths {
             b_quads: self.b_quads.len() as u32,
+            b_quad_vertex_positions: self.b_quad_vertex_positions.len() as u32,
             b_vertices: self.b_vertex_positions.len() as u32,
             cover_interior_indices: self.cover_indices.interior_indices.len() as u32,
             cover_curve_indices: self.cover_indices.curve_indices.len() as u32,
@@ -344,6 +365,7 @@ impl MeshLibraryCoverIndices {
 
 pub(crate) struct MeshLibraryLengths {
     b_quads: u32,
+    b_quad_vertex_positions: u32,
     b_vertices: u32,
     cover_interior_indices: u32,
     cover_curve_indices: u32,
@@ -357,6 +379,7 @@ pub(crate) struct MeshLibraryLengths {
 #[derive(Clone, Debug)]
 pub struct PathRanges {
     pub b_quads: Range<u32>,
+    pub b_quad_vertex_positions: Range<u32>,
     pub b_vertices: Range<u32>,
     pub cover_interior_indices: Range<u32>,
     pub cover_curve_indices: Range<u32>,
@@ -373,6 +396,7 @@ impl PathRanges {
     fn new() -> PathRanges {
         PathRanges {
             b_quads: 0..0,
+            b_quad_vertex_positions: 0..0,
             b_vertices: 0..0,
             cover_interior_indices: 0..0,
             cover_curve_indices: 0..0,
@@ -390,6 +414,7 @@ impl PathRanges {
                                            start: &MeshLibraryLengths,
                                            end: &MeshLibraryLengths) {
         self.b_quads = start.b_quads..end.b_quads;
+        self.b_quad_vertex_positions = start.b_quad_vertex_positions..end.b_quad_vertex_positions;
         self.b_vertices = start.b_vertices..end.b_vertices;
         self.cover_interior_indices = start.cover_interior_indices..end.cover_interior_indices;
         self.cover_curve_indices = start.cover_curve_indices..end.cover_curve_indices;

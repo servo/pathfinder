@@ -27,15 +27,10 @@ export interface ShaderMap<T> {
     mcaaCover: T;
     mcaaLine: T;
     mcaaCurve: T;
+    mcaaMulti: T;
     ssaaSubpixelResolve: T;
     xcaaMonoResolve: T;
     xcaaMonoSubpixelResolve: T;
-    xcaaMultiDirectCurve: T;
-    xcaaMultiDirectInterior: T;
-    xcaaMultiEdgeMaskCurve: T;
-    xcaaMultiEdgeMaskTransformedCurve: T;
-    xcaaMultiEdgeMaskLine: T;
-    xcaaMultiResolve: T;
 }
 
 export interface UnlinkedShaderProgram {
@@ -57,17 +52,12 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'mcaaCover',
     'mcaaLine',
     'mcaaCurve',
+    'mcaaMulti',
     'ecaaLine',
     'ecaaCurve',
     'ecaaTransformedCurve',
     'xcaaMonoResolve',
     'xcaaMonoSubpixelResolve',
-    'xcaaMultiDirectCurve',
-    'xcaaMultiDirectInterior',
-    'xcaaMultiEdgeMaskCurve',
-    'xcaaMultiEdgeMaskTransformedCurve',
-    'xcaaMultiEdgeMaskLine',
-    'xcaaMultiResolve',
     'demo3DDistantGlyph',
     'demo3DMonument',
 ];
@@ -133,6 +123,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         fragment: "/glsl/gles2/xcaa-line.fs.glsl",
         vertex: "/glsl/gles2/mcaa-line.vs.glsl",
     },
+    mcaaMulti: {
+        fragment: "/glsl/gles2/mcaa-multi.fs.glsl",
+        vertex: "/glsl/gles2/mcaa-multi.vs.glsl",
+    },
     ssaaSubpixelResolve: {
         fragment: "/glsl/gles2/ssaa-subpixel-resolve.fs.glsl",
         vertex: "/glsl/gles2/blit.vs.glsl",
@@ -144,30 +138,6 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     xcaaMonoSubpixelResolve: {
         fragment: "/glsl/gles2/xcaa-mono-subpixel-resolve.fs.glsl",
         vertex: "/glsl/gles2/xcaa-mono-subpixel-resolve.vs.glsl",
-    },
-    xcaaMultiDirectCurve: {
-        fragment: "/glsl/gles2/xcaa-multi-direct-curve.fs.glsl",
-        vertex: "/glsl/gles2/xcaa-multi-direct-curve.vs.glsl",
-    },
-    xcaaMultiDirectInterior: {
-        fragment: "/glsl/gles2/xcaa-multi-direct-interior.fs.glsl",
-        vertex: "/glsl/gles2/xcaa-multi-direct-interior.vs.glsl",
-    },
-    xcaaMultiEdgeMaskCurve: {
-        fragment: "/glsl/gles2/xcaa-multi-edge-mask-curve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-multi-edge-mask-curve.vs.glsl",
-    },
-    xcaaMultiEdgeMaskLine: {
-        fragment: "/glsl/gles2/xcaa-multi-edge-mask-line.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-multi-edge-mask-line.vs.glsl",
-    },
-    xcaaMultiEdgeMaskTransformedCurve: {
-        fragment: "/glsl/gles2/xcaa-multi-edge-mask-curve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-multi-edge-mask-transformed-curve.vs.glsl",
-    },
-    xcaaMultiResolve: {
-        fragment: "/glsl/gles2/xcaa-multi-resolve.fs.glsl",
-        vertex: "/glsl/gles2/xcaa-multi-resolve.vs.glsl",
     },
 };
 

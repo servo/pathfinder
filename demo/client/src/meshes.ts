@@ -76,6 +76,7 @@ const B_QUAD_FIELD_COUNT: number = B_QUAD_SIZE / UINT32_SIZE;
 
 // FIXME(pcwalton): This duplicates information below in `MESH_TYPES`.
 const INDEX_SIZE: number = 4;
+const B_QUAD_VERTEX_POSITION_SIZE: number = 12 * 4;
 const B_VERTEX_POSITION_SIZE: number = 4 * 2;
 const EDGE_BOUNDING_BOX_VERTEX_POSITION_SIZE: number = 4 * 4;
 const EDGE_UPPER_LINE_VERTEX_POSITION_SIZE: number = 4 * 4;
@@ -86,6 +87,7 @@ const SEGMENT_LINE_SIZE: number = 4 * 4;
 const SEGMENT_CURVE_SIZE: number = 4 * 6;
 
 const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
+    bQuadVertexPositions: { type: 'Float32', size: 12 },
     bQuads: { type: 'Uint32', size: B_QUAD_FIELD_COUNT },
     bVertexLoopBlinnData: { type: 'Uint32', size: 1 },
     bVertexNormals: { type: 'Float32', size: 1 },
@@ -112,6 +114,7 @@ const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
 };
 
 const BUFFER_TYPES: Meshes<BufferType> = {
+    bQuadVertexPositions: 'ARRAY_BUFFER',
     bQuads: 'ARRAY_BUFFER',
     bVertexLoopBlinnData: 'ARRAY_BUFFER',
     bVertexNormals: 'ARRAY_BUFFER',
@@ -146,6 +149,7 @@ const MESH_LIBRARY_FOURCC: string = 'PFML';
 // Must match the FourCCs in `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into()`.
 const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
     bqua: 'bQuads',
+    bqvp: 'bQuadVertexPositions',
     bvlb: 'bVertexLoopBlinnData',
     bvno: 'bVertexNormals',
     bvpo: 'bVertexPositions',
@@ -166,6 +170,7 @@ const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
 // `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into::write_path_ranges()`.
 const PATH_RANGE_TYPE_FOURCCS: PathRangeTypeFourCCTable = {
     bqua: 'bQuadPathRanges',
+    bqvp: 'bQuadVertexPositionPathRanges',
     bver: 'bVertexPathRanges',
     cvci: 'coverCurveIndexRanges',
     cvii: 'coverInteriorIndexRanges',
@@ -180,6 +185,7 @@ const PATH_RANGE_TYPE_FOURCCS: PathRangeTypeFourCCTable = {
 
 const RANGE_TO_COUNT_TABLE: RangeToCountTable = {
     bQuadPathRanges: 'bQuadCount',
+    bQuadVertexPositionPathRanges: 'bQuadVertexPositionCount',
     bVertexPathRanges: 'bVertexCount',
     coverCurveIndexRanges: 'coverCurveCount',
     coverInteriorIndexRanges: 'coverInteriorCount',
@@ -205,6 +211,7 @@ const RANGE_TO_RANGE_BUFFER_TABLE: RangeToRangeBufferTable = {
 
 const RANGE_KEYS: Array<keyof PathRanges> = [
     'bQuadPathRanges',
+    'bQuadVertexPositionPathRanges',
     'bVertexPathRanges',
     'coverInteriorIndexRanges',
     'coverCurveIndexRanges',
@@ -221,6 +228,7 @@ type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
 export interface Meshes<T> {
     readonly bQuads: T;
+    readonly bQuadVertexPositions: T;
     readonly bVertexPositions: T;
     readonly bVertexLoopBlinnData: T;
     readonly bVertexNormals: T;
@@ -248,6 +256,7 @@ export interface Meshes<T> {
 
 interface MeshDataCounts {
     readonly bQuadCount: number;
+    readonly bQuadVertexPositionCount: number;
     readonly bVertexCount: number;
     readonly coverCurveCount: number;
     readonly coverInteriorCount: number;
@@ -262,6 +271,7 @@ interface MeshDataCounts {
 
 interface PathRanges {
     bQuadPathRanges: Range[];
+    bQuadVertexPositionPathRanges: Range[];
     bVertexPathRanges: Range[];
     coverInteriorIndexRanges: Range[];
     coverCurveIndexRanges: Range[];
@@ -276,6 +286,7 @@ interface PathRanges {
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, PathRanges {
     readonly bQuads: ArrayBuffer;
+    readonly bQuadVertexPositions: ArrayBuffer;
     readonly bVertexPositions: ArrayBuffer;
     readonly bVertexLoopBlinnData: ArrayBuffer;
     readonly bVertexNormals: ArrayBuffer;
@@ -292,6 +303,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
     readonly segmentCurveNormals: ArrayBuffer;
 
     readonly bQuadCount: number;
+    readonly bQuadVertexPositionCount: number;
     readonly bVertexCount: number;
     readonly coverCurveCount: number;
     readonly coverInteriorCount: number;
@@ -313,6 +325,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
     segmentLinePathIDs: ArrayBuffer;
 
     bQuadPathRanges: Range[];
+    bQuadVertexPositionPathRanges: Range[];
     bVertexPathRanges: Range[];
     coverInteriorIndexRanges: Range[];
     coverCurveIndexRanges: Range[];
@@ -356,6 +369,8 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
         }
 
         this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
+        this.bQuadVertexPositionCount = this.bQuadVertexPositions.byteLength /
+            B_QUAD_VERTEX_POSITION_SIZE;
         this.bVertexCount = this.bVertexPositions.byteLength / B_VERTEX_POSITION_SIZE;
         this.coverCurveCount = this.coverCurveIndices.byteLength / INDEX_SIZE;
         this.coverInteriorCount = this.coverInteriorIndices.byteLength / INDEX_SIZE;
@@ -420,6 +435,16 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
             const firstExpandedBVertexIndex = bVertexCopyResult.expandedStartIndex;
             const firstBVertexIndex = bVertexCopyResult.originalStartIndex;
             const lastBVertexIndex = bVertexCopyResult.originalEndIndex;
+
+            // Copy over B-quad vertex positions.
+            copyVertices(['bQuadVertexPositions'],
+                         'bQuadVertexPositionPathRanges',
+                         expandedArrays,
+                         expandedRanges,
+                         originalBuffers,
+                         originalRanges,
+                         expandedPathID,
+                         originalPathID);
 
             // Copy over edge data.
             copyVertices(['edgeBoundingBoxVertexPositions'],
@@ -555,6 +580,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
 
 export class PathfinderMeshBuffers implements Meshes<WebGLBuffer>, PathRanges {
     readonly bQuads: WebGLBuffer;
+    readonly bQuadVertexPositions: WebGLBuffer;
     readonly bVertexPositions: WebGLBuffer;
     readonly bVertexPathIDs: WebGLBuffer;
     readonly bVertexLoopBlinnData: WebGLBuffer;
@@ -579,6 +605,7 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer>, PathRanges {
     readonly segmentCurveNormals: WebGLBuffer;
 
     readonly bQuadPathRanges: Range[];
+    readonly bQuadVertexPositionPathRanges: Range[];
     readonly bVertexPathRanges: Range[];
     readonly coverInteriorIndexRanges: Range[];
     readonly coverCurveIndexRanges: Range[];

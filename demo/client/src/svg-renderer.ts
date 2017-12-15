@@ -22,7 +22,7 @@ import SSAAStrategy from './ssaa-strategy';
 import {SVGLoader} from './svg-loader';
 import {Range} from './utils';
 import {RenderContext} from './view';
-import {ECAAMulticolorStrategy, XCAAStrategy} from './xcaa-strategy';
+import {MCAAMulticolorStrategy, XCAAStrategy} from './xcaa-strategy';
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
@@ -33,13 +33,21 @@ interface AntialiasingStrategyTable {
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    xcaa: ECAAMulticolorStrategy,
+    xcaa: MCAAMulticolorStrategy,
 };
 
 export abstract class SVGRenderer extends Renderer {
     renderContext: RenderContext;
 
     camera: OrthographicCamera;
+
+    get bgColor(): glmatrix.vec4 {
+        return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
+    }
+
+    get fgColor(): glmatrix.vec4 {
+        return glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
+    }
 
     get usesSTTransform(): boolean {
         return this.camera.usesSTTransform;
@@ -150,14 +158,10 @@ export abstract class SVGRenderer extends Renderer {
     }
 
     protected directCurveProgramName(): keyof ShaderMap<void> {
-        if (this.antialiasingStrategy instanceof XCAAStrategy)
-            return 'xcaaMultiDirectCurve';
         return 'directCurve';
     }
 
     protected directInteriorProgramName(): keyof ShaderMap<void> {
-        if (this.antialiasingStrategy instanceof XCAAStrategy)
-            return 'xcaaMultiDirectInterior';
         return 'directInterior';
     }
 

@@ -22,7 +22,6 @@ import {CompositingOperation, RenderTaskType} from './render-task';
 import {ShaderMap} from './shader-loader';
 import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull, unwrapUndef} from './utils';
 import {RenderContext, Timings} from "./view";
-import {ECAAMulticolorStrategy} from './xcaa-strategy';
 
 const MAX_PATHS: number = 65535;
 
@@ -161,11 +160,14 @@ export abstract class Renderer {
                 // Antialias.
                 antialiasingStrategy.antialiasObject(this, objectIndex);
 
-                // Prepare for direct rendering.
-                antialiasingStrategy.prepareToRenderObject(this, objectIndex);
+                // Perform post-antialiasing tasks.
+                antialiasingStrategy.finishAntialiasingObject(this, objectIndex);
 
                 // Perform direct rendering (Loop-Blinn).
                 if (antialiasingStrategy.directRenderingMode !== 'none') {
+                    // Prepare for direct rendering.
+                    antialiasingStrategy.prepareToRenderObject(this, objectIndex);
+
                     // Clear.
                     this.clearForDirectRendering(objectIndex);
 
@@ -420,9 +422,6 @@ export abstract class Renderer {
             gl.depthMask(true);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             break;
-        case 'color-depth':
-            gl.clear(gl.COLOR_BUFFER_BIT);
-            break;
         case 'none':
             // Nothing to do.
             break;
@@ -496,10 +495,6 @@ export abstract class Renderer {
         this.pathTransformBufferTextures[meshIndex]
             .ext
             .bind(gl, directInteriorProgram.uniforms, 2);
-        if (renderingMode === 'color-depth') {
-            const strategy = antialiasingStrategy as ECAAMulticolorStrategy;
-            strategy.bindEdgeDepthTexture(gl, directInteriorProgram.uniforms, 3);
-        }
         const coverInteriorRange = getMeshIndexRange(meshes.coverInteriorIndexRanges, pathRange);
         if (!this.pathIDsAreInstanced) {
             gl.drawElements(gl.TRIANGLES,
@@ -516,7 +511,7 @@ export abstract class Renderer {
         }
 
         // Set up direct curve state.
-        gl.depthMask(renderingMode === 'color-depth');
+        gl.depthMask(false);
         gl.enable(gl.BLEND);
         gl.blendEquation(gl.FUNC_ADD);
         gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
@@ -539,10 +534,6 @@ export abstract class Renderer {
         this.setEmboldenAmountUniform(objectIndex, directCurveProgram.uniforms);
         this.pathTransformBufferTextures[meshIndex].st.bind(gl, directCurveProgram.uniforms, 1);
         this.pathTransformBufferTextures[meshIndex].ext.bind(gl, directCurveProgram.uniforms, 2);
-        if (renderingMode === 'color-depth') {
-            const strategy = antialiasingStrategy as ECAAMulticolorStrategy;
-            strategy.bindEdgeDepthTexture(gl, directCurveProgram.uniforms, 3);
-        }
         const coverCurveRange = getMeshIndexRange(meshes.coverCurveIndexRanges, pathRange);
         if (!this.pathIDsAreInstanced) {
             gl.drawElements(gl.TRIANGLES,
