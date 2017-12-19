@@ -145,7 +145,7 @@ vec2 computeMCAASnappedPosition(vec2 position,
                                 vec4 localTransformST,
                                 vec4 globalTransformST,
                                 ivec2 framebufferSize,
-                                float tanTheta) {
+                                float slope) {
     position = hintPosition(position, hints);
     position = transformVertexPositionST(position, localTransformST);
     position = transformVertexPositionST(position, globalTransformST);
@@ -157,10 +157,7 @@ vec2 computeMCAASnappedPosition(vec2 position,
     else
         xNudge = 1.0 - xNudge;
 
-    position.x += xNudge;
-    position.y += xNudge * tanTheta;
-
-    return position;
+    return position + vec2(xNudge, xNudge * slope);
 }
 
 bool computeMCAAQuadPosition(out vec2 outPosition,

@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#define MAX_SLOPE   10.0
+
 precision highp float;
 
 uniform vec4 uTransformST;
@@ -44,8 +46,13 @@ void main() {
     vec4 color = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
 
     vec2 topVector = trPosition - tlPosition, bottomVector = brPosition - blPosition;
-    float topTanTheta = topVector.y / topVector.x;
-    float bottomTanTheta = bottomVector.y / bottomVector.x;
+
+    float topSlope = topVector.y / topVector.x;
+    float bottomSlope = bottomVector.y / bottomVector.x;
+    if (abs(topSlope) > MAX_SLOPE)
+        topSlope = sign(topSlope) * MAX_SLOPE;
+    if (abs(bottomSlope) > MAX_SLOPE)
+        bottomSlope = sign(bottomSlope) * MAX_SLOPE;
 
     // Transform the points, and compute the position of this vertex.
     tlPosition = computeMCAASnappedPosition(tlPosition,
@@ -53,13 +60,13 @@ void main() {
                                             transformST,
                                             uTransformST,
                                             uFramebufferSize,
-                                            topTanTheta);
+                                            topSlope);
     trPosition = computeMCAASnappedPosition(trPosition,
                                             uHints,
                                             transformST,
                                             uTransformST,
                                             uFramebufferSize,
-                                            topTanTheta);
+                                            topSlope);
     tcPosition = computeMCAAPosition(tcPosition,
                                      uHints,
                                      transformST,
@@ -70,13 +77,13 @@ void main() {
                                             transformST,
                                             uTransformST,
                                             uFramebufferSize,
-                                            bottomTanTheta);
+                                            bottomSlope);
     brPosition = computeMCAASnappedPosition(brPosition,
                                             uHints,
                                             transformST,
                                             uTransformST,
                                             uFramebufferSize,
-                                            bottomTanTheta);
+                                            bottomSlope);
     bcPosition = computeMCAAPosition(bcPosition,
                                      uHints,
                                      transformST,
