@@ -217,6 +217,10 @@ button > svg path {
 	margin-right: -15px;
 }
 
+#pf-masthead-logo {
+    width: 30vw;
+}
+
 .github-corner {
     display: block;
     position: absolute;
