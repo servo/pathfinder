@@ -150,7 +150,6 @@ vec2 computeMCAASnappedPosition(vec2 position,
     position = transformVertexPositionST(position, localTransformST);
     position = transformVertexPositionST(position, globalTransformST);
     position = convertClipToScreenSpace(position, framebufferSize);
-    //position.x = abs(mod(position.x, 1.0)) < 0.5 ? floor(position.x) : ceil(position.x);
 
     float xNudge = fract(position.x);
     if (xNudge < 0.5)

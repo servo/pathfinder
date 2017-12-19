@@ -85,8 +85,11 @@ void main() {
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
 
+    // Use the same side--in this case, the top--or else floating point error during partitioning
+    // can occasionally cause inconsistent rounding, resulting in cracks.
     vec2 position;
-    position.x = mix(tlPosition.x, brPosition.x, quadPosition.x);
+    position.x = quadPosition.x < 0.5 ? tlPosition.x : trPosition.x;
+
     if (quadPosition.y < 0.5)
         position.y = floor(min(tlPosition.y, trPosition.y));
     else
