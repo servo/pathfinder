@@ -752,12 +752,12 @@ function getMeshIndexRange(indexRanges: Range[], pathRange: Range): Range {
         startIndex = indexRanges[pathRange.start].end;
 
     let endIndex;
-    if (pathRange.end >= indexRanges.length)
-        endIndex = lastIndexRange.end;
-    else if (!descending)
-        endIndex = indexRanges[pathRange.end].start;
-    else
+    if (descending)
         endIndex = indexRanges[pathRange.end - 1].start;
+    else if (pathRange.end >= indexRanges.length)
+        endIndex = lastIndexRange.end;
+    else
+        endIndex = indexRanges[pathRange.end].start;
 
     if (descending) {
         const tmp = startIndex;
