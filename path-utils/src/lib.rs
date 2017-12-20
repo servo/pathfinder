@@ -59,7 +59,7 @@ impl PathBuffer {
                 PathCommand::ClosePath => self.close_subpath(&mut first_subpath_endpoint_index),
 
                 PathCommand::MoveTo(position) => {
-                    self.close_subpath(&mut first_subpath_endpoint_index);
+                    self.end_subpath(&mut first_subpath_endpoint_index);
                     self.endpoints.push(Endpoint {
                         position: position,
                         control_point_index: u32::MAX,
@@ -87,10 +87,16 @@ impl PathBuffer {
             }
         }
 
-        self.close_subpath(&mut first_subpath_endpoint_index)
+        self.end_subpath(&mut first_subpath_endpoint_index)
     }
 
     fn close_subpath(&mut self, first_subpath_endpoint_index: &mut u32) {
+        let first_endpoint = self.endpoints[*first_subpath_endpoint_index as usize];
+        self.endpoints.push(first_endpoint);
+        self.end_subpath(first_subpath_endpoint_index)
+    }
+
+    fn end_subpath(&mut self, first_subpath_endpoint_index: &mut u32) {
         let last_subpath_endpoint_index = self.endpoints.len() as u32;
         if *first_subpath_endpoint_index != last_subpath_endpoint_index {
             self.subpaths.push(Subpath {

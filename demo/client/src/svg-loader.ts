@@ -188,10 +188,7 @@ export class SVGLoader {
                 this.paths.push({ segments: segments, kind: 'Fill' });
                 this.pathBounds.push(pathBounds);
             } else if (instance instanceof SVGStroke) {
-                this.paths.push({
-                    kind: { Stroke: instance.width },
-                    segments: segments,
-                });
+                this.paths.push({ segments: segments, kind: { Stroke: instance.width } });
                 this.pathBounds.push(pathBounds);
             }
         }
