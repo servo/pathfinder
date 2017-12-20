@@ -342,9 +342,10 @@ impl<'a> Partitioner<'a> {
                     self.emit_b_quads_around_active_edge(upper_active_edge_index, crossing_point.x);
                     self.emit_b_quads_around_active_edge(lower_active_edge_index, crossing_point.x);
                 } else {
-                    debug!("warning: swapped active edges {} & {} without finding intersection",
-                           upper_active_edge_index,
-                           lower_active_edge_index);
+                    warn!("swapped active edges {} & {} without finding intersection; rendering \
+                           will probably be incorrect",
+                          upper_active_edge_index,
+                          lower_active_edge_index);
                 }
 
                 self.active_edges.swap(upper_active_edge_index as usize,
@@ -1009,7 +1010,8 @@ impl<'a> Partitioner<'a> {
                 let (lower_line, _) =
                     Line::new(lower_left_vertex_position,
                               lower_right_endpoint_position).subdivide_at_x(max_x);
-                upper_line.intersect_with_line(&lower_line)
+                // Use `intersect_at_infinity()` to reduce floating point error.
+                upper_line.intersect_at_infinity(&lower_line)
             }
 
             (upper_control_point_vertex_index, u32::MAX) => {
