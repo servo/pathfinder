@@ -98,9 +98,10 @@ static BUILTIN_FONTS: [(&'static str, &'static str); 4] = [
     ("inter-ui", "../../resources/fonts/inter-ui/Inter-UI-Regular.ttf"),
 ];
 
-static BUILTIN_SVGS: [(&'static str, &'static str); 2] = [
+static BUILTIN_SVGS: [(&'static str, &'static str); 3] = [
     ("tiger", "../../resources/svg/Ghostscript_Tiger.svg"),
     ("logo", "../../resources/svg/pathfinder_logo.svg"),
+    ("icons", "../../resources/svg/material_design_icons.svg"),
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -62,8 +62,12 @@ Then navigate to http://localhost:8000/.
 The primary author is Patrick Walton (@pcwalton), with contributions from the Servo development
 community.
 
+The logo was designed by Jay Vining.
+
 Pathfinder abides by the same Code of Conduct as Rust itself.
 
 ## License
 
-Licensed under the same terms as Rust itself. See `LICENSE-APACHE` and `LICENSE-MIT`.
+Pathfinder is licensed under the same terms as Rust itself. See `LICENSE-APACHE` and `LICENSE-MIT`.
+
+Material Design icons are copyright Google Inc. and licensed under the Apache 2.0 license.
