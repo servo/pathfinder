@@ -15,16 +15,13 @@ import * as _ from 'lodash';
 import 'path-data-polyfill.js';
 import {parseServerTiming, PathfinderMeshData} from "./meshes";
 import {AlphaMaskCompositingOperation, RenderTask, RenderTaskType} from './render-task';
-import {panic, Range, unwrapNull, unwrapUndef} from "./utils";
+import {panic, Range, unwrapNull, unwrapUndef, lerp} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
 
 const parseColor = require('parse-color');
 
 const PARTITION_SVG_PATHS_ENDPOINT_URL: string = "/partition-svg-paths";
-
-/// The minimum size of a stroke.
-const HAIRLINE_STROKE_WIDTH: number = 0.25;
 
 declare class SVGPathSegment {
     type: string;
@@ -62,7 +59,20 @@ export class SVGStroke extends SVGPath {
         super(element, 'stroke');
 
         const style = window.getComputedStyle(element);
-        this.width = parseInt(style.strokeWidth!, 10);
+        const ctm = element.getCTM();
+
+        const strokeWidthString = unwrapNull(style.strokeWidth);
+        const matches = /^(\d+\.?\d*)(.*)$/.exec(strokeWidthString);
+        let strokeWidth;
+        if (matches == null) {
+            strokeWidth = 0.0;
+        } else {
+            strokeWidth = parseFloat(matches[1]);
+            if (matches[2] === 'px')
+                strokeWidth *= lerp(ctm.a, ctm.d, 0.5);
+        }
+
+        this.width = strokeWidth;
     }
 }
 
@@ -179,7 +189,7 @@ export class SVGLoader {
                 this.pathBounds.push(pathBounds);
             } else if (instance instanceof SVGStroke) {
                 this.paths.push({
-                    kind: { Stroke: Math.max(HAIRLINE_STROKE_WIDTH, instance.width) },
+                    kind: { Stroke: instance.width },
                     segments: segments,
                 });
                 this.pathBounds.push(pathBounds);

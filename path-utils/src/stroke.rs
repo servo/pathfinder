@@ -56,6 +56,8 @@ impl Stroke {
 
     /// TODO(pcwalton): Miter and round joins.
     fn offset_subpath(&self, output: &mut PathBuffer, input: &PathBuffer, subpath_index: u32) {
+        let radius = self.width * 0.5;
+
         let subpath = &input.subpaths[subpath_index as usize];
 
         let mut prev_position = None;
@@ -65,7 +67,7 @@ impl Stroke {
 
             if let Some(ref prev_position) = prev_position {
                 if endpoint.control_point_index == u32::MAX {
-                    let offset_line = Line::new(&prev_position, position).offset(self.width);
+                    let offset_line = Line::new(&prev_position, position).offset(radius);
                     output.endpoints.extend_from_slice(&[
                         Endpoint {
                             position: offset_line.endpoints[0],
@@ -87,9 +89,9 @@ impl Stroke {
                     let control_point_position =
                         &input.control_points[endpoint.control_point_index as usize];
                     let offset_line_0 =
-                        Line::new(&prev_position, control_point_position).offset(self.width);
+                        Line::new(&prev_position, control_point_position).offset(radius);
                     let offset_line_1 =
-                        Line::new(control_point_position, position).offset(self.width);
+                        Line::new(control_point_position, position).offset(radius);
 
                     // FIXME(pcwalton): Can the `None` case ever happen?
                     let offset_control_point =
