@@ -23,14 +23,14 @@ import {PathfinderMeshData} from './meshes';
 import {PathTransformBuffers, Renderer} from "./renderer";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
+import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
+import {SVGRenderer} from './svg-renderer';
 import {BUILTIN_FONT_URI, computeStemDarkeningAmount, ExpandedMeshData, GlyphStore} from "./text";
 import {Hint} from "./text";
 import {PathfinderFont, TextFrame, TextRun} from "./text";
 import {unwrapNull} from "./utils";
 import {DemoView} from "./view";
 import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
-import { SVGRenderer } from './svg-renderer';
-import { SVGLoader, BUILTIN_SVG_URI } from './svg-loader';
 
 const FONT: string = 'open-sans';
 const TEXT_COLOR: number[] = [0, 0, 0, 255];

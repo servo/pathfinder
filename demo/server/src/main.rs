@@ -6,7 +6,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
-// except according to those terms.// Copyright © 2017 Mozilla Foundation
+// except according to those terms.
 
 #![feature(plugin)]
 #![plugin(rocket_codegen)]
@@ -35,6 +35,7 @@ use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
 use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphImage};
 use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
+use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::cubic::CubicCurve;
@@ -190,8 +191,29 @@ struct PartitionSvgPath {
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 enum PartitionSvgPathKind {
-    Fill,
+    Fill(PartitionSvgFillRule),
     Stroke(f32),
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+enum PartitionSvgFillRule {
+    Winding,
+    EvenOdd,
+}
+
+impl PartitionSvgFillRule {
+    fn to_fill_rule(self) -> FillRule {
+        match self {
+            PartitionSvgFillRule::Winding => FillRule::Winding,
+            PartitionSvgFillRule::EvenOdd => FillRule::EvenOdd,
+        }
+    }
+}
+
+#[derive(Clone)]
+struct PathDescriptor {
+    subpath_indices: Range<u32>,
+    fill_rule: FillRule,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -207,12 +229,15 @@ struct PathPartitioningResult {
 }
 
 impl PathPartitioningResult {
-    fn compute(partitioner: &mut Partitioner, subpath_indices: &[Range<u32>])
+    fn compute(partitioner: &mut Partitioner, path_descriptors: &[PathDescriptor])
                -> PathPartitioningResult {
         let timestamp_before = Instant::now();
 
-        for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
-            partitioner.partition((path_index + 1) as u16, subpath_range.start, subpath_range.end);
+        for (path_index, path_descriptor) in path_descriptors.iter().enumerate() {
+            partitioner.set_fill_rule(path_descriptor.fill_rule);
+            partitioner.partition((path_index + 1) as u16,
+                                  path_descriptor.subpath_indices.start,
+                                  path_descriptor.subpath_indices.end);
         }
 
         partitioner.library_mut().optimize();
@@ -370,7 +395,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
 
     // Read glyph info.
     let mut path_buffer = PathBuffer::new();
-    let subpath_indices: Vec<_> = request.glyphs.iter().map(|glyph| {
+    let path_descriptors: Vec<_> = request.glyphs.iter().map(|glyph| {
         let glyph_key = GlyphKey::new(glyph.id, SubpixelOffset(0));
 
         let first_subpath_index = path_buffer.subpaths.len();
@@ -384,22 +409,27 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
 
         let last_subpath_index = path_buffer.subpaths.len();
 
-        (first_subpath_index as u32)..(last_subpath_index as u32)
+        PathDescriptor {
+            subpath_indices: (first_subpath_index as u32)..(last_subpath_index as u32),
+            fill_rule: FillRule::Winding,
+        }
     }).collect();
 
     // Partition the decoded glyph outlines.
     let mut library = MeshLibrary::new();
-    for (path_index, subpath_range) in subpath_indices.iter().enumerate() {
-        let stream = PathBufferStream::subpath_range(&path_buffer, (*subpath_range).clone());
+    for (path_index, path_descriptor) in path_descriptors.iter().enumerate() {
+        let stream = PathBufferStream::subpath_range(&path_buffer,
+                                                     path_descriptor.subpath_indices.clone());
         library.push_segments((path_index + 1) as u16, stream);
-        let stream = PathBufferStream::subpath_range(&path_buffer, (*subpath_range).clone());
+        let stream = PathBufferStream::subpath_range(&path_buffer,
+                                                     path_descriptor.subpath_indices.clone());
         library.push_normals(stream);
     }
 
     let mut partitioner = Partitioner::new(library);
     partitioner.init_with_path_buffer(&path_buffer);
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
-                                                                   &subpath_indices);
+                                                                   &path_descriptors);
 
     // Build the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -464,11 +494,13 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
             }
         }
 
-        match path.kind {
-            PartitionSvgPathKind::Fill => {
+        let fill_rule = match path.kind {
+            PartitionSvgPathKind::Fill(fill_rule) => {
                 let stream = MonotonicPathCommandStream::new(stream.into_iter());
                 library.push_segments((path_index + 1) as u16, stream.clone());
-                path_buffer.add_stream(stream)
+                path_buffer.add_stream(stream);
+
+                fill_rule.to_fill_rule()
             }
             PartitionSvgPathKind::Stroke(stroke_width) => {
                 let mut temp_path_buffer = PathBuffer::new();
@@ -477,13 +509,18 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                 let stream = PathBufferStream::new(&temp_path_buffer);
                 let stream = MonotonicPathCommandStream::new(stream);
                 library.push_segments((path_index + 1) as u16, stream.clone());
-                path_buffer.add_stream(stream)
+                path_buffer.add_stream(stream);
+
+                FillRule::Winding
             }
-        }
+        };
 
         let last_subpath_index = path_buffer.subpaths.len() as u32;
 
-        paths.push(first_subpath_index..last_subpath_index)
+        paths.push(PathDescriptor {
+            subpath_indices: first_subpath_index..last_subpath_index,
+            fill_rule: fill_rule,
+        })
     }
 
     // Partition the paths.

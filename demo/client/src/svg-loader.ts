@@ -15,7 +15,7 @@ import * as _ from 'lodash';
 import 'path-data-polyfill.js';
 import {parseServerTiming, PathfinderMeshData} from "./meshes";
 import {AlphaMaskCompositingOperation, RenderTask, RenderTaskType} from './render-task';
-import {panic, Range, unwrapNull, unwrapUndef, lerp} from "./utils";
+import {lerp, panic, Range, unwrapNull, unwrapUndef} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
 
@@ -34,6 +34,8 @@ declare global {
     }
 }
 
+type FillRule = 'evenodd' | 'winding';
+
 export abstract class SVGPath {
     element: SVGPathElement;
     color: glmatrix.vec4;
@@ -47,8 +49,17 @@ export abstract class SVGPath {
 }
 
 export class SVGFill extends SVGPath {
+    fillRule: FillRule;
+
+    get pathfinderFillRule(): string {
+        return { evenodd: 'EvenOdd', winding: 'Winding' }[this.fillRule];
+    }
+
     constructor(element: SVGPathElement) {
         super(element, 'fill');
+
+        const style = window.getComputedStyle(element);
+        this.fillRule = style.fillRule === 'evenodd' ? 'evenodd' : 'winding';
     }
 }
 
@@ -185,10 +196,13 @@ export class SVGLoader {
             glmatrix.vec2.max(svgTopRight, svgTopRight, topRight);
 
             if (instance instanceof SVGFill) {
-                this.paths.push({ segments: segments, kind: 'Fill' });
+                this.paths.push({
+                    kind: { Fill: instance.pathfinderFillRule },
+                    segments: segments,
+                });
                 this.pathBounds.push(pathBounds);
             } else if (instance instanceof SVGStroke) {
-                this.paths.push({ segments: segments, kind: { Stroke: instance.width } });
+                this.paths.push({ kind: { Stroke: instance.width }, segments: segments });
                 this.pathBounds.push(pathBounds);
             }
         }
