@@ -42,9 +42,6 @@ impl Stroke {
 
             // Close the first subpath if necessary.
             if closed && !output.endpoints.is_empty() {
-                let first_endpoint = output.endpoints[first_endpoint_index as usize];
-                output.endpoints.push(first_endpoint);
-
                 let last_endpoint_index = output.endpoints.len() as u32;
                 output.subpaths.push(Subpath {
                     first_endpoint_index: first_endpoint_index,
@@ -60,11 +57,6 @@ impl Stroke {
             self.offset_subpath(output, &input, subpath_index);
 
             // Close the path.
-            if !output.endpoints.is_empty() {
-                let first_endpoint = output.endpoints[first_endpoint_index as usize];
-                output.endpoints.push(first_endpoint);
-            }
-
             let last_endpoint_index = output.endpoints.len() as u32;
             output.subpaths.push(Subpath {
                 first_endpoint_index: first_endpoint_index,
