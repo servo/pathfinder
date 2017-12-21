@@ -1010,8 +1010,7 @@ impl<'a> Partitioner<'a> {
                 let (lower_line, _) =
                     Line::new(lower_left_vertex_position,
                               lower_right_endpoint_position).subdivide_at_x(max_x);
-                // Use `intersect_at_infinity()` to reduce floating point error.
-                upper_line.intersect_at_infinity(&lower_line)
+                upper_line.intersect(&lower_line)
             }
 
             (upper_control_point_vertex_index, u32::MAX) => {
