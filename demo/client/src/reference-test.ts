@@ -29,6 +29,8 @@ import {PathfinderFont, TextFrame, TextRun} from "./text";
 import {unwrapNull} from "./utils";
 import {DemoView} from "./view";
 import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
+import { SVGRenderer } from './svg-renderer';
+import { SVGLoader, BUILTIN_SVG_URI } from './svg-loader';
 
 const FONT: string = 'open-sans';
 const TEXT_COLOR: number[] = [0, 0, 0, 255];
@@ -92,12 +94,21 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     font: PathfinderFont | null;
     textRun: TextRun | null;
 
+    svgLoader: SVGLoader;
+
     referenceCanvas: HTMLCanvasElement;
 
     tests: Promise<ReferenceTestGroup[]>;
 
+    currentTestType: 'font' | 'svg';
+
     protected readonly defaultFile: string = FONT;
-    protected readonly builtinFileURI: string = BUILTIN_FONT_URI;
+
+    protected get builtinFileURI(): string {
+        if (this.currentTestType === 'font')
+            return BUILTIN_FONT_URI;
+        return BUILTIN_SVG_URI;
+    }
 
     private glyphStore: GlyphStore;
     private baseMeshes: PathfinderMeshData;
@@ -119,7 +130,6 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     private ssimLabels: PerTestType<HTMLElement>;
     private resultsTables: PerTestType<HTMLTableElement>;
 
-    private currentTestType: 'font' | 'svg';
     private currentTestGroupIndex: number | null;
     private currentTestCaseIndex: number | null;
     private currentGlobalTestCaseIndex: number | null;
@@ -307,12 +317,28 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     }
 
     protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
-        const font = new PathfinderFont(fileData, builtinName);
-        this.font = font;
+        switch (this.currentTestType) {
+        case 'font':
+            this.textFileLoaded(fileData, builtinName);
+            break;
+        case 'svg':
+            this.svgFileLoaded(fileData, builtinName);
+            break;
+        }
 
         // Don't automatically run the test unless this is a custom test.
         if (this.currentGlobalTestCaseIndex == null)
             this.runSingleTest();
+    }
+
+    private textFileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
+        const font = new PathfinderFont(fileData, builtinName);
+        this.font = font;
+    }
+
+    private svgFileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
+        this.svgLoader = new SVGLoader;
+        this.svgLoader.loadFile(fileData);
     }
 
     private populateFilesSelect(): void {
@@ -387,7 +413,9 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     }
 
     private runSingleTest(): void {
-        this.setUpTextRun();
+        if (this.currentTestType === 'font')
+            this.setUpTextRun();
+
         this.loadReference().then(() => this.loadRendering());
     }
 
@@ -448,6 +476,17 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     }
 
     private loadRendering(): void {
+        switch (this.currentTestType) {
+        case 'font':
+            this.loadTextRendering();
+            break;
+        case 'svg':
+            this.loadSVGRendering();
+            break;
+        }
+    }
+
+    private loadTextRendering(): void {
         this.glyphStore.partition().then(result => {
             const textRun = unwrapNull(this.textRun);
 
@@ -458,8 +497,19 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
             this.expandedMeshes = expandedMeshes;
 
             this.view.then(view => {
+                view.recreateRenderer();
                 view.attachMeshes([expandedMeshes.meshes]);
                 view.redraw();
+            });
+        });
+    }
+
+    private loadSVGRendering(): void {
+        this.svgLoader.partition().then(meshes => {
+            this.view.then(view => {
+                view.recreateRenderer();
+                view.attachMeshes([meshes]);
+                view.initCameraBounds(this.svgLoader.svgBounds);
             });
         });
     }
@@ -513,7 +563,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
 }
 
 class ReferenceTestView extends DemoView {
-    readonly renderer: ReferenceTestRenderer;
+    renderer: ReferenceTestTextRenderer | ReferenceTestSVGRenderer;
     readonly appController: ReferenceTestAppController;
 
     get camera(): OrthographicCamera {
@@ -527,16 +577,35 @@ class ReferenceTestView extends DemoView {
         super(gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
-        this.renderer = new ReferenceTestRenderer(this);
+        this.recreateRenderer();
 
         this.resizeToFit(true);
+    }
+
+    recreateRenderer(): void {
+        switch (this.appController.currentTestType) {
+        case 'svg':
+            this.renderer = new ReferenceTestSVGRenderer(this);
+            break;
+        case 'font':
+            this.renderer = new ReferenceTestTextRenderer(this);
+            break;
+        }
+    }
+
+    initCameraBounds(bounds: glmatrix.vec4): void {
+        if (this.renderer instanceof ReferenceTestSVGRenderer)
+            this.renderer.initCameraBounds(bounds);
     }
 
     protected renderingFinished(): void {
         const gl = this.renderContext.gl;
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-        const pixelRect = this.renderer.getPixelRectForGlyphAt(0);
+        // TODO(pcwalton): Get the SVG pixel rect.
+        let pixelRect: glmatrix.vec4 = glmatrix.vec4.create();
+        if (this.renderer instanceof ReferenceTestTextRenderer)
+            pixelRect = this.renderer.getPixelRectForGlyphAt(0);
 
         const canvasHeight = this.canvas.height;
         const width = pixelRect[2] - pixelRect[0], height = pixelRect[3] - pixelRect[1];
@@ -566,7 +635,7 @@ class ReferenceTestView extends DemoView {
     }
 }
 
-class ReferenceTestRenderer extends Renderer {
+class ReferenceTestTextRenderer extends Renderer {
     renderContext: ReferenceTestView;
     camera: OrthographicCamera;
 
@@ -727,6 +796,22 @@ class ReferenceTestRenderer extends Renderer {
 
     protected directInteriorProgramName(): keyof ShaderMap<void> {
         return 'directInterior';
+    }
+}
+
+class ReferenceTestSVGRenderer extends SVGRenderer {
+    renderContext: ReferenceTestView;
+
+    protected get loader(): SVGLoader {
+        return this.renderContext.appController.svgLoader;
+    }
+
+    protected get canvas(): HTMLCanvasElement {
+        return this.renderContext.canvas;
+    }
+
+    constructor(renderContext: ReferenceTestView) {
+        super(renderContext);
     }
 }
 
