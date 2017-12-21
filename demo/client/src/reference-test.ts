@@ -45,6 +45,17 @@ const TEST_DATA_URI: string = "/test-data/reference-test-text.csv";
 const SSIM_TOLERANCE: number = 0.01;
 const SSIM_WINDOW_SIZE: number = 8;
 
+const FILES: PerTestType<File[]> = {
+    font: [
+        { id: 'open-sans', title: "Open Sans" },
+        { id: 'eb-garamond', title: "EB Garamond" },
+        { id: 'nimbus-sans', title: "Nimbus Sans" },
+    ],
+    svg: [
+        { id: 'tiger', title: "Ghostscript Tiger" },
+    ],
+};
+
 interface ReferenceTestGroup {
     font: string;
     tests: ReferenceTestCase[];
@@ -57,6 +68,16 @@ interface ReferenceTestCase {
     subpixel: boolean;
     referenceRenderer: ReferenceRenderer;
     expectedSSIM: number;
+}
+
+interface PerTestType<T> {
+    font: T;
+    svg: T;
+}
+
+interface File {
+    id: string;
+    title: string;
 }
 
 type ReferenceRenderer = 'core-graphics' | 'freetype';
@@ -85,12 +106,20 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     private fontSizeInput: HTMLInputElement;
     private characterInput: HTMLInputElement;
     private referenceRendererSelect: HTMLSelectElement;
-    private ssimLabel: HTMLElement;
-    private runTestsButton: HTMLButtonElement;
-    private resultsTable: HTMLTableElement;
 
     private differenceCanvas: HTMLCanvasElement;
 
+    private aaLevelGroup: HTMLElement;
+
+    private customTabs: PerTestType<HTMLElement>;
+    private customTestForms: PerTestType<HTMLFormElement>;
+    private selectFileGroups: PerTestType<HTMLElement>;
+    private runTestsButtons: PerTestType<HTMLButtonElement>;
+    private ssimGroups: PerTestType<HTMLElement>;
+    private ssimLabels: PerTestType<HTMLElement>;
+    private resultsTables: PerTestType<HTMLTableElement>;
+
+    private currentTestType: 'font' | 'svg';
     private currentTestGroupIndex: number | null;
     private currentTestCaseIndex: number | null;
     private currentGlobalTestCaseIndex: number | null;
@@ -121,7 +150,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
 
     start(): void {
         this.referenceRendererSelect =
-            unwrapNull(document.getElementById('pf-reference-renderer')) as HTMLSelectElement;
+            unwrapNull(document.getElementById('pf-font-reference-renderer')) as HTMLSelectElement;
         this.referenceRendererSelect.addEventListener('change', () => {
             this.view.then(view => this.runSingleTest());
         }, false);
@@ -147,22 +176,60 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
             this.view.then(view => this.runSingleTest());
         }, false);
 
-        this.ssimLabel = unwrapNull(document.getElementById('pf-ssim-label'));
-
-        this.resultsTable = unwrapNull(document.getElementById('pf-results-table')) as
-            HTMLTableElement;
-
-        this.runTestsButton = unwrapNull(document.getElementById('pf-run-tests-button')) as
-            HTMLButtonElement;
-        this.runTestsButton.addEventListener('click', () => {
-            this.view.then(view => this.runTests());
-        }, false);
+        this.aaLevelGroup = unwrapNull(document.getElementById('pf-aa-level-group')) as
+            HTMLElement;
 
         this.differenceCanvas = unwrapNull(document.getElementById('pf-difference-canvas')) as
             HTMLCanvasElement;
 
+        this.customTabs = {
+            font: unwrapNull(document.getElementById('pf-font-custom-test-tab')) as HTMLElement,
+            svg: unwrapNull(document.getElementById('pf-svg-custom-test-tab')) as HTMLElement,
+        };
+        this.customTestForms = {
+            font: unwrapNull(document.getElementById('pf-font-custom-form')) as HTMLFormElement,
+            svg: unwrapNull(document.getElementById('pf-svg-custom-form')) as HTMLFormElement,
+        };
+        this.selectFileGroups = {
+            font: unwrapNull(document.getElementById('pf-font-select-file-group')) as HTMLElement,
+            svg: unwrapNull(document.getElementById('pf-svg-select-file-group')) as HTMLElement,
+        };
+        this.runTestsButtons = {
+            font: unwrapNull(document.getElementById('pf-run-font-tests-button')) as
+                HTMLButtonElement,
+            svg: unwrapNull(document.getElementById('pf-run-svg-tests-button')) as
+                HTMLButtonElement,
+        };
+        this.ssimGroups = {
+            font: unwrapNull(document.getElementById('pf-font-ssim-group')) as HTMLElement,
+            svg: unwrapNull(document.getElementById('pf-svg-ssim-group')) as HTMLElement,
+        };
+        this.ssimLabels = {
+            font: unwrapNull(document.getElementById('pf-font-ssim-label')) as HTMLElement,
+            svg: unwrapNull(document.getElementById('pf-svg-ssim-label')) as HTMLElement,
+        };
+        this.resultsTables = {
+            font: unwrapNull(document.getElementById('pf-font-results-table')) as HTMLTableElement,
+            svg: unwrapNull(document.getElementById('pf-svg-results-table')) as HTMLTableElement,
+        };
+
+        this.customTabs.font.addEventListener('click',
+                                              () => this.showCustomTabPane('font'),
+                                              false);
+        this.customTabs.svg.addEventListener('click', () => this.showCustomTabPane('svg'), false);
+
+        this.runTestsButtons.font.addEventListener('click', () => {
+            this.view.then(view => this.runTests());
+        }, false);
+        this.runTestsButtons.svg.addEventListener('click', () => {
+            this.view.then(view => this.runTests());
+        }, false);
+
+        this.currentTestType = 'font';
+
         this.loadTestData();
         this.populateResultsTable();
+        this.populateFilesSelect();
 
         this.loadInitialFile(this.builtinFileURI);
     }
@@ -195,7 +262,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
 
     recordSSIMResult(tests: ReferenceTestGroup[], ssimResult: imageSSIM.IResult): void {
         const formattedSSIM: string = "" + (Math.round(ssimResult.ssim * 1000.0) / 1000.0);
-        this.ssimLabel.textContent = formattedSSIM;
+        this.ssimLabels[this.currentTestType].textContent = formattedSSIM;
 
         if (this.currentTestGroupIndex == null || this.currentTestCaseIndex == null ||
             this.currentGlobalTestCaseIndex == null) {
@@ -206,7 +273,8 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         const expectedSSIM = testGroup.tests[this.currentTestCaseIndex].expectedSSIM;
         const passed = Math.abs(expectedSSIM - ssimResult.ssim) <= SSIM_TOLERANCE;
 
-        const resultsBody: Element = unwrapNull(this.resultsTable.lastElementChild);
+        const resultsBody: Element = unwrapNull(this.resultsTables[this.currentTestType]
+                                                    .lastElementChild);
         let resultsRow = unwrapNull(resultsBody.firstElementChild);
         for (let rowIndex = 0; rowIndex < this.currentGlobalTestCaseIndex; rowIndex++)
             resultsRow = unwrapNull(resultsRow.nextElementSibling);
@@ -247,6 +315,19 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
             this.runSingleTest();
     }
 
+    private populateFilesSelect(): void {
+        const selectFileElement = unwrapNull(this.selectFileElement);
+        while (selectFileElement.lastChild != null)
+            selectFileElement.removeChild(selectFileElement.lastChild);
+
+        for (const file of FILES[this.currentTestType]) {
+            const option = document.createElement('option');
+            option.value = file.id;
+            option.appendChild(document.createTextNode(file.title));
+            selectFileElement.appendChild(option);
+        }
+    }
+
     private loadTestData(): void {
         this.tests = window.fetch(TEST_DATA_URI)
                            .then(response => response.text())
@@ -285,7 +366,8 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
 
     private populateResultsTable(): void {
         this.tests.then(tests => {
-            const resultsBody: Element = unwrapNull(this.resultsTable.lastElementChild);
+            const resultsBody: Element = unwrapNull(this.resultsTables[this.currentTestType]
+                                                        .lastElementChild);
             for (const testGroup of tests) {
                 for (const test of testGroup.tests) {
                     const row = document.createElement('tr');
@@ -408,6 +490,25 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
                 context.drawImage(imgElement, 0, 0);
             }, false);
         });
+    }
+
+    private showCustomTabPane(testType: 'font' | 'svg'): void {
+        this.currentTestType = testType;
+
+        const selectFileElement = unwrapNull(this.selectFileElement);
+        const aaLevelGroup = unwrapNull(this.aaLevelGroup);
+
+        const customTestForm = this.customTestForms[testType];
+        const selectFileGroup = this.selectFileGroups[testType];
+        const ssimGroup = this.ssimGroups[testType];
+
+        unwrapNull(selectFileElement.parentNode).removeChild(selectFileElement);
+        unwrapNull(aaLevelGroup.parentNode).removeChild(aaLevelGroup);
+
+        selectFileGroup.appendChild(selectFileElement);
+        customTestForm.insertBefore(aaLevelGroup, ssimGroup);
+
+        this.populateFilesSelect();
     }
 }
 

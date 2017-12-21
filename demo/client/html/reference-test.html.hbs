@@ -16,24 +16,43 @@
                     <div id="pf-reference-test-sidebar" class="col p-3">
                         <ul class="nav nav-tabs" role="tablist">
                             <li class="nav-item">
-                                <a class="nav-link" id="pf-test-suite-tab" data-toggle="tab"
-                                href="#pf-test-suite" role="tab" aria-controls="pf-test-suite"
-                                aria-selected="false">Test Suite</a>
+                                <a class="nav-link" id="pf-font-test-suite-tab" data-toggle="tab"
+                                href="#pf-font-test-suite" role="tab"
+                                aria-controls="pf-font-test-suite" aria-selected="false">
+                                    Font Test Suite
+                                </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link active" id="pf-custom-test-tab"
-                                 data-toggle="tab"
-                                 href="#pf-custom-test" role="tab" aria-controls="pf-custom-test"
-                                 aria-selected="true">Custom Test</a>
+                                <a class="nav-link" id="pf-svg-test-suite-tab" data-toggle="tab"
+                                href="#pf-svg-test-suite" role="tab"
+                                aria-controls="pf-svg-test-suite" aria-selected="false">
+                                    SVG Test Suite
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link active" id="pf-font-custom-test-tab"
+                                 data-toggle="tab" href="#pf-font-custom-test" role="tab"
+                                 aria-controls="pf-font-custom-test"
+                                 aria-selected="true">
+                                    Custom Font Test
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" id="pf-svg-custom-test-tab"
+                                 data-toggle="tab" href="#pf-svg-custom-test" role="tab"
+                                 aria-controls="pf-svg-custom-test">
+                                    Custom SVG Test
+                                </a>
                             </li>
                         </ul>
                         <div class="tab-content">
-                            <div class="tab-pane pt-3" id="pf-test-suite" role="tabpanel"
-                            aria-labelledby="pf-test-suite-tab">
-                                <button id="pf-run-tests-button" class="btn btn-primary m-2">
+                            <div class="tab-pane pt-3" id="pf-font-test-suite" role="tabpanel"
+                             aria-labelledby="pf-font-test-suite-tab">
+                                <button id="pf-run-font-tests-button" class="btn btn-primary m-2">
                                     Run Tests
                                 </button>
-                                <table id="pf-results-table" class="table table-sm table-striped">
+                                <table id="pf-font-results-table"
+                                 class="table table-sm table-striped">
                                     <thead>
                                         <tr>
                                             <th scope="col"></th>
@@ -50,16 +69,33 @@
                                     <tbody></tbody>
                                 </table>
                             </div>
-                            <div class="tab-pane show active p-3" id="pf-custom-test"
-                             role="tabpanel" aria-labelledby="pf-custom-test-tab">
-                                <form>
-                                    <div class="form-group">
+                            <div class="tab-pane pt-3" id="pf-svg-test-suite" role="tabpanel"
+                             aria-labelledby="pf-svg-test-suite-tab">
+                                <button id="pf-run-svg-tests-button" class="btn btn-primary m-2">
+                                    Run Tests
+                                </button>
+                                <table id="pf-svg-results-table"
+                                 class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col"></th>
+                                            <th scope="col">SVG</th>
+                                            <th scope="col">AA</th>
+                                            <th scope="col">Reference</th>
+                                            <th scope="col">Expected SSIM</th>
+                                            <th scope="col">Actual SSIM</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <div class="tab-pane show active p-3" id="pf-font-custom-test"
+                             role="tabpanel" aria-labelledby="pf-font-custom-test-tab">
+                                <form id="pf-font-custom-form">
+                                    <div id="pf-font-select-file-group" class="form-group">
                                         <label for="pf-select-file">Font</label>
                                         <select id="pf-select-file"
                                          class="form-control custom-select">
-                                            <option value="open-sans">Open Sans</option>
-                                            <option value="eb-garamond">EB Garamond</option>
-                                            <option value="nimbus-sans">Nimbus Sans</option>
                                         </select>
                                     </div>
                                     <div class="form-group">
@@ -76,6 +112,20 @@
                                         value="B">
                                     </div>
                                     <div class="form-group">
+                                        <label for="pf-font-reference-renderer">
+                                            Reference Renderer
+                                        </label>
+                                        <select id="pf-font-reference-renderer"
+                                        class="form-control custom-select">
+                                            <option value="freetype">FreeType</option>
+                                            <option value="core-graphics">Core Graphics</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group row justify-content-between">
+                                        {{>partials/switch.html id="pf-subpixel-aa"
+                                        title="Subpixel AA"}}
+                                    </div>
+                                    <div id="pf-aa-level-group" class="form-group">
                                         <label for="pf-aa-level-select">Antialiasing</label>
                                         <select id="pf-aa-level-select"
                                         class="form-control custom-select">
@@ -84,23 +134,30 @@
                                             <option value="xcaa" selected>XCAA</option>
                                         </select>
                                     </div>
-                                    <div class="form-group row justify-content-between">
-                                        {{>partials/switch.html id="pf-subpixel-aa"
-                                        title="Subpixel AA"}}
+                                    <div id="pf-font-ssim-group" class="form-group">
+                                        <label for="pf-font-ssim-label">SSIM</label>
+                                        <div id="pf-font-ssim-label">&mdash;</div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="tab-pane p-3" id="pf-svg-custom-test"
+                             role="tabpanel" aria-labelledby="pf-svg-custom-test-tab">
+                                <form id="pf-svg-custom-form">
+                                    <div id="pf-svg-select-file-group" class="form-group">
+                                        <label for="pf-select-file">SVG</label>
                                     </div>
                                     <div class="form-group">
-                                        <label for="pf-reference-renderer">
+                                        <label for="pf-svg-reference-renderer">
                                             Reference Renderer
                                         </label>
-                                        <select id="pf-reference-renderer"
-                                        class="form-control custom-select">
-                                            <option value="freetype">FreeType</option>
-                                            <option value="core-graphics">Core Graphics</option>
+                                        <select id="pf-svg-reference-renderer"
+                                         class="form-control custom-select">
+                                            <option value="pixman">Cairo/Pixman</option>
                                         </select>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="pf-ssim-label">SSIM</label>
-                                        <div id="pf-ssim-label">&mdash;</div>
+                                    <div id="pf-svg-ssim-group" class="form-group">
+                                        <label for="pf-svg-ssim-label">SSIM</label>
+                                        <div id="pf-svg-ssim-label">&mdash;</div>
                                     </div>
                                 </form>
                             </div>
