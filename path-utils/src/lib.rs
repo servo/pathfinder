@@ -91,17 +91,25 @@ impl PathBuffer {
     }
 
     fn close_subpath(&mut self, first_subpath_endpoint_index: &mut u32) {
-        let first_endpoint = self.endpoints[*first_subpath_endpoint_index as usize];
-        self.endpoints.push(first_endpoint);
-        self.end_subpath(first_subpath_endpoint_index)
+        if self.endpoints.len() > *first_subpath_endpoint_index as usize {
+            let first_endpoint = self.endpoints[*first_subpath_endpoint_index as usize];
+            self.endpoints.push(first_endpoint);
+        }
+
+        self.do_end_subpath(first_subpath_endpoint_index, true)
     }
 
     fn end_subpath(&mut self, first_subpath_endpoint_index: &mut u32) {
+        self.do_end_subpath(first_subpath_endpoint_index, false)
+    }
+
+    fn do_end_subpath(&mut self, first_subpath_endpoint_index: &mut u32, closed: bool) {
         let last_subpath_endpoint_index = self.endpoints.len() as u32;
         if *first_subpath_endpoint_index != last_subpath_endpoint_index {
             self.subpaths.push(Subpath {
                 first_endpoint_index: *first_subpath_endpoint_index,
                 last_endpoint_index: last_subpath_endpoint_index,
+                closed: closed,
             })
         }
 
@@ -209,6 +217,7 @@ pub struct Endpoint {
 pub struct Subpath {
     pub first_endpoint_index: u32,
     pub last_endpoint_index: u32,
+    pub closed: bool,
 }
 
 impl Subpath {

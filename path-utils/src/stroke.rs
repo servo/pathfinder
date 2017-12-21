@@ -31,12 +31,31 @@ impl Stroke {
         input.add_stream(stream);
 
         for subpath_index in 0..(input.subpaths.len() as u32) {
-            let first_endpoint_index = output.endpoints.len() as u32;
+            let closed = input.subpaths[subpath_index as usize].closed;
 
-            // Compute offset curves.
+            let mut first_endpoint_index = output.endpoints.len() as u32;
+
+            // Compute the first offset curve.
             //
             // TODO(pcwalton): Support line caps.
             self.offset_subpath(output, &input, subpath_index);
+
+            // Close the first subpath if necessary.
+            if closed && !output.endpoints.is_empty() {
+                let first_endpoint = output.endpoints[first_endpoint_index as usize];
+                output.endpoints.push(first_endpoint);
+
+                let last_endpoint_index = output.endpoints.len() as u32;
+                output.subpaths.push(Subpath {
+                    first_endpoint_index: first_endpoint_index,
+                    last_endpoint_index: last_endpoint_index,
+                    closed: true,
+                });
+
+                first_endpoint_index = last_endpoint_index;
+            }
+
+            // Compute the second offset curve.
             input.reverse_subpath(subpath_index);
             self.offset_subpath(output, &input, subpath_index);
 
@@ -50,6 +69,7 @@ impl Stroke {
             output.subpaths.push(Subpath {
                 first_endpoint_index: first_endpoint_index,
                 last_endpoint_index: last_endpoint_index,
+                closed: true,
             });
         }
     }
