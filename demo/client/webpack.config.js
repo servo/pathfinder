@@ -1,5 +1,6 @@
 const Handlebars = require('handlebars');
 const HandlebarsPlugin = require('handlebars-webpack-plugin');
+const RustdocPlugin = require('rustdoc-webpack-plugin');
 const fs = require('fs');
 
 module.exports = {
@@ -48,6 +49,9 @@ module.exports = {
                     return new Handlebars.SafeString(svg);
                 }
             },
-        })
+        }),
+        new RustdocPlugin({
+            directories: ["../../font-renderer"],
+        }),
     ]
 }

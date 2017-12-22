@@ -32,6 +32,7 @@
     "parse-color": "^1.0.0",
     "path-data-polyfill.js": "^1.0.2",
     "popper.js": "^1.12.5",
+    "rustdoc-webpack-plugin": "file:./build/rustdoc-webpack-plugin",
     "ts-loader": "^2.3.7",
     "typescript": "^2.5.2",
     "webpack": "^3.5.6"
