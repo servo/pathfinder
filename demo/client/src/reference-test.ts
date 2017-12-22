@@ -41,7 +41,11 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     xcaa: AdaptiveMonochromeXCAAStrategy,
 };
 
-const RENDER_REFERENCE_URI: string = "/render-reference";
+const RENDER_REFERENCE_URIS: PerTestType<string> = {
+    font: "/render-reference/text",
+    svg: "/render-reference/svg",
+};
+
 const TEST_DATA_URI: string = "/test-data/reference-test-text.csv";
 
 const SSIM_TOLERANCE: number = 0.01;
@@ -95,6 +99,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     textRun: TextRun | null;
 
     svgLoader: SVGLoader;
+    builtinSvgName: string | null;
 
     referenceCanvas: HTMLCanvasElement;
 
@@ -162,7 +167,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         this.referenceRendererSelect =
             unwrapNull(document.getElementById('pf-font-reference-renderer')) as HTMLSelectElement;
         this.referenceRendererSelect.addEventListener('change', () => {
-            this.view.then(view => this.runSingleTest());
+            this.view.then(view => this.runSingleTest(view));
         }, false);
 
         super.start();
@@ -177,13 +182,13 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         this.fontSizeInput = unwrapNull(document.getElementById('pf-font-size')) as
             HTMLInputElement;
         this.fontSizeInput.addEventListener('change', () => {
-            this.view.then(view => this.runSingleTest());
+            this.view.then(view => this.runSingleTest(view));
         }, false);
 
         this.characterInput = unwrapNull(document.getElementById('pf-character')) as
             HTMLInputElement;
         this.characterInput.addEventListener('change', () => {
-            this.view.then(view => this.runSingleTest());
+            this.view.then(view => this.runSingleTest(view));
         }, false);
 
         this.aaLevelGroup = unwrapNull(document.getElementById('pf-aa-level-group')) as
@@ -244,7 +249,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         this.loadInitialFile(this.builtinFileURI);
     }
 
-    runNextTestIfNecessary(tests: ReferenceTestGroup[]): void {
+    runNextTestIfNecessary(view: ReferenceTestView, tests: ReferenceTestGroup[]): void {
         if (this.currentTestGroupIndex == null || this.currentTestCaseIndex == null ||
             this.currentGlobalTestCaseIndex == null) {
             return;
@@ -266,7 +271,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         }
 
         this.loadFontForTestGroupIfNecessary(tests).then(() => {
-            this.setOptionsForCurrentTest(tests).then(() => this.runSingleTest());
+            this.setOptionsForCurrentTest(tests).then(() => this.runSingleTest(view));
         });
     }
 
@@ -328,7 +333,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
 
         // Don't automatically run the test unless this is a custom test.
         if (this.currentGlobalTestCaseIndex == null)
-            this.runSingleTest();
+            this.view.then(view => this.runSingleTest(view));
     }
 
     private textFileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
@@ -337,6 +342,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     }
 
     private svgFileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
+        this.builtinSvgName = builtinName;
         this.svgLoader = new SVGLoader;
         this.svgLoader.loadFile(fileData);
     }
@@ -381,6 +387,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
                     subpixel: !!row.Subpixel,
                 });
             }
+
             return fontNames.map(fontName => {
                 return {
                     font: fontName,
@@ -412,11 +419,11 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         });
     }
 
-    private runSingleTest(): void {
+    private runSingleTest(view: ReferenceTestView): void {
         if (this.currentTestType === 'font')
             this.setUpTextRun();
 
-        this.loadReference().then(() => this.loadRendering());
+        this.loadReference(view).then(() => this.loadRendering());
     }
 
     private runTests(): void {
@@ -428,7 +435,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
                 this.currentGlobalTestCaseIndex = 0;
 
                 this.loadFontForTestGroupIfNecessary(tests).then(() => {
-                    this.setOptionsForCurrentTest(tests).then(() => this.runSingleTest());
+                    this.setOptionsForCurrentTest(tests).then(() => this.runSingleTest(view));
                 });
             });
         });
@@ -514,18 +521,32 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         });
     }
 
-    private loadReference(): Promise<void> {
-        const request = {
-            face: {
-                Builtin: unwrapNull(this.font).builtinFontName,
-            },
-            fontIndex: 0,
-            glyph: this.glyphStore.glyphIDs[0],
-            pointSize: this.currentFontSize,
-            renderer: this.currentReferenceRenderer,
-        };
+    private loadReference(view: ReferenceTestView): Promise<void> {
+        let request;
+        switch (this.currentTestType) {
+        case 'font':
+            request = {
+                face: {
+                    Builtin: unwrapNull(this.font).builtinFontName,
+                },
+                fontIndex: 0,
+                glyph: this.glyphStore.glyphIDs[0],
+                pointSize: this.currentFontSize,
+                renderer: this.currentReferenceRenderer,
+            };
+            break;
+        case 'svg':
+            // TODO(pcwalton): Custom SVGs.
+            // TODO(pcwalton): Detect scale.
+            request = {
+                name: unwrapNull(this.builtinSvgName),
+                renderer: 'pixman',
+                scale: 1.0,
+            };
+            break;
+        }
 
-        return window.fetch(RENDER_REFERENCE_URI, {
+        return window.fetch(RENDER_REFERENCE_URIS[this.currentTestType], {
             body: JSON.stringify(request),
             headers: {'Content-Type': 'application/json'} as any,
             method: 'POST',
@@ -630,7 +651,7 @@ class ReferenceTestView extends DemoView {
             const differenceImage = generateDifferenceImage(referenceImage, renderedImage);
             this.appController.recordSSIMResult(tests, ssimResult);
             this.appController.drawDifferenceImage(differenceImage);
-            this.appController.runNextTestIfNecessary(tests);
+            this.appController.runNextTestIfNecessary(this, tests);
         });
     }
 }

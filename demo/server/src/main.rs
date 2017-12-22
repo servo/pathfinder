@@ -13,6 +13,7 @@
 
 extern crate app_units;
 extern crate base64;
+extern crate cairo;
 extern crate env_logger;
 extern crate euclid;
 extern crate fontsan;
@@ -23,6 +24,7 @@ extern crate pathfinder_partitioner;
 extern crate pathfinder_path_utils;
 extern crate rocket;
 extern crate rocket_contrib;
+extern crate rsvg;
 
 #[macro_use]
 extern crate lazy_static;
@@ -30,7 +32,8 @@ extern crate lazy_static;
 extern crate serde_derive;
 
 use app_units::Au;
-use euclid::{Point2D, Transform2D};
+use cairo::{Format, ImageSurface};
+use euclid::{Point2D, Size2D, Transform2D};
 use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
 use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphImage};
@@ -46,6 +49,7 @@ use rocket::http::{ContentType, Header, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
 use rocket_contrib::json::Json;
+use rsvg::{Handle, HandleExt};
 use std::fs::File;
 use std::io::{self, Cursor, Read};
 use std::ops::Range;
@@ -130,15 +134,21 @@ enum FontRequestFace {
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
-enum ReferenceRenderer {
+enum ReferenceTextRenderer {
     #[serde(rename = "freetype")]
     FreeType,
     #[serde(rename = "core-graphics")]
     CoreGraphics,
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize)]
+enum ReferenceSvgRenderer {
+    #[serde(rename = "pixman")]
+    Pixman,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
-struct RenderReferenceRequest {
+struct RenderTextReferenceRequest {
     face: FontRequestFace,
     #[serde(rename = "fontIndex")]
     font_index: u32,
@@ -146,7 +156,14 @@ struct RenderReferenceRequest {
 
     #[serde(rename = "pointSize")]
     point_size: f64,
-    renderer: ReferenceRenderer,
+    renderer: ReferenceTextRenderer,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct RenderSvgReferenceRequest {
+    name: String,
+    scale: f64,
+    renderer: ReferenceSvgRenderer,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -170,6 +187,13 @@ enum FontError {
     RasterizationFailed,
     ReferenceRasterizerUnavailable,
     Unimplemented,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+enum SvgError {
+    UnknownBuiltinSvg,
+    LoadingFailed,
+    ImageWritingFailed,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -324,6 +348,21 @@ fn otf_data_from_request(face: &FontRequestFace) -> Result<Arc<Vec<u8>>, FontErr
                 Err(_) => return Err(FontError::FontSanitizationFailed),
             }
         }
+    }
+}
+
+// Fetches the SVG data.
+fn svg_data_from_request(builtin_svg_name: &str) -> Result<Arc<Vec<u8>>, SvgError> {
+    // Read in the builtin SVG.
+    match BUILTIN_SVGS.iter().filter(|& &(name, _)| name == builtin_svg_name).next() {
+        Some(&(_, path)) => {
+            let mut data = vec![];
+            File::open(path).expect("Couldn't find builtin SVG!")
+                            .read_to_end(&mut data)
+                            .expect("Couldn't read builtin SVG!");
+            Ok(Arc::new(data))
+        }
+        None => return Err(SvgError::UnknownBuiltinSvg),
     }
 }
 
@@ -536,9 +575,9 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     })
 }
 
-#[post("/render-reference", format = "application/json", data = "<request>")]
-fn render_reference(request: Json<RenderReferenceRequest>)
-                    -> Result<ReferenceImage, FontError> {
+#[post("/render-reference/text", format = "application/json", data = "<request>")]
+fn render_reference_text(request: Json<RenderTextReferenceRequest>)
+                         -> Result<ReferenceImage, FontError> {
     let font_key = FontKey::new();
     let otf_data = try!(otf_data_from_request(&request.face));
     let font_instance = FontInstance {
@@ -549,7 +588,7 @@ fn render_reference(request: Json<RenderReferenceRequest>)
 
     // Rasterize the glyph using the right rasterizer.
     let glyph_image = match request.renderer {
-        ReferenceRenderer::FreeType => {
+        ReferenceTextRenderer::FreeType => {
             let mut font_context =
                 try!(FontContext::new().map_err(|_| FontError::FontLoadingFailed));
             try!(font_context.add_font_from_memory(&font_key, otf_data, request.font_index)
@@ -559,7 +598,7 @@ fn render_reference(request: Json<RenderReferenceRequest>)
                                                                      true)
                              .map_err(|_| FontError::RasterizationFailed))
         }
-        ReferenceRenderer::CoreGraphics => {
+        ReferenceTextRenderer::CoreGraphics => {
             try!(rasterize_glyph_with_core_graphics(&font_key,
                                                     request.font_index,
                                                     otf_data,
@@ -577,6 +616,41 @@ fn render_reference(request: Json<RenderReferenceRequest>)
     };
 
     Ok(reference_image)
+}
+
+#[post("/render-reference/svg", format = "application/json", data = "<request>")]
+fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
+                        -> Result<ReferenceImage, SvgError> {
+    let svg_data = try!(svg_data_from_request(&request.name));
+    let svg_string = String::from_utf8_lossy(&*svg_data);
+    let svg_handle = try!(Handle::new_from_str(&svg_string).map_err(|_| SvgError::LoadingFailed));
+
+    let svg_dimensions = svg_handle.get_dimensions();
+    let mut image_size = Size2D::new(svg_dimensions.width as f64, svg_dimensions.height as f64);
+    image_size = (image_size * request.scale).ceil();
+
+    // Rasterize the SVG using the appropriate rasterizer.
+    let mut surface = ImageSurface::create(Format::ARgb32,
+                                           image_size.width as i32,
+                                           image_size.height as i32).unwrap();
+
+    {
+        let cairo_context = cairo::Context::new(&surface);
+        cairo_context.scale(request.scale, request.scale);
+        svg_handle.render_cairo(&cairo_context);
+    }
+
+    let image_data = (*surface.get_data().unwrap()).to_vec();
+    let image_buffer = match ImageBuffer::from_raw(image_size.width as u32,
+                                                   image_size.height as u32,
+                                                   image_data) {
+        None => return Err(SvgError::ImageWritingFailed),
+        Some(image_buffer) => image_buffer,
+    };
+
+    Ok(ReferenceImage {
+        image: ImageRgba8(image_buffer),
+    })
 }
 
 // Static files
@@ -715,7 +789,8 @@ fn main() {
     rocket.mount("/", routes![
         partition_font,
         partition_svg_paths,
-        render_reference,
+        render_reference_text,
+        render_reference_svg,
         static_index,
         static_demo_text,
         static_demo_svg,
