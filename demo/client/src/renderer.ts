@@ -64,10 +64,6 @@ export abstract class Renderer {
         return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
     }
 
-    get usesIntermediateRenderTargets(): boolean {
-        return false;
-    }
-
     get meshesAttached(): boolean {
         return this.meshes != null && this.meshData != null;
     }
@@ -344,10 +340,6 @@ export abstract class Renderer {
 
     renderTaskTypeForObject(objectIndex: number): RenderTaskType {
         return 'color';
-    }
-
-    compositingOperationForObject(objectIndex: number): CompositingOperation | null {
-        return null;
     }
 
     meshIndexForObject(objectIndex: number): number {

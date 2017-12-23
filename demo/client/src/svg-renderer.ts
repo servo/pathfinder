@@ -66,10 +66,6 @@ export abstract class SVGRenderer extends Renderer {
         return this.destAllocatedSize;
     }
 
-    get usesIntermediateRenderTargets(): boolean {
-        return true;
-    }
-
     get backgroundColor(): glmatrix.vec4 {
         return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
     }

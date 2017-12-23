@@ -36,9 +36,6 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     private supersampledColorTexture: WebGLTexture;
     private supersampledDepthTexture: WebGLTexture;
     private supersampledFramebuffer: WebGLFramebuffer;
-    private renderTargetColorTextures: WebGLTexture[];
-    private renderTargetDepthTextures: WebGLTexture[];
-    private renderTargetFramebuffers: WebGLFramebuffer[];
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
@@ -47,10 +44,6 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         this.subpixelAA = subpixelAA;
         this.destFramebufferSize = glmatrix.vec2.create();
         this.supersampledFramebufferSize = glmatrix.vec2.create();
-
-        this.renderTargetColorTextures = [];
-        this.renderTargetDepthTextures = [];
-        this.renderTargetFramebuffers = [];
     }
 
     attachMeshes(renderer: Renderer): void {}
@@ -114,30 +107,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
-        if (renderer.usesIntermediateRenderTargets &&
-            (renderer.renderTaskTypeForObject(objectIndex) === 'clip' ||
-             renderer.compositingOperationForObject(objectIndex) != null)) {
-            if (this.renderTargetColorTextures[objectIndex] == null) {
-                this.renderTargetColorTextures[objectIndex] =
-                    createFramebufferColorTexture(gl,
-                                                  this.supersampledFramebufferSize,
-                                                  renderContext.colorAlphaFormat);
-            }
-            if (this.renderTargetDepthTextures[objectIndex] == null) {
-                this.renderTargetDepthTextures[objectIndex] =
-                    createFramebufferDepthTexture(gl, this.supersampledFramebufferSize);
-            }
-            if (this.renderTargetFramebuffers[objectIndex] == null) {
-                this.renderTargetFramebuffers[objectIndex] =
-                    createFramebuffer(gl,
-                                      this.renderTargetColorTextures[objectIndex],
-                                      this.renderTargetDepthTextures[objectIndex]);
-            }
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.renderTargetFramebuffers[objectIndex]);
-        } else {
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.supersampledFramebuffer);
-        }
-
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.supersampledFramebuffer);
         gl.viewport(0,
                     0,
                     this.supersampledFramebufferSize[0],
@@ -145,25 +115,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         gl.disable(gl.SCISSOR_TEST);
     }
 
-    finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {
-        if (!renderer.usesIntermediateRenderTargets)
-            return;
-
-        const compositingOperation = renderer.compositingOperationForObject(objectIndex);
-        if (compositingOperation == null)
-            return;
-
-        const gl = renderer.renderContext.gl;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.supersampledFramebuffer);
-        gl.viewport(0,
-                    0,
-                    this.supersampledFramebufferSize[0],
-                    this.supersampledFramebufferSize[1]);
-        gl.disable(gl.DEPTH_TEST);
-        gl.disable(gl.BLEND);
-
-        compositingOperation.composite(renderer, objectIndex, this.renderTargetColorTextures);
-    }
+    finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {}
 
     antialiasObject(renderer: Renderer): void {}
 

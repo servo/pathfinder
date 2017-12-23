@@ -95,16 +95,9 @@ export class NoAAStrategy extends AntialiasingStrategy {
         return 1;
     }
 
-    private renderTargetColorTextures: WebGLTexture[];
-    private renderTargetDepthTextures: WebGLTexture[];
-    private renderTargetFramebuffers: WebGLFramebuffer[];
-
     constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
         this.framebufferSize = glmatrix.vec2.create();
-        this.renderTargetColorTextures = [];
-        this.renderTargetDepthTextures = [];
-        this.renderTargetFramebuffers = [];
     }
 
     attachMeshes(renderer: Renderer) {}
@@ -131,50 +124,12 @@ export class NoAAStrategy extends AntialiasingStrategy {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
-        if (renderer.usesIntermediateRenderTargets &&
-            (renderer.renderTaskTypeForObject(objectIndex) === 'clip' ||
-             renderer.compositingOperationForObject(objectIndex) != null)) {
-            if (this.renderTargetColorTextures[objectIndex] == null) {
-                this.renderTargetColorTextures[objectIndex] =
-                    createFramebufferColorTexture(gl,
-                                                  this.framebufferSize,
-                                                  renderContext.colorAlphaFormat);
-            }
-            if (this.renderTargetDepthTextures[objectIndex] == null) {
-                this.renderTargetDepthTextures[objectIndex] =
-                    createFramebufferDepthTexture(gl, this.framebufferSize);
-            }
-            if (this.renderTargetFramebuffers[objectIndex] == null) {
-                this.renderTargetFramebuffers[objectIndex] =
-                    createFramebuffer(gl,
-                                      this.renderTargetColorTextures[objectIndex],
-                                      this.renderTargetDepthTextures[objectIndex]);
-            }
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.renderTargetFramebuffers[objectIndex]);
-        } else {
-            gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
-        }
-
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
         gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
         gl.disable(gl.SCISSOR_TEST);
     }
 
-    finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {
-        if (!renderer.usesIntermediateRenderTargets)
-            return;
-
-        const compositingOperation = renderer.compositingOperationForObject(objectIndex);
-        if (compositingOperation == null)
-            return;
-
-        const gl = renderer.renderContext.gl;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
-        gl.viewport(0, 0, renderer.destAllocatedSize[0], renderer.destAllocatedSize[1]);
-        gl.disable(gl.DEPTH_TEST);
-        gl.disable(gl.BLEND);
-
-        compositingOperation.composite(renderer, objectIndex, this.renderTargetColorTextures);
-    }
+    finishDirectlyRenderingObject(renderer: Renderer, objectIndex: number): void {}
 
     antialiasObject(renderer: Renderer, objectIndex: number): void {}
 

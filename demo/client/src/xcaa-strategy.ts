@@ -56,10 +56,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
     protected aaDepthTexture: WebGLTexture | null;
     protected aaFramebuffer: WebGLFramebuffer | null;
 
-    protected renderTargetColorTextures: WebGLTexture[];
-    protected renderTargetDepthTextures: WebGLTexture[];
-    protected renderTargetFramebuffers: WebGLFramebuffer[];
-
     constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
 
@@ -67,10 +63,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
 
         this.supersampledFramebufferSize = glmatrix.vec2.create();
         this.destFramebufferSize = glmatrix.vec2.create();
-
-        this.renderTargetColorTextures = [];
-        this.renderTargetDepthTextures = [];
-        this.renderTargetFramebuffers = [];
     }
 
     init(renderer: Renderer): void {
@@ -172,21 +164,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         this.setAdditionalStateForResolveIfNecessary(renderer, resolveProgram, 1);
         gl.drawElements(renderContext.gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
-
-        // Resolve render target if necessary.
-        if (!renderer.usesIntermediateRenderTargets)
-            return;
-
-        const compositingOperation = renderer.compositingOperationForObject(objectIndex);
-        if (compositingOperation == null)
-            return;
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
-        gl.viewport(0, 0, this.destFramebufferSize[0], this.destFramebufferSize[1]);
-        gl.disable(gl.DEPTH_TEST);
-        gl.disable(gl.BLEND);
-
-        compositingOperation.composite(renderer, objectIndex, this.renderTargetColorTextures);
     }
 
     resolve(pass: number, renderer: Renderer): void {}
@@ -271,30 +248,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
-        if (renderer.usesIntermediateRenderTargets &&
-            (renderer.renderTaskTypeForObject(objectIndex) === 'clip' ||
-             renderer.compositingOperationForObject(objectIndex) != null)) {
-            if (this.renderTargetColorTextures[objectIndex] == null) {
-                this.renderTargetColorTextures[objectIndex] =
-                    createFramebufferColorTexture(gl,
-                                                  this.supersampledFramebufferSize,
-                                                  renderContext.colorAlphaFormat);
-            }
-            if (this.renderTargetDepthTextures[objectIndex] == null) {
-                this.renderTargetDepthTextures[objectIndex] =
-                    createFramebufferDepthTexture(gl, this.supersampledFramebufferSize);
-            }
-            if (this.renderTargetFramebuffers[objectIndex] == null) {
-                this.renderTargetFramebuffers[objectIndex] =
-                    createFramebuffer(gl,
-                                      this.renderTargetColorTextures[objectIndex],
-                                      this.renderTargetDepthTextures[objectIndex]);
-            }
-            gl.bindFramebuffer(gl.FRAMEBUFFER, this.renderTargetFramebuffers[objectIndex]);
-        } else {
-            gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
-        }
-
+        gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
         gl.viewport(0, 0, this.destFramebufferSize[0], this.destFramebufferSize[1]);
         gl.disable(gl.SCISSOR_TEST);
     }
