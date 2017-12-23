@@ -6,7 +6,22 @@
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
-// except according to those terms.// Copyright © 2017 Mozilla Foundation
+// except according to those terms.
+
+//! Pathfinder is built as a set of modular Rust crates and accompanying shaders. Depending on how
+//! you plan to use Pathfinder, you may need to link against many of these crates, or you may not
+//! need to link against any of them and and only use the shaders at runtime.
+//! 
+//! Typically, if you need to generate paths at runtime or load fonts on the fly, then you will
+//! need to use the `pathfinder_partitioner` and/or `pathfinder_font_renderer` crates. If your app
+//! instead uses a fixed set of paths or fonts, then you may wish to consider running the
+//! Pathfinder command-line tool as part of your build process. Note that in the latter case you
+//! may not need to ship any Rust code at all!
+//! 
+//! This crate defines the `pathfinder` command line tool. It takes a font as an argument and
+//! produces *mesh libraries* for the glyphs you wish to include. A *mesh library* is essentially a
+//! simple storage format for VBOs. To render these paths, you can directly upload these VBOs to
+//! the GPU and render them using the shaders provided.
 
 extern crate app_units;
 extern crate clap;
