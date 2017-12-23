@@ -2,6 +2,9 @@ const Handlebars = require('handlebars');
 const HandlebarsPlugin = require('handlebars-webpack-plugin');
 const RustdocPlugin = require('rustdoc-webpack-plugin');
 const fs = require('fs');
+const path = require('path');
+
+const cwd = fs.realpathSync(".");
 
 module.exports = {
     devtool: 'inline-source-map',
@@ -51,7 +54,11 @@ module.exports = {
             },
         }),
         new RustdocPlugin({
-            directories: ["../../font-renderer"],
+            directories: [fs.realpathSync("../..")],
+            flags: {
+                'html-in-header': path.join(cwd, "doc-header.html"),
+                'html-before-content': path.join(cwd, "doc-before-content.html"),
+            },
         }),
     ]
 }

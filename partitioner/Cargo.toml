@@ -9,7 +9,7 @@ name = "pathfinder_partitioner"
 [dependencies]
 bincode = "0.8"
 bit-vec = "0.4"
-byteorder = "1.1"
+byteorder = "1.2"
 env_logger = "0.4"
 euclid = "0.15"
 half = "1.0"

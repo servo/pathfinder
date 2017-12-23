@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "font-renderer",
+    "partitioner",
+    "path-utils",
+    "demo/server",
+    "utils/frontend",
+    "utils/gamma-lut",
+]

@@ -1,0 +1,29 @@
+body {
+    padding: 0 !important;
+}
+h1,
+h2,
+h3
+h4,
+.sidebar,
+a.source,
+.search-input,
+.content table :not(code) > a,
+.collapse-toggle,
+ul.item-list > li > .out-of-band {
+    font-family: inherit !important;
+}
+.content {
+    padding: 0 15px 0 0 !important;
+}
+nav.navbar {
+    max-width: inherit !important;
+    border: none !important;
+    margin: 0 !important;
+}
+nav.sidebar {
+    top: auto !important;
+}
+img {
+    max-width: inherit !important;
+}
