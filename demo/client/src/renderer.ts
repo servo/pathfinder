@@ -18,7 +18,6 @@ import {AAOptions} from './app-controller';
 import PathfinderBufferTexture from "./buffer-texture";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshBuffers, PathfinderMeshData} from "./meshes";
-import {CompositingOperation, RenderTaskType} from './render-task';
 import {ShaderMap} from './shader-loader';
 import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull, unwrapUndef} from './utils';
 import {RenderContext, Timings} from "./view";
@@ -336,10 +335,6 @@ export abstract class Renderer {
         const gl = this.renderContext.gl;
         const emboldenAmount = this.emboldenAmount;
         gl.uniform2f(uniforms.uEmboldenAmount, emboldenAmount[0], emboldenAmount[1]);
-    }
-
-    renderTaskTypeForObject(objectIndex: number): RenderTaskType {
-        return 'color';
     }
 
     meshIndexForObject(objectIndex: number): number {

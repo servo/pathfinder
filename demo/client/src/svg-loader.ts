@@ -14,7 +14,6 @@ import * as _ from 'lodash';
 
 import 'path-data-polyfill.js';
 import {parseServerTiming, PathfinderMeshData} from "./meshes";
-import {AlphaMaskCompositingOperation, RenderTask, RenderTaskType} from './render-task';
 import {lerp, panic, Range, unwrapNull, unwrapUndef} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
@@ -92,7 +91,6 @@ interface ClipPathIDTable {
 }
 
 export class SVGLoader {
-    renderTasks: RenderTask[];
     pathInstances: SVGPath[];
     scale: number;
     pathBounds: glmatrix.vec4[];
@@ -106,7 +104,6 @@ export class SVGLoader {
 
     constructor() {
         this.scale = 1.0;
-        this.renderTasks = [];
         this.pathInstances = [];
         this.pathBounds = [];
         this.svgBounds = glmatrix.vec4.create();
@@ -148,12 +145,9 @@ export class SVGLoader {
             this.svg.appendChild(kid);
 
         // Scan for geometry elements.
-        this.renderTasks.length = 0;
         this.pathInstances.length = 0;
         this.clipPathIDs = {};
-        this.pushNewRenderTask('color');
         this.scanElement(this.svg);
-        this.popTopRenderTaskIfEmpty();
 
         this.paths = [];
 
@@ -214,21 +208,7 @@ export class SVGLoader {
     }
 
     private scanElement(element: Element): void {
-        const currentRenderTask = unwrapUndef(_.last(this.renderTasks));
         const style = window.getComputedStyle(element);
-
-        let hasClip = style.clipPath != null && style.clipPath !== 'none';
-        if (hasClip) {
-            const matches = /^url\("#([^"]+)"\)$/.exec(unwrapNull(style.clipPath));
-            if (matches == null ||
-                matches[1] == null ||
-                !this.clipPathIDs.hasOwnProperty(matches[1])) {
-                hasClip = false;
-            } else {
-                currentRenderTask.compositingOperation =
-                    new AlphaMaskCompositingOperation(this.clipPathIDs[matches[1]]);
-            }
-        }
 
         if (element instanceof SVGPathElement) {
             if (colorFromStyle(style.fill) != null)
@@ -237,37 +217,14 @@ export class SVGLoader {
                 this.addPathInstance(new SVGStroke(element));
         }
 
-        if (element instanceof SVGClipPathElement) {
-            this.pushNewRenderTask('clip');
-            this.clipPathIDs[element.id] = this.renderTasks.length - 1;
-        }
-
         for (const kid of element.childNodes) {
             if (kid instanceof Element)
                 this.scanElement(kid);
         }
-
-        if (element instanceof SVGClipPathElement || hasClip)
-            this.pushNewRenderTask('color');
     }
 
     private addPathInstance(pathInstance: SVGPath): void {
-        const currentRenderTask = unwrapUndef(_.last(this.renderTasks));
         this.pathInstances.push(pathInstance);
-        currentRenderTask.instanceIndices.end = Math.max(currentRenderTask.instanceIndices.end,
-                                                         this.pathInstances.length + 1);
-    }
-
-    private popTopRenderTaskIfEmpty(): void {
-        const lastRenderTask = _.last(this.renderTasks);
-        if (lastRenderTask != null && lastRenderTask.instanceIndices.isEmpty)
-            this.renderTasks.pop();
-    }
-
-    private pushNewRenderTask(taskType: RenderTaskType): void {
-        this.popTopRenderTaskIfEmpty();
-        const emptyRange = new Range(this.pathInstances.length + 1, this.pathInstances.length + 1);
-        this.renderTasks.push(new RenderTask(taskType, emptyRange));
     }
 }
 

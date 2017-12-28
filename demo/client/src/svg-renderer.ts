@@ -15,7 +15,6 @@ import {SubpixelAAType} from './aa-strategy';
 import {OrthographicCamera} from "./camera";
 import {UniformMap} from './gl-utils';
 import {PathfinderMeshData} from './meshes';
-import {CompositingOperation, RenderTaskType} from './render-task';
 import {PathTransformBuffers, Renderer} from "./renderer";
 import {ShaderMap} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
@@ -71,7 +70,7 @@ export abstract class SVGRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.loader.renderTasks.length;
+        return 1;
     }
 
     protected abstract get loader(): SVGLoader;
@@ -109,20 +108,12 @@ export abstract class SVGRenderer extends Renderer {
         this.camera.zoomToFit();
     }
 
-    renderTaskTypeForObject(objectIndex: number): RenderTaskType {
-        return this.loader.renderTasks[objectIndex].type;
-    }
-
-    compositingOperationForObject(objectIndex: number): CompositingOperation | null {
-        return this.loader.renderTasks[objectIndex].compositingOperation;
-    }
-
     meshIndexForObject(objectIndex: number): number {
         return 0;
     }
 
     pathRangeForObject(objectIndex: number): Range {
-        return this.loader.renderTasks[objectIndex].instanceIndices;
+        return new Range(1, this.loader.pathInstances.length + 1);
     }
 
     protected get usedSizeFactor(): glmatrix.vec2 {
