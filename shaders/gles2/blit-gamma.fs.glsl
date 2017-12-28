@@ -8,15 +8,20 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-/// Blits a texture, applying gamma correction.
+//! Blits a texture, applying gamma correction.
 
 precision mediump float;
 
+/// The source texture to blit.
 uniform sampler2D uSource;
 
+/// The approximate background color, in linear RGB.
 uniform vec3 uBGColor;
+
+/// The gamma LUT.
 uniform sampler2D uGammaLUT;
 
+/// The incoming texture coordinate.
 varying vec2 vTexCoord;
 
 void main() {

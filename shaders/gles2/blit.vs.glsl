@@ -8,21 +8,23 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-/// A trivial shader that does nothing more than blit a texture.
+//! A trivial shader that does nothing more than blit a texture.
 
 precision mediump float;
 
 /// A 3D transform to apply to the scene.
 uniform mat4 uTransform;
-/// A fixed scaling to be applied to the texture coordinates.
+
+/// A pair of fixed scale factors to be applied to the texture coordinates.
 uniform vec2 uTexScale;
 
 /// The 2D vertex position.
 attribute vec2 aPosition;
+
 /// The texture coordinate.
 attribute vec2 aTexCoord;
 
-/// The scaled texture coordinate.
+/// The outgoing texture coordinate.
 varying vec2 vTexCoord;
 
 void main() {
