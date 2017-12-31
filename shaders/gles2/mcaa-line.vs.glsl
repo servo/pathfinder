@@ -8,6 +8,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Renders the straight line segments of paths when performing *mesh coverage
+//! antialiasing* (MCAA).
+//!
+//! Use this shader only when *both* of the following are true:
+//!
+//! 1. You are only rendering monochrome paths such as text. (Otherwise,
+//!    consider `mcaa-multi`.)
+//!
+//! 2. Your transform is only a scale and/or translation, not a perspective,
+//!    rotation, or skew. (Otherwise, consider the ECAA shaders.)
+
 precision highp float;
 
 uniform vec4 uTransformST;

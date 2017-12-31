@@ -8,6 +8,17 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Implements the quadratic Loop-Blinn formulation to render curved parts of
+//! the mesh.
+//!
+//! This shader performs no antialiasing; if you want antialiased output from
+//! this shader, use MSAA with sample-level shading (GL 4.x) or else perform
+//! SSAA by rendering to a higher-resolution framebuffer and downsampling (GL
+//! 3.x and below).
+//!
+//! If you know your mesh has no curves (i.e. it consists solely of polygons),
+//! then you don't need to run this shader.
+
 precision highp float;
 
 uniform mat4 uTransform;

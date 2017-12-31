@@ -8,6 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Renders polygonal portions of a mesh.
+//!
+//! Typically, you will run this shader before running `direct-curve`.
+//! Remember to enable the depth test with a `GREATER` depth function for optimal
+//! performance.
+
 precision highp float;
 
 varying vec4 vColor;

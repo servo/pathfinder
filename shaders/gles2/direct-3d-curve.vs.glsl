@@ -8,6 +8,12 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! A version of `direct-curve` that takes each vertex's Z value from the
+//! transform instead of the path ID.
+//!
+//! FIXME(pcwalton): For CSS 3D transforms, I think `direct-curve` will need
+//! to do what this shader does. Perhaps these two shaders should be unified…
+
 precision highp float;
 
 uniform mat4 uTransform;
@@ -26,7 +32,6 @@ attribute float aSign;
 attribute float aNormalAngle;
 
 varying vec4 vColor;
-varying vec2 vPathID;
 varying vec2 vTexCoord;
 varying float vSign;
 
@@ -47,7 +52,6 @@ void main() {
     gl_Position = uTransform * vec4(position, 0.0, 1.0);
 
     vColor = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
-    vPathID = packPathID(pathID);
     vTexCoord = vec2(aTexCoord) / 2.0;
     vSign = aSign;
 }

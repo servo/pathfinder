@@ -8,6 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Performs analytic *coverage antialiasing* (XCAA) in order to render curves.
+//!
+//! Given endpoints P0 and P2 and control point P1, this shader expects that
+//! P0.x <= P1.x <= P2.x.
+
 precision highp float;
 
 varying vec4 vEndpoints;

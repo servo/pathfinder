@@ -8,6 +8,26 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Implements *edge coverage antialiasing* (ECAA) for curved path segments,
+//! performing splitting as necessary.
+//!
+//! This shader expects to render to the red channel of a floating point color
+//! buffer. Half precision floating point should be sufficient.
+//!
+//! This is a two-pass shader. It must be run twice, first with `uPassIndex`
+//! equal to 0, and then with `uPassIndex` equal to 1.
+//!
+//! Use this shader only when *all* of the following are true:
+//!
+//! 1. You are only rendering monochrome paths such as text. (Otherwise,
+//!    consider `mcaa-multi`.)
+//!
+//! 2. The paths are relatively small, so overdraw is not a concern.
+//!    (Otherwise, consider the MCAA shaders.)
+//!
+//! 3. Your transform contains perspective, rotation, or skew. (Otherwise,
+//!    consider `ecaa-curve`, which is faster and saves a pass.)
+
 precision highp float;
 
 uniform mat4 uTransform;

@@ -8,6 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Performs analytic *coverage antialiasing* (XCAA) in order to render lines.
+//!
+//! This shader expects that P1 is to the right of P0.
+
 precision highp float;
 
 varying vec4 vEndpoints;

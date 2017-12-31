@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Renders cached textures of distant glyphs in the 3D demo.
+
 precision highp float;
 
 uniform vec4 uColor;

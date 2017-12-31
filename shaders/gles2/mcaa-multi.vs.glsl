@@ -8,6 +8,21 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Renders paths when performing multicolor *mesh coverage antialiasing*
+//! (MCAA). This one shader handles both lines and curves.
+//!
+//! This shader expects to render to a standard RGB color buffer.
+//!
+//! Use this shader only when *both* of the following are true:
+//!
+//! 1. You are rendering multiple multicolor paths. (Otherwise, consider the
+//!    other MCAA shaders, which render with higher quality.)
+//!
+//! 2. Your transform is only a scale and/or translation, not a perspective,
+//!    rotation, or skew. (Otherwise, consider repartitioning the path to
+//!    generate a new mesh, or, alternatively, use the direct Loop-Blinn
+//!    shaders.)
+
 #define MAX_SLOPE   10.0
 
 precision highp float;

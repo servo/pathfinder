@@ -8,6 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Performs subpixel antialiasing for LCD screens by converting a
+//! 3x-oversampled single-channel color buffer to an RGB framebuffer, applying
+//! the FreeType color defringing filter as necessary.
+
 precision highp float;
 
 uniform vec4 uTransformST;

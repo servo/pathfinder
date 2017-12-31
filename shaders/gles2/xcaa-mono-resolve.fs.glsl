@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Renders a single-channel alpha coverage buffer to an RGB framebuffer.
+
 precision mediump float;
 
 uniform vec4 uBGColor;

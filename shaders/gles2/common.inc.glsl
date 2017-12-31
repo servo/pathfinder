@@ -355,6 +355,7 @@ bool splitCurveAndComputeECAAWinding(out float outWinding,
     return true;
 }
 
+/// Returns true if the slope of the line along the given vector is negative.
 bool slopeIsNegative(vec2 dp) {
     return dp.y < 0.0;
 }
@@ -451,11 +452,11 @@ bool isPartiallyCovered(vec2 p0X, vec2 dPX, float pixelCenterY) {
     return !isNearZero(dP.x) || !isNearZero(dP.y);
 }
 
-// Solve the equation:
-//
-//    x = p0x + t^2 * (p0x - 2*p1x + p2x) + t*(2*p1x - 2*p0x)
-//
-// We use the Citardauq Formula to avoid floating point precision issues.
+/// Solves the equation:
+///
+///    x = p0x + t^2 * (p0x - 2*p1x + p2x) + t*(2*p1x - 2*p0x)
+///
+/// We use the Citardauq Formula to avoid floating point precision issues.
 vec2 solveCurveT(float p0x, float p1x, float p2x, vec2 x) {
     float a = p0x - 2.0 * p1x + p2x;
     float b = 2.0 * p1x - 2.0 * p0x;
@@ -463,14 +464,11 @@ vec2 solveCurveT(float p0x, float p1x, float p2x, vec2 x) {
     return 2.0 * c / (-b - sqrt(b * b - 4.0 * a * c));
 }
 
-vec2 solveCurveT1(float p0x, float p1x, float p2x, vec2 x) {
-    float a = p0x - 2.0 * p1x + p2x;
-    float b = 2.0 * p1x - 2.0 * p0x;
-    vec2 c = p0x - x;
-    return (-b + sqrt(b * b - 4.0 * a * c)) / (2.0 * a);
-}
-
-// https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html
+/// Applies a slight horizontal blur to reduce color fringing on LCD screens
+/// when performing subpixel AA.
+///
+/// The algorithm should be identical to that of FreeType:
+/// https://www.freetype.org/freetype2/docs/reference/ft2-lcd_filtering.html
 float lcdFilter(float shadeL2, float shadeL1, float shade0, float shadeR1, float shadeR2) {
     return LCD_FILTER_FACTOR_2 * shadeL2 +
         LCD_FILTER_FACTOR_1 * shadeL1 +
@@ -516,12 +514,4 @@ vec4 fetchPathAffineTransform(out vec2 outPathTransformExt,
                                           pathID,
                                           pathTransformExtDimensions);
     return fetchFloat4Data(pathTransformSTTexture, pathID, pathTransformSTDimensions);
-}
-
-vec2 packPathID(int pathID) {
-    return vec2(imod(pathID, 256), pathID / 256) / 255.0;
-}
-
-int unpackPathID(vec2 packedPathID) {
-    return unpackUInt16(packedPathID);
 }

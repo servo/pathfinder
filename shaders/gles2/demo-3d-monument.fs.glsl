@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Renders the monument surface in the 3D demo.
+
 precision mediump float;
 
 uniform vec3 uLightPosition;
