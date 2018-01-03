@@ -67,6 +67,8 @@ export abstract class Renderer {
         return this.meshes != null && this.meshData != null;
     }
 
+    abstract get isMulticolor(): boolean;
+
     abstract get destFramebuffer(): WebGLFramebuffer | null;
     abstract get destAllocatedSize(): glmatrix.vec2;
     abstract get destUsedSize(): glmatrix.vec2;
@@ -131,13 +133,13 @@ export abstract class Renderer {
         if (this.meshes == null)
             return;
 
+        this.clearDestFramebuffer();
+
         // Start timing rendering.
         if (this.timerQueryPollInterval == null) {
             renderContext.timerQueryExt.beginQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT,
                                                       renderContext.atlasRenderingTimerQuery);
         }
-
-        this.clearDestFramebuffer();
 
         const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
         antialiasingStrategy.prepareForRendering(this);
@@ -155,8 +157,16 @@ export abstract class Renderer {
                 // Antialias.
                 antialiasingStrategy.antialiasObject(this, objectIndex);
 
-                // Perform post-antialiasing tasks.
-                antialiasingStrategy.finishAntialiasingObject(this, objectIndex);
+                // End the timer, and start a new one.
+                // FIXME(pcwalton): This is kinda bogus for multipass.
+                if (this.timerQueryPollInterval == null && objectIndex === objectCount - 1 &&
+                    pass === passCount - 1) {
+                    renderContext.timerQueryExt
+                                .endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
+                    renderContext.timerQueryExt
+                                .beginQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT,
+                                                renderContext.compositingTimerQuery);
+                }
 
                 // Perform direct rendering (Loop-Blinn).
                 if (antialiasingStrategy.directRenderingMode !== 'none') {
@@ -169,18 +179,13 @@ export abstract class Renderer {
                     this.directlyRenderObject(pass, objectIndex);
                 }
 
+                // Perform post-antialiasing tasks.
+                antialiasingStrategy.finishAntialiasingObject(this, objectIndex);
+
                 antialiasingStrategy.resolveAAForObject(this, objectIndex);
             }
 
             antialiasingStrategy.resolve(pass, this);
-        }
-
-        // End the timer, and start a new one.
-        // FIXME(pcwalton): Removed this for multipass; get it split out again somehow.
-        if (this.timerQueryPollInterval == null) {
-            renderContext.timerQueryExt.endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
-            renderContext.timerQueryExt.beginQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT,
-                                                      renderContext.compositingTimerQuery);
         }
 
         // Draw the glyphs with the resolved atlas to the default framebuffer.
@@ -306,22 +311,24 @@ export abstract class Renderer {
 
     uploadPathTransforms(objectCount: number): void {
         const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
         for (let objectIndex = 0; objectIndex < objectCount; objectIndex++) {
             const pathTransforms = this.pathTransformsForObject(objectIndex);
 
             let pathTransformBufferTextures;
             if (objectIndex >= this.pathTransformBufferTextures.length) {
                 pathTransformBufferTextures = {
-                    ext: new PathfinderBufferTexture(renderContext.gl, 'uPathTransformExt'),
-                    st: new PathfinderBufferTexture(renderContext.gl, 'uPathTransformST'),
+                    ext: new PathfinderBufferTexture(gl, 'uPathTransformExt'),
+                    st: new PathfinderBufferTexture(gl, 'uPathTransformST'),
                 };
                 this.pathTransformBufferTextures[objectIndex] = pathTransformBufferTextures;
             } else {
                 pathTransformBufferTextures = this.pathTransformBufferTextures[objectIndex];
             }
 
-            pathTransformBufferTextures.st.upload(renderContext.gl, pathTransforms.st);
-            pathTransformBufferTextures.ext.upload(renderContext.gl, pathTransforms.ext);
+            pathTransformBufferTextures.st.upload(gl, pathTransforms.st);
+            pathTransformBufferTextures.ext.upload(gl, pathTransforms.ext);
         }
     }
 
@@ -501,7 +508,7 @@ export abstract class Renderer {
         gl.depthMask(false);
         gl.enable(gl.BLEND);
         gl.blendEquation(gl.FUNC_ADD);
-        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
         // Set up the direct curve VAO.
         //

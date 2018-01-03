@@ -145,17 +145,23 @@ vec2 computeMCAASnappedPosition(vec2 position,
                                 vec4 localTransformST,
                                 vec4 globalTransformST,
                                 ivec2 framebufferSize,
-                                float slope) {
+                                float slope,
+                                bool snapToPixelGrid) {
     position = hintPosition(position, hints);
     position = transformVertexPositionST(position, localTransformST);
     position = transformVertexPositionST(position, globalTransformST);
     position = convertClipToScreenSpace(position, framebufferSize);
 
-    float xNudge = fract(position.x);
-    if (xNudge < 0.5)
-        xNudge = -xNudge;
-    else
-        xNudge = 1.0 - xNudge;
+    float xNudge;
+    if (snapToPixelGrid) {
+        xNudge = fract(position.x);
+        if (xNudge < 0.5)
+            xNudge = -xNudge;
+        else
+            xNudge = 1.0 - xNudge;
+    } else {
+        xNudge = 0.0;
+    }
 
     return position + vec2(xNudge, xNudge * slope);
 }

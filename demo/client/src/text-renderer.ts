@@ -64,6 +64,10 @@ export abstract class TextRenderer extends Renderer {
     atlasFramebuffer: WebGLFramebuffer;
     atlasDepthTexture: WebGLTexture;
 
+    get isMulticolor(): boolean {
+        return false;
+    }
+
     get usesSTTransform(): boolean {
         return this.camera.usesSTTransform;
     }
@@ -146,12 +150,15 @@ export abstract class TextRenderer extends Renderer {
     }
 
     setHintsUniform(uniforms: UniformMap): void {
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
         const hint = this.createHint();
-        this.renderContext.gl.uniform4f(uniforms.uHints,
-                                        hint.xHeight,
-                                        hint.hintedXHeight,
-                                        hint.stemHeight,
-                                        hint.hintedStemHeight);
+        gl.uniform4f(uniforms.uHints,
+                     hint.xHeight,
+                     hint.hintedXHeight,
+                     hint.stemHeight,
+                     hint.hintedStemHeight);
     }
 
     pathBoundingRects(objectIndex: number): Float32Array {

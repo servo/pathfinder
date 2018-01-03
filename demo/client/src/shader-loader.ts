@@ -23,10 +23,7 @@ export interface ShaderMap<T> {
     ecaaLine: T;
     ecaaCurve: T;
     ecaaTransformedCurve: T;
-    mcaaCover: T;
-    mcaaLine: T;
-    mcaaCurve: T;
-    mcaaMulti: T;
+    mcaa: T;
     ssaaSubpixelResolve: T;
     xcaaMonoResolve: T;
     xcaaMonoSubpixelResolve: T;
@@ -47,10 +44,7 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'direct3DCurve',
     'direct3DInterior',
     'ssaaSubpixelResolve',
-    'mcaaCover',
-    'mcaaLine',
-    'mcaaCurve',
-    'mcaaMulti',
+    'mcaa',
     'ecaaLine',
     'ecaaCurve',
     'ecaaTransformedCurve',
@@ -94,32 +88,20 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         vertex: "/glsl/gles2/direct-interior.vs.glsl",
     },
     ecaaCurve: {
-        fragment: "/glsl/gles2/xcaa-curve.fs.glsl",
+        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
         vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
     },
     ecaaLine: {
-        fragment: "/glsl/gles2/xcaa-line.fs.glsl",
+        fragment: "/glsl/gles2/ecaa-line.fs.glsl",
         vertex: "/glsl/gles2/ecaa-line.vs.glsl",
     },
     ecaaTransformedCurve: {
-        fragment: "/glsl/gles2/xcaa-curve.fs.glsl",
+        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
         vertex: "/glsl/gles2/ecaa-transformed-curve.vs.glsl",
     },
-    mcaaCover: {
-        fragment: "/glsl/gles2/mcaa-cover.fs.glsl",
-        vertex: "/glsl/gles2/mcaa-cover.vs.glsl",
-    },
-    mcaaCurve: {
-        fragment: "/glsl/gles2/xcaa-curve.fs.glsl",
-        vertex: "/glsl/gles2/mcaa-curve.vs.glsl",
-    },
-    mcaaLine: {
-        fragment: "/glsl/gles2/xcaa-line.fs.glsl",
-        vertex: "/glsl/gles2/mcaa-line.vs.glsl",
-    },
-    mcaaMulti: {
-        fragment: "/glsl/gles2/mcaa-multi.fs.glsl",
-        vertex: "/glsl/gles2/mcaa-multi.vs.glsl",
+    mcaa: {
+        fragment: "/glsl/gles2/mcaa.fs.glsl",
+        vertex: "/glsl/gles2/mcaa.vs.glsl",
     },
     ssaaSubpixelResolve: {
         fragment: "/glsl/gles2/ssaa-subpixel-resolve.fs.glsl",

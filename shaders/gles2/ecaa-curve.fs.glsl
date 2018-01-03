@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/xcaa-curve.fs.glsl
+// pathfinder/shaders/gles2/ecaa-curve.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //

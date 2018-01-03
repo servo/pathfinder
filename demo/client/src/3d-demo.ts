@@ -364,6 +364,10 @@ class ThreeDRenderer extends Renderer {
 
     camera: PerspectiveCamera;
 
+    get isMulticolor(): boolean {
+        return false;
+    }
+
     get usesSTTransform(): boolean {
         return this.camera.usesSTTransform;
     }
@@ -702,7 +706,7 @@ class ThreeDRenderer extends Renderer {
         gl.disable(gl.SCISSOR_TEST);
         gl.enable(gl.BLEND);
         gl.blendEquation(gl.FUNC_ADD);
-        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
         // Draw textures for distant glyphs.
         const cameraTransform = this.calculateCameraTransform(glmatrix.vec3.create(), TEXT_SCALE);

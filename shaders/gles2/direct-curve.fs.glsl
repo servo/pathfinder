@@ -28,5 +28,5 @@ varying float vSign;
 void main() {
     float side = vTexCoord.x * vTexCoord.x - vTexCoord.y;
     float alpha = float(sign(side) == sign(vSign));
-    gl_FragColor = vec4(vColor.rgb, vColor.a * alpha);
+    gl_FragColor = alpha * vColor;
 }

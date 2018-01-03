@@ -21,24 +21,29 @@ import SSAAStrategy from './ssaa-strategy';
 import {SVGLoader} from './svg-loader';
 import {Range} from './utils';
 import {RenderContext} from './view';
-import {MCAAMulticolorStrategy, XCAAStrategy} from './xcaa-strategy';
+import {MCAAStrategy, XCAAStrategy} from './xcaa-strategy';
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    xcaa: typeof XCAAStrategy;
+    xcaa: typeof MCAAStrategy;
 }
 
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    xcaa: MCAAMulticolorStrategy,
+    xcaa: MCAAStrategy,
 };
 
 export abstract class SVGRenderer extends Renderer {
     renderContext: RenderContext;
 
     camera: OrthographicCamera;
+
+    get isMulticolor(): boolean {
+        // FIXME(pcwalton): Only if the SVG is actually multicolor!
+        return true;
+    }
 
     get bgColor(): glmatrix.vec4 {
         return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);

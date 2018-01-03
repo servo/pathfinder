@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/mcaa-multi.fs.glsl
+// pathfinder/shaders/gles2/mcaa.fs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -69,5 +69,5 @@ void main() {
                                     1.0);
 
     // Compute area.
-    gl_FragColor = vec4(vColor.rgb, vColor.a * alpha);
+    gl_FragColor = alpha * vColor;
 }

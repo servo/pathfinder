@@ -423,6 +423,10 @@ class BenchmarkTextRenderer extends Renderer {
 
     camera: OrthographicCamera;
 
+    get isMulticolor(): boolean {
+        return false;
+    }
+
     get usesSTTransform(): boolean {
         return this.camera.usesSTTransform;
     }

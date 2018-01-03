@@ -17,10 +17,10 @@
 //! Use this shader only when *both* of the following are true:
 //!
 //! 1. You are only rendering monochrome paths such as text. (Otherwise,
-//!    consider `mcaa-multi`.)
+//!    consider MCAA.)
 //!
 //! 2. The paths are relatively small, so overdraw is not a concern.
-//!    (Otherwise, consider the MCAA shaders.)
+//!    (Otherwise, consider MCAA.)
 
 precision highp float;
 

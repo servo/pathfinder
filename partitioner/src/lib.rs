@@ -87,6 +87,13 @@ impl BQuad {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub struct BQuadVertexPositions {
+    pub upper_endpoint_positions: [Point2D<f32>; 2],
+    pub lower_endpoint_positions: [Point2D<f32>; 2],
+    pub control_point_positions: [Point2D<f32>; 2],
+}
+
 #[derive(Clone, Copy, PartialEq, Debug)]
 #[repr(u8)]
 pub enum AntialiasingMode {

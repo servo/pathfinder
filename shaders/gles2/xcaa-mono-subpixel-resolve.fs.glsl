@@ -41,5 +41,6 @@ void main() {
                        lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z));
 
     vec3 color = mix(uBGColor.rgb, uFGColor.rgb, shades);
-    gl_FragColor = vec4(color, any(greaterThan(shades, vec3(0.0))) ? uFGColor.a : uBGColor.a);
+    float alpha = any(greaterThan(shades, vec3(0.0))) ? uFGColor.a : uBGColor.a;
+    gl_FragColor = alpha * vec4(color, 1.0);
 }

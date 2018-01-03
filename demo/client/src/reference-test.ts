@@ -668,6 +668,10 @@ class ReferenceTestTextRenderer extends Renderer {
         return null;
     }
 
+    get isMulticolor(): boolean {
+        return false;
+    }
+
     get bgColor(): glmatrix.vec4 {
         return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
     }

@@ -18,14 +18,14 @@ use std::ops::Range;
 use std::u32;
 
 use normal;
-use {BQuad, BVertexLoopBlinnData};
+use {BQuad, BQuadVertexPositions, BVertexLoopBlinnData};
 
 #[derive(Debug, Clone)]
 pub struct MeshLibrary {
     pub path_ranges: Vec<PathRanges>,
     pub b_quads: Vec<BQuad>,
     // FIXME(pcwalton): Merge with `b_vertex_positions` below.
-    pub b_quad_vertex_positions: Vec<Point2D<f32>>,
+    pub b_quad_vertex_positions: Vec<BQuadVertexPositions>,
     pub b_vertex_positions: Vec<Point2D<f32>>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
     pub b_vertex_normals: Vec<f32>,
@@ -94,12 +94,11 @@ impl MeshLibrary {
         let lower_right_position =
             &self.b_vertex_positions[b_quad.lower_right_vertex_index as usize];
 
-        self.b_quad_vertex_positions.extend_from_slice(&[
-            *upper_left_position,
-            *upper_right_position,
-            *lower_left_position,
-            *lower_right_position,
-        ]);
+        let mut b_quad_vertex_positions = BQuadVertexPositions {
+            upper_endpoint_positions: [*upper_left_position, *upper_right_position],
+            lower_endpoint_positions: [*lower_left_position, *lower_right_position],
+            control_point_positions: [Point2D::zero(), Point2D::zero()],
+        };
 
         let upper_left_bounding_box_position =
             Point2D::new(upper_left_position.x,
@@ -114,7 +113,6 @@ impl MeshLibrary {
         });
 
         if b_quad.upper_control_point_vertex_index == u32::MAX {
-            self.b_quad_vertex_positions.push(Point2D::zero());
             self.edge_data.upper_line_vertex_positions.push(EdgeLineVertexPositions {
                 left: *upper_left_position,
                 right: *upper_right_position,
@@ -122,7 +120,7 @@ impl MeshLibrary {
         } else {
             let upper_control_point_position =
                 &self.b_vertex_positions[b_quad.upper_control_point_vertex_index as usize];
-            self.b_quad_vertex_positions.push(*upper_control_point_position);
+            b_quad_vertex_positions.control_point_positions[0] = *upper_control_point_position;
             self.edge_data.upper_curve_vertex_positions.push(EdgeCurveVertexPositions {
                 left: *upper_left_position,
                 control_point: *upper_control_point_position,
@@ -131,7 +129,6 @@ impl MeshLibrary {
         }
 
         if b_quad.lower_control_point_vertex_index == u32::MAX {
-            self.b_quad_vertex_positions.push(Point2D::zero());
             self.edge_data.lower_line_vertex_positions.push(EdgeLineVertexPositions {
                 left: *lower_left_position,
                 right: *lower_right_position,
@@ -139,13 +136,15 @@ impl MeshLibrary {
         } else {
             let lower_control_point_position =
                 &self.b_vertex_positions[b_quad.lower_control_point_vertex_index as usize];
-            self.b_quad_vertex_positions.push(*lower_control_point_position);
+            b_quad_vertex_positions.control_point_positions[1] = *lower_control_point_position;
             self.edge_data.lower_curve_vertex_positions.push(EdgeCurveVertexPositions {
                 left: *lower_left_position,
                 control_point: *lower_control_point_position,
                 right: *lower_right_position,
             });
         }
+
+        self.b_quad_vertex_positions.push(b_quad_vertex_positions);
     }
 
     /// Reverses interior indices so that they draw front-to-back.
