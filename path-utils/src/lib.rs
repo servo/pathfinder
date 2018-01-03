@@ -181,7 +181,10 @@ impl<'a> Iterator for PathBufferStream<'a> {
         let subpath = &self.path_buffer.subpaths[self.subpath_index as usize];
         if self.endpoint_index == subpath.last_endpoint_index {
             self.subpath_index += 1;
-            return Some(PathCommand::ClosePath)
+            if subpath.closed {
+                return Some(PathCommand::ClosePath)
+            }
+            return self.next()
         }
 
         let endpoint_index = self.endpoint_index;
