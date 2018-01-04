@@ -62,7 +62,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
     private meshesReceived(): void {
         this.view.then(view => {
             view.attachMeshes([this.meshes]);
-            view.initCameraBounds(this.loader.svgBounds);
+            view.initCameraBounds(this.loader.svgViewBox);
         });
     }
 }
@@ -82,13 +82,13 @@ class SVGDemoView extends DemoView {
         super(gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
-        this.renderer = new SVGDemoRenderer(this);
+        this.renderer = new SVGDemoRenderer(this, {sizeToFit: true});
 
         this.resizeToFit(true);
     }
 
-    initCameraBounds(bounds: glmatrix.vec4): void {
-        this.renderer.initCameraBounds(bounds);
+    initCameraBounds(viewBox: glmatrix.vec4): void {
+        this.renderer.initCameraBounds(viewBox);
     }
 }
 

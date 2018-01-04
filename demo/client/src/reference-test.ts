@@ -516,7 +516,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
             this.view.then(view => {
                 view.recreateRenderer();
                 view.attachMeshes([meshes]);
-                view.initCameraBounds(this.svgLoader.svgBounds);
+                view.initCameraBounds(this.svgLoader.svgViewBox);
             });
         });
     }
@@ -537,7 +537,6 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
             break;
         case 'svg':
             // TODO(pcwalton): Custom SVGs.
-            // TODO(pcwalton): Detect scale.
             request = {
                 name: unwrapNull(this.builtinSvgName),
                 renderer: 'pixman',
@@ -614,9 +613,9 @@ class ReferenceTestView extends DemoView {
         }
     }
 
-    initCameraBounds(bounds: glmatrix.vec4): void {
+    initCameraBounds(viewBox: glmatrix.vec4): void {
         if (this.renderer instanceof ReferenceTestSVGRenderer)
-            this.renderer.initCameraBounds(bounds);
+            this.renderer.initCameraBounds(viewBox);
     }
 
     protected renderingFinished(): void {
@@ -701,7 +700,7 @@ class ReferenceTestTextRenderer extends Renderer {
         return glmatrix.vec2.clone([1.0, 1.0]);
     }
 
-    protected get worldTransform() {
+    protected get worldTransform(): glmatrix.mat4 {
         const canvas = this.renderContext.canvas;
 
         const transform = glmatrix.mat4.create();
@@ -836,7 +835,7 @@ class ReferenceTestSVGRenderer extends SVGRenderer {
     }
 
     constructor(renderContext: ReferenceTestView) {
-        super(renderContext);
+        super(renderContext, {sizeToFit: false});
     }
 }
 

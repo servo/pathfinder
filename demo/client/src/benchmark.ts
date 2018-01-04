@@ -243,7 +243,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
             this.view.then(view => {
                 view.recreateRenderer();
                 view.attachMeshes([meshes]);
-                view.initCameraBounds(this.svgLoader.svgBounds);
+                view.initCameraBounds(this.svgLoader.svgViewBox);
             });
         });
     }
@@ -401,9 +401,9 @@ class BenchmarkTestView extends DemoView {
         }
     }
 
-    initCameraBounds(bounds: glmatrix.vec4): void {
+    initCameraBounds(viewBox: glmatrix.vec4): void {
         if (this.renderer instanceof BenchmarkSVGRenderer)
-            this.renderer.initCameraBounds(bounds);
+            this.renderer.initCameraBounds(viewBox);
     }
 
     protected renderingFinished(): void {
@@ -470,7 +470,7 @@ class BenchmarkTextRenderer extends Renderer {
         return glmatrix.vec2.clone([1.0, 1.0]);
     }
 
-    protected get worldTransform() {
+    protected get worldTransform(): glmatrix.mat4 {
         const canvas = this.renderContext.canvas;
 
         const transform = glmatrix.mat4.create();
@@ -612,7 +612,7 @@ class BenchmarkSVGRenderer extends SVGRenderer {
     }
 
     constructor(renderContext: BenchmarkTestView) {
-        super(renderContext);
+        super(renderContext, {sizeToFit: false});
     }
 }
 

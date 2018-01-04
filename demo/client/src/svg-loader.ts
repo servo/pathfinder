@@ -95,6 +95,7 @@ export class SVGLoader {
     scale: number;
     pathBounds: glmatrix.vec4[];
     svgBounds: glmatrix.vec4;
+    svgViewBox: glmatrix.vec4;
     isMonochrome: boolean;
 
     private svg: SVGSVGElement;
@@ -146,6 +147,10 @@ export class SVGLoader {
         while ((kid = svgElement.firstChild) != null)
             this.svg.appendChild(kid);
 
+        const viewBox = svgElement.viewBox.baseVal;
+        this.svg.setAttribute('width', "" + viewBox.width);
+        this.svg.setAttribute('height', "" + viewBox.height);
+
         // Scan for geometry elements.
         this.pathInstances.length = 0;
         this.clipPathIDs = {};
@@ -153,15 +158,12 @@ export class SVGLoader {
 
         this.paths = [];
 
-        const svgBottomLeft = glmatrix.vec2.create(), svgTopRight = glmatrix.vec2.create();
-
         for (const instance of this.pathInstances) {
             const element = instance.element;
             const svgCTM = element.getCTM();
-            const ctm = glmatrix.mat2d.fromValues(svgCTM.a, svgCTM.b,
-                                                  svgCTM.c, svgCTM.d,
-                                                  svgCTM.e, svgCTM.f);
-            glmatrix.mat2d.scale(ctm, ctm, [1.0, -1.0]);
+            const ctm = glmatrix.mat2d.fromValues(svgCTM.a, -svgCTM.b,
+                                                  svgCTM.c, -svgCTM.d,
+                                                  svgCTM.e, viewBox.height - svgCTM.f);
             glmatrix.mat2d.scale(ctm, ctm, [this.scale, this.scale]);
 
             const bottomLeft = glmatrix.vec2.create();
@@ -188,9 +190,6 @@ export class SVGLoader {
                 topRight[0], topRight[1],
             ]);
 
-            glmatrix.vec2.min(svgBottomLeft, svgBottomLeft, bottomLeft);
-            glmatrix.vec2.max(svgTopRight, svgTopRight, topRight);
-
             if (instance instanceof SVGFill) {
                 this.paths.push({
                     kind: { Fill: instance.pathfinderFillRule },
@@ -207,9 +206,8 @@ export class SVGLoader {
             return glmatrix.vec4.equals(pathInstance.color, this.pathInstances[0].color);
         });
 
-        this.svgBounds = glmatrix.vec4.clone([
-            svgBottomLeft[0], svgBottomLeft[1],
-            svgTopRight[0], svgTopRight[1],
+        this.svgViewBox = glmatrix.vec4.clone([
+            viewBox.x, viewBox.y, viewBox.x + viewBox.width, viewBox.y + viewBox.height,
         ]);
     }
 

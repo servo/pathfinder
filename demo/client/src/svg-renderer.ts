@@ -35,10 +35,16 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     xcaa: MCAAStrategy,
 };
 
+export interface SVGRendererOptions {
+    sizeToFit?: boolean;
+}
+
 export abstract class SVGRenderer extends Renderer {
     renderContext: RenderContext;
 
     camera: OrthographicCamera;
+
+    private options: SVGRendererOptions;
 
     get isMulticolor(): boolean {
         return !this.loader.isMonochrome;
@@ -80,8 +86,10 @@ export abstract class SVGRenderer extends Renderer {
     protected abstract get loader(): SVGLoader;
     protected abstract get canvas(): HTMLCanvasElement;
 
-    constructor(renderContext: RenderContext) {
+    constructor(renderContext: RenderContext, options: SVGRendererOptions) {
         super(renderContext);
+
+        this.options = options;
 
         this.camera = new OrthographicCamera(this.canvas, { scaleBounds: true });
         this.camera.onPan = () => this.renderContext.setDirty();
@@ -107,9 +115,12 @@ export abstract class SVGRenderer extends Renderer {
         this.uploadPathTransforms(1);
     }
 
-    initCameraBounds(bounds: glmatrix.vec4): void {
-        this.camera.bounds = bounds;
-        this.camera.zoomToFit();
+    initCameraBounds(svgViewBox: glmatrix.vec4): void {
+        // The SVG origin is in the upper left, but the camera origin is in the lower left.
+        this.camera.bounds = svgViewBox;
+
+        if (this.options.sizeToFit)
+            this.camera.zoomToFit();
     }
 
     meshIndexForObject(objectIndex: number): number {

@@ -640,7 +640,9 @@ fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
         svg_handle.render_cairo(&cairo_context);
     }
 
-    let image_data = (*surface.get_data().unwrap()).to_vec();
+    let mut image_data = (*surface.get_data().unwrap()).to_vec();
+    image_data.chunks_mut(4).for_each(|color| color.swap(0, 2));
+
     let image_buffer = match ImageBuffer::from_raw(image_size.width as u32,
                                                    image_size.height as u32,
                                                    image_data) {
