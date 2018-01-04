@@ -57,6 +57,14 @@ To run the demo, make sure NPM and nightly Rust are installed, and run the follo
 
 Then navigate to http://localhost:8000/.
 
+## Testing
+
+Pathfinder contains reference tests that compare its output to that of other rendering libraries,
+such as Cairo. To run them, install Cairo and FreeType if necessary, then perform the above steps,
+substituting the last line with:
+
+    $ cargo run --release --features reftests
+
 ## Authors
 
 The primary author is Patrick Walton (@pcwalton), with contributions from the Servo development

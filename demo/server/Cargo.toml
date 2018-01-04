@@ -3,6 +3,10 @@ name = "pathfinder_server"
 version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
+[features]
+default = []
+reftests = ["rsvg", "cairo-rs", "pathfinder_font_renderer/freetype"]
+
 [dependencies]
 app_units = "0.5"
 base64 = "0.6"
@@ -16,7 +20,6 @@ lru-cache = "0.1"
 rocket = "0.3"
 rocket_codegen = "0.3"
 rocket_contrib = "0.3"
-rsvg = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -24,13 +27,17 @@ serde_json = "1.0"
 [dependencies.cairo-rs]
 version = "0.3"
 features = ["png"]
+optional = true
+
+[dependencies.rsvg]
+version = "0.3"
+optional = true
 
 [dependencies.fontsan]
 git = "https://github.com/servo/fontsan.git"
 
 [dependencies.pathfinder_font_renderer]
 path = "../../font-renderer"
-features = ["freetype"]
 
 [dependencies.pathfinder_partitioner]
 path = "../../partitioner"

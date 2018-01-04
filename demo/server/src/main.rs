@@ -13,7 +13,6 @@
 
 extern crate app_units;
 extern crate base64;
-extern crate cairo;
 extern crate env_logger;
 extern crate euclid;
 extern crate fontsan;
@@ -24,16 +23,19 @@ extern crate pathfinder_partitioner;
 extern crate pathfinder_path_utils;
 extern crate rocket;
 extern crate rocket_contrib;
-extern crate rsvg;
 
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 
+#[cfg(feature = "reftests")]
+extern crate cairo;
+#[cfg(feature = "reftests")]
+extern crate rsvg;
+
 use app_units::Au;
-use cairo::{Format, ImageSurface};
-use euclid::{Point2D, Size2D, Transform2D};
+use euclid::{Point2D, Transform2D};
 use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
 use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphImage};
@@ -49,7 +51,6 @@ use rocket::http::{ContentType, Header, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
 use rocket_contrib::json::Json;
-use rsvg::{Handle, HandleExt};
 use std::fs::File;
 use std::io::{self, Cursor, Read};
 use std::ops::Range;
@@ -60,6 +61,13 @@ use std::u32;
 
 #[cfg(target_os = "macos")]
 use pathfinder_font_renderer::core_graphics;
+
+#[cfg(feature = "reftests")]
+use euclid::Size2D;
+#[cfg(feature = "reftests")]
+use cairo::{Format, ImageSurface};
+#[cfg(feature = "reftests")]
+use rsvg::{Handle, HandleExt};
 
 const SUGGESTED_JSON_SIZE_LIMIT: u64 = 32 * 1024 * 1024;
 
@@ -192,6 +200,7 @@ enum FontError {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum SvgError {
+    ReftestsDisabled,
     UnknownBuiltinSvg,
     LoadingFailed,
     ImageWritingFailed,
@@ -353,6 +362,7 @@ fn otf_data_from_request(face: &FontRequestFace) -> Result<Arc<Vec<u8>>, FontErr
 }
 
 // Fetches the SVG data.
+#[cfg(feature = "reftests")]
 fn svg_data_from_request(builtin_svg_name: &str) -> Result<Arc<Vec<u8>>, SvgError> {
     // Read in the builtin SVG.
     match BUILTIN_SVGS.iter().filter(|& &(name, _)| name == builtin_svg_name).next() {
@@ -619,6 +629,7 @@ fn render_reference_text(request: Json<RenderTextReferenceRequest>)
     Ok(reference_image)
 }
 
+#[cfg(feature = "reftests")]
 #[post("/render-reference/svg", format = "application/json", data = "<request>")]
 fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
                         -> Result<ReferenceImage, SvgError> {
@@ -654,6 +665,14 @@ fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
     Ok(ReferenceImage {
         image: ImageRgba8(image_buffer),
     })
+}
+
+#[cfg(not(feature = "reftests"))]
+#[post("/render-reference/svg", format = "application/json", data = "<request>")]
+#[allow(unused_variables)]
+fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
+                        -> Result<ReferenceImage, SvgError> {
+    Err(SvgError::ReftestsDisabled)
 }
 
 // Static files
