@@ -41,8 +41,7 @@ export abstract class SVGRenderer extends Renderer {
     camera: OrthographicCamera;
 
     get isMulticolor(): boolean {
-        // FIXME(pcwalton): Only if the SVG is actually multicolor!
-        return true;
+        return !this.loader.isMonochrome;
     }
 
     get bgColor(): glmatrix.vec4 {

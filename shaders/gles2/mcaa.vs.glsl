@@ -20,10 +20,10 @@
 //!
 //! * When paths of multiple colors are present, use
 //!   `glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE)` and
-//!   set `uSnapToPixelGrid` to 1.
+//!   set `uMulticolor` to 1.
 //!
 //! * Otherwise, if only one color of path is present, use
-//!   `glBlendFunc(GL_ONE, GL_ONE)` and set `uSnapToPixelGrid` to 0.
+//!   `glBlendFunc(GL_ONE, GL_ONE)` and set `uMulticolor` to 0.
 //!
 //! Use this shader only when your transform is only a scale and/or
 //! translation, not a perspective, rotation, or skew. (Otherwise, consider
@@ -41,7 +41,7 @@ uniform ivec2 uPathTransformSTDimensions;
 uniform sampler2D uPathTransformST;
 uniform ivec2 uPathColorsDimensions;
 uniform sampler2D uPathColors;
-uniform bool uSnapToPixelGrid;
+uniform bool uMulticolor;
 
 attribute vec2 aQuadPosition;
 attribute vec4 aUpperEndpointPositions;
@@ -84,14 +84,14 @@ void main() {
                                                 uTransformST,
                                                 uFramebufferSize,
                                                 topSlope,
-                                                uSnapToPixelGrid);
+                                                uMulticolor);
         trPosition = computeMCAASnappedPosition(trPosition,
                                                 uHints,
                                                 transformST,
                                                 uTransformST,
                                                 uFramebufferSize,
                                                 topSlope,
-                                                uSnapToPixelGrid);
+                                                uMulticolor);
         tcPosition = computeMCAAPosition(tcPosition,
                                         uHints,
                                         transformST,
@@ -103,14 +103,14 @@ void main() {
                                                 uTransformST,
                                                 uFramebufferSize,
                                                 bottomSlope,
-                                                uSnapToPixelGrid);
+                                                uMulticolor);
         brPosition = computeMCAASnappedPosition(brPosition,
                                                 uHints,
                                                 transformST,
                                                 uTransformST,
                                                 uFramebufferSize,
                                                 bottomSlope,
-                                                uSnapToPixelGrid);
+                                                uMulticolor);
         bcPosition = computeMCAAPosition(bcPosition,
                                         uHints,
                                         transformST,
@@ -123,7 +123,7 @@ void main() {
         // can occasionally cause inconsistent rounding, resulting in cracks.
         vec2 position;
 
-        if (uSnapToPixelGrid)
+        if (uMulticolor)
             position.x = quadPosition.x < 0.5 ? tlPosition.x : trPosition.x;
         else
             position.x = quadPosition.x < 0.5 ? floor(tlPosition.x) : ceil(trPosition.x);

@@ -25,6 +25,8 @@
 
 precision highp float;
 
+uniform bool uMulticolor;
+
 varying vec4 vUpperEndpoints;
 varying vec4 vLowerEndpoints;
 varying vec4 vControlPoints;
@@ -69,5 +71,6 @@ void main() {
                                     1.0);
 
     // Compute area.
-    gl_FragColor = alpha * vColor;
+    vec4 color = uMulticolor ? vColor : vec4(1.0);
+    gl_FragColor = alpha * color;
 }

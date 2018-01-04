@@ -55,6 +55,8 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
     protected aaDepthTexture: WebGLTexture | null;
     protected aaFramebuffer: WebGLFramebuffer | null;
 
+    protected abstract get mightUseAAFramebuffer(): boolean;
+
     constructor(level: number, subpixelAA: SubpixelAAType) {
         super();
 
@@ -132,6 +134,9 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
+        if (!this.usesAAFramebuffer(renderer))
+            return;
+
         const resolveProgram = this.getResolveProgram(renderer);
         if (resolveProgram == null)
             return;
@@ -187,7 +192,8 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
 
         // Set state for antialiasing.
         const usedSize = this.supersampledUsedSize(renderer);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.aaFramebuffer);
+        if (this.usesAAFramebuffer(renderer))
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.aaFramebuffer);
         gl.viewport(0,
                     0,
                     this.supersampledFramebufferSize[0],
@@ -201,7 +207,8 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         const gl = renderContext.gl;
 
         const usedSize = this.supersampledUsedSize(renderer);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.aaFramebuffer);
+        if (this.usesAAFramebuffer(renderer))
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.aaFramebuffer);
         gl.viewport(0,
                     0,
                     this.supersampledFramebufferSize[0],
@@ -256,7 +263,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
     }
 
     private initAAAlphaFramebuffer(renderer: Renderer): void {
-        if (!this.usesAAFramebuffer(renderer)) {
+        if (!this.mightUseAAFramebuffer) {
             this.aaAlphaTexture = null;
             this.aaDepthTexture = null;
             this.aaFramebuffer = null;
@@ -333,6 +340,10 @@ export class MCAAStrategy extends XCAAStrategy {
         return true;
     }
 
+    protected get mightUseAAFramebuffer(): boolean {
+        return true;
+    }
+
     attachMeshes(renderer: Renderer): void {
         super.attachMeshes(renderer);
 
@@ -385,7 +396,7 @@ export class MCAAStrategy extends XCAAStrategy {
         const gl = renderContext.gl;
 
         if (!renderer.isMulticolor) {
-            gl.clearColor(1.0, 1.0, 1.0, 1.0);
+            gl.clearColor(1.0, 1.0, 0.0, 1.0);
             gl.clear(gl.COLOR_BUFFER_BIT);
         }
     }
@@ -528,7 +539,7 @@ export class MCAAStrategy extends XCAAStrategy {
 
         renderer.setPathColorsUniform(0, uniforms, 3);
 
-        gl.uniform1i(uniforms.uSnapToPixelGrid, renderer.isMulticolor ? 1 : 0);
+        gl.uniform1i(uniforms.uMulticolor, renderer.isMulticolor ? 1 : 0);
     }
 }
 
@@ -539,6 +550,10 @@ export class ECAAStrategy extends XCAAStrategy {
 
     protected get curveShaderProgramNames(): Array<keyof ShaderMap<void>> {
         return ['ecaaCurve', 'ecaaTransformedCurve'];
+    }
+
+    protected get mightUseAAFramebuffer(): boolean {
+        return true;
     }
 
     private lineVAOs: Partial<ShaderMap<WebGLVertexArrayObject>>;

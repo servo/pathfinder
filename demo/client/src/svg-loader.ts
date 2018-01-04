@@ -95,6 +95,7 @@ export class SVGLoader {
     scale: number;
     pathBounds: glmatrix.vec4[];
     svgBounds: glmatrix.vec4;
+    isMonochrome: boolean;
 
     private svg: SVGSVGElement;
     private fileData: ArrayBuffer;
@@ -108,6 +109,7 @@ export class SVGLoader {
         this.pathBounds = [];
         this.svgBounds = glmatrix.vec4.create();
         this.svg = unwrapNull(document.getElementById('pf-svg')) as Element as SVGSVGElement;
+        this.isMonochrome = false;
     }
 
     loadFile(fileData: ArrayBuffer) {
@@ -200,6 +202,10 @@ export class SVGLoader {
                 this.pathBounds.push(pathBounds);
             }
         }
+
+        this.isMonochrome = this.pathInstances.every(pathInstance => {
+            return glmatrix.vec4.equals(pathInstance.color, this.pathInstances[0].color);
+        });
 
         this.svgBounds = glmatrix.vec4.clone([
             svgBottomLeft[0], svgBottomLeft[1],
