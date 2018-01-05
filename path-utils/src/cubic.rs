@@ -17,13 +17,17 @@ use PathCommand;
 
 const MAX_APPROXIMATION_ITERATIONS: u8 = 32;
 
+/// A cubic Bézier curve.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct CubicCurve {
+    /// The endpoints of the curve.
     pub endpoints: [Point2D<f32>; 2],
+    /// The control points of the curve.
     pub control_points: [Point2D<f32>; 2],
 }
 
 impl CubicCurve {
+    /// Constructs a new cubic Bézier curve from the given points.
     #[inline]
     pub fn new(endpoint_0: &Point2D<f32>,
                control_point_0: &Point2D<f32>,
@@ -36,6 +40,7 @@ impl CubicCurve {
         }
     }
 
+    /// Returns the curve point at the given t value (from 0.0 to 1.0).
     pub fn sample(&self, t: f32) -> Point2D<f32> {
         let (p0, p3) = (&self.endpoints[0], &self.endpoints[1]);
         let (p1, p2) = (&self.control_points[0], &self.control_points[1]);
@@ -44,6 +49,7 @@ impl CubicCurve {
         p0p1p2.lerp(p1p2p3, t)
     }
 
+    /// De Casteljau subdivides this curve into two at the given t value (from 0.0 to 1.0).
     pub fn subdivide(&self, t: f32) -> (CubicCurve, CubicCurve) {
         let (p0, p3) = (&self.endpoints[0], &self.endpoints[1]);
         let (p1, p2) = (&self.control_points[0], &self.control_points[1]);
@@ -54,6 +60,10 @@ impl CubicCurve {
          CubicCurve::new(&p0p1p2p3, &p1p2p3, &p2p3, &p3))
     }
 
+    /// Approximates this curve with a series of quadratic Bézier curves.
+    /// 
+    /// The quadratic curves are guaranteed not to deviate from this cubic curve by more than
+    /// `error_bound`.
     pub fn approx_curve(&self, error_bound: f32) -> ApproxCurveIter {
         ApproxCurveIter::new(self, error_bound)
     }
@@ -62,13 +72,21 @@ impl CubicCurve {
 /// A series of path commands that can contain cubic Bézier segments.
 #[derive(Clone, Copy, Debug)]
 pub enum CubicPathCommand {
+    /// Moves the pen to the given point.
     MoveTo(Point2D<f32>),
+    /// Draws a line to the given point.
     LineTo(Point2D<f32>),
+    /// Draws a quadratic curve with the control point to the endpoint, respectively.
     QuadCurveTo(Point2D<f32>, Point2D<f32>),
+    /// Draws a cubic cubic curve with the two control points to the endpoint, respectively.
     CubicCurveTo(Point2D<f32>, Point2D<f32>, Point2D<f32>),
+    /// Closes the current subpath by drawing a line from the given point to the first point of the
+    /// subpath.
     ClosePath,
 }
 
+/// Converts a series of path commands that can contain cubic Bézier segments to a series of path
+/// commands that contain only quadratic Bézier segments.
 pub struct CubicPathCommandApproxStream<I> {
     inner: I,
     error_bound: f32,
@@ -77,6 +95,11 @@ pub struct CubicPathCommandApproxStream<I> {
 }
 
 impl<I> CubicPathCommandApproxStream<I> where I: Iterator<Item = CubicPathCommand> {
+    /// Creates a stream that approximates the given path commands by converting all cubic Bézier
+    /// curves to quadratic Bézier curves.
+    /// 
+    /// The resulting path command stream is guaranteed not to deviate more than a distance of
+    /// `error_bound` from the original path command stream.
     #[inline]
     pub fn new(inner: I, error_bound: f32) -> CubicPathCommandApproxStream<I> {
         CubicPathCommandApproxStream {
@@ -135,6 +158,7 @@ impl<I> Iterator for CubicPathCommandApproxStream<I> where I: Iterator<Item = Cu
     }
 }
 
+/// Approximates a single cubic Bézier curve with a series of quadratic Bézier curves.
 pub struct ApproxCurveIter {
     curves: Vec<CubicCurve>,
     error_bound: f32,
