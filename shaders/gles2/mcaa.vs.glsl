@@ -34,13 +34,23 @@
 
 precision highp float;
 
+/// A dilation (scale and translation) to be applied to the object.
 uniform vec4 uTransformST;
+/// Vertical snapping positions.
 uniform vec4 uHints;
+/// The framebuffer size in pixels.
 uniform ivec2 uFramebufferSize;
+/// The size of the path transform buffer texture in texels.
 uniform ivec2 uPathTransformSTDimensions;
+/// The path transform buffer texture, one dilation per path ID.
 uniform sampler2D uPathTransformST;
+/// The size of the path colors buffer texture in texels.
 uniform ivec2 uPathColorsDimensions;
+/// The path colors buffer texture, one color per path ID.
 uniform sampler2D uPathColors;
+/// True if multiple colors are being rendered; false otherwise.
+///
+/// If this is true, then points will be snapped to the nearest pixel.
 uniform bool uMulticolor;
 
 attribute vec2 aQuadPosition;

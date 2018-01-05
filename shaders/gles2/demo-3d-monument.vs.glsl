@@ -12,7 +12,9 @@
 
 precision mediump float;
 
+/// The 3D projection matrix.
 uniform mat4 uProjection;
+/// The 3D modelview matrix.
 uniform mat4 uModelview;
 
 attribute vec3 aPosition;

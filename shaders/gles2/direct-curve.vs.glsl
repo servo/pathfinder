@@ -21,15 +21,24 @@
 
 precision highp float;
 
+/// A 3D transform to be applied to all points.
 uniform mat4 uTransform;
+/// Vertical snapping positions.
 uniform vec4 uHints;
-uniform vec2 uEmboldenAmount;
+/// The size of the path colors texture in texels.
 uniform ivec2 uPathColorsDimensions;
+/// The fill color for each path.
 uniform sampler2D uPathColors;
+/// The size of the path transform buffer texture in texels.
 uniform ivec2 uPathTransformSTDimensions;
+/// The path transform buffer texture, one path dilation per texel.
 uniform sampler2D uPathTransformST;
+/// The size of the extra path transform factors buffer texture in texels.
 uniform ivec2 uPathTransformExtDimensions;
+/// The extra path transform factors buffer texture, packed two path transforms per texel.
 uniform sampler2D uPathTransformExt;
+/// The amount of faux-bold to apply, in local path units.
+uniform vec2 uEmboldenAmount;
 
 attribute vec2 aPosition;
 attribute vec2 aTexCoord;

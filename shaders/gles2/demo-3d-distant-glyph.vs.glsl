@@ -12,8 +12,11 @@
 
 precision highp float;
 
+/// A concatenated transform to be applied to each point.
 uniform mat4 uTransform;
+/// The texture coordinates for this glyph.
 uniform vec4 uGlyphTexCoords;
+/// The size of the glyph in local coordinates.
 uniform vec2 uGlyphSize;
 
 attribute vec2 aQuadPosition;

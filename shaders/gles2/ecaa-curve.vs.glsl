@@ -26,15 +26,25 @@
 
 precision highp float;
 
+/// A 3D transform to be applied to the object.
 uniform mat4 uTransform;
+/// Vertical snapping positions.
 uniform vec4 uHints;
+/// The framebuffer size in pixels.
 uniform ivec2 uFramebufferSize;
-uniform ivec2 uPathTransformSTDimensions;
-uniform sampler2D uPathTransformST;
-uniform ivec2 uPathTransformExtDimensions;
-uniform sampler2D uPathTransformExt;
+/// The size of the path bounds texture in texels.
 uniform ivec2 uPathBoundsDimensions;
+/// The path bounds texture, one rect per path ID.
 uniform sampler2D uPathBounds;
+/// The size of the path transform buffer texture in texels.
+uniform ivec2 uPathTransformSTDimensions;
+/// The path transform buffer texture, one path dilation per texel.
+uniform sampler2D uPathTransformST;
+/// The size of the extra path transform factors buffer texture in texels.
+uniform ivec2 uPathTransformExtDimensions;
+/// The extra path transform factors buffer texture, packed two path transforms per texel.
+uniform sampler2D uPathTransformExt;
+/// The amount of faux-bold to apply, in local path units.
 uniform vec2 uEmboldenAmount;
 
 attribute vec2 aQuadPosition;

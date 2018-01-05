@@ -12,7 +12,9 @@
 
 precision highp float;
 
+/// A dilation (scale and transform) to be applied to the quad.
 uniform vec4 uTransformST;
+/// A fixed pair of factors to be applied to the texture coordinates.
 uniform vec2 uTexScale;
 
 attribute vec2 aPosition;
