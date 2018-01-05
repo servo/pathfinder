@@ -8,16 +8,21 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Utilities for converting path strokes to fills.
+
 use std::u32;
 
 use {Endpoint, PathBuffer, PathCommand, Subpath};
 use line::Line;
 
+/// Represents the style of a stroke.
 pub struct Stroke {
+    /// The stroke diameter.
     pub width: f32,
 }
 
 impl Stroke {
+    /// Constructs a new stroke style with the given diameter.
     #[inline]
     pub fn new(width: f32) -> Stroke {
         Stroke {
@@ -25,6 +30,8 @@ impl Stroke {
         }
     }
 
+    /// Writes a path that represents the result of stroking `stream` with this stroke style into
+    /// `output`.
     pub fn apply<I>(&self, output: &mut PathBuffer, stream: I)
                     where I: Iterator<Item = PathCommand> {
         let mut input = PathBuffer::new();

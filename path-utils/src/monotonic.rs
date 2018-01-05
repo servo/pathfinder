@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Utilities for converting path commands into monotonically increasing/decreasing segments.
+
 use arrayvec::ArrayVec;
 use euclid::Point2D;
 use std::mem;

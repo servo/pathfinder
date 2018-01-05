@@ -15,12 +15,15 @@ use euclid::{Point2D, Vector2D, Vector3D};
 
 use intersection::Intersect;
 
+/// Represents a straight line segment.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Line {
+    /// The start and end points of the line, respectively.
     pub endpoints: [Point2D<f32>; 2],
 }
 
 impl Line {
+    /// Creates a new line segment from the two endpoints.
     #[inline]
     pub fn new(endpoint_0: &Point2D<f32>, endpoint_1: &Point2D<f32>) -> Line {
         Line {
@@ -28,11 +31,13 @@ impl Line {
         }
     }
 
+    /// Returns the point at the given t value (from 0.0 to 1.0).
     #[inline]
     pub fn sample(&self, t: f32) -> Point2D<f32> {
         self.endpoints[0].lerp(self.endpoints[1], t)
     }
 
+    /// Returns the time value (0.0 to 1.0) for the given X coordinate.
     #[inline]
     pub fn solve_t_for_x(&self, x: f32) -> f32 {
         let x_span = self.endpoints[1].x - self.endpoints[0].x;
@@ -43,17 +48,26 @@ impl Line {
         }
     }
 
+    /// Returns the Y coordinate corresponding to the given X coordinate.
     #[inline]
     pub fn solve_y_for_x(&self, x: f32) -> f32 {
         self.sample(self.solve_t_for_x(x)).y
     }
 
+    /// Divides the line segment into two at the given time value (0.0 to 1.0).
+    /// 
+    /// Returns the two resulting line segments.
     #[inline]
     pub fn subdivide(&self, t: f32) -> (Line, Line) {
         let midpoint = self.sample(t);
         (Line::new(&self.endpoints[0], &midpoint), Line::new(&midpoint, &self.endpoints[1]))
     }
 
+    /// Divides the line segment into two at the given X value.
+    /// 
+    /// Returns the two resulting line segments.
+    /// 
+    /// The behavior is undefined if the X value lies outside the line segment span.
     pub fn subdivide_at_x(&self, x: f32) -> (Line, Line) {
         let (prev_part, next_part) = self.subdivide(self.solve_t_for_x(x));
         if self.endpoints[0].x <= self.endpoints[1].x {
@@ -63,6 +77,10 @@ impl Line {
         }
     }
 
+    /// Returns a value whose sign can be tested to determine which side of the line the given
+    /// point is on.
+    /// 
+    /// If the point is on the line, returns a value near zero.
     #[inline]
     pub fn side(&self, point: &Point2D<f32>) -> f32 {
         self.to_vector().cross(*point - self.endpoints[0])
@@ -73,6 +91,7 @@ impl Line {
         self.endpoints[1] - self.endpoints[0]
     }
 
+    /// Computes the point of intersection of this line with the given curve.
     #[inline]
     pub fn intersect<T>(&self, other: &T) -> Option<Point2D<f32>> where T: Intersect {
         <Line as Intersect>::intersect(self, other)

@@ -14,6 +14,7 @@ use std::io::{self, Write};
 
 use PathCommand;
 
+/// Writes a textual representation of the path `stream` to the given `Writer` in SVG `path` form.
 pub fn to_svg_description<W, S>(output: &mut W, stream: S) -> io::Result<()>
                                 where W: Write, S: Iterator<Item = PathCommand> {
     for segment in stream {
