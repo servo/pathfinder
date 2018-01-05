@@ -8,6 +8,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Reads outlines from OpenType fonts into Pathfinder path formats.
+//! 
+//! Use this crate in conjunction with `pathfinder_partitioner` in order to create meshes for
+//! rendering.
+//! 
+//! To reduce dependencies and to match the system as closely as possible, this crate uses the
+//! native OS font rendering infrastructure as much as it can. Backends are available for FreeType,
+//! Core Graphics/Quartz on macOS, and DirectWrite on Windows.
+
 extern crate app_units;
 extern crate euclid;
 extern crate libc;
@@ -64,14 +73,20 @@ mod directwrite;
 #[cfg(any(target_os = "linux", feature = "freetype"))]
 mod freetype;
 
-const SUBPIXEL_GRANULARITY: u8 = 4;
+/// The number of subpixels that each pixel is divided into for the purposes of subpixel glyph
+/// positioning.
+/// 
+/// Right now, each glyph is snapped to the nearest quarter-pixel.
+pub const SUBPIXEL_GRANULARITY: u8 = 4;
 
+/// An opaque handle that represents a loaded font.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub struct FontKey {
     id: usize,
 }
 
 impl FontKey {
+    /// Constructs a new opaque font key distinct from all others.
     pub fn new() -> FontKey {
         static NEXT_FONT_KEY_ID: AtomicUsize = ATOMIC_USIZE_INIT;
         FontKey {
@@ -80,12 +95,14 @@ impl FontKey {
     }
 }
 
+/// An opaque font that represents a loaded font *at one specific size*.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub struct FontInstanceKey {
     id: usize,
 }
 
 impl FontInstanceKey {
+    /// Creates a new opaque font instance key distinct from all others.
     #[inline]
     pub fn new() -> FontInstanceKey {
         static NEXT_FONT_INSTANCE_KEY_ID: AtomicUsize = ATOMIC_USIZE_INIT;
@@ -95,19 +112,20 @@ impl FontInstanceKey {
     }
 }
 
+/// A font at one specific size.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
 pub struct FontInstance {
+    /// The opaque font key that this font instance represents.
     pub font_key: FontKey,
 
-    // The font size is in *device* pixels, not logical pixels.
-    // It is stored as an Au since we need sub-pixel sizes, but
-    // we can't store an f32 due to use of this type as a hash key.
-    // TODO(gw): Perhaps consider having LogicalAu and DeviceAu
-    //           or something similar to that.
+    /// The size of the font.
+    /// 
+    /// This is in app units (1/60 pixels) to eliminate floating point error.
     pub size: Au,
 }
 
 impl FontInstance {
+    /// Creates a new instance of a font at the given size.
     #[inline]
     pub fn new(font_key: &FontKey, size: Au) -> FontInstance {
         FontInstance {
@@ -117,6 +135,7 @@ impl FontInstance {
     }
 }
 
+/// A subpixel offset, from 0 to `SUBPIXEL_GRANULARITY`.
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct SubpixelOffset(pub u8);
 
@@ -134,13 +153,17 @@ impl Into<f64> for SubpixelOffset {
     }
 }
 
+/// A handle to the resolution-independent image of a single glyph in a single font.
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GlyphKey {
+    /// The OpenType glyph index.
     pub glyph_index: u32,
+    /// The subpixel offset, from 0 to `SUBPIXEL_GRANULARITY`.
     pub subpixel_offset: SubpixelOffset,
 }
 
 impl GlyphKey {
+    /// Creates a new glyph key from the given index and subpixel offset.
     #[inline]
     pub fn new(glyph_index: u32, subpixel_offset: SubpixelOffset) -> GlyphKey {
         GlyphKey {
@@ -150,15 +173,25 @@ impl GlyphKey {
     }
 }
 
+/// The resolution-independent dimensions of a glyph, in font units.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GlyphDimensions {
+    /// The origin of the glyph.
     pub origin: Point2D<i32>,
+    /// The total size of the glyph.
     pub size: Size2D<u32>,
+    /// The advance of the glyph: that is, the distance from this glyph to the next one.
     pub advance: f32,
 }
 
+/// A bitmap image of a glyph.
 pub struct GlyphImage {
+    /// The dimensions of this image.
     pub dimensions: GlyphDimensions,
+    /// The actual pixels.
+    /// 
+    /// This is 8 bits per pixel grayscale when grayscale antialiasing is in use and 24 bits per
+    /// pixel RGB when subpixel antialiasing is in use.
     pub pixels: Vec<u8>,
 }

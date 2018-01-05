@@ -118,7 +118,7 @@ impl<I> Iterator for CubicPathCommandApproxStream<I> where I: Iterator<Item = Cu
         loop {
             if let Some(ref mut approx_curve_iter) = self.approx_curve_iter {
                 if let Some(curve) = approx_curve_iter.next() {
-                    return Some(curve.to_path_segment())
+                    return Some(curve.to_path_command())
                 }
             }
             self.approx_curve_iter = None;

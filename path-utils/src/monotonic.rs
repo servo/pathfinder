@@ -66,8 +66,8 @@ impl<I> Iterator for MonotonicPathCommandStream<I> where I: Iterator<Item = Path
                     (None, None) => Some(PathCommand::CurveTo(control_point, endpoint)),
                     (Some(t), None) | (None, Some(t)) => {
                         let (prev_curve, next_curve) = curve.subdivide(t);
-                        self.queue.push(next_curve.to_path_segment());
-                        Some(prev_curve.to_path_segment())
+                        self.queue.push(next_curve.to_path_command());
+                        Some(prev_curve.to_path_command())
                     }
                     (Some(mut t0), Some(mut t1)) => {
                         if t1 < t0 {
@@ -76,10 +76,10 @@ impl<I> Iterator for MonotonicPathCommandStream<I> where I: Iterator<Item = Path
 
                         let (curve_0, curve_12) = curve.subdivide(t0);
                         let (curve_1, curve_2) = curve_12.subdivide((t1 - t0) / (1.0 - t0));
-                        self.queue.push(curve_1.to_path_segment());
-                        self.queue.push(curve_2.to_path_segment());
+                        self.queue.push(curve_1.to_path_command());
+                        self.queue.push(curve_2.to_path_command());
 
-                        Some(curve_0.to_path_segment())
+                        Some(curve_0.to_path_command())
                     }
                 }
             }

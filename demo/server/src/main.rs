@@ -537,7 +537,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                                                 &endpoint_1);
                     last_point = endpoint_1;
                     stream.extend(cubic.approx_curve(CUBIC_ERROR_TOLERANCE)
-                                       .map(|curve| curve.to_path_segment()));
+                                       .map(|curve| curve.to_path_command()));
                 }
                 'Z' => stream.push(PathCommand::ClosePath),
                 _ => return Err(PartitionSvgPathsError::UnknownSvgPathCommandType),
