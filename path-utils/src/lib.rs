@@ -8,6 +8,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Various utilities for manipulating Bézier curves.
+//!
+//! On its own, the partitioner can only generate meshes for fill operations on quadratic Bézier
+//! curves. Frequently, however, other vector drawing operations are desired: for example,
+//! rendering cubic Béziers or stroking paths. These utilities can convert those complex operations
+//! into simpler sequences of quadratic Béziers that the partitioner can handle.
+
 extern crate arrayvec;
 extern crate euclid;
 #[macro_use]
@@ -26,23 +33,38 @@ pub mod monotonic;
 pub mod stroke;
 pub mod svg;
 
+/// A series of commands that define quadratic Bézier paths.
+/// 
+/// For cubics, see the `cubic` module.
 #[derive(Clone, Copy, Debug)]
 pub enum PathCommand {
+    /// Moves the pen to the given point.
     MoveTo(Point2D<f32>),
+    /// Draws a line to the given point.
     LineTo(Point2D<f32>),
-    /// Control point and endpoint, respectively.
+    /// Draws a quadratic curve with the control point to the endpoint, respectively.
     CurveTo(Point2D<f32>, Point2D<f32>),
+    /// Closes the current subpath by drawing a line from the current point to the first point of
+    /// the subpath.
     ClosePath,
 }
 
+/// Holds one or more paths in memory in an efficient form.
+/// 
+/// This structure is generally preferable to `Vec<PathCommand>` if you need to buffer paths in
+/// memory. It is both smaller and offers random access to individual subpaths.
 #[derive(Clone, Debug)]
 pub struct PathBuffer {
+    /// All endpoints of all subpaths.
     pub endpoints: Vec<Endpoint>,
+    /// All control points of all subpaths.
     pub control_points: Vec<Point2D<f32>>,
+    /// A series of ranges defining each subpath.
     pub subpaths: Vec<Subpath>,
 }
 
 impl PathBuffer {
+    /// Creates a new, empty path buffer.
     #[inline]
     pub fn new() -> PathBuffer {
         PathBuffer {
@@ -52,6 +74,7 @@ impl PathBuffer {
         }
     }
 
+    /// Appends a sequence of path commands to this path buffer.
     pub fn add_stream<I>(&mut self, stream: I) where I: Iterator<Item = PathCommand> {
         let mut first_subpath_endpoint_index = self.endpoints.len() as u32;
         for segment in stream {
@@ -116,6 +139,7 @@ impl PathBuffer {
         *first_subpath_endpoint_index = last_subpath_endpoint_index;
     }
 
+    /// Reverses the winding order of the subpath with the given index.
     pub fn reverse_subpath(&mut self, subpath_index: u32) {
         let subpath = &self.subpaths[subpath_index as usize];
         let endpoint_range = subpath.range();
@@ -134,6 +158,7 @@ impl PathBuffer {
     }
 }
 
+/// Converts a path buffer back into a series of path commands.
 #[derive(Clone)]
 pub struct PathBufferStream<'a> {
     path_buffer: &'a PathBuffer,
@@ -143,6 +168,7 @@ pub struct PathBufferStream<'a> {
 }
 
 impl<'a> PathBufferStream<'a> {
+    /// Prepares a path buffer stream to stream all subpaths from the given path buffer.
     #[inline]
     pub fn new<'b>(path_buffer: &'b PathBuffer) -> PathBufferStream<'b> {
         PathBufferStream {
@@ -153,6 +179,8 @@ impl<'a> PathBufferStream<'a> {
         }
     }
 
+    /// Prepares a path buffer stream to stream only a subset of subpaths from the given path
+    /// buffer.
     #[inline]
     pub fn subpath_range<'b>(path_buffer: &'b PathBuffer, subpath_range: Range<u32>)
                              -> PathBufferStream<'b> {
@@ -206,38 +234,56 @@ impl<'a> Iterator for PathBufferStream<'a> {
     }
 }
 
+/// Describes a path endpoint in a path buffer.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Endpoint {
+    /// The 2D position of the endpoint.
     pub position: Point2D<f32>,
-    /// `u32::MAX` if not present.
+    /// The index of the control point *before* this endpoint in the `control_points` vector, or
+    /// `u32::MAX` if this endpoint is the end of a line segment.
     pub control_point_index: u32,
+    /// The index of the subpath that this endpoint belongs to.
     pub subpath_index: u32,
 }
 
+/// Stores the endpoint indices of each subpath.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Subpath {
+    /// The index of the first endpoint that makes up this subpath.
     pub first_endpoint_index: u32,
+    /// One plus the index of the last endpoint that makes up this subpath.
     pub last_endpoint_index: u32,
+    /// Whether the subpath is closed (i.e. fully connected).
     pub closed: bool,
 }
 
 impl Subpath {
+    /// Returns the endpoint indices as a `Range`.
     #[inline]
     pub fn range(self) -> Range<usize> {
         (self.first_endpoint_index as usize)..(self.last_endpoint_index as usize)
     }
 }
 
+/// Represents a single path segment (i.e. a single side of a Béziergon).
 #[derive(Debug, Clone, Copy)]
 pub enum PathSegment {
-    /// First endpoint and second endpoint, respectively.
+    /// A line segment with two endpoints.
     Line(Point2D<f32>, Point2D<f32>),
-    /// First endpoint, control point, and second endpoint, in that order.
+    /// A quadratic Bézier curve with an endpoint, a control point, and another endpoint, in that
+    /// order.
     Curve(Point2D<f32>, Point2D<f32>, Point2D<f32>),
 }
 
+/// Yields a set of `PathSegment`s corresponding to a list of `PathCommand`s.
+/// 
+/// For example, the path commands `[MoveTo(A), LineTo(B), LineTo(C), ClosePath]` become
+/// `[Line(A, B), Line(B, C), Line(C, A)]`.
+/// 
+/// This representation can simplify the implementation of certain geometric algorithms, such as
+/// offset paths (stroking).
 pub struct PathSegmentStream<I> {
     inner: I,
     current_subpath_index: u32,
@@ -246,6 +292,8 @@ pub struct PathSegmentStream<I> {
 }
 
 impl<I> PathSegmentStream<I> where I: Iterator<Item = PathCommand> {
+    /// Creates a new path segment stream that will yield path segments from the given collection
+    /// of path commands.
     pub fn new(inner: I) -> PathSegmentStream<I> {
         PathSegmentStream {
             inner: inner,
@@ -301,12 +349,14 @@ impl<I> Iterator for PathSegmentStream<I> where I: Iterator<Item = PathCommand> 
     }
 }
 
+/// Applies an affine transform to a path stream and yields the resulting path stream.
 pub struct Transform2DPathStream<I> {
     inner: I,
     transform: Transform2D<f32>,
 }
 
 impl<I> Transform2DPathStream<I> where I: Iterator<Item = PathCommand> {
+    /// Creates a new transformed path stream from a path stream.
     pub fn new(inner: I, transform: &Transform2D<f32>) -> Transform2DPathStream<I> {
         Transform2DPathStream {
             inner: inner,
@@ -336,11 +386,16 @@ impl<I> Iterator for Transform2DPathStream<I> where I: Iterator<Item = PathComma
     }
 }
 
+/// Linear interpolation: `lerp(a, b, t)` = `a + (b - a) * t`.
 #[inline]
 pub(crate) fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
+/// Returns -1.0 if the value is negative, 1.0 if the value is positive, or 0.0 if the value is
+/// zero.
+/// 
+/// Returns NaN when given NaN.
 #[inline]
 pub(crate) fn sign(x: f32) -> f32 {
     if x < 0.0 {

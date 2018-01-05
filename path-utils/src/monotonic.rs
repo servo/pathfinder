@@ -17,6 +17,10 @@ use std::mem;
 use PathCommand;
 use curve::Curve;
 
+/// Converts a stream of path commands into one in which all curves are monotonically increasing
+/// or decreasing.
+/// 
+/// Equivalently, all curves have X or Y inflection points only at endpoints, if at all.
 #[derive(Clone)]
 pub struct MonotonicPathCommandStream<I> {
     inner: I,
@@ -25,6 +29,8 @@ pub struct MonotonicPathCommandStream<I> {
 }
 
 impl<I> MonotonicPathCommandStream<I> where I: Iterator<Item = PathCommand> {
+    /// Creates a new monotonic path command stream, which converts a stream of path commands into
+    /// one in which each curve is monotonially increasing or decreasing.
     pub fn new(inner: I) -> MonotonicPathCommandStream<I> {
         MonotonicPathCommandStream {
             inner: inner,
