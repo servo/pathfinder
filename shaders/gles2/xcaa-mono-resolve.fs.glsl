@@ -12,8 +12,11 @@
 
 precision mediump float;
 
+/// The background color of the monochrome path.
 uniform vec4 uBGColor;
+/// The foreground color of the monochrome path.
 uniform vec4 uFGColor;
+/// The alpha coverage texture.
 uniform sampler2D uAAAlpha;
 
 varying vec2 vTexCoord;

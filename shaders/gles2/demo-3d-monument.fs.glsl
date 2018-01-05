@@ -12,12 +12,17 @@
 
 precision mediump float;
 
+/// The 3D position of the light.
 uniform vec3 uLightPosition;
+/// The ambient color of the light.
 uniform vec3 uAmbientColor;
+/// The diffuse color of the light.
 uniform vec3 uDiffuseColor;
+/// The Phong specular color of the light.
 uniform vec3 uSpecularColor;
+/// The Phong albedo exponent.
 uniform float uShininess;
-
+/// The normal of these vertices.
 uniform vec3 uNormal;
 
 varying vec3 vPosition;

@@ -40,14 +40,22 @@ uniform sampler2D uPathTransformExt;
 /// The amount of faux-bold to apply, in local path units.
 uniform vec2 uEmboldenAmount;
 
+/// The 2D position of this point.
 attribute vec2 aPosition;
+/// The abstract Loop-Blinn texture coordinate for this point.
 attribute vec2 aTexCoord;
+/// The path ID, starting from 1.
 attribute float aPathID;
+/// Specifies whether this is a concave or convex curve.
 attribute float aSign;
+/// The angle of the 2D normal for this point.
 attribute float aNormalAngle;
 
+/// The fill color of this path.
 varying vec4 vColor;
+/// The outgoing abstract Loop-Blinn texture coordinate.
 varying vec2 vTexCoord;
+/// Specifies whether this is a concave or convex curve.
 varying float vSign;
 
 void main() {

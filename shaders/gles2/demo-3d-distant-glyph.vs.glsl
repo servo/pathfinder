@@ -19,9 +19,12 @@ uniform vec4 uGlyphTexCoords;
 /// The size of the glyph in local coordinates.
 uniform vec2 uGlyphSize;
 
+/// The abstract quad position: (0.0, 0.0) to (1.0, 1.0).
 attribute vec2 aQuadPosition;
+// The world-space 2D position of this vertex.
 attribute vec2 aPosition;
 
+/// The texture coordinate.
 varying vec2 vTexCoord;
 
 void main() {

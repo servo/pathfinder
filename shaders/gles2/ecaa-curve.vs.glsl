@@ -26,7 +26,7 @@
 
 precision highp float;
 
-/// A 3D transform to be applied to the object.
+/// A 3D transform to be applied to all points.
 uniform mat4 uTransform;
 /// Vertical snapping positions.
 uniform vec4 uHints;
@@ -47,11 +47,17 @@ uniform sampler2D uPathTransformExt;
 /// The amount of faux-bold to apply, in local path units.
 uniform vec2 uEmboldenAmount;
 
+/// The abstract quad position: (0.0, 0.0) to (1.0, 1.0).
 attribute vec2 aQuadPosition;
+/// The position of the left endpoint.
 attribute vec2 aLeftPosition;
+/// The position of the control point.
 attribute vec2 aControlPointPosition;
+/// The position of the right endpoint.
 attribute vec2 aRightPosition;
+/// The path ID (starting from 1).
 attribute float aPathID;
+/// The normal angles of the left endpoint, control point, and right endpoint, respectively.
 attribute vec3 aNormalAngles;
 
 varying vec4 vEndpoints;

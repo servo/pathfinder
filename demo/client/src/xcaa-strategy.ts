@@ -764,26 +764,16 @@ export class ECAAStrategy extends XCAAStrategy {
 
             if (renderer.meshData[0].segmentLineNormals.byteLength > 0) {
                 gl.bindBuffer(gl.ARRAY_BUFFER, lineNormalsBuffer);
-                gl.vertexAttribPointer(attributes.aLeftNormalAngle,
-                                       1,
+                gl.vertexAttribPointer(attributes.aNormalAngles,
+                                       2,
                                        gl.FLOAT,
                                        false,
                                        FLOAT32_SIZE * 2,
                                        0);
-                gl.vertexAttribPointer(attributes.aRightNormalAngle,
-                                       1,
-                                       gl.FLOAT,
-                                       false,
-                                       FLOAT32_SIZE * 2,
-                                       FLOAT32_SIZE);
-
-                gl.enableVertexAttribArray(attributes.aLeftNormalAngle);
-                gl.enableVertexAttribArray(attributes.aRightNormalAngle);
+                gl.enableVertexAttribArray(attributes.aNormalAngles);
 
                 renderContext.instancedArraysExt
-                             .vertexAttribDivisorANGLE(attributes.aLeftNormalAngle, 1);
-                renderContext.instancedArraysExt
-                             .vertexAttribDivisorANGLE(attributes.aRightNormalAngle, 1);
+                             .vertexAttribDivisorANGLE(attributes.aNormalAngles, 1);
             }
 
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);

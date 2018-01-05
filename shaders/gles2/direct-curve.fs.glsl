@@ -21,8 +21,11 @@
 
 precision highp float;
 
+/// The fill color of this path.
 varying vec4 vColor;
+/// The abstract Loop-Blinn texture coordinate.
 varying vec2 vTexCoord;
+/// Specifies whether this is a concave or convex curve.
 varying float vSign;
 
 void main() {

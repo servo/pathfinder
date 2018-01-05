@@ -17,7 +17,9 @@ uniform vec4 uTransformST;
 /// A fixed pair of factors to be applied to the texture coordinates.
 uniform vec2 uTexScale;
 
+/// The abstract quad position: (0.0, 0.0) to (1.0, 1.0).
 attribute vec2 aPosition;
+/// The texture coordinates: (0.0, 0.0) to (1.0, 1.0).
 attribute vec2 aTexCoord;
 
 varying vec2 vTexCoord;

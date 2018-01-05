@@ -56,11 +56,17 @@ uniform vec2 uEmboldenAmount;
 /// an identical draw call with this value set to 1.
 uniform int uPassIndex;
 
+/// The abstract quad position: (0.0, 0.0) to (1.0, 1.0).
 attribute vec2 aQuadPosition;
+/// The position of the left endpoint.
 attribute vec2 aLeftPosition;
+/// The position of the control point.
 attribute vec2 aControlPointPosition;
+/// The position of the right endpoint.
 attribute vec2 aRightPosition;
+/// The path ID (starting from 1).
 attribute float aPathID;
+/// The normal angles of the left endpoint, control point, and right endpoint, respectively.
 attribute vec3 aNormalAngles;
 
 varying vec4 vEndpoints;

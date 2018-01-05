@@ -12,9 +12,12 @@
 
 precision highp float;
 
+/// The color of the font.
 uniform vec4 uColor;
+/// The cached glyph atlas.
 uniform sampler2D uAtlas;
 
+/// The texture coordinate.
 varying vec2 vTexCoord;
 
 void main() {

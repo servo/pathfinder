@@ -16,23 +16,39 @@
 
 precision highp float;
 
+/// A 3D transform to be applied to all points.
 uniform mat4 uTransform;
-uniform vec2 uEmboldenAmount;
-uniform ivec2 uPathColorsDimensions;
-uniform sampler2D uPathColors;
+/// The size of the path transform buffer texture in texels.
 uniform ivec2 uPathTransformSTDimensions;
+/// The path transform buffer texture, one dilation per path ID.
 uniform sampler2D uPathTransformST;
+/// The size of the extra path transform factors buffer texture in texels.
 uniform ivec2 uPathTransformExtDimensions;
+/// The extra path transform factors buffer texture, packed two path transforms per texel.
 uniform sampler2D uPathTransformExt;
+/// The size of the path colors buffer texture in texels.
+uniform ivec2 uPathColorsDimensions;
+/// The path colors buffer texture, one color per path ID.
+uniform sampler2D uPathColors;
+/// The amount of faux-bold to apply, in local path units.
+uniform vec2 uEmboldenAmount;
 
+/// The 2D position of this point.
 attribute vec2 aPosition;
+/// The abstract Loop-Blinn texture coordinate for this point.
 attribute vec2 aTexCoord;
+/// The path ID, starting from 1.
 attribute float aPathID;
+/// Specifies whether this is a concave or convex curve.
 attribute float aSign;
+/// The angle of the 2D normal for this point.
 attribute float aNormalAngle;
 
+/// The fill color of this path.
 varying vec4 vColor;
+/// The outgoing abstract Loop-Blinn texture coordinate.
 varying vec2 vTexCoord;
+/// Specifies whether this is a concave or convex curve.
 varying float vSign;
 
 void main() {

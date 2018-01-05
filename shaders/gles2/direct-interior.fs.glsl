@@ -16,6 +16,7 @@
 
 precision highp float;
 
+/// The color of this path.
 varying vec4 vColor;
 
 void main() {

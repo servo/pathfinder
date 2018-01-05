@@ -45,12 +45,16 @@ uniform sampler2D uPathTransformExt;
 /// The amount of faux-bold to apply, in local path units.
 uniform vec2 uEmboldenAmount;
 
+/// The abstract quad position: (0.0, 0.0) to (1.0, 1.0).
 attribute vec2 aQuadPosition;
+/// The position of the left endpoint.
 attribute vec2 aLeftPosition;
+/// The position of the right endpoint.
 attribute vec2 aRightPosition;
+/// The path ID (starting from 1).
 attribute float aPathID;
-attribute float aLeftNormalAngle;
-attribute float aRightNormalAngle;
+/// The normal angles of the left endpoint and right endpoint, respectively.
+attribute vec2 aNormalAngles;
 
 varying vec4 vEndpoints;
 varying float vWinding;
@@ -59,7 +63,7 @@ void main() {
     vec2 leftPosition = aLeftPosition;
     vec2 rightPosition = aRightPosition;
     int pathID = int(aPathID);
-    vec2 leftRightNormalAngles = vec2(aLeftNormalAngle, aRightNormalAngle);
+    vec2 leftRightNormalAngles = aNormalAngles;
 
     vec2 pathTransformExt;
     vec4 pathTransformST = fetchPathAffineTransform(pathTransformExt,

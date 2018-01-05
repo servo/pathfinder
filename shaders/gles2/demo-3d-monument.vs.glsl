@@ -17,8 +17,10 @@ uniform mat4 uProjection;
 /// The 3D modelview matrix.
 uniform mat4 uModelview;
 
+/// The 3D vertex position.
 attribute vec3 aPosition;
 
+/// The 3D vertex position.
 varying vec3 vPosition;
 
 void main() {

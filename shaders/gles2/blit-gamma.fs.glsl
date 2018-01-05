@@ -14,10 +14,8 @@ precision mediump float;
 
 /// The source texture to blit.
 uniform sampler2D uSource;
-
 /// The approximate background color, in linear RGB.
 uniform vec3 uBGColor;
-
 /// The gamma LUT.
 uniform sampler2D uGammaLUT;
 

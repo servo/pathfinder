@@ -14,7 +14,9 @@
 
 precision mediump float;
 
+/// The alpha coverage texture.
 uniform sampler2D uSource;
+/// The dimensions of the alpha coverage texture, in texels.
 uniform ivec2 uSourceDimensions;
 
 varying vec2 vTexCoord;

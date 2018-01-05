@@ -25,6 +25,9 @@
 
 precision highp float;
 
+/// True if multiple colors are being rendered; false otherwise.
+///
+/// If this is true, then points will be snapped to the nearest pixel.
 uniform bool uMulticolor;
 
 varying vec4 vUpperEndpoints;

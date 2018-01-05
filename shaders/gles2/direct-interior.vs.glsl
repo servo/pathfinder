@@ -39,6 +39,7 @@ attribute vec2 aPosition;
 attribute float aPathID;
 attribute float aNormalAngle;
 
+/// The color of this path.
 varying vec4 vColor;
 
 void main() {
