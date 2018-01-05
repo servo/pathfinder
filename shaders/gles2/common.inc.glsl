@@ -22,6 +22,7 @@
 
 precision highp float;
 
+/// Returns true if the given number is close to zero.
 bool isNearZero(float x) {
     return abs(x) < EPSILON;
 }
@@ -111,19 +112,9 @@ float convertPathIndexToWindowDepthValue(int pathIndex) {
     return float(pathIndex) / float(MAX_PATHS);
 }
 
-int convertWindowDepthValueToPathIndex(float depthValue) {
-    float pathIndex = floor(depthValue * float(MAX_PATHS));
-    return int(pathIndex);
-}
-
+/// Displaces the given point by the given distance in the direction of the normal angle.
 vec2 dilatePosition(vec2 position, float normalAngle, vec2 amount) {
     return position + vec2(cos(normalAngle), -sin(normalAngle)) * amount;
-}
-
-vec2 computeXCAAClipSpaceQuadPosition(vec4 extents, vec2 quadPosition, ivec2 framebufferSize) {
-    // FIXME(pcwalton): Could be optimized to do only one floor/ceil per vertex.
-    vec2 position = mix(floor(extents.xy), ceil(extents.zw), quadPosition);
-    return convertScreenToClipSpace(position, framebufferSize);
 }
 
 vec2 computeMCAAPosition(vec2 position,
@@ -164,38 +155,6 @@ vec2 computeMCAASnappedPosition(vec2 position,
     }
 
     return position + vec2(xNudge, xNudge * slope);
-}
-
-bool computeMCAAQuadPosition(out vec2 outPosition,
-                             inout vec2 leftPosition,
-                             inout vec2 rightPosition,
-                             vec2 quadPosition,
-                             ivec2 framebufferSize,
-                             vec4 localTransformST,
-                             vec4 globalTransformST,
-                             vec4 hints) {
-    leftPosition = computeMCAAPosition(leftPosition,
-                                       hints,
-                                       localTransformST,
-                                       globalTransformST,
-                                       framebufferSize);
-    rightPosition = computeMCAAPosition(rightPosition,
-                                        hints,
-                                        localTransformST,
-                                        globalTransformST,
-                                        framebufferSize);
-
-    if (abs(leftPosition.x - rightPosition.x) <= EPSILON) {
-        outPosition = vec2(0.0);
-        return false;
-    }
-
-    vec4 extents = vec4(leftPosition.x,
-                        min(leftPosition.y, rightPosition.y),
-                        rightPosition.x,
-                        max(leftPosition.y, rightPosition.y));
-    outPosition = computeXCAAClipSpaceQuadPosition(extents, quadPosition, framebufferSize);
-    return true;
 }
 
 vec2 transformECAAPosition(vec2 position,
@@ -269,7 +228,8 @@ vec2 computeECAAQuadPositionFromTransformedPositions(vec2 leftPosition,
     pathBottomY = (pathBottomY + 1.0) * 0.5 * float(framebufferSize.y);
 
     vec4 extents = vec4(leftTopRightEdges, pathBottomY);
-    return computeXCAAClipSpaceQuadPosition(extents, quadPosition, framebufferSize);
+    vec2 position = mix(floor(extents.xy), ceil(extents.zw), quadPosition);
+    return convertScreenToClipSpace(position, framebufferSize);
 }
 
 // FIXME(pcwalton): Clean up this signature somehow?
@@ -492,11 +452,6 @@ vec3 gammaCorrect(vec3 fgColor, vec3 bgColor, sampler2D gammaLUT) {
     return vec3(gammaCorrectChannel(fgColor.r, bgColor.r, gammaLUT),
                 gammaCorrectChannel(fgColor.g, bgColor.g, gammaLUT),
                 gammaCorrectChannel(fgColor.b, bgColor.b, gammaLUT));
-}
-
-int unpackUInt16(vec2 packedValue) {
-    ivec2 valueBytes = ivec2(floor(packedValue * 255.0));
-    return valueBytes.y * 256 + valueBytes.x;
 }
 
 vec4 fetchFloat4Data(sampler2D dataTexture, int index, ivec2 dimensions) {
