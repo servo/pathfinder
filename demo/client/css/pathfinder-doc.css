@@ -27,3 +27,6 @@ nav.sidebar {
 img {
     max-width: inherit !important;
 }
+h4 > span.invisible {
+    visibility: visible !important;
+}
