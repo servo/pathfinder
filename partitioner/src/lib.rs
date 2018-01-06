@@ -8,6 +8,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Processes paths into *mesh libraries*, which are vertex buffers ready to be uploaded to the
+//! GPU and rendered with the supplied shaders.
+//! 
+//! *Partitioning* is the process of cutting up a filled Bézier path into *B-quads*. A B-quad is
+//! the core primitive that Pathfinder renders; it is a trapezoid-like shape that consists of
+//! vertical sides on the left and right and Bézier curve segments and/or lines on the top and
+//! bottom. Path partitioning is typically O(*n* log *n*) in the number of path commands.
+//! 
+//! If you have a static set of paths (for example, one specific font), you may wish to run the
+//! partitioner as a preprocessing step and store the resulting mesh library on disk. To aid this
+//! use case, mesh libraries can be serialized into a simple binary format. Of course, meshes can
+//! also be generated dynamically and rendered on the fly.
+
 extern crate bincode;
 extern crate bit_vec;
 extern crate byteorder;
@@ -31,6 +44,7 @@ pub mod partitioner;
 
 mod normal;
 
+/// The fill rule.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum FillRule {
