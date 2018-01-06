@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Font loading using macOS Core Graphics/Quartz.
+
 use core_graphics_sys::base::{kCGImageAlphaNoneSkipFirst, kCGBitmapByteOrder32Little};
 use core_graphics_sys::color_space::CGColorSpace;
 use core_graphics_sys::context::{CGContext, CGTextDrawingMode};
@@ -43,14 +45,17 @@ const CURVE_APPROX_ERROR_BOUND: f32 = 0.1;
 // direction.
 const FONT_DILATION_AMOUNT: f32 = 0.02;
 
+/// A list of path commands.
 pub type GlyphOutline = Vec<PathCommand>;
 
+/// An object that loads and renders fonts using macOS Core Graphics/Quartz.
 pub struct FontContext {
     core_graphics_fonts: BTreeMap<FontKey, CGFont>,
     core_text_fonts: BTreeMap<FontInstance, CTFont>,
 }
 
 impl FontContext {
+    /// Creates a new font context instance.
     pub fn new() -> Result<FontContext, ()> {
         Ok(FontContext {
             core_graphics_fonts: BTreeMap::new(),
@@ -58,6 +63,15 @@ impl FontContext {
         })
     }
 
+    /// Loads an OpenType font from memory.
+    /// 
+    /// `font_key` is a handle that is used to refer to the font later. If this context has already
+    /// loaded a font with the same font key, nothing is done, and `Ok` is returned.
+    /// 
+    /// `bytes` is the raw OpenType data (i.e. the contents of the `.otf` or `.ttf` file on disk).
+    /// 
+    /// `font_index` is the index of the font within the collection, if `bytes` refers to a
+    /// collection (`.ttc`).
     pub fn add_font_from_memory(&mut self, font_key: &FontKey, bytes: Arc<Vec<u8>>, _: u32)
                                 -> Result<(), ()> {
         match self.core_graphics_fonts.entry(*font_key) {
@@ -71,6 +85,9 @@ impl FontContext {
         }
     }
 
+    /// Unloads the font with the given font key from memory.
+    /// 
+    /// If the font isn't loaded, does nothing.
     pub fn delete_font(&mut self, font_key: &FontKey) {
         self.core_graphics_fonts.remove(font_key);
 
@@ -101,6 +118,13 @@ impl FontContext {
         }
     }
 
+    /// Returns the dimensions of the given glyph in the given font.
+    /// 
+    /// If `exact` is true, then the raw outline extents as specified by the font designer are
+    /// returned. These may differ from the extents when rendered on screen, because some font
+    /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
+    /// dilate them for easier reading. To retrieve extents that account for these modifications,
+    /// set `exact` to false.
     pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey, exact: bool)
                             -> Result<GlyphDimensions, ()> {
         let core_graphics_font = match self.core_graphics_fonts.get(&font_instance.font_key) {
@@ -153,6 +177,7 @@ impl FontContext {
         })
     }
 
+    /// Returns a list of path commands that represent the given glyph in the given font.
     pub fn glyph_outline(&mut self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                          -> Result<GlyphOutline, ()> {
         let core_text_font = try!(self.ensure_core_text_font(font_instance));
@@ -194,6 +219,12 @@ impl FontContext {
     }
 
     /// Uses the native Core Graphics library to rasterize a glyph on CPU.
+    /// 
+    /// Pathfinder uses this for reference testing.
+    /// 
+    /// If `exact` is true, then the glyph image will have precisely the size specified by the font
+    /// designer. Because some font libraries, such as Core Graphics, perform modifications to the
+    /// glyph outlines, to ensure the entire outline fits it is best to pass false for `exact`.
     pub fn rasterize_glyph_with_native_rasterizer(&self,
                                                   font_instance: &FontInstance,
                                                   glyph_key: &GlyphKey,

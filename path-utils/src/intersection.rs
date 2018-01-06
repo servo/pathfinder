@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Intersections of two segments.
+//! Intersections of two curves.
 
 use euclid::approxeq::ApproxEq;
 use euclid::Point2D;
@@ -19,14 +19,21 @@ use {lerp, sign};
 
 const MAX_ITERATIONS: u8 = 32;
 
+/// Represents a line or curve that intersections can be computed for.
 pub trait Intersect {
+    /// The minimum *x* extent of this curve.
     fn min_x(&self) -> f32;
+    /// The minimum *y* extent of this curve.
     fn max_x(&self) -> f32;
-    fn solve_y_for_x(&self, t: f32) -> f32;
+    /// Finds the *y* coordinate of the single point on this curve with the given *x* coordinate.
+    /// 
+    /// If this curve does not have exactly one such point, the result is undefined.
+    fn solve_y_for_x(&self, x: f32) -> f32;
 
-    /// Requires that any curves be monotonic. (See the `monotonic` module for that.)
-    ///
-    /// This should work for line segments, but it is inefficient.
+    /// Returns a point at which this curve intersects the other curve, if such a point exists.
+    /// 
+    /// Requires that any curves be monotonically increasing or decreasing. (See the `monotonic`
+    /// module for utilities to convert curves to this form.)
     ///
     /// This algorithm used to be smarter (based on implicitization) but floating point error
     /// forced the adoption of this simpler, but slower, technique. Improvements are welcome.

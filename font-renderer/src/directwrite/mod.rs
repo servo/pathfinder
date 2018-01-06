@@ -36,6 +36,8 @@ use winapi::{IUnknownVtbl, TRUE, UINT16, UINT32, UINT64, UINT};
 use self::com::{PathfinderCoclass, PathfinderComObject, PathfinderComPtr};
 use {FontInstance, FontKey, GlyphDimensions, GlyphKey};
 
+//! Font loading using Windows DirectWrite.
+
 mod com;
 
 DEFINE_GUID! {
@@ -65,6 +67,7 @@ const CURVE_APPROX_ERROR_BOUND: f32 = 0.1;
 static PATHFINDER_FONT_COLLECTION_KEY: [u8; 17] = *b"MEMORY_COLLECTION";
 static PATHFINDER_FONT_FILE_KEY: [u8; 11] = *b"MEMORY_FILE";
 
+/// An object that loads and renders fonts using Windows DirectWrite.
 pub struct FontContext {
     dwrite_factory: PathfinderComPtr<IDWriteFactory>,
     #[allow(unused)]
@@ -73,6 +76,7 @@ pub struct FontContext {
 }
 
 impl FontContext {
+    /// Creates a new font context instance.
     pub fn new() -> Result<FontContext, ()> {
         unsafe {
             let mut factory: *mut IDWriteFactory = ptr::null_mut();
@@ -98,6 +102,15 @@ impl FontContext {
         }
     }
 
+    /// Loads an OpenType font from memory.
+    /// 
+    /// `font_key` is a handle that is used to refer to the font later. If this context has already
+    /// loaded a font with the same font key, nothing is done, and `Ok` is returned.
+    /// 
+    /// `bytes` is the raw OpenType data (i.e. the contents of the `.otf` or `.ttf` file on disk).
+    /// 
+    /// `font_index` is the index of the font within the collection, if `bytes` refers to a
+    /// collection (`.ttc`).
     pub fn add_font_from_memory(&mut self, font_key: &FontKey, bytes: Arc<Vec<u8>>, _: u32)
                                 -> Result<(), ()> {
         unsafe {
@@ -177,11 +190,21 @@ impl FontContext {
         }
     }
 
+    /// Unloads the font with the given font key from memory.
+    /// 
+    /// If the font isn't loaded, does nothing.
     #[inline]
     pub fn delete_font(&mut self, font_key: &FontKey) {
         self.dwrite_font_faces.remove(font_key);
     }
 
+    /// Returns the dimensions of the given glyph in the given font.
+    /// 
+    /// If `exact` is true, then the raw outline extents as specified by the font designer are
+    /// returned. These may differ from the extents when rendered on screen, because some font
+    /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
+    /// dilate them for easier reading. To retrieve extents that account for these modifications,
+    /// set `exact` to false.
     pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                             -> Option<GlyphDimensions> {
         unsafe {
@@ -207,6 +230,7 @@ impl FontContext {
         }
     }
 
+    /// Returns a list of path commands that represent the given glyph in the given font.
     pub fn glyph_outline(&mut self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                          -> Result<GlyphOutline, ()> {
         unsafe {

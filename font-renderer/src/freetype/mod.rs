@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Font loading using FreeType.
+
 use euclid::{Point2D, Size2D, Vector2D};
 use freetype_sys::{FT_BBox, FT_Bitmap, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_OUTLINE};
 use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LCD_FILTER_DEFAULT};
@@ -38,12 +40,14 @@ const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING;
 
 const DPI: u32 = 72;
 
+/// An object that loads and renders fonts using the FreeType library.
 pub struct FontContext {
     library: FT_Library,
     faces: BTreeMap<FontKey, Face>,
 }
 
 impl FontContext {
+    /// Creates a new font context instance.
     pub fn new() -> Result<FontContext, ()> {
         let mut library: FT_Library = ptr::null_mut();
         unsafe {
@@ -58,6 +62,15 @@ impl FontContext {
         })
     }
 
+    /// Loads an OpenType font from memory.
+    /// 
+    /// `font_key` is a handle that is used to refer to the font later. If this context has already
+    /// loaded a font with the same font key, nothing is done, and `Ok` is returned.
+    /// 
+    /// `bytes` is the raw OpenType data (i.e. the contents of the `.otf` or `.ttf` file on disk).
+    /// 
+    /// `font_index` is the index of the font within the collection, if `bytes` refers to a
+    /// collection (`.ttc`).
     pub fn add_font_from_memory(&mut self,
                                 font_key: &FontKey,
                                 bytes: Arc<Vec<u8>>,
@@ -87,10 +100,20 @@ impl FontContext {
         }
     }
 
+    /// Unloads the font with the given font key from memory.
+    /// 
+    /// If the font isn't loaded, does nothing.
     pub fn delete_font(&mut self, font_key: &FontKey) {
         self.faces.remove(font_key);
     }
 
+    /// Returns the dimensions of the given glyph in the given font.
+    /// 
+    /// If `exact` is true, then the raw outline extents as specified by the font designer are
+    /// returned. These may differ from the extents when rendered on screen, because some font
+    /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
+    /// dilate them for easier reading. To retrieve extents that account for these modifications,
+    /// set `exact` to false.
     pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
                             -> Option<GlyphDimensions> {
         self.load_glyph(font_instance, glyph_key).and_then(|glyph_slot| {
@@ -111,6 +134,12 @@ impl FontContext {
     }
 
     /// Uses the FreeType library to rasterize a glyph on CPU.
+    /// 
+    /// Pathfinder uses this for reference testing.
+    /// 
+    /// If `exact` is true, then the glyph image will have precisely the size specified by the font
+    /// designer. Because some font libraries, such as Core Graphics, perform modifications to the
+    /// glyph outlines, to ensure the entire outline fits it is best to pass false for `exact`.
     pub fn rasterize_glyph_with_native_rasterizer(&self,
                                                   font_instance: &FontInstance,
                                                   glyph_key: &GlyphKey,
@@ -266,6 +295,7 @@ impl FontContext {
     }
 }
 
+/// A list of path commands.
 pub struct GlyphOutline<'a> {
     stream: OutlineStream<'static>,
     phantom: PhantomData<&'a ()>,
