@@ -17,9 +17,6 @@ image = "0.17"
 lazy_static = "0.2"
 log = "0.3"
 lru-cache = "0.1"
-rocket = "0.3"
-rocket_codegen = "0.3"
-rocket_contrib = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -36,6 +33,15 @@ optional = true
 [dependencies.fontsan]
 git = "https://github.com/servo/fontsan.git"
 
+[dependencies.rocket]
+git = "https://github.com/SergioBenitez/rocket"
+
+[dependencies.rocket_codegen]
+git = "https://github.com/SergioBenitez/rocket"
+
+[dependencies.rocket_contrib]
+git = "https://github.com/SergioBenitez/rocket"
+
 [dependencies.pathfinder_font_renderer]
 path = "../../font-renderer"
 
@@ -44,3 +50,6 @@ path = "../../partitioner"
 
 [dependencies.pathfinder_path_utils]
 path = "../../path-utils"
+
+[patch.crates-io]
+ring = { git = "https://github.com/SergioBenitez/ring", branch = "v0.12" }

@@ -268,9 +268,7 @@ class MeshDebuggerView extends PathfinderView {
         context.font = `12px ${POINT_LABEL_FONT}`;
         context.lineWidth = invScaleFactor;
 
-        const bQuads = new Uint32Array(meshes.bQuads);
-        const positions = new Float32Array(meshes.bVertexPositions);
-        const bVertexNormals = new Float32Array(meshes.bVertexNormals);
+        const bQuadVertexPositions = new Float32Array(meshes.bQuadVertexPositions);
 
         const normals: NormalsTable<Float32Array> = {
             lowerCurve: new Float32Array(0),
@@ -279,54 +277,24 @@ class MeshDebuggerView extends PathfinderView {
             upperLine: new Float32Array(0),
         };
 
-        const drawnVertices: boolean[] = [], drawnNormals: boolean[] = [];
-
         // Draw B-quads.
-        for (let bQuadIndex = 0; bQuadIndex < meshes.bQuadCount; bQuadIndex++) {
+        for (let bQuadIndex = 0; bQuadIndex < meshes.bQuadVertexPositionCount; bQuadIndex++) {
             const bQuadStartOffset = (B_QUAD_SIZE * bQuadIndex) / UINT32_SIZE;
 
-            const upperLeftIndex = bQuads[bQuadStartOffset +
-                                          B_QUAD_UPPER_LEFT_VERTEX_OFFSET / UINT32_SIZE];
-            const upperRightIndex = bQuads[bQuadStartOffset +
-                                           B_QUAD_UPPER_RIGHT_VERTEX_OFFSET / UINT32_SIZE];
-            const upperControlPointIndex =
-                bQuads[bQuadStartOffset + B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET / UINT32_SIZE];
-            const lowerLeftIndex = bQuads[bQuadStartOffset +
-                                          B_QUAD_LOWER_LEFT_VERTEX_OFFSET / UINT32_SIZE];
-            const lowerRightIndex = bQuads[bQuadStartOffset +
-                                           B_QUAD_LOWER_RIGHT_VERTEX_OFFSET / UINT32_SIZE];
-            const lowerControlPointIndex =
-                bQuads[bQuadStartOffset + B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET / UINT32_SIZE];
-
-            const upperLeftPosition = unwrapNull(getPosition(positions, upperLeftIndex));
-            const upperRightPosition = unwrapNull(getPosition(positions, upperRightIndex));
-            const upperControlPointPosition = getPosition(positions, upperControlPointIndex);
-            const lowerLeftPosition = unwrapNull(getPosition(positions, lowerLeftIndex));
-            const lowerRightPosition = unwrapNull(getPosition(positions, lowerRightIndex));
-            const lowerControlPointPosition = getPosition(positions, lowerControlPointIndex);
+            const upperLeftPosition = getPosition(bQuadVertexPositions, bQuadIndex, 0);
+            const upperControlPointPosition = getPosition(bQuadVertexPositions, bQuadIndex, 1);
+            const upperRightPosition = getPosition(bQuadVertexPositions, bQuadIndex, 2);
+            const lowerRightPosition = getPosition(bQuadVertexPositions, bQuadIndex, 3);
+            const lowerControlPointPosition = getPosition(bQuadVertexPositions, bQuadIndex, 4);
+            const lowerLeftPosition = getPosition(bQuadVertexPositions, bQuadIndex, 5);
 
             if (this.drawVertices) {
-                drawVertexIfNecessary(context,
-                                      drawnVertices,
-                                      upperLeftIndex,
-                                      upperLeftPosition,
-                                      invScaleFactor);
-                drawVertexIfNecessary(context,
-                                      drawnVertices,
-                                      upperRightIndex,
-                                      upperRightPosition,
-                                      invScaleFactor);
-                drawVertexIfNecessary(context,
-                                      drawnVertices,
-                                      lowerLeftIndex,
-                                      lowerLeftPosition,
-                                      invScaleFactor);
-                drawVertexIfNecessary(context,
-                                      drawnVertices,
-                                      lowerRightIndex,
-                                      lowerRightPosition,
-                                      invScaleFactor);
+                drawVertexIfNecessary(context, upperLeftPosition, invScaleFactor);
+                drawVertexIfNecessary(context, upperRightPosition, invScaleFactor);
+                drawVertexIfNecessary(context, lowerLeftPosition, invScaleFactor);
+                drawVertexIfNecessary(context, lowerRightPosition, invScaleFactor);
             }
+
             context.beginPath();
             context.moveTo(upperLeftPosition[0], -upperLeftPosition[1]);
             if (upperControlPointPosition != null) {
@@ -366,22 +334,6 @@ class MeshDebuggerView extends PathfinderView {
             context.moveTo(lowerLeftPosition[0], -lowerLeftPosition[1]);
             context.lineTo(upperLeftPosition[0], -upperLeftPosition[1]);
             context.stroke();
-
-            // Draw B-quad normals.
-            const lowerLeftNormal = bVertexNormals[lowerLeftIndex];
-            const lowerRightNormal = bVertexNormals[lowerRightIndex];
-            const upperLeftNormal = bVertexNormals[upperLeftIndex];
-            const upperRightNormal = bVertexNormals[upperRightIndex];
-            if (this.drawVertices && this.drawNormals) {
-                drawNormal(context, lowerLeftPosition, lowerLeftNormal, invScaleFactor,
-                    'bVertex');
-                drawNormal(context, lowerRightPosition, lowerRightNormal, invScaleFactor,
-                    'bVertex');
-                drawNormal(context, upperLeftPosition, upperLeftNormal, invScaleFactor,
-                    'bVertex');
-                drawNormal(context, upperRightPosition, upperRightNormal, invScaleFactor,
-                    'bVertex');
-            }
         }
 
         // Draw segments.
@@ -429,10 +381,16 @@ class MeshDebuggerView extends PathfinderView {
     }
 }
 
-function getPosition(positions: Float32Array, vertexIndex: number): glmatrix.vec2 | null {
-    if (vertexIndex === UINT32_MAX)
-        return null;
-    return glmatrix.vec2.clone([positions[vertexIndex * 2 + 0], positions[vertexIndex * 2 + 1]]);
+function getPosition(positions: Float32Array, bQuadIndex: number, vertexIndex: number):
+                     glmatrix.vec2 {
+    return glmatrix.vec2.clone([
+        positions[(bQuadIndex * 6 + vertexIndex) * 2 + 0],
+        positions[(bQuadIndex * 6 + vertexIndex) * 2 + 1],
+    ]);
+}
+
+function getNormal(normals: Float32Array, bQuadIndex: number, vertexIndex: number): number {
+    return normals[bQuadIndex * 6 + vertexIndex];
 }
 
 function getNormals(normals: NormalsTable<Float32Array>,
@@ -526,25 +484,12 @@ function drawSegmentVertices(context: CanvasRenderingContext2D,
 }
 
 function drawVertexIfNecessary(context: CanvasRenderingContext2D,
-                               markedVertices: boolean[],
-                               vertexIndex: number,
                                position: Float32Array,
                                invScaleFactor: number) {
-    if (markedVertices[vertexIndex] != null)
-        return;
-    markedVertices[vertexIndex] = true;
-
     context.beginPath();
     context.moveTo(position[0], -position[1]);
     context.arc(position[0], -position[1], POINT_RADIUS * invScaleFactor, 0, 2.0 * Math.PI);
     context.fill();
-
-    context.save();
-    context.scale(invScaleFactor, invScaleFactor);
-    context.fillText("" + vertexIndex,
-                     position[0] / invScaleFactor + POINT_LABEL_OFFSET[0],
-                     -position[1] / invScaleFactor + POINT_LABEL_OFFSET[1]);
-    context.restore();
 }
 
 function drawSegmentVertex(context: CanvasRenderingContext2D,

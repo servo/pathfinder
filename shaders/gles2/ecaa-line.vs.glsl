@@ -46,7 +46,7 @@ uniform sampler2D uPathTransformExt;
 uniform vec2 uEmboldenAmount;
 
 /// The abstract quad position: (0.0, 0.0) to (1.0, 1.0).
-attribute vec2 aQuadPosition;
+attribute vec2 aTessCoord;
 /// The position of the left endpoint.
 attribute vec2 aLeftPosition;
 /// The position of the right endpoint.
@@ -75,22 +75,53 @@ void main() {
     vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);
 
     // Transform the points, and compute the position of this vertex.
-    vec2 position;
-    float winding;
-    computeECAAQuadPosition(position,
-                            winding,
-                            leftPosition,
-                            rightPosition,
-                            aQuadPosition,
-                            uFramebufferSize,
-                            pathTransformST,
-                            pathTransformExt,
-                            uTransform,
-                            uHints,
-                            bounds,
-                            leftRightNormalAngles,
-                            uEmboldenAmount);
+    leftPosition = computeECAAPosition(leftPosition,
+                                       aNormalAngles.x,
+                                       uEmboldenAmount,
+                                       uHints,
+                                       pathTransformST,
+                                       pathTransformExt,
+                                       uTransform,
+                                       uFramebufferSize);
+    rightPosition = computeECAAPosition(rightPosition,
+                                        aNormalAngles.y,
+                                        uEmboldenAmount,
+                                        uHints,
+                                        pathTransformST,
+                                        pathTransformExt,
+                                        uTransform,
+                                        uFramebufferSize);
+    float winding = computeECAAWinding(leftPosition, rightPosition);
+    if (winding == 0.0) {
+        gl_Position = vec4(0.0);
+        return;
+    }
 
+    vec2 edgeBL = bounds.xy, edgeTL = bounds.xw, edgeTR = bounds.zw, edgeBR = bounds.zy;
+    edgeBL = transformECAAPosition(edgeBL, pathTransformST, pathTransformExt, uTransform);
+    edgeBR = transformECAAPosition(edgeBR, pathTransformST, pathTransformExt, uTransform);
+    edgeTL = transformECAAPosition(edgeTL, pathTransformST, pathTransformExt, uTransform);
+    edgeTR = transformECAAPosition(edgeTR, pathTransformST, pathTransformExt, uTransform);
+
+    // Find the bottom of the path, and convert to clip space.
+    //
+    // FIXME(pcwalton): Speed this up somehow?
+    float pathBottomY = max(max(edgeBL.y, edgeBR.y), max(edgeTL.y, edgeTR.y));
+    pathBottomY = (pathBottomY + 1.0) * 0.5 * float(uFramebufferSize.y);
+
+    vec2 position;
+    if (aTessCoord.x < 0.5)
+        position = vec2(floor(leftPosition.x), leftPosition.y);
+    else
+        position = vec2(ceil(rightPosition.x), rightPosition.y);
+
+    // FIXME(pcwalton): Only compute path bottom Y if necessary.
+    if (aTessCoord.y < 0.5)
+        position.y = floor(position.y - 1.0);
+    else
+        position.y = pathBottomY;
+
+    position = convertScreenToClipSpace(position, uFramebufferSize);
     float depth = convertPathIndexToViewportDepthValue(pathID);
 
     gl_Position = vec4(position, depth, 1.0);

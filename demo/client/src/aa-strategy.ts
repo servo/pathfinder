@@ -18,7 +18,7 @@ import {DemoView} from './view';
 
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
 
-export type DirectRenderingMode = 'none' | 'color';
+export type DirectRenderingMode = 'none' | 'conservative' | 'color';
 
 export type SubpixelAAType = 'none' | 'medium';
 

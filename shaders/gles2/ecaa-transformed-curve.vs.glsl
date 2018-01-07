@@ -57,7 +57,7 @@ uniform vec2 uEmboldenAmount;
 uniform int uPassIndex;
 
 /// The abstract quad position: (0.0, 0.0) to (1.0, 1.0).
-attribute vec2 aQuadPosition;
+attribute vec2 aTessCoord;
 /// The position of the left endpoint.
 attribute vec2 aLeftPosition;
 /// The position of the control point.
@@ -126,16 +126,33 @@ void main() {
         return;
     }
 
-    vec2 position = computeECAAQuadPositionFromTransformedPositions(leftPosition,
-                                                                    rightPosition,
-                                                                    aQuadPosition,
-                                                                    uFramebufferSize,
-                                                                    pathTransformST,
-                                                                    pathTransformExt,
-                                                                    uTransform,
-                                                                    bounds,
-                                                                    leftTopRightEdges);
+    vec2 edgeBL = bounds.xy, edgeTL = bounds.xw, edgeTR = bounds.zw, edgeBR = bounds.zy;
+    edgeBL = transformECAAPosition(edgeBL, pathTransformST, pathTransformExt, uTransform);
+    edgeBR = transformECAAPosition(edgeBR, pathTransformST, pathTransformExt, uTransform);
+    edgeTL = transformECAAPosition(edgeTL, pathTransformST, pathTransformExt, uTransform);
+    edgeTR = transformECAAPosition(edgeTR, pathTransformST, pathTransformExt, uTransform);
 
+    // Find the bottom of the path, and convert to clip space.
+    //
+    // FIXME(pcwalton): Speed this up somehow?
+    float pathBottomY = max(max(edgeBL.y, edgeBR.y), max(edgeTL.y, edgeTR.y));
+    pathBottomY = (pathBottomY + 1.0) * 0.5 * float(uFramebufferSize.y);
+
+    vec2 position;
+    if (aTessCoord.x < 0.25)
+        position = vec2(floor(leftPosition.x), leftPosition.y);
+    else if (aTessCoord.x < 0.75)
+        position = controlPointPosition;
+    else
+        position = vec2(ceil(rightPosition.x), rightPosition.y);
+
+    // FIXME(pcwalton): Only compute path bottom Y if necessary.
+    if (aTessCoord.y < 0.5)
+        position.y = floor(position.y - 1.0);
+    else
+        position.y = pathBottomY;
+
+    position = convertScreenToClipSpace(position, uFramebufferSize);
     float depth = convertPathIndexToViewportDepthValue(pathID);
 
     gl_Position = vec4(position, depth, 1.0);

@@ -37,29 +37,22 @@ uniform sampler2D uPathTransformST;
 uniform ivec2 uPathTransformExtDimensions;
 /// The extra path transform factors buffer texture, packed two path transforms per texel.
 uniform sampler2D uPathTransformExt;
-/// The amount of faux-bold to apply, in local path units.
-uniform vec2 uEmboldenAmount;
 
 /// The 2D position of this point.
 attribute vec2 aPosition;
-/// The abstract Loop-Blinn texture coordinate for this point.
-attribute vec2 aTexCoord;
+/// The vertex ID. In OpenGL 3.0+, this can be omitted in favor of `gl_VertexID`.
+attribute float aVertexID;
 /// The path ID, starting from 1.
 attribute float aPathID;
-/// Specifies whether this is a concave or convex curve.
-attribute float aSign;
-/// The angle of the 2D normal for this point.
-attribute float aNormalAngle;
 
 /// The fill color of this path.
 varying vec4 vColor;
 /// The outgoing abstract Loop-Blinn texture coordinate.
 varying vec2 vTexCoord;
-/// Specifies whether this is a concave or convex curve.
-varying float vSign;
 
 void main() {
     int pathID = int(aPathID);
+    int vertexID = int(aVertexID);
 
     vec2 pathTransformExt;
     vec4 pathTransformST = fetchPathAffineTransform(pathTransformExt,
@@ -69,15 +62,16 @@ void main() {
                                                     uPathTransformExtDimensions,
                                                     pathID);
 
-    vec2 position = dilatePosition(aPosition, aNormalAngle, uEmboldenAmount);
-    position = hintPosition(position, uHints);
+    vec2 position = hintPosition(aPosition, uHints);
     position = transformVertexPositionAffine(position, pathTransformST, pathTransformExt);
     position = transformVertexPosition(position, uTransform);
 
     float depth = convertPathIndexToViewportDepthValue(pathID);
     gl_Position = vec4(position, depth, 1.0);
 
+    int vertexIndex = imod(vertexID, 3);
+    vec2 texCoord = vec2(float(vertexIndex) * 0.5, float(vertexIndex == 2));
+
     vColor = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
-    vTexCoord = vec2(aTexCoord) / 2.0;
-    vSign = aSign;
+    vTexCoord = texCoord;
 }

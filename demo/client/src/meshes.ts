@@ -12,7 +12,7 @@ import * as base64js from 'base64-js';
 
 import * as _ from 'lodash';
 import {expectNotNull, FLOAT32_SIZE, panic, PathfinderError, Range, UINT16_SIZE} from './utils';
-import {UINT32_MAX, UINT32_SIZE, unwrapNull, unwrapUndef} from './utils';
+import {UINT32_MAX, UINT32_SIZE, UINT8_SIZE, unwrapNull, unwrapUndef} from './utils';
 
 interface BufferTypeFourCCTable {
     [fourCC: string]: keyof Meshes<void>;
@@ -87,24 +87,9 @@ const SEGMENT_LINE_SIZE: number = 4 * 4;
 const SEGMENT_CURVE_SIZE: number = 4 * 6;
 
 const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
+    bQuadVertexInteriorIndices: { type: 'Uint32', size: 1 },
+    bQuadVertexPositionPathIDs: { type: 'Uint16', size: 6 },
     bQuadVertexPositions: { type: 'Float32', size: 12 },
-    bQuads: { type: 'Uint32', size: B_QUAD_FIELD_COUNT },
-    bVertexLoopBlinnData: { type: 'Uint32', size: 1 },
-    bVertexNormals: { type: 'Float32', size: 1 },
-    bVertexPathIDs: { type: 'Uint16', size: 1 },
-    bVertexPositions: { type: 'Float32', size: 2 },
-    coverCurveIndices: { type: 'Uint32', size: 1 },
-    coverInteriorIndices: { type: 'Uint32', size: 1 },
-    edgeBoundingBoxPathIDs: { type: 'Uint16', size: 1 },
-    edgeBoundingBoxVertexPositions: { type: 'Float32', size: 4 },
-    edgeLowerCurvePathIDs: { type: 'Uint16', size: 1 },
-    edgeLowerCurveVertexPositions: { type: 'Float32', size: 6 },
-    edgeLowerLinePathIDs: { type: 'Uint16', size: 1 },
-    edgeLowerLineVertexPositions: { type: 'Float32', size: 4 },
-    edgeUpperCurvePathIDs: { type: 'Uint16', size: 1 },
-    edgeUpperCurveVertexPositions: { type: 'Float32', size: 6 },
-    edgeUpperLinePathIDs: { type: 'Uint16', size: 1 },
-    edgeUpperLineVertexPositions: { type: 'Float32', size: 4 },
     segmentCurveNormals: { type: 'Float32', size: 3 },
     segmentCurvePathIDs: { type: 'Uint16', size: 1 },
     segmentCurves: { type: 'Float32', size: 6 },
@@ -114,24 +99,9 @@ const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
 };
 
 const BUFFER_TYPES: Meshes<BufferType> = {
+    bQuadVertexInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
+    bQuadVertexPositionPathIDs: 'ARRAY_BUFFER',
     bQuadVertexPositions: 'ARRAY_BUFFER',
-    bQuads: 'ARRAY_BUFFER',
-    bVertexLoopBlinnData: 'ARRAY_BUFFER',
-    bVertexNormals: 'ARRAY_BUFFER',
-    bVertexPathIDs: 'ARRAY_BUFFER',
-    bVertexPositions: 'ARRAY_BUFFER',
-    coverCurveIndices: 'ELEMENT_ARRAY_BUFFER',
-    coverInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
-    edgeBoundingBoxPathIDs: 'ARRAY_BUFFER',
-    edgeBoundingBoxVertexPositions: 'ARRAY_BUFFER',
-    edgeLowerCurvePathIDs: 'ARRAY_BUFFER',
-    edgeLowerCurveVertexPositions: 'ARRAY_BUFFER',
-    edgeLowerLinePathIDs: 'ARRAY_BUFFER',
-    edgeLowerLineVertexPositions: 'ARRAY_BUFFER',
-    edgeUpperCurvePathIDs: 'ARRAY_BUFFER',
-    edgeUpperCurveVertexPositions: 'ARRAY_BUFFER',
-    edgeUpperLinePathIDs: 'ARRAY_BUFFER',
-    edgeUpperLineVertexPositions: 'ARRAY_BUFFER',
     segmentCurveNormals: 'ARRAY_BUFFER',
     segmentCurvePathIDs: 'ARRAY_BUFFER',
     segmentCurves: 'ARRAY_BUFFER',
@@ -148,18 +118,8 @@ const MESH_LIBRARY_FOURCC: string = 'PFML';
 
 // Must match the FourCCs in `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into()`.
 const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
-    bqua: 'bQuads',
+    bqii: 'bQuadVertexInteriorIndices',
     bqvp: 'bQuadVertexPositions',
-    bvlb: 'bVertexLoopBlinnData',
-    bvno: 'bVertexNormals',
-    bvpo: 'bVertexPositions',
-    cvci: 'coverCurveIndices',
-    cvii: 'coverInteriorIndices',
-    ebbv: 'edgeBoundingBoxVertexPositions',
-    elcv: 'edgeLowerCurveVertexPositions',
-    ellv: 'edgeLowerLineVertexPositions',
-    eucv: 'edgeUpperCurveVertexPositions',
-    eulv: 'edgeUpperLineVertexPositions',
     scur: 'segmentCurves',
     slin: 'segmentLines',
     sncu: 'segmentCurveNormals',
@@ -169,57 +129,28 @@ const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
 // Must match the FourCCs in
 // `pathfinder_partitioner::mesh_library::MeshLibrary::serialize_into::write_path_ranges()`.
 const PATH_RANGE_TYPE_FOURCCS: PathRangeTypeFourCCTable = {
-    bqua: 'bQuadPathRanges',
+    bqii: 'bQuadVertexInteriorIndexPathRanges',
     bqvp: 'bQuadVertexPositionPathRanges',
-    bver: 'bVertexPathRanges',
-    cvci: 'coverCurveIndexRanges',
-    cvii: 'coverInteriorIndexRanges',
-    ebbo: 'edgeBoundingBoxRanges',
-    elci: 'edgeLowerCurveIndexRanges',
-    elli: 'edgeLowerLineIndexRanges',
-    euci: 'edgeUpperCurveIndexRanges',
-    euli: 'edgeUpperLineIndexRanges',
     scur: 'segmentCurveRanges',
     slin: 'segmentLineRanges',
 };
 
 const RANGE_TO_COUNT_TABLE: RangeToCountTable = {
-    bQuadPathRanges: 'bQuadCount',
+    bQuadVertexInteriorIndexPathRanges: 'bQuadVertexInteriorIndexCount',
     bQuadVertexPositionPathRanges: 'bQuadVertexPositionCount',
-    bVertexPathRanges: 'bVertexCount',
-    coverCurveIndexRanges: 'coverCurveCount',
-    coverInteriorIndexRanges: 'coverInteriorCount',
-    edgeBoundingBoxRanges: 'edgeBoundingBoxCount',
-    edgeLowerCurveIndexRanges: 'edgeLowerCurveCount',
-    edgeLowerLineIndexRanges: 'edgeLowerLineCount',
-    edgeUpperCurveIndexRanges: 'edgeUpperCurveCount',
-    edgeUpperLineIndexRanges: 'edgeUpperLineCount',
     segmentCurveRanges: 'segmentCurveCount',
     segmentLineRanges: 'segmentLineCount',
 };
 
 const RANGE_TO_RANGE_BUFFER_TABLE: RangeToRangeBufferTable = {
-    bVertexPathRanges: 'bVertexPathIDs',
-    edgeBoundingBoxRanges: 'edgeBoundingBoxPathIDs',
-    edgeLowerCurveIndexRanges: 'edgeLowerCurvePathIDs',
-    edgeLowerLineIndexRanges: 'edgeLowerLinePathIDs',
-    edgeUpperCurveIndexRanges: 'edgeUpperCurvePathIDs',
-    edgeUpperLineIndexRanges: 'edgeUpperLinePathIDs',
+    bQuadVertexPositionPathRanges: 'bQuadVertexPositionPathIDs',
     segmentCurveRanges: 'segmentCurvePathIDs',
     segmentLineRanges: 'segmentLinePathIDs',
 };
 
 const RANGE_KEYS: Array<keyof PathRanges> = [
-    'bQuadPathRanges',
     'bQuadVertexPositionPathRanges',
-    'bVertexPathRanges',
-    'coverInteriorIndexRanges',
-    'coverCurveIndexRanges',
-    'edgeBoundingBoxRanges',
-    'edgeUpperLineIndexRanges',
-    'edgeUpperCurveIndexRanges',
-    'edgeLowerLineIndexRanges',
-    'edgeLowerCurveIndexRanges',
+    'bQuadVertexInteriorIndexPathRanges',
     'segmentCurveRanges',
     'segmentLineRanges',
 ];
@@ -227,113 +158,51 @@ const RANGE_KEYS: Array<keyof PathRanges> = [
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
 
 export interface Meshes<T> {
-    readonly bQuads: T;
     readonly bQuadVertexPositions: T;
-    readonly bVertexPositions: T;
-    readonly bVertexLoopBlinnData: T;
-    readonly bVertexNormals: T;
-    readonly coverInteriorIndices: T;
-    readonly coverCurveIndices: T;
-    readonly edgeBoundingBoxVertexPositions: T;
-    readonly edgeLowerCurveVertexPositions: T;
-    readonly edgeLowerLineVertexPositions: T;
-    readonly edgeUpperCurveVertexPositions: T;
-    readonly edgeUpperLineVertexPositions: T;
+    readonly bQuadVertexInteriorIndices: T;
     readonly segmentLines: T;
     readonly segmentCurves: T;
     readonly segmentLineNormals: T;
     readonly segmentCurveNormals: T;
 
-    bVertexPathIDs: T;
-    edgeBoundingBoxPathIDs: T;
+    bQuadVertexPositionPathIDs: T;
     segmentLinePathIDs: T;
     segmentCurvePathIDs: T;
-    edgeLowerCurvePathIDs: T;
-    edgeLowerLinePathIDs: T;
-    edgeUpperCurvePathIDs: T;
-    edgeUpperLinePathIDs: T;
 }
 
 interface MeshDataCounts {
-    readonly bQuadCount: number;
     readonly bQuadVertexPositionCount: number;
-    readonly bVertexCount: number;
-    readonly coverCurveCount: number;
-    readonly coverInteriorCount: number;
-    readonly edgeBoundingBoxCount: number;
-    readonly edgeLowerCurveCount: number;
-    readonly edgeUpperCurveCount: number;
-    readonly edgeLowerLineCount: number;
-    readonly edgeUpperLineCount: number;
+    readonly bQuadVertexInteriorIndexCount: number;
     readonly segmentLineCount: number;
     readonly segmentCurveCount: number;
 }
 
 interface PathRanges {
-    bQuadPathRanges: Range[];
     bQuadVertexPositionPathRanges: Range[];
-    bVertexPathRanges: Range[];
-    coverInteriorIndexRanges: Range[];
-    coverCurveIndexRanges: Range[];
-    edgeBoundingBoxRanges: Range[];
-    edgeUpperLineIndexRanges: Range[];
-    edgeUpperCurveIndexRanges: Range[];
-    edgeLowerLineIndexRanges: Range[];
-    edgeLowerCurveIndexRanges: Range[];
+    bQuadVertexInteriorIndexPathRanges: Range[];
     segmentCurveRanges: Range[];
     segmentLineRanges: Range[];
 }
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, PathRanges {
-    readonly bQuads: ArrayBuffer;
     readonly bQuadVertexPositions: ArrayBuffer;
-    readonly bVertexPositions: ArrayBuffer;
-    readonly bVertexLoopBlinnData: ArrayBuffer;
-    readonly bVertexNormals: ArrayBuffer;
-    readonly coverInteriorIndices: ArrayBuffer;
-    readonly coverCurveIndices: ArrayBuffer;
-    readonly edgeBoundingBoxVertexPositions: ArrayBuffer;
-    readonly edgeLowerCurveVertexPositions: ArrayBuffer;
-    readonly edgeLowerLineVertexPositions: ArrayBuffer;
-    readonly edgeUpperCurveVertexPositions: ArrayBuffer;
-    readonly edgeUpperLineVertexPositions: ArrayBuffer;
+    readonly bQuadVertexInteriorIndices: ArrayBuffer;
     readonly segmentLines: ArrayBuffer;
     readonly segmentCurves: ArrayBuffer;
     readonly segmentLineNormals: ArrayBuffer;
     readonly segmentCurveNormals: ArrayBuffer;
 
-    readonly bQuadCount: number;
     readonly bQuadVertexPositionCount: number;
-    readonly bVertexCount: number;
-    readonly coverCurveCount: number;
-    readonly coverInteriorCount: number;
-    readonly edgeBoundingBoxCount: number;
-    readonly edgeLowerCurveCount: number;
-    readonly edgeUpperCurveCount: number;
-    readonly edgeLowerLineCount: number;
-    readonly edgeUpperLineCount: number;
+    readonly bQuadVertexInteriorIndexCount: number;
     readonly segmentLineCount: number;
     readonly segmentCurveCount: number;
 
-    bVertexPathIDs: ArrayBuffer;
-    edgeBoundingBoxPathIDs: ArrayBuffer;
-    edgeLowerCurvePathIDs: ArrayBuffer;
-    edgeLowerLinePathIDs: ArrayBuffer;
-    edgeUpperCurvePathIDs: ArrayBuffer;
-    edgeUpperLinePathIDs: ArrayBuffer;
+    bQuadVertexPositionPathIDs: ArrayBuffer;
     segmentCurvePathIDs: ArrayBuffer;
     segmentLinePathIDs: ArrayBuffer;
 
-    bQuadPathRanges: Range[];
     bQuadVertexPositionPathRanges: Range[];
-    bVertexPathRanges: Range[];
-    coverInteriorIndexRanges: Range[];
-    coverCurveIndexRanges: Range[];
-    edgeBoundingBoxRanges: Range[];
-    edgeUpperLineIndexRanges: Range[];
-    edgeUpperCurveIndexRanges: Range[];
-    edgeLowerLineIndexRanges: Range[];
-    edgeLowerCurveIndexRanges: Range[];
+    bQuadVertexInteriorIndexPathRanges: Range[];
     segmentCurveRanges: Range[];
     segmentLineRanges: Range[];
 
@@ -368,22 +237,10 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
                 this[range] = ranges[range];
         }
 
-        this.bQuadCount = this.bQuads.byteLength / B_QUAD_SIZE;
         this.bQuadVertexPositionCount = this.bQuadVertexPositions.byteLength /
             B_QUAD_VERTEX_POSITION_SIZE;
-        this.bVertexCount = this.bVertexPositions.byteLength / B_VERTEX_POSITION_SIZE;
-        this.coverCurveCount = this.coverCurveIndices.byteLength / INDEX_SIZE;
-        this.coverInteriorCount = this.coverInteriorIndices.byteLength / INDEX_SIZE;
-        this.edgeBoundingBoxCount = this.edgeBoundingBoxVertexPositions.byteLength /
-            EDGE_BOUNDING_BOX_VERTEX_POSITION_SIZE;
-        this.edgeUpperLineCount = this.edgeUpperLineVertexPositions.byteLength /
-            EDGE_UPPER_LINE_VERTEX_POSITION_SIZE;
-        this.edgeLowerLineCount = this.edgeLowerLineVertexPositions.byteLength /
-            EDGE_LOWER_LINE_VERTEX_POSITION_SIZE;
-        this.edgeUpperCurveCount = this.edgeUpperCurveVertexPositions.byteLength /
-            EDGE_UPPER_CURVE_VERTEX_POSITION_SIZE;
-        this.edgeLowerCurveCount = this.edgeLowerCurveVertexPositions.byteLength /
-            EDGE_LOWER_CURVE_VERTEX_POSITION_SIZE;
+        this.bQuadVertexInteriorIndexCount = this.bQuadVertexInteriorIndices.byteLength /
+            INDEX_SIZE;
         this.segmentCurveCount = this.segmentCurves.byteLength / SEGMENT_CURVE_SIZE;
         this.segmentLineCount = this.segmentLines.byteLength / SEGMENT_LINE_SIZE;
 
@@ -418,90 +275,31 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
             const expandedPathID = newPathIndex + 1;
             const originalPathID = pathIDs[newPathIndex];
 
-            const bVertexCopyResult = copyVertices(['bVertexPositions',
-                                                    'bVertexLoopBlinnData',
-                                                    'bVertexNormals'],
-                                                   'bVertexPathRanges',
-                                                   expandedArrays,
-                                                   expandedRanges,
-                                                   originalBuffers,
-                                                   originalRanges,
-                                                   expandedPathID,
-                                                   originalPathID);
+            // Copy over B-quad vertex positions.
+            const bQuadVertexCopyResult = copyVertices(['bQuadVertexPositions'],
+                                                       'bQuadVertexPositionPathRanges',
+                                                       expandedArrays,
+                                                       expandedRanges,
+                                                       originalBuffers,
+                                                       originalRanges,
+                                                       expandedPathID,
+                                                       originalPathID);
 
-            if (bVertexCopyResult == null)
+            if (bQuadVertexCopyResult == null)
                 continue;
 
-            const firstExpandedBVertexIndex = bVertexCopyResult.expandedStartIndex;
-            const firstBVertexIndex = bVertexCopyResult.originalStartIndex;
-            const lastBVertexIndex = bVertexCopyResult.originalEndIndex;
-
-            // Copy over B-quad vertex positions.
-            copyVertices(['bQuadVertexPositions'],
-                         'bQuadVertexPositionPathRanges',
-                         expandedArrays,
-                         expandedRanges,
-                         originalBuffers,
-                         originalRanges,
-                         expandedPathID,
-                         originalPathID);
-
-            // Copy over edge data.
-            copyVertices(['edgeBoundingBoxVertexPositions'],
-                         'edgeBoundingBoxRanges',
-                         expandedArrays,
-                         expandedRanges,
-                         originalBuffers,
-                         originalRanges,
-                         expandedPathID,
-                         originalPathID);
-            for (const edgeBufferName of EDGE_BUFFER_NAMES) {
-                copyVertices([`edge${edgeBufferName}VertexPositions` as keyof Meshes<void>],
-                             `edge${edgeBufferName}IndexRanges` as keyof PathRanges,
-                             expandedArrays,
-                             expandedRanges,
-                             originalBuffers,
-                             originalRanges,
-                             expandedPathID,
-                             originalPathID);
-            }
+            const firstExpandedBQuadVertexIndex = bQuadVertexCopyResult.expandedStartIndex;
+            const firstBQuadVertexIndex = bQuadVertexCopyResult.originalStartIndex;
+            const lastBQuadVertexIndex = bQuadVertexCopyResult.originalEndIndex;
 
             // Copy over indices.
-            copyIndices(expandedArrays.coverInteriorIndices,
-                        expandedRanges.coverInteriorIndexRanges,
-                        originalBuffers.coverInteriorIndices as Uint32Array,
-                        firstExpandedBVertexIndex,
-                        firstBVertexIndex,
-                        lastBVertexIndex,
+            copyIndices(expandedArrays.bQuadVertexInteriorIndices,
+                        expandedRanges.bQuadVertexInteriorIndexPathRanges,
+                        originalBuffers.bQuadVertexInteriorIndices as Uint32Array,
+                        firstExpandedBQuadVertexIndex * 6,
+                        firstBQuadVertexIndex * 6,
+                        lastBQuadVertexIndex * 6,
                         expandedPathID);
-            copyIndices(expandedArrays.coverCurveIndices,
-                        expandedRanges.coverCurveIndexRanges,
-                        originalBuffers.coverCurveIndices as Uint32Array,
-                        firstExpandedBVertexIndex,
-                        firstBVertexIndex,
-                        lastBVertexIndex,
-                        expandedPathID);
-
-            // Copy over B-quads.
-            const originalBQuadRange = originalRanges.bQuadPathRanges[originalPathID - 1];
-            const firstExpandedBQuadIndex = expandedArrays.bQuads.length / B_QUAD_FIELD_COUNT;
-            expandedRanges.bQuadPathRanges[expandedPathID - 1] =
-                new Range(firstExpandedBQuadIndex,
-                          firstExpandedBQuadIndex + originalBQuadRange.length);
-            const indexDelta = firstExpandedBVertexIndex - firstBVertexIndex;
-            for (let bQuadIndex = originalBQuadRange.start;
-                 bQuadIndex < originalBQuadRange.end;
-                 bQuadIndex++) {
-                const bQuad = originalBuffers.bQuads[bQuadIndex];
-                for (let indexIndex = 0; indexIndex < B_QUAD_FIELD_COUNT; indexIndex++) {
-                    const srcIndex = originalBuffers.bQuads[bQuadIndex * B_QUAD_FIELD_COUNT +
-                                                            indexIndex];
-                    if (srcIndex === UINT32_MAX)
-                        expandedArrays.bQuads.push(srcIndex);
-                    else
-                        expandedArrays.bQuads.push(srcIndex + indexDelta);
-                }
-            }
 
             // Copy over segments.
             copySegments(['segmentLines', 'segmentLineNormals'],
@@ -560,43 +358,33 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
             if (!RANGE_TO_RANGE_BUFFER_TABLE.hasOwnProperty(rangeKey))
                 continue;
 
-            const count = this[RANGE_TO_COUNT_TABLE[rangeKey]];
+            const rangeBufferKey = RANGE_TO_RANGE_BUFFER_TABLE[rangeKey];
+
+            const instanceCount = this[RANGE_TO_COUNT_TABLE[rangeKey]];
+            const fieldCount = MESH_TYPES[rangeBufferKey].size;
             const ranges = this[rangeKey as keyof PathRanges];
 
-            const destBuffer = new Uint16Array(count);
+            const destBuffer = new Uint16Array(instanceCount * fieldCount);
             let destIndex = 0;
             for (let pathIndex = 0; pathIndex < ranges.length; pathIndex++) {
                 const range = ranges[pathIndex];
                 for (let subindex = range.start; subindex < range.end; subindex++) {
-                    destBuffer[destIndex] = pathIndex + 1;
-                    destIndex++;
+                    for (let fieldIndex = 0; fieldIndex < fieldCount; fieldIndex++) {
+                        destBuffer[destIndex] = pathIndex + 1;
+                        destIndex++;
+                    }
                 }
             }
 
-            (this as any)[RANGE_TO_RANGE_BUFFER_TABLE[rangeKey]] = destBuffer;
+            (this as any)[rangeBufferKey] = destBuffer.buffer as ArrayBuffer;
         }
     }
 }
 
 export class PathfinderMeshBuffers implements Meshes<WebGLBuffer>, PathRanges {
-    readonly bQuads: WebGLBuffer;
     readonly bQuadVertexPositions: WebGLBuffer;
-    readonly bVertexPositions: WebGLBuffer;
-    readonly bVertexPathIDs: WebGLBuffer;
-    readonly bVertexLoopBlinnData: WebGLBuffer;
-    readonly bVertexNormals: WebGLBuffer;
-    readonly coverInteriorIndices: WebGLBuffer;
-    readonly coverCurveIndices: WebGLBuffer;
-    readonly edgeBoundingBoxPathIDs: WebGLBuffer;
-    readonly edgeBoundingBoxVertexPositions: WebGLBuffer;
-    readonly edgeLowerCurvePathIDs: WebGLBuffer;
-    readonly edgeLowerCurveVertexPositions: WebGLBuffer;
-    readonly edgeLowerLinePathIDs: WebGLBuffer;
-    readonly edgeLowerLineVertexPositions: WebGLBuffer;
-    readonly edgeUpperCurvePathIDs: WebGLBuffer;
-    readonly edgeUpperCurveVertexPositions: WebGLBuffer;
-    readonly edgeUpperLinePathIDs: WebGLBuffer;
-    readonly edgeUpperLineVertexPositions: WebGLBuffer;
+    readonly bQuadVertexPositionPathIDs: WebGLBuffer;
+    readonly bQuadVertexInteriorIndices: WebGLBuffer;
     readonly segmentLines: WebGLBuffer;
     readonly segmentCurves: WebGLBuffer;
     readonly segmentLinePathIDs: WebGLBuffer;
@@ -604,16 +392,8 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer>, PathRanges {
     readonly segmentLineNormals: WebGLBuffer;
     readonly segmentCurveNormals: WebGLBuffer;
 
-    readonly bQuadPathRanges: Range[];
     readonly bQuadVertexPositionPathRanges: Range[];
-    readonly bVertexPathRanges: Range[];
-    readonly coverInteriorIndexRanges: Range[];
-    readonly coverCurveIndexRanges: Range[];
-    readonly edgeBoundingBoxRanges: Range[];
-    readonly edgeUpperLineIndexRanges: Range[];
-    readonly edgeUpperCurveIndexRanges: Range[];
-    readonly edgeLowerLineIndexRanges: Range[];
-    readonly edgeLowerCurveIndexRanges: Range[];
+    readonly bQuadVertexInteriorIndexPathRanges: Range[];
     readonly segmentCurveRanges: Range[];
     readonly segmentLineRanges: Range[];
 

@@ -53,10 +53,13 @@ uniform sampler2D uPathColors;
 /// If this is true, then points will be snapped to the nearest pixel.
 uniform bool uMulticolor;
 
-attribute vec2 aQuadPosition;
-attribute vec4 aUpperEndpointPositions;
-attribute vec4 aLowerEndpointPositions;
-attribute vec4 aControlPointPositions;
+attribute vec2 aTessCoord;
+attribute vec2 aUpperLeftEndpointPosition;
+attribute vec2 aUpperControlPointPosition;
+attribute vec2 aUpperRightEndpointPosition;
+attribute vec2 aLowerRightEndpointPosition;
+attribute vec2 aLowerControlPointPosition;
+attribute vec2 aLowerLeftEndpointPosition;
 attribute float aPathID;
 
 varying vec4 vUpperEndpoints;
@@ -65,13 +68,13 @@ varying vec4 vControlPoints;
 varying vec4 vColor;
 
 void main() {
-    vec2 tlPosition = aUpperEndpointPositions.xy;
-    vec2 tcPosition = aControlPointPositions.xy;
-    vec2 trPosition = aUpperEndpointPositions.zw;
-    vec2 blPosition = aLowerEndpointPositions.xy;
-    vec2 bcPosition = aControlPointPositions.zw;
-    vec2 brPosition = aLowerEndpointPositions.zw;
-    vec2 quadPosition = aQuadPosition;
+    vec2 tlPosition = aUpperLeftEndpointPosition;
+    vec2 tcPosition = aUpperControlPointPosition;
+    vec2 trPosition = aUpperRightEndpointPosition;
+    vec2 blPosition = aLowerLeftEndpointPosition;
+    vec2 bcPosition = aLowerControlPointPosition;
+    vec2 brPosition = aLowerRightEndpointPosition;
+    vec2 tessCoord = aTessCoord;
     int pathID = int(floor(aPathID));
 
     vec4 transformST = fetchFloat4Data(uPathTransformST, pathID, uPathTransformSTDimensions);
@@ -129,19 +132,33 @@ void main() {
 
         float depth = convertPathIndexToViewportDepthValue(pathID);
 
-        // Use the same side--in this case, the top--or else floating point error during partitioning
-        // can occasionally cause inconsistent rounding, resulting in cracks.
+        // Use the same side--in this case, the top--or else floating point error during
+        // partitioning can occasionally cause inconsistent rounding, resulting in cracks.
         vec2 position;
+        if (tessCoord.y < 0.5) {
+            if (tessCoord.x < 0.25)
+                position = tlPosition;
+            else if (tessCoord.x < 0.75)
+                position = tcPosition;
+            else
+                position = trPosition;
+            position.y = floor(position.y - 0.5);
+        } else {
+            if (tessCoord.x < 0.25)
+                position = blPosition;
+            else if (tessCoord.x < 0.75)
+                position = bcPosition;
+            else
+                position = brPosition;
+            position.y = ceil(position.y + 0.5);
+        }
 
-        if (uMulticolor)
-            position.x = quadPosition.x < 0.5 ? tlPosition.x : trPosition.x;
-        else
-            position.x = quadPosition.x < 0.5 ? floor(tlPosition.x) : ceil(trPosition.x);
-
-        if (quadPosition.y < 0.5)
-            position.y = floor(min(tlPosition.y, trPosition.y));
-        else
-            position.y = ceil(max(blPosition.y, brPosition.y));
+        if (!uMulticolor) {
+            if (tessCoord.x < 0.25)
+                position.x = floor(position.x);
+            else if (tessCoord.x >= 0.75)
+                position.x = ceil(position.x);
+        }
 
         position = convertScreenToClipSpace(position, uFramebufferSize);
 

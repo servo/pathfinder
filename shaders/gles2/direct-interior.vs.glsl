@@ -32,12 +32,11 @@ uniform sampler2D uPathTransformST;
 uniform ivec2 uPathTransformExtDimensions;
 /// The extra path transform factors buffer texture, packed two path transforms per texel.
 uniform sampler2D uPathTransformExt;
-/// The amount of faux-bold to apply, in local path units.
-uniform vec2 uEmboldenAmount;
 
+/// The 2D position of this point.
 attribute vec2 aPosition;
+/// The path ID, starting from 1.
 attribute float aPathID;
-attribute float aNormalAngle;
 
 /// The color of this path.
 varying vec4 vColor;
@@ -53,8 +52,7 @@ void main() {
                                                     uPathTransformExtDimensions,
                                                     pathID);
 
-    vec2 position = dilatePosition(aPosition, aNormalAngle, uEmboldenAmount);
-    position = hintPosition(position, uHints);
+    vec2 position = hintPosition(aPosition, uHints);
     position = transformVertexPositionAffine(position, pathTransformST, pathTransformExt);
     position = transformVertexPosition(position, uTransform);
 

@@ -23,17 +23,17 @@ import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
 import {expectNotNull, PathfinderError, UINT32_SIZE, unwrapNull} from './utils';
 
 const QUAD_POSITIONS: Float32Array = new Float32Array([
-    0.0, 1.0,
-    1.0, 1.0,
     0.0, 0.0,
     1.0, 0.0,
+    0.0, 1.0,
+    1.0, 1.0,
 ]);
 
 const QUAD_TEX_COORDS: Float32Array = new Float32Array([
-    0.0, 1.0,
-    1.0, 1.0,
     0.0, 0.0,
     1.0, 0.0,
+    0.0, 1.0,
+    1.0, 1.0,
 ]);
 
 export const TIMINGS: {[name: string]: string} = {

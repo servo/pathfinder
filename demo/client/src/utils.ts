@@ -11,8 +11,8 @@
 import * as glmatrix from 'gl-matrix';
 
 export const FLOAT32_SIZE: number = 4;
-
 export const UINT16_SIZE: number = 2;
+export const UINT8_SIZE: number = 1;
 
 export const UINT32_MAX: number = 0xffffffff;
 export const UINT32_SIZE: number = 4;

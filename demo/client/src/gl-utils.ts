@@ -44,7 +44,7 @@ export interface EXTDisjointTimerQuery {
 
 export class WebGLQuery {}
 
-export const QUAD_ELEMENTS: Uint8Array = new Uint8Array([2, 0, 1, 1, 3, 2]);
+export const QUAD_ELEMENTS: Uint8Array = new Uint8Array([0, 1, 2, 1, 3, 2]);
 
 export function createFramebufferColorTexture(gl: WebGLRenderingContext,
                                               size: glmatrix.vec2,

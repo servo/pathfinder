@@ -177,23 +177,9 @@ impl<'a> Partitioner<'a> {
         let next_active_edge_index = self.find_point_between_active_edges(endpoint_index);
 
         let endpoint = &self.endpoints[endpoint_index as usize];
-        let emission_result = self.emit_b_quads_around_active_edge(next_active_edge_index,
-                                                                   endpoint.position.x);
+        self.emit_b_quads_around_active_edge(next_active_edge_index, endpoint.position.x);
 
         self.add_new_edges_for_min_point(endpoint_index, next_active_edge_index);
-
-        // Add supporting interior triangles if necessary.
-        match emission_result {
-            BQuadEmissionResult::BQuadEmittedAbove | BQuadEmissionResult::BQuadEmittedAround => {
-                self.add_supporting_interior_triangle(next_active_edge_index,
-                                                      next_active_edge_index - 1,
-                                                      next_active_edge_index + 2);
-                self.add_supporting_interior_triangle(next_active_edge_index + 1,
-                                                      next_active_edge_index - 1,
-                                                      next_active_edge_index + 2);
-            }
-            _ => {}
-        }
 
         let prev_endpoint_index = self.prev_endpoint_of(endpoint_index);
         let next_endpoint_index = self.next_endpoint_of(endpoint_index);
@@ -291,29 +277,10 @@ impl<'a> Partitioner<'a> {
 
         // TODO(pcwalton): Collapse the two duplicate endpoints that this will create together if
         // possible (i.e. if they have the same parity).
-        let b_quad_emission_results = [
-            self.emit_b_quads_around_active_edge(active_edge_indices[0], endpoint.position.x),
-            self.emit_b_quads_around_active_edge(active_edge_indices[1], endpoint.position.x),
-        ];
+        self.emit_b_quads_around_active_edge(active_edge_indices[0], endpoint.position.x);
+        self.emit_b_quads_around_active_edge(active_edge_indices[1], endpoint.position.x);
 
         // Add supporting interior triangles if necessary.
-        match b_quad_emission_results[0] {
-            BQuadEmissionResult::BQuadEmittedAbove | BQuadEmissionResult::BQuadEmittedAround => {
-                self.add_supporting_interior_triangle(active_edge_indices[0],
-                                                      active_edge_indices[0] - 1,
-                                                      active_edge_indices[0] + 2)
-            }
-            _ => {}
-        }
-        match b_quad_emission_results[1] {
-            BQuadEmissionResult::BQuadEmittedBelow | BQuadEmissionResult::BQuadEmittedAround => {
-                self.add_supporting_interior_triangle(active_edge_indices[1],
-                                                      active_edge_indices[1] - 2,
-                                                      active_edge_indices[1] + 1)
-            }
-            _ => {}
-        }
-
         self.heap.pop();
 
         // FIXME(pcwalton): This is twice as slow as it needs to be.
@@ -360,6 +327,7 @@ impl<'a> Partitioner<'a> {
     }
 
     fn write_normals_to_library(&mut self) {
+        // Write B-vertex normals.
         for (b_vertex_index, vertex_normal) in self.vertex_normals.iter().enumerate() {
             debug_assert!(b_vertex_index <= self.library.b_vertex_normals.len());
 
@@ -695,115 +663,6 @@ impl<'a> Partitioner<'a> {
             lower_active_edge.toggle_parity();
         }
 
-        match (upper_shape, lower_shape) {
-            (Shape::Flat, Shape::Flat) |
-            (Shape::Flat, Shape::Convex) |
-            (Shape::Convex, Shape::Flat) |
-            (Shape::Convex, Shape::Convex) => {
-                self.library.cover_indices.interior_indices.extend([
-                    upper_subdivision.left_curve_left,
-                    upper_subdivision.middle_point,
-                    lower_subdivision.left_curve_left,
-                    lower_subdivision.middle_point,
-                    lower_subdivision.left_curve_left,
-                    upper_subdivision.middle_point,
-                ].into_iter());
-                if upper_shape != Shape::Flat {
-                    self.library.cover_indices.curve_indices.extend([
-                        upper_subdivision.left_curve_control_point,
-                        upper_subdivision.middle_point,
-                        upper_subdivision.left_curve_left,
-                    ].into_iter())
-                }
-                if lower_shape != Shape::Flat {
-                    self.library.cover_indices.curve_indices.extend([
-                        lower_subdivision.left_curve_control_point,
-                        lower_subdivision.left_curve_left,
-                        lower_subdivision.middle_point,
-                    ].into_iter())
-                }
-            }
-
-            (Shape::Concave, Shape::Flat) |
-            (Shape::Concave, Shape::Convex) => {
-                self.library.cover_indices.interior_indices.extend([
-                    upper_subdivision.left_curve_left,
-                    upper_subdivision.left_curve_control_point,
-                    lower_subdivision.left_curve_left,
-                    upper_subdivision.middle_point,
-                    lower_subdivision.middle_point,
-                    upper_subdivision.left_curve_control_point,
-                    lower_subdivision.middle_point,
-                    lower_subdivision.left_curve_left,
-                    upper_subdivision.left_curve_control_point,
-                ].into_iter());
-                self.library.cover_indices.curve_indices.extend([
-                    upper_subdivision.left_curve_control_point,
-                    upper_subdivision.left_curve_left,
-                    upper_subdivision.middle_point,
-                ].into_iter());
-                if lower_shape != Shape::Flat {
-                    self.library.cover_indices.curve_indices.extend([
-                        lower_subdivision.left_curve_control_point,
-                        lower_subdivision.left_curve_left,
-                        lower_subdivision.middle_point,
-                    ].into_iter())
-                }
-            }
-
-            (Shape::Flat, Shape::Concave) |
-            (Shape::Convex, Shape::Concave) => {
-                self.library.cover_indices.interior_indices.extend([
-                    upper_subdivision.left_curve_left,
-                    upper_subdivision.middle_point,
-                    lower_subdivision.left_curve_control_point,
-                    upper_subdivision.middle_point,
-                    lower_subdivision.middle_point,
-                    lower_subdivision.left_curve_control_point,
-                    upper_subdivision.left_curve_left,
-                    lower_subdivision.left_curve_control_point,
-                    lower_subdivision.left_curve_left,
-                ].into_iter());
-                self.library.cover_indices.curve_indices.extend([
-                    lower_subdivision.left_curve_control_point,
-                    lower_subdivision.middle_point,
-                    lower_subdivision.left_curve_left,
-                ].into_iter());
-                if upper_shape != Shape::Flat {
-                    self.library.cover_indices.curve_indices.extend([
-                        upper_subdivision.left_curve_control_point,
-                        upper_subdivision.middle_point,
-                        upper_subdivision.left_curve_left,
-                    ].into_iter())
-                }
-            }
-
-            (Shape::Concave, Shape::Concave) => {
-                self.library.cover_indices.interior_indices.extend([
-                    upper_subdivision.left_curve_left,
-                    upper_subdivision.left_curve_control_point,
-                    lower_subdivision.left_curve_left,
-                    lower_subdivision.left_curve_left,
-                    upper_subdivision.left_curve_control_point,
-                    lower_subdivision.left_curve_control_point,
-                    upper_subdivision.middle_point,
-                    lower_subdivision.left_curve_control_point,
-                    upper_subdivision.left_curve_control_point,
-                    upper_subdivision.middle_point,
-                    lower_subdivision.middle_point,
-                    lower_subdivision.left_curve_control_point,
-                ].into_iter());
-                self.library.cover_indices.curve_indices.extend([
-                    upper_subdivision.left_curve_control_point,
-                    upper_subdivision.left_curve_left,
-                    upper_subdivision.middle_point,
-                    lower_subdivision.left_curve_control_point,
-                    lower_subdivision.middle_point,
-                    lower_subdivision.left_curve_left,
-                ].into_iter());
-            }
-        }
-
         let b_quad = BQuad::new(upper_subdivision.left_curve_left,
                                 upper_subdivision.left_curve_control_point,
                                 upper_subdivision.middle_point,
@@ -870,17 +729,6 @@ impl<'a> Partitioner<'a> {
                                .expect("subdivide_active_edge_again_at_x(): not a curve!");
         let t = curve.solve_t_for_x(x);
         self.subdivide_active_edge_again_at_t(subdivision, t, bottom)
-    }
-
-    fn add_supporting_interior_triangle(&mut self,
-                                        active_edge_index: u32,
-                                        upper_active_edge_index: u32,
-                                        lower_active_edge_index: u32) {
-        self.library.cover_indices.interior_indices.extend([
-            self.active_edges[active_edge_index as usize].left_vertex_index,
-            self.active_edges[upper_active_edge_index as usize].left_vertex_index,
-            self.active_edges[lower_active_edge_index as usize].left_vertex_index,
-        ].into_iter());
     }
 
     fn already_visited_point(&self, point: &Point) -> bool {

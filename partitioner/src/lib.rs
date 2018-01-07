@@ -103,9 +103,12 @@ impl BQuad {
 
 #[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct BQuadVertexPositions {
-    pub upper_endpoint_positions: [Point2D<f32>; 2],
-    pub lower_endpoint_positions: [Point2D<f32>; 2],
-    pub control_point_positions: [Point2D<f32>; 2],
+    pub upper_left_vertex_position: Point2D<f32>,
+    pub upper_control_point_position: Point2D<f32>,
+    pub upper_right_vertex_position: Point2D<f32>,
+    pub lower_right_vertex_position: Point2D<f32>,
+    pub lower_control_point_position: Point2D<f32>,
+    pub lower_left_vertex_position: Point2D<f32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -124,7 +127,7 @@ pub(crate) enum BVertexKind {
     ConcaveControlPoint,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct BVertexLoopBlinnData {
     pub tex_coord: [u8; 2],

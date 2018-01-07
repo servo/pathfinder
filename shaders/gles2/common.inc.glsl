@@ -117,6 +117,12 @@ vec2 dilatePosition(vec2 position, float normalAngle, vec2 amount) {
     return position + vec2(cos(normalAngle), -sin(normalAngle)) * amount;
 }
 
+vec2 offsetPositionVertically(vec2 position, ivec2 framebufferSize, bool roundUp) {
+    position = convertClipToScreenSpace(position, framebufferSize);
+    position.y = roundUp ? ceil(position.y + 1.0) : floor(position.y - 1.0);
+    return convertScreenToClipSpace(position, framebufferSize);
+}
+
 vec2 computeMCAAPosition(vec2 position,
                          vec4 hints,
                          vec4 localTransformST,

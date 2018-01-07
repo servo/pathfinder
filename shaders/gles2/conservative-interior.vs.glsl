@@ -1,4 +1,4 @@
-// pathfinder/shaders/gles2/direct-3d-curve.vs.glsl
+// pathfinder/shaders/gles2/direct-interior.vs.glsl
 //
 // Copyright (c) 2017 The Pathfinder Project Developers.
 //
@@ -8,44 +8,45 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! A version of `direct-curve` that takes each vertex's Z value from the
-//! transform instead of the path ID.
+//! Renders polygonal portions of a mesh, only filling pixels that are fully
+//! covered.
 //!
-//! FIXME(pcwalton): For CSS 3D transforms, I think `direct-curve` will need
-//! to do what this shader does. Perhaps these two shaders should be unified…
+//! Typically, you will run this shader before running XCAA.
+//! Remember to enable the depth test with a `GREATER` depth function for optimal
+//! performance.
 
 precision highp float;
 
 /// A 3D transform to be applied to all points.
 uniform mat4 uTransform;
+/// Vertical snapping positions.
+uniform vec4 uHints;
+/// The framebuffer size in pixels.
+uniform ivec2 uFramebufferSize;
+/// The size of the path colors texture in texels.
+uniform ivec2 uPathColorsDimensions;
+/// The fill color for each path.
+uniform sampler2D uPathColors;
 /// The size of the path transform buffer texture in texels.
 uniform ivec2 uPathTransformSTDimensions;
-/// The path transform buffer texture, one dilation per path ID.
+/// The path transform buffer texture, one path dilation per texel.
 uniform sampler2D uPathTransformST;
 /// The size of the extra path transform factors buffer texture in texels.
 uniform ivec2 uPathTransformExtDimensions;
 /// The extra path transform factors buffer texture, packed two path transforms per texel.
 uniform sampler2D uPathTransformExt;
-/// The size of the path colors buffer texture in texels.
-uniform ivec2 uPathColorsDimensions;
-/// The path colors buffer texture, one color per path ID.
-uniform sampler2D uPathColors;
 /// The amount of faux-bold to apply, in local path units.
 uniform vec2 uEmboldenAmount;
 
 /// The 2D position of this point.
 attribute vec2 aPosition;
-/// The angle of the 2D normal for this point.
-attribute float aNormalAngle;
-/// The vertex ID. In OpenGL 3.0+, this can be omitted in favor of `gl_VertexID`.
-attribute float aVertexID;
 /// The path ID, starting from 1.
 attribute float aPathID;
+/// The vertex ID. In OpenGL 3.0+, this can be omitted in favor of `gl_VertexID`.
+attribute float aVertexID;
 
-/// The fill color of this path.
+/// The color of this path.
 varying vec4 vColor;
-/// The outgoing abstract Loop-Blinn texture coordinate.
-varying vec2 vTexCoord;
 
 void main() {
     int pathID = int(aPathID);
@@ -59,14 +60,13 @@ void main() {
                                                     uPathTransformExtDimensions,
                                                     pathID);
 
-    vec2 position = dilatePosition(aPosition, aNormalAngle, uEmboldenAmount);
+    vec2 position = hintPosition(aPosition, uHints);
     position = transformVertexPositionAffine(position, pathTransformST, pathTransformExt);
+    position = transformVertexPosition(position, uTransform);
+    position = offsetPositionVertically(position, uFramebufferSize, imod(vertexID, 6) < 3);
 
-    gl_Position = uTransform * vec4(position, 0.0, 1.0);
-
-    int vertexIndex = imod(vertexID, 3);
-    vec2 texCoord = vec2(float(vertexIndex) * 0.5, float(vertexIndex == 2));
+    float depth = convertPathIndexToViewportDepthValue(pathID);
+    gl_Position = vec4(position, depth, 1.0);
 
     vColor = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
-    vTexCoord = texCoord;
 }

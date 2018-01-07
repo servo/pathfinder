@@ -113,16 +113,6 @@ pub unsafe extern fn pf_partitioner_b_vertex_loop_blinn_data<'a>(
 }
 
 #[no_mangle]
-pub unsafe extern fn pf_partitioner_cover_indices<'a>(partitioner: *const Partitioner<'a>,
-                                                      out_cover_indices: *mut CoverIndices) {
-    let cover_indices = &(*partitioner).library().cover_indices;
-    (*out_cover_indices).interior_indices = cover_indices.interior_indices.as_ptr();
-    (*out_cover_indices).interior_indices_len = cover_indices.interior_indices.len() as u32;
-    (*out_cover_indices).curve_indices = cover_indices.curve_indices.as_ptr();
-    (*out_cover_indices).curve_indices_len = cover_indices.curve_indices.len() as u32;
-}
-
-#[no_mangle]
 pub unsafe extern fn pf_init_env_logger() -> u32 {
     env_logger::init().is_ok() as u32
 }

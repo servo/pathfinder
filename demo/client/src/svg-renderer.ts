@@ -10,7 +10,8 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
+import {AntialiasingStrategy, AntialiasingStrategyName, DirectRenderingMode} from './aa-strategy';
+import {NoAAStrategy} from './aa-strategy';
 import {SubpixelAAType} from './aa-strategy';
 import {OrthographicCamera} from "./camera";
 import {UniformMap} from './gl-utils';
@@ -163,8 +164,9 @@ export abstract class SVGRenderer extends Renderer {
         return 'directCurve';
     }
 
-    protected directInteriorProgramName(): keyof ShaderMap<void> {
-        return 'directInterior';
+    protected directInteriorProgramName(renderingMode: DirectRenderingMode):
+                                        keyof ShaderMap<void> {
+        return renderingMode === 'conservative' ? 'conservativeInterior' : 'directInterior';
     }
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {
