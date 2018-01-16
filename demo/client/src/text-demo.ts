@@ -16,7 +16,7 @@ import * as opentype from 'opentype.js';
 import {Metrics} from 'opentype.js';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
-import {AAOptions, DemoAppController} from './app-controller';
+import {AAOptions, DemoAppController, setSwitchInputsValue, SwitchInputs} from './app-controller';
 import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey, SUBPIXEL_GRANULARITY} from './atlas';
 import PathfinderBufferTexture from './buffer-texture';
 import {CameraView, OrthographicCamera} from "./camera";
@@ -148,9 +148,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         this._atlas = new Atlas;
     }
 
-    start() {
-        super.start();
-
+    start(): void {
         this._fontSize = INITIAL_FONT_SIZE;
         this._rotationAngle = 0.0;
         this._emboldenAmount = 0.0;
@@ -170,10 +168,12 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         const editTextOkButton = unwrapNull(document.getElementById('pf-edit-text-ok-button'));
         editTextOkButton.addEventListener('click', () => this.updateText(), false);
 
+        super.start();
+
         this.loadInitialFile(this.builtinFileURI);
     }
 
-    showTextEditor() {
+    showTextEditor(): void {
         this.editTextArea.value = this.text;
 
         window.jQuery(this.editTextModal).modal();
@@ -181,6 +181,51 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     get emboldenAmount(): number {
         return this._emboldenAmount;
+    }
+
+    protected updateUIForAALevelChange(aaType: AntialiasingStrategyName, aaLevel: number): void {
+        const gammaCorrectionSwitchInputs = unwrapNull(this.gammaCorrectionSwitchInputs);
+        const stemDarkeningSwitchInputs = unwrapNull(this.stemDarkeningSwitchInputs);
+        const emboldenInput = unwrapNull(this.emboldenInput);
+        const emboldenLabel = getLabelFor(emboldenInput);
+
+        switch (aaType) {
+        case 'none':
+        case 'ssaa':
+            enableSwitchInputs(gammaCorrectionSwitchInputs, false);
+            enableSwitchInputs(stemDarkeningSwitchInputs, false);
+            emboldenInput.value = "0";
+            emboldenInput.disabled = true;
+            enableLabel(emboldenLabel, false);
+            break;
+
+        case 'xcaa':
+            enableSwitchInputs(gammaCorrectionSwitchInputs, true);
+            enableSwitchInputs(stemDarkeningSwitchInputs, true);
+            emboldenInput.value = "0";
+            emboldenInput.disabled = false;
+            enableLabel(emboldenLabel, true);
+            break;
+        }
+
+        function enableSwitchInputs(switchInputs: SwitchInputs, enabled: boolean): void {
+            switchInputs.off.disabled = switchInputs.on.disabled = !enabled;
+            enableLabel(getLabelFor(switchInputs.on), enabled);
+        }
+
+        function enableLabel(label: HTMLLabelElement | null, enabled: boolean): void {
+            if (label == null)
+                return;
+
+            if (enabled)
+                label.classList.remove('pf-disabled');
+            else
+                label.classList.add('pf-disabled');
+        }
+
+        function getLabelFor(element: HTMLElement): HTMLLabelElement | null {
+            return document.querySelector(`label[for="${element.id}"]`) as HTMLLabelElement | null;
+        }
     }
 
     protected createView(gammaLUT: HTMLImageElement,

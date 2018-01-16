@@ -14,7 +14,7 @@ import * as opentype from "opentype.js";
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {SubpixelAAType} from "./aa-strategy";
-import {AppController, DemoAppController} from "./app-controller";
+import {AppController, DemoAppController, setSwitchInputsValue} from "./app-controller";
 import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
@@ -199,8 +199,8 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         this.loadInitialFile(this.builtinFileURI);
         if (this.aaLevelSelect != null)
             this.aaLevelSelect.selectedIndex = 0;
-        if (this.subpixelAARadioButton != null)
-            this.subpixelAARadioButton.checked = false;
+        if (this.subpixelAASwitchInputs != null)
+            setSwitchInputsValue(this.subpixelAASwitchInputs, false);
         this.updateAALevel();
     }
 

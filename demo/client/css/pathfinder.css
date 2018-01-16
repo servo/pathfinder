@@ -180,7 +180,9 @@ button > svg path {
 #pf-rotate-slider {
     margin: 2px 0 0;
 }
-
+label.pf-disabled {
+    color: gray;
+}
 
 /*
  * Arrow

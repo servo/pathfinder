@@ -15,7 +15,7 @@ import * as papaparse from 'papaparse';
 
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from './aa-strategy';
 import {SubpixelAAType} from './aa-strategy';
-import {DemoAppController} from "./app-controller";
+import {DemoAppController, setSwitchInputsValue} from "./app-controller";
 import {SUBPIXEL_GRANULARITY} from './atlas';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
@@ -468,7 +468,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
             return option.value.startsWith(currentTestCase.aaMode);
         });
 
-        unwrapNull(this.subpixelAARadioButton).checked = currentTestCase.subpixel;
+        setSwitchInputsValue(unwrapNull(this.subpixelAASwitchInputs), currentTestCase.subpixel);
         return this.updateAALevel();
     }
 

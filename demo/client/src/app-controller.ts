@@ -23,27 +23,27 @@ const SWITCHES: SwitchMap = {
         id: 'pf-gamma-correction',
         offValue: 'off',
         onValue: 'on',
-        radioButtonName: 'gammaCorrectionRadioButton',
+        switchInputsName: 'gammaCorrectionSwitchInputs',
     },
     stemDarkening: {
         defaultValue: 'dark',
         id: 'pf-stem-darkening',
         offValue: 'none',
         onValue: 'dark',
-        radioButtonName: 'stemDarkeningRadioButton',
+        switchInputsName: 'stemDarkeningSwitchInputs',
     },
     subpixelAA: {
         defaultValue: 'none',
         id: 'pf-subpixel-aa',
         offValue: 'none',
         onValue: 'medium',
-        radioButtonName: 'subpixelAARadioButton',
+        switchInputsName: 'subpixelAASwitchInputs',
     },
 };
 
 interface SwitchDescriptor {
     id: string;
-    radioButtonName: keyof Switches;
+    switchInputsName: keyof Switches;
     onValue: string;
     offValue: string;
     defaultValue: string;
@@ -61,10 +61,15 @@ export interface AAOptions {
     subpixelAA: SubpixelAAType;
 }
 
+export interface SwitchInputs {
+    on: HTMLInputElement;
+    off: HTMLInputElement;
+}
+
 interface Switches {
-    subpixelAARadioButton: HTMLInputElement | null;
-    gammaCorrectionRadioButton: HTMLInputElement | null;
-    stemDarkeningRadioButton: HTMLInputElement | null;
+    subpixelAASwitchInputs: SwitchInputs | null;
+    gammaCorrectionSwitchInputs: SwitchInputs | null;
+    stemDarkeningSwitchInputs: SwitchInputs | null;
 }
 
 export abstract class AppController {
@@ -108,9 +113,9 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
                                                                implements Switches {
     view: Promise<View>;
 
-    subpixelAARadioButton: HTMLInputElement | null;
-    gammaCorrectionRadioButton: HTMLInputElement | null;
-    stemDarkeningRadioButton: HTMLInputElement | null;
+    subpixelAASwitchInputs: SwitchInputs | null;
+    gammaCorrectionSwitchInputs: SwitchInputs | null;
+    stemDarkeningSwitchInputs: SwitchInputs | null;
 
     protected abstract readonly builtinFileURI: string;
 
@@ -204,13 +209,23 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         // click listener is what toggles the `checked` attribute, so we have to wait until it
         // fires before updating the antialiasing settings.
         for (const switchName of Object.keys(SWITCHES) as Array<keyof SwitchMap>) {
-            const radioButtonName = SWITCHES[switchName].radioButtonName;
+            const switchInputsName = SWITCHES[switchName].switchInputsName;
             const switchID = SWITCHES[switchName].id;
-            this[radioButtonName] = document.getElementById(`${switchID}-select-on`) as
-                HTMLInputElement | null;
+            const switchOnInput = document.getElementById(`${switchID}-select-on`);
+            const switchOffInput = document.getElementById(`${switchID}-select-off`);
+            if (switchOnInput != null && switchOffInput != null) {
+                this[switchInputsName] = {
+                    off: switchOffInput as HTMLInputElement,
+                    on: switchOnInput as HTMLInputElement,
+                };
+            } else {
+                this[switchInputsName] = null;
+            }
+
             const buttons = document.getElementById(`${switchID}-buttons`) as HTMLElement | null;
             if (buttons == null)
                 continue;
+
             buttons.addEventListener('click', () => {
                 window.setTimeout(() => this.updateAALevel(), 0);
             }, false);
@@ -245,7 +260,7 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         this.fpsLabel.classList.remove('invisible');
     }
 
-    updateAALevel(): Promise<void> {
+    protected updateAALevel(): Promise<void> {
         let aaType: AntialiasingStrategyName, aaLevel: number;
         if (this.aaLevelSelect != null) {
             const selectedOption = this.aaLevelSelect.selectedOptions[0];
@@ -257,14 +272,16 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             aaLevel = 0;
         }
 
+        this.updateUIForAALevelChange(aaType, aaLevel);
+
         const aaOptions: Partial<AAOptions> = {};
         for (const switchName of Object.keys(SWITCHES) as Array<keyof SwitchMap>) {
             const switchDescriptor = SWITCHES[switchName];
-            const radioButtonName = switchDescriptor.radioButtonName;
-            const radioButton = this[radioButtonName];
-            if (radioButton == null)
+            const switchInputsName = switchDescriptor.switchInputsName;
+            const switchInputs = this[switchInputsName];
+            if (switchInputs == null)
                 aaOptions[switchName] = switchDescriptor.defaultValue as any;
-            else if (radioButton.checked)
+            else if (switchInputs.on.checked && !switchInputs.on.disabled)
                 aaOptions[switchName] = switchDescriptor.onValue as any;
             else
                 aaOptions[switchName] = switchDescriptor.offValue as any;
@@ -273,6 +290,10 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         return this.view.then(view => {
             view.setAntialiasingOptions(aaType, aaLevel, aaOptions as AAOptions);
         });
+    }
+
+    protected updateUIForAALevelChange(aaType: AntialiasingStrategyName, aaLevel: number): void {
+        // Overridden by subclasses.
     }
 
     protected abstract createView(gammaLUT: HTMLImageElement,
@@ -351,4 +372,9 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         // Fetch the file.
         this.fetchFile(selectedOption.value, this.builtinFileURI);
     }
+}
+
+export function setSwitchInputsValue(switchInputs: SwitchInputs, on: boolean): void {
+    switchInputs.on.checked = on;
+    switchInputs.off.checked = !on;
 }
