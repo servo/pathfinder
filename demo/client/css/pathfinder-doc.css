@@ -32,3 +32,12 @@ h4 > span.invisible,
 .variant > span.invisible {
     visibility: visible !important;
 }
+
+/*
+ * Hide `generate_gamma_lut` and `pathfinder_server`.
+ * FIXME(pcwalton) Is there a better way to do this?
+ */
+.sidebar-elems > .block.crate > ul > li:first-child,
+.sidebar-elems > .block.crate > ul > li:last-child {
+    display: none;
+}
