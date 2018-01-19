@@ -609,8 +609,7 @@ export class MCAAStrategy extends XCAAStrategy {
         return 'conservative';
     }
 
-    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap, objectIndex: number):
-                            void {
+    protected setAAUniforms(renderer: Renderer, uniforms: UniformMap, objectIndex: number): void {
         super.setAAUniforms(renderer, uniforms, objectIndex);
 
         const renderContext = renderer.renderContext;

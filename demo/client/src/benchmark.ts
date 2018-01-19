@@ -504,7 +504,7 @@ class BenchmarkTextRenderer extends Renderer {
     constructor(renderContext: BenchmarkTestView) {
         super(renderContext);
 
-        this.camera = new OrthographicCamera(renderContext.canvas);
+        this.camera = new OrthographicCamera(renderContext.canvas, { fixed: true });
         this.camera.onPan = () => renderContext.setDirty();
         this.camera.onZoom = () => renderContext.setDirty();
     }

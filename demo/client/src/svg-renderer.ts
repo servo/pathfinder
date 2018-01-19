@@ -38,6 +38,7 @@ const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
 
 export interface SVGRendererOptions {
     sizeToFit?: boolean;
+    fixed?: boolean;
 }
 
 export abstract class SVGRenderer extends Renderer {
@@ -92,7 +93,10 @@ export abstract class SVGRenderer extends Renderer {
 
         this.options = options;
 
-        this.camera = new OrthographicCamera(this.canvas, { scaleBounds: true });
+        this.camera = new OrthographicCamera(this.canvas, {
+            fixed: !!this.options.fixed,
+            scaleBounds: true,
+        });
         this.camera.onPan = () => this.renderContext.setDirty();
         this.camera.onZoom = () => this.renderContext.setDirty();
         this.camera.onRotate = () => this.renderContext.setDirty();

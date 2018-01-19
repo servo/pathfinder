@@ -11,7 +11,7 @@
 import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
-import {EPSILON} from "./utils";
+import {EPSILON, unwrapNull} from "./utils";
 import {PathfinderView} from "./view";
 
 const PIXELS_PER_LINE: number = 16.0;
@@ -46,6 +46,7 @@ const PERSPECTIVE_HITBOX_RADIUS: number = 1.0;
 const KEYCODES = ["W", "A", "S", "D"].map(x => x.charCodeAt(0));
 
 export interface OrthographicCameraOptions {
+    fixed?: boolean;
     minScale?: number;
     maxScale?: number;
     scaleBounds?: boolean;
@@ -103,6 +104,7 @@ export class OrthographicCamera extends Camera {
 
     private _bounds: glmatrix.vec4;
 
+    private readonly fixed: boolean;
     private readonly minScale: number;
     private readonly maxScale: number;
     private readonly scaleBounds: boolean;
@@ -118,6 +120,7 @@ export class OrthographicCamera extends Camera {
         if (options == null)
             options = {};
 
+        this.fixed = !!options.fixed;
         this.minScale = _.defaultTo(options.minScale, ORTHOGRAPHIC_DEFAULT_MIN_SCALE);
         this.maxScale = _.defaultTo(options.maxScale, ORTHOGRAPHIC_DEFAULT_MAX_SCALE);
         this.scaleBounds = !!options.scaleBounds;
@@ -127,10 +130,15 @@ export class OrthographicCamera extends Camera {
 
         this._bounds = glmatrix.vec4.create();
 
-        this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
-        this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
-        this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
-        this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
+        if (!this.fixed) {
+            this.canvas.addEventListener('wheel', event => this.onWheel(event), false);
+            this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
+            this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
+            this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
+            unwrapNull(this.canvas.classList).add('pf-draggable');
+        } else {
+            unwrapNull(this.canvas.classList).remove('pf-draggable');
+        }
 
         this.onPan = null;
         this.onZoom = null;

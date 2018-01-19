@@ -730,7 +730,7 @@ class ReferenceTestTextRenderer extends Renderer {
     constructor(renderContext: ReferenceTestView) {
         super(renderContext);
 
-        this.camera = new OrthographicCamera(renderContext.canvas);
+        this.camera = new OrthographicCamera(renderContext.canvas, { fixed: true });
         this.camera.onPan = () => renderContext.setDirty();
         this.camera.onZoom = () => renderContext.setDirty();
     }
@@ -835,7 +835,7 @@ class ReferenceTestSVGRenderer extends SVGRenderer {
     }
 
     constructor(renderContext: ReferenceTestView) {
-        super(renderContext, {sizeToFit: false});
+        super(renderContext, { sizeToFit: false, fixed: true });
     }
 }
 
