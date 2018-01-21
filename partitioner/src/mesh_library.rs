@@ -29,7 +29,6 @@ pub struct MeshLibrary {
     pub b_quad_vertex_interior_indices: Vec<u32>,
     pub b_vertex_positions: Vec<Point2D<f32>>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
-    pub b_vertex_normals: Vec<f32>,
     pub segments: MeshLibrarySegments,
     pub segment_normals: MeshLibrarySegmentNormals,
 }
@@ -44,7 +43,6 @@ impl MeshLibrary {
             b_quad_vertex_interior_indices: vec![],
             b_vertex_positions: vec![],
             b_vertex_loop_blinn_data: vec![],
-            b_vertex_normals: vec![],
             segments: MeshLibrarySegments::new(),
             segment_normals: MeshLibrarySegmentNormals::new(),
         }
@@ -57,7 +55,6 @@ impl MeshLibrary {
         self.b_quad_vertex_interior_indices.clear();
         self.b_vertex_positions.clear();
         self.b_vertex_loop_blinn_data.clear();
-        self.b_vertex_normals.clear();
         self.segments.clear();
         self.segment_normals.clear();
     }
@@ -72,11 +69,9 @@ impl MeshLibrary {
 
     pub(crate) fn add_b_vertex(&mut self,
                                position: &Point2D<f32>,
-                               loop_blinn_data: &BVertexLoopBlinnData,
-                               normal: f32) {
+                               loop_blinn_data: &BVertexLoopBlinnData) {
         self.b_vertex_positions.push(*position);
         self.b_vertex_loop_blinn_data.push(*loop_blinn_data);
-        self.b_vertex_normals.push(normal);
     }
 
     pub(crate) fn add_b_quad(&mut self, b_quad: &BQuad) {

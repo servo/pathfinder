@@ -23,7 +23,6 @@ use std::ops::{Add, AddAssign};
 use std::u32;
 
 use mesh_library::MeshLibrary;
-use normal;
 use {BQuad, BVertexLoopBlinnData, BVertexKind, Endpoint, FillRule, Subpath};
 
 const MAX_B_QUAD_SUBDIVISIONS: u8 = 8;
@@ -115,12 +114,8 @@ impl<'a> Partitioner<'a> {
 
         while self.process_next_point() {}
 
-        self.write_normals_to_library();
-
         debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
                          self.library.b_vertex_positions.len());
-        debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
-                         self.library.b_vertex_normals.len());
 
         let end_lengths = self.library.snapshot_lengths();
 
@@ -218,8 +213,7 @@ impl<'a> Partitioner<'a> {
 
                 // FIXME(pcwalton): Normal
                 self.library.add_b_vertex(&endpoint_position,
-                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
-                                          0.0);
+                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
 
                 active_edge.toggle_parity();
             }
@@ -261,8 +255,7 @@ impl<'a> Partitioner<'a> {
 
                 // FIXME(pcwalton): Normal
                 self.library.add_b_vertex(control_point_position,
-                                          &control_point_b_vertex_loop_blinn_data,
-                                          0.0);
+                                          &control_point_b_vertex_loop_blinn_data);
             }
         }
     }
@@ -326,26 +319,6 @@ impl<'a> Partitioner<'a> {
         }
     }
 
-    fn write_normals_to_library(&mut self) {
-        // Write B-vertex normals.
-        for (b_vertex_index, vertex_normal) in self.vertex_normals.iter().enumerate() {
-            debug_assert!(b_vertex_index <= self.library.b_vertex_normals.len());
-
-            let angle = vertex_normal.angle();
-            if b_vertex_index == self.library.b_vertex_normals.len() {
-                self.library.b_vertex_normals.push(angle)
-            } else {
-                self.library.b_vertex_normals[b_vertex_index as usize] = angle
-            }
-        }
-
-        let remaining_b_vertex_count = self.library.b_vertex_positions.len() -
-            self.library.b_vertex_normals.len();
-        if remaining_b_vertex_count > 0 {
-            self.library.b_vertex_normals.extend(iter::repeat(0.0).take(remaining_b_vertex_count))
-        }
-    }
-
     fn add_new_edges_for_min_point(&mut self, endpoint_index: u32, next_active_edge_index: u32) {
         // FIXME(pcwalton): This is twice as slow as it needs to be.
         self.active_edges.insert(next_active_edge_index as usize, ActiveEdge::default());
@@ -364,8 +337,7 @@ impl<'a> Partitioner<'a> {
         // FIXME(pcwalton): Normal
         let position = self.endpoints[endpoint_index as usize].position;
         self.library.add_b_vertex(&position,
-                                  &BVertexLoopBlinnData::new(BVertexKind::Endpoint0),
-                                  0.0);
+                                  &BVertexLoopBlinnData::new(BVertexKind::Endpoint0));
 
         new_active_edges[0].toggle_parity();
         new_active_edges[1].toggle_parity();
@@ -416,8 +388,7 @@ impl<'a> Partitioner<'a> {
 
                 // FIXME(pcwalton): Normal
                 self.library.add_b_vertex(&control_point_position,
-                                          &control_point_b_vertex_loop_blinn_data,
-                                          0.0)
+                                          &control_point_b_vertex_loop_blinn_data)
             }
         }
 
@@ -439,8 +410,7 @@ impl<'a> Partitioner<'a> {
 
                 // FIXME(pcwalton): Normal
                 self.library.add_b_vertex(&control_point_position,
-                                          &control_point_b_vertex_loop_blinn_data,
-                                          0.0)
+                                          &control_point_b_vertex_loop_blinn_data)
             }
         }
     }
@@ -936,8 +906,7 @@ impl<'a> Partitioner<'a> {
                 // FIXME(pcwalton): Normal
                 active_edge.left_vertex_index = self.library.b_vertex_loop_blinn_data.len() as u32;
                 self.library.add_b_vertex(&middle_point.to_point(),
-                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
-                                          0.0);
+                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
 
                 left_curve_control_point_vertex_index = u32::MAX;
             }
@@ -965,18 +934,15 @@ impl<'a> Partitioner<'a> {
                                   &BVertexLoopBlinnData::control_point(&left_curve.endpoints[0],
                                                                        &left_curve.control_point,
                                                                        &left_curve.endpoints[1],
-                                                                       bottom),
-                                  0.0);
+                                                                       bottom));
                 self.library.add_b_vertex(&left_curve.endpoints[1],
-                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()),
-                                          0.0);
+                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
                 self.library
                     .add_b_vertex(&right_curve.control_point,
                                   &BVertexLoopBlinnData::control_point(&right_curve.endpoints[0],
                                                                        &right_curve.control_point,
                                                                        &right_curve.endpoints[1],
-                                                                       bottom),
-                                  0.0);
+                                                                       bottom));
             }
         }
 
@@ -1259,10 +1225,6 @@ impl VertexNormal {
         VertexNormal {
             sum: Vector2D::zero(),
         }
-    }
-
-    fn angle(&self) -> f32 {
-        normal::calculate_normal_angle(&self.sum)
     }
 }
 
