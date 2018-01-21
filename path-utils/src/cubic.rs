@@ -78,7 +78,7 @@ pub enum CubicPathCommand {
     LineTo(Point2D<f32>),
     /// Draws a quadratic curve with the control point to the endpoint, respectively.
     QuadCurveTo(Point2D<f32>, Point2D<f32>),
-    /// Draws a cubic cubic curve with the two control points to the endpoint, respectively.
+    /// Draws a cubic curve with the two control points to the endpoint, respectively.
     CubicCurveTo(Point2D<f32>, Point2D<f32>, Point2D<f32>),
     /// Closes the current subpath by drawing a line from the current point to the first point of
     /// the subpath.
