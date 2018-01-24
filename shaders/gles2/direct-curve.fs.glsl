@@ -30,6 +30,5 @@ void main() {
     float side = sign(vTexCoord.x * vTexCoord.x - vTexCoord.y);
     float winding = gl_FrontFacing ? -1.0 : 1.0;
     float alpha = float(side == winding);
-    //float alpha = mod(gl_FragCoord.x, 2.0) < 1.0 ? 1.0 : 0.0;
     gl_FragColor = alpha * vColor;
 }

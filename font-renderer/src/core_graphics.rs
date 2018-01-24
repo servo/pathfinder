@@ -21,10 +21,11 @@ use core_graphics_sys::path::CGPathElementType;
 use core_text::font::CTFont;
 use core_text;
 use euclid::{Point2D, Rect, Size2D, Vector2D};
-use pathfinder_path_utils::cubic::{CubicPathCommand, CubicPathCommandApproxStream};
-use pathfinder_path_utils::PathCommand;
+use lyon_path::PathEvent;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::iter::Cloned;
+use std::slice::Iter;
 use std::sync::Arc;
 use {FontInstance, FontKey, GlyphDimensions, GlyphImage, GlyphKey};
 
@@ -36,17 +37,12 @@ const CG_ZERO_RECT: CGRect = CGRect {
     },
 };
 
-const CURVE_APPROX_ERROR_BOUND: f32 = 0.1;
-
 // A conservative overestimate of the amount of font dilation that Core Graphics performs, as a
 // fraction of ppem.
 //
 // The actual amount as of High Sierra is 0.0121 in the X direction and 0.015125 in the Y
 // direction.
 const FONT_DILATION_AMOUNT: f32 = 0.02;
-
-/// A list of path commands.
-pub type GlyphOutline = Vec<PathCommand>;
 
 /// An object that loads and renders fonts using macOS Core Graphics/Quartz.
 pub struct FontContext {
@@ -184,34 +180,32 @@ impl FontContext {
         let path = try!(core_text_font.create_path_for_glyph(glyph_key.glyph_index as CGGlyph,
                                                              &CG_AFFINE_TRANSFORM_IDENTITY));
 
-        let mut commands = vec![];
+        let mut builder = vec![];
         path.apply(&|element| {
             let points = element.points();
-            commands.push(match element.element_type {
+            match element.element_type {
                 CGPathElementType::MoveToPoint => {
-                    CubicPathCommand::MoveTo(convert_point(&points[0]))
+                    builder.push(PathEvent::MoveTo(convert_point(&points[0])))
                 }
                 CGPathElementType::AddLineToPoint => {
-                    CubicPathCommand::LineTo(convert_point(&points[0]))
+                    builder.push(PathEvent::LineTo(convert_point(&points[0])))
                 }
                 CGPathElementType::AddQuadCurveToPoint => {
-                    CubicPathCommand::QuadCurveTo(convert_point(&points[0]),
-                                                  convert_point(&points[1]))
+                    builder.push(PathEvent::QuadraticTo(convert_point(&points[0]),
+                                                        convert_point(&points[1])))
                 }
                 CGPathElementType::AddCurveToPoint => {
-                    CubicPathCommand::CubicCurveTo(convert_point(&points[0]),
-                                                   convert_point(&points[1]),
-                                                   convert_point(&points[2]))
+                    builder.push(PathEvent::CubicTo(convert_point(&points[0]),
+                                                    convert_point(&points[1]),
+                                                    convert_point(&points[2])))
                 }
-                CGPathElementType::CloseSubpath => CubicPathCommand::ClosePath,
-            });
+                CGPathElementType::CloseSubpath => builder.push(PathEvent::Close),
+            }
         });
 
-        let approx_stream = CubicPathCommandApproxStream::new(commands.into_iter(),
-                                                              CURVE_APPROX_ERROR_BOUND);
-
-        let approx_commands: Vec<_> = approx_stream.collect();
-        return Ok(approx_commands);
+        return Ok(GlyphOutline {
+            events: builder,
+        });
 
         fn convert_point(core_graphics_point: &CGPoint) -> Point2D<f32> {
             Point2D::new(core_graphics_point.x as f32, core_graphics_point.y as f32)
@@ -314,5 +308,16 @@ impl FontContext {
 impl FontInstance {
     fn instantiate(&self, core_graphics_font: &CGFont) -> Result<CTFont, ()> {
         Ok(core_text::font::new_from_CGFont(core_graphics_font, self.size.to_f64_px()))
+    }
+}
+
+pub struct GlyphOutline {
+    events: Vec<PathEvent>,
+}
+
+impl GlyphOutline {
+    #[inline]
+    pub fn iter(&self) -> Cloned<Iter<PathEvent>> {
+        self.events.iter().cloned()
     }
 }

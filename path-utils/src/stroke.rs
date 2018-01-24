@@ -1,6 +1,6 @@
 // pathfinder/path-utils/src/stroke.rs
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -10,132 +10,138 @@
 
 //! Utilities for converting path strokes to fills.
 
-use std::u32;
+use lyon_path::PathEvent;
+use lyon_path::iterator::PathIterator;
 
-use {Endpoint, PathBuffer, PathCommand, Subpath};
-use line::Line;
+use segments::{Segment, SegmentIter};
 
-/// Represents the style of a stroke.
-pub struct Stroke {
-    /// The stroke diameter.
+#[derive(Clone, Copy, Debug)]
+pub struct StrokeStyle {
     pub width: f32,
 }
 
-impl Stroke {
-    /// Constructs a new stroke style with the given diameter.
+impl StrokeStyle {
     #[inline]
-    pub fn new(width: f32) -> Stroke {
-        Stroke {
+    pub fn new(width: f32) -> StrokeStyle {
+        StrokeStyle {
             width: width,
         }
     }
+}
 
-    /// Writes a path that represents the result of stroking `stream` with this stroke style into
-    /// `output`.
-    pub fn apply<I>(&self, output: &mut PathBuffer, stream: I)
-                    where I: Iterator<Item = PathCommand> {
-        let mut input = PathBuffer::new();
-        input.add_stream(stream);
+pub struct StrokeToFillIter<I> where I: PathIterator {
+    inner: SegmentIter<I>,
+    subpath: Vec<Segment>,
+    stack: Vec<PathEvent>,
+    state: StrokeToFillState,
+    style: StrokeStyle,
+    first_point_in_subpath: bool,
+}
 
-        for subpath_index in 0..(input.subpaths.len() as u32) {
-            let closed = input.subpaths[subpath_index as usize].closed;
-
-            let mut first_endpoint_index = output.endpoints.len() as u32;
-
-            // Compute the first offset curve.
-            //
-            // TODO(pcwalton): Support line caps.
-            self.offset_subpath(output, &input, subpath_index);
-
-            // Close the first subpath if necessary.
-            if closed && !output.endpoints.is_empty() {
-                let last_endpoint_index = output.endpoints.len() as u32;
-                output.subpaths.push(Subpath {
-                    first_endpoint_index: first_endpoint_index,
-                    last_endpoint_index: last_endpoint_index,
-                    closed: true,
-                });
-
-                first_endpoint_index = last_endpoint_index;
-            }
-
-            // Compute the second offset curve.
-            input.reverse_subpath(subpath_index);
-            self.offset_subpath(output, &input, subpath_index);
-
-            // Close the path.
-            let last_endpoint_index = output.endpoints.len() as u32;
-            output.subpaths.push(Subpath {
-                first_endpoint_index: first_endpoint_index,
-                last_endpoint_index: last_endpoint_index,
-                closed: true,
-            });
+impl<I> StrokeToFillIter<I> where I: PathIterator {
+    #[inline]
+    pub fn new(inner: I, style: StrokeStyle) -> StrokeToFillIter<I> {
+        StrokeToFillIter {
+            inner: SegmentIter::new(inner),
+            subpath: vec![],
+            stack: vec![],
+            state: StrokeToFillState::Forward,
+            style: style,
+            first_point_in_subpath: true,
         }
     }
+}
 
-    /// TODO(pcwalton): Miter and round joins.
-    fn offset_subpath(&self, output: &mut PathBuffer, input: &PathBuffer, subpath_index: u32) {
-        let radius = self.width * 0.5;
+impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
+    type Item = PathEvent;
 
-        let subpath = &input.subpaths[subpath_index as usize];
+    // TODO(pcwalton): Support miter and round joins. This will probably require the inner iterator
+    // to be `Peekable`, I guess.
+    fn next(&mut self) -> Option<PathEvent> {
+        // If we have path events queued, return the latest.
+        if let Some(path_event) = self.stack.pop() {
+            return Some(path_event)
+        }
 
-        let mut prev_position = None;
-        for endpoint_index in subpath.first_endpoint_index..subpath.last_endpoint_index {
-            let endpoint = &input.endpoints[endpoint_index as usize];
-            let position = &endpoint.position;
-
-            if let Some(ref prev_position) = prev_position {
-                if endpoint.control_point_index == u32::MAX {
-                    let offset_line = Line::new(&prev_position, position).offset(radius);
-                    output.endpoints.extend_from_slice(&[
-                        Endpoint {
-                            position: offset_line.endpoints[0],
-                            control_point_index: u32::MAX,
-                            subpath_index: 0,
-                        },
-                        Endpoint {
-                            position: offset_line.endpoints[1],
-                            control_point_index: u32::MAX,
-                            subpath_index: 0,
-                        },
-                    ]);
-                } else {
-                    // This is the Tiller & Hanson 1984 algorithm for approximate Bézier offset
-                    // curves. It's beautifully simple: just take the cage (i.e. convex hull) and
-                    // push its edges out along their normals, then recompute the control point
-                    // with a miter join.
-
-                    let control_point_position =
-                        &input.control_points[endpoint.control_point_index as usize];
-                    let offset_line_0 =
-                        Line::new(&prev_position, control_point_position).offset(radius);
-                    let offset_line_1 =
-                        Line::new(control_point_position, position).offset(radius);
-
-                    // FIXME(pcwalton): Can the `None` case ever happen?
-                    let offset_control_point =
-                        offset_line_0.intersect_at_infinity(&offset_line_1).unwrap_or_else(|| {
-                        offset_line_0.endpoints[1].lerp(offset_line_1.endpoints[0], 0.5)
-                    });
-
-                    output.endpoints.extend_from_slice(&[
-                        Endpoint {
-                            position: offset_line_0.endpoints[0],
-                            control_point_index: u32::MAX,
-                            subpath_index: 0,
-                        },
-                        Endpoint {
-                            position: offset_line_1.endpoints[1],
-                            control_point_index: output.control_points.len() as u32,
-                            subpath_index: 0,
-                        },
-                    ]);
-
-                    output.control_points.push(offset_control_point);
+        // Fetch the next segment.
+        let next_segment = match self.state {
+            StrokeToFillState::Forward => {
+                match self.inner.next() {
+                    None | Some(Segment::EndSubpath(false)) => {
+                        if self.subpath.is_empty() {
+                            return None
+                        }
+                        self.state = StrokeToFillState::Backward;
+                        return self.next()
+                    }
+                    Some(Segment::EndSubpath(true)) => {
+                        if self.subpath.is_empty() {
+                            return None
+                        }
+                        self.state = StrokeToFillState::Backward;
+                        self.first_point_in_subpath = true;
+                        return Some(PathEvent::Close)
+                    }
+                    Some(segment) => {
+                        self.subpath.push(segment);
+                        segment
+                    }
                 }
             }
+            StrokeToFillState::Backward => {
+                match self.subpath.pop() {
+                    None | Some(Segment::EndSubpath(_)) => {
+                        self.state = StrokeToFillState::Forward;
+                        self.first_point_in_subpath = true;
+                        return Some(PathEvent::Close)
+                    }
+                    Some(segment) => segment.flip(),
+                }
+            }
+        };
 
-            prev_position = Some(*position)
-        }
+        next_segment.offset(self.style.width * 0.5, |offset_segment| {
+            match *offset_segment {
+                Segment::EndSubpath(_) => unreachable!(),
+                Segment::Line(ref offset_segment) => {
+                    if self.first_point_in_subpath {
+                        self.first_point_in_subpath = false;
+                        self.stack.push(PathEvent::MoveTo(offset_segment.from))
+                    } else if self.stack.is_empty() {
+                        self.stack.push(PathEvent::LineTo(offset_segment.from))
+                    }
+                    self.stack.push(PathEvent::LineTo(offset_segment.to))
+                }
+                Segment::Quadratic(ref offset_segment) => {
+                    if self.first_point_in_subpath {
+                        self.first_point_in_subpath = false;
+                        self.stack.push(PathEvent::MoveTo(offset_segment.from))
+                    } else if self.stack.is_empty() {
+                        self.stack.push(PathEvent::LineTo(offset_segment.from))
+                    }
+                    self.stack.push(PathEvent::QuadraticTo(offset_segment.ctrl, offset_segment.to))
+                }
+                Segment::Cubic(ref offset_segment) => {
+                    if self.first_point_in_subpath {
+                        self.first_point_in_subpath = false;
+                        self.stack.push(PathEvent::MoveTo(offset_segment.from))
+                    } else if self.stack.is_empty() {
+                        self.stack.push(PathEvent::LineTo(offset_segment.from))
+                    }
+                    self.stack.push(PathEvent::CubicTo(offset_segment.ctrl1,
+                                                       offset_segment.ctrl2,
+                                                       offset_segment.to))
+                }
+            }
+        });
+
+        self.stack.reverse();
+        return self.next()
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum StrokeToFillState {
+    Forward,
+    Backward,
 }

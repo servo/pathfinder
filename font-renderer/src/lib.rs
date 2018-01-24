@@ -20,7 +20,8 @@
 extern crate app_units;
 extern crate euclid;
 extern crate libc;
-extern crate pathfinder_path_utils;
+extern crate lyon_geom;
+extern crate lyon_path;
 extern crate serde;
 
 #[allow(unused_imports)]

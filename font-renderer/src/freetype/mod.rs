@@ -17,21 +17,21 @@ use freetype_sys::{FT_LOAD_NO_HINTING, FT_Library, FT_Library_SetLcdFilter};
 use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
 use freetype_sys::{FT_Outline_Translate, FT_PIXEL_MODE_LCD, FT_RENDER_MODE_LCD, FT_Render_Glyph};
 use freetype_sys::{FT_Set_Char_Size, FT_UInt};
-use pathfinder_path_utils::PathCommand;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
-use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
 
 use self::fixed::{FromFtF26Dot6, ToFtF26Dot6};
-use self::outline::OutlineStream;
+use self::outline::Outline;
 use {FontKey, FontInstance, GlyphDimensions, GlyphImage, GlyphKey};
 
 mod fixed;
 mod outline;
+
+pub type GlyphOutline<'a> = Outline<'a>;
 
 // Default to no hinting.
 //
@@ -125,10 +125,7 @@ impl FontContext {
                              -> Result<GlyphOutline<'a>, ()> {
         self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
             unsafe {
-                GlyphOutline {
-                    stream: OutlineStream::new(&(*glyph_slot).outline),
-                    phantom: PhantomData,
-                }
+                GlyphOutline::new(&(*glyph_slot).outline)
             }
         })
     }
@@ -292,19 +289,6 @@ impl FontContext {
         bounding_box.yMax = fixed::floor(bounding_box.yMax + 0x3f);
 
         bounding_box
-    }
-}
-
-/// A list of path commands.
-pub struct GlyphOutline<'a> {
-    stream: OutlineStream<'static>,
-    phantom: PhantomData<&'a ()>,
-}
-
-impl<'a> Iterator for GlyphOutline<'a> {
-    type Item = PathCommand;
-    fn next(&mut self) -> Option<PathCommand> {
-        self.stream.next()
     }
 }
 

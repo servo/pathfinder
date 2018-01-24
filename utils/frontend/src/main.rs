@@ -26,6 +26,8 @@
 extern crate app_units;
 extern crate clap;
 extern crate freetype_sys;
+extern crate lyon_geom;
+extern crate lyon_path;
 extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
 extern crate pathfinder_path_utils;
@@ -33,11 +35,12 @@ extern crate pathfinder_path_utils;
 use app_units::Au;
 use clap::{App, Arg};
 use freetype_sys::{FT_Init_FreeType, FT_New_Face};
+use lyon_path::PathEvent;
+use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use pathfinder_font_renderer::{FontContext, FontKey, FontInstance, GlyphKey, SubpixelOffset};
+use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
-use pathfinder_path_utils::monotonic::MonotonicPathCommandStream;
-use pathfinder_path_utils::{PathBuffer, PathBufferStream};
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
@@ -83,30 +86,28 @@ fn convert_font(font_path: &Path, output_path: &Path) -> Result<(), ()> {
         size: Au::from_f64_px(FONT_SIZE),
     };
 
-    let mut path_buffer = PathBuffer::new();
+    let mut paths: Vec<(u16, Vec<PathEvent>)> = vec![];
     let mut partitioner = Partitioner::new(MeshLibrary::new());
-    let subpath_ranges: Vec<_> = (0..glyph_count).map(|glyph_index| {
+
+    for glyph_index in 0..glyph_count {
         let glyph_key = GlyphKey::new(glyph_index, SubpixelOffset(0));
 
-        let subpath_start = path_buffer.subpaths.len() as u32;
-        if let Ok(glyph_outline) = font_context.glyph_outline(&font_instance, &glyph_key) {
-            path_buffer.add_stream(MonotonicPathCommandStream::new(glyph_outline.into_iter()))
-        }
-        let subpath_end = path_buffer.subpaths.len() as u32;
+        let path = match font_context.glyph_outline(&font_instance, &glyph_key) {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
 
         let path_index = (glyph_index + 1) as u16;
-        let stream = PathBufferStream::subpath_range(&path_buffer, subpath_start..subpath_end);
-        partitioner.library_mut().push_segments(path_index, stream);
-        let stream = PathBufferStream::subpath_range(&path_buffer, subpath_start..subpath_end);
-        partitioner.library_mut().push_normals(stream);
+        partitioner.library_mut().push_segments(path_index, path.iter());
+        partitioner.library_mut().push_normals(path_index, path.iter());
 
-        subpath_start..subpath_end
-    }).collect();
+        paths.push((path_index, path.iter().collect()));
+    }
 
-    partitioner.init_with_path_buffer(&path_buffer);
-
-    for (glyph_index, subpath) in subpath_ranges.iter().cloned().enumerate() {
-        partitioner.partition((glyph_index + 1) as u16, subpath.start, subpath.end);
+    for (glyph_index, path) in paths {
+        path.into_iter().for_each(|event| partitioner.builder_mut().path_event(event));
+        partitioner.partition(glyph_index, FillRule::Winding);
+        partitioner.builder_mut().build_and_reset();
     }
 
     partitioner.library_mut().optimize();
