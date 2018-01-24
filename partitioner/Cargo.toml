@@ -7,15 +7,15 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 name = "pathfinder_partitioner"
 
 [dependencies]
+arrayvec = "0.4"
 bincode = "0.8"
 bit-vec = "0.4"
 byteorder = "1.2"
 env_logger = "0.4"
-euclid = "0.15"
+euclid = "0.16"
 half = "1.0"
 log = "0.3"
+lyon_geom = "0.9"
+lyon_path = "0.9"
 serde = "1.0"
 serde_derive = "1.0"
-
-[dependencies.pathfinder_path_utils]
-path = "../path-utils"

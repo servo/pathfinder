@@ -17,7 +17,8 @@ use freetype_sys::{FT_LOAD_NO_HINTING, FT_Library, FT_Library_SetLcdFilter};
 use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
 use freetype_sys::{FT_Outline_Translate, FT_PIXEL_MODE_LCD, FT_RENDER_MODE_LCD, FT_Render_Glyph};
 use freetype_sys::{FT_Set_Char_Size, FT_UInt};
-use pathfinder_path_utils::PathCommand;
+use lyon_path::iterator::PathIterator;
+use lyon_path::{PathEvent, PathState};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::marker::PhantomData;
@@ -302,9 +303,18 @@ pub struct GlyphOutline<'a> {
 }
 
 impl<'a> Iterator for GlyphOutline<'a> {
-    type Item = PathCommand;
-    fn next(&mut self) -> Option<PathCommand> {
+    type Item = PathEvent;
+
+    #[inline]
+    fn next(&mut self) -> Option<PathEvent> {
         self.stream.next()
+    }
+}
+
+impl<'a> PathIterator for GlyphOutline<'a> {
+    #[inline]
+    fn get_state(&self) -> &PathState {
+        self.stream.get_state()
     }
 }
 

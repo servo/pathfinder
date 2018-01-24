@@ -18,9 +18,10 @@ extern crate euclid;
 extern crate fontsan;
 extern crate image;
 extern crate lru_cache;
+extern crate lyon_geom;
+extern crate lyon_path;
 extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
-extern crate pathfinder_path_utils;
 extern crate rocket;
 extern crate rocket_contrib;
 
@@ -38,23 +39,22 @@ use app_units::Au;
 use euclid::{Point2D, Transform2D};
 use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
+use lyon_geom::CubicBezierSegment;
+use lyon_geom::cubic_to_quadratic;
+use lyon_path::builder::{FlatPathBuilder, PathBuilder};
+use lyon_path::default::{Builder, Path};
 use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphImage};
 use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
-use pathfinder_path_utils::cubic::CubicCurve;
-use pathfinder_path_utils::monotonic::MonotonicPathCommandStream;
-use pathfinder_path_utils::stroke::Stroke;
-use pathfinder_path_utils::{PathBuffer, PathBufferStream, PathCommand, Transform2DPathStream};
 use rocket::http::{ContentType, Header, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
 use rocket_contrib::json::Json;
 use std::fs::File;
 use std::io::{self, Cursor, Read};
-use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::{self, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::u32;
@@ -246,7 +246,7 @@ impl PartitionSvgFillRule {
 
 #[derive(Clone)]
 struct PathDescriptor {
-    subpath_indices: Range<u32>,
+    path_index: usize,
     fill_rule: FillRule,
 }
 
@@ -263,15 +263,18 @@ struct PathPartitioningResult {
 }
 
 impl PathPartitioningResult {
-    fn compute(partitioner: &mut Partitioner, path_descriptors: &[PathDescriptor])
+    fn compute(partitioner: &mut Partitioner,
+               path_descriptors: &[PathDescriptor],
+               paths: Vec<Path>)
                -> PathPartitioningResult {
         let timestamp_before = Instant::now();
 
-        for (path_index, path_descriptor) in path_descriptors.iter().enumerate() {
-            partitioner.set_fill_rule(path_descriptor.fill_rule);
-            partitioner.partition((path_index + 1) as u16,
-                                  path_descriptor.subpath_indices.start,
-                                  path_descriptor.subpath_indices.end);
+        for (path_id, (path, path_descriptor)) in paths.into_iter()
+                                                       .zip(path_descriptors.iter())
+                                                       .enumerate() {
+            partitioner.partition(path.path_iter(),
+                                  (path_id + 1) as u16,
+                                  path_descriptor.fill_rule)
         }
 
         partitioner.library_mut().optimize();
@@ -444,42 +447,48 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     };
 
     // Read glyph info.
-    let mut path_buffer = PathBuffer::new();
-    let path_descriptors: Vec<_> = request.glyphs.iter().map(|glyph| {
+    let mut paths = vec![];
+    let mut path_descriptors = vec![];
+
+    for glyph in &request.glyphs {
         let glyph_key = GlyphKey::new(glyph.id, SubpixelOffset(0));
 
-        let first_subpath_index = path_buffer.subpaths.len();
-
         // This might fail; if so, just leave it blank.
-        if let Ok(glyph_outline) = font_context.glyph_outline(&font_instance, &glyph_key) {
-            let stream = Transform2DPathStream::new(glyph_outline.into_iter(), &glyph.transform);
-            let stream = MonotonicPathCommandStream::new(stream);
-            path_buffer.add_stream(stream)
-        }
+        let path_index = match font_context.glyph_outline(&font_instance, &glyph_key) {
+            Ok(glyph_outline) => {
+                // FIXME(pcwalton): Transform points without creating a temporary.
+                let mut path_buffer = Path::builder();
+                glyph_outline.for_each(|event| path_buffer.path_event(event));
+                let mut path_buffer = path_buffer.build();
+                for point in path_buffer.mut_points() {
+                    *point = glyph.transform.transform_point(point)
+                }
+                paths.push(path_buffer);
+                paths.len() - 1
+            }
+            Err(_) => continue,
+        };
 
-        let last_subpath_index = path_buffer.subpaths.len();
-
-        PathDescriptor {
-            subpath_indices: (first_subpath_index as u32)..(last_subpath_index as u32),
+        path_descriptors.push(PathDescriptor {
+            path_index: path_index,
             fill_rule: FillRule::Winding,
-        }
-    }).collect();
+        })
+    }
 
     // Partition the decoded glyph outlines.
     let mut library = MeshLibrary::new();
     for (path_index, path_descriptor) in path_descriptors.iter().enumerate() {
-        let stream = PathBufferStream::subpath_range(&path_buffer,
+        library.push_segments((path_index + 1) as u16,
+                              paths[path_descriptor.path_index].path_iter());
+        /*let stream = PathBufferStream::subpath_range(&path_buffer,
                                                      path_descriptor.subpath_indices.clone());
-        library.push_segments((path_index + 1) as u16, stream);
-        let stream = PathBufferStream::subpath_range(&path_buffer,
-                                                     path_descriptor.subpath_indices.clone());
-        library.push_normals(stream);
+        library.push_normals(stream);*/
     }
 
     let mut partitioner = Partitioner::new(library);
-    partitioner.init_with_path_buffer(&path_buffer);
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
-                                                                   &path_descriptors);
+                                                                   &path_descriptors,
+                                                                   paths);
 
     // Build the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -504,25 +513,25 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     //
     // The client has already normalized it, so we only have to handle `M`, `L`, `C`, and `Z`
     // commands.
-    let mut path_buffer = PathBuffer::new();
     let mut paths = vec![];
+    let mut path_descriptors = vec![];
     let mut last_point = Point2D::zero();
-    let mut library = MeshLibrary::new();
 
-    for (path_index, path) in request.paths.iter().enumerate() {
-        let mut stream = vec![];
+    let mut partitioner = Partitioner::new(MeshLibrary::new());
+    let mut path_index = 0;
 
-        let first_subpath_index = path_buffer.subpaths.len() as u32;
+    for path in &request.paths {
+        let mut stream = Builder::new();
 
         for segment in &path.segments {
             match segment.kind {
                 'M' => {
-                    last_point = Point2D::new(segment.values[0] as f32, segment.values[1] as f32);
-                    stream.push(PathCommand::MoveTo(last_point))
+                    stream.move_to(Point2D::new(segment.values[0] as f32,
+                                                segment.values[1] as f32))
                 }
                 'L' => {
-                    last_point = Point2D::new(segment.values[0] as f32, segment.values[1] as f32);
-                    stream.push(PathCommand::LineTo(last_point))
+                    stream.line_to(Point2D::new(segment.values[0] as f32,
+                                                segment.values[1] as f32))
                 }
                 'C' => {
                     let control_point_0 = Point2D::new(segment.values[0] as f32,
@@ -531,28 +540,29 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                                                        segment.values[3] as f32);
                     let endpoint_1 = Point2D::new(segment.values[4] as f32,
                                                   segment.values[5] as f32);
-                    let cubic = CubicCurve::new(&last_point,
-                                                &control_point_0,
-                                                &control_point_1,
-                                                &endpoint_1);
+                    let cubic = CubicBezierSegment {
+                        from: last_point,
+                        ctrl1: control_point_0,
+                        ctrl2: control_point_1,
+                        to: endpoint_1,
+                    };
                     last_point = endpoint_1;
-                    stream.extend(cubic.approx_curve(CUBIC_ERROR_TOLERANCE)
-                                       .map(|curve| curve.to_path_command()));
+                    cubic_to_quadratic::cubic_to_quadratic(&cubic,
+                                                           CUBIC_ERROR_TOLERANCE,
+                                                           &mut |quadratic_segment| {
+                        stream.quadratic_bezier_to(quadratic_segment.ctrl, quadratic_segment.to)
+                    });
+                    // FIXME(pcwalton): Make monotonic!
                 }
-                'Z' => stream.push(PathCommand::ClosePath),
+                'Z' => stream.close(),
                 _ => return Err(PartitionSvgPathsError::UnknownSvgPathCommandType),
             }
         }
 
         let fill_rule = match path.kind {
-            PartitionSvgPathKind::Fill(fill_rule) => {
-                let stream = MonotonicPathCommandStream::new(stream.into_iter());
-                library.push_segments((path_index + 1) as u16, stream.clone());
-                path_buffer.add_stream(stream);
-
-                fill_rule.to_fill_rule()
-            }
+            PartitionSvgPathKind::Fill(fill_rule) => fill_rule.to_fill_rule(),
             PartitionSvgPathKind::Stroke(stroke_width) => {
+                /*
                 let mut temp_path_buffer = PathBuffer::new();
                 Stroke::new(stroke_width).apply(&mut temp_path_buffer, stream.into_iter());
 
@@ -562,21 +572,26 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                 path_buffer.add_stream(stream);
 
                 FillRule::Winding
+                */
+                // FIXME(pcwalton): Add strokes!
+                continue
             }
         };
 
-        let last_subpath_index = path_buffer.subpaths.len() as u32;
-
-        paths.push(PathDescriptor {
-            subpath_indices: first_subpath_index..last_subpath_index,
+        path_descriptors.push(PathDescriptor {
+            path_index: path_index,
             fill_rule: fill_rule,
-        })
+        });
+
+        paths.push(stream.build());
+
+        path_index += 1;
     }
 
     // Partition the paths.
-    let mut partitioner = Partitioner::new(library);
-    partitioner.init_with_path_buffer(&path_buffer);
-    let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner, &paths);
+    let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
+                                                                   &path_descriptors,
+                                                                   paths);
 
     // Return the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -710,69 +725,69 @@ fn static_doc_api_index() -> Redirect {
 }
 #[get("/doc/api/<file..>")]
 fn static_doc_api(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_DOC_API_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_DOC_API_PATH).join(file)).ok()
 }
 #[get("/css/bootstrap/<file..>")]
 fn static_css_bootstrap(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_CSS_BOOTSTRAP_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_CSS_BOOTSTRAP_PATH).join(file)).ok()
 }
 #[get("/css/<file>")]
 fn static_css(file: String) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_CSS_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_CSS_PATH).join(file)).ok()
 }
 #[get("/js/bootstrap/<file..>")]
 fn static_js_bootstrap(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_JS_BOOTSTRAP_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_JS_BOOTSTRAP_PATH).join(file)).ok()
 }
 #[get("/js/jquery/<file..>")]
 fn static_js_jquery(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_JS_JQUERY_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_JS_JQUERY_PATH).join(file)).ok()
 }
 #[get("/js/popper.js/<file..>")]
 fn static_js_popper_js(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_JS_POPPER_JS_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_JS_POPPER_JS_PATH).join(file)).ok()
 }
 #[get("/js/pathfinder/<file..>")]
 fn static_js_pathfinder(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_JS_PATHFINDER_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_JS_PATHFINDER_PATH).join(file)).ok()
 }
 #[get("/woff2/inter-ui/<file..>")]
 fn static_woff2_inter_ui(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_WOFF2_INTER_UI_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_WOFF2_INTER_UI_PATH).join(file)).ok()
 }
 #[get("/woff2/material-icons/<file..>")]
 fn static_woff2_material_icons(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_WOFF2_MATERIAL_ICONS_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_WOFF2_MATERIAL_ICONS_PATH).join(file)).ok()
 }
 #[get("/glsl/<file..>")]
 fn static_glsl(file: PathBuf) -> Option<Shader> {
-    Shader::open(Path::new(STATIC_GLSL_PATH).join(file)).ok()
+    Shader::open(path::Path::new(STATIC_GLSL_PATH).join(file)).ok()
 }
 #[get("/otf/demo/<font_name>")]
 fn static_otf_demo(font_name: String) -> Option<NamedFile> {
     BUILTIN_FONTS.iter()
                  .filter(|& &(name, _)| name == font_name)
                  .next()
-                 .and_then(|&(_, path)| NamedFile::open(Path::new(path)).ok())
+                 .and_then(|&(_, path)| NamedFile::open(path::Path::new(path)).ok())
 }
 #[get("/svg/demo/<svg_name>")]
 fn static_svg_demo(svg_name: String) -> Option<NamedFile> {
     BUILTIN_SVGS.iter()
                 .filter(|& &(name, _)| name == svg_name)
                 .next()
-                .and_then(|&(_, path)| NamedFile::open(Path::new(path)).ok())
+                .and_then(|&(_, path)| NamedFile::open(path::Path::new(path)).ok())
 }
 #[get("/data/<file..>")]
 fn static_data(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_DATA_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_DATA_PATH).join(file)).ok()
 }
 #[get("/test-data/<file..>")]
 fn static_test_data(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_TEST_DATA_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_TEST_DATA_PATH).join(file)).ok()
 }
 #[get("/textures/<file..>")]
 fn static_textures(file: PathBuf) -> Option<NamedFile> {
-    NamedFile::open(Path::new(STATIC_TEXTURES_PATH).join(file)).ok()
+    NamedFile::open(path::Path::new(STATIC_TEXTURES_PATH).join(file)).ok()
 }
 
 struct Shader {

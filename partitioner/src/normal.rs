@@ -1,6 +1,6 @@
 // pathfinder/partitioner/src/normal.rs
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -10,25 +10,30 @@
 
 //! Utility functions for vertex normals.
 
+/*
 use euclid::{Point2D, Vector2D};
-use pathfinder_path_utils::{PathCommand, PathSegment, PathSegmentStream};
+use lyon_path::PathEvent;
+use lyon_path::iterator::PathIterator;
 
 use mesh_library::{CurveSegmentNormals, LineSegmentNormals, MeshLibrary};
 
-pub fn push_normals<I>(library: &mut MeshLibrary, stream: I)
-                       where I: Iterator<Item = PathCommand> {
-    let mut stream = PathSegmentStream::new(stream).peekable();
-
+pub fn push_normals<I>(library: &mut MeshLibrary, stream: I) where I: PathIterator {
     let mut first_segment_of_subpath = None;
     let mut index_of_first_segment_of_subpath = None;
     let mut index_of_prev_segment = None;
 
-    while let Some((prev_segment, prev_subpath_index)) = stream.next() {
-        let is_first_segment = index_of_first_segment_of_subpath.is_none();
-        let is_last_segment = match stream.peek() {
+    for event in stream {
+        let state = event.state();
+
+        let is_first_segment = match event {
+            PathEvent::MoveTo(..) => true,
+            _ => false,
+        };
+
+        /*let is_last_segment = match stream.peek() {
             Some(&(_, next_subpath_index)) => prev_subpath_index != next_subpath_index,
             _ => true,
-        };
+        };*/
 
         let next_segment = if is_last_segment {
             first_segment_of_subpath.unwrap_or(PathSegment::Line(Point2D::zero(), Point2D::zero()))
@@ -140,3 +145,4 @@ enum SegmentIndex {
     Line(usize),
     Curve(usize),
 }
+*/

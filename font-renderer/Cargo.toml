@@ -9,18 +9,17 @@ freetype = ["freetype-sys"]
 
 [dependencies]
 app_units = "0.5"
-euclid = "0.15"
+euclid = "0.16"
 libc = "0.2"
 log = "0.3"
+lyon_geom = "0.9"
+lyon_path = "0.9"
 serde = "1.0"
 serde_derive = "1.0"
 
 [dependencies.freetype-sys]
 version = "0.6"
 optional = true
-
-[dependencies.pathfinder_path_utils]
-path = "../path-utils"
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 freetype-sys = "0.6"

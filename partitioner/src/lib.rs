@@ -21,12 +21,14 @@
 //! use case, mesh libraries can be serialized into a simple binary format. Of course, meshes can
 //! also be generated dynamically and rendered on the fly.
 
+extern crate arrayvec;
 extern crate bincode;
 extern crate bit_vec;
 extern crate byteorder;
 extern crate env_logger;
 extern crate euclid;
-extern crate pathfinder_path_utils;
+extern crate lyon_geom;
+extern crate lyon_path;
 extern crate serde;
 
 #[macro_use]
@@ -35,13 +37,13 @@ extern crate log;
 extern crate serde_derive;
 
 use euclid::Point2D;
-use pathfinder_path_utils::{Endpoint, Subpath};
 use std::u32;
 
-pub mod capi;
 pub mod mesh_library;
+pub mod monotonic;
 pub mod partitioner;
 
+mod indexed_path;
 mod normal;
 
 /// The fill rule.

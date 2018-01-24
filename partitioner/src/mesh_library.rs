@@ -1,6 +1,6 @@
 // pathfinder/partitioner/src/mesh_library.rs
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -11,13 +11,13 @@
 use bincode::{self, Infinite};
 use byteorder::{LittleEndian, WriteBytesExt};
 use euclid::Point2D;
-use pathfinder_path_utils::{PathCommand, PathSegment, PathSegmentStream};
+use lyon_path::PathEvent;
+use lyon_path::iterator::PathIterator;
 use serde::Serialize;
 use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::ops::Range;
 use std::u32;
 
-use normal;
 use {BQuad, BQuadVertexPositions, BVertexLoopBlinnData};
 
 #[derive(Debug, Clone)]
@@ -173,27 +173,39 @@ impl MeshLibrary {
         }
     }
 
-    pub fn push_segments<I>(&mut self, path_id: u16, stream: I)
-                            where I: Iterator<Item = PathCommand> {
+    pub fn push_segments<I>(&mut self, path_id: u16, mut stream: I) where I: PathIterator {
         let first_line_index = self.segments.lines.len() as u32;
         let first_curve_index = self.segments.curves.len() as u32;
 
-        let stream = PathSegmentStream::new(stream);
-        for (segment, _) in stream {
-            match segment {
-                PathSegment::Line(endpoint_0, endpoint_1) => {
+        while let Some(path_event) = stream.next() {
+            let state = stream.get_state();
+            match path_event {
+                PathEvent::LineTo(endpoint_1) => {
                     self.segments.lines.push(LineSegment {
-                        endpoint_0: endpoint_0,
+                        endpoint_0: state.current,
                         endpoint_1: endpoint_1,
                     });
                 }
-                PathSegment::Curve(endpoint_0, control_point, endpoint_1) => {
+                PathEvent::QuadraticTo(control_point, endpoint_1) => {
                     self.segments.curves.push(CurveSegment {
-                        endpoint_0: endpoint_0,
+                        endpoint_0: state.current,
                         control_point: control_point,
                         endpoint_1: endpoint_1,
                     });
                 }
+                PathEvent::Close => {
+                    if state.current != state.first {
+                        self.segments.lines.push(LineSegment {
+                            endpoint_0: state.current,
+                            endpoint_1: state.first,
+                        });
+                    }
+                }
+                PathEvent::CubicTo(..) | PathEvent::Arc(..) => {
+                    // TODO(pcwalton): Add `QuadraticPathIterator` to Lyon.
+                    panic!("Convert cubics and arcs to quadratics first!")
+                }
+                PathEvent::MoveTo(..) => {}
             }
         }
 
@@ -206,8 +218,8 @@ impl MeshLibrary {
     }
 
     /// Computes vertex normals necessary for emboldening and/or stem darkening.
-    pub fn push_normals<I>(&mut self, stream: I) where I: Iterator<Item = PathCommand> {
-        normal::push_normals(self, stream)
+    pub fn push_normals<I>(&mut self, _stream: I) where I: PathIterator {
+        //normal::push_normals(self, stream)
     }
 
     /// Writes this mesh library to a RIFF file.

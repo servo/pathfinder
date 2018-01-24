@@ -10,7 +10,8 @@
 
 use euclid::Point2D;
 use freetype_sys::{FT_Outline, FT_Vector};
-use pathfinder_path_utils::PathCommand;
+use lyon_path::iterator::PathIterator;
+use lyon_path::{PathEvent, PathState};
 
 const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
 
@@ -18,7 +19,7 @@ pub struct OutlineStream<'a> {
     outline: &'a FT_Outline,
     point_index: u16,
     contour_index: u16,
-    first_position_of_subpath: Point2D<f32>,
+    state: PathState,
     first_point_index_of_contour: bool,
 }
 
@@ -29,7 +30,7 @@ impl<'a> OutlineStream<'a> {
             outline: outline,
             point_index: 0,
             contour_index: 0,
-            first_position_of_subpath: Point2D::zero(),
+            state: PathState::new(),
             first_point_index_of_contour: true,
         }
     }
@@ -46,9 +47,9 @@ impl<'a> OutlineStream<'a> {
 }
 
 impl<'a> Iterator for OutlineStream<'a> {
-    type Item = PathCommand;
+    type Item = PathEvent;
 
-    fn next(&mut self) -> Option<PathCommand> {
+    fn next(&mut self) -> Option<PathEvent> {
         unsafe {
             let mut control_point_position: Option<Point2D<f32>> = None;
             loop {
@@ -60,13 +61,16 @@ impl<'a> Iterator for OutlineStream<'a> {
                     *self.outline.contours.offset(self.contour_index as isize) as u16; 
                 if self.point_index == last_point_index_in_current_contour + 1 {
                     if let Some(control_point_position) = control_point_position {
-                        return Some(PathCommand::CurveTo(control_point_position,
-                                                         self.first_position_of_subpath))
+                        let event = PathEvent::QuadraticTo(control_point_position,
+                                                           self.state.first);
+                        self.state.path_event(event);
+                        return Some(event)
                     }
 
                     self.contour_index += 1;
                     self.first_point_index_of_contour = true;
-                    return Some(PathCommand::ClosePath)
+                    self.state.close();
+                    return Some(PathEvent::Close)
                 }
 
                 // FIXME(pcwalton): Approximate cubic curves with quadratics.
@@ -75,20 +79,24 @@ impl<'a> Iterator for OutlineStream<'a> {
 
                 if self.first_point_index_of_contour {
                     self.first_point_index_of_contour = false;
-                    self.first_position_of_subpath = position;
                     self.point_index += 1;
-                    return Some(PathCommand::MoveTo(position));
+                    self.state.move_to(position);
+                    return Some(PathEvent::MoveTo(position));
                 }
 
                 match (control_point_position, point_on_curve) {
                     (Some(control_point_position), false) => {
                         let on_curve_position = control_point_position.lerp(position, 0.5);
-                        return Some(PathCommand::CurveTo(control_point_position,
-                                                         on_curve_position))
+                        let event = PathEvent::QuadraticTo(control_point_position,
+                                                           on_curve_position);
+                        self.state.path_event(event);
+                        return Some(event)
                     }
                     (Some(control_point_position), true) => {
                         self.point_index += 1;
-                        return Some(PathCommand::CurveTo(control_point_position, position))
+                        let event = PathEvent::QuadraticTo(control_point_position, position);
+                        self.state.path_event(event);
+                        return Some(event)
                     }
                     (None, false) => {
                         self.point_index += 1;
@@ -96,11 +104,19 @@ impl<'a> Iterator for OutlineStream<'a> {
                     }
                     (None, true) => {
                         self.point_index += 1;
-                        return Some(PathCommand::LineTo(position))
+                        self.state.line_to(position);
+                        return Some(PathEvent::LineTo(position))
                     }
                 }
             }
         }
+    }
+}
+
+impl<'a> PathIterator for OutlineStream<'a> {
+    #[inline]
+    fn get_state(&self) -> &PathState {
+        &self.state
     }
 }
 
