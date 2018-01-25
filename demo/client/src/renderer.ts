@@ -152,6 +152,8 @@ export abstract class Renderer {
         // Draw "scenery" (used in the 3D view).
         this.drawSceneryIfNecessary();
 
+        //console.log(new Float32Array(unwrapNull(this.meshData)[0].bQuadVertexPositions));
+
         const passCount = antialiasingStrategy.passCount;
         for (let pass = 0; pass < passCount; pass++) {
             if (antialiasingStrategy.directRenderingMode !== 'none')
@@ -493,10 +495,10 @@ export abstract class Renderer {
         const bQuadInteriorRange = getMeshIndexRange(meshes.bQuadVertexInteriorIndexPathRanges,
                                                      pathRange);
         if (!this.pathIDsAreInstanced) {
-            gl.drawElements(gl.TRIANGLES,
+            /*gl.drawElements(gl.TRIANGLES,
                             bQuadInteriorRange.length,
                             gl.UNSIGNED_INT,
-                            bQuadInteriorRange.start * UINT32_SIZE);
+                            bQuadInteriorRange.start * UINT32_SIZE);*/
         } else {
             renderContext.instancedArraysExt
                          .drawElementsInstancedANGLE(gl.TRIANGLES,
@@ -512,9 +514,9 @@ export abstract class Renderer {
         if (renderingMode !== 'conservative') {
             // Set up direct curve state.
             gl.depthMask(false);
-            gl.enable(gl.BLEND);
+            /*gl.enable(gl.BLEND);
             gl.blendEquation(gl.FUNC_ADD);
-            gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+            gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);*/
 
             // Set up the direct curve VAO.
             //
@@ -543,6 +545,9 @@ export abstract class Renderer {
             const coverCurveRange = getMeshIndexRange(meshes.bQuadVertexPositionPathRanges,
                                                       pathRange);
             if (!this.pathIDsAreInstanced) {
+                console.log("coverCurveRange", coverCurveRange);
+                console.log("cover curves", new Float32Array(meshData.bQuadVertexPositions));
+                console.log("path IDs", new Uint16Array(meshData.bQuadVertexPositionPathIDs));
                 gl.drawArrays(gl.TRIANGLES, coverCurveRange.start * 6, coverCurveRange.length * 6);
             } else {
                 renderContext.instancedArraysExt
@@ -740,6 +745,7 @@ export abstract class Renderer {
 }
 
 function getMeshIndexRange(indexRanges: Range[], pathRange: Range): Range {
+    console.log("getMeshIndexRange(", indexRanges, ", ", pathRange, ")");
     if (indexRanges.length === 0)
         return new Range(0, 0);
 

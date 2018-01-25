@@ -458,13 +458,13 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
             Ok(glyph_outline) => {
                 // FIXME(pcwalton): Transform points without creating a temporary.
                 let mut path_buffer = Path::builder();
-                glyph_outline.for_each(|event| path_buffer.path_event(event));
+                glyph_outline.path_iter().for_each(|event| path_buffer.path_event(event));
                 let mut path_buffer = path_buffer.build();
                 for point in path_buffer.mut_points() {
                     *point = glyph.transform.transform_point(point)
                 }
                 paths.push(path_buffer);
-                paths.len() - 1
+                glyph.id as usize
             }
             Err(_) => continue,
         };
@@ -477,9 +477,9 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
 
     // Partition the decoded glyph outlines.
     let mut library = MeshLibrary::new();
-    for (path_index, path_descriptor) in path_descriptors.iter().enumerate() {
-        library.push_segments((path_index + 1) as u16,
-                              paths[path_descriptor.path_index].path_iter());
+    for (stored_path_index, path_descriptor) in path_descriptors.iter().enumerate() {
+        library.push_segments((path_descriptor.path_index + 1) as u16,
+                              paths[stored_path_index].path_iter());
         /*let stream = PathBufferStream::subpath_range(&path_buffer,
                                                      path_descriptor.subpath_indices.clone());
         library.push_normals(stream);*/
@@ -547,11 +547,12 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                         to: endpoint_1,
                     };
                     last_point = endpoint_1;
-                    cubic_to_quadratic::cubic_to_quadratic(&cubic,
+                    /*cubic_to_quadratic::cubic_to_quadratic(&cubic,
                                                            CUBIC_ERROR_TOLERANCE,
                                                            &mut |quadratic_segment| {
                         stream.quadratic_bezier_to(quadratic_segment.ctrl, quadratic_segment.to)
-                    });
+                    });*/
+                    stream.quadratic_bezier_to(control_point_0, endpoint_1);
                     // FIXME(pcwalton): Make monotonic!
                 }
                 'Z' => stream.close(),
@@ -570,11 +571,11 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
                 let stream = MonotonicPathCommandStream::new(stream);
                 library.push_segments((path_index + 1) as u16, stream.clone());
                 path_buffer.add_stream(stream);
+                */
+
+                // FIXME(pcwalton): Stroke strokes!
 
                 FillRule::Winding
-                */
-                // FIXME(pcwalton): Add strokes!
-                continue
             }
         };
 

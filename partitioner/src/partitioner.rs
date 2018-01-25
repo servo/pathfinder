@@ -753,11 +753,13 @@ impl Partitioner {
             control_point_vertex_index => {
                 let control_point = &self.library
                                          .b_vertex_positions[control_point_vertex_index as usize];
-                QuadraticBezierSegment {
+                let segment = QuadraticBezierSegment {
                     from: *left_vertex_position,
                     ctrl: *control_point,
                     to: *right_endpoint_position,
-                }.assume_monotonic().solve_t_for_x(x)
+                };
+                println!("segment={:?}", segment);
+                segment.assume_monotonic().solve_t_for_x(x)
             }
         }
     }

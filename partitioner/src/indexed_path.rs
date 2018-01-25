@@ -82,10 +82,12 @@ impl IndexedPath {
 
         let last_endpoint_index = self.endpoints.len() as u32;
         self.subpath_ranges.push(first_endpoint_index_of_subpath..last_endpoint_index);
+
+        println!("{:#?}", self.endpoints);
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct IndexedEndpoint {
     pub to: Point2D<f32>,
     pub ctrl: Option<Point2D<f32>>,

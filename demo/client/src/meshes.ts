@@ -421,6 +421,8 @@ function copyVertices(vertexBufferNames: Array<keyof Meshes<void>>,
                       originalPathID: number):
                       VertexCopyResult | null {
     const originalRange = originalRanges[rangesName][originalPathID - 1];
+    console.log("copyVertices(", rangesName, ",", originalPathID, ")");
+    console.log("... originalRanges", originalRanges);
 
     const firstExpandedVertexIndex = _.reduce(expandedRanges[rangesName],
                                               (maxIndex, range) => Math.max(maxIndex, range.end),

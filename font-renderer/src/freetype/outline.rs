@@ -15,6 +15,26 @@ use lyon_path::{PathEvent, PathState};
 
 const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
 
+pub struct Outline<'a> {
+    outline: &'a FT_Outline,
+}
+
+impl<'a> Outline<'a> {
+    #[inline]
+    pub unsafe fn new(outline: &FT_Outline) -> Outline {
+        Outline {
+            outline: outline,
+        }
+    }
+
+    #[inline]
+    pub fn path_iter(&self) -> OutlineStream {
+        unsafe {
+            OutlineStream::new(self.outline)
+        }
+    }
+}
+
 pub struct OutlineStream<'a> {
     outline: &'a FT_Outline,
     point_index: u16,
