@@ -39,11 +39,10 @@ extern crate serde_derive;
 use euclid::Point2D;
 use std::u32;
 
+pub mod builder;
 pub mod mesh_library;
-pub mod monotonic;
 pub mod partitioner;
 
-mod indexed_path;
 mod normal;
 
 /// The fill rule.

@@ -39,10 +39,9 @@ use app_units::Au;
 use euclid::{Point2D, Transform2D};
 use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
-use lyon_geom::CubicBezierSegment;
-use lyon_geom::cubic_to_quadratic;
+use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
-use lyon_path::default::{Builder, Path};
+use lyon_path::iterator::PathIter;
 use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphImage};
 use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
@@ -265,16 +264,16 @@ struct PathPartitioningResult {
 impl PathPartitioningResult {
     fn compute(partitioner: &mut Partitioner,
                path_descriptors: &[PathDescriptor],
-               paths: Vec<Path>)
+               paths: &[Vec<PathEvent>])
                -> PathPartitioningResult {
         let timestamp_before = Instant::now();
 
-        for (path_id, (path, path_descriptor)) in paths.into_iter()
+        for (path_id, (path, path_descriptor)) in paths.iter()
                                                        .zip(path_descriptors.iter())
                                                        .enumerate() {
-            partitioner.partition(path.path_iter(),
-                                  (path_id + 1) as u16,
-                                  path_descriptor.fill_rule)
+            path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
+            partitioner.partition((path_id + 1) as u16, path_descriptor.fill_rule);
+            partitioner.builder_mut().build_and_reset();
         }
 
         partitioner.library_mut().optimize();
@@ -456,13 +455,26 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
         // This might fail; if so, just leave it blank.
         let path_index = match font_context.glyph_outline(&font_instance, &glyph_key) {
             Ok(glyph_outline) => {
-                // FIXME(pcwalton): Transform points without creating a temporary.
-                let mut path_buffer = Path::builder();
-                glyph_outline.path_iter().for_each(|event| path_buffer.path_event(event));
-                let mut path_buffer = path_buffer.build();
-                for point in path_buffer.mut_points() {
-                    *point = glyph.transform.transform_point(point)
+                let mut path_buffer: Vec<PathEvent> = glyph_outline.path_iter().collect();
+
+                // TODO(pcwalton): This should probably go upstream to Lyon.
+                for event in &mut path_buffer {
+                    match *event {
+                        PathEvent::Close | PathEvent::Arc(..) => {}
+                        PathEvent::MoveTo(ref mut to) => *to = glyph.transform.transform_point(to),
+                        PathEvent::LineTo(ref mut to) => *to = glyph.transform.transform_point(to),
+                        PathEvent::QuadraticTo(ref mut ctrl, ref mut to) => {
+                            *ctrl = glyph.transform.transform_point(ctrl);
+                            *to = glyph.transform.transform_point(to);
+                        }
+                        PathEvent::CubicTo(ref mut ctrl1, ref mut ctrl2, ref mut to) => {
+                            *ctrl1 = glyph.transform.transform_point(ctrl1);
+                            *ctrl2 = glyph.transform.transform_point(ctrl2);
+                            *to = glyph.transform.transform_point(to);
+                        }
+                    }
                 }
+
                 paths.push(path_buffer);
                 glyph.id as usize
             }
@@ -479,7 +491,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     let mut library = MeshLibrary::new();
     for (stored_path_index, path_descriptor) in path_descriptors.iter().enumerate() {
         library.push_segments((path_descriptor.path_index + 1) as u16,
-                              paths[stored_path_index].path_iter());
+                              PathIter::new(paths[stored_path_index].iter().cloned()));
         /*let stream = PathBufferStream::subpath_range(&path_buffer,
                                                      path_descriptor.subpath_indices.clone());
         library.push_normals(stream);*/
@@ -488,7 +500,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     let mut partitioner = Partitioner::new(library);
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
                                                                    &path_descriptors,
-                                                                   paths);
+                                                                   &paths);
 
     // Build the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -515,47 +527,31 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     // commands.
     let mut paths = vec![];
     let mut path_descriptors = vec![];
-    let mut last_point = Point2D::zero();
-
     let mut partitioner = Partitioner::new(MeshLibrary::new());
     let mut path_index = 0;
 
     for path in &request.paths {
-        let mut stream = Builder::new();
+        let mut stream = vec![];
 
         for segment in &path.segments {
             match segment.kind {
                 'M' => {
-                    stream.move_to(Point2D::new(segment.values[0] as f32,
-                                                segment.values[1] as f32))
+                    stream.push(PathEvent::MoveTo(Point2D::new(segment.values[0] as f32,
+                                                               segment.values[1] as f32)))
                 }
                 'L' => {
-                    stream.line_to(Point2D::new(segment.values[0] as f32,
-                                                segment.values[1] as f32))
+                    stream.push(PathEvent::LineTo(Point2D::new(segment.values[0] as f32,
+                                                               segment.values[1] as f32)))
                 }
                 'C' => {
-                    let control_point_0 = Point2D::new(segment.values[0] as f32,
-                                                       segment.values[1] as f32);
-                    let control_point_1 = Point2D::new(segment.values[2] as f32,
-                                                       segment.values[3] as f32);
-                    let endpoint_1 = Point2D::new(segment.values[4] as f32,
-                                                  segment.values[5] as f32);
-                    let cubic = CubicBezierSegment {
-                        from: last_point,
-                        ctrl1: control_point_0,
-                        ctrl2: control_point_1,
-                        to: endpoint_1,
-                    };
-                    last_point = endpoint_1;
-                    /*cubic_to_quadratic::cubic_to_quadratic(&cubic,
-                                                           CUBIC_ERROR_TOLERANCE,
-                                                           &mut |quadratic_segment| {
-                        stream.quadratic_bezier_to(quadratic_segment.ctrl, quadratic_segment.to)
-                    });*/
-                    stream.quadratic_bezier_to(control_point_0, endpoint_1);
-                    // FIXME(pcwalton): Make monotonic!
+                    stream.push(PathEvent::CubicTo(Point2D::new(segment.values[0] as f32,
+                                                                segment.values[1] as f32),
+                                                   Point2D::new(segment.values[2] as f32,
+                                                                segment.values[3] as f32),
+                                                   Point2D::new(segment.values[4] as f32,
+                                                                segment.values[5] as f32)))
                 }
-                'Z' => stream.close(),
+                'Z' => stream.push(PathEvent::Close),
                 _ => return Err(PartitionSvgPathsError::UnknownSvgPathCommandType),
             }
         }
@@ -584,7 +580,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
             fill_rule: fill_rule,
         });
 
-        paths.push(stream.build());
+        paths.push(stream);
 
         path_index += 1;
     }
@@ -592,7 +588,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     // Partition the paths.
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
                                                                    &path_descriptors,
-                                                                   paths);
+                                                                   &paths);
 
     // Return the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();

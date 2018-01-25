@@ -495,10 +495,10 @@ export abstract class Renderer {
         const bQuadInteriorRange = getMeshIndexRange(meshes.bQuadVertexInteriorIndexPathRanges,
                                                      pathRange);
         if (!this.pathIDsAreInstanced) {
-            /*gl.drawElements(gl.TRIANGLES,
+            gl.drawElements(gl.TRIANGLES,
                             bQuadInteriorRange.length,
                             gl.UNSIGNED_INT,
-                            bQuadInteriorRange.start * UINT32_SIZE);*/
+                            bQuadInteriorRange.start * UINT32_SIZE);
         } else {
             renderContext.instancedArraysExt
                          .drawElementsInstancedANGLE(gl.TRIANGLES,
@@ -514,9 +514,9 @@ export abstract class Renderer {
         if (renderingMode !== 'conservative') {
             // Set up direct curve state.
             gl.depthMask(false);
-            /*gl.enable(gl.BLEND);
+            gl.enable(gl.BLEND);
             gl.blendEquation(gl.FUNC_ADD);
-            gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);*/
+            gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
 
             // Set up the direct curve VAO.
             //

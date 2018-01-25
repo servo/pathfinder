@@ -13,7 +13,6 @@ use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Vector2D};
 use log::LogLevel;
 use lyon_geom::{LineSegment, QuadraticBezierSegment};
-use lyon_path::iterator::PathIterator;
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
 use std::f32;
@@ -21,9 +20,8 @@ use std::iter;
 use std::ops::{Add, AddAssign};
 use std::u32;
 
-use indexed_path::IndexedPath;
+use builder::Builder;
 use mesh_library::MeshLibrary;
-use monotonic::MonotonicPathIterator;
 use {BQuad, BVertexLoopBlinnData, BVertexKind, FillRule};
 
 const MAX_B_QUAD_SUBDIVISIONS: u8 = 8;
@@ -31,7 +29,7 @@ const MAX_B_QUAD_SUBDIVISIONS: u8 = 8;
 const INTERSECTION_TOLERANCE: f32 = 0.001;
 
 pub struct Partitioner {
-    path: IndexedPath,
+    path: Builder,
     path_id: u16,
 
     library: MeshLibrary,
@@ -48,7 +46,7 @@ impl Partitioner {
     #[inline]
     pub fn new(library: MeshLibrary) -> Partitioner {
         Partitioner {
-            path: IndexedPath::new(),
+            path: Builder::new(),
             path_id: 0,
             fill_rule: FillRule::Winding,
 
@@ -77,18 +75,21 @@ impl Partitioner {
     }
 
     #[inline]
-    pub fn partition<I>(&mut self, path: I, path_id: u16, fill_rule: FillRule)
-                        where I: PathIterator {
-        self.partition_monotonic(MonotonicPathIterator::new(path), path_id, fill_rule)
+    pub fn builder(&self) -> &Builder {
+        &self.path
     }
 
-    pub fn partition_monotonic<I>(&mut self, path: I, path_id: u16, fill_rule: FillRule)
-                                  where I: PathIterator {
-        self.path.clear();
+    #[inline]
+    pub fn builder_mut(&mut self) -> &mut Builder {
+        &mut self.path
+    }
+
+    pub fn partition(&mut self, path_id: u16, fill_rule: FillRule) {
+        self.path.end_subpath();
+
         self.heap.clear();
         self.active_edges.clear();
 
-        self.path.add_monotonic_path(path);
         self.path_id = path_id;
         self.fill_rule = fill_rule;
 
@@ -1012,6 +1013,10 @@ impl Partitioner {
     fn prev_endpoint_of(&self, endpoint_index: u32) -> u32 {
         let endpoint = &self.path.endpoints[endpoint_index as usize];
         let subpath = &self.path.subpath_ranges[endpoint.subpath_index as usize];
+        println!("endpoint_index={:?} subpath_index={:?} subpath_range={:?}",
+                 endpoint_index,
+                 endpoint.subpath_index,
+                 subpath);
         if endpoint_index > subpath.start {
             endpoint_index - 1
         } else {
