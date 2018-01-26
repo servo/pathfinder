@@ -32,23 +32,13 @@ impl StrokeStyle {
     }
 }
 
-/*pub fn stroke_to_fill<I, F>(path: I, style: StrokeStyle, mut sink: F)
-                            where I: PathIterator, F: FnMut(&PathEvent) {
-    loop {
-        match path.next() {
-            None => {
-                
-            }
-        }
-    }
-}*/
-
 pub struct StrokeToFillIter<I> where I: PathIterator {
     inner: SegmentIter<I>,
     subpath: Vec<Segment>,
     stack: Vec<PathEvent>,
     state: StrokeToFillState,
     style: StrokeStyle,
+    first_point_in_subpath: bool,
 }
 
 impl<I> StrokeToFillIter<I> where I: PathIterator {
@@ -60,6 +50,7 @@ impl<I> StrokeToFillIter<I> where I: PathIterator {
             stack: vec![],
             state: StrokeToFillState::Forward,
             style: style,
+            first_point_in_subpath: true,
         }
     }
 }
@@ -84,7 +75,8 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
                             return None
                         }
                         self.state = StrokeToFillState::Backward;
-                        return self.next()
+                        self.first_point_in_subpath = true;
+                        return Some(PathEvent::Close)
                     }
                     Some(segment) => {
                         self.subpath.push(segment);
@@ -96,6 +88,7 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
                 match self.subpath.pop() {
                     None | Some(Segment::EndSubpath) => {
                         self.state = StrokeToFillState::Forward;
+                        self.first_point_in_subpath = true;
                         return Some(PathEvent::Close)
                     }
                     Some(segment) => segment.flip(),
@@ -103,11 +96,12 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
             }
         };
 
-        next_segment.offset(self.style.width, |offset_segment| {
+        next_segment.offset(self.style.width * 0.5, |offset_segment| {
             match *offset_segment {
                 Segment::EndSubpath => unreachable!(),
                 Segment::Line(ref offset_segment) => {
-                    if self.subpath.len() == 1 && self.state == StrokeToFillState::Forward {
+                    if self.first_point_in_subpath {
+                        self.first_point_in_subpath = false;
                         self.stack.push(PathEvent::MoveTo(offset_segment.from))
                     } else if self.stack.is_empty() {
                         self.stack.push(PathEvent::LineTo(offset_segment.from))
@@ -115,7 +109,8 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
                     self.stack.push(PathEvent::LineTo(offset_segment.to))
                 }
                 Segment::Quadratic(ref offset_segment) => {
-                    if self.subpath.len() == 1 && self.state == StrokeToFillState::Forward {
+                    if self.first_point_in_subpath {
+                        self.first_point_in_subpath = false;
                         self.stack.push(PathEvent::MoveTo(offset_segment.from))
                     } else if self.stack.is_empty() {
                         self.stack.push(PathEvent::LineTo(offset_segment.from))
@@ -123,7 +118,8 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
                     self.stack.push(PathEvent::QuadraticTo(offset_segment.ctrl, offset_segment.to))
                 }
                 Segment::Cubic(ref offset_segment) => {
-                    if self.subpath.len() == 1 && self.state == StrokeToFillState::Forward {
+                    if self.first_point_in_subpath {
+                        self.first_point_in_subpath = false;
                         self.stack.push(PathEvent::MoveTo(offset_segment.from))
                     } else if self.stack.is_empty() {
                         self.stack.push(PathEvent::LineTo(offset_segment.from))
@@ -134,6 +130,7 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
                 }
             }
         });
+
         self.stack.reverse();
         return self.next()
     }

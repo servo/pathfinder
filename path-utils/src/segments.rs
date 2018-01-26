@@ -118,6 +118,7 @@ impl Segment {
             Segment::Line(ref segment) => {
                 sink(&Segment::Line(offset_line_segment(segment, distance)))
             }
+
             Segment::Quadratic(ref quadratic_segment) => {
                 // This is the Tiller & Hanson 1984 algorithm for approximate Bézier offset curves.
                 // We take the cage (i.e. convex hull) and push its edges out along their normals,
@@ -144,6 +145,61 @@ impl Segment {
                     to: to,
                 }))
             }
+
+            Segment::Cubic(ref cubic_segment) if points_overlap(&cubic_segment.from,
+                                                                &cubic_segment.ctrl1) => {
+                // As above.
+                let line_segments = (LineSegment {
+                    from: cubic_segment.from,
+                    to: cubic_segment.ctrl2,
+                }, LineSegment {
+                    from: cubic_segment.ctrl2,
+                    to: cubic_segment.to,
+                });
+
+                // Miter join.
+                let (from, intersection, to) = match offset_and_join_line_segments(line_segments.0,
+                                                                                   line_segments.1,
+                                                                                   distance) {
+                    None => return sink(self),
+                    Some(intersection) => intersection,
+                };
+
+                sink(&Segment::Cubic(CubicBezierSegment {
+                    from: from,
+                    ctrl1: from,
+                    ctrl2: intersection,
+                    to: to,
+                }))
+            }
+
+            Segment::Cubic(ref cubic_segment) if points_overlap(&cubic_segment.ctrl2,
+                                                                &cubic_segment.to) => {
+                // As above.
+                let line_segments = (LineSegment {
+                    from: cubic_segment.from,
+                    to: cubic_segment.ctrl1,
+                }, LineSegment {
+                    from: cubic_segment.ctrl1,
+                    to: cubic_segment.to,
+                });
+
+                // Miter join.
+                let (from, intersection, to) = match offset_and_join_line_segments(line_segments.0,
+                                                                                   line_segments.1,
+                                                                                   distance) {
+                    None => return sink(self),
+                    Some(intersection) => intersection,
+                };
+
+                sink(&Segment::Cubic(CubicBezierSegment {
+                    from: from,
+                    ctrl1: intersection,
+                    ctrl2: to,
+                    to: to,
+                }))
+            }
+
             Segment::Cubic(ref cubic_segment) => {
                 // As above.
                 let line_segments = (LineSegment {
@@ -203,4 +259,8 @@ fn offset_and_join_line_segments(mut line_segment_0: LineSegment<f32>,
         None => None,
         Some(intersection) => Some((line_segment_0.from, intersection, line_segment_1.to)),
     }
+}
+
+fn points_overlap(a: &Point2D<f32>, b: &Point2D<f32>) -> bool {
+    a.x.approx_eq(&b.x) && a.y.approx_eq(&b.y)
 }
