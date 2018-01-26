@@ -22,6 +22,7 @@ extern crate lyon_geom;
 extern crate lyon_path;
 extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
+extern crate pathfinder_path_utils;
 extern crate rocket;
 extern crate rocket_contrib;
 
@@ -47,6 +48,7 @@ use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
+use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use rocket::http::{ContentType, Header, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
@@ -558,21 +560,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
         let fill_rule = match path.kind {
             PartitionSvgPathKind::Fill(fill_rule) => fill_rule.to_fill_rule(),
-            PartitionSvgPathKind::Stroke(stroke_width) => {
-                /*
-                let mut temp_path_buffer = PathBuffer::new();
-                Stroke::new(stroke_width).apply(&mut temp_path_buffer, stream.into_iter());
-
-                let stream = PathBufferStream::new(&temp_path_buffer);
-                let stream = MonotonicPathCommandStream::new(stream);
-                library.push_segments((path_index + 1) as u16, stream.clone());
-                path_buffer.add_stream(stream);
-                */
-
-                // FIXME(pcwalton): Stroke strokes!
-
-                FillRule::Winding
-            }
+            PartitionSvgPathKind::Stroke(_) => FillRule::Winding,
         };
 
         path_descriptors.push(PathDescriptor {
@@ -580,7 +568,17 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
             fill_rule: fill_rule,
         });
 
-        paths.push(stream);
+        match path.kind {
+            PartitionSvgPathKind::Fill(_) => paths.push(stream),
+            PartitionSvgPathKind::Stroke(stroke_width) => {
+                println!("path: {:#?}", stream);
+                let iterator = PathIter::new(stream.into_iter());
+                let stroke_style = StrokeStyle::new(stroke_width);
+                let path: Vec<_> = StrokeToFillIter::new(iterator, stroke_style).collect();
+                println!("... stroked {} becomes {:#?}", stroke_width, path);
+                paths.push(path);
+            }
+        }
 
         path_index += 1;
     }
