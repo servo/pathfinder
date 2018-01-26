@@ -70,7 +70,14 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
         let next_segment = match self.state {
             StrokeToFillState::Forward => {
                 match self.inner.next() {
-                    None | Some(Segment::EndSubpath) => {
+                    None | Some(Segment::EndSubpath(false)) => {
+                        if self.subpath.is_empty() {
+                            return None
+                        }
+                        self.state = StrokeToFillState::Backward;
+                        return self.next()
+                    }
+                    Some(Segment::EndSubpath(true)) => {
                         if self.subpath.is_empty() {
                             return None
                         }
@@ -86,7 +93,7 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
             }
             StrokeToFillState::Backward => {
                 match self.subpath.pop() {
-                    None | Some(Segment::EndSubpath) => {
+                    None | Some(Segment::EndSubpath(_)) => {
                         self.state = StrokeToFillState::Forward;
                         self.first_point_in_subpath = true;
                         return Some(PathEvent::Close)
@@ -98,7 +105,7 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
 
         next_segment.offset(self.style.width * 0.5, |offset_segment| {
             match *offset_segment {
-                Segment::EndSubpath => unreachable!(),
+                Segment::EndSubpath(_) => unreachable!(),
                 Segment::Line(ref offset_segment) => {
                     if self.first_point_in_subpath {
                         self.first_point_in_subpath = false;

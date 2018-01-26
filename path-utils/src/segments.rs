@@ -18,8 +18,8 @@ use lyon_path::PathEvent;
 
 pub struct SegmentIter<I> where I: PathIterator {
     inner: I,
-    subpath_done: bool,
-    is_first_subpath: bool,
+    stack: Vec<Segment>,
+    was_just_closed: bool,
 }
 
 impl<I> SegmentIter<I> where I: PathIterator {
@@ -27,8 +27,8 @@ impl<I> SegmentIter<I> where I: PathIterator {
     pub fn new(inner: I) -> SegmentIter<I> {
         SegmentIter {
             inner: inner,
-            subpath_done: false,
-            is_first_subpath: true,
+            stack: vec![],
+            was_just_closed: true,
         }
     }
 }
@@ -37,9 +37,8 @@ impl<I> Iterator for SegmentIter<I> where I: PathIterator {
     type Item = Segment;
 
     fn next(&mut self) -> Option<Segment> {
-        if self.subpath_done {
-            self.subpath_done = false;
-            return Some(Segment::EndSubpath)
+        if let Some(segment) = self.stack.pop() {
+            return Some(segment)
         }
 
         let current_point = self.inner.get_state().current;
@@ -47,24 +46,23 @@ impl<I> Iterator for SegmentIter<I> where I: PathIterator {
         match self.inner.next() {
             None => None,
             Some(PathEvent::Close) => {
+                self.was_just_closed = true;
                 let state = self.inner.get_state();
                 if state.first == current_point {
-                    return Some(Segment::EndSubpath)
+                    return Some(Segment::EndSubpath(true))
                 }
-                self.subpath_done = true;
+                self.stack.push(Segment::EndSubpath(true));
                 Some(Segment::Line(LineSegment {
                     from: state.current,
                     to: state.first,
                 }))
             }
             Some(PathEvent::MoveTo(_)) => {
-                if self.is_first_subpath {
-                    self.is_first_subpath = false;
+                if self.was_just_closed {
+                    self.was_just_closed = false;
                     return self.next();
                 }
-
-                self.is_first_subpath = false;
-                Some(Segment::EndSubpath)
+                Some(Segment::EndSubpath(false))
             }
             Some(PathEvent::LineTo(to)) => {
                 Some(Segment::Line(LineSegment {
@@ -99,13 +97,14 @@ pub enum Segment {
     Line(LineSegment<f32>),
     Quadratic(QuadraticBezierSegment<f32>),
     Cubic(CubicBezierSegment<f32>),
-    EndSubpath,
+    /// True if the subpath is closed.
+    EndSubpath(bool),
 }
 
 impl Segment {
     pub fn flip(&self) -> Segment {
         match *self {
-            Segment::EndSubpath => Segment::EndSubpath,
+            Segment::EndSubpath(closed) => Segment::EndSubpath(closed),
             Segment::Line(line_segment) => Segment::Line(line_segment.flip()),
             Segment::Quadratic(quadratic_segment) => Segment::Quadratic(quadratic_segment.flip()),
             Segment::Cubic(cubic_segment) => Segment::Cubic(cubic_segment.flip()),
@@ -114,7 +113,7 @@ impl Segment {
 
     pub fn offset<F>(&self, distance: f32, mut sink: F) where F: FnMut(&Segment) {
         match *self {
-            Segment::EndSubpath => {}
+            Segment::EndSubpath(_) => {}
             Segment::Line(ref segment) => {
                 sink(&Segment::Line(offset_line_segment(segment, distance)))
             }
