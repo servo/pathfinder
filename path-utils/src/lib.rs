@@ -20,5 +20,6 @@ extern crate euclid;
 extern crate lyon_geom;
 extern crate lyon_path;
 
+pub mod cubic_to_quadratic;
 pub mod segments;
 pub mod stroke;

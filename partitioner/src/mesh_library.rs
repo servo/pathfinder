@@ -100,16 +100,6 @@ impl MeshLibrary {
             let upper_control_point_position =
                 self.b_vertex_positions[b_quad.upper_control_point_vertex_index as usize];
             b_quad_vertex_positions.upper_control_point_position = upper_control_point_position;
-
-            if upper_control_point_position != upper_left_position &&
-                    upper_control_point_position != upper_right_position {
-                println!("{:?} {:?} (angle {:?}) {:?}",
-                         upper_left_position,
-                         upper_control_point_position,
-                         f32::acos(((upper_control_point_position - upper_left_position).normalize()).
-                            dot((upper_right_position - upper_left_position).normalize())),
-                         upper_right_position);
-            }
         }
 
         if b_quad.lower_control_point_vertex_index != u32::MAX {

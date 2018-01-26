@@ -759,7 +759,6 @@ impl Partitioner {
                     ctrl: *control_point,
                     to: *right_endpoint_position,
                 };
-                println!("segment={:?}", segment);
                 segment.assume_monotonic().solve_t_for_x(x)
             }
         }
@@ -1013,10 +1012,6 @@ impl Partitioner {
     fn prev_endpoint_of(&self, endpoint_index: u32) -> u32 {
         let endpoint = &self.path.endpoints[endpoint_index as usize];
         let subpath = &self.path.subpath_ranges[endpoint.subpath_index as usize];
-        println!("endpoint_index={:?} subpath_index={:?} subpath_range={:?}",
-                 endpoint_index,
-                 endpoint.subpath_index,
-                 subpath);
         if endpoint_index > subpath.start {
             endpoint_index - 1
         } else {

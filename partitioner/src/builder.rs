@@ -11,13 +11,17 @@
 use arrayvec::ArrayVec;
 use euclid::approxeq::ApproxEq;
 use euclid::{Angle, Point2D, Vector2D};
-use lyon_geom::cubic_to_quadratic;
 use lyon_geom::{CubicBezierSegment, QuadraticBezierSegment};
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
+use pathfinder_path_utils::cubic_to_quadratic::CubicToQuadraticSegmentIter;
 use std::ops::Range;
+
+const TANGENT_PARAMETER_TOLERANCE: f32 = 0.001;
 
 const CUBIC_APPROX_TOLERANCE: f32 = 0.001;
 
+// TODO(pcwalton): A better debug.
+#[derive(Debug)]
 pub struct Builder {
     pub endpoints: Vec<Endpoint>,
     pub subpath_ranges: Vec<Range<u32>>,
@@ -125,10 +129,13 @@ impl PathBuilder for Builder {
             to: to,
         };
 
+        //self.add_endpoint(Some(ctrl), to);
+
         // Split at X tangent.
         let mut worklist: ArrayVec<[QuadraticBezierSegment<f32>; 2]> = ArrayVec::new();
         match segment.find_local_x_extremum() {
-            Some(t) if t > f32::approx_epsilon() && t < 1.0 - f32::approx_epsilon() => {
+            Some(t) if t > TANGENT_PARAMETER_TOLERANCE &&
+                    t < 1.0 - TANGENT_PARAMETER_TOLERANCE => {
                 let subsegments = segment.split(t);
                 worklist.push(subsegments.0);
                 worklist.push(subsegments.1);
@@ -139,7 +146,8 @@ impl PathBuilder for Builder {
         // Split at Y tangent.
         for segment in worklist {
             match segment.find_local_y_extremum() {
-                Some(t) if t > f32::approx_epsilon() && t < 1.0 - f32::approx_epsilon() => {
+                Some(t) if t > TANGENT_PARAMETER_TOLERANCE &&
+                        t < 1.0 - TANGENT_PARAMETER_TOLERANCE => {
                     let subsegments = segment.split(t);
                     self.add_endpoint(Some(subsegments.0.ctrl), subsegments.0.to);
                     self.add_endpoint(Some(subsegments.1.ctrl), subsegments.1.to);
@@ -157,11 +165,10 @@ impl PathBuilder for Builder {
             to: to,
         };
 
-        cubic_to_quadratic::cubic_to_quadratic(&cubic_segment,
-                                               CUBIC_APPROX_TOLERANCE,
-                                               &mut |quadratic_segment| {
-            self.add_endpoint(Some(quadratic_segment.ctrl), quadratic_segment.to)
-        })
+        for quadratic_segment in CubicToQuadraticSegmentIter::new(&cubic_segment,
+                                                                  CUBIC_APPROX_TOLERANCE) {
+            self.quadratic_bezier_to(quadratic_segment.ctrl, quadratic_segment.to)
+        }
     }
 
     fn arc(&mut self,

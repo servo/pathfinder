@@ -29,6 +29,7 @@ extern crate env_logger;
 extern crate euclid;
 extern crate lyon_geom;
 extern crate lyon_path;
+extern crate pathfinder_path_utils;
 extern crate serde;
 
 #[macro_use]

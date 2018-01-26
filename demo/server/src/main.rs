@@ -72,8 +72,6 @@ use rsvg::{Handle, HandleExt};
 
 const SUGGESTED_JSON_SIZE_LIMIT: u64 = 32 * 1024 * 1024;
 
-const CUBIC_ERROR_TOLERANCE: f32 = 0.1;
-
 const MESH_LIBRARY_CACHE_SIZE: usize = 16;
 
 lazy_static! {
@@ -274,6 +272,7 @@ impl PathPartitioningResult {
                                                        .zip(path_descriptors.iter())
                                                        .enumerate() {
             path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
+            println!("{:#?}", partitioner.builder());
             partitioner.partition((path_id + 1) as u16, path_descriptor.fill_rule);
             partitioner.builder_mut().build_and_reset();
         }
@@ -571,11 +570,9 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
         match path.kind {
             PartitionSvgPathKind::Fill(_) => paths.push(stream),
             PartitionSvgPathKind::Stroke(stroke_width) => {
-                println!("path: {:#?}", stream);
                 let iterator = PathIter::new(stream.into_iter());
                 let stroke_style = StrokeStyle::new(stroke_width);
                 let path: Vec<_> = StrokeToFillIter::new(iterator, stroke_style).collect();
-                println!("... stroked {} becomes {:#?}", stroke_width, path);
                 paths.push(path);
             }
         }
