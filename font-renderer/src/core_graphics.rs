@@ -21,13 +21,11 @@ use core_graphics_sys::path::CGPathElementType;
 use core_text::font::CTFont;
 use core_text;
 use euclid::{Point2D, Rect, Size2D, Vector2D};
-use lyon_geom::CubicBezierSegment;
-use lyon_geom::cubic_to_quadratic;
-use lyon_path::builder::{FlatPathBuilder, PathBuilder};
-use lyon_path::default::Path;
+use lyon_path::PathEvent;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::sync::Arc;
+use std::vec::IntoIter;
 use {FontInstance, FontKey, GlyphDimensions, GlyphImage, GlyphKey};
 
 const CG_ZERO_RECT: CGRect = CGRect {
@@ -38,8 +36,6 @@ const CG_ZERO_RECT: CGRect = CGRect {
     },
 };
 
-const CUBIC_ERROR_TOLERANCE: f32 = 0.1;
-
 // A conservative overestimate of the amount of font dilation that Core Graphics performs, as a
 // fraction of ppem.
 //
@@ -48,7 +44,7 @@ const CUBIC_ERROR_TOLERANCE: f32 = 0.1;
 const FONT_DILATION_AMOUNT: f32 = 0.02;
 
 /// A list of path commands.
-pub type GlyphOutline = Path;
+pub type GlyphOutline = IntoIter<PathEvent>;
 
 /// An object that loads and renders fonts using macOS Core Graphics/Quartz.
 pub struct FontContext {
@@ -186,43 +182,30 @@ impl FontContext {
         let path = try!(core_text_font.create_path_for_glyph(glyph_key.glyph_index as CGGlyph,
                                                              &CG_AFFINE_TRANSFORM_IDENTITY));
 
-        let mut builder = Path::builder();
+        let mut builder = vec![];
         path.apply(&|element| {
             let points = element.points();
             match element.element_type {
-                CGPathElementType::MoveToPoint => builder.move_to(convert_point(&points[0])),
-                CGPathElementType::AddLineToPoint => builder.line_to(convert_point(&points[0])),
+                CGPathElementType::MoveToPoint => {
+                    builder.push(PathEvent::MoveTo(convert_point(&points[0])))
+                }
+                CGPathElementType::AddLineToPoint => {
+                    builder.push(PathEvent::LineTo(convert_point(&points[0])))
+                }
                 CGPathElementType::AddQuadCurveToPoint => {
-                    builder.quadratic_bezier_to(convert_point(&points[0]),
-                                                convert_point(&points[1]))
+                    builder.push(PathEvent::QuadraticTo(convert_point(&points[0]),
+                                                        convert_point(&points[1])))
                 }
                 CGPathElementType::AddCurveToPoint => {
-                    // TODO: curves in fonts
-                    let cubic = CubicBezierSegment {
-                        from: builder.current_position(),
-                        ctrl1: convert_point(&points[0]),
-                        ctrl2: convert_point(&points[1]),
-                        to: convert_point(&points[2]),
-                    };
-                    cubic_to_quadratic::cubic_to_quadratic(&cubic,
-                                                           CUBIC_ERROR_TOLERANCE,
-                                                           &mut |segment| {
-                        builder.quadratic_bezier_to(segment.ctrl, segment.to)
-                    });
-                    /*PathEvent::CubicTo(convert_point(&points[0]),
-                                       convert_point(&points[1]),
-                                       convert_point(&points[2]))*/
+                    builder.push(PathEvent::CubicTo(convert_point(&points[0]),
+                                                    convert_point(&points[1]),
+                                                    convert_point(&points[2])))
                 }
-                CGPathElementType::CloseSubpath => builder.close(),
+                CGPathElementType::CloseSubpath => builder.push(PathEvent::Close),
             }
         });
 
-        // TODO(pcwalton): Approximate cubics with quadratics!
-        /*let approx_stream = CubicPathCommandApproxStream::new(commands.into_iter(),
-                                                              CURVE_APPROX_ERROR_BOUND);
-
-        let approx_commands: Vec<_> = approx_stream.collect();*/
-        return Ok(builder.build());
+        return Ok(builder.into_iter());
 
         fn convert_point(core_graphics_point: &CGPoint) -> Point2D<f32> {
             Point2D::new(core_graphics_point.x as f32, core_graphics_point.y as f32)

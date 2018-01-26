@@ -272,8 +272,8 @@ impl PathPartitioningResult {
                                                        .zip(path_descriptors.iter())
                                                        .enumerate() {
             path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
-            println!("{:#?}", partitioner.builder());
-            partitioner.partition((path_id + 1) as u16, path_descriptor.fill_rule);
+            partitioner.partition((path_descriptor.path_index + 1) as u16,
+                                  path_descriptor.fill_rule);
             partitioner.builder_mut().build_and_reset();
         }
 
@@ -450,13 +450,13 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     let mut paths = vec![];
     let mut path_descriptors = vec![];
 
-    for glyph in &request.glyphs {
+    for (glyph_index, glyph) in request.glyphs.iter().enumerate() {
         let glyph_key = GlyphKey::new(glyph.id, SubpixelOffset(0));
 
         // This might fail; if so, just leave it blank.
-        let path_index = match font_context.glyph_outline(&font_instance, &glyph_key) {
+        match font_context.glyph_outline(&font_instance, &glyph_key) {
             Ok(glyph_outline) => {
-                let mut path_buffer: Vec<PathEvent> = glyph_outline.path_iter().collect();
+                let mut path_buffer: Vec<PathEvent> = glyph_outline.collect();
 
                 // TODO(pcwalton): This should probably go upstream to Lyon.
                 for event in &mut path_buffer {
@@ -476,14 +476,13 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
                     }
                 }
 
-                paths.push(path_buffer);
-                glyph.id as usize
+                paths.push(path_buffer)
             }
             Err(_) => continue,
         };
 
         path_descriptors.push(PathDescriptor {
-            path_index: path_index,
+            path_index: glyph_index,
             fill_rule: FillRule::Winding,
         })
     }
