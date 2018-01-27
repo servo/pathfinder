@@ -73,9 +73,6 @@ impl PathNormals {
                         prev_index = positions.len() - 1
                     }
                     prev_vector = *this_position - positions[prev_index];
-                    if prev_index == this_index {
-                        println!("uh-oh, NaN prev!");
-                    }
                     if !prev_vector.square_length().approx_eq(&0.0) {
                         break
                     }
@@ -90,17 +87,10 @@ impl PathNormals {
                         next_index = 0
                     }
                     next_vector = positions[next_index] - *this_position;
-                    if next_index == this_index {
-                        println!("uh-oh, NaN next!");
-                    }
                     if !next_vector.square_length().approx_eq(&0.0) {
                         break
                     }
                 }
-
-                println!("prev vector {:?} ({:?}) next vector {:?} ({:?})",
-                         prev_vector, prev_vector.length(),
-                         next_vector, next_vector.length());
 
                 let prev_normal = rotate(&prev_vector).normalize();
                 let next_normal = rotate(&next_vector).normalize();

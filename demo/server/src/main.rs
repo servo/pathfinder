@@ -49,6 +49,7 @@ use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
+use pathfinder_path_utils::transform::Transform2DPathIter;
 use rocket::http::{ContentType, Header, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
@@ -445,7 +446,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     };
 
     // Read glyph info.
-    let mut paths = vec![];
+    let mut paths: Vec<Vec<PathEvent>> = vec![];
     let mut path_descriptors = vec![];
 
     for (glyph_index, glyph) in request.glyphs.iter().enumerate() {
@@ -454,27 +455,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
         // This might fail; if so, just leave it blank.
         match font_context.glyph_outline(&font_instance, &glyph_key) {
             Ok(glyph_outline) => {
-                let mut path_buffer: Vec<PathEvent> = glyph_outline.collect();
-
-                // TODO(pcwalton): This should probably go upstream to Lyon.
-                for event in &mut path_buffer {
-                    match *event {
-                        PathEvent::Close | PathEvent::Arc(..) => {}
-                        PathEvent::MoveTo(ref mut to) => *to = glyph.transform.transform_point(to),
-                        PathEvent::LineTo(ref mut to) => *to = glyph.transform.transform_point(to),
-                        PathEvent::QuadraticTo(ref mut ctrl, ref mut to) => {
-                            *ctrl = glyph.transform.transform_point(ctrl);
-                            *to = glyph.transform.transform_point(to);
-                        }
-                        PathEvent::CubicTo(ref mut ctrl1, ref mut ctrl2, ref mut to) => {
-                            *ctrl1 = glyph.transform.transform_point(ctrl1);
-                            *ctrl2 = glyph.transform.transform_point(ctrl2);
-                            *to = glyph.transform.transform_point(to);
-                        }
-                    }
-                }
-
-                paths.push(path_buffer)
+                paths.push(Transform2DPathIter::new(glyph_outline, &glyph.transform).collect())
             }
             Err(_) => continue,
         };

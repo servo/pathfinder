@@ -152,8 +152,6 @@ export abstract class Renderer {
         // Draw "scenery" (used in the 3D view).
         this.drawSceneryIfNecessary();
 
-        //console.log(new Float32Array(unwrapNull(this.meshData)[0].bQuadVertexPositions));
-
         const passCount = antialiasingStrategy.passCount;
         for (let pass = 0; pass < passCount; pass++) {
             if (antialiasingStrategy.directRenderingMode !== 'none')
@@ -545,9 +543,6 @@ export abstract class Renderer {
             const coverCurveRange = getMeshIndexRange(meshes.bQuadVertexPositionPathRanges,
                                                       pathRange);
             if (!this.pathIDsAreInstanced) {
-                console.log("coverCurveRange", coverCurveRange);
-                console.log("cover curves", new Float32Array(meshData.bQuadVertexPositions));
-                console.log("path IDs", new Uint16Array(meshData.bQuadVertexPositionPathIDs));
                 gl.drawArrays(gl.TRIANGLES, coverCurveRange.start * 6, coverCurveRange.length * 6);
             } else {
                 renderContext.instancedArraysExt
@@ -745,7 +740,6 @@ export abstract class Renderer {
 }
 
 function getMeshIndexRange(indexRanges: Range[], pathRange: Range): Range {
-    console.log("getMeshIndexRange(", indexRanges, ", ", pathRange, ")");
     if (indexRanges.length === 0)
         return new Range(0, 0);
 

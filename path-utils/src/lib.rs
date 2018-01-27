@@ -21,3 +21,4 @@ pub mod cubic_to_quadratic;
 pub mod normals;
 pub mod segments;
 pub mod stroke;
+pub mod transform;

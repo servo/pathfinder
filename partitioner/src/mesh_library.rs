@@ -259,12 +259,8 @@ impl MeshLibrary {
             }
         }
 
-        println!("curve normals: {:#?}", self.segment_normals.curve_normals);
-
-        println!("{:?}", normals);
-
         fn normal_angle(vector: &Vector2D<f32>) -> f32 {
-            (-vector.y).atan2(vector.x)
+            Vector2D::new(vector.x, -vector.y).angle_from_x_axis().get()
         }
     }
 
