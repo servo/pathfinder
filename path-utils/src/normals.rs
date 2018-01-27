@@ -41,7 +41,7 @@ impl PathNormals {
             loop {
                 match path.next() {
                     Some(PathEvent::MoveTo(to)) | Some(PathEvent::LineTo(to)) => {
-                        positions.push(to)
+                        positions.push(to);
                     }
                     Some(PathEvent::QuadraticTo(ctrl, to)) => {
                         positions.push(ctrl);
@@ -61,34 +61,60 @@ impl PathNormals {
                 }
             }
 
-            let mut last_nonzero_normal = Vector2D::zero();
             self.normals.reserve(positions.len());
 
             for (this_index, this_position) in positions.iter().enumerate() {
-                let prev_index = if this_index > 0 {
-                    this_index - 1
-                } else {
-                    positions.len() - 1
-                };
-                let next_index = if this_index + 1 < positions.len() {
-                    this_index + 1
-                } else {
-                    0
-                };
-                let prev_vector = *this_position - positions[prev_index];
-                let next_vector = positions[next_index] - *this_position;
-                let bisector = prev_vector * next_vector.length() +
-                    next_vector * prev_vector.length();
-
-                let mut normal = bisector.normalize();
-                if normal.square_length().approx_eq(&0.0) {
-                    normal = last_nonzero_normal
-                } else {
-                    last_nonzero_normal = normal
+                let mut prev_index = this_index;
+                let mut prev_vector;
+                loop {
+                    if prev_index > 0 {
+                        prev_index -= 1
+                    } else {
+                        prev_index = positions.len() - 1
+                    }
+                    prev_vector = *this_position - positions[prev_index];
+                    if prev_index == this_index {
+                        println!("uh-oh, NaN prev!");
+                    }
+                    if !prev_vector.square_length().approx_eq(&0.0) {
+                        break
+                    }
                 }
 
-                self.normals.push(normal)
+                let mut next_index = this_index;
+                let mut next_vector;
+                loop {
+                    if next_index + 1 < positions.len() {
+                        next_index += 1
+                    } else {
+                        next_index = 0
+                    }
+                    next_vector = positions[next_index] - *this_position;
+                    if next_index == this_index {
+                        println!("uh-oh, NaN next!");
+                    }
+                    if !next_vector.square_length().approx_eq(&0.0) {
+                        break
+                    }
+                }
+
+                println!("prev vector {:?} ({:?}) next vector {:?} ({:?})",
+                         prev_vector, prev_vector.length(),
+                         next_vector, next_vector.length());
+
+                let prev_normal = rotate(&prev_vector).normalize();
+                let next_normal = rotate(&next_vector).normalize();
+                let mut bisector = (prev_normal + next_normal) * 0.5;
+                if bisector.square_length().approx_eq(&0.0) {
+                    bisector = Vector2D::new(next_vector.y, next_vector.x)
+                }
+
+                self.normals.push(bisector.normalize());
             }
         }
     }
+}
+
+fn rotate(vector: &Vector2D<f32>) -> Vector2D<f32> {
+    Vector2D::new(-vector.y, vector.x)
 }

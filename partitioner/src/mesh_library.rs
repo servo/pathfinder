@@ -10,7 +10,7 @@
 
 use bincode::{self, Infinite};
 use byteorder::{LittleEndian, WriteBytesExt};
-use euclid::Point2D;
+use euclid::{Point2D, Vector2D};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIterator;
 use pathfinder_path_utils::normals::PathNormals;
@@ -232,32 +232,39 @@ impl MeshLibrary {
                 }
                 PathEvent::LineTo(..) => {
                     self.segment_normals.line_normals.push(LineSegmentNormals {
-                        endpoint_0: normals[current_point_normal_index].angle_from_x_axis().get(),
-                        endpoint_1: normals[next_normal_index].angle_from_x_axis().get(),
+                        endpoint_0: normal_angle(&normals[current_point_normal_index]),
+                        endpoint_1: normal_angle(&normals[next_normal_index]),
                     });
                     current_point_normal_index = next_normal_index;
                     next_normal_index += 1;
                 }
                 PathEvent::QuadraticTo(..) => {
                     self.segment_normals.curve_normals.push(CurveSegmentNormals {
-                        endpoint_0: normals[current_point_normal_index].angle_from_x_axis().get(),
-                        control_point: normals[next_normal_index + 0].angle_from_x_axis().get(),
-                        endpoint_1: normals[next_normal_index + 1].angle_from_x_axis().get(),
+                        endpoint_0: normal_angle(&normals[current_point_normal_index]),
+                        control_point: normal_angle(&normals[next_normal_index + 0]),
+                        endpoint_1: normal_angle(&normals[next_normal_index + 1]),
                     });
                     current_point_normal_index = next_normal_index + 1;
                     next_normal_index += 2;
                 }
                 PathEvent::Close => {
                     self.segment_normals.line_normals.push(LineSegmentNormals {
-                        endpoint_0: normals[current_point_normal_index].angle_from_x_axis().get(),
-                        endpoint_1: normals[first_normal_index_of_subpath].angle_from_x_axis()
-                                                                          .get(),
+                        endpoint_0: normal_angle(&normals[current_point_normal_index]),
+                        endpoint_1: normal_angle(&normals[first_normal_index_of_subpath]),
                     });
                 }
                 PathEvent::CubicTo(..) | PathEvent::Arc(..) => {
                     panic!("push_normals(): Convert cubics and arcs to quadratics first!")
                 }
             }
+        }
+
+        println!("curve normals: {:#?}", self.segment_normals.curve_normals);
+
+        println!("{:?}", normals);
+
+        fn normal_angle(vector: &Vector2D<f32>) -> f32 {
+            (-vector.y).atan2(vector.x)
         }
     }
 
