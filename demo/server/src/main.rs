@@ -268,9 +268,7 @@ impl PathPartitioningResult {
                -> PathPartitioningResult {
         let timestamp_before = Instant::now();
 
-        for (path_id, (path, path_descriptor)) in paths.iter()
-                                                       .zip(path_descriptors.iter())
-                                                       .enumerate() {
+        for (path, path_descriptor) in paths.iter().zip(path_descriptors.iter()) {
             path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
             partitioner.partition((path_descriptor.path_index + 1) as u16,
                                   path_descriptor.fill_rule);
@@ -492,9 +490,8 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     for (stored_path_index, path_descriptor) in path_descriptors.iter().enumerate() {
         library.push_segments((path_descriptor.path_index + 1) as u16,
                               PathIter::new(paths[stored_path_index].iter().cloned()));
-        /*let stream = PathBufferStream::subpath_range(&path_buffer,
-                                                     path_descriptor.subpath_indices.clone());
-        library.push_normals(stream);*/
+        library.push_normals((path_descriptor.path_index + 1) as u16,
+                             PathIter::new(paths[stored_path_index].iter().cloned()));
     }
 
     let mut partitioner = Partitioner::new(library);

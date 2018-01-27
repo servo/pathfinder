@@ -9,11 +9,8 @@
 // except according to those terms.
 
 //! Various utilities for manipulating Bézier curves.
-//!
-//! On its own, the partitioner can only generate meshes for fill operations on quadratic Bézier
-//! curves. Frequently, however, other vector drawing operations are desired: for example,
-//! rendering cubic Béziers or stroking paths. These utilities can convert those complex operations
-//! into simpler sequences of quadratic Béziers that the partitioner can handle.
+//! 
+//! Most of these should go upstream to Lyon at some point.
 
 extern crate arrayvec;
 extern crate euclid;
@@ -21,5 +18,6 @@ extern crate lyon_geom;
 extern crate lyon_path;
 
 pub mod cubic_to_quadratic;
+pub mod normals;
 pub mod segments;
 pub mod stroke;

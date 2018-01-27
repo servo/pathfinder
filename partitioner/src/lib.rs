@@ -44,8 +44,6 @@ pub mod builder;
 pub mod mesh_library;
 pub mod partitioner;
 
-mod normal;
-
 /// The fill rule.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

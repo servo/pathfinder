@@ -9,7 +9,6 @@
 // except according to those terms.
 
 use arrayvec::ArrayVec;
-use euclid::approxeq::ApproxEq;
 use euclid::{Angle, Point2D, Vector2D};
 use lyon_geom::{CubicBezierSegment, QuadraticBezierSegment};
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};

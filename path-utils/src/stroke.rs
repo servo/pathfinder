@@ -10,11 +10,8 @@
 
 //! Utilities for converting path strokes to fills.
 
-use euclid::Vector2D;
-use lyon_geom::{LineSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
-use lyon_path::iterator::{PathEvents, PathIterator};
-use std::u32;
+use lyon_path::iterator::PathIterator;
 
 use segments::{Segment, SegmentIter};
 

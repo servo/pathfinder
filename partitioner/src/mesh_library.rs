@@ -13,6 +13,8 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use euclid::Point2D;
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIterator;
+use pathfinder_path_utils::normals::PathNormals;
+use pathfinder_path_utils::segments::{self, SegmentIter};
 use serde::Serialize;
 use std::f32;
 use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
@@ -174,39 +176,30 @@ impl MeshLibrary {
         }
     }
 
-    pub fn push_segments<I>(&mut self, path_id: u16, mut stream: I) where I: PathIterator {
+    pub fn push_segments<I>(&mut self, path_id: u16, stream: I) where I: PathIterator {
         let first_line_index = self.segments.lines.len() as u32;
         let first_curve_index = self.segments.curves.len() as u32;
 
-        while let Some(path_event) = stream.next() {
-            let state = stream.get_state();
-            match path_event {
-                PathEvent::LineTo(endpoint_1) => {
+        let segment_iter = SegmentIter::new(stream);
+        for segment in segment_iter {
+            match segment {
+                segments::Segment::Line(line_segment) => {
                     self.segments.lines.push(LineSegment {
-                        endpoint_0: state.current,
-                        endpoint_1: endpoint_1,
-                    });
+                        endpoint_0: line_segment.from,
+                        endpoint_1: line_segment.to,
+                    })
                 }
-                PathEvent::QuadraticTo(control_point, endpoint_1) => {
+                segments::Segment::Quadratic(curve_segment) => {
                     self.segments.curves.push(CurveSegment {
-                        endpoint_0: state.current,
-                        control_point: control_point,
-                        endpoint_1: endpoint_1,
-                    });
+                        endpoint_0: curve_segment.from,
+                        control_point: curve_segment.ctrl,
+                        endpoint_1: curve_segment.to,
+                    })
                 }
-                PathEvent::Close => {
-                    if state.current != state.first {
-                        self.segments.lines.push(LineSegment {
-                            endpoint_0: state.current,
-                            endpoint_1: state.first,
-                        });
-                    }
+                segments::Segment::EndSubpath(..) => {}
+                segments::Segment::Cubic(..) => {
+                    panic!("push_segments(): Convert cubics to quadratics first!")
                 }
-                PathEvent::CubicTo(..) | PathEvent::Arc(..) => {
-                    // TODO(pcwalton): Add `QuadraticPathIterator` to Lyon.
-                    panic!("Convert cubics and arcs to quadratics first!")
-                }
-                PathEvent::MoveTo(..) => {}
             }
         }
 
@@ -219,8 +212,53 @@ impl MeshLibrary {
     }
 
     /// Computes vertex normals necessary for emboldening and/or stem darkening.
-    pub fn push_normals<I>(&mut self, _stream: I) where I: PathIterator {
-        //normal::push_normals(self, stream)
+    pub fn push_normals<I>(&mut self, _path_id: u16, stream: I) where I: PathIterator {
+        let path_events: Vec<_> = stream.collect();
+
+        let mut normals = PathNormals::new();
+        normals.add_path(path_events.iter().cloned());
+        let normals = normals.normals();
+
+        let mut current_point_normal_index = 0;
+        let mut next_normal_index = 0;
+        let mut first_normal_index_of_subpath = 0;
+
+        for event in path_events {
+            match event {
+                PathEvent::MoveTo(..) => {
+                    first_normal_index_of_subpath = next_normal_index;
+                    current_point_normal_index = next_normal_index;
+                    next_normal_index += 1;
+                }
+                PathEvent::LineTo(..) => {
+                    self.segment_normals.line_normals.push(LineSegmentNormals {
+                        endpoint_0: normals[current_point_normal_index].angle_from_x_axis().get(),
+                        endpoint_1: normals[next_normal_index].angle_from_x_axis().get(),
+                    });
+                    current_point_normal_index = next_normal_index;
+                    next_normal_index += 1;
+                }
+                PathEvent::QuadraticTo(..) => {
+                    self.segment_normals.curve_normals.push(CurveSegmentNormals {
+                        endpoint_0: normals[current_point_normal_index].angle_from_x_axis().get(),
+                        control_point: normals[next_normal_index + 0].angle_from_x_axis().get(),
+                        endpoint_1: normals[next_normal_index + 1].angle_from_x_axis().get(),
+                    });
+                    current_point_normal_index = next_normal_index + 1;
+                    next_normal_index += 2;
+                }
+                PathEvent::Close => {
+                    self.segment_normals.line_normals.push(LineSegmentNormals {
+                        endpoint_0: normals[current_point_normal_index].angle_from_x_axis().get(),
+                        endpoint_1: normals[first_normal_index_of_subpath].angle_from_x_axis()
+                                                                          .get(),
+                    });
+                }
+                PathEvent::CubicTo(..) | PathEvent::Arc(..) => {
+                    panic!("push_normals(): Convert cubics and arcs to quadratics first!")
+                }
+            }
+        }
     }
 
     /// Writes this mesh library to a RIFF file.
