@@ -13,27 +13,27 @@
 use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Vector2D};
 use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
-use lyon_path::iterator::PathIterator;
+use lyon_path::iterator::{PathIter, PathIterator};
 use lyon_path::PathEvent;
 
-pub struct SegmentIter<I> where I: PathIterator {
-    inner: I,
+pub struct SegmentIter<I> where I: Iterator<Item = PathEvent> {
+    inner: PathIter<I>,
     stack: Vec<Segment>,
     was_just_closed: bool,
 }
 
-impl<I> SegmentIter<I> where I: PathIterator {
+impl<I> SegmentIter<I> where I: Iterator<Item = PathEvent> {
     #[inline]
     pub fn new(inner: I) -> SegmentIter<I> {
         SegmentIter {
-            inner: inner,
+            inner: PathIter::new(inner),
             stack: vec![],
             was_just_closed: true,
         }
     }
 }
 
-impl<I> Iterator for SegmentIter<I> where I: PathIterator {
+impl<I> Iterator for SegmentIter<I> where I: Iterator<Item = PathEvent> {
     type Item = Segment;
 
     fn next(&mut self) -> Option<Segment> {

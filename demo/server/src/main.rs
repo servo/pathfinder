@@ -455,7 +455,8 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
         // This might fail; if so, just leave it blank.
         match font_context.glyph_outline(&font_instance, &glyph_key) {
             Ok(glyph_outline) => {
-                paths.push(Transform2DPathIter::new(glyph_outline, &glyph.transform).collect())
+                paths.push(Transform2DPathIter::new(glyph_outline.iter(),
+                                                    &glyph.transform).collect())
             }
             Err(_) => continue,
         };

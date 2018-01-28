@@ -176,7 +176,8 @@ impl MeshLibrary {
         }
     }
 
-    pub fn push_segments<I>(&mut self, path_id: u16, stream: I) where I: PathIterator {
+    pub fn push_segments<I>(&mut self, path_id: u16, stream: I)
+                            where I: Iterator<Item = PathEvent> {
         let first_line_index = self.segments.lines.len() as u32;
         let first_curve_index = self.segments.curves.len() as u32;
 

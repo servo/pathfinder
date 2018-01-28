@@ -28,7 +28,7 @@ impl<'a> Outline<'a> {
     }
 
     #[inline]
-    pub fn path_iter(&self) -> OutlineStream {
+    pub fn iter(&self) -> OutlineStream {
         unsafe {
             OutlineStream::new(self.outline)
         }
