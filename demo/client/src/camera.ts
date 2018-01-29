@@ -135,9 +135,11 @@ export class OrthographicCamera extends Camera {
             this.canvas.addEventListener('mousedown', event => this.onMouseDown(event), false);
             this.canvas.addEventListener('mouseup', event => this.onMouseUp(event), false);
             this.canvas.addEventListener('mousemove', event => this.onMouseMove(event), false);
-            unwrapNull(this.canvas.classList).add('pf-draggable');
+            if (this.canvas.classList != null)
+                this.canvas.classList.add('pf-draggable');
         } else {
-            unwrapNull(this.canvas.classList).remove('pf-draggable');
+            if (this.canvas.classList != null)
+                this.canvas.classList.remove('pf-draggable');
         }
 
         this.onPan = null;
