@@ -11,6 +11,7 @@
 #version 100
 
 #extension GL_EXT_frag_depth : require
+#extension GL_OES_standard_derivatives : require
 
 #define LCD_FILTER_FACTOR_0     (86.0 / 255.0)
 #define LCD_FILTER_FACTOR_1     (77.0 / 255.0)
@@ -104,63 +105,9 @@ float convertPathIndexToViewportDepthValue(int pathIndex) {
     return float(pathIndex) / float(MAX_PATHS) * 2.0 - 1.0;
 }
 
-/// Packs the given path ID into a floating point value suitable for storage in the depth buffer.
-///
-/// This function returns values in window space (i.e. what `gl_FragDepth`/`gl_FragDepthEXT` is
-/// in).
-float convertPathIndexToWindowDepthValue(int pathIndex) {
-    return float(pathIndex) / float(MAX_PATHS);
-}
-
 /// Displaces the given point by the given distance in the direction of the normal angle.
 vec2 dilatePosition(vec2 position, float normalAngle, vec2 amount) {
     return position + vec2(cos(normalAngle), -sin(normalAngle)) * amount;
-}
-
-vec2 offsetPositionVertically(vec2 position, ivec2 framebufferSize, bool roundUp) {
-    position = convertClipToScreenSpace(position, framebufferSize);
-    position.y = roundUp ? ceil(position.y + 1.0) : floor(position.y - 1.0);
-    return convertScreenToClipSpace(position, framebufferSize);
-}
-
-vec2 computeMCAAPosition(vec2 position,
-                         vec4 hints,
-                         vec4 localTransformST,
-                         vec4 globalTransformST,
-                         ivec2 framebufferSize) {
-    if (position == vec2(0.0))
-        return position;
-
-    position = hintPosition(position, hints);
-    position = transformVertexPositionST(position, localTransformST);
-    position = transformVertexPositionST(position, globalTransformST);
-    return convertClipToScreenSpace(position, framebufferSize);
-}
-
-vec2 computeMCAASnappedPosition(vec2 position,
-                                vec4 hints,
-                                vec4 localTransformST,
-                                vec4 globalTransformST,
-                                ivec2 framebufferSize,
-                                float slope,
-                                bool snapToPixelGrid) {
-    position = hintPosition(position, hints);
-    position = transformVertexPositionST(position, localTransformST);
-    position = transformVertexPositionST(position, globalTransformST);
-    position = convertClipToScreenSpace(position, framebufferSize);
-
-    float xNudge;
-    if (snapToPixelGrid) {
-        xNudge = fract(position.x);
-        if (xNudge < 0.5)
-            xNudge = -xNudge;
-        else
-            xNudge = 1.0 - xNudge;
-    } else {
-        xNudge = 0.0;
-    }
-
-    return position + vec2(xNudge, xNudge * slope);
 }
 
 vec2 transformECAAPosition(vec2 position,
@@ -409,21 +356,6 @@ float computeCoverage(vec2 p0X, vec2 dPX, float pixelCenterY, float winding) {
     return abs(area) * winding * 0.5;
 }
 
-/// Returns true if the line runs through this pixel or false otherwise.
-///
-/// The line must run left-to-right and must already be clipped to the left and right sides of the
-/// pixel, which implies that `dP.x` must be within the range [0.0, 1.0].
-///
-/// * `p0X` is the start point of the line.
-/// * `dPX` is the vector from the start point to the endpoint of the line.
-/// * `pixelCenterY` is the Y coordinate of the center of the pixel in window coordinates (i.e.
-///   `gl_FragCoord.y`).
-bool isPartiallyCovered(vec2 p0X, vec2 dPX, float pixelCenterY) {
-    float pixelTop;
-    vec2 dP = clipLineToPixelRow(p0X, dPX, pixelCenterY, pixelTop).zw;
-    return !isNearZero(dP.x) || !isNearZero(dP.y);
-}
-
 /// Solves the equation:
 ///
 ///    x = p0x + t^2 * (p0x - 2*p1x + p2x) + t*(2*p1x - 2*p0x)
@@ -481,4 +413,12 @@ vec4 fetchPathAffineTransform(out vec2 outPathTransformExt,
                                           pathID,
                                           pathTransformExtDimensions);
     return fetchFloat4Data(pathTransformSTTexture, pathID, pathTransformSTDimensions);
+}
+
+float detMat2(mat2 m) {
+    return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+}
+
+mat2 invMat2(mat2 m) {
+    return mat2(m[1][1], -m[0][1], -m[1][0], m[0][0]) / detMat2(m);
 }

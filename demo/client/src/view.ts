@@ -272,6 +272,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.vertexArrayObjectExt = this.gl.getExtension('OES_vertex_array_object');
         this.gl.getExtension('EXT_frag_depth');
         this.gl.getExtension('OES_element_index_uint');
+        this.gl.getExtension('OES_standard_derivatives');
         this.gl.getExtension('OES_texture_float');
         this.gl.getExtension('WEBGL_depth_texture');
 

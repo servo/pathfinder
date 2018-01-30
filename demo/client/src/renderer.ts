@@ -267,14 +267,7 @@ export abstract class Renderer {
     }
 
     setTransformUniform(uniforms: UniformMap, pass: number, objectIndex: number): void {
-        let transform;
-        if (this.antialiasingStrategy == null)
-            transform = glmatrix.mat4.create();
-        else
-            transform = this.antialiasingStrategy.worldTransformForPass(this, pass);
-
-        glmatrix.mat4.mul(transform, transform, this.worldTransform);
-        glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
+        const transform = this.computeTransform(pass, objectIndex);
         this.renderContext.gl.uniformMatrix4fv(uniforms.uTransform, false, transform);
     }
 
@@ -284,16 +277,29 @@ export abstract class Renderer {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
-        const transform = glmatrix.mat4.clone(this.worldTransform);
-        glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
-
-        const translation = glmatrix.vec4.clone([transform[12], transform[13], 0.0, 1.0]);
+        const transform = this.computeTransform(0, objectIndex);
 
         gl.uniform4f(uniforms.uTransformST,
                      transform[0],
                      transform[5],
                      transform[12],
                      transform[13]);
+    }
+
+    setTransformAffineUniforms(uniforms: UniformMap, objectIndex: number): void {
+        // FIXME(pcwalton): Lossy conversion from a 4x4 matrix to an affine matrix is ugly and
+        // fragile. Refactor.
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
+        const transform = this.computeTransform(0, objectIndex);
+
+        gl.uniform4f(uniforms.uTransformST,
+                     transform[0],
+                     transform[5],
+                     transform[12],
+                     transform[13]);
+        gl.uniform2f(uniforms.uTransformExt, transform[1], transform[4]);
     }
 
     uploadPathColors(objectCount: number): void {
@@ -481,7 +487,10 @@ export abstract class Renderer {
         this.initImplicitCoverInteriorVAO(objectIndex, instanceRange, renderingMode);
 
         // Draw direct interior parts.
-        this.setTransformUniform(directInteriorProgram.uniforms, pass, objectIndex);
+        if (renderingMode === 'conservative')
+            this.setTransformAffineUniforms(directInteriorProgram.uniforms, objectIndex);
+        else
+            this.setTransformUniform(directInteriorProgram.uniforms, pass, objectIndex);
         this.setFramebufferSizeUniform(directInteriorProgram.uniforms);
         this.setHintsUniform(directInteriorProgram.uniforms);
         this.setPathColorsUniform(objectIndex, directInteriorProgram.uniforms, 0);
@@ -736,6 +745,18 @@ export abstract class Renderer {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexIDVBO);
         gl.bufferData(gl.ARRAY_BUFFER, vertexIDs, gl.STATIC_DRAW);
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    }
+
+    private computeTransform(pass: number, objectIndex: number): glmatrix.mat4 {
+        let transform;
+        if (this.antialiasingStrategy == null)
+            transform = glmatrix.mat4.create();
+        else
+            transform = this.antialiasingStrategy.worldTransformForPass(this, pass);
+
+        glmatrix.mat4.mul(transform, transform, this.worldTransform);
+        glmatrix.mat4.mul(transform, transform, this.getModelviewTransform(objectIndex));
+        return transform;
     }
 }
 

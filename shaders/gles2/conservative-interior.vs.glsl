@@ -1,6 +1,6 @@
-// pathfinder/shaders/gles2/direct-interior.vs.glsl
+// pathfinder/shaders/gles2/conservative-interior.vs.glsl
 //
-// Copyright (c) 2017 The Pathfinder Project Developers.
+// Copyright (c) 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -17,8 +17,9 @@
 
 precision highp float;
 
-/// A 3D transform to be applied to all points.
-uniform mat4 uTransform;
+/// An affine transform to be applied to all points.
+uniform vec4 uTransformST;
+uniform vec2 uTransformExt;
 /// Vertical snapping positions.
 uniform vec4 uHints;
 /// The framebuffer size in pixels.
@@ -52,21 +53,21 @@ void main() {
     int pathID = int(aPathID);
     int vertexID = int(aVertexID);
 
-    vec2 pathTransformExt;
-    vec4 pathTransformST = fetchPathAffineTransform(pathTransformExt,
-                                                    uPathTransformST,
-                                                    uPathTransformSTDimensions,
-                                                    uPathTransformExt,
-                                                    uPathTransformExtDimensions,
-                                                    pathID);
+    vec4 transformST = fetchFloat4Data(uPathTransformST, pathID, uPathTransformSTDimensions);
 
-    vec2 position = hintPosition(aPosition, uHints);
-    position = transformVertexPositionAffine(position, pathTransformST, pathTransformExt);
-    position = transformVertexPosition(position, uTransform);
-    position = offsetPositionVertically(position, uFramebufferSize, imod(vertexID, 6) < 3);
+    mat2 globalTransformLinear = mat2(uTransformST.x, uTransformExt, uTransformST.y);
+    mat2 localTransformLinear = mat2(transformST.x, 0.0, 0.0, transformST.y);
+    mat2 transformLinear = globalTransformLinear * localTransformLinear;
 
+    vec2 translation = uTransformST.zw + globalTransformLinear * transformST.zw;
+
+    float onePixel = 2.0 / float(uFramebufferSize.y);
+    float dilation = length(invMat2(transformLinear) * vec2(0.0, onePixel));
+
+    vec2 position = aPosition + vec2(0.0, imod(vertexID, 6) < 3 ? dilation : -dilation);
+    position = transformLinear * position + translation;
     float depth = convertPathIndexToViewportDepthValue(pathID);
-    gl_Position = vec4(position, depth, 1.0);
 
+    gl_Position = vec4(position, depth, 1.0);
     vColor = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
 }

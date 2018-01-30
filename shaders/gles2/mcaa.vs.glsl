@@ -34,10 +34,9 @@
 
 precision highp float;
 
-/// A dilation (scale and translation) to be applied to the object.
+/// A scale and transform to be applied to the object.
 uniform vec4 uTransformST;
-/// Vertical snapping positions.
-uniform vec4 uHints;
+uniform vec2 uTransformExt;
 /// The framebuffer size in pixels.
 uniform ivec2 uFramebufferSize;
 /// The size of the path transform buffer texture in texels.
@@ -54,120 +53,47 @@ uniform sampler2D uPathColors;
 uniform bool uMulticolor;
 
 attribute vec2 aTessCoord;
-attribute vec2 aUpperLeftEndpointPosition;
-attribute vec2 aUpperControlPointPosition;
-attribute vec2 aUpperRightEndpointPosition;
-attribute vec2 aLowerRightEndpointPosition;
-attribute vec2 aLowerControlPointPosition;
-attribute vec2 aLowerLeftEndpointPosition;
+attribute vec4 aRect;
+attribute vec4 aUV;
+attribute vec4 aDUVDX;
+attribute vec4 aDUVDY;
+attribute vec4 aSignMode;
 attribute float aPathID;
 
-varying vec4 vUpperEndpoints;
-varying vec4 vLowerEndpoints;
-varying vec4 vControlPoints;
 varying vec4 vColor;
+varying vec4 vUV;
+varying vec4 vSignMode;
 
 void main() {
-    vec2 tlPosition = aUpperLeftEndpointPosition;
-    vec2 tcPosition = aUpperControlPointPosition;
-    vec2 trPosition = aUpperRightEndpointPosition;
-    vec2 blPosition = aLowerLeftEndpointPosition;
-    vec2 bcPosition = aLowerControlPointPosition;
-    vec2 brPosition = aLowerRightEndpointPosition;
     vec2 tessCoord = aTessCoord;
     int pathID = int(floor(aPathID));
 
+    vec4 color;
+    if (uMulticolor)
+        color = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
+    else
+        color = vec4(1.0);
+
     vec4 transformST = fetchFloat4Data(uPathTransformST, pathID, uPathTransformSTDimensions);
-    if (abs(transformST.x) > 0.001 && abs(transformST.y) > 0.001) {
-        vec4 color = fetchFloat4Data(uPathColors, pathID, uPathColorsDimensions);
 
-        vec2 topVector = trPosition - tlPosition, bottomVector = brPosition - blPosition;
+    mat2 globalTransformLinear = mat2(uTransformST.x, uTransformExt, uTransformST.y);
+    mat2 localTransformLinear = mat2(transformST.x, 0.0, 0.0, transformST.y);
+    mat2 rectTransformLinear = mat2(aRect.z - aRect.x, 0.0, 0.0, aRect.w - aRect.y);
+    mat2 transformLinear = globalTransformLinear * localTransformLinear * rectTransformLinear;
 
-        float topSlope = topVector.y / topVector.x;
-        float bottomSlope = bottomVector.y / bottomVector.x;
-        if (abs(topSlope) > MAX_SLOPE)
-            topSlope = sign(topSlope) * MAX_SLOPE;
-        if (abs(bottomSlope) > MAX_SLOPE)
-            bottomSlope = sign(bottomSlope) * MAX_SLOPE;
+    vec2 translation = transformST.zw + localTransformLinear * aRect.xy;
+    translation = uTransformST.zw + globalTransformLinear * translation;
 
-        // Transform the points, and compute the position of this vertex.
-        tlPosition = computeMCAASnappedPosition(tlPosition,
-                                                uHints,
-                                                transformST,
-                                                uTransformST,
-                                                uFramebufferSize,
-                                                topSlope,
-                                                uMulticolor);
-        trPosition = computeMCAASnappedPosition(trPosition,
-                                                uHints,
-                                                transformST,
-                                                uTransformST,
-                                                uFramebufferSize,
-                                                topSlope,
-                                                uMulticolor);
-        tcPosition = computeMCAAPosition(tcPosition,
-                                        uHints,
-                                        transformST,
-                                        uTransformST,
-                                        uFramebufferSize);
-        blPosition = computeMCAASnappedPosition(blPosition,
-                                                uHints,
-                                                transformST,
-                                                uTransformST,
-                                                uFramebufferSize,
-                                                bottomSlope,
-                                                uMulticolor);
-        brPosition = computeMCAASnappedPosition(brPosition,
-                                                uHints,
-                                                transformST,
-                                                uTransformST,
-                                                uFramebufferSize,
-                                                bottomSlope,
-                                                uMulticolor);
-        bcPosition = computeMCAAPosition(bcPosition,
-                                        uHints,
-                                        transformST,
-                                        uTransformST,
-                                        uFramebufferSize);
+    float onePixel = 2.0 / float(uFramebufferSize.y);
+    float dilation = length(invMat2(transformLinear) * vec2(0.0, onePixel));
+    tessCoord.y += tessCoord.y < 0.5 ? -dilation : dilation;
 
-        float depth = convertPathIndexToViewportDepthValue(pathID);
+    vec2 position = transformLinear * tessCoord + translation;
+    vec4 uv = aUV + tessCoord.x * aDUVDX + tessCoord.y * aDUVDY;
+    float depth = convertPathIndexToViewportDepthValue(pathID);
 
-        // Use the same side--in this case, the top--or else floating point error during
-        // partitioning can occasionally cause inconsistent rounding, resulting in cracks.
-        vec2 position;
-        if (tessCoord.y < 0.5) {
-            if (tessCoord.x < 0.25)
-                position = tlPosition;
-            else if (tessCoord.x < 0.75)
-                position = tcPosition;
-            else
-                position = trPosition;
-            position.y = floor(position.y - 0.5);
-        } else {
-            if (tessCoord.x < 0.25)
-                position = blPosition;
-            else if (tessCoord.x < 0.75)
-                position = bcPosition;
-            else
-                position = brPosition;
-            position.y = ceil(position.y + 0.5);
-        }
-
-        if (!uMulticolor) {
-            if (tessCoord.x < 0.25)
-                position.x = floor(position.x);
-            else if (tessCoord.x >= 0.75)
-                position.x = ceil(position.x);
-        }
-
-        position = convertScreenToClipSpace(position, uFramebufferSize);
-
-        gl_Position = vec4(position, depth, 1.0);
-        vUpperEndpoints = vec4(tlPosition, trPosition);
-        vLowerEndpoints = vec4(blPosition, brPosition);
-        vControlPoints = vec4(tcPosition, bcPosition);
-        vColor = color;
-    } else {
-        gl_Position = vec4(0.0);
-    }
+    gl_Position = vec4(position, depth, 1.0);
+    vColor = color;
+    vUV = uv;
+    vSignMode = aSignMode;
 }
