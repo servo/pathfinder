@@ -1,6 +1,6 @@
 // pathfinder/partitioner/src/lib.rs
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -109,13 +109,6 @@ pub struct BQuadVertexPositions {
     pub lower_right_vertex_position: Point2D<f32>,
     pub lower_control_point_position: Point2D<f32>,
     pub lower_left_vertex_position: Point2D<f32>,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-#[repr(u8)]
-pub enum AntialiasingMode {
-    Msaa = 0,
-    Ecaa = 1,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

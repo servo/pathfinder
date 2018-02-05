@@ -1,6 +1,6 @@
 // pathfinder/client/src/mesh-debugger.ts
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -339,20 +339,9 @@ class MeshDebuggerView extends PathfinderView {
         // Draw segments.
         if (this.drawVertices) {
             drawSegmentVertices(context,
-                                new Float32Array(meshes.segmentLines),
-                                new Float32Array(meshes.segmentLineNormals),
-                                meshes.segmentLineCount,
-                                [0, 1],
-                                null,
-                                2,
-                                invScaleFactor,
-                                this.drawControl,
-                                this.drawNormals,
-                                this.drawSegments);
-            drawSegmentVertices(context,
-                                new Float32Array(meshes.segmentCurves),
-                                new Float32Array(meshes.segmentCurveNormals),
-                                meshes.segmentCurveCount,
+                                new Float32Array(meshes.stencilSegments),
+                                new Float32Array(meshes.stencilNormals),
+                                meshes.stencilSegmentCount,
                                 [0, 2],
                                 1,
                                 3,
@@ -421,7 +410,7 @@ function drawSegmentVertices(context: CanvasRenderingContext2D,
                              drawSegments: boolean) {
     for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
         const positionStartOffset = segmentSize * 2 * segmentIndex;
-        const normalStartOffset = segmentSize * segmentIndex;
+        const normalStartOffset = segmentSize * 2 * segmentIndex;
 
         const position0 =
             glmatrix.vec2.clone([segments[positionStartOffset + endpointOffsets[0] * 2 + 0],
@@ -439,14 +428,21 @@ function drawSegmentVertices(context: CanvasRenderingContext2D,
             controlPoint = null;
         }
 
-        const normal0 = normals[normalStartOffset + endpointOffsets[0]];
-        const normal1 = normals[normalStartOffset + endpointOffsets[1]];
+        const normal0 =
+            glmatrix.vec2.clone([normals[normalStartOffset + endpointOffsets[0] * 2 + 0],
+                                 normals[normalStartOffset + endpointOffsets[0] * 2 + 1]]);
+        const normal1 =
+            glmatrix.vec2.clone([normals[normalStartOffset + endpointOffsets[1] * 2 + 0],
+                                 normals[normalStartOffset + endpointOffsets[1] * 2 + 1]]);
 
-        let normalControlPoint: number | null;
-        if (controlPointOffset != null)
-            normalControlPoint = normals[normalStartOffset + controlPointOffset];
-        else
+        let normalControlPoint: glmatrix.vec2 | null;
+        if (controlPointOffset != null) {
+            normalControlPoint =
+                glmatrix.vec2.clone([normals[normalStartOffset + controlPointOffset * 2 + 0],
+                                     normals[normalStartOffset + controlPointOffset * 2 + 1]]);
+        } else {
             normalControlPoint = null;
+        }
 
         if (drawNormals) {
             drawNormal(context, position0, normal0, invScaleFactor, 'edge');
@@ -528,26 +524,34 @@ function drawSegmentControlPoint(context: CanvasRenderingContext2D,
 
 function drawNormal(context: CanvasRenderingContext2D,
                     position: glmatrix.vec2,
-                    normalAngle: number,
+                    normalVector: glmatrix.vec2,
                     invScaleFactor: number,
                     normalType: NormalType) {
     const length = invScaleFactor * NORMAL_LENGTHS[normalType];
     const arrowheadLength = invScaleFactor * NORMAL_ARROWHEAD_LENGTH;
-    const endpoint = glmatrix.vec2.clone([position[0] + length * Math.cos(normalAngle),
-                                          -position[1] + length * Math.sin(normalAngle)]);
+    const endpoint = glmatrix.vec2.clone([position[0] + length * normalVector[0],
+                                          -position[1] + length * -normalVector[1]]);
 
     context.save();
     context.strokeStyle = NORMAL_STROKE_STYLES[normalType];
     context.beginPath();
     context.moveTo(position[0], -position[1]);
     context.lineTo(endpoint[0], endpoint[1]);
-    context.lineTo(endpoint[0] + arrowheadLength * Math.cos(NORMAL_ARROWHEAD_ANGLE + normalAngle),
-                   endpoint[1] + arrowheadLength * Math.sin(NORMAL_ARROWHEAD_ANGLE + normalAngle));
+    context.lineTo(endpoint[0] + arrowheadLength *
+                   (Math.cos(NORMAL_ARROWHEAD_ANGLE) * normalVector[0] +
+                    Math.sin(NORMAL_ARROWHEAD_ANGLE) * normalVector[1]),
+                   endpoint[1] + arrowheadLength *
+                   (Math.sin(NORMAL_ARROWHEAD_ANGLE) * normalVector[0] -
+                    Math.cos(NORMAL_ARROWHEAD_ANGLE) * normalVector[1]));
     context.stroke();
     context.beginPath();
     context.moveTo(endpoint[0], endpoint[1]);
-    context.lineTo(endpoint[0] + arrowheadLength * Math.cos(normalAngle - NORMAL_ARROWHEAD_ANGLE),
-                   endpoint[1] + arrowheadLength * Math.sin(normalAngle - NORMAL_ARROWHEAD_ANGLE));
+    context.lineTo(endpoint[0] + arrowheadLength *
+                   (Math.cos(NORMAL_ARROWHEAD_ANGLE) * normalVector[0] -
+                    Math.sin(NORMAL_ARROWHEAD_ANGLE) * normalVector[1]),
+                   endpoint[1] - arrowheadLength *
+                   (Math.cos(NORMAL_ARROWHEAD_ANGLE) * normalVector[1] +
+                    Math.sin(NORMAL_ARROWHEAD_ANGLE) * normalVector[0]));
     context.stroke();
     context.restore();
 }

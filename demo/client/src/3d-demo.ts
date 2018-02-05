@@ -364,6 +364,8 @@ class ThreeDRenderer extends Renderer {
 
     camera: PerspectiveCamera;
 
+    needsStencil: boolean = false;
+
     get isMulticolor(): boolean {
         return false;
     }

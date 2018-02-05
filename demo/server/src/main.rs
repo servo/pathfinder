@@ -1,6 +1,6 @@
 // pathfinder/demo/server/main.rs
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -474,10 +474,10 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     // Partition the decoded glyph outlines.
     let mut library = MeshLibrary::new();
     for (stored_path_index, path_descriptor) in path_descriptors.iter().enumerate() {
-        library.push_segments((path_descriptor.path_index + 1) as u16,
-                              PathIter::new(paths[stored_path_index].iter().cloned()));
-        library.push_normals((path_descriptor.path_index + 1) as u16,
-                             PathIter::new(paths[stored_path_index].iter().cloned()));
+        library.push_stencil_segments((path_descriptor.path_index + 1) as u16,
+                                      PathIter::new(paths[stored_path_index].iter().cloned()));
+        library.push_stencil_normals((path_descriptor.path_index + 1) as u16,
+                                     paths[stored_path_index].iter().cloned());
     }
 
     let mut partitioner = Partitioner::new(library);

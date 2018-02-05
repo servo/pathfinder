@@ -13,7 +13,6 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Rect, Size2D, Vector2D};
 use lyon_path::PathEvent;
-use lyon_path::iterator::PathIterator;
 use pathfinder_path_utils::normals::PathNormals;
 use pathfinder_path_utils::segments::{self, SegmentIter};
 use serde::Serialize;
@@ -34,8 +33,8 @@ pub struct MeshLibrary {
     pub b_vertex_positions: Vec<Point2D<f32>>,
     pub b_vertex_loop_blinn_data: Vec<BVertexLoopBlinnData>,
     pub b_boxes: Vec<BBox>,
-    pub segments: MeshLibrarySegments,
-    pub segment_normals: MeshLibrarySegmentNormals,
+    pub stencil_segments: Vec<StencilSegment>,
+    pub stencil_normals: Vec<StencilNormals>,
 }
 
 impl MeshLibrary {
@@ -49,8 +48,8 @@ impl MeshLibrary {
             b_vertex_positions: vec![],
             b_vertex_loop_blinn_data: vec![],
             b_boxes: vec![],
-            segments: MeshLibrarySegments::new(),
-            segment_normals: MeshLibrarySegmentNormals::new(),
+            stencil_segments: vec![],
+            stencil_normals: vec![],
         }
     }
 
@@ -62,8 +61,8 @@ impl MeshLibrary {
         self.b_vertex_positions.clear();
         self.b_vertex_loop_blinn_data.clear();
         self.b_boxes.clear();
-        self.segments.clear();
-        self.segment_normals.clear();
+        self.stencil_segments.clear();
+        self.stencil_normals.clear();
     }
 
     pub(crate) fn ensure_path_ranges(&mut self, path_id: u16) -> &mut PathRanges {
@@ -256,93 +255,53 @@ impl MeshLibrary {
         }
     }
 
-    pub fn push_segments<I>(&mut self, path_id: u16, stream: I)
-                            where I: Iterator<Item = PathEvent> {
-        let first_line_index = self.segments.lines.len() as u32;
-        let first_curve_index = self.segments.curves.len() as u32;
+    pub fn push_stencil_segments<I>(&mut self, path_id: u16, stream: I)
+                                    where I: Iterator<Item = PathEvent> {
+        let first_segment_index = self.stencil_segments.len() as u32;
 
         let segment_iter = SegmentIter::new(stream);
         for segment in segment_iter {
             match segment {
                 segments::Segment::Line(line_segment) => {
-                    self.segments.lines.push(LineSegment {
-                        endpoint_0: line_segment.from,
-                        endpoint_1: line_segment.to,
+                    self.stencil_segments.push(StencilSegment {
+                        from: line_segment.from,
+                        ctrl: line_segment.from.lerp(line_segment.to, 0.5),
+                        to: line_segment.to,
                     })
                 }
-                segments::Segment::Quadratic(curve_segment) => {
-                    self.segments.curves.push(CurveSegment {
-                        endpoint_0: curve_segment.from,
-                        control_point: curve_segment.ctrl,
-                        endpoint_1: curve_segment.to,
+                segments::Segment::Quadratic(quadratic_segment) => {
+                    self.stencil_segments.push(StencilSegment {
+                        from: quadratic_segment.from,
+                        ctrl: quadratic_segment.ctrl,
+                        to: quadratic_segment.to,
                     })
+                }
+                segments::Segment::Cubic(..) => {
+                    panic!("push_stencil_segments(): Convert cubics to quadratics first!")
                 }
                 segments::Segment::EndSubpath(..) => {}
-                segments::Segment::Cubic(..) => {
-                    panic!("push_segments(): Convert cubics to quadratics first!")
-                }
             }
         }
 
-        let last_line_index = self.segments.lines.len() as u32;
-        let last_curve_index = self.segments.curves.len() as u32;
+        let last_segment_index = self.stencil_segments.len() as u32;
 
         let path_ranges = self.ensure_path_ranges(path_id);
-        path_ranges.segment_curves = first_curve_index..last_curve_index;
-        path_ranges.segment_lines = first_line_index..last_line_index;
+        path_ranges.stencil_segments = first_segment_index..last_segment_index;
     }
 
-    /// Computes vertex normals necessary for emboldening and/or stem darkening.
-    pub fn push_normals<I>(&mut self, _path_id: u16, stream: I) where I: PathIterator {
-        let path_events: Vec<_> = stream.collect();
-
+    /// Computes vertex normals necessary for emboldening and/or stem darkening. This is intended
+    /// for stencil-and-cover.
+    pub fn push_stencil_normals<I>(&mut self, _path_id: u16, stream: I)
+                                   where I: Iterator<Item = PathEvent> + Clone {
         let mut normals = PathNormals::new();
-        normals.add_path(path_events.iter().cloned());
-        let normals = normals.normals();
-
-        let mut current_point_normal_index = 0;
-        let mut next_normal_index = 0;
-        let mut first_normal_index_of_subpath = 0;
-
-        for event in path_events {
-            match event {
-                PathEvent::MoveTo(..) => {
-                    first_normal_index_of_subpath = next_normal_index;
-                    current_point_normal_index = next_normal_index;
-                    next_normal_index += 1;
-                }
-                PathEvent::LineTo(..) => {
-                    self.segment_normals.line_normals.push(LineSegmentNormals {
-                        endpoint_0: normal_angle(&normals[current_point_normal_index]),
-                        endpoint_1: normal_angle(&normals[next_normal_index]),
-                    });
-                    current_point_normal_index = next_normal_index;
-                    next_normal_index += 1;
-                }
-                PathEvent::QuadraticTo(..) => {
-                    self.segment_normals.curve_normals.push(CurveSegmentNormals {
-                        endpoint_0: normal_angle(&normals[current_point_normal_index]),
-                        control_point: normal_angle(&normals[next_normal_index + 0]),
-                        endpoint_1: normal_angle(&normals[next_normal_index + 1]),
-                    });
-                    current_point_normal_index = next_normal_index + 1;
-                    next_normal_index += 2;
-                }
-                PathEvent::Close => {
-                    self.segment_normals.line_normals.push(LineSegmentNormals {
-                        endpoint_0: normal_angle(&normals[current_point_normal_index]),
-                        endpoint_1: normal_angle(&normals[first_normal_index_of_subpath]),
-                    });
-                }
-                PathEvent::CubicTo(..) | PathEvent::Arc(..) => {
-                    panic!("push_normals(): Convert cubics and arcs to quadratics first!")
-                }
+        normals.add_path(stream);
+        self.stencil_normals.extend(normals.normals().iter().map(|normals| {
+            StencilNormals {
+                from: normals.from,
+                ctrl: normals.ctrl,
+                to: normals.to,
             }
-        }
-
-        fn normal_angle(vector: &Vector2D<f32>) -> f32 {
-            Vector2D::new(vector.x, -vector.y).angle_from_x_axis().get()
-        }
+        }))
     }
 
     /// Writes this mesh library to a RIFF file.
@@ -363,10 +322,8 @@ impl MeshLibrary {
         try!(write_simple_chunk(writer, b"bqvp", &self.b_quad_vertex_positions));
         try!(write_simple_chunk(writer, b"bqii", &self.b_quad_vertex_interior_indices));
         try!(write_simple_chunk(writer, b"bbox", &self.b_boxes));
-        try!(write_simple_chunk(writer, b"slin", &self.segments.lines));
-        try!(write_simple_chunk(writer, b"scur", &self.segments.curves));
-        try!(write_simple_chunk(writer, b"snli", &self.segment_normals.line_normals));
-        try!(write_simple_chunk(writer, b"sncu", &self.segment_normals.curve_normals));
+        try!(write_simple_chunk(writer, b"sseg", &self.stencil_segments));
+        try!(write_simple_chunk(writer, b"snor", &self.stencil_normals));
 
         let total_length = try!(writer.seek(SeekFrom::Current(0)));
         try!(writer.seek(SeekFrom::Start(4)));
@@ -413,8 +370,10 @@ impl MeshLibrary {
                                   |ranges| &ranges.b_quad_vertex_interior_indices));
             try!(write_path_range(writer, b"bver", path_ranges, |ranges| &ranges.b_vertices));
             try!(write_path_range(writer, b"bbox", path_ranges, |ranges| &ranges.b_boxes));
-            try!(write_path_range(writer, b"slin", path_ranges, |ranges| &ranges.segment_lines));
-            try!(write_path_range(writer, b"scur", path_ranges, |ranges| &ranges.segment_curves));
+            try!(write_path_range(writer,
+                                  b"sseg",
+                                  path_ranges,
+                                  |ranges| &ranges.stencil_segments));
             Ok(())
         }
 
@@ -469,6 +428,7 @@ pub struct PathRanges {
     pub b_boxes: Range<u32>,
     pub segment_lines: Range<u32>,
     pub segment_curves: Range<u32>,
+    pub stencil_segments: Range<u32>,
 }
 
 impl PathRanges {
@@ -481,6 +441,7 @@ impl PathRanges {
             b_boxes: 0..0,
             segment_lines: 0..0,
             segment_curves: 0..0,
+            stencil_segments: 0..0,
         }
     }
 
@@ -494,72 +455,6 @@ impl PathRanges {
         self.b_vertices = start.b_vertices..end.b_vertices;
         self.b_boxes = start.b_boxes..end.b_boxes;
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct MeshLibrarySegments {
-    pub lines: Vec<LineSegment>,
-    pub curves: Vec<CurveSegment>,
-}
-
-impl MeshLibrarySegments {
-    fn new() -> MeshLibrarySegments {
-        MeshLibrarySegments {
-            lines: vec![],
-            curves: vec![],
-        }
-    }
-
-    fn clear(&mut self) {
-        self.lines.clear();
-        self.curves.clear();
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct MeshLibrarySegmentNormals {
-    pub line_normals: Vec<LineSegmentNormals>,
-    pub curve_normals: Vec<CurveSegmentNormals>,
-}
-
-impl MeshLibrarySegmentNormals {
-    fn new() -> MeshLibrarySegmentNormals {
-        MeshLibrarySegmentNormals {
-            line_normals: vec![],
-            curve_normals: vec![],
-        }
-    }
-
-    fn clear(&mut self) {
-        self.line_normals.clear();
-        self.curve_normals.clear();
-    }
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct LineSegment {
-    pub endpoint_0: Point2D<f32>,
-    pub endpoint_1: Point2D<f32>,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct CurveSegment {
-    pub endpoint_0: Point2D<f32>,
-    pub control_point: Point2D<f32>,
-    pub endpoint_1: Point2D<f32>,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct LineSegmentNormals {
-    pub endpoint_0: f32,
-    pub endpoint_1: f32,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub struct CurveSegmentNormals {
-    pub endpoint_0: f32,
-    pub control_point: f32,
-    pub endpoint_1: f32,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -578,12 +473,18 @@ pub struct BBox {
     pub lower_mode: f32,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct CornerPositions {
-    upper_left: Point2D<f32>,
-    upper_right: Point2D<f32>,
-    lower_left: Point2D<f32>,
-    lower_right: Point2D<f32>,
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct StencilSegment {
+    pub from: Point2D<f32>,
+    pub ctrl: Point2D<f32>,
+    pub to: Point2D<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct StencilNormals {
+    pub from: Vector2D<f32>,
+    pub ctrl: Vector2D<f32>,
+    pub to: Vector2D<f32>,
 }
 
 #[derive(Clone, Copy, Debug)]

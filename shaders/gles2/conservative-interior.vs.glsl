@@ -62,7 +62,8 @@ void main() {
     vec2 translation = uTransformST.zw + globalTransformLinear * transformST.zw;
 
     float onePixel = 2.0 / float(uFramebufferSize.y);
-    float dilation = length(invMat2(transformLinear) * vec2(0.0, onePixel));
+    float dilation = length(transformVertexPositionInverseLinear(vec2(0.0, onePixel),
+                                                                 transformLinear));
 
     vec2 position = aPosition + vec2(0.0, imod(vertexID, 6) < 3 ? dilation : -dilation);
     position = transformLinear * position + translation;

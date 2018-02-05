@@ -1,6 +1,6 @@
 // pathfinder/client/src/text-renderer.ts
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -21,15 +21,16 @@ import {PathTransformBuffers, Renderer} from './renderer';
 import {ShaderMap} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
 import {calculatePixelRectForGlyph, computeStemDarkeningAmount, GlyphStore, Hint} from "./text";
-import {PathfinderFont, SimpleTextLayout, UnitMetrics} from "./text";
+import {MAX_STEM_DARKENING_PIXELS_PER_EM, PathfinderFont, SimpleTextLayout} from "./text";
+import {UnitMetrics} from "./text";
 import {unwrapNull} from './utils';
 import {RenderContext, Timings} from "./view";
-import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
+import {AdaptiveStencilMeshAAAStrategy} from './xcaa-strategy';
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    xcaa: typeof AdaptiveMonochromeXCAAStrategy;
+    xcaa: typeof AdaptiveStencilMeshAAAStrategy;
 }
 
 const SQRT_1_2: number = 1.0 / Math.sqrt(2.0);
@@ -40,7 +41,7 @@ const MAX_SCALE: number = 0.5;
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    xcaa: AdaptiveMonochromeXCAAStrategy,
+    xcaa: AdaptiveStencilMeshAAAStrategy,
 };
 
 export interface TextRenderContext extends RenderContext {
@@ -66,6 +67,10 @@ export abstract class TextRenderer extends Renderer {
 
     get isMulticolor(): boolean {
         return false;
+    }
+
+    get needsStencil(): boolean {
+        return this.renderContext.fontSize <= MAX_STEM_DARKENING_PIXELS_PER_EM;
     }
 
     get usesSTTransform(): boolean {

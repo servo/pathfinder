@@ -48,12 +48,9 @@ impl<I> Iterator for SegmentIter<I> where I: Iterator<Item = PathEvent> {
             Some(PathEvent::Close) => {
                 self.was_just_closed = true;
                 let state = self.inner.get_state();
-                /*if state.first == current_point {
-                    return Some(Segment::EndSubpath(true))
-                }*/
                 self.stack.push(Segment::EndSubpath(true));
                 Some(Segment::Line(LineSegment {
-                    from: state.current,
+                    from: current_point,
                     to: state.first,
                 }))
             }

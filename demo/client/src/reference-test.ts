@@ -30,7 +30,7 @@ import {Hint} from "./text";
 import {PathfinderFont, TextFrame, TextRun} from "./text";
 import {unwrapNull} from "./utils";
 import {DemoView} from "./view";
-import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
+import {AdaptiveStencilMeshAAAStrategy} from './xcaa-strategy';
 
 const FONT: string = 'open-sans';
 const TEXT_COLOR: number[] = [0, 0, 0, 255];
@@ -38,7 +38,7 @@ const TEXT_COLOR: number[] = [0, 0, 0, 255];
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    xcaa: AdaptiveMonochromeXCAAStrategy,
+    xcaa: AdaptiveStencilMeshAAAStrategy,
 };
 
 const RENDER_REFERENCE_URIS: PerTestType<string> = {
@@ -91,7 +91,7 @@ type ReferenceRenderer = 'core-graphics' | 'freetype';
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    xcaa: typeof AdaptiveMonochromeXCAAStrategy;
+    xcaa: typeof AdaptiveStencilMeshAAAStrategy;
 }
 
 class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
@@ -659,16 +659,15 @@ class ReferenceTestTextRenderer extends Renderer {
     renderContext: ReferenceTestView;
     camera: OrthographicCamera;
 
+    needsStencil: boolean = false;
+    isMulticolor: boolean = false;
+
     get usesSTTransform(): boolean {
         return this.camera.usesSTTransform;
     }
 
     get destFramebuffer(): WebGLFramebuffer | null {
         return null;
-    }
-
-    get isMulticolor(): boolean {
-        return false;
     }
 
     get bgColor(): glmatrix.vec4 {

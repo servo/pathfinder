@@ -8,13 +8,19 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use euclid::Vector2D;
-use euclid::approxeq::ApproxEq;
+use euclid::{Point2D, Vector2D};
 use lyon_path::PathEvent;
+
+#[derive(Clone, Copy, Debug)]
+pub struct SegmentNormals {
+    pub from: Vector2D<f32>,
+    pub ctrl: Vector2D<f32>,
+    pub to: Vector2D<f32>,
+}
 
 #[derive(Clone)]
 pub struct PathNormals {
-    normals: Vec<Vector2D<f32>>,
+    normals: Vec<SegmentNormals>,
 }
 
 impl PathNormals {
@@ -26,7 +32,7 @@ impl PathNormals {
     }
 
     #[inline]
-    pub fn normals(&self) -> &[Vector2D<f32>] {
+    pub fn normals(&self) -> &[SegmentNormals] {
         &self.normals
     }
 
@@ -34,77 +40,96 @@ impl PathNormals {
         self.normals.clear()
     }
 
-    pub fn add_path<I>(&mut self, path: I) where I: Iterator<Item = PathEvent> {
-        let mut path = path.peekable();
-        while path.peek().is_some() {
-            let mut positions = vec![];
-            loop {
-                match path.next() {
-                    Some(PathEvent::MoveTo(to)) | Some(PathEvent::LineTo(to)) => {
-                        positions.push(to);
-                    }
-                    Some(PathEvent::QuadraticTo(ctrl, to)) => {
-                        positions.push(ctrl);
-                        positions.push(to);
-                    }
-                    Some(PathEvent::CubicTo(ctrl1, ctrl2, to)) => { 
-                        positions.push(ctrl1);
-                        positions.push(ctrl2);
-                        positions.push(to);
-                    }
-                    Some(PathEvent::Arc(..)) => panic!("PathNormals: Arcs currently unsupported!"),
-                    None | Some(PathEvent::Close) => break,
+    pub fn add_path<I>(&mut self, mut stream: I) where I: Iterator<Item = PathEvent> + Clone {
+        let (mut path_stream, mut path_points) = (stream.clone(), vec![]);
+        while let Some(event) = stream.next() {
+            match event {
+                PathEvent::MoveTo(to) => path_points.push(to),
+                PathEvent::LineTo(to) => path_points.push(to),
+                PathEvent::QuadraticTo(ctrl, to) => path_points.extend_from_slice(&[ctrl, to]),
+                PathEvent::CubicTo(..) => {
+                    panic!("PathNormals::add_path(): Convert cubics to quadratics first!")
                 }
-
-                if let Some(&PathEvent::MoveTo(..)) = path.peek() {
-                    break
+                PathEvent::Arc(..) => {
+                    panic!("PathNormals::add_path(): Convert arcs to quadratics first!")
+                }
+                PathEvent::Close => {
+                    self.flush(path_stream, &mut path_points);
+                    path_stream = stream.clone();
                 }
             }
+        }
 
-            self.normals.reserve(positions.len());
+        self.flush(path_stream, &mut path_points);
+    }
 
-            for (this_index, this_position) in positions.iter().enumerate() {
-                let mut prev_index = this_index;
-                let mut prev_vector;
-                loop {
-                    if prev_index > 0 {
-                        prev_index -= 1
-                    } else {
-                        prev_index = positions.len() - 1
-                    }
-                    prev_vector = *this_position - positions[prev_index];
-                    if !prev_vector.square_length().approx_eq(&0.0) {
-                        break
-                    }
+    fn flush<I>(&mut self, path_stream: I, path_points: &mut Vec<Point2D<f32>>)
+                where I: Iterator<Item = PathEvent> + Clone {
+        match path_points.len() {
+            0 | 1 => path_points.clear(),
+            2 => {
+                self.normals.push(SegmentNormals {
+                    from: path_points[1] - path_points[0],
+                    ctrl: Vector2D::zero(),
+                    to: path_points[0] - path_points[1],
+                });
+                path_points.clear();
+            }
+            _ => self.flush_slow(path_stream, path_points),
+        }
+    }
+
+    fn flush_slow<I>(&mut self, path_stream: I, path_points: &mut Vec<Point2D<f32>>)
+                     where I: Iterator<Item = PathEvent> + Clone {
+        let mut normals = vec![Vector2D::zero(); path_points.len()];
+        *normals.last_mut().unwrap() = compute_normal(&path_points[path_points.len() - 2],
+                                                      &path_points[path_points.len() - 1],
+                                                      &path_points[0]);
+        normals[0] = compute_normal(&path_points[path_points.len() - 1],
+                                    &path_points[0],
+                                    &path_points[1]);
+        for (index, window) in path_points.windows(3).enumerate() {
+            normals[index + 1] = compute_normal(&window[0], &window[1], &window[2]);
+        }
+
+        path_points.clear();
+
+        let mut next_normal_index = 0;
+        for event in path_stream {
+            match event {
+                PathEvent::MoveTo(_) => next_normal_index += 1,
+                PathEvent::LineTo(_) => {
+                    next_normal_index += 1;
+                    self.normals.push(SegmentNormals {
+                        from: normals[next_normal_index - 2],
+                        ctrl: Vector2D::zero(),
+                        to: normals[next_normal_index - 1],
+                    });
                 }
-
-                let mut next_index = this_index;
-                let mut next_vector;
-                loop {
-                    if next_index + 1 < positions.len() {
-                        next_index += 1
-                    } else {
-                        next_index = 0
-                    }
-                    next_vector = positions[next_index] - *this_position;
-                    if !next_vector.square_length().approx_eq(&0.0) {
-                        break
-                    }
+                PathEvent::QuadraticTo(..) => {
+                    next_normal_index += 2;
+                    self.normals.push(SegmentNormals {
+                        from: normals[next_normal_index - 3],
+                        ctrl: normals[next_normal_index - 2],
+                        to: normals[next_normal_index - 1],
+                    })
                 }
-
-                let prev_normal = rotate(&prev_vector).normalize();
-                let next_normal = rotate(&next_vector).normalize();
-                let mut bisector = (prev_normal + next_normal) * 0.5;
-                if bisector.square_length().approx_eq(&0.0) {
-                    bisector = Vector2D::new(next_vector.y, next_vector.x)
+                PathEvent::CubicTo(..) | PathEvent::Arc(..) => unreachable!(),
+                PathEvent::Close => {
+                    self.normals.push(SegmentNormals {
+                        from: normals[next_normal_index - 1],
+                        ctrl: Vector2D::zero(),
+                        to: normals[0],
+                    });
+                    break;
                 }
-
-                self.normals.push(bisector.normalize());
             }
         }
     }
 }
 
-fn rotate(vector: &Vector2D<f32>) -> Vector2D<f32> {
-    Vector2D::new(-vector.y, vector.x)
+fn compute_normal(prev: &Point2D<f32>, current: &Point2D<f32>, next: &Point2D<f32>)
+                    -> Vector2D<f32> {
+    let vector = ((*current - *prev) + (*next - *current)).normalize();
+    Vector2D::new(vector.y, -vector.x)
 }

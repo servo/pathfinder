@@ -78,13 +78,6 @@ const B_QUAD_FIELD_COUNT: number = B_QUAD_SIZE / UINT32_SIZE;
 const INDEX_SIZE: number = 4;
 const B_QUAD_VERTEX_POSITION_SIZE: number = 12 * 4;
 const B_VERTEX_POSITION_SIZE: number = 4 * 2;
-const EDGE_BOUNDING_BOX_VERTEX_POSITION_SIZE: number = 4 * 4;
-const EDGE_UPPER_LINE_VERTEX_POSITION_SIZE: number = 4 * 4;
-const EDGE_LOWER_LINE_VERTEX_POSITION_SIZE: number = 4 * 4;
-const EDGE_UPPER_CURVE_VERTEX_POSITION_SIZE: number = 4 * 6;
-const EDGE_LOWER_CURVE_VERTEX_POSITION_SIZE: number = 4 * 6;
-const SEGMENT_LINE_SIZE: number = 4 * 4;
-const SEGMENT_CURVE_SIZE: number = 4 * 6;
 
 const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
     bBoxPathIDs: { type: 'Uint16', size: 1 },
@@ -92,12 +85,9 @@ const MESH_TYPES: Meshes<MeshBufferTypeDescriptor> = {
     bQuadVertexInteriorIndices: { type: 'Uint32', size: 1 },
     bQuadVertexPositionPathIDs: { type: 'Uint16', size: 6 },
     bQuadVertexPositions: { type: 'Float32', size: 12 },
-    segmentCurveNormals: { type: 'Float32', size: 3 },
-    segmentCurvePathIDs: { type: 'Uint16', size: 1 },
-    segmentCurves: { type: 'Float32', size: 6 },
-    segmentLineNormals: { type: 'Float32', size: 2 },
-    segmentLinePathIDs: { type: 'Uint16', size: 1 },
-    segmentLines: { type: 'Float32', size: 4 },
+    stencilNormals: { type: 'Float32', size: 6 },
+    stencilSegmentPathIDs: { type: 'Uint16', size: 1 },
+    stencilSegments: { type: 'Float32', size: 6 },
 };
 
 const BUFFER_TYPES: Meshes<BufferType> = {
@@ -106,12 +96,9 @@ const BUFFER_TYPES: Meshes<BufferType> = {
     bQuadVertexInteriorIndices: 'ELEMENT_ARRAY_BUFFER',
     bQuadVertexPositionPathIDs: 'ARRAY_BUFFER',
     bQuadVertexPositions: 'ARRAY_BUFFER',
-    segmentCurveNormals: 'ARRAY_BUFFER',
-    segmentCurvePathIDs: 'ARRAY_BUFFER',
-    segmentCurves: 'ARRAY_BUFFER',
-    segmentLineNormals: 'ARRAY_BUFFER',
-    segmentLinePathIDs: 'ARRAY_BUFFER',
-    segmentLines: 'ARRAY_BUFFER',
+    stencilNormals: 'ARRAY_BUFFER',
+    stencilSegmentPathIDs: 'ARRAY_BUFFER',
+    stencilSegments: 'ARRAY_BUFFER',
 };
 
 const EDGE_BUFFER_NAMES = ['UpperLine', 'UpperCurve', 'LowerLine', 'LowerCurve'];
@@ -125,10 +112,8 @@ const BUFFER_TYPE_FOURCCS: BufferTypeFourCCTable = {
     bbox: 'bBoxes',
     bqii: 'bQuadVertexInteriorIndices',
     bqvp: 'bQuadVertexPositions',
-    scur: 'segmentCurves',
-    slin: 'segmentLines',
-    sncu: 'segmentCurveNormals',
-    snli: 'segmentLineNormals',
+    snor: 'stencilNormals',
+    sseg: 'stencilSegments',
 };
 
 // Must match the FourCCs in
@@ -137,31 +122,27 @@ const PATH_RANGE_TYPE_FOURCCS: PathRangeTypeFourCCTable = {
     bbox: 'bBoxPathRanges',
     bqii: 'bQuadVertexInteriorIndexPathRanges',
     bqvp: 'bQuadVertexPositionPathRanges',
-    scur: 'segmentCurveRanges',
-    slin: 'segmentLineRanges',
+    sseg: 'stencilSegmentPathRanges',
 };
 
 const RANGE_TO_COUNT_TABLE: RangeToCountTable = {
     bBoxPathRanges: 'bBoxCount',
     bQuadVertexInteriorIndexPathRanges: 'bQuadVertexInteriorIndexCount',
     bQuadVertexPositionPathRanges: 'bQuadVertexPositionCount',
-    segmentCurveRanges: 'segmentCurveCount',
-    segmentLineRanges: 'segmentLineCount',
+    stencilSegmentPathRanges: 'stencilSegmentCount',
 };
 
 const RANGE_TO_RANGE_BUFFER_TABLE: RangeToRangeBufferTable = {
     bBoxPathRanges: 'bBoxPathIDs',
     bQuadVertexPositionPathRanges: 'bQuadVertexPositionPathIDs',
-    segmentCurveRanges: 'segmentCurvePathIDs',
-    segmentLineRanges: 'segmentLinePathIDs',
+    stencilSegmentPathRanges: 'stencilSegmentPathIDs',
 };
 
 const RANGE_KEYS: Array<keyof PathRanges> = [
     'bQuadVertexPositionPathRanges',
     'bQuadVertexInteriorIndexPathRanges',
     'bBoxPathRanges',
-    'segmentCurveRanges',
-    'segmentLineRanges',
+    'stencilSegmentPathRanges',
 ];
 
 type BufferType = 'ARRAY_BUFFER' | 'ELEMENT_ARRAY_BUFFER';
@@ -170,31 +151,26 @@ export interface Meshes<T> {
     readonly bQuadVertexPositions: T;
     readonly bQuadVertexInteriorIndices: T;
     readonly bBoxes: T;
-    readonly segmentLines: T;
-    readonly segmentCurves: T;
-    readonly segmentLineNormals: T;
-    readonly segmentCurveNormals: T;
+    readonly stencilSegments: T;
+    readonly stencilNormals: T;
 
     bQuadVertexPositionPathIDs: T;
     bBoxPathIDs: T;
-    segmentLinePathIDs: T;
-    segmentCurvePathIDs: T;
+    stencilSegmentPathIDs: T;
 }
 
 interface MeshDataCounts {
     readonly bQuadVertexPositionCount: number;
     readonly bQuadVertexInteriorIndexCount: number;
     readonly bBoxCount: number;
-    readonly segmentLineCount: number;
-    readonly segmentCurveCount: number;
+    readonly stencilSegmentCount: number;
 }
 
 interface PathRanges {
     bQuadVertexPositionPathRanges: Range[];
     bQuadVertexInteriorIndexPathRanges: Range[];
     bBoxPathRanges: Range[];
-    segmentCurveRanges: Range[];
-    segmentLineRanges: Range[];
+    stencilSegmentPathRanges: Range[];
 }
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, PathRanges {
@@ -203,27 +179,22 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
     readonly bBoxes: ArrayBuffer;
     readonly bBoxSigns: ArrayBuffer;
     readonly bBoxIndices: ArrayBuffer;
-    readonly segmentLines: ArrayBuffer;
-    readonly segmentCurves: ArrayBuffer;
-    readonly segmentLineNormals: ArrayBuffer;
-    readonly segmentCurveNormals: ArrayBuffer;
+    readonly stencilSegments: ArrayBuffer;
+    readonly stencilNormals: ArrayBuffer;
 
     readonly bQuadVertexPositionCount: number;
     readonly bQuadVertexInteriorIndexCount: number;
     readonly bBoxCount: number;
-    readonly segmentLineCount: number;
-    readonly segmentCurveCount: number;
+    readonly stencilSegmentCount: number;
 
     bQuadVertexPositionPathIDs: ArrayBuffer;
     bBoxPathIDs: ArrayBuffer;
-    segmentCurvePathIDs: ArrayBuffer;
-    segmentLinePathIDs: ArrayBuffer;
+    stencilSegmentPathIDs: ArrayBuffer;
 
     bQuadVertexPositionPathRanges: Range[];
     bQuadVertexInteriorIndexPathRanges: Range[];
     bBoxPathRanges: Range[];
-    segmentCurveRanges: Range[];
-    segmentLineRanges: Range[];
+    stencilSegmentPathRanges: Range[];
 
     constructor(meshes: ArrayBuffer | Meshes<ArrayBuffer>, optionalRanges?: PathRanges) {
         if (meshes instanceof ArrayBuffer) {
@@ -261,8 +232,7 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
         this.bQuadVertexInteriorIndexCount = this.bQuadVertexInteriorIndices.byteLength /
             INDEX_SIZE;
         this.bBoxCount = this.bBoxes.byteLength / (FLOAT32_SIZE * 6);
-        this.segmentCurveCount = this.segmentCurves.byteLength / SEGMENT_CURVE_SIZE;
-        this.segmentLineCount = this.segmentLines.byteLength / SEGMENT_LINE_SIZE;
+        this.stencilSegmentCount = this.stencilSegments.byteLength / (FLOAT32_SIZE * 6);
 
         this.rebuildPathIDBuffers();
     }
@@ -339,16 +309,8 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
             const lastBBoxIndex = bBoxVertexCopyResult.originalEndIndex;
 
             // Copy over segments.
-            copySegments(['segmentLines', 'segmentLineNormals'],
-                         'segmentLineRanges',
-                         expandedArrays,
-                         expandedRanges,
-                         originalBuffers,
-                         originalRanges,
-                         expandedPathID,
-                         originalPathID);
-            copySegments(['segmentCurves', 'segmentCurveNormals'],
-                         'segmentCurveRanges',
+            copySegments(['stencilSegments', 'stencilNormals'],
+                         'stencilSegmentPathRanges',
                          expandedArrays,
                          expandedRanges,
                          originalBuffers,
@@ -428,18 +390,14 @@ export class PathfinderMeshBuffers implements Meshes<WebGLBuffer>, PathRanges {
     readonly bBoxSigns: WebGLBuffer;
     readonly bBoxIndices: WebGLBuffer;
     readonly bBoxPathIDs: WebGLBuffer;
-    readonly segmentLines: WebGLBuffer;
-    readonly segmentCurves: WebGLBuffer;
-    readonly segmentLinePathIDs: WebGLBuffer;
-    readonly segmentCurvePathIDs: WebGLBuffer;
-    readonly segmentLineNormals: WebGLBuffer;
-    readonly segmentCurveNormals: WebGLBuffer;
+    readonly stencilSegments: WebGLBuffer;
+    readonly stencilSegmentPathIDs: WebGLBuffer;
+    readonly stencilNormals: WebGLBuffer;
 
     readonly bQuadVertexPositionPathRanges: Range[];
     readonly bQuadVertexInteriorIndexPathRanges: Range[];
     readonly bBoxPathRanges: Range[];
-    readonly segmentCurveRanges: Range[];
-    readonly segmentLineRanges: Range[];
+    readonly stencilSegmentPathRanges: Range[];
 
     constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>) {

@@ -38,6 +38,14 @@ int imod(int ia, int ib) {
     return int(floor(m + 0.5));
 }
 
+float fastSign(float x) {
+    return x > 0.0 ? 1.0 : -1.0;
+}
+
+float det2(mat2 m) {
+    return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+}
+
 /// Returns the *2D* result of transforming the given 2D point with the given 4D transformation
 /// matrix.
 ///
@@ -56,6 +64,11 @@ vec2 transformVertexPositionST(vec2 position, vec4 transformST) {
 
 vec2 transformVertexPositionAffine(vec2 position, vec4 transformST, vec2 transformExt) {
     return position * transformST.xy + position.yx * transformExt + transformST.zw;
+}
+
+vec2 transformVertexPositionInverseLinear(vec2 position, mat2 transform) {
+    position = vec2(det2(mat2(position, transform[1])), det2(mat2(transform[0], position)));
+    return position / det2(transform);
 }
 
 /// Interpolates the given 2D position in the vertical direction using the given ultra-slight
@@ -108,170 +121,6 @@ float convertPathIndexToViewportDepthValue(int pathIndex) {
 /// Displaces the given point by the given distance in the direction of the normal angle.
 vec2 dilatePosition(vec2 position, float normalAngle, vec2 amount) {
     return position + vec2(cos(normalAngle), -sin(normalAngle)) * amount;
-}
-
-vec2 transformECAAPosition(vec2 position,
-                           vec4 localTransformST,
-                           vec2 localTransformExt,
-                           mat4 globalTransform) {
-    position = transformVertexPositionAffine(position, localTransformST, localTransformExt);
-    return transformVertexPosition(position, globalTransform);
-}
-
-vec2 transformECAAPositionToScreenSpace(vec2 position,
-                                        vec4 localTransformST,
-                                        vec2 localTransformExt,
-                                        mat4 globalTransform,
-                                        ivec2 framebufferSize) {
-    position = transformECAAPosition(position,
-                                     localTransformST,
-                                     localTransformExt,
-                                     globalTransform);
-    return convertClipToScreenSpace(position, framebufferSize);
-}
-
-vec2 computeECAAPosition(vec2 position,
-                         float normalAngle,
-                         vec2 emboldenAmount,
-                         vec4 hints,
-                         vec4 localTransformST,
-                         vec2 localTransformExt,
-                         mat4 globalTransform,
-                         ivec2 framebufferSize) {
-    position = dilatePosition(position, normalAngle, emboldenAmount);
-    position = hintPosition(position, hints);
-    position = transformECAAPositionToScreenSpace(position,
-                                                  localTransformST,
-                                                  localTransformExt,
-                                                  globalTransform,
-                                                  framebufferSize);
-    return position;
-}
-
-float computeECAAWinding(inout vec2 leftPosition, inout vec2 rightPosition) {
-    float winding = sign(leftPosition.x - rightPosition.x);
-    if (winding > 0.0) {
-        vec2 tmp = leftPosition;
-        leftPosition = rightPosition;
-        rightPosition = tmp;
-    }
-
-    return rightPosition.x - leftPosition.x > EPSILON ? winding : 0.0;
-}
-
-vec2 computeECAAQuadPositionFromTransformedPositions(vec2 leftPosition,
-                                                     vec2 rightPosition,
-                                                     vec2 quadPosition,
-                                                     ivec2 framebufferSize,
-                                                     vec4 localTransformST,
-                                                     vec2 localTransformExt,
-                                                     mat4 globalTransform,
-                                                     vec4 bounds,
-                                                     vec3 leftTopRightEdges) {
-    vec2 edgeBL = bounds.xy, edgeTL = bounds.xw, edgeTR = bounds.zw, edgeBR = bounds.zy;
-    edgeBL = transformECAAPosition(edgeBL, localTransformST, localTransformExt, globalTransform);
-    edgeBR = transformECAAPosition(edgeBR, localTransformST, localTransformExt, globalTransform);
-    edgeTL = transformECAAPosition(edgeTL, localTransformST, localTransformExt, globalTransform);
-    edgeTR = transformECAAPosition(edgeTR, localTransformST, localTransformExt, globalTransform);
-
-    // Find the bottom of the path, and convert to clip space.
-    //
-    // FIXME(pcwalton): Speed this up somehow?
-    float pathBottomY = max(max(edgeBL.y, edgeBR.y), max(edgeTL.y, edgeTR.y));
-    pathBottomY = (pathBottomY + 1.0) * 0.5 * float(framebufferSize.y);
-
-    vec4 extents = vec4(leftTopRightEdges, pathBottomY);
-    vec2 position = mix(floor(extents.xy), ceil(extents.zw), quadPosition);
-    return convertScreenToClipSpace(position, framebufferSize);
-}
-
-// FIXME(pcwalton): Clean up this signature somehow?
-bool computeECAAQuadPosition(out vec2 outPosition,
-                             out float outWinding,
-                             inout vec2 leftPosition,
-                             inout vec2 rightPosition,
-                             vec2 quadPosition,
-                             ivec2 framebufferSize,
-                             vec4 localTransformST,
-                             vec2 localTransformExt,
-                             mat4 globalTransform,
-                             vec4 hints,
-                             vec4 bounds,
-                             vec2 normalAngles,
-                             vec2 emboldenAmount) {
-    leftPosition = computeECAAPosition(leftPosition,
-                                       normalAngles.x,
-                                       emboldenAmount,
-                                       hints,
-                                       localTransformST,
-                                       localTransformExt,
-                                       globalTransform,
-                                       framebufferSize);
-    rightPosition = computeECAAPosition(rightPosition,
-                                        normalAngles.y,
-                                        emboldenAmount,
-                                        hints,
-                                        localTransformST,
-                                        localTransformExt,
-                                        globalTransform,
-                                        framebufferSize);
-
-    float winding = computeECAAWinding(leftPosition, rightPosition);
-    outWinding = winding;
-    if (winding == 0.0) {
-        outPosition = vec2(0.0);
-        return false;
-    }
-
-    vec3 leftTopRightEdges = vec3(leftPosition.x,
-                                  min(leftPosition.y, rightPosition.y),
-                                  rightPosition.x);
-    outPosition = computeECAAQuadPositionFromTransformedPositions(leftPosition,
-                                                                  rightPosition,
-                                                                  quadPosition,
-                                                                  framebufferSize,
-                                                                  localTransformST,
-                                                                  localTransformExt,
-                                                                  globalTransform,
-                                                                  bounds,
-                                                                  leftTopRightEdges);
-    return true;
-}
-
-bool splitCurveAndComputeECAAWinding(out float outWinding,
-                                     out vec3 outLeftTopRightEdges,
-                                     inout vec2 leftPosition,
-                                     inout vec2 rightPosition,
-                                     vec2 controlPointPosition,
-                                     int passIndex) {
-    // Split at the X inflection point if necessary.
-    float num = leftPosition.x - controlPointPosition.x;
-    float denom = leftPosition.x - 2.0 * controlPointPosition.x + rightPosition.x;
-    float inflectionT = num / denom;
-    if (inflectionT > EPSILON && inflectionT < 1.0 - EPSILON) {
-        vec2 newCP0 = mix(leftPosition, controlPointPosition, inflectionT);
-        vec2 newCP1 = mix(controlPointPosition, rightPosition, inflectionT);
-        vec2 inflectionPoint = mix(newCP0, newCP1, inflectionT);
-        if (passIndex == 0) {
-            controlPointPosition = newCP0;
-            rightPosition = inflectionPoint;
-        } else {
-            controlPointPosition = newCP1;
-            leftPosition = inflectionPoint;
-        }
-    } else if (passIndex != 0) {
-        return false;
-    }
-
-    float winding = computeECAAWinding(leftPosition, rightPosition);
-    outWinding = winding;
-    if (winding == 0.0)
-        return false;
-
-    outLeftTopRightEdges = vec3(min(leftPosition.x, controlPointPosition.x),
-                                min(min(leftPosition.y, controlPointPosition.y), rightPosition.y),
-                                max(rightPosition.x, controlPointPosition.x));
-    return true;
 }
 
 /// Returns true if the slope of the line along the given vector is negative.
@@ -415,10 +264,30 @@ vec4 fetchPathAffineTransform(out vec2 outPathTransformExt,
     return fetchFloat4Data(pathTransformSTTexture, pathID, pathTransformSTDimensions);
 }
 
-float detMat2(mat2 m) {
-    return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+// Are we inside the convex hull of the curve? (This will always be false if this is a line.)
+bool insideCurve(vec3 uv) {
+    return uv.z != 0.0 && uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0;
 }
 
-mat2 invMat2(mat2 m) {
-    return mat2(m[1][1], -m[0][1], -m[1][0], m[0][0]) / detMat2(m);
+float signedDistanceToCurve(vec2 uv, vec2 dUVDX, vec2 dUVDY, bool inCurve) {
+    // u^2 - v for curves inside uv square; u - v otherwise.
+    float g = uv.x;
+    vec2 dG = vec2(dUVDX.x, dUVDY.x);
+    if (inCurve) {
+        g *= uv.x;
+        dG *= 2.0 * uv.x;
+    }
+    g -= uv.y;
+    dG -= vec2(dUVDX.y, dUVDY.y);
+    return g / length(dG);
+}
+
+// Cubic approximation to the square area coverage, accurate to about 4%.
+float estimateArea(float dist) {
+    if (dist >= 0.707107)
+        return 0.5;
+    // Catch NaNs here.
+    if (!(dist > -0.707107))
+        return -0.5;
+    return 1.14191 * dist - 0.83570 * dist * dist * dist;
 }
