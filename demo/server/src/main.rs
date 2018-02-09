@@ -215,6 +215,10 @@ enum PartitionSvgPathsError {
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionSvgPathsRequest {
     paths: Vec<PartitionSvgPath>,
+    #[serde(rename = "viewBoxWidth")]
+    view_box_width: f32,
+    #[serde(rename = "viewBoxHeight")]
+    view_box_height: f32,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -557,6 +561,10 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
         path_index += 1;
     }
+
+    // Compute approximation tolerance.
+    let tolerance = f32::max(request.view_box_width, request.view_box_height) * 0.001;
+    partitioner.builder_mut().set_approx_tolerance(tolerance);
 
     // Partition the paths.
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
