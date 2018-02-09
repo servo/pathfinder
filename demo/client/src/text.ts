@@ -34,7 +34,7 @@ const STEM_DARKENING_FACTORS: glmatrix.vec2 = glmatrix.vec2.clone([
 const MAX_STEM_DARKENING_AMOUNT: glmatrix.vec2 = glmatrix.vec2.clone([0.3 * SQRT_2, 0.3 * SQRT_2]);
 
 // This value is a subjective cutoff. Above this ppem value, no stem darkening is performed.
-const MAX_STEM_DARKENING_PIXELS_PER_EM: number = 72.0;
+export const MAX_STEM_DARKENING_PIXELS_PER_EM: number = 72.0;
 
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
 

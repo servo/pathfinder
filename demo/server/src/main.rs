@@ -1,6 +1,6 @@
 // pathfinder/demo/server/main.rs
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -215,6 +215,10 @@ enum PartitionSvgPathsError {
 #[derive(Clone, Serialize, Deserialize)]
 struct PartitionSvgPathsRequest {
     paths: Vec<PartitionSvgPath>,
+    #[serde(rename = "viewBoxWidth")]
+    view_box_width: f32,
+    #[serde(rename = "viewBoxHeight")]
+    view_box_height: f32,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -470,10 +474,10 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     // Partition the decoded glyph outlines.
     let mut library = MeshLibrary::new();
     for (stored_path_index, path_descriptor) in path_descriptors.iter().enumerate() {
-        library.push_segments((path_descriptor.path_index + 1) as u16,
-                              PathIter::new(paths[stored_path_index].iter().cloned()));
-        library.push_normals((path_descriptor.path_index + 1) as u16,
-                             PathIter::new(paths[stored_path_index].iter().cloned()));
+        library.push_stencil_segments((path_descriptor.path_index + 1) as u16,
+                                      PathIter::new(paths[stored_path_index].iter().cloned()));
+        library.push_stencil_normals((path_descriptor.path_index + 1) as u16,
+                                     paths[stored_path_index].iter().cloned());
     }
 
     let mut partitioner = Partitioner::new(library);
@@ -557,6 +561,10 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
         path_index += 1;
     }
+
+    // Compute approximation tolerance.
+    let tolerance = f32::max(request.view_box_width, request.view_box_height) * 0.001;
+    partitioner.builder_mut().set_approx_tolerance(tolerance);
 
     // Partition the paths.
     let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,

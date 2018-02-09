@@ -33,7 +33,6 @@ import {TextRenderContext, TextRenderer} from './text-renderer';
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
 import {DemoView, RenderContext, Timings, TIMINGS} from './view';
-import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
 
 const DEFAULT_TEXT: string =
 `’Twas brillig, and the slithy toves

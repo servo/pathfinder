@@ -128,7 +128,11 @@ export class SVGLoader {
         const paths = pathIndex == null ? this.paths : [this.paths[pathIndex]];
         let time = 0;
         return window.fetch(PARTITION_SVG_PATHS_ENDPOINT_URL, {
-            body: JSON.stringify({ paths: paths }),
+            body: JSON.stringify({
+                paths: paths,
+                viewBoxHeight: this.svgViewBox[3] - this.svgViewBox[1],
+                viewBoxWidth: this.svgViewBox[2] - this.svgViewBox[0],
+            }),
             headers: {'Content-Type': 'application/json'} as any,
             method: 'POST',
         }).then(response => {

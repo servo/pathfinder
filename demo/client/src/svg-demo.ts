@@ -95,6 +95,8 @@ class SVGDemoView extends DemoView {
 class SVGDemoRenderer extends SVGRenderer {
     renderContext: SVGDemoView;
 
+    needsStencil: boolean = false;
+
     protected get loader(): SVGLoader {
         return this.renderContext.appController.loader;
     }

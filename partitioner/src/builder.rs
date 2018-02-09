@@ -17,13 +17,14 @@ use std::ops::Range;
 
 const TANGENT_PARAMETER_TOLERANCE: f32 = 0.001;
 
-const CUBIC_APPROX_TOLERANCE: f32 = 0.001;
+const DEFAULT_APPROX_TOLERANCE: f32 = 0.001;
 
 // TODO(pcwalton): A better debug.
 #[derive(Debug)]
 pub struct Builder {
     pub endpoints: Vec<Endpoint>,
     pub subpath_ranges: Vec<Range<u32>>,
+    pub approx_tolerance: f32,
 }
 
 impl Builder {
@@ -32,7 +33,13 @@ impl Builder {
         Builder {
             endpoints: vec![],
             subpath_ranges: vec![],
+            approx_tolerance: DEFAULT_APPROX_TOLERANCE,
         }
+    }
+
+    #[inline]
+    pub fn set_approx_tolerance(&mut self, tolerance: f32) {
+        self.approx_tolerance = tolerance
     }
 
     #[inline]
@@ -165,7 +172,7 @@ impl PathBuilder for Builder {
         };
 
         for quadratic_segment in CubicToQuadraticSegmentIter::new(&cubic_segment,
-                                                                  CUBIC_APPROX_TOLERANCE) {
+                                                                  self.approx_tolerance) {
             self.quadratic_bezier_to(quadratic_segment.ctrl, quadratic_segment.to)
         }
     }

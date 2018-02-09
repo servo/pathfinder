@@ -46,6 +46,8 @@ export abstract class SVGRenderer extends Renderer {
 
     camera: OrthographicCamera;
 
+    needsStencil: boolean = false;
+
     private options: SVGRendererOptions;
 
     get isMulticolor(): boolean {

@@ -100,6 +100,7 @@ fn convert_font(font_path: &Path, output_path: &Path) -> Result<(), ()> {
         let path_index = (glyph_index + 1) as u16;
         partitioner.library_mut().push_segments(path_index, path.iter());
         partitioner.library_mut().push_normals(path_index, path.iter());
+        partitioner.library_mut().push_stencil_segments(path_index, path.iter());
 
         paths.push((path_index, path.iter().collect()));
     }

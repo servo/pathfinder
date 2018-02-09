@@ -71,6 +71,7 @@ export abstract class Renderer {
     }
 
     abstract get isMulticolor(): boolean;
+    abstract get needsStencil(): boolean;
 
     abstract get destFramebuffer(): WebGLFramebuffer | null;
     abstract get destAllocatedSize(): glmatrix.vec2;

@@ -28,7 +28,7 @@ import {BUILTIN_FONT_URI, ExpandedMeshData, GlyphStore, PathfinderFont, TextFram
 import {computeStemDarkeningAmount, TextRun} from "./text";
 import {assert, lerp, PathfinderError, unwrapNull, unwrapUndef} from "./utils";
 import {DemoView, Timings} from "./view";
-import {AdaptiveMonochromeXCAAStrategy} from './xcaa-strategy';
+import {AdaptiveStencilMeshAAAStrategy} from './xcaa-strategy';
 
 const STRING: string = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -44,7 +44,7 @@ const MAX_RUNTIME: number = 3000;
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    xcaa: AdaptiveMonochromeXCAAStrategy,
+    xcaa: AdaptiveStencilMeshAAAStrategy,
 };
 
 interface BenchmarkModeMap<T> {
@@ -57,7 +57,7 @@ type BenchmarkMode = 'text' | 'svg';
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    xcaa: typeof AdaptiveMonochromeXCAAStrategy;
+    xcaa: typeof AdaptiveStencilMeshAAAStrategy;
 }
 
 interface TestParameter {
@@ -423,9 +423,8 @@ class BenchmarkTextRenderer extends Renderer {
 
     camera: OrthographicCamera;
 
-    get isMulticolor(): boolean {
-        return false;
-    }
+    needsStencil: boolean = false;
+    isMulticolor: boolean = false;
 
     get usesSTTransform(): boolean {
         return this.camera.usesSTTransform;

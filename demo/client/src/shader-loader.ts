@@ -21,11 +21,9 @@ export interface ShaderMap<T> {
     directInterior: T;
     direct3DCurve: T;
     direct3DInterior: T;
-    ecaaLine: T;
-    ecaaCurve: T;
-    ecaaTransformedCurve: T;
     mcaa: T;
     ssaaSubpixelResolve: T;
+    stencilAAA: T;
     xcaaMonoResolve: T;
     xcaaMonoSubpixelResolve: T;
 }
@@ -47,9 +45,7 @@ export const SHADER_NAMES: Array<keyof ShaderMap<void>> = [
     'direct3DInterior',
     'ssaaSubpixelResolve',
     'mcaa',
-    'ecaaLine',
-    'ecaaCurve',
-    'ecaaTransformedCurve',
+    'stencilAAA',
     'xcaaMonoResolve',
     'xcaaMonoSubpixelResolve',
     'demo3DDistantGlyph',
@@ -93,18 +89,6 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
         fragment: "/glsl/gles2/direct-interior.fs.glsl",
         vertex: "/glsl/gles2/direct-interior.vs.glsl",
     },
-    ecaaCurve: {
-        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-curve.vs.glsl",
-    },
-    ecaaLine: {
-        fragment: "/glsl/gles2/ecaa-line.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-line.vs.glsl",
-    },
-    ecaaTransformedCurve: {
-        fragment: "/glsl/gles2/ecaa-curve.fs.glsl",
-        vertex: "/glsl/gles2/ecaa-transformed-curve.vs.glsl",
-    },
     mcaa: {
         fragment: "/glsl/gles2/mcaa.fs.glsl",
         vertex: "/glsl/gles2/mcaa.vs.glsl",
@@ -112,6 +96,10 @@ const SHADER_URLS: ShaderMap<ShaderProgramURLs> = {
     ssaaSubpixelResolve: {
         fragment: "/glsl/gles2/ssaa-subpixel-resolve.fs.glsl",
         vertex: "/glsl/gles2/blit.vs.glsl",
+    },
+    stencilAAA: {
+        fragment: "/glsl/gles2/stencil-aaa.fs.glsl",
+        vertex: "/glsl/gles2/stencil-aaa.vs.glsl",
     },
     xcaaMonoResolve: {
         fragment: "/glsl/gles2/xcaa-mono-resolve.fs.glsl",

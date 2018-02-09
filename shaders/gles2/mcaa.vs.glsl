@@ -1,6 +1,6 @@
 // pathfinder/shaders/gles2/mcaa.vs.glsl
 //
-// Copyright (c) 2017 The Pathfinder Project Developers.
+// Copyright (c) 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -57,6 +57,7 @@ attribute vec4 aRect;
 attribute vec4 aUV;
 attribute vec4 aDUVDX;
 attribute vec4 aDUVDY;
+// TODO(pcwalton): This is redundant; sign 0 can be used to indicate lines.
 attribute vec4 aSignMode;
 attribute float aPathID;
 
@@ -85,7 +86,8 @@ void main() {
     translation = uTransformST.zw + globalTransformLinear * translation;
 
     float onePixel = 2.0 / float(uFramebufferSize.y);
-    float dilation = length(invMat2(transformLinear) * vec2(0.0, onePixel));
+    float dilation = length(transformVertexPositionInverseLinear(vec2(0.0, onePixel),
+                                                                 transformLinear));
     tessCoord.y += tessCoord.y < 0.5 ? -dilation : dilation;
 
     vec2 position = transformLinear * tessCoord + translation;
