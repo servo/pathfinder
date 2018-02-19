@@ -183,6 +183,9 @@ button > svg path {
 label.pf-disabled {
     color: gray;
 }
+.btn-group input[type="radio"] {
+    -moz-appearance: none;
+}
 
 /*
  * Arrow

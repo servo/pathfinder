@@ -86,21 +86,21 @@ interface NormalsTable<T> {
 }
 
 class MeshDebuggerAppController extends AppController {
-    meshes: PathfinderMeshData | null;
+    meshes: PathfinderMeshData | null = null;
 
     protected readonly defaultFile: string = FONT;
 
-    private file: PathfinderFont | SVGLoader | null;
-    private fileType: FileType;
-    private fileData: ArrayBuffer | null;
+    private file: PathfinderFont | SVGLoader | null = null;
+    private fileType!: FileType;
+    private fileData: ArrayBuffer | null = null;
 
-    private openModal: HTMLElement;
-    private openFileSelect: HTMLSelectElement;
-    private fontPathSelectGroup: HTMLElement;
-    private fontPathSelect: HTMLSelectElement;
+    private openModal!: HTMLElement;
+    private openFileSelect!: HTMLSelectElement;
+    private fontPathSelectGroup!: HTMLElement;
+    private fontPathSelect!: HTMLSelectElement;
 
-    private filePicker: FilePickerView;
-    private view: MeshDebuggerView;
+    private filePicker!: FilePickerView;
+    private view!: MeshDebuggerView;
 
     start() {
         super.start();

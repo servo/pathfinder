@@ -42,7 +42,7 @@ export interface SVGRendererOptions {
 }
 
 export abstract class SVGRenderer extends Renderer {
-    renderContext: RenderContext;
+    renderContext!: RenderContext;
 
     camera: OrthographicCamera;
 
@@ -95,10 +95,12 @@ export abstract class SVGRenderer extends Renderer {
 
         this.options = options;
 
-        this.camera = new OrthographicCamera(this.canvas, {
+        // FIXME(pcwalton): Get the canvas a better way?
+        this.camera = new OrthographicCamera((this as any).canvas, {
             fixed: !!this.options.fixed,
             scaleBounds: true,
         });
+
         this.camera.onPan = () => this.renderContext.setDirty();
         this.camera.onZoom = () => this.renderContext.setDirty();
         this.camera.onRotate = () => this.renderContext.setDirty();

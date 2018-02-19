@@ -26,11 +26,11 @@ const SVG_NS: string = "http://www.w3.org/2000/svg";
 const DEFAULT_FILE: string = 'tiger';
 
 class SVGDemoController extends DemoAppController<SVGDemoView> {
-    loader: SVGLoader;
+    loader!: SVGLoader;
 
     protected readonly builtinFileURI: string = BUILTIN_SVG_URI;
 
-    private meshes: PathfinderMeshData;
+    private meshes!: PathfinderMeshData;
 
     start() {
         super.start();
@@ -93,7 +93,7 @@ class SVGDemoView extends DemoView {
 }
 
 class SVGDemoRenderer extends SVGRenderer {
-    renderContext: SVGDemoView;
+    renderContext!: SVGDemoView;
 
     needsStencil: boolean = false;
 

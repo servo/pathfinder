@@ -63,6 +63,7 @@ export abstract class PathfinderView {
 
     constructor() {
         this.dirty = false;
+        this.pulseHandle = 0;
         this.suppressAutomaticRedraw = false;
         this.canvas = unwrapNull(document.getElementById('pf-canvas')) as HTMLCanvasElement;
         window.addEventListener('resize', () => this.resizeToFit(false), false);
@@ -137,24 +138,24 @@ export abstract class PathfinderView {
 }
 
 export abstract class DemoView extends PathfinderView implements RenderContext {
-    readonly renderer: Renderer;
+    readonly renderer!: Renderer;
 
-    gl: WebGLRenderingContext;
+    gl!: WebGLRenderingContext;
 
     shaderPrograms: ShaderMap<PathfinderShaderProgram>;
     gammaLUT: HTMLImageElement;
 
-    instancedArraysExt: ANGLEInstancedArrays;
-    textureHalfFloatExt: OESTextureHalfFloat;
-    timerQueryExt: EXTDisjointTimerQuery;
-    vertexArrayObjectExt: OESVertexArrayObject;
+    instancedArraysExt!: ANGLE_instanced_arrays;
+    textureHalfFloatExt!: OESTextureHalfFloat;
+    timerQueryExt!: EXTDisjointTimerQuery;
+    vertexArrayObjectExt!: OESVertexArrayObject;
 
-    quadPositionsBuffer: WebGLBuffer;
-    quadTexCoordsBuffer: WebGLBuffer;
-    quadElementsBuffer: WebGLBuffer;
+    quadPositionsBuffer!: WebGLBuffer;
+    quadTexCoordsBuffer!: WebGLBuffer;
+    quadElementsBuffer!: WebGLBuffer;
 
-    atlasRenderingTimerQuery: WebGLQuery;
-    compositingTimerQuery: WebGLQuery;
+    atlasRenderingTimerQuery!: WebGLQuery;
+    compositingTimerQuery!: WebGLQuery;
 
     meshes: PathfinderMeshBuffers[];
     meshData: PathfinderMeshData[];
@@ -178,6 +179,9 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
         super();
+
+        this.meshes = [];
+        this.meshData = [];
 
         this.initContext();
 
@@ -266,10 +270,10 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.gl = expectNotNull(this.canvas.getContext('webgl', { antialias: false, depth: true }),
                                 "Failed to initialize WebGL! Check that your browser supports it.");
         this.colorBufferHalfFloatExt = this.gl.getExtension('EXT_color_buffer_half_float');
-        this.instancedArraysExt = this.gl.getExtension('ANGLE_instanced_arrays');
-        this.textureHalfFloatExt = this.gl.getExtension('OES_texture_half_float');
+        this.instancedArraysExt = unwrapNull(this.gl.getExtension('ANGLE_instanced_arrays'));
+        this.textureHalfFloatExt = unwrapNull(this.gl.getExtension('OES_texture_half_float'));
         this.timerQueryExt = this.gl.getExtension('EXT_disjoint_timer_query');
-        this.vertexArrayObjectExt = this.gl.getExtension('OES_vertex_array_object');
+        this.vertexArrayObjectExt = unwrapNull(this.gl.getExtension('OES_vertex_array_object'));
         this.gl.getExtension('EXT_frag_depth');
         this.gl.getExtension('OES_element_index_uint');
         this.gl.getExtension('OES_standard_derivatives');

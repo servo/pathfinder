@@ -174,27 +174,27 @@ interface PathRanges {
 }
 
 export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, PathRanges {
-    readonly bQuadVertexPositions: ArrayBuffer;
-    readonly bQuadVertexInteriorIndices: ArrayBuffer;
-    readonly bBoxes: ArrayBuffer;
-    readonly bBoxSigns: ArrayBuffer;
-    readonly bBoxIndices: ArrayBuffer;
-    readonly stencilSegments: ArrayBuffer;
-    readonly stencilNormals: ArrayBuffer;
+    readonly bQuadVertexPositions!: ArrayBuffer;
+    readonly bQuadVertexInteriorIndices!: ArrayBuffer;
+    readonly bBoxes!: ArrayBuffer;
+    readonly bBoxSigns!: ArrayBuffer;
+    readonly bBoxIndices!: ArrayBuffer;
+    readonly stencilSegments!: ArrayBuffer;
+    readonly stencilNormals!: ArrayBuffer;
 
     readonly bQuadVertexPositionCount: number;
     readonly bQuadVertexInteriorIndexCount: number;
     readonly bBoxCount: number;
     readonly stencilSegmentCount: number;
 
-    bQuadVertexPositionPathIDs: ArrayBuffer;
-    bBoxPathIDs: ArrayBuffer;
-    stencilSegmentPathIDs: ArrayBuffer;
+    bQuadVertexPositionPathIDs!: ArrayBuffer;
+    bBoxPathIDs!: ArrayBuffer;
+    stencilSegmentPathIDs!: ArrayBuffer;
 
-    bQuadVertexPositionPathRanges: Range[];
-    bQuadVertexInteriorIndexPathRanges: Range[];
-    bBoxPathRanges: Range[];
-    stencilSegmentPathRanges: Range[];
+    bQuadVertexPositionPathRanges!: Range[];
+    bQuadVertexInteriorIndexPathRanges!: Range[];
+    bBoxPathRanges!: Range[];
+    stencilSegmentPathRanges!: Range[];
 
     constructor(meshes: ArrayBuffer | Meshes<ArrayBuffer>, optionalRanges?: PathRanges) {
         if (meshes instanceof ArrayBuffer) {
@@ -383,21 +383,21 @@ export class PathfinderMeshData implements Meshes<ArrayBuffer>, MeshDataCounts, 
 }
 
 export class PathfinderMeshBuffers implements Meshes<WebGLBuffer>, PathRanges {
-    readonly bQuadVertexPositions: WebGLBuffer;
-    readonly bQuadVertexPositionPathIDs: WebGLBuffer;
-    readonly bQuadVertexInteriorIndices: WebGLBuffer;
-    readonly bBoxes: WebGLBuffer;
-    readonly bBoxSigns: WebGLBuffer;
-    readonly bBoxIndices: WebGLBuffer;
-    readonly bBoxPathIDs: WebGLBuffer;
-    readonly stencilSegments: WebGLBuffer;
-    readonly stencilSegmentPathIDs: WebGLBuffer;
-    readonly stencilNormals: WebGLBuffer;
+    readonly bQuadVertexPositions!: WebGLBuffer;
+    readonly bQuadVertexPositionPathIDs!: WebGLBuffer;
+    readonly bQuadVertexInteriorIndices!: WebGLBuffer;
+    readonly bBoxes!: WebGLBuffer;
+    readonly bBoxSigns!: WebGLBuffer;
+    readonly bBoxIndices!: WebGLBuffer;
+    readonly bBoxPathIDs!: WebGLBuffer;
+    readonly stencilSegments!: WebGLBuffer;
+    readonly stencilSegmentPathIDs!: WebGLBuffer;
+    readonly stencilNormals!: WebGLBuffer;
 
-    readonly bQuadVertexPositionPathRanges: Range[];
-    readonly bQuadVertexInteriorIndexPathRanges: Range[];
-    readonly bBoxPathRanges: Range[];
-    readonly stencilSegmentPathRanges: Range[];
+    readonly bQuadVertexPositionPathRanges!: Range[];
+    readonly bQuadVertexInteriorIndexPathRanges!: Range[];
+    readonly bBoxPathRanges!: Range[];
+    readonly stencilSegmentPathRanges!: Range[];
 
     constructor(gl: WebGLRenderingContext, meshData: PathfinderMeshData) {
         for (const bufferName of Object.keys(BUFFER_TYPES) as Array<keyof Meshes<void>>) {

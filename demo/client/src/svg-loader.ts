@@ -99,7 +99,7 @@ export class SVGLoader {
     isMonochrome: boolean;
 
     private svg: SVGSVGElement;
-    private fileData: ArrayBuffer;
+    private fileData!: ArrayBuffer;
 
     private paths: any[];
     private clipPathIDs: ClipPathIDTable;
@@ -108,7 +108,10 @@ export class SVGLoader {
         this.scale = 1.0;
         this.pathInstances = [];
         this.pathBounds = [];
+        this.paths = [];
+        this.clipPathIDs = {};
         this.svgBounds = glmatrix.vec4.create();
+        this.svgViewBox = glmatrix.vec4.create();
         this.svg = unwrapNull(document.getElementById('pf-svg')) as Element as SVGSVGElement;
         this.isMonochrome = false;
     }

@@ -125,18 +125,18 @@ interface MeshDescriptor {
 }
 
 class ThreeDController extends DemoAppController<ThreeDView> {
-    font: PathfinderFont;
-    textFrames: TextFrame[];
-    glyphStore: GlyphStore;
-    meshDescriptors: MeshDescriptor[];
+    font!: PathfinderFont;
+    textFrames!: TextFrame[];
+    glyphStore!: GlyphStore;
+    meshDescriptors!: MeshDescriptor[];
 
-    atlasGlyphs: AtlasGlyph[];
-    atlas: Atlas;
+    atlasGlyphs!: AtlasGlyph[];
+    atlas!: Atlas;
 
-    baseMeshes: PathfinderMeshData;
-    private expandedMeshes: PathfinderMeshData[];
+    baseMeshes!: PathfinderMeshData;
+    private expandedMeshes!: PathfinderMeshData[];
 
-    private monumentPromise: Promise<MonumentSide[]>;
+    private monumentPromise!: Promise<MonumentSide[]>;
 
     start() {
         super.start();
@@ -360,7 +360,7 @@ class ThreeDView extends DemoView implements TextRenderContext {
 }
 
 class ThreeDRenderer extends Renderer {
-    renderContext: ThreeDView;
+    renderContext!: ThreeDView;
 
     camera: PerspectiveCamera;
 
@@ -412,7 +412,7 @@ class ThreeDRenderer extends Renderer {
     private cubeVertexPositionBuffer: WebGLBuffer;
     private cubeIndexBuffer: WebGLBuffer;
 
-    private glyphPositionsBuffer: WebGLBuffer;
+    private glyphPositionsBuffer!: WebGLBuffer;
     private glyphPositions: number[];
     private glyphPositionRanges: Range[];
     private glyphTexCoords: glmatrix.vec4[];
@@ -424,6 +424,13 @@ class ThreeDRenderer extends Renderer {
         super(renderContext);
 
         const gl = renderContext.gl;
+
+        this.glyphPositions = [];
+        this.glyphPositionRanges = [];
+        this.glyphTexCoords = [];
+        this.glyphSizes = [];
+
+        this.distantGlyphVAO = null;
 
         this.camera = new PerspectiveCamera(renderContext.canvas, {
             innerCollisionExtent: MONUMENT_SCALE[0],
@@ -924,6 +931,8 @@ class ThreeDAtlasRenderer extends TextRenderer {
     constructor(renderContext: ThreeDView, atlasGlyphs: AtlasGlyph[]) {
         super(renderContext);
         this.allAtlasGlyphs = atlasGlyphs;
+        this.glyphTexCoords = [];
+        this.glyphSizes = [];
     }
 
     renderAtlas(): void {

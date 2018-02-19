@@ -120,24 +120,24 @@ declare module 'opentype.js' {
 }
 
 class TextDemoController extends DemoAppController<TextDemoView> {
-    font: PathfinderFont;
-    layout: SimpleTextLayout;
-    glyphStore: GlyphStore;
-    atlasGlyphs: AtlasGlyph[];
+    font!: PathfinderFont;
+    layout!: SimpleTextLayout;
+    glyphStore!: GlyphStore;
+    atlasGlyphs!: AtlasGlyph[];
 
-    private hintingSelect: HTMLSelectElement;
-    private emboldenInput: HTMLInputElement;
+    private hintingSelect!: HTMLSelectElement;
+    private emboldenInput!: HTMLInputElement;
 
-    private editTextModal: HTMLElement;
-    private editTextArea: HTMLTextAreaElement;
+    private editTextModal!: HTMLElement;
+    private editTextArea!: HTMLTextAreaElement;
 
     private _atlas: Atlas;
 
-    private meshes: PathfinderMeshData;
+    private meshes!: PathfinderMeshData;
 
-    private _fontSize: number;
-    private _rotationAngle: number;
-    private _emboldenAmount: number;
+    private _fontSize!: number;
+    private _rotationAngle!: number;
+    private _emboldenAmount!: number;
 
     private text: string;
 
@@ -440,13 +440,13 @@ class TextDemoView extends DemoView implements TextRenderContext {
 }
 
 class TextDemoRenderer extends TextRenderer {
-    renderContext: TextDemoView;
+    renderContext!: TextDemoView;
 
-    glyphPositionsBuffer: WebGLBuffer;
-    glyphTexCoordsBuffer: WebGLBuffer;
-    glyphElementsBuffer: WebGLBuffer;
+    glyphPositionsBuffer!: WebGLBuffer;
+    glyphTexCoordsBuffer!: WebGLBuffer;
+    glyphElementsBuffer!: WebGLBuffer;
 
-    private glyphBounds: Float32Array;
+    private glyphBounds!: Float32Array;
 
     get layout(): SimpleTextLayout {
         return this.renderContext.appController.layout;

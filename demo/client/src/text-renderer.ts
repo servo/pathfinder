@@ -58,12 +58,12 @@ export interface TextRenderContext extends RenderContext {
 }
 
 export abstract class TextRenderer extends Renderer {
-    renderContext: TextRenderContext;
+    renderContext!: TextRenderContext;
 
     camera: OrthographicCamera;
 
-    atlasFramebuffer: WebGLFramebuffer;
-    atlasDepthTexture: WebGLTexture;
+    atlasFramebuffer!: WebGLFramebuffer;
+    atlasDepthTexture!: WebGLTexture;
 
     get isMulticolor(): boolean {
         return false;
@@ -142,8 +142,8 @@ export abstract class TextRenderer extends Renderer {
         return glmatrix.vec2.create();
     }
 
-    private stemDarkening: StemDarkeningMode;
-    private subpixelAA: SubpixelAAType;
+    private stemDarkening!: StemDarkeningMode;
+    private subpixelAA!: SubpixelAAType;
 
     constructor(renderContext: TextRenderContext) {
         super(renderContext);

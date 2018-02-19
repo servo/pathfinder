@@ -33,9 +33,9 @@ export default class SSAAStrategy extends AntialiasingStrategy {
 
     private destFramebufferSize: glmatrix.vec2;
     private supersampledFramebufferSize: glmatrix.vec2;
-    private supersampledColorTexture: WebGLTexture;
-    private supersampledDepthTexture: WebGLTexture;
-    private supersampledFramebuffer: WebGLFramebuffer;
+    private supersampledColorTexture!: WebGLTexture;
+    private supersampledDepthTexture!: WebGLTexture;
+    private supersampledFramebuffer!: WebGLFramebuffer;
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
         super();

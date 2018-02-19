@@ -73,11 +73,9 @@ interface Switches {
 }
 
 export abstract class AppController {
-    protected canvas: HTMLCanvasElement;
-
-    protected selectFileElement: HTMLSelectElement | null;
-
-    protected screenshotButton: HTMLButtonElement | null;
+    protected canvas!: HTMLCanvasElement;
+    protected selectFileElement: HTMLSelectElement | null = null;
+    protected screenshotButton: HTMLButtonElement | null = null;
 
     start(): void {
         this.selectFileElement = document.getElementById('pf-select-file') as HTMLSelectElement |
@@ -111,19 +109,19 @@ export abstract class AppController {
 
 export abstract class DemoAppController<View extends DemoView> extends AppController
                                                                implements Switches {
-    view: Promise<View>;
+    view!: Promise<View>;
 
-    subpixelAASwitchInputs: SwitchInputs | null;
-    gammaCorrectionSwitchInputs: SwitchInputs | null;
-    stemDarkeningSwitchInputs: SwitchInputs | null;
+    subpixelAASwitchInputs: SwitchInputs | null = null;
+    gammaCorrectionSwitchInputs: SwitchInputs | null = null;
+    stemDarkeningSwitchInputs: SwitchInputs | null = null;
 
     protected abstract readonly builtinFileURI: string;
 
-    protected filePickerView: FilePickerView | null;
+    protected filePickerView: FilePickerView | null = null;
 
-    protected aaLevelSelect: HTMLSelectElement | null;
+    protected aaLevelSelect: HTMLSelectElement | null = null;
 
-    private fpsLabel: HTMLElement | null;
+    private fpsLabel: HTMLElement | null = null;
 
     constructor() {
         super();

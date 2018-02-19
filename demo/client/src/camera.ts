@@ -98,9 +98,9 @@ export class OrthographicCamera extends Camera {
     onZoom: (() => void) | null;
     onRotate: (() => void) | null;
 
-    translation: glmatrix.vec2;
-    scale: number;
-    rotationAngle: number;
+    translation!: glmatrix.vec2;
+    scale!: number;
+    rotationAngle!: number;
 
     private _bounds: glmatrix.vec4;
 
@@ -315,7 +315,7 @@ export class OrthographicCamera extends Camera {
 }
 
 export class PerspectiveCamera extends Camera {
-    canvas: HTMLCanvasElement;
+    canvas!: HTMLCanvasElement;
 
     get usesSTTransform(): boolean {
         return false;

@@ -77,12 +77,12 @@ const TEST_SIZES: BenchmarkModeMap<TestParameter> = {
 };
 
 class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
-    font: PathfinderFont | null;
-    textRun: TextRun | null;
+    font: PathfinderFont | null = null;
+    textRun: TextRun | null = null;
 
-    svgLoader: SVGLoader;
+    svgLoader!: SVGLoader;
 
-    mode: BenchmarkMode;
+    mode!: BenchmarkMode;
 
     protected get defaultFile(): string {
         if (this.mode === 'text')
@@ -96,22 +96,22 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         return BUILTIN_SVG_URI;
     }
 
-    private optionsModal: HTMLDivElement;
+    private optionsModal!: HTMLDivElement;
 
-    private resultsModal: HTMLDivElement;
-    private resultsTableHeader: HTMLTableSectionElement;
-    private resultsTableBody: HTMLTableSectionElement;
-    private resultsPartitioningTimeLabel: HTMLSpanElement;
+    private resultsModal!: HTMLDivElement;
+    private resultsTableHeader!: HTMLTableSectionElement;
+    private resultsTableBody!: HTMLTableSectionElement;
+    private resultsPartitioningTimeLabel!: HTMLSpanElement;
 
-    private glyphStore: GlyphStore;
-    private baseMeshes: PathfinderMeshData;
-    private expandedMeshes: ExpandedMeshData;
+    private glyphStore!: GlyphStore;
+    private baseMeshes!: PathfinderMeshData;
+    private expandedMeshes!: ExpandedMeshData;
 
-    private size: number;
-    private currentRun: number;
-    private startTime: number;
-    private elapsedTimes: ElapsedTime[];
-    private partitionTime: number;
+    private size!: number;
+    private currentRun!: number;
+    private startTime!: number;
+    private elapsedTimes!: ElapsedTime[];
+    private partitionTime!: number;
 
     start(): void {
         super.start();
@@ -360,11 +360,11 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
 }
 
 class BenchmarkTestView extends DemoView {
-    renderer: BenchmarkTextRenderer | BenchmarkSVGRenderer;
+    renderer!: BenchmarkTextRenderer | BenchmarkSVGRenderer;
 
     readonly appController: BenchmarkAppController;
 
-    renderingPromiseCallback: ((time: number) => void) | null;
+    renderingPromiseCallback: ((time: number) => void) | null = null;
 
     get camera(): OrthographicCamera {
         return this.renderer.camera;
@@ -419,7 +419,7 @@ class BenchmarkTestView extends DemoView {
 }
 
 class BenchmarkTextRenderer extends Renderer {
-    renderContext: BenchmarkTestView;
+    renderContext!: BenchmarkTestView;
 
     camera: OrthographicCamera;
 
@@ -600,7 +600,7 @@ class BenchmarkTextRenderer extends Renderer {
 }
 
 class BenchmarkSVGRenderer extends SVGRenderer {
-    renderContext: BenchmarkTestView;
+    renderContext!: BenchmarkTestView;
 
     protected get loader(): SVGLoader {
         return this.renderContext.appController.svgLoader;

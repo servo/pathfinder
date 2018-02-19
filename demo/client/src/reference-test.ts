@@ -95,17 +95,17 @@ interface AntialiasingStrategyTable {
 }
 
 class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
-    font: PathfinderFont | null;
-    textRun: TextRun | null;
+    font: PathfinderFont | null = null;
+    textRun: TextRun | null = null;
 
-    svgLoader: SVGLoader;
-    builtinSvgName: string | null;
+    svgLoader!: SVGLoader;
+    builtinSvgName: string | null = null;
 
-    referenceCanvas: HTMLCanvasElement;
+    referenceCanvas!: HTMLCanvasElement;
 
-    tests: Promise<ReferenceTestGroup[]>;
+    tests!: Promise<ReferenceTestGroup[]>;
 
-    currentTestType: 'font' | 'svg';
+    currentTestType!: 'font' | 'svg';
 
     protected readonly defaultFile: string = FONT;
 
@@ -115,29 +115,29 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         return BUILTIN_SVG_URI;
     }
 
-    private glyphStore: GlyphStore;
-    private baseMeshes: PathfinderMeshData;
-    private expandedMeshes: ExpandedMeshData;
+    private glyphStore!: GlyphStore;
+    private baseMeshes!: PathfinderMeshData;
+    private expandedMeshes!: ExpandedMeshData;
 
-    private fontSizeInput: HTMLInputElement;
-    private characterInput: HTMLInputElement;
-    private referenceRendererSelect: HTMLSelectElement;
+    private fontSizeInput!: HTMLInputElement;
+    private characterInput!: HTMLInputElement;
+    private referenceRendererSelect!: HTMLSelectElement;
 
-    private differenceCanvas: HTMLCanvasElement;
+    private differenceCanvas!: HTMLCanvasElement;
 
-    private aaLevelGroup: HTMLElement;
+    private aaLevelGroup!: HTMLElement;
 
-    private customTabs: PerTestType<HTMLElement>;
-    private customTestForms: PerTestType<HTMLFormElement>;
-    private selectFileGroups: PerTestType<HTMLElement>;
-    private runTestsButtons: PerTestType<HTMLButtonElement>;
-    private ssimGroups: PerTestType<HTMLElement>;
-    private ssimLabels: PerTestType<HTMLElement>;
-    private resultsTables: PerTestType<HTMLTableElement>;
+    private customTabs!: PerTestType<HTMLElement>;
+    private customTestForms!: PerTestType<HTMLFormElement>;
+    private selectFileGroups!: PerTestType<HTMLElement>;
+    private runTestsButtons!: PerTestType<HTMLButtonElement>;
+    private ssimGroups!: PerTestType<HTMLElement>;
+    private ssimLabels!: PerTestType<HTMLElement>;
+    private resultsTables!: PerTestType<HTMLTableElement>;
 
-    private currentTestGroupIndex: number | null;
-    private currentTestCaseIndex: number | null;
-    private currentGlobalTestCaseIndex: number | null;
+    private currentTestGroupIndex: number | null = null;
+    private currentTestCaseIndex: number | null = null;
+    private currentGlobalTestCaseIndex: number | null = null;
 
     get currentFontSize(): number {
         return parseInt(this.fontSizeInput.value, 10);
@@ -583,7 +583,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
 }
 
 class ReferenceTestView extends DemoView {
-    renderer: ReferenceTestTextRenderer | ReferenceTestSVGRenderer;
+    renderer!: ReferenceTestTextRenderer | ReferenceTestSVGRenderer;
     readonly appController: ReferenceTestAppController;
 
     get camera(): OrthographicCamera {
@@ -656,7 +656,7 @@ class ReferenceTestView extends DemoView {
 }
 
 class ReferenceTestTextRenderer extends Renderer {
-    renderContext: ReferenceTestView;
+    renderContext!: ReferenceTestView;
     camera: OrthographicCamera;
 
     needsStencil: boolean = false;
@@ -823,7 +823,7 @@ class ReferenceTestTextRenderer extends Renderer {
 }
 
 class ReferenceTestSVGRenderer extends SVGRenderer {
-    renderContext: ReferenceTestView;
+    renderContext!: ReferenceTestView;
 
     protected get loader(): SVGLoader {
         return this.renderContext.appController.svgLoader;

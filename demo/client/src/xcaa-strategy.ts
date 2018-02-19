@@ -49,8 +49,8 @@ export type TransformType = 'dilation' | 'affine' | '3d';
 export abstract class XCAAStrategy extends AntialiasingStrategy {
     abstract readonly directRenderingMode: DirectRenderingMode;
 
-    protected patchVertexBuffer: WebGLBuffer | null;
-    protected patchIndexBuffer: WebGLBuffer | null;
+    protected patchVertexBuffer: WebGLBuffer | null = null;
+    protected patchIndexBuffer: WebGLBuffer | null = null;
 
     get passCount(): number {
         return 1;
@@ -69,9 +69,9 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
 
     protected resolveVAO: WebGLVertexArrayObject | null;
 
-    protected aaAlphaTexture: WebGLTexture | null;
-    protected aaDepthTexture: WebGLTexture | null;
-    protected aaFramebuffer: WebGLFramebuffer | null;
+    protected aaAlphaTexture: WebGLTexture | null = null;
+    protected aaDepthTexture: WebGLTexture | null = null;
+    protected aaFramebuffer: WebGLFramebuffer | null = null;
 
     protected abstract get mightUseAAFramebuffer(): boolean;
 
@@ -82,6 +82,8 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
 
         this.supersampledFramebufferSize = glmatrix.vec2.create();
         this.destFramebufferSize = glmatrix.vec2.create();
+
+        this.pathBoundsBufferTextures = [];
     }
 
     init(renderer: Renderer): void {

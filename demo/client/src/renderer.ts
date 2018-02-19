@@ -90,14 +90,14 @@ export abstract class Renderer {
     protected abstract get usedSizeFactor(): glmatrix.vec2;
     protected abstract get worldTransform(): glmatrix.mat4;
 
-    private implicitCoverInteriorVAO: WebGLVertexArrayObjectOES | null;
-    private implicitCoverCurveVAO: WebGLVertexArrayObjectOES | null;
+    private implicitCoverInteriorVAO: WebGLVertexArrayObjectOES | null = null;
+    private implicitCoverCurveVAO: WebGLVertexArrayObjectOES | null = null;
 
-    private gammaLUTTexture: WebGLTexture | null;
+    private gammaLUTTexture: WebGLTexture | null = null;
 
-    private instancedPathIDVBO: WebGLBuffer | null;
-    private vertexIDVBO: WebGLBuffer | null;
-    private timerQueryPollInterval: number | null;
+    private instancedPathIDVBO: WebGLBuffer | null = null;
+    private vertexIDVBO: WebGLBuffer | null = null;
+    private timerQueryPollInterval: number | null = null;
 
     constructor(renderContext: RenderContext) {
         this.renderContext = renderContext;

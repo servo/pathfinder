@@ -122,8 +122,8 @@ interface ShaderProgramURLs {
 }
 
 export class ShaderLoader {
-    common: Promise<string>;
-    shaders: Promise<ShaderMap<ShaderProgramSource>>;
+    common!: Promise<string>;
+    shaders!: Promise<ShaderMap<ShaderProgramSource>>;
 
     load(): void {
         this.common = window.fetch(COMMON_SHADER_URL).then(response => response.text());
