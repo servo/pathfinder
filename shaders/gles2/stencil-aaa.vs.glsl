@@ -31,6 +31,7 @@ attribute vec2 aToNormal;
 attribute float aPathID;
 
 varying vec3 vUV;
+varying vec3 vXDist;
 
 void main() {
     // Unpack.
@@ -113,6 +114,9 @@ void main() {
     uv.x = uv.y + 0.5 * det2(mat2(v03, v02));
     uv.xy /= det2(mat2(v01, v02));
 
+    // Compute X distances.
+    vec3 xDist = position.x - vec3(fromPosition.x, ctrlPosition.x, toPosition.x);
+
     // Compute final position and depth.
     position += uTransformST.zw + globalTransformLinear * transformST.zw;
     float depth = convertPathIndexToViewportDepthValue(pathID);
@@ -120,4 +124,5 @@ void main() {
     // Finish up.
     gl_Position = vec4(position, depth, 1.0);
     vUV = uv;
+    vXDist = xDist;
 }
