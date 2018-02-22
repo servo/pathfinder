@@ -44,7 +44,7 @@ const PATCH_VERTICES: Float32Array = new Float32Array([
 
 const MCAA_PATCH_INDICES: Uint8Array = new Uint8Array([0, 1, 2, 1, 3, 2]);
 
-export type TransformType = 'dilation' | 'affine' | '3d';
+export type TransformType = 'affine' | '3d';
 
 export abstract class XCAAStrategy extends AntialiasingStrategy {
     abstract readonly directRenderingMode: DirectRenderingMode;
@@ -258,9 +258,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         const gl = renderContext.gl;
 
         switch (this.transformType) {
-        case 'dilation':
-            renderer.setTransformSTUniform(uniforms, 0);
-            break;
         case 'affine':
             renderer.setTransformAffineUniforms(uniforms, 0);
             break;
@@ -396,7 +393,6 @@ export class MCAAStrategy extends XCAAStrategy {
         const gl = renderContext.gl;
 
         this.vao = renderContext.vertexArrayObjectExt.createVertexArrayOES();
-
     }
 
     antialiasObject(renderer: Renderer, objectIndex: number): void {

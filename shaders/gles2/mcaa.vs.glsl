@@ -43,6 +43,8 @@ uniform ivec2 uFramebufferSize;
 uniform ivec2 uPathTransformSTDimensions;
 /// The path transform buffer texture, one dilation per path ID.
 uniform sampler2D uPathTransformST;
+uniform ivec2 uPathTransformExtDimensions;
+uniform sampler2D uPathTransformExt;
 /// The size of the path colors buffer texture in texels.
 uniform ivec2 uPathColorsDimensions;
 /// The path colors buffer texture, one color per path ID.
@@ -75,10 +77,16 @@ void main() {
     else
         color = vec4(1.0);
 
-    vec4 transformST = fetchFloat4Data(uPathTransformST, pathID, uPathTransformSTDimensions);
+    vec2 transformExt;
+    vec4 transformST = fetchPathAffineTransform(transformExt,
+                                                uPathTransformST,
+                                                uPathTransformSTDimensions,
+                                                uPathTransformExt,
+                                                uPathTransformExtDimensions,
+                                                pathID);
 
     mat2 globalTransformLinear = mat2(uTransformST.x, uTransformExt, uTransformST.y);
-    mat2 localTransformLinear = mat2(transformST.x, 0.0, 0.0, transformST.y);
+    mat2 localTransformLinear = mat2(transformST.x, -transformExt, transformST.y);
     mat2 rectTransformLinear = mat2(aRect.z - aRect.x, 0.0, 0.0, aRect.w - aRect.y);
     mat2 transformLinear = globalTransformLinear * localTransformLinear * rectTransformLinear;
 
