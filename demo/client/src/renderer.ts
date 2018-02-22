@@ -48,8 +48,6 @@ export abstract class Renderer {
 
     lastTimings: Timings;
 
-    abstract get usesSTTransform(): boolean;
-
     get emboldenAmount(): glmatrix.vec2 {
         return glmatrix.vec2.create();
     }

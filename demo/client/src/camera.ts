@@ -81,8 +81,6 @@ export interface CameraView {
 export abstract class Camera {
     protected canvas: CameraView;
 
-    abstract get usesSTTransform(): boolean;
-
     constructor(canvas: CameraView) {
         this.canvas = canvas;
     }
@@ -109,10 +107,6 @@ export class OrthographicCamera extends Camera {
     private readonly maxScale: number;
     private readonly scaleBounds: boolean;
     private readonly ignoreBounds: boolean;
-
-    get usesSTTransform(): boolean {
-        return Math.abs(this.rotationAngle) < EPSILON;
-    }
 
     constructor(canvas: CameraView, options?: OrthographicCameraOptions) {
         super(canvas);
@@ -316,10 +310,6 @@ export class OrthographicCamera extends Camera {
 
 export class PerspectiveCamera extends Camera {
     canvas!: HTMLCanvasElement;
-
-    get usesSTTransform(): boolean {
-        return false;
-    }
 
     onChange: (() => void) | null;
 

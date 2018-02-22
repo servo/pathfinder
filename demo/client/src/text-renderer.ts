@@ -73,10 +73,6 @@ export abstract class TextRenderer extends Renderer {
         return this.renderContext.fontSize <= MAX_STEM_DARKENING_PIXELS_PER_EM;
     }
 
-    get usesSTTransform(): boolean {
-        return this.camera.usesSTTransform;
-    }
-
     get destFramebuffer(): WebGLFramebuffer {
         return this.atlasFramebuffer;
     }

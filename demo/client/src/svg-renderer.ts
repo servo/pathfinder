@@ -62,10 +62,6 @@ export abstract class SVGRenderer extends Renderer {
         return glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]);
     }
 
-    get usesSTTransform(): boolean {
-        return this.camera.usesSTTransform;
-    }
-
     get destAllocatedSize(): glmatrix.vec2 {
         const canvas = this.canvas;
         return glmatrix.vec2.clone([canvas.width, canvas.height]);

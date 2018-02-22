@@ -426,10 +426,6 @@ class BenchmarkTextRenderer extends Renderer {
     needsStencil: boolean = false;
     isMulticolor: boolean = false;
 
-    get usesSTTransform(): boolean {
-        return this.camera.usesSTTransform;
-    }
-
     get destFramebuffer(): WebGLFramebuffer | null {
         return null;
     }
