@@ -34,11 +34,11 @@
     "popper.js": "^1.13.0",
     "rustdoc-webpack-plugin": "file:./build/rustdoc-webpack-plugin",
     "ts-loader": "^2.3.7",
-    "typescript": "^2.7.2",
-    "webpack": "^3.11.0"
+    "typescript": "^2.7.2"
   },
   "devDependencies": {
     "tslint": "^5.9.1",
-    "tslint-loader": "^3.5.3"
+    "tslint-loader": "^3.5.3",
+    "webpack": "^3.11.0"
   }
 }
