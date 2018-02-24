@@ -9,10 +9,10 @@
 // except according to those terms.
 
 //! Reads outlines from OpenType fonts into Pathfinder path formats.
-//! 
+//!
 //! Use this crate in conjunction with `pathfinder_partitioner` in order to create meshes for
 //! rendering.
-//! 
+//!
 //! To reduce dependencies and to match the system as closely as possible, this crate uses the
 //! native OS font rendering infrastructure as much as it can. Backends are available for FreeType,
 //! Core Graphics/Quartz on macOS, and DirectWrite on Windows.
@@ -41,7 +41,7 @@ extern crate core_graphics as core_graphics_sys;
 extern crate core_text;
 
 #[cfg(any(target_os = "linux", feature = "freetype"))]
-extern crate freetype_sys;
+extern crate freetype as freetype_sys;
 
 #[cfg(target_os = "windows")]
 extern crate dwrite;
@@ -76,7 +76,7 @@ mod freetype;
 
 /// The number of subpixels that each pixel is divided into for the purposes of subpixel glyph
 /// positioning.
-/// 
+///
 /// Right now, each glyph is snapped to the nearest quarter-pixel.
 pub const SUBPIXEL_GRANULARITY: u8 = 4;
 
@@ -120,7 +120,7 @@ pub struct FontInstance {
     pub font_key: FontKey,
 
     /// The size of the font.
-    /// 
+    ///
     /// This is in app units (1/60 pixels) to eliminate floating point error.
     pub size: Au,
 }
@@ -191,7 +191,7 @@ pub struct GlyphImage {
     /// The dimensions of this image.
     pub dimensions: GlyphDimensions,
     /// The actual pixels.
-    /// 
+    ///
     /// This is 8 bits per pixel grayscale when grayscale antialiasing is in use and 24 bits per
     /// pixel RGB when subpixel antialiasing is in use.
     pub pixels: Vec<u8>,

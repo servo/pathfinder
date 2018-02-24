@@ -11,12 +11,13 @@
 //! Font loading using FreeType.
 
 use euclid::{Point2D, Size2D, Vector2D};
-use freetype_sys::{FT_BBox, FT_Bitmap, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_OUTLINE};
-use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LCD_FILTER_DEFAULT};
-use freetype_sys::{FT_LOAD_NO_HINTING, FT_Library, FT_Library_SetLcdFilter};
-use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
-use freetype_sys::{FT_Outline_Translate, FT_PIXEL_MODE_LCD, FT_RENDER_MODE_LCD, FT_Render_Glyph};
-use freetype_sys::{FT_Set_Char_Size, FT_UInt};
+use freetype_sys::{FT_Error};
+use freetype_sys::freetype::{FT_BBox, FT_Bitmap, FT_Done_Face, FT_F26Dot6, FT_Face};
+use freetype_sys::freetype::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_Glyph_Format_};
+use freetype_sys::freetype::{FT_LOAD_NO_HINTING, FT_Library, FT_Library_SetLcdFilter};
+use freetype_sys::freetype::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
+use freetype_sys::freetype::{FT_Outline_Translate, FT_Render_Mode_, FT_LcdFilter_, FT_Render_Glyph};
+use freetype_sys::freetype::{FT_Set_Char_Size, FT_UInt};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::mem;
@@ -36,7 +37,7 @@ pub type GlyphOutline<'a> = Outline<'a>;
 // Default to no hinting.
 //
 // TODO(pcwalton): Make this configurable.
-const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING;
+const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING as i32;
 
 const DPI: u32 = 72;
 
@@ -52,7 +53,7 @@ impl FontContext {
         let mut library: FT_Library = ptr::null_mut();
         unsafe {
             let result = FT_Init_FreeType(&mut library);
-            if result != 0 {
+            if result != FT_Error(0) {
                 return Err(())
             }
         }
@@ -63,12 +64,12 @@ impl FontContext {
     }
 
     /// Loads an OpenType font from memory.
-    /// 
+    ///
     /// `font_key` is a handle that is used to refer to the font later. If this context has already
     /// loaded a font with the same font key, nothing is done, and `Ok` is returned.
-    /// 
+    ///
     /// `bytes` is the raw OpenType data (i.e. the contents of the `.otf` or `.ttf` file on disk).
-    /// 
+    ///
     /// `font_index` is the index of the font within the collection, if `bytes` refers to a
     /// collection (`.ttc`).
     pub fn add_font_from_memory(&mut self,
@@ -89,7 +90,7 @@ impl FontContext {
                                                     face.bytes.len() as FT_Long,
                                                     font_index as FT_Long,
                                                     &mut face.face);
-                    if result == 0 && !face.face.is_null() {
+                    if result == FT_Error(0) && !face.face.is_null() {
                         entry.insert(face);
                         Ok(())
                     } else {
@@ -101,14 +102,14 @@ impl FontContext {
     }
 
     /// Unloads the font with the given font key from memory.
-    /// 
+    ///
     /// If the font isn't loaded, does nothing.
     pub fn delete_font(&mut self, font_key: &FontKey) {
         self.faces.remove(font_key);
     }
 
     /// Returns the dimensions of the given glyph in the given font.
-    /// 
+    ///
     /// If `exact` is true, then the raw outline extents as specified by the font designer are
     /// returned. These may differ from the extents when rendered on screen, because some font
     /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
@@ -131,9 +132,9 @@ impl FontContext {
     }
 
     /// Uses the FreeType library to rasterize a glyph on CPU.
-    /// 
+    ///
     /// Pathfinder uses this for reference testing.
-    /// 
+    ///
     /// If `exact` is true, then the glyph image will have precisely the size specified by the font
     /// designer. Because some font libraries, such as Core Graphics, perform modifications to the
     /// glyph outlines, to ensure the entire outline fits it is best to pass false for `exact`.
@@ -168,14 +169,14 @@ impl FontContext {
         //
         // TODO(pcwalton): Non-subpixel AA.
         unsafe {
-            FT_Library_SetLcdFilter(self.library, FT_LCD_FILTER_DEFAULT);
+            FT_Library_SetLcdFilter(self.library, FT_LcdFilter_::FT_LCD_FILTER_DEFAULT);
         }
 
         // Render the glyph.
         //
         // TODO(pcwalton): Non-subpixel AA.
         unsafe {
-            FT_Render_Glyph(slot, FT_RENDER_MODE_LCD);
+            FT_Render_Glyph(slot, FT_Render_Mode_::FT_RENDER_MODE_LCD);
         }
 
         unsafe {
@@ -183,7 +184,7 @@ impl FontContext {
             //
             // TODO(pcwalton): Non-subpixel AA.
             let bitmap: *const FT_Bitmap = &(*slot).bitmap;
-            if (*bitmap).pixel_mode as u32 != FT_PIXEL_MODE_LCD {
+            if (*bitmap).pixel_mode != 5 {
                 return Err(())
             }
 
@@ -234,12 +235,12 @@ impl FontContext {
             let point_size = font_instance.size.to_ft_f26dot6();
             FT_Set_Char_Size(face.face, point_size, 0, DPI, 0);
 
-            if FT_Load_Glyph(face.face, glyph_key.glyph_index as FT_UInt, GLYPH_LOAD_FLAGS) != 0 {
+            if FT_Load_Glyph(face.face, glyph_key.glyph_index as FT_UInt, GLYPH_LOAD_FLAGS) != FT_Error(0) {
                 return None
             }
 
             let slot = (*face.face).glyph;
-            if (*slot).format != FT_GLYPH_FORMAT_OUTLINE {
+            if (*slot).format != FT_Glyph_Format_::FT_GLYPH_FORMAT_OUTLINE {
                 return None
             }
 
