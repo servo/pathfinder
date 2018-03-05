@@ -403,6 +403,11 @@ impl MeshLibrary {
             b_boxes: self.b_boxes.len() as u32,
         }
     }
+
+    #[inline]
+    pub fn next_path_id(&self) -> u16 {
+        (self.path_ranges.len() + 1) as u16
+    }
 }
 
 #[derive(Debug, Clone)]

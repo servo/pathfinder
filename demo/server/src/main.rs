@@ -43,7 +43,7 @@ use lru_cache::LruCache;
 use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use lyon_path::iterator::PathIter;
-use pathfinder_font_renderer::{FontContext, FontInstance, FontKey, GlyphImage};
+use pathfinder_font_renderer::{FontContext, FontInstance, GlyphImage};
 use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_library::MeshLibrary;
@@ -57,6 +57,7 @@ use rocket_contrib::json::Json;
 use std::fs::File;
 use std::io::{self, Cursor, Read};
 use std::path::{self, PathBuf};
+use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::u32;
@@ -74,6 +75,8 @@ use rsvg::{Handle, HandleExt};
 const SUGGESTED_JSON_SIZE_LIMIT: u64 = 32 * 1024 * 1024;
 
 const MESH_LIBRARY_CACHE_SIZE: usize = 16;
+
+static NEXT_FONT_KEY: AtomicUsize = ATOMIC_USIZE_INIT;
 
 lazy_static! {
     static ref MESH_LIBRARY_CACHE: Mutex<LruCache<MeshLibraryCacheKey, PartitionResponder>> = {
@@ -261,6 +264,15 @@ struct PartitionSvgPathCommand {
     values: Vec<f64>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
+struct FontKey(usize);
+
+impl FontKey {
+    fn new() -> FontKey {
+        FontKey(NEXT_FONT_KEY.fetch_add(1, Ordering::SeqCst))
+    }
+}
+
 struct PathPartitioningResult {
     encoded_data: Arc<Vec<u8>>,
     time: Duration,
@@ -387,7 +399,7 @@ fn svg_data_from_request(builtin_svg_name: &str) -> Result<Arc<Vec<u8>>, SvgErro
 fn rasterize_glyph_with_core_graphics(font_key: &FontKey,
                                       font_index: u32,
                                       otf_data: Arc<Vec<u8>>,
-                                      font_instance: &FontInstance,
+                                      font_instance: &FontInstance<FontKey>,
                                       glyph_key: &GlyphKey)
                                       -> Result<GlyphImage, FontError> {
     let mut font_context =

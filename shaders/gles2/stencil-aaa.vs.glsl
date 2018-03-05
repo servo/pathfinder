@@ -80,10 +80,9 @@ void main() {
     // Compute area of convex hull (w). Change from curve to line if appropriate.
     float w = det2(mat2(v01, v02));
     float sqLen01 = dot(v01, v01), sqLen02 = dot(v02, v02), sqLen21 = dot(v21, v21);
-    float minCtrlSqLen = dot(v02, v02) * 0.0001;
-    float cosTheta = dot(v01, v21);
-    if (sqLen01 < minCtrlSqLen || sqLen21 < minCtrlSqLen ||
-        cosTheta * cosTheta >= 0.95 * sqLen01 * sqLen21) {
+    float hullHeight = abs(w * inversesqrt(sqLen02));
+    float minCtrlSqLen = sqLen02 * 0.01;
+    if (sqLen01 < minCtrlSqLen || sqLen21 < minCtrlSqLen || hullHeight < 0.0001) {
         w = 0.0;
         v01 = vec2(0.5, abs(v02.y) >= 0.01 ? 0.0 : 0.5) * v02.xx;
     }

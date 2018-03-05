@@ -55,13 +55,12 @@ extern crate winapi;
 
 use app_units::Au;
 use euclid::{Point2D, Size2D};
-use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 
 #[cfg(test)]
 mod tests;
 
 #[cfg(all(target_os = "macos", not(feature = "freetype")))]
-pub use core_graphics::FontContext;
+pub use core_graphics::{FontContext, GlyphOutline};
 #[cfg(all(target_os = "windows", not(feature = "freetype")))]
 pub use directwrite::FontContext;
 #[cfg(any(target_os = "linux", feature = "freetype"))]
@@ -80,44 +79,11 @@ mod freetype;
 /// Right now, each glyph is snapped to the nearest quarter-pixel.
 pub const SUBPIXEL_GRANULARITY: u8 = 4;
 
-/// An opaque handle that represents a loaded font.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
-pub struct FontKey {
-    id: usize,
-}
-
-impl FontKey {
-    /// Constructs a new opaque font key distinct from all others.
-    pub fn new() -> FontKey {
-        static NEXT_FONT_KEY_ID: AtomicUsize = ATOMIC_USIZE_INIT;
-        FontKey {
-            id: NEXT_FONT_KEY_ID.fetch_add(1, Ordering::Relaxed),
-        }
-    }
-}
-
-/// An opaque font that represents a loaded font *at one specific size*.
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
-pub struct FontInstanceKey {
-    id: usize,
-}
-
-impl FontInstanceKey {
-    /// Creates a new opaque font instance key distinct from all others.
-    #[inline]
-    pub fn new() -> FontInstanceKey {
-        static NEXT_FONT_INSTANCE_KEY_ID: AtomicUsize = ATOMIC_USIZE_INIT;
-        FontInstanceKey {
-            id: NEXT_FONT_INSTANCE_KEY_ID.fetch_add(1, Ordering::Relaxed),
-        }
-    }
-}
-
 /// A font at one specific size.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize)]
-pub struct FontInstance {
+pub struct FontInstance<FK> where FK: Clone {
     /// The opaque font key that this font instance represents.
-    pub font_key: FontKey,
+    pub font_key: FK,
 
     /// The size of the font.
     /// 
@@ -125,19 +91,19 @@ pub struct FontInstance {
     pub size: Au,
 }
 
-impl FontInstance {
+impl<FK> FontInstance<FK> where FK: Clone {
     /// Creates a new instance of a font at the given size.
     #[inline]
-    pub fn new(font_key: &FontKey, size: Au) -> FontInstance {
+    pub fn new(font_key: &FK, size: Au) -> FontInstance<FK> {
         FontInstance {
-            font_key: *font_key,
+            font_key: (*font_key).clone(),
             size: size,
         }
     }
 }
 
 /// A subpixel offset, from 0 to `SUBPIXEL_GRANULARITY`.
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub struct SubpixelOffset(pub u8);
 
 impl Into<f32> for SubpixelOffset {

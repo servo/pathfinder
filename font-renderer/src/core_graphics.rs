@@ -24,10 +24,11 @@ use euclid::{Point2D, Rect, Size2D, Vector2D};
 use lyon_path::PathEvent;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::hash::Hash;
 use std::iter::Cloned;
 use std::slice::Iter;
 use std::sync::Arc;
-use {FontInstance, FontKey, GlyphDimensions, GlyphImage, GlyphKey};
+use {FontInstance, GlyphDimensions, GlyphImage, GlyphKey};
 
 const CG_ZERO_RECT: CGRect = CGRect {
     origin: CG_ZERO_POINT,
@@ -44,19 +45,37 @@ const CG_ZERO_RECT: CGRect = CGRect {
 // direction.
 const FONT_DILATION_AMOUNT: f32 = 0.02;
 
+#[cfg(target_os = "macos")]
+#[derive(Clone)]
+pub struct NativeFontHandle(pub CGFont);
+
 /// An object that loads and renders fonts using macOS Core Graphics/Quartz.
-pub struct FontContext {
-    core_graphics_fonts: BTreeMap<FontKey, CGFont>,
-    core_text_fonts: BTreeMap<FontInstance, CTFont>,
+pub struct FontContext<FK> where FK: Clone + Hash + Eq + Ord {
+    core_graphics_fonts: BTreeMap<FK, CGFont>,
+    core_text_fonts: BTreeMap<FontInstance<FK>, CTFont>,
 }
 
-impl FontContext {
+// Core Text is thread-safe.
+unsafe impl<FK> Send for FontContext<FK> where FK: Clone + Hash + Eq + Ord {}
+
+impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     /// Creates a new font context instance.
-    pub fn new() -> Result<FontContext, ()> {
+    pub fn new() -> Result<Self, ()> {
         Ok(FontContext {
             core_graphics_fonts: BTreeMap::new(),
             core_text_fonts: BTreeMap::new(),
         })
+    }
+
+    /// Loads an OpenType font from a Quartz `CGFont` handle.
+    pub fn add_native_font(&mut self, font_key: &FK, handle: CGFont) -> Result<(), ()> {
+        match self.core_graphics_fonts.entry((*font_key).clone()) {
+            Entry::Occupied(_) => Ok(()),
+            Entry::Vacant(entry) => {
+                entry.insert(handle);
+                Ok(())
+            }
+        }
     }
 
     /// Loads an OpenType font from memory.
@@ -68,9 +87,9 @@ impl FontContext {
     /// 
     /// `font_index` is the index of the font within the collection, if `bytes` refers to a
     /// collection (`.ttc`).
-    pub fn add_font_from_memory(&mut self, font_key: &FontKey, bytes: Arc<Vec<u8>>, _: u32)
+    pub fn add_font_from_memory(&mut self, font_key: &FK, bytes: Arc<Vec<u8>>, _: u32)
                                 -> Result<(), ()> {
-        match self.core_graphics_fonts.entry(*font_key) {
+        match self.core_graphics_fonts.entry((*font_key).clone()) {
             Entry::Occupied(_) => Ok(()),
             Entry::Vacant(entry) => {
                 let data_provider = CGDataProvider::from_buffer(bytes);
@@ -84,7 +103,7 @@ impl FontContext {
     /// Unloads the font with the given font key from memory.
     /// 
     /// If the font isn't loaded, does nothing.
-    pub fn delete_font(&mut self, font_key: &FontKey) {
+    pub fn delete_font(&mut self, font_key: &FK) {
         self.core_graphics_fonts.remove(font_key);
 
         let core_text_font_keys: Vec<_> = self.core_text_fonts  
@@ -97,8 +116,8 @@ impl FontContext {
         }
     }
 
-    fn ensure_core_text_font(&mut self, font_instance: &FontInstance) -> Result<CTFont, ()> {
-        match self.core_text_fonts.entry(*font_instance) {
+    fn ensure_core_text_font(&mut self, font_instance: &FontInstance<FK>) -> Result<CTFont, ()> {
+        match self.core_text_fonts.entry((*font_instance).clone()) {
             Entry::Occupied(entry) => Ok((*entry.get()).clone()),
             Entry::Vacant(entry) => {
                 let core_graphics_font = match self.core_graphics_fonts
@@ -121,7 +140,10 @@ impl FontContext {
     /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
     /// dilate them for easier reading. To retrieve extents that account for these modifications,
     /// set `exact` to false.
-    pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey, exact: bool)
+    pub fn glyph_dimensions(&self,
+                            font_instance: &FontInstance<FK>,
+                            glyph_key: &GlyphKey,
+                            exact: bool)
                             -> Result<GlyphDimensions, ()> {
         let core_graphics_font = match self.core_graphics_fonts.get(&font_instance.font_key) {
             None => return Err(()),
@@ -174,7 +196,7 @@ impl FontContext {
     }
 
     /// Returns a list of path commands that represent the given glyph in the given font.
-    pub fn glyph_outline(&mut self, font_instance: &FontInstance, glyph_key: &GlyphKey)
+    pub fn glyph_outline(&mut self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
                          -> Result<GlyphOutline, ()> {
         let core_text_font = try!(self.ensure_core_text_font(font_instance));
         let path = try!(core_text_font.create_path_for_glyph(glyph_key.glyph_index as CGGlyph,
@@ -220,7 +242,7 @@ impl FontContext {
     /// designer. Because some font libraries, such as Core Graphics, perform modifications to the
     /// glyph outlines, to ensure the entire outline fits it is best to pass false for `exact`.
     pub fn rasterize_glyph_with_native_rasterizer(&self,
-                                                  font_instance: &FontInstance,
+                                                  font_instance: &FontInstance<FK>,
                                                   glyph_key: &GlyphKey,
                                                   exact: bool)
                                                   -> Result<GlyphImage, ()> {
@@ -305,7 +327,7 @@ impl FontContext {
     }
 }
 
-impl FontInstance {
+impl<FK> FontInstance<FK> where FK: Clone {
     fn instantiate(&self, core_graphics_font: &CGFont) -> Result<CTFont, ()> {
         Ok(core_text::font::new_from_CGFont(core_graphics_font, self.size.to_f64_px()))
     }
