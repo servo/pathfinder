@@ -37,7 +37,7 @@ use clap::{App, Arg};
 use freetype_sys::{FT_Init_FreeType, FT_New_Face};
 use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
-use pathfinder_font_renderer::{FontContext, FontKey, FontInstance, GlyphKey, SubpixelOffset};
+use pathfinder_font_renderer::{FontContext, FontInstance, GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
@@ -79,8 +79,7 @@ fn convert_font(font_path: &Path, output_path: &Path) -> Result<(), ()> {
 
     // TODO(pcwalton): Allow the user to select a face by index.
     let mut font_context = try!(FontContext::new());
-    let font_key = FontKey::new();
-    try!(font_context.add_font_from_memory(&font_key, Arc::new(font_data), 0));
+    try!(font_context.add_font_from_memory(&(), Arc::new(font_data), 0));
     let font_instance = FontInstance {
         font_key: font_key,
         size: Au::from_f64_px(FONT_SIZE),

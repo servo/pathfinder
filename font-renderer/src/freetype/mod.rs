@@ -19,6 +19,7 @@ use freetype_sys::{FT_Outline_Translate, FT_PIXEL_MODE_LCD, FT_RENDER_MODE_LCD, 
 use freetype_sys::{FT_Set_Char_Size, FT_UInt};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::hash::Hash;
 use std::mem;
 use std::ptr;
 use std::slice;
@@ -26,7 +27,7 @@ use std::sync::Arc;
 
 use self::fixed::{FromFtF26Dot6, ToFtF26Dot6};
 use self::outline::Outline;
-use {FontKey, FontInstance, GlyphDimensions, GlyphImage, GlyphKey};
+use {FontInstance, GlyphDimensions, GlyphImage, GlyphKey};
 
 mod fixed;
 mod outline;
@@ -41,14 +42,14 @@ const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING;
 const DPI: u32 = 72;
 
 /// An object that loads and renders fonts using the FreeType library.
-pub struct FontContext {
+pub struct FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     library: FT_Library,
-    faces: BTreeMap<FontKey, Face>,
+    faces: BTreeMap<FK, Face>,
 }
 
-impl FontContext {
+impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     /// Creates a new font context instance.
-    pub fn new() -> Result<FontContext, ()> {
+    pub fn new() -> Result<FontContext<FK>, ()> {
         let mut library: FT_Library = ptr::null_mut();
         unsafe {
             let result = FT_Init_FreeType(&mut library);
@@ -71,12 +72,9 @@ impl FontContext {
     /// 
     /// `font_index` is the index of the font within the collection, if `bytes` refers to a
     /// collection (`.ttc`).
-    pub fn add_font_from_memory(&mut self,
-                                font_key: &FontKey,
-                                bytes: Arc<Vec<u8>>,
-                                font_index: u32)
+    pub fn add_font_from_memory(&mut self, font_key: &FK, bytes: Arc<Vec<u8>>, font_index: u32)
                                 -> Result<(), ()> {
-        match self.faces.entry(*font_key) {
+        match self.faces.entry((*font_key).clone()) {
             Entry::Occupied(_) => Ok(()),
             Entry::Vacant(entry) => {
                 unsafe {
@@ -103,7 +101,7 @@ impl FontContext {
     /// Unloads the font with the given font key from memory.
     /// 
     /// If the font isn't loaded, does nothing.
-    pub fn delete_font(&mut self, font_key: &FontKey) {
+    pub fn delete_font(&mut self, font_key: &FK) {
         self.faces.remove(font_key);
     }
 
@@ -114,14 +112,14 @@ impl FontContext {
     /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
     /// dilate them for easier reading. To retrieve extents that account for these modifications,
     /// set `exact` to false.
-    pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
-                            -> Option<GlyphDimensions> {
-        self.load_glyph(font_instance, glyph_key).and_then(|glyph_slot| {
+    pub fn glyph_dimensions(&self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
+                            -> Result<GlyphDimensions, ()> {
+        self.load_glyph(font_instance, glyph_key).ok_or(()).and_then(|glyph_slot| {
             self.glyph_dimensions_from_slot(font_instance, glyph_key, glyph_slot)
         })
     }
 
-    pub fn glyph_outline<'a>(&'a mut self, font_instance: &FontInstance, glyph_key: &GlyphKey)
+    pub fn glyph_outline<'a>(&'a mut self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
                              -> Result<GlyphOutline<'a>, ()> {
         self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
             unsafe {
@@ -138,7 +136,7 @@ impl FontContext {
     /// designer. Because some font libraries, such as Core Graphics, perform modifications to the
     /// glyph outlines, to ensure the entire outline fits it is best to pass false for `exact`.
     pub fn rasterize_glyph_with_native_rasterizer(&self,
-                                                  font_instance: &FontInstance,
+                                                  font_instance: &FontInstance<FK>,
                                                   glyph_key: &GlyphKey,
                                                   _: bool)
                                                   -> Result<GlyphImage, ()> {
@@ -223,7 +221,7 @@ impl FontContext {
         }
     }
 
-    fn load_glyph(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
+    fn load_glyph(&self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
                   -> Option<FT_GlyphSlot> {
         let face = match self.faces.get(&font_instance.font_key) {
             None => return None,
@@ -248,20 +246,20 @@ impl FontContext {
     }
 
     fn glyph_dimensions_from_slot(&self,
-                                  font_instance: &FontInstance,
+                                  font_instance: &FontInstance<FK>,
                                   glyph_key: &GlyphKey,
                                   glyph_slot: FT_GlyphSlot)
-                                  -> Option<GlyphDimensions> {
+                                  -> Result<GlyphDimensions, ()> {
         unsafe {
             let metrics = &(*glyph_slot).metrics;
 
             // This matches what WebRender does.
             if metrics.horiAdvance == 0 {
-                return None
+                return Err(())
             }
 
             let bounding_box = self.bounding_box_from_slot(font_instance, glyph_key, glyph_slot);
-            Some(GlyphDimensions {
+            Ok(GlyphDimensions {
                 origin: Point2D::new((bounding_box.xMin >> 6) as i32,
                                      (bounding_box.yMax >> 6) as i32),
                 size: Size2D::new(((bounding_box.xMax - bounding_box.xMin) >> 6) as u32,
@@ -274,7 +272,7 @@ impl FontContext {
     // Returns the bounding box for a glyph, accounting for subpixel positioning as appropriate.
     //
     // TODO(pcwalton): Subpixel positioning.
-    fn bounding_box_from_slot(&self, _: &FontInstance, _: &GlyphKey, glyph_slot: FT_GlyphSlot)
+    fn bounding_box_from_slot(&self, _: &FontInstance<FK>, _: &GlyphKey, glyph_slot: FT_GlyphSlot)
                               -> FT_BBox {
         let mut bounding_box: FT_BBox;
         unsafe {

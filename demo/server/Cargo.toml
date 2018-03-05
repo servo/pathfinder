@@ -5,6 +5,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [features]
 default = []
+freetype = ["pathfinder_font_renderer/freetype"]
 reftests = ["rsvg", "cairo-rs", "pathfinder_font_renderer/freetype"]
 
 [dependencies]
