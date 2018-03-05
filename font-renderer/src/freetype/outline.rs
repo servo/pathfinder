@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use euclid::Point2D;
-use freetype_sys::{FT_Outline, FT_Vector};
+use freetype_sys::freetype::{FT_Outline, FT_Vector};
 use lyon_path::iterator::PathIterator;
 use lyon_path::{PathEvent, PathState};
 
@@ -78,7 +78,7 @@ impl<'a> Iterator for OutlineStream<'a> {
                 }
 
                 let last_point_index_in_current_contour =
-                    *self.outline.contours.offset(self.contour_index as isize) as u16; 
+                    *self.outline.contours.offset(self.contour_index as isize) as u16;
                 if self.point_index == last_point_index_in_current_contour + 1 {
                     if let Some(control_point_position) = control_point_position {
                         let event = PathEvent::QuadraticTo(control_point_position,

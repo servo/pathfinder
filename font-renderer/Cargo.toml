@@ -5,7 +5,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [features]
 default = []
-freetype = ["freetype-sys"]
+usefreetype = ["freetype"]
 
 [dependencies]
 app_units = "0.6"
@@ -17,12 +17,12 @@ lyon_path = "0.9"
 serde = "1.0"
 serde_derive = "1.0"
 
-[dependencies.freetype-sys]
-version = "0.6"
+[dependencies.freetype]
+version = "0.3"
 optional = true
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-freetype-sys = "0.6"
+freetype = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.13"

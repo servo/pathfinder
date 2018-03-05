@@ -11,7 +11,7 @@
 //! Utilities for FreeType 26.6 fixed-point numbers.
 
 use app_units::Au;
-use freetype_sys::FT_F26Dot6;
+use freetype_sys::freetype::FT_F26Dot6;
 
 pub trait FromFtF26Dot6 {
     fn from_ft_f26dot6(value: FT_F26Dot6) -> Self;
