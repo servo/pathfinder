@@ -10,7 +10,9 @@
 
 //! A version of Lyon's `cubic_to_quadratic` that is less sensitive to floating point error.
 
+use euclid::Point2D;
 use lyon_geom::{CubicBezierSegment, QuadraticBezierSegment};
+use lyon_path::PathEvent;
 
 const MAX_APPROXIMATION_ITERATIONS: u8 = 32;
 
@@ -65,5 +67,71 @@ impl Iterator for CubicToQuadraticSegmentIter {
             ctrl: approx_ctrl_0.lerp(approx_ctrl_1, 0.5).to_point(),
             to: cubic.to,
         })
+    }
+}
+
+pub struct CubicToQuadraticTransformer<I> where I: Iterator<Item = PathEvent> {
+    inner: I,
+    segment_iter: Option<CubicToQuadraticSegmentIter>,
+    last_point: Point2D<f32>,
+    error_bound: f32,
+}
+
+impl<I> CubicToQuadraticTransformer<I> where I: Iterator<Item = PathEvent> {
+    #[inline]
+    pub fn new(inner: I, error_bound: f32) -> CubicToQuadraticTransformer<I> {
+        CubicToQuadraticTransformer {
+            inner: inner,
+            segment_iter: None,
+            last_point: Point2D::zero(),
+            error_bound: error_bound,
+        }
+    }
+}
+
+impl<I> Iterator for CubicToQuadraticTransformer<I> where I: Iterator<Item = PathEvent> {
+    type Item = PathEvent;
+
+    fn next(&mut self) -> Option<PathEvent> {
+        if let Some(ref mut segment_iter) = self.segment_iter {
+            if let Some(quadratic) = segment_iter.next() {
+                return Some(PathEvent::QuadraticTo(quadratic.ctrl, quadratic.to))
+            }
+        }
+
+        self.segment_iter = None;
+
+        match self.inner.next() {
+            None => None,
+            Some(PathEvent::CubicTo(ctrl1, ctrl2, to)) => {
+                let cubic = CubicBezierSegment {
+                    from: self.last_point,
+                    ctrl1: ctrl1,
+                    ctrl2: ctrl2,
+                    to: to,
+                };
+                self.last_point = to;
+                self.segment_iter = Some(CubicToQuadraticSegmentIter::new(&cubic,
+                                                                          self.error_bound));
+                self.next()
+            }
+            Some(PathEvent::MoveTo(to)) => {
+                self.last_point = to;
+                Some(PathEvent::MoveTo(to))
+            }
+            Some(PathEvent::LineTo(to)) => {
+                self.last_point = to;
+                Some(PathEvent::LineTo(to))
+            }
+            Some(PathEvent::QuadraticTo(ctrl, to)) => {
+                self.last_point = to;
+                Some(PathEvent::QuadraticTo(ctrl, to))
+            }
+            Some(PathEvent::Close) => Some(PathEvent::Close),
+            Some(PathEvent::Arc(to, vector, angle_from, angle_to)) => {
+                self.last_point = to;
+                Some(PathEvent::Arc(to, vector, angle_from, angle_to))
+            }
+        }
     }
 }

@@ -48,6 +48,7 @@ use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_library::MeshLibrary;
 use pathfinder_partitioner::partitioner::Partitioner;
+use pathfinder_path_utils::cubic_to_quadratic::CubicToQuadraticTransformer;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use pathfinder_path_utils::transform::Transform2DPathIter;
 use rocket::http::{ContentType, Header, Status};
@@ -75,6 +76,8 @@ use rsvg::{Handle, HandleExt};
 const SUGGESTED_JSON_SIZE_LIMIT: u64 = 32 * 1024 * 1024;
 
 const MESH_LIBRARY_CACHE_SIZE: usize = 16;
+
+const CUBIC_TO_QUADRATIC_APPROX_TOLERANCE: f32 = 1.0;
 
 static NEXT_FONT_KEY: AtomicUsize = ATOMIC_USIZE_INIT;
 
@@ -486,10 +489,14 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     // Partition the decoded glyph outlines.
     let mut library = MeshLibrary::new();
     for (stored_path_index, path_descriptor) in path_descriptors.iter().enumerate() {
-        library.push_stencil_segments((path_descriptor.path_index + 1) as u16,
-                                      PathIter::new(paths[stored_path_index].iter().cloned()));
-        library.push_stencil_normals((path_descriptor.path_index + 1) as u16,
-                                     paths[stored_path_index].iter().cloned());
+        library.push_stencil_segments(
+            (path_descriptor.path_index + 1) as u16,
+            CubicToQuadraticTransformer::new(paths[stored_path_index].iter().cloned(),
+                                             CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
+        library.push_stencil_normals(
+            (path_descriptor.path_index + 1) as u16,
+            CubicToQuadraticTransformer::new(paths[stored_path_index].iter().cloned(),
+                                             CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
     }
 
     let mut partitioner = Partitioner::new(library);

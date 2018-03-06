@@ -26,7 +26,7 @@ uniform ivec2 uAAAlphaDimensions;
 varying vec2 vTexCoord;
 
 float sampleSource(float deltaX) {
-    return texture2D(uAAAlpha, vec2(vTexCoord.s + deltaX, vTexCoord.y)).r;
+    return abs(texture2D(uAAAlpha, vec2(vTexCoord.s + deltaX, vTexCoord.y)).r);
 }
 
 void main() {
