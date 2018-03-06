@@ -414,7 +414,7 @@ fn rasterize_glyph_with_core_graphics(font_key: &FontKey,
 fn rasterize_glyph_with_core_graphics(_: &FontKey,
                                       _: u32,
                                       _: Arc<Vec<u8>>,
-                                      _: &FontInstance,
+                                      _: &FontInstance<FontKey>,
                                       _: &GlyphKey)
                                       -> Result<GlyphImage, FontError> {
     Err(FontError::ReferenceRasterizerUnavailable)

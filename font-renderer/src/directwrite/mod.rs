@@ -8,18 +8,21 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! Font loading using a hybrid of Windows DirectWrite and FreeType for hinting.
+
 #![allow(non_snake_case, non_upper_case_globals)]
 
 use dwrite;
 use euclid::{Point2D, Size2D};
 use kernel32;
-use pathfinder_path_utils::PathCommand;
-use pathfinder_path_utils::cubic::{CubicPathCommand, CubicPathCommandApproxStream};
+use lyon_path::PathEvent;
 use std::collections::BTreeMap;
+use std::hash::Hash;
+use std::iter::Cloned;
 use std::mem;
 use std::os::raw::c_void;
 use std::ptr;
-use std::slice;
+use std::slice::{self, Iter};
 use std::sync::Arc;
 use uuid::IID_ID2D1SimplifiedGeometrySink;
 use winapi::winerror::{self, S_OK};
@@ -30,13 +33,11 @@ use winapi::{FLOAT, GUID, HRESULT, ID2D1SimplifiedGeometrySinkVtbl, IDWriteFacto
 use winapi::{IDWriteFontCollectionLoader, IDWriteFontCollectionLoaderVtbl, IDWriteFontFace};
 use winapi::{IDWriteFontFile, IDWriteFontFileEnumerator, IDWriteFontFileEnumeratorVtbl};
 use winapi::{IDWriteFontFileLoader, IDWriteFontFileLoaderVtbl, IDWriteFontFileStream};
-use winapi::{IDWriteFontFileStreamVtbl, IDWriteGdiInterop, IDWriteGeometrySink, IUnknown};
-use winapi::{IUnknownVtbl, TRUE, UINT16, UINT32, UINT64, UINT};
+use winapi::{IDWriteFontFileStreamVtbl, IDWriteGeometrySink, IUnknown, IUnknownVtbl, TRUE, UINT16};
+use winapi::{UINT32, UINT64, UINT};
 
 use self::com::{PathfinderCoclass, PathfinderComObject, PathfinderComPtr};
-use {FontInstance, FontKey, GlyphDimensions, GlyphKey};
-
-//! Font loading using Windows DirectWrite.
+use {FontInstance, GlyphDimensions, GlyphImage, GlyphKey};
 
 mod com;
 
@@ -60,24 +61,18 @@ DEFINE_GUID! {
     0x6d4865fe, 0x0ab8, 0x4d91, 0x8f, 0x62, 0x5d, 0xd6, 0xbe, 0x34, 0xa3, 0xe0
 }
 
-pub type GlyphOutline = Vec<PathCommand>;
-
-const CURVE_APPROX_ERROR_BOUND: f32 = 0.1;
-
 static PATHFINDER_FONT_COLLECTION_KEY: [u8; 17] = *b"MEMORY_COLLECTION";
 static PATHFINDER_FONT_FILE_KEY: [u8; 11] = *b"MEMORY_FILE";
 
 /// An object that loads and renders fonts using Windows DirectWrite.
-pub struct FontContext {
+pub struct FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     dwrite_factory: PathfinderComPtr<IDWriteFactory>,
-    #[allow(unused)]
-    dwrite_gdi_interop: PathfinderComPtr<IDWriteGdiInterop>,
-    dwrite_font_faces: BTreeMap<FontKey, PathfinderComPtr<IDWriteFontFace>>,
+    dwrite_font_faces: BTreeMap<FK, PathfinderComPtr<IDWriteFontFace>>,
 }
 
-impl FontContext {
+impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     /// Creates a new font context instance.
-    pub fn new() -> Result<FontContext, ()> {
+    pub fn new() -> Result<FontContext<FK>, ()> {
         unsafe {
             let mut factory: *mut IDWriteFactory = ptr::null_mut();
             if !winerror::SUCCEEDED(dwrite::DWriteCreateFactory(winapi::DWRITE_FACTORY_TYPE_SHARED,
@@ -88,15 +83,8 @@ impl FontContext {
             }
             let factory = PathfinderComPtr::new(factory);
 
-            let mut gdi_interop: *mut IDWriteGdiInterop = ptr::null_mut();
-            if !winerror::SUCCEEDED((**factory).GetGdiInterop(&mut gdi_interop)) {
-                return Err(())
-            }
-            let gdi_interop = PathfinderComPtr::new(gdi_interop);
-
             Ok(FontContext {
                 dwrite_factory: factory,
-                dwrite_gdi_interop: gdi_interop,
                 dwrite_font_faces: BTreeMap::new(),
             })
         }
@@ -111,7 +99,7 @@ impl FontContext {
     /// 
     /// `font_index` is the index of the font within the collection, if `bytes` refers to a
     /// collection (`.ttc`).
-    pub fn add_font_from_memory(&mut self, font_key: &FontKey, bytes: Arc<Vec<u8>>, _: u32)
+    pub fn add_font_from_memory(&mut self, font_key: &FK, bytes: Arc<Vec<u8>>, _: u32)
                                 -> Result<(), ()> {
         unsafe {
             let font_file_loader = PathfinderFontFileLoader::new(bytes.clone());
@@ -185,7 +173,7 @@ impl FontContext {
                 return Err(())
             }
 
-            self.dwrite_font_faces.insert(*font_key, font_face);
+            self.dwrite_font_faces.insert((*font_key).clone(), font_face);
             Ok(())
         }
     }
@@ -194,7 +182,7 @@ impl FontContext {
     /// 
     /// If the font isn't loaded, does nothing.
     #[inline]
-    pub fn delete_font(&mut self, font_key: &FontKey) {
+    pub fn delete_font(&mut self, font_key: &FK) {
         self.dwrite_font_faces.remove(font_key);
     }
 
@@ -205,7 +193,7 @@ impl FontContext {
     /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
     /// dilate them for easier reading. To retrieve extents that account for these modifications,
     /// set `exact` to false.
-    pub fn glyph_dimensions(&self, font_instance: &FontInstance, glyph_key: &GlyphKey)
+    pub fn glyph_dimensions(&self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
                             -> Option<GlyphDimensions> {
         unsafe {
             let font_face = match self.dwrite_font_faces.get(&font_instance.font_key) {
@@ -231,7 +219,7 @@ impl FontContext {
     }
 
     /// Returns a list of path commands that represent the given glyph in the given font.
-    pub fn glyph_outline(&mut self, font_instance: &FontInstance, glyph_key: &GlyphKey)
+    pub fn glyph_outline(&mut self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
                          -> Result<GlyphOutline, ()> {
         unsafe {
             let font_face = match self.dwrite_font_faces.get(&font_instance.font_key) {
@@ -258,13 +246,19 @@ impl FontContext {
                 return Err(())
             }
 
-            let approx_stream =
-                CubicPathCommandApproxStream::new((**geometry_sink).commands.iter().cloned(),
-                                                  CURVE_APPROX_ERROR_BOUND);
-
-            let approx_commands: Vec<_> = approx_stream.collect();
-            Ok(approx_commands)
+            Ok(GlyphOutline {
+                events: mem::replace(&mut (**geometry_sink).commands, vec![]),
+            })
         }
+    }
+
+    pub fn rasterize_glyph_with_native_rasterizer(&self,
+                                                  _font_instance: &FontInstance<FK>,
+                                                  _glyph_key: &GlyphKey,
+                                                  _exact: bool)
+                                                  -> Result<GlyphImage, ()> {
+        // TODO(pcwalton)
+        Err(())
     }
 }
 
@@ -543,7 +537,7 @@ impl PathfinderFontFileStream {
 #[repr(C)]
 struct PathfinderGeometrySink {
     object: PathfinderComObject<PathfinderGeometrySink>,
-    commands: Vec<CubicPathCommand>,
+    commands: Vec<PathEvent>,
 }
 
 static PATHFINDER_GEOMETRY_SINK_VTABLE: ID2D1SimplifiedGeometrySinkVtbl =
@@ -591,9 +585,7 @@ impl PathfinderGeometrySink {
                 PathfinderGeometrySink::d2d_point_2f_to_flipped_f32_point(&bezier.point2);
             let endpoint =
                 PathfinderGeometrySink::d2d_point_2f_to_flipped_f32_point(&bezier.point3);
-            (*this).commands.push(CubicPathCommand::CubicCurveTo(control_point_0,
-                                                                 control_point_1,
-                                                                 endpoint))
+            (*this).commands.push(PathEvent::CubicTo(control_point_0, control_point_1, endpoint));
         }
     }
 
@@ -604,7 +596,7 @@ impl PathfinderGeometrySink {
         let points = slice::from_raw_parts(points, points_count as usize);
         for point in points {
             let point = PathfinderGeometrySink::d2d_point_2f_to_flipped_f32_point(&point);
-            (*this).commands.push(CubicPathCommand::LineTo(point))
+            (*this).commands.push(PathEvent::LineTo(point))
         }
     }
 
@@ -613,7 +605,7 @@ impl PathfinderGeometrySink {
                                           _: D2D1_FIGURE_BEGIN) {
         let this = this as *mut PathfinderGeometrySink;
         let start_point = PathfinderGeometrySink::d2d_point_2f_to_flipped_f32_point(&start_point);
-        (*this).commands.push(CubicPathCommand::MoveTo(start_point))
+        (*this).commands.push(PathEvent::MoveTo(start_point))
     }
 
     unsafe extern "system" fn Close(_: *mut IDWriteGeometrySink) -> HRESULT {
@@ -624,7 +616,7 @@ impl PathfinderGeometrySink {
                                         figure_end: D2D1_FIGURE_END) {
         let this = this as *mut PathfinderGeometrySink;
         if figure_end == D2D1_FIGURE_END_CLOSED {
-            (*this).commands.push(CubicPathCommand::ClosePath)
+            (*this).commands.push(PathEvent::Close)
         }
     }
 
@@ -639,5 +631,16 @@ impl PathfinderGeometrySink {
     #[inline]
     fn d2d_point_2f_to_flipped_f32_point(point: &D2D1_POINT_2F) -> Point2D<f32> {
         Point2D::new(point.x, -point.y)
+    }
+}
+
+pub struct GlyphOutline {
+    events: Vec<PathEvent>,
+}
+
+impl GlyphOutline {
+    #[inline]
+    pub fn iter(&self) -> Cloned<Iter<PathEvent>> {
+        self.events.iter().cloned()
     }
 }
