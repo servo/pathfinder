@@ -139,7 +139,7 @@ impl PathBuilder for Builder {
 
         // Split at X tangent.
         let mut worklist: ArrayVec<[QuadraticBezierSegment<f32>; 2]> = ArrayVec::new();
-        match segment.find_local_x_extremum() {
+        match segment.local_x_extremum_t() {
             Some(t) if t > TANGENT_PARAMETER_TOLERANCE &&
                     t < 1.0 - TANGENT_PARAMETER_TOLERANCE => {
                 let subsegments = segment.split(t);
@@ -151,7 +151,7 @@ impl PathBuilder for Builder {
 
         // Split at Y tangent.
         for segment in worklist {
-            match segment.find_local_y_extremum() {
+            match segment.local_y_extremum_t() {
                 Some(t) if t > TANGENT_PARAMETER_TOLERANCE &&
                         t < 1.0 - TANGENT_PARAMETER_TOLERANCE => {
                     let subsegments = segment.split(t);

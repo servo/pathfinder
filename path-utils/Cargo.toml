@@ -5,8 +5,8 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
 arrayvec = "0.4"
-euclid = "0.16"
-lyon_geom = "0.9"
-lyon_path = "0.9"
+euclid = "0.17"
+lyon_geom = "0.10"
+lyon_path = "0.10"
 serde = "1.0"
 serde_derive = "1.0"

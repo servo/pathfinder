@@ -9,13 +9,16 @@ freetype = ["freetype-sys"]
 
 [dependencies]
 app_units = "0.6"
-euclid = "0.16"
 libc = "0.2"
 log = "0.3"
-lyon_geom = "0.9"
-lyon_path = "0.9"
+lyon_geom = "0.10"
+lyon_path = "0.10"
 serde = "1.0"
 serde_derive = "1.0"
+
+[dependencies.euclid]
+version = "0.17"
+features = ["serde"]
 
 [dependencies.freetype-sys]
 version = "0.6"
