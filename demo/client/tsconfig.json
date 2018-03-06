@@ -8,7 +8,8 @@
             "lodash",
             "node",
             "opentype.js",
-            "webgl-ext"
+            "webgl-ext",
+            "webvr-api"
         ],
         "typeRoots": [
             "node_modules/@types"

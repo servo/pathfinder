@@ -133,6 +133,10 @@ export abstract class Renderer {
     abstract pathBoundingRects(objectIndex: number): Float32Array;
     abstract setHintsUniform(uniforms: UniformMap): void;
 
+    redrawVR(frame: VRFrameData): void {
+        this.redraw();
+    }
+
     redraw(): void {
         const renderContext = this.renderContext;
 
@@ -141,11 +145,6 @@ export abstract class Renderer {
 
         this.clearDestFramebuffer();
 
-        // Start timing rendering.
-        if (this.timerQueryPollInterval == null) {
-            renderContext.timerQueryExt.beginQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT,
-                                                      renderContext.atlasRenderingTimerQuery);
-        }
 
         const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
         antialiasingStrategy.prepareForRendering(this);
@@ -178,11 +177,6 @@ export abstract class Renderer {
                 // FIXME(pcwalton): This is kinda bogus for multipass.
                 if (this.timerQueryPollInterval == null && objectIndex === objectCount - 1 &&
                     pass === passCount - 1) {
-                    renderContext.timerQueryExt
-                                 .endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
-                    renderContext.timerQueryExt
-                                .beginQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT,
-                                                renderContext.compositingTimerQuery);
                 }
 
                 // Perform post-antialiasing tasks.
@@ -575,28 +569,13 @@ export abstract class Renderer {
         if (this.timerQueryPollInterval != null)
             return;
 
-        renderContext.timerQueryExt.endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
+        // renderContext.timerQueryExt.endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
 
         this.timerQueryPollInterval = window.setInterval(() => {
-            for (const queryName of ['atlasRenderingTimerQuery', 'compositingTimerQuery'] as
-                    Array<'atlasRenderingTimerQuery' | 'compositingTimerQuery'>) {
-                if (renderContext.timerQueryExt
-                                 .getQueryObjectEXT(renderContext[queryName],
-                                                    renderContext.timerQueryExt
-                                                                 .QUERY_RESULT_AVAILABLE_EXT) ===
-                        0) {
-                    return;
-                }
-            }
 
-            const atlasRenderingTime =
-                renderContext.timerQueryExt
-                             .getQueryObjectEXT(renderContext.atlasRenderingTimerQuery,
-                                                renderContext.timerQueryExt.QUERY_RESULT_EXT);
-            const compositingTime =
-                renderContext.timerQueryExt
-                             .getQueryObjectEXT(renderContext.compositingTimerQuery,
-                                                renderContext.timerQueryExt.QUERY_RESULT_EXT);
+
+            const atlasRenderingTime = 1;
+            const compositingTime = 1;
             this.lastTimings = {
                 compositing: compositingTime / 1000000.0,
                 rendering: atlasRenderingTime / 1000000.0,

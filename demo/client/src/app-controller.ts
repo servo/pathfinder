@@ -175,6 +175,16 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             }, false);
         }
 
+        const vrButton = document.getElementById('pf-vr') as HTMLInputElement |
+            null;
+        if (vrButton != null) {
+            vrButton.addEventListener('click', event => {
+                this.view.then(view => {
+                    view.enterVR();
+                });
+            }, false);
+        }
+
         this.filePickerView = FilePickerView.create();
         if (this.filePickerView != null) {
             this.filePickerView.onFileLoaded = fileData => this.fileLoaded(fileData, null);
