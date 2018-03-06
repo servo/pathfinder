@@ -292,7 +292,7 @@ impl MeshLibrary {
     /// Computes vertex normals necessary for emboldening and/or stem darkening. This is intended
     /// for stencil-and-cover.
     pub fn push_stencil_normals<I>(&mut self, _path_id: u16, stream: I)
-                                   where I: Iterator<Item = PathEvent> + Clone {
+                                   where I: Iterator<Item = PathEvent> {
         let mut normals = PathNormals::new();
         normals.add_path(stream);
         self.stencil_normals.extend(normals.normals().iter().map(|normals| {

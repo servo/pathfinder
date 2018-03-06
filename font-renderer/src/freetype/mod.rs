@@ -41,11 +41,15 @@ const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING;
 
 const DPI: u32 = 72;
 
+const STEM_DARKENING_AMOUNT: f32 = 0.02;
+
 /// An object that loads and renders fonts using the FreeType library.
 pub struct FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     library: FT_Library,
     faces: BTreeMap<FK, Face>,
 }
+
+unsafe impl<FK> Send for FontContext<FK> where FK: Clone + Hash + Eq + Ord + Send {}
 
 impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     /// Creates a new font context instance.
@@ -112,14 +116,17 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
     /// dilate them for easier reading. To retrieve extents that account for these modifications,
     /// set `exact` to false.
-    pub fn glyph_dimensions(&self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
+    pub fn glyph_dimensions(&self,
+                            font_instance: &FontInstance<FK>,
+                            glyph_key: &GlyphKey,
+                            exact: bool)
                             -> Result<GlyphDimensions, ()> {
         self.load_glyph(font_instance, glyph_key).ok_or(()).and_then(|glyph_slot| {
-            self.glyph_dimensions_from_slot(font_instance, glyph_key, glyph_slot)
+            self.glyph_dimensions_from_slot(font_instance, glyph_key, glyph_slot, exact)
         })
     }
 
-    pub fn glyph_outline<'a>(&'a mut self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
+    pub fn glyph_outline<'a>(&'a self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
                              -> Result<GlyphOutline<'a>, ()> {
         self.load_glyph(font_instance, glyph_key).ok_or(()).map(|glyph_slot| {
             unsafe {
@@ -130,11 +137,11 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
 
     /// Uses the FreeType library to rasterize a glyph on CPU.
     /// 
-    /// Pathfinder uses this for reference testing.
-    /// 
-    /// If `exact` is true, then the glyph image will have precisely the size specified by the font
-    /// designer. Because some font libraries, such as Core Graphics, perform modifications to the
-    /// glyph outlines, to ensure the entire outline fits it is best to pass false for `exact`.
+    /// If `exact` is true, then the raw outline extents as specified by the font designer are
+    /// returned. These may differ from the extents when rendered on screen, because some font
+    /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
+    /// dilate them for easier reading. To retrieve extents that account for these modifications,
+    /// set `exact` to false.
     pub fn rasterize_glyph_with_native_rasterizer(&self,
                                                   font_instance: &FontInstance<FK>,
                                                   glyph_key: &GlyphKey,
@@ -248,7 +255,8 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     fn glyph_dimensions_from_slot(&self,
                                   font_instance: &FontInstance<FK>,
                                   glyph_key: &GlyphKey,
-                                  glyph_slot: FT_GlyphSlot)
+                                  glyph_slot: FT_GlyphSlot,
+                                  exact: bool)
                                   -> Result<GlyphDimensions, ()> {
         unsafe {
             let metrics = &(*glyph_slot).metrics;
@@ -259,12 +267,27 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
             }
 
             let bounding_box = self.bounding_box_from_slot(font_instance, glyph_key, glyph_slot);
+
+            let mut lower_left = Point2D::new(f26dot6_to_i32_rounding_up(bounding_box.xMin),
+                                              f26dot6_to_i32_rounding_up(bounding_box.yMin));
+            let mut upper_right = Point2D::new(f26dot6_to_i32_rounding_up(bounding_box.xMax),
+                                               f26dot6_to_i32_rounding_up(bounding_box.yMax));
+
+            // Account for stem darkening. Round up to be conservative.
+            if !exact {
+                let stem_darkening_radius = (font_instance.size.to_f32_px() *
+                                             STEM_DARKENING_AMOUNT * 0.5).ceil() as i32;
+                lower_left += Vector2D::new(-stem_darkening_radius, -stem_darkening_radius);
+                upper_right += Vector2D::new(stem_darkening_radius, stem_darkening_radius);
+            }
+
             Ok(GlyphDimensions {
-                origin: Point2D::new((bounding_box.xMin >> 6) as i32,
-                                     (bounding_box.yMax >> 6) as i32),
-                size: Size2D::new(((bounding_box.xMax - bounding_box.xMin) >> 6) as u32,
-                                  ((bounding_box.yMax - bounding_box.yMin) >> 6) as u32),
-                advance: f32::from_ft_f26dot6(metrics.horiAdvance),
+                origin: lower_left,
+                size: Size2D::new((upper_right.x - lower_left.x) as u32,
+                                  (upper_right.y - lower_left.y) as u32),
+                advance: f32::from_ft_f26dot6(metrics.horiAdvance) /
+                    (*(*glyph_slot).face).units_per_EM as f32 *
+                    font_instance.size.to_f32_px(),
             })
         }
     }
@@ -307,4 +330,8 @@ unsafe fn convert_vec_u32_to_vec_u8(mut input: Vec<u32>) -> Vec<u8> {
     let (ptr, len, cap) = (input.as_mut_ptr(), input.len(), input.capacity());
     mem::forget(input);
     Vec::from_raw_parts(ptr as *mut u8, len * 4, cap * 4)
+}
+
+fn f26dot6_to_i32_rounding_up(x: FT_F26Dot6) -> i32 {
+    ((x + (1 << 5) - 1) >> 6) as i32
 }

@@ -40,9 +40,10 @@ impl PathNormals {
         self.normals.clear()
     }
 
-    pub fn add_path<I>(&mut self, mut stream: I) where I: Iterator<Item = PathEvent> + Clone {
-        let (mut path_stream, mut path_points) = (stream.clone(), vec![]);
+    pub fn add_path<I>(&mut self, mut stream: I) where I: Iterator<Item = PathEvent> {
+        let (mut path_ops, mut path_points) = (vec![], vec![]);
         while let Some(event) = stream.next() {
+            path_ops.push(PathOp::from_path_event(&event));
             match event {
                 PathEvent::MoveTo(to) => path_points.push(to),
                 PathEvent::LineTo(to) => path_points.push(to),
@@ -53,18 +54,15 @@ impl PathNormals {
                 PathEvent::Arc(..) => {
                     panic!("PathNormals::add_path(): Convert arcs to quadratics first!")
                 }
-                PathEvent::Close => {
-                    self.flush(path_stream, &mut path_points);
-                    path_stream = stream.clone();
-                }
+                PathEvent::Close => self.flush(path_ops.drain(..), &mut path_points),
             }
         }
 
-        self.flush(path_stream, &mut path_points);
+        self.flush(path_ops.into_iter(), &mut path_points);
     }
 
     fn flush<I>(&mut self, path_stream: I, path_points: &mut Vec<Point2D<f32>>)
-                where I: Iterator<Item = PathEvent> + Clone {
+                where I: Iterator<Item = PathOp> {
         match path_points.len() {
             0 | 1 => path_points.clear(),
             2 => {
@@ -80,7 +78,7 @@ impl PathNormals {
     }
 
     fn flush_slow<I>(&mut self, path_stream: I, path_points: &mut Vec<Point2D<f32>>)
-                     where I: Iterator<Item = PathEvent> + Clone {
+                     where I: Iterator<Item = PathOp> {
         let mut normals = vec![Vector2D::zero(); path_points.len()];
         *normals.last_mut().unwrap() = compute_normal(&path_points[path_points.len() - 2],
                                                       &path_points[path_points.len() - 1],
@@ -95,10 +93,10 @@ impl PathNormals {
         path_points.clear();
 
         let mut next_normal_index = 0;
-        for event in path_stream {
-            match event {
-                PathEvent::MoveTo(_) => next_normal_index += 1,
-                PathEvent::LineTo(_) => {
+        for op in path_stream {
+            match op {
+                PathOp::MoveTo => next_normal_index += 1,
+                PathOp::LineTo => {
                     next_normal_index += 1;
                     self.normals.push(SegmentNormals {
                         from: normals[next_normal_index - 2],
@@ -106,7 +104,7 @@ impl PathNormals {
                         to: normals[next_normal_index - 1],
                     });
                 }
-                PathEvent::QuadraticTo(..) => {
+                PathOp::QuadraticTo => {
                     next_normal_index += 2;
                     self.normals.push(SegmentNormals {
                         from: normals[next_normal_index - 3],
@@ -114,8 +112,7 @@ impl PathNormals {
                         to: normals[next_normal_index - 1],
                     })
                 }
-                PathEvent::CubicTo(..) | PathEvent::Arc(..) => unreachable!(),
-                PathEvent::Close => {
+                PathOp::Close => {
                     self.normals.push(SegmentNormals {
                         from: normals[next_normal_index - 1],
                         ctrl: Vector2D::zero(),
@@ -132,4 +129,24 @@ fn compute_normal(prev: &Point2D<f32>, current: &Point2D<f32>, next: &Point2D<f3
                     -> Vector2D<f32> {
     let vector = ((*current - *prev) + (*next - *current)).normalize();
     Vector2D::new(vector.y, -vector.x)
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum PathOp {
+    MoveTo,
+    LineTo,
+    QuadraticTo,
+    Close,
+}
+
+impl PathOp {
+    fn from_path_event(event: &PathEvent) -> PathOp {
+        match *event {
+            PathEvent::MoveTo(..) => PathOp::MoveTo,
+            PathEvent::LineTo(..) => PathOp::LineTo,
+            PathEvent::QuadraticTo(..) => PathOp::QuadraticTo,
+            PathEvent::Close => PathOp::Close,
+            PathEvent::Arc(..) | PathEvent::CubicTo(..) => unreachable!(),
+        }
+    }
 }

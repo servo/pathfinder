@@ -15,6 +15,7 @@ use lyon_path::{PathEvent, PathState};
 
 const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
 
+#[derive(Clone)]
 pub struct Outline<'a> {
     outline: &'a FT_Outline,
 }
