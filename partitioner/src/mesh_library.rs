@@ -23,7 +23,7 @@ use std::u32;
 
 use {BQuad, BQuadVertexPositions, BVertexLoopBlinnData};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeshLibrary {
     pub path_ranges: Vec<PathRanges>,
     pub b_quads: Vec<BQuad>,
@@ -424,7 +424,7 @@ pub(crate) struct MeshLibraryLengths {
     b_boxes: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PathRanges {
     pub b_quads: Range<u32>,
     pub b_quad_vertex_positions: Range<u32>,

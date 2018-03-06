@@ -120,7 +120,7 @@ pub(crate) enum BVertexKind {
     ConcaveControlPoint,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 #[repr(C)]
 pub struct BVertexLoopBlinnData {
     pub tex_coord: [u8; 2],
