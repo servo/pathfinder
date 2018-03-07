@@ -63,9 +63,9 @@ void main() {
     mat2 transformLinear = globalTransformLinear * localTransformLinear;
 
     // Perform the linear component of the transform (everything but translation).
-    fromPosition = transformLinear * fromPosition;
-    ctrlPosition = transformLinear * ctrlPosition;
-    toPosition = transformLinear * toPosition;
+    fromPosition = quantize(transformLinear * fromPosition);
+    ctrlPosition = quantize(transformLinear * ctrlPosition);
+    toPosition = quantize(transformLinear * toPosition);
 
     // Choose correct quadrant for rotation.
     vec4 bounds = fetchFloat4Data(uPathBounds, pathID, uPathBoundsDimensions);
@@ -89,9 +89,7 @@ void main() {
 
     // Compute position and dilate. If too thin, discard to avoid artefacts.
     vec2 dilation = vec2(0.0), position;
-    if (abs(v02.x) < 0.0001) {
-        position.x = 0.0;
-    } else if (aTessCoord.x < 0.5) {
+    if (aTessCoord.x < 0.5) {
         position.x = min(min(fromPosition.x, toPosition.x), ctrlPosition.x);
         dilation.x = -1.0;
     } else {

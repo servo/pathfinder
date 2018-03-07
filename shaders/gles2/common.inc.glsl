@@ -100,6 +100,10 @@ vec2 hintPosition(vec2 position, vec4 pathHints) {
     return vec2(position.x, y);
 }
 
+vec2 quantize(vec2 position) {
+    return (floor(position * 10000.0 + 0.5) - 0.5) / 10000.0;
+}
+
 /// Converts the given 2D position in clip space to device pixel space (with origin in the lower
 /// left).
 vec2 convertClipToScreenSpace(vec2 position, ivec2 framebufferSize) {
