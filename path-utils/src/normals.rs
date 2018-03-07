@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Vector2D};
 use lyon_path::PathEvent;
 use orientation::Orientation;
@@ -92,18 +93,27 @@ impl PathNormals {
                      path_points: &mut Vec<Point2D<f32>>)
                      where I: Iterator<Item = PathOp> {
         let mut normals = vec![Vector2D::zero(); path_points.len()];
-        *normals.last_mut().unwrap() = compute_normal(orientation,
-                                                      &path_points[path_points.len() - 2],
-                                                      &path_points[path_points.len() - 1],
-                                                      &path_points[0]);
-        normals[0] = compute_normal(orientation,
-                                    &path_points[path_points.len() - 1],
-                                    &path_points[0],
-                                    &path_points[1]);
-        for (index, window) in path_points.windows(3).enumerate() {
-            normals[index + 1] = compute_normal(orientation, &window[0], &window[1], &window[2])
+        for (index, point) in path_points.iter().enumerate() {
+            let (mut prev_index, mut next_index) = (index, index);
+            while path_points[prev_index].approx_eq(&path_points[index]) {
+                prev_index = if prev_index == 0 {
+                    path_points.len() - 1
+                } else {
+                    prev_index - 1
+                }
+            }
+            while path_points[next_index].approx_eq(&path_points[index]) {
+                next_index = if next_index == path_points.len() - 1 {
+                    0
+                } else {
+                    next_index + 1
+                }
+            }
+            normals[index] = compute_normal(orientation,
+                                            &path_points[prev_index],
+                                            point,
+                                            &path_points[next_index])
         }
-
         path_points.clear();
 
         let mut next_normal_index = 0;
