@@ -18,7 +18,7 @@ import {NoAAStrategy, StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import {AAOptions} from './app-controller';
 import PathfinderBufferTexture from "./buffer-texture";
 import {UniformMap} from './gl-utils';
-import {PathfinderMeshBuffers, PathfinderMeshData} from "./meshes";
+import {PathfinderPackedMeshBuffers, PathfinderPackedMeshes} from "./meshes";
 import {ShaderMap} from './shader-loader';
 import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull, unwrapUndef} from './utils';
 import {RenderContext, Timings} from "./view";
@@ -43,8 +43,8 @@ export abstract class Renderer {
 
     readonly pathTransformBufferTextures: Array<PathTransformBuffers<PathfinderBufferTexture>>;
 
-    meshes: PathfinderMeshBuffers[] | null;
-    meshData: PathfinderMeshData[] | null;
+    meshBuffers: PathfinderPackedMeshBuffers[] | null;
+    meshes: PathfinderPackedMeshes[] | null;
 
     lastTimings: Timings;
 
@@ -65,7 +65,7 @@ export abstract class Renderer {
     }
 
     get meshesAttached(): boolean {
-        return this.meshes != null && this.meshData != null;
+        return this.meshBuffers != null && this.meshes != null;
     }
 
     abstract get isMulticolor(): boolean;
@@ -100,8 +100,8 @@ export abstract class Renderer {
     constructor(renderContext: RenderContext) {
         this.renderContext = renderContext;
 
-        this.meshData = null;
         this.meshes = null;
+        this.meshBuffers = null;
 
         this.lastTimings = { rendering: 0, compositing: 0 };
 
@@ -121,10 +121,12 @@ export abstract class Renderer {
         this.antialiasingStrategy.setFramebufferSize(this);
     }
 
-    attachMeshes(meshes: PathfinderMeshData[]): void {
+    attachMeshes(meshes: PathfinderPackedMeshes[]): void {
         const renderContext = this.renderContext;
-        this.meshData = meshes;
-        this.meshes = meshes.map(meshes => new PathfinderMeshBuffers(renderContext.gl, meshes));
+        this.meshes = meshes;
+        this.meshBuffers = meshes.map(meshes => {
+            return new PathfinderPackedMeshBuffers(renderContext.gl, meshes);
+        });
         unwrapNull(this.antialiasingStrategy).attachMeshes(this);
     }
 
@@ -134,7 +136,7 @@ export abstract class Renderer {
     redraw(): void {
         const renderContext = this.renderContext;
 
-        if (this.meshes == null)
+        if (this.meshBuffers == null)
             return;
 
         this.clearDestFramebuffer();
@@ -211,7 +213,7 @@ export abstract class Renderer {
                                                           aaOptions.stemDarkening);
 
         this.antialiasingStrategy.init(this);
-        if (this.meshData != null)
+        if (this.meshes != null)
             this.antialiasingStrategy.attachMeshes(this);
         this.antialiasingStrategy.setFramebufferSize(this);
 
@@ -359,9 +361,9 @@ export abstract class Renderer {
     }
 
     pathRangeForObject(objectIndex: number): Range {
-        if (this.meshes == null)
+        if (this.meshBuffers == null)
             return new Range(0, 0);
-        const bVertexPathRanges = this.meshes[objectIndex].bQuadVertexPositionPathRanges;
+        const bVertexPathRanges = this.meshBuffers[objectIndex].bQuadVertexPositionPathRanges;
         return new Range(1, bVertexPathRanges.length + 1);
     }
 
@@ -446,7 +448,7 @@ export abstract class Renderer {
     }
 
     private directlyRenderObject(pass: number, objectIndex: number): void {
-        if (this.meshes == null || this.meshData == null)
+        if (this.meshBuffers == null || this.meshes == null)
             return;
 
         const renderContext = this.renderContext;
@@ -463,8 +465,8 @@ export abstract class Renderer {
         const pathRange = this.pathRangeForObject(objectIndex);
         const meshIndex = this.meshIndexForObject(objectIndex);
 
-        const meshes = this.meshes![meshIndex];
-        const meshData = this.meshData![meshIndex];
+        const meshes = this.meshBuffers![meshIndex];
+        const meshData = this.meshes![meshIndex];
 
         // Set up implicit cover state.
         gl.depthFunc(gl.GREATER);
@@ -624,15 +626,15 @@ export abstract class Renderer {
     }
 
     private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {
-        if (this.meshes == null)
+        if (this.meshBuffers == null)
             return;
 
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
         const meshIndex = this.meshIndexForObject(objectIndex);
-        const meshes = this.meshes[meshIndex];
-        const meshData = unwrapNull(this.meshData)[meshIndex];
+        const meshes = this.meshBuffers[meshIndex];
+        const meshData = unwrapNull(this.meshes)[meshIndex];
 
         const directCurveProgramName = this.directCurveProgramName();
         const directCurveProgram = renderContext.shaderPrograms[directCurveProgramName];
@@ -666,14 +668,14 @@ export abstract class Renderer {
                                          instanceRange: Range,
                                          renderingMode: DirectRenderingMode):
                                          void {
-        if (this.meshes == null)
+        if (this.meshBuffers == null)
             return;
 
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
         const meshIndex = this.meshIndexForObject(objectIndex);
-        const meshes = this.meshes[meshIndex];
+        const meshes = this.meshBuffers[meshIndex];
 
         const directInteriorProgramName = this.directInteriorProgramName(renderingMode);
         const directInteriorProgram = renderContext.shaderPrograms[directInteriorProgramName];

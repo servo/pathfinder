@@ -14,7 +14,8 @@ import * as _ from 'lodash';
 import * as opentype from "opentype.js";
 import {Metrics} from 'opentype.js';
 
-import {B_QUAD_SIZE, parseServerTiming, PathfinderMeshData} from "./meshes";
+import {B_QUAD_SIZE, parseServerTiming, PathfinderMeshPack} from "./meshes";
+import {PathfinderPackedMeshes} from "./meshes";
 import {assert, lerp, panic, UINT32_MAX, UINT32_SIZE, unwrapNull} from "./utils";
 
 export const BUILTIN_FONT_URI: string = "/otf/demo";
@@ -39,11 +40,11 @@ export const MAX_STEM_DARKENING_PIXELS_PER_EM: number = 72.0;
 const PARTITION_FONT_ENDPOINT_URI: string = "/partition-font";
 
 export interface ExpandedMeshData {
-    meshes: PathfinderMeshData;
+    meshes: PathfinderPackedMeshes;
 }
 
 export interface PartitionResult {
-    meshes: PathfinderMeshData;
+    meshes: PathfinderMeshPack;
     time: number;
 }
 
@@ -213,7 +214,7 @@ export class TextFrame {
         this.font = font;
     }
 
-    expandMeshes(meshes: PathfinderMeshData, glyphIDs: number[]): ExpandedMeshData {
+    expandMeshes(meshes: PathfinderMeshPack, glyphIDs: number[]): ExpandedMeshData {
         const pathIDs = [];
         for (const textRun of this.runs) {
             for (const glyphID of textRun.glyphIDs) {
@@ -225,7 +226,7 @@ export class TextFrame {
         }
 
         return {
-            meshes: meshes.expand(pathIDs),
+            meshes: new PathfinderPackedMeshes(meshes, pathIDs),
         };
     }
 
@@ -296,7 +297,7 @@ export class GlyphStore {
             return response.arrayBuffer();
         }).then(buffer => {
             return {
-                meshes: new PathfinderMeshData(buffer),
+                meshes: new PathfinderMeshPack(buffer),
                 time: time,
             };
         });

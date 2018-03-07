@@ -20,7 +20,7 @@ import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey} from './atlas';
 import PathfinderBufferTexture from "./buffer-texture";
 import {CameraView, PerspectiveCamera} from "./camera";
 import {UniformMap} from './gl-utils';
-import {PathfinderMeshData} from "./meshes";
+import {PathfinderMeshPack, PathfinderPackedMeshes} from "./meshes";
 import {PathTransformBuffers, Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from "./ssaa-strategy";
@@ -133,8 +133,8 @@ class ThreeDController extends DemoAppController<ThreeDView> {
     atlasGlyphs!: AtlasGlyph[];
     atlas!: Atlas;
 
-    baseMeshes!: PathfinderMeshData;
-    private expandedMeshes!: PathfinderMeshData[];
+    baseMeshes!: PathfinderMeshPack;
+    private expandedMeshes!: PathfinderPackedMeshes[];
 
     private monumentPromise!: Promise<MonumentSide[]>;
 
@@ -291,7 +291,7 @@ class ThreeDController extends DemoAppController<ThreeDView> {
 
             this.expandedMeshes = this.meshDescriptors.map(meshDescriptor => {
                 const glyphIndex = _.sortedIndexOf(glyphsNeeded, meshDescriptor.glyphID);
-                return this.baseMeshes.expand([glyphIndex + 1]);
+                return new PathfinderPackedMeshes(this.baseMeshes, [glyphIndex + 1]);
             });
 
             this.view.then(view => view.attachMeshes(this.expandedMeshes));
@@ -402,7 +402,7 @@ class ThreeDRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.meshes == null ? 0 : this.meshes.length;
+        return this.meshBuffers == null ? 0 : this.meshBuffers.length;
     }
 
     private cubeVertexPositionBuffer: WebGLBuffer;
@@ -442,7 +442,7 @@ class ThreeDRenderer extends Renderer {
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, CUBE_INDICES, gl.STATIC_DRAW);
     }
 
-    attachMeshes(expandedMeshes: PathfinderMeshData[]) {
+    attachMeshes(expandedMeshes: PathfinderPackedMeshes[]) {
         super.attachMeshes(expandedMeshes);
 
         this.renderAtlasGlyphs(this.renderContext.appController.atlasGlyphs);
@@ -864,7 +864,9 @@ class ThreeDRenderer extends Renderer {
                                               glmatrix.vec2.create());
 
         const atlasRenderer = new ThreeDAtlasRenderer(this.renderContext, atlasGlyphs);
-        atlasRenderer.attachMeshes([this.renderContext.appController.baseMeshes]);
+        const baseMeshes = this.renderContext.appController.baseMeshes;
+        const expandedMeshes = new PathfinderPackedMeshes(baseMeshes);
+        atlasRenderer.attachMeshes([expandedMeshes]);
         atlasRenderer.renderAtlas();
         this.glyphTexCoords = atlasRenderer.glyphTexCoords;
         this.glyphSizes = atlasRenderer.glyphSizes;

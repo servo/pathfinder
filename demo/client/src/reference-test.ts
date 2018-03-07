@@ -19,7 +19,7 @@ import {DemoAppController, setSwitchInputsValue} from "./app-controller";
 import {SUBPIXEL_GRANULARITY} from './atlas';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
-import {PathfinderMeshData} from './meshes';
+import {PathfinderMeshPack, PathfinderPackedMeshBuffers, PathfinderPackedMeshes} from './meshes';
 import {PathTransformBuffers, Renderer} from "./renderer";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
@@ -116,7 +116,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
     }
 
     private glyphStore!: GlyphStore;
-    private baseMeshes!: PathfinderMeshData;
+    private baseMeshes!: PathfinderMeshPack;
     private expandedMeshes!: ExpandedMeshData;
 
     private fontSizeInput!: HTMLInputElement;
@@ -515,7 +515,7 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         this.svgLoader.partition().then(meshes => {
             this.view.then(view => {
                 view.recreateRenderer();
-                view.attachMeshes([meshes]);
+                view.attachMeshes([new PathfinderPackedMeshes(meshes)]);
                 view.initCameraBounds(this.svgLoader.svgViewBox);
             });
         });
@@ -688,7 +688,7 @@ class ReferenceTestTextRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.meshes == null ? 0 : this.meshes.length;
+        return this.meshBuffers == null ? 0 : this.meshBuffers.length;
     }
 
     protected get usedSizeFactor(): glmatrix.vec2 {
@@ -730,7 +730,7 @@ class ReferenceTestTextRenderer extends Renderer {
         this.camera.onZoom = () => renderContext.setDirty();
     }
 
-    attachMeshes(meshes: PathfinderMeshData[]): void {
+    attachMeshes(meshes: PathfinderPackedMeshes[]): void {
         super.attachMeshes(meshes);
 
         this.uploadPathColors(1);

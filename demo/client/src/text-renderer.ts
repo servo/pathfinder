@@ -131,7 +131,7 @@ export abstract class TextRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.meshes == null ? 0 : this.meshes.length;
+        return this.meshBuffers == null ? 0 : this.meshBuffers.length;
     }
 
     protected get extraEmboldenAmount(): glmatrix.vec2 {

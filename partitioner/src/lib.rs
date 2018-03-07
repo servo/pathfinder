@@ -41,7 +41,8 @@ use euclid::Point2D;
 use std::u32;
 
 pub mod builder;
-pub mod mesh_library;
+pub mod mesh;
+pub mod mesh_pack;
 pub mod partitioner;
 
 /// The fill rule.

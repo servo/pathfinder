@@ -16,7 +16,7 @@ import {AAOptions} from './app-controller';
 import PathfinderBufferTexture from './buffer-texture';
 import {Camera} from "./camera";
 import {EXTDisjointTimerQuery, QUAD_ELEMENTS, UniformMap} from './gl-utils';
-import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
+import {PathfinderPackedMeshBuffers, PathfinderPackedMeshes} from './meshes';
 import {Renderer} from './renderer';
 import {PathfinderShaderProgram, SHADER_NAMES, ShaderMap} from './shader-loader';
 import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
@@ -157,8 +157,8 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     atlasRenderingTimerQuery!: WebGLQuery;
     compositingTimerQuery!: WebGLQuery;
 
-    meshes: PathfinderMeshBuffers[];
-    meshData: PathfinderMeshData[];
+    meshes: PathfinderPackedMeshBuffers[];
+    meshData: PathfinderPackedMeshes[];
 
     get colorAlphaFormat(): ColorAlphaFormat {
         // On macOS, RGBA framebuffers seem to cause driver stalls when switching between rendering
@@ -193,7 +193,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.wantsScreenshot = false;
     }
 
-    attachMeshes(meshes: PathfinderMeshData[]): void {
+    attachMeshes(meshes: PathfinderPackedMeshes[]): void {
         this.renderer.attachMeshes(meshes);
         this.setDirty();
     }

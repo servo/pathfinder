@@ -23,7 +23,7 @@ import {CameraView, OrthographicCamera} from "./camera";
 import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
 import {createFramebufferDepthTexture, QUAD_ELEMENTS, setTextureParameters} from './gl-utils';
 import {UniformMap} from './gl-utils';
-import {PathfinderMeshBuffers, PathfinderMeshData} from './meshes';
+import {PathfinderMeshPack, PathfinderPackedMeshBuffers, PathfinderPackedMeshes} from './meshes';
 import {PathfinderShaderProgram, ShaderMap, ShaderProgramSource} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
 import {calculatePixelRectForGlyph, PathfinderFont} from "./text";
@@ -133,7 +133,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
 
     private _atlas: Atlas;
 
-    private meshes!: PathfinderMeshData;
+    private meshes!: PathfinderPackedMeshes;
 
     private _fontSize!: number;
     private _rotationAngle!: number;
@@ -278,13 +278,13 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         });
     }
 
-    private expandMeshes(meshes: PathfinderMeshData, glyphCount: number): PathfinderMeshData {
+    private expandMeshes(meshes: PathfinderMeshPack, glyphCount: number): PathfinderPackedMeshes {
         const pathIDs = [];
         for (let glyphIndex = 0; glyphIndex < glyphCount; glyphIndex++) {
             for (let subpixel = 0; subpixel < SUBPIXEL_GRANULARITY; subpixel++)
                 pathIDs.push(glyphIndex + 1);
         }
-        return meshes.expand(pathIDs);
+        return new PathfinderPackedMeshes(meshes, pathIDs);
     }
 
     get atlas(): Atlas {

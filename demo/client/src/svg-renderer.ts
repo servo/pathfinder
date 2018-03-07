@@ -15,7 +15,7 @@ import {NoAAStrategy} from './aa-strategy';
 import {SubpixelAAType} from './aa-strategy';
 import {OrthographicCamera} from "./camera";
 import {UniformMap} from './gl-utils';
-import {PathfinderMeshData} from './meshes';
+import {PathfinderPackedMeshes} from './meshes';
 import {PathTransformBuffers, Renderer} from "./renderer";
 import {ShaderMap} from './shader-loader';
 import SSAAStrategy from './ssaa-strategy';
@@ -114,7 +114,7 @@ export abstract class SVGRenderer extends Renderer {
         return boundingRectsBuffer;
     }
 
-    attachMeshes(meshes: PathfinderMeshData[]): void {
+    attachMeshes(meshes: PathfinderPackedMeshes[]): void {
         super.attachMeshes(meshes);
         this.uploadPathColors(1);
         this.uploadPathTransforms(1);

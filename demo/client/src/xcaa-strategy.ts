@@ -472,7 +472,7 @@ export class MCAAStrategy extends XCAAStrategy {
     }
 
     protected initVAOForObject(renderer: Renderer, objectIndex: number): void {
-        if (renderer.meshes == null || renderer.meshData == null)
+        if (renderer.meshBuffers == null || renderer.meshes == null)
             return;
 
         const renderContext = renderer.renderContext;
@@ -488,13 +488,13 @@ export class MCAAStrategy extends XCAAStrategy {
         const vao = this.vao;
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(vao);
 
-        const bBoxRanges = renderer.meshData[meshIndex].bBoxPathRanges;
+        const bBoxRanges = renderer.meshes[meshIndex].bBoxPathRanges;
         const offset = calculateStartFromIndexRanges(pathRange, bBoxRanges);
 
         gl.useProgram(shaderProgram.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, renderer.renderContext.quadPositionsBuffer);
         gl.vertexAttribPointer(attributes.aTessCoord, 2, gl.FLOAT, false, FLOAT32_SIZE * 2, 0);
-        gl.bindBuffer(gl.ARRAY_BUFFER, renderer.meshes[meshIndex].bBoxes);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderer.meshBuffers[meshIndex].bBoxes);
         gl.vertexAttribPointer(attributes.aRect,
                                4,
                                gl.FLOAT,
@@ -539,7 +539,7 @@ export class MCAAStrategy extends XCAAStrategy {
         renderContext.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aDUVDY, 1);
         renderContext.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aSignMode, 1);
 
-        gl.bindBuffer(gl.ARRAY_BUFFER, renderer.meshes[meshIndex].bBoxPathIDs);
+        gl.bindBuffer(gl.ARRAY_BUFFER, renderer.meshBuffers[meshIndex].bBoxPathIDs);
         gl.vertexAttribPointer(attributes.aPathID,
                                1,
                                gl.UNSIGNED_SHORT,
@@ -562,7 +562,7 @@ export class MCAAStrategy extends XCAAStrategy {
                                                 objectIndex: number,
                                                 shaderProgram: PathfinderShaderProgram):
                                                 void {
-        if (renderer.meshes == null || renderer.meshData == null)
+        if (renderer.meshBuffers == null || renderer.meshes == null)
             return;
 
         const renderContext = renderer.renderContext;
@@ -586,7 +586,7 @@ export class MCAAStrategy extends XCAAStrategy {
 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);
 
-        const bBoxRanges = renderer.meshData[meshIndex].bBoxPathRanges;
+        const bBoxRanges = renderer.meshes[meshIndex].bBoxPathRanges;
         const count = calculateCountFromIndexRanges(pathRange, bBoxRanges);
 
         renderContext.instancedArraysExt
@@ -634,7 +634,7 @@ export class StencilAAAStrategy extends XCAAStrategy {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
 
-        if (renderer.meshData == null)
+        if (renderer.meshes == null)
             return;
 
         // Antialias.
@@ -650,7 +650,7 @@ export class StencilAAAStrategy extends XCAAStrategy {
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.vao);
 
         // FIXME(pcwalton): Only render the appropriate instances.
-        const count = renderer.meshData[0].stencilSegmentCount;
+        const count = renderer.meshes[0].count('stencilSegments');
         renderContext.instancedArraysExt
                      .drawElementsInstancedANGLE(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0, count);
 
@@ -701,7 +701,7 @@ export class StencilAAAStrategy extends XCAAStrategy {
     }
 
     private createVAO(renderer: Renderer): void {
-        if (renderer.meshes == null || renderer.meshData == null)
+        if (renderer.meshBuffers == null || renderer.meshes == null)
             return;
 
         const renderContext = renderer.renderContext;
@@ -713,9 +713,9 @@ export class StencilAAAStrategy extends XCAAStrategy {
         this.vao = renderContext.vertexArrayObjectExt.createVertexArrayOES();
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(this.vao);
 
-        const vertexPositionsBuffer = renderer.meshes[0].stencilSegments;
-        const vertexNormalsBuffer = renderer.meshes[0].stencilNormals;
-        const pathIDsBuffer = renderer.meshes[0].stencilSegmentPathIDs;
+        const vertexPositionsBuffer = renderer.meshBuffers[0].stencilSegments;
+        const vertexNormalsBuffer = renderer.meshBuffers[0].stencilNormals;
+        const pathIDsBuffer = renderer.meshBuffers[0].stencilSegmentPathIDs;
 
         gl.useProgram(program.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, renderContext.quadPositionsBuffer);

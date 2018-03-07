@@ -13,7 +13,7 @@ import * as glmatrix from 'gl-matrix';
 import * as _ from 'lodash';
 
 import 'path-data-polyfill.js';
-import {parseServerTiming, PathfinderMeshData} from "./meshes";
+import {parseServerTiming, PathfinderMeshPack, PathfinderPackedMeshes} from "./meshes";
 import {lerp, panic, Range, unwrapNull, unwrapUndef} from "./utils";
 
 export const BUILTIN_SVG_URI: string = "/svg/demo";
@@ -126,7 +126,7 @@ export class SVGLoader {
         this.attachSVG(svgElement);
     }
 
-    partition(pathIndex?: number | undefined): Promise<PathfinderMeshData> {
+    partition(pathIndex?: number | undefined): Promise<PathfinderMeshPack> {
         // Make the request.
         const paths = pathIndex == null ? this.paths : [this.paths[pathIndex]];
         let time = 0;
@@ -141,7 +141,7 @@ export class SVGLoader {
         }).then(response => {
             time = parseServerTiming(response.headers);
             return response.arrayBuffer();
-        }).then(buffer => new PathfinderMeshData(buffer));
+        }).then(buffer => new PathfinderMeshPack(buffer));
     }
 
     private attachSVG(svgElement: SVGSVGElement) {

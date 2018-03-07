@@ -46,7 +46,7 @@ use lyon_path::iterator::PathIter;
 use pathfinder_font_renderer::{FontContext, FontInstance, GlyphImage};
 use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
-use pathfinder_partitioner::mesh_library::MeshLibrary;
+use pathfinder_partitioner::mesh_pack::MeshPack;
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::cubic_to_quadratic::CubicToQuadraticTransformer;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
@@ -75,15 +75,15 @@ use rsvg::{Handle, HandleExt};
 
 const SUGGESTED_JSON_SIZE_LIMIT: u64 = 32 * 1024 * 1024;
 
-const MESH_LIBRARY_CACHE_SIZE: usize = 16;
+const MESH_PACK_CACHE_SIZE: usize = 16;
 
 const CUBIC_TO_QUADRATIC_APPROX_TOLERANCE: f32 = 5.0;
 
 static NEXT_FONT_KEY: AtomicUsize = ATOMIC_USIZE_INIT;
 
 lazy_static! {
-    static ref MESH_LIBRARY_CACHE: Mutex<LruCache<MeshLibraryCacheKey, PartitionResponder>> = {
-        Mutex::new(LruCache::new(MESH_LIBRARY_CACHE_SIZE))
+    static ref MESH_PACK_CACHE: Mutex<LruCache<MeshPackCacheKey, PartitionResponder>> = {
+        Mutex::new(LruCache::new(MESH_PACK_CACHE_SIZE))
     };
 }
 
@@ -125,7 +125,7 @@ static BUILTIN_SVGS: [(&'static str, &'static str); 4] = [
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct MeshLibraryCacheKey {
+struct MeshPackCacheKey {
     builtin_font_name: String,
     glyph_ids: Vec<u32>,
 }
@@ -282,25 +282,36 @@ struct PathPartitioningResult {
 }
 
 impl PathPartitioningResult {
-    fn compute(partitioner: &mut Partitioner,
+    fn compute(pack: &mut MeshPack,
                path_descriptors: &[PathDescriptor],
-               paths: &[Vec<PathEvent>])
+               paths: &[Vec<PathEvent>],
+               approx_tolerance: Option<f32>)
                -> PathPartitioningResult {
         let timestamp_before = Instant::now();
 
         for (path, path_descriptor) in paths.iter().zip(path_descriptors.iter()) {
-            path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
-            partitioner.partition((path_descriptor.path_index + 1) as u16,
-                                  path_descriptor.fill_rule);
-            partitioner.builder_mut().build_and_reset();
-        }
+            let mut partitioner = Partitioner::new();
+            if let Some(tolerance) = approx_tolerance {
+                partitioner.builder_mut().set_approx_tolerance(tolerance);
+            }
 
-        partitioner.library_mut().optimize();
+            path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
+            partitioner.partition(path_descriptor.fill_rule);
+            partitioner.builder_mut().build_and_reset();
+
+            partitioner.mesh_mut().push_stencil_segments(
+                CubicToQuadraticTransformer::new(path.iter().cloned(),
+                                                 CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
+            partitioner.mesh_mut().push_stencil_normals(
+                CubicToQuadraticTransformer::new(path.iter().cloned(),
+                                                 CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
+            pack.push(partitioner.into_mesh());
+        }
 
         let time_elapsed = timestamp_before.elapsed();
 
         let mut data_buffer = Cursor::new(vec![]);
-        drop(partitioner.library().serialize_into(&mut data_buffer));
+        drop(pack.serialize_into(&mut data_buffer));
 
         PathPartitioningResult {
             encoded_data: Arc::new(data_buffer.into_inner()),
@@ -428,7 +439,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     // Check the cache.
     let cache_key = match request.face {
         FontRequestFace::Builtin(ref builtin_font_name) => {
-            Some(MeshLibraryCacheKey {
+            Some(MeshPackCacheKey {
                 builtin_font_name: (*builtin_font_name).clone(),
                 glyph_ids: request.glyphs.iter().map(|glyph| glyph.id).collect(),
             })
@@ -437,7 +448,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     };
 
     if let Some(ref cache_key) = cache_key {
-        if let Ok(mut mesh_library_cache) = MESH_LIBRARY_CACHE.lock() {
+        if let Ok(mut mesh_library_cache) = MESH_PACK_CACHE.lock() {
             if let Some(cache_entry) = mesh_library_cache.get_mut(cache_key) {
                 return Ok((*cache_entry).clone())
             }
@@ -477,7 +488,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
                 paths.push(Transform2DPathIter::new(glyph_outline.iter(),
                                                     &glyph.transform).collect())
             }
-            Err(_) => continue,
+            Err(_) => paths.push(vec![]),
         };
 
         path_descriptors.push(PathDescriptor {
@@ -487,22 +498,11 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     }
 
     // Partition the decoded glyph outlines.
-    let mut library = MeshLibrary::new();
-    for (stored_path_index, path_descriptor) in path_descriptors.iter().enumerate() {
-        library.push_stencil_segments(
-            (path_descriptor.path_index + 1) as u16,
-            CubicToQuadraticTransformer::new(paths[stored_path_index].iter().cloned(),
-                                             CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
-        library.push_stencil_normals(
-            (path_descriptor.path_index + 1) as u16,
-            CubicToQuadraticTransformer::new(paths[stored_path_index].iter().cloned(),
-                                             CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
-    }
-
-    let mut partitioner = Partitioner::new(library);
-    let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
+    let mut pack = MeshPack::new();
+    let path_partitioning_result = PathPartitioningResult::compute(&mut pack,
                                                                    &path_descriptors,
-                                                                   &paths);
+                                                                   &paths,
+                                                                   None);
 
     // Build the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -512,7 +512,7 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     };
 
     if let Some(cache_key) = cache_key {
-        if let Ok(mut mesh_library_cache) = MESH_LIBRARY_CACHE.lock() {
+        if let Ok(mut mesh_library_cache) = MESH_PACK_CACHE.lock() {
             mesh_library_cache.insert(cache_key, responder.clone());
         }
     }
@@ -529,7 +529,7 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     // commands.
     let mut paths = vec![];
     let mut path_descriptors = vec![];
-    let mut partitioner = Partitioner::new(MeshLibrary::new());
+    let mut pack = MeshPack::new();
     let mut path_index = 0;
 
     for path in &request.paths {
@@ -583,12 +583,12 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
     // Compute approximation tolerance.
     let tolerance = f32::max(request.view_box_width, request.view_box_height) * 0.001;
-    partitioner.builder_mut().set_approx_tolerance(tolerance);
 
     // Partition the paths.
-    let path_partitioning_result = PathPartitioningResult::compute(&mut partitioner,
+    let path_partitioning_result = PathPartitioningResult::compute(&mut pack,
                                                                    &path_descriptors,
-                                                                   &paths);
+                                                                   &paths,
+                                                                   Some(tolerance));
 
     // Return the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();

@@ -39,7 +39,7 @@ use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use pathfinder_font_renderer::{FontContext, FontInstance, GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
-use pathfinder_partitioner::mesh_library::MeshLibrary;
+use pathfinder_partitioner::mesh_pack::MeshPack;
 use pathfinder_partitioner::partitioner::Partitioner;
 use std::ffi::CString;
 use std::fs::File;
@@ -81,12 +81,12 @@ fn convert_font(font_path: &Path, output_path: &Path) -> Result<(), ()> {
     let mut font_context = try!(FontContext::new());
     try!(font_context.add_font_from_memory(&(), Arc::new(font_data), 0));
     let font_instance = FontInstance {
-        font_key: font_key,
+        font_key: (),
         size: Au::from_f64_px(FONT_SIZE),
     };
 
     let mut paths: Vec<(u16, Vec<PathEvent>)> = vec![];
-    let mut partitioner = Partitioner::new(MeshLibrary::new());
+    let mut mesh_pack = MeshPack::new();
 
     for glyph_index in 0..glyph_count {
         let glyph_key = GlyphKey::new(glyph_index, SubpixelOffset(0));
@@ -96,24 +96,20 @@ fn convert_font(font_path: &Path, output_path: &Path) -> Result<(), ()> {
             Err(_) => continue,
         };
 
+        let mut partitioner = Partitioner::new();
+
         let path_index = (glyph_index + 1) as u16;
-        partitioner.library_mut().push_segments(path_index, path.iter());
-        partitioner.library_mut().push_normals(path_index, path.iter());
-        partitioner.library_mut().push_stencil_segments(path_index, path.iter());
+        partitioner.mesh_mut().push_stencil_segments(path.iter());
+        path.iter().for_each(|event| partitioner.builder_mut().path_event(event));
+        partitioner.partition(FillRule::Winding);
+        partitioner.builder_mut().build_and_reset();
 
         paths.push((path_index, path.iter().collect()));
+        mesh_pack.push(partitioner.into_mesh());
     }
-
-    for (glyph_index, path) in paths {
-        path.into_iter().for_each(|event| partitioner.builder_mut().path_event(event));
-        partitioner.partition(glyph_index, FillRule::Winding);
-        partitioner.builder_mut().build_and_reset();
-    }
-
-    partitioner.library_mut().optimize();
 
     let mut output_file = try!(File::create(output_path).map_err(drop));
-    partitioner.library().serialize_into(&mut output_file).map_err(drop)
+    mesh_pack.serialize_into(&mut output_file).map_err(drop)
 }
 
 pub fn main() {

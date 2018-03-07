@@ -18,7 +18,7 @@ import {AppController, DemoAppController, setSwitchInputsValue} from "./app-cont
 import PathfinderBufferTexture from './buffer-texture';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
-import {PathfinderMeshData} from "./meshes";
+import {PathfinderMeshPack, PathfinderPackedMeshes} from "./meshes";
 import {PathTransformBuffers, Renderer} from './renderer';
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
@@ -104,7 +104,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
     private resultsPartitioningTimeLabel!: HTMLSpanElement;
 
     private glyphStore!: GlyphStore;
-    private baseMeshes!: PathfinderMeshData;
+    private baseMeshes!: PathfinderMeshPack;
     private expandedMeshes!: ExpandedMeshData;
 
     private size!: number;
@@ -242,7 +242,7 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         this.svgLoader.partition().then(meshes => {
             this.view.then(view => {
                 view.recreateRenderer();
-                view.attachMeshes([meshes]);
+                view.attachMeshes([new PathfinderPackedMeshes(meshes)]);
                 view.initCameraBounds(this.svgLoader.svgViewBox);
             });
         });
@@ -482,7 +482,7 @@ class BenchmarkTextRenderer extends Renderer {
     }
 
     protected get objectCount(): number {
-        return this.meshes == null ? 0 : this.meshes.length;
+        return this.meshBuffers == null ? 0 : this.meshBuffers.length;
     }
 
     private _pixelsPerEm: number = 32.0;
@@ -504,7 +504,7 @@ class BenchmarkTextRenderer extends Renderer {
         this.camera.onZoom = () => renderContext.setDirty();
     }
 
-    attachMeshes(meshes: PathfinderMeshData[]): void {
+    attachMeshes(meshes: PathfinderPackedMeshes[]): void {
         super.attachMeshes(meshes);
 
         this.uploadPathColors(1);

@@ -13,7 +13,7 @@ import * as _ from 'lodash';
 
 import {DemoAppController} from './app-controller';
 import {OrthographicCamera} from "./camera";
-import {PathfinderMeshData} from "./meshes";
+import {PathfinderPackedMeshes} from "./meshes";
 import {ShaderMap, ShaderProgramSource} from './shader-loader';
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {SVGRenderer} from './svg-renderer';
@@ -30,7 +30,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
 
     protected readonly builtinFileURI: string = BUILTIN_SVG_URI;
 
-    private meshes!: PathfinderMeshData;
+    private meshes!: PathfinderPackedMeshes;
 
     start() {
         super.start();
@@ -43,7 +43,7 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
     protected fileLoaded(fileData: ArrayBuffer) {
         this.loader.loadFile(fileData);
         this.loader.partition().then(meshes => {
-            this.meshes = meshes;
+            this.meshes = new PathfinderPackedMeshes(meshes);
             this.meshesReceived();
         });
     }

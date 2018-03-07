@@ -15,10 +15,10 @@ import {Font} from 'opentype.js';
 import {AppController} from "./app-controller";
 import {OrthographicCamera} from "./camera";
 import {FilePickerView} from './file-picker';
-import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET} from "./meshes";
+import {B_QUAD_UPPER_RIGHT_VERTEX_OFFSET, PathfinderMeshPack} from "./meshes";
 import {B_QUAD_LOWER_LEFT_VERTEX_OFFSET, B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET} from "./meshes";
 import {B_QUAD_LOWER_RIGHT_VERTEX_OFFSET} from "./meshes";
-import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshData} from "./meshes";
+import {B_QUAD_LOWER_CONTROL_POINT_VERTEX_OFFSET, PathfinderPackedMeshes} from "./meshes";
 import {B_QUAD_SIZE, B_QUAD_UPPER_LEFT_VERTEX_OFFSET} from "./meshes";
 import {BUILTIN_SVG_URI, SVGLoader} from './svg-loader';
 import {BUILTIN_FONT_URI, TextRun} from "./text";
@@ -86,7 +86,7 @@ interface NormalsTable<T> {
 }
 
 class MeshDebuggerAppController extends AppController {
-    meshes: PathfinderMeshData | null = null;
+    meshes: PathfinderPackedMeshes | null = null;
 
     protected readonly defaultFile: string = FONT;
 
@@ -146,7 +146,7 @@ class MeshDebuggerAppController extends AppController {
     protected loadPath(opentypeGlyph?: opentype.Glyph | null) {
         window.jQuery(this.openModal).modal('hide');
 
-        let promise: Promise<PathfinderMeshData>;
+        let promise: Promise<PathfinderMeshPack>;
 
         if (this.file instanceof PathfinderFont && this.fileData != null) {
             if (opentypeGlyph == null) {
@@ -163,7 +163,7 @@ class MeshDebuggerAppController extends AppController {
         }
 
         promise.then(meshes => {
-            this.meshes = meshes;
+            this.meshes = new PathfinderPackedMeshes(meshes);
             this.view.attachMeshes();
         });
     }
@@ -278,7 +278,7 @@ class MeshDebuggerView extends PathfinderView {
         };
 
         // Draw B-quads.
-        for (let bQuadIndex = 0; bQuadIndex < meshes.bQuadVertexPositionCount; bQuadIndex++) {
+        for (let bQuadIndex = 0; bQuadIndex < meshes.bQuadVertexPositions.length; bQuadIndex++) {
             const bQuadStartOffset = (B_QUAD_SIZE * bQuadIndex) / UINT32_SIZE;
 
             const upperLeftPosition = getPosition(bQuadVertexPositions, bQuadIndex, 0);
@@ -341,7 +341,7 @@ class MeshDebuggerView extends PathfinderView {
             drawSegmentVertices(context,
                                 new Float32Array(meshes.stencilSegments),
                                 new Float32Array(meshes.stencilNormals),
-                                meshes.stencilSegmentCount,
+                                meshes.count('stencilSegments'),
                                 [0, 2],
                                 1,
                                 3,

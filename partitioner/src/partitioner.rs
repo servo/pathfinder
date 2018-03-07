@@ -21,7 +21,7 @@ use std::ops::{Add, AddAssign};
 use std::u32;
 
 use builder::Builder;
-use mesh_library::MeshLibrary;
+use mesh::Mesh;
 use {BQuad, BVertexLoopBlinnData, BVertexKind, FillRule};
 
 const MAX_B_QUAD_SUBDIVISIONS: u8 = 8;
@@ -30,11 +30,9 @@ const INTERSECTION_TOLERANCE: f32 = 0.001;
 
 pub struct Partitioner {
     path: Builder,
-    path_id: u16,
-
-    library: MeshLibrary,
-
     fill_rule: FillRule,
+
+    mesh: Mesh,
 
     heap: BinaryHeap<Point>,
     visited_points: BitVec,
@@ -44,13 +42,12 @@ pub struct Partitioner {
 
 impl Partitioner {
     #[inline]
-    pub fn new(library: MeshLibrary) -> Partitioner {
+    pub fn new() -> Partitioner {
         Partitioner {
             path: Builder::new(),
-            path_id: 0,
             fill_rule: FillRule::Winding,
 
-            library: library,
+            mesh: Mesh::new(),
 
             heap: BinaryHeap::new(),
             visited_points: BitVec::new(),
@@ -60,18 +57,18 @@ impl Partitioner {
     }
 
     #[inline]
-    pub fn library(&self) -> &MeshLibrary {
-        &self.library
+    pub fn mesh(&self) -> &Mesh {
+        &self.mesh
     } 
 
     #[inline]
-    pub fn library_mut(&mut self) -> &mut MeshLibrary {
-        &mut self.library
+    pub fn mesh_mut(&mut self) -> &mut Mesh {
+        &mut self.mesh
     }
 
     #[inline]
-    pub fn into_library(self) -> MeshLibrary {
-        self.library
+    pub fn into_mesh(self) -> Mesh {
+        self.mesh
     }
 
     #[inline]
@@ -84,31 +81,23 @@ impl Partitioner {
         &mut self.path
     }
 
-    pub fn partition(&mut self, path_id: u16, fill_rule: FillRule) {
+    pub fn partition(&mut self, fill_rule: FillRule) {
         self.path.end_subpath();
 
         self.heap.clear();
         self.active_edges.clear();
 
-        self.path_id = path_id;
         self.fill_rule = fill_rule;
 
         // FIXME(pcwalton): Right now, this bit vector uses too much memory.
         self.visited_points = BitVec::from_elem(self.path.endpoints.len(), false);
 
-        let start_lengths = self.library.snapshot_lengths();
-
         self.init_heap();
 
         while self.process_next_point() {}
 
-        debug_assert_eq!(self.library.b_vertex_loop_blinn_data.len(),
-                         self.library.b_vertex_positions.len());
-
-        let end_lengths = self.library.snapshot_lengths();
-
-        let path_ranges = self.library.ensure_path_ranges(path_id);
-        path_ranges.set_partitioning_lengths(&start_lengths, &end_lengths);
+        debug_assert_eq!(self.mesh.b_vertex_loop_blinn_data.len(),
+                         self.mesh.b_vertex_positions.len());
     }
 
     fn process_next_point(&mut self) -> bool {
@@ -193,16 +182,16 @@ impl Partitioner {
             // If we already made a B-vertex point for this endpoint, reuse it instead of making a
             // new one.
             let old_left_position =
-                self.library.b_vertex_positions[active_edge.left_vertex_index as usize];
+                self.mesh.b_vertex_positions[active_edge.left_vertex_index as usize];
             let should_update = (endpoint_position - old_left_position).square_length() >
                 f32::approx_epsilon();
             if should_update {
-                active_edge.left_vertex_index = self.library.b_vertex_loop_blinn_data.len() as u32;
+                active_edge.left_vertex_index = self.mesh.b_vertex_loop_blinn_data.len() as u32;
                 active_edge.control_point_vertex_index = active_edge.left_vertex_index + 1;
 
                 // FIXME(pcwalton): Normal
-                self.library.add_b_vertex(&endpoint_position,
-                                          &BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
+                self.mesh.add_b_vertex(&endpoint_position,
+                                       &BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
 
                 active_edge.toggle_parity();
             }
@@ -231,18 +220,18 @@ impl Partitioner {
             }
             Some(ref control_point_position) => {
                 self.active_edges[active_edge_index as usize].control_point_vertex_index =
-                    self.library.b_vertex_loop_blinn_data.len() as u32;
+                    self.mesh.b_vertex_loop_blinn_data.len() as u32;
 
                 let left_vertex_index = self.active_edges[active_edge_index as usize]
                                             .left_vertex_index;
                 let control_point_b_vertex_loop_blinn_data = BVertexLoopBlinnData::control_point(
-                    &self.library.b_vertex_positions[left_vertex_index as usize],
+                    &self.mesh.b_vertex_positions[left_vertex_index as usize],
                     &control_point_position,
                     &new_point.position,
                     bottom);
 
                 // FIXME(pcwalton): Normal
-                self.library.add_b_vertex(control_point_position,
+                self.mesh.add_b_vertex(control_point_position,
                                           &control_point_b_vertex_loop_blinn_data);
             }
         }
@@ -318,13 +307,13 @@ impl Partitioner {
         let new_active_edges = &mut self.active_edges[next_active_edge_index as usize..
                                                       next_active_edge_index as usize + 2];
 
-        let left_vertex_index = self.library.b_vertex_loop_blinn_data.len() as u32;
+        let left_vertex_index = self.mesh.b_vertex_loop_blinn_data.len() as u32;
         new_active_edges[0].left_vertex_index = left_vertex_index;
         new_active_edges[1].left_vertex_index = left_vertex_index;
 
         // FIXME(pcwalton): Normal
         let position = self.path.endpoints[endpoint_index as usize].to;
-        self.library.add_b_vertex(&position,
+        self.mesh.add_b_vertex(&position,
                                   &BVertexLoopBlinnData::new(BVertexKind::Endpoint0));
 
         new_active_edges[0].toggle_parity();
@@ -360,7 +349,7 @@ impl Partitioner {
             None => new_active_edges[0].control_point_vertex_index = u32::MAX,
             Some(control_point_position) => {
                 new_active_edges[0].control_point_vertex_index =
-                    self.library.b_vertex_loop_blinn_data.len() as u32;
+                    self.mesh.b_vertex_loop_blinn_data.len() as u32;
 
                 let right_vertex_position =
                     self.path.endpoints[new_active_edges[0].right_endpoint_index as usize].to;
@@ -371,7 +360,7 @@ impl Partitioner {
                                                         false);
 
                 // FIXME(pcwalton): Normal
-                self.library.add_b_vertex(&control_point_position,
+                self.mesh.add_b_vertex(&control_point_position,
                                           &control_point_b_vertex_loop_blinn_data)
             }
         }
@@ -380,7 +369,7 @@ impl Partitioner {
             None => new_active_edges[1].control_point_vertex_index = u32::MAX,
             Some(control_point_position) => {
                 new_active_edges[1].control_point_vertex_index =
-                    self.library.b_vertex_loop_blinn_data.len() as u32;
+                    self.mesh.b_vertex_loop_blinn_data.len() as u32;
 
                 let right_vertex_position =
                     self.path.endpoints[new_active_edges[1].right_endpoint_index as usize].to;
@@ -391,7 +380,7 @@ impl Partitioner {
                                                         true);
 
                 // FIXME(pcwalton): Normal
-                self.library.add_b_vertex(&control_point_position,
+                self.mesh.add_b_vertex(&control_point_position,
                                           &control_point_b_vertex_loop_blinn_data)
             }
         }
@@ -521,16 +510,16 @@ impl Partitioner {
                     upper_subdivision: &SubdividedActiveEdge,
                     lower_subdivision: &SubdividedActiveEdge,
                     iteration: u8) {
-        let upper_shape = upper_subdivision.shape(&self.library.b_vertex_loop_blinn_data);
-        let lower_shape = lower_subdivision.shape(&self.library.b_vertex_loop_blinn_data);
+        let upper_shape = upper_subdivision.shape(&self.mesh.b_vertex_loop_blinn_data);
+        let lower_shape = lower_subdivision.shape(&self.mesh.b_vertex_loop_blinn_data);
 
         // Make sure the convex hulls of the two curves do not intersect. If they do, subdivide and
         // recurse.
         if iteration < MAX_B_QUAD_SUBDIVISIONS {
             // TODO(pcwalton): Handle concave-line convex hull intersections.
             if let (Some(upper_curve), Some(lower_curve)) =
-                    (upper_subdivision.to_curve(&self.library.b_vertex_positions),
-                     lower_subdivision.to_curve(&self.library.b_vertex_positions)) {
+                    (upper_subdivision.to_curve(&self.mesh.b_vertex_positions),
+                     lower_subdivision.to_curve(&self.mesh.b_vertex_positions)) {
                 // TODO(pcwalton): Handle concave-concave convex hull intersections.
                 if upper_shape == Shape::Concave &&
                         lower_curve.baseline()
@@ -542,7 +531,7 @@ impl Partitioner {
                                                               0.5,
                                                               false);
                     let midpoint_x =
-                        self.library
+                        self.mesh
                             .b_vertex_positions[upper_left_subsubdivision.middle_point as usize].x;
                     let (lower_left_subsubdivision, lower_right_subsubdivision) =
                         self.subdivide_active_edge_again_at_x(&lower_subdivision,
@@ -572,7 +561,7 @@ impl Partitioner {
                                                               0.5,
                                                               true);
                     let midpoint_x =
-                        self.library
+                        self.mesh
                             .b_vertex_positions[lower_left_subsubdivision.middle_point as usize].x;
                     let (upper_left_subsubdivision, upper_right_subsubdivision) =
                         self.subdivide_active_edge_again_at_x(&upper_subdivision,
@@ -602,13 +591,13 @@ impl Partitioner {
 
         {
             let upper_active_edge = &mut self.active_edges[upper_active_edge_index as usize];
-            self.library.b_vertex_loop_blinn_data[upper_subdivision.middle_point as usize] =
+            self.mesh.b_vertex_loop_blinn_data[upper_subdivision.middle_point as usize] =
                 BVertexLoopBlinnData::new(upper_active_edge.endpoint_kind());
             upper_active_edge.toggle_parity();
         }
         {
             let lower_active_edge = &mut self.active_edges[lower_active_edge_index as usize];
-            self.library.b_vertex_loop_blinn_data[lower_subdivision.middle_point as usize] =
+            self.mesh.b_vertex_loop_blinn_data[lower_subdivision.middle_point as usize] =
                 BVertexLoopBlinnData::new(lower_active_edge.endpoint_kind());
             lower_active_edge.toggle_parity();
         }
@@ -622,7 +611,7 @@ impl Partitioner {
 
         self.update_vertex_normals_for_new_b_quad(&b_quad);
 
-        self.library.add_b_quad(&b_quad);
+        self.mesh.add_b_quad(&b_quad);
     }
 
     fn subdivide_active_edge_again_at_t(&mut self,
@@ -630,14 +619,14 @@ impl Partitioner {
                                         t: f32,
                                         bottom: bool)
                                         -> (SubdividedActiveEdge, SubdividedActiveEdge) {
-        let curve = subdivision.to_curve(&self.library.b_vertex_positions)
+        let curve = subdivision.to_curve(&self.mesh.b_vertex_positions)
                                .expect("subdivide_active_edge_again_at_t(): not a curve!");
         let (left_curve, right_curve) = curve.assume_monotonic().split(t);
 
-        let left_control_point_index = self.library.b_vertex_positions.len() as u32;
+        let left_control_point_index = self.mesh.b_vertex_positions.len() as u32;
         let midpoint_index = left_control_point_index + 1;
         let right_control_point_index = midpoint_index + 1;
-        self.library.b_vertex_positions.extend([
+        self.mesh.b_vertex_positions.extend([
             left_curve.segment().ctrl,
             left_curve.segment().to,
             right_curve.segment().ctrl,
@@ -645,7 +634,7 @@ impl Partitioner {
 
         // Initially, assume that the parity is false. We will modify the Loop-Blinn data later if
         // that is incorrect.
-        self.library.b_vertex_loop_blinn_data.extend([
+        self.mesh.b_vertex_loop_blinn_data.extend([
             BVertexLoopBlinnData::control_point(&left_curve.segment().from,
                                                 &left_curve.segment().ctrl,
                                                 &left_curve.segment().to,
@@ -675,7 +664,7 @@ impl Partitioner {
                                         x: f32,
                                         bottom: bool)
                                         -> (SubdividedActiveEdge, SubdividedActiveEdge) {
-        let curve = subdivision.to_curve(&self.library.b_vertex_positions)
+        let curve = subdivision.to_curve(&self.mesh.b_vertex_positions)
                                .expect("subdivide_active_edge_again_at_x(): not a curve!");
         let t = curve.assume_monotonic().solve_t_for_x(x);
         self.subdivide_active_edge_again_at_t(subdivision, t, bottom)
@@ -741,7 +730,7 @@ impl Partitioner {
 
     fn solve_active_edge_t_for_x(&self, x: f32, active_edge: &ActiveEdge) -> f32 {
         let left_vertex_position =
-            &self.library.b_vertex_positions[active_edge.left_vertex_index as usize];
+            &self.mesh.b_vertex_positions[active_edge.left_vertex_index as usize];
         let right_endpoint_position =
             &self.path.endpoints[active_edge.right_endpoint_index as usize].to;
         match active_edge.control_point_vertex_index {
@@ -752,7 +741,7 @@ impl Partitioner {
                 }.solve_t_for_x(x)
             }
             control_point_vertex_index => {
-                let control_point = &self.library
+                let control_point = &self.mesh
                                          .b_vertex_positions[control_point_vertex_index as usize];
                 let segment = QuadraticBezierSegment {
                     from: *left_vertex_position,
@@ -770,7 +759,7 @@ impl Partitioner {
 
     fn sample_active_edge(&self, t: f32, active_edge: &ActiveEdge) -> Point2D<f32> {
         let left_vertex_position =
-            &self.library.b_vertex_positions[active_edge.left_vertex_index as usize];
+            &self.mesh.b_vertex_positions[active_edge.left_vertex_index as usize];
         let right_endpoint_position =
             &self.path.endpoints[active_edge.right_endpoint_index as usize].to;
         match active_edge.control_point_vertex_index {
@@ -780,7 +769,7 @@ impl Partitioner {
                                     .to_point()
             }
             control_point_vertex_index => {
-                let control_point = &self.library
+                let control_point = &self.mesh
                                          .b_vertex_positions[control_point_vertex_index as usize];
                 QuadraticBezierSegment {
                     from: *left_vertex_position,
@@ -803,11 +792,11 @@ impl Partitioner {
         }
 
         let upper_left_vertex_position =
-            &self.library.b_vertex_positions[upper_active_edge.left_vertex_index as usize];
+            &self.mesh.b_vertex_positions[upper_active_edge.left_vertex_index as usize];
         let upper_right_endpoint_position =
             &self.path.endpoints[upper_active_edge.right_endpoint_index as usize].to;
         let lower_left_vertex_position =
-            &self.library.b_vertex_positions[lower_active_edge.left_vertex_index as usize];
+            &self.mesh.b_vertex_positions[lower_active_edge.left_vertex_index as usize];
         let lower_right_endpoint_position =
             &self.path.endpoints[lower_active_edge.right_endpoint_index as usize].to;
 
@@ -827,7 +816,7 @@ impl Partitioner {
 
             (upper_control_point_vertex_index, u32::MAX) => {
                 let upper_control_point =
-                    &self.library.b_vertex_positions[upper_control_point_vertex_index as usize];
+                    &self.mesh.b_vertex_positions[upper_control_point_vertex_index as usize];
                 let (upper_curve, _) = QuadraticBezierSegment {
                     from: *upper_left_vertex_position,
                     ctrl: *upper_control_point,
@@ -842,7 +831,7 @@ impl Partitioner {
 
             (u32::MAX, lower_control_point_vertex_index) => {
                 let lower_control_point =
-                    &self.library.b_vertex_positions[lower_control_point_vertex_index as usize];
+                    &self.mesh.b_vertex_positions[lower_control_point_vertex_index as usize];
                 let (lower_curve, _) = QuadraticBezierSegment {
                     from: *lower_left_vertex_position,
                     ctrl: *lower_control_point,
@@ -857,9 +846,9 @@ impl Partitioner {
 
             (upper_control_point_vertex_index, lower_control_point_vertex_index) => {
                 let upper_control_point =
-                    &self.library.b_vertex_positions[upper_control_point_vertex_index as usize];
+                    &self.mesh.b_vertex_positions[upper_control_point_vertex_index as usize];
                 let lower_control_point =
-                    &self.library.b_vertex_positions[lower_control_point_vertex_index as usize];
+                    &self.mesh.b_vertex_positions[lower_control_point_vertex_index as usize];
                 let (upper_curve, _) = QuadraticBezierSegment {
                     from: *upper_left_vertex_position,
                     ctrl: *upper_control_point,
@@ -880,7 +869,7 @@ impl Partitioner {
 
     fn should_subdivide_active_edge_at(&self, active_edge_index: u32, x: f32) -> bool {
         let left_curve_left = self.active_edges[active_edge_index as usize].left_vertex_index;
-        let left_point_position = self.library.b_vertex_positions[left_curve_left as usize];
+        let left_point_position = self.mesh.b_vertex_positions[left_curve_left as usize];
         x - left_point_position.x >= f32::approx_epsilon()
     }
 
@@ -891,7 +880,7 @@ impl Partitioner {
                                 subdivision_type: SubdivisionType)
                                 -> SubdividedActiveEdge {
         let left_curve_left = self.active_edges[active_edge_index as usize].left_vertex_index;
-        let left_point_position = self.library.b_vertex_positions[left_curve_left as usize];
+        let left_point_position = self.mesh.b_vertex_positions[left_curve_left as usize];
 
         let t = self.solve_active_edge_t_for_x(x, &self.active_edges[active_edge_index as usize]);
 
@@ -907,17 +896,17 @@ impl Partitioner {
                                                       .lerp(right_point.to_vector(), t);
 
                 // FIXME(pcwalton): Normal
-                active_edge.left_vertex_index = self.library.b_vertex_loop_blinn_data.len() as u32;
-                self.library.add_b_vertex(&middle_point.to_point(),
+                active_edge.left_vertex_index = self.mesh.b_vertex_loop_blinn_data.len() as u32;
+                self.mesh.add_b_vertex(&middle_point.to_point(),
                                           &BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
 
                 left_curve_control_point_vertex_index = u32::MAX;
             }
             _ => {
                 let left_endpoint_position =
-                    self.library.b_vertex_positions[active_edge.left_vertex_index as usize];
+                    self.mesh.b_vertex_positions[active_edge.left_vertex_index as usize];
                 let control_point_position =
-                    self.library
+                    self.mesh
                         .b_vertex_positions[active_edge.control_point_vertex_index as usize];
                 let right_endpoint_position =
                     self.path.endpoints[active_edge.right_endpoint_index as usize].to;
@@ -928,20 +917,20 @@ impl Partitioner {
                 }.split(t);
 
                 left_curve_control_point_vertex_index =
-                    self.library.b_vertex_loop_blinn_data.len() as u32;
+                    self.mesh.b_vertex_loop_blinn_data.len() as u32;
                 active_edge.left_vertex_index = left_curve_control_point_vertex_index + 1;
                 active_edge.control_point_vertex_index = left_curve_control_point_vertex_index + 2;
 
                 // FIXME(pcwalton): Normals
-                self.library
+                self.mesh
                     .add_b_vertex(&left_curve.ctrl,
                                   &BVertexLoopBlinnData::control_point(&left_curve.from,
                                                                        &left_curve.ctrl,
                                                                        &left_curve.to,
                                                                        bottom));
-                self.library.add_b_vertex(&left_curve.to,
+                self.mesh.add_b_vertex(&left_curve.to,
                                           &BVertexLoopBlinnData::new(active_edge.endpoint_kind()));
-                self.library
+                self.mesh
                     .add_b_vertex(&right_curve.ctrl,
                                   &BVertexLoopBlinnData::control_point(&right_curve.from,
                                                                        &right_curve.ctrl,
@@ -1004,8 +993,8 @@ impl Partitioner {
 
     fn calculate_normal_for_edge(&self, left_vertex_index: u32, right_vertex_index: u32)
                                  -> VertexNormal {
-        let left_vertex_position = &self.library.b_vertex_positions[left_vertex_index as usize];
-        let right_vertex_position = &self.library.b_vertex_positions[right_vertex_index as usize];
+        let left_vertex_position = &self.mesh.b_vertex_positions[left_vertex_index as usize];
+        let right_vertex_position = &self.mesh.b_vertex_positions[right_vertex_index as usize];
         VertexNormal::new(left_vertex_position, right_vertex_position)
     }
 
