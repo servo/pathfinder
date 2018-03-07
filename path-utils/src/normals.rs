@@ -10,6 +10,7 @@
 
 use euclid::{Point2D, Vector2D};
 use lyon_path::PathEvent;
+use orientation::Orientation;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SegmentNormals {
@@ -40,8 +41,12 @@ impl PathNormals {
         self.normals.clear()
     }
 
-    pub fn add_path<I>(&mut self, mut stream: I) where I: Iterator<Item = PathEvent> {
+    pub fn add_path<I>(&mut self, stream: I) where I: Iterator<Item = PathEvent> {
+        let events: Vec<_> = stream.collect();
+        let orientation = Orientation::from_path(events.iter().cloned());
+
         let (mut path_ops, mut path_points) = (vec![], vec![]);
+        let mut stream = events.iter().cloned();
         while let Some(event) = stream.next() {
             path_ops.push(PathOp::from_path_event(&event));
             match event {
@@ -54,40 +59,49 @@ impl PathNormals {
                 PathEvent::Arc(..) => {
                     panic!("PathNormals::add_path(): Convert arcs to quadratics first!")
                 }
-                PathEvent::Close => self.flush(path_ops.drain(..), &mut path_points),
+                PathEvent::Close => self.flush(orientation, path_ops.drain(..), &mut path_points),
             }
         }
 
-        self.flush(path_ops.into_iter(), &mut path_points);
+        self.flush(orientation, path_ops.into_iter(), &mut path_points);
     }
 
-    fn flush<I>(&mut self, path_stream: I, path_points: &mut Vec<Point2D<f32>>)
+    fn flush<I>(&mut self,
+                orientation: Orientation,
+                path_stream: I,
+                path_points: &mut Vec<Point2D<f32>>)
                 where I: Iterator<Item = PathOp> {
         match path_points.len() {
             0 | 1 => path_points.clear(),
             2 => {
+                let orientation = -(orientation as i32 as f32);
                 self.normals.push(SegmentNormals {
-                    from: path_points[1] - path_points[0],
+                    from: (path_points[1] - path_points[0]) * orientation,
                     ctrl: Vector2D::zero(),
-                    to: path_points[0] - path_points[1],
+                    to: (path_points[0] - path_points[1]) * orientation,
                 });
                 path_points.clear();
             }
-            _ => self.flush_slow(path_stream, path_points),
+            _ => self.flush_slow(orientation, path_stream, path_points),
         }
     }
 
-    fn flush_slow<I>(&mut self, path_stream: I, path_points: &mut Vec<Point2D<f32>>)
+    fn flush_slow<I>(&mut self,
+                     orientation: Orientation,
+                     path_stream: I,
+                     path_points: &mut Vec<Point2D<f32>>)
                      where I: Iterator<Item = PathOp> {
         let mut normals = vec![Vector2D::zero(); path_points.len()];
-        *normals.last_mut().unwrap() = compute_normal(&path_points[path_points.len() - 2],
+        *normals.last_mut().unwrap() = compute_normal(orientation,
+                                                      &path_points[path_points.len() - 2],
                                                       &path_points[path_points.len() - 1],
                                                       &path_points[0]);
-        normals[0] = compute_normal(&path_points[path_points.len() - 1],
+        normals[0] = compute_normal(orientation,
+                                    &path_points[path_points.len() - 1],
                                     &path_points[0],
                                     &path_points[1]);
         for (index, window) in path_points.windows(3).enumerate() {
-            normals[index + 1] = compute_normal(&window[0], &window[1], &window[2]);
+            normals[index + 1] = compute_normal(orientation, &window[0], &window[1], &window[2])
         }
 
         path_points.clear();
@@ -125,10 +139,13 @@ impl PathNormals {
     }
 }
 
-fn compute_normal(prev: &Point2D<f32>, current: &Point2D<f32>, next: &Point2D<f32>)
-                    -> Vector2D<f32> {
+fn compute_normal(orientation: Orientation,
+                  prev: &Point2D<f32>,
+                  current: &Point2D<f32>,
+                  next: &Point2D<f32>)
+                  -> Vector2D<f32> {
     let vector = ((*current - *prev) + (*next - *current)).normalize();
-    Vector2D::new(vector.y, -vector.x)
+    Vector2D::new(vector.y, -vector.x) * -(orientation as i32 as f32)
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]

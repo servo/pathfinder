@@ -176,10 +176,10 @@ impl MeshLibrary {
 
         let mut b_quad_vertex_positions = BQuadVertexPositions {
             upper_left_vertex_position: ul,
-            upper_control_point_position: ul,
+            upper_control_point_position: ul.lerp(ur, 0.5),
             upper_right_vertex_position: ur,
             lower_left_vertex_position: ll,
-            lower_control_point_position: lr,
+            lower_control_point_position: ll.lerp(lr, 0.5),
             lower_right_vertex_position: lr,
         };
 

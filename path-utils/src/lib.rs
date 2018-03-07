@@ -19,6 +19,7 @@ extern crate lyon_path;
 
 pub mod cubic_to_quadratic;
 pub mod normals;
+pub mod orientation;
 pub mod segments;
 pub mod stroke;
 pub mod transform;
