@@ -69,7 +69,7 @@ const AMBIENT_COLOR: glmatrix.vec3 = glmatrix.vec3.clone([0.063, 0.063, 0.063]);
 const DIFFUSE_COLOR: glmatrix.vec3 = glmatrix.vec3.clone([0.356, 0.264, 0.136]);
 const SPECULAR_COLOR: glmatrix.vec3 = glmatrix.vec3.clone([0.490, 0.420, 0.324]);
 
-const MONUMENT_SHININESS: number = 0.0;
+const MONUMENT_SHININESS: number = 32.0;
 
 const CUBE_VERTEX_POSITIONS: Float32Array = new Float32Array([
     -1.0, -1.0, -1.0,  // 0
