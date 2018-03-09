@@ -21,6 +21,7 @@ import {Renderer} from './renderer';
 import {PathfinderShaderProgram, SHADER_NAMES, ShaderMap} from './shader-loader';
 import {ShaderProgramSource, UnlinkedShaderProgram} from './shader-loader';
 import {expectNotNull, PathfinderError, UINT32_SIZE, unwrapNull} from './utils';
+import {NEAR_CLIP_PLANE, FAR_CLIP_PLANE} from './3d-demo';
 
 const QUAD_POSITIONS: Float32Array = new Float32Array([
     0.0, 0.0,
@@ -154,8 +155,6 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     quadTexCoordsBuffer!: WebGLBuffer;
     quadElementsBuffer!: WebGLBuffer;
 
-    atlasRenderingTimerQuery!: WebGLQuery;
-    compositingTimerQuery!: WebGLQuery;
 
     meshes: PathfinderPackedMeshBuffers[];
     meshData: PathfinderPackedMeshes[];
@@ -173,6 +172,9 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     protected colorBufferHalfFloatExt: any;
 
     private wantsScreenshot: boolean;
+    private vrDisplay: VRDisplay | null;
+    private vrFrameData: VRFrameData | null;
+    private inVrRAF: boolean;
 
     /// NB: All subclasses are responsible for creating a renderer in their constructors.
     constructor(gammaLUT: HTMLImageElement,
@@ -191,6 +193,14 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.gammaLUT = gammaLUT;
 
         this.wantsScreenshot = false;
+        this.vrDisplay = null;
+        if ("VRFrameData" in window) {
+           this.vrFrameData = new VRFrameData;
+        } else {
+            this.vrFrameData = null;
+        }
+        
+        this.inVrRAF = false;
     }
 
     attachMeshes(meshes: PathfinderPackedMeshes[]): void {
@@ -242,13 +252,61 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         return buffer;
     }
 
+    enterVR(): void {
+        if (this.vrDisplay != null) {
+            this.vrDisplay.requestPresent([{ source: this.canvas }]);
+            const that = this;
+            function vrCallback(): void {
+                if (that.vrDisplay == null) {
+                    return;
+                }
+                that.vrDisplay.requestAnimationFrame(vrCallback);
+
+                that.renderer.enterVR();
+                that.inVrRAF = true;
+                that.redraw();
+                that.inVrRAF = false;
+            }
+            this.vrDisplay.requestAnimationFrame(vrCallback);
+        }
+        if (navigator.getVRDisplays) {
+            navigator.getVRDisplays().then((displays) => {
+              if (displays.length > 0) {
+                this.vrDisplay = displays[displays.length - 1];
+
+                // It's heighly reccommended that you set the near and far planes to
+                // something appropriate for your scene so the projection matricies
+                // WebVR produces have a well scaled depth buffer.
+                this.vrDisplay.depthNear = NEAR_CLIP_PLANE;
+                this.vrDisplay.depthFar = FAR_CLIP_PLANE;
+              } else {
+                alert("Your device has no VR displays")
+              }
+            }, function () {
+              alert("Your browser does not support WebVR. See <a href='http://webvr.info'>webvr.info</a> for assistance.");
+            });
+        } else {
+            alert("Your browser does not support WebVR. See <a href='http://webvr.info'>webvr.info</a> for assistance.");
+        }
+    }
+
     redraw(): void {
         super.redraw();
 
         if (!this.renderer.meshesAttached)
             return;
 
-        this.renderer.redraw();
+        if (this.vrDisplay == null || this.vrFrameData == null) {
+            this.renderer.redraw();
+        } else {
+            if (!this.inVrRAF) {
+                console.log("redraw() called outside of vr RAF, will get drawn later");
+                return;
+            }
+            this.vrDisplay.getFrameData(this.vrFrameData);
+            this.renderer.redrawVR(this.vrFrameData);
+            this.vrDisplay.submitFrame()
+        }
 
         // Invoke the post-render hook.
         this.renderingFinished();
@@ -274,7 +332,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.textureHalfFloatExt = unwrapNull(this.gl.getExtension('OES_texture_half_float'));
         this.timerQueryExt = this.gl.getExtension('EXT_disjoint_timer_query');
         this.vertexArrayObjectExt = unwrapNull(this.gl.getExtension('OES_vertex_array_object'));
-        this.gl.getExtension('EXT_frag_depth');
+        // this.gl.getExtension('EXT_frag_depth');
         this.gl.getExtension('OES_element_index_uint');
         this.gl.getExtension('OES_standard_derivatives');
         this.gl.getExtension('OES_texture_float');
@@ -291,9 +349,6 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.quadElementsBuffer);
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_ELEMENTS, this.gl.STATIC_DRAW);
 
-        // Set up our timer queries for profiling.
-        this.atlasRenderingTimerQuery = this.timerQueryExt.createQueryEXT();
-        this.compositingTimerQuery = this.timerQueryExt.createQueryEXT();
     }
 
     protected renderingFinished(): void {}
@@ -376,9 +431,6 @@ export interface RenderContext {
 
     readonly quadPositionsBuffer: WebGLBuffer;
     readonly quadElementsBuffer: WebGLBuffer;
-
-    readonly atlasRenderingTimerQuery: WebGLQuery;
-    readonly compositingTimerQuery: WebGLQuery;
 
     initQuadVAO(attributes: any): void;
     setDirty(): void;

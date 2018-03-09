@@ -32,15 +32,7 @@ void main() {
     vec3 lightDirection = normalize(uLightPosition - vPosition);
 
     float lambertian = max(dot(lightDirection, normal), 0.0);
-    float specular = 0.0;
 
-    if (lambertian > 0.0) {
-        vec3 viewDirection = normalize(-vPosition);
-        vec3 halfDirection = normalize(lightDirection + viewDirection);
-        float specularAngle = max(dot(halfDirection, normal), 0.0);
-        specular = pow(specularAngle, uShininess);
-    }
-
-    vec3 color = uAmbientColor + lambertian * uDiffuseColor + specular * uSpecularColor;
+    vec3 color = uAmbientColor /*+ lambertian * uDiffuseColor*/;
     gl_FragColor = vec4(color, 1.0);
 }

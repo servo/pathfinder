@@ -10,7 +10,7 @@
 
 #version 100
 
-#extension GL_EXT_frag_depth : require
+// #extension GL_EXT_frag_depth : require
 #extension GL_OES_standard_derivatives : require
 
 #define LCD_FILTER_FACTOR_0     (86.0 / 255.0)
