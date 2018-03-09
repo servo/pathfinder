@@ -124,7 +124,6 @@ interface MeshDescriptor {
     positions: glmatrix.vec2[];
 }
 
-
 function F32ArrayToMat4(array: Float32Array): mat4 {
     const mat = glmatrix.mat4.create();
     glmatrix.mat4.set(mat, array[0], array[1], array[2], array[3],
@@ -375,6 +374,7 @@ class ThreeDRenderer extends Renderer {
     camera: PerspectiveCamera;
 
     needsStencil: boolean = false;
+    rightEye: boolean = false;
 
     get isMulticolor(): boolean {
         return false;
@@ -385,8 +385,12 @@ class ThreeDRenderer extends Renderer {
     }
 
     get destAllocatedSize(): glmatrix.vec2 {
+        let width = this.renderContext.canvas.width;
+        if (this.vrProjectionMatrix != null) {
+            width = width / 2;
+        }
         return glmatrix.vec2.clone([
-            this.renderContext.canvas.width,
+            width,
             this.renderContext.canvas.height,
         ]);
     }
@@ -479,12 +483,25 @@ class ThreeDRenderer extends Renderer {
     }
 
     redrawVR(frame: VRFrameData): void {
+        this.clearDestFramebuffer(true);
         this.vrProjectionMatrix = frame.leftProjectionMatrix;
+        this.rightEye = false;
         this.camera.setView(F32ArrayToMat4(frame.leftViewMatrix), frame.pose);
         this.redraw();
+        this.rightEye = true;
         this.vrProjectionMatrix = frame.rightProjectionMatrix;
         this.camera.setView(F32ArrayToMat4(frame.rightViewMatrix), frame.pose);
         this.redraw();
+    }
+
+    setDrawViewport() {
+        let offset = 0;
+        if (this.rightEye) {
+            offset = this.destAllocatedSize[0];
+        }
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+        gl.viewport(offset, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
     }
 
     protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
@@ -541,16 +558,20 @@ class ThreeDRenderer extends Renderer {
         throw new PathfinderError("Unsupported antialiasing type!");
     }
 
-    protected clearDestFramebuffer(): void {
+    protected clearDestFramebuffer(force: boolean): void {
+
         const gl = this.renderContext.gl;
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.destFramebuffer);
-        gl.viewport(0, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
+        // clear the entire viewport
+        gl.viewport(0, 0, this.renderContext.canvas.width, this.renderContext.canvas.height);
 
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
         gl.clearDepth(1.0);
         gl.depthMask(true);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+         if (force || this.vrProjectionMatrix == null) {
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        }
     }
 
     protected getModelviewTransform(objectIndex: number): glmatrix.mat4 {

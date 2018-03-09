@@ -137,14 +137,25 @@ export abstract class Renderer {
         this.redraw();
     }
 
+    enterVR() {
+        if (this.antialiasingStrategy != null) {
+            this.antialiasingStrategy.setFramebufferSize(this);
+        }
+    }
+
+    setDrawViewport() {
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+        gl.viewport(0, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
+    }
+
     redraw(): void {
         const renderContext = this.renderContext;
 
         if (this.meshBuffers == null)
             return;
 
-        this.clearDestFramebuffer();
-
+        this.clearDestFramebuffer(false);
 
         const antialiasingStrategy = unwrapNull(this.antialiasingStrategy);
         antialiasingStrategy.prepareForRendering(this);
@@ -393,7 +404,7 @@ export abstract class Renderer {
 
     protected drawSceneryIfNecessary(): void {}
 
-    protected clearDestFramebuffer(): void {
+    protected clearDestFramebuffer(force: boolean): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
@@ -572,7 +583,6 @@ export abstract class Renderer {
         // renderContext.timerQueryExt.endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
 
         this.timerQueryPollInterval = window.setInterval(() => {
-
 
             const atlasRenderingTime = 1;
             const compositingTime = 1;

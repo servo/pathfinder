@@ -261,6 +261,8 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
                     return;
                 }
                 that.vrDisplay.requestAnimationFrame(vrCallback);
+
+                that.renderer.enterVR();
                 that.inVrRAF = true;
                 that.redraw();
                 that.inVrRAF = false;
