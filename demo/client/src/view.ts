@@ -178,7 +178,6 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     private vrDisplay: VRDisplay | null;
     private vrFrameData: VRFrameData | null;
     private inVRRAF: boolean;
-    private inVR: boolean;
 
     /// NB: All subclasses are responsible for creating a renderer in their constructors.
     constructor(areaLUT: HTMLImageElement,
@@ -202,7 +201,6 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
 
 
         this.inVRRAF = false;
-        this.inVR = false;
         this.vrDisplay = null;
         if ("VRFrameData" in window) {
            this.vrFrameData = new VRFrameData;
@@ -234,14 +232,14 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         }
 
         window.addEventListener('vrdisplaypresentchange', () => {
-
           if (this.vrDisplay == null)
               return;
 
           if (this.vrDisplay.isPresenting) {
             const that = this;
+            this.resized();
             function vrCallback(): void {
-                if (that.vrDisplay == null || !that.inVR) {
+                if (that.vrDisplay == null || !that.renderer.inVR) {
                     return;
                 }
                 that.vrDisplay.requestAnimationFrame(vrCallback);
@@ -251,7 +249,8 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
             }
             this.vrDisplay.requestAnimationFrame(vrCallback);
           } else {
-            this.inVR = false;
+            this.renderer.inVR = false;
+            this.resized();
           }
         });
     }
@@ -307,7 +306,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
 
     enterVR(): void {
         if (this.vrDisplay != null) {
-            this.inVR = true;
+            this.renderer.inVR = true;
             this.vrDisplay.requestPresent([{ source: this.canvas }]);
         }
     }
@@ -318,7 +317,8 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         if (!this.renderer.meshesAttached)
             return;
 
-        if (!this.inVR || this.vrDisplay == null || this.vrFrameData == null) {
+        if (!this.renderer.inVR || this.vrDisplay == null ||
+            this.vrFrameData == null) {
             this.renderer.redraw();
         } else {
             if (!this.inVRRAF) {

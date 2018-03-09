@@ -127,7 +127,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
         const gl = renderContext.gl;
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
-        gl.viewport(0, 0, renderer.destAllocatedSize[0], renderer.destAllocatedSize[1]);
+        renderer.setDrawViewport();
         gl.disable(gl.DEPTH_TEST);
         gl.disable(gl.BLEND);
 

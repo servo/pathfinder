@@ -48,6 +48,8 @@ export abstract class Renderer {
 
     lastTimings: Timings;
 
+    inVR: boolean = false;
+
     get emboldenAmount(): glmatrix.vec2 {
         return glmatrix.vec2.create();
     }
@@ -141,13 +143,19 @@ export abstract class Renderer {
         this.redraw();
     }
 
+    setDrawViewport() {
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+        gl.viewport(0, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
+    }
+
     redraw(): void {
         const renderContext = this.renderContext;
 
         if (this.meshBuffers == null)
             return;
 
-        this.clearDestFramebuffer();
+        this.clearDestFramebuffer(false);
 
         // Start timing rendering.
         if (this.timerQueryPollInterval == null &&
@@ -426,7 +434,7 @@ export abstract class Renderer {
 
     protected drawSceneryIfNecessary(): void {}
 
-    protected clearDestFramebuffer(): void {
+    protected clearDestFramebuffer(force: boolean): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 

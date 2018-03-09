@@ -294,7 +294,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         const gl = renderContext.gl;
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
-        gl.viewport(0, 0, this.destFramebufferSize[0], this.destFramebufferSize[1]);
+        renderer.setDrawViewport();
         gl.disable(gl.SCISSOR_TEST);
     }
 
