@@ -56,7 +56,7 @@ pub struct FontContext<FK> where FK: Clone + Hash + Eq + Ord {
 }
 
 // Core Text is thread-safe.
-unsafe impl<FK> Send for FontContext<FK> where FK: Clone + Hash + Eq + Ord {}
+unsafe impl<FK> Send for FontContext<FK> where FK: Clone + Hash + Eq + Ord + Send {}
 
 impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     /// Creates a new font context instance.
