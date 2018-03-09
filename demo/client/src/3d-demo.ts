@@ -124,6 +124,15 @@ interface MeshDescriptor {
     positions: glmatrix.vec2[];
 }
 
+function F32ArrayToMat4(array: Float32Array): mat4 {
+    const mat = glmatrix.mat4.create();
+    glmatrix.mat4.set(mat, array[0], array[1], array[2], array[3],
+                           array[4], array[5], array[6], array[7],
+                           array[8], array[9], array[10], array[11],
+                           array[12], array[13], array[14], array[15]);
+    return mat;
+}
+
 class ThreeDController extends DemoAppController<ThreeDView> {
     font!: PathfinderFont;
     textFrames!: TextFrame[];
@@ -422,6 +431,8 @@ class ThreeDRenderer extends Renderer {
 
     private distantGlyphVAO: WebGLVertexArrayObjectOES | null;
 
+    private vrProjectionMatrix: Float32Array | null;
+
     constructor(renderContext: ThreeDView) {
         super(renderContext);
 
@@ -433,7 +444,7 @@ class ThreeDRenderer extends Renderer {
         this.glyphSizes = [];
 
         this.distantGlyphVAO = null;
-
+        this.vrProjectionMatrix = null;
         this.camera = new PerspectiveCamera(renderContext.canvas, {
             innerCollisionExtent: MONUMENT_SCALE[0],
         });
@@ -470,6 +481,15 @@ class ThreeDRenderer extends Renderer {
 
     setHintsUniform(uniforms: UniformMap): void {
         this.renderContext.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
+    }
+
+    redrawVR(frame: VRFrameData): void {
+        this.vrProjectionMatrix = frame.leftProjectionMatrix;
+        this.camera.setView(F32ArrayToMat4(frame.leftViewMatrix), frame.pose);
+        this.redraw();
+        this.vrProjectionMatrix = frame.rightProjectionMatrix;
+        this.camera.setView(F32ArrayToMat4(frame.rightViewMatrix), frame.pose);
+        this.redraw();
     }
 
     pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
@@ -811,6 +831,9 @@ class ThreeDRenderer extends Renderer {
     }
 
     private calculateProjectionTransform(): glmatrix.mat4 {
+        if (this.vrProjectionMatrix != null) {
+            return F32ArrayToMat4(this.vrProjectionMatrix);
+        }
         const canvas = this.renderContext.canvas;
         const projection = glmatrix.mat4.create();
         glmatrix.mat4.perspective(projection,
