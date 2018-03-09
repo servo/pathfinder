@@ -44,8 +44,8 @@ const FONT: string = 'open-sans';
 const PIXELS_PER_UNIT: number = 1.0;
 
 const FOV: number = 45.0;
-const NEAR_CLIP_PLANE: number = 0.1;
-const FAR_CLIP_PLANE: number = 10000.0;
+export const NEAR_CLIP_PLANE: number = 0.1;
+export const FAR_CLIP_PLANE: number = 100000.0;
 
 const ATLAS_FONT_SIZE: number = 48;
 

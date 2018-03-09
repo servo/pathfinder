@@ -10,6 +10,7 @@
 
 import * as glmatrix from 'gl-matrix';
 
+import {FAR_CLIP_PLANE, NEAR_CLIP_PLANE} from './3d-demo';
 import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {StemDarkeningMode, SubpixelAAType} from "./aa-strategy";
 import {AAOptions} from './app-controller';
@@ -174,6 +175,10 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     protected colorBufferHalfFloatExt: any;
 
     private wantsScreenshot: boolean;
+    private vrDisplay: VRDisplay | null;
+    private vrFrameData: VRFrameData | null;
+    private inVRRAF: boolean;
+    private inVR: boolean;
 
     /// NB: All subclasses are responsible for creating a renderer in their constructors.
     constructor(areaLUT: HTMLImageElement,
@@ -194,6 +199,61 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.gammaLUT = gammaLUT;
 
         this.wantsScreenshot = false;
+
+
+        this.inVRRAF = false;
+        this.inVR = false;
+        this.vrDisplay = null;
+        if ("VRFrameData" in window) {
+           this.vrFrameData = new VRFrameData;
+        } else {
+            this.vrFrameData = null;
+        }
+
+        this.vrSetup();
+    }
+
+    vrSetup(): void {
+        if (navigator.getVRDisplays) {
+            navigator.getVRDisplays().then((displays) => {
+              if (displays.length > 0) {
+                this.vrDisplay = displays[displays.length - 1];
+
+                // It's heighly reccommended that you set the near and far planes to
+                // something appropriate for your scene so the projection matricies
+                // WebVR produces have a well scaled depth buffer.
+                this.vrDisplay.depthNear = NEAR_CLIP_PLANE;
+                this.vrDisplay.depthFar = FAR_CLIP_PLANE;
+                unwrapNull(document.getElementById('pf-vr')).style.display = "initial";
+              } else {
+                // no vr displays
+              }
+            });
+        } else {
+            // no vr support
+        }
+
+        window.addEventListener('vrdisplaypresentchange', () => {
+
+          if (this.vrDisplay == null)
+              return;
+
+          if (this.vrDisplay.isPresenting) {
+            const that = this;
+            function vrCallback(): void {
+                if (that.vrDisplay == null || !that.inVR) {
+                    return;
+                }
+                that.vrDisplay.requestAnimationFrame(vrCallback);
+                that.inVRRAF = true;
+                that.redraw();
+                that.inVRRAF = false;
+            }
+            this.vrDisplay.requestAnimationFrame(vrCallback);
+          } else {
+            this.inVR = false;
+          }
+        });
     }
 
     attachMeshes(meshes: PathfinderPackedMeshes[]): void {
@@ -245,13 +305,30 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         return buffer;
     }
 
+    enterVR(): void {
+        if (this.vrDisplay != null) {
+            this.inVR = true;
+            this.vrDisplay.requestPresent([{ source: this.canvas }]);
+        }
+    }
+
     redraw(): void {
         super.redraw();
 
         if (!this.renderer.meshesAttached)
             return;
 
-        this.renderer.redraw();
+        if (!this.inVR || this.vrDisplay == null || this.vrFrameData == null) {
+            this.renderer.redraw();
+        } else {
+            if (!this.inVRRAF) {
+                // redraw() called outside of vr RAF, will get drawn later
+                return;
+            }
+            this.vrDisplay.getFrameData(this.vrFrameData);
+            this.renderer.redrawVR(this.vrFrameData);
+            this.vrDisplay.submitFrame();
+        }
 
         // Invoke the post-render hook.
         this.renderingFinished();

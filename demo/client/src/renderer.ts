@@ -137,6 +137,10 @@ export abstract class Renderer {
     abstract setHintsUniform(uniforms: UniformMap): void;
     abstract pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array>;
 
+    redrawVR(frame: VRFrameData): void {
+        this.redraw();
+    }
+
     redraw(): void {
         const renderContext = this.renderContext;
 

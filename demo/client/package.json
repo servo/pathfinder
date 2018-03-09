@@ -17,6 +17,7 @@
     "@types/opentype.js": "0.0.0",
     "@types/papaparse": "^4.1.33",
     "@types/webgl-ext": "0.0.29",
+    "@types/webvr-api": "0.0.31",
     "base64-js": "^1.2.3",
     "bootstrap": "^4.0.0",
     "gl-matrix": "^2.4.0",
