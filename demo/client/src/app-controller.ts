@@ -15,6 +15,7 @@ import {ShaderLoader, ShaderMap, ShaderProgramSource} from './shader-loader';
 import {expectNotNull, unwrapNull, unwrapUndef} from './utils';
 import {DemoView, Timings, TIMINGS} from "./view";
 
+const AREA_LUT_URI: string = "/textures/area-lut.png";
 const GAMMA_LUT_URI: string = "/textures/gamma-lut.png";
 
 const SWITCHES: SwitchMap = {
@@ -32,13 +33,6 @@ const SWITCHES: SwitchMap = {
         onValue: 'dark',
         switchInputsName: 'stemDarkeningSwitchInputs',
     },
-    subpixelAA: {
-        defaultValue: 'none',
-        id: 'pf-subpixel-aa',
-        offValue: 'none',
-        onValue: 'medium',
-        switchInputsName: 'subpixelAASwitchInputs',
-    },
 };
 
 interface SwitchDescriptor {
@@ -52,7 +46,6 @@ interface SwitchDescriptor {
 interface SwitchMap {
     gammaCorrection: SwitchDescriptor;
     stemDarkening: SwitchDescriptor;
-    subpixelAA: SwitchDescriptor;
 }
 
 export interface AAOptions {
@@ -67,7 +60,6 @@ export interface SwitchInputs {
 }
 
 interface Switches {
-    subpixelAASwitchInputs: SwitchInputs | null;
     gammaCorrectionSwitchInputs: SwitchInputs | null;
     stemDarkeningSwitchInputs: SwitchInputs | null;
 }
@@ -111,7 +103,6 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
                                                                implements Switches {
     view!: Promise<View>;
 
-    subpixelAASwitchInputs: SwitchInputs | null = null;
     gammaCorrectionSwitchInputs: SwitchInputs | null = null;
     stemDarkeningSwitchInputs: SwitchInputs | null = null;
 
@@ -120,6 +111,7 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
     protected filePickerView: FilePickerView | null = null;
 
     protected aaLevelSelect: HTMLSelectElement | null = null;
+    protected subpixelAASelect: HTMLSelectElement | null = null;
 
     private fpsLabel: HTMLElement | null = null;
 
@@ -190,17 +182,28 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         const shaderLoader = new ShaderLoader;
         shaderLoader.load();
 
-        const gammaLUTPromise = this.loadGammaLUT();
+        const areaLUTPromise = this.loadTexture(AREA_LUT_URI);
+        const gammaLUTPromise = this.loadTexture(GAMMA_LUT_URI);
 
-        const promises: any[] = [gammaLUTPromise, shaderLoader.common, shaderLoader.shaders];
+        const promises: any[] = [
+            areaLUTPromise,
+            gammaLUTPromise,
+            shaderLoader.common,
+            shaderLoader.shaders,
+        ];
         this.view = Promise.all(promises).then(assets => {
-            return this.createView(assets[0], assets[1], assets[2]);
+            return this.createView(assets[0], assets[1], assets[2], assets[3]);
         });
 
         this.aaLevelSelect = document.getElementById('pf-aa-level-select') as
             (HTMLSelectElement | null);
         if (this.aaLevelSelect != null)
             this.aaLevelSelect.addEventListener('change', () => this.updateAALevel(), false);
+
+        this.subpixelAASelect = document.getElementById('pf-subpixel-aa-select') as
+            (HTMLSelectElement | null);
+        if (this.subpixelAASelect != null)
+            this.subpixelAASelect.addEventListener('change', () => this.updateAALevel(), false);
 
         // The event listeners here use `window.setTimeout()` because jQuery won't fire the "live"
         // click listener that Bootstrap sets up until the event bubbles up to the document. This
@@ -284,6 +287,12 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
             else
                 aaOptions[switchName] = switchDescriptor.offValue as any;
         }
+        if (this.subpixelAASelect != null) {
+            const selectedOption = this.subpixelAASelect.selectedOptions[0];
+            aaOptions.subpixelAA = selectedOption.value as SubpixelAAType;
+        } else {
+            aaOptions.subpixelAA = 'none';
+        }
 
         return this.view.then(view => {
             view.setAntialiasingOptions(aaType, aaLevel, aaOptions as AAOptions);
@@ -294,7 +303,8 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         // Overridden by subclasses.
     }
 
-    protected abstract createView(gammaLUT: HTMLImageElement,
+    protected abstract createView(areaLUT: HTMLImageElement,
+                                  gammaLUT: HTMLImageElement,
                                   commonShaderSource: string,
                                   shaderSources: ShaderMap<ShaderProgramSource>):
                                   View;
@@ -331,8 +341,8 @@ export abstract class DemoAppController<View extends DemoView> extends AppContro
         }, false);
     }
 
-    private loadGammaLUT(): Promise<HTMLImageElement> {
-        return window.fetch(GAMMA_LUT_URI)
+    private loadTexture(uri: string): Promise<HTMLImageElement> {
+        return window.fetch(uri)
                      .then(response => response.blob())
                      .then(blob => {
                          const imgElement = document.createElement('img');

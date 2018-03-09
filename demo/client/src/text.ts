@@ -334,6 +334,7 @@ export class Hint {
     private useHinting: boolean;
 
     constructor(font: PathfinderFont, pixelsPerUnit: number, useHinting: boolean) {
+        useHinting = false;
         this.useHinting = useHinting;
 
         const os2Table = font.opentypeFont.tables.os2;

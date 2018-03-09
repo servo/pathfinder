@@ -65,8 +65,6 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
     protected supersampledFramebufferSize: glmatrix.vec2;
     protected destFramebufferSize: glmatrix.vec2;
 
-    protected subpixelAA: SubpixelAAType;
-
     protected resolveVAO: WebGLVertexArrayObject | null;
 
     protected aaAlphaTexture: WebGLTexture | null = null;
@@ -76,9 +74,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
     protected abstract get mightUseAAFramebuffer(): boolean;
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
-        super();
-
-        this.subpixelAA = subpixelAA;
+        super(subpixelAA);
 
         this.supersampledFramebufferSize = glmatrix.vec2.create();
         this.destFramebufferSize = glmatrix.vec2.create();
@@ -201,6 +197,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         if (renderer.fgColor != null)
             gl.uniform4fv(resolveProgram.uniforms.uFGColor, renderer.fgColor);
         renderer.setTransformSTAndTexScaleUniformsForDest(resolveProgram.uniforms);
+        this.setSubpixelAAKernelUniform(renderer, resolveProgram.uniforms);
         this.setAdditionalStateForResolveIfNecessary(renderer, resolveProgram, 1);
         gl.drawElements(renderContext.gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0);
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
@@ -273,6 +270,7 @@ export abstract class XCAAStrategy extends AntialiasingStrategy {
         renderer.pathTransformBufferTextures[0].st.bind(gl, uniforms, 1);
         this.pathBoundsBufferTextures[objectIndex].bind(gl, uniforms, 2);
         renderer.setHintsUniform(uniforms);
+        renderer.bindAreaLUT(4, uniforms);
     }
 
     protected setDepthAndBlendModeForResolve(renderContext: RenderContext): void {
@@ -410,7 +408,7 @@ export class MCAAStrategy extends XCAAStrategy {
         const renderContext = renderer.renderContext;
         if (renderer.isMulticolor)
             return null;
-        if (this.subpixelAA !== 'none')
+        if (this.subpixelAA !== 'none' && renderer.allowSubpixelAA)
             return renderContext.shaderPrograms.xcaaMonoSubpixelResolve;
         return renderContext.shaderPrograms.xcaaMonoResolve;
     }
@@ -651,8 +649,11 @@ export class StencilAAAStrategy extends XCAAStrategy {
 
         // FIXME(pcwalton): Only render the appropriate instances.
         const count = renderer.meshes[0].count('stencilSegments');
-        renderContext.instancedArraysExt
-                     .drawElementsInstancedANGLE(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0, count);
+        for (let side = 0; side < 2; side++) {
+            gl.uniform1i(uniforms.uSide, side);
+            renderContext.instancedArraysExt
+                        .drawElementsInstancedANGLE(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE, 0, count);
+        }
 
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
     }
@@ -673,7 +674,7 @@ export class StencilAAAStrategy extends XCAAStrategy {
     protected getResolveProgram(renderer: Renderer): PathfinderShaderProgram | null {
         const renderContext = renderer.renderContext;
 
-        if (this.subpixelAA !== 'none')
+        if (this.subpixelAA !== 'none' && renderer.allowSubpixelAA)
             return renderContext.shaderPrograms.xcaaMonoSubpixelResolve;
         return renderContext.shaderPrograms.xcaaMonoResolve;
     }
@@ -768,8 +769,6 @@ export class StencilAAAStrategy extends XCAAStrategy {
         renderContext.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aToNormal, 1);
         renderContext.instancedArraysExt.vertexAttribDivisorANGLE(attributes.aPathID, 1);
 
-        // TODO(pcwalton): Normals.
-
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, renderContext.quadElementsBuffer);
 
         renderContext.vertexArrayObjectExt.bindVertexArrayOES(null);
@@ -789,7 +788,7 @@ export class StencilAAAStrategy extends XCAAStrategy {
 /// darkening is enabled.
 ///
 /// FIXME(pcwalton): Share textures and FBOs between the two strategies.
-export class AdaptiveStencilMeshAAAStrategy implements AntialiasingStrategy {
+export class AdaptiveStencilMeshAAAStrategy extends AntialiasingStrategy {
     private meshStrategy: MCAAStrategy;
     private stencilStrategy: StencilAAAStrategy;
 
@@ -802,6 +801,7 @@ export class AdaptiveStencilMeshAAAStrategy implements AntialiasingStrategy {
     }
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
+        super(subpixelAA);
         this.meshStrategy = new MCAAStrategy(level, subpixelAA);
         this.stencilStrategy = new StencilAAAStrategy(level, subpixelAA);
     }

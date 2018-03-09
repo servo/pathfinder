@@ -29,7 +29,6 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     }
 
     private level: number;
-    private subpixelAA: SubpixelAAType;
 
     private destFramebufferSize: glmatrix.vec2;
     private supersampledFramebufferSize: glmatrix.vec2;
@@ -38,7 +37,7 @@ export default class SSAAStrategy extends AntialiasingStrategy {
     private supersampledFramebuffer!: WebGLFramebuffer;
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
-        super();
+        super(subpixelAA);
 
         this.level = level;
         this.subpixelAA = subpixelAA;

@@ -18,27 +18,19 @@ precision mediump float;
 uniform sampler2D uSource;
 /// The dimensions of the alpha coverage texture, in texels.
 uniform ivec2 uSourceDimensions;
+uniform vec4 uKernel;
 
 varying vec2 vTexCoord;
 
-float sampleSource(float deltaX) {
-    return texture2D(uSource, vec2(vTexCoord.x + deltaX, vTexCoord.y)).r;
-}
-
 void main() {
     float onePixel = 1.0 / float(uSourceDimensions.x);
+    vec4 shadesL, shadesR;
+    float shadeC;
+    sample9Tap(shadesL, shadeC, shadesR, uSource, vTexCoord, onePixel, uKernel);
 
-    float shade0 = sampleSource(0.0);
-    vec3 shadeL = vec3(sampleSource(-1.0 * onePixel),
-                       sampleSource(-2.0 * onePixel),
-                       sampleSource(-3.0 * onePixel));
-    vec3 shadeR = vec3(sampleSource(1.0 * onePixel),
-                       sampleSource(2.0 * onePixel),
-                       sampleSource(3.0 * onePixel));
+    vec3 shades = vec3(convolve7Tap(shadesL, vec3(shadeC, shadesR.xy), uKernel),
+                       convolve7Tap(vec4(shadesL.yzw, shadeC), shadesR.xyz, uKernel),
+                       convolve7Tap(vec4(shadesL.zw, shadeC, shadesR.x), shadesR.yzw, uKernel));
 
-    vec3 color = vec3(lcdFilter(shadeL.z, shadeL.y, shadeL.x, shade0,   shadeR.x),
-                      lcdFilter(shadeL.y, shadeL.x, shade0,   shadeR.x, shadeR.y),
-                      lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z));
-
-    gl_FragColor = vec4(color, 1.0);
+    gl_FragColor = vec4(shades, 1.0);
 }

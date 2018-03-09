@@ -10,17 +10,25 @@
 
 import * as glmatrix from 'gl-matrix';
 
-import {createFramebuffer, createFramebufferColorTexture} from './gl-utils';
+import {createFramebuffer, createFramebufferColorTexture, UniformMap} from './gl-utils';
 import {createFramebufferDepthTexture} from './gl-utils';
 import {Renderer} from './renderer';
 import {unwrapNull} from './utils';
 import {DemoView} from './view';
 
+const SUBPIXEL_AA_KERNELS: {readonly [kind in SubpixelAAType]: glmatrix.vec4} = {
+    // These intentionally do not precisely match what Core Graphics does (a Lanczos function),
+    // because we don't want any ringing artefacts.
+    'core-graphics': glmatrix.vec4.clone([0.033165660, 0.102074051, 0.221434336, 0.286651906]),
+    'freetype': glmatrix.vec4.clone([0.0, 0.031372549, 0.301960784, 0.337254902]),
+    'none': glmatrix.vec4.clone([0.0, 0.0, 0.0, 1.0]),
+};
+
 export type AntialiasingStrategyName = 'none' | 'ssaa' | 'xcaa';
 
 export type DirectRenderingMode = 'none' | 'conservative' | 'color';
 
-export type SubpixelAAType = 'none' | 'medium';
+export type SubpixelAAType = 'none' | 'freetype' | 'core-graphics';
 
 export type GammaCorrectionMode = 'off' | 'on';
 
@@ -37,6 +45,12 @@ export abstract class AntialiasingStrategy {
 
     // How many rendering passes this AA strategy requires.
     abstract readonly passCount: number;
+
+    protected subpixelAA: SubpixelAAType;
+
+    constructor(subpixelAA: SubpixelAAType) {
+        this.subpixelAA = subpixelAA;
+    }
 
     // Prepares any OpenGL data. This is only called on startup and canvas resize.
     init(renderer: Renderer): void {
@@ -83,6 +97,14 @@ export abstract class AntialiasingStrategy {
     // This usually blits to the real framebuffer.
     abstract resolve(pass: number, renderer: Renderer): void;
 
+    setSubpixelAAKernelUniform(renderer: Renderer, uniforms: UniformMap): void {
+        const renderContext = renderer.renderContext;
+        const gl = renderContext.gl;
+
+        const kernel = SUBPIXEL_AA_KERNELS[this.subpixelAA];
+        gl.uniform4f(uniforms.uKernel, kernel[0], kernel[1], kernel[2], kernel[3]);
+    }
+
     worldTransformForPass(renderer: Renderer, pass: number): glmatrix.mat4 {
         return glmatrix.mat4.create();
     }
@@ -96,7 +118,7 @@ export class NoAAStrategy extends AntialiasingStrategy {
     }
 
     constructor(level: number, subpixelAA: SubpixelAAType) {
-        super();
+        super(subpixelAA);
         this.framebufferSize = glmatrix.vec2.create();
     }
 

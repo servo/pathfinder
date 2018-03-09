@@ -48,11 +48,12 @@ class SVGDemoController extends DemoAppController<SVGDemoView> {
         });
     }
 
-    protected createView(gammaLUT: HTMLImageElement,
+    protected createView(areaLUT: HTMLImageElement,
+                         gammaLUT: HTMLImageElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>):
                          SVGDemoView {
-        return new SVGDemoView(this, gammaLUT, commonShaderSource, shaderSources);
+        return new SVGDemoView(this, areaLUT, gammaLUT, commonShaderSource, shaderSources);
     }
 
     protected get defaultFile(): string {
@@ -76,10 +77,11 @@ class SVGDemoView extends DemoView {
     }
 
     constructor(appController: SVGDemoController,
+                areaLUT: HTMLImageElement,
                 gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(gammaLUT, commonShaderSource, shaderSources);
+        super(areaLUT, gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
         this.renderer = new SVGDemoRenderer(this, {sizeToFit: true});

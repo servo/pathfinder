@@ -4,6 +4,7 @@ members = [
     "partitioner",
     "path-utils",
     "demo/server",
+    "utils/area-lut",
     "utils/frontend",
     "utils/gamma-lut",
 ]

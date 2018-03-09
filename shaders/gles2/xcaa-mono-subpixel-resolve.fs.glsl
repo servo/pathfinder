@@ -22,27 +22,19 @@ uniform vec4 uFGColor;
 uniform sampler2D uAAAlpha;
 /// The dimensions of the alpha coverage texture, in texels.
 uniform ivec2 uAAAlphaDimensions;
+uniform vec4 uKernel;
 
 varying vec2 vTexCoord;
 
-float sampleSource(float deltaX) {
-    return abs(texture2D(uAAAlpha, vec2(vTexCoord.s + deltaX, vTexCoord.y)).r);
-}
-
 void main() {
     float onePixel = 1.0 / float(uAAAlphaDimensions.x);
+    vec4 shadesL, shadesR;
+    float shadeC;
+    sample9Tap(shadesL, shadeC, shadesR, uAAAlpha, vTexCoord, onePixel, uKernel);
 
-    float shade0 = sampleSource(0.0);
-    vec3 shadeL = vec3(sampleSource(-1.0 * onePixel),
-                       sampleSource(-2.0 * onePixel),
-                       sampleSource(-3.0 * onePixel));
-    vec3 shadeR = vec3(sampleSource(1.0 * onePixel),
-                       sampleSource(2.0 * onePixel),
-                       sampleSource(3.0 * onePixel));
-
-    vec3 shades = vec3(lcdFilter(shadeL.z, shadeL.y, shadeL.x, shade0,   shadeR.x),
-                       lcdFilter(shadeL.y, shadeL.x, shade0,   shadeR.x, shadeR.y),
-                       lcdFilter(shadeL.x, shade0,   shadeR.x, shadeR.y, shadeR.z));
+    vec3 shades = vec3(convolve7Tap(shadesL, vec3(shadeC, shadesR.xy), uKernel),
+                       convolve7Tap(vec4(shadesL.yzw, shadeC), shadesR.xyz, uKernel),
+                       convolve7Tap(vec4(shadesL.zw, shadeC, shadesR.x), shadesR.yzw, uKernel));
 
     vec3 color = mix(uBGColor.rgb, uFGColor.rgb, shades);
     float alpha = any(greaterThan(shades, vec3(0.0))) ? uFGColor.a : uBGColor.a;

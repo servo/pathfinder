@@ -79,6 +79,10 @@ export abstract class SVGRenderer extends Renderer {
         return glmatrix.vec4.clone([1.0, 1.0, 1.0, 1.0]);
     }
 
+    get allowSubpixelAA(): boolean {
+        return false;
+    }
+
     protected get objectCount(): number {
         return 1;
     }
@@ -136,6 +140,19 @@ export abstract class SVGRenderer extends Renderer {
         return new Range(1, this.loader.pathInstances.length + 1);
     }
 
+    pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
+        const instances = this.loader.pathInstances;
+        const pathTransforms = this.createPathTransformBuffers(instances.length);
+
+        for (let pathIndex = 0; pathIndex < instances.length; pathIndex++) {
+            // TODO(pcwalton): Set transform.
+            const startOffset = (pathIndex + 1) * 4;
+            pathTransforms.st.set([1, 1, 0, 0], startOffset);
+        }
+
+        return pathTransforms;
+    }
+
     protected get usedSizeFactor(): glmatrix.vec2 {
         return glmatrix.vec2.clone([1.0, 1.0]);
     }
@@ -187,19 +204,6 @@ export abstract class SVGRenderer extends Renderer {
         }
 
         return pathColors;
-    }
-
-    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
-        const instances = this.loader.pathInstances;
-        const pathTransforms = this.createPathTransformBuffers(instances.length);
-
-        for (let pathIndex = 0; pathIndex < instances.length; pathIndex++) {
-            // TODO(pcwalton): Set transform.
-            const startOffset = (pathIndex + 1) * 4;
-            pathTransforms.st.set([1, 1, 0, 0], startOffset);
-        }
-
-        return pathTransforms;
     }
 
     protected createAAStrategy(aaType: AntialiasingStrategyName,

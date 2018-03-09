@@ -19,7 +19,8 @@ import {DemoAppController, setSwitchInputsValue} from "./app-controller";
 import {SUBPIXEL_GRANULARITY} from './atlas';
 import {OrthographicCamera} from './camera';
 import {UniformMap} from './gl-utils';
-import {PathfinderMeshPack, PathfinderPackedMeshBuffers, PathfinderPackedMeshes} from './meshes';
+import {B_QUAD_UPPER_CONTROL_POINT_VERTEX_OFFSET, PathfinderMeshPack} from './meshes';
+import {PathfinderPackedMeshBuffers, PathfinderPackedMeshes} from './meshes';
 import {PathTransformBuffers, Renderer} from "./renderer";
 import {ShaderMap, ShaderProgramSource} from "./shader-loader";
 import SSAAStrategy from './ssaa-strategy';
@@ -28,6 +29,7 @@ import {SVGRenderer} from './svg-renderer';
 import {BUILTIN_FONT_URI, computeStemDarkeningAmount, ExpandedMeshData, GlyphStore} from "./text";
 import {Hint} from "./text";
 import {PathfinderFont, TextFrame, TextRun} from "./text";
+import {MAX_SUBPIXEL_AA_FONT_SIZE} from './text-renderer';
 import {unwrapNull} from "./utils";
 import {DemoView} from "./view";
 import {AdaptiveStencilMeshAAAStrategy} from './xcaa-strategy';
@@ -314,11 +316,12 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
         context.putImageData(imageData, 0, 0);
     }
 
-    protected createView(gammaLUT: HTMLImageElement,
+    protected createView(areaLUT: HTMLImageElement,
+                         gammaLUT: HTMLImageElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>):
                          ReferenceTestView {
-        return new ReferenceTestView(this, gammaLUT, commonShaderSource, shaderSources);
+        return new ReferenceTestView(this, areaLUT, gammaLUT, commonShaderSource, shaderSources);
     }
 
     protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null): void {
@@ -468,7 +471,8 @@ class ReferenceTestAppController extends DemoAppController<ReferenceTestView> {
             return option.value.startsWith(currentTestCase.aaMode);
         });
 
-        setSwitchInputsValue(unwrapNull(this.subpixelAASwitchInputs), currentTestCase.subpixel);
+        const subpixelAASelect = unwrapNull(this.subpixelAASelect);
+        subpixelAASelect.selectedIndex = currentTestCase.subpixel ? 1 : 0;
         return this.updateAALevel();
     }
 
@@ -591,10 +595,11 @@ class ReferenceTestView extends DemoView {
     }
 
     constructor(appController: ReferenceTestAppController,
+                areaLUT: HTMLImageElement,
                 gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(gammaLUT, commonShaderSource, shaderSources);
+        super(areaLUT, gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
         this.recreateRenderer();
@@ -687,6 +692,11 @@ class ReferenceTestTextRenderer extends Renderer {
         return this.stemDarkeningAmount;
     }
 
+    get allowSubpixelAA(): boolean {
+        const appController = this.renderContext.appController;
+        return appController.currentFontSize <= MAX_SUBPIXEL_AA_FONT_SIZE;
+    }
+
     protected get objectCount(): number {
         return this.meshBuffers == null ? 0 : this.meshBuffers.length;
     }
@@ -768,22 +778,7 @@ class ReferenceTestTextRenderer extends Renderer {
         return textRun.pixelRectForGlyphAt(glyphIndex);
     }
 
-    protected createAAStrategy(aaType: AntialiasingStrategyName,
-                               aaLevel: number,
-                               subpixelAA: SubpixelAAType):
-                               AntialiasingStrategy {
-        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
-    }
-
-    protected compositeIfNecessary(): void {}
-
-    protected pathColorsForObject(objectIndex: number): Uint8Array {
-        const pathColors = new Uint8Array(4 * 2);
-        pathColors.set(TEXT_COLOR, 1 * 4);
-        return pathColors;
-    }
-
-    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
+    pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
         const appController = this.renderContext.appController;
         const canvas = this.renderContext.canvas;
         const font = unwrapNull(appController.font);
@@ -807,6 +802,21 @@ class ReferenceTestTextRenderer extends Renderer {
         pathTransforms.st.set([1, 1, x, y], 1 * 4);
 
         return pathTransforms;
+    }
+
+    protected createAAStrategy(aaType: AntialiasingStrategyName,
+                               aaLevel: number,
+                               subpixelAA: SubpixelAAType):
+                               AntialiasingStrategy {
+        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
+    }
+
+    protected compositeIfNecessary(): void {}
+
+    protected pathColorsForObject(objectIndex: number): Uint8Array {
+        const pathColors = new Uint8Array(4 * 2);
+        pathColors.set(TEXT_COLOR, 1 * 4);
+        return pathColors;
     }
 
     protected directCurveProgramName(): keyof ShaderMap<void> {

@@ -25,12 +25,12 @@ import {MAX_STEM_DARKENING_PIXELS_PER_EM, PathfinderFont, SimpleTextLayout} from
 import {UnitMetrics} from "./text";
 import {unwrapNull} from './utils';
 import {RenderContext, Timings} from "./view";
-import {AdaptiveStencilMeshAAAStrategy} from './xcaa-strategy';
+import {StencilAAAStrategy} from './xcaa-strategy';
 
 interface AntialiasingStrategyTable {
     none: typeof NoAAStrategy;
     ssaa: typeof SSAAStrategy;
-    xcaa: typeof AdaptiveStencilMeshAAAStrategy;
+    xcaa: typeof StencilAAAStrategy;
 }
 
 const SQRT_1_2: number = 1.0 / Math.sqrt(2.0);
@@ -38,10 +38,12 @@ const SQRT_1_2: number = 1.0 / Math.sqrt(2.0);
 const MIN_SCALE: number = 0.0025;
 const MAX_SCALE: number = 0.5;
 
+export const MAX_SUBPIXEL_AA_FONT_SIZE: number = 48.0;
+
 const ANTIALIASING_STRATEGIES: AntialiasingStrategyTable = {
     none: NoAAStrategy,
     ssaa: SSAAStrategy,
-    xcaa: AdaptiveStencilMeshAAAStrategy,
+    xcaa: StencilAAAStrategy,
 };
 
 export interface TextRenderContext extends RenderContext {
@@ -101,6 +103,10 @@ export abstract class TextRenderer extends Renderer {
 
     get rotationAngle(): number {
         return 0.0;
+    }
+
+    get allowSubpixelAA(): boolean {
+        return this.renderContext.fontSize <= MAX_SUBPIXEL_AA_FONT_SIZE;
     }
 
     protected get pixelsPerUnit(): number {
@@ -188,6 +194,54 @@ export abstract class TextRenderer extends Renderer {
         return boundingRects;
     }
 
+    pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
+        const pathCount = this.pathCount;
+        const atlasGlyphs = this.renderContext.atlasGlyphs;
+        const pixelsPerUnit = this.pixelsPerUnit;
+        const rotationAngle = this.rotationAngle;
+
+        // FIXME(pcwalton): This is a hack that tries to preserve the vertical extents of the glyph
+        // after stem darkening. It's better than nothing, but we should really do better.
+        //
+        // This hack seems to produce *better* results than what macOS does on sans-serif fonts;
+        // the ascenders and x-heights of the glyphs are pixel snapped, while they aren't on macOS.
+        // But we should really figure out what macOS does…
+        const ascender = this.renderContext.font.opentypeFont.ascender;
+        const emboldenAmount = this.emboldenAmount;
+        const stemDarkeningYScale = (ascender + emboldenAmount[1]) / ascender;
+
+        const stemDarkeningOffset = glmatrix.vec2.clone(emboldenAmount);
+        glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, pixelsPerUnit);
+        glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, SQRT_1_2);
+        glmatrix.vec2.mul(stemDarkeningOffset, stemDarkeningOffset, [1, stemDarkeningYScale]);
+
+        const transform = glmatrix.mat2d.create();
+        const transforms = this.createPathTransformBuffers(pathCount);
+
+        for (const glyph of atlasGlyphs) {
+            const pathID = glyph.pathID;
+            const atlasOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
+
+            glmatrix.mat2d.identity(transform);
+            glmatrix.mat2d.translate(transform, transform, atlasOrigin);
+            glmatrix.mat2d.translate(transform, transform, stemDarkeningOffset);
+            glmatrix.mat2d.rotate(transform, transform, rotationAngle);
+            glmatrix.mat2d.scale(transform,
+                                 transform,
+                                 [pixelsPerUnit, pixelsPerUnit * stemDarkeningYScale]);
+
+            transforms.st[pathID * 4 + 0] = transform[0];
+            transforms.st[pathID * 4 + 1] = transform[3];
+            transforms.st[pathID * 4 + 2] = transform[4];
+            transforms.st[pathID * 4 + 3] = transform[5];
+
+            transforms.ext[pathID * 2 + 0] = transform[1];
+            transforms.ext[pathID * 2 + 1] = transform[2];
+        }
+
+        return transforms;
+    }
+
     protected createAtlasFramebuffer(): void {
         const atlasColorTexture = this.renderContext.atlas.ensureTexture(this.renderContext);
         this.atlasDepthTexture = createFramebufferDepthTexture(this.renderContext.gl, ATLAS_SIZE);
@@ -248,54 +302,6 @@ export abstract class TextRenderer extends Renderer {
         }
 
         return pathColors;
-    }
-
-    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
-        const pathCount = this.pathCount;
-        const atlasGlyphs = this.renderContext.atlasGlyphs;
-        const pixelsPerUnit = this.pixelsPerUnit;
-        const rotationAngle = this.rotationAngle;
-
-        // FIXME(pcwalton): This is a hack that tries to preserve the vertical extents of the glyph
-        // after stem darkening. It's better than nothing, but we should really do better.
-        //
-        // This hack seems to produce *better* results than what macOS does on sans-serif fonts;
-        // the ascenders and x-heights of the glyphs are pixel snapped, while they aren't on macOS.
-        // But we should really figure out what macOS does…
-        const ascender = this.renderContext.font.opentypeFont.ascender;
-        const emboldenAmount = this.emboldenAmount;
-        const stemDarkeningYScale = (ascender + emboldenAmount[1]) / ascender;
-
-        const stemDarkeningOffset = glmatrix.vec2.clone(emboldenAmount);
-        glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, pixelsPerUnit);
-        glmatrix.vec2.scale(stemDarkeningOffset, stemDarkeningOffset, SQRT_1_2);
-        glmatrix.vec2.mul(stemDarkeningOffset, stemDarkeningOffset, [1, stemDarkeningYScale]);
-
-        const transform = glmatrix.mat2d.create();
-        const transforms = this.createPathTransformBuffers(pathCount);
-
-        for (const glyph of atlasGlyphs) {
-            const pathID = glyph.pathID;
-            const atlasOrigin = glyph.calculateSubpixelOrigin(pixelsPerUnit);
-
-            glmatrix.mat2d.identity(transform);
-            glmatrix.mat2d.translate(transform, transform, atlasOrigin);
-            glmatrix.mat2d.translate(transform, transform, stemDarkeningOffset);
-            glmatrix.mat2d.rotate(transform, transform, rotationAngle);
-            glmatrix.mat2d.scale(transform,
-                                 transform,
-                                 [pixelsPerUnit, pixelsPerUnit * stemDarkeningYScale]);
-
-            transforms.st[pathID * 4 + 0] = transform[0];
-            transforms.st[pathID * 4 + 1] = transform[3];
-            transforms.st[pathID * 4 + 2] = transform[4];
-            transforms.st[pathID * 4 + 3] = transform[5];
-
-            transforms.ext[pathID * 2 + 0] = transform[1];
-            transforms.ext[pathID * 2 + 1] = transform[2];
-        }
-
-        return transforms;
     }
 
     protected newTimingsReceived(): void {

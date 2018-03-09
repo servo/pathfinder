@@ -155,11 +155,12 @@ class ThreeDController extends DemoAppController<ThreeDView> {
         this.monumentPromise.then(monument => this.layoutMonument(fileData, monument));
     }
 
-    protected createView(gammaLUT: HTMLImageElement,
+    protected createView(areaLUT: HTMLImageElement,
+                         gammaLUT: HTMLImageElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>):
                          ThreeDView {
-        return new ThreeDView(this, gammaLUT, commonShaderSource, shaderSources);
+        return new ThreeDView(this, areaLUT, gammaLUT, commonShaderSource, shaderSources);
     }
 
     protected get builtinFileURI(): string {
@@ -343,10 +344,11 @@ class ThreeDView extends DemoView implements TextRenderContext {
     }
 
     constructor(appController: ThreeDController,
+                areaLUT: HTMLImageElement,
                 gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(gammaLUT, commonShaderSource, shaderSources);
+        super(areaLUT, gammaLUT, commonShaderSource, shaderSources);
 
         this.cameraView = new ThreeDAtlasCameraView;
 
@@ -383,6 +385,10 @@ class ThreeDRenderer extends Renderer {
 
     get destUsedSize(): glmatrix.vec2 {
         return this.destAllocatedSize;
+    }
+
+    get allowSubpixelAA(): boolean {
+        return false;
     }
 
     get backgroundColor(): glmatrix.vec4 {
@@ -466,6 +472,17 @@ class ThreeDRenderer extends Renderer {
         this.renderContext.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
+    pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
+        const meshDescriptor = this.renderContext.appController.meshDescriptors[objectIndex];
+        const pathCount = this.pathCountForObject(objectIndex);
+        const pathTransforms = this.createPathTransformBuffers(pathCount);
+        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
+            const glyphOrigin = meshDescriptor.positions[pathIndex];
+            pathTransforms.st.set([1, 1, glyphOrigin[0], glyphOrigin[1]], (pathIndex + 1) * 4);
+        }
+        return pathTransforms;
+    }
+
     protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
         return null;
     }
@@ -494,17 +511,6 @@ class ThreeDRenderer extends Renderer {
 
     protected pathColorsForObject(objectIndex: number): Uint8Array {
         return TEXT_COLOR;
-    }
-
-    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
-        const meshDescriptor = this.renderContext.appController.meshDescriptors[objectIndex];
-        const pathCount = this.pathCountForObject(objectIndex);
-        const pathTransforms = this.createPathTransformBuffers(pathCount);
-        for (let pathIndex = 0; pathIndex < pathCount; pathIndex++) {
-            const glyphOrigin = meshDescriptor.positions[pathIndex];
-            pathTransforms.st.set([1, 1, glyphOrigin[0], glyphOrigin[1]], (pathIndex + 1) * 4);
-        }
-        return pathTransforms;
     }
 
     protected meshInstanceCountForObject(objectIndex: number): number {

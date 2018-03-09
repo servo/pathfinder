@@ -227,11 +227,12 @@ class TextDemoController extends DemoAppController<TextDemoView> {
         }
     }
 
-    protected createView(gammaLUT: HTMLImageElement,
+    protected createView(areaLUT: HTMLImageElement,
+                         gammaLUT: HTMLImageElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>):
                          TextDemoView {
-        return new TextDemoView(this, gammaLUT, commonShaderSource, shaderSources);
+        return new TextDemoView(this, areaLUT, gammaLUT, commonShaderSource, shaderSources);
     }
 
     protected fileLoaded(fileData: ArrayBuffer, builtinName: string | null) {
@@ -386,10 +387,11 @@ class TextDemoView extends DemoView implements TextRenderContext {
     }
 
     constructor(appController: TextDemoController,
+                areaLUT: HTMLImageElement,
                 gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(gammaLUT, commonShaderSource, shaderSources);
+        super(areaLUT, gammaLUT, commonShaderSource, shaderSources);
 
         this.appController = appController;
         this.renderer = new TextDemoRenderer(this);

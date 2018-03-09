@@ -8,42 +8,33 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-varying vec3 vUV;
-varying vec3 vXDist;
+precision mediump float;
+
+uniform sampler2D uAreaLUT;
+
+varying vec2 vFrom;
+varying vec2 vCtrl;
+varying vec2 vTo;
 
 void main() {
     // Unpack.
-    vec3 uv = vUV;
-    vec2 dUVDX = dFdx(uv.xy), dUVDY = dFdy(uv.xy);
-    vec3 xDist = vXDist;
-    vec2 dXDistDX = dFdx(xDist.xz);
+    vec2 from = vFrom, ctrl = vCtrl, to = vTo;
 
-    // Calculate X distances between endpoints (x02, x10, and x21 respectively).
-    vec3 vDist = xDist - xDist.zxy;
+    // Determine winding, and sort into a consistent order so we only need to find one root below.
+    bool winding = from.x < to.x;
+    vec2 left = winding ? from : to, right = winding ? to : from;
+    vec2 v0 = ctrl - left, v1 = right - ctrl;
 
-    // Compute winding number and convexity.
-    bool inCurve = insideCurve(uv);
-    float openWinding = fastSign(-vDist.x);
-    float convex = uv.z != 0.0 ? uv.z : fastSign(vDist.x * dUVDY.y);
+    // Shoot a vertical ray toward the curve.
+    vec2 window = clamp(vec2(from.x, to.x), -0.5, 0.5);
+    float offset = mix(window.x, window.y, 0.5) - left.x;
+    float t = offset / (v0.x + sqrt(v1.x * offset - v0.x * (offset - v0.x)));
 
-    // Compute open rect area.
-    vec2 areas = clamp(xDist.xz / dXDistDX, -0.5, 0.5);
-    float openRectArea = openWinding * (areas.y - areas.x);
+    // Compute position and derivative to form a line approximation.
+    float y = mix(mix(left.y, ctrl.y, t), mix(ctrl.y, right.y, t), t);
+    float d = mix(v0.y, v1.y, t) / mix(v0.x, v1.x, t);
 
-    // Compute closed rect area and winding, if necessary.
-    float closedRectArea = 0.0, closedWinding = 0.0;
-    if (inCurve && vDist.y * vDist.z < 0.0) {
-        closedRectArea = 0.5 - fastSign(vDist.y) * (vDist.x * vDist.y < 0.0 ? areas.y : areas.x);
-        closedWinding = fastSign(vDist.y * dUVDY.y);
-    }
-
-    // Calculate approximate area of the curve covering this pixel square.
-    float curveArea = estimateArea(signedDistanceToCurve(uv.xy, dUVDX, dUVDY, inCurve));
-
-    // Calculate alpha.
-    vec2 alpha = vec2(openWinding, closedWinding) * 0.5 + convex * curveArea;
-    alpha *= vec2(openRectArea, closedRectArea);
-
-    // Finish up.
-    gl_FragColor = vec4(alpha.x + alpha.y);
+    // Look up area under that line, and scale horizontally to the window size.
+    float dX = window.x - window.y;
+    gl_FragColor = vec4(texture2D(uAreaLUT, vec2(y + 8.0, abs(d * dX)) / 16.0).r * dX);
 }

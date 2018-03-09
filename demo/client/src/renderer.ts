@@ -70,6 +70,7 @@ export abstract class Renderer {
 
     abstract get isMulticolor(): boolean;
     abstract get needsStencil(): boolean;
+    abstract get allowSubpixelAA(): boolean;
 
     abstract get destFramebuffer(): WebGLFramebuffer | null;
     abstract get destAllocatedSize(): glmatrix.vec2;
@@ -92,6 +93,7 @@ export abstract class Renderer {
     private implicitCoverCurveVAO: WebGLVertexArrayObjectOES | null = null;
 
     private gammaLUTTexture: WebGLTexture | null = null;
+    private areaLUTTexture: WebGLTexture | null = null;
 
     private instancedPathIDVBO: WebGLBuffer | null = null;
     private vertexIDVBO: WebGLBuffer | null = null;
@@ -114,7 +116,8 @@ export abstract class Renderer {
             this.initInstancedPathIDVBO();
 
         this.initVertexIDVBO();
-        this.initGammaLUTTexture();
+        this.initLUTTexture('gammaLUT', 'gammaLUTTexture');
+        this.initLUTTexture('areaLUT', 'areaLUTTexture');
 
         this.antialiasingStrategy = new NoAAStrategy(0, 'none');
         this.antialiasingStrategy.init(this);
@@ -132,6 +135,7 @@ export abstract class Renderer {
 
     abstract pathBoundingRects(objectIndex: number): Float32Array;
     abstract setHintsUniform(uniforms: UniformMap): void;
+    abstract pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array>;
 
     redraw(): void {
         const renderContext = this.renderContext;
@@ -287,20 +291,27 @@ export abstract class Renderer {
                      transform[13]);
     }
 
-    setTransformAffineUniforms(uniforms: UniformMap, objectIndex: number): void {
+    affineTransform(objectIndex: number): glmatrix.mat2d {
         // FIXME(pcwalton): Lossy conversion from a 4x4 matrix to an affine matrix is ugly and
         // fragile. Refactor.
+        const transform = this.computeTransform(0, objectIndex);
+        return glmatrix.mat2d.fromValues(transform[0], transform[1],
+                                         transform[4], transform[5],
+                                         transform[12], transform[13]);
+
+    }
+
+    setTransformAffineUniforms(uniforms: UniformMap, objectIndex: number): void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
-        const transform = this.computeTransform(0, objectIndex);
-
+        const transform = this.affineTransform(objectIndex);
         gl.uniform4f(uniforms.uTransformST,
                      transform[0],
-                     transform[5],
-                     transform[12],
-                     transform[13]);
-        gl.uniform2f(uniforms.uTransformExt, transform[1], transform[4]);
+                     transform[3],
+                     transform[4],
+                     transform[5]);
+        gl.uniform2f(uniforms.uTransformExt, transform[1], transform[2]);
     }
 
     uploadPathColors(objectCount: number): void {
@@ -367,6 +378,15 @@ export abstract class Renderer {
         return new Range(1, bVertexPathRanges.length + 1);
     }
 
+    bindAreaLUT(textureUnit: number, uniforms: UniformMap): void {
+        const renderContext = this.renderContext;
+        const gl = renderContext.gl;
+
+        gl.activeTexture(gl.TEXTURE0 + textureUnit);
+        gl.bindTexture(gl.TEXTURE_2D, this.areaLUTTexture);
+        gl.uniform1i(uniforms.uAreaLUT, textureUnit);
+    }
+
     protected clearColorForObject(objectIndex: number): glmatrix.vec4 | null {
         return null;
     }
@@ -390,8 +410,6 @@ export abstract class Renderer {
                                         AntialiasingStrategy;
     protected abstract compositeIfNecessary(): void;
     protected abstract pathColorsForObject(objectIndex: number): Uint8Array;
-    protected abstract pathTransformsForObject(objectIndex: number):
-                                               PathTransformBuffers<Float32Array>;
 
     protected abstract directCurveProgramName(): keyof ShaderMap<void>;
     protected abstract directInteriorProgramName(renderingMode: DirectRenderingMode):
@@ -609,20 +627,23 @@ export abstract class Renderer {
         }, TIME_INTERVAL_DELAY);
     }
 
-    private initGammaLUTTexture(): void {
+    private initLUTTexture(imageName: 'gammaLUT' | 'areaLUT',
+                           textureName: 'gammaLUTTexture' | 'areaLUTTexture'):
+                           void {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
 
-        const gammaLUT = renderContext.gammaLUT;
+        const image = renderContext[imageName];
         const texture = unwrapNull(gl.createTexture());
         gl.bindTexture(gl.TEXTURE_2D, texture);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, gammaLUT);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, gl.LUMINANCE, gl.UNSIGNED_BYTE, image);
+        const filter = imageName === 'gammaLUT' ? gl.NEAREST : gl.LINEAR;
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-        this.gammaLUTTexture = texture;
+        this[textureName] = texture;
     }
 
     private initImplicitCoverCurveVAO(objectIndex: number, instanceRange: Range): void {

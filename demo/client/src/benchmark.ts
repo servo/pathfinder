@@ -188,19 +188,20 @@ class BenchmarkAppController extends DemoAppController<BenchmarkTestView> {
         }
     }
 
-    protected createView(gammaLUT: HTMLImageElement,
+    protected createView(areaLUT: HTMLImageElement,
+                         gammaLUT: HTMLImageElement,
                          commonShaderSource: string,
                          shaderSources: ShaderMap<ShaderProgramSource>):
                          BenchmarkTestView {
-        return new BenchmarkTestView(this, gammaLUT, commonShaderSource, shaderSources);
+        return new BenchmarkTestView(this, areaLUT, gammaLUT, commonShaderSource, shaderSources);
     }
 
     private modeChanged(): void {
         this.loadInitialFile(this.builtinFileURI);
         if (this.aaLevelSelect != null)
             this.aaLevelSelect.selectedIndex = 0;
-        if (this.subpixelAASwitchInputs != null)
-            setSwitchInputsValue(this.subpixelAASwitchInputs, false);
+        if (this.subpixelAASelect != null)
+            this.subpixelAASelect.selectedIndex = 0;
         this.updateAALevel();
     }
 
@@ -381,10 +382,11 @@ class BenchmarkTestView extends DemoView {
     }
 
     constructor(appController: BenchmarkAppController,
+                areaLUT: HTMLImageElement,
                 gammaLUT: HTMLImageElement,
                 commonShaderSource: string,
                 shaderSources: ShaderMap<ShaderProgramSource>) {
-        super(gammaLUT, commonShaderSource, shaderSources);
+        super(areaLUT, gammaLUT, commonShaderSource, shaderSources);
         this.appController = appController;
         this.recreateRenderer();
         this.resizeToFit(true);
@@ -445,6 +447,10 @@ class BenchmarkTextRenderer extends Renderer {
 
     get destUsedSize(): glmatrix.vec2 {
         return this.destAllocatedSize;
+    }
+
+    get allowSubpixelAA(): boolean {
+        return true;
     }
 
     get emboldenAmount(): glmatrix.vec2 {
@@ -541,27 +547,7 @@ class BenchmarkTextRenderer extends Renderer {
         this.renderContext.gl.uniform4f(uniforms.uHints, 0, 0, 0, 0);
     }
 
-    protected createAAStrategy(aaType: AntialiasingStrategyName,
-                               aaLevel: number,
-                               subpixelAA: SubpixelAAType):
-                               AntialiasingStrategy {
-        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
-    }
-
-    protected compositeIfNecessary(): void {}
-
-    protected updateTimings(timings: Timings): void {
-        // TODO(pcwalton)
-    }
-
-    protected pathColorsForObject(objectIndex: number): Uint8Array {
-        const pathColors = new Uint8Array(4 * (STRING.length + 1));
-        for (let pathIndex = 0; pathIndex < STRING.length; pathIndex++)
-            pathColors.set(TEXT_COLOR, (pathIndex + 1) * 4);
-        return pathColors;
-    }
-
-    protected pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
+    pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
         const appController = this.renderContext.appController;
         const canvas = this.renderContext.canvas;
         const font = unwrapNull(appController.font);
@@ -584,6 +570,26 @@ class BenchmarkTextRenderer extends Renderer {
         }
 
         return pathTransforms;
+    }
+
+    protected createAAStrategy(aaType: AntialiasingStrategyName,
+                               aaLevel: number,
+                               subpixelAA: SubpixelAAType):
+                               AntialiasingStrategy {
+        return new (ANTIALIASING_STRATEGIES[aaType])(aaLevel, subpixelAA);
+    }
+
+    protected compositeIfNecessary(): void {}
+
+    protected updateTimings(timings: Timings): void {
+        // TODO(pcwalton)
+    }
+
+    protected pathColorsForObject(objectIndex: number): Uint8Array {
+        const pathColors = new Uint8Array(4 * (STRING.length + 1));
+        for (let pathIndex = 0; pathIndex < STRING.length; pathIndex++)
+            pathColors.set(TEXT_COLOR, (pathIndex + 1) * 4);
+        return pathColors;
     }
 
     protected directCurveProgramName(): keyof ShaderMap<void> {

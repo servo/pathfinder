@@ -67,9 +67,14 @@
                                         <option value="slight" selected>Slight</option>
                                     </select>
                                 </div>
-                                <div class="form-group row justify-content-between">
-                                    {{>partials/switch.html id="pf-subpixel-aa"
-                                      title="Subpixel AA"}}
+                                <div class="form-group">
+                                    <label for="pf-subpixel-aa-select">Subpixel AA</label>
+                                    <select id="pf-subpixel-aa-select"
+                                     class="form-control custom-select">
+                                        <option value="none">None</option>
+                                        <option value="freetype" selected>FreeType-style</option>
+                                        <option value="core-graphics">Core Graphics-style</option>
+                                    </select>
                                 </div>
                                 <div class="form-group row justify-content-between">
                                     {{>partials/switch.html id="pf-gamma-correction"
