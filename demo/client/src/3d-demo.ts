@@ -719,7 +719,7 @@ class ThreeDRenderer extends Renderer {
                          normal[0] / normal[3],
                          normal[1] / normal[3],
                          normal[2] / normal[3]);
-
+            gl.uniform1f(monumentProgram.uniforms.uLightThings, this.inVR ? 0 : 1);
             // Draw the face!
             gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, face * 6 * UINT16_SIZE);
         }
