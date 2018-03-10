@@ -149,6 +149,9 @@ export abstract class Renderer {
         gl.viewport(0, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
     }
 
+    setClipPlanes(display: VRDisplay) {
+    }
+
     redraw(): void {
         const renderContext = this.renderContext;
 

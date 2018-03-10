@@ -44,8 +44,8 @@ const FONT: string = 'open-sans';
 const PIXELS_PER_UNIT: number = 1.0;
 
 const FOV: number = 45.0;
-export const NEAR_CLIP_PLANE: number = 0.1;
-export const FAR_CLIP_PLANE: number = 100000.0;
+const NEAR_CLIP_PLANE: number = 0.1;
+const FAR_CLIP_PLANE: number = 100000.0;
 
 const ATLAS_FONT_SIZE: number = 48;
 
@@ -311,7 +311,6 @@ class ThreeDController extends DemoAppController<ThreeDView> {
 
 class ThreeDView extends DemoView implements TextRenderContext {
     cameraView: CameraView;
-
     get atlas(): Atlas {
         return this.appController.atlas;
     }
@@ -348,6 +347,10 @@ class ThreeDView extends DemoView implements TextRenderContext {
 
     appController: ThreeDController;
 
+    private vrDisplay: VRDisplay | null;
+    private vrFrameData: VRFrameData | null;
+    private inVRRAF: boolean;
+
     protected get camera(): PerspectiveCamera {
         return this.renderer.camera;
     }
@@ -364,10 +367,85 @@ class ThreeDView extends DemoView implements TextRenderContext {
         this.appController = appController;
         this.renderer = new ThreeDRenderer(this);
 
+        this.inVRRAF = false;
+        this.vrDisplay = null;
+        if ("VRFrameData" in window) {
+           this.vrFrameData = new VRFrameData;
+        } else {
+            this.vrFrameData = null;
+        }
+
+        this.vrSetup();
+
         this.resizeToFit(true);
     }
 
     newTimingsReceived(timings: Timings): void {}
+
+    vrSetup(): void {
+        if (navigator.getVRDisplays) {
+            navigator.getVRDisplays().then((displays) => {
+              if (displays.length > 0) {
+                this.vrDisplay = displays[displays.length - 1];
+
+                // It's heighly reccommended that you set the near and far planes to
+                // something appropriate for your scene so the projection matricies
+                // WebVR produces have a well scaled depth buffer.
+                this.renderer.setClipPlanes(this.vrDisplay);
+                unwrapNull(document.getElementById('pf-vr')).style.display = "initial";
+              } else {
+                // no vr displays
+              }
+            });
+        } else {
+            // no vr support
+        }
+
+        window.addEventListener('vrdisplaypresentchange', () => {
+          if (this.vrDisplay == null)
+              return;
+
+          if (this.vrDisplay.isPresenting) {
+            const that = this;
+            this.resized();
+            function vrCallback(): void {
+                if (that.vrDisplay == null || !that.renderer.inVR) {
+                    return;
+                }
+                that.vrDisplay.requestAnimationFrame(vrCallback);
+                that.inVRRAF = true;
+                that.redraw();
+                that.inVRRAF = false;
+            }
+            this.vrDisplay.requestAnimationFrame(vrCallback);
+          } else {
+            this.renderer.inVR = false;
+            this.resized();
+          }
+        });
+    }
+
+    enterVR(): void {
+        if (this.vrDisplay != null) {
+            this.renderer.inVR = true;
+            this.vrDisplay.requestPresent([{ source: this.canvas }]);
+        }
+    }
+
+    redrawVR(): void {
+        if (this.vrDisplay == null ||
+            this.vrFrameData == null) {
+            this.renderer.redraw();
+            return;
+        }
+        if (!this.inVRRAF) {
+            // redraw() called outside of vr RAF, will get drawn later
+            return;
+        }
+        this.vrDisplay.getFrameData(this.vrFrameData);
+        this.renderer.redrawVR(this.vrFrameData);
+        this.vrDisplay.submitFrame();
+    }
 }
 
 class ThreeDRenderer extends Renderer {
@@ -508,6 +586,11 @@ class ThreeDRenderer extends Renderer {
         const renderContext = this.renderContext;
         const gl = renderContext.gl;
         gl.viewport(offset, 0, this.destAllocatedSize[0], this.destAllocatedSize[1]);
+    }
+
+    setClipPlanes(display: VRDisplay) {
+        display.depthNear = NEAR_CLIP_PLANE;
+        display.depthFar = FAR_CLIP_PLANE;
     }
 
     pathTransformsForObject(objectIndex: number): PathTransformBuffers<Float32Array> {
