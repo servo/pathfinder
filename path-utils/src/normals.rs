@@ -124,7 +124,8 @@ impl PathNormals {
                     next_normal_index += 1;
                     self.normals.push(SegmentNormals {
                         from: normals[next_normal_index - 2],
-                        ctrl: Vector2D::zero(),
+                        ctrl: normals[next_normal_index - 2].lerp(normals[next_normal_index - 1],
+                                                                  0.5),
                         to: normals[next_normal_index - 1],
                     });
                 }
@@ -139,7 +140,7 @@ impl PathNormals {
                 PathOp::Close => {
                     self.normals.push(SegmentNormals {
                         from: normals[next_normal_index - 1],
-                        ctrl: Vector2D::zero(),
+                        ctrl: normals[next_normal_index - 1].lerp(normals[0], 0.5),
                         to: normals[0],
                     });
                     break;
