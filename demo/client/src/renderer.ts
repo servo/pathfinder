@@ -17,7 +17,7 @@ import {TileInfo} from './aa-strategy';
 import {NoAAStrategy, StemDarkeningMode, SubpixelAAType} from './aa-strategy';
 import {AAOptions} from './app-controller';
 import PathfinderBufferTexture from "./buffer-texture";
-import {UniformMap} from './gl-utils';
+import {UniformMap, WebGLQuery} from './gl-utils';
 import {PathfinderPackedMeshBuffers, PathfinderPackedMeshes} from "./meshes";
 import {ShaderMap} from './shader-loader';
 import {FLOAT32_SIZE, Range, UINT16_SIZE, UINT32_SIZE, unwrapNull, unwrapUndef} from './utils';
@@ -146,7 +146,9 @@ export abstract class Renderer {
         this.clearDestFramebuffer();
 
         // Start timing rendering.
-        if (this.timerQueryPollInterval == null) {
+        if (this.timerQueryPollInterval == null &&
+            renderContext.timerQueryExt != null &&
+            renderContext.atlasRenderingTimerQuery != null) {
             renderContext.timerQueryExt.beginQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT,
                                                       renderContext.atlasRenderingTimerQuery);
         }
@@ -180,13 +182,16 @@ export abstract class Renderer {
 
                 // End the timer, and start a new one.
                 // FIXME(pcwalton): This is kinda bogus for multipass.
-                if (this.timerQueryPollInterval == null && objectIndex === objectCount - 1 &&
-                    pass === passCount - 1) {
+                if (this.timerQueryPollInterval == null &&
+                    objectIndex === objectCount - 1 &&
+                    pass === passCount - 1 &&
+                    renderContext.timerQueryExt != null &&
+                    renderContext.compositingTimerQuery != null) {
                     renderContext.timerQueryExt
                                  .endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
                     renderContext.timerQueryExt
                                 .beginQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT,
-                                                renderContext.compositingTimerQuery);
+                                               renderContext.compositingTimerQuery);
                 }
 
                 // Perform post-antialiasing tasks.
@@ -590,16 +595,26 @@ export abstract class Renderer {
     private finishTiming(): void {
         const renderContext = this.renderContext;
 
-        if (this.timerQueryPollInterval != null)
+        if (this.timerQueryPollInterval != null ||
+            renderContext.timerQueryExt == null ||
+            renderContext.atlasRenderingTimerQuery == null ||
+            renderContext.compositingTimerQuery == null) {
             return;
+        }
 
         renderContext.timerQueryExt.endQueryEXT(renderContext.timerQueryExt.TIME_ELAPSED_EXT);
 
         this.timerQueryPollInterval = window.setInterval(() => {
+            if (renderContext.timerQueryExt == null ||
+                renderContext.atlasRenderingTimerQuery == null ||
+                renderContext.compositingTimerQuery == null) {
+                return;
+            }
+
             for (const queryName of ['atlasRenderingTimerQuery', 'compositingTimerQuery'] as
                     Array<'atlasRenderingTimerQuery' | 'compositingTimerQuery'>) {
                 if (renderContext.timerQueryExt
-                                 .getQueryObjectEXT(renderContext[queryName],
+                                 .getQueryObjectEXT(renderContext[queryName] as WebGLQuery,
                                                     renderContext.timerQueryExt
                                                                  .QUERY_RESULT_AVAILABLE_EXT) ===
                         0) {

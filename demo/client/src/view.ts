@@ -148,15 +148,15 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
 
     instancedArraysExt!: ANGLE_instanced_arrays;
     textureHalfFloatExt!: OESTextureHalfFloat;
-    timerQueryExt!: EXTDisjointTimerQuery;
+    timerQueryExt!: EXTDisjointTimerQuery | null;
     vertexArrayObjectExt!: OESVertexArrayObject;
 
     quadPositionsBuffer!: WebGLBuffer;
     quadTexCoordsBuffer!: WebGLBuffer;
     quadElementsBuffer!: WebGLBuffer;
 
-    atlasRenderingTimerQuery!: WebGLQuery;
-    compositingTimerQuery!: WebGLQuery;
+    atlasRenderingTimerQuery!: WebGLQuery | null;
+    compositingTimerQuery!: WebGLQuery | null;
 
     meshes: PathfinderPackedMeshBuffers[];
     meshData: PathfinderPackedMeshes[];
@@ -295,8 +295,13 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, QUAD_ELEMENTS, this.gl.STATIC_DRAW);
 
         // Set up our timer queries for profiling.
-        this.atlasRenderingTimerQuery = this.timerQueryExt.createQueryEXT();
-        this.compositingTimerQuery = this.timerQueryExt.createQueryEXT();
+        if (this.timerQueryExt != null) {
+            this.atlasRenderingTimerQuery = this.timerQueryExt.createQueryEXT();
+            this.compositingTimerQuery = this.timerQueryExt.createQueryEXT();
+        } else {
+            this.atlasRenderingTimerQuery = null;
+            this.compositingTimerQuery = null;
+        }
     }
 
     protected renderingFinished(): void {}
@@ -369,7 +374,7 @@ export interface RenderContext {
 
     readonly instancedArraysExt: ANGLEInstancedArrays;
     readonly textureHalfFloatExt: OESTextureHalfFloat;
-    readonly timerQueryExt: EXTDisjointTimerQuery;
+    readonly timerQueryExt: EXTDisjointTimerQuery | null;
     readonly vertexArrayObjectExt: OESVertexArrayObject;
 
     readonly colorAlphaFormat: ColorAlphaFormat;
@@ -381,8 +386,8 @@ export interface RenderContext {
     readonly quadPositionsBuffer: WebGLBuffer;
     readonly quadElementsBuffer: WebGLBuffer;
 
-    readonly atlasRenderingTimerQuery: WebGLQuery;
-    readonly compositingTimerQuery: WebGLQuery;
+    readonly atlasRenderingTimerQuery: WebGLQuery | null;
+    readonly compositingTimerQuery: WebGLQuery | null;
 
     initQuadVAO(attributes: any): void;
     setDirty(): void;
