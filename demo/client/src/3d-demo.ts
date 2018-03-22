@@ -407,7 +407,11 @@ class ThreeDView extends DemoView implements TextRenderContext {
 
           if (this.vrDisplay.isPresenting) {
             const that = this;
-            this.resized();
+            const eye = this.vrDisplay.getEyeParameters("left");
+
+            this.vrDisplayHeight = eye.renderHeight;
+            this.vrDisplayWidth = eye.renderWidth * 2;
+            this.resizeToFit(true);
             function vrCallback(): void {
                 if (that.vrDisplay == null || !that.renderer.inVR) {
                     return;
@@ -420,7 +424,7 @@ class ThreeDView extends DemoView implements TextRenderContext {
             this.vrDisplay.requestAnimationFrame(vrCallback);
           } else {
             this.renderer.inVR = false;
-            this.resized();
+            this.resizeToFit(true);
           }
         });
     }
