@@ -373,7 +373,7 @@ export class PerspectiveCamera extends Camera {
         // TODO(pcwalton)
     }
 
-    setView(rotation: glmatrix.mat4, pose: VRPose) {
+    setView(rotation: glmatrix.mat4, pose: VRPose): void {
         this.vrRotationMatrix = rotation;
     }
 

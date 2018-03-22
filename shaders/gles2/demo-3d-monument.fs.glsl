@@ -25,7 +25,7 @@ uniform float uShininess;
 /// The normal of these vertices.
 uniform vec3 uNormal;
 
-uniform bool uLightThings;
+uniform bool uEnableLighting;
 
 varying vec3 vPosition;
 
@@ -35,7 +35,7 @@ void main() {
 
     vec3 color = uAmbientColor;
 
-    if (uLightThings) {
+    if (uEnableLighting) {
         float lambertian = max(dot(lightDirection, normal), 0.0);
         float specular = 0.0;
 

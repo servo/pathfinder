@@ -370,7 +370,7 @@ class ThreeDView extends DemoView implements TextRenderContext {
         this.inVRRAF = false;
         this.vrDisplay = null;
         if ("VRFrameData" in window) {
-           this.vrFrameData = new VRFrameData;
+            this.vrFrameData = new VRFrameData;
         } else {
             this.vrFrameData = null;
         }
@@ -383,44 +383,42 @@ class ThreeDView extends DemoView implements TextRenderContext {
     newTimingsReceived(timings: Timings): void {}
 
     vrSetup(): void {
-        if (navigator.getVRDisplays) {
-            navigator.getVRDisplays().then((displays) => {
-              if (displays.length > 0) {
-                this.vrDisplay = displays[displays.length - 1];
-
-                // It's heighly reccommended that you set the near and far planes to
-                // something appropriate for your scene so the projection matricies
-                // WebVR produces have a well scaled depth buffer.
-                this.renderer.setClipPlanes(this.vrDisplay);
-                unwrapNull(document.getElementById('pf-vr')).style.display = "initial";
-              } else {
-                // no vr displays
-              }
-            });
-        } else {
-            // no vr support
+        if (!('getVRDisplays' in navigator)) {
+            return;
         }
+
+        navigator.getVRDisplays().then(displays => {
+            if (displays.length === 0) {
+                return;
+            }
+            this.vrDisplay = displays[displays.length - 1];
+
+            // It's heighly recommended that you set the near and far planes to
+            // something appropriate for your scene so the projection matrices
+            // WebVR produces have a well scaled depth buffer.
+            this.renderer.setClipPlanes(this.vrDisplay);
+            unwrapNull(document.getElementById('pf-vr')).style.display = "initial";
+        });
 
         window.addEventListener('vrdisplaypresentchange', () => {
           if (this.vrDisplay == null)
               return;
 
           if (this.vrDisplay.isPresenting) {
-            const that = this;
             const eye = this.vrDisplay.getEyeParameters("left");
 
             this.vrDisplayHeight = eye.renderHeight;
             this.vrDisplayWidth = eye.renderWidth * 2;
             this.resizeToFit(true);
-            function vrCallback(): void {
-                if (that.vrDisplay == null || !that.renderer.inVR) {
+            const vrCallback = () => {
+                if (this.vrDisplay == null || !this.renderer.inVR) {
                     return;
                 }
-                that.vrDisplay.requestAnimationFrame(vrCallback);
-                that.inVRRAF = true;
-                that.redraw();
-                that.inVRRAF = false;
-            }
+                this.vrDisplay.requestAnimationFrame(vrCallback);
+                this.inVRRAF = true;
+                this.redraw();
+                this.inVRRAF = false;
+            };
             this.vrDisplay.requestAnimationFrame(vrCallback);
           } else {
             this.renderer.inVR = false;
@@ -458,7 +456,7 @@ class ThreeDRenderer extends Renderer {
     camera: PerspectiveCamera;
 
     needsStencil: boolean = false;
-    rightEye: boolean = false;
+    vrRightEye: boolean = false;
 
     get isMulticolor(): boolean {
         return false;
@@ -532,6 +530,7 @@ class ThreeDRenderer extends Renderer {
 
         this.distantGlyphVAO = null;
         this.vrProjectionMatrix = null;
+
         this.camera = new PerspectiveCamera(renderContext.canvas, {
             innerCollisionExtent: MONUMENT_SCALE[0],
         });
@@ -573,10 +572,10 @@ class ThreeDRenderer extends Renderer {
     redrawVR(frame: VRFrameData): void {
         this.clearDestFramebuffer(true);
         this.vrProjectionMatrix = frame.leftProjectionMatrix;
-        this.rightEye = false;
+        this.vrRightEye = false;
         this.camera.setView(F32ArrayToMat4(frame.leftViewMatrix), frame.pose);
         this.redraw();
-        this.rightEye = true;
+        this.vrRightEye = true;
         this.vrProjectionMatrix = frame.rightProjectionMatrix;
         this.camera.setView(F32ArrayToMat4(frame.rightViewMatrix), frame.pose);
         this.redraw();
@@ -584,7 +583,7 @@ class ThreeDRenderer extends Renderer {
 
     setDrawViewport() {
         let offset = 0;
-        if (this.rightEye) {
+        if (this.vrRightEye) {
             offset = this.destAllocatedSize[0];
         }
         const renderContext = this.renderContext;
@@ -806,7 +805,7 @@ class ThreeDRenderer extends Renderer {
                          normal[0] / normal[3],
                          normal[1] / normal[3],
                          normal[2] / normal[3]);
-            gl.uniform1f(monumentProgram.uniforms.uLightThings, this.inVR ? 0 : 1);
+            gl.uniform1f(monumentProgram.uniforms.uEnableLighting, this.inVR ? 0 : 1);
             // Draw the face!
             gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, face * 6 * UINT16_SIZE);
         }
