@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use bincode::{self, Infinite};
+use bincode;
 use byteorder::{LittleEndian, WriteBytesExt};
 use mesh::Mesh;
 use serde::Serialize;
@@ -81,7 +81,7 @@ impl MeshPack {
                                     where W: Write + Seek, T: Serialize {
             write_chunk(writer, tag, |writer| {
                 for datum in data {
-                    try!(bincode::serialize_into(writer, datum, Infinite).map_err(|_| {
+                    try!(bincode::serialize_into(&mut *writer, datum).map_err(|_| {
                         io::Error::from(ErrorKind::Other)
                     }));
                 }

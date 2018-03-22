@@ -11,7 +11,7 @@ reftests = ["rsvg", "cairo-rs", "pathfinder_font_renderer/freetype"]
 [dependencies]
 app_units = "0.6"
 base64 = "0.6"
-bincode = "0.8"
+bincode = "1.0"
 env_logger = "0.4"
 euclid = "0.17"
 image = "0.17"
