@@ -25,22 +25,28 @@ uniform float uShininess;
 /// The normal of these vertices.
 uniform vec3 uNormal;
 
+uniform bool uEnableLighting;
+
 varying vec3 vPosition;
 
 void main() {
     vec3 normal = normalize(uNormal);
     vec3 lightDirection = normalize(uLightPosition - vPosition);
 
-    float lambertian = max(dot(lightDirection, normal), 0.0);
-    float specular = 0.0;
+    vec3 color = uAmbientColor;
 
-    if (lambertian > 0.0) {
-        vec3 viewDirection = normalize(-vPosition);
-        vec3 halfDirection = normalize(lightDirection + viewDirection);
-        float specularAngle = max(dot(halfDirection, normal), 0.0);
-        specular = pow(specularAngle, uShininess);
+    if (uEnableLighting) {
+        float lambertian = max(dot(lightDirection, normal), 0.0);
+        float specular = 0.0;
+
+        if (lambertian > 0.0) {
+            vec3 viewDirection = normalize(-vPosition);
+            vec3 halfDirection = normalize(lightDirection + viewDirection);
+            float specularAngle = max(dot(halfDirection, normal), 0.0);
+            specular = pow(specularAngle, uShininess);
+        }
+
+        color = color + uAmbientColor + lambertian * uDiffuseColor + specular * uSpecularColor;
     }
-
-    vec3 color = uAmbientColor + lambertian * uDiffuseColor + specular * uSpecularColor;
     gl_FragColor = vec4(color, 1.0);
 }

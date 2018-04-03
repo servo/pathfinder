@@ -136,7 +136,7 @@ export class NoAAStrategy extends AntialiasingStrategy {
         const renderContext = renderer.renderContext;
         const gl = renderContext.gl;
         gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
-        gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        renderer.setDrawViewport();
         gl.disable(gl.SCISSOR_TEST);
     }
 
@@ -147,7 +147,7 @@ export class NoAAStrategy extends AntialiasingStrategy {
         const gl = renderContext.gl;
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, renderer.destFramebuffer);
-        gl.viewport(0, 0, this.framebufferSize[0], this.framebufferSize[1]);
+        renderer.setDrawViewport();
         gl.disable(gl.SCISSOR_TEST);
     }
 

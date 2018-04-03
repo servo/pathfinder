@@ -10,7 +10,6 @@
 
 #version 100
 
-#extension GL_EXT_frag_depth : require
 #extension GL_OES_standard_derivatives : require
 
 #define FREETYPE_LCD_FILTER_FACTOR_0    0.337254902

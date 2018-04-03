@@ -325,6 +325,8 @@ export class PerspectiveCamera extends Camera {
 
     private readonly innerCollisionExtent: number;
 
+    private vrRotationMatrix: glmatrix.mat4 | null;
+
     constructor(canvas: HTMLCanvasElement, options?: PerspectiveCameraOptions) {
         super(canvas);
 
@@ -345,6 +347,7 @@ export class PerspectiveCamera extends Camera {
         window.addEventListener('keyup', event => this.onKeyUp(event), false);
 
         this.onChange = null;
+        this.vrRotationMatrix = null;
 
         this.wasdPress = _.fromPairs([
             ['W'.charCodeAt(0), false],
@@ -368,6 +371,10 @@ export class PerspectiveCamera extends Camera {
 
     rotate(newAngle: number): void {
         // TODO(pcwalton)
+    }
+
+    setView(rotation: glmatrix.mat4, pose: VRPose): void {
+        this.vrRotationMatrix = rotation;
     }
 
     private onMouseDown(event: MouseEvent): void {
@@ -487,6 +494,10 @@ export class PerspectiveCamera extends Camera {
     }
 
     get rotationMatrix(): glmatrix.mat4 {
+        if (this.vrRotationMatrix != null) {
+            // This actually is a rotation + translation matrix, but it works
+            return this.vrRotationMatrix;
+        }
         const matrix = glmatrix.mat4.create();
         glmatrix.mat4.fromXRotation(matrix, this.rotation[1]);
         glmatrix.mat4.rotateY(matrix, matrix, this.rotation[0]);

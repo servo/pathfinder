@@ -55,6 +55,9 @@ export abstract class PathfinderView {
 
     suppressAutomaticRedraw: boolean;
 
+    vrDisplayWidth: number | null;
+    vrDisplayHeight: number | null;
+
     protected abstract get camera(): Camera;
 
     private dirty: boolean;
@@ -67,6 +70,9 @@ export abstract class PathfinderView {
         this.suppressAutomaticRedraw = false;
         this.canvas = unwrapNull(document.getElementById('pf-canvas')) as HTMLCanvasElement;
         window.addEventListener('resize', () => this.resizeToFit(false), false);
+
+        this.vrDisplayHeight = null;
+        this.vrDisplayWidth = null;
     }
 
     setDirty(): void {
@@ -115,24 +121,37 @@ export abstract class PathfinderView {
         this.setDirty();
     }
 
+    protected inVR(): boolean {
+        return false;
+    }
+
     protected resizeToFit(initialSize: boolean): void {
         if (!this.canvas.classList.contains('pf-no-autoresize')) {
-            const windowWidth = window.innerWidth;
-            const canvasTop = this.canvas.getBoundingClientRect().top;
-            const height = window.scrollY + window.innerHeight - canvasTop;
 
-            const devicePixelRatio = window.devicePixelRatio;
+            if (this.inVR()) {
+                const width = unwrapNull(this.vrDisplayWidth);
+                const height = unwrapNull(this.vrDisplayHeight);
+                // these are already in device pixel units, no need to multiply
+                this.canvas.style.width = width + 'px';
+                this.canvas.style.height = height + 'px';
+                this.canvas.width = width;
+                this.canvas.height = height;
+            } else {
+                const width = window.innerWidth;
+                const canvasTop = this.canvas.getBoundingClientRect().top;
+                const height = window.scrollY + window.innerHeight - canvasTop;
+                const devicePixelRatio = window.devicePixelRatio;
+                const canvasSize = new Float32Array([width, height]) as glmatrix.vec2;
+                glmatrix.vec2.scale(canvasSize, canvasSize, devicePixelRatio);
+                glmatrix.vec2.round(canvasSize, canvasSize);
 
-            const canvasSize = new Float32Array([windowWidth, height]) as glmatrix.vec2;
-            glmatrix.vec2.scale(canvasSize, canvasSize, devicePixelRatio);
-            glmatrix.vec2.round(canvasSize, canvasSize);
+                this.canvas.style.width = width + 'px';
+                this.canvas.style.height = height + 'px';
+                this.canvas.width = canvasSize[0];
+                this.canvas.height = canvasSize[1];
+            }
 
-            this.canvas.style.width = windowWidth + 'px';
-            this.canvas.style.height = height + 'px';
-            this.canvas.width = canvasSize[0];
-            this.canvas.height = canvasSize[1];
         }
-
         this.resized();
     }
 }
@@ -194,6 +213,7 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         this.gammaLUT = gammaLUT;
 
         this.wantsScreenshot = false;
+
     }
 
     attachMeshes(meshes: PathfinderPackedMeshes[]): void {
@@ -245,13 +265,22 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
         return buffer;
     }
 
+    enterVR(): void {}
+    redrawVR(): void {
+        this.renderer.redraw();
+    }
+
     redraw(): void {
         super.redraw();
 
         if (!this.renderer.meshesAttached)
             return;
 
-        this.renderer.redraw();
+        if (!this.renderer.inVR) {
+            this.renderer.redraw();
+        } else {
+            this.redrawVR();
+        }
 
         // Invoke the post-render hook.
         this.renderingFinished();
@@ -266,6 +295,10 @@ export abstract class DemoView extends PathfinderView implements RenderContext {
     protected resized(): void {
         super.resized();
         this.renderer.canvasResized();
+    }
+
+    protected inVR(): boolean {
+        return this.renderer.inVR;
     }
 
     protected initContext(): void {
