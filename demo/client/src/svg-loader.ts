@@ -69,15 +69,15 @@ export class SVGStroke extends SVGPath {
         super(element, 'stroke');
 
         const style = window.getComputedStyle(element);
-        const ctm = element.getCTM();
+        const ctm = unwrapNull(element.getCTM());
 
         const strokeWidthString = unwrapNull(style.strokeWidth);
         const matches = /^(\d+\.?\d*)(.*)$/.exec(strokeWidthString);
-        let strokeWidth;
+        let strokeWidth: number;
         if (matches == null) {
             strokeWidth = 0.0;
         } else {
-            strokeWidth = parseFloat(matches[1]);
+            strokeWidth = unwrapNull(parseFloat(matches[1]));
             if (matches[2] === 'px')
                 strokeWidth *= lerp(ctm.a, ctm.d, 0.5);
         }
@@ -167,7 +167,7 @@ export class SVGLoader {
 
         for (const instance of this.pathInstances) {
             const element = instance.element;
-            const svgCTM = element.getCTM();
+            const svgCTM = unwrapNull(element.getCTM());
             const ctm = glmatrix.mat2d.fromValues(svgCTM.a, -svgCTM.b,
                                                   svgCTM.c, -svgCTM.d,
                                                   svgCTM.e, viewBox.height - svgCTM.f);
