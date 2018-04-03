@@ -1,6 +1,6 @@
 // pathfinder/client/src/text-demo.ts
 //
-// Copyright © 2017 The Pathfinder Project Developers.
+// Copyright © 2018 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -14,8 +14,8 @@ import * as _ from 'lodash';
 import * as opentype from 'opentype.js';
 
 import {Metrics} from 'opentype.js';
-import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {StemDarkeningMode, SubpixelAAType} from './aa-strategy';
+import {AntialiasingStrategy, AntialiasingStrategyName, NoAAStrategy} from "./aa-strategy";
 import {AAOptions, DemoAppController, setSwitchInputsValue, SwitchInputs} from './app-controller';
 import {Atlas, ATLAS_SIZE, AtlasGlyph, GlyphKey, SUBPIXEL_GRANULARITY} from './atlas';
 import PathfinderBufferTexture from './buffer-texture';
@@ -29,6 +29,7 @@ import SSAAStrategy from './ssaa-strategy';
 import {calculatePixelRectForGlyph, PathfinderFont} from "./text";
 import {BUILTIN_FONT_URI, calculatePixelXMin, computeStemDarkeningAmount} from "./text";
 import {GlyphStore, Hint, SimpleTextLayout, UnitMetrics} from "./text";
+import {SimpleTextLayoutRenderContext, SimpleTextLayoutRenderer} from './text-renderer';
 import {TextRenderContext, TextRenderer} from './text-renderer';
 import {assert, expectNotNull, panic, PathfinderError, scaleRect, UINT32_SIZE} from './utils';
 import {unwrapNull} from './utils';
@@ -337,7 +338,7 @@ class TextDemoController extends DemoAppController<TextDemoView> {
     }
 }
 
-class TextDemoView extends DemoView implements TextRenderContext {
+class TextDemoView extends DemoView implements SimpleTextLayoutRenderContext {
     renderer: TextDemoRenderer;
 
     appController: TextDemoController;
@@ -380,6 +381,22 @@ class TextDemoView extends DemoView implements TextRenderContext {
 
     get useHinting(): boolean {
         return this.appController.useHinting;
+    }
+
+    get layout(): SimpleTextLayout {
+        return this.appController.layout;
+    }
+
+    get rotationAngle(): number {
+        return this.appController.rotationAngle;
+    }
+
+    get emboldenAmount(): number {
+        return this.appController.emboldenAmount;
+    }
+
+    get unitsPerEm(): number {
+        return this.appController.unitsPerEm;
     }
 
     protected get camera(): OrthographicCamera {
@@ -441,322 +458,8 @@ class TextDemoView extends DemoView implements TextRenderContext {
     }
 }
 
-class TextDemoRenderer extends TextRenderer {
+class TextDemoRenderer extends SimpleTextLayoutRenderer {
     renderContext!: TextDemoView;
-
-    glyphPositionsBuffer!: WebGLBuffer;
-    glyphTexCoordsBuffer!: WebGLBuffer;
-    glyphElementsBuffer!: WebGLBuffer;
-
-    private glyphBounds!: Float32Array;
-
-    get layout(): SimpleTextLayout {
-        return this.renderContext.appController.layout;
-    }
-
-    get backgroundColor(): glmatrix.vec4 {
-        return glmatrix.vec4.create();
-    }
-
-    get rotationAngle(): number {
-        return this.renderContext.appController.rotationAngle;
-    }
-
-    protected get extraEmboldenAmount(): glmatrix.vec2 {
-        const appController = this.renderContext.appController;
-        const emboldenLength = appController.emboldenAmount * appController.unitsPerEm;
-        return glmatrix.vec2.clone([emboldenLength, emboldenLength]);
-    }
-
-    prepareToAttachText(): void {
-        if (this.atlasFramebuffer == null)
-            this.createAtlasFramebuffer();
-
-        this.layoutText();
-    }
-
-    finishAttachingText(): void {
-        this.buildGlyphs();
-        this.renderContext.setDirty();
-    }
-
-    setAntialiasingOptions(aaType: AntialiasingStrategyName,
-                           aaLevel: number,
-                           aaOptions: AAOptions):
-                           void {
-        super.setAntialiasingOptions(aaType, aaLevel, aaOptions);
-
-        // Need to relayout because changing AA options can cause font dilation to change...
-        this.layoutText();
-        this.buildGlyphs();
-        this.renderContext.setDirty();
-    }
-
-    relayoutText(): void {
-        this.layoutText();
-        this.buildGlyphs();
-        this.renderContext.setDirty();
-    }
-
-    updateHinting(): void {
-        // Need to relayout the text because the pixel bounds of the glyphs can change from this...
-        this.layoutText();
-        this.buildGlyphs();
-        this.renderContext.setDirty();
-    }
-
-    updateEmboldenAmount(): void {
-        // Likewise, need to relayout the text.
-        this.layoutText();
-        this.buildGlyphs();
-        this.renderContext.setDirty();
-    }
-
-    viewPanned(): void {
-        this.buildGlyphs();
-        this.renderContext.setDirty();
-    }
-
-    protected compositeIfNecessary(): void {
-        const renderContext = this.renderContext;
-        const gl = renderContext.gl;
-
-        // Set up composite state.
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.viewport(0, 0, renderContext.cameraView.width, renderContext.cameraView.height);
-        gl.disable(gl.DEPTH_TEST);
-        gl.disable(gl.SCISSOR_TEST);
-        gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
-        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
-        gl.enable(gl.BLEND);
-
-        // Clear.
-        gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        // Set the appropriate program.
-        const programName = this.gammaCorrectionMode === 'off' ? 'blitLinear' : 'blitGamma';
-        const blitProgram = this.renderContext.shaderPrograms[programName];
-
-        // Set up the composite VAO.
-        const attributes = blitProgram.attributes;
-        gl.useProgram(blitProgram.program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
-        gl.vertexAttribPointer(attributes.aPosition, 2, gl.FLOAT, false, 0, 0);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphTexCoordsBuffer);
-        gl.vertexAttribPointer(attributes.aTexCoord, 2, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(attributes.aPosition);
-        gl.enableVertexAttribArray(attributes.aTexCoord);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.glyphElementsBuffer);
-
-        // Create the transform.
-        const transform = glmatrix.mat4.create();
-        glmatrix.mat4.fromTranslation(transform, [-1.0, -1.0, 0.0]);
-        glmatrix.mat4.scale(transform, transform, [
-            2.0 / this.renderContext.cameraView.width,
-            2.0 / this.renderContext.cameraView.height,
-            1.0,
-        ]);
-        glmatrix.mat4.translate(transform,
-                                transform,
-                                [this.camera.translation[0], this.camera.translation[1], 0.0]);
-
-        // Blit.
-        gl.uniformMatrix4fv(blitProgram.uniforms.uTransform, false, transform);
-        gl.activeTexture(gl.TEXTURE0);
-        const destTexture = this.renderContext
-                                .atlas
-                                .ensureTexture(this.renderContext);
-        gl.bindTexture(gl.TEXTURE_2D, destTexture);
-        gl.uniform1i(blitProgram.uniforms.uSource, 0);
-        this.setIdentityTexScaleUniform(blitProgram.uniforms);
-        this.bindGammaLUT(glmatrix.vec3.clone([1.0, 1.0, 1.0]), 1, blitProgram.uniforms);
-        const totalGlyphCount = this.layout.textFrame.totalGlyphCount;
-        gl.drawElements(gl.TRIANGLES, totalGlyphCount * 6, gl.UNSIGNED_INT, 0);
-    }
-
-    private layoutText(): void {
-        const renderContext = this.renderContext;
-        const gl = renderContext.gl;
-
-        this.layout.layoutRuns();
-
-        const textBounds = this.layout.textFrame.bounds;
-        this.camera.bounds = textBounds;
-
-        const totalGlyphCount = this.layout.textFrame.totalGlyphCount;
-        const glyphPositions = new Float32Array(totalGlyphCount * 8);
-        const glyphIndices = new Uint32Array(totalGlyphCount * 6);
-
-        const hint = this.createHint();
-        const pixelsPerUnit = this.pixelsPerUnit;
-        const rotationAngle = this.rotationAngle;
-
-        let globalGlyphIndex = 0;
-        for (const run of this.layout.textFrame.runs) {
-            run.recalculatePixelRects(pixelsPerUnit,
-                                      rotationAngle,
-                                      hint,
-                                      this.emboldenAmount,
-                                      SUBPIXEL_GRANULARITY,
-                                      textBounds);
-
-            for (let glyphIndex = 0;
-                 glyphIndex < run.glyphIDs.length;
-                 glyphIndex++, globalGlyphIndex++) {
-                const rect = run.pixelRectForGlyphAt(glyphIndex);
-                glyphPositions.set([
-                    rect[0], rect[3],
-                    rect[2], rect[3],
-                    rect[0], rect[1],
-                    rect[2], rect[1],
-                ], globalGlyphIndex * 8);
-
-                for (let glyphIndexIndex = 0;
-                    glyphIndexIndex < QUAD_ELEMENTS.length;
-                    glyphIndexIndex++) {
-                    glyphIndices[glyphIndexIndex + globalGlyphIndex * 6] =
-                        QUAD_ELEMENTS[glyphIndexIndex] + 4 * globalGlyphIndex;
-                }
-            }
-        }
-
-        this.glyphPositionsBuffer = unwrapNull(gl.createBuffer());
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphPositionsBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, glyphPositions, gl.STATIC_DRAW);
-        this.glyphElementsBuffer = unwrapNull(gl.createBuffer());
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.glyphElementsBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, glyphIndices, gl.STATIC_DRAW);
-    }
-
-    private buildGlyphs(): void {
-        const font = this.renderContext.font;
-        const glyphStore = this.renderContext.glyphStore;
-        const pixelsPerUnit = this.pixelsPerUnit;
-        const rotationAngle = this.rotationAngle;
-
-        const textFrame = this.layout.textFrame;
-        const textBounds = textFrame.bounds;
-        const hint = this.createHint();
-
-        // Only build glyphs in view.
-        const translation = this.camera.translation;
-        const canvasRect = glmatrix.vec4.clone([
-            -translation[0],
-            -translation[1],
-            -translation[0] + this.renderContext.cameraView.width,
-            -translation[1] + this.renderContext.cameraView.height,
-        ]);
-
-        const atlasGlyphs = [];
-        for (const run of textFrame.runs) {
-            for (let glyphIndex = 0; glyphIndex < run.glyphIDs.length; glyphIndex++) {
-                const pixelRect = run.pixelRectForGlyphAt(glyphIndex);
-                if (!rectsIntersect(pixelRect, canvasRect))
-                    continue;
-
-                const glyphID = run.glyphIDs[glyphIndex];
-                const glyphStoreIndex = glyphStore.indexOfGlyphWithID(glyphID);
-                if (glyphStoreIndex == null)
-                    continue;
-
-                const subpixel = run.subpixelForGlyphAt(glyphIndex,
-                                                        pixelsPerUnit,
-                                                        rotationAngle,
-                                                        hint,
-                                                        SUBPIXEL_GRANULARITY,
-                                                        textBounds);
-                const glyphKey = new GlyphKey(glyphID, subpixel);
-                atlasGlyphs.push(new AtlasGlyph(glyphStoreIndex, glyphKey));
-            }
-        }
-
-        this.buildAtlasGlyphs(atlasGlyphs);
-
-        // TODO(pcwalton): Regenerate the IBOs to include only the glyphs we care about.
-        this.setGlyphTexCoords();
-    }
-
-    private setGlyphTexCoords(): void {
-        const gl = this.renderContext.gl;
-
-        const textFrame = this.layout.textFrame;
-        const textBounds = textFrame.bounds;
-
-        const font = this.renderContext.font;
-        const atlasGlyphs = this.renderContext.atlasGlyphs;
-
-        const hint = this.createHint();
-        const pixelsPerUnit = this.pixelsPerUnit;
-        const rotationAngle = this.rotationAngle;
-
-        const atlasGlyphKeys = atlasGlyphs.map(atlasGlyph => atlasGlyph.glyphKey.sortKey);
-
-        this.glyphBounds = new Float32Array(textFrame.totalGlyphCount * 8);
-
-        let globalGlyphIndex = 0;
-        for (const run of textFrame.runs) {
-            for (let glyphIndex = 0;
-                 glyphIndex < run.glyphIDs.length;
-                 glyphIndex++, globalGlyphIndex++) {
-                const textGlyphID = run.glyphIDs[glyphIndex];
-
-                const subpixel = run.subpixelForGlyphAt(glyphIndex,
-                                                        pixelsPerUnit,
-                                                        rotationAngle,
-                                                        hint,
-                                                        SUBPIXEL_GRANULARITY,
-                                                        textBounds);
-
-                const glyphKey = new GlyphKey(textGlyphID, subpixel);
-
-                const atlasGlyphIndex = _.sortedIndexOf(atlasGlyphKeys, glyphKey.sortKey);
-                if (atlasGlyphIndex < 0)
-                    continue;
-
-                // Set texture coordinates.
-                const atlasGlyph = atlasGlyphs[atlasGlyphIndex];
-                const atlasGlyphMetrics = font.metricsForGlyph(atlasGlyph.glyphKey.id);
-                if (atlasGlyphMetrics == null)
-                    continue;
-
-                const atlasGlyphUnitMetrics = new UnitMetrics(atlasGlyphMetrics,
-                                                              rotationAngle,
-                                                              this.emboldenAmount);
-
-                const atlasGlyphPixelOrigin =
-                    atlasGlyph.calculateSubpixelOrigin(pixelsPerUnit);
-                const atlasGlyphRect = calculatePixelRectForGlyph(atlasGlyphUnitMetrics,
-                                                                  atlasGlyphPixelOrigin,
-                                                                  pixelsPerUnit,
-                                                                  hint);
-                const atlasGlyphBL = atlasGlyphRect.slice(0, 2) as glmatrix.vec2;
-                const atlasGlyphTR = atlasGlyphRect.slice(2, 4) as glmatrix.vec2;
-                glmatrix.vec2.div(atlasGlyphBL, atlasGlyphBL, ATLAS_SIZE);
-                glmatrix.vec2.div(atlasGlyphTR, atlasGlyphTR, ATLAS_SIZE);
-
-                this.glyphBounds.set([
-                    atlasGlyphBL[0], atlasGlyphTR[1],
-                    atlasGlyphTR[0], atlasGlyphTR[1],
-                    atlasGlyphBL[0], atlasGlyphBL[1],
-                    atlasGlyphTR[0], atlasGlyphBL[1],
-                ], globalGlyphIndex * 8);
-            }
-        }
-
-        this.glyphTexCoordsBuffer = unwrapNull(gl.createBuffer());
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.glyphTexCoordsBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, this.glyphBounds, gl.STATIC_DRAW);
-    }
-
-    private setIdentityTexScaleUniform(uniforms: UniformMap): void {
-        this.renderContext.gl.uniform2f(uniforms.uTexScale, 1.0, 1.0);
-    }
-}
-
-/// The separating axis theorem.
-function rectsIntersect(a: glmatrix.vec4, b: glmatrix.vec4): boolean {
-    return a[2] > b[0] && a[3] > b[1] && a[0] < b[2] && a[1] < b[3];
 }
 
 function main(): void {
