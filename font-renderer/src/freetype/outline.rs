@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use euclid::Point2D;
-use freetype_sys::{FT_Outline, FT_Vector};
+use freetype_crate::freetype::{FT_Outline, FT_Vector};
 use lyon_path::iterator::PathIterator;
 use lyon_path::{PathEvent, PathState};
 

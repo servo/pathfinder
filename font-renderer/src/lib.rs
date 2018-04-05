@@ -40,8 +40,8 @@ extern crate core_graphics as core_graphics_sys;
 #[cfg(target_os = "macos")]
 extern crate core_text;
 
-#[cfg(any(target_os = "linux", feature = "freetype"))]
-extern crate freetype_sys;
+#[cfg(any(target_os = "linux", feature = "freetype-feature"))]
+extern crate freetype as freetype_crate;
 
 #[cfg(target_os = "windows")]
 extern crate dwrite;
@@ -63,7 +63,7 @@ mod tests;
 pub use core_graphics::{FontContext, GlyphOutline};
 #[cfg(all(target_os = "windows", not(feature = "freetype")))]
 pub use directwrite::FontContext;
-#[cfg(any(target_os = "linux", feature = "freetype"))]
+#[cfg(any(target_os = "linux", feature = "freetype-feature"))]
 pub use freetype::FontContext;
 
 #[cfg(target_os = "macos")]
