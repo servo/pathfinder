@@ -124,15 +124,6 @@ interface MeshDescriptor {
     positions: glmatrix.vec2[];
 }
 
-function F32ArrayToMat4(array: Float32Array): mat4 {
-    const mat = glmatrix.mat4.create();
-    glmatrix.mat4.set(mat, array[0], array[1], array[2], array[3],
-                           array[4], array[5], array[6], array[7],
-                           array[8], array[9], array[10], array[11],
-                           array[12], array[13], array[14], array[15]);
-    return mat;
-}
-
 class ThreeDController extends DemoAppController<ThreeDView> {
     font!: PathfinderFont;
     textFrames!: TextFrame[];
@@ -573,11 +564,11 @@ class ThreeDRenderer extends Renderer {
         this.clearDestFramebuffer(true);
         this.vrProjectionMatrix = frame.leftProjectionMatrix;
         this.vrRightEye = false;
-        this.camera.setView(F32ArrayToMat4(frame.leftViewMatrix), frame.pose);
+        this.camera.setView((glmatrix.mat4.clone as any)(frame.leftViewMatrix), frame.pose);
         this.redraw();
         this.vrRightEye = true;
         this.vrProjectionMatrix = frame.rightProjectionMatrix;
-        this.camera.setView(F32ArrayToMat4(frame.rightViewMatrix), frame.pose);
+        this.camera.setView((glmatrix.mat4.clone as any)(frame.rightViewMatrix), frame.pose);
         this.redraw();
     }
 
@@ -938,9 +929,9 @@ class ThreeDRenderer extends Renderer {
     }
 
     private calculateProjectionTransform(): glmatrix.mat4 {
-        if (this.vrProjectionMatrix != null) {
-            return F32ArrayToMat4(this.vrProjectionMatrix);
-        }
+        if (this.vrProjectionMatrix != null)
+            return (glmatrix.mat4.clone as any)(this.vrProjectionMatrix);
+
         const canvas = this.renderContext.canvas;
         const projection = glmatrix.mat4.create();
         glmatrix.mat4.perspective(projection,
