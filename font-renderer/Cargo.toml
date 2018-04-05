@@ -5,7 +5,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [features]
 default = []
-freetype = ["freetype-sys"]
+freetype-feature = ["freetype-sys"]
 
 [dependencies]
 app_units = "0.6"
@@ -21,11 +21,11 @@ version = "0.17"
 features = ["serde"]
 
 [dependencies.freetype-sys]
-version = "0.6"
+version = "0.4"
 optional = true
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-freetype-sys = "0.6"
+freetype = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.13"
