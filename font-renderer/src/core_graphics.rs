@@ -68,11 +68,12 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     }
 
     /// Loads an OpenType font from a Quartz `CGFont` handle.
-    pub fn add_native_font(&mut self, font_key: &FK, handle: CGFont) -> Result<(), ()> {
+    pub fn add_native_font<H>(&mut self, font_key: &FK, handle: H) -> Result<(), ()>
+                              where H: Into<CGFont> {
         match self.core_graphics_fonts.entry((*font_key).clone()) {
             Entry::Occupied(_) => Ok(()),
             Entry::Vacant(entry) => {
-                entry.insert(handle);
+                entry.insert(handle.into());
                 Ok(())
             }
         }

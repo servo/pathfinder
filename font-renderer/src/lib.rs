@@ -40,8 +40,8 @@ extern crate core_graphics as core_graphics_sys;
 #[cfg(target_os = "macos")]
 extern crate core_text;
 
-#[cfg(any(target_os = "linux", feature = "freetype"))]
-extern crate freetype_sys;
+#[cfg(any(target_os = "linux", feature = "freetype-backend"))]
+extern crate freetype as freetype_sys;
 
 #[cfg(target_os = "windows")]
 extern crate dwrite;
@@ -59,19 +59,19 @@ use euclid::{Point2D, Size2D};
 #[cfg(test)]
 mod tests;
 
-#[cfg(all(target_os = "macos", not(feature = "freetype")))]
+#[cfg(all(target_os = "macos", not(feature = "freetype-backend")))]
 pub use core_graphics::{FontContext, GlyphOutline};
-#[cfg(all(target_os = "windows", not(feature = "freetype")))]
+#[cfg(all(target_os = "windows", not(feature = "freetype-backend")))]
 pub use directwrite::FontContext;
-#[cfg(any(target_os = "linux", feature = "freetype"))]
+#[cfg(any(target_os = "linux", feature = "freetype-backend"))]
 pub use freetype::FontContext;
 
 #[cfg(target_os = "macos")]
 pub mod core_graphics;
-#[cfg(all(target_os = "windows", not(feature = "freetype")))]
+#[cfg(all(target_os = "windows", not(feature = "freetype-backend")))]
 mod directwrite;
-#[cfg(any(target_os = "linux", feature = "freetype"))]
-mod freetype;
+#[cfg(any(target_os = "linux", feature = "freetype-backend"))]
+pub mod freetype;
 
 /// The number of subpixels that each pixel is divided into for the purposes of subpixel glyph
 /// positioning.
