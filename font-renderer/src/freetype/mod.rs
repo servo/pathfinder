@@ -11,16 +11,19 @@
 //! Font loading using FreeType.
 
 use euclid::{Point2D, Size2D, Vector2D};
-use freetype_sys::{FT_BBox, FT_Bitmap, FT_Done_Face, FT_F26Dot6, FT_Face, FT_GLYPH_FORMAT_OUTLINE};
-use freetype_sys::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LCD_FILTER_DEFAULT};
-use freetype_sys::{FT_LOAD_NO_HINTING, FT_Library, FT_Library_SetLcdFilter};
-use freetype_sys::{FT_Load_Glyph, FT_Long, FT_New_Memory_Face, FT_Outline_Get_CBox};
-use freetype_sys::{FT_Outline_Translate, FT_PIXEL_MODE_LCD, FT_RENDER_MODE_LCD, FT_Render_Glyph};
-use freetype_sys::{FT_Set_Char_Size, FT_UInt};
+use freetype_sys::freetype::{FT_BBox, FT_Bitmap, FT_Done_Face, FT_F26Dot6, FT_Face, FT_Glyph_Format};
+use freetype_sys::freetype::{FT_GlyphSlot, FT_Init_FreeType, FT_Int32, FT_LcdFilter};
+use freetype_sys::freetype::{FT_LOAD_NO_HINTING, FT_Library, FT_Library_SetLcdFilter};
+use freetype_sys::freetype::{FT_Load_Glyph, FT_Long, FT_New_Face, FT_New_Memory_Face};
+use freetype_sys::freetype::{FT_Outline_Get_CBox, FT_Outline_Translate, FT_Pixel_Mode};
+use freetype_sys::freetype::{FT_Render_Glyph, FT_Render_Mode, FT_Set_Char_Size, FT_UInt};
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::ffi::CString;
 use std::hash::Hash;
 use std::mem;
+use std::os::unix::ffi::OsStrExt;
+use std::path::PathBuf;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
@@ -37,7 +40,7 @@ pub type GlyphOutline<'a> = Outline<'a>;
 // Default to no hinting.
 //
 // TODO(pcwalton): Make this configurable.
-const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING;
+const GLYPH_LOAD_FLAGS: FT_Int32 = FT_LOAD_NO_HINTING as FT_Int32;
 
 const DPI: u32 = 72;
 
@@ -82,15 +85,46 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
             Entry::Occupied(_) => Ok(()),
             Entry::Vacant(entry) => {
                 unsafe {
-                    let mut face = Face {
-                        face: ptr::null_mut(),
-                        bytes: bytes,
-                    };
+                    let mut face_ptr = ptr::null_mut();
                     let result = FT_New_Memory_Face(self.library,
-                                                    face.bytes.as_ptr(),
-                                                    face.bytes.len() as FT_Long,
+                                                    bytes.as_ptr(),
+                                                    bytes.len() as FT_Long,
                                                     font_index as FT_Long,
-                                                    &mut face.face);
+                                                    &mut face_ptr);
+                    let mut face = Face {
+                        face: face_ptr,
+                        bytes: Some(bytes),
+                    };
+                    if result == 0 && !face.face.is_null() {
+                        entry.insert(face);
+                        Ok(())
+                    } else {
+                        Err(())
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn add_native_font<H>(&mut self, font_key: &FK, handle: H) -> Result<(), ()>
+                              where H: Into<FontDescriptor> {
+        match self.faces.entry((*font_key).clone()) {
+            Entry::Occupied(_) => Ok(()),
+            Entry::Vacant(entry) => {
+                unsafe {
+                    let descriptor: FontDescriptor = handle.into();
+                    let mut face_ptr = ptr::null_mut();
+                    let pathname = CString::new(descriptor.pathname
+                                                          .as_os_str()
+                                                          .as_bytes()).unwrap();
+                    let result = FT_New_Face(self.library,
+                                             pathname.as_ptr(),
+                                             descriptor.index as FT_Long,
+                                             &mut face_ptr);
+                    let mut face = Face {
+                        face: face_ptr,
+                        bytes: None,
+                    };
                     if result == 0 && !face.face.is_null() {
                         entry.insert(face);
                         Ok(())
@@ -173,14 +207,14 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
         //
         // TODO(pcwalton): Non-subpixel AA.
         unsafe {
-            FT_Library_SetLcdFilter(self.library, FT_LCD_FILTER_DEFAULT);
+            FT_Library_SetLcdFilter(self.library, FT_LcdFilter::FT_LCD_FILTER_DEFAULT);
         }
 
         // Render the glyph.
         //
         // TODO(pcwalton): Non-subpixel AA.
         unsafe {
-            FT_Render_Glyph(slot, FT_RENDER_MODE_LCD);
+            FT_Render_Glyph(slot, FT_Render_Mode::FT_RENDER_MODE_LCD);
         }
 
         unsafe {
@@ -188,7 +222,7 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
             //
             // TODO(pcwalton): Non-subpixel AA.
             let bitmap: *const FT_Bitmap = &(*slot).bitmap;
-            if (*bitmap).pixel_mode as u32 != FT_PIXEL_MODE_LCD {
+            if (*bitmap).pixel_mode as u32 != FT_Pixel_Mode::FT_PIXEL_MODE_LCD as u32 {
                 return Err(())
             }
 
@@ -244,7 +278,7 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
             }
 
             let slot = (*face.face).glyph;
-            if (*slot).format != FT_GLYPH_FORMAT_OUTLINE {
+            if (*slot).format != FT_Glyph_Format::FT_GLYPH_FORMAT_OUTLINE {
                 return None
             }
 
@@ -315,13 +349,29 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
 
 struct Face {
     face: FT_Face,
-    bytes: Arc<Vec<u8>>,
+    #[allow(dead_code)]
+    bytes: Option<Arc<Vec<u8>>>,
 }
 
 impl Drop for Face {
     fn drop(&mut self) {
         unsafe {
             FT_Done_Face(self.face);
+        }
+    }
+}
+
+pub struct FontDescriptor {
+    pub pathname: PathBuf,
+    pub index: u32,
+}
+
+impl FontDescriptor {
+    #[inline]
+    pub fn new(pathname: PathBuf, index: u32) -> FontDescriptor {
+        FontDescriptor {
+            pathname: pathname,
+            index: index,
         }
     }
 }

@@ -68,23 +68,24 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     }
 
     /// Loads an OpenType font from a Quartz `CGFont` handle.
-    pub fn add_native_font(&mut self, font_key: &FK, handle: CGFont) -> Result<(), ()> {
+    pub fn add_native_font<H>(&mut self, font_key: &FK, handle: H) -> Result<(), ()>
+                              where H: Into<CGFont> {
         match self.core_graphics_fonts.entry((*font_key).clone()) {
             Entry::Occupied(_) => Ok(()),
             Entry::Vacant(entry) => {
-                entry.insert(handle);
+                entry.insert(handle.into());
                 Ok(())
             }
         }
     }
 
     /// Loads an OpenType font from memory.
-    /// 
+    ///
     /// `font_key` is a handle that is used to refer to the font later. If this context has already
     /// loaded a font with the same font key, nothing is done, and `Ok` is returned.
-    /// 
+    ///
     /// `bytes` is the raw OpenType data (i.e. the contents of the `.otf` or `.ttf` file on disk).
-    /// 
+    ///
     /// `font_index` is the index of the font within the collection, if `bytes` refers to a
     /// collection (`.ttc`).
     pub fn add_font_from_memory(&mut self, font_key: &FK, bytes: Arc<Vec<u8>>, _: u32)
