@@ -1,6 +1,6 @@
 [package]
 name = "pathfinder_font_renderer"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [features]
@@ -21,11 +21,11 @@ version = "0.17"
 features = ["serde"]
 
 [dependencies.freetype]
-git = "https://github.com/servo/rust-freetype"
+version = "0.4"
 optional = true
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-freetype = { git = "https://github.com/servo/rust-freetype" }
+freetype = { version = "0.4" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.13"
