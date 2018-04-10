@@ -11,13 +11,13 @@
 //! Pathfinder is built as a set of modular Rust crates and accompanying shaders. Depending on how
 //! you plan to use Pathfinder, you may need to link against many of these crates, or you may not
 //! need to link against any of them and and only use the shaders at runtime.
-//! 
+//!
 //! Typically, if you need to generate paths at runtime or load fonts on the fly, then you will
 //! need to use the `pathfinder_partitioner` and/or `pathfinder_font_renderer` crates. If your app
 //! instead uses a fixed set of paths or fonts, then you may wish to consider running the
 //! Pathfinder command-line tool as part of your build process. Note that in the latter case you
 //! may not need to ship any Rust code at all!
-//! 
+//!
 //! This crate defines the `pathfinder` command line tool. It takes a font as an argument and
 //! produces *mesh libraries* for the glyphs you wish to include. A *mesh library* is essentially a
 //! simple storage format for VBOs. To render these paths, you can directly upload these VBOs to
@@ -25,7 +25,7 @@
 
 extern crate app_units;
 extern crate clap;
-extern crate freetype_sys;
+extern crate freetype;
 extern crate lyon_geom;
 extern crate lyon_path;
 extern crate pathfinder_font_renderer;
@@ -34,7 +34,7 @@ extern crate pathfinder_path_utils;
 
 use app_units::Au;
 use clap::{App, Arg};
-use freetype_sys::{FT_Init_FreeType, FT_New_Face};
+use freetype::freetype::{FT_Init_FreeType, FT_New_Face};
 use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use pathfinder_font_renderer::{FontContext, FontInstance, GlyphKey, SubpixelOffset};

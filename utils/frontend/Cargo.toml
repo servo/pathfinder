@@ -6,7 +6,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 [dependencies]
 app_units = "0.6"
 clap = "2.27"
-freetype-sys = "0.6"
+freetype = "0.4"
 lyon_geom = "0.10"
 lyon_path = "0.10"
 
