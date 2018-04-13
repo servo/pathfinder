@@ -53,6 +53,11 @@ extern crate uuid;
 #[macro_use(DEFINE_GUID)]
 extern crate winapi;
 
+#[cfg(target_os = "windows")]
+pub use self::directwrite::PathfinderComPtr;
+#[cfg(target_os = "windows")]
+pub use winapi::IDWriteFontFace;
+
 use app_units::Au;
 use euclid::{Point2D, Size2D};
 

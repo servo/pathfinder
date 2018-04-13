@@ -22,6 +22,7 @@ use std::iter::Cloned;
 use std::mem;
 use std::os::raw::c_void;
 use std::ptr;
+use std::collections::btree_map::Entry;
 use std::slice::{self, Iter};
 use std::sync::Arc;
 use uuid::IID_ID2D1SimplifiedGeometrySink;
@@ -36,7 +37,8 @@ use winapi::{IDWriteFontFileLoader, IDWriteFontFileLoaderVtbl, IDWriteFontFileSt
 use winapi::{IDWriteFontFileStreamVtbl, IDWriteGeometrySink, IUnknown, IUnknownVtbl, TRUE, UINT16};
 use winapi::{UINT32, UINT64, UINT};
 
-use self::com::{PathfinderCoclass, PathfinderComObject, PathfinderComPtr};
+use self::com::{PathfinderCoclass, PathfinderComObject};
+pub use self::com::{PathfinderComPtr};
 use {FontInstance, GlyphDimensions, GlyphImage, GlyphKey};
 
 mod com;
@@ -175,6 +177,19 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
 
             self.dwrite_font_faces.insert((*font_key).clone(), font_face);
             Ok(())
+        }
+    }
+
+    /// Loads an OpenType font from a COM `IDWriteFontFace` handle.
+    pub fn add_native_font<H>(&mut self, font_key: &FK, handle: H) -> Result<(), ()> 
+                        where H: Into<PathfinderComPtr<IDWriteFontFace>>
+    {
+        match self.dwrite_font_faces.entry((*font_key).clone()) {
+            Entry::Occupied(_) => Ok(()),
+            Entry::Vacant(entry) => {
+                entry.insert(handle.into());
+                Ok(())
+            }
         }
     }
 
