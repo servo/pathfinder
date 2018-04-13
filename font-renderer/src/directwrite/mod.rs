@@ -193,11 +193,14 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     /// libraries (including Pathfinder) apply modifications to the outlines: for example, to
     /// dilate them for easier reading. To retrieve extents that account for these modifications,
     /// set `exact` to false.
-    pub fn glyph_dimensions(&self, font_instance: &FontInstance<FK>, glyph_key: &GlyphKey)
-                            -> Option<GlyphDimensions> {
+    pub fn glyph_dimensions(&self,
+                            font_instance: &FontInstance<FK>,
+                            glyph_key: &GlyphKey,
+                            _exact: bool)
+                            -> Result<GlyphDimensions, ()> {
         unsafe {
             let font_face = match self.dwrite_font_faces.get(&font_instance.font_key) {
-                None => return None,
+                None => return Err(()),
                 Some(font_face) => (*font_face).clone(),
             };
 
@@ -206,10 +209,10 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
 
             let result = (**font_face).GetDesignGlyphMetrics(&glyph_index, 1, &mut metrics, FALSE);
             if !winerror::SUCCEEDED(result) {
-                return None
+                return Err(());
             }
 
-            Some(GlyphDimensions {
+            Ok(GlyphDimensions {
                 advance: metrics.advanceWidth as f32,
                 origin: Point2D::new(metrics.leftSideBearing, metrics.bottomSideBearing),
                 size: Size2D::new((metrics.rightSideBearing - metrics.leftSideBearing) as u32,
