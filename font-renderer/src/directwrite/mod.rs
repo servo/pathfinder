@@ -213,6 +213,9 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
                             glyph_key: &GlyphKey,
                             _exact: bool)
                             -> Result<GlyphDimensions, ()> {
+
+        let mut metrics: DWRITE_GLYPH_METRICS = unsafe { mem::zeroed() };
+
         unsafe {
             let font_face = match self.dwrite_font_faces.get(&font_instance.font_key) {
                 None => return Err(()),
@@ -220,20 +223,22 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
             };
 
             let glyph_index = glyph_key.glyph_index as UINT16;
-            let mut metrics: DWRITE_GLYPH_METRICS = mem::zeroed();
 
             let result = (**font_face).GetDesignGlyphMetrics(&glyph_index, 1, &mut metrics, FALSE);
             if !winerror::SUCCEEDED(result) {
                 return Err(());
             }
-
-            Ok(GlyphDimensions {
-                advance: metrics.advanceWidth as f32,
-                origin: Point2D::new(metrics.leftSideBearing, metrics.bottomSideBearing),
-                size: Size2D::new((metrics.rightSideBearing - metrics.leftSideBearing) as u32,
-                                  (metrics.topSideBearing - metrics.bottomSideBearing) as u32),
-            })
         }
+
+        let character_width = metrics.advanceWidth as i32 - metrics.rightSideBearing - metrics.leftSideBearing;
+        let character_height = metrics.advanceHeight as i32 - metrics.topSideBearing - metrics.bottomSideBearing;
+
+        Ok(GlyphDimensions {
+            advance: metrics.advanceWidth as f32,
+            origin: Point2D::new(metrics.leftSideBearing, metrics.bottomSideBearing),
+            size: Size2D::new(character_width as u32,
+                              character_height as u32),
+        })
     }
 
     /// Returns a list of path commands that represent the given glyph in the given font.
