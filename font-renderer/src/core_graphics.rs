@@ -10,7 +10,7 @@
 
 //! Font loading using macOS Core Graphics/Quartz.
 
-use core_graphics_sys::base::{kCGImageAlphaNoneSkipFirst, kCGBitmapByteOrder32Little};
+use core_graphics_sys::base::{CGFloat, kCGImageAlphaNoneSkipFirst, kCGBitmapByteOrder32Little};
 use core_graphics_sys::color_space::CGColorSpace;
 use core_graphics_sys::context::{CGContext, CGTextDrawingMode};
 use core_graphics_sys::data_provider::CGDataProvider;
@@ -45,7 +45,7 @@ const CG_ZERO_RECT: CGRect = CGRect {
 // direction.
 const FONT_DILATION_AMOUNT: f32 = 0.02;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 #[derive(Clone)]
 pub struct NativeFontHandle(pub CGFont);
 
@@ -164,7 +164,7 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
 
         // Round out to pixel boundaries.
         let units_per_em = core_graphics_font.get_units_per_em();
-        let scale = font_instance.size.to_f64_px() / (units_per_em as f64);
+        let scale = (font_instance.size.to_f64_px() as CGFloat) / (units_per_em as CGFloat);
         let bounding_box =
             Rect::new(Point2D::new(bounding_boxes[0].origin.x,
                                    bounding_boxes[0].origin.y),
@@ -287,8 +287,8 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
         core_graphics_context.fill_rect(CGRect {
             origin: CG_ZERO_POINT,
             size: CGSize {
-                width: dimensions.size.width as f64,
-                height: dimensions.size.height as f64,
+                width: dimensions.size.width as CGFloat,
+                height: dimensions.size.height as CGFloat,
             },
         });
 
@@ -298,14 +298,14 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
 
         // Set up the font.
         core_graphics_context.set_font(core_graphics_font);
-        core_graphics_context.set_font_size(font_instance.size.to_f64_px());
+        core_graphics_context.set_font_size(font_instance.size.to_f64_px() as CGFloat);
 
         // Compute the rasterization origin.
         // TODO(pcwalton): Vertical subpixel positioning.
         let subpixel_offset = Point2D::new(glyph_key.subpixel_offset.into(), 0.0);
         let origin = CGPoint {
-            x: -dimensions.origin.x as f64 + subpixel_offset.x,
-            y: -dimensions.origin.y as f64,
+            x: -dimensions.origin.x as CGFloat + subpixel_offset.x,
+            y: -dimensions.origin.y as CGFloat,
         };
 
         // Draw the glyph, and extract the pixels.

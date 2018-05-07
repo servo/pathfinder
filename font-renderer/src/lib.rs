@@ -33,10 +33,10 @@ extern crate serde_derive;
 #[cfg(test)]
 extern crate env_logger;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 extern crate core_graphics as core_graphics_sys;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 extern crate core_text;
 
 #[cfg(any(target_os = "linux", feature = "freetype-backend"))]
@@ -63,14 +63,14 @@ use euclid::{Point2D, Size2D};
 #[cfg(test)]
 mod tests;
 
-#[cfg(all(target_os = "macos", not(feature = "freetype-backend")))]
+#[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "freetype-backend")))]
 pub use core_graphics::{FontContext, GlyphOutline};
 #[cfg(all(target_os = "windows", not(feature = "freetype-backend")))]
 pub use directwrite::FontContext;
 #[cfg(any(target_os = "linux", feature = "freetype-backend"))]
 pub use freetype::FontContext;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub mod core_graphics;
 #[cfg(all(target_os = "windows", not(feature = "freetype-backend")))]
 mod directwrite;
