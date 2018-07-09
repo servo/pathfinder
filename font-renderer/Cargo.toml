@@ -1,6 +1,6 @@
 [package]
 name = "pathfinder_font_renderer"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [features]
@@ -28,8 +28,8 @@ optional = true
 freetype = { version = "0.4" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-core-graphics = "0.13"
-core-text = "9.2"
+core-graphics = "0.14"
+core-text = "10"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 dwrite-sys = "0.2"
