@@ -14,13 +14,13 @@ byteorder = "1.2"
 env_logger = "0.5"
 half = "1.0"
 log = "0.3"
-lyon_geom = "0.10"
-lyon_path = "0.10"
+lyon_geom = "0.11"
+lyon_path = "0.11"
 serde = "1.0"
 serde_derive = "1.0"
 
 [dependencies.euclid]
-version = "0.17"
+version = "0.18"
 features = ["serde"]
 
 [dependencies.pathfinder_path_utils]

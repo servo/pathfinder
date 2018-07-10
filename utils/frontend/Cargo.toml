@@ -7,8 +7,8 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 app_units = "0.6"
 clap = "2.27"
 freetype = "0.4"
-lyon_geom = "0.10"
-lyon_path = "0.10"
+lyon_geom = "0.11"
+lyon_path = "0.11"
 
 [dependencies.pathfinder_font_renderer]
 path = "../../font-renderer"

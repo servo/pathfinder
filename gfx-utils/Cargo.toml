@@ -4,4 +4,4 @@ version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
-euclid = "0.17"
+euclid = "0.18"
