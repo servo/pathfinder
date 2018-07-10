@@ -11,13 +11,13 @@ freetype-backend = ["freetype"]
 app_units = "0.6"
 libc = "0.2"
 log = "0.3"
-lyon_geom = "0.10"
-lyon_path = "0.10"
+lyon_geom = "0.11"
+lyon_path = "0.11"
 serde = "1.0"
 serde_derive = "1.0"
 
 [dependencies.euclid]
-version = "0.17"
+version = "0.18"
 features = ["serde"]
 
 [dependencies.freetype]
