@@ -1,9 +1,9 @@
 [package]
 name = "area-lut"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
 clap = "2.30"
-euclid = "0.17"
+euclid = "0.18"
 image = "0.18"

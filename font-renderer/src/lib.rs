@@ -20,7 +20,6 @@
 extern crate app_units;
 extern crate euclid;
 extern crate libc;
-extern crate lyon_geom;
 extern crate lyon_path;
 extern crate serde;
 
