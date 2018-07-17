@@ -1,7 +1,7 @@
 [package]
 name = "pathfinder_gfx_utils"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
-euclid = "0.17"
+euclid = "0.18"

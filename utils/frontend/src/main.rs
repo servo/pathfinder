@@ -26,7 +26,6 @@
 extern crate app_units;
 extern crate clap;
 extern crate freetype;
-extern crate lyon_geom;
 extern crate lyon_path;
 extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;

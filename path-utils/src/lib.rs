@@ -13,9 +13,10 @@
 //! Most of these should go upstream to Lyon at some point.
 
 extern crate arrayvec;
-extern crate euclid;
-extern crate lyon_geom;
 extern crate lyon_path;
+
+use lyon_path::geom as lyon_geom;
+use lyon_path::geom::euclid;
 
 pub mod cubic_to_quadratic;
 pub mod normals;

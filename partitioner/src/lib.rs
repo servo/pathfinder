@@ -27,10 +27,11 @@ extern crate bit_vec;
 extern crate byteorder;
 extern crate env_logger;
 extern crate euclid;
-extern crate lyon_geom;
 extern crate lyon_path;
 extern crate pathfinder_path_utils;
 extern crate serde;
+
+use lyon_path::geom as lyon_geom;
 
 #[macro_use]
 extern crate log;
