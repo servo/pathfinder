@@ -12,7 +12,6 @@
 /demo/client/package-lock.json
 /demo/server/target
 /demo/server/Rocket.toml
-Cargo.lock
 .DS_Store
 target
 
