@@ -27,8 +27,8 @@ optional = true
 freetype = { version = "0.4" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-core-graphics = "0.14"
-core-text = "10"
+core-graphics = "0.16"
+core-text = "11"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 dwrite-sys = "0.2"
