@@ -9,7 +9,7 @@ freetype = ["pathfinder_font_renderer/freetype"]
 reftests = ["rsvg", "cairo-rs", "pathfinder_font_renderer/freetype"]
 
 [dependencies]
-app_units = "0.6"
+app_units = "0.7"
 base64 = "0.6"
 bincode = "1.0"
 env_logger = "0.5"
