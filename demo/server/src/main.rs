@@ -354,7 +354,7 @@ impl<'r> Responder<'r> for ReferenceImage {
 
         let mut bytes = vec![];
         try!(self.image
-                 .save(&mut bytes, ImageFormat::PNG)
+                 .write_to(&mut bytes, ImageFormat::PNG)
                  .map_err(|_| Status::InternalServerError));
         builder.sized_body(Cursor::new(bytes));
         builder.ok()
