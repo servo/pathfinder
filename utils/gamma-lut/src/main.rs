@@ -12,9 +12,7 @@ mod gamma_lut;
 
 use clap::{App, Arg};
 use gamma_lut::GammaLut;
-use image::{ImageBuffer, ImageLuma8, Luma, PNG};
-use std::fs::File;
-use std::path::Path;
+use image::{ImageBuffer, ImageLuma8, Luma};
 
 const CONTRAST: f32 = 0.0;
 const GAMMA: f32 = 0.0;
@@ -58,8 +56,6 @@ pub fn main() {
     }
 
     let output_path = matches.value_of("OUTPUT-PATH").unwrap();
-    let output_path = Path::new(output_path);
 
-    let mut output = File::create(output_path).unwrap();
-    ImageLuma8(image).save(&mut output, PNG).unwrap();
+    ImageLuma8(image).save(output_path).unwrap();
 }
