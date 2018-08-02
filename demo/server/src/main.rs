@@ -15,12 +15,12 @@ extern crate app_units;
 extern crate base64;
 extern crate env_logger;
 extern crate euclid;
+extern crate font_kit;
 extern crate fontsan;
 extern crate image;
 extern crate lru_cache;
 extern crate lyon_geom;
 extern crate lyon_path;
-extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
 extern crate pathfinder_path_utils;
 extern crate rocket;
@@ -36,15 +36,17 @@ extern crate cairo;
 #[cfg(feature = "reftests")]
 extern crate rsvg;
 
-use app_units::Au;
 use euclid::{Point2D, Transform2D};
+use font_kit::canvas::Format as FontKitFormat;
+use font_kit::canvas::{Canvas, RasterizationOptions};
+use font_kit::font::Font;
+use font_kit::hinting::HintingOptions;
+use font_kit::loaders;
 use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
 use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use lyon_path::iterator::PathIter;
-use pathfinder_font_renderer::{FontContext, FontInstance, GlyphImage};
-use pathfinder_font_renderer::{GlyphKey, SubpixelOffset};
 use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_pack::MeshPack;
 use pathfinder_partitioner::partitioner::Partitioner;
@@ -58,13 +60,9 @@ use rocket_contrib::json::Json;
 use std::fs::File;
 use std::io::{self, Cursor, Read};
 use std::path::{self, PathBuf};
-use std::sync::atomic::{ATOMIC_USIZE_INIT, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::u32;
-
-#[cfg(target_os = "macos")]
-use pathfinder_font_renderer::core_graphics;
 
 #[cfg(feature = "reftests")]
 use euclid::Size2D;
@@ -78,8 +76,6 @@ const SUGGESTED_JSON_SIZE_LIMIT: u64 = 32 * 1024 * 1024;
 const MESH_PACK_CACHE_SIZE: usize = 16;
 
 const CUBIC_TO_QUADRATIC_APPROX_TOLERANCE: f32 = 5.0;
-
-static NEXT_FONT_KEY: AtomicUsize = ATOMIC_USIZE_INIT;
 
 lazy_static! {
     static ref MESH_PACK_CACHE: Mutex<LruCache<MeshPackCacheKey, PartitionResponder>> = {
@@ -267,15 +263,6 @@ struct PartitionSvgPathCommand {
     values: Vec<f64>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Ord, Hash)]
-struct FontKey(usize);
-
-impl FontKey {
-    fn new() -> FontKey {
-        FontKey(NEXT_FONT_KEY.fetch_add(1, Ordering::SeqCst))
-    }
-}
-
 struct PathPartitioningResult {
     encoded_data: Arc<Vec<u8>>,
     time: Duration,
@@ -409,31 +396,6 @@ fn svg_data_from_request(builtin_svg_name: &str) -> Result<Arc<Vec<u8>>, SvgErro
     }
 }
 
-#[cfg(target_os = "macos")]
-fn rasterize_glyph_with_core_graphics(font_key: &FontKey,
-                                      font_index: u32,
-                                      otf_data: Arc<Vec<u8>>,
-                                      font_instance: &FontInstance<FontKey>,
-                                      glyph_key: &GlyphKey)
-                                      -> Result<GlyphImage, FontError> {
-    let mut font_context =
-        try!(core_graphics::FontContext::new().map_err(|_| FontError::FontLoadingFailed));
-    try!(font_context.add_font_from_memory(font_key, otf_data, font_index)
-                     .map_err(|_| FontError::FontLoadingFailed));
-    font_context.rasterize_glyph_with_native_rasterizer(&font_instance, &glyph_key, true)
-                .map_err(|_| FontError::RasterizationFailed)
-}
-
-#[cfg(not(target_os = "macos"))]
-fn rasterize_glyph_with_core_graphics(_: &FontKey,
-                                      _: u32,
-                                      _: Arc<Vec<u8>>,
-                                      _: &FontInstance<FontKey>,
-                                      _: &GlyphKey)
-                                      -> Result<GlyphImage, FontError> {
-    Err(FontError::ReferenceRasterizerUnavailable)
-}
-
 #[post("/partition-font", format = "application/json", data = "<request>")]
 fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionResponder, FontError> {
     // Check the cache.
@@ -456,23 +418,10 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     }
 
     // Parse glyph data.
-    let mut font_context = match FontContext::new() {
-        Ok(font_context) => font_context,
-        Err(_) => {
-            println!("Failed to create a font context!");
-            return Err(FontError::FontLoadingFailed)
-        }
-    };
-
-    let font_key = FontKey::new();
     let otf_data = try!(otf_data_from_request(&request.face));
-    if font_context.add_font_from_memory(&font_key, otf_data, request.font_index).is_err() {
-        return Err(FontError::FontLoadingFailed)
-    }
-
-    let font_instance = FontInstance {
-        font_key: font_key,
-        size: Au::from_f64_px(request.point_size),
+    let font = match Font::from_bytes(otf_data, request.font_index) {
+        Ok(font) => font,
+        Err(_) => return Err(FontError::FontLoadingFailed),
     };
 
     // Read glyph info.
@@ -480,12 +429,12 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     let mut path_descriptors = vec![];
 
     for (glyph_index, glyph) in request.glyphs.iter().enumerate() {
-        let glyph_key = GlyphKey::new(glyph.id, SubpixelOffset(0));
-
         // This might fail; if so, just leave it blank.
-        match font_context.glyph_outline(&font_instance, &glyph_key) {
-            Ok(glyph_outline) => {
-                paths.push(Transform2DPathIter::new(glyph_outline.iter(),
+        // FIXME(pcwalton): Should we add first-class support for transforms to `font-kit`?
+        let mut path_builder = lyon_path::default::Path::builder();
+        match font.outline(glyph.id, HintingOptions::None, &mut path_builder) {
+            Ok(()) => {
+                paths.push(Transform2DPathIter::new(path_builder.build().into_iter(),
                                                     &glyph.transform).collect())
             }
             Err(_) => paths.push(vec![]),
@@ -601,39 +550,60 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 #[post("/render-reference/text", format = "application/json", data = "<request>")]
 fn render_reference_text(request: Json<RenderTextReferenceRequest>)
                          -> Result<ReferenceImage, FontError> {
-    let font_key = FontKey::new();
     let otf_data = try!(otf_data_from_request(&request.face));
-    let font_instance = FontInstance {
-        font_key: font_key,
-        size: Au::from_f64_px(request.point_size),
-    };
-    let glyph_key = GlyphKey::new(request.glyph, SubpixelOffset(0));
 
     // Rasterize the glyph using the right rasterizer.
-    let glyph_image = match request.renderer {
+    let mut canvas;
+    match request.renderer {
         ReferenceTextRenderer::FreeType => {
-            let mut font_context =
-                try!(FontContext::new().map_err(|_| FontError::FontLoadingFailed));
-            try!(font_context.add_font_from_memory(&font_key, otf_data, request.font_index)
-                             .map_err(|_| FontError::FontLoadingFailed));
-            try!(font_context.rasterize_glyph_with_native_rasterizer(&font_instance,
-                                                                     &glyph_key,
-                                                                     true)
-                             .map_err(|_| FontError::RasterizationFailed))
+            let loader = match Font::from_bytes(otf_data, request.font_index) {
+                Ok(loader) => loader,
+                Err(_) => return Err(FontError::FontLoadingFailed),
+            };
+            let glyph_rect = try!(loader.raster_bounds(request.glyph,
+                                                       request.point_size as f32,
+                                                       &Point2D::zero(),
+                                                       HintingOptions::None,
+                                                       RasterizationOptions::SubpixelAa)
+                                        .map_err(|_| FontError::RasterizationFailed));
+            let glyph_dimensions = glyph_rect.size.to_u32();
+            canvas = Canvas::new(&glyph_dimensions, FontKitFormat::Rgba32);
+            let origin = Point2D::new(-glyph_rect.origin.x, -glyph_rect.origin.y).to_f32();
+            try!(loader.rasterize_glyph(&mut canvas,
+                                        request.glyph,
+                                        request.point_size as f32,
+                                        &origin,
+                                        HintingOptions::None,
+                                        RasterizationOptions::SubpixelAa)
+                        .map_err(|_| FontError::RasterizationFailed));
         }
         ReferenceTextRenderer::CoreGraphics => {
-            try!(rasterize_glyph_with_core_graphics(&font_key,
-                                                    request.font_index,
-                                                    otf_data,
-                                                    &font_instance,
-                                                    &glyph_key))
+            let loader = match loaders::core_text::Font::from_bytes(otf_data, request.font_index) {
+                Ok(loader) => loader,
+                Err(_) => return Err(FontError::FontLoadingFailed),
+            };
+            let glyph_rect = try!(loader.raster_bounds(request.glyph,
+                                                       request.point_size as f32,
+                                                       &Point2D::zero(),
+                                                       HintingOptions::None,
+                                                       RasterizationOptions::SubpixelAa)
+                                        .map_err(|_| FontError::RasterizationFailed));
+            let glyph_dimensions = glyph_rect.size.to_u32();
+            canvas = Canvas::new(&glyph_dimensions, FontKitFormat::Rgba32);
+            let origin = Point2D::new(-glyph_rect.origin.x, -glyph_rect.origin.y).to_f32();
+            try!(loader.rasterize_glyph(&mut canvas,
+                                        request.glyph,
+                                        request.point_size as f32,
+                                        &origin,
+                                        HintingOptions::None,
+                                        RasterizationOptions::SubpixelAa)
+                        .map_err(|_| FontError::RasterizationFailed));
         }
     };
 
-    let dimensions = &glyph_image.dimensions;
-    let image_buffer = ImageBuffer::from_raw(dimensions.size.width,
-                                             dimensions.size.height,
-                                             glyph_image.pixels).unwrap();
+    let image_buffer = ImageBuffer::from_raw(canvas.size.width,
+                                             canvas.size.height,
+                                             canvas.pixels).unwrap();
     let reference_image = ReferenceImage {
         image: ImageRgba8(image_buffer),
     };

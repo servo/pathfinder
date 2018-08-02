@@ -5,8 +5,8 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [features]
 default = []
-freetype = ["pathfinder_font_renderer/freetype"]
-reftests = ["rsvg", "cairo-rs", "pathfinder_font_renderer/freetype"]
+freetype = ["font-kit/loader-freetype-default"]
+reftests = ["rsvg", "cairo-rs", "font-kit/loader-freetype-default"]
 
 [dependencies]
 app_units = "0.7"
@@ -45,8 +45,8 @@ git = "https://github.com/SergioBenitez/rocket"
 [dependencies.rocket_contrib]
 git = "https://github.com/SergioBenitez/rocket"
 
-[dependencies.pathfinder_font_renderer]
-path = "../../font-renderer"
+[dependencies.font-kit]
+git = "https://github.com/pcwalton/font-kit"
 
 [dependencies.pathfinder_partitioner]
 path = "../../partitioner"

@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "font-renderer",
     "gfx-utils",
     "partitioner",
     "path-utils",

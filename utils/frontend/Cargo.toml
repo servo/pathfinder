@@ -4,14 +4,12 @@ version = "0.2.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
-app_units = "0.7"
 clap = "2.27"
-freetype = "0.4"
 lyon_path = "0.12"
 
-[dependencies.pathfinder_font_renderer]
-path = "../../font-renderer"
-features = ["freetype"]
+[dependencies.font-kit]
+git = "https://github.com/pcwalton/font-kit"
+features = ["loader-freetype-default"]
 
 [dependencies.pathfinder_partitioner]
 path = "../../partitioner"

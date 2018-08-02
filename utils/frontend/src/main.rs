@@ -23,77 +23,38 @@
 //! simple storage format for VBOs. To render these paths, you can directly upload these VBOs to
 //! the GPU and render them using the shaders provided.
 
-extern crate app_units;
 extern crate clap;
-extern crate freetype;
+extern crate font_kit;
 extern crate lyon_path;
-extern crate pathfinder_font_renderer;
 extern crate pathfinder_partitioner;
 extern crate pathfinder_path_utils;
 
-use app_units::Au;
 use clap::{App, Arg};
-use freetype::freetype::{FT_Init_FreeType, FT_New_Face};
+use font_kit::font::Font;
+use font_kit::hinting::HintingOptions;
 use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
-use pathfinder_font_renderer::{FontContext, FontInstance, GlyphKey, SubpixelOffset};
+use lyon_path::default::Path as LyonPath;
 use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh_pack::MeshPack;
 use pathfinder_partitioner::partitioner::Partitioner;
-use std::ffi::CString;
 use std::fs::File;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::ptr;
-use std::sync::Arc;
-
-const FONT_SIZE: f64 = 72.0;
 
 fn convert_font(font_path: &Path, output_path: &Path) -> Result<(), ()> {
-    let mut freetype_library = ptr::null_mut();
-    let glyph_count;
-    unsafe {
-        if FT_Init_FreeType(&mut freetype_library) != 0 {
-            return Err(())
-        }
-
-        // TODO(pcwalton): Allow the user to select a face by index.
-        let mut freetype_face = ptr::null_mut();
-        let font_path = match font_path.to_str() {
-            None => return Err(()),
-            Some(font_path) => font_path,
-        };
-        let font_path = try!(CString::new(font_path).map_err(drop));
-        if FT_New_Face(freetype_library, font_path.as_ptr(), 0, &mut freetype_face) != 0 {
-            return Err(())
-        }
-
-        glyph_count = (*freetype_face).num_glyphs as u32;
-    }
-
-    let mut font_data = vec![];
-    let mut font_file = try!(File::open(font_path).map_err(drop));
-    try!(font_file.read_to_end(&mut font_data).map_err(drop));
-
-    // TODO(pcwalton): Allow the user to select a face by index.
-    let mut font_context = try!(FontContext::new());
-    try!(font_context.add_font_from_memory(&(), Arc::new(font_data), 0));
-    let font_instance = FontInstance {
-        font_key: (),
-        size: Au::from_f64_px(FONT_SIZE),
-    };
+    let font = try!(Font::from_path(font_path, 0).map_err(drop));
+    let glyph_count = font.glyph_count();
 
     let mut paths: Vec<(u16, Vec<PathEvent>)> = vec![];
     let mut mesh_pack = MeshPack::new();
 
     for glyph_index in 0..glyph_count {
-        let glyph_key = GlyphKey::new(glyph_index, SubpixelOffset(0));
-
-        let path = match font_context.glyph_outline(&font_instance, &glyph_key) {
-            Ok(path) => path,
-            Err(_) => continue,
-        };
+        let mut path_builder = LyonPath::builder();
+        if font.outline(glyph_index, HintingOptions::None, &mut path_builder).is_err() {
+            continue
+        }
+        let path = path_builder.build();
 
         let mut partitioner = Partitioner::new();
 
