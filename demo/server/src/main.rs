@@ -578,7 +578,7 @@ fn render_reference_text(request: Json<RenderTextReferenceRequest>)
                         .map_err(|_| FontError::RasterizationFailed));
         }
         ReferenceTextRenderer::CoreGraphics => {
-            let loader = match loaders::core_text::Font::from_bytes(otf_data, request.font_index) {
+            let loader = match loaders::freetype::Font::from_bytes(otf_data, request.font_index) {
                 Ok(loader) => loader,
                 Err(_) => return Err(FontError::FontLoadingFailed),
             };
