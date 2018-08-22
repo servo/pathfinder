@@ -149,6 +149,7 @@ enum ReferenceTextRenderer {
     #[serde(rename = "freetype")]
     FreeType,
     #[serde(rename = "core-graphics")]
+    #[cfg(target_os = "macos")]
     CoreGraphics,
 }
 
@@ -577,6 +578,7 @@ fn render_reference_text(request: Json<RenderTextReferenceRequest>)
                                         RasterizationOptions::SubpixelAa)
                         .map_err(|_| FontError::RasterizationFailed));
         }
+        #[cfg(target_os = "macos")]
         ReferenceTextRenderer::CoreGraphics => {
             let loader = match loaders::core_text::Font::from_bytes(otf_data, request.font_index) {
                 Ok(loader) => loader,
