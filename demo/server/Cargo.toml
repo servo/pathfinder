@@ -20,6 +20,9 @@ log = "0.3"
 lru-cache = "0.1"
 lyon_geom = "0.12"
 lyon_path = "0.12"
+rocket = "0.3"
+rocket_codegen = "0.3"
+rocket_contrib = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
@@ -35,15 +38,6 @@ optional = true
 
 [dependencies.fontsan]
 git = "https://github.com/servo/fontsan.git"
-
-[dependencies.rocket]
-git = "https://github.com/SergioBenitez/rocket"
-
-[dependencies.rocket_codegen]
-git = "https://github.com/SergioBenitez/rocket"
-
-[dependencies.rocket_contrib]
-git = "https://github.com/SergioBenitez/rocket"
 
 [dependencies.font-kit]
 git = "https://github.com/pcwalton/font-kit"
