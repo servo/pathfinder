@@ -12,9 +12,7 @@
 
 #![allow(non_snake_case, non_upper_case_globals)]
 
-use dwrite;
 use euclid::{Point2D, Size2D};
-use kernel32;
 use lyon_path::PathEvent;
 use std::collections::BTreeMap;
 use std::hash::Hash;
@@ -25,17 +23,22 @@ use std::ptr;
 use std::collections::btree_map::Entry;
 use std::slice::{self, Iter};
 use std::sync::Arc;
-use uuid::IID_ID2D1SimplifiedGeometrySink;
-use winapi::winerror::{self, S_OK};
-use winapi::{self, BOOL, D2D1_BEZIER_SEGMENT, D2D1_FIGURE_BEGIN, D2D1_FIGURE_END};
-use winapi::{D2D1_FIGURE_END_CLOSED, D2D1_FILL_MODE, D2D1_PATH_SEGMENT, D2D1_POINT_2F};
-use winapi::{DWRITE_FONT_METRICS, DWRITE_GLYPH_METRICS, E_BOUNDS, E_INVALIDARG, FALSE, FILETIME};
-use winapi::{FLOAT, GUID, HRESULT, ID2D1SimplifiedGeometrySinkVtbl, IDWriteFactory};
-use winapi::{IDWriteFontCollectionLoader, IDWriteFontCollectionLoaderVtbl, IDWriteFontFace};
-use winapi::{IDWriteFontFile, IDWriteFontFileEnumerator, IDWriteFontFileEnumeratorVtbl};
-use winapi::{IDWriteFontFileLoader, IDWriteFontFileLoaderVtbl, IDWriteFontFileStream};
-use winapi::{IDWriteFontFileStreamVtbl, IDWriteGeometrySink, IUnknown, IUnknownVtbl, TRUE, UINT16};
-use winapi::{UINT32, UINT64, UINT};
+use winapi::Interface;
+use winapi::shared::basetsd::{UINT16, UINT32, UINT64};
+use winapi::shared::guiddef::GUID;
+use winapi::shared::minwindef::{BOOL, FALSE, FILETIME, FLOAT, TRUE, UINT};
+use winapi::shared::winerror::{self, E_BOUNDS, E_INVALIDARG, HRESULT, S_OK};
+use winapi::um::d2d1::{D2D1_BEZIER_SEGMENT, D2D1_FIGURE_BEGIN, D2D1_FIGURE_END};
+use winapi::um::d2d1::{D2D1_FIGURE_END_CLOSED, D2D1_FILL_MODE, D2D1_PATH_SEGMENT, D2D1_POINT_2F};
+use winapi::um::d2d1::{ID2D1SimplifiedGeometrySink, ID2D1SimplifiedGeometrySinkVtbl};
+use winapi::um::dwrite::{self, DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_METRICS};
+use winapi::um::dwrite::{DWRITE_GLYPH_METRICS, IDWriteFactory, IDWriteFontCollectionLoader};
+use winapi::um::dwrite::{IDWriteFontCollectionLoaderVtbl, IDWriteFontFace, IDWriteFontFile};
+use winapi::um::dwrite::{IDWriteFontFileEnumerator, IDWriteFontFileEnumeratorVtbl};
+use winapi::um::dwrite::{IDWriteFontFileLoader, IDWriteFontFileLoaderVtbl, IDWriteFontFileStream};
+use winapi::um::dwrite::{IDWriteFontFileStreamVtbl, IDWriteGeometrySink};
+use winapi::um::sysinfoapi;
+use winapi::um::unknwnbase::{IUnknown, IUnknownVtbl};
 
 use self::com::{PathfinderCoclass, PathfinderComObject};
 pub use self::com::{PathfinderComPtr};
@@ -77,7 +80,7 @@ impl<FK> FontContext<FK> where FK: Clone + Hash + Eq + Ord {
     pub fn new() -> Result<FontContext<FK>, ()> {
         unsafe {
             let mut factory: *mut IDWriteFactory = ptr::null_mut();
-            if !winerror::SUCCEEDED(dwrite::DWriteCreateFactory(winapi::DWRITE_FACTORY_TYPE_SHARED,
+            if !winerror::SUCCEEDED(dwrite::DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
                                                                 &IID_IDWriteFactory,
                                                                 &mut factory as *mut *mut _ as
                                                                 *mut *mut IUnknown)) {
@@ -303,7 +306,7 @@ static PATHFINDER_FONT_COLLECTION_LOADER_VTABLE:
 
 impl PathfinderCoclass for PathfinderFontCollectionLoader {
     type InterfaceVtable = IDWriteFontCollectionLoaderVtbl;
-    fn interface_guid() -> &'static GUID { &IID_IDWriteFontCollectionLoader }
+    fn interface_guid() -> GUID { IID_IDWriteFontCollectionLoader }
     fn vtable() -> &'static IDWriteFontCollectionLoaderVtbl {
         &PATHFINDER_FONT_COLLECTION_LOADER_VTABLE
     }
@@ -368,7 +371,7 @@ enum PathfinderFontFileEnumeratorState {
 
 impl PathfinderCoclass for PathfinderFontFileEnumerator {
     type InterfaceVtable = IDWriteFontFileEnumeratorVtbl;
-    fn interface_guid() -> &'static GUID { &IID_IDWriteFontFileEnumerator }
+    fn interface_guid() -> GUID { IID_IDWriteFontFileEnumerator }
     fn vtable() -> &'static IDWriteFontFileEnumeratorVtbl {
         &PATHFINDER_FONT_FILE_ENUMERATOR_VTABLE
     }
@@ -437,7 +440,7 @@ static PATHFINDER_FONT_FILE_LOADER_VTABLE: IDWriteFontFileLoaderVtbl = IDWriteFo
 
 impl PathfinderCoclass for PathfinderFontFileLoader {
     type InterfaceVtable = IDWriteFontFileLoaderVtbl;
-    fn interface_guid() -> &'static GUID { &IID_IDWriteFontFileLoader }
+    fn interface_guid() -> GUID { IID_IDWriteFontFileLoader }
     fn vtable() -> &'static IDWriteFontFileLoaderVtbl { &PATHFINDER_FONT_FILE_LOADER_VTABLE }
 }
 
@@ -493,7 +496,7 @@ static PATHFINDER_FONT_FILE_STREAM_VTABLE: IDWriteFontFileStreamVtbl = IDWriteFo
 
 impl PathfinderCoclass for PathfinderFontFileStream {
     type InterfaceVtable = IDWriteFontFileStreamVtbl;
-    fn interface_guid() -> &'static GUID { &IID_IDWriteFontFileStream }
+    fn interface_guid() -> GUID { IID_IDWriteFontFileStream }
     fn vtable() -> &'static IDWriteFontFileStreamVtbl { &PATHFINDER_FONT_FILE_STREAM_VTABLE }
 }
 
@@ -505,7 +508,7 @@ impl PathfinderFontFileStream {
                 dwLowDateTime: 0,
                 dwHighDateTime: 0,
             };
-            kernel32::GetSystemTimeAsFileTime(&mut now);
+            sysinfoapi::GetSystemTimeAsFileTime(&mut now);
 
             PathfinderComPtr::new(Box::into_raw(Box::new(PathfinderFontFileStream {
                 object: PathfinderComObject::construct(),
@@ -581,7 +584,7 @@ static PATHFINDER_GEOMETRY_SINK_VTABLE: ID2D1SimplifiedGeometrySinkVtbl =
 
 impl PathfinderCoclass for PathfinderGeometrySink {
     type InterfaceVtable = ID2D1SimplifiedGeometrySinkVtbl;
-    fn interface_guid() -> &'static GUID { unsafe { &IID_ID2D1SimplifiedGeometrySink } }
+    fn interface_guid() -> GUID { ID2D1SimplifiedGeometrySink::uuidof() }
     fn vtable() -> &'static ID2D1SimplifiedGeometrySinkVtbl { &PATHFINDER_GEOMETRY_SINK_VTABLE }
 }
 

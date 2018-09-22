@@ -30,11 +30,9 @@ freetype = { version = "0.4" }
 core-graphics = "0.17"
 core-text = "13"
 
-[target.'cfg(target_os = "windows")'.dependencies]
-dwrite-sys = "0.2"
-kernel32-sys = "0.2"
-uuid-sys = "0.1"
-winapi = "0.2"
+[target.'cfg(target_os = "windows")'.dependencies.winapi]
+version = "0.3"
+features = ["dwrite", "sysinfoapi"]
 
 [dev-dependencies]
 env_logger = "0.5"

@@ -43,19 +43,13 @@ extern crate core_text;
 extern crate freetype as freetype_sys;
 
 #[cfg(target_os = "windows")]
-extern crate dwrite;
-#[cfg(target_os = "windows")]
-extern crate kernel32;
-#[cfg(target_os = "windows")]
-extern crate uuid;
-#[cfg(target_os = "windows")]
 #[macro_use(DEFINE_GUID)]
 extern crate winapi;
 
 #[cfg(target_os = "windows")]
 pub use self::directwrite::PathfinderComPtr;
 #[cfg(target_os = "windows")]
-pub use winapi::IDWriteFontFace;
+pub use winapi::um::dwrite::IDWriteFontFace;
 
 use app_units::Au;
 use euclid::{Point2D, Size2D};

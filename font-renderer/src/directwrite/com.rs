@@ -15,8 +15,11 @@ use std::ops::Deref;
 use std::os::raw::c_void;
 use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use uuid;
-use winapi::{E_NOINTERFACE, E_POINTER, GUID, HRESULT, IUnknown, REFIID, S_OK, ULONG};
+use winapi::Interface;
+use winapi::shared::guiddef::{GUID, REFIID};
+use winapi::shared::minwindef::ULONG;
+use winapi::shared::winerror::{E_NOINTERFACE, E_POINTER, HRESULT, S_OK};
+use winapi::um::unknwnbase::IUnknown;
 
 pub struct PathfinderComPtr<T> {
     ptr: *mut T,
@@ -69,7 +72,7 @@ impl<T> Deref for PathfinderComPtr<T> {
 
 pub trait PathfinderCoclass {
     type InterfaceVtable: 'static;
-    fn interface_guid() -> &'static GUID;
+    fn interface_guid() -> GUID;
     fn vtable() -> &'static Self::InterfaceVtable;
 }
 
@@ -109,8 +112,8 @@ impl<DerivedClass> PathfinderComObject<DerivedClass> where DerivedClass: Pathfin
         if object.is_null() {
             return E_POINTER
         }
-        if guids_are_equal(&*riid, &uuid::IID_IUnknown) ||
-                guids_are_equal(&*riid, DerivedClass::interface_guid()) {
+        if guids_are_equal(&*riid, &IUnknown::uuidof()) ||
+                guids_are_equal(&*riid, &DerivedClass::interface_guid()) {
             *object = this as *mut c_void;
             return S_OK
         }
