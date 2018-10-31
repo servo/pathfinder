@@ -47,7 +47,7 @@ Pathfinder 2 is a set of modular packages, allowing you to choose which parts of
 need. A WebGL demo is included, so you can try Pathfinder right in your browser. (Please note that,
 like the rest of Pathfinder, it's under heavy development and has known bugs.)
 
-To run the demo, make sure NPM and nightly Rust are installed, and run the following commands:
+To run the demo, make sure [Node.js](https://nodejs.org/en/), [nightly Rust](https://doc.rust-lang.org/1.5.0/book/nightly-rust.html) and [CMake](https://cmake.org/install/) are installed, then run the following commands:
 
     $ cd demo/client
     $ npm install
