@@ -29,6 +29,7 @@ pub struct Mesh {
     pub b_boxes: Vec<BBox>,
     pub stencil_segments: Vec<StencilSegment>,
     pub stencil_normals: Vec<StencilNormals>,
+    pub tile_metadata: Option<TileMetadata>,
 }
 
 impl Mesh {
@@ -43,6 +44,7 @@ impl Mesh {
             b_boxes: vec![],
             stencil_segments: vec![],
             stencil_normals: vec![],
+            tile_metadata: None,
         }
     }
 
@@ -55,6 +57,7 @@ impl Mesh {
         self.b_boxes.clear();
         self.stencil_segments.clear();
         self.stencil_normals.clear();
+        self.tile_metadata = None;
     }
 
     pub(crate) fn add_b_vertex(&mut self,
@@ -277,6 +280,12 @@ pub struct StencilNormals {
     pub from: Vector2D<f32>,
     pub ctrl: Vector2D<f32>,
     pub to: Vector2D<f32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct TileMetadata {
+    pub origin: Point2D<f32>,
+    pub path_index: u32,
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -48,6 +48,7 @@ use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use lyon_path::iterator::PathIter;
 use pathfinder_partitioner::FillRule;
+use pathfinder_partitioner::mesh::Mesh;
 use pathfinder_partitioner::mesh_pack::MeshPack;
 use pathfinder_partitioner::partitioner::Partitioner;
 use pathfinder_path_utils::cubic_to_quadratic::CubicToQuadraticTransformer;
@@ -273,30 +274,45 @@ impl PathPartitioningResult {
     fn compute(pack: &mut MeshPack,
                path_descriptors: &[PathDescriptor],
                paths: &[Vec<PathEvent>],
-               approx_tolerance: Option<f32>)
+               approx_tolerance: Option<f32>,
+               tile: bool)
                -> PathPartitioningResult {
         let timestamp_before = Instant::now();
 
         for (path, path_descriptor) in paths.iter().zip(path_descriptors.iter()) {
-            let mut partitioner = Partitioner::new();
-            if let Some(tolerance) = approx_tolerance {
-                partitioner.builder_mut().set_approx_tolerance(tolerance);
+            if !tile {
+                let mut partitioner = Partitioner::new();
+                if let Some(tolerance) = approx_tolerance {
+                    partitioner.builder_mut().set_approx_tolerance(tolerance);
+                }
+
+                path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
+                partitioner.partition(path_descriptor.fill_rule);
+                partitioner.builder_mut().build_and_reset();
+
+                partitioner.mesh_mut().push_stencil_segments(
+                    CubicToQuadraticTransformer::new(path.iter().cloned(),
+                                                     CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
+                partitioner.mesh_mut().push_stencil_normals(
+                    CubicToQuadraticTransformer::new(path.iter().cloned(),
+                                                     CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
+
+                pack.push(partitioner.into_mesh());
+            } else {
+                let tiles = tiling::tile_path(path);
+                for tile_info in tiles {
+                    let mut mesh = Mesh::new();
+                    mesh.push_stencil_segments(tile_info.events.into_iter());
+                    pack.push(mesh);
+                }
             }
-
-            path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
-            partitioner.partition(path_descriptor.fill_rule);
-            partitioner.builder_mut().build_and_reset();
-
-            partitioner.mesh_mut().push_stencil_segments(
-                CubicToQuadraticTransformer::new(path.iter().cloned(),
-                                                 CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
-            partitioner.mesh_mut().push_stencil_normals(
-                CubicToQuadraticTransformer::new(path.iter().cloned(),
-                                                 CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
-            pack.push(partitioner.into_mesh());
         }
 
         let time_elapsed = timestamp_before.elapsed();
+
+        eprintln!("path partitioning time: {}ms",
+                  time_elapsed.as_secs() as f64 * 1000.0 +
+                  time_elapsed.subsec_nanos() as f64 * 1e-6);
 
         let mut data_buffer = Cursor::new(vec![]);
         drop(pack.serialize_into(&mut data_buffer));
@@ -452,7 +468,8 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     let path_partitioning_result = PathPartitioningResult::compute(&mut pack,
                                                                    &path_descriptors,
                                                                    &paths,
-                                                                   None);
+                                                                   None,
+                                                                   false);
 
     // Build the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -538,7 +555,8 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     let path_partitioning_result = PathPartitioningResult::compute(&mut pack,
                                                                    &path_descriptors,
                                                                    &paths,
-                                                                   Some(tolerance));
+                                                                   Some(tolerance),
+                                                                   false);
 
     // Return the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -821,4 +839,114 @@ fn main() {
         static_test_data,
         static_textures,
     ]).launch();
+}
+
+mod tiling {
+    use euclid::{Point2D, Rect, Size2D, Vector2D};
+    use lyon_path::PathEvent;
+    use pathfinder_path_utils::clip::RectClipper;
+    use std::f32;
+    use std::mem;
+
+    const TILE_SIZE: f32 = 8.0;
+
+    pub fn tile_path(path: &[PathEvent]) -> Vec<TileInfo> {
+        let mut tiles = vec![];
+
+        let mut all_points = vec![];
+        for event in path {
+            match *event {
+                PathEvent::MoveTo(point) | PathEvent::LineTo(point) => all_points.push(point),
+                PathEvent::QuadraticTo(point0, point1) => {
+                    all_points.extend_from_slice(&[point0, point1])
+                }
+                PathEvent::CubicTo(point0, point1, point2) => {
+                    all_points.extend_from_slice(&[point0, point1, point2])
+                }
+                PathEvent::Arc(..) | PathEvent::Close => {}
+            }
+        }
+
+        let bounding_rect = Rect::from_points(all_points);
+        //eprintln!("path {}: bounding rect = {:?}", path_index, bounding_rect);
+
+        let tile_size = Size2D::new(TILE_SIZE, TILE_SIZE);
+        let (mut full_tile_count, mut tile_count) = (0, 0);
+        let mut y = bounding_rect.origin.y - bounding_rect.origin.y % TILE_SIZE;
+
+        loop {
+            let mut x = bounding_rect.origin.x - bounding_rect.origin.x % TILE_SIZE;
+            loop {
+                let origin = Point2D::new(x, y);
+                let clipper = RectClipper::new(&Rect::new(origin, tile_size), path);
+                let mut tile_path = clipper.clip();
+                simplify_path(&mut tile_path);
+                translate_path(&mut tile_path, &Vector2D::new(-x, -y));
+                //eprintln!("({},{}): {:?}", x, y, tile_path);
+
+                if !tile_path.is_empty() {
+                    tiles.push(TileInfo {
+                        events: tile_path,
+                        origin,
+                    });
+
+                    full_tile_count += 1;
+                } else {
+                    tile_count += 1;
+                }
+
+                if x < bounding_rect.max_x() {
+                    x += TILE_SIZE;
+                } else {
+                    break
+                }
+            }
+
+            if y < bounding_rect.max_y() {
+                y += TILE_SIZE;
+            } else {
+                break
+            }
+        }
+
+        tiles
+    }
+
+    fn simplify_path(output: &mut Vec<PathEvent>) {
+        let mut subpath = vec![];
+        for event in mem::replace(output, vec![]) {
+            subpath.push(event);
+            if let PathEvent::Close = event {
+                if subpath.len() > 2 {
+                    output.extend_from_slice(&subpath);
+                }
+                subpath.clear();
+            }
+        }
+    }
+
+    fn translate_path(output: &mut [PathEvent], vector: &Vector2D<f32>) {
+        for event in output {
+            match *event {
+                PathEvent::Close => {}
+                PathEvent::MoveTo(ref mut to) | PathEvent::LineTo(ref mut to) => *to += *vector,
+                PathEvent::QuadraticTo(ref mut cp, ref mut to) => {
+                    *cp += *vector;
+                    *to += *vector;
+                }
+                PathEvent::CubicTo(ref mut cp0, ref mut cp1, ref mut to) => {
+                    *cp0 += *vector;
+                    *cp1 += *vector;
+                    *to += *vector;
+                }
+                PathEvent::Arc(ref mut center, _, _, _) => *center += *vector,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct TileInfo {
+        pub events: Vec<PathEvent>,
+        pub origin: Point2D<f32>,
+    }
 }

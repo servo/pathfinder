@@ -9,7 +9,7 @@
 // except according to those terms.
 
 //! Various utilities for manipulating Bézier curves.
-//! 
+//!
 //! Most of these should go upstream to Lyon at some point.
 
 extern crate arrayvec;
@@ -18,6 +18,7 @@ extern crate lyon_path;
 use lyon_path::geom as lyon_geom;
 use lyon_path::geom::euclid;
 
+pub mod clip;
 pub mod cubic_to_quadratic;
 pub mod normals;
 pub mod orientation;

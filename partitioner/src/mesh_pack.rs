@@ -10,7 +10,7 @@
 
 use bincode;
 use byteorder::{LittleEndian, WriteBytesExt};
-use mesh::Mesh;
+use mesh::{Mesh, TileMetadata};
 use serde::Serialize;
 use std::io::{self, ErrorKind, Seek, SeekFrom, Write};
 use std::u32;
@@ -34,7 +34,7 @@ impl MeshPack {
     }
 
     /// Writes this mesh pack to a RIFF file.
-    /// 
+    ///
     /// RIFF is a dead-simple extensible binary format documented here:
     /// https://msdn.microsoft.com/en-us/library/windows/desktop/ee415713(v=vs.85).aspx
     pub fn serialize_into<W>(&self, writer: &mut W) -> io::Result<()> where W: Write + Seek {
@@ -53,6 +53,10 @@ impl MeshPack {
                 try!(write_simple_chunk(writer, b"bbox", &mesh.b_boxes));
                 try!(write_simple_chunk(writer, b"sseg", &mesh.stencil_segments));
                 try!(write_simple_chunk(writer, b"snor", &mesh.stencil_normals));
+                match mesh.tile_metadata {
+                    None => try!(write_simple_chunk::<_, TileMetadata>(writer, b"tile", &[])),
+                    Some(metadata) => try!(write_simple_chunk(writer, b"tile", &[metadata])),
+                }
                 Ok(())
             }));
         }

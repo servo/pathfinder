@@ -59,7 +59,7 @@ impl Partitioner {
     #[inline]
     pub fn mesh(&self) -> &Mesh {
         &self.mesh
-    } 
+    }
 
     #[inline]
     pub fn mesh_mut(&mut self) -> &mut Mesh {
