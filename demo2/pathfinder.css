@@ -1,3 +1,7 @@
+html, body {
+    background: #e0e0e0;
+}
+
 .tile {
     position: absolute;
     top: 0;

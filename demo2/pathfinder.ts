@@ -8,14 +8,23 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+import COVER_VERTEX_SHADER_SOURCE from "./cover.vs.glsl";
+import COVER_FRAGMENT_SHADER_SOURCE from "./cover.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 
 const SVGPath = require('svgpath');
 
+const SVG_NS: string = "http://www.w3.org/2000/svg";
+
 const TILE_SIZE: number = 16.0;
 const GLOBAL_OFFSET: Point2D = {x: 400.0, y: 200.0};
 
-const SVG_NS: string = "http://www.w3.org/2000/svg";
+const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
+    0, 0,
+    1, 0,
+    0, 1,
+    1, 1,
+]);
 
 type Point2D = {x: number, y: number};
 type Size2D = {width: number, height: number};
@@ -27,13 +36,109 @@ type Edge = 'left' | 'top' | 'right' | 'bottom';
 type SVGPath = any;
 
 class App {
+    private canvas: HTMLCanvasElement;
     private svg: XMLDocument;
 
+    private gl: WebGL2RenderingContext;
+    private coverProgram: Program<'FramebufferSize' | 'TileSize', 'TessCoord' | 'TileOrigin'>;
+    private quadVertexBuffer: WebGLBuffer;
+    private coverVertexBuffer: WebGLBuffer;
+    private coverVertexArray: WebGLVertexArrayObject;
+
     constructor(svg: XMLDocument) {
+        this.canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
         this.svg = svg;
+
+        const gl = unwrapNull(this.canvas.getContext('webgl2'));
+        this.gl = gl;
+
+        const coverProgram = new Program(gl,
+                                         COVER_VERTEX_SHADER_SOURCE,
+                                         COVER_FRAGMENT_SHADER_SOURCE,
+                                         ['FramebufferSize', 'TileSize'],
+                                         ['TessCoord', 'TileOrigin']);
+        this.coverProgram = coverProgram;
+
+        this.quadVertexBuffer = unwrapNull(gl.createBuffer());
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, QUAD_VERTEX_POSITIONS, gl.STATIC_DRAW);
+
+        this.coverVertexBuffer = unwrapNull(gl.createBuffer());
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
+
+        // Initialize cover VAO.
+        this.coverVertexArray = unwrapNull(gl.createVertexArray());
+        gl.bindVertexArray(this.coverVertexArray);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
+        gl.vertexAttribPointer(coverProgram.attributes.TessCoord,
+                               2,
+                               gl.UNSIGNED_BYTE,
+                               false,
+                               0,
+                               0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
+        gl.vertexAttribPointer(coverProgram.attributes.TileOrigin, 2, gl.SHORT, false, 0, 0);
+        gl.vertexAttribDivisor(coverProgram.attributes.TileOrigin, 1);
+        gl.enableVertexAttribArray(coverProgram.attributes.TessCoord);
+        gl.enableVertexAttribArray(coverProgram.attributes.TileOrigin);
+
+        // TODO(pcwalton)
     }
 
     run(): void {
+        const gl = this.gl, canvas = this.canvas;
+
+        const tiles = this.createTiles();
+
+        const coverVertexBufferData = new Int16Array(tiles.length * 2);
+        for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
+            coverVertexBufferData[tileIndex * 2 + 0] = Math.floor(tiles[tileIndex].origin.x);
+            coverVertexBufferData[tileIndex * 2 + 1] = Math.floor(tiles[tileIndex].origin.y);
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, coverVertexBufferData, gl.DYNAMIC_DRAW);
+        console.log(coverVertexBufferData);
+
+        const framebufferSize = {width: canvas.width, height: canvas.height};
+        gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.bindVertexArray(this.coverVertexArray);
+        gl.useProgram(this.coverProgram.program);
+        gl.uniform2f(this.coverProgram.uniforms.FramebufferSize,
+                     framebufferSize.width,
+                     framebufferSize.height);
+        gl.uniform2f(this.coverProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, tiles.length);
+
+        /*
+        for (const tile of tiles) {
+            const newSVG = staticCast(document.createElementNS(SVG_NS, 'svg'), SVGElement);
+            newSVG.setAttribute('class', "tile");
+            newSVG.style.left = (GLOBAL_OFFSET.x + tile.origin.x) + "px";
+            newSVG.style.top = (GLOBAL_OFFSET.y + tile.origin.y) + "px";
+            newSVG.style.width = TILE_SIZE + "px";
+            newSVG.style.height = TILE_SIZE + "px";
+
+            const newPath = document.createElementNS(SVG_NS, 'path');
+            newPath.setAttribute('d',
+                                tile.path
+                                    .translate(-tile.origin.x, -tile.origin.y)
+                                    .toString());
+
+            let color = "#";
+            for (let i = 0; i < 6; i++)
+                color += Math.floor(Math.random() * 16).toString(16);
+            newPath.setAttribute('fill', color);
+
+            newSVG.appendChild(newPath);
+            document.body.appendChild(newSVG);
+        }
+        */
+    }
+
+    private createTiles(): Tile[] {
         const svgElement = unwrapNull(this.svg.documentElement).cloneNode(true);
         document.body.appendChild(svgElement);
 
@@ -41,18 +146,22 @@ class App {
         const tiles: Tile[] = [];
 
         for (let pathElementIndex = 0;
-             pathElementIndex < 15;
+             pathElementIndex < pathElements.length;
              pathElementIndex++) {
             const pathElement = pathElements[pathElementIndex];
 
             const path = canonicalizePath(SVGPath(unwrapNull(pathElement.getAttribute('d'))));
             const boundingRect = this.boundingRectOfPath(path);
 
-            //console.log("path " + pathElementIndex, path.toString(), ":", boundingRect);
+            /*console.log("path " + pathElementIndex, path.toString(), ":",
+                        boundingRect.origin.x,
+                        boundingRect.origin.y,
+                        boundingRect.size.width,
+                        boundingRect.size.height);*/
 
-            let y = boundingRect.origin.y;
+            let y = boundingRect.origin.y - boundingRect.origin.y % TILE_SIZE;
             while (true) {
-                let x = boundingRect.origin.x;
+                let x = boundingRect.origin.x - boundingRect.origin.x % TILE_SIZE;
                 while (true) {
                     const tileBounds = {
                         origin: {x, y},
@@ -60,7 +169,8 @@ class App {
                     };
                     const tilePath = this.clipPathToRect(path, tileBounds);
 
-                    tiles.push(new Tile(pathElementIndex, tilePath, tileBounds.origin));
+                    if (tilePath.toString().length > 0)
+                        tiles.push(new Tile(pathElementIndex, tilePath, tileBounds.origin));
 
                     if (x >= boundingRect.origin.x + boundingRect.size.width)
                         break;
@@ -71,32 +181,11 @@ class App {
                     break;
                 y += TILE_SIZE;
             }
-
-            for (const tile of tiles) {
-                const newSVG = staticCast(document.createElementNS(SVG_NS, 'svg'), SVGElement);
-                newSVG.setAttribute('class', "tile");
-                newSVG.style.left = (GLOBAL_OFFSET.x + tile.origin.x) + "px";
-                newSVG.style.top = (GLOBAL_OFFSET.y + tile.origin.y) + "px";
-                newSVG.style.width = TILE_SIZE + "px";
-                newSVG.style.height = TILE_SIZE + "px";
-
-                const newPath = document.createElementNS(SVG_NS, 'path');
-                newPath.setAttribute('d',
-                                    tile.path
-                                        .translate(-tile.origin.x, -tile.origin.y)
-                                        .toString());
-
-                let color = "#";
-                for (let i = 0; i < 6; i++)
-                    color += Math.floor(Math.random() * 16).toString(16);
-                newPath.setAttribute('fill', color);
-
-                newSVG.appendChild(newPath);
-                document.body.appendChild(newSVG);
-            }
         }
 
         document.body.removeChild(svgElement);
+
+        return tiles;
     }
 
     private clipPathToRect(path: SVGPath, tileBounds: Rect): SVGPath {
@@ -237,6 +326,60 @@ class Tile {
         this.pathIndex = pathIndex;
         this.path = path;
         this.origin = origin;
+    }
+}
+
+class Program<U extends string, A extends string> {
+    program: WebGLProgram;
+    uniforms: {[key in U]: WebGLUniformLocation};
+    attributes: {[key in A]: number};
+
+    private vertexShader: WebGLShader;
+    private fragmentShader: WebGLShader;
+
+    constructor(gl: WebGL2RenderingContext,
+                vertexShaderSource: string,
+                fragmentShaderSource: string,
+                uniformNames: U[],
+                attributeNames: A[]) {
+        this.vertexShader = unwrapNull(gl.createShader(gl.VERTEX_SHADER));
+        gl.shaderSource(this.vertexShader, vertexShaderSource);
+        gl.compileShader(this.vertexShader);
+        if (!gl.getShaderParameter(this.vertexShader, gl.COMPILE_STATUS)) {
+            console.error(gl.getShaderInfoLog(this.vertexShader));
+            throw new Error("Vertex shader compilation failed!");
+        }
+
+        this.fragmentShader = unwrapNull(gl.createShader(gl.FRAGMENT_SHADER));
+        gl.shaderSource(this.fragmentShader, fragmentShaderSource);
+        gl.compileShader(this.fragmentShader);
+        if (!gl.getShaderParameter(this.fragmentShader, gl.COMPILE_STATUS)) {
+            console.error(gl.getShaderInfoLog(this.fragmentShader));
+            throw new Error("Fragment shader compilation failed!");
+        }
+
+        this.program = unwrapNull(gl.createProgram());
+        gl.attachShader(this.program, this.vertexShader);
+        gl.attachShader(this.program, this.fragmentShader);
+        gl.linkProgram(this.program);
+        if (!gl.getProgramParameter(this.program, gl.LINK_STATUS)) {
+            console.error(gl.getProgramInfoLog(this.program));
+            throw new Error("Program linking failed!");
+        }
+
+        const uniforms: {[key in U]?: WebGLUniformLocation} = {};
+        for (const uniformName of uniformNames) {
+            uniforms[uniformName] = unwrapNull(gl.getUniformLocation(this.program,
+                                                                     "u" + uniformName));
+        }
+        this.uniforms = uniforms as {[key in U]: WebGLUniformLocation};
+
+        const attributes: {[key in A]?: number} = {};
+        for (const attributeName of attributeNames) {
+            attributes[attributeName] = unwrapNull(gl.getAttribLocation(this.program,
+                                                                        "a" + attributeName));
+        }
+        this.attributes = attributes as {[key in A]: number};
     }
 }
 

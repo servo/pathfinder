@@ -12,6 +12,7 @@
 /demo/client/package-lock.json
 /demo/server/target
 /demo/server/Rocket.toml
+/demo2/dist
 .DS_Store
 target
 node_modules
