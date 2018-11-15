@@ -1,6 +1,6 @@
 #version 300 es
 
-// pathfinder/demo2/cover.fs.glsl
+// pathfinder/demo2/stencil.fs.glsl
 //
 // Copyright © 2018 The Pathfinder Project Developers.
 //
@@ -12,13 +12,8 @@
 
 precision highp float;
 
-uniform sampler2D uStencilTexture;
-
-in vec2 vTexCoord;
-
 out vec4 oFragColor;
 
 void main() {
-    float coverage = texture(uStencilTexture, vTexCoord).r;
-    oFragColor = vec4(vec3(1.0 - coverage), coverage);
+    oFragColor = vec4(1.0, 1.0, 1.0, 1.0);
 }

@@ -10,14 +10,18 @@
 
 import COVER_VERTEX_SHADER_SOURCE from "./cover.vs.glsl";
 import COVER_FRAGMENT_SHADER_SOURCE from "./cover.fs.glsl";
+import STENCIL_VERTEX_SHADER_SOURCE from "./stencil.vs.glsl";
+import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 
-const SVGPath = require('svgpath');
+const SVGPath: (path: string) => SVGPath = require('svgpath');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
 const TILE_SIZE: number = 16.0;
-const GLOBAL_OFFSET: Point2D = {x: 400.0, y: 200.0};
+const STENCIL_FRAMEBUFFER_SIZE: number = TILE_SIZE * 256;
+
+const GLOBAL_OFFSET: Point2D = {x: 200.0, y: 150.0};
 
 const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     0, 0,
@@ -26,6 +30,13 @@ const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     1, 1,
 ]);
 
+interface SVGPath {
+    abs(): SVGPath;
+    translate(x: number, y: number): SVGPath;
+    iterate(f: (segment: string[], index: number, x: number, y: number) => string[][] | void):
+            SVGPath;
+}
+
 type Point2D = {x: number, y: number};
 type Size2D = {width: number, height: number};
 type Rect = {origin: Point2D, size: Size2D};
@@ -33,15 +44,21 @@ type Vector3D = {x: number, y: number, z: number};
 
 type Edge = 'left' | 'top' | 'right' | 'bottom';
 
-type SVGPath = any;
-
 class App {
     private canvas: HTMLCanvasElement;
     private svg: XMLDocument;
 
     private gl: WebGL2RenderingContext;
-    private coverProgram: Program<'FramebufferSize' | 'TileSize', 'TessCoord' | 'TileOrigin'>;
+    private stencilTexture: WebGLTexture;
+    private stencilFramebuffer: WebGLFramebuffer;
+    private coverProgram:
+        Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize',
+                'TessCoord' | 'TileOrigin' | 'TileIndex'>;
+    private stencilProgram: Program<'FramebufferSize' | 'TileSize', 'Position' | 'TileIndex'>;
     private quadVertexBuffer: WebGLBuffer;
+    private stencilVertexPositionsBuffer: WebGLBuffer;
+    private stencilVertexTileIndicesBuffer: WebGLBuffer;
+    private stencilVertexArray: WebGLVertexArrayObject;
     private coverVertexBuffer: WebGLBuffer;
     private coverVertexArray: WebGLVertexArrayObject;
 
@@ -49,26 +66,86 @@ class App {
         this.canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
         this.svg = svg;
 
-        const gl = unwrapNull(this.canvas.getContext('webgl2'));
+        const gl = unwrapNull(this.canvas.getContext('webgl2', {antialias: false}));
         this.gl = gl;
+        gl.getExtension('EXT_color_buffer_float');
+
+        this.stencilTexture = unwrapNull(gl.createTexture());
+        gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
+        gl.texImage2D(gl.TEXTURE_2D,
+                      0,
+                      gl.R16F,
+                      STENCIL_FRAMEBUFFER_SIZE,
+                      STENCIL_FRAMEBUFFER_SIZE,
+                      0,
+                      gl.RED,
+                      gl.HALF_FLOAT,
+                      null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        this.stencilFramebuffer = unwrapNull(gl.createFramebuffer());
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.stencilFramebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,
+                                gl.COLOR_ATTACHMENT0,
+                                gl.TEXTURE_2D,
+                                this.stencilTexture,
+                                0);
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE)
+            throw new Error("Stencil framebuffer incomplete!");
 
         const coverProgram = new Program(gl,
                                          COVER_VERTEX_SHADER_SOURCE,
                                          COVER_FRAGMENT_SHADER_SOURCE,
-                                         ['FramebufferSize', 'TileSize'],
-                                         ['TessCoord', 'TileOrigin']);
+                                         [
+                                             'FramebufferSize',
+                                             'TileSize',
+                                             'StencilTexture',
+                                             'StencilTextureSize'
+                                         ],
+                                         ['TessCoord', 'TileOrigin', 'TileIndex']);
         this.coverProgram = coverProgram;
 
+        const stencilProgram = new Program(gl,
+                                           STENCIL_VERTEX_SHADER_SOURCE,
+                                           STENCIL_FRAGMENT_SHADER_SOURCE,
+                                           ['FramebufferSize', 'TileSize'],
+                                           ['Position', 'TileIndex']);
+        this.stencilProgram = stencilProgram;
+
+        // Initialize quad VBO.
         this.quadVertexBuffer = unwrapNull(gl.createBuffer());
         gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, QUAD_VERTEX_POSITIONS, gl.STATIC_DRAW);
 
+        // Initialize stencil VBOs.
+        this.stencilVertexPositionsBuffer = unwrapNull(gl.createBuffer());
+        this.stencilVertexTileIndicesBuffer = unwrapNull(gl.createBuffer());
+
+        // Initialize stencil VAO.
+        this.stencilVertexArray = unwrapNull(gl.createVertexArray());
+        gl.bindVertexArray(this.stencilVertexArray);
+        gl.useProgram(this.stencilProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexPositionsBuffer);
+        gl.vertexAttribPointer(stencilProgram.attributes.Position, 2, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexTileIndicesBuffer);
+        gl.vertexAttribIPointer(stencilProgram.attributes.TileIndex,
+                                1,
+                                gl.UNSIGNED_SHORT,
+                                0,
+                                0);
+        gl.enableVertexAttribArray(stencilProgram.attributes.Position);
+        gl.enableVertexAttribArray(stencilProgram.attributes.TileIndex);
+
+        // Initialize cover VBO.
         this.coverVertexBuffer = unwrapNull(gl.createBuffer());
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
 
         // Initialize cover VAO.
         this.coverVertexArray = unwrapNull(gl.createVertexArray());
         gl.bindVertexArray(this.coverVertexArray);
+        gl.useProgram(this.coverProgram.program);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
         gl.vertexAttribPointer(coverProgram.attributes.TessCoord,
                                2,
@@ -77,10 +154,13 @@ class App {
                                0,
                                0);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
-        gl.vertexAttribPointer(coverProgram.attributes.TileOrigin, 2, gl.SHORT, false, 0, 0);
+        gl.vertexAttribPointer(coverProgram.attributes.TileOrigin, 2, gl.SHORT, false, 6, 0);
         gl.vertexAttribDivisor(coverProgram.attributes.TileOrigin, 1);
+        gl.vertexAttribIPointer(coverProgram.attributes.TileIndex, 1, gl.UNSIGNED_SHORT, 6, 4);
+        gl.vertexAttribDivisor(coverProgram.attributes.TileIndex, 1);
         gl.enableVertexAttribArray(coverProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(coverProgram.attributes.TileOrigin);
+        gl.enableVertexAttribArray(coverProgram.attributes.TileIndex);
 
         // TODO(pcwalton)
     }
@@ -89,16 +169,72 @@ class App {
         const gl = this.gl, canvas = this.canvas;
 
         const tiles = this.createTiles();
+        console.log(tiles.length, "tiles");
 
-        const coverVertexBufferData = new Int16Array(tiles.length * 2);
+        // Construct stencil VBOs.
+        let primitives = 0;
+        const stencilVertexPositions: number[] = [], stencilVertexTileIndices: number[] = [];
         for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
-            coverVertexBufferData[tileIndex * 2 + 0] = Math.floor(tiles[tileIndex].origin.x);
-            coverVertexBufferData[tileIndex * 2 + 1] = Math.floor(tiles[tileIndex].origin.y);
+            const tile = tiles[tileIndex];
+            let lastPoint = {x: 0.0, y: 0.0};
+            tile.path.iterate(segment => {
+                if (segment[0] === 'Z')
+                    return;
+                const point = {
+                    x: parseFloat(segment[segment.length - 2]) - tile.origin.x,
+                    y: parseFloat(segment[segment.length - 1]) - tile.origin.y,
+                };
+                if (!(point.x > -1.0))
+                    throw new Error("x too low");
+                if (!(point.y > -1.0))
+                    throw new Error("y too low");
+                if (!(point.x < TILE_SIZE + 1.0))
+                    throw new Error("x too high:" + point.x);
+                if (!(point.y < TILE_SIZE + 1.0))
+                    throw new Error("y too high");
+                if (segment[0] !== 'M') {
+                    stencilVertexPositions.push(lastPoint.x, lastPoint.y, point.x, point.y);
+                    stencilVertexTileIndices.push(tileIndex, tileIndex);
+                    primitives++;
+                }
+                lastPoint = point;
+            });
+        }
+        console.log(stencilVertexPositions);
+
+        // Populate the stencil VBOs.
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexPositionsBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(stencilVertexPositions), gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexTileIndicesBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Uint16Array(stencilVertexTileIndices), gl.STATIC_DRAW);
+
+        // Stencil.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.stencilFramebuffer);
+        gl.viewport(0, 0, STENCIL_FRAMEBUFFER_SIZE, STENCIL_FRAMEBUFFER_SIZE);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.bindVertexArray(this.stencilVertexArray);
+        gl.useProgram(this.stencilProgram.program);
+        gl.uniform2f(this.stencilProgram.uniforms.FramebufferSize,
+                     STENCIL_FRAMEBUFFER_SIZE,
+                     STENCIL_FRAMEBUFFER_SIZE);
+        gl.uniform2f(this.stencilProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
+        gl.drawArrays(gl.LINES, 0, primitives * 2);
+
+        // Populate the cover VBO.
+        const coverVertexBufferData = new Int16Array(tiles.length * 3);
+        for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
+            coverVertexBufferData[tileIndex * 3 + 0] = Math.floor(tiles[tileIndex].origin.x);
+            coverVertexBufferData[tileIndex * 3 + 1] = Math.floor(tiles[tileIndex].origin.y);
+            coverVertexBufferData[tileIndex * 3 + 2] = tileIndex;
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, coverVertexBufferData, gl.DYNAMIC_DRAW);
         console.log(coverVertexBufferData);
 
+        // Cover.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         const framebufferSize = {width: canvas.width, height: canvas.height};
         gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
@@ -110,7 +246,17 @@ class App {
                      framebufferSize.width,
                      framebufferSize.height);
         gl.uniform2f(this.coverProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
+        gl.uniform1i(this.coverProgram.uniforms.StencilTexture, 0);
+        gl.uniform2f(this.coverProgram.uniforms.StencilTextureSize,
+                     STENCIL_FRAMEBUFFER_SIZE,
+                     STENCIL_FRAMEBUFFER_SIZE);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, tiles.length);
+        gl.disable(gl.BLEND);
 
         /*
         for (const tile of tiles) {
@@ -150,7 +296,10 @@ class App {
              pathElementIndex++) {
             const pathElement = pathElements[pathElementIndex];
 
-            const path = canonicalizePath(SVGPath(unwrapNull(pathElement.getAttribute('d'))));
+            let path =
+                SVGPath(unwrapNull(pathElement.getAttribute('d'))).translate(GLOBAL_OFFSET.x,
+                                                                             GLOBAL_OFFSET.y);
+            path = canonicalizePath(path);
             const boundingRect = this.boundingRectOfPath(path);
 
             /*console.log("path " + pathElementIndex, path.toString(), ":",
@@ -199,7 +348,7 @@ class App {
     private clipPathToEdge(edge: Edge, edgePos: number, input: SVGPath): SVGPath {
         let pathStart: Point2D | null = null, from = {x: 0, y: 0}, firstPoint = false;
         let output: string[][] = [];
-        input.iterate((segment: string[], index: number, x: number, y: number) => {
+        input.iterate(segment => {
             const event = segment[0];
             let to;
             switch (event) {
@@ -293,7 +442,7 @@ class App {
     private boundingRectOfPath(path: SVGPath): Rect {
         let minX: number | null = null, minY: number | null = null;
         let maxX: number | null = null, maxY: number | null = null;
-        path.iterate((segment: string[], index: number, x: number, y: number) => {
+        path.iterate(segment => {
             for (let i = 1; i < segment.length; i += 2) {
                 const x = parseFloat(segment[i]), y = parseFloat(segment[i + 1]);
                 minX = minX == null ? x : Math.min(minX, x);
@@ -384,7 +533,7 @@ class Program<U extends string, A extends string> {
 }
 
 function canonicalizePath(path: SVGPath): SVGPath {
-    return path.abs().iterate((segment: string[], index: number, x: number, y: number) => {
+    return path.abs().iterate(segment => {
         if (segment[0] === 'H')
             return [['L', segment[1], '0']];
         if (segment[0] === 'V')
@@ -398,7 +547,11 @@ function main(): void {
         svg.text().then(svgText => {
             const svg = staticCast((new DOMParser).parseFromString(svgText, 'image/svg+xml'),
                                    XMLDocument);
-            new App(svg).run();
+            try {
+                new App(svg).run();
+            } catch (e) {
+                console.error("error", e, e.stack);
+            }
         });
     });
 }

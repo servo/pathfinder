@@ -1,6 +1,6 @@
 #version 300 es
 
-// pathfinder/demo2/cover.vs.glsl
+// pathfinder/demo2/stencil.vs.glsl
 //
 // Copyright © 2018 The Pathfinder Project Developers.
 //
@@ -14,13 +14,9 @@ precision highp float;
 
 uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
-uniform vec2 uStencilTextureSize;
 
-in vec2 aTessCoord;
-in vec2 aTileOrigin;
+in vec2 aPosition;
 in uint aTileIndex;
-
-out vec2 vTexCoord;
 
 vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
     uint tilesPerRow = uint(stencilTextureWidth / uTileSize.x);
@@ -29,8 +25,6 @@ vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
 }
 
 void main() {
-    vec2 position = aTileOrigin + uTileSize * aTessCoord;
-    vec2 texCoord = computeTileOffset(aTileIndex, uStencilTextureSize.x) + aTessCoord * uTileSize;
-    vTexCoord = texCoord / uStencilTextureSize;
-    gl_Position = vec4((position / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0);
+    vec2 position = computeTileOffset(aTileIndex, uFramebufferSize.x) + aPosition;
+    gl_Position = vec4(position / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
 }
