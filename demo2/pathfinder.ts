@@ -217,14 +217,18 @@ class App {
         const stencilVertexPositions: number[] = [], stencilVertexTileIndices: number[] = [];
         for (let tileIndex = 0; tileIndex < scene.tiles.length; tileIndex++) {
             const tile = scene.tiles[tileIndex];
-            let lastPoint = {x: 0.0, y: 0.0};
+            let firstPoint = {x: 0.0, y: 0.0}, lastPoint = {x: 0.0, y: 0.0};
             tile.path.iterate(segment => {
-                if (segment[0] === 'Z')
-                    return;
-                const point = {
-                    x: parseFloat(segment[segment.length - 2]) - tile.origin.x,
-                    y: parseFloat(segment[segment.length - 1]) - tile.origin.y,
-                };
+                let point;
+                if (segment[0] === 'Z') {
+                    point = firstPoint;
+                } else {
+                    point = {
+                        x: parseFloat(segment[segment.length - 2]) - tile.origin.x,
+                        y: parseFloat(segment[segment.length - 1]) - tile.origin.y,
+                    };
+                }
+
                 if (!(point.x > -1.0))
                     throw new Error("x too low");
                 if (!(point.y > -1.0))
@@ -233,7 +237,10 @@ class App {
                     throw new Error("x too high:" + point.x);
                 if (!(point.y < TILE_SIZE + 1.0))
                     throw new Error("y too high");
-                if (segment[0] !== 'M') {
+
+                if (segment[0] === 'M') {
+                    firstPoint = point;
+                } else {
                     stencilVertexPositions.push(lastPoint.x, lastPoint.y, point.x, point.y);
                     stencilVertexTileIndices.push(tileIndex);
                     primitives++;
@@ -379,6 +386,30 @@ class Scene {
                 y += TILE_SIZE;
             }
         }
+
+        /*
+        for (const tile of tiles) {
+            const newSVG = staticCast(document.createElementNS(SVG_NS, 'svg'), SVGElement);
+            newSVG.setAttribute('class', "tile");
+            newSVG.style.left = (GLOBAL_OFFSET.x + tile.origin.x) + "px";
+            newSVG.style.top = (GLOBAL_OFFSET.y + tile.origin.y) + "px";
+            newSVG.style.width = TILE_SIZE + "px";
+            newSVG.style.height = TILE_SIZE + "px";
+
+            const newPath = document.createElementNS(SVG_NS, 'path');
+            newPath.setAttribute('d',
+                                tile.path
+                                    .translate(-tile.origin.x, -tile.origin.y)
+                                    .toString());
+
+            const color = pathColors[tile.pathIndex];
+            newPath.setAttribute('fill',
+                                 "rgba(" + color.r + "," + color.g + "," + color.b + "," +
+                                 (color.a / 255.0));
+
+            newSVG.appendChild(newPath);
+            document.body.appendChild(newSVG);
+        }*/
 
         document.body.removeChild(svgElement);
 
