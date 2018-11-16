@@ -19,10 +19,8 @@ const parseColor: (color: string) => any = require('parse-color');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
-const TILE_SIZE: number = 16.0;
-const STENCIL_FRAMEBUFFER_SIZE: number = TILE_SIZE * 64;
-
-const GLOBAL_OFFSET: Point2D = {x: 200.0, y: 150.0};
+const TILE_SIZE: number = 32.0;
+const STENCIL_FRAMEBUFFER_SIZE: number = TILE_SIZE * 128;
 
 const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     0, 0,
@@ -34,6 +32,7 @@ const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
 interface SVGPath {
     abs(): SVGPath;
     translate(x: number, y: number): SVGPath;
+    matrix(m: number[]): SVGPath;
     iterate(f: (segment: string[], index: number, x: number, y: number) => string[][] | void):
             SVGPath;
 }
@@ -59,6 +58,20 @@ interface Vector3D {
     z: number;
 }
 
+class Matrix2D {
+    a: number; b: number;
+    c: number; d: number;
+    tx: number; ty: number;
+
+    constructor(a: number, b: number, c: number, d: number, tx: number, ty: number) {
+        this.a = a; this.b = b;
+        this.c = c; this.d = d;
+        this.tx = tx; this.ty = ty;
+    }
+}
+
+const GLOBAL_TRANSFORM: Matrix2D = new Matrix2D(3.0, 0.0, 0.0, 3.0, 800.0, 550.0);
+
 interface Color {
     r: number;
     g: number;
@@ -73,6 +86,7 @@ class App {
     private svg: XMLDocument;
 
     private gl: WebGL2RenderingContext;
+    private disjointTimerQueryExt: any;
     private stencilTexture: WebGLTexture;
     private stencilFramebuffer: WebGLFramebuffer;
     private coverProgram:
@@ -87,13 +101,24 @@ class App {
     private coverVertexBuffer: WebGLBuffer;
     private coverVertexArray: WebGLVertexArrayObject;
 
+    private scene: Scene | null;
+    private primitiveCount: number | null;
+
     constructor(svg: XMLDocument) {
-        this.canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
+        const canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
+        this.canvas = canvas;
         this.svg = svg;
+
+        const devicePixelRatio = window.devicePixelRatio;
+        canvas.width = window.innerWidth * devicePixelRatio;
+        canvas.height = window.innerHeight * devicePixelRatio;
+        canvas.style.width = window.innerWidth + "px";
+        canvas.style.height = window.innerHeight + "px";
 
         const gl = unwrapNull(this.canvas.getContext('webgl2', {antialias: false}));
         this.gl = gl;
         gl.getExtension('EXT_color_buffer_float');
+        this.disjointTimerQueryExt = gl.getExtension('EXT_disjoint_timer_query');
 
         this.stencilTexture = unwrapNull(gl.createTexture());
         gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
@@ -203,17 +228,80 @@ class App {
         gl.enableVertexAttribArray(coverProgram.attributes.TileIndex);
         gl.enableVertexAttribArray(coverProgram.attributes.Color);
 
-        // TODO(pcwalton)
+        this.scene = null;
+        this.primitiveCount = 0;
     }
 
-    run(): void {
-        const gl = this.gl, canvas = this.canvas;
+    redraw(): void {
+        const gl = this.gl, canvas = this.canvas, scene = unwrapNull(this.scene);
 
-        const scene = new Scene(this.svg);
-        console.log(scene.tiles.length, "tiles");
+        // Start timer.
+        let timerQuery = null;
+        if (this.disjointTimerQueryExt != null) {
+            timerQuery = unwrapNull(gl.createQuery());
+            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, timerQuery);
+        }
+
+        // Stencil.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.stencilFramebuffer);
+        gl.viewport(0, 0, STENCIL_FRAMEBUFFER_SIZE, STENCIL_FRAMEBUFFER_SIZE);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.bindVertexArray(this.stencilVertexArray);
+        gl.useProgram(this.stencilProgram.program);
+        gl.uniform2f(this.stencilProgram.uniforms.FramebufferSize,
+                     STENCIL_FRAMEBUFFER_SIZE,
+                     STENCIL_FRAMEBUFFER_SIZE);
+        gl.uniform2f(this.stencilProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.enable(gl.BLEND);
+        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(this.primitiveCount));
+        gl.disable(gl.BLEND);
+
+        // Cover.
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        const framebufferSize = {width: canvas.width, height: canvas.height};
+        gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
+        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        gl.bindVertexArray(this.coverVertexArray);
+        gl.useProgram(this.coverProgram.program);
+        gl.uniform2f(this.coverProgram.uniforms.FramebufferSize,
+                     framebufferSize.width,
+                     framebufferSize.height);
+        gl.uniform2f(this.coverProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
+        gl.uniform1i(this.coverProgram.uniforms.StencilTexture, 0);
+        gl.uniform2f(this.coverProgram.uniforms.StencilTextureSize,
+                     STENCIL_FRAMEBUFFER_SIZE,
+                     STENCIL_FRAMEBUFFER_SIZE);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
+        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, scene.tiles.length);
+        gl.disable(gl.BLEND);
+
+        // End timer.
+        if (timerQuery != null) {
+            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
+            waitForQuery(gl, this.disjointTimerQueryExt, timerQuery);
+        }
+    }
+
+    buildScene(): void {
+        this.scene = new Scene(this.svg);
+        console.log(this.scene.tiles.length, "tiles");
+    }
+
+    prepare(): void {
+        const gl = this.gl, scene = unwrapNull(this.scene);
 
         // Construct stencil VBOs.
-        let primitives = 0;
+        let primitiveCount = 0;
         const stencilVertexPositions: number[] = [], stencilVertexTileIndices: number[] = [];
         for (let tileIndex = 0; tileIndex < scene.tiles.length; tileIndex++) {
             const tile = scene.tiles[tileIndex];
@@ -243,7 +331,7 @@ class App {
                 } else {
                     stencilVertexPositions.push(lastPoint.x, lastPoint.y, point.x, point.y);
                     stencilVertexTileIndices.push(tileIndex);
-                    primitives++;
+                    primitiveCount++;
                 }
                 lastPoint = point;
             });
@@ -255,24 +343,6 @@ class App {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(stencilVertexPositions), gl.STATIC_DRAW);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexTileIndicesBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Uint16Array(stencilVertexTileIndices), gl.STATIC_DRAW);
-
-        // Stencil.
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.stencilFramebuffer);
-        gl.viewport(0, 0, STENCIL_FRAMEBUFFER_SIZE, STENCIL_FRAMEBUFFER_SIZE);
-        gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        gl.bindVertexArray(this.stencilVertexArray);
-        gl.useProgram(this.stencilProgram.program);
-        gl.uniform2f(this.stencilProgram.uniforms.FramebufferSize,
-                     STENCIL_FRAMEBUFFER_SIZE,
-                     STENCIL_FRAMEBUFFER_SIZE);
-        gl.uniform2f(this.stencilProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
-        gl.blendEquation(gl.FUNC_ADD);
-        gl.blendFunc(gl.ONE, gl.ONE);
-        gl.enable(gl.BLEND);
-        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, primitives);
-        gl.disable(gl.BLEND);
 
         // Populate the cover VBO.
         const coverVertexBufferData = new Int16Array(scene.tiles.length * 5);
@@ -289,30 +359,8 @@ class App {
         gl.bufferData(gl.ARRAY_BUFFER, coverVertexBufferData, gl.DYNAMIC_DRAW);
         console.log(coverVertexBufferData);
 
-        // Cover.
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        const framebufferSize = {width: canvas.width, height: canvas.height};
-        gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
-        gl.clearColor(1.0, 1.0, 1.0, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        gl.bindVertexArray(this.coverVertexArray);
-        gl.useProgram(this.coverProgram.program);
-        gl.uniform2f(this.coverProgram.uniforms.FramebufferSize,
-                     framebufferSize.width,
-                     framebufferSize.height);
-        gl.uniform2f(this.coverProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
-        gl.uniform1i(this.coverProgram.uniforms.StencilTexture, 0);
-        gl.uniform2f(this.coverProgram.uniforms.StencilTextureSize,
-                     STENCIL_FRAMEBUFFER_SIZE,
-                     STENCIL_FRAMEBUFFER_SIZE);
-        gl.blendEquation(gl.FUNC_ADD);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.enable(gl.BLEND);
-        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, scene.tiles.length);
-        gl.disable(gl.BLEND);
+        this.primitiveCount = primitiveCount;
+        console.log(primitiveCount + " primitives");
     }
 }
 
@@ -350,9 +398,13 @@ class Scene {
                 a: Math.round(color[3] * 255.),
             });
 
-            let path =
-                SVGPath(unwrapNull(pathElement.getAttribute('d'))).translate(GLOBAL_OFFSET.x,
-                                                                             GLOBAL_OFFSET.y);
+            let path = SVGPath(unwrapNull(pathElement.getAttribute('d')));
+            path = path.matrix([
+                GLOBAL_TRANSFORM.a, GLOBAL_TRANSFORM.b,
+                GLOBAL_TRANSFORM.c, GLOBAL_TRANSFORM.d,
+                GLOBAL_TRANSFORM.tx, GLOBAL_TRANSFORM.ty,
+            ]);
+
             path = canonicalizePath(path);
             const boundingRect = this.boundingRectOfPath(path);
 
@@ -623,13 +675,28 @@ function cross(a: Vector3D, b: Vector3D): Vector3D {
     };
 }
 
+function waitForQuery(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, query: WebGLQuery):
+                      void {
+    const queryResultAvailable = disjointTimerQueryExt.QUERY_RESULT_AVAILABLE_EXT;
+    const queryResult = disjointTimerQueryExt.QUERY_RESULT_EXT;
+    if (!disjointTimerQueryExt.getQueryObjectEXT(query, queryResultAvailable)) {
+        setTimeout(() => waitForQuery(gl, disjointTimerQueryExt, query), 10);
+        return;
+    }
+    const elapsed = disjointTimerQueryExt.getQueryObjectEXT(query, queryResult) / 1000000.0;
+    console.log(elapsed + "ms elapsed");
+}
+
 function main(): void {
     window.fetch(SVG).then(svg => {
         svg.text().then(svgText => {
             const svg = staticCast((new DOMParser).parseFromString(svgText, 'image/svg+xml'),
                                    XMLDocument);
             try {
-                new App(svg).run();
+                const app = new App(svg);
+                app.buildScene();
+                app.prepare();
+                app.redraw();
             } catch (e) {
                 console.error("error", e, e.stack);
             }
