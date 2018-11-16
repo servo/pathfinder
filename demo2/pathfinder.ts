@@ -15,11 +15,12 @@ import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 
 const SVGPath: (path: string) => SVGPath = require('svgpath');
+const parseColor: (color: string) => any = require('parse-color');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
 const TILE_SIZE: number = 16.0;
-const STENCIL_FRAMEBUFFER_SIZE: number = TILE_SIZE * 256;
+const STENCIL_FRAMEBUFFER_SIZE: number = TILE_SIZE * 64;
 
 const GLOBAL_OFFSET: Point2D = {x: 200.0, y: 150.0};
 
@@ -37,10 +38,33 @@ interface SVGPath {
             SVGPath;
 }
 
-type Point2D = {x: number, y: number};
-type Size2D = {width: number, height: number};
-type Rect = {origin: Point2D, size: Size2D};
-type Vector3D = {x: number, y: number, z: number};
+interface Point2D {
+    x: number;
+    y: number;
+}
+
+interface Size2D {
+    width: number;
+    height: number;
+}
+
+interface Rect {
+    origin: Point2D;
+    size: Size2D;
+}
+
+interface Vector3D {
+    x: number;
+    y: number;
+    z: number;
+}
+
+interface Color {
+    r: number;
+    g: number;
+    b: number;
+    a: number;
+}
 
 type Edge = 'left' | 'top' | 'right' | 'bottom';
 
@@ -53,7 +77,7 @@ class App {
     private stencilFramebuffer: WebGLFramebuffer;
     private coverProgram:
         Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize',
-                'TessCoord' | 'TileOrigin' | 'TileIndex'>;
+                'TessCoord' | 'TileOrigin' | 'TileIndex' | 'Color'>;
     private stencilProgram: Program<'FramebufferSize' | 'TileSize', 'Position' | 'TileIndex'>;
     private quadVertexBuffer: WebGLBuffer;
     private stencilVertexPositionsBuffer: WebGLBuffer;
@@ -105,7 +129,7 @@ class App {
                                              'StencilTexture',
                                              'StencilTextureSize'
                                          ],
-                                         ['TessCoord', 'TileOrigin', 'TileIndex']);
+                                         ['TessCoord', 'TileOrigin', 'TileIndex', 'Color']);
         this.coverProgram = coverProgram;
 
         const stencilProgram = new Program(gl,
@@ -154,13 +178,16 @@ class App {
                                0,
                                0);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
-        gl.vertexAttribPointer(coverProgram.attributes.TileOrigin, 2, gl.SHORT, false, 6, 0);
+        gl.vertexAttribPointer(coverProgram.attributes.TileOrigin, 2, gl.SHORT, false, 10, 0);
         gl.vertexAttribDivisor(coverProgram.attributes.TileOrigin, 1);
-        gl.vertexAttribIPointer(coverProgram.attributes.TileIndex, 1, gl.UNSIGNED_SHORT, 6, 4);
+        gl.vertexAttribIPointer(coverProgram.attributes.TileIndex, 1, gl.UNSIGNED_SHORT, 10, 4);
         gl.vertexAttribDivisor(coverProgram.attributes.TileIndex, 1);
+        gl.vertexAttribPointer(coverProgram.attributes.Color, 4, gl.UNSIGNED_BYTE, true, 10, 6);
+        gl.vertexAttribDivisor(coverProgram.attributes.Color, 1);
         gl.enableVertexAttribArray(coverProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(coverProgram.attributes.TileOrigin);
         gl.enableVertexAttribArray(coverProgram.attributes.TileIndex);
+        gl.enableVertexAttribArray(coverProgram.attributes.Color);
 
         // TODO(pcwalton)
     }
@@ -168,14 +195,14 @@ class App {
     run(): void {
         const gl = this.gl, canvas = this.canvas;
 
-        const tiles = this.createTiles();
-        console.log(tiles.length, "tiles");
+        const scene = new Scene(this.svg);
+        console.log(scene.tiles.length, "tiles");
 
         // Construct stencil VBOs.
         let primitives = 0;
         const stencilVertexPositions: number[] = [], stencilVertexTileIndices: number[] = [];
-        for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
-            const tile = tiles[tileIndex];
+        for (let tileIndex = 0; tileIndex < scene.tiles.length; tileIndex++) {
+            const tile = scene.tiles[tileIndex];
             let lastPoint = {x: 0.0, y: 0.0};
             tile.path.iterate(segment => {
                 if (segment[0] === 'Z')
@@ -223,11 +250,15 @@ class App {
         gl.drawArrays(gl.LINES, 0, primitives * 2);
 
         // Populate the cover VBO.
-        const coverVertexBufferData = new Int16Array(tiles.length * 3);
-        for (let tileIndex = 0; tileIndex < tiles.length; tileIndex++) {
-            coverVertexBufferData[tileIndex * 3 + 0] = Math.floor(tiles[tileIndex].origin.x);
-            coverVertexBufferData[tileIndex * 3 + 1] = Math.floor(tiles[tileIndex].origin.y);
-            coverVertexBufferData[tileIndex * 3 + 2] = tileIndex;
+        const coverVertexBufferData = new Int16Array(scene.tiles.length * 5);
+        for (let tileIndex = 0; tileIndex < scene.tiles.length; tileIndex++) {
+            const tile = scene.tiles[tileIndex];
+            const color = scene.pathColors[tile.pathIndex];
+            coverVertexBufferData[tileIndex * 5 + 0] = Math.floor(tile.origin.x);
+            coverVertexBufferData[tileIndex * 5 + 1] = Math.floor(tile.origin.y);
+            coverVertexBufferData[tileIndex * 5 + 2] = tileIndex;
+            coverVertexBufferData[tileIndex * 5 + 3] = color.r | (color.g << 8);
+            coverVertexBufferData[tileIndex * 5 + 4] = color.b | (color.a << 8);
         }
         gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, coverVertexBufferData, gl.DYNAMIC_DRAW);
@@ -255,46 +286,44 @@ class App {
         gl.blendEquation(gl.FUNC_ADD);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.BLEND);
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, tiles.length);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, scene.tiles.length);
         gl.disable(gl.BLEND);
-
-        /*
-        for (const tile of tiles) {
-            const newSVG = staticCast(document.createElementNS(SVG_NS, 'svg'), SVGElement);
-            newSVG.setAttribute('class', "tile");
-            newSVG.style.left = (GLOBAL_OFFSET.x + tile.origin.x) + "px";
-            newSVG.style.top = (GLOBAL_OFFSET.y + tile.origin.y) + "px";
-            newSVG.style.width = TILE_SIZE + "px";
-            newSVG.style.height = TILE_SIZE + "px";
-
-            const newPath = document.createElementNS(SVG_NS, 'path');
-            newPath.setAttribute('d',
-                                tile.path
-                                    .translate(-tile.origin.x, -tile.origin.y)
-                                    .toString());
-
-            let color = "#";
-            for (let i = 0; i < 6; i++)
-                color += Math.floor(Math.random() * 16).toString(16);
-            newPath.setAttribute('fill', color);
-
-            newSVG.appendChild(newPath);
-            document.body.appendChild(newSVG);
-        }
-        */
     }
+}
 
-    private createTiles(): Tile[] {
-        const svgElement = unwrapNull(this.svg.documentElement).cloneNode(true);
+class Scene {
+    tiles: Tile[];
+    pathColors: Color[];
+
+    constructor(svg: XMLDocument) {
+        const svgElement = unwrapNull(svg.documentElement).cloneNode(true);
         document.body.appendChild(svgElement);
 
         const pathElements = Array.from(document.getElementsByTagName('path'));
-        const tiles: Tile[] = [];
+        const tiles: Tile[] = [], pathColors = [];
 
         for (let pathElementIndex = 0;
              pathElementIndex < pathElements.length;
              pathElementIndex++) {
             const pathElement = pathElements[pathElementIndex];
+
+            const style = window.getComputedStyle(pathElement);
+            let paint: string;
+            if (style.fill != null && style.fill !== 'none') {
+                paint = style.fill;
+            } else if (style.stroke != null && style.stroke !== 'none') {
+                paint = style.stroke;
+            } else {
+                pathColors.push({r: 0, g: 0, b: 0, a: 0});
+                continue;
+            }
+            const color = parseColor(paint).rgba;
+            pathColors.push({
+                r: color[0],
+                g: color[1],
+                b: color[2],
+                a: Math.round(color[3] * 255.),
+            });
 
             let path =
                 SVGPath(unwrapNull(pathElement.getAttribute('d'))).translate(GLOBAL_OFFSET.x,
@@ -307,6 +336,7 @@ class App {
                         boundingRect.origin.y,
                         boundingRect.size.width,
                         boundingRect.size.height);*/
+
 
             let y = boundingRect.origin.y - boundingRect.origin.y % TILE_SIZE;
             while (true) {
@@ -334,7 +364,26 @@ class App {
 
         document.body.removeChild(svgElement);
 
-        return tiles;
+        this.tiles = tiles;
+        this.pathColors = pathColors;
+    }
+
+    private boundingRectOfPath(path: SVGPath): Rect {
+        let minX: number | null = null, minY: number | null = null;
+        let maxX: number | null = null, maxY: number | null = null;
+        path.iterate(segment => {
+            for (let i = 1; i < segment.length; i += 2) {
+                const x = parseFloat(segment[i]), y = parseFloat(segment[i + 1]);
+                minX = minX == null ? x : Math.min(minX, x);
+                minY = minY == null ? y : Math.min(minY, y);
+                maxX = maxX == null ? x : Math.max(maxX, x);
+                maxY = maxY == null ? y : Math.max(maxY, y);
+                //console.log("x", x, "y", y, "maxX", maxX, "maxY", maxY, "segment", segment);
+            }
+        });
+        if (minX == null || minY == null || maxX == null || maxY == null)
+            return {origin: {x: 0, y: 0}, size: {width: 0, height: 0}};
+        return {origin: {x: minX, y: minY}, size: {width: maxX - minX, height: maxY - minY}};
     }
 
     private clipPathToRect(path: SVGPath, tileBounds: Rect): SVGPath {
@@ -435,35 +484,10 @@ class App {
             break;
         }
 
-        const intersection = this.cross(this.cross(start, end), edgeVector);
+        const intersection = cross(cross(start, end), edgeVector);
         return {x: intersection.x / intersection.z, y: intersection.y / intersection.z};
     }
 
-    private boundingRectOfPath(path: SVGPath): Rect {
-        let minX: number | null = null, minY: number | null = null;
-        let maxX: number | null = null, maxY: number | null = null;
-        path.iterate(segment => {
-            for (let i = 1; i < segment.length; i += 2) {
-                const x = parseFloat(segment[i]), y = parseFloat(segment[i + 1]);
-                minX = minX == null ? x : Math.min(minX, x);
-                minY = minY == null ? y : Math.min(minY, y);
-                maxX = maxX == null ? x : Math.max(maxX, x);
-                maxY = maxY == null ? y : Math.max(maxY, y);
-                //console.log("x", x, "y", y, "maxX", maxX, "maxY", maxY, "segment", segment);
-            }
-        });
-        if (minX == null || minY == null || maxX == null || maxY == null)
-            return {origin: {x: 0, y: 0}, size: {width: 0, height: 0}};
-        return {origin: {x: minX, y: minY}, size: {width: maxX - minX, height: maxY - minY}};
-    }
-
-    private cross(a: Vector3D, b: Vector3D): Vector3D {
-        return {
-            x: a.y*b.z - a.z*b.y,
-            y: a.z*b.x - a.x*b.z,
-            z: a.x*b.y - a.y*b.x,
-        };
-    }
 }
 
 class Tile {
@@ -540,6 +564,14 @@ function canonicalizePath(path: SVGPath): SVGPath {
             return [['L', '0', segment[1]]];
         return [segment];
     });
+}
+
+function cross(a: Vector3D, b: Vector3D): Vector3D {
+    return {
+        x: a.y*b.z - a.z*b.y,
+        y: a.z*b.x - a.x*b.z,
+        z: a.x*b.y - a.y*b.x,
+    };
 }
 
 function main(): void {

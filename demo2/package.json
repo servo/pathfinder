@@ -6,6 +6,7 @@
   },
   "dependencies": {
     "@types/webgl2": "0.0.4",
+    "parse-color": "^1.0.0",
     "svgpath": "^2.2.1"
   }
 }

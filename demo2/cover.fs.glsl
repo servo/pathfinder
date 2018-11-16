@@ -15,10 +15,11 @@ precision highp float;
 uniform sampler2D uStencilTexture;
 
 in vec2 vTexCoord;
+in vec4 vColor;
 
 out vec4 oFragColor;
 
 void main() {
     float coverage = texture(uStencilTexture, vTexCoord).r;
-    oFragColor = vec4(vec3(1.0 - coverage), coverage);
+    oFragColor = vColor * coverage;
 }
