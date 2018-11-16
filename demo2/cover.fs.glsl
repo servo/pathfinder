@@ -20,6 +20,6 @@ in vec4 vColor;
 out vec4 oFragColor;
 
 void main() {
-    float coverage = texture(uStencilTexture, vTexCoord).r;
-    oFragColor = vColor * coverage;
+    float coverage = abs(texture(uStencilTexture, vTexCoord).r);
+    oFragColor = vec4(vColor.rgb, vColor.a * coverage);
 }

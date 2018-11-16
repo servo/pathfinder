@@ -27,8 +27,8 @@ const GLOBAL_OFFSET: Point2D = {x: 200.0, y: 150.0};
 const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     0, 0,
     1, 0,
-    0, 1,
     1, 1,
+    0, 1,
 ]);
 
 interface SVGPath {
@@ -78,7 +78,8 @@ class App {
     private coverProgram:
         Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize',
                 'TessCoord' | 'TileOrigin' | 'TileIndex' | 'Color'>;
-    private stencilProgram: Program<'FramebufferSize' | 'TileSize', 'Position' | 'TileIndex'>;
+    private stencilProgram: Program<'FramebufferSize' | 'TileSize',
+                                    'TessCoord' | 'From' | 'To' | 'TileIndex'>;
     private quadVertexBuffer: WebGLBuffer;
     private stencilVertexPositionsBuffer: WebGLBuffer;
     private stencilVertexTileIndicesBuffer: WebGLBuffer;
@@ -136,7 +137,7 @@ class App {
                                            STENCIL_VERTEX_SHADER_SOURCE,
                                            STENCIL_FRAGMENT_SHADER_SOURCE,
                                            ['FramebufferSize', 'TileSize'],
-                                           ['Position', 'TileIndex']);
+                                           ['TessCoord', 'From', 'To', 'TileIndex']);
         this.stencilProgram = stencilProgram;
 
         // Initialize quad VBO.
@@ -152,15 +153,28 @@ class App {
         this.stencilVertexArray = unwrapNull(gl.createVertexArray());
         gl.bindVertexArray(this.stencilVertexArray);
         gl.useProgram(this.stencilProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
+        gl.vertexAttribPointer(stencilProgram.attributes.TessCoord,
+                               2,
+                               gl.UNSIGNED_BYTE,
+                               false,
+                               0,
+                               0);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexPositionsBuffer);
-        gl.vertexAttribPointer(stencilProgram.attributes.Position, 2, gl.FLOAT, false, 0, 0);
+        gl.vertexAttribPointer(stencilProgram.attributes.From, 2, gl.FLOAT, false, 16, 0);
+        gl.vertexAttribDivisor(stencilProgram.attributes.From, 1);
+        gl.vertexAttribPointer(stencilProgram.attributes.To, 2, gl.FLOAT, false, 16, 8);
+        gl.vertexAttribDivisor(stencilProgram.attributes.To, 1);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexTileIndicesBuffer);
         gl.vertexAttribIPointer(stencilProgram.attributes.TileIndex,
                                 1,
                                 gl.UNSIGNED_SHORT,
                                 0,
                                 0);
-        gl.enableVertexAttribArray(stencilProgram.attributes.Position);
+        gl.vertexAttribDivisor(stencilProgram.attributes.TileIndex, 1);
+        gl.enableVertexAttribArray(stencilProgram.attributes.TessCoord);
+        gl.enableVertexAttribArray(stencilProgram.attributes.From);
+        gl.enableVertexAttribArray(stencilProgram.attributes.To);
         gl.enableVertexAttribArray(stencilProgram.attributes.TileIndex);
 
         // Initialize cover VBO.
@@ -221,7 +235,7 @@ class App {
                     throw new Error("y too high");
                 if (segment[0] !== 'M') {
                     stencilVertexPositions.push(lastPoint.x, lastPoint.y, point.x, point.y);
-                    stencilVertexTileIndices.push(tileIndex, tileIndex);
+                    stencilVertexTileIndices.push(tileIndex);
                     primitives++;
                 }
                 lastPoint = point;
@@ -247,7 +261,11 @@ class App {
                      STENCIL_FRAMEBUFFER_SIZE,
                      STENCIL_FRAMEBUFFER_SIZE);
         gl.uniform2f(this.stencilProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
-        gl.drawArrays(gl.LINES, 0, primitives * 2);
+        gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.enable(gl.BLEND);
+        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, primitives);
+        gl.disable(gl.BLEND);
 
         // Populate the cover VBO.
         const coverVertexBufferData = new Int16Array(scene.tiles.length * 5);
@@ -286,7 +304,7 @@ class App {
         gl.blendEquation(gl.FUNC_ADD);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.BLEND);
-        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, scene.tiles.length);
+        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, scene.tiles.length);
         gl.disable(gl.BLEND);
     }
 }
@@ -311,8 +329,8 @@ class Scene {
             let paint: string;
             if (style.fill != null && style.fill !== 'none') {
                 paint = style.fill;
-            } else if (style.stroke != null && style.stroke !== 'none') {
-                paint = style.stroke;
+            /*} else if (style.stroke != null && style.stroke !== 'none') {
+                paint = style.stroke;*/
             } else {
                 pathColors.push({r: 0, g: 0, b: 0, a: 0});
                 continue;

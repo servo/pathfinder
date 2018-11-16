@@ -15,7 +15,9 @@ precision highp float;
 uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
 
-in vec2 aPosition;
+in vec2 aTessCoord;
+in vec2 aFrom;
+in vec2 aTo;
 in uint aTileIndex;
 
 vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
@@ -25,6 +27,11 @@ vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
 }
 
 void main() {
-    vec2 position = computeTileOffset(aTileIndex, uFramebufferSize.x) + aPosition;
-    gl_Position = vec4(position / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
+    vec2 tileOrigin = computeTileOffset(aTileIndex, uFramebufferSize.x);
+
+    vec2 offset = aTessCoord.x < 0.5 ? aFrom : aTo;
+    if (aTessCoord.y > 0.5)
+        offset.y = uTileSize.y;
+
+    gl_Position = vec4((tileOrigin + offset) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
 }

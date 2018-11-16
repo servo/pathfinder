@@ -15,5 +15,6 @@ precision highp float;
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = vec4(1.0, 1.0, 1.0, 1.0);
+    float coverage = gl_FrontFacing ? 1.0 : -1.0;
+    oFragColor = vec4(coverage);
 }
