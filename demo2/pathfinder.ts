@@ -425,6 +425,7 @@ class Scene {
                 GLOBAL_TRANSFORM.tx, GLOBAL_TRANSFORM.ty,
             ]);
 
+            path = flattenPath(path);
             path = canonicalizePath(path);
             const boundingRect = this.boundingRectOfPath(path);
 
@@ -675,6 +676,34 @@ class Program<U extends string, A extends string> {
         }
         this.attributes = attributes as {[key in A]: number};
     }
+}
+
+class PathSegment {
+    command: string;
+    points: Point2D[];
+
+    constructor(segment: string[]) {
+        const points = [];
+        for (let i = 1; i < segment.length; i += 2)
+            points.push(new Point2D(parseFloat(segment[i]), parseFloat(segment[i + 1])));
+        this.points = points;
+        this.command = segment[0];
+    }
+}
+
+function flattenPath(path: SVGPath): SVGPath {
+    return path.abs().iterate(segment => {
+        if (segment[0] === 'Q')
+            return [['L', segment[1], segment[2]], ['L', segment[3], segment[4]]];
+        if (segment[0] === 'C') {
+            return [
+                ['L', segment[1], segment[2]],
+                ['L', segment[3], segment[4]],
+                ['L', segment[5], segment[6]],
+            ];
+        }
+        return [segment];
+    });
 }
 
 function canonicalizePath(path: SVGPath): SVGPath {
