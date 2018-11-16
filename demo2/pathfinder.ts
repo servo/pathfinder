@@ -29,6 +29,8 @@ const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     0, 1,
 ]);
 
+const EPSILON: number = 1e-6;
+
 interface SVGPath {
     abs(): SVGPath;
     translate(x: number, y: number): SVGPath;
@@ -37,9 +39,18 @@ interface SVGPath {
             SVGPath;
 }
 
-interface Point2D {
+class Point2D {
     x: number;
     y: number;
+
+    constructor(x: number, y: number) {
+        this.x = x;
+        this.y = y;
+    }
+
+    approxEq(other: Point2D): boolean {
+        return Math.abs(this.x - other.x) <= EPSILON && Math.abs(this.y - other.y) <= EPSILON;
+    }
 }
 
 interface Size2D {
@@ -228,6 +239,9 @@ class App {
         gl.enableVertexAttribArray(coverProgram.attributes.TileIndex);
         gl.enableVertexAttribArray(coverProgram.attributes.Color);
 
+        // Set up event handlers.
+        this.canvas.addEventListener('click', event => this.onClick(event), false);
+
         this.scene = null;
         this.primitiveCount = 0;
     }
@@ -312,11 +326,12 @@ class App {
                     point = firstPoint;
                 } else {
                     point = {
-                        x: parseFloat(segment[segment.length - 2]) - tile.origin.x,
-                        y: parseFloat(segment[segment.length - 1]) - tile.origin.y,
+                        x: parseFloat(segment[segment.length - 2]),
+                        y: parseFloat(segment[segment.length - 1]),
                     };
                 }
 
+                /*
                 if (!(point.x > -1.0))
                     throw new Error("x too low");
                 if (!(point.y > -1.0))
@@ -325,6 +340,7 @@ class App {
                     throw new Error("x too high:" + point.x);
                 if (!(point.y < TILE_SIZE + 1.0))
                     throw new Error("y too high");
+                    */
 
                 if (segment[0] === 'M') {
                     firstPoint = point;
@@ -361,6 +377,10 @@ class App {
 
         this.primitiveCount = primitiveCount;
         console.log(primitiveCount + " primitives");
+    }
+
+    private onClick(event: MouseEvent): void {
+        this.redraw();
     }
 }
 
@@ -420,13 +440,16 @@ class Scene {
                 let x = boundingRect.origin.x - boundingRect.origin.x % TILE_SIZE;
                 while (true) {
                     const tileBounds = {
-                        origin: {x, y},
+                        origin: new Point2D(x, y),
                         size: {width: TILE_SIZE, height: TILE_SIZE},
                     };
                     const tilePath = this.clipPathToRect(path, tileBounds);
 
-                    if (tilePath.toString().length > 0)
-                        tiles.push(new Tile(pathElementIndex, tilePath, tileBounds.origin));
+                    if (tilePath.toString().length > 0) {
+                        tilePath.translate(-tileBounds.origin.x, -tileBounds.origin.y);
+                        if (!pathIsSquare(tilePath, TILE_SIZE))
+                            tiles.push(new Tile(pathElementIndex, tilePath, tileBounds.origin));
+                    }
 
                     if (x >= boundingRect.origin.x + boundingRect.size.width)
                         break;
@@ -465,6 +488,7 @@ class Scene {
 
         document.body.removeChild(svgElement);
 
+        console.log(tiles);
         this.tiles = tiles;
         this.pathColors = pathColors;
     }
@@ -483,8 +507,8 @@ class Scene {
             }
         });
         if (minX == null || minY == null || maxX == null || maxY == null)
-            return {origin: {x: 0, y: 0}, size: {width: 0, height: 0}};
-        return {origin: {x: minX, y: minY}, size: {width: maxX - minX, height: maxY - minY}};
+            return {origin: new Point2D(0, 0), size: {width: 0, height: 0}};
+        return {origin: new Point2D(minX, minY), size: {width: maxX - minX, height: maxY - minY}};
     }
 
     private clipPathToRect(path: SVGPath, tileBounds: Rect): SVGPath {
@@ -496,17 +520,15 @@ class Scene {
     }
 
     private clipPathToEdge(edge: Edge, edgePos: number, input: SVGPath): SVGPath {
-        let pathStart: Point2D | null = null, from = {x: 0, y: 0}, firstPoint = false;
+        let pathStart: Point2D | null = null, from = new Point2D(0, 0), firstPoint = false;
         let output: string[][] = [];
         input.iterate(segment => {
             const event = segment[0];
             let to;
             switch (event) {
             case 'M':
-                from = {
-                    x: parseFloat(segment[segment.length - 2]),
-                    y: parseFloat(segment[segment.length - 1]),
-                };
+                from = new Point2D(parseFloat(segment[segment.length - 2]),
+                                   parseFloat(segment[segment.length - 1]));
                 pathStart = from;
                 firstPoint = true;
                 return;
@@ -516,10 +538,8 @@ class Scene {
                 to = pathStart;
                 break;
             default:
-                to = {
-                    x: parseFloat(segment[segment.length - 2]),
-                    y: parseFloat(segment[segment.length - 1]),
-                };
+                to = new Point2D(parseFloat(segment[segment.length - 2]),
+                                 parseFloat(segment[segment.length - 1]));
                 break;
             }
 
@@ -586,7 +606,7 @@ class Scene {
         }
 
         const intersection = cross(cross(start, end), edgeVector);
-        return {x: intersection.x / intersection.z, y: intersection.y / intersection.z};
+        return new Point2D(intersection.x / intersection.z, intersection.y / intersection.z);
     }
 
 }
@@ -685,6 +705,30 @@ function waitForQuery(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, qu
     }
     const elapsed = disjointTimerQueryExt.getQueryObjectEXT(query, queryResult) / 1000000.0;
     console.log(elapsed + "ms elapsed");
+}
+
+function pathIsSquare(path: SVGPath, squareLength: number): boolean {
+    const SQUARE_VERTICES = [
+        new Point2D(0.0, 0.0),
+        new Point2D(0.0, squareLength),
+        new Point2D(squareLength, squareLength),
+        new Point2D(squareLength, 0.0),
+    ];
+    let result = true;
+    path.iterate((segment, index) => {
+        if (index < SQUARE_VERTICES.length) {
+            const point = new Point2D(parseFloat(segment[1]), parseFloat(segment[2]));
+            result = result && point.approxEq(SQUARE_VERTICES[index]);
+        } else if (index === SQUARE_VERTICES.length) {
+            const point = new Point2D(parseFloat(segment[1]), parseFloat(segment[2]));
+            result = result && (segment[0] === 'Z' || point.approxEq(SQUARE_VERTICES[0]));
+        } else if (index === SQUARE_VERTICES.length + 1) {
+            result = result && segment[0] === 'Z';
+        } else {
+            result = false;
+        }
+    });
+    return result;
 }
 
 function main(): void {
