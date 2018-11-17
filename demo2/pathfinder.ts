@@ -13,6 +13,7 @@ import COVER_FRAGMENT_SHADER_SOURCE from "./cover.fs.glsl";
 import STENCIL_VERTEX_SHADER_SOURCE from "./stencil.vs.glsl";
 import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
+import AREA_LUT from "../resources/textures/area-lut.png";
 
 const SVGPath: (path: string) => SVGPath = require('svgpath');
 const parseColor: (color: string) => any = require('parse-color');
@@ -95,16 +96,18 @@ type Edge = 'left' | 'top' | 'right' | 'bottom';
 class App {
     private canvas: HTMLCanvasElement;
     private svg: XMLDocument;
+    private areaLUT: HTMLImageElement;
 
     private gl: WebGL2RenderingContext;
     private disjointTimerQueryExt: any;
+    private areaLUTTexture: WebGLTexture;
     private stencilTexture: WebGLTexture;
     private stencilFramebuffer: WebGLFramebuffer;
+    private stencilProgram: Program<'FramebufferSize' | 'TileSize' | 'AreaLUT',
+                                    'TessCoord' | 'From' | 'To' | 'TileIndex'>;
     private coverProgram:
         Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize',
                 'TessCoord' | 'TileOrigin' | 'TileIndex' | 'Color'>;
-    private stencilProgram: Program<'FramebufferSize' | 'TileSize',
-                                    'TessCoord' | 'From' | 'To' | 'TileIndex'>;
     private quadVertexBuffer: WebGLBuffer;
     private stencilVertexPositionsBuffer: WebGLBuffer;
     private stencilVertexTileIndicesBuffer: WebGLBuffer;
@@ -115,10 +118,11 @@ class App {
     private scene: Scene | null;
     private primitiveCount: number | null;
 
-    constructor(svg: XMLDocument) {
+    constructor(svg: XMLDocument, areaLUT: HTMLImageElement) {
         const canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
         this.canvas = canvas;
         this.svg = svg;
+        this.areaLUT = areaLUT;
 
         const devicePixelRatio = window.devicePixelRatio;
         canvas.width = window.innerWidth * devicePixelRatio;
@@ -130,6 +134,14 @@ class App {
         this.gl = gl;
         gl.getExtension('EXT_color_buffer_float');
         this.disjointTimerQueryExt = gl.getExtension('EXT_disjoint_timer_query');
+
+        this.areaLUTTexture = unwrapNull(gl.createTexture());
+        gl.bindTexture(gl.TEXTURE_2D, this.areaLUTTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, areaLUT);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
         this.stencilTexture = unwrapNull(gl.createTexture());
         gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
@@ -172,7 +184,7 @@ class App {
         const stencilProgram = new Program(gl,
                                            STENCIL_VERTEX_SHADER_SOURCE,
                                            STENCIL_FRAGMENT_SHADER_SOURCE,
-                                           ['FramebufferSize', 'TileSize'],
+                                           ['FramebufferSize', 'TileSize', 'AreaLUT'],
                                            ['TessCoord', 'From', 'To', 'TileIndex']);
         this.stencilProgram = stencilProgram;
 
@@ -268,6 +280,9 @@ class App {
                      STENCIL_FRAMEBUFFER_SIZE,
                      STENCIL_FRAMEBUFFER_SIZE);
         gl.uniform2f(this.stencilProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.areaLUTTexture);
+        gl.uniform1i(this.stencilProgram.uniforms.AreaLUT, 0);
         gl.blendEquation(gl.FUNC_ADD);
         gl.blendFunc(gl.ONE, gl.ONE);
         gl.enable(gl.BLEND);
@@ -317,10 +332,15 @@ class App {
         // Construct stencil VBOs.
         let primitiveCount = 0;
         const stencilVertexPositions: number[] = [], stencilVertexTileIndices: number[] = [];
+        const primitiveCountHistogram: number[] = [];
         for (let tileIndex = 0; tileIndex < scene.tiles.length; tileIndex++) {
             const tile = scene.tiles[tileIndex];
             let firstPoint = {x: 0.0, y: 0.0}, lastPoint = {x: 0.0, y: 0.0};
+            let primitiveCountForThisTile = 0;
             tile.path.iterate(segment => {
+                /*if (primitiveCountForThisTile > 0)
+                    return;*/
+
                 let point;
                 if (segment[0] === 'Z') {
                     point = firstPoint;
@@ -348,11 +368,17 @@ class App {
                     stencilVertexPositions.push(lastPoint.x, lastPoint.y, point.x, point.y);
                     stencilVertexTileIndices.push(tileIndex);
                     primitiveCount++;
+                    primitiveCountForThisTile++;
                 }
                 lastPoint = point;
             });
+
+            if (primitiveCountHistogram[primitiveCountForThisTile] == null)
+                primitiveCountHistogram[primitiveCountForThisTile] = 0;
+            primitiveCountHistogram[primitiveCountForThisTile]++;
         }
         console.log(stencilVertexPositions);
+        console.log("histogram", primitiveCountHistogram);
 
         // Populate the stencil VBOs.
         gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexPositionsBuffer);
@@ -434,7 +460,6 @@ class Scene {
                         boundingRect.origin.y,
                         boundingRect.size.width,
                         boundingRect.size.height);*/
-
 
             let y = boundingRect.origin.y - boundingRect.origin.y % TILE_SIZE;
             while (true) {
@@ -626,7 +651,7 @@ class Tile {
 
 class Program<U extends string, A extends string> {
     program: WebGLProgram;
-    uniforms: {[key in U]: WebGLUniformLocation};
+    uniforms: {[key in U]: WebGLUniformLocation | null};
     attributes: {[key in A]: number};
 
     private vertexShader: WebGLShader;
@@ -662,12 +687,10 @@ class Program<U extends string, A extends string> {
             throw new Error("Program linking failed!");
         }
 
-        const uniforms: {[key in U]?: WebGLUniformLocation} = {};
-        for (const uniformName of uniformNames) {
-            uniforms[uniformName] = unwrapNull(gl.getUniformLocation(this.program,
-                                                                     "u" + uniformName));
-        }
-        this.uniforms = uniforms as {[key in U]: WebGLUniformLocation};
+        const uniforms: {[key in U]?: WebGLUniformLocation | null} = {};
+        for (const uniformName of uniformNames)
+            uniforms[uniformName] = gl.getUniformLocation(this.program, "u" + uniformName);
+        this.uniforms = uniforms as {[key in U]: WebGLUniformLocation | null};
 
         const attributes: {[key in A]?: number} = {};
         for (const attributeName of attributeNames) {
@@ -765,14 +788,18 @@ function main(): void {
         svg.text().then(svgText => {
             const svg = staticCast((new DOMParser).parseFromString(svgText, 'image/svg+xml'),
                                    XMLDocument);
-            try {
-                const app = new App(svg);
-                app.buildScene();
-                app.prepare();
-                app.redraw();
-            } catch (e) {
-                console.error("error", e, e.stack);
-            }
+            const image = new Image;
+            image.src = AREA_LUT;
+            image.addEventListener('load', event => {
+                try {
+                    const app = new App(svg, image);
+                    app.buildScene();
+                    app.prepare();
+                    app.redraw();
+                } catch (e) {
+                    console.error("error", e, e.stack);
+                }
+            }, false);
         });
     });
 }
