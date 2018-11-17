@@ -21,7 +21,7 @@ const parseColor: (color: string) => any = require('parse-color');
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
 const TILE_SIZE: number = 32.0;
-const STENCIL_FRAMEBUFFER_SIZE: number = TILE_SIZE * 128;
+const STENCIL_FRAMEBUFFER_SIZE: number = TILE_SIZE * 256;
 
 const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     0, 0,
@@ -50,7 +50,7 @@ class Point2D {
     }
 
     approxEq(other: Point2D): boolean {
-        return Math.abs(this.x - other.x) <= EPSILON && Math.abs(this.y - other.y) <= EPSILON;
+        return approxEq(this.x, other.x) && approxEq(this.y, other.y);
     }
 }
 
@@ -289,6 +289,35 @@ class App {
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(this.primitiveCount));
         gl.disable(gl.BLEND);
 
+        /*
+        // Read back stencil and dump it.
+        const stencilData =
+            new Float32Array(STENCIL_FRAMEBUFFER_SIZE * STENCIL_FRAMEBUFFER_SIZE * 4);
+        gl.readPixels(0, 0,
+                      STENCIL_FRAMEBUFFER_SIZE, STENCIL_FRAMEBUFFER_SIZE,
+                      gl.RGBA,
+                      gl.FLOAT,
+                      stencilData);
+        const stencilDumpData = new
+            Uint8ClampedArray(STENCIL_FRAMEBUFFER_SIZE * STENCIL_FRAMEBUFFER_SIZE * 4);
+        for (let i = 0; i < stencilData.length; i++)
+            stencilDumpData[i] = stencilData[i] * 255.0;
+        const stencilDumpCanvas = document.createElement('canvas');
+        stencilDumpCanvas.width = STENCIL_FRAMEBUFFER_SIZE;
+        stencilDumpCanvas.height = STENCIL_FRAMEBUFFER_SIZE;
+        stencilDumpCanvas.style.width = (STENCIL_FRAMEBUFFER_SIZE / window.devicePixelRatio) +
+            "px";
+        stencilDumpCanvas.style.height = (STENCIL_FRAMEBUFFER_SIZE / window.devicePixelRatio) +
+            "px";
+        const stencilDumpCanvasContext = unwrapNull(stencilDumpCanvas.getContext('2d'));
+        const stencilDumpImageData = new ImageData(stencilDumpData,
+                                                   STENCIL_FRAMEBUFFER_SIZE,
+                                                   STENCIL_FRAMEBUFFER_SIZE);
+        stencilDumpCanvasContext.putImageData(stencilDumpImageData, 0, 0);
+        document.body.appendChild(stencilDumpCanvas);
+        //console.log(stencilData);
+        */
+
         // Cover.
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         const framebufferSize = {width: canvas.width, height: canvas.height};
@@ -473,8 +502,16 @@ class Scene {
 
                     if (tilePath.toString().length > 0) {
                         tilePath.translate(-tileBounds.origin.x, -tileBounds.origin.y);
-                        if (!pathIsSquare(tilePath, TILE_SIZE))
+                        if (!pathIsSquare(tilePath, TILE_SIZE)) {
+                            /*
+                            let segmentCount = 0;
+                            tilePath.iterate(() => { segmentCount++; return; });
+                            if (segmentCount === 4 || segmentCount === 5)
+                                console.log("suspicious path: ", tilePath);
+                            */
+
                             tiles.push(new Tile(pathElementIndex, tilePath, tileBounds.origin));
+                        }
                     }
 
                     if (x >= boundingRect.origin.x + boundingRect.size.width)
@@ -759,26 +796,19 @@ function waitForQuery(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, qu
     console.log(elapsed + "ms elapsed");
 }
 
+function approxEq(a: number, b: number): boolean {
+    return Math.abs(a - b) <= EPSILON;
+}
+
 function pathIsSquare(path: SVGPath, squareLength: number): boolean {
-    const SQUARE_VERTICES = [
-        new Point2D(0.0, 0.0),
-        new Point2D(0.0, squareLength),
-        new Point2D(squareLength, squareLength),
-        new Point2D(squareLength, 0.0),
-    ];
     let result = true;
     path.iterate((segment, index) => {
-        if (index < SQUARE_VERTICES.length) {
-            const point = new Point2D(parseFloat(segment[1]), parseFloat(segment[2]));
-            result = result && point.approxEq(SQUARE_VERTICES[index]);
-        } else if (index === SQUARE_VERTICES.length) {
-            const point = new Point2D(parseFloat(segment[1]), parseFloat(segment[2]));
-            result = result && (segment[0] === 'Z' || point.approxEq(SQUARE_VERTICES[0]));
-        } else if (index === SQUARE_VERTICES.length + 1) {
-            result = result && segment[0] === 'Z';
-        } else {
-            result = false;
-        }
+        if (segment.length < 3)
+            return;
+        const point = new Point2D(parseFloat(segment[1]), parseFloat(segment[2]));
+        result = result &&
+            (approxEq(point.x, 0.0) || approxEq(point.x, squareLength)) &&
+            (approxEq(point.y, 0.0) || approxEq(point.y, squareLength));
     });
     return result;
 }
