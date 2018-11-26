@@ -17,6 +17,7 @@ uniform vec2 uTileSize;
 
 in vec2 aTessCoord;
 in vec2 aFrom;
+in vec2 aCtrl;
 in vec2 aTo;
 in uint aTileIndex;
 
@@ -33,7 +34,7 @@ vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
 void main() {
     vec2 tileOrigin = computeTileOffset(aTileIndex, uFramebufferSize.x);
 
-    vec2 from = aFrom, ctrl = mix(aFrom, aTo, 0.5), to = aTo;
+    vec2 from = aFrom, ctrl = aCtrl, to = aTo;
 
     vec2 dilation, position;
     bool zeroArea = abs(from.x - to.x) < 0.01;
@@ -53,9 +54,9 @@ void main() {
     }
     position += dilation;
 
-    vFrom = aFrom - position;
-    vCtrl = mix(aFrom, aTo, 0.5) - position;
-    vTo = aTo - position;
+    vFrom = from - position;
+    vCtrl = ctrl - position;
+    vTo = to - position;
 
     gl_Position = vec4((tileOrigin + position) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
 }

@@ -52,6 +52,10 @@ class Point2D {
     approxEq(other: Point2D): boolean {
         return approxEq(this.x, other.x) && approxEq(this.y, other.y);
     }
+
+    lerp(other: Point2D, t: number): Point2D {
+        return new Point2D(lerp(this.x, other.x, t), lerp(this.y, other.y, t));
+    }
 }
 
 interface Size2D {
@@ -104,7 +108,7 @@ class App {
     private stencilTexture: WebGLTexture;
     private stencilFramebuffer: WebGLFramebuffer;
     private stencilProgram: Program<'FramebufferSize' | 'TileSize' | 'AreaLUT',
-                                    'TessCoord' | 'From' | 'To' | 'TileIndex'>;
+                                    'TessCoord' | 'From' | 'Ctrl' | 'To' | 'TileIndex'>;
     private coverProgram:
         Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize',
                 'TessCoord' | 'TileOrigin' | 'TileIndex' | 'Color'>;
@@ -185,7 +189,7 @@ class App {
                                            STENCIL_VERTEX_SHADER_SOURCE,
                                            STENCIL_FRAGMENT_SHADER_SOURCE,
                                            ['FramebufferSize', 'TileSize', 'AreaLUT'],
-                                           ['TessCoord', 'From', 'To', 'TileIndex']);
+                                           ['TessCoord', 'From', 'Ctrl', 'To', 'TileIndex']);
         this.stencilProgram = stencilProgram;
 
         // Initialize quad VBO.
@@ -209,9 +213,11 @@ class App {
                                0,
                                0);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexPositionsBuffer);
-        gl.vertexAttribPointer(stencilProgram.attributes.From, 2, gl.FLOAT, false, 16, 0);
+        gl.vertexAttribPointer(stencilProgram.attributes.From, 2, gl.FLOAT, false, 24, 0);
         gl.vertexAttribDivisor(stencilProgram.attributes.From, 1);
-        gl.vertexAttribPointer(stencilProgram.attributes.To, 2, gl.FLOAT, false, 16, 8);
+        gl.vertexAttribPointer(stencilProgram.attributes.Ctrl, 2, gl.FLOAT, false, 24, 8);
+        gl.vertexAttribDivisor(stencilProgram.attributes.Ctrl, 1);
+        gl.vertexAttribPointer(stencilProgram.attributes.To, 2, gl.FLOAT, false, 24, 16);
         gl.vertexAttribDivisor(stencilProgram.attributes.To, 1);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexTileIndicesBuffer);
         gl.vertexAttribIPointer(stencilProgram.attributes.TileIndex,
@@ -222,6 +228,7 @@ class App {
         gl.vertexAttribDivisor(stencilProgram.attributes.TileIndex, 1);
         gl.enableVertexAttribArray(stencilProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(stencilProgram.attributes.From);
+        gl.enableVertexAttribArray(stencilProgram.attributes.Ctrl);
         gl.enableVertexAttribArray(stencilProgram.attributes.To);
         gl.enableVertexAttribArray(stencilProgram.attributes.TileIndex);
 
@@ -364,7 +371,7 @@ class App {
         const primitiveCountHistogram: number[] = [];
         for (let tileIndex = 0; tileIndex < scene.tiles.length; tileIndex++) {
             const tile = scene.tiles[tileIndex];
-            let firstPoint = {x: 0.0, y: 0.0}, lastPoint = {x: 0.0, y: 0.0};
+            let firstPoint = new Point2D(0.0, 0.0), lastPoint = new Point2D(0.0, 0.0);
             let primitiveCountForThisTile = 0;
             tile.path.iterate(segment => {
                 /*if (primitiveCountForThisTile > 0)
@@ -374,10 +381,8 @@ class App {
                 if (segment[0] === 'Z') {
                     point = firstPoint;
                 } else {
-                    point = {
-                        x: parseFloat(segment[segment.length - 2]),
-                        y: parseFloat(segment[segment.length - 1]),
-                    };
+                    point = new Point2D(parseFloat(segment[segment.length - 2]),
+                                        parseFloat(segment[segment.length - 1]));
                 }
 
                 /*
@@ -393,8 +398,20 @@ class App {
 
                 if (segment[0] === 'M') {
                     firstPoint = point;
+                } else if (segment[0] === 'Q') {
+                    const ctrl = new Point2D(parseFloat(segment[segment.length - 4]),
+                                             parseFloat(segment[segment.length - 3]));
+                    stencilVertexPositions.push(lastPoint.x, lastPoint.y,
+                                                ctrl.x, ctrl.y,
+                                                point.x, point.y);
+                    stencilVertexTileIndices.push(tileIndex);
+                    primitiveCount++;
+                    primitiveCountForThisTile++;
                 } else {
-                    stencilVertexPositions.push(lastPoint.x, lastPoint.y, point.x, point.y);
+                    const ctrl = lastPoint.lerp(point, 0.5);
+                    stencilVertexPositions.push(lastPoint.x, lastPoint.y,
+                                                ctrl.x, ctrl.y,
+                                                point.x, point.y);
                     stencilVertexTileIndices.push(tileIndex);
                     primitiveCount++;
                     primitiveCountForThisTile++;
@@ -587,7 +604,7 @@ class Scene {
         let output: string[][] = [];
         input.iterate(segment => {
             const event = segment[0];
-            let to;
+            let ctrl: Point2D | null = null, to;
             switch (event) {
             case 'M':
                 from = new Point2D(parseFloat(segment[segment.length - 2]),
@@ -600,6 +617,10 @@ class Scene {
                     return;
                 to = pathStart;
                 break;
+            case 'Q':
+                ctrl = new Point2D(parseFloat(segment[segment.length - 4]),
+                                   parseFloat(segment[segment.length - 3]));
+                // fallthrough
             default:
                 to = new Point2D(parseFloat(segment[segment.length - 2]),
                                  parseFloat(segment[segment.length - 1]));
@@ -608,17 +629,14 @@ class Scene {
 
             if (this.pointIsInside(edge, edgePos, to)) {
                 if (!this.pointIsInside(edge, edgePos, from)) {
-                    this.addLine(this.computeLineIntersection(edge, edgePos, from, to),
-                                 output,
-                                 firstPoint);
+                    this.addClippedLine(from, ctrl, to, edge, edgePos, output, firstPoint);
                     firstPoint = false;
                 }
+                // FIXME(pcwalton): Is this right?
                 this.addLine(to, output, firstPoint);
                 firstPoint = false;
             } else if (this.pointIsInside(edge, edgePos, from)) {
-                this.addLine(this.computeLineIntersection(edge, edgePos, from, to),
-                             output,
-                             firstPoint);
+                this.addClippedLine(from, ctrl, to, edge, edgePos, output, firstPoint);
                 firstPoint = false;
             }
 
@@ -631,6 +649,47 @@ class Scene {
         });
 
         return SVGPath(output.map(segment => segment.join(" ")).join(" "));
+    }
+
+    private addClippedLine(from: Point2D,
+                           ctrl: Point2D | null,
+                           to: Point2D,
+                           edge: Edge,
+                           edgePos: number,
+                           output: string[][],
+                           firstPoint: boolean):
+                           void {
+        if (ctrl == null) {
+            if (edge === 'left' || edge === 'right')
+                to = this.computeLineIntersectionX(edgePos, from, to);
+            else
+                to = this.computeLineIntersectionY(edgePos, from, to);
+        } else {
+            let minT = 0.0, maxT = 1.0;
+            while (maxT - minT > 1e-3) {
+                const midT = lerp(minT, maxT, 0.5);
+                const point = sampleBezier(from, ctrl, to, midT);
+                const diff = ((edge === 'left' || edge === 'right') ? point.x : point.y) - edgePos;
+                if (diff < 0.0)
+                    maxT = midT;
+                else if (diff > 0.0)
+                    minT = midT;
+                else
+                    break;
+            }
+
+            const midT = lerp(minT, maxT, 0.5);
+            const newCtrl = from.lerp(ctrl, midT);
+            to = sampleBezier(from, ctrl, to, midT);
+            ctrl = newCtrl;
+        }
+
+        if (firstPoint)
+            output.push(['M', "" + to.x, "" + to.y]);
+        else if (ctrl == null)
+            output.push(['L', "" + to.x, "" + to.y]);
+        else
+            output.push(['Q', "" + ctrl.x, "" + ctrl.y, "" + to.x, "" + to.y]);
     }
 
     private addLine(to: Point2D, output: string[][], firstPoint: boolean) {
@@ -649,29 +708,27 @@ class Scene {
         }
     }
 
-    private computeLineIntersection(edge: Edge,
-                                    edgePos: number,
-                                    startPoint: Point2D,
-                                    endpoint: Point2D):
-                                    Point2D {
+    private computeLineIntersectionX(x: number,
+                                     startPoint: Point2D,
+                                     endpoint: Point2D):
+                                     Point2D {
         const start = {x: startPoint.x, y: startPoint.y, z: 1.0};
         const end = {x: endpoint.x, y: endpoint.y, z: 1.0};
-
-        let edgeVector: Vector3D;
-        switch (edge) {
-        case 'left':
-        case 'right':
-            edgeVector = {x: 1.0, y: 0.0, z: -edgePos};
-            break;
-        default:
-            edgeVector = {x: 0.0, y: 1.0, z: -edgePos};
-            break;
-        }
-
+        let edgeVector: Vector3D = {x: 1.0, y: 0.0, z: -x};
         const intersection = cross(cross(start, end), edgeVector);
         return new Point2D(intersection.x / intersection.z, intersection.y / intersection.z);
     }
 
+    private computeLineIntersectionY(y: number,
+                                     startPoint: Point2D,
+                                     endpoint: Point2D):
+                                     Point2D {
+        const start = {x: startPoint.x, y: startPoint.y, z: 1.0};
+        const end = {x: endpoint.x, y: endpoint.y, z: 1.0};
+        let edgeVector: Vector3D = {x: 0.0, y: 1.0, z: -y};
+        const intersection = cross(cross(start, end), edgeVector);
+        return new Point2D(intersection.x / intersection.z, intersection.y / intersection.z);
+    }
 }
 
 class Tile {
@@ -753,14 +810,15 @@ class PathSegment {
 
 function flattenPath(path: SVGPath): SVGPath {
     return path.abs().iterate(segment => {
-        if (segment[0] === 'Q')
-            return [['L', segment[1], segment[2]], ['L', segment[3], segment[4]]];
         if (segment[0] === 'C') {
-            return [
-                ['L', segment[1], segment[2]],
-                ['L', segment[3], segment[4]],
-                ['L', segment[5], segment[6]],
-            ];
+            const ctrl0 = new Point2D(parseFloat(segment[segment.length - 6]),
+                                      parseFloat(segment[segment.length - 5]));
+            const ctrl1 = new Point2D(parseFloat(segment[segment.length - 4]),
+                                      parseFloat(segment[segment.length - 3]));
+            const to = new Point2D(parseFloat(segment[segment.length - 2]),
+                                   parseFloat(segment[segment.length - 1]));
+            const ctrl = new Point2D(0.5 * (ctrl0.x + ctrl1.x), 0.5 * (ctrl0.y + ctrl1.y));
+            return [['Q', "" + ctrl.x, "" + ctrl.y, "" + to.x, "" + to.y]];
         }
         return [segment];
     });
@@ -811,6 +869,14 @@ function pathIsSquare(path: SVGPath, squareLength: number): boolean {
             (approxEq(point.y, 0.0) || approxEq(point.y, squareLength));
     });
     return result;
+}
+
+function lerp(a: number, b: number, t: number): number {
+    return a + (b - a) * t;
+}
+
+function sampleBezier(from: Point2D, ctrl: Point2D, to: Point2D, t: number): Point2D {
+    return from.lerp(ctrl, t).lerp(ctrl.lerp(to, t), t);
 }
 
 function main(): void {
