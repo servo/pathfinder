@@ -40,14 +40,14 @@ void main() {
     bool zeroArea = abs(from.x - to.x) < 0.01;
     if (aTessCoord.x < 0.5) {
         position.x = min(min(from.x, to.x), ctrl.x);
-        dilation.x = zeroArea ? 0.0 : -1.0;
+        dilation.x = zeroArea ? 0.0 : -0.5;
     } else {
         position.x = max(max(from.x, to.x), ctrl.x);
-        dilation.x = zeroArea ? 0.0 : 1.0;
+        dilation.x = zeroArea ? 0.0 : 0.5;
     }
     if (aTessCoord.y < 0.5) {
         position.y = min(min(from.y, to.y), ctrl.y);
-        dilation.y = zeroArea ? 0.0 : -1.0;
+        dilation.y = zeroArea ? 0.0 : -0.5;
     } else {
         position.y = uTileSize.y;
         dilation.y = 0.0;

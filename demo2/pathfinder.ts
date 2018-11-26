@@ -20,8 +20,11 @@ const parseColor: (color: string) => any = require('parse-color');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
-const TILE_SIZE: number = 32.0;
-const STENCIL_FRAMEBUFFER_SIZE: number = TILE_SIZE * 256;
+const TILE_SIZE: Size2D = {width: 32.0, height: 32.0};
+const STENCIL_FRAMEBUFFER_SIZE: Size2D = {
+    width: TILE_SIZE.width * 256,
+    height: TILE_SIZE.height * 256,
+};
 
 const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     0, 0,
@@ -152,8 +155,8 @@ class App {
         gl.texImage2D(gl.TEXTURE_2D,
                       0,
                       gl.R16F,
-                      STENCIL_FRAMEBUFFER_SIZE,
-                      STENCIL_FRAMEBUFFER_SIZE,
+                      STENCIL_FRAMEBUFFER_SIZE.width,
+                      STENCIL_FRAMEBUFFER_SIZE.height,
                       0,
                       gl.RED,
                       gl.HALF_FLOAT,
@@ -277,16 +280,16 @@ class App {
 
         // Stencil.
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.stencilFramebuffer);
-        gl.viewport(0, 0, STENCIL_FRAMEBUFFER_SIZE, STENCIL_FRAMEBUFFER_SIZE);
+        gl.viewport(0, 0, STENCIL_FRAMEBUFFER_SIZE.width, STENCIL_FRAMEBUFFER_SIZE.height);
         gl.clearColor(0.0, 0.0, 0.0, 0.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
         gl.bindVertexArray(this.stencilVertexArray);
         gl.useProgram(this.stencilProgram.program);
         gl.uniform2f(this.stencilProgram.uniforms.FramebufferSize,
-                     STENCIL_FRAMEBUFFER_SIZE,
-                     STENCIL_FRAMEBUFFER_SIZE);
-        gl.uniform2f(this.stencilProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
+                     STENCIL_FRAMEBUFFER_SIZE.width,
+                     STENCIL_FRAMEBUFFER_SIZE.height);
+        gl.uniform2f(this.stencilProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.areaLUTTexture);
         gl.uniform1i(this.stencilProgram.uniforms.AreaLUT, 0);
@@ -337,13 +340,13 @@ class App {
         gl.uniform2f(this.coverProgram.uniforms.FramebufferSize,
                      framebufferSize.width,
                      framebufferSize.height);
-        gl.uniform2f(this.coverProgram.uniforms.TileSize, TILE_SIZE, TILE_SIZE);
+        gl.uniform2f(this.coverProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
         gl.uniform1i(this.coverProgram.uniforms.StencilTexture, 0);
         gl.uniform2f(this.coverProgram.uniforms.StencilTextureSize,
-                     STENCIL_FRAMEBUFFER_SIZE,
-                     STENCIL_FRAMEBUFFER_SIZE);
+                     STENCIL_FRAMEBUFFER_SIZE.width,
+                     STENCIL_FRAMEBUFFER_SIZE.height);
         gl.blendEquation(gl.FUNC_ADD);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.BLEND);
@@ -507,19 +510,16 @@ class Scene {
                         boundingRect.size.width,
                         boundingRect.size.height);*/
 
-            let y = boundingRect.origin.y - boundingRect.origin.y % TILE_SIZE;
+            let y = boundingRect.origin.y - boundingRect.origin.y % TILE_SIZE.height;
             while (true) {
-                let x = boundingRect.origin.x - boundingRect.origin.x % TILE_SIZE;
+                let x = boundingRect.origin.x - boundingRect.origin.x % TILE_SIZE.width;
                 while (true) {
-                    const tileBounds = {
-                        origin: new Point2D(x, y),
-                        size: {width: TILE_SIZE, height: TILE_SIZE},
-                    };
+                    const tileBounds = {origin: new Point2D(x, y), size: TILE_SIZE};
                     const tilePath = this.clipPathToRect(path, tileBounds);
 
                     if (tilePath.toString().length > 0) {
                         tilePath.translate(-tileBounds.origin.x, -tileBounds.origin.y);
-                        if (!pathIsSquare(tilePath, TILE_SIZE)) {
+                        if (!pathIsRect(tilePath, TILE_SIZE)) {
                             /*
                             let segmentCount = 0;
                             tilePath.iterate(() => { segmentCount++; return; });
@@ -533,12 +533,12 @@ class Scene {
 
                     if (x >= boundingRect.origin.x + boundingRect.size.width)
                         break;
-                    x += TILE_SIZE;
+                    x += TILE_SIZE.width;
                 }
 
                 if (y >= boundingRect.origin.y + boundingRect.size.height)
                     break;
-                y += TILE_SIZE;
+                y += TILE_SIZE.height;
             }
         }
 
@@ -617,10 +617,11 @@ class Scene {
                     return;
                 to = pathStart;
                 break;
-            case 'Q':
+            /*case 'Q':
                 ctrl = new Point2D(parseFloat(segment[segment.length - 4]),
                                    parseFloat(segment[segment.length - 3]));
                 // fallthrough
+                */
             default:
                 to = new Point2D(parseFloat(segment[segment.length - 2]),
                                  parseFloat(segment[segment.length - 1]));
@@ -858,15 +859,15 @@ function approxEq(a: number, b: number): boolean {
     return Math.abs(a - b) <= EPSILON;
 }
 
-function pathIsSquare(path: SVGPath, squareLength: number): boolean {
+function pathIsRect(path: SVGPath, rectSize: Size2D): boolean {
     let result = true;
     path.iterate((segment, index) => {
         if (segment.length < 3)
             return;
         const point = new Point2D(parseFloat(segment[1]), parseFloat(segment[2]));
         result = result &&
-            (approxEq(point.x, 0.0) || approxEq(point.x, squareLength)) &&
-            (approxEq(point.y, 0.0) || approxEq(point.y, squareLength));
+            (approxEq(point.x, 0.0) || approxEq(point.x, rectSize.width)) &&
+            (approxEq(point.y, 0.0) || approxEq(point.y, rectSize.height));
     });
     return result;
 }
