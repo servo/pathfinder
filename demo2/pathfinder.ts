@@ -14,6 +14,9 @@ import STENCIL_VERTEX_SHADER_SOURCE from "./stencil.vs.glsl";
 import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 import AREA_LUT from "../resources/textures/area-lut.png";
+import {Matrix2D, Point2D, Rect, Size2D, Vector3D, approxEq, lerp} from "./geometry";
+import {SVGPath, Tiler} from "./tiling";
+import {staticCast, unwrapNull} from "./util";
 
 const SVGPath: (path: string) => SVGPath = require('svgpath');
 const parseColor: (color: string) => any = require('parse-color');
@@ -32,62 +35,6 @@ const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     1, 1,
     0, 1,
 ]);
-
-const EPSILON: number = 1e-6;
-
-interface SVGPath {
-    abs(): SVGPath;
-    translate(x: number, y: number): SVGPath;
-    matrix(m: number[]): SVGPath;
-    iterate(f: (segment: string[], index: number, x: number, y: number) => string[][] | void):
-            SVGPath;
-}
-
-class Point2D {
-    x: number;
-    y: number;
-
-    constructor(x: number, y: number) {
-        this.x = x;
-        this.y = y;
-    }
-
-    approxEq(other: Point2D): boolean {
-        return approxEq(this.x, other.x) && approxEq(this.y, other.y);
-    }
-
-    lerp(other: Point2D, t: number): Point2D {
-        return new Point2D(lerp(this.x, other.x, t), lerp(this.y, other.y, t));
-    }
-}
-
-interface Size2D {
-    width: number;
-    height: number;
-}
-
-interface Rect {
-    origin: Point2D;
-    size: Size2D;
-}
-
-interface Vector3D {
-    x: number;
-    y: number;
-    z: number;
-}
-
-class Matrix2D {
-    a: number; b: number;
-    c: number; d: number;
-    tx: number; ty: number;
-
-    constructor(a: number, b: number, c: number, d: number, tx: number, ty: number) {
-        this.a = a; this.b = b;
-        this.c = c; this.d = d;
-        this.tx = tx; this.ty = ty;
-    }
-}
 
 const GLOBAL_TRANSFORM: Matrix2D = new Matrix2D(3.0, 0.0, 0.0, 3.0, 800.0, 550.0);
 
@@ -299,34 +246,32 @@ class App {
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(this.primitiveCount));
         gl.disable(gl.BLEND);
 
-        /*
         // Read back stencil and dump it.
-        const stencilData =
-            new Float32Array(STENCIL_FRAMEBUFFER_SIZE * STENCIL_FRAMEBUFFER_SIZE * 4);
+        const totalStencilFramebufferSize = STENCIL_FRAMEBUFFER_SIZE.width *
+            STENCIL_FRAMEBUFFER_SIZE.height * 4;
+        const stencilData = new Float32Array(totalStencilFramebufferSize);
         gl.readPixels(0, 0,
-                      STENCIL_FRAMEBUFFER_SIZE, STENCIL_FRAMEBUFFER_SIZE,
+                      STENCIL_FRAMEBUFFER_SIZE.width, STENCIL_FRAMEBUFFER_SIZE.height,
                       gl.RGBA,
                       gl.FLOAT,
                       stencilData);
-        const stencilDumpData = new
-            Uint8ClampedArray(STENCIL_FRAMEBUFFER_SIZE * STENCIL_FRAMEBUFFER_SIZE * 4);
+        const stencilDumpData = new Uint8ClampedArray(totalStencilFramebufferSize);
         for (let i = 0; i < stencilData.length; i++)
             stencilDumpData[i] = stencilData[i] * 255.0;
         const stencilDumpCanvas = document.createElement('canvas');
-        stencilDumpCanvas.width = STENCIL_FRAMEBUFFER_SIZE;
-        stencilDumpCanvas.height = STENCIL_FRAMEBUFFER_SIZE;
-        stencilDumpCanvas.style.width = (STENCIL_FRAMEBUFFER_SIZE / window.devicePixelRatio) +
-            "px";
-        stencilDumpCanvas.style.height = (STENCIL_FRAMEBUFFER_SIZE / window.devicePixelRatio) +
-            "px";
+        stencilDumpCanvas.width = STENCIL_FRAMEBUFFER_SIZE.width;
+        stencilDumpCanvas.height = STENCIL_FRAMEBUFFER_SIZE.height;
+        stencilDumpCanvas.style.width =
+            (STENCIL_FRAMEBUFFER_SIZE.width / window.devicePixelRatio) + "px";
+        stencilDumpCanvas.style.height =
+            (STENCIL_FRAMEBUFFER_SIZE.height / window.devicePixelRatio) + "px";
         const stencilDumpCanvasContext = unwrapNull(stencilDumpCanvas.getContext('2d'));
         const stencilDumpImageData = new ImageData(stencilDumpData,
-                                                   STENCIL_FRAMEBUFFER_SIZE,
-                                                   STENCIL_FRAMEBUFFER_SIZE);
+                                                   STENCIL_FRAMEBUFFER_SIZE.width,
+                                                   STENCIL_FRAMEBUFFER_SIZE.height);
         stencilDumpCanvasContext.putImageData(stencilDumpImageData, 0, 0);
         document.body.appendChild(stencilDumpCanvas);
         //console.log(stencilData);
-        */
 
         // Cover.
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -502,6 +447,9 @@ class Scene {
 
             path = flattenPath(path);
             path = canonicalizePath(path);
+
+            const tiler = new Tiler(path);
+
             const boundingRect = this.boundingRectOfPath(path);
 
             /*console.log("path " + pathElementIndex, path.toString(), ":",
@@ -796,19 +744,6 @@ class Program<U extends string, A extends string> {
     }
 }
 
-class PathSegment {
-    command: string;
-    points: Point2D[];
-
-    constructor(segment: string[]) {
-        const points = [];
-        for (let i = 1; i < segment.length; i += 2)
-            points.push(new Point2D(parseFloat(segment[i]), parseFloat(segment[i + 1])));
-        this.points = points;
-        this.command = segment[0];
-    }
-}
-
 function flattenPath(path: SVGPath): SVGPath {
     return path.abs().iterate(segment => {
         if (segment[0] === 'C') {
@@ -855,10 +790,6 @@ function waitForQuery(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, qu
     console.log(elapsed + "ms elapsed");
 }
 
-function approxEq(a: number, b: number): boolean {
-    return Math.abs(a - b) <= EPSILON;
-}
-
 function pathIsRect(path: SVGPath, rectSize: Size2D): boolean {
     let result = true;
     path.iterate((segment, index) => {
@@ -870,10 +801,6 @@ function pathIsRect(path: SVGPath, rectSize: Size2D): boolean {
             (approxEq(point.y, 0.0) || approxEq(point.y, rectSize.height));
     });
     return result;
-}
-
-function lerp(a: number, b: number, t: number): number {
-    return a + (b - a) * t;
 }
 
 function sampleBezier(from: Point2D, ctrl: Point2D, to: Point2D, t: number): Point2D {
@@ -902,15 +829,3 @@ function main(): void {
 }
 
 document.addEventListener('DOMContentLoaded', () => main(), false);
-
-function staticCast<T>(value: any, constructor: { new(...args: any[]): T }): T {
-    if (!(value instanceof constructor))
-        throw new Error("Invalid dynamic cast");
-    return value;
-}
-
-function unwrapNull<T>(value: T | null): T {
-    if (value == null)
-        throw new Error("Unexpected null");
-    return value;
-}
