@@ -246,6 +246,7 @@ class App {
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(this.primitiveCount));
         gl.disable(gl.BLEND);
 
+        /*
         // Read back stencil and dump it.
         const totalStencilFramebufferSize = STENCIL_FRAMEBUFFER_SIZE.width *
             STENCIL_FRAMEBUFFER_SIZE.height * 4;
@@ -272,6 +273,7 @@ class App {
         stencilDumpCanvasContext.putImageData(stencilDumpImageData, 0, 0);
         document.body.appendChild(stencilDumpCanvas);
         //console.log(stencilData);
+        */
 
         // Cover.
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);

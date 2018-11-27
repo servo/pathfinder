@@ -37,7 +37,8 @@ void main() {
     vec2 from = aFrom, ctrl = aCtrl, to = aTo;
 
     vec2 dilation, position;
-    bool zeroArea = abs(from.x - to.x) < 0.01;
+    bool zeroArea = abs(from.x - to.x) < 0.1 ||
+        abs(uTileSize.y - min(min(from.y, to.y), ctrl.y)) < 0.1;
     if (aTessCoord.x < 0.5) {
         position.x = min(min(from.x, to.x), ctrl.x);
         dilation.x = zeroArea ? 0.0 : -0.5;
@@ -58,5 +59,8 @@ void main() {
     vCtrl = ctrl - position;
     vTo = to - position;
 
-    gl_Position = vec4((tileOrigin + position) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
+    if (zeroArea)
+        gl_Position = vec4(0.0);
+    else
+        gl_Position = vec4((tileOrigin + position) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
 }
