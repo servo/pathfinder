@@ -36,24 +36,16 @@ void main() {
 
     vec2 from = aFrom, ctrl = aCtrl, to = aTo;
 
-    vec2 dilation, position;
-    bool zeroArea = abs(from.x - to.x) < 0.1 ||
-        abs(uTileSize.y - min(min(from.y, to.y), ctrl.y)) < 0.1;
-    if (aTessCoord.x < 0.5) {
-        position.x = min(min(from.x, to.x), ctrl.x);
-        dilation.x = zeroArea ? 0.0 : -0.5;
-    } else {
-        position.x = max(max(from.x, to.x), ctrl.x);
-        dilation.x = zeroArea ? 0.0 : 0.5;
-    }
-    if (aTessCoord.y < 0.5) {
-        position.y = min(min(from.y, to.y), ctrl.y);
-        dilation.y = zeroArea ? 0.0 : -0.5;
-    } else {
+    vec2 position;
+    bool zeroArea = !(abs(from.x - to.x) > 0.1) || !(abs(uTileSize.y - min(from.y, to.y)) > 0.1);
+    if (aTessCoord.x < 0.5)
+        position.x = floor(min(min(from.x, to.x), ctrl.x));
+    else
+        position.x = ceil(max(max(from.x, to.x), ctrl.x));
+    if (aTessCoord.y < 0.5)
+        position.y = floor(min(min(from.y, to.y), ctrl.y));
+    else
         position.y = uTileSize.y;
-        dilation.y = 0.0;
-    }
-    position += dilation;
 
     vFrom = from - position;
     vCtrl = ctrl - position;
