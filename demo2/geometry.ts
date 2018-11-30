@@ -17,6 +17,7 @@ export class Point2D {
     constructor(x: number, y: number) {
         this.x = x;
         this.y = y;
+        Object.freeze(this);
     }
 
     approxEq(other: Point2D): boolean {
@@ -33,9 +34,55 @@ export interface Size2D {
     height: number;
 }
 
-export interface Rect {
+export class Rect {
     origin: Point2D;
     size: Size2D;
+
+    constructor(origin: Point2D, size: Size2D) {
+        this.origin = origin;
+        this.size = size;
+        Object.freeze(this);
+    }
+
+    unionWithPoint(point: Point2D): Rect {
+        let newOrigin = this.origin, newSize = this.size;
+
+        if (point.x < this.origin.x) {
+            newSize = {
+                width: newSize.width + newOrigin.x - point.x,
+                height: newSize.height,
+            };
+            newOrigin = new Point2D(point.x, newOrigin.y);
+        } else if (point.x > this.maxX()) {
+            newSize = {
+                width: newSize.width + point.x - this.maxX(),
+                height: newSize.height,
+            };
+        }
+
+        if (point.y < this.origin.y) {
+            newSize = {
+                width: newSize.width,
+                height: newSize.height + newOrigin.y - point.y,
+            };
+            newOrigin = new Point2D(newOrigin.x, point.y);
+        } else if (point.y > this.maxY()) {
+            newSize = {
+                width: newSize.width,
+                height: newSize.height + point.y - this.maxY(),
+            };
+        }
+
+        return new Rect(newOrigin, newSize);
+    }
+
+    maxX(): number {
+        return this.origin.x + this.size.width;
+    }
+
+    maxY(): number {
+        return this.origin.y + this.size.height;
+    }
 }
 
 export interface Vector3D {
@@ -62,4 +109,12 @@ export function approxEq(a: number, b: number): boolean {
 
 export function lerp(a: number, b: number, t: number): number {
     return a + (b - a) * t;
+}
+
+export function cross(a: Vector3D, b: Vector3D): Vector3D {
+    return {
+        x: a.y*b.z - a.z*b.y,
+        y: a.z*b.x - a.x*b.z,
+        z: a.x*b.y - a.y*b.x,
+    };
 }

@@ -14,8 +14,8 @@ import STENCIL_VERTEX_SHADER_SOURCE from "./stencil.vs.glsl";
 import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 import AREA_LUT from "../resources/textures/area-lut.png";
-import {Matrix2D, Point2D, Rect, Size2D, Vector3D, approxEq, lerp} from "./geometry";
-import {SVGPath, Tiler} from "./tiling";
+import {Matrix2D, Point2D, Rect, Size2D, Vector3D, approxEq, cross, lerp} from "./geometry";
+import {SVGPath, TILE_SIZE, TileDebugger, Tiler, testIntervals} from "./tiling";
 import {staticCast, unwrapNull} from "./util";
 
 const SVGPath: (path: string) => SVGPath = require('svgpath');
@@ -23,7 +23,6 @@ const parseColor: (color: string) => any = require('parse-color');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
-const TILE_SIZE: Size2D = {width: 32.0, height: 32.0};
 const STENCIL_FRAMEBUFFER_SIZE: Size2D = {
     width: TILE_SIZE.width * 256,
     height: TILE_SIZE.height * 256,
@@ -417,7 +416,9 @@ class Scene {
         const pathElements = Array.from(document.getElementsByTagName('path'));
         const tiles: Tile[] = [], pathColors = [];
 
-        for (let pathElementIndex = 0;
+        const tileDebugger = new TileDebugger(document);
+
+        for (let pathElementIndex = 0, realPathIndex = 0;
              pathElementIndex < pathElements.length;
              pathElementIndex++) {
             const pathElement = pathElements[pathElementIndex];
@@ -450,7 +451,15 @@ class Scene {
             path = flattenPath(path);
             path = canonicalizePath(path);
 
-            const tiler = new Tiler(path);
+            realPathIndex++;
+
+            //if (realPathIndex === 73) {
+                //console.log("path", pathElementIndex, "svg path", path);
+                const tiler = new Tiler(path);
+                tiler.tile();
+                tileDebugger.addTiler(tiler, paint);
+                console.log("path", pathElementIndex, "tiles", tiler.getTileStrips());
+            //}
 
             const boundingRect = this.boundingRectOfPath(path);
 
@@ -464,7 +473,7 @@ class Scene {
             while (true) {
                 let x = boundingRect.origin.x - boundingRect.origin.x % TILE_SIZE.width;
                 while (true) {
-                    const tileBounds = {origin: new Point2D(x, y), size: TILE_SIZE};
+                    const tileBounds = new Rect(new Point2D(x, y), TILE_SIZE);
                     const tilePath = this.clipPathToRect(path, tileBounds);
 
                     if (tilePath.toString().length > 0) {
@@ -518,6 +527,13 @@ class Scene {
 
         document.body.removeChild(svgElement);
 
+        const svgContainer = document.createElement('div');
+        svgContainer.style.position = 'relative';
+        svgContainer.style.width = "2000px";
+        svgContainer.style.height = "2000px";
+        svgContainer.appendChild(tileDebugger.svg);
+        document.body.appendChild(svgContainer);
+
         console.log(tiles);
         this.tiles = tiles;
         this.pathColors = pathColors;
@@ -537,8 +553,8 @@ class Scene {
             }
         });
         if (minX == null || minY == null || maxX == null || maxY == null)
-            return {origin: new Point2D(0, 0), size: {width: 0, height: 0}};
-        return {origin: new Point2D(minX, minY), size: {width: maxX - minX, height: maxY - minY}};
+            return new Rect(new Point2D(0, 0), {width: 0, height: 0});
+        return new Rect(new Point2D(minX, minY), {width: maxX - minX, height: maxY - minY});
     }
 
     private clipPathToRect(path: SVGPath, tileBounds: Rect): SVGPath {
@@ -772,14 +788,6 @@ function canonicalizePath(path: SVGPath): SVGPath {
     });
 }
 
-function cross(a: Vector3D, b: Vector3D): Vector3D {
-    return {
-        x: a.y*b.z - a.z*b.y,
-        y: a.z*b.x - a.x*b.z,
-        z: a.x*b.y - a.y*b.x,
-    };
-}
-
 function waitForQuery(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, query: WebGLQuery):
                       void {
     const queryResultAvailable = disjointTimerQueryExt.QUERY_RESULT_AVAILABLE_EXT;
@@ -812,6 +820,8 @@ function sampleBezier(from: Point2D, ctrl: Point2D, to: Point2D, t: number): Poi
 function main(): void {
     window.fetch(SVG).then(svg => {
         svg.text().then(svgText => {
+            testIntervals();
+
             const svg = staticCast((new DOMParser).parseFromString(svgText, 'image/svg+xml'),
                                    XMLDocument);
             const image = new Image;
