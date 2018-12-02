@@ -378,7 +378,8 @@ class Strip {
     }
 
     pushEdge(edge: Edge): void {
-        this.edges.push(edge);
+        this.edges.push(new Edge(new Point2D(edge.from.x, edge.from.y - this.tileTop),
+                                 new Point2D(edge.to.x, edge.to.y - this.tileTop)));
     }
 
     tileBottom(): number {
@@ -414,7 +415,8 @@ class Tile {
     }
 
     pushEdge(edge: Edge): void {
-        this.edges.push(edge);
+        this.edges.push(new Edge(new Point2D(edge.from.x - this.tileLeft, edge.from.y),
+                                 new Point2D(edge.to.x - this.tileLeft, edge.to.y)));
     }
 }
 
@@ -545,8 +547,8 @@ export class TileDebugger {
                 for (const edge of tile.edges) {
                     path += "M " + edge.from.x + " " + edge.from.y + " ";
                     path += "L " + edge.to.x + " " + edge.to.y + " ";
-                    path += "L " + edge.to.x + " " + tileBottom + " ";
-                    path += "L " + edge.from.x + " " + tileBottom + " ";
+                    path += "L " + edge.to.x + " " + TILE_SIZE.height + " ";
+                    path += "L " + edge.from.x + " " + TILE_SIZE.height + " ";
                     path += "Z ";
                 }
 
@@ -558,6 +560,8 @@ export class TileDebugger {
                 pathElement.setAttribute('data-tile-id', id);
                 pathElement.setAttribute('data-tile-index', "" + tileIndex);
                 pathElement.setAttribute('data-tile-strip-index', "" + tileStripIndex);
+                pathElement.setAttribute('transform',
+                    "translate(" + tile.tileLeft + " " + tileStrip.tileTop + ")");
                 this.svg.appendChild(pathElement);
             }
         }
