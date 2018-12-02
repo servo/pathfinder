@@ -92,11 +92,11 @@ void main() {
     vec2 dilation, position;
     bool zeroArea = abs(from.x - to.x) < 0.00001;
     if (aTessCoord.x < 0.5) {
-        position.x = min(min(from.x, to.x), ctrl.x);
-        dilation.x = zeroArea ? 0.0 : -1.0;
+        position.x = from.x;
+        dilation.x = zeroArea ? 0.0 : (from.x < to.x ? -1.0 :  1.0);
     } else {
-        position.x = max(max(from.x, to.x), ctrl.x);
-        dilation.x = zeroArea ? 0.0 : 1.0;
+        position.x = to.x;
+        dilation.x = zeroArea ? 0.0 : (from.x < to.x ?  1.0 : -1.0);
     }
     if (aTessCoord.y < 0.5) {
         position.y = min(min(from.y, to.y), ctrl.y);
@@ -116,7 +116,12 @@ void main() {
 
     // Finish up.
     gl_Position = vec4(offsetPosition, depth, 1.0);
-    vFrom = (from - position) * framebufferSizeVector;
     vCtrl = (ctrl - position) * framebufferSizeVector;
-    vTo = (to - position) * framebufferSizeVector;
+    if (from.x < to.x) {
+        vFrom = (from - position) * framebufferSizeVector;
+        vTo = (to - position) * framebufferSizeVector;
+    } else {
+        vFrom = (to - position) * framebufferSizeVector;
+        vTo = (from - position) * framebufferSizeVector;
+    }
 }

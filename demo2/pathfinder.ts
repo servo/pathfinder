@@ -457,8 +457,8 @@ class Scene {
                 //console.log("path", pathElementIndex, "svg path", path);
                 const tiler = new Tiler(path);
                 tiler.tile();
-                tileDebugger.addTiler(tiler, paint);
-                console.log("path", pathElementIndex, "tiles", tiler.getTileStrips());
+                tileDebugger.addTiler(tiler, paint, "" + realPathIndex);
+                console.log("path", pathElementIndex, "tiles", tiler.getStrips());
             //}
 
             const boundingRect = this.boundingRectOfPath(path);
@@ -820,7 +820,7 @@ function sampleBezier(from: Point2D, ctrl: Point2D, to: Point2D, t: number): Poi
 function main(): void {
     window.fetch(SVG).then(svg => {
         svg.text().then(svgText => {
-            testIntervals();
+            //testIntervals();
 
             const svg = staticCast((new DOMParser).parseFromString(svgText, 'image/svg+xml'),
                                    XMLDocument);

@@ -33,6 +33,7 @@ export class Tiler {
     private endpoints: SubpathEndpoints[];
     private sortedEdges: Edge[];
     private boundingRect: Rect | null;
+    private strips: Strip[];
     private tileStrips: TileStrip[];
 
     constructor(path: SVGPath) {
@@ -84,7 +85,7 @@ export class Tiler {
                 if (this.boundingRect == null)
                     this.boundingRect = new Rect(endpoint, {width: 0, height: 0});
                 else
-                    this.boundingRect.unionWithPoint(endpoint);
+                    this.boundingRect = this.boundingRect.unionWithPoint(endpoint);
             }
         }
         this.sortedEdges.sort((edgeA, edgeB) => {
@@ -102,6 +103,7 @@ export class Tiler {
         //console.log("allEndpoints", allEndpoints);
         */
 
+        this.strips = [];
         this.tileStrips = [];
     }
 
@@ -109,46 +111,96 @@ export class Tiler {
         if (this.boundingRect == null)
             return;
 
-        const activeIntervals = new Intervals(this.boundingRect.maxY());;
+        const activeIntervals = new Intervals(this.boundingRect.maxX());;
         let activeEdges: Edge[] = [];
         let nextEdgeIndex = 0;
-        this.tileStrips = [];
+        this.strips = [];
 
         let tileTop = this.boundingRect.origin.y - this.boundingRect.origin.y % TILE_SIZE.height;
         while (tileTop < this.boundingRect.maxY()) {
             const tileBottom = tileTop + TILE_SIZE.height;
 
             // Populate tile strip with active intervals.
-            const tileStrip = new TileStrip(tileTop);
+            const strip = new Strip(tileTop);
+            /*console.log("tileTop", tileTop,
+                        "intervals", JSON.stringify(activeIntervals.intervalRanges()));*/
             for (const interval of activeIntervals.intervalRanges()) {
                 if (interval.winding === 0)
                     continue;
                 const startPoint = new Point2D(interval.start, tileTop);
                 const endPoint = new Point2D(interval.end, tileTop);
                 if (interval.winding < 0)
-                    tileStrip.pushEdge(new Edge(startPoint, endPoint));
+                    strip.pushEdge(new Edge(startPoint, endPoint));
                 else
-                    tileStrip.pushEdge(new Edge(endPoint, startPoint));
+                    strip.pushEdge(new Edge(endPoint, startPoint));
             }
 
             // Populate tile strip with active edges.
             const oldEdges = activeEdges;
             activeEdges = [];
             for (const activeEdge of oldEdges)
-                this.processEdge(activeEdge, tileStrip, activeEdges, activeIntervals, tileTop);
+                this.processEdgeY(activeEdge, strip, activeEdges, activeIntervals, tileTop);
 
             while (nextEdgeIndex < this.sortedEdges.length) {
                 const edge = this.sortedEdges[nextEdgeIndex];
                 if (edge.from.y > tileBottom && edge.to.y > tileBottom)
                     break;
 
-                this.processEdge(edge, tileStrip, activeEdges, activeIntervals, tileTop);
+                this.processEdgeY(edge, strip, activeEdges, activeIntervals, tileTop);
+                //console.log("new intervals:", JSON.stringify(activeIntervals));
                 nextEdgeIndex++;
             }
 
-            this.tileStrips.push(tileStrip);
+            this.strips.push(strip);
             tileTop = tileBottom;
         }
+
+        // Cut up tile strips.
+        //console.log("strips count:", this.strips.length);
+        this.tileStrips = this.strips.map(strip => this.divideStrip(strip));
+    }
+
+    private divideStrip(strip: Strip): TileStrip {
+        // Sort edges.
+        const sortedEdges = strip.edges.slice(0);
+        sortedEdges.sort((edgeA, edgeB) => {
+            return Math.min(edgeA.from.x, edgeA.to.x) - Math.min(edgeB.from.x, edgeB.to.x);
+        });
+
+        const tileStrip = new TileStrip(strip.tileTop);
+        const boundingRect = unwrapNull(this.boundingRect);
+        let tileLeft = boundingRect.origin.x - boundingRect.origin.x % TILE_SIZE.width;
+        let activeEdges: Edge[] = [];
+        let nextEdgeIndex = 0;
+
+        while (tileLeft < boundingRect.maxX()) {
+            const tile = new Tile(tileLeft);
+            const tileRight = tileLeft + TILE_SIZE.width;
+
+            // Populate tile with active edges.
+            const oldEdges = activeEdges;
+            activeEdges = [];
+            for (const activeEdge of oldEdges)
+                this.processEdgeX(activeEdge, tile, activeEdges);
+
+            while (nextEdgeIndex < sortedEdges.length) {
+                const edge = sortedEdges[nextEdgeIndex];
+                if (edge.from.x > tileRight && edge.to.x > tileRight)
+                    break;
+
+                this.processEdgeX(edge, tile, activeEdges);
+                nextEdgeIndex++;
+            }
+
+            tileStrip.pushTile(tile);
+            tileLeft = tileRight;
+        }
+
+        return tileStrip;
+    }
+
+    getStrips(): Strip[] {
+        return this.strips;
     }
 
     getTileStrips(): TileStrip[] {
@@ -168,26 +220,59 @@ export class Tiler {
                         {width: tileRight - tileLeft, height: tileBottom - tileTop});
     }
 
-    private processEdge(edge: Edge,
-                        tileStrip: TileStrip,
-                        activeEdges: Edge[],
-                        intervals: Intervals,
-                        tileTop: number):
-                        void {
+    private processEdgeX(edge: Edge, tile: Tile, activeEdges: Edge[]): void {
+        const tileRight = tile.tileLeft + TILE_SIZE.width;
+        const clipped = this.clipEdgeX(edge, tileRight);
+
+        if (clipped.left != null)
+            tile.pushEdge(clipped.left);
+
+        if (clipped.right != null)
+            activeEdges.push(clipped.right);
+    }
+
+    private processEdgeY(edge: Edge,
+                         tileStrip: Strip,
+                         activeEdges: Edge[],
+                         intervals: Intervals,
+                         tileTop: number):
+                         void {
         const tileBottom = tileTop + TILE_SIZE.height;
         const clipped = this.clipEdgeY(edge, tileBottom);
 
         if (clipped.upper != null) {
+            //console.log("pushing clipped upper edge:", JSON.stringify(clipped.upper));
             tileStrip.pushEdge(clipped.upper);
 
-            if (edge.from.x <= edge.to.x)
-                intervals.add(new IntervalRange(edge.from.x, edge.to.x, 1));
+            if (clipped.upper.from.x <= clipped.upper.to.x)
+                intervals.add(new IntervalRange(clipped.upper.from.x, clipped.upper.to.x, -1));
             else
-                intervals.add(new IntervalRange(edge.to.x, edge.from.x, -1));
+                intervals.add(new IntervalRange(clipped.upper.to.x, clipped.upper.from.x, 1));
         }
 
         if (clipped.lower != null)
             activeEdges.push(clipped.lower);
+    }
+
+    private clipEdgeX(edge: Edge, x: number): ClippedEdgesX {
+        if (edge.from.x < x && edge.to.x < x)
+            return {left: edge, right: null};
+        if (edge.from.x > x && edge.to.x > x)
+            return {left: null, right: edge};
+
+        const from     = {x: edge.from.x, y: edge.from.y, z: 1.0};
+        const to       = {x: edge.to.x,   y: edge.to.y,   z: 1.0};
+        const clipLine = {x: 1.0,         y: 0.0,         z: -x };
+
+        const intersectionHC = cross(cross(from, to), clipLine);
+        const intersection = new Point2D(intersectionHC.x / intersectionHC.z,
+                                         intersectionHC.y / intersectionHC.z);
+        const fromEdge = new Edge(edge.from, intersection);
+        const toEdge = new Edge(intersection, edge.to);
+
+        if (edge.from.x < x)
+            return {left: fromEdge, right: toEdge};
+        return {left: toEdge, right: fromEdge};
     }
 
     private clipEdgeY(edge: Edge, y: number): ClippedEdgesY {
@@ -283,7 +368,7 @@ class Edge {
     }
 }
 
-class TileStrip {
+class Strip {
     edges: Edge[];
     tileTop: number;
 
@@ -299,6 +384,43 @@ class TileStrip {
     tileBottom(): number {
         return this.tileTop + TILE_SIZE.height;
     }
+}
+
+class TileStrip {
+    tiles: Tile[];
+    tileTop: number;
+
+    constructor(tileTop: number) {
+        this.tiles = [];
+        this.tileTop = tileTop;
+    }
+
+    pushTile(tile: Tile): void {
+        this.tiles.push(tile);
+    }
+
+    tileBottom(): number {
+        return this.tileTop + TILE_SIZE.height;
+    }
+}
+
+class Tile {
+    edges: Edge[];
+    tileLeft: number;
+
+    constructor(tileLeft: number) {
+        this.edges = [];
+        this.tileLeft = tileLeft;
+    }
+
+    pushEdge(edge: Edge): void {
+        this.edges.push(edge);
+    }
+}
+
+interface ClippedEdgesX {
+    left:  Edge | null;
+    right: Edge | null;
 }
 
 interface ClippedEdgesY {
@@ -318,6 +440,9 @@ class Intervals {
     }
 
     add(range: IntervalRange): void {
+        //console.log("IntervalRange.add(", range, ")");
+        //console.log("... before ...", JSON.stringify(this));
+
         this.splitAt(range.start);
         this.splitAt(range.end);
 
@@ -334,6 +459,8 @@ class Intervals {
             this.ranges[i].winding += range.winding;
 
         this.mergeAdjacent();
+
+        //console.log("... after ...", JSON.stringify(this));
     }
 
     clear(): void {
@@ -343,10 +470,10 @@ class Intervals {
     private splitAt(value: number): void {
         for (let i = 0; i < this.ranges.length; i++) {
             if (this.ranges[i].start < value && value < this.ranges[i].end) {
-                const firstRange = this.ranges[i];
-                const secondRange = new IntervalRange(value, firstRange.end, firstRange.winding);
-                this.ranges.splice(i + 1, 0, secondRange);
-                firstRange.end = value;
+                const oldRange = this.ranges[i];
+                const range0 = new IntervalRange(oldRange.start, value, oldRange.winding);
+                const range1 = new IntervalRange(value, oldRange.end, oldRange.winding);
+                this.ranges.splice(i, 1, range0, range1);
                 break;
             }
         }
@@ -401,28 +528,38 @@ export class TileDebugger {
         this.updateSVGSize();
     }
 
-    addTiler(tiler: Tiler, fillColor: string): void {
+    addTiler(tiler: Tiler, fillColor: string, id: string): void {
         const boundingRect = tiler.getBoundingRect();
         this.size.width = Math.max(this.size.width, boundingRect.maxX());
         this.size.height = Math.max(this.size.height, boundingRect.maxY());
 
-        for (const tileStrip of tiler.getTileStrips()) {
+        const tileStrips = tiler.getTileStrips();
+        for (let tileStripIndex = 0; tileStripIndex < tileStrips.length; tileStripIndex++) {
+            const tileStrip = tileStrips[tileStripIndex];
             const tileBottom = tileStrip.tileBottom();
-            let path = "";
-            for (const edge of tileStrip.edges) {
-                path += "M " + edge.from.x + " " + edge.from.y + " ";
-                path += "L " + edge.to.x + " " + edge.to.y + " ";
-                path += "L " + edge.to.x + " " + tileBottom + " ";
-                path += "L " + edge.from.x + " " + tileBottom + " ";
-                path += "Z ";
-            }
 
-            const pathElement = staticCast(document.createElementNS(SVG_NS, 'path'),
-                                           SVGPathElement);
-            pathElement.setAttribute('d', path);
-            pathElement.setAttribute('fill', fillColor);
-            pathElement.setAttribute('stroke', "rgb(0, 128.0, 0)");
-            this.svg.appendChild(pathElement);
+            for (let tileIndex = 0; tileIndex < tileStrip.tiles.length; tileIndex++) {
+                const tile = tileStrip.tiles[tileIndex];
+
+                let path = "";
+                for (const edge of tile.edges) {
+                    path += "M " + edge.from.x + " " + edge.from.y + " ";
+                    path += "L " + edge.to.x + " " + edge.to.y + " ";
+                    path += "L " + edge.to.x + " " + tileBottom + " ";
+                    path += "L " + edge.from.x + " " + tileBottom + " ";
+                    path += "Z ";
+                }
+
+                const pathElement = staticCast(document.createElementNS(SVG_NS, 'path'),
+                                               SVGPathElement);
+                pathElement.setAttribute('d', path);
+                pathElement.setAttribute('fill', fillColor);
+                //pathElement.setAttribute('stroke', "rgb(0, 128.0, 0)");
+                pathElement.setAttribute('data-tile-id', id);
+                pathElement.setAttribute('data-tile-index', "" + tileIndex);
+                pathElement.setAttribute('data-tile-strip-index', "" + tileStripIndex);
+                this.svg.appendChild(pathElement);
+            }
         }
 
         this.updateSVGSize();
