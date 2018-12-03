@@ -15,7 +15,7 @@ import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 import AREA_LUT from "../resources/textures/area-lut.png";
 import {Matrix2D, Point2D, Rect, Size2D, Vector3D, approxEq, cross, lerp} from "./geometry";
-import {SVGPath, TILE_SIZE, TileDebugger, Tiler, testIntervals} from "./tiling";
+import {SVGPath, TILE_SIZE, TileDebugger, Tiler, testIntervals, TileStrip} from "./tiling";
 import {staticCast, unwrapNull} from "./util";
 
 const SVGPath: (path: string) => SVGPath = require('svgpath');
@@ -69,7 +69,8 @@ class App {
     private coverVertexArray: WebGLVertexArrayObject;
 
     private scene: Scene | null;
-    private primitiveCount: number | null;
+    private primitiveCount: number;
+    private tileCount: number;
 
     constructor(svg: XMLDocument, areaLUT: HTMLImageElement) {
         const canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
@@ -212,6 +213,7 @@ class App {
 
         this.scene = null;
         this.primitiveCount = 0;
+        this.tileCount = 0;
     }
 
     redraw(): void {
@@ -296,7 +298,7 @@ class App {
         gl.blendEquation(gl.FUNC_ADD);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.BLEND);
-        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, scene.tiles.length);
+        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.tileCount);
         gl.disable(gl.BLEND);
 
         // End timer.
@@ -308,72 +310,41 @@ class App {
 
     buildScene(): void {
         this.scene = new Scene(this.svg);
-        console.log(this.scene.tiles.length, "tiles");
     }
 
     prepare(): void {
         const gl = this.gl, scene = unwrapNull(this.scene);
 
-        // Construct stencil VBOs.
+        // Construct stencil and cover VBOs.
+        this.tileCount = 0;
         let primitiveCount = 0;
         const stencilVertexPositions: number[] = [], stencilVertexTileIndices: number[] = [];
-        const primitiveCountHistogram: number[] = [];
-        for (let tileIndex = 0; tileIndex < scene.tiles.length; tileIndex++) {
-            const tile = scene.tiles[tileIndex];
-            let firstPoint = new Point2D(0.0, 0.0), lastPoint = new Point2D(0.0, 0.0);
-            let primitiveCountForThisTile = 0;
-            tile.path.iterate(segment => {
-                /*if (primitiveCountForThisTile > 0)
-                    return;*/
+        const coverVertexData: number[] = [];
+        for (let pathIndex = 0; pathIndex < scene.pathTileStrips.length; pathIndex++) {
+            const pathTileStrips = scene.pathTileStrips[pathIndex];
+            for (const tileStrip of pathTileStrips) {
+                for (const tile of tileStrip.tiles) {
+                    for (const edge of tile.edges) {
+                        const ctrl = new Point2D(lerp(edge.from.x, edge.to.x, 0.5),
+                                                 lerp(edge.from.y, edge.to.y, 0.5));
+                        stencilVertexPositions.push(edge.from.x, edge.from.y,
+                                                    ctrl.x, ctrl.y,
+                                                    edge.to.x, edge.to.y);
+                        stencilVertexTileIndices.push(this.tileCount);
+                        primitiveCount++;
+                    }
 
-                let point;
-                if (segment[0] === 'Z') {
-                    point = firstPoint;
-                } else {
-                    point = new Point2D(parseFloat(segment[segment.length - 2]),
-                                        parseFloat(segment[segment.length - 1]));
+                    const color = scene.pathColors[pathIndex];
+                    coverVertexData.push(Math.floor(tile.tileLeft),
+                                         Math.floor(tileStrip.tileTop),
+                                         this.tileCount,
+                                         color.r | (color.g << 8),
+                                         color.b | (color.a << 8));
+
+                    this.tileCount++;
                 }
-
-                /*
-                if (!(point.x > -1.0))
-                    throw new Error("x too low");
-                if (!(point.y > -1.0))
-                    throw new Error("y too low");
-                if (!(point.x < TILE_SIZE + 1.0))
-                    throw new Error("x too high:" + point.x);
-                if (!(point.y < TILE_SIZE + 1.0))
-                    throw new Error("y too high");
-                    */
-
-                if (segment[0] === 'M') {
-                    firstPoint = point;
-                } else if (segment[0] === 'Q') {
-                    const ctrl = new Point2D(parseFloat(segment[segment.length - 4]),
-                                             parseFloat(segment[segment.length - 3]));
-                    stencilVertexPositions.push(lastPoint.x, lastPoint.y,
-                                                ctrl.x, ctrl.y,
-                                                point.x, point.y);
-                    stencilVertexTileIndices.push(tileIndex);
-                    primitiveCount++;
-                    primitiveCountForThisTile++;
-                } else {
-                    const ctrl = lastPoint.lerp(point, 0.5);
-                    stencilVertexPositions.push(lastPoint.x, lastPoint.y,
-                                                ctrl.x, ctrl.y,
-                                                point.x, point.y);
-                    stencilVertexTileIndices.push(tileIndex);
-                    primitiveCount++;
-                    primitiveCountForThisTile++;
-                }
-                lastPoint = point;
-            });
-
-            if (primitiveCountHistogram[primitiveCountForThisTile] == null)
-                primitiveCountHistogram[primitiveCountForThisTile] = 0;
-            primitiveCountHistogram[primitiveCountForThisTile]++;
+            }
         }
-        console.log(stencilVertexPositions);
-        console.log("histogram", primitiveCountHistogram);
 
         // Populate the stencil VBOs.
         gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexPositionsBuffer);
@@ -382,19 +353,9 @@ class App {
         gl.bufferData(gl.ARRAY_BUFFER, new Uint16Array(stencilVertexTileIndices), gl.STATIC_DRAW);
 
         // Populate the cover VBO.
-        const coverVertexBufferData = new Int16Array(scene.tiles.length * 5);
-        for (let tileIndex = 0; tileIndex < scene.tiles.length; tileIndex++) {
-            const tile = scene.tiles[tileIndex];
-            const color = scene.pathColors[tile.pathIndex];
-            coverVertexBufferData[tileIndex * 5 + 0] = Math.floor(tile.origin.x);
-            coverVertexBufferData[tileIndex * 5 + 1] = Math.floor(tile.origin.y);
-            coverVertexBufferData[tileIndex * 5 + 2] = tileIndex;
-            coverVertexBufferData[tileIndex * 5 + 3] = color.r | (color.g << 8);
-            coverVertexBufferData[tileIndex * 5 + 4] = color.b | (color.a << 8);
-        }
         gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, coverVertexBufferData, gl.DYNAMIC_DRAW);
-        console.log(coverVertexBufferData);
+        gl.bufferData(gl.ARRAY_BUFFER, new Int16Array(coverVertexData), gl.DYNAMIC_DRAW);
+        console.log(coverVertexData);
 
         this.primitiveCount = primitiveCount;
         console.log(primitiveCount + " primitives");
@@ -406,7 +367,7 @@ class App {
 }
 
 class Scene {
-    tiles: Tile[];
+    pathTileStrips: TileStrip[][];
     pathColors: Color[];
 
     constructor(svg: XMLDocument) {
@@ -414,9 +375,11 @@ class Scene {
         document.body.appendChild(svgElement);
 
         const pathElements = Array.from(document.getElementsByTagName('path'));
-        const tiles: Tile[] = [], pathColors = [];
+        const pathColors = [];
 
-        const tileDebugger = new TileDebugger(document);
+        this.pathTileStrips = [];
+
+        //const tileDebugger = new TileDebugger(document);
 
         for (let pathElementIndex = 0, realPathIndex = 0;
              pathElementIndex < pathElements.length;
@@ -430,7 +393,7 @@ class Scene {
             /*} else if (style.stroke != null && style.stroke !== 'none') {
                 paint = style.stroke;*/
             } else {
-                pathColors.push({r: 0, g: 0, b: 0, a: 0});
+                //pathColors.push({r: 0, g: 0, b: 0, a: 0});
                 continue;
             }
             const color = parseColor(paint).rgba;
@@ -453,52 +416,13 @@ class Scene {
 
             realPathIndex++;
 
-            //if (realPathIndex === 73) {
-                //console.log("path", pathElementIndex, "svg path", path);
-                const tiler = new Tiler(path);
-                tiler.tile();
-                tileDebugger.addTiler(tiler, paint, "" + realPathIndex);
-                console.log("path", pathElementIndex, "tiles", tiler.getStrips());
-            //}
+            const tiler = new Tiler(path);
+            tiler.tile();
+            //tileDebugger.addTiler(tiler, paint, "" + realPathIndex);
+            console.log("path", pathElementIndex, "tiles", tiler.getStrips());
 
-            const boundingRect = this.boundingRectOfPath(path);
-
-            /*console.log("path " + pathElementIndex, path.toString(), ":",
-                        boundingRect.origin.x,
-                        boundingRect.origin.y,
-                        boundingRect.size.width,
-                        boundingRect.size.height);*/
-
-            let y = boundingRect.origin.y - boundingRect.origin.y % TILE_SIZE.height;
-            while (true) {
-                let x = boundingRect.origin.x - boundingRect.origin.x % TILE_SIZE.width;
-                while (true) {
-                    const tileBounds = new Rect(new Point2D(x, y), TILE_SIZE);
-                    const tilePath = this.clipPathToRect(path, tileBounds);
-
-                    if (tilePath.toString().length > 0) {
-                        tilePath.translate(-tileBounds.origin.x, -tileBounds.origin.y);
-                        if (!pathIsRect(tilePath, TILE_SIZE)) {
-                            /*
-                            let segmentCount = 0;
-                            tilePath.iterate(() => { segmentCount++; return; });
-                            if (segmentCount === 4 || segmentCount === 5)
-                                console.log("suspicious path: ", tilePath);
-                            */
-
-                            tiles.push(new Tile(pathElementIndex, tilePath, tileBounds.origin));
-                        }
-                    }
-
-                    if (x >= boundingRect.origin.x + boundingRect.size.width)
-                        break;
-                    x += TILE_SIZE.width;
-                }
-
-                if (y >= boundingRect.origin.y + boundingRect.size.height)
-                    break;
-                y += TILE_SIZE.height;
-            }
+            const pathTileStrips = tiler.getTileStrips();
+            this.pathTileStrips.push(pathTileStrips);
         }
 
         /*
@@ -531,182 +455,10 @@ class Scene {
         svgContainer.style.position = 'relative';
         svgContainer.style.width = "2000px";
         svgContainer.style.height = "2000px";
-        svgContainer.appendChild(tileDebugger.svg);
+        //svgContainer.appendChild(tileDebugger.svg);
         document.body.appendChild(svgContainer);
 
-        console.log(tiles);
-        this.tiles = tiles;
         this.pathColors = pathColors;
-    }
-
-    private boundingRectOfPath(path: SVGPath): Rect {
-        let minX: number | null = null, minY: number | null = null;
-        let maxX: number | null = null, maxY: number | null = null;
-        path.iterate(segment => {
-            for (let i = 1; i < segment.length; i += 2) {
-                const x = parseFloat(segment[i]), y = parseFloat(segment[i + 1]);
-                minX = minX == null ? x : Math.min(minX, x);
-                minY = minY == null ? y : Math.min(minY, y);
-                maxX = maxX == null ? x : Math.max(maxX, x);
-                maxY = maxY == null ? y : Math.max(maxY, y);
-                //console.log("x", x, "y", y, "maxX", maxX, "maxY", maxY, "segment", segment);
-            }
-        });
-        if (minX == null || minY == null || maxX == null || maxY == null)
-            return new Rect(new Point2D(0, 0), {width: 0, height: 0});
-        return new Rect(new Point2D(minX, minY), {width: maxX - minX, height: maxY - minY});
-    }
-
-    private clipPathToRect(path: SVGPath, tileBounds: Rect): SVGPath {
-        path = this.clipPathToEdge('left', tileBounds.origin.x, path);
-        path = this.clipPathToEdge('top', tileBounds.origin.y, path);
-        path = this.clipPathToEdge('right', tileBounds.origin.x + tileBounds.size.width, path);
-        path = this.clipPathToEdge('bottom', tileBounds.origin.y + tileBounds.size.height, path);
-        return path;
-    }
-
-    private clipPathToEdge(edge: Edge, edgePos: number, input: SVGPath): SVGPath {
-        let pathStart: Point2D | null = null, from = new Point2D(0, 0), firstPoint = false;
-        let output: string[][] = [];
-        input.iterate(segment => {
-            const event = segment[0];
-            let ctrl: Point2D | null = null, to;
-            switch (event) {
-            case 'M':
-                from = new Point2D(parseFloat(segment[segment.length - 2]),
-                                   parseFloat(segment[segment.length - 1]));
-                pathStart = from;
-                firstPoint = true;
-                return;
-            case 'Z':
-                if (pathStart == null)
-                    return;
-                to = pathStart;
-                break;
-            /*case 'Q':
-                ctrl = new Point2D(parseFloat(segment[segment.length - 4]),
-                                   parseFloat(segment[segment.length - 3]));
-                // fallthrough
-                */
-            default:
-                to = new Point2D(parseFloat(segment[segment.length - 2]),
-                                 parseFloat(segment[segment.length - 1]));
-                break;
-            }
-
-            if (this.pointIsInside(edge, edgePos, to)) {
-                if (!this.pointIsInside(edge, edgePos, from)) {
-                    this.addClippedLine(from, ctrl, to, edge, edgePos, output, firstPoint);
-                    firstPoint = false;
-                }
-                // FIXME(pcwalton): Is this right?
-                this.addLine(to, output, firstPoint);
-                firstPoint = false;
-            } else if (this.pointIsInside(edge, edgePos, from)) {
-                this.addClippedLine(from, ctrl, to, edge, edgePos, output, firstPoint);
-                firstPoint = false;
-            }
-
-            from = to;
-
-            if (event === 'Z') {
-                output.push(['Z']);
-                pathStart = null;
-            }
-        });
-
-        return SVGPath(output.map(segment => segment.join(" ")).join(" "));
-    }
-
-    private addClippedLine(from: Point2D,
-                           ctrl: Point2D | null,
-                           to: Point2D,
-                           edge: Edge,
-                           edgePos: number,
-                           output: string[][],
-                           firstPoint: boolean):
-                           void {
-        if (ctrl == null) {
-            if (edge === 'left' || edge === 'right')
-                to = this.computeLineIntersectionX(edgePos, from, to);
-            else
-                to = this.computeLineIntersectionY(edgePos, from, to);
-        } else {
-            let minT = 0.0, maxT = 1.0;
-            while (maxT - minT > 1e-3) {
-                const midT = lerp(minT, maxT, 0.5);
-                const point = sampleBezier(from, ctrl, to, midT);
-                const diff = ((edge === 'left' || edge === 'right') ? point.x : point.y) - edgePos;
-                if (diff < 0.0)
-                    maxT = midT;
-                else if (diff > 0.0)
-                    minT = midT;
-                else
-                    break;
-            }
-
-            const midT = lerp(minT, maxT, 0.5);
-            const newCtrl = from.lerp(ctrl, midT);
-            to = sampleBezier(from, ctrl, to, midT);
-            ctrl = newCtrl;
-        }
-
-        if (firstPoint)
-            output.push(['M', "" + to.x, "" + to.y]);
-        else if (ctrl == null)
-            output.push(['L', "" + to.x, "" + to.y]);
-        else
-            output.push(['Q', "" + ctrl.x, "" + ctrl.y, "" + to.x, "" + to.y]);
-    }
-
-    private addLine(to: Point2D, output: string[][], firstPoint: boolean) {
-        if (firstPoint)
-            output.push(['M', "" + to.x, "" + to.y]);
-        else
-            output.push(['L', "" + to.x, "" + to.y]);
-    }
-
-    private pointIsInside(edge: Edge, edgePos: number, point: Point2D): boolean {
-        switch (edge) {
-        case 'left':    return point.x >= edgePos;
-        case 'top':     return point.y >= edgePos;
-        case 'right':   return point.x <= edgePos;
-        case 'bottom':  return point.y <= edgePos;
-        }
-    }
-
-    private computeLineIntersectionX(x: number,
-                                     startPoint: Point2D,
-                                     endpoint: Point2D):
-                                     Point2D {
-        const start = {x: startPoint.x, y: startPoint.y, z: 1.0};
-        const end = {x: endpoint.x, y: endpoint.y, z: 1.0};
-        let edgeVector: Vector3D = {x: 1.0, y: 0.0, z: -x};
-        const intersection = cross(cross(start, end), edgeVector);
-        return new Point2D(intersection.x / intersection.z, intersection.y / intersection.z);
-    }
-
-    private computeLineIntersectionY(y: number,
-                                     startPoint: Point2D,
-                                     endpoint: Point2D):
-                                     Point2D {
-        const start = {x: startPoint.x, y: startPoint.y, z: 1.0};
-        const end = {x: endpoint.x, y: endpoint.y, z: 1.0};
-        let edgeVector: Vector3D = {x: 0.0, y: 1.0, z: -y};
-        const intersection = cross(cross(start, end), edgeVector);
-        return new Point2D(intersection.x / intersection.z, intersection.y / intersection.z);
-    }
-}
-
-class Tile {
-    pathIndex: number;
-    path: SVGPath;
-    origin: Point2D;
-
-    constructor(pathIndex: number, path: SVGPath, origin: Point2D) {
-        this.pathIndex = pathIndex;
-        this.path = path;
-        this.origin = origin;
     }
 }
 

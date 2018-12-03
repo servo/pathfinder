@@ -393,7 +393,7 @@ class Strip {
     }
 }
 
-class TileStrip {
+export class TileStrip {
     tiles: Tile[];
     tileTop: number;
 
@@ -415,7 +415,7 @@ class TileStrip {
     }
 }
 
-class Tile {
+export class Tile {
     edges: Edge[];
     tileLeft: number;
 
