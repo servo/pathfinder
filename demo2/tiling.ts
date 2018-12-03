@@ -264,7 +264,7 @@ export class Tiler {
     }
 
     private clipEdgeX(edge: Edge, x: number): ClippedEdgesX {
-        const EPSILON: number = 0.001;
+        const EPSILON: number = 0.00001;
 
         if (edge.from.x < x && edge.to.x < x)
             return {left: edge, right: null};
@@ -291,7 +291,7 @@ export class Tiler {
     }
 
     private clipEdgeY(edge: Edge, y: number): ClippedEdgesY {
-        const EPSILON: number = 0.001;
+        const EPSILON: number = 0.00001;
 
         if (edge.from.y < y && edge.to.y < y)
             return {upper: edge, lower: null};
@@ -472,6 +472,19 @@ export class Tile {
 
     isEmpty(): boolean {
         return this.edges.length === 0;
+    }
+
+    isFilled(): boolean {
+        if (this.edges.length !== 1)
+            return false;
+        const edge = this.edges[0];
+        if (edge.ctrl != null)
+            return false;
+        //console.log("single edge:", JSON.stringify(edge));
+        const left = edge.from.x < edge.to.x ? edge.from : edge.to;
+        const right = edge.from.x < edge.to.x ? edge.to : edge.from;
+        return left.approxEq(new Point2D(0, 0), 0.1) &&
+            right.approxEq(new Point2D(TILE_SIZE.width, 0), 0.1);
     }
 }
 

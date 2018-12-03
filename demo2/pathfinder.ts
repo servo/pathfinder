@@ -324,6 +324,10 @@ class App {
             const pathTileStrips = scene.pathTileStrips[pathIndex];
             for (const tileStrip of pathTileStrips) {
                 for (const tile of tileStrip.tiles) {
+                    // TODO(pcwalton)
+                    if (tile.isFilled())
+                        continue;
+
                     for (const edge of tile.edges) {
                         let ctrl;
                         if (edge.ctrl == null)

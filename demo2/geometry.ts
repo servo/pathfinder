@@ -20,8 +20,8 @@ export class Point2D {
         Object.freeze(this);
     }
 
-    approxEq(other: Point2D): boolean {
-        return approxEq(this.x, other.x) && approxEq(this.y, other.y);
+    approxEq(other: Point2D, epsilon: number | undefined): boolean {
+        return approxEq(this.x, other.x, epsilon) && approxEq(this.y, other.y, epsilon);
     }
 
     lerp(other: Point2D, t: number): Point2D {
@@ -107,8 +107,8 @@ export class Matrix2D {
     }
 }
 
-export function approxEq(a: number, b: number): boolean {
-    return Math.abs(a - b) <= EPSILON;
+export function approxEq(a: number, b: number, epsilon: number | undefined): boolean {
+    return Math.abs(a - b) <= (epsilon == null ? EPSILON : epsilon);
 }
 
 export function lerp(a: number, b: number, t: number): number {
