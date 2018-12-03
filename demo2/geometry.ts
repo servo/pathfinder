@@ -27,6 +27,10 @@ export class Point2D {
     lerp(other: Point2D, t: number): Point2D {
         return new Point2D(lerp(this.x, other.x, t), lerp(this.y, other.y, t));
     }
+
+    translate(x: number, y: number): Point2D {
+        return new Point2D(this.x + x, this.y + y);
+    }
 }
 
 export interface Size2D {

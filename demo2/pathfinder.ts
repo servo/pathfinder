@@ -325,8 +325,11 @@ class App {
             for (const tileStrip of pathTileStrips) {
                 for (const tile of tileStrip.tiles) {
                     for (const edge of tile.edges) {
-                        const ctrl = new Point2D(lerp(edge.from.x, edge.to.x, 0.5),
-                                                 lerp(edge.from.y, edge.to.y, 0.5));
+                        let ctrl;
+                        if (edge.ctrl == null)
+                            ctrl = edge.from.lerp(edge.to, 0.5);
+                        else
+                            ctrl = edge.ctrl;
                         stencilVertexPositions.push(edge.from.x, edge.from.y,
                                                     ctrl.x, ctrl.y,
                                                     edge.to.x, edge.to.y);

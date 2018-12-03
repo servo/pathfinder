@@ -52,13 +52,17 @@ export class Tiler {
                     this.endpoints.push(currentSubpathEndpoints);
                     currentSubpathEndpoints = new SubpathEndpoints;
                 }
+                currentSubpathEndpoints.controlPoints.push(null);
                 currentSubpathEndpoints.endpoints.push(segment.points[0]);
                 break;
             case 'L':
             case 'S':
-            case 'Q':
-            case 'C':
                 // TODO(pcwalton): Canonicalize 'S'.
+                currentSubpathEndpoints.controlPoints.push(null);
+                currentSubpathEndpoints.endpoints.push(unwrapNull(segment.to()));
+                break;
+            case 'Q':
+                currentSubpathEndpoints.controlPoints.push(segment.points[0]);
                 currentSubpathEndpoints.endpoints.push(unwrapNull(segment.to()));
                 break;
             case 'Z':
@@ -129,9 +133,9 @@ export class Tiler {
                 const startPoint = new Point2D(interval.start, tileTop);
                 const endPoint = new Point2D(interval.end, tileTop);
                 if (interval.winding < 0)
-                    strip.pushEdge(new Edge(startPoint, endPoint));
+                    strip.pushEdge(new Edge(startPoint, null, endPoint));
                 else
-                    strip.pushEdge(new Edge(endPoint, startPoint));
+                    strip.pushEdge(new Edge(endPoint, null, startPoint));
             }
 
             // Populate tile strip with active edges.
@@ -313,24 +317,23 @@ export class Tiler {
         return {upper: edges.next, lower: edges.prev};
     }
 
-    private prevEdgeFromEndpoint(endpointIndex: EndpointIndex): Edge {
-        const subpathEndpoints = this.endpoints[endpointIndex.subpathIndex];
-        return new Edge(subpathEndpoints.prevEndpointOf(endpointIndex.endpointIndex),
-                        subpathEndpoints.endpoints[endpointIndex.endpointIndex]);
-    }
-
     private nextEdgeFromEndpoint(endpointIndex: EndpointIndex): Edge {
         const subpathEndpoints = this.endpoints[endpointIndex.subpathIndex];
+        const nextEndpointIndex =
+            subpathEndpoints.nextEndpointIndexOf(endpointIndex.endpointIndex);
         return new Edge(subpathEndpoints.endpoints[endpointIndex.endpointIndex],
-                        subpathEndpoints.nextEndpointOf(endpointIndex.endpointIndex));
+                        subpathEndpoints.controlPoints[nextEndpointIndex],
+                        subpathEndpoints.endpoints[nextEndpointIndex]);
     }
 }
 
 class SubpathEndpoints {
     endpoints: Point2D[];
+    controlPoints: (Point2D | null)[];
 
     constructor() {
         this.endpoints = [];
+        this.controlPoints = [];
     }
 
     isEmpty(): boolean {
@@ -376,20 +379,32 @@ export class PathSegment {
 
 class Edge {
     from: Point2D;
+    ctrl: Point2D | null;
     to: Point2D;
 
-    constructor(from: Point2D, to: Point2D) {
+    constructor(from: Point2D, ctrl: Point2D | null, to: Point2D) {
         this.from = from;
+        this.ctrl = ctrl;
         this.to = to;
         Object.freeze(this);
     }
 
     subdivideAt(t: number): SubdividedEdges {
-        const mid = this.from.lerp(this.to, t);
+        if (this.ctrl == null) {
+            const mid = this.from.lerp(this.to, t);
+            return {
+                prev: new Edge(this.from, null, mid),
+                next: new Edge(mid, null, this.to),
+            };
+        }
+
+        const ctrlA = this.from.lerp(this.ctrl, t);
+        const ctrlB = this.ctrl.lerp(this.to, t);
+        const mid = ctrlA.lerp(ctrlB, t);
         return {
-            prev: new Edge(this.from, mid),
-            next: new Edge(mid, this.to),
-        };
+            prev: new Edge(this.from, ctrlA, mid),
+            next: new Edge(mid, ctrlB, this.to),
+        }
     }
 }
 
@@ -408,8 +423,9 @@ class Strip {
     }
 
     pushEdge(edge: Edge): void {
-        this.edges.push(new Edge(new Point2D(edge.from.x, edge.from.y - this.tileTop),
-                                 new Point2D(edge.to.x, edge.to.y - this.tileTop)));
+        this.edges.push(new Edge(edge.from.translate(0, -this.tileTop),
+                                 edge.ctrl == null ? null : edge.ctrl.translate(0, -this.tileTop),
+                                 edge.to.translate(0, -this.tileTop)));
     }
 
     tileBottom(): number {
@@ -449,8 +465,9 @@ export class Tile {
     }
 
     pushEdge(edge: Edge): void {
-        this.edges.push(new Edge(new Point2D(edge.from.x - this.tileLeft, edge.from.y),
-                                 new Point2D(edge.to.x - this.tileLeft, edge.to.y)));
+        this.edges.push(new Edge(edge.from.translate(-this.tileLeft, 0),
+                                 edge.ctrl == null ? null : edge.ctrl.translate(-this.tileLeft, 0),
+                                 edge.to.translate(-this.tileLeft, 0)));
     }
 
     isEmpty(): boolean {
