@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-import {Point2D, Rect, Size2D, cross} from "./geometry";
+import {Point2D, Rect, Size2D, cross, lerp} from "./geometry";
 import {panic, staticCast, unwrapNull} from "./util";
 
 export const TILE_SIZE: Size2D = {width: 16.0, height: 16.0};
@@ -260,45 +260,57 @@ export class Tiler {
     }
 
     private clipEdgeX(edge: Edge, x: number): ClippedEdgesX {
+        const EPSILON: number = 0.001;
+
         if (edge.from.x < x && edge.to.x < x)
             return {left: edge, right: null};
         if (edge.from.x > x && edge.to.x > x)
             return {left: null, right: edge};
 
-        const from     = {x: edge.from.x, y: edge.from.y, z: 1.0};
-        const to       = {x: edge.to.x,   y: edge.to.y,   z: 1.0};
-        const clipLine = {x: 1.0,         y: 0.0,         z: -x };
+        let minT = 0.0, maxT = 1.0;
+        while (maxT - minT > EPSILON) {
+            const midT = lerp(minT, maxT, 0.5);
+            const edges = edge.subdivideAt(midT);
+            if ((edges.prev.from.x < x && edges.prev.to.x > x) ||
+                (edges.prev.from.x > x && edges.prev.to.x < x)) {
+                maxT = midT;
+            } else {
+                minT = midT;
+            }
+        }
 
-        const intersectionHC = cross(cross(from, to), clipLine);
-        const intersection = new Point2D(intersectionHC.x / intersectionHC.z,
-                                         intersectionHC.y / intersectionHC.z);
-        const fromEdge = new Edge(edge.from, intersection);
-        const toEdge = new Edge(intersection, edge.to);
-
+        const midT = lerp(minT, maxT, 0.5);
+        const edges = edge.subdivideAt(midT);
         if (edge.from.x < x)
-            return {left: fromEdge, right: toEdge};
-        return {left: toEdge, right: fromEdge};
+            return {left: edges.prev, right: edges.next};
+        return {left: edges.next, right: edges.prev};
     }
 
     private clipEdgeY(edge: Edge, y: number): ClippedEdgesY {
+        const EPSILON: number = 0.001;
+
         if (edge.from.y < y && edge.to.y < y)
             return {upper: edge, lower: null};
         if (edge.from.y > y && edge.to.y > y)
             return {upper: null, lower: edge};
 
-        const from     = {x: edge.from.x, y: edge.from.y, z: 1.0};
-        const to       = {x: edge.to.x,   y: edge.to.y,   z: 1.0};
-        const clipLine = {x: 0.0,         y: 1.0,         z: -y };
+        let minT = 0.0, maxT = 1.0;
+        while (maxT - minT > EPSILON) {
+            const midT = lerp(minT, maxT, 0.5);
+            const edges = edge.subdivideAt(midT);
+            if ((edges.prev.from.y < y && edges.prev.to.y > y) ||
+                (edges.prev.from.y > y && edges.prev.to.y < y)) {
+                maxT = midT;
+            } else {
+                minT = midT;
+            }
+        }
 
-        const intersectionHC = cross(cross(from, to), clipLine);
-        const intersection = new Point2D(intersectionHC.x / intersectionHC.z,
-                                         intersectionHC.y / intersectionHC.z);
-        const fromEdge = new Edge(edge.from, intersection);
-        const toEdge = new Edge(intersection, edge.to);
-
+        const midT = lerp(minT, maxT, 0.5);
+        const edges = edge.subdivideAt(midT);
         if (edge.from.y < y)
-            return {upper: fromEdge, lower: toEdge};
-        return {upper: toEdge, lower: fromEdge};
+            return {upper: edges.prev, lower: edges.next};
+        return {upper: edges.next, lower: edges.prev};
     }
 
     private prevEdgeFromEndpoint(endpointIndex: EndpointIndex): Edge {
@@ -371,6 +383,19 @@ class Edge {
         this.to = to;
         Object.freeze(this);
     }
+
+    subdivideAt(t: number): SubdividedEdges {
+        const mid = this.from.lerp(this.to, t);
+        return {
+            prev: new Edge(this.from, mid),
+            next: new Edge(mid, this.to),
+        };
+    }
+}
+
+interface SubdividedEdges {
+    prev: Edge;
+    next: Edge;
 }
 
 class Strip {
