@@ -355,7 +355,7 @@ class App {
         // Populate the cover VBO.
         gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Int16Array(coverVertexData), gl.DYNAMIC_DRAW);
-        console.log(coverVertexData);
+        //console.log(coverVertexData);
 
         this.primitiveCount = primitiveCount;
         console.log(primitiveCount + " primitives");
@@ -381,7 +381,8 @@ class Scene {
 
         //const tileDebugger = new TileDebugger(document);
 
-        for (let pathElementIndex = 0, realPathIndex = 0;
+        const paths = [];
+        for (let pathElementIndex = 0;
              pathElementIndex < pathElements.length;
              pathElementIndex++) {
             const pathElement = pathElements[pathElementIndex];
@@ -393,9 +394,9 @@ class Scene {
             /*} else if (style.stroke != null && style.stroke !== 'none') {
                 paint = style.stroke;*/
             } else {
-                //pathColors.push({r: 0, g: 0, b: 0, a: 0});
                 continue;
             }
+
             const color = parseColor(paint).rgba;
             pathColors.push({
                 r: color[0],
@@ -413,17 +414,23 @@ class Scene {
 
             path = flattenPath(path);
             path = canonicalizePath(path);
+            paths.push(path);
+        }
 
-            realPathIndex++;
+        const startTime = window.performance.now();
 
+        for (const path of paths) {
             const tiler = new Tiler(path);
             tiler.tile();
             //tileDebugger.addTiler(tiler, paint, "" + realPathIndex);
-            console.log("path", pathElementIndex, "tiles", tiler.getStrips());
+            //console.log("path", pathElementIndex, "tiles", tiler.getStrips());
 
             const pathTileStrips = tiler.getTileStrips();
             this.pathTileStrips.push(pathTileStrips);
         }
+
+        const endTime = window.performance.now();
+        console.log("elapsed time for tiling: " + (endTime - startTime) + "ms");
 
         /*
         for (const tile of tiles) {
