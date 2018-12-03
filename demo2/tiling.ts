@@ -156,8 +156,12 @@ export class Tiler {
         }
 
         // Cut up tile strips.
-        //console.log("strips count:", this.strips.length);
-        this.tileStrips = this.strips.map(strip => this.divideStrip(strip));
+        this.tileStrips = [];
+        for (const strip of this.strips) {
+            const tileStrip = this.divideStrip(strip);
+            if (!tileStrip.isEmpty())
+                this.tileStrips.push(tileStrip);
+        }
     }
 
     private divideStrip(strip: Strip): TileStrip {
@@ -192,7 +196,9 @@ export class Tiler {
                 nextEdgeIndex++;
             }
 
-            tileStrip.pushTile(tile);
+            if (!tile.isEmpty())
+                tileStrip.pushTile(tile);
+
             tileLeft = tileRight;
         }
 
@@ -403,6 +409,10 @@ class TileStrip {
     tileBottom(): number {
         return this.tileTop + TILE_SIZE.height;
     }
+
+    isEmpty(): boolean {
+        return this.tiles.length === 0;
+    }
 }
 
 class Tile {
@@ -417,6 +427,10 @@ class Tile {
     pushEdge(edge: Edge): void {
         this.edges.push(new Edge(new Point2D(edge.from.x - this.tileLeft, edge.from.y),
                                  new Point2D(edge.to.x - this.tileLeft, edge.to.y)));
+    }
+
+    isEmpty(): boolean {
+        return this.edges.length === 0;
     }
 }
 
@@ -538,7 +552,6 @@ export class TileDebugger {
         const tileStrips = tiler.getTileStrips();
         for (let tileStripIndex = 0; tileStripIndex < tileStrips.length; tileStripIndex++) {
             const tileStrip = tileStrips[tileStripIndex];
-            const tileBottom = tileStrip.tileBottom();
 
             for (let tileIndex = 0; tileIndex < tileStrip.tiles.length; tileIndex++) {
                 const tile = tileStrip.tiles[tileIndex];
