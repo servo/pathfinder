@@ -11,7 +11,7 @@
 import {Point2D, Rect, Size2D, cross} from "./geometry";
 import {panic, staticCast, unwrapNull} from "./util";
 
-export const TILE_SIZE: Size2D = {width: 32.0, height: 32.0};
+export const TILE_SIZE: Size2D = {width: 16.0, height: 16.0};
 
 export interface SVGPath {
     abs(): SVGPath;
@@ -118,12 +118,11 @@ export class Tiler {
 
         let tileTop = this.boundingRect.origin.y - this.boundingRect.origin.y % TILE_SIZE.height;
         while (tileTop < this.boundingRect.maxY()) {
+            const strip = new Strip(tileTop);
             const tileBottom = tileTop + TILE_SIZE.height;
 
             // Populate tile strip with active intervals.
-            const strip = new Strip(tileTop);
-            /*console.log("tileTop", tileTop,
-                        "intervals", JSON.stringify(activeIntervals.intervalRanges()));*/
+            // TODO(pcwalton): Compress this.
             for (const interval of activeIntervals.intervalRanges()) {
                 if (interval.winding === 0)
                     continue;
