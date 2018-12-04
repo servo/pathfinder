@@ -17,7 +17,7 @@ import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 import AREA_LUT from "../resources/textures/area-lut.png";
 import {Matrix2D, Point2D, Rect, Size2D, Vector3D, approxEq, cross, lerp} from "./geometry";
-import {canonicalizePath, flattenPath, Outline} from "./path-utils";
+import {flattenPath, Outline} from "./path-utils";
 import {SVGPath, TILE_SIZE, TileDebugger, Tiler, testIntervals, TileStrip} from "./tiling";
 import {staticCast, unwrapNull} from "./util";
 
@@ -569,7 +569,6 @@ class Scene {
         ]);
 
         path = flattenPath(path);
-        path = canonicalizePath(path);
 
         if (strokeWidth != null) {
             const outline = new Outline(path);

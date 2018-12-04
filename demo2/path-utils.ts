@@ -54,18 +54,12 @@ export function flattenPath(path: SVGPath): SVGPath {
             const ctrl = ctrl10.lerp(ctrl11, 0.5);
             segment = new PathSegment(['Q', "" + ctrl.x, "" + ctrl.y, "" + to.x, "" + to.y]);
         }
+        if (segment.command === 'H' && lastPoint != null)
+            segment = new PathSegment(['L', segmentPieces[1], "" + lastPoint.y]);
+        if (segment.command === 'V' && lastPoint != null)
+            segment = new PathSegment(['L', "" + lastPoint.x, segmentPieces[1]]);
         lastPoint = segment.to();
         return [segment.toStringPieces()];
-    });
-}
-
-export function canonicalizePath(path: SVGPath): SVGPath {
-    return path.unshort().abs().iterate(segment => {
-        if (segment[0] === 'H')
-            return [['L', segment[1], '0']];
-        if (segment[0] === 'V')
-            return [['L', '0', segment[1]]];
-        return [segment];
     });
 }
 
