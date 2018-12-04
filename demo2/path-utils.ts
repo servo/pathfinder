@@ -92,6 +92,7 @@ export class Outline {
     }
 
     stroke(radius: number): void {
+        console.log("stroking, radius=", radius);
         for (const suboutline of this.suboutlines)
             suboutline.stroke(radius);
     }

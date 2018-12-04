@@ -573,8 +573,26 @@ class Scene {
         if (strokeWidth != null) {
             const outline = new Outline(path);
             outline.calculateNormals();
-            outline.stroke(strokeWidth * GLOBAL_TRANSFORM.a);
+            outline.stroke(strokeWidth * GLOBAL_TRANSFORM.a * 5.0);
             const strokedPathString = outline.toSVGPathString();
+
+            /*
+            const newSVG = staticCast(document.createElementNS(SVG_NS, 'svg'), SVGElement);
+            newSVG.style.position = 'absolute';
+            newSVG.style.left = "0";
+            newSVG.style.top = "0";
+            newSVG.style.width = "2000px";
+            newSVG.style.height = "2000px";
+
+            const newPath = document.createElementNS(SVG_NS, 'path');
+            newPath.setAttribute('d', strokedPathString);
+            newPath.setAttribute('fill',
+                                 "rgba(" + color[0] + "," + color[1] + "," + color[2] + "," +
+                                 color[3] + ")");
+            newSVG.appendChild(newPath);
+            document.body.appendChild(newSVG);
+            */
+
             path = SVGPath(strokedPathString);
         }
 
