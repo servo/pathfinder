@@ -9,6 +9,7 @@
 // except according to those terms.
 
 import {Point2D, Rect, Size2D, cross, lerp} from "./geometry";
+import {PathSegment} from "./path-utils";
 import {panic, staticCast, unwrapNull} from "./util";
 
 export const TILE_SIZE: Size2D = {width: 16.0, height: 16.0};
@@ -19,6 +20,7 @@ export interface SVGPath {
     matrix(m: number[]): SVGPath;
     iterate(f: (segment: string[], index: number, x: number, y: number) => string[][] | void):
             SVGPath;
+    unshort(): SVGPath;
 }
 
 const SVGPath: (path: string) => SVGPath = require('svgpath');
@@ -356,24 +358,6 @@ class SubpathEndpoints {
 
     nextEndpointOf(index: number): Point2D {
         return this.endpoints[this.nextEndpointIndexOf(index)];
-    }
-}
-
-export class PathSegment {
-    command: string;
-    points: Point2D[];
-
-    constructor(segment: string[]) {
-        const points = [];
-        for (let i = 1; i < segment.length; i += 2)
-            points.push(new Point2D(parseFloat(segment[i]), parseFloat(segment[i + 1])));
-        this.points = points;
-        //console.log("PathSegment, segment=", segment, "points=", points);
-        this.command = segment[0];
-    }
-
-    to(): Point2D | null {
-        return this.points[this.points.length - 1];
     }
 }
 

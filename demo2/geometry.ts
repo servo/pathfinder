@@ -31,6 +31,27 @@ export class Point2D {
     translate(x: number, y: number): Point2D {
         return new Point2D(this.x + x, this.y + y);
     }
+
+    add(other: Point2D): Point2D {
+        return new Point2D(this.x + other.x, this.y + other.y);
+    }
+
+    sub(other: Point2D): Point2D {
+        return new Point2D(this.x - other.x, this.y - other.y);
+    }
+
+    normalize(): Point2D {
+        const length = this.length();
+        return new Point2D(this.x / length, this.y / length);
+    }
+
+    length(): number {
+        return Math.sqrt(this.x * this.x + this.y * this.y);
+    }
+
+    scale(factor: number): Point2D {
+        return new Point2D(this.x * factor, this.y * factor);
+    }
 }
 
 export interface Size2D {

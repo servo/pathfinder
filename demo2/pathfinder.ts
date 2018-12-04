@@ -17,7 +17,7 @@ import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 import AREA_LUT from "../resources/textures/area-lut.png";
 import {Matrix2D, Point2D, Rect, Size2D, Vector3D, approxEq, cross, lerp} from "./geometry";
-import {canonicalizePath, flattenPath} from "./path-utils";
+import {canonicalizePath, flattenPath, Outline} from "./path-utils";
 import {SVGPath, TILE_SIZE, TileDebugger, Tiler, testIntervals, TileStrip} from "./tiling";
 import {staticCast, unwrapNull} from "./util";
 
@@ -486,19 +486,13 @@ class Scene {
             const style = window.getComputedStyle(pathElement);
             if (style.fill != null && style.fill !== 'none') {
                 fillCount++;
-                this.addPath(paths, pathColors, style.fill, pathString);
+                this.addPath(paths, pathColors, style.fill, pathString, null);
             }
             if (style.stroke != null && style.stroke !== 'none') {
                 strokeCount++;
-                /*
                 const strokeWidth =
                     style.strokeWidth == null ? 1.0 : parseFloat(style.strokeWidth);
-                console.log("stroking path:", pathString, strokeWidth);
-                try {
-                    const strokedPathString = svgPathOutline(pathString, strokeWidth, {joints: 1});
-                    this.addPath(paths, pathColors, style.stroke, strokedPathString);
-                } catch (e) {}
-                */
+                this.addPath(paths, pathColors, style.stroke, pathString, strokeWidth);
             }
         }
         console.log("", fillCount, "fills,", strokeCount, "strokes");
@@ -554,7 +548,12 @@ class Scene {
         this.pathColors = pathColors;
     }
 
-    private addPath(paths: SVGPath[], pathColors: any[], paint: string, pathString: string): void {
+    private addPath(paths: SVGPath[],
+                    pathColors: any[],
+                    paint: string,
+                    pathString: string,
+                    strokeWidth: number | null):
+                    void {
         const color = parseColor(paint).rgba;
         pathColors.push({
             r: color[0],
@@ -563,7 +562,7 @@ class Scene {
             a: Math.round(color[3] * 255.),
         });
 
-        let path = SVGPath(pathString);
+        let path: SVGPath = SVGPath(pathString);
         path = path.matrix([
             GLOBAL_TRANSFORM.a, GLOBAL_TRANSFORM.b,
             GLOBAL_TRANSFORM.c, GLOBAL_TRANSFORM.d,
@@ -572,6 +571,16 @@ class Scene {
 
         path = flattenPath(path);
         path = canonicalizePath(path);
+
+        if (strokeWidth != null) {
+            const outline = new Outline(path);
+            outline.calculateNormals();
+            outline.stroke(strokeWidth * GLOBAL_TRANSFORM.a);
+            const strokedPathString = outline.toSVGPathString();
+            path = SVGPath(strokedPathString);
+            console.log(path.toString());
+        }
+
         paths.push(path);
     }
 }
