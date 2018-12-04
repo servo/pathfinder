@@ -27,7 +27,7 @@ const parseColor: (color: string) => any = require('parse-color');
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
 const STENCIL_FRAMEBUFFER_SIZE: Size2D = {
-    width: TILE_SIZE.width * 256,
+    width: TILE_SIZE.width * 128,
     height: TILE_SIZE.height * 256,
 };
 
@@ -286,9 +286,8 @@ class App {
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(this.primitiveCount));
         gl.disable(gl.BLEND);
 
-        /*
         // Read back stencil and dump it.
-        const totalStencilFramebufferSize = STENCIL_FRAMEBUFFER_SIZE.width *
+        /*const totalStencilFramebufferSize = STENCIL_FRAMEBUFFER_SIZE.width *
             STENCIL_FRAMEBUFFER_SIZE.height * 4;
         const stencilData = new Float32Array(totalStencilFramebufferSize);
         gl.readPixels(0, 0,
@@ -578,7 +577,6 @@ class Scene {
             outline.stroke(strokeWidth * GLOBAL_TRANSFORM.a);
             const strokedPathString = outline.toSVGPathString();
             path = SVGPath(strokedPathString);
-            console.log(path.toString());
         }
 
         paths.push(path);

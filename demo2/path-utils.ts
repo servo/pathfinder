@@ -22,33 +22,40 @@ export class PathSegment {
         for (let i = 1; i < segment.length; i += 2)
             points.push(new Point2D(parseFloat(segment[i]), parseFloat(segment[i + 1])));
         this.points = points;
-        //console.log("PathSegment, segment=", segment, "points=", points);
         this.command = segment[0];
     }
 
     to(): Point2D | null {
         return this.points[this.points.length - 1];
     }
+
+    toStringPieces(): string[] {
+        const pieces = [this.command];
+        for (const point of this.points) {
+            pieces.push(" " + point.x);
+            pieces.push(" " + point.y);
+        }
+        return pieces;
+    }
+
+    toString(): string {
+        return this.toStringPieces().join(" ");
+    }
 }
 
 export function flattenPath(path: SVGPath): SVGPath {
-    return path.unshort().abs().iterate(segment => {
-        if (segment[0] === 'C') {
-            const ctrl0 = new Point2D(parseFloat(segment[segment.length - 6]),
-                                      parseFloat(segment[segment.length - 5]));
-            const ctrl1 = new Point2D(parseFloat(segment[segment.length - 4]),
-                                      parseFloat(segment[segment.length - 3]));
-            const to = new Point2D(parseFloat(segment[segment.length - 2]),
-                                   parseFloat(segment[segment.length - 1]));
-            const ctrl = new Point2D(0.5 * (ctrl0.x + ctrl1.x), 0.5 * (ctrl0.y + ctrl1.y));
-            return [['Q', "" + ctrl.x, "" + ctrl.y, "" + to.x, "" + to.y]];
+    let lastPoint: Point2D | null = null;
+    return path.unshort().abs().iterate(segmentPieces => {
+        let segment = new PathSegment(segmentPieces);
+        if (segment.command === 'C' && lastPoint != null) {
+            const ctrl10 = segment.points[0].scale(3.0).sub(lastPoint).scale(0.5);
+            const ctrl11 = segment.points[1].scale(3.0).sub(segment.points[2]).scale(0.5);
+            const to = segment.points[2];
+            const ctrl = ctrl10.lerp(ctrl11, 0.5);
+            segment = new PathSegment(['Q', "" + ctrl.x, "" + ctrl.y, "" + to.x, "" + to.y]);
         }
-        if (segment[0] === 'A') {
-            const to = new Point2D(parseFloat(segment[segment.length - 2]),
-                                   parseFloat(segment[segment.length - 1]));
-            return [['L', "" + to.x, "" + to.y]];
-        }
-        return [segment];
+        lastPoint = segment.to();
+        return [segment.toStringPieces()];
     });
 }
 
