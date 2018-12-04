@@ -17,12 +17,12 @@ import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 import AREA_LUT from "../resources/textures/area-lut.png";
 import {Matrix2D, Point2D, Rect, Size2D, Vector3D, approxEq, cross, lerp} from "./geometry";
+import {canonicalizePath, flattenPath} from "./path-utils";
 import {SVGPath, TILE_SIZE, TileDebugger, Tiler, testIntervals, TileStrip} from "./tiling";
 import {staticCast, unwrapNull} from "./util";
 
 const SVGPath: (path: string) => SVGPath = require('svgpath');
 const parseColor: (color: string) => any = require('parse-color');
-const svgPathOutline: any = require('svg-path-outline');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
@@ -475,6 +475,7 @@ class Scene {
 
         //const tileDebugger = new TileDebugger(document);
 
+        let fillCount = 0, strokeCount = 0;
         const paths: SVGPath[] = [];
         for (let pathElementIndex = 0;
              pathElementIndex < pathElements.length;
@@ -484,9 +485,11 @@ class Scene {
 
             const style = window.getComputedStyle(pathElement);
             if (style.fill != null && style.fill !== 'none') {
+                fillCount++;
                 this.addPath(paths, pathColors, style.fill, pathString);
             }
             if (style.stroke != null && style.stroke !== 'none') {
+                strokeCount++;
                 /*
                 const strokeWidth =
                     style.strokeWidth == null ? 1.0 : parseFloat(style.strokeWidth);
@@ -498,6 +501,7 @@ class Scene {
                 */
             }
         }
+        console.log("", fillCount, "fills,", strokeCount, "strokes");
 
         const startTime = window.performance.now();
 
@@ -622,37 +626,6 @@ class Program<U extends string, A extends string> {
         }
         this.attributes = attributes as {[key in A]: number};
     }
-}
-
-function flattenPath(path: SVGPath): SVGPath {
-    return path.abs().iterate(segment => {
-        if (segment[0] === 'C') {
-            const ctrl0 = new Point2D(parseFloat(segment[segment.length - 6]),
-                                      parseFloat(segment[segment.length - 5]));
-            const ctrl1 = new Point2D(parseFloat(segment[segment.length - 4]),
-                                      parseFloat(segment[segment.length - 3]));
-            const to = new Point2D(parseFloat(segment[segment.length - 2]),
-                                   parseFloat(segment[segment.length - 1]));
-            const ctrl = new Point2D(0.5 * (ctrl0.x + ctrl1.x), 0.5 * (ctrl0.y + ctrl1.y));
-            return [['Q', "" + ctrl.x, "" + ctrl.y, "" + to.x, "" + to.y]];
-        }
-        if (segment[0] === 'A') {
-            const to = new Point2D(parseFloat(segment[segment.length - 2]),
-                                   parseFloat(segment[segment.length - 1]));
-            return [['L', "" + to.x, "" + to.y]];
-        }
-        return [segment];
-    });
-}
-
-function canonicalizePath(path: SVGPath): SVGPath {
-    return path.abs().iterate(segment => {
-        if (segment[0] === 'H')
-            return [['L', segment[1], '0']];
-        if (segment[0] === 'V')
-            return [['L', '0', segment[1]]];
-        return [segment];
-    });
 }
 
 function waitForQuery(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, query: WebGLQuery):
