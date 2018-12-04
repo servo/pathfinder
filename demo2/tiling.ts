@@ -361,7 +361,7 @@ class SubpathEndpoints {
     }
 }
 
-class Edge {
+export class Edge {
     from: Point2D;
     ctrl: Point2D | null;
     to: Point2D;
@@ -389,6 +389,12 @@ class Edge {
             prev: new Edge(this.from, ctrlA, mid),
             next: new Edge(mid, ctrlB, this.to),
         }
+    }
+
+    toSVGPieces(): string[] {
+        if (this.ctrl == null)
+            return ['L', "" + this.to.x, "" + this.to.y];
+        return ['Q', "" + this.ctrl.x, "" + this.ctrl.y, "" + this.to.x, "" + this.to.y];
     }
 }
 

@@ -23,3 +23,9 @@ export function unwrapNull<T>(value: T | null): T {
         throw new Error("Unexpected null");
     return value;
 }
+
+export function unwrapUndef<T>(value: T | undefined): T {
+    if (value == null)
+        throw new Error("Unexpected undefined");
+    return value;
+}

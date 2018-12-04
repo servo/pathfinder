@@ -17,7 +17,7 @@ import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
 import AREA_LUT from "../resources/textures/area-lut.png";
 import {Matrix2D, Point2D, Rect, Size2D, Vector3D, approxEq, cross, lerp} from "./geometry";
-import {flattenPath, Outline} from "./path-utils";
+import {flattenPath, Outline, makePathMonotonic} from "./path-utils";
 import {SVGPath, TILE_SIZE, TileDebugger, Tiler, testIntervals, TileStrip} from "./tiling";
 import {staticCast, unwrapNull} from "./util";
 
@@ -318,7 +318,7 @@ class App {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         const framebufferSize = {width: canvas.width, height: canvas.height};
         gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
-        gl.clearColor(1.0, 1.0, 1.0, 1.0);
+        gl.clearColor(0.85, 0.85, 0.85, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
         gl.bindVertexArray(this.opaqueVertexArray);
@@ -573,7 +573,7 @@ class Scene {
         if (strokeWidth != null) {
             const outline = new Outline(path);
             outline.calculateNormals();
-            outline.stroke(strokeWidth * GLOBAL_TRANSFORM.a * 5.0);
+            outline.stroke(strokeWidth * GLOBAL_TRANSFORM.a);
             const strokedPathString = outline.toSVGPathString();
 
             /*
@@ -594,6 +594,7 @@ class Scene {
             */
 
             path = SVGPath(strokedPathString);
+            path = makePathMonotonic(path);
         }
 
         paths.push(path);
