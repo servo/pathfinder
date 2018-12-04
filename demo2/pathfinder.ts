@@ -10,6 +10,8 @@
 
 import COVER_VERTEX_SHADER_SOURCE from "./cover.vs.glsl";
 import COVER_FRAGMENT_SHADER_SOURCE from "./cover.fs.glsl";
+import OPAQUE_VERTEX_SHADER_SOURCE from "./opaque.vs.glsl";
+import OPAQUE_FRAGMENT_SHADER_SOURCE from "./opaque.fs.glsl";
 import STENCIL_VERTEX_SHADER_SOURCE from "./stencil.vs.glsl";
 import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import SVG from "../resources/svg/Ghostscript_Tiger.svg";
@@ -20,6 +22,7 @@ import {staticCast, unwrapNull} from "./util";
 
 const SVGPath: (path: string) => SVGPath = require('svgpath');
 const parseColor: (color: string) => any = require('parse-color');
+const svgPathOutline: any = require('svg-path-outline');
 
 const SVG_NS: string = "http://www.w3.org/2000/svg";
 
@@ -58,6 +61,8 @@ class App {
     private stencilFramebuffer: WebGLFramebuffer;
     private stencilProgram: Program<'FramebufferSize' | 'TileSize' | 'AreaLUT',
                                     'TessCoord' | 'From' | 'Ctrl' | 'To' | 'TileIndex'>;
+    private opaqueProgram: Program<'FramebufferSize' | 'TileSize',
+                                   'TessCoord' | 'TileOrigin' | 'Color'>;
     private coverProgram:
         Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize',
                 'TessCoord' | 'TileOrigin' | 'TileIndex' | 'Color'>;
@@ -65,12 +70,15 @@ class App {
     private stencilVertexPositionsBuffer: WebGLBuffer;
     private stencilVertexTileIndicesBuffer: WebGLBuffer;
     private stencilVertexArray: WebGLVertexArrayObject;
+    private opaqueVertexBuffer: WebGLBuffer;
+    private opaqueVertexArray: WebGLVertexArrayObject;
     private coverVertexBuffer: WebGLBuffer;
     private coverVertexArray: WebGLVertexArrayObject;
 
     private scene: Scene | null;
     private primitiveCount: number;
     private tileCount: number;
+    private opaqueTileCount: number;
 
     constructor(svg: XMLDocument, areaLUT: HTMLImageElement) {
         const canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
@@ -135,6 +143,13 @@ class App {
                                          ['TessCoord', 'TileOrigin', 'TileIndex', 'Color']);
         this.coverProgram = coverProgram;
 
+        const opaqueProgram = new Program(gl,
+                                          OPAQUE_VERTEX_SHADER_SOURCE,
+                                          OPAQUE_FRAGMENT_SHADER_SOURCE,
+                                          ['FramebufferSize', 'TileSize'],
+                                          ['TessCoord', 'TileOrigin', 'Color']);
+        this.opaqueProgram = opaqueProgram;
+
         const stencilProgram = new Program(gl,
                                            STENCIL_VERTEX_SHADER_SOURCE,
                                            STENCIL_FRAGMENT_SHADER_SOURCE,
@@ -182,6 +197,29 @@ class App {
         gl.enableVertexAttribArray(stencilProgram.attributes.To);
         gl.enableVertexAttribArray(stencilProgram.attributes.TileIndex);
 
+        // Initialize opaque VBO.
+        this.opaqueVertexBuffer = unwrapNull(gl.createBuffer());
+
+        // Initialize opaque VAO.
+        this.opaqueVertexArray = unwrapNull(gl.createVertexArray());
+        gl.bindVertexArray(this.opaqueVertexArray);
+        gl.useProgram(this.opaqueProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
+        gl.vertexAttribPointer(opaqueProgram.attributes.TessCoord,
+                               2,
+                               gl.UNSIGNED_BYTE,
+                               false,
+                               0,
+                               0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.opaqueVertexBuffer);
+        gl.vertexAttribPointer(opaqueProgram.attributes.TileOrigin, 2, gl.SHORT, false, 10, 0);
+        gl.vertexAttribDivisor(opaqueProgram.attributes.TileOrigin, 1);
+        gl.vertexAttribPointer(opaqueProgram.attributes.Color, 4, gl.UNSIGNED_BYTE, true, 10, 6);
+        gl.vertexAttribDivisor(opaqueProgram.attributes.Color, 1);
+        gl.enableVertexAttribArray(opaqueProgram.attributes.TessCoord);
+        gl.enableVertexAttribArray(opaqueProgram.attributes.TileOrigin);
+        gl.enableVertexAttribArray(opaqueProgram.attributes.Color);
+
         // Initialize cover VBO.
         this.coverVertexBuffer = unwrapNull(gl.createBuffer());
 
@@ -214,6 +252,7 @@ class App {
         this.scene = null;
         this.primitiveCount = 0;
         this.tileCount = 0;
+        this.opaqueTileCount = 0;
     }
 
     redraw(): void {
@@ -276,13 +315,23 @@ class App {
         //console.log(stencilData);
         */
 
-        // Cover.
+        // Draw opaque tiles.
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         const framebufferSize = {width: canvas.width, height: canvas.height};
         gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
         gl.clearColor(1.0, 1.0, 1.0, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
+        gl.bindVertexArray(this.opaqueVertexArray);
+        gl.useProgram(this.opaqueProgram.program);
+        gl.uniform2f(this.opaqueProgram.uniforms.FramebufferSize,
+                     framebufferSize.width,
+                     framebufferSize.height);
+        gl.uniform2f(this.opaqueProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
+        gl.disable(gl.BLEND);
+        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.opaqueTileCount);
+
+        // Cover.
         gl.bindVertexArray(this.coverVertexArray);
         gl.useProgram(this.coverProgram.program);
         gl.uniform2f(this.coverProgram.uniforms.FramebufferSize,
@@ -315,6 +364,35 @@ class App {
     prepare(): void {
         const gl = this.gl, scene = unwrapNull(this.scene);
 
+        // Construct opaque tile VBOs.
+        this.opaqueTileCount = 0;
+        const opaqueVertexData: number[] = [];
+        const opaqueTiles: number[][] = [];
+        for (let pathIndex = scene.pathTileStrips.length - 1; pathIndex >= 0; pathIndex--) {
+            const pathTileStrips = scene.pathTileStrips[pathIndex];
+            for (const tileStrip of pathTileStrips) {
+                for (const tile of tileStrip.tiles) {
+                    // TODO(pcwalton)
+                    const color = scene.pathColors[pathIndex];
+                    if (!tile.isFilled())
+                        continue;
+
+                    if (opaqueTiles[tile.tileLeft] == null)
+                        opaqueTiles[tile.tileLeft] = [];
+                    if (opaqueTiles[tile.tileLeft][tileStrip.tileTop] != null)
+                        continue;
+                    opaqueTiles[tile.tileLeft][tileStrip.tileTop] = pathIndex;
+
+                    opaqueVertexData.push(Math.floor(tile.tileLeft),
+                                          Math.floor(tileStrip.tileTop),
+                                          0,
+                                          color.r | (color.g << 8),
+                                          color.b | (color.a << 8));
+                    this.opaqueTileCount++;
+                }
+            }
+        }
+
         // Construct stencil and cover VBOs.
         this.tileCount = 0;
         let primitiveCount = 0;
@@ -324,9 +402,15 @@ class App {
             const pathTileStrips = scene.pathTileStrips[pathIndex];
             for (const tileStrip of pathTileStrips) {
                 for (const tile of tileStrip.tiles) {
-                    // TODO(pcwalton)
+                    const color = scene.pathColors[pathIndex];
                     if (tile.isFilled())
                         continue;
+
+                    if (opaqueTiles[tile.tileLeft] != null &&
+                            opaqueTiles[tile.tileLeft][tileStrip.tileTop] != null &&
+                            pathIndex <= opaqueTiles[tile.tileLeft][tileStrip.tileTop]) {
+                        continue;
+                    }
 
                     for (const edge of tile.edges) {
                         let ctrl;
@@ -341,7 +425,6 @@ class App {
                         primitiveCount++;
                     }
 
-                    const color = scene.pathColors[pathIndex];
                     coverVertexData.push(Math.floor(tile.tileLeft),
                                          Math.floor(tileStrip.tileTop),
                                          this.tileCount,
@@ -358,6 +441,10 @@ class App {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(stencilVertexPositions), gl.STATIC_DRAW);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.stencilVertexTileIndicesBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Uint16Array(stencilVertexTileIndices), gl.STATIC_DRAW);
+
+        // Populate the opaque VBO.
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.opaqueVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Int16Array(opaqueVertexData), gl.DYNAMIC_DRAW);
 
         // Populate the cover VBO.
         gl.bindBuffer(gl.ARRAY_BUFFER, this.coverVertexBuffer);
@@ -382,46 +469,34 @@ class Scene {
         document.body.appendChild(svgElement);
 
         const pathElements = Array.from(document.getElementsByTagName('path'));
-        const pathColors = [];
+        const pathColors: any[] = [];
 
         this.pathTileStrips = [];
 
         //const tileDebugger = new TileDebugger(document);
 
-        const paths = [];
+        const paths: SVGPath[] = [];
         for (let pathElementIndex = 0;
              pathElementIndex < pathElements.length;
              pathElementIndex++) {
             const pathElement = pathElements[pathElementIndex];
+            const pathString = unwrapNull(pathElement.getAttribute('d'));
 
             const style = window.getComputedStyle(pathElement);
-            let paint: string;
             if (style.fill != null && style.fill !== 'none') {
-                paint = style.fill;
-            /*} else if (style.stroke != null && style.stroke !== 'none') {
-                paint = style.stroke;*/
-            } else {
-                continue;
+                this.addPath(paths, pathColors, style.fill, pathString);
             }
-
-            const color = parseColor(paint).rgba;
-            pathColors.push({
-                r: color[0],
-                g: color[1],
-                b: color[2],
-                a: Math.round(color[3] * 255.),
-            });
-
-            let path = SVGPath(unwrapNull(pathElement.getAttribute('d')));
-            path = path.matrix([
-                GLOBAL_TRANSFORM.a, GLOBAL_TRANSFORM.b,
-                GLOBAL_TRANSFORM.c, GLOBAL_TRANSFORM.d,
-                GLOBAL_TRANSFORM.tx, GLOBAL_TRANSFORM.ty,
-            ]);
-
-            path = flattenPath(path);
-            path = canonicalizePath(path);
-            paths.push(path);
+            if (style.stroke != null && style.stroke !== 'none') {
+                /*
+                const strokeWidth =
+                    style.strokeWidth == null ? 1.0 : parseFloat(style.strokeWidth);
+                console.log("stroking path:", pathString, strokeWidth);
+                try {
+                    const strokedPathString = svgPathOutline(pathString, strokeWidth, {joints: 1});
+                    this.addPath(paths, pathColors, style.stroke, strokedPathString);
+                } catch (e) {}
+                */
+            }
         }
 
         const startTime = window.performance.now();
@@ -473,6 +548,27 @@ class Scene {
         document.body.appendChild(svgContainer);
 
         this.pathColors = pathColors;
+    }
+
+    private addPath(paths: SVGPath[], pathColors: any[], paint: string, pathString: string): void {
+        const color = parseColor(paint).rgba;
+        pathColors.push({
+            r: color[0],
+            g: color[1],
+            b: color[2],
+            a: Math.round(color[3] * 255.),
+        });
+
+        let path = SVGPath(pathString);
+        path = path.matrix([
+            GLOBAL_TRANSFORM.a, GLOBAL_TRANSFORM.b,
+            GLOBAL_TRANSFORM.c, GLOBAL_TRANSFORM.d,
+            GLOBAL_TRANSFORM.tx, GLOBAL_TRANSFORM.ty,
+        ]);
+
+        path = flattenPath(path);
+        path = canonicalizePath(path);
+        paths.push(path);
     }
 }
 
@@ -540,6 +636,11 @@ function flattenPath(path: SVGPath): SVGPath {
             const ctrl = new Point2D(0.5 * (ctrl0.x + ctrl1.x), 0.5 * (ctrl0.y + ctrl1.y));
             return [['Q', "" + ctrl.x, "" + ctrl.y, "" + to.x, "" + to.y]];
         }
+        if (segment[0] === 'A') {
+            const to = new Point2D(parseFloat(segment[segment.length - 2]),
+                                   parseFloat(segment[segment.length - 1]));
+            return [['L', "" + to.x, "" + to.y]];
+        }
         return [segment];
     });
 }
@@ -564,23 +665,6 @@ function waitForQuery(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, qu
     }
     const elapsed = disjointTimerQueryExt.getQueryObjectEXT(query, queryResult) / 1000000.0;
     console.log(elapsed + "ms elapsed");
-}
-
-function pathIsRect(path: SVGPath, rectSize: Size2D): boolean {
-    let result = true;
-    path.iterate((segment, index) => {
-        if (segment.length < 3)
-            return;
-        const point = new Point2D(parseFloat(segment[1]), parseFloat(segment[2]));
-        result = result &&
-            (approxEq(point.x, 0.0) || approxEq(point.x, rectSize.width)) &&
-            (approxEq(point.y, 0.0) || approxEq(point.y, rectSize.height));
-    });
-    return result;
-}
-
-function sampleBezier(from: Point2D, ctrl: Point2D, to: Point2D, t: number): Point2D {
-    return from.lerp(ctrl, t).lerp(ctrl.lerp(to, t), t);
 }
 
 function main(): void {
