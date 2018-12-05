@@ -287,7 +287,7 @@ class App {
         gl.disable(gl.BLEND);
 
         // Read back stencil and dump it.
-        /*const totalStencilFramebufferSize = STENCIL_FRAMEBUFFER_SIZE.width *
+        const totalStencilFramebufferSize = STENCIL_FRAMEBUFFER_SIZE.width *
             STENCIL_FRAMEBUFFER_SIZE.height * 4;
         const stencilData = new Float32Array(totalStencilFramebufferSize);
         gl.readPixels(0, 0,
@@ -312,7 +312,6 @@ class App {
         stencilDumpCanvasContext.putImageData(stencilDumpImageData, 0, 0);
         document.body.appendChild(stencilDumpCanvas);
         //console.log(stencilData);
-        */
 
         // Draw opaque tiles.
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
