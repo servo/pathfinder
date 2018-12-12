@@ -1,0 +1,11 @@
+[package]
+name = "tile-svg"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+edition = "2018"
+
+[dependencies]
+bitflags = "1.0"
+euclid = "0.19"
+quick-xml = "0.12"
+svgtypes = "0.2"

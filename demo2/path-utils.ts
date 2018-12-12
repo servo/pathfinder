@@ -57,6 +57,11 @@ export function flattenPath(path: SVGPath): SVGPath {
                                             segment.points[2]);
             //console.log("cubic edge", cubicEdge);
             const edges: Edge[] = cubicEdge.toQuadraticEdges();
+            /*const edges: Edge[] = [
+                new Edge(lastPoint,
+                         segment.points[0].lerp(segment.points[1], 0.5),
+                         segment.points[2]),
+            ];*/
             const newSegments = edges.map(edge => edge.toSVGPieces());
             //console.log("... resulting new segments:", newSegments);
             lastPoint = segment.to();
