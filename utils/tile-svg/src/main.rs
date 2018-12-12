@@ -99,7 +99,8 @@ impl Scene {
                         let value = reader.decode(&attribute.value);
                         let style = scene.ensure_style(&mut style, &mut group_styles);
                         let path_parser = PathParser::from(&*value);
-                        let outline = Outline::from_svg_path_segments(path_parser);
+                        let outline =
+                            Outline::from_svg_path_segments(path_parser, scene.get_style(style));
                         scene.objects.push(PathObject::new(outline, style));
                     }
                 }
@@ -184,6 +185,10 @@ impl Scene {
         self.styles.push(computed_style);
         id
     }
+
+    fn get_style(&self, style: StyleId) -> &ComputedStyle {
+        &self.styles[style.0 as usize]
+    }
 }
 
 impl PathObject {
@@ -222,7 +227,8 @@ impl Outline {
         }
     }
 
-    fn from_svg_path_segments<I>(segments: I) -> Outline where I: Iterator<Item = SvgPathSegment> {
+    fn from_svg_path_segments<I>(segments: I, style: &ComputedStyle) -> Outline
+                                 where I: Iterator<Item = SvgPathSegment> {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
         let (mut first_point_in_path, mut last_ctrl_point, mut last_point) = (None, None, None);
@@ -236,85 +242,95 @@ impl Outline {
                     first_point_in_path = Some(to);
                     last_point = Some(to);
                     last_ctrl_point = None;
-                    current_contour.points.push(to);
-                    current_contour.flags.push(PointFlags::empty());
+                    current_contour.push_transformed_point(&to,
+                                                           PointFlags::empty(),
+                                                           &style.transform);
                 }
                 SvgPathSegment::LineTo { abs, x, y } => {
                     let to = compute_point(x, y, abs, &last_point);
                     last_point = Some(to);
                     last_ctrl_point = None;
-                    current_contour.points.push(to);
-                    current_contour.flags.push(PointFlags::empty());
+                    current_contour.push_transformed_point(&to,
+                                                           PointFlags::empty(),
+                                                           &style.transform);
                 }
                 SvgPathSegment::HorizontalLineTo { abs, x } => {
                     let to = Point2D::new(compute_point(x, 0.0, abs, &last_point).x,
                                           last_point.unwrap_or(Point2D::zero()).y);
                     last_point = Some(to);
                     last_ctrl_point = None;
-                    current_contour.points.push(to);
-                    current_contour.flags.push(PointFlags::empty());
+                    current_contour.push_transformed_point(&to,
+                                                           PointFlags::empty(),
+                                                           &style.transform);
                 }
                 SvgPathSegment::VerticalLineTo { abs, y } => {
                     let to = Point2D::new(last_point.unwrap_or(Point2D::zero()).x,
                                           compute_point(0.0, y, abs, &last_point).y);
                     last_point = Some(to);
                     last_ctrl_point = None;
-                    current_contour.points.push(to);
-                    current_contour.flags.push(PointFlags::empty());
+                    current_contour.push_transformed_point(&to,
+                                                           PointFlags::empty(),
+                                                           &style.transform);
                 }
                 SvgPathSegment::Quadratic { abs, x1, y1, x, y } => {
                     let ctrl = compute_point(x1, y1, abs, &last_point);
                     last_ctrl_point = Some(ctrl);
-                    let to = compute_point(x, y, abs, &last_ctrl_point);
+                    let to = compute_point(x, y, abs, &last_point);
                     last_point = Some(to);
-                    current_contour.points.extend_from_slice(&[ctrl, to]);
-                    current_contour.flags.extend_from_slice(&[
-                        PointFlags::CONTROL_POINT_0,
-                        PointFlags::empty(),
-                    ]);
+                    current_contour.push_transformed_point(&ctrl,
+                                                           PointFlags::CONTROL_POINT_0,
+                                                           &style.transform);
+                    current_contour.push_transformed_point(&to,
+                                                           PointFlags::empty(),
+                                                           &style.transform);
                 }
                 SvgPathSegment::SmoothQuadratic { abs, x, y } => {
                     let ctrl = last_point.unwrap_or(Point2D::zero()) +
                         (last_point.unwrap_or(Point2D::zero()) -
                          last_ctrl_point.unwrap_or(Point2D::zero()));
                     last_ctrl_point = Some(ctrl);
-                    let to = compute_point(x, y, abs, &last_ctrl_point);
+                    let to = compute_point(x, y, abs, &last_point);
                     last_point = Some(to);
-                    current_contour.points.extend_from_slice(&[ctrl, to]);
-                    current_contour.flags.extend_from_slice(&[
-                        PointFlags::CONTROL_POINT_0,
-                        PointFlags::empty(),
-                    ]);
+                    current_contour.push_transformed_point(&ctrl,
+                                                           PointFlags::CONTROL_POINT_0,
+                                                           &style.transform);
+                    current_contour.push_transformed_point(&to,
+                                                           PointFlags::empty(),
+                                                           &style.transform);
                 }
                 SvgPathSegment::CurveTo { abs, x1, y1, x2, y2, x, y } => {
                     let ctrl0 = compute_point(x1, y1, abs, &last_point);
-                    last_ctrl_point = Some(ctrl0);
-                    let ctrl1 = compute_point(x2, y2, abs, &last_ctrl_point);
+                    let ctrl1 = compute_point(x2, y2, abs, &last_point);
                     last_ctrl_point = Some(ctrl1);
-                    let to = compute_point(x, y, abs, &last_ctrl_point);
+                    let to = compute_point(x, y, abs, &last_point);
                     last_point = Some(to);
-                    current_contour.points.extend_from_slice(&[ctrl0, ctrl1, to]);
-                    current_contour.flags.extend_from_slice(&[
-                        PointFlags::CONTROL_POINT_0,
-                        PointFlags::CONTROL_POINT_1,
-                        PointFlags::empty(),
-                    ]);
+                    current_contour.push_transformed_point(&ctrl0,
+                                                           PointFlags::CONTROL_POINT_0,
+                                                           &style.transform);
+                    current_contour.push_transformed_point(&ctrl1,
+                                                           PointFlags::CONTROL_POINT_1,
+                                                           &style.transform);
+                    current_contour.push_transformed_point(&to,
+                                                           PointFlags::empty(),
+                                                           &style.transform);
                 }
                 SvgPathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
                     let ctrl0 = last_point.unwrap_or(Point2D::zero()) +
                         (last_point.unwrap_or(Point2D::zero()) -
                          last_ctrl_point.unwrap_or(Point2D::zero()));
-                    last_ctrl_point = Some(ctrl0);
-                    let ctrl1 = compute_point(x2, y2, abs, &last_ctrl_point);
+                    let ctrl1 = compute_point(x2, y2, abs, &last_point);
                     last_ctrl_point = Some(ctrl1);
-                    let to = compute_point(x, y, abs, &last_ctrl_point);
+                    let to = compute_point(x, y, abs, &last_point);
                     last_point = Some(to);
-                    current_contour.points.extend_from_slice(&[ctrl0, ctrl1, to]);
-                    current_contour.flags.extend_from_slice(&[
-                        PointFlags::CONTROL_POINT_0,
-                        PointFlags::CONTROL_POINT_1,
-                        PointFlags::empty(),
-                    ]);
+                    current_contour.push_transformed_point(&ctrl0,
+                                                           PointFlags::CONTROL_POINT_0,
+                                                           &style.transform);
+                    current_contour.push_transformed_point(&ctrl1,
+                                                           PointFlags::CONTROL_POINT_1,
+                                                           &style.transform);
+                    current_contour.push_transformed_point(&to,
+                                                           PointFlags::empty(),
+                                                           &style.transform);
                 }
                 SvgPathSegment::ClosePath { abs: _ } => {
                     if !current_contour.is_empty() {
@@ -352,5 +368,13 @@ impl Contour {
 
     fn is_empty(&self) -> bool {
         self.points.is_empty()
+    }
+
+    fn push_transformed_point(&mut self,
+                              point: &Point2D<f32>,
+                              flags: PointFlags,
+                              transform: &Transform2D<f32>) {
+        self.points.push(transform.transform_point(point));
+        self.flags.push(flags);
     }
 }
