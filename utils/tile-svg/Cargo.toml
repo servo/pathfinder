@@ -9,3 +9,7 @@ bitflags = "1.0"
 euclid = "0.19"
 quick-xml = "0.12"
 svgtypes = "0.2"
+
+[dev-dependencies]
+quickcheck = "0.7"
+rand = "0.5"

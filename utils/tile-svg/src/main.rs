@@ -11,11 +11,17 @@
 #[macro_use]
 extern crate bitflags;
 
+#[cfg(test)]
+extern crate quickcheck;
+#[cfg(test)]
+extern crate rand;
+
 use euclid::{Point2D, Transform2D};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::env;
 use std::mem;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use svgtypes::{Color as SvgColor, PathParser, PathSegment as SvgPathSegment, TransformListParser};
@@ -376,5 +382,178 @@ impl Contour {
                               transform: &Transform2D<f32>) {
         self.points.push(transform.transform_point(point));
         self.flags.push(flags);
+    }
+}
+
+// Tiling
+
+struct Tiler {
+    outline: Outline,
+}
+
+impl Tiler {
+    fn from_outline(outline: Outline) -> Tiler {
+        Tiler {
+            outline,
+        }
+    }
+}
+
+// Intervals
+
+#[derive(Debug)]
+struct Intervals {
+    ranges: Vec<IntervalRange>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct IntervalRange {
+    start: f32,
+    end: f32,
+    winding: f32,
+}
+
+impl Intervals {
+    fn new(end: f32) -> Intervals {
+        Intervals {
+            ranges: vec![IntervalRange::new(0.0, end, 0.0)],
+        }
+    }
+
+    fn add(&mut self, range: IntervalRange) {
+        self.split_at(range.start);
+        self.split_at(range.end);
+
+        // Find bracketing range.
+        let mut start_index = 0;
+        while range.start < self.ranges[start_index].start {
+            start_index += 1
+        }
+        let mut end_index = start_index;
+        while range.end < self.ranges[end_index].end {
+            end_index += 1
+        }
+
+        // Adjust winding numbers.
+        for existing_range in &mut self.ranges[start_index..(end_index + 1)] {
+            existing_range.winding += range.winding
+        }
+
+        self.merge_adjacent();
+    }
+
+    fn clear(&mut self) {
+        let end = self.ranges.last().unwrap().end;
+        self.ranges.truncate(1);
+        self.ranges[0] = IntervalRange::new(0.0, end, 0.0);
+    }
+
+    fn split_at(&mut self, value: f32) {
+        let mut range_index = 0;
+        while range_index < self.ranges.len() {
+            let IntervalRange {
+                start: old_start,
+                end: old_end,
+                winding,
+            } = self.ranges[range_index];
+            if value < old_start || value > old_end {
+                range_index += 1;
+                continue
+            }
+
+            self.ranges[range_index] = IntervalRange::new(old_start, value, winding);
+            self.ranges.insert(range_index + 1, IntervalRange::new(value, old_end, winding));
+            return
+        }
+    }
+
+    fn merge_adjacent(&mut self) {
+        let mut dest_range_index = 0;
+        let mut current_range = self.ranges[0];
+        for src_range_index in 1..self.ranges.len() {
+            if self.ranges[src_range_index].winding == current_range.winding {
+                current_range.end = self.ranges[src_range_index].end
+            } else {
+                self.ranges[dest_range_index] = current_range;
+                dest_range_index += 1;
+                current_range = self.ranges[src_range_index];
+            }
+        }
+        self.ranges[dest_range_index] = current_range;
+        dest_range_index += 1;
+        self.ranges.truncate(dest_range_index);
+    }
+}
+
+impl IntervalRange {
+    fn new(start: f32, end: f32, winding: f32) -> IntervalRange {
+        IntervalRange {
+            start,
+            end,
+            winding,
+        }
+    }
+
+    fn contains(&self, value: f32) -> bool {
+        value >= self.start && value < self.end
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{IntervalRange, Intervals};
+    use quickcheck::{self, Arbitrary, Gen};
+    use rand::Rng;
+
+    #[test]
+    fn test_intervals() {
+        quickcheck::quickcheck(prop_intervals as fn(Spec) -> bool);
+
+        fn prop_intervals(spec: Spec) -> bool {
+            let mut intervals = Intervals::new(spec.end);
+            for range in spec.ranges {
+                intervals.add(range);
+            }
+
+            assert!(intervals.ranges.len() > 0);
+            assert_eq!(intervals.ranges[0].start, 0.0);
+            assert_eq!(intervals.ranges.last().unwrap().end, spec.end);
+            for prev_index in 0..(intervals.ranges.len() - 1) {
+                let next_index = prev_index + 1;
+                assert_eq!(intervals.ranges[prev_index].end, intervals.ranges[next_index].start);
+                assert_ne!(intervals.ranges[prev_index].winding,
+                           intervals.ranges[next_index].winding);
+            }
+
+            true
+        }
+
+        #[derive(Clone, Debug)]
+        struct Spec {
+            end: f32,
+            ranges: Vec<IntervalRange>,
+        }
+
+        impl Arbitrary for Spec {
+            fn arbitrary<G>(g: &mut G) -> Spec where G: Gen {
+                const EPSILON: f32 = 0.0001;
+
+                let size = g.size();
+                let end = g.gen_range(EPSILON, size as f32);
+
+                let mut ranges = vec![];
+                let range_count = g.gen_range(0, size);
+                for _ in 0..range_count {
+                    let (a, b) = (g.gen_range(0.0, end), g.gen_range(0.0, end));
+                    let winding = g.gen_range(-(size as i32), size as i32) as f32;
+                    ranges.push(IntervalRange::new(f32::min(a, b), f32::max(a, b), winding));
+                }
+
+                Spec {
+                    end,
+                    ranges,
+                }
+            }
+        }
     }
 }
