@@ -16,14 +16,16 @@ extern crate quickcheck;
 #[cfg(test)]
 extern crate rand;
 
-use euclid::{Point2D, Transform2D};
+use euclid::{Point2D, Rect, Transform2D, Vector2D};
+use lyon_algorithms::geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use std::cmp::Ordering;
 use std::env;
 use std::mem;
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::Instant;
 use svgtypes::{Color as SvgColor, PathParser, PathSegment as SvgPathSegment, TransformListParser};
 use svgtypes::{TransformListToken};
 
@@ -57,7 +59,13 @@ impl ComputedStyle {
 fn main() {
     let path = PathBuf::from(env::args().skip(1).next().unwrap());
     let scene = Scene::from_path(&path);
-    println!("{:#?}", scene);
+
+    let start_time = Instant::now();
+    scene.generate_tiles();
+    let elapsed_time = Instant::now() - start_time;
+    println!("{}ms elapsed",
+             elapsed_time.as_secs() as f64 * 1000.0 +
+             elapsed_time.subsec_micros() as f64 / 1000.0);
 }
 
 #[derive(Debug)]
@@ -195,6 +203,14 @@ impl Scene {
     fn get_style(&self, style: StyleId) -> &ComputedStyle {
         &self.styles[style.0 as usize]
     }
+
+    fn generate_tiles(&self) {
+        for object in &self.objects {
+            let mut tiler = Tiler::from_outline(&object.outline);
+            tiler.generate_tiles();
+            // TODO(pcwalton)
+        }
+    }
 }
 
 impl PathObject {
@@ -211,6 +227,7 @@ impl PathObject {
 #[derive(Debug)]
 struct Outline {
     contours: Vec<Contour>,
+    bounds: Rect<f32>,
 }
 
 #[derive(Debug)]
@@ -230,6 +247,7 @@ impl Outline {
     fn new() -> Outline {
         Outline {
             contours: vec![],
+            bounds: Rect::zero(),
         }
     }
 
@@ -237,7 +255,9 @@ impl Outline {
                                  where I: Iterator<Item = SvgPathSegment> {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
+        let mut bounding_points = None;
         let (mut first_point_in_path, mut last_ctrl_point, mut last_point) = (None, None, None);
+
         for segment in segments {
             match segment {
                 SvgPathSegment::MoveTo { abs, x, y } => {
@@ -250,7 +270,8 @@ impl Outline {
                     last_ctrl_point = None;
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                 }
                 SvgPathSegment::LineTo { abs, x, y } => {
                     let to = compute_point(x, y, abs, &last_point);
@@ -258,7 +279,8 @@ impl Outline {
                     last_ctrl_point = None;
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                 }
                 SvgPathSegment::HorizontalLineTo { abs, x } => {
                     let to = Point2D::new(compute_point(x, 0.0, abs, &last_point).x,
@@ -267,7 +289,8 @@ impl Outline {
                     last_ctrl_point = None;
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                 }
                 SvgPathSegment::VerticalLineTo { abs, y } => {
                     let to = Point2D::new(last_point.unwrap_or(Point2D::zero()).x,
@@ -276,7 +299,8 @@ impl Outline {
                     last_ctrl_point = None;
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                 }
                 SvgPathSegment::Quadratic { abs, x1, y1, x, y } => {
                     let ctrl = compute_point(x1, y1, abs, &last_point);
@@ -285,10 +309,12 @@ impl Outline {
                     last_point = Some(to);
                     current_contour.push_transformed_point(&ctrl,
                                                            PointFlags::CONTROL_POINT_0,
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                 }
                 SvgPathSegment::SmoothQuadratic { abs, x, y } => {
                     let ctrl = last_point.unwrap_or(Point2D::zero()) +
@@ -299,10 +325,12 @@ impl Outline {
                     last_point = Some(to);
                     current_contour.push_transformed_point(&ctrl,
                                                            PointFlags::CONTROL_POINT_0,
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                 }
                 SvgPathSegment::CurveTo { abs, x1, y1, x2, y2, x, y } => {
                     let ctrl0 = compute_point(x1, y1, abs, &last_point);
@@ -312,13 +340,16 @@ impl Outline {
                     last_point = Some(to);
                     current_contour.push_transformed_point(&ctrl0,
                                                            PointFlags::CONTROL_POINT_0,
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                     current_contour.push_transformed_point(&ctrl1,
                                                            PointFlags::CONTROL_POINT_1,
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                 }
                 SvgPathSegment::SmoothCurveTo { abs, x2, y2, x, y } => {
                     let ctrl0 = last_point.unwrap_or(Point2D::zero()) +
@@ -330,13 +361,16 @@ impl Outline {
                     last_point = Some(to);
                     current_contour.push_transformed_point(&ctrl0,
                                                            PointFlags::CONTROL_POINT_0,
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                     current_contour.push_transformed_point(&ctrl1,
                                                            PointFlags::CONTROL_POINT_1,
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform);
+                                                           &style.transform,
+                                                           &mut bounding_points);
                 }
                 SvgPathSegment::ClosePath { abs: _ } => {
                     if !current_contour.is_empty() {
@@ -351,6 +385,11 @@ impl Outline {
         if !current_contour.is_empty() {
             outline.contours.push(current_contour)
         }
+
+        if let Some((upper_left, lower_right)) = bounding_points {
+            outline.bounds = Rect::from_points([upper_left, lower_right].into_iter())
+        }
+
         return outline;
 
         fn compute_point(x: f64, y: f64, abs: bool, last_point: &Option<Point2D<f32>>)
@@ -361,6 +400,10 @@ impl Outline {
                 _ => point,
             }
         }
+    }
+
+    fn segment_after(&self, endpoint_index: PointIndex) -> Segment {
+        self.contours[endpoint_index.contour_index].segment_after(endpoint_index.point_index)
     }
 }
 
@@ -379,23 +422,286 @@ impl Contour {
     fn push_transformed_point(&mut self,
                               point: &Point2D<f32>,
                               flags: PointFlags,
-                              transform: &Transform2D<f32>) {
-        self.points.push(transform.transform_point(point));
+                              transform: &Transform2D<f32>,
+                              bounding_points: &mut Option<(Point2D<f32>, Point2D<f32>)>) {
+        let point = transform.transform_point(point);
+        self.points.push(point);
         self.flags.push(flags);
+
+        match *bounding_points {
+            Some((ref mut upper_left, ref mut lower_right)) => {
+                *upper_left = upper_left.min(point);
+                *lower_right = lower_right.max(point);
+            }
+            None => *bounding_points = Some((point, point)),
+        }
     }
+
+    fn segment_after(&self, point_index: usize) -> Segment {
+        debug_assert!(self.point_is_endpoint(point_index));
+        let point1_index = self.add_to_point_index(point_index, 1);
+        if self.point_is_endpoint(point1_index) {
+            return Segment::Line(LineSegment {
+                from: self.points[point_index],
+                to: self.points[point1_index],
+            })
+        }
+        let point2_index = self.add_to_point_index(point_index, 2);
+        if self.point_is_endpoint(point2_index) {
+            return Segment::Quadratic(QuadraticBezierSegment {
+                from: self.points[point_index],
+                ctrl: self.points[point1_index],
+                to: self.points[point2_index],
+            })
+        }
+        let point3_index = self.add_to_point_index(point_index, 3);
+        Segment::Cubic(CubicBezierSegment {
+            from: self.points[point_index],
+            ctrl1: self.points[point1_index],
+            ctrl2: self.points[point2_index],
+            to: self.points[point3_index],
+        })
+    }
+
+    fn point_is_endpoint(&self, point_index: usize) -> bool {
+        self.flags[point_index].intersects(PointFlags::CONTROL_POINT_0 |
+                                           PointFlags::CONTROL_POINT_1)
+    }
+
+    fn add_to_point_index(&self, point_index: usize, addend: usize) -> usize {
+        (point_index + addend) % self.points.len()
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PointIndex {
+    contour_index: usize,
+    point_index: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Segment {
+    Line(LineSegment<f32>),
+    Quadratic(QuadraticBezierSegment<f32>),
+    Cubic(CubicBezierSegment<f32>),
+}
+
+impl Segment {
+    fn endpoints(&self) -> (Point2D<f32>, Point2D<f32>) {
+        match *self {
+            Segment::Line(ref line) => (line.from, line.to),
+            Segment::Quadratic(ref curve) => (curve.from, curve.to),
+            Segment::Cubic(ref curve) => (curve.from, curve.to),
+        }
+    }
+
+    // Note: If we convert these to monotonic then we can optimize this method.
+    // TODO(pcwalton): Consider changing the representation of `Segment` to remove the code
+    // duplication in the branches here?
+    fn min_y(&self) -> f32 {
+        match *self {
+            Segment::Line(ref line) => f32::min(line.from.y, line.to.y),
+            Segment::Quadratic(ref curve) => {
+                f32::min(f32::min(curve.from.y, curve.ctrl.y), curve.to.y)
+            }
+            Segment::Cubic(ref curve) => {
+                f32::min(f32::min(f32::min(curve.from.y, curve.ctrl1.y), curve.ctrl2.y),
+                         curve.to.y)
+            }
+        }
+    }
+
+    fn clip_y(&self, y: f32) -> ClippedSegments {
+        let (from, to) = self.endpoints();
+        if from.y < y && to.y < y {
+            return ClippedSegments { min: Some(*self), max: None }
+        }
+        if from.y > y && to.y > y {
+            return ClippedSegments { min: None, max: Some(*self) }
+        }
+
+        let (prev, next) = match *self {
+            Segment::Line(ref line) => {
+                let (prev, next) = line.split(line.solve_t_for_y(y));
+                (Segment::Line(prev), Segment::Line(next))
+            }
+            Segment::Quadratic(ref curve) => {
+                let (prev, next) = curve.split(curve.assume_monotonic().solve_t_for_y(y));
+                (Segment::Quadratic(prev), Segment::Quadratic(next))
+            }
+            Segment::Cubic(ref curve) => {
+                let swapped_curve = CubicBezierSegment {
+                    from: curve.from.yx(),
+                    ctrl1: curve.ctrl1.yx(),
+                    ctrl2: curve.ctrl2.yx(),
+                    to: curve.to.yx(),
+                };
+                let (prev, next) = curve.split(
+                        swapped_curve.assume_monotonic().solve_t_for_x(y, 0.0..1.0, TOLERANCE));
+                (Segment::Cubic(prev), Segment::Cubic(next))
+            }
+        };
+
+        if from.y <= to.y {
+            return ClippedSegments { min: Some(prev), max: Some(next) };
+        } else {
+            return ClippedSegments { min: Some(next), max: Some(prev) };
+        }
+
+        const TOLERANCE: f32 = 0.01;
+    }
+
+    fn translate(&self, by: &Vector2D<f32>) -> Segment {
+        match *self {
+            Segment::Line(ref line) => {
+                Segment::Line(LineSegment {
+                    from: line.from + *by,
+                    to: line.to + *by,
+                })
+            }
+            Segment::Quadratic(ref curve) => {
+                Segment::Quadratic(QuadraticBezierSegment {
+                    from: curve.from + *by,
+                    ctrl: curve.ctrl + *by,
+                    to: curve.to + *by,
+                })
+            }
+            Segment::Cubic(ref curve) => {
+                Segment::Cubic(CubicBezierSegment {
+                    from: curve.from + *by,
+                    ctrl1: curve.ctrl1 + *by,
+                    ctrl2: curve.ctrl2 + *by,
+                    to: curve.to + *by,
+                })
+            }
+        }
+    }
+}
+
+struct ClippedSegments {
+    min: Option<Segment>,
+    max: Option<Segment>,
 }
 
 // Tiling
 
-struct Tiler {
-    outline: Outline,
+const TILE_WIDTH: f32 = 4.0;
+const TILE_HEIGHT: f32 = 4.0;
+
+struct Tiler<'a> {
+    outline: &'a Outline,
 }
 
-impl Tiler {
-    fn from_outline(outline: Outline) -> Tiler {
+impl<'a> Tiler<'a> {
+    fn from_outline(outline: &Outline) -> Tiler {
         Tiler {
             outline,
         }
+    }
+
+    fn generate_tiles(&mut self) {
+        // Sort all edge indices.
+        let mut sorted_edge_indices = vec![];
+        for contour_index in 0..self.outline.contours.len() {
+            let contour = &self.outline.contours[contour_index];
+            for point_index in 0..contour.points.len() {
+                if contour.point_is_endpoint(point_index) {
+                    sorted_edge_indices.push(PointIndex { contour_index, point_index })
+                }
+            }
+        }
+        sorted_edge_indices.sort_by(|edge_index_a, edge_index_b| {
+            let segment_a = self.outline.segment_after(*edge_index_a);
+            let segment_b = self.outline.segment_after(*edge_index_b);
+            segment_a.min_y().partial_cmp(&segment_b.min_y()).unwrap_or(Ordering::Equal)
+        });
+
+        let bounds = self.outline.bounds;
+        let (max_x, max_y) = (bounds.max_x(), bounds.max_y());
+
+        let mut active_intervals = Intervals::new(max_x);
+        let mut active_edges = vec![];
+        let mut next_edge_index_index = 0;
+        let mut tile_top = bounds.origin.y - bounds.origin.y % TILE_HEIGHT;
+        let mut strips = vec![];
+
+        while tile_top < max_y {
+            let mut strip = Strip::new(tile_top);
+
+            // TODO(pcwalton): Populate tile strip with active intervals.
+
+            for active_edge in mem::replace(&mut active_edges, vec![]) {
+                self.process_edge(active_edge,
+                                  &mut strip,
+                                  &mut active_edges,
+                                  &mut active_intervals);
+            }
+
+            while next_edge_index_index < sorted_edge_indices.len() {
+                let segment =
+                    self.outline.segment_after(sorted_edge_indices[next_edge_index_index]);
+                if segment.min_y() > strip.tile_bottom() {
+                    break
+                }
+
+                self.process_edge(segment,
+                                  &mut strip,
+                                  &mut active_edges,
+                                  &mut active_intervals);
+                next_edge_index_index += 1;
+            }
+
+            tile_top = strip.tile_bottom();
+            strips.push(strip);
+        }
+    }
+
+    fn process_edge(&mut self,
+                    edge: Segment,
+                    strip: &mut Strip,
+                    active_edges: &mut Vec<Segment>,
+                    intervals: &mut Intervals) {
+        let clipped = edge.clip_y(strip.tile_bottom());
+        if let Some(upper_segment) = clipped.min {
+            strip.push_segment(upper_segment);
+            // FIXME(pcwalton): Assumes x-monotonicity!
+            // FIXME(pcwalton): The min call below is a hack!
+            let (from, to) = upper_segment.endpoints();
+            let from_x = f32::max(0.0, f32::min(intervals.extent(), from.x));
+            let to_x = f32::max(0.0, f32::min(intervals.extent(), to.x));
+            if from_x < to_x {
+                intervals.add(IntervalRange::new(from_x, to_x, -1.0))
+            } else {
+                intervals.add(IntervalRange::new(to_x, from_x, 1.0))
+            }
+        }
+        if let Some(lower_segment) = clipped.max {
+            active_edges.push(lower_segment);
+        }
+    }
+}
+
+// Strips
+
+struct Strip {
+    segments: Vec<Segment>,
+    tile_top: f32,
+}
+
+impl Strip {
+    fn new(tile_top: f32) -> Strip {
+        Strip {
+            segments: vec![],
+            tile_top,
+        }
+    }
+
+    fn push_segment(&mut self, segment: Segment) {
+        self.segments.push(segment.translate(&Vector2D::new(0.0, -self.tile_top)))
+    }
+
+    fn tile_bottom(&self) -> f32 {
+        self.tile_top + TILE_HEIGHT
     }
 }
 
@@ -446,6 +752,10 @@ impl Intervals {
         let end = self.ranges.last().unwrap().end;
         self.ranges.truncate(1);
         self.ranges[0] = IntervalRange::new(0.0, end, 0.0);
+    }
+
+    fn extent(&self) -> f32 {
+        self.ranges.last().unwrap().end
     }
 
     fn split_at(&mut self, value: f32) {
