@@ -60,12 +60,15 @@ fn main() {
     let path = PathBuf::from(env::args().skip(1).next().unwrap());
     let scene = Scene::from_path(&path);
 
+    const RUNS: u32 = 1000;
     let start_time = Instant::now();
-    scene.generate_tiles();
+    for _ in 0..RUNS {
+        scene.generate_tiles();
+    }
     let elapsed_time = Instant::now() - start_time;
-    println!("{}ms elapsed",
-             elapsed_time.as_secs() as f64 * 1000.0 +
-             elapsed_time.subsec_micros() as f64 / 1000.0);
+    let elapsed_ms = elapsed_time.as_secs() as f64 * 1000.0 +
+        elapsed_time.subsec_micros() as f64 / 1000.0;
+    println!("{}ms elapsed", elapsed_ms / RUNS as f64);
 }
 
 #[derive(Debug)]
@@ -205,9 +208,10 @@ impl Scene {
     }
 
     fn generate_tiles(&self) {
+        let mut strips = vec![];
         for object in &self.objects {
             let mut tiler = Tiler::from_outline(&object.outline);
-            tiler.generate_tiles();
+            tiler.generate_tiles(&mut strips);
             // TODO(pcwalton)
         }
     }
@@ -481,17 +485,26 @@ struct PointIndex {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Segment {
+    None,
     Line(LineSegment<f32>),
     Quadratic(QuadraticBezierSegment<f32>),
     Cubic(CubicBezierSegment<f32>),
 }
 
 impl Segment {
+    fn is_none(&self) -> bool {
+        match *self {
+            Segment::None => true,
+            _ => false,
+        }
+    }
+
     fn endpoints(&self) -> (Point2D<f32>, Point2D<f32>) {
         match *self {
             Segment::Line(ref line) => (line.from, line.to),
             Segment::Quadratic(ref curve) => (curve.from, curve.to),
             Segment::Cubic(ref curve) => (curve.from, curve.to),
+            Segment::None => unreachable!(),
         }
     }
 
@@ -508,6 +521,7 @@ impl Segment {
                 f32::min(f32::min(f32::min(curve.from.y, curve.ctrl1.y), curve.ctrl2.y),
                          curve.to.y)
             }
+            Segment::None => unreachable!(),
         }
     }
 
@@ -540,6 +554,7 @@ impl Segment {
                         swapped_curve.assume_monotonic().solve_t_for_x(y, 0.0..1.0, TOLERANCE));
                 (Segment::Cubic(prev), Segment::Cubic(next))
             }
+            Segment::None => unreachable!(),
         };
 
         if from.y <= to.y {
@@ -574,6 +589,7 @@ impl Segment {
                     to: curve.to + *by,
                 })
             }
+            Segment::None => unreachable!(),
         }
     }
 }
@@ -590,64 +606,73 @@ const TILE_HEIGHT: f32 = 4.0;
 
 struct Tiler<'a> {
     outline: &'a Outline,
+
+    sorted_edge_indices: Vec<PointIndex>,
+    active_intervals: Intervals,
+    active_edges: Vec<Segment>,
 }
 
 impl<'a> Tiler<'a> {
     fn from_outline(outline: &Outline) -> Tiler {
         Tiler {
             outline,
+
+            sorted_edge_indices: vec![],
+            active_intervals: Intervals::new(0.0),
+            active_edges: vec![],
         }
     }
 
-    fn generate_tiles(&mut self) {
+    fn generate_tiles(&mut self, strips: &mut Vec<Strip>) {
         // Sort all edge indices.
-        let mut sorted_edge_indices = vec![];
+        self.sorted_edge_indices.clear();
         for contour_index in 0..self.outline.contours.len() {
             let contour = &self.outline.contours[contour_index];
             for point_index in 0..contour.points.len() {
                 if contour.point_is_endpoint(point_index) {
-                    sorted_edge_indices.push(PointIndex { contour_index, point_index })
+                    self.sorted_edge_indices.push(PointIndex { contour_index, point_index })
                 }
             }
         }
-        sorted_edge_indices.sort_by(|edge_index_a, edge_index_b| {
-            let segment_a = self.outline.segment_after(*edge_index_a);
-            let segment_b = self.outline.segment_after(*edge_index_b);
-            segment_a.min_y().partial_cmp(&segment_b.min_y()).unwrap_or(Ordering::Equal)
-        });
+        {
+            let outline = &self.outline;
+            self.sorted_edge_indices.sort_by(|edge_index_a, edge_index_b| {
+                let segment_a = outline.segment_after(*edge_index_a);
+                let segment_b = outline.segment_after(*edge_index_b);
+                segment_a.min_y().partial_cmp(&segment_b.min_y()).unwrap_or(Ordering::Equal)
+            });
+        }
 
         let bounds = self.outline.bounds;
         let (max_x, max_y) = (bounds.max_x(), bounds.max_y());
 
-        let mut active_intervals = Intervals::new(max_x);
-        let mut active_edges = vec![];
+        self.active_intervals.reset(max_x);
+        self.active_edges.clear();
         let mut next_edge_index_index = 0;
-        let mut tile_top = bounds.origin.y - bounds.origin.y % TILE_HEIGHT;
-        let mut strips = vec![];
 
+        let mut tile_top = bounds.origin.y - bounds.origin.y % TILE_HEIGHT;
         while tile_top < max_y {
             let mut strip = Strip::new(tile_top);
 
             // TODO(pcwalton): Populate tile strip with active intervals.
 
-            for active_edge in mem::replace(&mut active_edges, vec![]) {
-                self.process_edge(active_edge,
-                                  &mut strip,
-                                  &mut active_edges,
-                                  &mut active_intervals);
+            for active_edge in &mut self.active_edges {
+                process_active_edge(active_edge, &mut strip, &mut self.active_intervals)
             }
+            self.active_edges.retain(|edge| !edge.is_none());
 
-            while next_edge_index_index < sorted_edge_indices.len() {
-                let segment =
-                    self.outline.segment_after(sorted_edge_indices[next_edge_index_index]);
+            while next_edge_index_index < self.sorted_edge_indices.len() {
+                let mut segment =
+                    self.outline.segment_after(self.sorted_edge_indices[next_edge_index_index]);
                 if segment.min_y() > strip.tile_bottom() {
                     break
                 }
 
-                self.process_edge(segment,
-                                  &mut strip,
-                                  &mut active_edges,
-                                  &mut active_intervals);
+                process_active_edge(&mut segment, &mut strip, &mut self.active_intervals);
+                if !segment.is_none() {
+                    self.active_edges.push(segment);
+                }
+
                 next_edge_index_index += 1;
             }
 
@@ -655,29 +680,29 @@ impl<'a> Tiler<'a> {
             strips.push(strip);
         }
     }
+}
 
-    fn process_edge(&mut self,
-                    edge: Segment,
-                    strip: &mut Strip,
-                    active_edges: &mut Vec<Segment>,
-                    intervals: &mut Intervals) {
-        let clipped = edge.clip_y(strip.tile_bottom());
-        if let Some(upper_segment) = clipped.min {
-            strip.push_segment(upper_segment);
-            // FIXME(pcwalton): Assumes x-monotonicity!
-            // FIXME(pcwalton): The min call below is a hack!
-            let (from, to) = upper_segment.endpoints();
-            let from_x = f32::max(0.0, f32::min(intervals.extent(), from.x));
-            let to_x = f32::max(0.0, f32::min(intervals.extent(), to.x));
-            if from_x < to_x {
-                intervals.add(IntervalRange::new(from_x, to_x, -1.0))
-            } else {
-                intervals.add(IntervalRange::new(to_x, from_x, 1.0))
-            }
+fn process_active_edge(active_edge: &mut Segment,
+                       strip: &mut Strip,
+                       active_intervals: &mut Intervals) {
+    let clipped = active_edge.clip_y(strip.tile_bottom());
+    if let Some(upper_segment) = clipped.min {
+        strip.push_segment(upper_segment);
+        // FIXME(pcwalton): Assumes x-monotonicity!
+        // FIXME(pcwalton): The min call below is a hack!
+        let (from, to) = upper_segment.endpoints();
+        let from_x = f32::max(0.0, f32::min(active_intervals.extent(), from.x));
+        let to_x = f32::max(0.0, f32::min(active_intervals.extent(), to.x));
+        if from_x < to_x {
+            active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
+        } else {
+            active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
         }
-        if let Some(lower_segment) = clipped.max {
-            active_edges.push(lower_segment);
-        }
+    }
+
+    match clipped.max {
+        Some(lower_segment) => *active_edge = lower_segment,
+        None => *active_edge = Segment::None,
     }
 }
 
@@ -748,8 +773,7 @@ impl Intervals {
         self.merge_adjacent();
     }
 
-    fn clear(&mut self) {
-        let end = self.ranges.last().unwrap().end;
+    fn reset(&mut self, end: f32) {
         self.ranges.truncate(1);
         self.ranges[0] = IntervalRange::new(0.0, end, 0.0);
     }
