@@ -822,21 +822,28 @@ impl Intervals {
     }
 
     fn split_at(&mut self, value: f32) {
-        let mut range_index = 0;
-        while range_index < self.ranges.len() {
+        let (mut low, mut high) = (0, self.ranges.len());
+        loop {
+            let mid = low + (high - low) / 2;
+
             let IntervalRange {
                 start: old_start,
                 end: old_end,
                 winding,
-            } = self.ranges[range_index];
-            if value < old_start || value > old_end {
-                range_index += 1;
+            } = self.ranges[mid];
+
+            if value < old_start {
+                high = mid;
+                continue
+            }
+            if value > old_end {
+                low = mid + 1;
                 continue
             }
 
             if old_start < value && value < old_end {
-                self.ranges[range_index] = IntervalRange::new(old_start, value, winding);
-                self.ranges.insert(range_index + 1, IntervalRange::new(value, old_end, winding));
+                self.ranges[mid] = IntervalRange::new(old_start, value, winding);
+                self.ranges.insert(mid + 1, IntervalRange::new(value, old_end, winding));
             }
             return
         }
