@@ -443,28 +443,31 @@ impl Contour {
 
     fn segment_after(&self, point_index: usize) -> Segment {
         debug_assert!(self.point_is_endpoint(point_index));
+
+        let mut segment = Segment::new();
+        segment.from = self.points[point_index];
+        segment.flags |= SegmentFlags::HAS_ENDPOINTS;
+
         let point1_index = self.add_to_point_index(point_index, 1);
         if self.point_is_endpoint(point1_index) {
-            return Segment::Line(LineSegment {
-                from: self.points[point_index],
-                to: self.points[point1_index],
-            })
+            segment.to = self.points[point1_index];
+        } else {
+            segment.ctrl0 = self.points[point1_index];
+            segment.flags |= SegmentFlags::HAS_CONTROL_POINT_0;
+
+            let point2_index = self.add_to_point_index(point_index, 2);
+            if self.point_is_endpoint(point2_index) {
+                segment.to = self.points[point2_index];
+            } else {
+                segment.ctrl1 = self.points[point2_index];
+                segment.flags |= SegmentFlags::HAS_CONTROL_POINT_1;
+
+                let point3_index = self.add_to_point_index(point_index, 3);
+                segment.to = self.points[point3_index];
+            }
         }
-        let point2_index = self.add_to_point_index(point_index, 2);
-        if self.point_is_endpoint(point2_index) {
-            return Segment::Quadratic(QuadraticBezierSegment {
-                from: self.points[point_index],
-                ctrl: self.points[point1_index],
-                to: self.points[point2_index],
-            })
-        }
-        let point3_index = self.add_to_point_index(point_index, 3);
-        Segment::Cubic(CubicBezierSegment {
-            from: self.points[point_index],
-            ctrl1: self.points[point1_index],
-            ctrl2: self.points[point2_index],
-            to: self.points[point3_index],
-        })
+
+        segment
     }
 
     fn point_is_endpoint(&self, point_index: usize) -> bool {
@@ -473,7 +476,12 @@ impl Contour {
     }
 
     fn add_to_point_index(&self, point_index: usize, addend: usize) -> usize {
-        (point_index + addend) % self.points.len()
+        let (index, limit) = (point_index + addend, self.points.len());
+        if index >= limit {
+            index - limit
+        } else {
+            index
+        }
     }
 }
 
@@ -484,80 +492,109 @@ struct PointIndex {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Segment {
-    None,
-    Line(LineSegment<f32>),
-    Quadratic(QuadraticBezierSegment<f32>),
-    Cubic(CubicBezierSegment<f32>),
+struct Segment {
+    from: Point2D<f32>,
+    ctrl0: Point2D<f32>,
+    ctrl1: Point2D<f32>,
+    to: Point2D<f32>,
+    flags: SegmentFlags,
 }
 
 impl Segment {
-    fn is_none(&self) -> bool {
-        match *self {
-            Segment::None => true,
-            _ => false,
+    fn new() -> Segment {
+        Segment {
+            from: Point2D::zero(),
+            ctrl0: Point2D::zero(),
+            ctrl1: Point2D::zero(),
+            to: Point2D::zero(),
+            flags: SegmentFlags::empty(),
         }
     }
 
-    fn endpoints(&self) -> (Point2D<f32>, Point2D<f32>) {
-        match *self {
-            Segment::Line(ref line) => (line.from, line.to),
-            Segment::Quadratic(ref curve) => (curve.from, curve.to),
-            Segment::Cubic(ref curve) => (curve.from, curve.to),
-            Segment::None => unreachable!(),
+    fn from_line(line: &LineSegment<f32>) -> Segment {
+        Segment {
+            from: line.from,
+            ctrl0: Point2D::zero(),
+            ctrl1: Point2D::zero(),
+            to: line.to,
+            flags: SegmentFlags::HAS_ENDPOINTS,
         }
+    }
+
+    fn from_quadratic(curve: &QuadraticBezierSegment<f32>) -> Segment {
+        Segment {
+            from: curve.from,
+            ctrl0: curve.ctrl,
+            ctrl1: Point2D::zero(),
+            to: curve.to,
+            flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0
+        }
+    }
+
+    fn from_cubic(curve: &CubicBezierSegment<f32>) -> Segment {
+        Segment {
+            from: curve.from,
+            ctrl0: curve.ctrl1,
+            ctrl1: curve.ctrl2,
+            to: curve.to,
+            flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
+                SegmentFlags::HAS_CONTROL_POINT_1,
+        }
+    }
+
+    fn is_none(&self) -> bool {
+        !self.flags.contains(SegmentFlags::HAS_ENDPOINTS)
     }
 
     // Note: If we convert these to monotonic then we can optimize this method.
     // TODO(pcwalton): Consider changing the representation of `Segment` to remove the code
     // duplication in the branches here?
     fn min_y(&self) -> f32 {
-        match *self {
-            Segment::Line(ref line) => f32::min(line.from.y, line.to.y),
-            Segment::Quadratic(ref curve) => {
-                f32::min(f32::min(curve.from.y, curve.ctrl.y), curve.to.y)
-            }
-            Segment::Cubic(ref curve) => {
-                f32::min(f32::min(f32::min(curve.from.y, curve.ctrl1.y), curve.ctrl2.y),
-                         curve.to.y)
-            }
-            Segment::None => unreachable!(),
+        let mut min_y = f32::min(self.from.y, self.to.y);
+        if self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
+            min_y = f32::min(min_y, self.ctrl0.y)
         }
+        if self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
+            min_y = f32::min(min_y, self.ctrl1.y)
+        }
+        min_y
     }
 
     fn clip_y(&self, y: f32) -> ClippedSegments {
-        let (from, to) = self.endpoints();
-        if from.y < y && to.y < y {
+        if self.from.y < y && self.to.y < y {
             return ClippedSegments { min: Some(*self), max: None }
         }
-        if from.y > y && to.y > y {
+        if self.from.y > y && self.to.y > y {
             return ClippedSegments { min: None, max: Some(*self) }
         }
 
-        let (prev, next) = match *self {
-            Segment::Line(ref line) => {
-                let (prev, next) = line.split(line.solve_t_for_y(y));
-                (Segment::Line(prev), Segment::Line(next))
-            }
-            Segment::Quadratic(ref curve) => {
-                let (prev, next) = curve.split(curve.assume_monotonic().solve_t_for_y(y));
-                (Segment::Quadratic(prev), Segment::Quadratic(next))
-            }
-            Segment::Cubic(ref curve) => {
-                let swapped_curve = CubicBezierSegment {
-                    from: curve.from.yx(),
-                    ctrl1: curve.ctrl1.yx(),
-                    ctrl2: curve.ctrl2.yx(),
-                    to: curve.to.yx(),
-                };
-                let (prev, next) = curve.split(
-                        swapped_curve.assume_monotonic().solve_t_for_x(y, 0.0..1.0, TOLERANCE));
-                (Segment::Cubic(prev), Segment::Cubic(next))
-            }
-            Segment::None => unreachable!(),
+        let (prev, next) = if self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
+            let curve = CubicBezierSegment {
+                from: self.from,
+                ctrl1: self.ctrl0,
+                ctrl2: self.ctrl1,
+                to: self.to,
+            };
+            let swapped_curve = CubicBezierSegment {
+                from: curve.from.yx(),
+                ctrl1: curve.ctrl1.yx(),
+                ctrl2: curve.ctrl2.yx(),
+                to: curve.to.yx(),
+            };
+            let (prev, next) = curve.split(
+                    swapped_curve.assume_monotonic().solve_t_for_x(y, 0.0..1.0, TOLERANCE));
+            (Segment::from_cubic(&prev), Segment::from_cubic(&next))
+        } else if self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
+            let curve = QuadraticBezierSegment { from: self.from, ctrl: self.ctrl0, to: self.to };
+            let (prev, next) = curve.split(curve.assume_monotonic().solve_t_for_y(y));
+            (Segment::from_quadratic(&prev), Segment::from_quadratic(&next))
+        } else {
+            let line = LineSegment { from: self.from, to: self.to };
+            let (prev, next) = line.split(line.solve_t_for_y(y));
+            (Segment::from_line(&prev), Segment::from_line(&next))
         };
 
-        if from.y <= to.y {
+        if self.from.y <= self.to.y {
             return ClippedSegments { min: Some(prev), max: Some(next) };
         } else {
             return ClippedSegments { min: Some(next), max: Some(prev) };
@@ -567,36 +604,37 @@ impl Segment {
     }
 
     fn translate(&self, by: &Vector2D<f32>) -> Segment {
-        match *self {
-            Segment::Line(ref line) => {
-                Segment::Line(LineSegment {
-                    from: line.from + *by,
-                    to: line.to + *by,
-                })
-            }
-            Segment::Quadratic(ref curve) => {
-                Segment::Quadratic(QuadraticBezierSegment {
-                    from: curve.from + *by,
-                    ctrl: curve.ctrl + *by,
-                    to: curve.to + *by,
-                })
-            }
-            Segment::Cubic(ref curve) => {
-                Segment::Cubic(CubicBezierSegment {
-                    from: curve.from + *by,
-                    ctrl1: curve.ctrl1 + *by,
-                    ctrl2: curve.ctrl2 + *by,
-                    to: curve.to + *by,
-                })
-            }
-            Segment::None => unreachable!(),
-        }
+        let flags = self.flags;
+        let (from, to) = if flags.contains(SegmentFlags::HAS_ENDPOINTS) {
+            (self.from + *by, self.to + *by)
+        } else {
+            (Point2D::zero(), Point2D::zero())
+        };
+        let ctrl0 = if flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
+            self.ctrl0 + *by
+        } else {
+            Point2D::zero()
+        };
+        let ctrl1 = if flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
+            self.ctrl1 + *by
+        } else {
+            Point2D::zero()
+        };
+        Segment { from, ctrl0, ctrl1, to, flags }
     }
 }
 
 struct ClippedSegments {
     min: Option<Segment>,
     max: Option<Segment>,
+}
+
+bitflags! {
+    struct SegmentFlags: u8 {
+        const HAS_ENDPOINTS       = 0x01;
+        const HAS_CONTROL_POINT_0 = 0x02;
+        const HAS_CONTROL_POINT_1 = 0x04;
+    }
 }
 
 // Tiling
@@ -690,9 +728,8 @@ fn process_active_edge(active_edge: &mut Segment,
         strip.push_segment(upper_segment);
         // FIXME(pcwalton): Assumes x-monotonicity!
         // FIXME(pcwalton): The min call below is a hack!
-        let (from, to) = upper_segment.endpoints();
-        let from_x = f32::max(0.0, f32::min(active_intervals.extent(), from.x));
-        let to_x = f32::max(0.0, f32::min(active_intervals.extent(), to.x));
+        let from_x = f32::max(0.0, f32::min(active_intervals.extent(), upper_segment.from.x));
+        let to_x = f32::max(0.0, f32::min(active_intervals.extent(), upper_segment.to.x));
         if from_x < to_x {
             active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
         } else {
@@ -702,7 +739,7 @@ fn process_active_edge(active_edge: &mut Segment,
 
     match clipped.max {
         Some(lower_segment) => *active_edge = lower_segment,
-        None => *active_edge = Segment::None,
+        None => *active_edge = Segment::new(),
     }
 }
 
