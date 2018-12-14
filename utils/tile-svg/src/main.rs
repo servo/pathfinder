@@ -789,22 +789,24 @@ impl Intervals {
     }
 
     fn add(&mut self, range: IntervalRange) {
+        if range.is_empty() {
+            return
+        }
+
         self.split_at(range.start);
         self.split_at(range.end);
 
-        // Find bracketing range.
-        let mut start_index = 0;
-        while range.start < self.ranges[start_index].start {
-            start_index += 1
-        }
-        let mut end_index = start_index;
-        while range.end < self.ranges[end_index].end {
-            end_index += 1
-        }
-
         // Adjust winding numbers.
-        for existing_range in &mut self.ranges[start_index..(end_index + 1)] {
-            existing_range.winding += range.winding
+        let mut index = 0;
+        while range.start != self.ranges[index].start {
+            index += 1
+        }
+        loop {
+            self.ranges[index].winding += range.winding;
+            if range.end == self.ranges[index].end {
+                break
+            }
+            index += 1
         }
 
         self.merge_adjacent();
@@ -832,8 +834,10 @@ impl Intervals {
                 continue
             }
 
-            self.ranges[range_index] = IntervalRange::new(old_start, value, winding);
-            self.ranges.insert(range_index + 1, IntervalRange::new(value, old_end, winding));
+            if old_start < value && value < old_end {
+                self.ranges[range_index] = IntervalRange::new(old_start, value, winding);
+                self.ranges.insert(range_index + 1, IntervalRange::new(value, old_end, winding));
+            }
             return
         }
     }
@@ -867,6 +871,10 @@ impl IntervalRange {
 
     fn contains(&self, value: f32) -> bool {
         value >= self.start && value < self.end
+    }
+
+    fn is_empty(&self) -> bool {
+        self.start == self.end
     }
 }
 
