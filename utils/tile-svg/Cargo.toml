@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 bitflags = "1.0"
 euclid = "0.18"
+jemallocator = "0.1"
 lyon_algorithms = "0.11"
 lyon_path = "0.11"
 quick-xml = "0.12"

@@ -17,6 +17,7 @@ extern crate quickcheck;
 extern crate rand;
 
 use euclid::{Point2D, Rect, Transform2D, Vector2D};
+use jemallocator;
 use lyon_algorithms::geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
@@ -31,6 +32,9 @@ use std::str::FromStr;
 use std::time::Instant;
 use svgtypes::{Color as SvgColor, PathParser, PathSegment as SvgPathSegment, TransformListParser};
 use svgtypes::{TransformListToken};
+
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 #[derive(Default)]
 struct GroupStyle {
