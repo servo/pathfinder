@@ -8,8 +8,12 @@ edition = "2018"
 bitflags = "1.0"
 euclid = "0.18"
 lyon_algorithms = "0.11"
+lyon_path = "0.11"
 quick-xml = "0.12"
 svgtypes = "0.2"
+
+[dependencies.pathfinder_path_utils]
+path = "../../path-utils"
 
 [dev-dependencies]
 quickcheck = "0.7"
