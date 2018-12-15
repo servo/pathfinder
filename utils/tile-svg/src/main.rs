@@ -16,9 +16,9 @@ extern crate quickcheck;
 #[cfg(test)]
 extern crate rand;
 
-use euclid::{Point2D, Rect, Transform2D, Vector2D};
+use euclid::{Point2D, Rect, Size2D, Transform2D, Vector2D};
 use jemallocator;
-use lyon_algorithms::geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
+use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
@@ -26,6 +26,7 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::cmp::Ordering;
 use std::env;
+use std::fmt::{self, Debug, Formatter};
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -35,6 +36,9 @@ use svgtypes::{TransformListToken};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
+// TODO(pcwalton): Make this configurable.
+const SCALE_FACTOR: f32 = 8.0;
 
 #[derive(Default)]
 struct GroupStyle {
@@ -66,29 +70,34 @@ impl ComputedStyle {
 fn main() {
     let path = PathBuf::from(env::args().skip(1).next().unwrap());
     let scene = Scene::from_path(&path);
+    println!("bounds: {:?}", scene.bounds);
 
-    const RUNS: u32 = 1000;
+    const RUNS: u32 = 100;
     let start_time = Instant::now();
+    let mut primitives = vec![];
     for _ in 0..RUNS {
-        scene.generate_tiles();
+        primitives = scene.generate_tiles();
     }
     let elapsed_time = Instant::now() - start_time;
     let elapsed_ms = elapsed_time.as_secs() as f64 * 1000.0 +
         elapsed_time.subsec_micros() as f64 / 1000.0;
     println!("{}ms elapsed", elapsed_ms / RUNS as f64);
+    println!("{} primitives generated", primitives.len());
 }
 
 #[derive(Debug)]
 struct Scene {
     objects: Vec<PathObject>,
     styles: Vec<ComputedStyle>,
-    //bounds: Rect<f32>,
+    bounds: Rect<f32>,
+    view_box: Option<Rect<f32>>,
 }
 
 #[derive(Debug)]
 struct PathObject {
     outline: Outline,
     style: StyleId,
+    name: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -96,14 +105,13 @@ struct StyleId(u32);
 
 impl Scene {
     fn new() -> Scene {
-        Scene {
-            objects: vec![],
-            styles: vec![],
-        }
+        Scene { objects: vec![], styles: vec![], bounds: Rect::zero(), view_box: None }
     }
 
     fn from_path(path: &Path) -> Scene {
         let mut reader = Reader::from_file(&path).unwrap();
+
+        let global_transform = Transform2D::create_scale(SCALE_FACTOR, SCALE_FACTOR);
 
         let mut xml_buffer = vec![];
         let mut group_styles = vec![];
@@ -116,16 +124,19 @@ impl Scene {
                 Ok(Event::Start(ref event)) |
                 Ok(Event::Empty(ref event)) if event.name() == b"path" => {
                     let attributes = event.attributes();
+                    let (mut encoded_path, mut name) = (String::new(), String::new());
                     for attribute in attributes {
                         let attribute = attribute.unwrap();
-                        if attribute.key != b"d" {
-                            continue
+                        if attribute.key == b"d" {
+                            encoded_path = reader.decode(&attribute.value).to_string();
+                        } else if attribute.key == b"id" {
+                            name = reader.decode(&attribute.value).to_string();
                         }
-                        let value = reader.decode(&attribute.value);
-                        let style = scene.ensure_style(&mut style, &mut group_styles);
-                        scene.push_svg_path(&*value, style);
                     }
+                    let style = scene.ensure_style(&mut style, &mut group_styles);
+                    scene.push_svg_path(&encoded_path, style, name);
                 }
+
                 Ok(Event::Start(ref event)) if event.name() == b"g" => {
                     let mut group_style = GroupStyle::default();
                     let attributes = event.attributes();
@@ -168,9 +179,28 @@ impl Scene {
                             _ => {}
                         }
                     }
+
                     group_styles.push(group_style);
                     style = None;
                 }
+
+                Ok(Event::Start(ref event)) if event.name() == b"svg" => {
+                    let attributes = event.attributes();
+                    for attribute in attributes {
+                        let attribute = attribute.unwrap();
+                        if attribute.key == b"viewBox" {
+                            let view_box = reader.decode(&attribute.value);
+                            let mut elements = view_box.split_whitespace()
+                                                       .map(|value| f32::from_str(value).unwrap());
+                            let view_box = Rect::new(Point2D::new(elements.next().unwrap(),
+                                                                  elements.next().unwrap()),
+                                                     Size2D::new(elements.next().unwrap(),
+                                                                 elements.next().unwrap()));
+                            scene.view_box = Some(global_transform.transform_rect(&view_box));
+                        }
+                    }
+                }
+
                 Ok(Event::Eof) | Err(_) => break,
                 Ok(_) => {}
             }
@@ -212,16 +242,18 @@ impl Scene {
         &self.styles[style.0 as usize]
     }
 
-    fn generate_tiles(&self) {
-        let mut strips = vec![];
-        for object in &self.objects {
-            let mut tiler = Tiler::from_outline(&object.outline);
-            tiler.generate_tiles(&mut strips);
+    fn generate_tiles(&self) -> Vec<Primitive> {
+        let mut primitives = vec![];
+        for (index, object) in self.objects.iter().enumerate() {
+            //println!("{} ({}): {:?}", index, object.name, object.outline.bounds);
+            let mut tiler = Tiler::from_outline(&object.outline, &self.view_box, &mut primitives);
+            tiler.generate_tiles();
             // TODO(pcwalton)
         }
+        primitives
     }
 
-    fn push_svg_path(&mut self, value: &str, style: StyleId) {
+    fn push_svg_path(&mut self, value: &str, style: StyleId, name: String) {
         if self.get_style(style).stroke_width > 0.0 {
             let computed_style = self.get_style(style);
             let mut path_parser = PathParser::from(&*value);
@@ -229,8 +261,8 @@ impl Scene {
             let path = PathIter::new(path);
             let path = StrokeToFillIter::new(path, StrokeStyle::new(computed_style.stroke_width));
             let outline = Outline::from_path_events(path, computed_style);
-            self.objects.push(PathObject::new(outline, style));
-
+            self.bounds = self.bounds.union(&outline.bounds);
+            self.objects.push(PathObject::new(outline, style, name.clone()));
         }
 
         if self.get_style(style).fill_color.is_some() {
@@ -238,17 +270,15 @@ impl Scene {
             let mut path_parser = PathParser::from(&*value);
             let path = SvgPathToPathEvents::new(&mut path_parser);
             let outline = Outline::from_path_events(path, computed_style);
-            self.objects.push(PathObject::new(outline, style));
+            self.bounds = self.bounds.union(&outline.bounds);
+            self.objects.push(PathObject::new(outline, style, name));
         }
     }
 }
 
 impl PathObject {
-    fn new(outline: Outline, style: StyleId) -> PathObject {
-        PathObject {
-            outline,
-            style,
-        }
+    fn new(outline: Outline, style: StyleId, name: String) -> PathObject {
+        PathObject { outline, style, name }
     }
 }
 
@@ -260,7 +290,6 @@ struct Outline {
     bounds: Rect<f32>,
 }
 
-#[derive(Debug)]
 struct Contour {
     points: Vec<Point2D<f32>>,
     flags: Vec<PointFlags>,
@@ -287,6 +316,9 @@ impl Outline {
         let mut current_contour = Contour::new();
         let mut bounding_points = None;
 
+        let global_transform = Transform2D::create_scale(SCALE_FACTOR, SCALE_FACTOR);
+        let transform = global_transform.pre_mul(&style.transform);
+
         for path_event in path_events {
             match path_event {
                 PathEvent::MoveTo(to) => {
@@ -295,37 +327,37 @@ impl Outline {
                     }
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform,
+                                                           &transform,
                                                            &mut bounding_points);
                 }
                 PathEvent::LineTo(to) => {
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform,
+                                                           &transform,
                                                            &mut bounding_points);
                 }
                 PathEvent::QuadraticTo(ctrl, to) => {
                     current_contour.push_transformed_point(&ctrl,
                                                            PointFlags::CONTROL_POINT_0,
-                                                           &style.transform,
+                                                           &transform,
                                                            &mut bounding_points);
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform,
+                                                           &transform,
                                                            &mut bounding_points);
                 }
                 PathEvent::CubicTo(ctrl0, ctrl1, to) => {
                     current_contour.push_transformed_point(&ctrl0,
                                                            PointFlags::CONTROL_POINT_0,
-                                                           &style.transform,
+                                                           &transform,
                                                            &mut bounding_points);
                     current_contour.push_transformed_point(&ctrl1,
                                                            PointFlags::CONTROL_POINT_1,
-                                                           &style.transform,
+                                                           &transform,
                                                            &mut bounding_points);
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
-                                                           &style.transform,
+                                                           &transform,
                                                            &mut bounding_points);
                 }
                 PathEvent::Close => {
@@ -349,7 +381,7 @@ impl Outline {
 
     #[inline]
     fn iter(&self) -> OutlineIter {
-        OutlineIter { outline: self, index: PointIndex::default() }
+        OutlineIter { outline: self, contour_iter: None, contour_index: 0 }
     }
 
     fn segment_after(&self, endpoint_index: PointIndex) -> Segment {
@@ -359,10 +391,11 @@ impl Outline {
 
 impl Contour {
     fn new() -> Contour {
-        Contour {
-            points: vec![],
-            flags: vec![],
-        }
+        Contour { points: vec![], flags: vec![] }
+    }
+
+    fn iter(&self) -> ContourIter {
+        ContourIter { contour: self, index: 0 }
     }
 
     fn is_empty(&self) -> bool {
@@ -417,8 +450,8 @@ impl Contour {
     }
 
     fn point_is_endpoint(&self, point_index: usize) -> bool {
-        self.flags[point_index].intersects(PointFlags::CONTROL_POINT_0 |
-                                           PointFlags::CONTROL_POINT_1)
+        !self.flags[point_index].intersects(PointFlags::CONTROL_POINT_0 |
+                                            PointFlags::CONTROL_POINT_1)
     }
 
     fn add_to_point_index(&self, point_index: usize, addend: usize) -> usize {
@@ -431,6 +464,30 @@ impl Contour {
     }
 }
 
+impl Debug for Contour {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        formatter.write_str("[")?;
+        if formatter.alternate() {
+            formatter.write_str("\n")?
+        }
+        for (index, segment) in self.iter().enumerate() {
+            if index > 0 {
+                formatter.write_str(",")?;
+            }
+            if formatter.alternate() {
+                formatter.write_str("\n    ")?;
+            } else {
+                formatter.write_str(" ")?;
+            }
+            segment.fmt(formatter)?;
+        }
+        if formatter.alternate() {
+            formatter.write_str("\n")?
+        }
+        formatter.write_str("]")
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 struct PointIndex {
     contour_index: usize,
@@ -439,26 +496,54 @@ struct PointIndex {
 
 struct OutlineIter<'a> {
     outline: &'a Outline,
-    index: PointIndex,
+    contour_iter: Option<ContourIter<'a>>,
+    contour_index: usize,
+}
+
+struct ContourIter<'a> {
+    contour: &'a Contour,
+    index: usize,
 }
 
 impl<'a> Iterator for OutlineIter<'a> {
     type Item = PathEvent;
 
     fn next(&mut self) -> Option<PathEvent> {
-        if self.index.contour_index == self.outline.contours.len() {
+        if let Some(ref mut contour_iter) = self.contour_iter {
+            match contour_iter.next() {
+                Some(event) => return Some(event),
+                None => {
+                    self.contour_iter = None;
+                    self.contour_index += 1;
+                }
+            }
+        }
+
+        if self.contour_index == self.outline.contours.len() {
             return None
         }
-        let contour = &self.outline.contours[self.index.contour_index];
-        if self.index.point_index == contour.points.len() {
-            self.index.contour_index += 1;
-            self.index.point_index = 0;
+
+        self.contour_iter = Some(self.outline.contours[self.contour_index].iter());
+        self.next()
+    }
+}
+
+impl<'a> Iterator for ContourIter<'a> {
+    type Item = PathEvent;
+
+    fn next(&mut self) -> Option<PathEvent> {
+        let contour = self.contour;
+        if self.index == contour.points.len() + 1 {
+            return None
+        }
+        if self.index == contour.points.len() {
+            self.index += 1;
             return Some(PathEvent::Close)
         }
 
-        let point0_index = self.index.point_index;
+        let point0_index = self.index;
         let point0 = contour.points[point0_index];
-        self.index.point_index += 1;
+        self.index += 1;
         if point0_index == 0 {
             return Some(PathEvent::MoveTo(point0))
         }
@@ -466,16 +551,16 @@ impl<'a> Iterator for OutlineIter<'a> {
             return Some(PathEvent::LineTo(point0))
         }
 
-        let point1_index = self.index.point_index;
+        let point1_index = self.index;
         let point1 = contour.points[point1_index];
-        self.index.point_index += 1;
+        self.index += 1;
         if contour.point_is_endpoint(point1_index) {
             return Some(PathEvent::QuadraticTo(point0, point1))
         }
 
-        let point2_index = self.index.point_index;
+        let point2_index = self.index;
         let point2 = contour.points[point2_index];
-        self.index.point_index += 1;
+        self.index += 1;
         debug_assert!(contour.point_is_endpoint(point2_index));
         Some(PathEvent::CubicTo(point0, point1, point2))
     }
@@ -530,6 +615,16 @@ impl Segment {
             flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
                 SegmentFlags::HAS_CONTROL_POINT_1,
         }
+    }
+
+    fn add_to_list(&self, tile_left: f32, primitives: &mut Vec<Primitive>) {
+        let vector = Vector2D::new(-tile_left, 0.0);
+        primitives.push(Primitive {
+            from: self.from + vector,
+            ctrl0: self.ctrl0 + vector,
+            ctrl1: self.ctrl1 + vector,
+            to: self.to + vector,
+        })
     }
 
     fn is_none(&self) -> bool {
@@ -629,21 +724,30 @@ bitflags! {
 
 // Tiling
 
-const TILE_WIDTH: f32 = 4.0;
-const TILE_HEIGHT: f32 = 4.0;
+const TILE_WIDTH: f32 = 16.0;
+const TILE_HEIGHT: f32 = 16.0;
 
-struct Tiler<'a> {
-    outline: &'a Outline,
+struct Tiler<'o, 'p> {
+    outline: &'o Outline,
+    primitives: &'p mut Vec<Primitive>,
+
+    view_box: Option<Rect<f32>>,
 
     sorted_edge_indices: Vec<PointIndex>,
     active_intervals: Intervals,
     active_edges: Vec<Segment>,
 }
 
-impl<'a> Tiler<'a> {
-    fn from_outline(outline: &Outline) -> Tiler {
+impl<'o, 'p> Tiler<'o, 'p> {
+    fn from_outline(outline: &'o Outline,
+                    view_box: &Option<Rect<f32>>,
+                    primitives: &'p mut Vec<Primitive>)
+                    -> Tiler<'o, 'p> {
         Tiler {
             outline,
+            primitives,
+
+            view_box: *view_box,
 
             sorted_edge_indices: vec![],
             active_intervals: Intervals::new(0.0),
@@ -651,7 +755,7 @@ impl<'a> Tiler<'a> {
         }
     }
 
-    fn generate_tiles(&mut self, strips: &mut Vec<Strip>) {
+    fn generate_tiles(&mut self) {
         // Sort all edge indices.
         self.sorted_edge_indices.clear();
         for contour_index in 0..self.outline.contours.len() {
@@ -671,8 +775,13 @@ impl<'a> Tiler<'a> {
             });
         }
 
+        // Guard band clipping...
         let bounds = self.outline.bounds;
-        let (max_x, max_y) = (bounds.max_x(), bounds.max_y());
+        let (mut max_x, mut max_y) = (bounds.max_x(), bounds.max_y());
+        if let Some(view_box) = self.view_box {
+            max_x = clamp(max_x, view_box.origin.x, view_box.max_x());
+            max_y = clamp(max_y, view_box.origin.y, view_box.max_y());
+        }
 
         self.active_intervals.reset(max_x);
         self.active_edges.clear();
@@ -680,23 +789,39 @@ impl<'a> Tiler<'a> {
 
         let mut tile_top = bounds.origin.y - bounds.origin.y % TILE_HEIGHT;
         while tile_top < max_y {
-            let mut strip = Strip::new(tile_top);
+            let tile_extent = Point2D::new(max_x, tile_top + TILE_HEIGHT);
+
+            let above_view_box = match self.view_box {
+                Some(ref view_box) => tile_extent.y <= view_box.origin.y,
+                None => false,
+            };
+            //let mut strip = Strip::new(&Point2D::new(tile_left, tile_top));
 
             // TODO(pcwalton): Populate tile strip with active intervals.
 
+            // Process old active edges.
             for active_edge in &mut self.active_edges {
-                process_active_edge(active_edge, &mut strip, &mut self.active_intervals)
+                let primitives = if above_view_box { None } else { Some(&mut *self.primitives) };
+                process_active_edge(active_edge,
+                                    &tile_extent,
+                                    primitives,
+                                    &mut self.active_intervals)
             }
             self.active_edges.retain(|edge| !edge.is_none());
 
+            // Add new active edges.
             while next_edge_index_index < self.sorted_edge_indices.len() {
                 let mut segment =
                     self.outline.segment_after(self.sorted_edge_indices[next_edge_index_index]);
-                if segment.min_y() > strip.tile_bottom() {
+                if segment.min_y() > tile_extent.y {
                     break
                 }
 
-                process_active_edge(&mut segment, &mut strip, &mut self.active_intervals);
+                let primitives = if above_view_box { None } else { Some(&mut *self.primitives) };
+                process_active_edge(&mut segment,
+                                    &tile_extent,
+                                    primitives,
+                                    &mut self.active_intervals);
                 if !segment.is_none() {
                     self.active_edges.push(segment);
                 }
@@ -704,22 +829,37 @@ impl<'a> Tiler<'a> {
                 next_edge_index_index += 1;
             }
 
-            tile_top = strip.tile_bottom();
-            strips.push(strip);
+            tile_top = tile_extent.y;
         }
     }
 }
 
 fn process_active_edge(active_edge: &mut Segment,
-                       strip: &mut Strip,
+                       strip_extent: &Point2D<f32>,
+                       primitives: Option<&mut Vec<Primitive>>,
                        active_intervals: &mut Intervals) {
-    let clipped = active_edge.clip_y(strip.tile_bottom());
+    let clipped = active_edge.clip_y(strip_extent.y);
     if let Some(upper_segment) = clipped.min {
-        strip.push_segment(upper_segment);
+        if let Some(primitives) = primitives {
+            // FIXME(pcwalton): Assumes x-monotonicity!
+            // FIXME(pcwalton): Don't hardcode a view box left of 0!
+            let mut min_x = f32::min(upper_segment.from.x, upper_segment.to.x);
+            let mut max_x = f32::max(upper_segment.from.x, upper_segment.to.x);
+            min_x = clamp(min_x, 0.0, strip_extent.x);
+            max_x = clamp(max_x, 0.0, strip_extent.x);
+
+            let mut tile_left = min_x - min_x % TILE_WIDTH;
+            while tile_left < max_x {
+                active_edge.add_to_list(tile_left, primitives);
+                tile_left += TILE_WIDTH;
+            }
+        }
+
         // FIXME(pcwalton): Assumes x-monotonicity!
-        // FIXME(pcwalton): The min call below is a hack!
-        let from_x = f32::max(0.0, f32::min(active_intervals.extent(), upper_segment.from.x));
-        let to_x = f32::max(0.0, f32::min(active_intervals.extent(), upper_segment.to.x));
+        let mut from_x = f32::max(0.0, f32::min(active_intervals.extent(), upper_segment.from.x));
+        let mut to_x = f32::max(0.0, f32::min(active_intervals.extent(), upper_segment.to.x));
+        from_x = clamp(from_x, 0.0, strip_extent.x);
+        to_x = clamp(to_x, 0.0, strip_extent.x);
         if from_x < to_x {
             active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
         } else {
@@ -733,28 +873,14 @@ fn process_active_edge(active_edge: &mut Segment,
     }
 }
 
-// Strips
+// Primitives
 
-struct Strip {
-    segments: Vec<Segment>,
-    tile_top: f32,
-}
-
-impl Strip {
-    fn new(tile_top: f32) -> Strip {
-        Strip {
-            segments: vec![],
-            tile_top,
-        }
-    }
-
-    fn push_segment(&mut self, segment: Segment) {
-        self.segments.push(segment.translate(&Vector2D::new(0.0, -self.tile_top)))
-    }
-
-    fn tile_bottom(&self) -> f32 {
-        self.tile_top + TILE_HEIGHT
-    }
+#[derive(Clone, Copy, Debug)]
+struct Primitive {
+    from: Point2D<f32>,
+    ctrl0: Point2D<f32>,
+    ctrl1: Point2D<f32>,
+    to: Point2D<f32>,
 }
 
 // Intervals
@@ -968,6 +1094,12 @@ impl<'a, I> Iterator for SvgPathToPathEvents<'a, I> where I: Iterator<Item = Svg
             }
         }
     }
+}
+
+// Trivial utilities
+
+fn clamp(x: f32, min: f32, max: f32) -> f32 {
+    f32::max(f32::min(x, max), min)
 }
 
 // Testing

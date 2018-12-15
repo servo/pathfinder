@@ -6,10 +6,10 @@ edition = "2018"
 
 [dependencies]
 bitflags = "1.0"
-euclid = "0.18"
+euclid = "0.19"
 jemallocator = "0.1"
-lyon_algorithms = "0.11"
-lyon_path = "0.11"
+lyon_geom = "0.12"
+lyon_path = "0.12"
 quick-xml = "0.12"
 svgtypes = "0.2"
 
