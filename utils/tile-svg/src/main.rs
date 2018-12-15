@@ -72,7 +72,7 @@ fn main() {
     let scene = Scene::from_path(&path);
     println!("bounds: {:?}", scene.bounds);
 
-    const RUNS: u32 = 100;
+    const RUNS: u32 = 1000;
     let start_time = Instant::now();
     let mut primitives = vec![];
     for _ in 0..RUNS {
@@ -768,7 +768,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
         }
         {
             let outline = &self.outline;
-            self.sorted_edge_indices.sort_by(|edge_index_a, edge_index_b| {
+            self.sorted_edge_indices.sort_unstable_by(|edge_index_a, edge_index_b| {
                 let segment_a = outline.segment_after(*edge_index_a);
                 let segment_b = outline.segment_after(*edge_index_b);
                 segment_a.min_y().partial_cmp(&segment_b.min_y()).unwrap_or(Ordering::Equal)
@@ -787,7 +787,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
         self.active_edges.clear();
         let mut next_edge_index_index = 0;
 
-        let mut tile_top = bounds.origin.y - bounds.origin.y % TILE_HEIGHT;
+        let mut tile_top = f32::floor(bounds.origin.y / TILE_HEIGHT) * TILE_HEIGHT;
         while tile_top < max_y {
             let tile_extent = Point2D::new(max_x, tile_top + TILE_HEIGHT);
 
@@ -795,7 +795,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 Some(ref view_box) => tile_extent.y <= view_box.origin.y,
                 None => false,
             };
-            //let mut strip = Strip::new(&Point2D::new(tile_left, tile_top));
 
             // TODO(pcwalton): Populate tile strip with active intervals.
 
@@ -848,7 +847,7 @@ fn process_active_edge(active_edge: &mut Segment,
             min_x = clamp(min_x, 0.0, strip_extent.x);
             max_x = clamp(max_x, 0.0, strip_extent.x);
 
-            let mut tile_left = min_x - min_x % TILE_WIDTH;
+            let mut tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
             while tile_left < max_x {
                 active_edge.add_to_list(tile_left, primitives);
                 tile_left += TILE_WIDTH;
