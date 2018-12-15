@@ -77,7 +77,7 @@ fn main() {
     let scene = Scene::from_path(&path);
     println!("bounds: {:?}", scene.bounds);
 
-    const RUNS: u32 = 1000;
+    const RUNS: u32 = 100;
     let start_time = Instant::now();
     let mut primitives = vec![];
     for _ in 0..RUNS {
@@ -632,7 +632,9 @@ impl Segment {
         let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
         let mut from = self.from;
         for to in flattener {
-            primitives.push(Primitive { from, to });
+            if f32::min(from.x, to.x) >= range.start && f32::max(from.x, to.x) <= range.end {
+                primitives.push(Primitive { from, to });
+            }
             from = to;
         }
     }
@@ -858,7 +860,8 @@ fn process_active_edge(active_edge: &mut Segment,
             max_x = clamp(max_x, 0.0, strip_extent.x);
 
             let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
-            active_edge.generate_primitives(tile_left..max_x, primitives);
+            let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
+            active_edge.generate_primitives(tile_left..tile_right, primitives);
         }
 
         // FIXME(pcwalton): Assumes x-monotonicity!
