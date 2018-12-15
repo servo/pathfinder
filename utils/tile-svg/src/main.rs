@@ -18,6 +18,7 @@ extern crate rand;
 
 use euclid::{Point2D, Rect, Size2D, Transform2D, Vector2D};
 use jemallocator;
+use lyon_geom::cubic_bezier::Flattened;
 use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
@@ -28,6 +29,7 @@ use std::cmp::Ordering;
 use std::env;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Instant;
@@ -39,6 +41,9 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 // TODO(pcwalton): Make this configurable.
 const SCALE_FACTOR: f32 = 8.0;
+
+// TODO(pcwalton): Make this configurable.
+const FLATTENING_TOLERANCE: f32 = 3.0;
 
 #[derive(Default)]
 struct GroupStyle {
@@ -617,14 +622,19 @@ impl Segment {
         }
     }
 
-    fn add_to_list(&self, tile_left: f32, primitives: &mut Vec<Primitive>) {
-        let vector = Vector2D::new(-tile_left, 0.0);
-        primitives.push(Primitive {
-            from: self.from + vector,
-            ctrl0: self.ctrl0 + vector,
-            ctrl1: self.ctrl1 + vector,
-            to: self.to + vector,
-        })
+    fn generate_primitives(&self, range: Range<f32>, primitives: &mut Vec<Primitive>) {
+        let segment = CubicBezierSegment {
+            from: self.from,
+            ctrl1: self.ctrl0,
+            ctrl2: self.ctrl1,
+            to: self.to,
+        };
+        let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
+        let mut from = self.from;
+        for to in flattener {
+            primitives.push(Primitive { from, to });
+            from = to;
+        }
     }
 
     fn is_none(&self) -> bool {
@@ -847,11 +857,8 @@ fn process_active_edge(active_edge: &mut Segment,
             min_x = clamp(min_x, 0.0, strip_extent.x);
             max_x = clamp(max_x, 0.0, strip_extent.x);
 
-            let mut tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
-            while tile_left < max_x {
-                active_edge.add_to_list(tile_left, primitives);
-                tile_left += TILE_WIDTH;
-            }
+            let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
+            active_edge.generate_primitives(tile_left..max_x, primitives);
         }
 
         // FIXME(pcwalton): Assumes x-monotonicity!
@@ -877,8 +884,6 @@ fn process_active_edge(active_edge: &mut Segment,
 #[derive(Clone, Copy, Debug)]
 struct Primitive {
     from: Point2D<f32>,
-    ctrl0: Point2D<f32>,
-    ctrl1: Point2D<f32>,
     to: Point2D<f32>,
 }
 
