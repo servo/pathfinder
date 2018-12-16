@@ -16,6 +16,7 @@ extern crate quickcheck;
 #[cfg(test)]
 extern crate rand;
 
+use clap::{App, Arg};
 use euclid::{Point2D, Rect, Size2D, Transform2D, Vector2D};
 use jemallocator;
 use lyon_geom::cubic_bezier::Flattened;
@@ -45,48 +46,38 @@ const SCALE_FACTOR: f32 = 8.0;
 // TODO(pcwalton): Make this configurable.
 const FLATTENING_TOLERANCE: f32 = 3.0;
 
-#[derive(Default)]
-struct GroupStyle {
-    fill_color: Option<SvgColor>,
-    stroke_width: Option<f32>,
-    stroke_color: Option<SvgColor>,
-    transform: Option<Transform2D<f32>>,
-}
-
-#[derive(Debug)]
-struct ComputedStyle {
-    fill_color: Option<SvgColor>,
-    stroke_width: f32,
-    stroke_color: Option<SvgColor>,
-    transform: Transform2D<f32>,
-}
-
-impl ComputedStyle {
-    fn new() -> ComputedStyle {
-        ComputedStyle {
-            fill_color: None,
-            stroke_width: 1.0,
-            stroke_color: None,
-            transform: Transform2D::identity(),
-        }
-    }
-}
-
 fn main() {
-    let path = PathBuf::from(env::args().skip(1).next().unwrap());
+    let matches =
+        App::new("tile-svg").arg(Arg::with_name("runs").short("r")
+                                                       .long("runs")
+                                                       .value_name("COUNT")
+                                                       .takes_value(true)
+                                                       .help("Run a benchmark with COUNT runs"))
+                            .arg(Arg::with_name("INPUT").help("Path to the SVG file to render")
+                                                        .required(true)
+                                                        .index(1))
+                            .arg(Arg::with_name("OUTPUT").help("Path to the output PF3 data")
+                                                         .required(false)
+                                                         .index(2))
+                            .get_matches();
+    let runs: usize = match matches.value_of("runs") {
+        Some(runs) => runs.parse().unwrap(),
+        None => 1,
+    };
+    let path = PathBuf::from(matches.value_of("INPUT").unwrap());
+
     let scene = Scene::from_path(&path);
     println!("bounds: {:?}", scene.bounds);
 
-    const RUNS: u32 = 100;
     let start_time = Instant::now();
     let mut primitives = vec![];
-    for _ in 0..RUNS {
+    for _ in 0..runs {
         primitives = scene.generate_tiles();
     }
     let elapsed_time = Instant::now() - start_time;
     let elapsed_ms = elapsed_time.as_secs() as f64 * 1000.0 +
         elapsed_time.subsec_micros() as f64 / 1000.0;
-    println!("{}ms elapsed", elapsed_ms / RUNS as f64);
+    println!("{}ms elapsed", elapsed_ms / runs as f64);
     println!("{} primitives generated", primitives.len());
 }
 
@@ -103,6 +94,33 @@ struct PathObject {
     outline: Outline,
     style: StyleId,
     name: String,
+}
+
+#[derive(Debug)]
+struct ComputedStyle {
+    fill_color: Option<SvgColor>,
+    stroke_width: f32,
+    stroke_color: Option<SvgColor>,
+    transform: Transform2D<f32>,
+}
+
+#[derive(Default)]
+struct GroupStyle {
+    fill_color: Option<SvgColor>,
+    stroke_width: Option<f32>,
+    stroke_color: Option<SvgColor>,
+    transform: Option<Transform2D<f32>>,
+}
+
+impl ComputedStyle {
+    fn new() -> ComputedStyle {
+        ComputedStyle {
+            fill_color: None,
+            stroke_width: 1.0,
+            stroke_color: None,
+            transform: Transform2D::identity(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -391,6 +409,10 @@ impl Outline {
 
     fn segment_after(&self, endpoint_index: PointIndex) -> Segment {
         self.contours[endpoint_index.contour_index].segment_after(endpoint_index.point_index)
+    }
+
+    fn get_point(&self, index: PointIndex) -> &Point2D<f32> {
+        &self.contours[index.contour_index].points[index.point_index]
     }
 }
 
