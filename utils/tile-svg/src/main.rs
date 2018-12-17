@@ -17,7 +17,7 @@ extern crate quickcheck;
 extern crate rand;
 
 use clap::{App, Arg};
-use euclid::{Point2D, Rect, Size2D, Transform2D, Vector2D};
+use euclid::{Point2D, Rect, Size2D, Transform2D};
 use jemallocator;
 use lyon_geom::cubic_bezier::Flattened;
 use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
@@ -27,7 +27,6 @@ use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::cmp::Ordering;
-use std::env;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 use std::ops::Range;
@@ -70,15 +69,16 @@ fn main() {
     println!("bounds: {:?}", scene.bounds);
 
     let start_time = Instant::now();
-    let mut primitives = vec![];
+    let mut built_scene = BuiltScene::new();
     for _ in 0..runs {
-        primitives = scene.generate_tiles();
+        built_scene = scene.build();
     }
     let elapsed_time = Instant::now() - start_time;
     let elapsed_ms = elapsed_time.as_secs() as f64 * 1000.0 +
         elapsed_time.subsec_micros() as f64 / 1000.0;
-    println!("{}ms elapsed", elapsed_ms / runs as f64);
-    println!("{} primitives generated", primitives.len());
+    println!("{:.3}ms elapsed", elapsed_ms / runs as f64);
+    println!("{} fill primitives generated", built_scene.fills.len());
+    println!("{} tiles generated", built_scene.tiles.len());
 }
 
 #[derive(Debug)]
@@ -93,6 +93,7 @@ struct Scene {
 struct PathObject {
     outline: Outline,
     style: StyleId,
+    color: ColorU,
     name: String,
 }
 
@@ -265,15 +266,18 @@ impl Scene {
         &self.styles[style.0 as usize]
     }
 
-    fn generate_tiles(&self) -> Vec<Primitive> {
-        let mut primitives = vec![];
+    fn build(&self) -> BuiltScene {
+        let mut built_scene = BuiltScene::new();
         for (index, object) in self.objects.iter().enumerate() {
             //println!("{} ({}): {:?}", index, object.name, object.outline.bounds);
-            let mut tiler = Tiler::from_outline(&object.outline, &self.view_box, &mut primitives);
+            let mut tiler = Tiler::from_outline(&object.outline,
+                                                object.color,
+                                                &self.view_box,
+                                                &mut built_scene);
             tiler.generate_tiles();
             // TODO(pcwalton)
         }
-        primitives
+        built_scene
     }
 
     fn push_svg_path(&mut self, value: &str, style: StyleId, name: String) {
@@ -284,8 +288,14 @@ impl Scene {
             let path = PathIter::new(path);
             let path = StrokeToFillIter::new(path, StrokeStyle::new(computed_style.stroke_width));
             let outline = Outline::from_path_events(path, computed_style);
+
+            let color = match computed_style.stroke_color {
+                None => ColorU::black(),
+                Some(color) => ColorU::from_svg_color(color),
+            };
+
             self.bounds = self.bounds.union(&outline.bounds);
-            self.objects.push(PathObject::new(outline, style, name.clone()));
+            self.objects.push(PathObject::new(outline, color, style, name.clone()));
         }
 
         if self.get_style(style).fill_color.is_some() {
@@ -293,15 +303,21 @@ impl Scene {
             let mut path_parser = PathParser::from(&*value);
             let path = SvgPathToPathEvents::new(&mut path_parser);
             let outline = Outline::from_path_events(path, computed_style);
+
+            let color = match computed_style.fill_color {
+                None => ColorU::black(),
+                Some(color) => ColorU::from_svg_color(color),
+            };
+
             self.bounds = self.bounds.union(&outline.bounds);
-            self.objects.push(PathObject::new(outline, style, name));
+            self.objects.push(PathObject::new(outline, color, style, name));
         }
     }
 }
 
 impl PathObject {
-    fn new(outline: Outline, style: StyleId, name: String) -> PathObject {
-        PathObject { outline, style, name }
+    fn new(outline: Outline, color: ColorU, style: StyleId, name: String) -> PathObject {
+        PathObject { outline, color, style, name }
     }
 }
 
@@ -402,17 +418,8 @@ impl Outline {
         outline
     }
 
-    #[inline]
-    fn iter(&self) -> OutlineIter {
-        OutlineIter { outline: self, contour_iter: None, contour_index: 0 }
-    }
-
     fn segment_after(&self, endpoint_index: PointIndex) -> Segment {
         self.contours[endpoint_index.contour_index].segment_after(endpoint_index.point_index)
-    }
-
-    fn get_point(&self, index: PointIndex) -> &Point2D<f32> {
-        &self.contours[index.contour_index].points[index.point_index]
     }
 }
 
@@ -521,38 +528,9 @@ struct PointIndex {
     point_index: usize,
 }
 
-struct OutlineIter<'a> {
-    outline: &'a Outline,
-    contour_iter: Option<ContourIter<'a>>,
-    contour_index: usize,
-}
-
 struct ContourIter<'a> {
     contour: &'a Contour,
     index: usize,
-}
-
-impl<'a> Iterator for OutlineIter<'a> {
-    type Item = PathEvent;
-
-    fn next(&mut self) -> Option<PathEvent> {
-        if let Some(ref mut contour_iter) = self.contour_iter {
-            match contour_iter.next() {
-                Some(event) => return Some(event),
-                None => {
-                    self.contour_iter = None;
-                    self.contour_index += 1;
-                }
-            }
-        }
-
-        if self.contour_index == self.outline.contours.len() {
-            return None
-        }
-
-        self.contour_iter = Some(self.outline.contours[self.contour_index].iter());
-        self.next()
-    }
 }
 
 impl<'a> Iterator for ContourIter<'a> {
@@ -644,7 +622,10 @@ impl Segment {
         }
     }
 
-    fn generate_primitives(&self, range: Range<f32>, primitives: &mut Vec<Primitive>) {
+    fn generate_fill_primitives(&self,
+                                range: Range<f32>,
+                                tile_index: u32,
+                                primitives: &mut Vec<FillPrimitive>) {
         let segment = CubicBezierSegment {
             from: self.from,
             ctrl1: self.ctrl0,
@@ -655,7 +636,7 @@ impl Segment {
         let mut from = self.from;
         for to in flattener {
             if f32::min(from.x, to.x) >= range.start && f32::max(from.x, to.x) <= range.end {
-                primitives.push(Primitive { from, to });
+                primitives.push(FillPrimitive { from, to, tile_index });
             }
             from = to;
         }
@@ -721,26 +702,6 @@ impl Segment {
 
         const TOLERANCE: f32 = 0.01;
     }
-
-    fn translate(&self, by: &Vector2D<f32>) -> Segment {
-        let flags = self.flags;
-        let (from, to) = if flags.contains(SegmentFlags::HAS_ENDPOINTS) {
-            (self.from + *by, self.to + *by)
-        } else {
-            (Point2D::zero(), Point2D::zero())
-        };
-        let ctrl0 = if flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
-            self.ctrl0 + *by
-        } else {
-            Point2D::zero()
-        };
-        let ctrl1 = if flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
-            self.ctrl1 + *by
-        } else {
-            Point2D::zero()
-        };
-        Segment { from, ctrl0, ctrl1, to, flags }
-    }
 }
 
 struct ClippedSegments {
@@ -763,7 +724,8 @@ const TILE_HEIGHT: f32 = 16.0;
 
 struct Tiler<'o, 'p> {
     outline: &'o Outline,
-    primitives: &'p mut Vec<Primitive>,
+    fill_color: ColorU,
+    built_scene: &'p mut BuiltScene,
 
     view_box: Option<Rect<f32>>,
 
@@ -774,12 +736,14 @@ struct Tiler<'o, 'p> {
 
 impl<'o, 'p> Tiler<'o, 'p> {
     fn from_outline(outline: &'o Outline,
+                    fill_color: ColorU,
                     view_box: &Option<Rect<f32>>,
-                    primitives: &'p mut Vec<Primitive>)
+                    built_scene: &'p mut BuiltScene)
                     -> Tiler<'o, 'p> {
         Tiler {
             outline,
-            primitives,
+            fill_color,
+            built_scene,
 
             view_box: *view_box,
 
@@ -819,26 +783,54 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
         self.active_intervals.reset(max_x);
         self.active_edges.clear();
+
         let mut next_edge_index_index = 0;
 
-        let mut tile_top = f32::floor(bounds.origin.y / TILE_HEIGHT) * TILE_HEIGHT;
-        while tile_top < max_y {
-            let tile_extent = Point2D::new(max_x, tile_top + TILE_HEIGHT);
+        let mut strip_origin =
+            Point2D::new(f32::floor(bounds.origin.x / TILE_WIDTH) * TILE_WIDTH,
+                         f32::floor(bounds.origin.y / TILE_HEIGHT) * TILE_HEIGHT);
+
+        while strip_origin.y < max_y {
+            let first_tile_index = self.built_scene.tiles.len() as u32;
+
+            let strip_extent = Point2D::new(max_x, strip_origin.y + TILE_HEIGHT);
+            let strip_bounds = Rect::new(strip_origin,
+                                         Size2D::new(strip_extent.x - strip_origin.x,
+                                                     strip_extent.y - strip_origin.y));
 
             let above_view_box = match self.view_box {
-                Some(ref view_box) => tile_extent.y <= view_box.origin.y,
+                Some(ref view_box) => strip_extent.y <= view_box.origin.y,
                 None => false,
             };
 
-            // TODO(pcwalton): Populate tile strip with active intervals.
+            // Populate tile strip with active intervals.
+            for interval in &self.active_intervals.ranges {
+                if interval.winding == 0.0 {
+                    continue
+                }
+                let left = Point2D::new(interval.start, strip_origin.y);
+                let right = Point2D::new(interval.end, strip_origin.y);
+                let line_segment = if interval.winding < 0.0 {
+                    LineSegment { from: left, to: right }
+                } else {
+                    LineSegment { from: right, to: left }
+                };
+                let mut segment = Segment::from_line(&line_segment);
+                process_active_edge(&mut segment,
+                                    &strip_bounds,
+                                    first_tile_index,
+                                    Some(&mut self.built_scene.fills),
+                                    None);
+            }
 
             // Process old active edges.
             for active_edge in &mut self.active_edges {
-                let primitives = if above_view_box { None } else { Some(&mut *self.primitives) };
+                let fills = if above_view_box { None } else { Some(&mut self.built_scene.fills) };
                 process_active_edge(active_edge,
-                                    &tile_extent,
-                                    primitives,
-                                    &mut self.active_intervals)
+                                    &strip_bounds,
+                                    first_tile_index,
+                                    fills,
+                                    Some(&mut self.active_intervals))
             }
             self.active_edges.retain(|edge| !edge.is_none());
 
@@ -846,15 +838,16 @@ impl<'o, 'p> Tiler<'o, 'p> {
             while next_edge_index_index < self.sorted_edge_indices.len() {
                 let mut segment =
                     self.outline.segment_after(self.sorted_edge_indices[next_edge_index_index]);
-                if segment.min_y() > tile_extent.y {
+                if segment.min_y() > strip_extent.y {
                     break
                 }
 
-                let primitives = if above_view_box { None } else { Some(&mut *self.primitives) };
+                let fills = if above_view_box { None } else { Some(&mut self.built_scene.fills) };
                 process_active_edge(&mut segment,
-                                    &tile_extent,
-                                    primitives,
-                                    &mut self.active_intervals);
+                                    &strip_bounds,
+                                    first_tile_index,
+                                    fills,
+                                    Some(&mut self.active_intervals));
                 if !segment.is_none() {
                     self.active_edges.push(segment);
                 }
@@ -862,18 +855,29 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 next_edge_index_index += 1;
             }
 
-            tile_top = tile_extent.y;
+            // Flush tiles.
+            let mut tile_left = strip_origin.x;
+            while tile_left < max_x {
+                let strip_origin = Point2D::new(tile_left, strip_origin.y);
+                self.built_scene.tiles.push(TilePrimitive::new(&strip_origin, self.fill_color));
+                tile_left += TILE_WIDTH;
+            }
+
+            strip_origin.y = strip_extent.y;
         }
     }
 }
 
 fn process_active_edge(active_edge: &mut Segment,
-                       strip_extent: &Point2D<f32>,
-                       primitives: Option<&mut Vec<Primitive>>,
-                       active_intervals: &mut Intervals) {
+                       strip_bounds: &Rect<f32>,
+                       first_tile_index: u32,
+                       fills: Option<&mut Vec<FillPrimitive>>,
+                       active_intervals: Option<&mut Intervals>) {
+    let strip_extent = strip_bounds.bottom_right();
     let clipped = active_edge.clip_y(strip_extent.y);
+
     if let Some(upper_segment) = clipped.min {
-        if let Some(primitives) = primitives {
+        if let Some(fills) = fills {
             // FIXME(pcwalton): Assumes x-monotonicity!
             // FIXME(pcwalton): Don't hardcode a view box left of 0!
             let mut min_x = f32::min(upper_segment.from.x, upper_segment.to.x);
@@ -883,18 +887,25 @@ fn process_active_edge(active_edge: &mut Segment,
 
             let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
             let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
-            active_edge.generate_primitives(tile_left..tile_right, primitives);
+
+            let left_tile_index =
+                first_tile_index +
+                ((tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32);
+
+            active_edge.generate_fill_primitives(tile_left..tile_right, left_tile_index, fills);
         }
 
-        // FIXME(pcwalton): Assumes x-monotonicity!
-        let mut from_x = f32::max(0.0, f32::min(active_intervals.extent(), upper_segment.from.x));
-        let mut to_x = f32::max(0.0, f32::min(active_intervals.extent(), upper_segment.to.x));
-        from_x = clamp(from_x, 0.0, strip_extent.x);
-        to_x = clamp(to_x, 0.0, strip_extent.x);
-        if from_x < to_x {
-            active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
-        } else {
-            active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
+        if let Some(active_intervals) = active_intervals {
+            // FIXME(pcwalton): Assumes x-monotonicity!
+            let mut from_x = clamp(upper_segment.from.x, 0.0, active_intervals.extent());
+            let mut to_x = clamp(upper_segment.to.x, 0.0, active_intervals.extent());
+            from_x = clamp(from_x, 0.0, strip_extent.x);
+            to_x = clamp(to_x, 0.0, strip_extent.x);
+            if from_x < to_x {
+                active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
+            } else {
+                active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
+            }
         }
     }
 
@@ -906,10 +917,53 @@ fn process_active_edge(active_edge: &mut Segment,
 
 // Primitives
 
+#[derive(Debug)]
+struct BuiltScene {
+    fills: Vec<FillPrimitive>,
+    tiles: Vec<TilePrimitive>,
+}
+
 #[derive(Clone, Copy, Debug)]
-struct Primitive {
+struct FillPrimitive {
     from: Point2D<f32>,
     to: Point2D<f32>,
+    tile_index: u32,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct TilePrimitive {
+    position: Point2D<f32>,
+    color: ColorU,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ColorU {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+}
+
+impl BuiltScene {
+    fn new() -> BuiltScene {
+        BuiltScene { fills: vec![], tiles: vec![] }
+    }
+}
+
+impl TilePrimitive {
+    fn new(position: &Point2D<f32>, color: ColorU) -> TilePrimitive {
+        TilePrimitive { position: *position, color }
+    }
+}
+
+impl ColorU {
+    fn black() -> ColorU {
+        ColorU { r: 0, g: 0, b: 0, a: 255 }
+    }
+
+    fn from_svg_color(svg_color: SvgColor) -> ColorU {
+        ColorU { r: svg_color.red, g: svg_color.green, b: svg_color.blue, a: 255 }
+    }
 }
 
 // Intervals
@@ -1019,10 +1073,6 @@ impl IntervalRange {
             end,
             winding,
         }
-    }
-
-    fn contains(&self, value: f32) -> bool {
-        value >= self.start && value < self.end
     }
 
     fn is_empty(&self) -> bool {
