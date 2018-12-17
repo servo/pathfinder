@@ -16,6 +16,7 @@ extern crate quickcheck;
 #[cfg(test)]
 extern crate rand;
 
+use byteorder::{LittleEndian, WriteBytesExt};
 use clap::{App, Arg};
 use euclid::{Point2D, Rect, Size2D, Transform2D};
 use jemallocator;
@@ -28,6 +29,8 @@ use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
+use std::fs::File;
+use std::io::{self, BufWriter, Write};
 use std::mem;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -40,7 +43,7 @@ use svgtypes::{TransformListToken};
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 // TODO(pcwalton): Make this configurable.
-const SCALE_FACTOR: f32 = 8.0;
+const SCALE_FACTOR: f32 = 1.0;
 
 // TODO(pcwalton): Make this configurable.
 const FLATTENING_TOLERANCE: f32 = 3.0;
@@ -63,10 +66,11 @@ fn main() {
         Some(runs) => runs.parse().unwrap(),
         None => 1,
     };
-    let path = PathBuf::from(matches.value_of("INPUT").unwrap());
+    let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
+    let output_path = matches.value_of("OUTPUT").map(PathBuf::from);
 
-    let scene = Scene::from_path(&path);
-    println!("bounds: {:?}", scene.bounds);
+    let scene = Scene::from_path(&input_path);
+    println!("Scene bounds: {:?}", scene.bounds);
 
     let start_time = Instant::now();
     let mut built_scene = BuiltScene::new();
@@ -74,11 +78,16 @@ fn main() {
         built_scene = scene.build();
     }
     let elapsed_time = Instant::now() - start_time;
+
     let elapsed_ms = elapsed_time.as_secs() as f64 * 1000.0 +
         elapsed_time.subsec_micros() as f64 / 1000.0;
     println!("{:.3}ms elapsed", elapsed_ms / runs as f64);
     println!("{} fill primitives generated", built_scene.fills.len());
     println!("{} tiles generated", built_scene.tiles.len());
+
+    if let Some(output_path) = output_path {
+        built_scene.write(&mut BufWriter::new(File::create(output_path).unwrap())).unwrap();
+    }
 }
 
 #[derive(Debug)]
@@ -947,6 +956,40 @@ struct ColorU {
 impl BuiltScene {
     fn new() -> BuiltScene {
         BuiltScene { fills: vec![], tiles: vec![] }
+    }
+
+    fn write<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
+        writer.write_all(b"RIFF")?;
+
+        let fill_size = self.fills.len() * mem::size_of::<FillPrimitive>();
+        let tile_size = self.tiles.len() * mem::size_of::<TilePrimitive>();
+        writer.write_u32::<LittleEndian>((4 + 8 + tile_size + 8 + fill_size) as u32)?;
+
+        writer.write_all(b"PF3S")?;
+
+        writer.write_all(b"fill")?;
+        writer.write_u32::<LittleEndian>(fill_size as u32)?;
+        for fill_primitive in &self.fills {
+            write_point(writer, &fill_primitive.from)?;
+            write_point(writer, &fill_primitive.to)?;
+            writer.write_u32::<LittleEndian>(fill_primitive.tile_index)?;
+        }
+
+        writer.write_all(b"tile")?;
+        writer.write_u32::<LittleEndian>(tile_size as u32)?;
+        for tile_primitive in &self.tiles {
+            let color = tile_primitive.color;
+            write_point(writer, &tile_primitive.position)?;
+            writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
+        }
+
+        return Ok(());
+
+        fn write_point<W>(writer: &mut W, point: &Point2D<f32>) -> io::Result<()> where W: Write {
+            writer.write_f32::<LittleEndian>(point.x)?;
+            writer.write_f32::<LittleEndian>(point.y)?;
+            Ok(())
+        }
     }
 }
 

@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 bitflags = "1.0"
+byteorder = "1.2"
 clap = "2.32"
 euclid = "0.19"
 jemallocator = "0.1"
