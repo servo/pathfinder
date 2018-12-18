@@ -18,7 +18,7 @@ extern crate rand;
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use clap::{App, Arg};
-use euclid::{Point2D, Rect, Size2D, Transform2D};
+use euclid::{Point2D, Rect, Size2D, Transform2D, Vector2D};
 use fixedbitset::FixedBitSet;
 use jemallocator;
 use lyon_geom::cubic_bezier::Flattened;
@@ -48,6 +48,9 @@ const SCALE_FACTOR: f32 = 1.0;
 
 // TODO(pcwalton): Make this configurable.
 const FLATTENING_TOLERANCE: f32 = 3.0;
+
+// TODO(pcwalton): Make this configurable.
+const RAYCASTING_TOLERANCE: f32 = 0.1;
 
 fn main() {
     let matches =
@@ -635,23 +638,140 @@ impl Segment {
         }
     }
 
+    fn as_line_segment(&self) -> Option<LineSegment<f32>> {
+        if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
+            Some(LineSegment { from: self.from, to: self.to })
+        } else {
+            None
+        }
+    }
+
+    // FIXME(pcwalton): We should basically never use this function.
+    fn as_cubic_segment(&self) -> Option<CubicBezierSegment<f32>> {
+        if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
+            None
+        } else if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
+            Some((QuadraticBezierSegment {
+                from: self.from,
+                ctrl: self.ctrl0,
+                to: self.to,
+            }).to_cubic())
+        } else {
+            Some(CubicBezierSegment {
+                from: self.from,
+                ctrl1: self.ctrl0,
+                ctrl2: self.ctrl1,
+                to: self.to,
+            })
+        }
+    }
+
+    fn clip_x(&self, range: Range<f32>) -> Option<Segment> {
+        println!("clip_x({:?}, {:?})", self, range.clone());
+        if let Some(line_segment) = self.as_line_segment() {
+            println!("... line segment");
+            let mut start_t = line_segment.solve_t_for_x(range.start);
+            let mut end_t = line_segment.solve_t_for_x(range.end);
+            start_t = clamp(start_t, 0.0, 1.0);
+            end_t = clamp(end_t, 0.0, 1.0);
+            if start_t == end_t {
+                return None
+            }
+            let (min_t, max_t) = (f32::min(start_t, end_t), f32::max(start_t, end_t));
+            return Some(Segment::from_line(&line_segment.split_range(min_t..max_t)));
+        }
+
+        // TODO(pcwalton): Don't degree elevate!
+        let cubic_segment = self.as_cubic_segment().unwrap().assume_monotonic();
+        println!("... cubic segment {:?}", cubic_segment);
+        let mut start_t = cubic_segment.solve_t_for_x(range.start, 0.0..1.0, RAYCASTING_TOLERANCE);
+        let mut end_t = cubic_segment.solve_t_for_x(range.end, 0.0..1.0, RAYCASTING_TOLERANCE);
+        println!("... start_t={:?} end_t={:?}", start_t, end_t);
+        start_t = clamp(start_t, 0.0, 1.0);
+        end_t = clamp(end_t, 0.0, 1.0);
+        if start_t == end_t {
+            return None
+        }
+        let (min_t, max_t) = (f32::min(start_t, end_t), f32::max(start_t, end_t));
+        let clipped = Segment::from_cubic(cubic_segment.split_range(min_t..max_t).segment());
+        println!("... clipped={:?}", clipped);
+        return Some(clipped);
+    }
+
     fn generate_fill_primitives(&self,
-                                range: Range<f32>,
-                                tile_index: u32,
+                                first_tile_index: u32,
+                                strip_origin: &Point2D<f32>,
                                 primitives: &mut Vec<FillPrimitive>) {
-        let segment = CubicBezierSegment {
-            from: self.from,
-            ctrl1: self.ctrl0,
-            ctrl2: self.ctrl1,
-            to: self.to,
-        };
+        if let Some(ref line_segment) = self.as_line_segment() {
+            generate_fill_primitives_for_line(line_segment,
+                                              first_tile_index,
+                                              strip_origin,
+                                              primitives);
+            return;
+        }
+
+        // TODO(pcwalton): Don't degree elevate!
+        let segment = self.as_cubic_segment().unwrap();
+        println!("generate_fill_primitives(): cubic path {:?}", segment);
         let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
         let mut from = self.from;
         for to in flattener {
-            if f32::min(from.x, to.x) >= range.start && f32::max(from.x, to.x) <= range.end {
-                primitives.push(FillPrimitive { from, to, tile_index });
-            }
+            generate_fill_primitives_for_line(&LineSegment { from, to },
+                                              first_tile_index,
+                                              strip_origin,
+                                              primitives);
             from = to;
+        }
+
+        fn generate_fill_primitives_for_line(segment: &LineSegment<f32>,
+                                             first_tile_index: u32,
+                                             strip_origin: &Point2D<f32>,
+                                             primitives: &mut Vec<FillPrimitive>) {
+            let mut segment = *segment;
+
+            // TODO(pcwalton): Factor this point-to-tile logic out. It keeps getting repeated…
+            let mut from_tile_index =
+                f32::floor((segment.from.x - strip_origin.x) / TILE_WIDTH) as u32;
+            loop {
+                let tile_offset =
+                    Vector2D::new(from_tile_index as f32 * TILE_WIDTH + strip_origin.x,
+                                  strip_origin.y);
+
+                let to_tile_index =
+                    f32::floor((segment.to.x - strip_origin.x) / TILE_WIDTH) as u32;
+                println!("generate_fill_primitives_for_line(): segment={:?} strip_origin={:?} \
+                          from_tile_index={:?} to_tile_index={:?}",
+                         segment,
+                         strip_origin,
+                         from_tile_index,
+                         to_tile_index);
+
+                if from_tile_index == to_tile_index {
+                    primitives.push(FillPrimitive {
+                        from: segment.from - tile_offset,
+                        to: segment.to - tile_offset,
+                        tile_index: first_tile_index + from_tile_index,
+                    });
+                    break;
+                }
+
+                // Split line at tile boundary.
+                let next_tile_index = if segment.from.x < segment.to.x {
+                    from_tile_index + 1
+                } else {
+                    from_tile_index - 1
+                };
+                let next_tile_x = (next_tile_index as f32) * TILE_WIDTH + strip_origin.x;
+                let (prev_segment, next_segment) = segment.split_at_x(next_tile_x);
+                primitives.push(FillPrimitive {
+                    from: prev_segment.from - tile_offset,
+                    to: prev_segment.to - tile_offset,
+                    tile_index: first_tile_index + from_tile_index,
+                });
+
+                from_tile_index = next_tile_index;
+                segment = next_segment;
+            }
         }
     }
 
@@ -876,6 +996,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
             // Process old active edges.
             for active_edge in &mut self.active_edges {
                 let fills = if above_view_box { None } else { Some(&mut self.built_scene.fills) };
+                println!("process_active_edge(OLD)");
                 process_active_edge(active_edge,
                                     &strip_bounds,
                                     first_tile_index,
@@ -887,21 +1008,31 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
             // Add new active edges.
             while next_edge_index_index < self.sorted_edge_indices.len() {
-                let mut segment =
-                    self.outline.segment_after(self.sorted_edge_indices[next_edge_index_index]);
+                let from_point_index = self.sorted_edge_indices[next_edge_index_index];
+                let strip_range = (strip_bounds.origin.x)..(strip_bounds.max_x());
+                let segment = self.outline.segment_after(from_point_index);
                 if segment.min_y() > strip_extent.y {
                     break
                 }
 
-                let fills = if above_view_box { None } else { Some(&mut self.built_scene.fills) };
-                process_active_edge(&mut segment,
-                                    &strip_bounds,
-                                    first_tile_index,
-                                    fills,
-                                    &mut self.active_intervals,
-                                    &mut used_strip_tiles);
-                if !segment.is_none() {
-                    self.active_edges.push(segment);
+                if let Some(mut segment) = segment.clip_x(strip_range) {
+                    let fills = if above_view_box {
+                        None
+                    } else {
+                        Some(&mut self.built_scene.fills)
+                    };
+
+                    println!("process_active_edge(NEW)");
+                    process_active_edge(&mut segment,
+                                        &strip_bounds,
+                                        first_tile_index,
+                                        fills,
+                                        &mut self.active_intervals,
+                                        &mut used_strip_tiles);
+
+                    if !segment.is_none() {
+                        self.active_edges.push(segment);
+                    }
                 }
 
                 next_edge_index_index += 1;
@@ -935,24 +1066,16 @@ fn process_active_edge(active_edge: &mut Segment,
                        active_intervals: &mut Intervals,
                        used_tiles: &mut FixedBitSet) {
     let strip_extent = strip_bounds.bottom_right();
+
+    println!("... clipping edge: {:?}", active_edge);
     let clipped = active_edge.clip_y(strip_extent.y);
 
     if let Some(upper_segment) = clipped.min {
-        // FIXME(pcwalton): Assumes x-monotonicity!
-        // FIXME(pcwalton): Don't hardcode a view box left of 0!
-        let mut min_x = f32::min(upper_segment.from.x, upper_segment.to.x);
-        let mut max_x = f32::max(upper_segment.from.x, upper_segment.to.x);
-        min_x = clamp(min_x, 0.0, strip_extent.x);
-        max_x = clamp(max_x, 0.0, strip_extent.x);
-        let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
-        let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
-
-        let left_tile_index = (tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
-        let right_tile_index = (tile_right - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+        println!("... ... UPPER: {:?}", upper_segment);
 
         if let Some(fills) = fills {
-            active_edge.generate_fill_primitives(tile_left..tile_right,
-                                                 first_tile_index + left_tile_index,
+            active_edge.generate_fill_primitives(first_tile_index,
+                                                 &strip_bounds.origin,
                                                  fills);
         }
 
@@ -967,6 +1090,17 @@ fn process_active_edge(active_edge: &mut Segment,
             active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
         }
 
+        // FIXME(pcwalton): Assumes x-monotonicity!
+        // FIXME(pcwalton): Don't hardcode a view box left of 0!
+        let mut min_x = f32::min(upper_segment.from.x, upper_segment.to.x);
+        let mut max_x = f32::max(upper_segment.from.x, upper_segment.to.x);
+        min_x = clamp(min_x, 0.0, strip_extent.x);
+        max_x = clamp(max_x, 0.0, strip_extent.x);
+        let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
+        let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
+        let left_tile_index = (tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+        let right_tile_index = (tile_right - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+
         // Set used bits.
         for tile_index in left_tile_index..right_tile_index {
             used_tiles.insert(tile_index as usize);
@@ -974,7 +1108,10 @@ fn process_active_edge(active_edge: &mut Segment,
     }
 
     match clipped.max {
-        Some(lower_segment) => *active_edge = lower_segment,
+        Some(lower_segment) => {
+            println!("... ... LOWER: {:?}", lower_segment);
+            *active_edge = lower_segment;
+        }
         None => *active_edge = Segment::new(),
     }
 }
