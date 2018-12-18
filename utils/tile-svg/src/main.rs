@@ -1049,6 +1049,7 @@ impl BuiltScene {
         for tile_primitive in &self.tiles {
             let color = tile_primitive.color;
             write_point(writer, &tile_primitive.position)?;
+            writer.write_f32::<LittleEndian>(tile_primitive.backdrop)?;
             writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
         }
 
