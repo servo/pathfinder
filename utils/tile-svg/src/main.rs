@@ -19,6 +19,7 @@ extern crate rand;
 use byteorder::{LittleEndian, WriteBytesExt};
 use clap::{App, Arg};
 use euclid::{Point2D, Rect, Size2D, Transform2D};
+use fixedbitset::FixedBitSet;
 use jemallocator;
 use lyon_geom::cubic_bezier::Flattened;
 use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
@@ -83,7 +84,10 @@ fn main() {
         elapsed_time.subsec_micros() as f64 / 1000.0;
     println!("{:.3}ms elapsed", elapsed_ms / runs as f64);
     println!("{} fill primitives generated", built_scene.fills.len());
-    println!("{} tiles generated", built_scene.tiles.len());
+    println!("{} tiles ({} solid, {} mask) generated",
+             built_scene.tiles.len(),
+             built_scene.solid_tile_indices.len(),
+             built_scene.mask_tile_indices.len());
 
     if let Some(output_path) = output_path {
         built_scene.write(&mut BufWriter::new(File::create(output_path).unwrap())).unwrap();
@@ -757,7 +761,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
             view_box: *view_box,
 
             sorted_edge_indices: vec![],
-            active_intervals: Intervals::new(0.0),
+            active_intervals: Intervals::new(0.0..0.0),
             active_edges: vec![],
         }
     }
@@ -782,15 +786,17 @@ impl<'o, 'p> Tiler<'o, 'p> {
             });
         }
 
-        // Guard band clipping...
-        let bounds = self.outline.bounds;
-        let (mut max_x, mut max_y) = (bounds.max_x(), bounds.max_y());
+        // Clip to the view box.
+        let mut bounds = self.outline.bounds;
         if let Some(view_box) = self.view_box {
-            max_x = clamp(max_x, view_box.origin.x, view_box.max_x());
-            max_y = clamp(max_y, view_box.origin.y, view_box.max_y());
+            let max_x = f32::min(view_box.max_x(), bounds.max_x());
+            let max_y = f32::min(view_box.max_y(), bounds.max_y());
+            bounds.origin.x = f32::max(view_box.origin.x, bounds.origin.x);
+            bounds.size.width = f32::max(0.0, max_x - bounds.origin.x);
+            bounds.size.height = f32::max(0.0, max_y - bounds.origin.y);
         }
 
-        self.active_intervals.reset(max_x);
+        self.active_intervals.reset(bounds.origin.x, bounds.max_x());
         self.active_edges.clear();
 
         let mut next_edge_index_index = 0;
@@ -798,38 +804,73 @@ impl<'o, 'p> Tiler<'o, 'p> {
         let mut strip_origin =
             Point2D::new(f32::floor(bounds.origin.x / TILE_WIDTH) * TILE_WIDTH,
                          f32::floor(bounds.origin.y / TILE_HEIGHT) * TILE_HEIGHT);
+        let strip_right_extent = f32::ceil(bounds.max_x() / TILE_WIDTH) * TILE_WIDTH;
 
-        while strip_origin.y < max_y {
+        let tiles_across = ((strip_right_extent - strip_origin.x) / TILE_WIDTH) as usize;
+        let mut strip_tiles = Vec::with_capacity(tiles_across);
+        let mut used_strip_tiles = FixedBitSet::with_capacity(tiles_across);
+
+        // Generate strips.
+        while strip_origin.y < bounds.max_y() {
+            // Determine the first tile index.
             let first_tile_index = self.built_scene.tiles.len() as u32;
 
-            let strip_extent = Point2D::new(max_x, strip_origin.y + TILE_HEIGHT);
+            // Determine strip bounds.
+            let strip_extent = Point2D::new(strip_right_extent, strip_origin.y + TILE_HEIGHT);
             let strip_bounds = Rect::new(strip_origin,
-                                         Size2D::new(strip_extent.x - strip_origin.x,
+                                         Size2D::new(strip_right_extent - strip_origin.x,
                                                      strip_extent.y - strip_origin.y));
 
+            // We can skip a bunch of steps if we're above the viewport.
             let above_view_box = match self.view_box {
                 Some(ref view_box) => strip_extent.y <= view_box.origin.y,
                 None => false,
             };
 
+            // Allocate tiles.
+            strip_tiles.clear();
+            used_strip_tiles.clear();
+            let mut tile_left = strip_origin.x;
+            while tile_left < strip_right_extent {
+                let strip_origin = Point2D::new(tile_left, strip_origin.y);
+                strip_tiles.push(TilePrimitive::new(&strip_origin, self.fill_color));
+                tile_left += TILE_WIDTH;
+            }
+
             // Populate tile strip with active intervals.
+            let mut strip_tile_index = 0;
             for interval in &self.active_intervals.ranges {
                 if interval.winding == 0.0 {
                     continue
                 }
-                let left = Point2D::new(interval.start, strip_origin.y);
-                let right = Point2D::new(interval.end, strip_origin.y);
-                let line_segment = if interval.winding < 0.0 {
-                    LineSegment { from: left, to: right }
-                } else {
-                    LineSegment { from: right, to: left }
-                };
-                let mut segment = Segment::from_line(&line_segment);
-                process_active_edge(&mut segment,
-                                    &strip_bounds,
-                                    first_tile_index,
-                                    Some(&mut self.built_scene.fills),
-                                    None);
+
+                while strip_tile_index < strip_tiles.len() &&
+                        strip_tiles[strip_tile_index].position.x + TILE_WIDTH < interval.start {
+                    strip_tile_index += 1;
+                }
+
+                while strip_tile_index < strip_tiles.len() &&
+                        strip_tiles[strip_tile_index].position.x < interval.end {
+                    let tile_left = strip_tiles[strip_tile_index].position.x;
+                    let tile_right = tile_left + TILE_WIDTH;
+
+                    let tile_interval = intersect_ranges(tile_left..tile_right,
+                                                         interval.start..interval.end);
+                    if tile_interval == (tile_left..tile_right) {
+                        strip_tiles[strip_tile_index].backdrop = interval.winding
+                    } else {
+                        let left = Point2D::new(interval.start, strip_origin.y);
+                        let right = Point2D::new(interval.end, strip_origin.y);
+                        let global_tile_index = first_tile_index + strip_tile_index as u32;
+                        self.built_scene.fills.push(FillPrimitive {
+                            from:       if interval.winding < 0.0 { left } else { right },
+                            to:         if interval.winding < 0.0 { right } else { left },
+                            tile_index: global_tile_index,
+                        });
+                    }
+
+                    strip_tile_index += 1;
+                }
             }
 
             // Process old active edges.
@@ -839,7 +880,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                     &strip_bounds,
                                     first_tile_index,
                                     fills,
-                                    Some(&mut self.active_intervals))
+                                    &mut self.active_intervals,
+                                    &mut used_strip_tiles)
             }
             self.active_edges.retain(|edge| !edge.is_none());
 
@@ -856,7 +898,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                     &strip_bounds,
                                     first_tile_index,
                                     fills,
-                                    Some(&mut self.active_intervals));
+                                    &mut self.active_intervals,
+                                    &mut used_strip_tiles);
                 if !segment.is_none() {
                     self.active_edges.push(segment);
                 }
@@ -865,11 +908,19 @@ impl<'o, 'p> Tiler<'o, 'p> {
             }
 
             // Flush tiles.
-            let mut tile_left = strip_origin.x;
-            while tile_left < max_x {
-                let strip_origin = Point2D::new(tile_left, strip_origin.y);
-                self.built_scene.tiles.push(TilePrimitive::new(&strip_origin, self.fill_color));
-                tile_left += TILE_WIDTH;
+            if !above_view_box {
+                for tile_index in 0..tiles_across {
+                    self.built_scene.tiles.push(strip_tiles[tile_index]);
+                    if used_strip_tiles.contains(tile_index) {
+                        self.built_scene
+                            .mask_tile_indices
+                            .push(first_tile_index + tile_index as u32)
+                    } else if strip_tiles[tile_index].backdrop != 0.0 {
+                        self.built_scene
+                            .solid_tile_indices
+                            .push(first_tile_index + tile_index as u32)
+                    }
+                }
             }
 
             strip_origin.y = strip_extent.y;
@@ -881,40 +932,44 @@ fn process_active_edge(active_edge: &mut Segment,
                        strip_bounds: &Rect<f32>,
                        first_tile_index: u32,
                        fills: Option<&mut Vec<FillPrimitive>>,
-                       active_intervals: Option<&mut Intervals>) {
+                       active_intervals: &mut Intervals,
+                       used_tiles: &mut FixedBitSet) {
     let strip_extent = strip_bounds.bottom_right();
     let clipped = active_edge.clip_y(strip_extent.y);
 
     if let Some(upper_segment) = clipped.min {
+        // FIXME(pcwalton): Assumes x-monotonicity!
+        // FIXME(pcwalton): Don't hardcode a view box left of 0!
+        let mut min_x = f32::min(upper_segment.from.x, upper_segment.to.x);
+        let mut max_x = f32::max(upper_segment.from.x, upper_segment.to.x);
+        min_x = clamp(min_x, 0.0, strip_extent.x);
+        max_x = clamp(max_x, 0.0, strip_extent.x);
+        let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
+        let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
+
+        let left_tile_index = (tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+        let right_tile_index = (tile_right - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+
         if let Some(fills) = fills {
-            // FIXME(pcwalton): Assumes x-monotonicity!
-            // FIXME(pcwalton): Don't hardcode a view box left of 0!
-            let mut min_x = f32::min(upper_segment.from.x, upper_segment.to.x);
-            let mut max_x = f32::max(upper_segment.from.x, upper_segment.to.x);
-            min_x = clamp(min_x, 0.0, strip_extent.x);
-            max_x = clamp(max_x, 0.0, strip_extent.x);
-
-            let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
-            let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
-
-            let left_tile_index =
-                first_tile_index +
-                ((tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32);
-
-            active_edge.generate_fill_primitives(tile_left..tile_right, left_tile_index, fills);
+            active_edge.generate_fill_primitives(tile_left..tile_right,
+                                                 first_tile_index + left_tile_index,
+                                                 fills);
         }
 
-        if let Some(active_intervals) = active_intervals {
-            // FIXME(pcwalton): Assumes x-monotonicity!
-            let mut from_x = clamp(upper_segment.from.x, 0.0, active_intervals.extent());
-            let mut to_x = clamp(upper_segment.to.x, 0.0, active_intervals.extent());
-            from_x = clamp(from_x, 0.0, strip_extent.x);
-            to_x = clamp(to_x, 0.0, strip_extent.x);
-            if from_x < to_x {
-                active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
-            } else {
-                active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
-            }
+        // FIXME(pcwalton): Assumes x-monotonicity!
+        let mut from_x = clamp(upper_segment.from.x, 0.0, active_intervals.extent());
+        let mut to_x = clamp(upper_segment.to.x, 0.0, active_intervals.extent());
+        from_x = clamp(from_x, 0.0, strip_extent.x);
+        to_x = clamp(to_x, 0.0, strip_extent.x);
+        if from_x < to_x {
+            active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
+        } else {
+            active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
+        }
+
+        // Set used bits.
+        for tile_index in left_tile_index..right_tile_index {
+            used_tiles.insert(tile_index as usize);
         }
     }
 
@@ -930,6 +985,8 @@ fn process_active_edge(active_edge: &mut Segment,
 struct BuiltScene {
     fills: Vec<FillPrimitive>,
     tiles: Vec<TilePrimitive>,
+    solid_tile_indices: Vec<u32>,
+    mask_tile_indices: Vec<u32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -942,6 +999,7 @@ struct FillPrimitive {
 #[derive(Clone, Copy, Debug)]
 struct TilePrimitive {
     position: Point2D<f32>,
+    backdrop: f32,
     color: ColorU,
 }
 
@@ -955,7 +1013,12 @@ struct ColorU {
 
 impl BuiltScene {
     fn new() -> BuiltScene {
-        BuiltScene { fills: vec![], tiles: vec![] }
+        BuiltScene {
+            fills: vec![],
+            tiles: vec![],
+            solid_tile_indices: vec![],
+            mask_tile_indices: vec![],
+        }
     }
 
     fn write<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
@@ -963,7 +1026,13 @@ impl BuiltScene {
 
         let fill_size = self.fills.len() * mem::size_of::<FillPrimitive>();
         let tile_size = self.tiles.len() * mem::size_of::<TilePrimitive>();
-        writer.write_u32::<LittleEndian>((4 + 8 + tile_size + 8 + fill_size) as u32)?;
+        let solid_tile_indices_size = self.solid_tile_indices.len() * mem::size_of::<u32>();
+        let mask_tile_indices_size = self.mask_tile_indices.len() * mem::size_of::<u32>();
+        writer.write_u32::<LittleEndian>((4 +
+                                          8 + fill_size +
+                                          8 + tile_size +
+                                          8 + solid_tile_indices_size +
+                                          8 + mask_tile_indices_size) as u32)?;
 
         writer.write_all(b"PF3S")?;
 
@@ -983,6 +1052,18 @@ impl BuiltScene {
             writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
         }
 
+        writer.write_all(b"soli")?;
+        writer.write_u32::<LittleEndian>(solid_tile_indices_size as u32)?;
+        for &index in &self.solid_tile_indices {
+            writer.write_u32::<LittleEndian>(index)?;
+        }
+
+        writer.write_all(b"mask")?;
+        writer.write_u32::<LittleEndian>(mask_tile_indices_size as u32)?;
+        for &index in &self.mask_tile_indices {
+            writer.write_u32::<LittleEndian>(index)?;
+        }
+
         return Ok(());
 
         fn write_point<W>(writer: &mut W, point: &Point2D<f32>) -> io::Result<()> where W: Write {
@@ -995,7 +1076,7 @@ impl BuiltScene {
 
 impl TilePrimitive {
     fn new(position: &Point2D<f32>, color: ColorU) -> TilePrimitive {
-        TilePrimitive { position: *position, color }
+        TilePrimitive { position: *position, backdrop: 0.0, color }
     }
 }
 
@@ -1024,9 +1105,9 @@ struct IntervalRange {
 }
 
 impl Intervals {
-    fn new(end: f32) -> Intervals {
+    fn new(bounds: Range<f32>) -> Intervals {
         Intervals {
-            ranges: vec![IntervalRange::new(0.0, end, 0.0)],
+            ranges: vec![IntervalRange::new(bounds.start, bounds.end, 0.0)],
         }
     }
 
@@ -1054,9 +1135,9 @@ impl Intervals {
         self.merge_adjacent();
     }
 
-    fn reset(&mut self, end: f32) {
+    fn reset(&mut self, start: f32, end: f32) {
         self.ranges.truncate(1);
-        self.ranges[0] = IntervalRange::new(0.0, end, 0.0);
+        self.ranges[0] = IntervalRange::new(start, end, 0.0);
     }
 
     fn extent(&self) -> f32 {
@@ -1224,6 +1305,15 @@ fn clamp(x: f32, min: f32, max: f32) -> f32 {
     f32::max(f32::min(x, max), min)
 }
 
+fn intersect_ranges(a: Range<f32>, b: Range<f32>) -> Range<f32> {
+    let (start, end) = (f32::max(a.start, b.start), f32::min(a.end, b.end));
+    if start < end {
+        start..end
+    } else {
+        start..start
+    }
+}
+
 // Testing
 
 #[cfg(test)]
@@ -1231,20 +1321,21 @@ mod test {
     use crate::{IntervalRange, Intervals};
     use quickcheck::{self, Arbitrary, Gen};
     use rand::Rng;
+    use std::ops::Range;
 
     #[test]
     fn test_intervals() {
         quickcheck::quickcheck(prop_intervals as fn(Spec) -> bool);
 
         fn prop_intervals(spec: Spec) -> bool {
-            let mut intervals = Intervals::new(spec.end);
+            let mut intervals = Intervals::new(spec.bounds.clone());
             for range in spec.ranges {
                 intervals.add(range);
             }
 
             assert!(intervals.ranges.len() > 0);
-            assert_eq!(intervals.ranges[0].start, 0.0);
-            assert_eq!(intervals.ranges.last().unwrap().end, spec.end);
+            assert_eq!(intervals.ranges[0].start, spec.bounds.start);
+            assert_eq!(intervals.ranges.last().unwrap().end, spec.bounds.end);
             for prev_index in 0..(intervals.ranges.len() - 1) {
                 let next_index = prev_index + 1;
                 assert_eq!(intervals.ranges[prev_index].end, intervals.ranges[next_index].start);
@@ -1257,7 +1348,7 @@ mod test {
 
         #[derive(Clone, Debug)]
         struct Spec {
-            end: f32,
+            bounds: Range<f32>,
             ranges: Vec<IntervalRange>,
         }
 
@@ -1266,18 +1357,19 @@ mod test {
                 const EPSILON: f32 = 0.0001;
 
                 let size = g.size();
-                let end = g.gen_range(EPSILON, size as f32);
+                let start = g.gen_range(EPSILON, size as f32);
+                let end = g.gen_range(start + EPSILON, size as f32);
 
                 let mut ranges = vec![];
                 let range_count = g.gen_range(0, size);
                 for _ in 0..range_count {
-                    let (a, b) = (g.gen_range(0.0, end), g.gen_range(0.0, end));
+                    let (a, b) = (g.gen_range(start, end), g.gen_range(start, end));
                     let winding = g.gen_range(-(size as i32), size as i32) as f32;
                     ranges.push(IntervalRange::new(f32::min(a, b), f32::max(a, b), winding));
                 }
 
                 Spec {
-                    end,
+                    bounds: start..end,
                     ranges,
                 }
             }
