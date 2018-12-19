@@ -678,11 +678,14 @@ impl Segment {
     fn clip_x(&self, range: Range<f32>) -> Option<Segment> {
         //println!("clip_x({:?}, {:?})", self, range.clone());
 
-        if self.from.x <= range.start && self.to.x <= range.start {
+        // Trivial cases.
+        if (self.from.x <= range.start && self.to.x <= range.start) ||
+                (self.from.x >= range.end && self.to.x >= range.end) {
             return None
         }
-        if self.from.x >= range.end && self.to.x >= range.end {
-            return None
+        let (start, end) = (f32::min(self.from.x, self.to.x), f32::max(self.from.x, self.to.x));
+        if start >= range.start && end <= range.end {
+            return Some(*self)
         }
 
         // FIXME(pcwalton): Reduce code duplication!
@@ -819,18 +822,8 @@ impl Segment {
         !self.flags.contains(SegmentFlags::HAS_ENDPOINTS)
     }
 
-    // Note: If we convert these to monotonic then we can optimize this method.
-    // TODO(pcwalton): Consider changing the representation of `Segment` to remove the code
-    // duplication in the branches here?
     fn min_y(&self) -> f32 {
-        let mut min_y = f32::min(self.from.y, self.to.y);
-        if self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
-            min_y = f32::min(min_y, self.ctrl0.y)
-        }
-        if self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
-            min_y = f32::min(min_y, self.ctrl1.y)
-        }
-        min_y
+        f32::min(self.from.y, self.to.y)
     }
 
     fn clip_y(&self, y: f32) -> ClippedSegments {
