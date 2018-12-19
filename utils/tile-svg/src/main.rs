@@ -89,12 +89,10 @@ fn main() {
              built_scene.solid_tile_indices.len(),
              built_scene.mask_tile_indices.len());
 
-    /*
     println!("solid tiles:");
     for &index in &built_scene.solid_tile_indices {
         println!("... {}: {:?}", index, built_scene.tiles[index as usize]);
     }
-    */
 
     if let Some(output_path) = output_path {
         built_scene.write(&mut BufWriter::new(File::create(output_path).unwrap())).unwrap();
@@ -319,6 +317,7 @@ impl Scene {
     }
 
     fn push_svg_path(&mut self, value: &str, style: StyleId, name: String) {
+        /*
         if self.get_style(style).stroke_width > 0.0 {
             let computed_style = self.get_style(style);
             let mut path_parser = PathParser::from(&*value);
@@ -336,6 +335,7 @@ impl Scene {
             self.bounds = self.bounds.union(&outline.bounds);
             self.objects.push(PathObject::new(outline, color, style, name.clone()));
         }
+        */
 
         if self.get_style(style).fill_color.is_some() {
             let computed_style = self.get_style(style);
@@ -416,16 +416,19 @@ impl Outline {
                                                            &mut bounding_points);
                 }
                 PathEvent::QuadraticTo(ctrl, to) => {
+                    /*
                     current_contour.push_transformed_point(&ctrl,
                                                            PointFlags::CONTROL_POINT_0,
                                                            &transform,
                                                            &mut bounding_points);
+                    */
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
                                                            &transform,
                                                            &mut bounding_points);
                 }
                 PathEvent::CubicTo(ctrl0, ctrl1, to) => {
+                    /*
                     current_contour.push_transformed_point(&ctrl0,
                                                            PointFlags::CONTROL_POINT_0,
                                                            &transform,
@@ -434,6 +437,7 @@ impl Outline {
                                                            PointFlags::CONTROL_POINT_1,
                                                            &transform,
                                                            &mut bounding_points);
+                    */
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
                                                            &transform,
