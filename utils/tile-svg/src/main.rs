@@ -50,7 +50,7 @@ const SCALE_FACTOR: f32 = 1.0;
 const FLATTENING_TOLERANCE: f32 = 3.0;
 
 // TODO(pcwalton): Make this configurable.
-const RAYCASTING_TOLERANCE: f32 = 0.1;
+const RAYCASTING_TOLERANCE: f32 = 0.001;
 
 fn main() {
     let matches =
@@ -303,6 +303,7 @@ impl Scene {
             let path = SvgPathToPathEvents::new(&mut path_parser);
             let path = PathIter::new(path);
             let path = StrokeToFillIter::new(path, StrokeStyle::new(computed_style.stroke_width));
+            let path = MonotonicConversionIter::new(path);
             let outline = Outline::from_path_events(path, computed_style);
 
             let color = match computed_style.stroke_color {
@@ -318,6 +319,7 @@ impl Scene {
             let computed_style = self.get_style(style);
             let mut path_parser = PathParser::from(&*value);
             let path = SvgPathToPathEvents::new(&mut path_parser);
+            let path = MonotonicConversionIter::new(path);
             let outline = Outline::from_path_events(path, computed_style);
 
             let color = match computed_style.fill_color {
@@ -1437,6 +1439,105 @@ impl<'a, I> Iterator for SvgPathToPathEvents<'a, I> where I: Iterator<Item = Svg
     }
 }
 
+// Monotonic conversion utilities
+
+// TODO(pcwalton): I think we only need to be monotonic in Y, maybe?
+struct MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
+    inner: I,
+    buffer: Option<PathEvent>,
+    last_point: Point2D<f32>,
+}
+
+impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
+    type Item = PathEvent;
+
+    fn next(&mut self) -> Option<PathEvent> {
+        if self.buffer.is_none() {
+            match self.inner.next() {
+                None => return None,
+                Some(event) => self.buffer = Some(event),
+            }
+        }
+
+        match self.buffer.take().unwrap() {
+            PathEvent::MoveTo(to) => {
+                self.last_point = to;
+                Some(PathEvent::MoveTo(to))
+            }
+            PathEvent::LineTo(to) => {
+                self.last_point = to;
+                Some(PathEvent::LineTo(to))
+            }
+            PathEvent::CubicTo(ctrl0, ctrl1, to) => {
+                let segment = CubicBezierSegment {
+                    from: self.last_point,
+                    ctrl1: ctrl0,
+                    ctrl2: ctrl1,
+                    to,
+                };
+                if segment.is_monotonic() {
+                    self.last_point = to;
+                    return Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
+                }
+                // FIXME(pcwalton): O(n^2)!
+                let mut t = None;
+                segment.for_each_monotonic_t(|split_t| {
+                    if t.is_none() {
+                        t = Some(split_t)
+                    }
+                });
+                let t = t.unwrap();
+                if t_is_too_close_to_zero_or_one(t) {
+                    self.last_point = to;
+                    return Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
+                }
+                let (prev, next) = segment.split(t);
+                self.last_point = next.from;
+                self.buffer = Some(PathEvent::CubicTo(next.ctrl1, next.ctrl2, next.to));
+                return Some(PathEvent::CubicTo(prev.ctrl1, prev.ctrl2, prev.to));
+            }
+            PathEvent::QuadraticTo(ctrl, to) => {
+                let segment = QuadraticBezierSegment { from: self.last_point, ctrl: ctrl, to };
+                if segment.is_monotonic() {
+                    self.last_point = to;
+                    return Some(PathEvent::QuadraticTo(ctrl, to))
+                }
+                // FIXME(pcwalton): O(n^2)!
+                let mut t = None;
+                segment.for_each_monotonic_t(|split_t| {
+                    if t.is_none() {
+                        t = Some(split_t)
+                    }
+                });
+                let t = t.unwrap();
+                if t_is_too_close_to_zero_or_one(t) {
+                    self.last_point = to;
+                    return Some(PathEvent::QuadraticTo(ctrl, to))
+                }
+                let (prev, next) = segment.split(t);
+                self.last_point = next.from;
+                self.buffer = Some(PathEvent::QuadraticTo(next.ctrl, next.to));
+                return Some(PathEvent::QuadraticTo(prev.ctrl, prev.to));
+            }
+            PathEvent::Close => Some(PathEvent::Close),
+            PathEvent::Arc(a, b, c, d) => {
+                // FIXME(pcwalton): Make these monotonic too.
+                return Some(PathEvent::Arc(a, b, c, d))
+            }
+        }
+    }
+}
+
+impl<I> MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
+    fn new(inner: I) -> MonotonicConversionIter<I> {
+        MonotonicConversionIter {
+            inner,
+            buffer: None,
+            last_point: Point2D::zero(),
+        }
+    }
+}
+
 // Trivial utilities
 
 fn clamp(x: f32, min: f32, max: f32) -> f32 {
@@ -1450,6 +1551,12 @@ fn intersect_ranges(a: Range<f32>, b: Range<f32>) -> Range<f32> {
     } else {
         start..start
     }
+}
+
+fn t_is_too_close_to_zero_or_one(t: f32) -> bool {
+    const EPSILON: f32 = 0.001;
+
+    t < EPSILON || t > 1.0 - EPSILON
 }
 
 // Testing
