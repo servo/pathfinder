@@ -49,9 +49,6 @@ const SCALE_FACTOR: f32 = 1.0;
 // TODO(pcwalton): Make this configurable.
 const FLATTENING_TOLERANCE: f32 = 3.0;
 
-// TODO(pcwalton): Make this configurable.
-const RAYCASTING_TOLERANCE: f32 = 0.001;
-
 fn main() {
     let matches =
         App::new("tile-svg").arg(Arg::with_name("runs").short("r")
@@ -741,6 +738,39 @@ impl Segment {
         return Some(clipped);
     }
 
+    fn split_y(&self, y: f32) -> (Option<Segment>, Option<Segment>) {
+        // Trivial cases.
+        if self.from.y <= y && self.to.y <= y {
+            return if self.from.y < self.to.y {
+                (Some(*self), None)
+            } else {
+                (None, Some(*self))
+            }
+        }
+        if self.from.y >= y && self.to.y >= y {
+            return if self.from.y < self.to.y {
+                (None, Some(*self))
+            } else {
+                (Some(*self), None)
+            }
+        }
+
+        // TODO(pcwalton): Reduce code duplication?
+        if let Some(mut line_segment) = self.as_line_segment() {
+            let t = LineAxis::from_y(&line_segment).solve_for_t(y).unwrap();
+            let (prev, next) = line_segment.split(t);
+            return (Some(Segment::from_line(&prev)), Some(Segment::from_line(&next)));
+        }
+
+        // TODO(pcwalton): Don't degree elevate!
+        let mut cubic_segment = self.as_cubic_segment().unwrap();
+        println!("split_y(): y={} cubic_segment={:?}", y, cubic_segment);
+        let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
+        let t = t.expect("Failed to solve cubic for Y!");
+        let (prev, next) = cubic_segment.split(t);
+        (Some(Segment::from_cubic(&prev)), Some(Segment::from_cubic(&next)))
+    }
+
     fn generate_fill_primitives(&self,
                                 first_tile_index: u32,
                                 strip_origin: &Point2D<f32>,
@@ -824,49 +854,6 @@ impl Segment {
 
     fn min_y(&self) -> f32 {
         f32::min(self.from.y, self.to.y)
-    }
-
-    fn clip_y(&self, y: f32) -> ClippedSegments {
-        if self.from.y < y && self.to.y < y {
-            return ClippedSegments { min: Some(*self), max: None }
-        }
-        if self.from.y > y && self.to.y > y {
-            return ClippedSegments { min: None, max: Some(*self) }
-        }
-
-        let (prev, next) = if self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
-            let curve = CubicBezierSegment {
-                from: self.from,
-                ctrl1: self.ctrl0,
-                ctrl2: self.ctrl1,
-                to: self.to,
-            };
-            let swapped_curve = CubicBezierSegment {
-                from: curve.from.yx(),
-                ctrl1: curve.ctrl1.yx(),
-                ctrl2: curve.ctrl2.yx(),
-                to: curve.to.yx(),
-            };
-            let (prev, next) = curve.split(
-                    swapped_curve.assume_monotonic().solve_t_for_x(y, 0.0..1.0, TOLERANCE));
-            (Segment::from_cubic(&prev), Segment::from_cubic(&next))
-        } else if self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
-            let curve = QuadraticBezierSegment { from: self.from, ctrl: self.ctrl0, to: self.to };
-            let (prev, next) = curve.split(curve.assume_monotonic().solve_t_for_y(y));
-            (Segment::from_quadratic(&prev), Segment::from_quadratic(&next))
-        } else {
-            let line = LineSegment { from: self.from, to: self.to };
-            let (prev, next) = line.split(line.solve_t_for_y(y));
-            (Segment::from_line(&prev), Segment::from_line(&next))
-        };
-
-        if self.from.y <= self.to.y {
-            return ClippedSegments { min: Some(prev), max: Some(next) };
-        } else {
-            return ClippedSegments { min: Some(next), max: Some(prev) };
-        }
-
-        const TOLERANCE: f32 = 0.01;
     }
 }
 
@@ -1097,57 +1084,60 @@ impl<'o, 'p> Tiler<'o, 'p> {
 fn process_active_edge(active_edge: &mut Segment,
                        strip_bounds: &Rect<f32>,
                        first_tile_index: u32,
-                       fills: Option<&mut Vec<FillPrimitive>>,
+                       mut fills: Option<&mut Vec<FillPrimitive>>,
                        active_intervals: &mut Intervals,
                        used_tiles: &mut FixedBitSet) {
     let strip_extent = strip_bounds.bottom_right();
 
     //println!("... clipping edge: {:?}", active_edge);
-    let clipped = active_edge.clip_y(strip_extent.y);
+    let (prev_segment, next_segment) = active_edge.split_y(strip_extent.y);
+    *active_edge = Segment::new();
 
-    if let Some(upper_segment) = clipped.min {
-        //println!("... ... UPPER: {:?}", upper_segment);
+    for &segment in [&prev_segment, &next_segment].into_iter() {
+        let segment = match *segment {
+            None => continue,
+            Some(ref segment) => segment,
+        };
 
-        if let Some(fills) = fills {
-            active_edge.generate_fill_primitives(first_tile_index,
-                                                 &strip_bounds.origin,
-                                                 fills);
-        }
+        if segment.from.y < strip_extent.y || segment.to.y < strip_extent.y {
+            //println!("... ... UPPER: {:?}", upper_segment);
 
-        // FIXME(pcwalton): Assumes x-monotonicity!
-        let mut from_x = clamp(upper_segment.from.x, 0.0, active_intervals.extent());
-        let mut to_x = clamp(upper_segment.to.x, 0.0, active_intervals.extent());
-        from_x = clamp(from_x, 0.0, strip_extent.x);
-        to_x = clamp(to_x, 0.0, strip_extent.x);
-        if from_x < to_x {
-            active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
+            if let Some(ref mut fills) = fills {
+                active_edge.generate_fill_primitives(first_tile_index,
+                                                    &strip_bounds.origin,
+                                                    *fills);
+            }
+
+            // FIXME(pcwalton): Assumes x-monotonicity!
+            let mut from_x = clamp(segment.from.x, 0.0, active_intervals.extent());
+            let mut to_x = clamp(segment.to.x, 0.0, active_intervals.extent());
+            from_x = clamp(from_x, 0.0, strip_extent.x);
+            to_x = clamp(to_x, 0.0, strip_extent.x);
+            if from_x < to_x {
+                active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
+            } else {
+                active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
+            }
+
+            // FIXME(pcwalton): Assumes x-monotonicity!
+            // FIXME(pcwalton): Don't hardcode a view box left of 0!
+            let mut min_x = f32::min(segment.from.x, segment.to.x);
+            let mut max_x = f32::max(segment.from.x, segment.to.x);
+            min_x = clamp(min_x, 0.0, strip_extent.x);
+            max_x = clamp(max_x, 0.0, strip_extent.x);
+            let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
+            let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
+            let left_tile_index = (tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+            let right_tile_index = (tile_right - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+
+            // Set used bits.
+            for tile_index in left_tile_index..right_tile_index {
+                used_tiles.insert(tile_index as usize);
+            }
         } else {
-            active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
-        }
-
-        // FIXME(pcwalton): Assumes x-monotonicity!
-        // FIXME(pcwalton): Don't hardcode a view box left of 0!
-        let mut min_x = f32::min(upper_segment.from.x, upper_segment.to.x);
-        let mut max_x = f32::max(upper_segment.from.x, upper_segment.to.x);
-        min_x = clamp(min_x, 0.0, strip_extent.x);
-        max_x = clamp(max_x, 0.0, strip_extent.x);
-        let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
-        let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
-        let left_tile_index = (tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
-        let right_tile_index = (tile_right - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
-
-        // Set used bits.
-        for tile_index in left_tile_index..right_tile_index {
-            used_tiles.insert(tile_index as usize);
-        }
-    }
-
-    match clipped.max {
-        Some(lower_segment) => {
             //println!("... ... LOWER: {:?}", lower_segment);
-            *active_edge = lower_segment;
+            *active_edge = *segment;
         }
-        None => *active_edge = Segment::new(),
     }
 }
 
@@ -1578,13 +1568,14 @@ trait SolveT {
     fn sample_deriv(&self, t: f32) -> f32;
 
     fn solve_for_t(&self, x: f32) -> Option<f32> {
-        const MAX_NEWTON_ITERATIONS: u32 = 16;
+        const MAX_NEWTON_ITERATIONS: u32 = 64;
         const EPSILON: f32 = 0.001;
 
-        let mut t = 0.5;
-        for _ in 0..MAX_NEWTON_ITERATIONS {
+        let mut t = 0.25;
+        for iteration in 0..MAX_NEWTON_ITERATIONS {
             let old_t = t;
-            t -= self.sample(t) / self.sample_deriv(t);
+            t -= (self.sample(t) - x) / self.sample_deriv(t);
+            println!("iteration {}: t={}", iteration, t);
             if f32::abs(old_t - t) < EPSILON {
                 break
             }
