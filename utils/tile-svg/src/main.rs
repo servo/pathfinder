@@ -85,14 +85,16 @@ fn main() {
     println!("{:.3}ms elapsed", elapsed_ms / runs as f64);
     println!("{} fill primitives generated", built_scene.fills.len());
     println!("{} tiles ({} solid, {} mask) generated",
-             built_scene.tiles.len(),
-             built_scene.solid_tile_indices.len(),
-             built_scene.mask_tile_indices.len());
+             built_scene.solid_tiles.len() + built_scene.mask_tiles.len(),
+             built_scene.solid_tiles.len(),
+             built_scene.mask_tiles.len());
 
+    /*
     println!("solid tiles:");
-    for &index in &built_scene.solid_tile_indices {
-        println!("... {}: {:?}", index, built_scene.tiles[index as usize]);
+    for (index, tile) in built_scene.solid_tiles.iter().enumerate() {
+        println!("... {}: {:?}", index, tile);
     }
+    */
 
     if let Some(output_path) = output_path {
         built_scene.write(&mut BufWriter::new(File::create(output_path).unwrap())).unwrap();
@@ -317,7 +319,6 @@ impl Scene {
     }
 
     fn push_svg_path(&mut self, value: &str, style: StyleId, name: String) {
-        /*
         if self.get_style(style).stroke_width > 0.0 {
             let computed_style = self.get_style(style);
             let mut path_parser = PathParser::from(&*value);
@@ -335,7 +336,6 @@ impl Scene {
             self.bounds = self.bounds.union(&outline.bounds);
             self.objects.push(PathObject::new(outline, color, style, name.clone()));
         }
-        */
 
         if self.get_style(style).fill_color.is_some() {
             let computed_style = self.get_style(style);
@@ -416,19 +416,16 @@ impl Outline {
                                                            &mut bounding_points);
                 }
                 PathEvent::QuadraticTo(ctrl, to) => {
-                    /*
                     current_contour.push_transformed_point(&ctrl,
                                                            PointFlags::CONTROL_POINT_0,
                                                            &transform,
                                                            &mut bounding_points);
-                    */
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
                                                            &transform,
                                                            &mut bounding_points);
                 }
                 PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                    /*
                     current_contour.push_transformed_point(&ctrl0,
                                                            PointFlags::CONTROL_POINT_0,
                                                            &transform,
@@ -437,7 +434,6 @@ impl Outline {
                                                            PointFlags::CONTROL_POINT_1,
                                                            &transform,
                                                            &mut bounding_points);
-                    */
                     current_contour.push_transformed_point(&to,
                                                            PointFlags::empty(),
                                                            &transform,
@@ -794,14 +790,10 @@ impl Segment {
     }
 
     fn generate_fill_primitives(&self,
-                                first_tile_index: u32,
                                 strip_origin: &Point2D<f32>,
                                 primitives: &mut Vec<FillPrimitive>) {
         if let Some(ref line_segment) = self.as_line_segment() {
-            generate_fill_primitives_for_line(line_segment,
-                                              first_tile_index,
-                                              strip_origin,
-                                              primitives);
+            generate_fill_primitives_for_line(line_segment, strip_origin, primitives);
             return;
         }
 
@@ -810,15 +802,11 @@ impl Segment {
         let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
         let mut from = self.from;
         for to in flattener {
-            generate_fill_primitives_for_line(&LineSegment { from, to },
-                                              first_tile_index,
-                                              strip_origin,
-                                              primitives);
+            generate_fill_primitives_for_line(&LineSegment { from, to }, strip_origin, primitives);
             from = to;
         }
 
         fn generate_fill_primitives_for_line(segment: &LineSegment<f32>,
-                                             first_tile_index: u32,
                                              strip_origin: &Point2D<f32>,
                                              primitives: &mut Vec<FillPrimitive>) {
             let mut segment = *segment;
@@ -838,7 +826,7 @@ impl Segment {
                     primitives.push(FillPrimitive {
                         from: segment.from - tile_offset,
                         to: segment.to - tile_offset,
-                        tile_index: first_tile_index + from_tile_index,
+                        tile_index: from_tile_index,
                     });
                     break;
                 }
@@ -854,7 +842,7 @@ impl Segment {
                 primitives.push(FillPrimitive {
                     from: prev_segment.from - tile_offset,
                     to: prev_segment.to - tile_offset,
-                    tile_index: first_tile_index + from_tile_index,
+                    tile_index: from_tile_index,
                 });
 
                 from_tile_index = next_tile_index;
@@ -962,14 +950,13 @@ impl<'o, 'p> Tiler<'o, 'p> {
         let strip_right_extent = f32::ceil(bounds.max_x() / TILE_WIDTH) * TILE_WIDTH;
 
         let tiles_across = ((strip_right_extent - strip_origin.x) / TILE_WIDTH) as usize;
+
+        let mut strip_fills = vec![];
         let mut strip_tiles = Vec::with_capacity(tiles_across);
         let mut used_strip_tiles = FixedBitSet::with_capacity(tiles_across);
 
         // Generate strips.
         while strip_origin.y < bounds.max_y() {
-            // Determine the first tile index.
-            let first_tile_index = self.built_scene.tiles.len() as u32;
-
             // Determine strip bounds.
             let strip_extent = Point2D::new(strip_right_extent, strip_origin.y + TILE_HEIGHT);
             let strip_bounds = Rect::new(strip_origin,
@@ -982,13 +969,16 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 None => false,
             };
 
-            // Allocate tiles.
+            // Reset strip info.
+            strip_fills.clear();
             strip_tiles.clear();
             used_strip_tiles.clear();
+
+            // Allocate tiles.
             let mut tile_left = strip_origin.x;
             while tile_left < strip_right_extent {
                 let strip_origin = Point2D::new(tile_left, strip_origin.y);
-                strip_tiles.push(TilePrimitive::new(&strip_origin, self.fill_color));
+                strip_tiles.push(MaskTilePrimitive::new(&strip_origin, self.fill_color));
                 tile_left += TILE_WIDTH;
             }
 
@@ -1016,11 +1006,10 @@ impl<'o, 'p> Tiler<'o, 'p> {
                     } else {
                         let left = Point2D::new(interval.start, strip_origin.y);
                         let right = Point2D::new(interval.end, strip_origin.y);
-                        let global_tile_index = first_tile_index + strip_tile_index as u32;
-                        self.built_scene.fills.push(FillPrimitive {
+                        strip_fills.push(FillPrimitive {
                             from:       if interval.winding < 0.0 { left } else { right },
                             to:         if interval.winding < 0.0 { right } else { left },
-                            tile_index: global_tile_index,
+                            tile_index: strip_tile_index as u32,
                         });
                     }
 
@@ -1030,10 +1019,9 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
             // Process old active edges.
             for active_edge in &mut self.active_edges {
-                let fills = if above_view_box { None } else { Some(&mut self.built_scene.fills) };
+                let fills = if above_view_box { None } else { Some(&mut strip_fills) };
                 process_active_edge(active_edge,
                                     &strip_bounds,
-                                    first_tile_index,
                                     fills,
                                     &mut self.active_intervals,
                                     &mut used_strip_tiles)
@@ -1051,15 +1039,9 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
                 if !segment.is_degenerate() {
                     if let Some(mut segment) = segment.clip_x(strip_range) {
-                        let fills = if above_view_box {
-                            None
-                        } else {
-                            Some(&mut self.built_scene.fills)
-                        };
-
+                        let fills = if above_view_box { None } else { Some(&mut strip_fills) };
                         process_active_edge(&mut segment,
                                             &strip_bounds,
-                                            first_tile_index,
                                             fills,
                                             &mut self.active_intervals,
                                             &mut used_strip_tiles);
@@ -1073,19 +1055,32 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 next_edge_index_index += 1;
             }
 
-            // Flush tiles.
+            // Finalize tiles.
             if !above_view_box {
-                for tile_index in 0..tiles_across {
-                    self.built_scene.tiles.push(strip_tiles[tile_index]);
+                // Flush tiles.
+                for (tile_index, tile) in strip_tiles.iter().enumerate() {
                     if used_strip_tiles.contains(tile_index) {
-                        self.built_scene
-                            .mask_tile_indices
-                            .push(first_tile_index + tile_index as u32)
-                    } else if strip_tiles[tile_index].backdrop != 0.0 {
-                        self.built_scene
-                            .solid_tile_indices
-                            .push(first_tile_index + tile_index as u32)
+                        self.built_scene.mask_tiles.push(*tile);
+                    } else if tile.backdrop != 0.0 {
+                        self.built_scene.solid_tiles.push(SolidTilePrimitive {
+                            position: tile.position,
+                            color: tile.color,
+                        });
                     }
+                }
+
+                // Flush fills.
+                //
+                // TODO(pcwalton): Don't use a temporary vector to hold these.
+                let first_tile_index = self.built_scene.mask_tiles.len() as u32;
+                for fill in &strip_fills {
+                    let real_tile_index = first_tile_index +
+                        used_strip_tiles.count_ones(0..(fill.tile_index as usize)) as u32;
+                    self.built_scene.fills.push(FillPrimitive {
+                        from: fill.from,
+                        to: fill.to,
+                        tile_index: real_tile_index,
+                    });
                 }
             }
 
@@ -1096,7 +1091,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
 fn process_active_edge(active_edge: &mut Segment,
                        strip_bounds: &Rect<f32>,
-                       first_tile_index: u32,
                        mut fills: Option<&mut Vec<FillPrimitive>>,
                        active_intervals: &mut Intervals,
                        used_tiles: &mut FixedBitSet) {
@@ -1113,9 +1107,7 @@ fn process_active_edge(active_edge: &mut Segment,
 
         if segment.from.y < strip_extent.y || segment.to.y < strip_extent.y {
             if let Some(ref mut fills) = fills {
-                active_edge.generate_fill_primitives(first_tile_index,
-                                                    &strip_bounds.origin,
-                                                    *fills);
+                active_edge.generate_fill_primitives(&strip_bounds.origin, *fills);
             }
 
             // FIXME(pcwalton): Assumes x-monotonicity!
@@ -1155,9 +1147,8 @@ fn process_active_edge(active_edge: &mut Segment,
 #[derive(Debug)]
 struct BuiltScene {
     fills: Vec<FillPrimitive>,
-    tiles: Vec<TilePrimitive>,
-    solid_tile_indices: Vec<u32>,
-    mask_tile_indices: Vec<u32>,
+    solid_tiles: Vec<SolidTilePrimitive>,
+    mask_tiles: Vec<MaskTilePrimitive>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1168,10 +1159,16 @@ struct FillPrimitive {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct TilePrimitive {
+struct SolidTilePrimitive {
     position: Point2D<f32>,
-    backdrop: f32,
     color: ColorU,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct MaskTilePrimitive {
+    position: Point2D<f32>,
+    color: ColorU,
+    backdrop: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1184,26 +1181,19 @@ struct ColorU {
 
 impl BuiltScene {
     fn new() -> BuiltScene {
-        BuiltScene {
-            fills: vec![],
-            tiles: vec![],
-            solid_tile_indices: vec![],
-            mask_tile_indices: vec![],
-        }
+        BuiltScene { fills: vec![], solid_tiles: vec![], mask_tiles: vec![] }
     }
 
     fn write<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
         writer.write_all(b"RIFF")?;
 
         let fill_size = self.fills.len() * mem::size_of::<FillPrimitive>();
-        let tile_size = self.tiles.len() * mem::size_of::<TilePrimitive>();
-        let solid_tile_indices_size = self.solid_tile_indices.len() * mem::size_of::<u32>();
-        let mask_tile_indices_size = self.mask_tile_indices.len() * mem::size_of::<u32>();
+        let solid_tiles_size = self.solid_tiles.len() * mem::size_of::<SolidTilePrimitive>();
+        let mask_tiles_size = self.mask_tiles.len() * mem::size_of::<MaskTilePrimitive>();
         writer.write_u32::<LittleEndian>((4 +
                                           8 + fill_size +
-                                          8 + tile_size +
-                                          8 + solid_tile_indices_size +
-                                          8 + mask_tile_indices_size) as u32)?;
+                                          8 + solid_tiles_size +
+                                          8 + mask_tiles_size) as u32)?;
 
         writer.write_all(b"PF3S")?;
 
@@ -1215,25 +1205,21 @@ impl BuiltScene {
             writer.write_u32::<LittleEndian>(fill_primitive.tile_index)?;
         }
 
-        writer.write_all(b"tile")?;
-        writer.write_u32::<LittleEndian>(tile_size as u32)?;
-        for tile_primitive in &self.tiles {
+        writer.write_all(b"soli")?;
+        writer.write_u32::<LittleEndian>(solid_tiles_size as u32)?;
+        for &tile_primitive in &self.solid_tiles {
+            let color = tile_primitive.color;
+            write_point(writer, &tile_primitive.position)?;
+            writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
+        }
+
+        writer.write_all(b"mask")?;
+        writer.write_u32::<LittleEndian>(mask_tiles_size as u32)?;
+        for &tile_primitive in &self.mask_tiles {
             let color = tile_primitive.color;
             write_point(writer, &tile_primitive.position)?;
             writer.write_f32::<LittleEndian>(tile_primitive.backdrop)?;
             writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
-        }
-
-        writer.write_all(b"soli")?;
-        writer.write_u32::<LittleEndian>(solid_tile_indices_size as u32)?;
-        for &index in &self.solid_tile_indices {
-            writer.write_u32::<LittleEndian>(index)?;
-        }
-
-        writer.write_all(b"mask")?;
-        writer.write_u32::<LittleEndian>(mask_tile_indices_size as u32)?;
-        for &index in &self.mask_tile_indices {
-            writer.write_u32::<LittleEndian>(index)?;
         }
 
         return Ok(());
@@ -1246,9 +1232,15 @@ impl BuiltScene {
     }
 }
 
-impl TilePrimitive {
-    fn new(position: &Point2D<f32>, color: ColorU) -> TilePrimitive {
-        TilePrimitive { position: *position, backdrop: 0.0, color }
+impl SolidTilePrimitive {
+    fn new(position: &Point2D<f32>, color: ColorU) -> SolidTilePrimitive {
+        SolidTilePrimitive { position: *position, color }
+    }
+}
+
+impl MaskTilePrimitive {
+    fn new(position: &Point2D<f32>, color: ColorU) -> MaskTilePrimitive {
+        MaskTilePrimitive { position: *position, backdrop: 0.0, color }
     }
 }
 
