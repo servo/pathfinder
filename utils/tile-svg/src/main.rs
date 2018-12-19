@@ -668,35 +668,73 @@ impl Segment {
         }
     }
 
+    fn is_degenerate(&self) -> bool {
+        return f32::abs(self.to.x - self.from.x) < EPSILON ||
+            f32::abs(self.to.y - self.from.y) < EPSILON;
+
+        const EPSILON: f32 = 0.0001;
+    }
+
     fn clip_x(&self, range: Range<f32>) -> Option<Segment> {
-        println!("clip_x({:?}, {:?})", self, range.clone());
-        if let Some(line_segment) = self.as_line_segment() {
-            println!("... line segment");
-            let mut start_t = line_segment.solve_t_for_x(range.start);
-            let mut end_t = line_segment.solve_t_for_x(range.end);
-            start_t = clamp(start_t, 0.0, 1.0);
-            end_t = clamp(end_t, 0.0, 1.0);
-            if start_t == end_t {
-                return None
+        //println!("clip_x({:?}, {:?})", self, range.clone());
+
+        if self.from.x <= range.start && self.to.x <= range.start {
+            return None
+        }
+        if self.from.x >= range.end && self.to.x >= range.end {
+            return None
+        }
+
+        // FIXME(pcwalton): Reduce code duplication!
+        if let Some(mut line_segment) = self.as_line_segment() {
+            //println!("... line segment");
+            if let Some(t) = LineAxis::from_x(&line_segment).solve_for_t(range.start) {
+                let (prev, next) = line_segment.split(t);
+                if line_segment.from.x < line_segment.to.x {
+                    line_segment = next
+                } else {
+                    line_segment = prev
+                }
             }
-            let (min_t, max_t) = (f32::min(start_t, end_t), f32::max(start_t, end_t));
-            return Some(Segment::from_line(&line_segment.split_range(min_t..max_t)));
+
+            if let Some(t) = LineAxis::from_x(&line_segment).solve_for_t(range.end) {
+                let (prev, next) = line_segment.split(t);
+                if line_segment.from.x < line_segment.to.x {
+                    line_segment = prev
+                } else {
+                    line_segment = next
+                }
+            }
+
+            let clipped = Segment::from_line(&line_segment);
+            //println!("... clipped line={:?}", clipped);
+            return Some(clipped);
         }
 
         // TODO(pcwalton): Don't degree elevate!
-        let cubic_segment = self.as_cubic_segment().unwrap().assume_monotonic();
-        println!("... cubic segment {:?}", cubic_segment);
-        let mut start_t = cubic_segment.solve_t_for_x(range.start, 0.0..1.0, RAYCASTING_TOLERANCE);
-        let mut end_t = cubic_segment.solve_t_for_x(range.end, 0.0..1.0, RAYCASTING_TOLERANCE);
-        println!("... start_t={:?} end_t={:?}", start_t, end_t);
-        start_t = clamp(start_t, 0.0, 1.0);
-        end_t = clamp(end_t, 0.0, 1.0);
-        if start_t == end_t {
-            return None
+        let mut cubic_segment = self.as_cubic_segment().unwrap();
+        //println!("... cubic segment {:?}", cubic_segment);
+
+        if let Some(t) = CubicAxis::from_x(&cubic_segment).solve_for_t(range.start) {
+            let (prev, next) = cubic_segment.split(t);
+            if cubic_segment.from.x < cubic_segment.to.x {
+                cubic_segment = next
+            } else {
+                cubic_segment = prev
+            }
         }
-        let (min_t, max_t) = (f32::min(start_t, end_t), f32::max(start_t, end_t));
-        let clipped = Segment::from_cubic(cubic_segment.split_range(min_t..max_t).segment());
-        println!("... clipped={:?}", clipped);
+
+        if let Some(t) = CubicAxis::from_x(&cubic_segment).solve_for_t(range.end) {
+            let (prev, next) = cubic_segment.split(t);
+            if cubic_segment.from.x < cubic_segment.to.x {
+                cubic_segment = prev
+            } else {
+                cubic_segment = next
+            }
+        }
+
+        let clipped = Segment::from_cubic(&cubic_segment);
+        //println!("... clipped={:?}", clipped);
         return Some(clipped);
     }
 
@@ -714,7 +752,7 @@ impl Segment {
 
         // TODO(pcwalton): Don't degree elevate!
         let segment = self.as_cubic_segment().unwrap();
-        println!("generate_fill_primitives(): cubic path {:?}", segment);
+        //println!("generate_fill_primitives(): cubic path {:?}", segment);
         let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
         let mut from = self.from;
         for to in flattener {
@@ -733,20 +771,20 @@ impl Segment {
 
             // TODO(pcwalton): Factor this point-to-tile logic out. It keeps getting repeated…
             let mut from_tile_index =
-                f32::floor((segment.from.x - strip_origin.x) / TILE_WIDTH) as u32;
+                f32::max(0.0, f32::floor((segment.from.x - strip_origin.x) / TILE_WIDTH)) as u32;
             loop {
                 let tile_offset =
                     Vector2D::new(from_tile_index as f32 * TILE_WIDTH + strip_origin.x,
                                   strip_origin.y);
 
                 let to_tile_index =
-                    f32::floor((segment.to.x - strip_origin.x) / TILE_WIDTH) as u32;
-                println!("generate_fill_primitives_for_line(): segment={:?} strip_origin={:?} \
+                    f32::max(0.0, f32::floor((segment.to.x - strip_origin.x) / TILE_WIDTH)) as u32;
+                /*println!("generate_fill_primitives_for_line(): segment={:?} strip_origin={:?} \
                           from_tile_index={:?} to_tile_index={:?}",
                          segment,
                          strip_origin,
                          from_tile_index,
-                         to_tile_index);
+                         to_tile_index);*/
 
                 if from_tile_index == to_tile_index {
                     primitives.push(FillPrimitive {
@@ -998,7 +1036,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
             // Process old active edges.
             for active_edge in &mut self.active_edges {
                 let fills = if above_view_box { None } else { Some(&mut self.built_scene.fills) };
-                println!("process_active_edge(OLD)");
+                //println!("process_active_edge(OLD)");
                 process_active_edge(active_edge,
                                     &strip_bounds,
                                     first_tile_index,
@@ -1017,23 +1055,25 @@ impl<'o, 'p> Tiler<'o, 'p> {
                     break
                 }
 
-                if let Some(mut segment) = segment.clip_x(strip_range) {
-                    let fills = if above_view_box {
-                        None
-                    } else {
-                        Some(&mut self.built_scene.fills)
-                    };
+                if !segment.is_degenerate() {
+                    if let Some(mut segment) = segment.clip_x(strip_range) {
+                        let fills = if above_view_box {
+                            None
+                        } else {
+                            Some(&mut self.built_scene.fills)
+                        };
 
-                    println!("process_active_edge(NEW)");
-                    process_active_edge(&mut segment,
-                                        &strip_bounds,
-                                        first_tile_index,
-                                        fills,
-                                        &mut self.active_intervals,
-                                        &mut used_strip_tiles);
+                        //println!("process_active_edge(NEW)");
+                        process_active_edge(&mut segment,
+                                            &strip_bounds,
+                                            first_tile_index,
+                                            fills,
+                                            &mut self.active_intervals,
+                                            &mut used_strip_tiles);
 
-                    if !segment.is_none() {
-                        self.active_edges.push(segment);
+                        if !segment.is_none() {
+                            self.active_edges.push(segment);
+                        }
                     }
                 }
 
@@ -1069,11 +1109,11 @@ fn process_active_edge(active_edge: &mut Segment,
                        used_tiles: &mut FixedBitSet) {
     let strip_extent = strip_bounds.bottom_right();
 
-    println!("... clipping edge: {:?}", active_edge);
+    //println!("... clipping edge: {:?}", active_edge);
     let clipped = active_edge.clip_y(strip_extent.y);
 
     if let Some(upper_segment) = clipped.min {
-        println!("... ... UPPER: {:?}", upper_segment);
+        //println!("... ... UPPER: {:?}", upper_segment);
 
         if let Some(fills) = fills {
             active_edge.generate_fill_primitives(first_tile_index,
@@ -1111,7 +1151,7 @@ fn process_active_edge(active_edge: &mut Segment,
 
     match clipped.max {
         Some(lower_segment) => {
-            println!("... ... LOWER: {:?}", lower_segment);
+            //println!("... ... LOWER: {:?}", lower_segment);
             *active_edge = lower_segment;
         }
         None => *active_edge = Segment::new(),
@@ -1538,7 +1578,111 @@ impl<I> MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
     }
 }
 
+// Path utilities
+
+trait SolveT {
+    fn sample(&self, t: f32) -> f32;
+    fn sample_deriv(&self, t: f32) -> f32;
+
+    fn solve_for_t(&self, x: f32) -> Option<f32> {
+        const MAX_NEWTON_ITERATIONS: u32 = 16;
+        const EPSILON: f32 = 0.001;
+
+        let mut t = 0.5;
+        for _ in 0..MAX_NEWTON_ITERATIONS {
+            let old_t = t;
+            t -= self.sample(t) / self.sample_deriv(t);
+            if f32::abs(old_t - t) < EPSILON {
+                break
+            }
+        }
+
+        if t <= EPSILON || t >= 1.0 - EPSILON {
+            None
+        } else {
+            Some(t)
+        }
+    }
+}
+
+// FIXME(pcwalton): This is probably dumb and inefficient.
+struct LineAxis { from: f32, to: f32 }
+impl LineAxis {
+    fn from_x(segment: &LineSegment<f32>) -> LineAxis {
+        LineAxis { from: segment.from.x, to: segment.to.x }
+    }
+    fn from_y(segment: &LineSegment<f32>) -> LineAxis {
+        LineAxis { from: segment.from.y, to: segment.to.y }
+    }
+}
+impl SolveT for LineAxis {
+    fn sample(&self, t: f32) -> f32 {
+        lerp(self.from, self.to, t)
+    }
+    fn sample_deriv(&self, t: f32) -> f32 {
+        self.to - self.from
+    }
+}
+
+struct QuadraticAxis { from: f32, ctrl: f32, to: f32 }
+impl QuadraticAxis {
+    fn from_x(segment: &QuadraticBezierSegment<f32>) -> QuadraticAxis {
+        QuadraticAxis { from: segment.from.x, ctrl: segment.ctrl.x, to: segment.to.x }
+    }
+    fn from_y(segment: &QuadraticBezierSegment<f32>) -> QuadraticAxis {
+        QuadraticAxis { from: segment.from.y, ctrl: segment.ctrl.y, to: segment.to.y }
+    }
+}
+impl SolveT for QuadraticAxis {
+    fn sample(&self, t: f32) -> f32 {
+        lerp(lerp(self.from, self.ctrl, t), lerp(self.ctrl, self.to, t), t)
+    }
+    fn sample_deriv(&self, t: f32) -> f32 {
+        2.0 * (self.to - 2.0 * self.ctrl + self.from)
+    }
+}
+
+struct CubicAxis { from: f32, ctrl0: f32, ctrl1: f32, to: f32 }
+impl CubicAxis {
+    fn from_x(segment: &CubicBezierSegment<f32>) -> CubicAxis {
+        CubicAxis {
+            from: segment.from.x,
+            ctrl0: segment.ctrl1.x,
+            ctrl1: segment.ctrl2.x,
+            to: segment.to.x,
+        }
+    }
+    fn from_y(segment: &CubicBezierSegment<f32>) -> CubicAxis {
+        CubicAxis {
+            from: segment.from.y,
+            ctrl0: segment.ctrl1.y,
+            ctrl1: segment.ctrl2.y,
+            to: segment.to.y,
+        }
+    }
+}
+impl SolveT for CubicAxis {
+    fn sample(&self, t: f32) -> f32 {
+        // FIXME(pcwalton): Use Horner's method or something.
+        let p01 = lerp(self.from, self.ctrl0, t);
+        let p12 = lerp(self.ctrl0, self.ctrl1, t);
+        let p23 = lerp(self.ctrl1, self.to, t);
+        let (p012, p123) = (lerp(p01, p12, t), lerp(p12, p23, t));
+        lerp(p012, p123, t)
+    }
+    fn sample_deriv(&self, t: f32) -> f32 {
+        let inv_t = 1.0 - t;
+        3.0 * inv_t * inv_t * (self.ctrl0 - self.from) +
+            6.0 * inv_t * t * (self.ctrl1 - self.ctrl0) +
+            3.0 * t * t * (self.to - self.ctrl1)
+    }
+}
+
 // Trivial utilities
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
 
 fn clamp(x: f32, min: f32, max: f32) -> f32 {
     f32::max(f32::min(x, max), min)
