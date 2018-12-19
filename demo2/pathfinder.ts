@@ -344,6 +344,7 @@ class App {
         gl.disable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.solidTileCount);
 
+        /*
         // Draw masked tiles.
         gl.bindVertexArray(this.maskVertexArray);
         gl.useProgram(this.maskTileProgram.program);
@@ -362,6 +363,7 @@ class App {
         gl.enable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.maskTileCount);
         gl.disable(gl.BLEND);
+        */
 
         // End timer.
         if (timerQuery != null) {

@@ -27,11 +27,11 @@ use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use quick_xml::Reader;
-use quick_xml::events::Event;
+use quick_xml::events::{BytesStart, Event};
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufReader, BufWriter, Write};
 use std::mem;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -88,6 +88,13 @@ fn main() {
              built_scene.tiles.len(),
              built_scene.solid_tile_indices.len(),
              built_scene.mask_tile_indices.len());
+
+    /*
+    println!("solid tiles:");
+    for &index in &built_scene.solid_tile_indices {
+        println!("... {}: {:?}", index, built_scene.tiles[index as usize]);
+    }
+    */
 
     if let Some(output_path) = output_path {
         built_scene.write(&mut BufWriter::new(File::create(output_path).unwrap())).unwrap();
@@ -160,6 +167,8 @@ impl Scene {
             match reader.read_event(&mut xml_buffer) {
                 Ok(Event::Start(ref event)) |
                 Ok(Event::Empty(ref event)) if event.name() == b"path" => {
+                    scene.push_group_style(&mut reader, event, &mut group_styles, &mut style);
+
                     let attributes = event.attributes();
                     let (mut encoded_path, mut name) = (String::new(), String::new());
                     for attribute in attributes {
@@ -170,54 +179,20 @@ impl Scene {
                             name = reader.decode(&attribute.value).to_string();
                         }
                     }
-                    let style = scene.ensure_style(&mut style, &mut group_styles);
-                    scene.push_svg_path(&encoded_path, style, name);
+
+                    let computed_style = scene.ensure_style(&mut style, &mut group_styles);
+                    scene.push_svg_path(&encoded_path, computed_style, name);
+
+                    group_styles.pop();
+                    style = None;
                 }
 
                 Ok(Event::Start(ref event)) if event.name() == b"g" => {
-                    let mut group_style = GroupStyle::default();
-                    let attributes = event.attributes();
-                    for attribute in attributes {
-                        let attribute = attribute.unwrap();
-                        match attribute.key {
-                            b"fill" => {
-                                let value = reader.decode(&attribute.value);
-                                if let Ok(color) = SvgColor::from_str(&value) {
-                                    group_style.fill_color = Some(color)
-                                }
-                            }
-                            b"stroke" => {
-                                let value = reader.decode(&attribute.value);
-                                if let Ok(color) = SvgColor::from_str(&value) {
-                                    group_style.stroke_color = Some(color)
-                                }
-                            }
-                            b"transform" => {
-                                let value = reader.decode(&attribute.value);
-                                let mut current_transform = Transform2D::identity();
-                                let transform_list_parser = TransformListParser::from(&*value);
-                                for transform in transform_list_parser {
-                                    match transform {
-                                        Ok(TransformListToken::Matrix { a, b, c, d, e, f }) => {
-                                            let transform: Transform2D<f32> =
-                                                Transform2D::row_major(a, b, c, d, e, f).cast();
-                                            current_transform = current_transform.pre_mul(&transform)
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                group_style.transform = Some(current_transform);
-                            }
-                            b"stroke-width" => {
-                                if let Ok(width) = reader.decode(&attribute.value).parse() {
-                                    group_style.stroke_width = Some(width)
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+                    scene.push_group_style(&mut reader, event, &mut group_styles, &mut style);
+                }
 
-                    group_styles.push(group_style);
+                Ok(Event::End(ref event)) if event.name() == b"g" => {
+                    group_styles.pop();
                     style = None;
                 }
 
@@ -246,6 +221,57 @@ impl Scene {
 
         return scene;
 
+    }
+
+    fn push_group_style(&mut self,
+                        reader: &mut Reader<BufReader<File>>,
+                        event: &BytesStart,
+                        group_styles: &mut Vec<GroupStyle>,
+                        style: &mut Option<StyleId>) {
+        let mut group_style = GroupStyle::default();
+        let attributes = event.attributes();
+        for attribute in attributes {
+            let attribute = attribute.unwrap();
+            match attribute.key {
+                b"fill" => {
+                    let value = reader.decode(&attribute.value);
+                    if let Ok(color) = SvgColor::from_str(&value) {
+                        group_style.fill_color = Some(color);
+                    }
+                }
+                b"stroke" => {
+                    let value = reader.decode(&attribute.value);
+                    if let Ok(color) = SvgColor::from_str(&value) {
+                        group_style.stroke_color = Some(color)
+                    }
+                }
+                b"transform" => {
+                    let value = reader.decode(&attribute.value);
+                    let mut current_transform = Transform2D::identity();
+                    let transform_list_parser = TransformListParser::from(&*value);
+                    for transform in transform_list_parser {
+                        match transform {
+                            Ok(TransformListToken::Matrix { a, b, c, d, e, f }) => {
+                                let transform: Transform2D<f32> =
+                                    Transform2D::row_major(a, b, c, d, e, f).cast();
+                                current_transform = current_transform.pre_mul(&transform)
+                            }
+                            _ => {}
+                        }
+                    }
+                    group_style.transform = Some(current_transform);
+                }
+                b"stroke-width" => {
+                    if let Ok(width) = reader.decode(&attribute.value).parse() {
+                        group_style.stroke_width = Some(width)
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        group_styles.push(group_style);
+        *style = None;
     }
 
     fn ensure_style(&mut self, current_style: &mut Option<StyleId>, group_styles: &[GroupStyle])
@@ -282,7 +308,6 @@ impl Scene {
     fn build(&self) -> BuiltScene {
         let mut built_scene = BuiltScene::new();
         for (index, object) in self.objects.iter().enumerate() {
-            //println!("{} ({}): {:?}", index, object.name, object.outline.bounds);
             let mut tiler = Tiler::from_outline(&object.outline,
                                                 object.color,
                                                 &self.view_box,
@@ -673,8 +698,6 @@ impl Segment {
     }
 
     fn clip_x(&self, range: Range<f32>) -> Option<Segment> {
-        //println!("clip_x({:?}, {:?})", self, range.clone());
-
         // Trivial cases.
         if (self.from.x <= range.start && self.to.x <= range.start) ||
                 (self.from.x >= range.end && self.to.x >= range.end) {
@@ -687,7 +710,6 @@ impl Segment {
 
         // FIXME(pcwalton): Reduce code duplication!
         if let Some(mut line_segment) = self.as_line_segment() {
-            //println!("... line segment");
             if let Some(t) = LineAxis::from_x(&line_segment).solve_for_t(range.start) {
                 let (prev, next) = line_segment.split(t);
                 if line_segment.from.x < line_segment.to.x {
@@ -707,13 +729,11 @@ impl Segment {
             }
 
             let clipped = Segment::from_line(&line_segment);
-            //println!("... clipped line={:?}", clipped);
             return Some(clipped);
         }
 
         // TODO(pcwalton): Don't degree elevate!
         let mut cubic_segment = self.as_cubic_segment().unwrap();
-        //println!("... cubic segment {:?}", cubic_segment);
 
         if let Some(t) = CubicAxis::from_x(&cubic_segment).solve_for_t(range.start) {
             let (prev, next) = cubic_segment.split(t);
@@ -734,7 +754,6 @@ impl Segment {
         }
 
         let clipped = Segment::from_cubic(&cubic_segment);
-        //println!("... clipped={:?}", clipped);
         return Some(clipped);
     }
 
@@ -764,7 +783,6 @@ impl Segment {
 
         // TODO(pcwalton): Don't degree elevate!
         let mut cubic_segment = self.as_cubic_segment().unwrap();
-        println!("split_y(): y={} cubic_segment={:?}", y, cubic_segment);
         let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
         let t = t.expect("Failed to solve cubic for Y!");
         let (prev, next) = cubic_segment.split(t);
@@ -785,7 +803,6 @@ impl Segment {
 
         // TODO(pcwalton): Don't degree elevate!
         let segment = self.as_cubic_segment().unwrap();
-        //println!("generate_fill_primitives(): cubic path {:?}", segment);
         let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
         let mut from = self.from;
         for to in flattener {
@@ -812,12 +829,6 @@ impl Segment {
 
                 let to_tile_index =
                     f32::max(0.0, f32::floor((segment.to.x - strip_origin.x) / TILE_WIDTH)) as u32;
-                /*println!("generate_fill_primitives_for_line(): segment={:?} strip_origin={:?} \
-                          from_tile_index={:?} to_tile_index={:?}",
-                         segment,
-                         strip_origin,
-                         from_tile_index,
-                         to_tile_index);*/
 
                 if from_tile_index == to_tile_index {
                     primitives.push(FillPrimitive {
@@ -1016,7 +1027,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
             // Process old active edges.
             for active_edge in &mut self.active_edges {
                 let fills = if above_view_box { None } else { Some(&mut self.built_scene.fills) };
-                //println!("process_active_edge(OLD)");
                 process_active_edge(active_edge,
                                     &strip_bounds,
                                     first_tile_index,
@@ -1043,7 +1053,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
                             Some(&mut self.built_scene.fills)
                         };
 
-                        //println!("process_active_edge(NEW)");
                         process_active_edge(&mut segment,
                                             &strip_bounds,
                                             first_tile_index,
@@ -1089,7 +1098,6 @@ fn process_active_edge(active_edge: &mut Segment,
                        used_tiles: &mut FixedBitSet) {
     let strip_extent = strip_bounds.bottom_right();
 
-    //println!("... clipping edge: {:?}", active_edge);
     let (prev_segment, next_segment) = active_edge.split_y(strip_extent.y);
     *active_edge = Segment::new();
 
@@ -1100,8 +1108,6 @@ fn process_active_edge(active_edge: &mut Segment,
         };
 
         if segment.from.y < strip_extent.y || segment.to.y < strip_extent.y {
-            //println!("... ... UPPER: {:?}", upper_segment);
-
             if let Some(ref mut fills) = fills {
                 active_edge.generate_fill_primitives(first_tile_index,
                                                     &strip_bounds.origin,
@@ -1135,7 +1141,6 @@ fn process_active_edge(active_edge: &mut Segment,
                 used_tiles.insert(tile_index as usize);
             }
         } else {
-            //println!("... ... LOWER: {:?}", lower_segment);
             *active_edge = *segment;
         }
     }
@@ -1567,24 +1572,37 @@ trait SolveT {
     fn sample(&self, t: f32) -> f32;
     fn sample_deriv(&self, t: f32) -> f32;
 
+    // TODO(pcwalton): Use Brent's method.
     fn solve_for_t(&self, x: f32) -> Option<f32> {
-        const MAX_NEWTON_ITERATIONS: u32 = 64;
-        const EPSILON: f32 = 0.001;
+        const MAX_ITERATIONS: u32 = 64;
+        const TOLERANCE: f32 = 0.001;
 
-        let mut t = 0.25;
-        for iteration in 0..MAX_NEWTON_ITERATIONS {
-            let old_t = t;
-            t -= (self.sample(t) - x) / self.sample_deriv(t);
-            println!("iteration {}: t={}", iteration, t);
-            if f32::abs(old_t - t) < EPSILON {
-                break
-            }
+        let (mut min, mut max) = (0.0, 1.0);
+        let (mut x_min, x_max) = (self.sample(min) - x, self.sample(max) - x);
+        if (x_min < 0.0 && x_max < 0.0) || (x_min > 0.0 && x_max > 0.0) {
+            return None
         }
 
-        if t <= EPSILON || t >= 1.0 - EPSILON {
-            None
-        } else {
-            Some(t)
+        let mut iteration = 0;
+        loop {
+            let mid = lerp(min, max, 0.5);
+            if iteration >= MAX_ITERATIONS || (max - min) * 0.5 < TOLERANCE {
+                return Some(mid)
+            }
+
+            let x_mid = self.sample(mid) - x;
+            if x_mid == 0.0 {
+                return Some(mid)
+            }
+
+            if (x_min < 0.0 && x_mid < 0.0) || (x_min > 0.0 && x_mid > 0.0) {
+                min = mid;
+                x_min = x_mid;
+            } else {
+                max = mid;
+            }
+
+            iteration += 1;
         }
     }
 }
