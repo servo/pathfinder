@@ -1081,8 +1081,13 @@ impl<'o, 'p> Tiler<'o, 'p> {
             // Finalize tiles.
             if !above_view_box {
                 // Flush tiles.
+                let first_tile_index = self.built_scene.mask_tiles.len() as u32;
+                //println!("--- first tile index {} ---", first_tile_index);
                 for (tile_index, tile) in strip_tiles.iter().enumerate() {
                     if used_strip_tiles.contains(tile_index) {
+                        /*println!("mask index {} -> {}",
+                                 tile_index,
+                                 self.built_scene.mask_tiles.len());*/
                         self.built_scene.mask_tiles.push(*tile);
                     } else if tile.backdrop != 0.0 {
                         self.built_scene.solid_tiles.push(SolidTilePrimitive {
@@ -1095,10 +1100,12 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 // Flush fills.
                 //
                 // TODO(pcwalton): Don't use a temporary vector to hold these.
-                let first_tile_index = self.built_scene.mask_tiles.len() as u32;
                 for fill in &strip_fills {
                     let real_tile_index = first_tile_index +
                         used_strip_tiles.count_ones(0..(fill.tile_index as usize)) as u32;
+                    /*println!("flush fill, mask index {} -> {}",
+                             fill.tile_index,
+                             real_tile_index);*/
                     self.built_scene.fills.push(FillPrimitive {
                         from: fill.from,
                         to: fill.to,

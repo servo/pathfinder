@@ -275,6 +275,7 @@ class App {
         gl.vertexAttribDivisor(maskTileProgram.attributes.Color, 1);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TileOrigin);
+        gl.enableVertexAttribArray(maskTileProgram.attributes.Backdrop);
         gl.enableVertexAttribArray(maskTileProgram.attributes.Color);
 
         // Set up event handlers.
