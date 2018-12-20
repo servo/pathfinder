@@ -34,7 +34,8 @@ const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
 ]);
 
 const FILL_INSTANCE_SIZE: number = 20;
-const TILE_INSTANCE_SIZE: number = 16;
+const SOLID_TILE_INSTANCE_SIZE: number = 12;
+const MASK_TILE_INSTANCE_SIZE: number = 16;
 
 interface Color {
     r: number;
@@ -61,19 +62,16 @@ class App {
                                    'TessCoord' | 'TileOrigin' | 'Color'>;
     private maskTileProgram:
         Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize',
-                'TessCoord' | 'TileOrigin' | 'TileIndex' | 'Backdrop' | 'Color'>;
+                'TessCoord' | 'TileOrigin' | 'Backdrop' | 'Color'>;
     private quadVertexBuffer: WebGLBuffer;
     private fillVertexBuffer: WebGLBuffer;
     private fillVertexArray: WebGLVertexArrayObject;
-    private tileVertexBuffer: WebGLBuffer;
-    private instanceIDVertexBuffer: WebGLBuffer;
-    private solidIndexBuffer: WebGLBuffer;
+    private solidTileVertexBuffer: WebGLBuffer;
     private solidVertexArray: WebGLVertexArrayObject;
-    private maskIndexBuffer: WebGLBuffer;
+    private maskTileVertexBuffer: WebGLBuffer;
     private maskVertexArray: WebGLVertexArrayObject;
 
     private fillPrimitiveCount: number;
-    private totalTileCount: number;
     private solidTileCount: number;
     private maskTileCount: number;
 
@@ -209,10 +207,8 @@ class App {
         gl.enableVertexAttribArray(fillProgram.attributes.TileIndex);
 
         // Initialize tile VBOs and IBOs.
-        this.tileVertexBuffer = unwrapNull(gl.createBuffer());
-        this.instanceIDVertexBuffer = unwrapNull(gl.createBuffer());
-        this.solidIndexBuffer = unwrapNull(gl.createBuffer());
-        this.maskIndexBuffer = unwrapNull(gl.createBuffer());
+        this.solidTileVertexBuffer = unwrapNull(gl.createBuffer());
+        this.maskTileVertexBuffer = unwrapNull(gl.createBuffer());
 
         // Initialize solid tile VAO.
         this.solidVertexArray = unwrapNull(gl.createVertexArray());
@@ -225,20 +221,20 @@ class App {
                                false,
                                0,
                                0);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.tileVertexBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.solidTileVertexBuffer);
         gl.vertexAttribPointer(solidTileProgram.attributes.TileOrigin,
                                2,
                                gl.FLOAT,
                                false,
-                               TILE_INSTANCE_SIZE,
+                               SOLID_TILE_INSTANCE_SIZE,
                                0);
         gl.vertexAttribDivisor(solidTileProgram.attributes.TileOrigin, 1);
         gl.vertexAttribPointer(solidTileProgram.attributes.Color,
                                4,
                                gl.UNSIGNED_BYTE,
                                true,
-                               TILE_INSTANCE_SIZE,
-                               12);
+                               SOLID_TILE_INSTANCE_SIZE,
+                               8);
         gl.vertexAttribDivisor(solidTileProgram.attributes.Color, 1);
         gl.enableVertexAttribArray(solidTileProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(solidTileProgram.attributes.TileOrigin);
@@ -255,41 +251,36 @@ class App {
                                false,
                                0,
                                0);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.tileVertexBuffer);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.maskTileVertexBuffer);
         gl.vertexAttribPointer(maskTileProgram.attributes.TileOrigin,
                                2,
                                gl.FLOAT,
                                false,
-                               TILE_INSTANCE_SIZE,
+                               MASK_TILE_INSTANCE_SIZE,
                                0);
         gl.vertexAttribDivisor(maskTileProgram.attributes.TileOrigin, 1);
         gl.vertexAttribPointer(maskTileProgram.attributes.Backdrop,
                                1,
                                gl.FLOAT,
                                false,
-                               TILE_INSTANCE_SIZE,
+                               MASK_TILE_INSTANCE_SIZE,
                                8);
         gl.vertexAttribDivisor(maskTileProgram.attributes.Backdrop, 1);
         gl.vertexAttribPointer(maskTileProgram.attributes.Color,
                                4,
                                gl.UNSIGNED_BYTE,
                                true,
-                               TILE_INSTANCE_SIZE,
+                               MASK_TILE_INSTANCE_SIZE,
                                12);
         gl.vertexAttribDivisor(maskTileProgram.attributes.Color, 1);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.tileVertexBuffer);
-        gl.vertexAttribIPointer(maskTileProgram.attributes.TileIndex, 1, gl.UNSIGNED_SHORT, 10, 4);
-        gl.vertexAttribDivisor(maskTileProgram.attributes.TileIndex, 1);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TileOrigin);
-        gl.enableVertexAttribArray(maskTileProgram.attributes.TileIndex);
         gl.enableVertexAttribArray(maskTileProgram.attributes.Color);
 
         // Set up event handlers.
         this.canvas.addEventListener('click', event => this.onClick(event), false);
 
         this.fillPrimitiveCount = 0;
-        this.totalTileCount = 0;
         this.solidTileCount = 0;
         this.maskTileCount = 0;
     }
@@ -344,7 +335,6 @@ class App {
         gl.disable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.solidTileCount);
 
-        /*
         // Draw masked tiles.
         gl.bindVertexArray(this.maskVertexArray);
         gl.useProgram(this.maskTileProgram.program);
@@ -363,7 +353,6 @@ class App {
         gl.enable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.maskTileCount);
         gl.disable(gl.BLEND);
-        */
 
         // End timer.
         if (timerQuery != null) {
@@ -424,23 +413,17 @@ class App {
                     countFieldName = 'fillPrimitiveCount';
                     instanceSize = FILL_INSTANCE_SIZE;
                     break;
-                case 'tile':
-                    bindPoint = gl.ARRAY_BUFFER;
-                    buffer = this.tileVertexBuffer;
-                    countFieldName = 'totalTileCount';
-                    instanceSize = TILE_INSTANCE_SIZE;
-                    break;
                 case 'soli':
-                    bindPoint = gl.ELEMENT_ARRAY_BUFFER;
-                    buffer = this.solidIndexBuffer;
+                    bindPoint = gl.ARRAY_BUFFER;
+                    buffer = this.solidTileVertexBuffer;
                     countFieldName = 'solidTileCount';
-                    instanceSize = 4;
+                    instanceSize = SOLID_TILE_INSTANCE_SIZE;
                     break;
                 case 'mask':
-                    bindPoint = gl.ELEMENT_ARRAY_BUFFER;
-                    buffer = this.maskIndexBuffer;
+                    bindPoint = gl.ARRAY_BUFFER;
+                    buffer = this.maskTileVertexBuffer;
                     countFieldName = 'maskTileCount';
-                    instanceSize = 4;
+                    instanceSize = MASK_TILE_INSTANCE_SIZE;
                     break;
                 default:
                     throw new Error("Unexpected subchunk ID: " + id);
@@ -451,20 +434,9 @@ class App {
                 this[countFieldName] = subchunk.length() / instanceSize;
             }
 
-            this.regenerateInstanceIDBuffer();
             this.redraw();
         }, false);
         reader.readAsArrayBuffer(file);
-    }
-
-    private regenerateInstanceIDBuffer(): void {
-        const instanceIDs = new Uint32Array(this.totalTileCount);
-        for (let instanceID = 0; instanceID < this.totalTileCount; instanceID++)
-            instanceIDs[instanceID] = instanceID;
-
-        const gl = this.gl;
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceIDVertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, instanceIDs, gl.DYNAMIC_DRAW);
     }
 
     private onClick(event: MouseEvent): void {

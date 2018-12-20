@@ -19,7 +19,6 @@ uniform vec2 uStencilTextureSize;
 in vec2 aTessCoord;
 in vec2 aTileOrigin;
 in float aBackdrop;
-in uint aTileIndex;
 in vec4 aColor;
 
 out vec2 vTexCoord;
@@ -28,13 +27,14 @@ out vec4 vColor;
 
 vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
     uint tilesPerRow = uint(stencilTextureWidth / uTileSize.x);
-    uvec2 tileOffset = uvec2(aTileIndex % tilesPerRow, aTileIndex / tilesPerRow);
+    uvec2 tileOffset = uvec2(tileIndex % tilesPerRow, tileIndex / tilesPerRow);
     return vec2(tileOffset) * uTileSize;
 }
 
 void main() {
+    uint tileIndex = uint(gl_InstanceID);
     vec2 position = aTileOrigin + uTileSize * aTessCoord;
-    vec2 texCoord = computeTileOffset(aTileIndex, uStencilTextureSize.x) + aTessCoord * uTileSize;
+    vec2 texCoord = computeTileOffset(tileIndex, uStencilTextureSize.x) + aTessCoord * uTileSize;
     vTexCoord = texCoord / uStencilTextureSize;
     vBackdrop = aBackdrop;
     vColor = aColor;
