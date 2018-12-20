@@ -903,7 +903,7 @@ struct Tiler<'o, 'p> {
 
     view_box: Option<Rect<f32>>,
 
-    sorted_edge_indices: Vec<PointIndex>,
+    point_queue: Heap<PointIndex>,
     active_intervals: Intervals,
     active_edges: Vec<Segment>,
 }
@@ -921,7 +921,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
             view_box: *view_box,
 
-            sorted_edge_indices: vec![],
+            point_queue: Heap::new(),
             active_intervals: Intervals::new(0.0..0.0),
             active_edges: vec![],
         }
@@ -930,11 +930,12 @@ impl<'o, 'p> Tiler<'o, 'p> {
     fn generate_tiles(&mut self) {
         // Sort all edge indices.
         // TODO(pcwalton): Only find MIN points.
+        /*
         self.sorted_edge_indices.clear();
         for contour_index in 0..self.outline.contours.len() {
             let contour = &self.outline.contours[contour_index];
             for point_index in 0..contour.points.len() {
-                if contour.point_is_endpoint(point_index) {
+                if contour.is_min_point(point_index) {
                     self.sorted_edge_indices.push(PointIndex { contour_index, point_index })
                 }
             }
@@ -947,6 +948,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 segment_a.min_y().partial_cmp(&segment_b.min_y()).unwrap_or(Ordering::Equal)
             });
         }
+        */
 
         // Clip to the view box.
         let mut bounds = self.outline.bounds;
@@ -1047,6 +1049,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
             self.active_edges.retain(|edge| !edge.is_none());
 
             // Add new active edges.
+            /*
             while next_edge_index_index < self.sorted_edge_indices.len() {
                 let from_point_index = self.sorted_edge_indices[next_edge_index_index];
                 let strip_range = (strip_bounds.origin.x)..(strip_bounds.max_x());
@@ -1075,6 +1078,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
                 next_edge_index_index += 1;
             }
+            */
 
             // Finalize tiles.
             if !above_view_box {
@@ -1712,6 +1716,77 @@ impl SolveT for CubicAxis {
     }
 }
 
+// Heap
+
+#[derive(Clone, Debug)]
+pub struct Heap<T> {
+    array: Vec<T>,
+}
+
+impl<T> Heap<T> {
+    fn new() -> Heap<T> {
+        Heap { array: vec![] }
+    }
+
+    fn sift_up<C>(&mut self, mut index: usize, mut compare: C) where C: FnMut(&T, &T) -> Ordering {
+        while index != 0 {
+            let parent_index = self.parent_index(index);
+            if compare(&self.array[index], &self.array[parent_index]) == Ordering::Less {
+                self.array.swap(index, parent_index)
+            }
+            index = parent_index;
+        }
+    }
+
+    fn sift_down<C>(&mut self, mut index: usize, mut compare: C)
+                    where C: FnMut(&T, &T) -> Ordering {
+        while self.first_child_index(index) < self.array.len() {
+            let min_child = self.min_child(index, |a, b| compare(a, b));
+            if compare(&self.array[index], &self.array[min_child]) == Ordering::Greater {
+                self.array.swap(index, min_child)
+            }
+            index = min_child;
+        }
+    }
+
+    fn min_child<C>(&mut self, index: usize, mut compare: C) -> usize
+                    where C: FnMut(&T, &T) -> Ordering {
+        let first_child_index = self.first_child_index(index);
+        let last_child_index = self.last_child_index(index);
+        if last_child_index >= self.array.len() ||
+                compare(&self.array[first_child_index],
+                        &self.array[last_child_index]) == Ordering::Less {
+            first_child_index
+        } else {
+            last_child_index
+        }
+    }
+
+    fn parent_index(&self, index: usize)      -> usize { (index - 1) / 2 }
+    fn first_child_index(&self, index: usize) -> usize { index * 2 + 1   }
+    fn last_child_index(&self, index: usize)  -> usize { index * 2 + 2   }
+
+    fn push<C>(&mut self, value: T, mut compare: C) where C: FnMut(&T, &T) -> Ordering {
+        let index = self.array.len();
+        self.array.push(value);
+        self.sift_up(index, compare);
+    }
+
+    fn shift_min<C>(&mut self, mut compare: C) -> T where C: FnMut(&T, &T) -> Ordering {
+        let min = self.array.swap_remove(0);
+        self.sift_down(0, compare);
+        min
+    }
+
+    fn is_empty(&self) -> bool {
+        self.array.is_empty()
+    }
+
+    fn clear(&mut self) {
+        self.array.clear()
+    }
+}
+
 // Trivial utilities
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -1741,10 +1816,31 @@ fn t_is_too_close_to_zero_or_one(t: f32) -> bool {
 
 #[cfg(test)]
 mod test {
-    use crate::{IntervalRange, Intervals};
+    use crate::{Heap, IntervalRange, Intervals};
     use quickcheck::{self, Arbitrary, Gen};
     use rand::Rng;
     use std::ops::Range;
+
+    #[test]
+    fn test_heap() {
+        quickcheck::quickcheck(prop_heap as fn(Vec<i32>) -> bool);
+
+        fn prop_heap(mut values: Vec<i32>) -> bool {
+            let mut heap = Heap::new();
+            for &value in &values {
+                heap.push(value, |a, b| a.cmp(&b))
+            }
+
+            values.sort();
+            let mut results = Vec::with_capacity(values.len());
+            while !heap.is_empty() {
+                results.push(heap.shift_min(|a, b| a.cmp(&b)));
+            }
+            assert_eq!(&values, &results);
+
+            true
+        }
+    }
 
     #[test]
     fn test_intervals() {
