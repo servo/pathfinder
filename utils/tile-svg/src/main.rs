@@ -29,6 +29,7 @@ use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Write};
@@ -630,7 +631,7 @@ impl Debug for Contour {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 struct PointIndex {
     contour_index: usize,
     point_index: usize,
@@ -966,7 +967,7 @@ struct Tiler<'o, 'p> {
 
     view_box: Option<Rect<f32>>,
 
-    point_queue: Heap<PointIndex>,
+    point_queue: BinaryHeap<QueuedEndpoint>,
     active_intervals: Intervals,
     active_edges: Vec<Segment>,
 }
@@ -984,35 +985,16 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
             view_box: *view_box,
 
-            point_queue: Heap::new(),
+            point_queue: BinaryHeap::new(),
             active_intervals: Intervals::new(0.0..0.0),
             active_edges: vec![],
         }
     }
 
+    #[inline(never)]
     fn generate_tiles(&mut self) {
+        // Initialize the point queue.
         self.init_point_queue();
-        // Sort all edge indices.
-        // TODO(pcwalton): Only find MIN points.
-        /*
-        self.sorted_edge_indices.clear();
-        for contour_index in 0..self.outline.contours.len() {
-            let contour = &self.outline.contours[contour_index];
-            for point_index in 0..contour.points.len() {
-                if contour.is_min_point(point_index) {
-                    self.sorted_edge_indices.push(PointIndex { contour_index, point_index })
-                }
-            }
-        }
-        {
-            let outline = &self.outline;
-            self.sorted_edge_indices.sort_unstable_by(|edge_index_a, edge_index_b| {
-                let segment_a = outline.segment_after(*edge_index_a);
-                let segment_b = outline.segment_after(*edge_index_b);
-                segment_a.min_y().partial_cmp(&segment_b.min_y()).unwrap_or(Ordering::Equal)
-            });
-        }
-        */
 
         // Clip to the view box.
         let mut bounds = self.outline.bounds;
@@ -1026,8 +1008,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
         self.active_intervals.reset(bounds.origin.x, bounds.max_x());
         self.active_edges.clear();
-
-        let mut next_edge_index_index = 0;
 
         let mut strip_origin =
             Point2D::new(f32::floor(bounds.origin.x / TILE_WIDTH) * TILE_WIDTH,
@@ -1114,19 +1094,13 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
             // Add new active edges.
             loop {
-                match self.point_queue.peek_min() {
-                    Some(point_index) if self.outline.get(point_index).y < strip_extent.y => {}
+                match self.point_queue.peek() {
+                    Some(queued_endpoint) if queued_endpoint.y < strip_extent.y => {}
                     Some(_) | None => break,
                 }
 
                 let outline = &self.outline;
-                let point_index = self.point_queue.shift_min(|a_index, b_index| {
-                    if outline.point_is_logically_above(a_index, b_index) {
-                        Ordering::Less
-                    } else {
-                        Ordering::Greater
-                    }
-                }).unwrap();
+                let point_index = self.point_queue.pop().unwrap().point_index;
 
                 let contour = &outline.contours[point_index.contour_index];
 
@@ -1142,16 +1116,12 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                            &mut self.active_intervals,
                                            &mut used_strip_tiles);
 
-                    let prev_point_index = PointIndex {
-                        contour_index: point_index.contour_index,
-                        point_index: prev_endpoint_index,
-                    };
-                    self.point_queue.push(prev_point_index, |a_index, b_index| {
-                        if outline.point_is_logically_above(a_index, b_index) {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
-                        }
+                    self.point_queue.push(QueuedEndpoint {
+                        point_index: PointIndex {
+                            contour_index: point_index.contour_index,
+                            point_index: prev_endpoint_index,
+                        },
+                        y: contour.points[prev_endpoint_index].y,
                     });
                 }
 
@@ -1165,16 +1135,12 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                            &mut self.active_intervals,
                                            &mut used_strip_tiles);
 
-                    let next_point_index = PointIndex {
-                        contour_index: point_index.contour_index,
-                        point_index: next_endpoint_index,
-                    };
-                    self.point_queue.push(next_point_index, |a_index, b_index| {
-                        if outline.point_is_logically_above(a_index, b_index) {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
-                        }
+                    self.point_queue.push(QueuedEndpoint {
+                        point_index: PointIndex {
+                            contour_index: point_index.contour_index,
+                            point_index: next_endpoint_index,
+                        },
+                        y: contour.points[next_endpoint_index].y,
                     });
                 }
             }
@@ -1230,17 +1196,12 @@ impl<'o, 'p> Tiler<'o, 'p> {
             while cur_endpoint_index < next_endpoint_index {
                 if contour.point_is_logically_above(cur_endpoint_index, prev_endpoint_index) &&
                         contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index) {
-                    let point_index = PointIndex {
-                        contour_index,
-                        point_index: cur_endpoint_index,
-                    };
-                    let outline = &self.outline;
-                    self.point_queue.push(point_index, |a_index, b_index| {
-                        if outline.point_is_logically_above(a_index, b_index) {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
-                        }
+                    self.point_queue.push(QueuedEndpoint {
+                        point_index: PointIndex {
+                            contour_index,
+                            point_index: cur_endpoint_index,
+                        },
+                        y: contour.points[cur_endpoint_index].y,
                     });
                 }
 
@@ -1953,6 +1914,46 @@ impl<T> Heap<T> {
 
     fn clear(&mut self) {
         self.array.clear()
+    }
+}
+
+#[derive(PartialEq)]
+struct QueuedEndpoint {
+    point_index: PointIndex,
+    y: f32,
+}
+
+impl Eq for QueuedEndpoint {}
+
+impl PartialOrd<QueuedEndpoint> for QueuedEndpoint {
+    fn partial_cmp(&self, other: &QueuedEndpoint) -> Option<Ordering> {
+        match other.y.partial_cmp(&self.y) {
+            Some(Ordering::Equal) | None => {
+                match other.point_index.contour_index.cmp(&self.point_index.contour_index) {
+                    Ordering::Equal => {
+                        Some(other.point_index.point_index.cmp(&self.point_index.point_index))
+                    }
+                    ordering => Some(ordering),
+                }
+            }
+            Some(ordering) => Some(ordering),
+        }
+    }
+}
+
+impl Ord for QueuedEndpoint {
+    fn cmp(&self, other: &QueuedEndpoint) -> Ordering {
+        match other.y.partial_cmp(&self.y) {
+            Some(Ordering::Equal) | None => {
+                match other.point_index.contour_index.cmp(&self.point_index.contour_index) {
+                    Ordering::Equal => {
+                        other.point_index.point_index.cmp(&self.point_index.point_index)
+                    }
+                    ordering => ordering,
+                }
+            }
+            Some(ordering) => ordering,
+        }
     }
 }
 
