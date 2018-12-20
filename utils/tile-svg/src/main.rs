@@ -1004,32 +1004,29 @@ impl<'o, 'p> Tiler<'o, 'p> {
             // TODO(pcwalton): Use only the active edge list!
             let mut strip_tile_index = 0;
             for interval in &self.active_intervals.ranges {
-                if interval.winding == 0.0 {
-                    continue
-                }
-
-                while strip_tile_index < strip_tiles.len() &&
-                        strip_tiles[strip_tile_index].position.x + TILE_WIDTH < interval.start {
-                    strip_tile_index += 1;
-                }
-
-                while strip_tile_index < strip_tiles.len() &&
-                        strip_tiles[strip_tile_index].position.x < interval.end {
+                while strip_tile_index < strip_tiles.len() {
                     let tile_left = strip_tiles[strip_tile_index].position.x;
                     let tile_right = tile_left + TILE_WIDTH;
 
                     let tile_interval = intersect_ranges(tile_left..tile_right,
                                                          interval.start..interval.end);
-                    if tile_interval == (tile_left..tile_right) {
-                        strip_tiles[strip_tile_index].backdrop = interval.winding
-                    } else {
-                        let left = Point2D::new(tile_interval.start - tile_left, strip_origin.y);
-                        let right = Point2D::new(tile_interval.end - tile_left, strip_origin.y);
-                        strip_fills.push(FillPrimitive {
-                            from:       if interval.winding < 0.0 { left } else { right },
-                            to:         if interval.winding < 0.0 { right } else { left },
-                            tile_index: strip_tile_index as u32,
-                        });
+                    if interval.winding != 0.0 {
+                        if tile_interval == (tile_left..tile_right) {
+                            strip_tiles[strip_tile_index].backdrop = interval.winding
+                        } else if tile_interval.start < tile_interval.end {
+                            let left = Point2D::new(tile_interval.start - tile_left, 0.0);
+                            let right = Point2D::new(tile_interval.end - tile_left, 0.0);
+                            strip_fills.push(FillPrimitive {
+                                from:       if interval.winding < 0.0 { left } else { right },
+                                to:         if interval.winding < 0.0 { right } else { left },
+                                tile_index: strip_tile_index as u32,
+                            });
+                            used_strip_tiles.insert(strip_tile_index);
+                        }
+                    }
+
+                    if tile_right > interval.end {
+                        break
                     }
 
                     strip_tile_index += 1;
