@@ -466,6 +466,26 @@ impl Outline {
     fn segment_after(&self, endpoint_index: PointIndex) -> Segment {
         self.contours[endpoint_index.contour_index].segment_after(endpoint_index.point_index)
     }
+
+    fn point_is_logically_above(&self, a: &PointIndex, b: &PointIndex) -> bool {
+        let a_y = self.contours[a.contour_index].points[a.point_index].y;
+        let b_y = self.contours[b.contour_index].points[b.point_index].y;
+        match a_y.partial_cmp(&b_y) {
+            Some(Ordering::Less) => true,
+            Some(Ordering::Greater) => false,
+            None | Some(Ordering::Equal) => {
+                match a.contour_index.cmp(&b.contour_index) {
+                    Ordering::Less => true,
+                    Ordering::Greater => false,
+                    Ordering::Equal => a.point_index < b.point_index,
+                }
+            }
+        }
+    }
+
+    fn get(&self, point_index: &PointIndex) -> Point2D<f32> {
+        self.contours[point_index.contour_index].points[point_index.point_index]
+    }
 }
 
 impl Contour {
@@ -539,6 +559,49 @@ impl Contour {
             index - limit
         } else {
             index
+        }
+    }
+
+    fn point_is_logically_above(&self, a: usize, b: usize) -> bool {
+        let (a_y, b_y) = (self.points[a].y, self.points[b].y);
+        match a_y.partial_cmp(&b_y) {
+            Some(Ordering::Less) => true,
+            Some(Ordering::Greater) => false,
+            None | Some(Ordering::Equal) => a < b,
+        }
+    }
+
+    fn prev_endpoint_index_of(&self, mut point_index: usize) -> usize {
+        loop {
+            point_index = self.prev_point_index_of(point_index);
+            if self.point_is_endpoint(point_index) {
+                return point_index
+            }
+        }
+    }
+
+    fn next_endpoint_index_of(&self, mut point_index: usize) -> usize {
+        loop {
+            point_index = self.next_point_index_of(point_index);
+            if self.point_is_endpoint(point_index) {
+                return point_index
+            }
+        }
+    }
+
+    fn prev_point_index_of(&self, point_index: usize) -> usize {
+        if point_index == 0 {
+            self.points.len() - 1
+        } else {
+            point_index - 1
+        }
+    }
+
+    fn next_point_index_of(&self, point_index: usize) -> usize {
+        if point_index == self.points.len() - 1 {
+            0
+        } else {
+            point_index + 1
         }
     }
 }
@@ -928,6 +991,34 @@ impl<'o, 'p> Tiler<'o, 'p> {
     }
 
     fn generate_tiles(&mut self) {
+        // Find MIN points.
+        self.point_queue.clear();
+        for (contour_index, contour) in self.outline.contours.iter().enumerate() {
+            let mut cur_endpoint_index = 0;
+            let mut prev_endpoint_index = contour.prev_endpoint_index_of(cur_endpoint_index);
+            let mut next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
+            while cur_endpoint_index < next_endpoint_index {
+                if contour.point_is_logically_above(cur_endpoint_index, prev_endpoint_index) &&
+                        contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index) {
+                    let point_index = PointIndex {
+                        contour_index,
+                        point_index: cur_endpoint_index,
+                    };
+                    let outline = &self.outline;
+                    self.point_queue.push(point_index, |a_index, b_index| {
+                        if outline.point_is_logically_above(a_index, b_index) {
+                            Ordering::Less
+                        } else {
+                            Ordering::Greater
+                        }
+                    });
+                }
+
+                prev_endpoint_index = cur_endpoint_index;
+                cur_endpoint_index = next_endpoint_index;
+                next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
+            }
+        }
         // Sort all edge indices.
         // TODO(pcwalton): Only find MIN points.
         /*
@@ -1049,36 +1140,46 @@ impl<'o, 'p> Tiler<'o, 'p> {
             self.active_edges.retain(|edge| !edge.is_none());
 
             // Add new active edges.
-            /*
-            while next_edge_index_index < self.sorted_edge_indices.len() {
-                let from_point_index = self.sorted_edge_indices[next_edge_index_index];
-                let strip_range = (strip_bounds.origin.x)..(strip_bounds.max_x());
-                let segment = self.outline.segment_after(from_point_index);
-                if segment.min_y() > strip_extent.y {
-                    break
+            loop {
+                match self.point_queue.peek_min() {
+                    Some(point_index) if self.outline.get(point_index).y < strip_extent.y => {}
+                    Some(_) | None => break,
                 }
 
-                //println!("processing new active edge: {:?}", segment);
-                if !segment.is_degenerate() {
-                    //println!("... is not degenerate ...");
-                    if let Some(mut segment) = segment.clip_x(strip_range.clone()) {
-                        //println!("... clipped to {:?}: {:?}", strip_range, segment);
-                        let fills = if above_view_box { None } else { Some(&mut strip_fills) };
-                        process_active_edge(&mut segment,
-                                            &strip_bounds,
-                                            fills,
-                                            &mut self.active_intervals,
-                                            &mut used_strip_tiles);
-
-                        if !segment.is_none() {
-                            self.active_edges.push(segment);
-                        }
+                let outline = &self.outline;
+                let point_index = self.point_queue.shift_min(|a_index, b_index| {
+                    if outline.point_is_logically_above(a_index, b_index) {
+                        Ordering::Less
+                    } else {
+                        Ordering::Greater
                     }
-                }
+                }).unwrap();
 
-                next_edge_index_index += 1;
+                let contour = &outline.contours[point_index.contour_index];
+
+                let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point_index);
+                let next_endpoint_index = contour.next_endpoint_index_of(point_index.point_index);
+                if contour.point_is_logically_above(point_index.point_index, prev_endpoint_index) {
+                    let fills = if above_view_box { None } else { Some(&mut strip_fills) };
+                    process_active_segment(contour,
+                                           prev_endpoint_index,
+                                           &mut self.active_edges,
+                                           &strip_bounds,
+                                           fills,
+                                           &mut self.active_intervals,
+                                           &mut used_strip_tiles);
+                }
+                if contour.point_is_logically_above(point_index.point_index, next_endpoint_index) {
+                    let fills = if above_view_box { None } else { Some(&mut strip_fills) };
+                    process_active_segment(contour,
+                                           point_index.point_index,
+                                           &mut self.active_edges,
+                                           &strip_bounds,
+                                           fills,
+                                           &mut self.active_intervals,
+                                           &mut used_strip_tiles);
+                }
             }
-            */
 
             // Finalize tiles.
             if !above_view_box {
@@ -1118,6 +1219,34 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
             strip_origin.y = strip_extent.y;
         }
+    }
+}
+
+fn process_active_segment(contour: &Contour,
+                          from_endpoint_index: usize,
+                          active_edges: &mut Vec<Segment>,
+                          strip_bounds: &Rect<f32>,
+                          mut fills: Option<&mut Vec<FillPrimitive>>,
+                          active_intervals: &mut Intervals,
+                          used_tiles: &mut FixedBitSet) {
+    let segment = contour.segment_after(from_endpoint_index);
+    if segment.is_degenerate() {
+        return
+    }
+
+    //println!("processing new active edge: {:?}", segment);
+    //println!("... is not degenerate ...");
+    let strip_range = (strip_bounds.origin.x)..(strip_bounds.max_x());
+    let mut segment = match segment.clip_x(strip_range.clone()) {
+        Some(segment) => segment,
+        None => return,
+    };
+
+    //println!("... clipped to {:?}: {:?}", strip_range, segment);
+    process_active_edge(&mut segment, &strip_bounds, fills, active_intervals, used_tiles);
+
+    if !segment.is_none() {
+        active_edges.push(segment);
     }
 }
 
@@ -1772,10 +1901,18 @@ impl<T> Heap<T> {
         self.sift_up(index, compare);
     }
 
-    fn shift_min<C>(&mut self, mut compare: C) -> T where C: FnMut(&T, &T) -> Ordering {
-        let min = self.array.swap_remove(0);
-        self.sift_down(0, compare);
-        min
+    fn peek_min(&self) -> Option<&T> {
+        self.array.get(0)
+    }
+
+    fn shift_min<C>(&mut self, mut compare: C) -> Option<T> where C: FnMut(&T, &T) -> Ordering {
+        if self.array.is_empty() {
+            None
+        } else {
+            let min = self.array.swap_remove(0);
+            self.sift_down(0, compare);
+            Some(min)
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -1834,7 +1971,7 @@ mod test {
             values.sort();
             let mut results = Vec::with_capacity(values.len());
             while !heap.is_empty() {
-                results.push(heap.shift_min(|a, b| a.cmp(&b)));
+                results.push(heap.shift_min(|a, b| a.cmp(&b)).unwrap());
             }
             assert_eq!(&values, &results);
 
