@@ -1023,8 +1023,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
                     if tile_interval == (tile_left..tile_right) {
                         strip_tiles[strip_tile_index].backdrop = interval.winding
                     } else {
-                        let left = Point2D::new(interval.start - tile_left, strip_origin.y);
-                        let right = Point2D::new(interval.end - tile_left, strip_origin.y);
+                        let left = Point2D::new(tile_interval.start - tile_left, strip_origin.y);
+                        let right = Point2D::new(tile_interval.end - tile_left, strip_origin.y);
                         strip_fills.push(FillPrimitive {
                             from:       if interval.winding < 0.0 { left } else { right },
                             to:         if interval.winding < 0.0 { right } else { left },
