@@ -974,8 +974,8 @@ struct Tiler<'o, 'p> {
 
     view_box: Option<Rect<f32>>,
 
-    point_queue: BinaryHeap<QueuedEndpoint>,
-    active_edges: Vec<ActiveEdge>,
+    point_queue: SortedVector<QueuedEndpoint>,
+    active_edges: SortedVector<ActiveEdge>,
 }
 
 impl<'o, 'p> Tiler<'o, 'p> {
@@ -991,8 +991,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
             view_box: *view_box,
 
-            point_queue: BinaryHeap::new(),
-            active_edges: Vec::new(),
+            point_queue: SortedVector::new(),
+            active_edges: SortedVector::new(),
         }
     }
 
@@ -1024,6 +1024,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
         let mut strip_tiles = Vec::with_capacity(tiles_across);
         let mut used_strip_tiles = FixedBitSet::with_capacity(tiles_across);
 
+        let mut new_active_edges = SortedVector::new();
+
         // Generate strips.
         while strip_origin.y < bounds.max_y() {
             // Determine strip bounds.
@@ -1051,45 +1053,11 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 tile_left += TILE_WIDTH;
             }
 
-            /*
-            // Populate tile strip with active intervals.
-            // TODO(pcwalton): Use only the active edge list!
-            let mut strip_tile_index = 0;
-            for interval in &self.active_intervals.ranges {
-                while strip_tile_index < strip_tiles.len() {
-                    let tile_left = strip_tiles[strip_tile_index].position.x;
-                    let tile_right = tile_left + TILE_WIDTH;
-
-                    let tile_interval = intersect_ranges(tile_left..tile_right,
-                                                         interval.start..interval.end);
-                    if interval.winding != 0.0 {
-                        if tile_interval == (tile_left..tile_right) {
-                            strip_tiles[strip_tile_index].backdrop = interval.winding
-                        } else if tile_interval.start < tile_interval.end {
-                            let left = Point2D::new(tile_interval.start - tile_left, 0.0);
-                            let right = Point2D::new(tile_interval.end - tile_left, 0.0);
-                            strip_fills.push(FillPrimitive {
-                                from:       if interval.winding < 0.0 { left } else { right },
-                                to:         if interval.winding < 0.0 { right } else { left },
-                                tile_index: strip_tile_index as u32,
-                            });
-                            used_strip_tiles.insert(strip_tile_index);
-                        }
-                    }
-
-                    if tile_right > interval.end {
-                        break
-                    }
-
-                    strip_tile_index += 1;
-                }
-            }
-            */
-
             // Process old active edges.
             let (mut strip_tile_index, mut current_left) = (0, strip_bounds.origin.x);
             let mut winding = 0;
-            for active_edge in &mut self.active_edges {
+            debug_assert!(new_active_edges.is_empty());
+            while let Some(mut active_edge) = self.active_edges.pop() {
                 // Move over to the correct tile, filling in as we go.
                 // FIXME(pcwalton): Do subtile fills!!
                 let mut tile_left = strip_bounds.origin.x + (strip_tile_index as f32) * TILE_WIDTH;
@@ -1131,7 +1099,30 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                     &strip_bounds,
                                     fills,
                                     &mut used_strip_tiles);
+
+                if !active_edge.segment.is_none() {
+                    new_active_edges.push(active_edge);
+                }
             }
+            mem::swap(&mut self.active_edges, &mut new_active_edges);
+
+            /*
+            // Sort point queue.
+            self.point_queue.sort_unstable_by(|this, other| {
+                match other.y.partial_cmp(&this.y) {
+                    Some(Ordering::Equal) | None => {
+                        match other.point_index.contour_index.cmp(&this.point_index
+                                                                       .contour_index) {
+                            Ordering::Equal => {
+                                other.point_index.point_index.cmp(&this.point_index.point_index)
+                            }
+                            ordering => ordering,
+                        }
+                    }
+                    Some(ordering) => ordering,
+                }
+            });
+            */
 
             // Add new active edges.
             loop {
@@ -1220,12 +1211,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 }
             }
 
-            // Sort active edges.
-            self.active_edges.retain(|edge| !edge.segment.is_none());
-            self.active_edges.sort_unstable_by(|edge_a, edge_b| {
-                edge_a.segment.min_x().partial_cmp(&edge_b.segment.min_x()).unwrap()
-            });
-
+            // Sort point queue.
             strip_origin.y = strip_extent.y;
         }
     }
@@ -1260,7 +1246,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
 fn process_active_segment(contour: &Contour,
                           from_endpoint_index: usize,
-                          active_edges: &mut Vec<ActiveEdge>,
+                          active_edges: &mut SortedVector<ActiveEdge>,
                           strip_bounds: &Rect<f32>,
                           fills: Option<&mut Vec<FillPrimitive>>,
                           used_tiles: &mut FixedBitSet) {
@@ -1868,6 +1854,37 @@ impl SolveT for CubicAxis {
     }
 }
 
+// SortedVector
+
+#[derive(Clone, Debug)]
+pub struct SortedVector<T> where T: PartialOrd {
+    array: Vec<T>,
+}
+
+impl<T> SortedVector<T> where T: PartialOrd {
+    fn new() -> SortedVector<T> {
+        SortedVector { array: vec![] }
+    }
+
+    fn push(&mut self, value: T) {
+        self.array.push(value);
+        let mut index = self.array.len() - 1;
+        while index > 0 {
+            index -= 1;
+            if self.array[index] <= self.array[index + 1] {
+                break
+            }
+            self.array.swap(index, index + 1);
+        }
+    }
+
+    fn peek(&self) -> Option<&T>   { self.array.last() }
+    fn pop(&mut self) -> Option<T> { self.array.pop() }
+    fn len(&self) -> usize         { self.array.len() }
+    fn is_empty(&self) -> bool     { self.array.is_empty() }
+    fn clear(&mut self)            { self.array.clear() }
+}
+
 // Heap
 
 #[derive(Clone, Debug)]
@@ -1961,6 +1978,7 @@ impl Eq for QueuedEndpoint {}
 
 impl PartialOrd<QueuedEndpoint> for QueuedEndpoint {
     fn partial_cmp(&self, other: &QueuedEndpoint) -> Option<Ordering> {
+        // NB: Reversed!
         match other.y.partial_cmp(&self.y) {
             Some(Ordering::Equal) | None => {
                 match other.point_index.contour_index.cmp(&self.point_index.contour_index) {
@@ -1975,6 +1993,7 @@ impl PartialOrd<QueuedEndpoint> for QueuedEndpoint {
     }
 }
 
+/*
 impl Ord for QueuedEndpoint {
     fn cmp(&self, other: &QueuedEndpoint) -> Ordering {
         match other.y.partial_cmp(&self.y) {
@@ -1990,6 +2009,7 @@ impl Ord for QueuedEndpoint {
         }
     }
 }
+*/
 
 // Active edges
 
@@ -2004,21 +2024,12 @@ impl ActiveEdge {
     }
 }
 
-impl Eq for ActiveEdge {}
-
 impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
+        // NB: Reversed!
         let this_left = f32::min(self.segment.from.x, self.segment.to.x);
         let other_left = f32::min(other.segment.from.x, other.segment.to.x);
         other_left.partial_cmp(&this_left)
-    }
-}
-
-impl Ord for ActiveEdge {
-    fn cmp(&self, other: &ActiveEdge) -> Ordering {
-        let this_left = f32::min(self.segment.from.x, self.segment.to.x);
-        let other_left = f32::min(other.segment.from.x, other.segment.to.x);
-        other_left.partial_cmp(&this_left).unwrap_or(Ordering::Equal)
     }
 }
 
@@ -2051,10 +2062,32 @@ fn t_is_too_close_to_zero_or_one(t: f32) -> bool {
 
 #[cfg(test)]
 mod test {
-    use crate::{Heap, IntervalRange, Intervals};
+    use crate::{Heap, IntervalRange, Intervals, SortedVector};
     use quickcheck::{self, Arbitrary, Gen};
     use rand::Rng;
     use std::ops::Range;
+
+    #[test]
+    fn test_sorted_vec() {
+        quickcheck::quickcheck(prop_sorted_vec as fn(Vec<i32>) -> bool);
+
+        fn prop_sorted_vec(mut values: Vec<i32>) -> bool {
+            let mut sorted_vec = SortedVector::new();
+            for &value in &values {
+                sorted_vec.push(value)
+            }
+
+            values.sort();
+            let mut results = Vec::with_capacity(values.len());
+            while !sorted_vec.is_empty() {
+                results.push(sorted_vec.pop().unwrap());
+            }
+            results.reverse();
+            assert_eq!(&values, &results);
+
+            true
+        }
+    }
 
     #[test]
     fn test_heap() {
