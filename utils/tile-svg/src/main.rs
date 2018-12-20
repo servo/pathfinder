@@ -94,6 +94,11 @@ fn main() {
     for (index, tile) in built_scene.solid_tiles.iter().enumerate() {
         println!("... {}: {:?}", index, tile);
     }
+
+    println!("fills:");
+    for (index, fill) in built_scene.fills.iter().enumerate() {
+        println!("... {}: {:?}", index, fill);
+    }
     */
 
     if let Some(output_path) = output_path {
@@ -758,41 +763,46 @@ impl Segment {
     }
 
     fn split_y(&self, y: f32) -> (Option<Segment>, Option<Segment>) {
+        //println!("split_y({:?}, {:?})", self, y);
+
         // Trivial cases.
         if self.from.y <= y && self.to.y <= y {
-            return if self.from.y < self.to.y {
-                (Some(*self), None)
-            } else {
-                (None, Some(*self))
-            }
+            return (Some(*self), None)
         }
         if self.from.y >= y && self.to.y >= y {
-            return if self.from.y < self.to.y {
-                (None, Some(*self))
-            } else {
-                (Some(*self), None)
-            }
+            return (None, Some(*self))
         }
 
         // TODO(pcwalton): Reduce code duplication?
-        if let Some(mut line_segment) = self.as_line_segment() {
-            let t = LineAxis::from_y(&line_segment).solve_for_t(y).unwrap();
-            let (prev, next) = line_segment.split(t);
-            return (Some(Segment::from_line(&prev)), Some(Segment::from_line(&next)));
-        }
+        let (prev, next) = match self.as_line_segment() {
+            Some(line_segment) => {
+                let t = LineAxis::from_y(&line_segment).solve_for_t(y).unwrap();
+                let (prev, next) = line_segment.split(t);
+                //println!("... split line at {}: {:?}, {:?}", t, prev, next);
+                (Segment::from_line(&prev), Segment::from_line(&next))
+            }
+            None => {
+                // TODO(pcwalton): Don't degree elevate!
+                let mut cubic_segment = self.as_cubic_segment().unwrap();
+                let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
+                let t = t.expect("Failed to solve cubic for Y!");
+                let (prev, next) = cubic_segment.split(t);
+                (Segment::from_cubic(&prev), Segment::from_cubic(&next))
+            }
+        };
 
-        // TODO(pcwalton): Don't degree elevate!
-        let mut cubic_segment = self.as_cubic_segment().unwrap();
-        let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
-        let t = t.expect("Failed to solve cubic for Y!");
-        let (prev, next) = cubic_segment.split(t);
-        (Some(Segment::from_cubic(&prev)), Some(Segment::from_cubic(&next)))
+        if self.from.y < self.to.y {
+            (Some(prev), Some(next))
+        } else {
+            (Some(next), Some(prev))
+        }
     }
 
     fn generate_fill_primitives(&self,
                                 strip_origin: &Point2D<f32>,
                                 primitives: &mut Vec<FillPrimitive>) {
         if let Some(ref line_segment) = self.as_line_segment() {
+            //println!("generate_fill_primitives({:?}, {:?})", strip_origin, line_segment);
             generate_fill_primitives_for_line(line_segment, strip_origin, primitives);
             return;
         }
@@ -823,6 +833,10 @@ impl Segment {
                     f32::max(0.0, f32::floor((segment.to.x - strip_origin.x) / TILE_WIDTH)) as u32;
 
                 if from_tile_index == to_tile_index {
+                    /*println!("... ... pushing LAST fill primitive {}: {:?} @ {:?}",
+                             primitives.len(),
+                             segment,
+                             tile_offset);*/
                     primitives.push(FillPrimitive {
                         from: segment.from - tile_offset,
                         to: segment.to - tile_offset,
@@ -832,13 +846,16 @@ impl Segment {
                 }
 
                 // Split line at tile boundary.
-                let next_tile_index = if segment.from.x < segment.to.x {
-                    from_tile_index + 1
+                let (next_tile_index, split_x) = if segment.from.x < segment.to.x {
+                    (from_tile_index + 1, tile_offset.x + TILE_WIDTH)
                 } else {
-                    from_tile_index - 1
+                    (from_tile_index - 1, tile_offset.x)
                 };
-                let next_tile_x = (next_tile_index as f32) * TILE_WIDTH + strip_origin.x;
-                let (prev_segment, next_segment) = segment.split_at_x(next_tile_x);
+                let (prev_segment, next_segment) = segment.split_at_x(split_x);
+                /*println!("... ... pushing fill primitive {}: {:?} @ {:?}",
+                         primitives.len(),
+                         prev_segment,
+                         tile_offset);*/
                 primitives.push(FillPrimitive {
                     from: prev_segment.from - tile_offset,
                     to: prev_segment.to - tile_offset,
@@ -911,6 +928,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
     fn generate_tiles(&mut self) {
         // Sort all edge indices.
+        // TODO(pcwalton): Only find MIN points.
         self.sorted_edge_indices.clear();
         for contour_index in 0..self.outline.contours.len() {
             let contour = &self.outline.contours[contour_index];
@@ -983,6 +1001,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
             }
 
             // Populate tile strip with active intervals.
+            // TODO(pcwalton): Use only the active edge list!
             let mut strip_tile_index = 0;
             for interval in &self.active_intervals.ranges {
                 if interval.winding == 0.0 {
@@ -1004,8 +1023,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
                     if tile_interval == (tile_left..tile_right) {
                         strip_tiles[strip_tile_index].backdrop = interval.winding
                     } else {
-                        let left = Point2D::new(interval.start, strip_origin.y);
-                        let right = Point2D::new(interval.end, strip_origin.y);
+                        let left = Point2D::new(interval.start - tile_left, strip_origin.y);
+                        let right = Point2D::new(interval.end - tile_left, strip_origin.y);
                         strip_fills.push(FillPrimitive {
                             from:       if interval.winding < 0.0 { left } else { right },
                             to:         if interval.winding < 0.0 { right } else { left },
@@ -1020,6 +1039,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
             // Process old active edges.
             for active_edge in &mut self.active_edges {
                 let fills = if above_view_box { None } else { Some(&mut strip_fills) };
+                //println!("processing old active edge: {:?}", active_edge);
                 process_active_edge(active_edge,
                                     &strip_bounds,
                                     fills,
@@ -1037,8 +1057,11 @@ impl<'o, 'p> Tiler<'o, 'p> {
                     break
                 }
 
+                //println!("processing new active edge: {:?}", segment);
                 if !segment.is_degenerate() {
-                    if let Some(mut segment) = segment.clip_x(strip_range) {
+                    //println!("... is not degenerate ...");
+                    if let Some(mut segment) = segment.clip_x(strip_range.clone()) {
+                        //println!("... clipped to {:?}: {:?}", strip_range, segment);
                         let fills = if above_view_box { None } else { Some(&mut strip_fills) };
                         process_active_edge(&mut segment,
                                             &strip_bounds,
@@ -1096,49 +1119,47 @@ fn process_active_edge(active_edge: &mut Segment,
                        used_tiles: &mut FixedBitSet) {
     let strip_extent = strip_bounds.bottom_right();
 
-    let (prev_segment, next_segment) = active_edge.split_y(strip_extent.y);
+    // TODO(pcwalton): Maybe these shouldn't be Options?
+    let (upper_segment, lower_segment) = active_edge.split_y(strip_extent.y);
     *active_edge = Segment::new();
 
-    for &segment in [&prev_segment, &next_segment].into_iter() {
-        let segment = match *segment {
-            None => continue,
-            Some(ref segment) => segment,
-        };
-
-        if segment.from.y < strip_extent.y || segment.to.y < strip_extent.y {
-            if let Some(ref mut fills) = fills {
-                active_edge.generate_fill_primitives(&strip_bounds.origin, *fills);
-            }
-
-            // FIXME(pcwalton): Assumes x-monotonicity!
-            let mut from_x = clamp(segment.from.x, 0.0, active_intervals.extent());
-            let mut to_x = clamp(segment.to.x, 0.0, active_intervals.extent());
-            from_x = clamp(from_x, 0.0, strip_extent.x);
-            to_x = clamp(to_x, 0.0, strip_extent.x);
-            if from_x < to_x {
-                active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
-            } else {
-                active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
-            }
-
-            // FIXME(pcwalton): Assumes x-monotonicity!
-            // FIXME(pcwalton): Don't hardcode a view box left of 0!
-            let mut min_x = f32::min(segment.from.x, segment.to.x);
-            let mut max_x = f32::max(segment.from.x, segment.to.x);
-            min_x = clamp(min_x, 0.0, strip_extent.x);
-            max_x = clamp(max_x, 0.0, strip_extent.x);
-            let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
-            let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
-            let left_tile_index = (tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
-            let right_tile_index = (tile_right - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
-
-            // Set used bits.
-            for tile_index in left_tile_index..right_tile_index {
-                used_tiles.insert(tile_index as usize);
-            }
-        } else {
-            *active_edge = *segment;
+    if let Some(segment) = upper_segment {
+        if let Some(ref mut fills) = fills {
+            //println!("process_active_edge: generating fill primitives for {:?}", segment);
+            segment.generate_fill_primitives(&strip_bounds.origin, *fills);
         }
+
+        // FIXME(pcwalton): Assumes x-monotonicity!
+        let mut from_x = clamp(segment.from.x, 0.0, active_intervals.extent());
+        let mut to_x = clamp(segment.to.x, 0.0, active_intervals.extent());
+        from_x = clamp(from_x, 0.0, strip_extent.x);
+        to_x = clamp(to_x, 0.0, strip_extent.x);
+        if from_x < to_x {
+            active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
+        } else {
+            active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
+        }
+
+        // FIXME(pcwalton): Assumes x-monotonicity!
+        // FIXME(pcwalton): Don't hardcode a view box left of 0!
+        let mut min_x = f32::min(segment.from.x, segment.to.x);
+        let mut max_x = f32::max(segment.from.x, segment.to.x);
+        min_x = clamp(min_x, 0.0, strip_extent.x);
+        max_x = clamp(max_x, 0.0, strip_extent.x);
+        let tile_left = f32::floor(min_x / TILE_WIDTH) * TILE_WIDTH;
+        let tile_right = f32::ceil(max_x / TILE_WIDTH) * TILE_WIDTH;
+        let left_tile_index = (tile_left - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+        let right_tile_index = (tile_right - strip_bounds.origin.x) as u32 / TILE_WIDTH as u32;
+
+        // Set used bits.
+        for tile_index in left_tile_index..right_tile_index {
+            used_tiles.insert(tile_index as usize);
+        }
+    }
+
+    match lower_segment {
+        Some(segment) => *active_edge = segment,
+        None => *active_edge = Segment::new(),
     }
 }
 
