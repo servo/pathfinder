@@ -798,6 +798,7 @@ impl Segment {
         }
     }
 
+    #[inline(never)]
     fn generate_fill_primitives(&self,
                                 strip_origin: &Point2D<f32>,
                                 primitives: &mut Vec<FillPrimitive>) {
@@ -1397,13 +1398,13 @@ impl IntervalRange {
 
 struct SvgPathToPathEvents<'a, I> where I: Iterator<Item = SvgPathSegment> {
     iter: &'a mut I,
-    last_endpoint: Option<Point2D<f32>>,
+    last_endpoint: Point2D<f32>,
     last_ctrl_point: Option<Point2D<f32>>,
 }
 
 impl<'a, I> SvgPathToPathEvents<'a, I> where I: Iterator<Item = SvgPathSegment> {
     fn new(iter: &'a mut I) -> SvgPathToPathEvents<'a, I> {
-        SvgPathToPathEvents { iter, last_endpoint: None, last_ctrl_point: None }
+        SvgPathToPathEvents { iter, last_endpoint: Point2D::zero(), last_ctrl_point: None }
     }
 }
 
@@ -1415,25 +1416,25 @@ impl<'a, I> Iterator for SvgPathToPathEvents<'a, I> where I: Iterator<Item = Svg
             None => None,
             Some(SvgPathSegment::MoveTo { abs, x, y }) => {
                 let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = Some(to);
+                self.last_endpoint = to;
                 self.last_ctrl_point = None;
                 Some(PathEvent::MoveTo(to))
             }
             Some(SvgPathSegment::LineTo { abs, x, y }) => {
                 let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = Some(to);
+                self.last_endpoint = to;
                 self.last_ctrl_point = None;
                 Some(PathEvent::LineTo(to))
             }
             Some(SvgPathSegment::HorizontalLineTo { abs, x }) => {
                 let to = compute_point(x, 0.0, abs, &self.last_endpoint);
-                self.last_endpoint = Some(to);
+                self.last_endpoint = to;
                 self.last_ctrl_point = None;
                 Some(PathEvent::LineTo(to))
             }
             Some(SvgPathSegment::VerticalLineTo { abs, y }) => {
                 let to = compute_point(0.0, y, abs, &self.last_endpoint);
-                self.last_endpoint = Some(to);
+                self.last_endpoint = to;
                 self.last_ctrl_point = None;
                 Some(PathEvent::LineTo(to))
             }
@@ -1441,16 +1442,14 @@ impl<'a, I> Iterator for SvgPathToPathEvents<'a, I> where I: Iterator<Item = Svg
                 let ctrl = compute_point(x1, y1, abs, &self.last_endpoint);
                 self.last_ctrl_point = Some(ctrl);
                 let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = Some(to);
+                self.last_endpoint = to;
                 Some(PathEvent::QuadraticTo(ctrl, to))
             }
             Some(SvgPathSegment::SmoothQuadratic { abs, x, y }) => {
-                let ctrl = self.last_endpoint.unwrap_or(Point2D::zero()) +
-                    (self.last_endpoint.unwrap_or(Point2D::zero()) -
-                        self.last_ctrl_point.unwrap_or(Point2D::zero()));
+                let ctrl = reflect_point(&self.last_endpoint, &self.last_ctrl_point);
                 self.last_ctrl_point = Some(ctrl);
                 let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = Some(to);
+                self.last_endpoint = to;
                 Some(PathEvent::QuadraticTo(ctrl, to))
             }
             Some(SvgPathSegment::CurveTo { abs, x1, y1, x2, y2, x, y }) => {
@@ -1458,31 +1457,43 @@ impl<'a, I> Iterator for SvgPathToPathEvents<'a, I> where I: Iterator<Item = Svg
                 let ctrl1 = compute_point(x2, y2, abs, &self.last_endpoint);
                 self.last_ctrl_point = Some(ctrl1);
                 let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = Some(to);
+                self.last_endpoint = to;
                 Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
             }
             Some(SvgPathSegment::SmoothCurveTo { abs, x2, y2, x, y }) => {
-                let ctrl0 = self.last_endpoint.unwrap_or(Point2D::zero()) +
-                    (self.last_endpoint.unwrap_or(Point2D::zero()) -
-                        self.last_ctrl_point.unwrap_or(Point2D::zero()));
+                let ctrl0 = reflect_point(&self.last_endpoint, &self.last_ctrl_point);
                 let ctrl1 = compute_point(x2, y2, abs, &self.last_endpoint);
                 self.last_ctrl_point = Some(ctrl1);
                 let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = Some(to);
+                self.last_endpoint = to;
                 Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
             }
             Some(SvgPathSegment::ClosePath { abs: _ }) => {
+                // FIXME(pcwalton): Current endpoint becomes path initial point!
+                self.last_ctrl_point = None;
                 Some(PathEvent::Close)
             }
             Some(SvgPathSegment::EllipticalArc { .. }) => unimplemented!("arcs"),
         };
 
-        fn compute_point(x: f64, y: f64, abs: bool, last_endpoint: &Option<Point2D<f32>>)
+        fn compute_point(x: f64, y: f64, abs: bool, last_endpoint: &Point2D<f32>)
                          -> Point2D<f32> {
             let point = Point2D::new(x, y).to_f32();
-            match *last_endpoint {
-                Some(last_endpoint) if !abs => last_endpoint + point.to_vector(),
-                _ => point,
+            if !abs {
+                *last_endpoint + point.to_vector()
+            } else {
+                point
+            }
+        }
+
+        fn reflect_point(last_endpoint: &Point2D<f32>, last_ctrl_point: &Option<Point2D<f32>>)
+                         -> Point2D<f32> {
+            match *last_ctrl_point {
+                Some(ref last_ctrl_point) => {
+                    let vector = *last_endpoint - *last_ctrl_point;
+                    *last_endpoint + vector
+                }
+                None => *last_endpoint,
             }
         }
     }
