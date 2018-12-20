@@ -937,8 +937,15 @@ impl Segment {
         !self.flags.contains(SegmentFlags::HAS_ENDPOINTS)
     }
 
-    fn min_y(&self) -> f32 {
-        f32::min(self.from.y, self.to.y)
+    fn min_x(&self) -> f32 { f32::min(self.from.x, self.to.x) }
+    fn min_y(&self) -> f32 { f32::min(self.from.y, self.to.y) }
+
+    fn winding(&self) -> i32 {
+        match self.from.x.partial_cmp(&self.to.x) {
+            Some(Ordering::Less) => -1,
+            Some(Ordering::Greater) => 1,
+            Some(Ordering::Equal) | None => 0,
+        }
     }
 }
 
@@ -968,8 +975,7 @@ struct Tiler<'o, 'p> {
     view_box: Option<Rect<f32>>,
 
     point_queue: BinaryHeap<QueuedEndpoint>,
-    active_intervals: Intervals,
-    active_edges: Vec<Segment>,
+    active_edges: Vec<ActiveEdge>,
 }
 
 impl<'o, 'p> Tiler<'o, 'p> {
@@ -986,8 +992,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
             view_box: *view_box,
 
             point_queue: BinaryHeap::new(),
-            active_intervals: Intervals::new(0.0..0.0),
-            active_edges: vec![],
+            active_edges: Vec::new(),
         }
     }
 
@@ -1006,7 +1011,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
             bounds.size.height = f32::max(0.0, max_y - bounds.origin.y);
         }
 
-        self.active_intervals.reset(bounds.origin.x, bounds.max_x());
         self.active_edges.clear();
 
         let mut strip_origin =
@@ -1047,6 +1051,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 tile_left += TILE_WIDTH;
             }
 
+            /*
             // Populate tile strip with active intervals.
             // TODO(pcwalton): Use only the active edge list!
             let mut strip_tile_index = 0;
@@ -1079,18 +1084,54 @@ impl<'o, 'p> Tiler<'o, 'p> {
                     strip_tile_index += 1;
                 }
             }
+            */
 
             // Process old active edges.
+            let (mut strip_tile_index, mut current_left) = (0, strip_bounds.origin.x);
+            let mut winding = 0;
             for active_edge in &mut self.active_edges {
+                // Move over to the correct tile, filling in as we go.
+                // FIXME(pcwalton): Do subtile fills!!
+                let mut tile_left = strip_bounds.origin.x + (strip_tile_index as f32) * TILE_WIDTH;
+                while strip_tile_index < strip_tiles.len() {
+                    let tile_right = tile_left + TILE_WIDTH;
+
+                    let segment_left = active_edge.segment.min_x();
+                    if tile_left > segment_left {
+                        break
+                    }
+
+                    strip_tiles[strip_tile_index].backdrop = winding as f32;
+                    current_left = tile_right;
+                    tile_left = tile_right;
+                    strip_tile_index += 1;
+                }
+
+                // Do subtile fill.
+                let min_x = active_edge.segment.min_x();
+                let edge_winding = active_edge.segment.winding();
+                if current_left < min_x && strip_tile_index < strip_tiles.len() {
+                    let left = Point2D::new(current_left - tile_left, 0.0);
+                    let right = Point2D::new(current_left - min_x, 0.0);
+                    strip_fills.push(FillPrimitive {
+                        from:       if edge_winding < 0 { left } else { right },
+                        to:         if edge_winding < 0 { right } else { left },
+                        tile_index: strip_tile_index as u32,
+                    });
+                    used_strip_tiles.insert(strip_tile_index);
+                    current_left = right.x;
+                }
+
+                // Update winding.
+                winding += edge_winding;
+
+                // Process the edge.
                 let fills = if above_view_box { None } else { Some(&mut strip_fills) };
-                //println!("processing old active edge: {:?}", active_edge);
-                process_active_edge(active_edge,
+                process_active_edge(&mut active_edge.segment,
                                     &strip_bounds,
                                     fills,
-                                    &mut self.active_intervals,
-                                    &mut used_strip_tiles)
+                                    &mut used_strip_tiles);
             }
-            self.active_edges.retain(|edge| !edge.is_none());
 
             // Add new active edges.
             loop {
@@ -1113,7 +1154,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                            &mut self.active_edges,
                                            &strip_bounds,
                                            fills,
-                                           &mut self.active_intervals,
                                            &mut used_strip_tiles);
 
                     self.point_queue.push(QueuedEndpoint {
@@ -1132,7 +1172,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                            &mut self.active_edges,
                                            &strip_bounds,
                                            fills,
-                                           &mut self.active_intervals,
                                            &mut used_strip_tiles);
 
                     self.point_queue.push(QueuedEndpoint {
@@ -1181,6 +1220,12 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 }
             }
 
+            // Sort active edges.
+            self.active_edges.retain(|edge| !edge.segment.is_none());
+            self.active_edges.sort_unstable_by(|edge_a, edge_b| {
+                edge_a.segment.min_x().partial_cmp(&edge_b.segment.min_x()).unwrap()
+            });
+
             strip_origin.y = strip_extent.y;
         }
     }
@@ -1215,10 +1260,9 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
 fn process_active_segment(contour: &Contour,
                           from_endpoint_index: usize,
-                        active_edges: &mut Vec<Segment>,
+                          active_edges: &mut Vec<ActiveEdge>,
                           strip_bounds: &Rect<f32>,
-                          mut fills: Option<&mut Vec<FillPrimitive>>,
-                          active_intervals: &mut Intervals,
+                          fills: Option<&mut Vec<FillPrimitive>>,
                           used_tiles: &mut FixedBitSet) {
     let segment = contour.segment_after(from_endpoint_index);
     if segment.is_degenerate() {
@@ -1234,17 +1278,16 @@ fn process_active_segment(contour: &Contour,
     };
 
     //println!("... clipped to {:?}: {:?}", strip_range, segment);
-    process_active_edge(&mut segment, &strip_bounds, fills, active_intervals, used_tiles);
+    process_active_edge(&mut segment, &strip_bounds, fills, used_tiles);
 
     if !segment.is_none() {
-        active_edges.push(segment);
+        active_edges.push(ActiveEdge::new(segment));
     }
 }
 
 fn process_active_edge(active_edge: &mut Segment,
                        strip_bounds: &Rect<f32>,
                        mut fills: Option<&mut Vec<FillPrimitive>>,
-                       active_intervals: &mut Intervals,
                        used_tiles: &mut FixedBitSet) {
     let strip_extent = strip_bounds.bottom_right();
 
@@ -1256,17 +1299,6 @@ fn process_active_edge(active_edge: &mut Segment,
         if let Some(ref mut fills) = fills {
             //println!("process_active_edge: generating fill primitives for {:?}", segment);
             segment.generate_fill_primitives(&strip_bounds.origin, *fills);
-        }
-
-        // FIXME(pcwalton): Assumes x-monotonicity!
-        let mut from_x = clamp(segment.from.x, 0.0, active_intervals.extent());
-        let mut to_x = clamp(segment.to.x, 0.0, active_intervals.extent());
-        from_x = clamp(from_x, 0.0, strip_extent.x);
-        to_x = clamp(to_x, 0.0, strip_extent.x);
-        if from_x < to_x {
-            active_intervals.add(IntervalRange::new(from_x, to_x, -1.0))
-        } else {
-            active_intervals.add(IntervalRange::new(to_x, from_x, 1.0))
         }
 
         // FIXME(pcwalton): Assumes x-monotonicity!
@@ -1917,6 +1949,8 @@ impl<T> Heap<T> {
     }
 }
 
+// Queued endpoints
+
 #[derive(PartialEq)]
 struct QueuedEndpoint {
     point_index: PointIndex,
@@ -1954,6 +1988,37 @@ impl Ord for QueuedEndpoint {
             }
             Some(ordering) => ordering,
         }
+    }
+}
+
+// Active edges
+
+#[derive(Clone, PartialEq, Debug)]
+struct ActiveEdge {
+    segment: Segment,
+}
+
+impl ActiveEdge {
+    fn new(segment: Segment) -> ActiveEdge {
+        ActiveEdge { segment }
+    }
+}
+
+impl Eq for ActiveEdge {}
+
+impl PartialOrd<ActiveEdge> for ActiveEdge {
+    fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
+        let this_left = f32::min(self.segment.from.x, self.segment.to.x);
+        let other_left = f32::min(other.segment.from.x, other.segment.to.x);
+        other_left.partial_cmp(&this_left)
+    }
+}
+
+impl Ord for ActiveEdge {
+    fn cmp(&self, other: &ActiveEdge) -> Ordering {
+        let this_left = f32::min(self.segment.from.x, self.segment.to.x);
+        let other_left = f32::min(other.segment.from.x, other.segment.to.x);
+        other_left.partial_cmp(&this_left).unwrap_or(Ordering::Equal)
     }
 }
 
