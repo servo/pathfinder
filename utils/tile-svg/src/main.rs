@@ -991,34 +991,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
     }
 
     fn generate_tiles(&mut self) {
-        // Find MIN points.
-        self.point_queue.clear();
-        for (contour_index, contour) in self.outline.contours.iter().enumerate() {
-            let mut cur_endpoint_index = 0;
-            let mut prev_endpoint_index = contour.prev_endpoint_index_of(cur_endpoint_index);
-            let mut next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
-            while cur_endpoint_index < next_endpoint_index {
-                if contour.point_is_logically_above(cur_endpoint_index, prev_endpoint_index) &&
-                        contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index) {
-                    let point_index = PointIndex {
-                        contour_index,
-                        point_index: cur_endpoint_index,
-                    };
-                    let outline = &self.outline;
-                    self.point_queue.push(point_index, |a_index, b_index| {
-                        if outline.point_is_logically_above(a_index, b_index) {
-                            Ordering::Less
-                        } else {
-                            Ordering::Greater
-                        }
-                    });
-                }
-
-                prev_endpoint_index = cur_endpoint_index;
-                cur_endpoint_index = next_endpoint_index;
-                next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
-            }
-        }
+        self.init_point_queue();
         // Sort all edge indices.
         // TODO(pcwalton): Only find MIN points.
         /*
@@ -1168,7 +1141,20 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                            fills,
                                            &mut self.active_intervals,
                                            &mut used_strip_tiles);
+
+                    let prev_point_index = PointIndex {
+                        contour_index: point_index.contour_index,
+                        point_index: prev_endpoint_index,
+                    };
+                    self.point_queue.push(prev_point_index, |a_index, b_index| {
+                        if outline.point_is_logically_above(a_index, b_index) {
+                            Ordering::Less
+                        } else {
+                            Ordering::Greater
+                        }
+                    });
                 }
+
                 if contour.point_is_logically_above(point_index.point_index, next_endpoint_index) {
                     let fills = if above_view_box { None } else { Some(&mut strip_fills) };
                     process_active_segment(contour,
@@ -1178,6 +1164,18 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                            fills,
                                            &mut self.active_intervals,
                                            &mut used_strip_tiles);
+
+                    let next_point_index = PointIndex {
+                        contour_index: point_index.contour_index,
+                        point_index: next_endpoint_index,
+                    };
+                    self.point_queue.push(next_point_index, |a_index, b_index| {
+                        if outline.point_is_logically_above(a_index, b_index) {
+                            Ordering::Less
+                        } else {
+                            Ordering::Greater
+                        }
+                    });
                 }
             }
 
@@ -1220,11 +1218,43 @@ impl<'o, 'p> Tiler<'o, 'p> {
             strip_origin.y = strip_extent.y;
         }
     }
+
+    #[inline(never)]
+    fn init_point_queue(&mut self) {
+        // Find MIN points.
+        self.point_queue.clear();
+        for (contour_index, contour) in self.outline.contours.iter().enumerate() {
+            let mut cur_endpoint_index = 0;
+            let mut prev_endpoint_index = contour.prev_endpoint_index_of(cur_endpoint_index);
+            let mut next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
+            while cur_endpoint_index < next_endpoint_index {
+                if contour.point_is_logically_above(cur_endpoint_index, prev_endpoint_index) &&
+                        contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index) {
+                    let point_index = PointIndex {
+                        contour_index,
+                        point_index: cur_endpoint_index,
+                    };
+                    let outline = &self.outline;
+                    self.point_queue.push(point_index, |a_index, b_index| {
+                        if outline.point_is_logically_above(a_index, b_index) {
+                            Ordering::Less
+                        } else {
+                            Ordering::Greater
+                        }
+                    });
+                }
+
+                prev_endpoint_index = cur_endpoint_index;
+                cur_endpoint_index = next_endpoint_index;
+                next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
+            }
+        }
+    }
 }
 
 fn process_active_segment(contour: &Contour,
                           from_endpoint_index: usize,
-                          active_edges: &mut Vec<Segment>,
+                        active_edges: &mut Vec<Segment>,
                           strip_bounds: &Rect<f32>,
                           mut fills: Option<&mut Vec<FillPrimitive>>,
                           active_intervals: &mut Intervals,
@@ -1895,6 +1925,7 @@ impl<T> Heap<T> {
     fn first_child_index(&self, index: usize) -> usize { index * 2 + 1   }
     fn last_child_index(&self, index: usize)  -> usize { index * 2 + 2   }
 
+    #[inline(never)]
     fn push<C>(&mut self, value: T, mut compare: C) where C: FnMut(&T, &T) -> Ordering {
         let index = self.array.len();
         self.array.push(value);
@@ -1905,6 +1936,7 @@ impl<T> Heap<T> {
         self.array.get(0)
     }
 
+    #[inline(never)]
     fn shift_min<C>(&mut self, mut compare: C) -> Option<T> where C: FnMut(&T, &T) -> Ordering {
         if self.array.is_empty() {
             None
