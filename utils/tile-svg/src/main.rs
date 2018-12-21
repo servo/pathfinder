@@ -982,9 +982,11 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
         self.active_edges.clear();
 
-        let mut strip_origin =
-            Point2D::new(f32::floor(bounds.origin.x / TILE_WIDTH) * TILE_WIDTH,
-                         f32::floor(bounds.origin.y / TILE_HEIGHT) * TILE_HEIGHT);
+        let outline_tile_origin = Point2D::new(f32::floor(bounds.origin.x / TILE_WIDTH) as i16,
+                                               f32::floor(bounds.origin.y / TILE_HEIGHT) as i16);
+
+        let mut strip_origin = Point2D::new(outline_tile_origin.x as f32 * TILE_WIDTH,
+                                            outline_tile_origin.y as f32 * TILE_HEIGHT);
         let strip_right_extent = f32::ceil(bounds.max_x() / TILE_WIDTH) * TILE_WIDTH;
 
         let tiles_across = ((strip_right_extent - strip_origin.x) / TILE_WIDTH) as usize;
@@ -1006,7 +1008,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                                         strip_extent.y - strip_origin.y));
 
             // Generate strip.
-            self.generate_strip(&strip_bounds, tile_index_y, tiles_across);
+            self.generate_strip(&strip_bounds, tile_index_y, tiles_across, &outline_tile_origin);
 
             strip_origin.y = strip_extent.y;
             tile_index_y += 1;
@@ -1017,7 +1019,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
     fn generate_strip(&mut self,
                       strip_bounds: &Rect<f32>,
                       tile_index_y: i16,
-                      tiles_across: usize) {
+                      tiles_across: usize,
+                      outline_tile_origin: &Point2D<i16>) {
         // We can skip a bunch of steps if we're above the viewport.
         let above_view_box = tile_index_y < 0;
 
@@ -1028,8 +1031,9 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
         // Allocate tiles.
         for tile_index_x in 0..tiles_across {
-            self.strip_tiles
-                .push(MaskTilePrimitive::new(tile_index_x as i16, tile_index_y, self.fill_color));
+            let tile_x = outline_tile_origin.x + tile_index_x as i16;
+            let tile_y = outline_tile_origin.y + tile_index_y;
+            self.strip_tiles.push(MaskTilePrimitive::new(tile_x, tile_y, self.fill_color));
         }
 
         // Process old active edges.
