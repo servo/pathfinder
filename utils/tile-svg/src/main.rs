@@ -29,7 +29,6 @@ use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 use std::cmp::Ordering;
-use std::collections::BinaryHeap;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Write};
@@ -313,7 +312,7 @@ impl Scene {
 
     fn build(&self) -> BuiltScene {
         let mut built_scene = BuiltScene::new();
-        for (index, object) in self.objects.iter().enumerate() {
+        for object in &self.objects {
             let mut tiler = Tiler::from_outline(&object.outline,
                                                 object.color,
                                                 &self.view_box,
@@ -462,30 +461,6 @@ impl Outline {
         }
 
         outline
-    }
-
-    fn segment_after(&self, endpoint_index: PointIndex) -> Segment {
-        self.contours[endpoint_index.contour_index].segment_after(endpoint_index.point_index)
-    }
-
-    fn point_is_logically_above(&self, a: &PointIndex, b: &PointIndex) -> bool {
-        let a_y = self.contours[a.contour_index].points[a.point_index].y;
-        let b_y = self.contours[b.contour_index].points[b.point_index].y;
-        match a_y.partial_cmp(&b_y) {
-            Some(Ordering::Less) => true,
-            Some(Ordering::Greater) => false,
-            None | Some(Ordering::Equal) => {
-                match a.contour_index.cmp(&b.contour_index) {
-                    Ordering::Less => true,
-                    Ordering::Greater => false,
-                    Ordering::Equal => a.point_index < b.point_index,
-                }
-            }
-        }
-    }
-
-    fn get(&self, point_index: &PointIndex) -> Point2D<f32> {
-        self.contours[point_index.contour_index].points[point_index.point_index]
     }
 }
 
@@ -827,8 +802,6 @@ impl Segment {
     }
 
     fn split_y(&self, y: f32) -> (Option<Segment>, Option<Segment>) {
-        //println!("split_y({:?}, {:?})", self, y);
-
         // Trivial cases.
         if self.from.y <= y && self.to.y <= y {
             return (Some(*self), None)
@@ -842,12 +815,11 @@ impl Segment {
             Some(line_segment) => {
                 let t = LineAxis::from_y(&line_segment).solve_for_t(y).unwrap();
                 let (prev, next) = line_segment.split(t);
-                //println!("... split line at {}: {:?}, {:?}", t, prev, next);
                 (Segment::from_line(&prev), Segment::from_line(&next))
             }
             None => {
                 // TODO(pcwalton): Don't degree elevate!
-                let mut cubic_segment = self.as_cubic_segment().unwrap();
+                let cubic_segment = self.as_cubic_segment().unwrap();
                 let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
                 let t = t.expect("Failed to solve cubic for Y!");
                 let (prev, next) = cubic_segment.split(t);
@@ -916,11 +888,8 @@ impl Segment {
                 } else {
                     (from_tile_index - 1, tile_offset.x)
                 };
+
                 let (prev_segment, next_segment) = segment.split_at_x(split_x);
-                /*println!("... ... pushing fill primitive {}: {:?} @ {:?}",
-                         primitives.len(),
-                         prev_segment,
-                         tile_offset);*/
                 primitives.push(FillPrimitive {
                     from: prev_segment.from - tile_offset,
                     to: prev_segment.to - tile_offset,
@@ -938,7 +907,6 @@ impl Segment {
     }
 
     fn min_x(&self) -> f32 { f32::min(self.from.x, self.to.x) }
-    fn min_y(&self) -> f32 { f32::min(self.from.y, self.to.y) }
 
     fn winding(&self) -> i32 {
         match self.from.x.partial_cmp(&self.to.x) {
@@ -947,11 +915,6 @@ impl Segment {
             Some(Ordering::Equal) | None => 0,
         }
     }
-}
-
-struct ClippedSegments {
-    min: Option<Segment>,
-    max: Option<Segment>,
 }
 
 bitflags! {
@@ -1059,7 +1022,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
             mem::swap(&mut old_active_edges, &mut self.active_edges.array);
             for mut active_edge in old_active_edges.drain(..) {
                 // Move over to the correct tile, filling in as we go.
-                // FIXME(pcwalton): Do subtile fills!!
                 let mut tile_left = strip_bounds.origin.x + (strip_tile_index as f32) * TILE_WIDTH;
                 while strip_tile_index < strip_tiles.len() {
                     let tile_right = tile_left + TILE_WIDTH;
@@ -1178,18 +1140,13 @@ impl<'o, 'p> Tiler<'o, 'p> {
             if !above_view_box {
                 // Flush tiles.
                 let first_tile_index = self.built_scene.mask_tiles.len() as u32;
-                //println!("--- first tile index {} ---", first_tile_index);
                 for (tile_index, tile) in strip_tiles.iter().enumerate() {
                     if used_strip_tiles.contains(tile_index) {
-                        /*println!("mask index {} -> {}",
-                                 tile_index,
-                                 self.built_scene.mask_tiles.len());*/
                         self.built_scene.mask_tiles.push(*tile);
                     } else if tile.backdrop != 0.0 {
-                        self.built_scene.solid_tiles.push(SolidTilePrimitive {
-                            position: tile.position,
-                            color: tile.color,
-                        });
+                        self.built_scene
+                            .solid_tiles
+                            .push(SolidTilePrimitive::new(&tile.position, tile.color));
                     }
                 }
 
@@ -1199,9 +1156,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 for fill in &strip_fills {
                     let real_tile_index = first_tile_index +
                         used_strip_tiles.count_ones(0..(fill.tile_index as usize)) as u32;
-                    /*println!("flush fill, mask index {} -> {}",
-                             fill.tile_index,
-                             real_tile_index);*/
                     self.built_scene.fills.push(FillPrimitive {
                         from: fill.from,
                         to: fill.to,
@@ -1254,15 +1208,12 @@ fn process_active_segment(contour: &Contour,
         return
     }
 
-    //println!("processing new active edge: {:?}", segment);
-    //println!("... is not degenerate ...");
     let strip_range = (strip_bounds.origin.x)..(strip_bounds.max_x());
     let mut segment = match segment.clip_x(strip_range.clone()) {
         Some(segment) => segment,
         None => return,
     };
 
-    //println!("... clipped to {:?}: {:?}", strip_range, segment);
     process_active_edge(&mut segment, &strip_bounds, fills, used_tiles);
 
     if !segment.is_none() {
@@ -1282,7 +1233,6 @@ fn process_active_edge(active_edge: &mut Segment,
 
     if let Some(segment) = upper_segment {
         if let Some(ref mut fills) = fills {
-            //println!("process_active_edge: generating fill primitives for {:?}", segment);
             segment.generate_fill_primitives(&strip_bounds.origin, *fills);
         }
 
@@ -1418,120 +1368,6 @@ impl ColorU {
 
     fn from_svg_color(svg_color: SvgColor) -> ColorU {
         ColorU { r: svg_color.red, g: svg_color.green, b: svg_color.blue, a: 255 }
-    }
-}
-
-// Intervals
-
-#[derive(Debug)]
-struct Intervals {
-    ranges: Vec<IntervalRange>,
-}
-
-#[derive(Clone, Copy, Debug)]
-struct IntervalRange {
-    start: f32,
-    end: f32,
-    winding: f32,
-}
-
-impl Intervals {
-    fn new(bounds: Range<f32>) -> Intervals {
-        Intervals {
-            ranges: vec![IntervalRange::new(bounds.start, bounds.end, 0.0)],
-        }
-    }
-
-    fn add(&mut self, range: IntervalRange) {
-        if range.is_empty() {
-            return
-        }
-
-        self.split_at(range.start);
-        self.split_at(range.end);
-
-        // Adjust winding numbers.
-        let mut index = 0;
-        while range.start != self.ranges[index].start {
-            index += 1
-        }
-        loop {
-            self.ranges[index].winding += range.winding;
-            if range.end == self.ranges[index].end {
-                break
-            }
-            index += 1
-        }
-
-        self.merge_adjacent();
-    }
-
-    fn reset(&mut self, start: f32, end: f32) {
-        self.ranges.truncate(1);
-        self.ranges[0] = IntervalRange::new(start, end, 0.0);
-    }
-
-    fn extent(&self) -> f32 {
-        self.ranges.last().unwrap().end
-    }
-
-    fn split_at(&mut self, value: f32) {
-        let (mut low, mut high) = (0, self.ranges.len());
-        loop {
-            let mid = low + (high - low) / 2;
-
-            let IntervalRange {
-                start: old_start,
-                end: old_end,
-                winding,
-            } = self.ranges[mid];
-
-            if value < old_start {
-                high = mid;
-                continue
-            }
-            if value > old_end {
-                low = mid + 1;
-                continue
-            }
-
-            if old_start < value && value < old_end {
-                self.ranges[mid] = IntervalRange::new(old_start, value, winding);
-                self.ranges.insert(mid + 1, IntervalRange::new(value, old_end, winding));
-            }
-            return
-        }
-    }
-
-    fn merge_adjacent(&mut self) {
-        let mut dest_range_index = 0;
-        let mut current_range = self.ranges[0];
-        for src_range_index in 1..self.ranges.len() {
-            if self.ranges[src_range_index].winding == current_range.winding {
-                current_range.end = self.ranges[src_range_index].end
-            } else {
-                self.ranges[dest_range_index] = current_range;
-                dest_range_index += 1;
-                current_range = self.ranges[src_range_index];
-            }
-        }
-        self.ranges[dest_range_index] = current_range;
-        dest_range_index += 1;
-        self.ranges.truncate(dest_range_index);
-    }
-}
-
-impl IntervalRange {
-    fn new(start: f32, end: f32, winding: f32) -> IntervalRange {
-        IntervalRange {
-            start,
-            end,
-            winding,
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.start == self.end
     }
 }
 
@@ -1794,7 +1630,7 @@ impl SolveT for LineAxis {
     fn sample(&self, t: f32) -> f32 {
         lerp(self.from, self.to, t)
     }
-    fn sample_deriv(&self, t: f32) -> f32 {
+    fn sample_deriv(&self, _: f32) -> f32 {
         self.to - self.from
     }
 }
@@ -1877,92 +1713,12 @@ impl<T> SortedVector<T> where T: PartialOrd {
         }
     }
 
-    fn peek(&self) -> Option<&T>   { self.array.last() }
-    fn pop(&mut self) -> Option<T> { self.array.pop() }
-    fn len(&self) -> usize         { self.array.len() }
+    fn peek(&self) -> Option<&T>   { self.array.last()     }
+    fn pop(&mut self) -> Option<T> { self.array.pop()      }
+    fn clear(&mut self)            { self.array.clear()    }
+
+    #[allow(dead_code)]
     fn is_empty(&self) -> bool     { self.array.is_empty() }
-    fn clear(&mut self)            { self.array.clear() }
-}
-
-// Heap
-
-#[derive(Clone, Debug)]
-pub struct Heap<T> {
-    array: Vec<T>,
-}
-
-impl<T> Heap<T> {
-    fn new() -> Heap<T> {
-        Heap { array: vec![] }
-    }
-
-    fn sift_up<C>(&mut self, mut index: usize, mut compare: C) where C: FnMut(&T, &T) -> Ordering {
-        while index != 0 {
-            let parent_index = self.parent_index(index);
-            if compare(&self.array[index], &self.array[parent_index]) == Ordering::Less {
-                self.array.swap(index, parent_index)
-            }
-            index = parent_index;
-        }
-    }
-
-    fn sift_down<C>(&mut self, mut index: usize, mut compare: C)
-                    where C: FnMut(&T, &T) -> Ordering {
-        while self.first_child_index(index) < self.array.len() {
-            let min_child = self.min_child(index, |a, b| compare(a, b));
-            if compare(&self.array[index], &self.array[min_child]) == Ordering::Greater {
-                self.array.swap(index, min_child)
-            }
-            index = min_child;
-        }
-    }
-
-    fn min_child<C>(&mut self, index: usize, mut compare: C) -> usize
-                    where C: FnMut(&T, &T) -> Ordering {
-        let first_child_index = self.first_child_index(index);
-        let last_child_index = self.last_child_index(index);
-        if last_child_index >= self.array.len() ||
-                compare(&self.array[first_child_index],
-                        &self.array[last_child_index]) == Ordering::Less {
-            first_child_index
-        } else {
-            last_child_index
-        }
-    }
-
-    fn parent_index(&self, index: usize)      -> usize { (index - 1) / 2 }
-    fn first_child_index(&self, index: usize) -> usize { index * 2 + 1   }
-    fn last_child_index(&self, index: usize)  -> usize { index * 2 + 2   }
-
-    #[inline(never)]
-    fn push<C>(&mut self, value: T, mut compare: C) where C: FnMut(&T, &T) -> Ordering {
-        let index = self.array.len();
-        self.array.push(value);
-        self.sift_up(index, compare);
-    }
-
-    fn peek_min(&self) -> Option<&T> {
-        self.array.get(0)
-    }
-
-    #[inline(never)]
-    fn shift_min<C>(&mut self, mut compare: C) -> Option<T> where C: FnMut(&T, &T) -> Ordering {
-        if self.array.is_empty() {
-            None
-        } else {
-            let min = self.array.swap_remove(0);
-            self.sift_down(0, compare);
-            Some(min)
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.array.is_empty()
-    }
-
-    fn clear(&mut self) {
-        self.array.clear()
-    }
 }
 
 // Queued endpoints
@@ -1991,24 +1747,6 @@ impl PartialOrd<QueuedEndpoint> for QueuedEndpoint {
         }
     }
 }
-
-/*
-impl Ord for QueuedEndpoint {
-    fn cmp(&self, other: &QueuedEndpoint) -> Ordering {
-        match other.y.partial_cmp(&self.y) {
-            Some(Ordering::Equal) | None => {
-                match other.point_index.contour_index.cmp(&self.point_index.contour_index) {
-                    Ordering::Equal => {
-                        other.point_index.point_index.cmp(&self.point_index.point_index)
-                    }
-                    ordering => ordering,
-                }
-            }
-            Some(ordering) => ordering,
-        }
-    }
-}
-*/
 
 // Active edges
 
@@ -2042,15 +1780,6 @@ fn clamp(x: f32, min: f32, max: f32) -> f32 {
     f32::max(f32::min(x, max), min)
 }
 
-fn intersect_ranges(a: Range<f32>, b: Range<f32>) -> Range<f32> {
-    let (start, end) = (f32::max(a.start, b.start), f32::min(a.end, b.end));
-    if start < end {
-        start..end
-    } else {
-        start..start
-    }
-}
-
 fn t_is_too_close_to_zero_or_one(t: f32) -> bool {
     const EPSILON: f32 = 0.001;
 
@@ -2061,10 +1790,8 @@ fn t_is_too_close_to_zero_or_one(t: f32) -> bool {
 
 #[cfg(test)]
 mod test {
-    use crate::{Heap, IntervalRange, Intervals, SortedVector};
-    use quickcheck::{self, Arbitrary, Gen};
-    use rand::Rng;
-    use std::ops::Range;
+    use crate::SortedVector;
+    use quickcheck;
 
     #[test]
     fn test_sorted_vec() {
@@ -2085,80 +1812,6 @@ mod test {
             assert_eq!(&values, &results);
 
             true
-        }
-    }
-
-    #[test]
-    fn test_heap() {
-        quickcheck::quickcheck(prop_heap as fn(Vec<i32>) -> bool);
-
-        fn prop_heap(mut values: Vec<i32>) -> bool {
-            let mut heap = Heap::new();
-            for &value in &values {
-                heap.push(value, |a, b| a.cmp(&b))
-            }
-
-            values.sort();
-            let mut results = Vec::with_capacity(values.len());
-            while !heap.is_empty() {
-                results.push(heap.shift_min(|a, b| a.cmp(&b)).unwrap());
-            }
-            assert_eq!(&values, &results);
-
-            true
-        }
-    }
-
-    #[test]
-    fn test_intervals() {
-        quickcheck::quickcheck(prop_intervals as fn(Spec) -> bool);
-
-        fn prop_intervals(spec: Spec) -> bool {
-            let mut intervals = Intervals::new(spec.bounds.clone());
-            for range in spec.ranges {
-                intervals.add(range);
-            }
-
-            assert!(intervals.ranges.len() > 0);
-            assert_eq!(intervals.ranges[0].start, spec.bounds.start);
-            assert_eq!(intervals.ranges.last().unwrap().end, spec.bounds.end);
-            for prev_index in 0..(intervals.ranges.len() - 1) {
-                let next_index = prev_index + 1;
-                assert_eq!(intervals.ranges[prev_index].end, intervals.ranges[next_index].start);
-                assert_ne!(intervals.ranges[prev_index].winding,
-                           intervals.ranges[next_index].winding);
-            }
-
-            true
-        }
-
-        #[derive(Clone, Debug)]
-        struct Spec {
-            bounds: Range<f32>,
-            ranges: Vec<IntervalRange>,
-        }
-
-        impl Arbitrary for Spec {
-            fn arbitrary<G>(g: &mut G) -> Spec where G: Gen {
-                const EPSILON: f32 = 0.0001;
-
-                let size = g.size();
-                let start = g.gen_range(EPSILON, size as f32);
-                let end = g.gen_range(start + EPSILON, size as f32);
-
-                let mut ranges = vec![];
-                let range_count = g.gen_range(0, size);
-                for _ in 0..range_count {
-                    let (a, b) = (g.gen_range(start, end), g.gen_range(start, end));
-                    let winding = g.gen_range(-(size as i32), size as i32) as f32;
-                    ranges.push(IntervalRange::new(f32::min(a, b), f32::max(a, b), winding));
-                }
-
-                Spec {
-                    bounds: start..end,
-                    ranges,
-                }
-            }
         }
     }
 }
