@@ -1649,7 +1649,7 @@ impl SolveT for QuadraticAxis {
         lerp(lerp(self.from, self.ctrl, t), lerp(self.ctrl, self.to, t), t)
     }
     fn sample_deriv(&self, t: f32) -> f32 {
-        2.0 * (self.to - 2.0 * self.ctrl + self.from)
+        2.0 * lerp(self.ctrl - self.from, self.to - self.ctrl, t)
     }
 }
 
