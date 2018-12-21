@@ -15,7 +15,7 @@ import OPAQUE_FRAGMENT_SHADER_SOURCE from "./opaque.fs.glsl";
 import STENCIL_VERTEX_SHADER_SOURCE from "./stencil.vs.glsl";
 import STENCIL_FRAGMENT_SHADER_SOURCE from "./stencil.fs.glsl";
 import AREA_LUT from "../resources/textures/area-lut.png";
-import {Matrix2D, Size2D} from "./geometry";
+import {Matrix2D, Size2D, Rect, Point2D} from "./geometry";
 import {SVGPath, TILE_SIZE} from "./tiling";
 import {staticCast, unwrapNull} from "./util";
 
@@ -34,8 +34,8 @@ const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
 ]);
 
 const FILL_INSTANCE_SIZE: number = 20;
-const SOLID_TILE_INSTANCE_SIZE: number = 12;
-const MASK_TILE_INSTANCE_SIZE: number = 16;
+const SOLID_TILE_INSTANCE_SIZE: number = 8;
+const MASK_TILE_INSTANCE_SIZE: number = 12;
 
 interface Color {
     r: number;
@@ -58,10 +58,11 @@ class App {
     private stencilFramebuffer: WebGLFramebuffer;
     private fillProgram: Program<'FramebufferSize' | 'TileSize' | 'AreaLUT',
                                     'TessCoord' | 'From' | 'To' | 'TileIndex'>;
-    private solidTileProgram: Program<'FramebufferSize' | 'TileSize',
+    private solidTileProgram: Program<'FramebufferSize' | 'TileSize' | 'ViewBoxOrigin',
                                    'TessCoord' | 'TileOrigin' | 'Color'>;
     private maskTileProgram:
-        Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize',
+        Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize' |
+                'ViewBoxOrigin',
                 'TessCoord' | 'TileOrigin' | 'Backdrop' | 'Color'>;
     private quadVertexBuffer: WebGLBuffer;
     private fillVertexBuffer: WebGLBuffer;
@@ -70,6 +71,8 @@ class App {
     private solidVertexArray: WebGLVertexArrayObject;
     private maskTileVertexBuffer: WebGLBuffer;
     private maskVertexArray: WebGLVertexArrayObject;
+
+    private viewBox: Rect;
 
     private fillPrimitiveCount: number;
     private solidTileCount: number;
@@ -136,7 +139,8 @@ class App {
                                              'FramebufferSize',
                                              'TileSize',
                                              'StencilTexture',
-                                             'StencilTextureSize'
+                                             'StencilTextureSize',
+                                             'ViewBoxOrigin',
                                          ],
                                          [
                                              'TessCoord',
@@ -150,7 +154,7 @@ class App {
         const solidTileProgram = new Program(gl,
                                              OPAQUE_VERTEX_SHADER_SOURCE,
                                              OPAQUE_FRAGMENT_SHADER_SOURCE,
-                                             ['FramebufferSize', 'TileSize'],
+                                             ['FramebufferSize', 'TileSize', 'ViewBoxOrigin'],
                                              ['TessCoord', 'TileOrigin', 'Color']);
         this.solidTileProgram = solidTileProgram;
 
@@ -224,7 +228,7 @@ class App {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.solidTileVertexBuffer);
         gl.vertexAttribPointer(solidTileProgram.attributes.TileOrigin,
                                2,
-                               gl.FLOAT,
+                               gl.SHORT,
                                false,
                                SOLID_TILE_INSTANCE_SIZE,
                                0);
@@ -234,7 +238,7 @@ class App {
                                gl.UNSIGNED_BYTE,
                                true,
                                SOLID_TILE_INSTANCE_SIZE,
-                               8);
+                               4);
         gl.vertexAttribDivisor(solidTileProgram.attributes.Color, 1);
         gl.enableVertexAttribArray(solidTileProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(solidTileProgram.attributes.TileOrigin);
@@ -254,7 +258,7 @@ class App {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.maskTileVertexBuffer);
         gl.vertexAttribPointer(maskTileProgram.attributes.TileOrigin,
                                2,
-                               gl.FLOAT,
+                               gl.SHORT,
                                false,
                                MASK_TILE_INSTANCE_SIZE,
                                0);
@@ -264,19 +268,21 @@ class App {
                                gl.FLOAT,
                                false,
                                MASK_TILE_INSTANCE_SIZE,
-                               8);
+                               4);
         gl.vertexAttribDivisor(maskTileProgram.attributes.Backdrop, 1);
         gl.vertexAttribPointer(maskTileProgram.attributes.Color,
                                4,
                                gl.UNSIGNED_BYTE,
                                true,
                                MASK_TILE_INSTANCE_SIZE,
-                               12);
+                               8);
         gl.vertexAttribDivisor(maskTileProgram.attributes.Color, 1);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TileOrigin);
         gl.enableVertexAttribArray(maskTileProgram.attributes.Backdrop);
         gl.enableVertexAttribArray(maskTileProgram.attributes.Color);
+
+        this.viewBox = new Rect(new Point2D(0.0, 0.0), new Size2D(0.0, 0.0));
 
         // Set up event handlers.
         this.canvas.addEventListener('click', event => this.onClick(event), false);
@@ -288,6 +294,8 @@ class App {
 
     redraw(): void {
         const gl = this.gl, canvas = this.canvas;
+
+        console.log("viewBox", this.viewBox);
 
         // Start timer.
         let timerQuery = null;
@@ -333,6 +341,9 @@ class App {
                      framebufferSize.width,
                      framebufferSize.height);
         gl.uniform2f(this.solidTileProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
+        gl.uniform2f(this.solidTileProgram.uniforms.ViewBoxOrigin,
+                     this.viewBox.origin.x,
+                     this.viewBox.origin.y);
         gl.disable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.solidTileCount);
 
@@ -349,6 +360,9 @@ class App {
         gl.uniform2f(this.maskTileProgram.uniforms.StencilTextureSize,
                      STENCIL_FRAMEBUFFER_SIZE.width,
                      STENCIL_FRAMEBUFFER_SIZE.height);
+        gl.uniform2f(this.maskTileProgram.uniforms.ViewBoxOrigin,
+                     this.viewBox.origin.x,
+                     this.viewBox.origin.y);
         gl.blendEquation(gl.FUNC_ADD);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.enable(gl.BLEND);
@@ -402,11 +416,20 @@ class App {
             const arrayBuffer = staticCast(reader.result, ArrayBuffer);
             const root = new RIFFChunk(new DataView(arrayBuffer));
             for (const subchunk of root.subchunks()) {
+                const id = subchunk.stringID();
+                if (id === 'head') {
+                    const headerData = subchunk.contents();
+                    this.viewBox = new Rect(new Point2D(headerData.getFloat32(0, true),
+                                                        headerData.getFloat32(4, true)),
+                                            new Size2D(headerData.getFloat32(8, true),
+                                                       headerData.getFloat32(12, true)));
+                    continue;
+                }
+
                 let bindPoint, buffer;
                 let countFieldName: 'fillPrimitiveCount' | 'totalTileCount' | 'solidTileCount' |
                     'maskTileCount';
                 let instanceSize;
-                const id = subchunk.stringID();
                 switch (id) {
                 case 'fill':
                     bindPoint = gl.ARRAY_BUFFER;

@@ -14,6 +14,7 @@ precision highp float;
 
 uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
+uniform vec2 uViewBoxOrigin;
 
 in vec2 aTessCoord;
 in vec2 aTileOrigin;
@@ -22,7 +23,7 @@ in vec4 aColor;
 out vec4 vColor;
 
 void main() {
-    vec2 position = aTileOrigin + uTileSize * aTessCoord;
+    vec2 position = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
     vColor = aColor;
     gl_Position = vec4((position / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0);
 }

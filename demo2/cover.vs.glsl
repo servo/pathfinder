@@ -15,6 +15,7 @@ precision highp float;
 uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
 uniform vec2 uStencilTextureSize;
+uniform vec2 uViewBoxOrigin;
 
 in vec2 aTessCoord;
 in vec2 aTileOrigin;
@@ -33,7 +34,7 @@ vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
 
 void main() {
     uint tileIndex = uint(gl_InstanceID);
-    vec2 position = aTileOrigin + uTileSize * aTessCoord;
+    vec2 position = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
     vec2 texCoord = computeTileOffset(tileIndex, uStencilTextureSize.x) + aTessCoord * uTileSize;
     vTexCoord = texCoord / uStencilTextureSize;
     vBackdrop = aBackdrop;

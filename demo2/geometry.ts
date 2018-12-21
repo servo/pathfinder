@@ -54,9 +54,15 @@ export class Point2D {
     }
 }
 
-export interface Size2D {
+export class Size2D {
     width: number;
     height: number;
+
+    constructor(width: number, height: number) {
+        this.width = width;
+        this.height = height;
+        Object.freeze(this);
+    }
 }
 
 export class Rect {

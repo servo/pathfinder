@@ -74,7 +74,7 @@ fn main() {
     println!("Scene bounds: {:?}", scene.bounds);
 
     let start_time = Instant::now();
-    let mut built_scene = BuiltScene::new();
+    let mut built_scene = BuiltScene::new(&scene.view_box);
     for _ in 0..runs {
         built_scene = scene.build();
     }
@@ -111,7 +111,7 @@ struct Scene {
     objects: Vec<PathObject>,
     styles: Vec<ComputedStyle>,
     bounds: Rect<f32>,
-    view_box: Option<Rect<f32>>,
+    view_box: Rect<f32>,
 }
 
 #[derive(Debug)]
@@ -154,7 +154,7 @@ struct StyleId(u32);
 
 impl Scene {
     fn new() -> Scene {
-        Scene { objects: vec![], styles: vec![], bounds: Rect::zero(), view_box: None }
+        Scene { objects: vec![], styles: vec![], bounds: Rect::zero(), view_box: Rect::zero() }
     }
 
     fn from_path(path: &Path) -> Scene {
@@ -213,7 +213,7 @@ impl Scene {
                                                                   elements.next().unwrap()),
                                                      Size2D::new(elements.next().unwrap(),
                                                                  elements.next().unwrap()));
-                            scene.view_box = Some(global_transform.transform_rect(&view_box));
+                            scene.view_box = global_transform.transform_rect(&view_box);
                         }
                     }
                 }
@@ -311,7 +311,7 @@ impl Scene {
     }
 
     fn build(&self) -> BuiltScene {
-        let mut built_scene = BuiltScene::new();
+        let mut built_scene = BuiltScene::new(&self.view_box);
         for object in &self.objects {
             let mut tiler = Tiler::from_outline(&object.outline,
                                                 object.color,
@@ -935,7 +935,7 @@ struct Tiler<'o, 'p> {
     fill_color: ColorU,
     built_scene: &'p mut BuiltScene,
 
-    view_box: Option<Rect<f32>>,
+    view_box: Rect<f32>,
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
@@ -948,7 +948,7 @@ struct Tiler<'o, 'p> {
 impl<'o, 'p> Tiler<'o, 'p> {
     fn from_outline(outline: &'o Outline,
                     fill_color: ColorU,
-                    view_box: &Option<Rect<f32>>,
+                    view_box: &Rect<f32>,
                     built_scene: &'p mut BuiltScene)
                     -> Tiler<'o, 'p> {
         Tiler {
@@ -974,13 +974,11 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
         // Clip to the view box.
         let mut bounds = self.outline.bounds;
-        if let Some(view_box) = self.view_box {
-            let max_x = f32::min(view_box.max_x(), bounds.max_x());
-            let max_y = f32::min(view_box.max_y(), bounds.max_y());
-            bounds.origin.x = f32::max(view_box.origin.x, bounds.origin.x);
-            bounds.size.width = f32::max(0.0, max_x - bounds.origin.x);
-            bounds.size.height = f32::max(0.0, max_y - bounds.origin.y);
-        }
+        let max_x = f32::min(self.view_box.max_x(), bounds.max_x());
+        let max_y = f32::min(self.view_box.max_y(), bounds.max_y());
+        bounds.origin.x = f32::max(self.view_box.origin.x, bounds.origin.x);
+        bounds.size.width = f32::max(0.0, max_x - bounds.origin.x);
+        bounds.size.height = f32::max(0.0, max_y - bounds.origin.y);
 
         self.active_edges.clear();
 
@@ -991,11 +989,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
         let tiles_across = ((strip_right_extent - strip_origin.x) / TILE_WIDTH) as usize;
 
-        let view_box_origin_y = match self.view_box {
-            Some(view_box) => view_box.origin.y,
-            None => 0.0,
-        };
-        let mut tile_index_y = (f32::floor(view_box_origin_y / TILE_HEIGHT) * TILE_HEIGHT) as i16;
+        let mut tile_index_y = (f32::floor(self.view_box.origin.y / TILE_HEIGHT) * TILE_HEIGHT)
+            as i16;
 
         self.strip_tiles.clear();
         self.strip_tiles.reserve(tiles_across);
@@ -1124,6 +1119,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
         let contour = &outline.contours[point_index.contour_index];
 
+        // TODO(pcwalton): Could use a bitset of processed edges…
         let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point_index);
         let next_endpoint_index = contour.next_endpoint_index_of(point_index.point_index);
         if contour.point_is_logically_above(point_index.point_index, prev_endpoint_index) {
@@ -1166,7 +1162,6 @@ impl<'o, 'p> Tiler<'o, 'p> {
     #[inline(never)]
     fn flush_tiles(&mut self, tile_index_y: i16) {
         // Flush tiles.
-        let first_tile_index = self.built_scene.mask_tiles.len() as u32;
         for (tile_index_x, tile) in self.strip_tiles.iter().enumerate() {
             if self.used_strip_tiles.contains(tile_index_x) {
                 self.built_scene.mask_tiles.push(*tile);
@@ -1286,6 +1281,7 @@ fn process_active_edge(active_edge: &mut Segment,
 
 #[derive(Debug)]
 struct BuiltScene {
+    view_box: Rect<f32>,
     fills: Vec<FillPrimitive>,
     solid_tiles: Vec<SolidTilePrimitive>,
     mask_tiles: Vec<MaskTilePrimitive>,
@@ -1322,22 +1318,31 @@ struct ColorU {
 }
 
 impl BuiltScene {
-    fn new() -> BuiltScene {
-        BuiltScene { fills: vec![], solid_tiles: vec![], mask_tiles: vec![] }
+    fn new(view_box: &Rect<f32>) -> BuiltScene {
+        BuiltScene { view_box: *view_box, fills: vec![], solid_tiles: vec![], mask_tiles: vec![] }
     }
 
     fn write<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
         writer.write_all(b"RIFF")?;
 
+        let header_size = 4 * 4;
         let fill_size = self.fills.len() * mem::size_of::<FillPrimitive>();
         let solid_tiles_size = self.solid_tiles.len() * mem::size_of::<SolidTilePrimitive>();
         let mask_tiles_size = self.mask_tiles.len() * mem::size_of::<MaskTilePrimitive>();
         writer.write_u32::<LittleEndian>((4 +
+                                          8 + header_size +
                                           8 + fill_size +
                                           8 + solid_tiles_size +
                                           8 + mask_tiles_size) as u32)?;
 
         writer.write_all(b"PF3S")?;
+
+        writer.write_all(b"head")?;
+        writer.write_u32::<LittleEndian>(header_size as u32)?;
+        writer.write_f32::<LittleEndian>(self.view_box.origin.x)?;
+        writer.write_f32::<LittleEndian>(self.view_box.origin.y)?;
+        writer.write_f32::<LittleEndian>(self.view_box.size.width)?;
+        writer.write_f32::<LittleEndian>(self.view_box.size.height)?;
 
         writer.write_all(b"fill")?;
         writer.write_u32::<LittleEndian>(fill_size as u32)?;
