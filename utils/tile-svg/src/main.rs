@@ -939,6 +939,10 @@ struct Tiler<'o, 'p> {
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
+    strip_fills: Vec<FillPrimitive>,
+    strip_tiles: Vec<MaskTilePrimitive>,
+    used_strip_tiles: FixedBitSet,
+    old_active_edges: Vec<ActiveEdge>,
 }
 
 impl<'o, 'p> Tiler<'o, 'p> {
@@ -956,6 +960,10 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
+            strip_fills: vec![],
+            strip_tiles: vec![],
+            used_strip_tiles: FixedBitSet::with_capacity(1),
+            old_active_edges: vec![],
         }
     }
 
@@ -989,185 +997,198 @@ impl<'o, 'p> Tiler<'o, 'p> {
         };
         let mut tile_index_y = (f32::floor(view_box_origin_y / TILE_HEIGHT) * TILE_HEIGHT) as i16;
 
-        let mut strip_fills = vec![];
-        let mut strip_tiles = Vec::with_capacity(tiles_across);
-        let mut used_strip_tiles = FixedBitSet::with_capacity(tiles_across);
-
-        let mut old_active_edges = vec![];
+        self.strip_tiles.clear();
+        self.strip_tiles.reserve(tiles_across);
+        self.used_strip_tiles.grow(tiles_across);
+        self.old_active_edges.clear();
 
         // Generate strips.
         while strip_origin.y < bounds.max_y() {
             // Determine strip bounds.
             let strip_extent = Point2D::new(strip_right_extent, strip_origin.y + TILE_HEIGHT);
             let strip_bounds = Rect::new(strip_origin,
-                                         Size2D::new(strip_right_extent - strip_origin.x,
-                                                     strip_extent.y - strip_origin.y));
+                                            Size2D::new(strip_right_extent - strip_origin.x,
+                                                        strip_extent.y - strip_origin.y));
 
-            // We can skip a bunch of steps if we're above the viewport.
-            let above_view_box = tile_index_y < 0;
-
-            // Reset strip info.
-            strip_fills.clear();
-            strip_tiles.clear();
-            used_strip_tiles.clear();
-
-            // Allocate tiles.
-            for tile_index_x in 0..tiles_across {
-                strip_tiles.push(MaskTilePrimitive::new(tile_index_x as i16,
-                                                        tile_index_y,
-                                                        self.fill_color));
-            }
-
-            // Process old active edges.
-            let (mut tile_index_x, mut current_left) = (0, strip_bounds.origin.x);
-            let mut winding = 0;
-            mem::swap(&mut old_active_edges, &mut self.active_edges.array);
-            for mut active_edge in old_active_edges.drain(..) {
-                // Move over to the correct tile, filling in as we go.
-                let mut tile_left = strip_bounds.origin.x + (tile_index_x as f32) * TILE_WIDTH;
-                while tile_index_x < strip_tiles.len() {
-                    let tile_right = tile_left + TILE_WIDTH;
-
-                    let segment_left = active_edge.segment.min_x();
-                    if tile_left > segment_left {
-                        break
-                    }
-
-                    strip_tiles[tile_index_x].backdrop = winding as f32;
-                    current_left = tile_right;
-                    tile_left = tile_right;
-                    tile_index_x += 1;
-                }
-
-                // Do subtile fill.
-                let min_x = active_edge.segment.min_x();
-                let edge_winding = active_edge.segment.winding();
-                if current_left < min_x && tile_index_x < strip_tiles.len() {
-                    let left = Point2D::new(current_left - tile_left, 0.0);
-                    let right = Point2D::new(current_left - min_x, 0.0);
-                    strip_fills.push(FillPrimitive {
-                        from:       if edge_winding < 0 { left } else { right },
-                        to:         if edge_winding < 0 { right } else { left },
-                        tile_index: tile_index_x as u32,
-                    });
-                    used_strip_tiles.insert(tile_index_x);
-                    current_left = right.x;
-                }
-
-                // Update winding.
-                winding += edge_winding;
-
-                // Process the edge.
-                let fills = if above_view_box { None } else { Some(&mut strip_fills) };
-                process_active_edge(&mut active_edge.segment,
-                                    &strip_bounds,
-                                    fills,
-                                    &mut used_strip_tiles);
-
-                if !active_edge.segment.is_none() {
-                    self.active_edges.push(active_edge);
-                }
-            }
-
-            /*
-            // Sort point queue.
-            self.point_queue.sort_unstable_by(|this, other| {
-                match other.y.partial_cmp(&this.y) {
-                    Some(Ordering::Equal) | None => {
-                        match other.point_index.contour_index.cmp(&this.point_index
-                                                                       .contour_index) {
-                            Ordering::Equal => {
-                                other.point_index.point_index.cmp(&this.point_index.point_index)
-                            }
-                            ordering => ordering,
-                        }
-                    }
-                    Some(ordering) => ordering,
-                }
-            });
-            */
-
-            // Add new active edges.
-            loop {
-                match self.point_queue.peek() {
-                    Some(queued_endpoint) if queued_endpoint.y < strip_extent.y => {}
-                    Some(_) | None => break,
-                }
-
-                let outline = &self.outline;
-                let point_index = self.point_queue.pop().unwrap().point_index;
-
-                let contour = &outline.contours[point_index.contour_index];
-
-                let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point_index);
-                let next_endpoint_index = contour.next_endpoint_index_of(point_index.point_index);
-                if contour.point_is_logically_above(point_index.point_index, prev_endpoint_index) {
-                    let fills = if above_view_box { None } else { Some(&mut strip_fills) };
-                    process_active_segment(contour,
-                                           prev_endpoint_index,
-                                           &mut self.active_edges,
-                                           &strip_bounds,
-                                           fills,
-                                           &mut used_strip_tiles);
-
-                    self.point_queue.push(QueuedEndpoint {
-                        point_index: PointIndex {
-                            contour_index: point_index.contour_index,
-                            point_index: prev_endpoint_index,
-                        },
-                        y: contour.points[prev_endpoint_index].y,
-                    });
-                }
-
-                if contour.point_is_logically_above(point_index.point_index, next_endpoint_index) {
-                    let fills = if above_view_box { None } else { Some(&mut strip_fills) };
-                    process_active_segment(contour,
-                                           point_index.point_index,
-                                           &mut self.active_edges,
-                                           &strip_bounds,
-                                           fills,
-                                           &mut used_strip_tiles);
-
-                    self.point_queue.push(QueuedEndpoint {
-                        point_index: PointIndex {
-                            contour_index: point_index.contour_index,
-                            point_index: next_endpoint_index,
-                        },
-                        y: contour.points[next_endpoint_index].y,
-                    });
-                }
-            }
-
-            // Finalize tiles.
-            if !above_view_box {
-                // Flush tiles.
-                let first_tile_index = self.built_scene.mask_tiles.len() as u32;
-                for (tile_index_x, tile) in strip_tiles.iter().enumerate() {
-                    if used_strip_tiles.contains(tile_index_x) {
-                        self.built_scene.mask_tiles.push(*tile);
-                    } else if tile.backdrop != 0.0 {
-                        let primitive =
-                            SolidTilePrimitive::new(tile_index_x as i16, tile_index_y, tile.color);
-                        self.built_scene.solid_tiles.push(primitive);
-                    }
-                }
-
-                // Flush fills.
-                //
-                // TODO(pcwalton): Don't use a temporary vector to hold these.
-                for fill in &strip_fills {
-                    let real_tile_index = first_tile_index +
-                        used_strip_tiles.count_ones(0..(fill.tile_index as usize)) as u32;
-                    self.built_scene.fills.push(FillPrimitive {
-                        from: fill.from,
-                        to: fill.to,
-                        tile_index: real_tile_index,
-                    });
-                }
-            }
+            // Generate strip.
+            self.generate_strip(&strip_bounds, tile_index_y, tiles_across);
 
             strip_origin.y = strip_extent.y;
             tile_index_y += 1;
+        }
+    }
+
+    #[inline(never)]
+    fn generate_strip(&mut self,
+                      strip_bounds: &Rect<f32>,
+                      tile_index_y: i16,
+                      tiles_across: usize) {
+        // We can skip a bunch of steps if we're above the viewport.
+        let above_view_box = tile_index_y < 0;
+
+        // Reset strip info.
+        self.strip_fills.clear();
+        self.strip_tiles.clear();
+        self.used_strip_tiles.clear();
+
+        // Allocate tiles.
+        for tile_index_x in 0..tiles_across {
+            self.strip_tiles
+                .push(MaskTilePrimitive::new(tile_index_x as i16, tile_index_y, self.fill_color));
+        }
+
+        // Process old active edges.
+        self.process_old_active_edges(strip_bounds, tile_index_y);
+
+        // Add new active edges.
+        loop {
+            match self.point_queue.peek() {
+                Some(queued_endpoint) if queued_endpoint.y < strip_bounds.max_y() => {}
+                Some(_) | None => break,
+            }
+
+            self.add_new_active_edge(strip_bounds, tile_index_y);
+        }
+
+        // Finalize tiles.
+        if !above_view_box {
+            // NB: This order must not be changed!
+            self.flush_fills();
+            self.flush_tiles(tile_index_y);
+        }
+    }
+
+    #[inline(never)]
+    fn process_old_active_edges(&mut self, strip_bounds: &Rect<f32>, tile_index_y: i16) {
+        // We can skip a bunch of steps if we're above the viewport.
+        let above_view_box = tile_index_y < 0;
+
+        let (mut tile_index_x, mut current_left) = (0, strip_bounds.origin.x);
+        let mut winding = 0;
+        mem::swap(&mut self.old_active_edges, &mut self.active_edges.array);
+        for mut active_edge in self.old_active_edges.drain(..) {
+            // Move over to the correct tile, filling in as we go.
+            let mut tile_left = strip_bounds.origin.x + (tile_index_x as f32) * TILE_WIDTH;
+            while tile_index_x < self.strip_tiles.len() {
+                let tile_right = tile_left + TILE_WIDTH;
+
+                let segment_left = active_edge.segment.min_x();
+                if tile_left > segment_left {
+                    break
+                }
+
+                self.strip_tiles[tile_index_x].backdrop = winding as f32;
+                current_left = tile_right;
+                tile_left = tile_right;
+                tile_index_x += 1;
+            }
+
+            // Do subtile fill.
+            let min_x = active_edge.segment.min_x();
+            let edge_winding = active_edge.segment.winding();
+            if current_left < min_x && tile_index_x < self.strip_tiles.len() {
+                let left = Point2D::new(current_left - tile_left, 0.0);
+                let right = Point2D::new(current_left - min_x, 0.0);
+                self.strip_fills.push(FillPrimitive {
+                    from:       if edge_winding < 0 { left } else { right },
+                    to:         if edge_winding < 0 { right } else { left },
+                    tile_index: tile_index_x as u32,
+                });
+                self.used_strip_tiles.insert(tile_index_x);
+                current_left = right.x;
+            }
+
+            // Update winding.
+            winding += edge_winding;
+
+            // Process the edge.
+            let fills = if above_view_box { None } else { Some(&mut self.strip_fills) };
+            process_active_edge(&mut active_edge.segment,
+                                &strip_bounds,
+                                fills,
+                                &mut self.used_strip_tiles);
+
+            if !active_edge.segment.is_none() {
+                self.active_edges.push(active_edge);
+            }
+        }
+    }
+
+    #[inline(never)]
+    fn add_new_active_edge(&mut self, strip_bounds: &Rect<f32>, tile_index_y: i16) {
+        // We can skip a bunch of steps if we're above the viewport.
+        let above_view_box = tile_index_y < 0;
+
+        let outline = &self.outline;
+        let point_index = self.point_queue.pop().unwrap().point_index;
+
+        let contour = &outline.contours[point_index.contour_index];
+
+        let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point_index);
+        let next_endpoint_index = contour.next_endpoint_index_of(point_index.point_index);
+        if contour.point_is_logically_above(point_index.point_index, prev_endpoint_index) {
+            let fills = if above_view_box { None } else { Some(&mut self.strip_fills) };
+            process_active_segment(contour,
+                                    prev_endpoint_index,
+                                    &mut self.active_edges,
+                                    &strip_bounds,
+                                    fills,
+                                    &mut self.used_strip_tiles);
+
+            self.point_queue.push(QueuedEndpoint {
+                point_index: PointIndex {
+                    contour_index: point_index.contour_index,
+                    point_index: prev_endpoint_index,
+                },
+                y: contour.points[prev_endpoint_index].y,
+            });
+        }
+
+        if contour.point_is_logically_above(point_index.point_index, next_endpoint_index) {
+            let fills = if above_view_box { None } else { Some(&mut self.strip_fills) };
+            process_active_segment(contour,
+                                    point_index.point_index,
+                                    &mut self.active_edges,
+                                    &strip_bounds,
+                                    fills,
+                                    &mut self.used_strip_tiles);
+
+            self.point_queue.push(QueuedEndpoint {
+                point_index: PointIndex {
+                    contour_index: point_index.contour_index,
+                    point_index: next_endpoint_index,
+                },
+                y: contour.points[next_endpoint_index].y,
+            });
+        }
+    }
+
+    #[inline(never)]
+    fn flush_tiles(&mut self, tile_index_y: i16) {
+        // Flush tiles.
+        let first_tile_index = self.built_scene.mask_tiles.len() as u32;
+        for (tile_index_x, tile) in self.strip_tiles.iter().enumerate() {
+            if self.used_strip_tiles.contains(tile_index_x) {
+                self.built_scene.mask_tiles.push(*tile);
+            } else if tile.backdrop != 0.0 {
+                let primitive =
+                    SolidTilePrimitive::new(tile_index_x as i16, tile_index_y, tile.color);
+                self.built_scene.solid_tiles.push(primitive);
+            }
+        }
+    }
+
+    #[inline(never)]
+    fn flush_fills(&mut self) {
+        let first_tile_index = self.built_scene.mask_tiles.len() as u32;
+        for fill in &self.strip_fills {
+            let real_tile_index = first_tile_index +
+                self.used_strip_tiles.count_ones(0..(fill.tile_index as usize)) as u32;
+            self.built_scene.fills.push(FillPrimitive {
+                from: fill.from,
+                to: fill.to,
+                tile_index: real_tile_index,
+            });
         }
     }
 
