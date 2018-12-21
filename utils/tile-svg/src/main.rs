@@ -1024,7 +1024,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
         let mut strip_tiles = Vec::with_capacity(tiles_across);
         let mut used_strip_tiles = FixedBitSet::with_capacity(tiles_across);
 
-        let mut new_active_edges = SortedVector::new();
+        let mut old_active_edges = vec![];
 
         // Generate strips.
         while strip_origin.y < bounds.max_y() {
@@ -1056,8 +1056,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
             // Process old active edges.
             let (mut strip_tile_index, mut current_left) = (0, strip_bounds.origin.x);
             let mut winding = 0;
-            debug_assert!(new_active_edges.is_empty());
-            while let Some(mut active_edge) = self.active_edges.pop() {
+            mem::swap(&mut old_active_edges, &mut self.active_edges.array);
+            for mut active_edge in old_active_edges.drain(..) {
                 // Move over to the correct tile, filling in as we go.
                 // FIXME(pcwalton): Do subtile fills!!
                 let mut tile_left = strip_bounds.origin.x + (strip_tile_index as f32) * TILE_WIDTH;
@@ -1101,10 +1101,9 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                     &mut used_strip_tiles);
 
                 if !active_edge.segment.is_none() {
-                    new_active_edges.push(active_edge);
+                    self.active_edges.push(active_edge);
                 }
             }
-            mem::swap(&mut self.active_edges, &mut new_active_edges);
 
             /*
             // Sort point queue.
