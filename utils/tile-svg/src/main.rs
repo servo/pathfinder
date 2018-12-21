@@ -983,6 +983,12 @@ impl<'o, 'p> Tiler<'o, 'p> {
 
         let tiles_across = ((strip_right_extent - strip_origin.x) / TILE_WIDTH) as usize;
 
+        let view_box_origin_y = match self.view_box {
+            Some(view_box) => view_box.origin.y,
+            None => 0.0,
+        };
+        let mut tile_index_y = (f32::floor(view_box_origin_y / TILE_HEIGHT) * TILE_HEIGHT) as i16;
+
         let mut strip_fills = vec![];
         let mut strip_tiles = Vec::with_capacity(tiles_across);
         let mut used_strip_tiles = FixedBitSet::with_capacity(tiles_across);
@@ -998,10 +1004,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
                                                      strip_extent.y - strip_origin.y));
 
             // We can skip a bunch of steps if we're above the viewport.
-            let above_view_box = match self.view_box {
-                Some(ref view_box) => strip_extent.y <= view_box.origin.y,
-                None => false,
-            };
+            let above_view_box = tile_index_y < 0;
 
             // Reset strip info.
             strip_fills.clear();
@@ -1009,21 +1012,20 @@ impl<'o, 'p> Tiler<'o, 'p> {
             used_strip_tiles.clear();
 
             // Allocate tiles.
-            let mut tile_left = strip_origin.x;
-            while tile_left < strip_right_extent {
-                let strip_origin = Point2D::new(tile_left, strip_origin.y);
-                strip_tiles.push(MaskTilePrimitive::new(&strip_origin, self.fill_color));
-                tile_left += TILE_WIDTH;
+            for tile_index_x in 0..tiles_across {
+                strip_tiles.push(MaskTilePrimitive::new(tile_index_x as i16,
+                                                        tile_index_y,
+                                                        self.fill_color));
             }
 
             // Process old active edges.
-            let (mut strip_tile_index, mut current_left) = (0, strip_bounds.origin.x);
+            let (mut tile_index_x, mut current_left) = (0, strip_bounds.origin.x);
             let mut winding = 0;
             mem::swap(&mut old_active_edges, &mut self.active_edges.array);
             for mut active_edge in old_active_edges.drain(..) {
                 // Move over to the correct tile, filling in as we go.
-                let mut tile_left = strip_bounds.origin.x + (strip_tile_index as f32) * TILE_WIDTH;
-                while strip_tile_index < strip_tiles.len() {
+                let mut tile_left = strip_bounds.origin.x + (tile_index_x as f32) * TILE_WIDTH;
+                while tile_index_x < strip_tiles.len() {
                     let tile_right = tile_left + TILE_WIDTH;
 
                     let segment_left = active_edge.segment.min_x();
@@ -1031,24 +1033,24 @@ impl<'o, 'p> Tiler<'o, 'p> {
                         break
                     }
 
-                    strip_tiles[strip_tile_index].backdrop = winding as f32;
+                    strip_tiles[tile_index_x].backdrop = winding as f32;
                     current_left = tile_right;
                     tile_left = tile_right;
-                    strip_tile_index += 1;
+                    tile_index_x += 1;
                 }
 
                 // Do subtile fill.
                 let min_x = active_edge.segment.min_x();
                 let edge_winding = active_edge.segment.winding();
-                if current_left < min_x && strip_tile_index < strip_tiles.len() {
+                if current_left < min_x && tile_index_x < strip_tiles.len() {
                     let left = Point2D::new(current_left - tile_left, 0.0);
                     let right = Point2D::new(current_left - min_x, 0.0);
                     strip_fills.push(FillPrimitive {
                         from:       if edge_winding < 0 { left } else { right },
                         to:         if edge_winding < 0 { right } else { left },
-                        tile_index: strip_tile_index as u32,
+                        tile_index: tile_index_x as u32,
                     });
-                    used_strip_tiles.insert(strip_tile_index);
+                    used_strip_tiles.insert(tile_index_x);
                     current_left = right.x;
                 }
 
@@ -1140,13 +1142,13 @@ impl<'o, 'p> Tiler<'o, 'p> {
             if !above_view_box {
                 // Flush tiles.
                 let first_tile_index = self.built_scene.mask_tiles.len() as u32;
-                for (tile_index, tile) in strip_tiles.iter().enumerate() {
-                    if used_strip_tiles.contains(tile_index) {
+                for (tile_index_x, tile) in strip_tiles.iter().enumerate() {
+                    if used_strip_tiles.contains(tile_index_x) {
                         self.built_scene.mask_tiles.push(*tile);
                     } else if tile.backdrop != 0.0 {
-                        self.built_scene
-                            .solid_tiles
-                            .push(SolidTilePrimitive::new(&tile.position, tile.color));
+                        let primitive =
+                            SolidTilePrimitive::new(tile_index_x as i16, tile_index_y, tile.color);
+                        self.built_scene.solid_tiles.push(primitive);
                     }
                 }
 
@@ -1164,8 +1166,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 }
             }
 
-            // Sort point queue.
             strip_origin.y = strip_extent.y;
+            tile_index_y += 1;
         }
     }
 
@@ -1277,13 +1279,15 @@ struct FillPrimitive {
 
 #[derive(Clone, Copy, Debug)]
 struct SolidTilePrimitive {
-    position: Point2D<f32>,
+    tile_x: i16,
+    tile_y: i16,
     color: ColorU,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct MaskTilePrimitive {
-    position: Point2D<f32>,
+    tile_x: i16,
+    tile_y: i16,
     color: ColorU,
     backdrop: f32,
 }
@@ -1326,7 +1330,8 @@ impl BuiltScene {
         writer.write_u32::<LittleEndian>(solid_tiles_size as u32)?;
         for &tile_primitive in &self.solid_tiles {
             let color = tile_primitive.color;
-            write_point(writer, &tile_primitive.position)?;
+            writer.write_i16::<LittleEndian>(tile_primitive.tile_x)?;
+            writer.write_i16::<LittleEndian>(tile_primitive.tile_y)?;
             writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
         }
 
@@ -1334,7 +1339,8 @@ impl BuiltScene {
         writer.write_u32::<LittleEndian>(mask_tiles_size as u32)?;
         for &tile_primitive in &self.mask_tiles {
             let color = tile_primitive.color;
-            write_point(writer, &tile_primitive.position)?;
+            writer.write_i16::<LittleEndian>(tile_primitive.tile_x)?;
+            writer.write_i16::<LittleEndian>(tile_primitive.tile_y)?;
             writer.write_f32::<LittleEndian>(tile_primitive.backdrop)?;
             writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
         }
@@ -1350,14 +1356,14 @@ impl BuiltScene {
 }
 
 impl SolidTilePrimitive {
-    fn new(position: &Point2D<f32>, color: ColorU) -> SolidTilePrimitive {
-        SolidTilePrimitive { position: *position, color }
+    fn new(tile_x: i16, tile_y: i16, color: ColorU) -> SolidTilePrimitive {
+        SolidTilePrimitive { tile_x, tile_y, color }
     }
 }
 
 impl MaskTilePrimitive {
-    fn new(position: &Point2D<f32>, color: ColorU) -> MaskTilePrimitive {
-        MaskTilePrimitive { position: *position, backdrop: 0.0, color }
+    fn new(tile_x: i16, tile_y: i16, color: ColorU) -> MaskTilePrimitive {
+        MaskTilePrimitive { tile_x, tile_y, backdrop: 0.0, color }
     }
 }
 
