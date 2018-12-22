@@ -477,6 +477,14 @@ impl Contour {
         self.points.is_empty()
     }
 
+    fn len(&self) -> u32 {
+        self.points.len() as u32
+    }
+
+    fn position_of(&self, index: u32) -> Point2D<f32> {
+        self.points[index as usize]
+    }
+
     fn push_transformed_point(&mut self,
                               point: &Point2D<f32>,
                               flags: PointFlags,
@@ -495,42 +503,42 @@ impl Contour {
         }
     }
 
-    fn segment_after(&self, point_index: usize) -> Segment {
+    fn segment_after(&self, point_index: u32) -> Segment {
         debug_assert!(self.point_is_endpoint(point_index));
 
         let mut segment = Segment::new();
-        segment.from = self.points[point_index];
+        segment.from = self.position_of(point_index);
         segment.flags |= SegmentFlags::HAS_ENDPOINTS;
 
         let point1_index = self.add_to_point_index(point_index, 1);
         if self.point_is_endpoint(point1_index) {
-            segment.to = self.points[point1_index];
+            segment.to = self.position_of(point1_index);
         } else {
-            segment.ctrl0 = self.points[point1_index];
+            segment.ctrl0 = self.position_of(point1_index);
             segment.flags |= SegmentFlags::HAS_CONTROL_POINT_0;
 
             let point2_index = self.add_to_point_index(point_index, 2);
             if self.point_is_endpoint(point2_index) {
-                segment.to = self.points[point2_index];
+                segment.to = self.position_of(point2_index);
             } else {
-                segment.ctrl1 = self.points[point2_index];
+                segment.ctrl1 = self.position_of(point2_index);
                 segment.flags |= SegmentFlags::HAS_CONTROL_POINT_1;
 
                 let point3_index = self.add_to_point_index(point_index, 3);
-                segment.to = self.points[point3_index];
+                segment.to = self.position_of(point3_index);
             }
         }
 
         segment
     }
 
-    fn point_is_endpoint(&self, point_index: usize) -> bool {
-        !self.flags[point_index].intersects(PointFlags::CONTROL_POINT_0 |
-                                            PointFlags::CONTROL_POINT_1)
+    fn point_is_endpoint(&self, point_index: u32) -> bool {
+        !self.flags[point_index as usize].intersects(PointFlags::CONTROL_POINT_0 |
+                                                     PointFlags::CONTROL_POINT_1)
     }
 
-    fn add_to_point_index(&self, point_index: usize, addend: usize) -> usize {
-        let (index, limit) = (point_index + addend, self.points.len());
+    fn add_to_point_index(&self, point_index: u32, addend: u32) -> u32 {
+        let (index, limit) = (point_index + addend, self.len());
         if index >= limit {
             index - limit
         } else {
@@ -538,16 +546,12 @@ impl Contour {
         }
     }
 
-    fn point_is_logically_above(&self, a: usize, b: usize) -> bool {
-        let (a_y, b_y) = (self.points[a].y, self.points[b].y);
-        match a_y.partial_cmp(&b_y) {
-            Some(Ordering::Less) => true,
-            Some(Ordering::Greater) => false,
-            None | Some(Ordering::Equal) => a < b,
-        }
+    fn point_is_logically_above(&self, a: u32, b: u32) -> bool {
+        let (a_y, b_y) = (self.points[a as usize].y, self.points[b as usize].y);
+        a_y < b_y || (a_y == b_y && a < b)
     }
 
-    fn prev_endpoint_index_of(&self, mut point_index: usize) -> usize {
+    fn prev_endpoint_index_of(&self, mut point_index: u32) -> u32 {
         loop {
             point_index = self.prev_point_index_of(point_index);
             if self.point_is_endpoint(point_index) {
@@ -556,7 +560,7 @@ impl Contour {
         }
     }
 
-    fn next_endpoint_index_of(&self, mut point_index: usize) -> usize {
+    fn next_endpoint_index_of(&self, mut point_index: u32) -> u32 {
         loop {
             point_index = self.next_point_index_of(point_index);
             if self.point_is_endpoint(point_index) {
@@ -565,16 +569,16 @@ impl Contour {
         }
     }
 
-    fn prev_point_index_of(&self, point_index: usize) -> usize {
+    fn prev_point_index_of(&self, point_index: u32) -> u32 {
         if point_index == 0 {
-            self.points.len() - 1
+            self.len() - 1
         } else {
             point_index - 1
         }
     }
 
-    fn next_point_index_of(&self, point_index: usize) -> usize {
-        if point_index == self.points.len() - 1 {
+    fn next_point_index_of(&self, point_index: u32) -> u32 {
+        if point_index == self.len() - 1 {
             0
         } else {
             point_index + 1
@@ -607,14 +611,25 @@ impl Debug for Contour {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-struct PointIndex {
-    contour_index: usize,
-    point_index: usize,
+struct PointIndex(u32);
+
+impl PointIndex {
+    fn new(contour: u32, point: u32) -> PointIndex {
+        PointIndex((contour << 20) | point)
+    }
+
+    fn contour(self) -> u32 {
+        self.0 >> 20
+    }
+
+    fn point(self) -> u32 {
+        self.0 & 0x000fffff
+    }
 }
 
 struct ContourIter<'a> {
     contour: &'a Contour,
-    index: usize,
+    index: u32,
 }
 
 impl<'a> Iterator for ContourIter<'a> {
@@ -622,16 +637,16 @@ impl<'a> Iterator for ContourIter<'a> {
 
     fn next(&mut self) -> Option<PathEvent> {
         let contour = self.contour;
-        if self.index == contour.points.len() + 1 {
+        if self.index == contour.len() + 1 {
             return None
         }
-        if self.index == contour.points.len() {
+        if self.index == contour.len() {
             self.index += 1;
             return Some(PathEvent::Close)
         }
 
         let point0_index = self.index;
-        let point0 = contour.points[point0_index];
+        let point0 = contour.position_of(point0_index);
         self.index += 1;
         if point0_index == 0 {
             return Some(PathEvent::MoveTo(point0))
@@ -641,14 +656,14 @@ impl<'a> Iterator for ContourIter<'a> {
         }
 
         let point1_index = self.index;
-        let point1 = contour.points[point1_index];
+        let point1 = contour.position_of(point1_index);
         self.index += 1;
         if contour.point_is_endpoint(point1_index) {
             return Some(PathEvent::QuadraticTo(point0, point1))
         }
 
         let point2_index = self.index;
-        let point2 = contour.points[point2_index];
+        let point2 = contour.position_of(point2_index);
         self.index += 1;
         debug_assert!(contour.point_is_endpoint(point2_index));
         Some(PathEvent::CubicTo(point0, point1, point2))
@@ -1133,44 +1148,38 @@ impl<'o, 'p> Tiler<'o, 'p> {
         let outline = &self.outline;
         let point_index = self.point_queue.pop().unwrap().point_index;
 
-        let contour = &outline.contours[point_index.contour_index];
+        let contour = &outline.contours[point_index.contour() as usize];
 
         // TODO(pcwalton): Could use a bitset of processed edges…
-        let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point_index);
-        let next_endpoint_index = contour.next_endpoint_index_of(point_index.point_index);
-        if contour.point_is_logically_above(point_index.point_index, prev_endpoint_index) {
+        let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point());
+        let next_endpoint_index = contour.next_endpoint_index_of(point_index.point());
+        if contour.point_is_logically_above(point_index.point(), prev_endpoint_index) {
             let fills = if above_view_box { None } else { Some(&mut self.strip_fills) };
             process_active_segment(contour,
-                                    prev_endpoint_index,
-                                    &mut self.active_edges,
-                                    &strip_bounds,
-                                    fills,
-                                    &mut self.used_strip_tiles);
+                                   prev_endpoint_index,
+                                   &mut self.active_edges,
+                                   &strip_bounds,
+                                   fills,
+                                   &mut self.used_strip_tiles);
 
             self.point_queue.push(QueuedEndpoint {
-                point_index: PointIndex {
-                    contour_index: point_index.contour_index,
-                    point_index: prev_endpoint_index,
-                },
-                y: contour.points[prev_endpoint_index].y,
+                point_index: PointIndex::new(point_index.contour(), prev_endpoint_index),
+                y: contour.position_of(prev_endpoint_index).y,
             });
         }
 
-        if contour.point_is_logically_above(point_index.point_index, next_endpoint_index) {
+        if contour.point_is_logically_above(point_index.point(), next_endpoint_index) {
             let fills = if above_view_box { None } else { Some(&mut self.strip_fills) };
             process_active_segment(contour,
-                                    point_index.point_index,
+                                    point_index.point(),
                                     &mut self.active_edges,
                                     &strip_bounds,
                                     fills,
                                     &mut self.used_strip_tiles);
 
             self.point_queue.push(QueuedEndpoint {
-                point_index: PointIndex {
-                    contour_index: point_index.contour_index,
-                    point_index: next_endpoint_index,
-                },
-                y: contour.points[next_endpoint_index].y,
+                point_index: PointIndex::new(point_index.contour(), next_endpoint_index),
+                y: contour.position_of(next_endpoint_index).y,
             });
         }
     }
@@ -1210,6 +1219,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
         // Find MIN points.
         self.point_queue.clear();
         for (contour_index, contour) in self.outline.contours.iter().enumerate() {
+            let contour_index = contour_index as u32;
             let mut cur_endpoint_index = 0;
             let mut prev_endpoint_index = contour.prev_endpoint_index_of(cur_endpoint_index);
             let mut next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
@@ -1217,11 +1227,8 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 if contour.point_is_logically_above(cur_endpoint_index, prev_endpoint_index) &&
                         contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index) {
                     self.point_queue.push(QueuedEndpoint {
-                        point_index: PointIndex {
-                            contour_index,
-                            point_index: cur_endpoint_index,
-                        },
-                        y: contour.points[cur_endpoint_index].y,
+                        point_index: PointIndex::new(contour_index, cur_endpoint_index),
+                        y: contour.position_of(cur_endpoint_index).y,
                     });
                 }
 
@@ -1234,7 +1241,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
 }
 
 fn process_active_segment(contour: &Contour,
-                          from_endpoint_index: usize,
+                          from_endpoint_index: u32,
                           active_edges: &mut SortedVector<ActiveEdge>,
                           strip_bounds: &Rect<f32>,
                           fills: Option<&mut Vec<FillPrimitive>>,
@@ -1784,17 +1791,7 @@ impl Eq for QueuedEndpoint {}
 impl PartialOrd<QueuedEndpoint> for QueuedEndpoint {
     fn partial_cmp(&self, other: &QueuedEndpoint) -> Option<Ordering> {
         // NB: Reversed!
-        match other.y.partial_cmp(&self.y) {
-            Some(Ordering::Equal) | None => {
-                match other.point_index.contour_index.cmp(&self.point_index.contour_index) {
-                    Ordering::Equal => {
-                        Some(other.point_index.point_index.cmp(&self.point_index.point_index))
-                    }
-                    ordering => Some(ordering),
-                }
-            }
-            Some(ordering) => Some(ordering),
-        }
+        (other.y, other.point_index).partial_cmp(&(self.y, self.point_index))
     }
 }
 
