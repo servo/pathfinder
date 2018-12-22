@@ -324,7 +324,7 @@ impl Scene {
     }
 
     fn push_svg_path(&mut self, value: &str, style: StyleId, name: String) {
-        if self.get_style(style).stroke_width > 0.0 {
+        if self.get_style(style).stroke_color.is_some() {
             let computed_style = self.get_style(style);
             let mut path_parser = PathParser::from(&*value);
             let path = SvgPathToPathEvents::new(&mut path_parser);
