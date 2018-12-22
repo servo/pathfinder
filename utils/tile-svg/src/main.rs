@@ -907,6 +907,7 @@ impl Segment {
     }
 
     fn min_x(&self) -> f32 { f32::min(self.from.x, self.to.x) }
+    fn max_x(&self) -> f32 { f32::max(self.from.x, self.to.x) }
 
     fn winding(&self) -> i32 {
         match self.from.x.partial_cmp(&self.to.x) {
@@ -1053,7 +1054,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
         if !above_view_box {
             // NB: This order must not be changed!
             self.flush_fills();
-            self.flush_tiles(tile_index_y);
+            self.flush_tiles();
         }
     }
 
@@ -1066,35 +1067,46 @@ impl<'o, 'p> Tiler<'o, 'p> {
         let mut winding = 0;
         mem::swap(&mut self.old_active_edges, &mut self.active_edges.array);
         for mut active_edge in self.old_active_edges.drain(..) {
+            let (segment_x, edge_winding) =
+                if active_edge.segment.from.y < active_edge.segment.to.y {
+                    (active_edge.segment.from.x, 1)
+                } else {
+                    (active_edge.segment.to.x, -1)
+                };
+
             // Move over to the correct tile, filling in as we go.
             let mut tile_left = strip_bounds.origin.x + (tile_index_x as f32) * TILE_WIDTH;
             while tile_index_x < self.strip_tiles.len() {
                 let tile_right = tile_left + TILE_WIDTH;
-
-                let segment_left = active_edge.segment.min_x();
-                if tile_left > segment_left {
+                /*println!("filling tile_left={}, segment_x={} winding={}?",
+                         tile_left,
+                         segment_x,
+                         winding);*/
+                if tile_right > segment_x {
                     break
                 }
 
+                //println!("... filling!");
                 self.strip_tiles[tile_index_x].backdrop = winding as f32;
+
                 current_left = tile_right;
                 tile_left = tile_right;
                 tile_index_x += 1;
             }
 
-            // Do subtile fill.
-            let min_x = active_edge.segment.min_x();
-            let edge_winding = active_edge.segment.winding();
-            if current_left < min_x && tile_index_x < self.strip_tiles.len() {
-                let left = Point2D::new(current_left - tile_left, 0.0);
-                let right = Point2D::new(current_left - min_x, 0.0);
+            // Do subtile fills.
+            if current_left < segment_x && tile_index_x < self.strip_tiles.len() {
+                let subtile_left = Point2D::new(current_left - tile_left, 0.0);
+                let subtile_right = Point2D::new(segment_x - tile_left, 0.0);
+
                 self.strip_fills.push(FillPrimitive {
-                    from:       if edge_winding < 0 { left } else { right },
-                    to:         if edge_winding < 0 { right } else { left },
+                    from:       if edge_winding < 0 { subtile_left  } else { subtile_right },
+                    to:         if edge_winding < 0 { subtile_right } else { subtile_left  },
                     tile_index: tile_index_x as u32,
                 });
                 self.used_strip_tiles.insert(tile_index_x);
-                current_left = right.x;
+
+                current_left = segment_x;
             }
 
             // Update winding.
@@ -1164,15 +1176,17 @@ impl<'o, 'p> Tiler<'o, 'p> {
     }
 
     #[inline(never)]
-    fn flush_tiles(&mut self, tile_index_y: i16) {
+    fn flush_tiles(&mut self) {
         // Flush tiles.
         for (tile_index_x, tile) in self.strip_tiles.iter().enumerate() {
             if self.used_strip_tiles.contains(tile_index_x) {
                 self.built_scene.mask_tiles.push(*tile);
             } else if tile.backdrop != 0.0 {
-                let primitive =
-                    SolidTilePrimitive::new(tile_index_x as i16, tile_index_y, tile.color);
-                self.built_scene.solid_tiles.push(primitive);
+                self.built_scene.solid_tiles.push(SolidTilePrimitive {
+                    tile_x: tile.tile_x,
+                    tile_y: tile.tile_y,
+                    color: tile.color,
+                });
             }
         }
     }
@@ -1800,9 +1814,17 @@ impl ActiveEdge {
 impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
         // NB: Reversed!
-        let this_left = f32::min(self.segment.from.x, self.segment.to.x);
-        let other_left = f32::min(other.segment.from.x, other.segment.to.x);
-        other_left.partial_cmp(&this_left)
+        let this_x = if self.segment.from.y < self.segment.to.y {
+            self.segment.from.x
+        } else {
+            self.segment.to.x
+        };
+        let other_x = if other.segment.from.y < other.segment.to.y {
+            other.segment.from.x
+        } else {
+            other.segment.to.x
+        };
+        this_x.partial_cmp(&other_x)
     }
 }
 
