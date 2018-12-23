@@ -1,0 +1,9 @@
+language: rust
+rust:
+  - nightly
+  - beta
+  - stable
+script: |
+  cargo fmt -- --check &&
+  cargo build --verbose &&
+  cargo build --verbose --features reftests
