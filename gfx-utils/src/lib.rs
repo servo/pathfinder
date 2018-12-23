@@ -32,20 +32,18 @@ impl ShelfBinPacker {
 
     pub fn add(&mut self, size: &Size2D<i32>) -> Result<Point2D<i32>, ()> {
         let mut next = self.next;
-        let mut lower_right = Point2D::new(next.x + size.width, next.y + size.height) +
-            self.padding;
+        let mut lower_right =
+            Point2D::new(next.x + size.width, next.y + size.height) + self.padding;
         if lower_right.x > self.max_size.width {
             next = Point2D::new(0, next.y + self.shelf_height);
             self.shelf_height = 0;
             lower_right = Point2D::new(size.width, next.y + size.height) + self.padding;
         }
         if lower_right.x > self.max_size.width || lower_right.y > self.max_size.height {
-            return Err(())
+            return Err(());
         }
         self.shelf_height = cmp::max(self.shelf_height, size.height);
         self.next = next + Vector2D::new(size.width + self.padding.x * 2, 0);
         Ok(next)
     }
 }
-
-

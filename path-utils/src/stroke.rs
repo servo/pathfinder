@@ -10,8 +10,8 @@
 
 //! Utilities for converting path strokes to fills.
 
-use lyon_path::PathEvent;
 use lyon_path::iterator::PathIterator;
+use lyon_path::PathEvent;
 
 use segments::{Segment, SegmentIter};
 
@@ -23,13 +23,14 @@ pub struct StrokeStyle {
 impl StrokeStyle {
     #[inline]
     pub fn new(width: f32) -> StrokeStyle {
-        StrokeStyle {
-            width: width,
-        }
+        StrokeStyle { width: width }
     }
 }
 
-pub struct StrokeToFillIter<I> where I: PathIterator {
+pub struct StrokeToFillIter<I>
+where
+    I: PathIterator,
+{
     inner: SegmentIter<I>,
     subpath: Vec<Segment>,
     stack: Vec<PathEvent>,
@@ -38,7 +39,10 @@ pub struct StrokeToFillIter<I> where I: PathIterator {
     first_point_in_subpath: bool,
 }
 
-impl<I> StrokeToFillIter<I> where I: PathIterator {
+impl<I> StrokeToFillIter<I>
+where
+    I: PathIterator,
+{
     #[inline]
     pub fn new(inner: I, style: StrokeStyle) -> StrokeToFillIter<I> {
         StrokeToFillIter {
@@ -52,7 +56,10 @@ impl<I> StrokeToFillIter<I> where I: PathIterator {
     }
 }
 
-impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
+impl<I> Iterator for StrokeToFillIter<I>
+where
+    I: PathIterator,
+{
     type Item = PathEvent;
 
     // TODO(pcwalton): Support miter and round joins. This will probably require the inner iterator
@@ -60,48 +67,45 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
     fn next(&mut self) -> Option<PathEvent> {
         // If we have path events queued, return the latest.
         if let Some(path_event) = self.stack.pop() {
-            return Some(path_event)
+            return Some(path_event);
         }
 
         // Fetch the next segment.
         let next_segment = match self.state {
-            StrokeToFillState::Forward => {
-                match self.inner.next() {
-                    None | Some(Segment::EndSubpath(false)) => {
-                        if self.subpath.is_empty() {
-                            return None
-                        }
-                        self.state = StrokeToFillState::Backward;
-                        return self.next()
+            StrokeToFillState::Forward => match self.inner.next() {
+                None | Some(Segment::EndSubpath(false)) => {
+                    if self.subpath.is_empty() {
+                        return None;
                     }
-                    Some(Segment::EndSubpath(true)) => {
-                        if self.subpath.is_empty() {
-                            return None
-                        }
-                        self.state = StrokeToFillState::Backward;
-                        self.first_point_in_subpath = true;
-                        return Some(PathEvent::Close)
-                    }
-                    Some(segment) => {
-                        self.subpath.push(segment);
-                        segment
-                    }
+                    self.state = StrokeToFillState::Backward;
+                    return self.next();
                 }
-            }
-            StrokeToFillState::Backward => {
-                match self.subpath.pop() {
-                    None | Some(Segment::EndSubpath(_)) => {
-                        self.state = StrokeToFillState::Forward;
-                        self.first_point_in_subpath = true;
-                        return Some(PathEvent::Close)
+                Some(Segment::EndSubpath(true)) => {
+                    if self.subpath.is_empty() {
+                        return None;
                     }
-                    Some(segment) => segment.flip(),
+                    self.state = StrokeToFillState::Backward;
+                    self.first_point_in_subpath = true;
+                    return Some(PathEvent::Close);
                 }
-            }
+                Some(segment) => {
+                    self.subpath.push(segment);
+                    segment
+                }
+            },
+            StrokeToFillState::Backward => match self.subpath.pop() {
+                None | Some(Segment::EndSubpath(_)) => {
+                    self.state = StrokeToFillState::Forward;
+                    self.first_point_in_subpath = true;
+                    return Some(PathEvent::Close);
+                }
+                Some(segment) => segment.flip(),
+            },
         };
 
-        next_segment.offset(self.style.width * 0.5, |offset_segment| {
-            match *offset_segment {
+        next_segment.offset(
+            self.style.width * 0.5,
+            |offset_segment| match *offset_segment {
                 Segment::EndSubpath(_) => unreachable!(),
                 Segment::Line(ref offset_segment) => {
                     if self.first_point_in_subpath {
@@ -119,7 +123,10 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
                     } else if self.stack.is_empty() {
                         self.stack.push(PathEvent::LineTo(offset_segment.from))
                     }
-                    self.stack.push(PathEvent::QuadraticTo(offset_segment.ctrl, offset_segment.to))
+                    self.stack.push(PathEvent::QuadraticTo(
+                        offset_segment.ctrl,
+                        offset_segment.to,
+                    ))
                 }
                 Segment::Cubic(ref offset_segment) => {
                     if self.first_point_in_subpath {
@@ -128,15 +135,17 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
                     } else if self.stack.is_empty() {
                         self.stack.push(PathEvent::LineTo(offset_segment.from))
                     }
-                    self.stack.push(PathEvent::CubicTo(offset_segment.ctrl1,
-                                                       offset_segment.ctrl2,
-                                                       offset_segment.to))
+                    self.stack.push(PathEvent::CubicTo(
+                        offset_segment.ctrl1,
+                        offset_segment.ctrl2,
+                        offset_segment.to,
+                    ))
                 }
-            }
-        });
+            },
+        );
 
         self.stack.reverse();
-        return self.next()
+        return self.next();
     }
 }
 

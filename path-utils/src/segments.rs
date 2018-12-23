@@ -16,13 +16,19 @@ use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use lyon_path::iterator::{PathIter, PathIterator};
 use lyon_path::PathEvent;
 
-pub struct SegmentIter<I> where I: Iterator<Item = PathEvent> {
+pub struct SegmentIter<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     inner: PathIter<I>,
     stack: Vec<Segment>,
     was_just_closed: bool,
 }
 
-impl<I> SegmentIter<I> where I: Iterator<Item = PathEvent> {
+impl<I> SegmentIter<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     #[inline]
     pub fn new(inner: I) -> SegmentIter<I> {
         SegmentIter {
@@ -33,12 +39,15 @@ impl<I> SegmentIter<I> where I: Iterator<Item = PathEvent> {
     }
 }
 
-impl<I> Iterator for SegmentIter<I> where I: Iterator<Item = PathEvent> {
+impl<I> Iterator for SegmentIter<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     type Item = Segment;
 
     fn next(&mut self) -> Option<Segment> {
         if let Some(segment) = self.stack.pop() {
-            return Some(segment)
+            return Some(segment);
         }
 
         let current_point = self.inner.get_state().current;
@@ -61,12 +70,10 @@ impl<I> Iterator for SegmentIter<I> where I: Iterator<Item = PathEvent> {
                 }
                 Some(Segment::EndSubpath(false))
             }
-            Some(PathEvent::LineTo(to)) => {
-                Some(Segment::Line(LineSegment {
-                    from: current_point,
-                    to: to,
-                }))
-            }
+            Some(PathEvent::LineTo(to)) => Some(Segment::Line(LineSegment {
+                from: current_point,
+                to: to,
+            })),
             Some(PathEvent::QuadraticTo(ctrl, to)) => {
                 Some(Segment::Quadratic(QuadraticBezierSegment {
                     from: current_point,
@@ -82,9 +89,7 @@ impl<I> Iterator for SegmentIter<I> where I: Iterator<Item = PathEvent> {
                     to: to,
                 }))
             }
-            Some(PathEvent::Arc(..)) => {
-                panic!("SegmentIter doesn't support cubics and arcs yet!")
-            }
+            Some(PathEvent::Arc(..)) => panic!("SegmentIter doesn't support cubics and arcs yet!"),
         }
     }
 }
@@ -108,7 +113,10 @@ impl Segment {
         }
     }
 
-    pub fn offset<F>(&self, distance: f32, mut sink: F) where F: FnMut(&Segment) {
+    pub fn offset<F>(&self, distance: f32, mut sink: F)
+    where
+        F: FnMut(&Segment),
+    {
         match *self {
             Segment::EndSubpath(_) => {}
             Segment::Line(ref segment) => {
@@ -119,21 +127,24 @@ impl Segment {
                 // This is the Tiller & Hanson 1984 algorithm for approximate Bézier offset curves.
                 // We take the cage (i.e. convex hull) and push its edges out along their normals,
                 // then recompute the control point with a miter join.
-                let line_segments = (LineSegment {
-                    from: quadratic_segment.from,
-                    to: quadratic_segment.ctrl,
-                }, LineSegment {
-                    from: quadratic_segment.ctrl,
-                    to: quadratic_segment.to,
-                });
+                let line_segments = (
+                    LineSegment {
+                        from: quadratic_segment.from,
+                        to: quadratic_segment.ctrl,
+                    },
+                    LineSegment {
+                        from: quadratic_segment.ctrl,
+                        to: quadratic_segment.to,
+                    },
+                );
 
                 // Miter join.
-                let (from, intersection, to) = match offset_and_join_line_segments(line_segments.0,
-                                                                                   line_segments.1,
-                                                                                   distance) {
-                    None => return sink(self),
-                    Some(intersection) => intersection,
-                };
+                let (from, intersection, to) =
+                    match offset_and_join_line_segments(line_segments.0, line_segments.1, distance)
+                    {
+                        None => return sink(self),
+                        Some(intersection) => intersection,
+                    };
 
                 sink(&Segment::Quadratic(QuadraticBezierSegment {
                     from: from,
@@ -142,24 +153,28 @@ impl Segment {
                 }))
             }
 
-            Segment::Cubic(ref cubic_segment) if points_overlap(&cubic_segment.from,
-                                                                &cubic_segment.ctrl1) => {
+            Segment::Cubic(ref cubic_segment)
+                if points_overlap(&cubic_segment.from, &cubic_segment.ctrl1) =>
+            {
                 // As above.
-                let line_segments = (LineSegment {
-                    from: cubic_segment.from,
-                    to: cubic_segment.ctrl2,
-                }, LineSegment {
-                    from: cubic_segment.ctrl2,
-                    to: cubic_segment.to,
-                });
+                let line_segments = (
+                    LineSegment {
+                        from: cubic_segment.from,
+                        to: cubic_segment.ctrl2,
+                    },
+                    LineSegment {
+                        from: cubic_segment.ctrl2,
+                        to: cubic_segment.to,
+                    },
+                );
 
                 // Miter join.
-                let (from, intersection, to) = match offset_and_join_line_segments(line_segments.0,
-                                                                                   line_segments.1,
-                                                                                   distance) {
-                    None => return sink(self),
-                    Some(intersection) => intersection,
-                };
+                let (from, intersection, to) =
+                    match offset_and_join_line_segments(line_segments.0, line_segments.1, distance)
+                    {
+                        None => return sink(self),
+                        Some(intersection) => intersection,
+                    };
 
                 sink(&Segment::Cubic(CubicBezierSegment {
                     from: from,
@@ -169,24 +184,28 @@ impl Segment {
                 }))
             }
 
-            Segment::Cubic(ref cubic_segment) if points_overlap(&cubic_segment.ctrl2,
-                                                                &cubic_segment.to) => {
+            Segment::Cubic(ref cubic_segment)
+                if points_overlap(&cubic_segment.ctrl2, &cubic_segment.to) =>
+            {
                 // As above.
-                let line_segments = (LineSegment {
-                    from: cubic_segment.from,
-                    to: cubic_segment.ctrl1,
-                }, LineSegment {
-                    from: cubic_segment.ctrl1,
-                    to: cubic_segment.to,
-                });
+                let line_segments = (
+                    LineSegment {
+                        from: cubic_segment.from,
+                        to: cubic_segment.ctrl1,
+                    },
+                    LineSegment {
+                        from: cubic_segment.ctrl1,
+                        to: cubic_segment.to,
+                    },
+                );
 
                 // Miter join.
-                let (from, intersection, to) = match offset_and_join_line_segments(line_segments.0,
-                                                                                   line_segments.1,
-                                                                                   distance) {
-                    None => return sink(self),
-                    Some(intersection) => intersection,
-                };
+                let (from, intersection, to) =
+                    match offset_and_join_line_segments(line_segments.0, line_segments.1, distance)
+                    {
+                        None => return sink(self),
+                        Some(intersection) => intersection,
+                    };
 
                 sink(&Segment::Cubic(CubicBezierSegment {
                     from: from,
@@ -198,30 +217,33 @@ impl Segment {
 
             Segment::Cubic(ref cubic_segment) => {
                 // As above.
-                let line_segments = (LineSegment {
-                    from: cubic_segment.from,
-                    to: cubic_segment.ctrl1,
-                }, LineSegment {
-                    from: cubic_segment.ctrl1,
-                    to: cubic_segment.ctrl2,
-                }, LineSegment {
-                    from: cubic_segment.ctrl2,
-                    to: cubic_segment.to,
-                });
+                let line_segments = (
+                    LineSegment {
+                        from: cubic_segment.from,
+                        to: cubic_segment.ctrl1,
+                    },
+                    LineSegment {
+                        from: cubic_segment.ctrl1,
+                        to: cubic_segment.ctrl2,
+                    },
+                    LineSegment {
+                        from: cubic_segment.ctrl2,
+                        to: cubic_segment.to,
+                    },
+                );
 
                 let (from, intersection_0, _) =
-                        match offset_and_join_line_segments(line_segments.0,
-                                                            line_segments.1,
-                                                            distance) {
-                            None => return sink(self),
-                            Some(intersection) => intersection,
-                        };
-                let (_, intersection_1, to) = match offset_and_join_line_segments(line_segments.1,
-                                                                                  line_segments.2,
-                                                                                  distance) {
-                    None => return sink(self),
-                    Some(intersection) => intersection,
-                };
+                    match offset_and_join_line_segments(line_segments.0, line_segments.1, distance)
+                    {
+                        None => return sink(self),
+                        Some(intersection) => intersection,
+                    };
+                let (_, intersection_1, to) =
+                    match offset_and_join_line_segments(line_segments.1, line_segments.2, distance)
+                    {
+                        None => return sink(self),
+                        Some(intersection) => intersection,
+                    };
 
                 sink(&Segment::Cubic(CubicBezierSegment {
                     from: from,
@@ -238,20 +260,24 @@ fn offset_line_segment(segment: &LineSegment<f32>, distance: f32) -> LineSegment
     let mut segment = *segment;
     let vector = segment.to_vector();
     if vector.square_length() < f32::approx_epsilon() {
-        return segment
+        return segment;
     }
     let tangent = vector.normalize() * distance;
     segment.translate(Vector2D::new(-tangent.y, tangent.x))
 }
 
 // Performs a miter join.
-fn offset_and_join_line_segments(mut line_segment_0: LineSegment<f32>,
-                                 mut line_segment_1: LineSegment<f32>,
-                                 distance: f32)
-                                 -> Option<(Point2D<f32>, Point2D<f32>, Point2D<f32>)> {
+fn offset_and_join_line_segments(
+    mut line_segment_0: LineSegment<f32>,
+    mut line_segment_1: LineSegment<f32>,
+    distance: f32,
+) -> Option<(Point2D<f32>, Point2D<f32>, Point2D<f32>)> {
     line_segment_0 = offset_line_segment(&line_segment_0, distance);
     line_segment_1 = offset_line_segment(&line_segment_1, distance);
-    match line_segment_0.to_line().intersection(&line_segment_1.to_line()) {
+    match line_segment_0
+        .to_line()
+        .intersection(&line_segment_1.to_line())
+    {
         None => None,
         Some(intersection) => Some((line_segment_0.from, intersection, line_segment_1.to)),
     }

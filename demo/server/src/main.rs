@@ -44,12 +44,12 @@ use font_kit::hinting::HintingOptions;
 use font_kit::loaders;
 use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
-use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use lyon_path::iterator::PathIter;
-use pathfinder_partitioner::FillRule;
+use lyon_path::PathEvent;
 use pathfinder_partitioner::mesh_pack::MeshPack;
 use pathfinder_partitioner::partitioner::Partitioner;
+use pathfinder_partitioner::FillRule;
 use pathfinder_path_utils::cubic_to_quadratic::CubicToQuadraticTransformer;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use pathfinder_path_utils::transform::Transform2DPathIter;
@@ -65,9 +65,9 @@ use std::time::{Duration, Instant};
 use std::u32;
 
 #[cfg(feature = "reftests")]
-use euclid::Size2D;
-#[cfg(feature = "reftests")]
 use cairo::{Format, ImageSurface};
+#[cfg(feature = "reftests")]
+use euclid::Size2D;
 #[cfg(feature = "reftests")]
 use rsvg::{Handle, HandleExt};
 
@@ -78,9 +78,8 @@ const MESH_PACK_CACHE_SIZE: usize = 16;
 const CUBIC_TO_QUADRATIC_APPROX_TOLERANCE: f32 = 5.0;
 
 lazy_static! {
-    static ref MESH_PACK_CACHE: Mutex<LruCache<MeshPackCacheKey, PartitionResponder>> = {
-        Mutex::new(LruCache::new(MESH_PACK_CACHE_SIZE))
-    };
+    static ref MESH_PACK_CACHE: Mutex<LruCache<MeshPackCacheKey, PartitionResponder>> =
+        { Mutex::new(LruCache::new(MESH_PACK_CACHE_SIZE)) };
 }
 
 static STATIC_INDEX_PATH: &'static str = "../client/index.html";
@@ -107,10 +106,22 @@ static STATIC_TEXTURES_PATH: &'static str = "../../resources/textures";
 static STATIC_DOC_API_INDEX_URI: &'static str = "/doc/api/pathfinder/index.html";
 
 static BUILTIN_FONTS: [(&'static str, &'static str); 4] = [
-    ("open-sans", "../../resources/fonts/open-sans/OpenSans-Regular.ttf"),
-    ("nimbus-sans", "../../resources/fonts/nimbus-sans/NimbusSanL-Regu.ttf"),
-    ("eb-garamond", "../../resources/fonts/eb-garamond/EBGaramond12-Regular.ttf"),
-    ("inter-ui", "../../resources/fonts/inter-ui/Inter-UI-Regular.ttf"),
+    (
+        "open-sans",
+        "../../resources/fonts/open-sans/OpenSans-Regular.ttf",
+    ),
+    (
+        "nimbus-sans",
+        "../../resources/fonts/nimbus-sans/NimbusSanL-Regu.ttf",
+    ),
+    (
+        "eb-garamond",
+        "../../resources/fonts/eb-garamond/EBGaramond12-Regular.ttf",
+    ),
+    (
+        "inter-ui",
+        "../../resources/fonts/inter-ui/Inter-UI-Regular.ttf",
+    ),
 ];
 
 static BUILTIN_SVGS: [(&'static str, &'static str); 4] = [
@@ -270,11 +281,12 @@ struct PathPartitioningResult {
 }
 
 impl PathPartitioningResult {
-    fn compute(pack: &mut MeshPack,
-               path_descriptors: &[PathDescriptor],
-               paths: &[Vec<PathEvent>],
-               approx_tolerance: Option<f32>)
-               -> PathPartitioningResult {
+    fn compute(
+        pack: &mut MeshPack,
+        path_descriptors: &[PathDescriptor],
+        paths: &[Vec<PathEvent>],
+        approx_tolerance: Option<f32>,
+    ) -> PathPartitioningResult {
         let timestamp_before = Instant::now();
 
         for (path, path_descriptor) in paths.iter().zip(path_descriptors.iter()) {
@@ -283,16 +295,23 @@ impl PathPartitioningResult {
                 partitioner.builder_mut().set_approx_tolerance(tolerance);
             }
 
-            path.iter().for_each(|event| partitioner.builder_mut().path_event(*event));
+            path.iter()
+                .for_each(|event| partitioner.builder_mut().path_event(*event));
             partitioner.partition(path_descriptor.fill_rule);
             partitioner.builder_mut().build_and_reset();
 
-            partitioner.mesh_mut().push_stencil_segments(
-                CubicToQuadraticTransformer::new(path.iter().cloned(),
-                                                 CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
-            partitioner.mesh_mut().push_stencil_normals(
-                CubicToQuadraticTransformer::new(path.iter().cloned(),
-                                                 CUBIC_TO_QUADRATIC_APPROX_TOLERANCE));
+            partitioner
+                .mesh_mut()
+                .push_stencil_segments(CubicToQuadraticTransformer::new(
+                    path.iter().cloned(),
+                    CUBIC_TO_QUADRATIC_APPROX_TOLERANCE,
+                ));
+            partitioner
+                .mesh_mut()
+                .push_stencil_normals(CubicToQuadraticTransformer::new(
+                    path.iter().cloned(),
+                    CUBIC_TO_QUADRATIC_APPROX_TOLERANCE,
+                ));
             pack.push(partitioner.into_mesh());
         }
 
@@ -322,7 +341,10 @@ impl<'r> Responder<'r> for PartitionResponder {
     fn respond_to(self, _: &Request) -> Result<Response<'r>, Status> {
         let mut builder = Response::build();
         builder.header(ContentType::new("application", "vnd.mozilla.pfml"));
-        builder.header(Header::new("Server-Timing", format!("Partitioning={}", self.time)));
+        builder.header(Header::new(
+            "Server-Timing",
+            format!("Partitioning={}", self.time),
+        ));
 
         // FIXME(pcwalton): Don't clone! Requires a `Cursor` implementation for `Arc<Vec<u8>>`…
         builder.sized_body(Cursor::new((*self.data).clone()));
@@ -341,9 +363,11 @@ impl<'r> Responder<'r> for ReferenceImage {
         builder.header(ContentType::PNG);
 
         let mut bytes = vec![];
-        try!(self.image
-                 .write_to(&mut bytes, ImageFormat::PNG)
-                 .map_err(|_| Status::InternalServerError));
+        try!(
+            self.image
+                .write_to(&mut bytes, ImageFormat::PNG)
+                .map_err(|_| Status::InternalServerError)
+        );
         builder.sized_body(Cursor::new(bytes));
         builder.ok()
     }
@@ -354,12 +378,17 @@ fn otf_data_from_request(face: &FontRequestFace) -> Result<Arc<Vec<u8>>, FontErr
     match *face {
         FontRequestFace::Builtin(ref builtin_font_name) => {
             // Read in the builtin font.
-            match BUILTIN_FONTS.iter().filter(|& &(name, _)| name == builtin_font_name).next() {
+            match BUILTIN_FONTS
+                .iter()
+                .filter(|&&(name, _)| name == builtin_font_name)
+                .next()
+            {
                 Some(&(_, path)) => {
                     let mut data = vec![];
-                    File::open(path).expect("Couldn't find builtin font!")
-                                    .read_to_end(&mut data)
-                                    .expect("Couldn't read builtin font!");
+                    File::open(path)
+                        .expect("Couldn't find builtin font!")
+                        .read_to_end(&mut data)
+                        .expect("Couldn't read builtin font!");
                     Ok(Arc::new(data))
                 }
                 None => return Err(FontError::UnknownBuiltinFont),
@@ -385,35 +414,42 @@ fn otf_data_from_request(face: &FontRequestFace) -> Result<Arc<Vec<u8>>, FontErr
 #[cfg(feature = "reftests")]
 fn svg_data_from_request(builtin_svg_name: &str) -> Result<Arc<Vec<u8>>, SvgError> {
     // Read in the builtin SVG.
-    match BUILTIN_SVGS.iter().filter(|& &(name, _)| name == builtin_svg_name).next() {
+    match BUILTIN_SVGS
+        .iter()
+        .filter(|&&(name, _)| name == builtin_svg_name)
+        .next()
+    {
         Some(&(_, path)) => {
             let mut data = vec![];
-            File::open(path).expect("Couldn't find builtin SVG!")
-                            .read_to_end(&mut data)
-                            .expect("Couldn't read builtin SVG!");
+            File::open(path)
+                .expect("Couldn't find builtin SVG!")
+                .read_to_end(&mut data)
+                .expect("Couldn't read builtin SVG!");
             Ok(Arc::new(data))
         }
         None => return Err(SvgError::UnknownBuiltinSvg),
     }
 }
 
-#[post("/partition-font", format = "application/json", data = "<request>")]
+#[post(
+    "/partition-font",
+    format = "application/json",
+    data = "<request>"
+)]
 fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionResponder, FontError> {
     // Check the cache.
     let cache_key = match request.face {
-        FontRequestFace::Builtin(ref builtin_font_name) => {
-            Some(MeshPackCacheKey {
-                builtin_font_name: (*builtin_font_name).clone(),
-                glyph_ids: request.glyphs.iter().map(|glyph| glyph.id).collect(),
-            })
-        }
+        FontRequestFace::Builtin(ref builtin_font_name) => Some(MeshPackCacheKey {
+            builtin_font_name: (*builtin_font_name).clone(),
+            glyph_ids: request.glyphs.iter().map(|glyph| glyph.id).collect(),
+        }),
         _ => None,
     };
 
     if let Some(ref cache_key) = cache_key {
         if let Ok(mut mesh_library_cache) = MESH_PACK_CACHE.lock() {
             if let Some(cache_entry) = mesh_library_cache.get_mut(cache_key) {
-                return Ok((*cache_entry).clone())
+                return Ok((*cache_entry).clone());
             }
         }
     }
@@ -434,10 +470,10 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
         // FIXME(pcwalton): Should we add first-class support for transforms to `font-kit`?
         let mut path_builder = lyon_path::default::Path::builder();
         match font.outline(glyph.id, HintingOptions::None, &mut path_builder) {
-            Ok(()) => {
-                paths.push(Transform2DPathIter::new(path_builder.build().into_iter(),
-                                                    &glyph.transform).collect())
-            }
+            Ok(()) => paths.push(
+                Transform2DPathIter::new(path_builder.build().into_iter(), &glyph.transform)
+                    .collect(),
+            ),
             Err(_) => paths.push(vec![]),
         };
 
@@ -449,10 +485,8 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
 
     // Partition the decoded glyph outlines.
     let mut pack = MeshPack::new();
-    let path_partitioning_result = PathPartitioningResult::compute(&mut pack,
-                                                                   &path_descriptors,
-                                                                   &paths,
-                                                                   None);
+    let path_partitioning_result =
+        PathPartitioningResult::compute(&mut pack, &path_descriptors, &paths, None);
 
     // Build the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -470,9 +504,14 @@ fn partition_font(request: Json<PartitionFontRequest>) -> Result<PartitionRespon
     Ok(responder)
 }
 
-#[post("/partition-svg-paths", format = "application/json", data = "<request>")]
-fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
-                       -> Result<PartitionResponder, PartitionSvgPathsError> {
+#[post(
+    "/partition-svg-paths",
+    format = "application/json",
+    data = "<request>"
+)]
+fn partition_svg_paths(
+    request: Json<PartitionSvgPathsRequest>,
+) -> Result<PartitionResponder, PartitionSvgPathsError> {
     // Parse the SVG path.
     //
     // The client has already normalized it, so we only have to handle `M`, `L`, `C`, and `Z`
@@ -487,22 +526,19 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
 
         for segment in &path.segments {
             match segment.kind {
-                'M' => {
-                    stream.push(PathEvent::MoveTo(Point2D::new(segment.values[0] as f32,
-                                                               segment.values[1] as f32)))
-                }
-                'L' => {
-                    stream.push(PathEvent::LineTo(Point2D::new(segment.values[0] as f32,
-                                                               segment.values[1] as f32)))
-                }
-                'C' => {
-                    stream.push(PathEvent::CubicTo(Point2D::new(segment.values[0] as f32,
-                                                                segment.values[1] as f32),
-                                                   Point2D::new(segment.values[2] as f32,
-                                                                segment.values[3] as f32),
-                                                   Point2D::new(segment.values[4] as f32,
-                                                                segment.values[5] as f32)))
-                }
+                'M' => stream.push(PathEvent::MoveTo(Point2D::new(
+                    segment.values[0] as f32,
+                    segment.values[1] as f32,
+                ))),
+                'L' => stream.push(PathEvent::LineTo(Point2D::new(
+                    segment.values[0] as f32,
+                    segment.values[1] as f32,
+                ))),
+                'C' => stream.push(PathEvent::CubicTo(
+                    Point2D::new(segment.values[0] as f32, segment.values[1] as f32),
+                    Point2D::new(segment.values[2] as f32, segment.values[3] as f32),
+                    Point2D::new(segment.values[4] as f32, segment.values[5] as f32),
+                )),
                 'Z' => stream.push(PathEvent::Close),
                 _ => return Err(PartitionSvgPathsError::UnknownSvgPathCommandType),
             }
@@ -535,10 +571,8 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     let tolerance = f32::max(request.view_box_width, request.view_box_height) * 0.001;
 
     // Partition the paths.
-    let path_partitioning_result = PathPartitioningResult::compute(&mut pack,
-                                                                   &path_descriptors,
-                                                                   &paths,
-                                                                   Some(tolerance));
+    let path_partitioning_result =
+        PathPartitioningResult::compute(&mut pack, &path_descriptors, &paths, Some(tolerance));
 
     // Return the response.
     let elapsed_ms = path_partitioning_result.elapsed_ms();
@@ -548,9 +582,14 @@ fn partition_svg_paths(request: Json<PartitionSvgPathsRequest>)
     })
 }
 
-#[post("/render-reference/text", format = "application/json", data = "<request>")]
-fn render_reference_text(request: Json<RenderTextReferenceRequest>)
-                         -> Result<ReferenceImage, FontError> {
+#[post(
+    "/render-reference/text",
+    format = "application/json",
+    data = "<request>"
+)]
+fn render_reference_text(
+    request: Json<RenderTextReferenceRequest>,
+) -> Result<ReferenceImage, FontError> {
     let otf_data = try!(otf_data_from_request(&request.face));
 
     // Rasterize the glyph using the right rasterizer.
@@ -561,22 +600,32 @@ fn render_reference_text(request: Json<RenderTextReferenceRequest>)
                 Ok(loader) => loader,
                 Err(_) => return Err(FontError::FontLoadingFailed),
             };
-            let glyph_rect = try!(loader.raster_bounds(request.glyph,
-                                                       request.point_size as f32,
-                                                       &Point2D::zero(),
-                                                       HintingOptions::None,
-                                                       RasterizationOptions::SubpixelAa)
-                                        .map_err(|_| FontError::RasterizationFailed));
+            let glyph_rect = try!(
+                loader
+                    .raster_bounds(
+                        request.glyph,
+                        request.point_size as f32,
+                        &Point2D::zero(),
+                        HintingOptions::None,
+                        RasterizationOptions::SubpixelAa
+                    )
+                    .map_err(|_| FontError::RasterizationFailed)
+            );
             let glyph_dimensions = glyph_rect.size.to_u32();
             canvas = Canvas::new(&glyph_dimensions, FontKitFormat::Rgba32);
             let origin = Point2D::new(-glyph_rect.origin.x, -glyph_rect.origin.y).to_f32();
-            try!(loader.rasterize_glyph(&mut canvas,
-                                        request.glyph,
-                                        request.point_size as f32,
-                                        &origin,
-                                        HintingOptions::None,
-                                        RasterizationOptions::SubpixelAa)
-                        .map_err(|_| FontError::RasterizationFailed));
+            try!(
+                loader
+                    .rasterize_glyph(
+                        &mut canvas,
+                        request.glyph,
+                        request.point_size as f32,
+                        &origin,
+                        HintingOptions::None,
+                        RasterizationOptions::SubpixelAa
+                    )
+                    .map_err(|_| FontError::RasterizationFailed)
+            );
         }
         #[cfg(target_os = "macos")]
         ReferenceTextRenderer::CoreGraphics => {
@@ -584,28 +633,37 @@ fn render_reference_text(request: Json<RenderTextReferenceRequest>)
                 Ok(loader) => loader,
                 Err(_) => return Err(FontError::FontLoadingFailed),
             };
-            let glyph_rect = try!(loader.raster_bounds(request.glyph,
-                                                       request.point_size as f32,
-                                                       &Point2D::zero(),
-                                                       HintingOptions::None,
-                                                       RasterizationOptions::SubpixelAa)
-                                        .map_err(|_| FontError::RasterizationFailed));
+            let glyph_rect = try!(
+                loader
+                    .raster_bounds(
+                        request.glyph,
+                        request.point_size as f32,
+                        &Point2D::zero(),
+                        HintingOptions::None,
+                        RasterizationOptions::SubpixelAa
+                    )
+                    .map_err(|_| FontError::RasterizationFailed)
+            );
             let glyph_dimensions = glyph_rect.size.to_u32();
             canvas = Canvas::new(&glyph_dimensions, FontKitFormat::Rgba32);
             let origin = Point2D::new(-glyph_rect.origin.x, -glyph_rect.origin.y).to_f32();
-            try!(loader.rasterize_glyph(&mut canvas,
-                                        request.glyph,
-                                        request.point_size as f32,
-                                        &origin,
-                                        HintingOptions::None,
-                                        RasterizationOptions::SubpixelAa)
-                        .map_err(|_| FontError::RasterizationFailed));
+            try!(
+                loader
+                    .rasterize_glyph(
+                        &mut canvas,
+                        request.glyph,
+                        request.point_size as f32,
+                        &origin,
+                        HintingOptions::None,
+                        RasterizationOptions::SubpixelAa
+                    )
+                    .map_err(|_| FontError::RasterizationFailed)
+            );
         }
     };
 
-    let image_buffer = ImageBuffer::from_raw(canvas.size.width,
-                                             canvas.size.height,
-                                             canvas.pixels).unwrap();
+    let image_buffer =
+        ImageBuffer::from_raw(canvas.size.width, canvas.size.height, canvas.pixels).unwrap();
     let reference_image = ReferenceImage {
         image: ImageRgba8(image_buffer),
     };
@@ -614,9 +672,14 @@ fn render_reference_text(request: Json<RenderTextReferenceRequest>)
 }
 
 #[cfg(feature = "reftests")]
-#[post("/render-reference/svg", format = "application/json", data = "<request>")]
-fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
-                        -> Result<ReferenceImage, SvgError> {
+#[post(
+    "/render-reference/svg",
+    format = "application/json",
+    data = "<request>"
+)]
+fn render_reference_svg(
+    request: Json<RenderSvgReferenceRequest>,
+) -> Result<ReferenceImage, SvgError> {
     let svg_data = try!(svg_data_from_request(&request.name));
     let svg_string = String::from_utf8_lossy(&*svg_data);
     let svg_handle = try!(Handle::new_from_str(&svg_string).map_err(|_| SvgError::LoadingFailed));
@@ -626,9 +689,12 @@ fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
     image_size = (image_size * request.scale).ceil();
 
     // Rasterize the SVG using the appropriate rasterizer.
-    let mut surface = ImageSurface::create(Format::ARgb32,
-                                           image_size.width as i32,
-                                           image_size.height as i32).unwrap();
+    let mut surface = ImageSurface::create(
+        Format::ARgb32,
+        image_size.width as i32,
+        image_size.height as i32,
+    )
+    .unwrap();
 
     {
         let cairo_context = cairo::Context::new(&surface);
@@ -639,9 +705,11 @@ fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
     let mut image_data = (*surface.get_data().unwrap()).to_vec();
     image_data.chunks_mut(4).for_each(|color| color.swap(0, 2));
 
-    let image_buffer = match ImageBuffer::from_raw(image_size.width as u32,
-                                                   image_size.height as u32,
-                                                   image_data) {
+    let image_buffer = match ImageBuffer::from_raw(
+        image_size.width as u32,
+        image_size.height as u32,
+        image_data,
+    ) {
         None => return Err(SvgError::ImageWritingFailed),
         Some(image_buffer) => image_buffer,
     };
@@ -652,10 +720,15 @@ fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
 }
 
 #[cfg(not(feature = "reftests"))]
-#[post("/render-reference/svg", format = "application/json", data = "<request>")]
+#[post(
+    "/render-reference/svg",
+    format = "application/json",
+    data = "<request>"
+)]
 #[allow(unused_variables)]
-fn render_reference_svg(request: Json<RenderSvgReferenceRequest>)
-                        -> Result<ReferenceImage, SvgError> {
+fn render_reference_svg(
+    request: Json<RenderSvgReferenceRequest>,
+) -> Result<ReferenceImage, SvgError> {
     Err(SvgError::ReftestsDisabled)
 }
 
@@ -734,17 +807,19 @@ fn static_glsl(file: PathBuf) -> Option<Shader> {
 }
 #[get("/otf/demo/<font_name>")]
 fn static_otf_demo(font_name: String) -> Option<NamedFile> {
-    BUILTIN_FONTS.iter()
-                 .filter(|& &(name, _)| name == font_name)
-                 .next()
-                 .and_then(|&(_, path)| NamedFile::open(path::Path::new(path)).ok())
+    BUILTIN_FONTS
+        .iter()
+        .filter(|&&(name, _)| name == font_name)
+        .next()
+        .and_then(|&(_, path)| NamedFile::open(path::Path::new(path)).ok())
 }
 #[get("/svg/demo/<svg_name>")]
 fn static_svg_demo(svg_name: String) -> Option<NamedFile> {
-    BUILTIN_SVGS.iter()
-                .filter(|& &(name, _)| name == svg_name)
-                .next()
-                .and_then(|&(_, path)| NamedFile::open(path::Path::new(path)).ok())
+    BUILTIN_SVGS
+        .iter()
+        .filter(|&&(name, _)| name == svg_name)
+        .next()
+        .and_then(|&(_, path)| NamedFile::open(path::Path::new(path)).ok())
 }
 #[get("/data/<file..>")]
 fn static_data(file: PathBuf) -> Option<NamedFile> {
@@ -765,15 +840,16 @@ struct Shader {
 
 impl Shader {
     fn open(path: PathBuf) -> io::Result<Shader> {
-        File::open(path).map(|file| Shader {
-            file: file,
-        })
+        File::open(path).map(|file| Shader { file: file })
     }
 }
 
 impl<'a> Responder<'a> for Shader {
     fn respond_to(self, _: &Request) -> Result<Response<'a>, Status> {
-        Response::build().header(ContentType::Plain).streamed_body(self.file).ok()
+        Response::build()
+            .header(ContentType::Plain)
+            .streamed_body(self.file)
+            .ok()
     }
 }
 
@@ -792,33 +868,38 @@ fn main() {
         }
     }
 
-    rocket.mount("/", routes![
-        partition_font,
-        partition_svg_paths,
-        render_reference_text,
-        render_reference_svg,
-        static_index,
-        static_demo_text,
-        static_demo_svg,
-        static_demo_3d,
-        static_tools_benchmark,
-        static_tools_reference_test,
-        static_tools_mesh_debugger,
-        static_doc_api_index,
-        static_doc_api,
-        static_css,
-        static_css_bootstrap,
-        static_js_bootstrap,
-        static_js_jquery,
-        static_js_popper_js,
-        static_js_pathfinder,
-        static_woff2_inter_ui,
-        static_woff2_material_icons,
-        static_glsl,
-        static_otf_demo,
-        static_svg_demo,
-        static_data,
-        static_test_data,
-        static_textures,
-    ]).launch();
+    rocket
+        .mount(
+            "/",
+            routes![
+                partition_font,
+                partition_svg_paths,
+                render_reference_text,
+                render_reference_svg,
+                static_index,
+                static_demo_text,
+                static_demo_svg,
+                static_demo_3d,
+                static_tools_benchmark,
+                static_tools_reference_test,
+                static_tools_mesh_debugger,
+                static_doc_api_index,
+                static_doc_api,
+                static_css,
+                static_css_bootstrap,
+                static_js_bootstrap,
+                static_js_jquery,
+                static_js_popper_js,
+                static_js_pathfinder,
+                static_woff2_inter_ui,
+                static_woff2_material_icons,
+                static_glsl,
+                static_otf_demo,
+                static_svg_demo,
+                static_data,
+                static_test_data,
+                static_textures,
+            ],
+        )
+        .launch();
 }

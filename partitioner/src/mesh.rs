@@ -57,9 +57,11 @@ impl Mesh {
         self.stencil_normals.clear();
     }
 
-    pub(crate) fn add_b_vertex(&mut self,
-                               position: &Point2D<f32>,
-                               loop_blinn_data: &BVertexLoopBlinnData) {
+    pub(crate) fn add_b_vertex(
+        &mut self,
+        position: &Point2D<f32>,
+        loop_blinn_data: &BVertexLoopBlinnData,
+    ) {
         self.b_vertex_positions.push(*position);
         self.b_vertex_loop_blinn_data.push(*loop_blinn_data);
     }
@@ -74,7 +76,7 @@ impl Mesh {
         } = self.get_b_quad_vertex_positions(b_quad);
 
         if ul.x.approx_eq(&ur.x) || ll.x.approx_eq(&lr.x) {
-            return
+            return;
         }
 
         self.b_quads.push(*b_quad);
@@ -86,8 +88,10 @@ impl Mesh {
     fn add_b_quad_vertex_positions(&mut self, b_quad: &BQuad) {
         let b_quad_vertex_positions = self.get_b_quad_vertex_positions(b_quad);
         let first_b_quad_vertex_position_index = (self.b_quad_vertex_positions.len() as u32) * 6;
-        self.push_b_quad_vertex_position_interior_indices(first_b_quad_vertex_position_index,
-                                                          &b_quad_vertex_positions);
+        self.push_b_quad_vertex_position_interior_indices(
+            first_b_quad_vertex_position_index,
+            &b_quad_vertex_positions,
+        );
         self.b_quad_vertex_positions.push(b_quad_vertex_positions);
     }
 
@@ -112,8 +116,11 @@ impl Mesh {
 
         let (uv_upper, uv_lower, sign_upper, sign_lower, mode_upper, mode_lower);
 
-        if edge_len_ucl < 0.01 || edge_len_urc < 0.01 || edge_len_ulr < 0.01 ||
-                edge_ucl.dot(-edge_ulr) > 0.9999 * edge_len_ucl * edge_len_ulr {
+        if edge_len_ucl < 0.01
+            || edge_len_urc < 0.01
+            || edge_len_ulr < 0.01
+            || edge_ucl.dot(-edge_ulr) > 0.9999 * edge_len_ucl * edge_len_ulr
+        {
             uv_upper = Uv::line(&rect, &ul, &ur);
             sign_upper = -1.0;
             mode_upper = -1.0;
@@ -123,8 +130,11 @@ impl Mesh {
             mode_upper = 1.0;
         }
 
-        if edge_len_lcl < 0.01 || edge_len_lrc < 0.01 || edge_len_llr < 0.01 ||
-                edge_lcl.dot(-edge_llr) > 0.9999 * edge_len_lcl * edge_len_llr {
+        if edge_len_lcl < 0.01
+            || edge_len_lrc < 0.01
+            || edge_len_llr < 0.01
+            || edge_lcl.dot(-edge_llr) > 0.9999 * edge_len_lcl * edge_len_llr
+        {
             uv_lower = Uv::line(&rect, &ll, &lr);
             sign_lower = 1.0;
             mode_lower = -1.0;
@@ -180,15 +190,19 @@ impl Mesh {
         b_quad_vertex_positions
     }
 
-    fn push_b_quad_vertex_position_interior_indices(&mut self,
-                                                    first_vertex_index: u32,
-                                                    b_quad: &BQuadVertexPositions) {
-        let upper_curve_is_concave =
-            (b_quad.upper_right_vertex_position - b_quad.upper_left_vertex_position).cross(
-                b_quad.upper_control_point_position - b_quad.upper_left_vertex_position) > 0.0;
-        let lower_curve_is_concave =
-            (b_quad.lower_left_vertex_position - b_quad.lower_right_vertex_position).cross(
-                b_quad.lower_control_point_position - b_quad.lower_right_vertex_position) > 0.0;
+    fn push_b_quad_vertex_position_interior_indices(
+        &mut self,
+        first_vertex_index: u32,
+        b_quad: &BQuadVertexPositions,
+    ) {
+        let upper_curve_is_concave = (b_quad.upper_right_vertex_position
+            - b_quad.upper_left_vertex_position)
+            .cross(b_quad.upper_control_point_position - b_quad.upper_left_vertex_position)
+            > 0.0;
+        let lower_curve_is_concave = (b_quad.lower_left_vertex_position
+            - b_quad.lower_right_vertex_position)
+            .cross(b_quad.lower_control_point_position - b_quad.lower_right_vertex_position)
+            > 0.0;
 
         let indices: &'static [u32] = match (upper_curve_is_concave, lower_curve_is_concave) {
             (false, false) => &[UL, UR, LL, UR, LR, LL],
@@ -208,7 +222,10 @@ impl Mesh {
         const LL: u32 = 5;
     }
 
-    pub fn push_stencil_segments<I>(&mut self, stream: I) where I: Iterator<Item = PathEvent> {
+    pub fn push_stencil_segments<I>(&mut self, stream: I)
+    where
+        I: Iterator<Item = PathEvent>,
+    {
         let segment_iter = SegmentIter::new(stream);
         for segment in segment_iter {
             match segment {
@@ -236,16 +253,18 @@ impl Mesh {
 
     /// Computes vertex normals necessary for emboldening and/or stem darkening. This is intended
     /// for stencil-and-cover.
-    pub fn push_stencil_normals<I>(&mut self, stream: I) where I: Iterator<Item = PathEvent> {
+    pub fn push_stencil_normals<I>(&mut self, stream: I)
+    where
+        I: Iterator<Item = PathEvent>,
+    {
         let mut normals = PathNormals::new();
         normals.add_path(stream);
-        self.stencil_normals.extend(normals.normals().iter().map(|normals| {
-            StencilNormals {
+        self.stencil_normals
+            .extend(normals.normals().iter().map(|normals| StencilNormals {
                 from: normals.from,
                 ctrl: normals.ctrl,
                 to: normals.to,
-            }
-        }))
+            }))
     }
 }
 
@@ -295,8 +314,11 @@ struct Uv {
 }
 
 impl Uv {
-    fn from_values(origin: &Point2D<f32>, origin_right: &Point2D<f32>, origin_down: &Point2D<f32>)
-                   -> Uv {
+    fn from_values(
+        origin: &Point2D<f32>,
+        origin_right: &Point2D<f32>,
+        origin_down: &Point2D<f32>,
+    ) -> Uv {
         Uv {
             origin: *origin,
             d_uv_dx: *origin_right - *origin,
@@ -304,8 +326,12 @@ impl Uv {
         }
     }
 
-    fn curve(rect: &Rect<f32>, left: &Point2D<f32>, ctrl: &Point2D<f32>, right: &Point2D<f32>)
-             -> Uv {
+    fn curve(
+        rect: &Rect<f32>,
+        left: &Point2D<f32>,
+        ctrl: &Point2D<f32>,
+        right: &Point2D<f32>,
+    ) -> Uv {
         let origin_right = rect.top_right();
         let origin_down = rect.bottom_left();
 
@@ -320,8 +346,12 @@ impl Uv {
         return Uv::from_values(&uv_origin, &uv_origin_right, &uv_origin_down);
 
         // https://gamedev.stackexchange.com/a/23745
-        fn to_barycentric(a: &Point2D<f32>, b: &Point2D<f32>, c: &Point2D<f32>, p: &Point2D<f32>)
-                        -> ([f64; 2], f64) {
+        fn to_barycentric(
+            a: &Point2D<f32>,
+            b: &Point2D<f32>,
+            c: &Point2D<f32>,
+            p: &Point2D<f32>,
+        ) -> ([f64; 2], f64) {
             let (a, b, c, p) = (a.to_f64(), b.to_f64(), c.to_f64(), p.to_f64());
             let (v0, v1, v2) = (b - a, c - a, p - a);
             let (d00, d01) = (v0.dot(v0), v0.dot(v1));
@@ -345,8 +375,10 @@ impl Uv {
                 lower_right: Point2D::new(1.0, 0.5),
                 lower_left: Point2D::new(0.5, 0.0),
             };
-            line_bounds = Rect::new(*left + Vector2D::new(0.0, -1.0),
-                                    Size2D::new(right.x - left.x, 2.0));
+            line_bounds = Rect::new(
+                *left + Vector2D::new(0.0, -1.0),
+                Size2D::new(right.x - left.x, 2.0),
+            );
         } else {
             if left.y < right.y {
                 values = CornerValues {
@@ -375,12 +407,19 @@ impl Uv {
 
         return Uv::from_values(&uv_origin, &uv_origin_right, &uv_origin_down);
 
-        fn bilerp(rect: &Rect<f32>, values: &CornerValues, position: &Point2D<f32>)
-                  -> Point2D<f32> {
-            let upper = values.upper_left.lerp(values.upper_right,
-                                               (position.x - rect.min_x()) / rect.size.width);
-            let lower = values.lower_left.lerp(values.lower_right,
-                                               (position.x - rect.min_x()) / rect.size.width);
+        fn bilerp(
+            rect: &Rect<f32>,
+            values: &CornerValues,
+            position: &Point2D<f32>,
+        ) -> Point2D<f32> {
+            let upper = values.upper_left.lerp(
+                values.upper_right,
+                (position.x - rect.min_x()) / rect.size.width,
+            );
+            let lower = values.lower_left.lerp(
+                values.lower_right,
+                (position.x - rect.min_x()) / rect.size.width,
+            );
             upper.lerp(lower, (position.y - rect.min_y()) / rect.size.height)
         }
     }

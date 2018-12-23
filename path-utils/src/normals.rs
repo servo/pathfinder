@@ -28,9 +28,7 @@ pub struct PathNormals {
 impl PathNormals {
     #[inline]
     pub fn new() -> PathNormals {
-        PathNormals {
-            normals: vec![],
-        }
+        PathNormals { normals: vec![] }
     }
 
     #[inline]
@@ -42,7 +40,10 @@ impl PathNormals {
         self.normals.clear()
     }
 
-    pub fn add_path<I>(&mut self, stream: I) where I: Iterator<Item = PathEvent> {
+    pub fn add_path<I>(&mut self, stream: I)
+    where
+        I: Iterator<Item = PathEvent>,
+    {
         let events: Vec<_> = stream.collect();
         let orientation = Orientation::from_path(events.iter().cloned());
 
@@ -67,11 +68,14 @@ impl PathNormals {
         self.flush(orientation, path_ops.into_iter(), &mut path_points);
     }
 
-    fn flush<I>(&mut self,
-                orientation: Orientation,
-                path_stream: I,
-                path_points: &mut Vec<Point2D<f32>>)
-                where I: Iterator<Item = PathOp> {
+    fn flush<I>(
+        &mut self,
+        orientation: Orientation,
+        path_stream: I,
+        path_points: &mut Vec<Point2D<f32>>,
+    ) where
+        I: Iterator<Item = PathOp>,
+    {
         match path_points.len() {
             0 | 1 => path_points.clear(),
             2 => {
@@ -87,11 +91,14 @@ impl PathNormals {
         }
     }
 
-    fn flush_slow<I>(&mut self,
-                     orientation: Orientation,
-                     path_stream: I,
-                     path_points: &mut Vec<Point2D<f32>>)
-                     where I: Iterator<Item = PathOp> {
+    fn flush_slow<I>(
+        &mut self,
+        orientation: Orientation,
+        path_stream: I,
+        path_points: &mut Vec<Point2D<f32>>,
+    ) where
+        I: Iterator<Item = PathOp>,
+    {
         let mut normals = vec![Vector2D::zero(); path_points.len()];
         for (index, point) in path_points.iter().enumerate() {
             let (mut prev_index, mut next_index) = (index, index);
@@ -109,10 +116,12 @@ impl PathNormals {
                     next_index + 1
                 }
             }
-            normals[index] = compute_normal(orientation,
-                                            &path_points[prev_index],
-                                            point,
-                                            &path_points[next_index])
+            normals[index] = compute_normal(
+                orientation,
+                &path_points[prev_index],
+                point,
+                &path_points[next_index],
+            )
         }
         path_points.clear();
 
@@ -124,8 +133,8 @@ impl PathNormals {
                     next_normal_index += 1;
                     self.normals.push(SegmentNormals {
                         from: normals[next_normal_index - 2],
-                        ctrl: normals[next_normal_index - 2].lerp(normals[next_normal_index - 1],
-                                                                  0.5),
+                        ctrl: normals[next_normal_index - 2]
+                            .lerp(normals[next_normal_index - 1], 0.5),
                         to: normals[next_normal_index - 1],
                     });
                 }
@@ -150,11 +159,12 @@ impl PathNormals {
     }
 }
 
-fn compute_normal(orientation: Orientation,
-                  prev: &Point2D<f32>,
-                  current: &Point2D<f32>,
-                  next: &Point2D<f32>)
-                  -> Vector2D<f32> {
+fn compute_normal(
+    orientation: Orientation,
+    prev: &Point2D<f32>,
+    current: &Point2D<f32>,
+    next: &Point2D<f32>,
+) -> Vector2D<f32> {
     let vector = ((*current - *prev) + (*next - *current)).normalize();
     Vector2D::new(vector.y, -vector.x) * -(orientation as i32 as f32)
 }

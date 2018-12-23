@@ -9,7 +9,7 @@
 // except according to those terms.
 
 //! Various utilities for manipulating Bézier curves.
-//! 
+//!
 //! Most of these should go upstream to Lyon at some point.
 
 extern crate arrayvec;

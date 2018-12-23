@@ -19,7 +19,10 @@ pub enum Orientation {
 
 impl Orientation {
     /// This follows the FreeType algorithm.
-    pub fn from_path<I>(stream: I) -> Orientation where I: Iterator<Item = PathEvent> {
+    pub fn from_path<I>(stream: I) -> Orientation
+    where
+        I: Iterator<Item = PathEvent>,
+    {
         let (mut from, mut subpath_start) = (Point2D::zero(), Point2D::zero());
         let mut area = 0.0;
         for event in stream {

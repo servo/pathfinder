@@ -23,9 +23,7 @@ pub struct MeshPack {
 impl MeshPack {
     #[inline]
     pub fn new() -> MeshPack {
-        MeshPack {
-            meshes: vec![],
-        }
+        MeshPack { meshes: vec![] }
     }
 
     #[inline]
@@ -34,10 +32,13 @@ impl MeshPack {
     }
 
     /// Writes this mesh pack to a RIFF file.
-    /// 
+    ///
     /// RIFF is a dead-simple extensible binary format documented here:
     /// https://msdn.microsoft.com/en-us/library/windows/desktop/ee415713(v=vs.85).aspx
-    pub fn serialize_into<W>(&self, writer: &mut W) -> io::Result<()> where W: Write + Seek {
+    pub fn serialize_into<W>(&self, writer: &mut W) -> io::Result<()>
+    where
+        W: Write + Seek,
+    {
         // `PFMP` for "Pathfinder Mesh Pack".
         try!(writer.write_all(b"RIFF\0\0\0\0PFMP"));
 
@@ -48,8 +49,16 @@ impl MeshPack {
         for mesh in &self.meshes {
             try!(write_chunk(writer, b"mesh", |writer| {
                 try!(write_simple_chunk(writer, b"bqua", &mesh.b_quads));
-                try!(write_simple_chunk(writer, b"bqvp", &mesh.b_quad_vertex_positions));
-                try!(write_simple_chunk(writer, b"bqii", &mesh.b_quad_vertex_interior_indices));
+                try!(write_simple_chunk(
+                    writer,
+                    b"bqvp",
+                    &mesh.b_quad_vertex_positions
+                ));
+                try!(write_simple_chunk(
+                    writer,
+                    b"bqii",
+                    &mesh.b_quad_vertex_interior_indices
+                ));
                 try!(write_simple_chunk(writer, b"bbox", &mesh.b_boxes));
                 try!(write_simple_chunk(writer, b"sseg", &mesh.stencil_segments));
                 try!(write_simple_chunk(writer, b"snor", &mesh.stencil_normals));
@@ -63,7 +72,10 @@ impl MeshPack {
         return Ok(());
 
         fn write_chunk<W, F>(writer: &mut W, tag: &[u8; 4], mut closure: F) -> io::Result<()>
-                             where W: Write + Seek, F: FnMut(&mut W) -> io::Result<()> {
+        where
+            W: Write + Seek,
+            F: FnMut(&mut W) -> io::Result<()>,
+        {
             try!(writer.write_all(tag));
             try!(writer.write_all(b"\0\0\0\0"));
 
@@ -78,12 +90,16 @@ impl MeshPack {
         }
 
         fn write_simple_chunk<W, T>(writer: &mut W, tag: &[u8; 4], data: &[T]) -> io::Result<()>
-                                    where W: Write + Seek, T: Serialize {
+        where
+            W: Write + Seek,
+            T: Serialize,
+        {
             write_chunk(writer, tag, |writer| {
                 for datum in data {
-                    try!(bincode::serialize_into(&mut *writer, datum).map_err(|_| {
-                        io::Error::from(ErrorKind::Other)
-                    }));
+                    try!(
+                        bincode::serialize_into(&mut *writer, datum)
+                            .map_err(|_| io::Error::from(ErrorKind::Other))
+                    );
                 }
                 Ok(())
             })

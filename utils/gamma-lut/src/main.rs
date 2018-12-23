@@ -42,9 +42,12 @@ pub fn main() {
         .version("0.1")
         .author("The Pathfinder Project Developers")
         .about("Generates gamma lookup tables for use with Pathfinder")
-        .arg(Arg::with_name("OUTPUT-PATH").help("The `.png` image to produce")
-                                          .required(true)
-                                          .index(1));
+        .arg(
+            Arg::with_name("OUTPUT-PATH")
+                .help("The `.png` image to produce")
+                .required(true)
+                .index(1),
+        );
     let matches = app.get_matches();
 
     let gamma_lut = GammaLut::new(CONTRAST, GAMMA, GAMMA);

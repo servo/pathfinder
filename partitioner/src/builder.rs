@@ -107,7 +107,7 @@ impl FlatPathBuilder for Builder {
         };
 
         if first_position_of_subpath == self.current_position() {
-            return
+            return;
         }
 
         self.add_endpoint(None, first_position_of_subpath);
@@ -117,7 +117,8 @@ impl FlatPathBuilder for Builder {
     fn move_to(&mut self, to: Point2D<f32>) {
         self.end_subpath();
         let last_endpoint_index = self.endpoints.len() as u32;
-        self.subpath_ranges.push(last_endpoint_index..last_endpoint_index);
+        self.subpath_ranges
+            .push(last_endpoint_index..last_endpoint_index);
         self.add_endpoint(None, to);
     }
 
@@ -140,8 +141,7 @@ impl PathBuilder for Builder {
         // Split at X tangent.
         let mut worklist: ArrayVec<[QuadraticBezierSegment<f32>; 2]> = ArrayVec::new();
         match segment.local_x_extremum_t() {
-            Some(t) if t > TANGENT_PARAMETER_TOLERANCE &&
-                    t < 1.0 - TANGENT_PARAMETER_TOLERANCE => {
+            Some(t) if t > TANGENT_PARAMETER_TOLERANCE && t < 1.0 - TANGENT_PARAMETER_TOLERANCE => {
                 let subsegments = segment.split(t);
                 worklist.push(subsegments.0);
                 worklist.push(subsegments.1);
@@ -152,8 +152,9 @@ impl PathBuilder for Builder {
         // Split at Y tangent.
         for segment in worklist {
             match segment.local_y_extremum_t() {
-                Some(t) if t > TANGENT_PARAMETER_TOLERANCE &&
-                        t < 1.0 - TANGENT_PARAMETER_TOLERANCE => {
+                Some(t)
+                    if t > TANGENT_PARAMETER_TOLERANCE && t < 1.0 - TANGENT_PARAMETER_TOLERANCE =>
+                {
                     let subsegments = segment.split(t);
                     self.add_endpoint(Some(subsegments.0.ctrl), subsegments.0.to);
                     self.add_endpoint(Some(subsegments.1.ctrl), subsegments.1.to);
@@ -171,17 +172,20 @@ impl PathBuilder for Builder {
             to: to,
         };
 
-        for quadratic_segment in CubicToQuadraticSegmentIter::new(&cubic_segment,
-                                                                  self.approx_tolerance) {
+        for quadratic_segment in
+            CubicToQuadraticSegmentIter::new(&cubic_segment, self.approx_tolerance)
+        {
             self.quadratic_bezier_to(quadratic_segment.ctrl, quadratic_segment.to)
         }
     }
 
-    fn arc(&mut self,
-           _center: Point2D<f32>,
-           _radii: Vector2D<f32>,
-           _angle: Angle<f32>,
-           _x_rotation: Angle<f32>) {
+    fn arc(
+        &mut self,
+        _center: Point2D<f32>,
+        _radii: Vector2D<f32>,
+        _angle: Angle<f32>,
+        _x_rotation: Angle<f32>,
+    ) {
         panic!("TODO: Support arcs in the Pathfinder builder!")
     }
 }

@@ -10,12 +10,12 @@
 
 //! Processes paths into *mesh libraries*, which are vertex buffers ready to be uploaded to the
 //! GPU and rendered with the supplied shaders.
-//! 
+//!
 //! *Partitioning* is the process of cutting up a filled Bézier path into *B-quads*. A B-quad is
 //! the core primitive that Pathfinder renders; it is a trapezoid-like shape that consists of
 //! vertical sides on the left and right and Bézier curve segments and/or lines on the top and
 //! bottom. Path partitioning is typically O(*n* log *n*) in the number of path commands.
-//! 
+//!
 //! If you have a static set of paths (for example, one specific font), you may wish to run the
 //! partitioner as a preprocessing step and store the resulting mesh library on disk. To aid this
 //! use case, mesh libraries can be serialized into a simple binary format. Of course, meshes can
@@ -69,13 +69,14 @@ pub struct BQuad {
 
 impl BQuad {
     #[inline]
-    pub fn new(upper_left_vertex_index: u32,
-               upper_control_point_vertex_index: u32,
-               upper_right_vertex_index: u32,
-               lower_left_vertex_index: u32,
-               lower_control_point_vertex_index: u32,
-               lower_right_vertex_index: u32)
-               -> BQuad {
+    pub fn new(
+        upper_left_vertex_index: u32,
+        upper_control_point_vertex_index: u32,
+        upper_right_vertex_index: u32,
+        lower_left_vertex_index: u32,
+        lower_control_point_vertex_index: u32,
+        lower_right_vertex_index: u32,
+    ) -> BQuad {
         BQuad {
             upper_left_vertex_index: upper_left_vertex_index,
             upper_control_point_vertex_index: upper_control_point_vertex_index,
@@ -146,11 +147,12 @@ impl BVertexLoopBlinnData {
         }
     }
 
-    pub(crate) fn control_point(left_endpoint_position: &Point2D<f32>,
-                                control_point_position: &Point2D<f32>,
-                                right_endpoint_position: &Point2D<f32>,
-                                bottom: bool)
-                                -> BVertexLoopBlinnData {
+    pub(crate) fn control_point(
+        left_endpoint_position: &Point2D<f32>,
+        control_point_position: &Point2D<f32>,
+        right_endpoint_position: &Point2D<f32>,
+        bottom: bool,
+    ) -> BVertexLoopBlinnData {
         let control_point_vector = *control_point_position - *left_endpoint_position;
         let right_vector = *right_endpoint_position - *left_endpoint_position;
         let determinant = right_vector.cross(control_point_vector);

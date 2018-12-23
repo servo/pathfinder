@@ -13,12 +13,18 @@
 use euclid::Transform2D;
 use lyon_path::PathEvent;
 
-pub struct Transform2DPathIter<I> where I: Iterator<Item = PathEvent> {
+pub struct Transform2DPathIter<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     inner: I,
     transform: Transform2D<f32>,
 }
 
-impl<I> Transform2DPathIter<I> where I: Iterator<Item = PathEvent> {
+impl<I> Transform2DPathIter<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     #[inline]
     pub fn new(inner: I, transform: &Transform2D<f32>) -> Transform2DPathIter<I> {
         Transform2DPathIter {
@@ -28,7 +34,10 @@ impl<I> Transform2DPathIter<I> where I: Iterator<Item = PathEvent> {
     }
 }
 
-impl<I> Iterator for Transform2DPathIter<I> where I: Iterator<Item = PathEvent> {
+impl<I> Iterator for Transform2DPathIter<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     type Item = PathEvent;
 
     fn next(&mut self) -> Option<PathEvent> {
@@ -39,21 +48,21 @@ impl<I> Iterator for Transform2DPathIter<I> where I: Iterator<Item = PathEvent> 
             Some(PathEvent::LineTo(to)) => {
                 Some(PathEvent::LineTo(self.transform.transform_point(&to)))
             }
-            Some(PathEvent::QuadraticTo(ctrl, to)) => {
-                Some(PathEvent::QuadraticTo(self.transform.transform_point(&ctrl),
-                                            self.transform.transform_point(&to)))
-            }
-            Some(PathEvent::CubicTo(ctrl1, ctrl2, to)) => {
-                Some(PathEvent::CubicTo(self.transform.transform_point(&ctrl1),
-                                        self.transform.transform_point(&ctrl2),
-                                        self.transform.transform_point(&to)))
-            }
-            Some(PathEvent::Arc(center, radius, start, end)) => {
-                Some(PathEvent::Arc(self.transform.transform_point(&center),
-                                    self.transform.transform_vector(&radius),
-                                    start,
-                                    end))
-            }
+            Some(PathEvent::QuadraticTo(ctrl, to)) => Some(PathEvent::QuadraticTo(
+                self.transform.transform_point(&ctrl),
+                self.transform.transform_point(&to),
+            )),
+            Some(PathEvent::CubicTo(ctrl1, ctrl2, to)) => Some(PathEvent::CubicTo(
+                self.transform.transform_point(&ctrl1),
+                self.transform.transform_point(&ctrl2),
+                self.transform.transform_point(&to),
+            )),
+            Some(PathEvent::Arc(center, radius, start, end)) => Some(PathEvent::Arc(
+                self.transform.transform_point(&center),
+                self.transform.transform_vector(&radius),
+                start,
+                end,
+            )),
             event => event,
         }
     }

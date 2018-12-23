@@ -31,17 +31,20 @@ fn main() {
         .version("0.1")
         .author("The Pathfinder Project Developers")
         .about("Generates area lookup tables for use with Pathfinder")
-        .arg(Arg::with_name("OUTPUT-PATH").help("The `.png` image to produce")
-                                          .required(true)
-                                          .index(1));
+        .arg(
+            Arg::with_name("OUTPUT-PATH")
+                .help("The `.png` image to produce")
+                .required(true)
+                .index(1),
+        );
 
     let matches = app.get_matches();
     let image = ImageBuffer::from_fn(WIDTH, HEIGHT, |u, v| {
         if u == 0 {
-            return Luma([255])
+            return Luma([255]);
         }
         if u == WIDTH - 1 {
-            return Luma([0])
+            return Luma([0]);
         }
 
         let y = ((u as f32) - (WIDTH / 2) as f32) / 16.0;

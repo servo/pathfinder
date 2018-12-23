@@ -51,7 +51,7 @@ impl Iterator for CubicToQuadraticSegmentIter {
             let delta_ctrl_1 = (cubic.ctrl1 * 3.0 - cubic.from) + (cubic.to - cubic.ctrl2 * 3.0);
             let max_error = f32::max(delta_ctrl_1.length(), delta_ctrl_0.length()) / 6.0;
             if max_error < self.error_bound {
-                break
+                break;
             }
 
             let (cubic_a, cubic_b) = cubic.split(0.5);
@@ -70,14 +70,20 @@ impl Iterator for CubicToQuadraticSegmentIter {
     }
 }
 
-pub struct CubicToQuadraticTransformer<I> where I: Iterator<Item = PathEvent> {
+pub struct CubicToQuadraticTransformer<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     inner: I,
     segment_iter: Option<CubicToQuadraticSegmentIter>,
     last_point: Point2D<f32>,
     error_bound: f32,
 }
 
-impl<I> CubicToQuadraticTransformer<I> where I: Iterator<Item = PathEvent> {
+impl<I> CubicToQuadraticTransformer<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     #[inline]
     pub fn new(inner: I, error_bound: f32) -> CubicToQuadraticTransformer<I> {
         CubicToQuadraticTransformer {
@@ -89,13 +95,16 @@ impl<I> CubicToQuadraticTransformer<I> where I: Iterator<Item = PathEvent> {
     }
 }
 
-impl<I> Iterator for CubicToQuadraticTransformer<I> where I: Iterator<Item = PathEvent> {
+impl<I> Iterator for CubicToQuadraticTransformer<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     type Item = PathEvent;
 
     fn next(&mut self) -> Option<PathEvent> {
         if let Some(ref mut segment_iter) = self.segment_iter {
             if let Some(quadratic) = segment_iter.next() {
-                return Some(PathEvent::QuadraticTo(quadratic.ctrl, quadratic.to))
+                return Some(PathEvent::QuadraticTo(quadratic.ctrl, quadratic.to));
             }
         }
 
@@ -111,8 +120,8 @@ impl<I> Iterator for CubicToQuadraticTransformer<I> where I: Iterator<Item = Pat
                     to: to,
                 };
                 self.last_point = to;
-                self.segment_iter = Some(CubicToQuadraticSegmentIter::new(&cubic,
-                                                                          self.error_bound));
+                self.segment_iter =
+                    Some(CubicToQuadraticSegmentIter::new(&cubic, self.error_bound));
                 self.next()
             }
             Some(PathEvent::MoveTo(to)) => {
