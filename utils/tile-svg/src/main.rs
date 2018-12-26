@@ -312,9 +312,9 @@ impl Scene {
 
     fn build(&self) -> BuiltScene {
         let mut built_scene = BuiltScene::new(&self.view_box);
-        for object in &self.objects {
+        for (object_index, object) in self.objects.iter().enumerate() {
             let mut tiler = Tiler::from_outline(&object.outline,
-                                                object.color,
+                                                object_index as u32,
                                                 &self.view_box,
                                                 &mut built_scene);
             tiler.generate_tiles();
@@ -948,7 +948,7 @@ const TILE_HEIGHT: f32 = 16.0;
 
 struct Tiler<'o, 'p> {
     outline: &'o Outline,
-    fill_color: ColorU,
+    object_index: u32,
     built_scene: &'p mut BuiltScene,
 
     view_box: Rect<f32>,
@@ -963,13 +963,13 @@ struct Tiler<'o, 'p> {
 
 impl<'o, 'p> Tiler<'o, 'p> {
     fn from_outline(outline: &'o Outline,
-                    fill_color: ColorU,
+                    object_index: u32,
                     view_box: &Rect<f32>,
                     built_scene: &'p mut BuiltScene)
                     -> Tiler<'o, 'p> {
         Tiler {
             outline,
-            fill_color,
+            object_index,
             built_scene,
 
             view_box: *view_box,
@@ -1049,7 +1049,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
         for tile_index_x in 0..tiles_across {
             let tile_x = outline_tile_origin.x + tile_index_x as i16;
             let tile_y = outline_tile_origin.y + tile_index_y;
-            self.strip_tiles.push(MaskTilePrimitive::new(tile_x, tile_y, self.fill_color));
+            self.strip_tiles.push(MaskTilePrimitive::new(tile_x, tile_y, self.object_index));
         }
 
         // Process old active edges.
@@ -1194,7 +1194,7 @@ impl<'o, 'p> Tiler<'o, 'p> {
                 self.built_scene.solid_tiles.push(SolidTilePrimitive {
                     tile_x: tile.tile_x,
                     tile_y: tile.tile_y,
-                    color: tile.color,
+                    object_index: tile.object_index,
                 });
             }
         }
@@ -1302,6 +1302,23 @@ fn process_active_edge(active_edge: &mut Segment,
     }
 }
 
+// Culling
+
+fn cull_scene(scene: &mut BuiltScene) {
+    let scene_tile_origin = Point2D::new(f32::floor(scene.view_box.origin.x / TILE_WIDTH) as i32,
+                                         f32::floor(scene.view_box.origin.y / TILE_HEIGHT) as i32);
+    let scene_tile_lower_right =
+        Point2D::new(f32::ceil(scene.view_box.max_x() / TILE_WIDTH) as i32,
+                     f32::ceil(scene.view_box.max_y() / TILE_HEIGHT) as i32);
+    let scene_tile_size = Size2D::new(scene_tile_lower_right.x - scene_tile_origin.x,
+                                      scene_tile_lower_right.y - scene_tile_origin.y).to_u32();
+
+    let mut z_buffer = FixedBitSet::with_capacity(scene_tile_size.width as usize *
+                                                  scene_tile_size.height as usize);
+
+    // TODO(pcwalton)
+}
+
 // Primitives
 
 #[derive(Debug)]
@@ -1323,14 +1340,14 @@ struct FillPrimitive {
 struct SolidTilePrimitive {
     tile_x: i16,
     tile_y: i16,
-    color: ColorU,
+    object_index: u32,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct MaskTilePrimitive {
     tile_x: i16,
     tile_y: i16,
-    color: ColorU,
+    object_index: u32,
     backdrop: f32,
 }
 
@@ -1380,20 +1397,18 @@ impl BuiltScene {
         writer.write_all(b"soli")?;
         writer.write_u32::<LittleEndian>(solid_tiles_size as u32)?;
         for &tile_primitive in &self.solid_tiles {
-            let color = tile_primitive.color;
             writer.write_i16::<LittleEndian>(tile_primitive.tile_x)?;
             writer.write_i16::<LittleEndian>(tile_primitive.tile_y)?;
-            writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
+            writer.write_u32::<LittleEndian>(tile_primitive.object_index)?;
         }
 
         writer.write_all(b"mask")?;
         writer.write_u32::<LittleEndian>(mask_tiles_size as u32)?;
         for &tile_primitive in &self.mask_tiles {
-            let color = tile_primitive.color;
             writer.write_i16::<LittleEndian>(tile_primitive.tile_x)?;
             writer.write_i16::<LittleEndian>(tile_primitive.tile_y)?;
             writer.write_f32::<LittleEndian>(tile_primitive.backdrop)?;
-            writer.write_all(&[color.r, color.g, color.b, color.a]).unwrap();
+            writer.write_u32::<LittleEndian>(tile_primitive.object_index)?;
         }
 
         return Ok(());
@@ -1407,14 +1422,14 @@ impl BuiltScene {
 }
 
 impl SolidTilePrimitive {
-    fn new(tile_x: i16, tile_y: i16, color: ColorU) -> SolidTilePrimitive {
-        SolidTilePrimitive { tile_x, tile_y, color }
+    fn new(tile_x: i16, tile_y: i16, object_index: u32) -> SolidTilePrimitive {
+        SolidTilePrimitive { tile_x, tile_y, object_index }
     }
 }
 
 impl MaskTilePrimitive {
-    fn new(tile_x: i16, tile_y: i16, color: ColorU) -> MaskTilePrimitive {
-        MaskTilePrimitive { tile_x, tile_y, backdrop: 0.0, color }
+    fn new(tile_x: i16, tile_y: i16, object_index: u32) -> MaskTilePrimitive {
+        MaskTilePrimitive { tile_x, tile_y, backdrop: 0.0, object_index }
     }
 }
 
