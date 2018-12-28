@@ -37,6 +37,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Instant;
+use std::u32;
 use svgtypes::{Color as SvgColor, PathParser, PathSegment as SvgPathSegment, TransformListParser};
 use svgtypes::{TransformListToken};
 
@@ -74,9 +75,10 @@ fn main() {
     println!("Scene bounds: {:?}", scene.bounds);
 
     let start_time = Instant::now();
-    let mut built_scene = BuiltScene::new(&scene.view_box);
+    let mut built_scene = BuiltScene::new(&scene.view_box, scene.objects.len() as u32);
     for _ in 0..runs {
         built_scene = scene.build();
+        cull_scene(&mut built_scene);
     }
     let elapsed_time = Instant::now() - start_time;
 
@@ -311,7 +313,7 @@ impl Scene {
     }
 
     fn build(&self) -> BuiltScene {
-        let mut built_scene = BuiltScene::new(&self.view_box);
+        let mut built_scene = BuiltScene::new(&self.view_box, self.objects.len() as u32);
         for (object_index, object) in self.objects.iter().enumerate() {
             let mut tiler = Tiler::from_outline(&object.outline,
                                                 object_index as u32,
@@ -1304,6 +1306,7 @@ fn process_active_edge(active_edge: &mut Segment,
 
 // Culling
 
+#[inline(never)]
 fn cull_scene(scene: &mut BuiltScene) {
     let scene_tile_origin = Point2D::new(f32::floor(scene.view_box.origin.x / TILE_WIDTH) as i32,
                                          f32::floor(scene.view_box.origin.y / TILE_HEIGHT) as i32);
@@ -1316,13 +1319,54 @@ fn cull_scene(scene: &mut BuiltScene) {
     let mut z_buffer = FixedBitSet::with_capacity(scene_tile_size.width as usize *
                                                   scene_tile_size.height as usize);
 
-    // TODO(pcwalton)
+    let mut mask_tile_iter = scene.mask_tiles.iter_mut().rev().peekable();
+    let mut solid_tile_iter = scene.solid_tiles.iter_mut().rev().peekable();
+    for object_index in (0..scene.path_count).rev() {
+        // Cull occluded mask tiles.
+        loop {
+            match mask_tile_iter.peek() {
+                Some(mask_tile) if mask_tile.object_index < object_index => break,
+                None => break,
+                Some(_) => {}
+            }
+
+            let mut tile = mask_tile_iter.next().unwrap();
+            let index = tile.tile_y as usize * scene_tile_size.width as usize +
+                tile.tile_x as usize;
+            if z_buffer[index] {
+                tile.object_index = u32::MAX;
+            }
+        }
+
+        // Update the Z-buffer.
+        loop {
+            match solid_tile_iter.peek() {
+                Some(solid_tile) if solid_tile.object_index < object_index => break,
+                None => break,
+                Some(_) => {}
+            }
+
+            let mut tile = solid_tile_iter.next().unwrap();
+            let index = tile.tile_y as usize * scene_tile_size.width as usize +
+                tile.tile_x as usize;
+            if z_buffer[index] {
+                tile.object_index = u32::MAX;
+            } else {
+                z_buffer.insert(index);
+            }
+        }
+    }
+
+    // Cull occluded fills.
+    let mask_tiles = &mut scene.mask_tiles;
+    scene.fills.retain(|fill| mask_tiles[fill.tile_index as usize].object_index < u32::MAX);
 }
 
 // Primitives
 
 #[derive(Debug)]
 struct BuiltScene {
+    path_count: u32,
     view_box: Rect<f32>,
     fills: Vec<FillPrimitive>,
     solid_tiles: Vec<SolidTilePrimitive>,
@@ -1360,8 +1404,14 @@ struct ColorU {
 }
 
 impl BuiltScene {
-    fn new(view_box: &Rect<f32>) -> BuiltScene {
-        BuiltScene { view_box: *view_box, fills: vec![], solid_tiles: vec![], mask_tiles: vec![] }
+    fn new(view_box: &Rect<f32>, path_count: u32) -> BuiltScene {
+        BuiltScene {
+            view_box: *view_box,
+            path_count,
+            fills: vec![],
+            solid_tiles: vec![],
+            mask_tiles: vec![],
+        }
     }
 
     fn write<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
