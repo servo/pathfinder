@@ -8,8 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![feature(decl_macro, plugin)]
-#![plugin(rocket_codegen)]
+#![feature(custom_attribute, decl_macro, plugin, proc_macro_hygiene)]
 
 extern crate app_units;
 extern crate base64;
@@ -23,6 +22,7 @@ extern crate lyon_geom;
 extern crate lyon_path;
 extern crate pathfinder_partitioner;
 extern crate pathfinder_path_utils;
+#[macro_use]
 extern crate rocket;
 extern crate rocket_contrib;
 
@@ -41,7 +41,6 @@ use font_kit::canvas::Format as FontKitFormat;
 use font_kit::canvas::{Canvas, RasterizationOptions};
 use font_kit::font::Font;
 use font_kit::hinting::HintingOptions;
-use font_kit::loaders;
 use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
 use lyon_path::PathEvent;
