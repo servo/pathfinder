@@ -78,7 +78,7 @@ fn main() {
     let mut built_scene = BuiltScene::new(&scene.view_box, scene.objects.len() as u32);
     for _ in 0..runs {
         built_scene = scene.build();
-        cull_scene(&mut built_scene);
+        built_scene = merge_and_cull_subscenes(&[&built_scene]);
     }
     let elapsed_time = Instant::now() - start_time;
 
@@ -894,7 +894,7 @@ impl Segment {
                     primitives.push(FillPrimitive {
                         from: segment.from - tile_offset,
                         to: segment.to - tile_offset,
-                        tile_index: from_tile_index,
+                        mask_tile_index: from_tile_index,
                     });
                     break;
                 }
@@ -1307,59 +1307,107 @@ fn process_active_edge(active_edge: &mut Segment,
 // Culling
 
 #[inline(never)]
-fn cull_scene(scene: &mut BuiltScene) {
-    let scene_tile_origin = Point2D::new(f32::floor(scene.view_box.origin.x / TILE_WIDTH) as i32,
-                                         f32::floor(scene.view_box.origin.y / TILE_HEIGHT) as i32);
-    let scene_tile_lower_right =
-        Point2D::new(f32::ceil(scene.view_box.max_x() / TILE_WIDTH) as i32,
-                     f32::ceil(scene.view_box.max_y() / TILE_HEIGHT) as i32);
+fn merge_and_cull_subscenes(subscenes: &[&BuiltScene]) -> BuiltScene {
+    let mut scene = BuiltScene::new(Rect::zero(), 0);
+    if subscenes.is_empty() {
+        return scene;
+    }
+
+    let view_box = subscenes[0].view_box;
+    scene.view_box = view_box;
+
+    let scene_tile_origin = Point2D::new(f32::floor(view_box.origin.x / TILE_WIDTH) as i32,
+                                         f32::floor(view_box.origin.y / TILE_HEIGHT) as i32);
+    let scene_tile_lower_right = Point2D::new(f32::ceil(view_box.max_x() / TILE_WIDTH) as i32,
+                                              f32::ceil(view_box.max_y() / TILE_HEIGHT) as i32);
     let scene_tile_size = Size2D::new(scene_tile_lower_right.x - scene_tile_origin.x,
                                       scene_tile_lower_right.y - scene_tile_origin.y).to_u32();
 
     let mut z_buffer = FixedBitSet::with_capacity(scene_tile_size.width as usize *
                                                   scene_tile_size.height as usize);
 
-    let mut mask_tile_iter = scene.mask_tiles.iter_mut().rev().peekable();
-    let mut solid_tile_iter = scene.solid_tiles.iter_mut().rev().peekable();
+    let mut fill_next_indices: Vec<usize> =
+        subscenes.iter().map(|subscene| subscene.fills.len()).collect();
+    let mut mask_tile_next_indices: Vec<usize> =
+        subscenes.iter().map(|subscene| subscene.mask_tiles.len()).collect();
+    let mut solid_tile_next_indices: Vec<usize> =
+        subscenes.iter().map(|subscene| subscene.solid_tiles.len()).collect();
+
     for object_index in (0..scene.path_count).rev() {
-        // Cull occluded mask tiles.
-        loop {
-            match mask_tile_iter.peek() {
-                Some(mask_tile) if mask_tile.object_index < object_index => break,
-                None => break,
-                Some(_) => {}
-            }
+        // Find the subscene the object index belongs to.
+        let mut subscene_index = (0..subscenes.len()).filter(|subscene_index| {
+            let mask_tile_index = mask_tile_next_indices[subscene_index];
+            let subscene = &subscenes[subscene_index];
+            mask_tile_index > 0 &&
+                subscene.mask_tiles[mask_tile_index - 1].object_index == object_index
+        }).next();
+        if subscene_index.is_none() {
+            subscene_index = (0..subscenes.len()).filter(|subscene_index| {
+                let solid_tile_index = solid_tile_next_indices[subscene_index];
+                let subscene = &subscenes[subscene_index];
+                solid_tile_index > 0 &&
+                    subscene.solid_tiles[solid_tile_index - 1].object_index == object_index
+            }).next();
+        }
 
-            let mut tile = mask_tile_iter.next().unwrap();
+        // Look up that subscene.
+        let subscene_index = subscene_index.unwrap();
+        let subscene = &subscenes[subscene_index];
+
+        let mut fill_next_index = fill_next_indices[subscene_index];
+        let mut mask_tile_next_index = mask_tile_next_indices[subscene_index];
+        let mut solid_tile_next_index = solid_tile_next_indices[subscene_index];
+
+        let first_mask_tile_index = scene.mask_tiles.len();
+
+        // Copy mask tiles, culling as appropriate.
+        while mask_tile_next_index > 0 &&
+                subscene.mask_tiles[mask_tile_next_index - 1].object_index == object_index {
+            mask_tile_next_index -= 1;
+            let mut tile = subscene.mask_tiles[mask_tile_next_index];
+            let index = tile.tile_y as usize * scene_tile_size.width as usize +
+                tile.tile_x as usize;
+            let occluded = z_buffer[index];
+            if occluded {
+                tile.object_index = u32::MAX;
+            }
+            scene.mask_tiles.push(tile);
+        }
+
+        // Copy unoccluded solid tiles, updating the Z-buffer as necessary.
+        while solid_tile_next_index > 0 &&
+                subscene.solid_tiles[solid_tile_next_index - 1].object_index == object_index {
+            solid_tile_next_index -= 1;
+            let tile = subscene.solid_tiles[solid_tile_next_index];
             let index = tile.tile_y as usize * scene_tile_size.width as usize +
                 tile.tile_x as usize;
             if z_buffer[index] {
-                tile.object_index = u32::MAX;
+                // Occluded.
+                break;
+            }
+            z_buffer.insert(index);
+            scene.solid_tiles.push(tile);
+        }
+
+        // Copy unoccluded fill primitives.
+        while fill_next_index > 0 &&
+                subscene.fills[fill_next_index - 1].mask_tile_index >= mask_tile_next_index {
+            fill_next_index -= 1;
+            let mut fill = subscene.fills[fill_next_index];
+            fill.mask_tile_index = fill.mask_tile_index - mask_tile_next_index +
+                first_mask_tile_index;
+            if scene.mask_tiles[fill.mask_tile_index].object_index < u32::MAX {
+                scene.fills.push(fill);
             }
         }
 
-        // Update the Z-buffer.
-        loop {
-            match solid_tile_iter.peek() {
-                Some(solid_tile) if solid_tile.object_index < object_index => break,
-                None => break,
-                Some(_) => {}
-            }
-
-            let mut tile = solid_tile_iter.next().unwrap();
-            let index = tile.tile_y as usize * scene_tile_size.width as usize +
-                tile.tile_x as usize;
-            if z_buffer[index] {
-                tile.object_index = u32::MAX;
-            } else {
-                z_buffer.insert(index);
-            }
-        }
+        // Update indices.
+        fill_next_indices[subscene_index] = fill_next_index;
+        mask_tile_next_indices[subscene_index] = mask_tile_next_index;
+        solid_tile_next_indices[subscene_index] = solid_tile_next_index;
     }
 
-    // Cull occluded fills.
-    let mask_tiles = &mut scene.mask_tiles;
-    scene.fills.retain(|fill| mask_tiles[fill.tile_index as usize].object_index < u32::MAX);
+    scene
 }
 
 // Primitives
@@ -1377,7 +1425,7 @@ struct BuiltScene {
 struct FillPrimitive {
     from: Point2D<f32>,
     to: Point2D<f32>,
-    tile_index: u32,
+    mask_tile_index: u32,
 }
 
 #[derive(Clone, Copy, Debug)]
