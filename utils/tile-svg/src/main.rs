@@ -1010,6 +1010,8 @@ impl<'o> Tiler<'o> {
         for strip_origin_y in tile_rect.origin.y..tile_rect.max_y() {
             self.generate_strip(strip_origin_y);
         }
+
+        //println!("{:#?}", self.built_object);
     }
 
     #[inline(never)]
@@ -1029,6 +1031,8 @@ impl<'o> Tiler<'o> {
 
     #[inline(never)]
     fn process_old_active_edges(&mut self, tile_y: i16) {
+        let tile_origin_y = tile_y as f32 * TILE_HEIGHT;
+
         let mut current_tile_x = self.built_object.tile_rect.origin.x;
         let mut current_subtile_x = 0.0;
         let mut current_winding = 0;
@@ -1058,7 +1062,8 @@ impl<'o> Tiler<'o> {
             debug_assert!(current_tile_x < self.built_object.tile_rect.max_x());
             let current_x = (current_tile_x as f32) * TILE_WIDTH + current_subtile_x;
             if segment_x >= current_x {
-                let (left, right) = (Point2D::new(current_x, 0.0), Point2D::new(segment_x, 0.0));
+                let left = Point2D::new(current_x, tile_origin_y);
+                let right = Point2D::new(segment_x, tile_origin_y);
                 self.built_object.add_fill(if edge_winding < 0 { &left  } else { &right },
                                            if edge_winding < 0 { &right } else { &left  },
                                            current_tile_x,
@@ -1240,6 +1245,9 @@ impl BuiltScene {
                     }
                 }
             }
+
+            // Copy shader.
+            scene.shaders[object_index as usize] = object.shader;
         }
 
         scene
@@ -1349,8 +1357,14 @@ impl BuiltObject {
     }
 
     fn add_fill(&mut self, from: &Point2D<f32>, to: &Point2D<f32>, tile_x: i16, tile_y: i16) {
+        let tile_origin = Vector2D::new(tile_x as f32 * TILE_WIDTH, tile_y as f32 * TILE_HEIGHT);
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
-        self.fills.push(FillObjectPrimitive { from: *from, to: *to, tile_x, tile_y });
+        self.fills.push(FillObjectPrimitive {
+            from: *from - tile_origin,
+            to: *to - tile_origin,
+            tile_x,
+            tile_y,
+        });
         self.mask_tiles.insert(tile_index as usize);
     }
 

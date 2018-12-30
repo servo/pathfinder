@@ -312,7 +312,7 @@ class App {
     redraw(): void {
         const gl = this.gl, canvas = this.canvas;
 
-        console.log("viewBox", this.viewBox);
+        //console.log("viewBox", this.viewBox);
 
         // Start timer.
         let timerQuery = null;
@@ -479,6 +479,10 @@ class App {
                     this.objectCount = subchunk.length() / 4;
                     gl.activeTexture(gl.TEXTURE0);
                     gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
+                    const textureDataView = subchunk.contents();
+                    const textureData = new Uint8Array(textureDataView.buffer,
+                                                       textureDataView.byteOffset,
+                                                       textureDataView.byteLength);
                     gl.texImage2D(gl.TEXTURE_2D,
                                   0,
                                   gl.RGBA,
@@ -487,7 +491,7 @@ class App {
                                   0,
                                   gl.RGBA,
                                   gl.UNSIGNED_BYTE,
-                                  subchunk.contents());
+                                  textureData);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
                     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
