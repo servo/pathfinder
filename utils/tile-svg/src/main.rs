@@ -1736,15 +1736,11 @@ impl CubicAxis {
 }
 impl SolveT for CubicAxis {
     fn sample(&self, t: f32) -> f32 {
-        let t2 = t * t;
-        let t3 = t2 * t;
-
-        let c3 = self.to + 3.0 * (self.ctrl0 - self.ctrl1) - self.from;
-        let c2 = 3.0 * (self.from - 2.0 * self.ctrl0 + self.ctrl1);
-        let c1 = 3.0 * (self.ctrl0 - self.from);
-        let c0 = self.from;
-
-        c3 * t3 + c2 * t2 + c1 * t + c0
+        let b3 = self.to + 3.0 * (self.ctrl0 - self.ctrl1) - self.from;
+        let b2 = 3.0 * (self.from - 2.0 * self.ctrl0 + self.ctrl1) + b3 * t;
+        let b1 = 3.0 * (self.ctrl0 - self.from) + b2 * t;
+        let b0 = self.from + b1 * t;
+        b0
     }
     fn sample_deriv(&self, t: f32) -> f32 {
         let inv_t = 1.0 - t;
