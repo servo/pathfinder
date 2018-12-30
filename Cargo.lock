@@ -1492,6 +1492,7 @@ dependencies = [
  "quick-xml 0.12.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rayon 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "svgtypes 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

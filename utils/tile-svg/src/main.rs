@@ -28,6 +28,7 @@ use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
@@ -57,6 +58,9 @@ fn main() {
                                                        .value_name("COUNT")
                                                        .takes_value(true)
                                                        .help("Run a benchmark with COUNT runs"))
+                            .arg(Arg::with_name("sequential").short("s")
+                                                             .long("sequential")
+                                                             .help("Use only one thread"))
                             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render")
                                                         .required(true)
                                                         .index(1))
@@ -68,6 +72,7 @@ fn main() {
         Some(runs) => runs.parse().unwrap(),
         None => 1,
     };
+    let sequential = matches.is_present("sequential");
     let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
     let output_path = matches.value_of("OUTPUT").map(PathBuf::from);
 
@@ -77,7 +82,12 @@ fn main() {
     let start_time = Instant::now();
     let mut built_scene = BuiltScene::new(&scene.view_box, scene.objects.len() as u32);
     for _ in 0..runs {
-        built_scene = BuiltScene::from_objects(&scene.view_box, &scene.build_objects());
+        let built_objects = if sequential {
+            scene.build_objects_sequentially()
+        } else {
+            scene.build_objects_in_parallel()
+        };
+        built_scene = BuiltScene::from_objects(&scene.view_box, &built_objects);
     }
     let elapsed_time = Instant::now() - start_time;
 
@@ -311,9 +321,16 @@ impl Scene {
         &self.styles[style.0 as usize]
     }
 
-    fn build_objects(&self) -> Vec<BuiltObject> {
-        // TODO(pcwalton): Parallelize!
+    fn build_objects_sequentially(&self) -> Vec<BuiltObject> {
         self.objects.iter().enumerate().map(|(object_index, object)| {
+            let mut tiler = Tiler::new(&object.outline, object_index as u32, &self.view_box);
+            tiler.generate_tiles();
+            tiler.built_object
+        }).collect()
+    }
+
+    fn build_objects_in_parallel(&self) -> Vec<BuiltObject> {
+        self.objects.par_iter().enumerate().map(|(object_index, object)| {
             let mut tiler = Tiler::new(&object.outline, object_index as u32, &self.view_box);
             tiler.generate_tiles();
             tiler.built_object
