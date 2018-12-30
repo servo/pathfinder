@@ -14,17 +14,18 @@ precision highp float;
 
 uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
+uniform sampler2D uFillColorsTexture;
+uniform vec2 uFillColorsTextureSize;
 uniform vec2 uViewBoxOrigin;
 
 in vec2 aTessCoord;
 in vec2 aTileOrigin;
-in vec4 aColor;
+in int aObject;
 
 out vec4 vColor;
 
 void main() {
     vec2 position = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
-    vColor = aColor;
+    vColor = texture(uFillColorsTexture, vec2(float(aObject) / uFillColorsTextureSize.x, 0.0));
     gl_Position = vec4((position / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0);
 }
-

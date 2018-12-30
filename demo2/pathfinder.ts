@@ -54,16 +54,23 @@ class App {
     private gl: WebGL2RenderingContext;
     private disjointTimerQueryExt: any;
     private areaLUTTexture: WebGLTexture;
+    private fillColorsTexture: WebGLTexture;
     private stencilTexture: WebGLTexture;
     private stencilFramebuffer: WebGLFramebuffer;
     private fillProgram: Program<'FramebufferSize' | 'TileSize' | 'AreaLUT',
                                     'TessCoord' | 'From' | 'To' | 'TileIndex'>;
-    private solidTileProgram: Program<'FramebufferSize' | 'TileSize' | 'ViewBoxOrigin',
-                                   'TessCoord' | 'TileOrigin' | 'Color'>;
+    private solidTileProgram: Program<'FramebufferSize' |
+                                      'TileSize' |
+                                      'FillColorsTexture' | 'FillColorsTextureSize' |
+                                      'ViewBoxOrigin',
+                                      'TessCoord' | 'TileOrigin' | 'Object'>;
     private maskTileProgram:
-        Program<'FramebufferSize' | 'TileSize' | 'StencilTexture' | 'StencilTextureSize' |
+        Program<'FramebufferSize' |
+                'TileSize' |
+                'StencilTexture' | 'StencilTextureSize' |
+                'FillColorsTexture' | 'FillColorsTextureSize' |
                 'ViewBoxOrigin',
-                'TessCoord' | 'TileOrigin' | 'Backdrop' | 'Color'>;
+                'TessCoord' | 'TileOrigin' | 'Backdrop' | 'Object'>;
     private quadVertexBuffer: WebGLBuffer;
     private fillVertexBuffer: WebGLBuffer;
     private fillVertexArray: WebGLVertexArrayObject;
@@ -77,6 +84,7 @@ class App {
     private fillPrimitiveCount: number;
     private solidTileCount: number;
     private maskTileCount: number;
+    private objectCount: number;
 
     constructor(areaLUT: HTMLImageElement) {
         const canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
@@ -105,6 +113,8 @@ class App {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+        this.fillColorsTexture = unwrapNull(gl.createTexture());
 
         this.stencilTexture = unwrapNull(gl.createTexture());
         gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
@@ -140,6 +150,8 @@ class App {
                                              'TileSize',
                                              'StencilTexture',
                                              'StencilTextureSize',
+                                             'FillColorsTexture',
+                                             'FillColorsTextureSize',
                                              'ViewBoxOrigin',
                                          ],
                                          [
@@ -147,15 +159,21 @@ class App {
                                              'TileOrigin',
                                              'TileIndex',
                                              'Backdrop',
-                                             'Color',
+                                             'Object',
                                          ]);
         this.maskTileProgram = maskTileProgram;
 
         const solidTileProgram = new Program(gl,
                                              OPAQUE_VERTEX_SHADER_SOURCE,
                                              OPAQUE_FRAGMENT_SHADER_SOURCE,
-                                             ['FramebufferSize', 'TileSize', 'ViewBoxOrigin'],
-                                             ['TessCoord', 'TileOrigin', 'Color']);
+                                             [
+                                                 'FramebufferSize',
+                                                 'TileSize',
+                                                 'FillColorsTexture',
+                                                 'FillColorsTextureSize',
+                                                 'ViewBoxOrigin',
+                                             ],
+                                             ['TessCoord', 'TileOrigin', 'Object']);
         this.solidTileProgram = solidTileProgram;
 
         const fillProgram = new Program(gl,
@@ -233,16 +251,15 @@ class App {
                                SOLID_TILE_INSTANCE_SIZE,
                                0);
         gl.vertexAttribDivisor(solidTileProgram.attributes.TileOrigin, 1);
-        gl.vertexAttribPointer(solidTileProgram.attributes.Color,
-                               4,
-                               gl.UNSIGNED_BYTE,
-                               true,
-                               SOLID_TILE_INSTANCE_SIZE,
-                               4);
-        gl.vertexAttribDivisor(solidTileProgram.attributes.Color, 1);
+        gl.vertexAttribIPointer(solidTileProgram.attributes.Object,
+                                1,
+                                gl.INT,
+                                SOLID_TILE_INSTANCE_SIZE,
+                                4);
+        gl.vertexAttribDivisor(solidTileProgram.attributes.Object, 1);
         gl.enableVertexAttribArray(solidTileProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(solidTileProgram.attributes.TileOrigin);
-        gl.enableVertexAttribArray(solidTileProgram.attributes.Color);
+        gl.enableVertexAttribArray(solidTileProgram.attributes.Object);
 
         // Initialize mask tile VAO.
         this.maskVertexArray = unwrapNull(gl.createVertexArray());
@@ -270,17 +287,16 @@ class App {
                                MASK_TILE_INSTANCE_SIZE,
                                4);
         gl.vertexAttribDivisor(maskTileProgram.attributes.Backdrop, 1);
-        gl.vertexAttribPointer(maskTileProgram.attributes.Color,
-                               4,
-                               gl.UNSIGNED_BYTE,
-                               true,
-                               MASK_TILE_INSTANCE_SIZE,
-                               8);
-        gl.vertexAttribDivisor(maskTileProgram.attributes.Color, 1);
+        gl.vertexAttribIPointer(maskTileProgram.attributes.Object,
+                                1,
+                                gl.INT,
+                                MASK_TILE_INSTANCE_SIZE,
+                                8);
+        gl.vertexAttribDivisor(maskTileProgram.attributes.Object, 1);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TileOrigin);
         gl.enableVertexAttribArray(maskTileProgram.attributes.Backdrop);
-        gl.enableVertexAttribArray(maskTileProgram.attributes.Color);
+        gl.enableVertexAttribArray(maskTileProgram.attributes.Object);
 
         this.viewBox = new Rect(new Point2D(0.0, 0.0), new Size2D(0.0, 0.0));
 
@@ -290,6 +306,7 @@ class App {
         this.fillPrimitiveCount = 0;
         this.solidTileCount = 0;
         this.maskTileCount = 0;
+        this.objectCount = 0;
     }
 
     redraw(): void {
@@ -341,6 +358,13 @@ class App {
                      framebufferSize.width,
                      framebufferSize.height);
         gl.uniform2f(this.solidTileProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
+        gl.uniform1i(this.solidTileProgram.uniforms.FillColorsTexture, 0);
+        // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
+        gl.uniform2f(this.solidTileProgram.uniforms.FillColorsTextureSize,
+                     this.objectCount,
+                     1.0);
         gl.uniform2f(this.solidTileProgram.uniforms.ViewBoxOrigin,
                      this.viewBox.origin.x,
                      this.viewBox.origin.y);
@@ -360,6 +384,13 @@ class App {
         gl.uniform2f(this.maskTileProgram.uniforms.StencilTextureSize,
                      STENCIL_FRAMEBUFFER_SIZE.width,
                      STENCIL_FRAMEBUFFER_SIZE.height);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
+        gl.uniform1i(this.maskTileProgram.uniforms.FillColorsTexture, 1);
+        // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
+        gl.uniform2f(this.maskTileProgram.uniforms.FillColorsTextureSize,
+                     this.objectCount,
+                     1.0);
         gl.uniform2f(this.maskTileProgram.uniforms.ViewBoxOrigin,
                      this.viewBox.origin.x,
                      this.viewBox.origin.y);
@@ -416,6 +447,8 @@ class App {
             const arrayBuffer = staticCast(reader.result, ArrayBuffer);
             const root = new RIFFChunk(new DataView(arrayBuffer));
             for (const subchunk of root.subchunks()) {
+                const self = this;
+
                 const id = subchunk.stringID();
                 if (id === 'head') {
                     const headerData = subchunk.contents();
@@ -426,36 +459,54 @@ class App {
                     continue;
                 }
 
-                let bindPoint, buffer;
-                let countFieldName: 'fillPrimitiveCount' | 'totalTileCount' | 'solidTileCount' |
-                    'maskTileCount';
-                let instanceSize;
                 switch (id) {
                 case 'fill':
-                    bindPoint = gl.ARRAY_BUFFER;
-                    buffer = this.fillVertexBuffer;
-                    countFieldName = 'fillPrimitiveCount';
-                    instanceSize = FILL_INSTANCE_SIZE;
+                    uploadArrayBuffer(this.fillVertexBuffer,
+                                      'fillPrimitiveCount',
+                                      FILL_INSTANCE_SIZE);
                     break;
                 case 'soli':
-                    bindPoint = gl.ARRAY_BUFFER;
-                    buffer = this.solidTileVertexBuffer;
-                    countFieldName = 'solidTileCount';
-                    instanceSize = SOLID_TILE_INSTANCE_SIZE;
+                    uploadArrayBuffer(this.solidTileVertexBuffer,
+                                      'solidTileCount',
+                                      SOLID_TILE_INSTANCE_SIZE);
                     break;
                 case 'mask':
-                    bindPoint = gl.ARRAY_BUFFER;
-                    buffer = this.maskTileVertexBuffer;
-                    countFieldName = 'maskTileCount';
-                    instanceSize = MASK_TILE_INSTANCE_SIZE;
+                    uploadArrayBuffer(this.maskTileVertexBuffer,
+                                      'maskTileCount',
+                                      MASK_TILE_INSTANCE_SIZE);
+                    break;
+                case 'shad':
+                    this.objectCount = subchunk.length() / 4;
+                    gl.activeTexture(gl.TEXTURE0);
+                    gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
+                    gl.texImage2D(gl.TEXTURE_2D,
+                                  0,
+                                  gl.RGBA,
+                                  this.objectCount,
+                                  1,
+                                  0,
+                                  gl.RGBA,
+                                  gl.UNSIGNED_BYTE,
+                                  subchunk.contents());
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                     break;
                 default:
                     throw new Error("Unexpected subchunk ID: " + id);
                 }
 
-                gl.bindBuffer(bindPoint, buffer);
-                gl.bufferData(bindPoint, subchunk.contents(), gl.DYNAMIC_DRAW);
-                this[countFieldName] = subchunk.length() / instanceSize;
+                type CountFieldName = 'fillPrimitiveCount' | 'solidTileCount' | 'maskTileCount';
+
+                function uploadArrayBuffer(buffer: WebGLBuffer,
+                                           countFieldName: CountFieldName,
+                                           instanceSize: number):
+                                           void {
+                    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, subchunk.contents(), gl.DYNAMIC_DRAW);
+                    self[countFieldName] = subchunk.length() / instanceSize;
+                }
             }
 
             this.redraw();

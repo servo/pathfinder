@@ -28,6 +28,7 @@ use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
+use rayon::ThreadPoolBuilder;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
@@ -58,9 +59,11 @@ fn main() {
                                                        .value_name("COUNT")
                                                        .takes_value(true)
                                                        .help("Run a benchmark with COUNT runs"))
-                            .arg(Arg::with_name("sequential").short("s")
-                                                             .long("sequential")
-                                                             .help("Use only one thread"))
+                            .arg(Arg::with_name("jobs").short("j")
+                                                       .long("jobs")
+                                                       .value_name("THREADS")
+                                                       .takes_value(true)
+                                                       .help("Number of threads to use"))
                             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render")
                                                         .required(true)
                                                         .index(1))
@@ -72,9 +75,16 @@ fn main() {
         Some(runs) => runs.parse().unwrap(),
         None => 1,
     };
-    let sequential = matches.is_present("sequential");
+    let jobs: Option<usize> = matches.value_of("jobs").map(|string| string.parse().unwrap());
     let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
     let output_path = matches.value_of("OUTPUT").map(PathBuf::from);
+
+    // Set up Rayon.
+    let mut thread_pool_builder = ThreadPoolBuilder::new();
+    if let Some(jobs) = jobs {
+        thread_pool_builder = thread_pool_builder.num_threads(jobs);
+    }
+    thread_pool_builder.build_global().unwrap();
 
     let scene = Scene::from_path(&input_path);
     println!("Scene bounds: {:?}", scene.bounds);
@@ -82,10 +92,9 @@ fn main() {
     let start_time = Instant::now();
     let mut built_scene = BuiltScene::new(&scene.view_box, scene.objects.len() as u32);
     for _ in 0..runs {
-        let built_objects = if sequential {
-            scene.build_objects_sequentially()
-        } else {
-            scene.build_objects_in_parallel()
+        let built_objects = match jobs {
+            Some(1) => scene.build_objects_sequentially(),
+            _ => scene.build_objects(),
         };
         built_scene = BuiltScene::from_objects(&scene.view_box, &built_objects);
     }
@@ -321,17 +330,30 @@ impl Scene {
         &self.styles[style.0 as usize]
     }
 
+    fn build_shader(&self, object_index: u32) -> ObjectShader {
+        ObjectShader {
+            fill_color: self.objects[object_index as usize].color,
+        }
+    }
+
+    // This function exists to make profiling easier.
     fn build_objects_sequentially(&self) -> Vec<BuiltObject> {
         self.objects.iter().enumerate().map(|(object_index, object)| {
-            let mut tiler = Tiler::new(&object.outline, object_index as u32, &self.view_box);
+            let mut tiler = Tiler::new(&object.outline,
+                                       object_index as u32,
+                                       &self.view_box,
+                                       &self.build_shader(object_index as u32));
             tiler.generate_tiles();
             tiler.built_object
         }).collect()
     }
 
-    fn build_objects_in_parallel(&self) -> Vec<BuiltObject> {
+    fn build_objects(&self) -> Vec<BuiltObject> {
         self.objects.par_iter().enumerate().map(|(object_index, object)| {
-            let mut tiler = Tiler::new(&object.outline, object_index as u32, &self.view_box);
+            let mut tiler = Tiler::new(&object.outline,
+                                       object_index as u32,
+                                       &self.view_box,
+                                       &self.build_shader(object_index as u32));
             tiler.generate_tiles();
             tiler.built_object
         }).collect()
@@ -955,9 +977,10 @@ struct Tiler<'o> {
 }
 
 impl<'o> Tiler<'o> {
-    fn new(outline: &'o Outline, object_index: u32, view_box: &Rect<f32>) -> Tiler<'o> {
+    fn new(outline: &'o Outline, object_index: u32, view_box: &Rect<f32>, shader: &ObjectShader)
+           -> Tiler<'o> {
         let bounds = outline.bounds.intersection(&view_box).unwrap_or(Rect::zero());
-        let built_object = BuiltObject::new(&bounds);
+        let built_object = BuiltObject::new(&bounds, shader);
 
         Tiler {
             outline,
@@ -1023,7 +1046,7 @@ impl<'o> Tiler<'o> {
                 };
 
             // Move over to the correct tile, filling in as we go.
-            let mut segment_tile_x = f32::floor(segment_x / TILE_WIDTH) as i16;
+            let segment_tile_x = f32::floor(segment_x / TILE_WIDTH) as i16;
             while current_tile_x < segment_tile_x {
                 //println!("... filling!");
                 self.built_object.get_tile_mut(current_tile_x, tile_y).backdrop = current_winding;
@@ -1153,10 +1176,10 @@ impl BuiltScene {
     fn new(view_box: &Rect<f32>, object_count: u32) -> BuiltScene {
         BuiltScene {
             view_box: *view_box,
-            object_count,
             fills: vec![],
             solid_tiles: vec![],
             mask_tiles: vec![],
+            shaders: vec![ObjectShader::default(); object_count as usize],
 
             tile_rect: round_rect_out_to_tile_bounds(view_box),
         }
@@ -1237,6 +1260,7 @@ struct BuiltObject {
     tiles: Vec<TileObjectPrimitive>,
     fills: Vec<FillObjectPrimitive>,
     mask_tiles: FixedBitSet,
+    shader: ObjectShader,
 }
 
 #[derive(Debug)]
@@ -1245,7 +1269,7 @@ struct BuiltScene {
     fills: Vec<FillScenePrimitive>,
     solid_tiles: Vec<SolidTileScenePrimitive>,
     mask_tiles: Vec<MaskTileScenePrimitive>,
-    object_count: u32,
+    shaders: Vec<ObjectShader>,
 
     tile_rect: Rect<i16>,
 }
@@ -1285,7 +1309,12 @@ struct MaskTileScenePrimitive {
     object_index: u32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
+struct ObjectShader {
+    fill_color: ColorU,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
 struct ColorU {
     r: u8,
     g: u8,
@@ -1296,7 +1325,7 @@ struct ColorU {
 // Utilities for built objects
 
 impl BuiltObject {
-    fn new(bounds: &Rect<f32>) -> BuiltObject {
+    fn new(bounds: &Rect<f32>, shader: &ObjectShader) -> BuiltObject {
         // Compute the tile rect.
         let tile_rect = round_rect_out_to_tile_bounds(&bounds);
 
@@ -1315,6 +1344,7 @@ impl BuiltObject {
             tiles,
             fills: vec![],
             mask_tiles: FixedBitSet::with_capacity(tile_count),
+            shader: *shader,
         }
     }
 
@@ -1350,11 +1380,13 @@ impl BuiltScene {
         let fill_size = self.fills.len() * mem::size_of::<FillScenePrimitive>();
         let solid_tiles_size = self.solid_tiles.len() * mem::size_of::<SolidTileScenePrimitive>();
         let mask_tiles_size = self.mask_tiles.len() * mem::size_of::<MaskTileScenePrimitive>();
+        let shaders_size = self.shaders.len() * mem::size_of::<ObjectShader>();
         writer.write_u32::<LittleEndian>((4 +
                                           8 + header_size +
                                           8 + fill_size +
                                           8 + solid_tiles_size +
-                                          8 + mask_tiles_size) as u32)?;
+                                          8 + mask_tiles_size +
+                                          8 + shaders_size) as u32)?;
 
         writer.write_all(b"PF3S")?;
 
@@ -1388,6 +1420,13 @@ impl BuiltScene {
             writer.write_i16::<LittleEndian>(tile_primitive.tile.tile_y)?;
             writer.write_i32::<LittleEndian>(tile_primitive.tile.backdrop)?;
             writer.write_u32::<LittleEndian>(tile_primitive.object_index)?;
+        }
+
+        writer.write_all(b"shad")?;
+        writer.write_u32::<LittleEndian>(shaders_size as u32)?;
+        for &shader in &self.shaders {
+            let fill_color = shader.fill_color;
+            writer.write_all(&[fill_color.r, fill_color.g, fill_color.b, fill_color.a])?;
         }
 
         return Ok(());
