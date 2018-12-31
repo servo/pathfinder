@@ -1040,6 +1040,8 @@ impl<'o> Tiler<'o> {
         debug_assert!(self.old_active_edges.is_empty());
         mem::swap(&mut self.old_active_edges, &mut self.active_edges.array);
 
+        let mut last_segment_x = -9999.0;
+
         for mut active_edge in self.old_active_edges.drain(..) {
             // Determine x-intercept and winding.
             let (segment_x, edge_winding) =
@@ -1049,25 +1051,67 @@ impl<'o> Tiler<'o> {
                     (active_edge.segment.to.x, -1)
                 };
 
-            // Move over to the correct tile, filling in as we go.
+            /*
+            println!("tile Y {}: segment_x={} edge_winding={} current_tile_x={} current_subtile_x={} current_winding={}",
+                     tile_y,
+                     segment_x,
+                     edge_winding,
+                     current_tile_x,
+                     current_subtile_x,
+                     current_winding);
+            */
+
+            // FIXME(pcwalton): Remove this debug code!
+            debug_assert!(segment_x >= last_segment_x);
+            last_segment_x = segment_x;
+
+            // Do initial subtile fill, if necessary.
             let segment_tile_x = f32::floor(segment_x / TILE_WIDTH) as i16;
+            if current_tile_x < segment_tile_x && current_subtile_x > 0.0 {
+                let current_x = (current_tile_x as f32) * TILE_WIDTH + current_subtile_x;
+                let left = Point2D::new(current_x, tile_origin_y);
+                let right = Point2D::new((current_tile_x + 1) as f32 * TILE_WIDTH, tile_origin_y);
+                if current_winding != 0 {
+                    self.built_object.add_fill(if current_winding < 0 { &left  } else { &right },
+                                               if current_winding < 0 { &right } else { &left  },
+                                               current_tile_x,
+                                               tile_y);
+                    /*
+                    println!("... emitting initial fill {} -> {} winding {} @ tile {}",
+                             left.x, right.x, current_winding, current_tile_x);
+                    */
+                }
+                current_tile_x += 1;
+                current_subtile_x = 0.0;
+            }
+
+            // Move over to the correct tile, filling in as we go.
             while current_tile_x < segment_tile_x {
-                //println!("... filling!");
+                //println!("... emitting backdrop {} @ tile {}", current_winding, current_tile_x);
                 self.built_object.get_tile_mut(current_tile_x, tile_y).backdrop = current_winding;
                 current_tile_x += 1;
                 current_subtile_x = 0.0;
             }
 
-            // Do subtile fill, if necessary.
+            // Do final subtile fill, if necessary.
+            debug_assert!(current_tile_x == segment_tile_x);
             debug_assert!(current_tile_x < self.built_object.tile_rect.max_x());
-            let current_x = (current_tile_x as f32) * TILE_WIDTH + current_subtile_x;
-            if segment_x >= current_x {
+            let segment_subtile_x = segment_x - (current_tile_x as f32) * TILE_WIDTH;
+            if segment_subtile_x >= current_subtile_x {
+                let current_x = (current_tile_x as f32) * TILE_WIDTH + current_subtile_x;
                 let left = Point2D::new(current_x, tile_origin_y);
                 let right = Point2D::new(segment_x, tile_origin_y);
-                self.built_object.add_fill(if edge_winding < 0 { &left  } else { &right },
-                                           if edge_winding < 0 { &right } else { &left  },
-                                           current_tile_x,
-                                           tile_y);
+                if current_winding != 0 {
+                    /*
+                    println!("... emitting final fill {} -> {} winding {} @ tile {}",
+                             left.x, right.x, current_winding, current_tile_x);
+                    */
+                    self.built_object.add_fill(if current_winding < 0 { &left  } else { &right },
+                                               if current_winding < 0 { &right } else { &left  },
+                                               current_tile_x,
+                                               tile_y);
+                }
+                current_subtile_x = segment_subtile_x;
             }
 
             // Update winding.
@@ -1867,7 +1911,6 @@ impl ActiveEdge {
 
 impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
-        // NB: Reversed!
         let this_x = if self.segment.from.y < self.segment.to.y {
             self.segment.from.x
         } else {

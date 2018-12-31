@@ -21,7 +21,7 @@ uniform vec2 uViewBoxOrigin;
 
 in vec2 aTessCoord;
 in vec2 aTileOrigin;
-in float aBackdrop;
+in int aBackdrop;
 in int aObject;
 
 out vec2 vTexCoord;
@@ -39,7 +39,7 @@ void main() {
     vec2 position = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
     vec2 texCoord = computeTileOffset(tileIndex, uStencilTextureSize.x) + aTessCoord * uTileSize;
     vTexCoord = texCoord / uStencilTextureSize;
-    vBackdrop = aBackdrop;
+    vBackdrop = float(aBackdrop);
     vColor = texture(uFillColorsTexture, vec2(float(aObject) / uFillColorsTextureSize.x, 0.0));
     gl_Position = vec4((position / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0);
 }

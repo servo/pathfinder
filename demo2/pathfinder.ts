@@ -280,12 +280,11 @@ class App {
                                MASK_TILE_INSTANCE_SIZE,
                                0);
         gl.vertexAttribDivisor(maskTileProgram.attributes.TileOrigin, 1);
-        gl.vertexAttribPointer(maskTileProgram.attributes.Backdrop,
-                               1,
-                               gl.FLOAT,
-                               false,
-                               MASK_TILE_INSTANCE_SIZE,
-                               4);
+        gl.vertexAttribIPointer(maskTileProgram.attributes.Backdrop,
+                                1,
+                                gl.INT,
+                                MASK_TILE_INSTANCE_SIZE,
+                                4);
         gl.vertexAttribDivisor(maskTileProgram.attributes.Backdrop, 1);
         gl.vertexAttribIPointer(maskTileProgram.attributes.Object,
                                 1,
