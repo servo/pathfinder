@@ -50,7 +50,7 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 const SCALE_FACTOR: f32 = 1.0;
 
 // TODO(pcwalton): Make this configurable.
-const FLATTENING_TOLERANCE: f32 = 3.0;
+const FLATTENING_TOLERANCE: f32 = 0.333;
 
 fn main() {
     let matches =
@@ -1238,41 +1238,60 @@ impl BuiltScene {
     fn from_objects(view_box: &Rect<f32>, objects: &[BuiltObject]) -> BuiltScene {
         let mut scene = BuiltScene::new(view_box, objects.len() as u32);
 
-        let mut z_buffer = FixedBitSet::with_capacity(scene.tile_rect.size.width as usize *
-                                                      scene.tile_rect.size.height as usize);
+        let tile_area = scene.tile_rect.size.width as usize * scene.tile_rect.size.height as usize;
+        let mut z_buffer = vec![0; tile_area];
+
+        // Initialize z-buffer, and fill solid tiles.
+        for (object_index, object) in objects.iter().enumerate().rev() {
+            for solid_tile_index in object.solid_tiles.ones() {
+                let tile = &object.tiles[solid_tile_index];
+                if tile.backdrop == 0 {
+                    // Tile is transparent and can't be solid.
+                    continue
+                }
+
+                let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
+                if z_buffer[scene_tile_index as usize] > object_index {
+                    // Occluded.
+                    continue
+                }
+                z_buffer[scene_tile_index as usize] = object_index;
+
+                scene.solid_tiles.push(SolidTileScenePrimitive {
+                    tile_x: tile.tile_x,
+                    tile_y: tile.tile_y,
+                    object_index: object_index as u32,
+                });
+            }
+        }
 
         let mut object_tile_index_to_scene_mask_tile_index = vec![];
-
-        for (object_index, object) in objects.iter().enumerate().rev() {
+        for (object_index, object) in objects.iter().enumerate() {
             object_tile_index_to_scene_mask_tile_index.clear();
             object_tile_index_to_scene_mask_tile_index.reserve(object.tiles.len());
 
-            // Copy tiles.
+            // Copy mask tiles.
             for (tile_index, tile) in object.tiles.iter().enumerate() {
-                let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
-                if z_buffer[scene_tile_index as usize] {
-                    // Occluded.
+                // Skip solid tiles, since we handled them above already.
+                if object.solid_tiles[tile_index] {
                     object_tile_index_to_scene_mask_tile_index.push(u32::MAX);
-                } else if object.mask_tiles[tile_index] {
-                    // Visible mask tile.
-                    let scene_mask_tile_index = scene.mask_tiles.len() as u32;
-                    object_tile_index_to_scene_mask_tile_index.push(scene_mask_tile_index);
-                    scene.mask_tiles.push(MaskTileScenePrimitive {
-                        tile: *tile,
-                        object_index: object_index as u32,
-                    });
-                } else {
-                    // Visible transparent or solid tile.
-                    object_tile_index_to_scene_mask_tile_index.push(u32::MAX);
-                    if tile.backdrop != 0 {
-                        scene.solid_tiles.push(SolidTileScenePrimitive {
-                            tile_x: tile.tile_x,
-                            tile_y: tile.tile_y,
-                            object_index: object_index as u32,
-                        });
-                        z_buffer.insert(scene_tile_index as usize);
-                    }
+                    continue;
                 }
+
+                // Cull occluded tiles.
+                let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
+                if z_buffer[scene_tile_index as usize] > object_index {
+                    object_tile_index_to_scene_mask_tile_index.push(u32::MAX);
+                    continue;
+                }
+
+                // Visible mask tile.
+                let scene_mask_tile_index = scene.mask_tiles.len() as u32;
+                object_tile_index_to_scene_mask_tile_index.push(scene_mask_tile_index);
+                scene.mask_tiles.push(MaskTileScenePrimitive {
+                    tile: *tile,
+                    object_index: object_index as u32,
+                });
             }
 
             // Remap and copy fills, culling as necessary.
@@ -1311,7 +1330,7 @@ struct BuiltObject {
     tile_rect: Rect<i16>,
     tiles: Vec<TileObjectPrimitive>,
     fills: Vec<FillObjectPrimitive>,
-    mask_tiles: FixedBitSet,
+    solid_tiles: FixedBitSet,
     shader: ObjectShader,
 }
 
@@ -1390,12 +1409,15 @@ impl BuiltObject {
             }
         }
 
+        let mut solid_tiles = FixedBitSet::with_capacity(tile_count);
+        solid_tiles.insert_range(..);
+
         BuiltObject {
             bounds: *bounds,
             tile_rect,
             tiles,
             fills: vec![],
-            mask_tiles: FixedBitSet::with_capacity(tile_count),
+            solid_tiles,
             shader: *shader,
         }
     }
@@ -1409,7 +1431,7 @@ impl BuiltObject {
             tile_x,
             tile_y,
         });
-        self.mask_tiles.insert(tile_index as usize);
+        self.solid_tiles.set(tile_index as usize, false);
     }
 
     // FIXME(pcwalton): Use a `Point2D<i16>` instead?
