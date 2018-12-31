@@ -87,7 +87,8 @@ fn main() {
     thread_pool_builder.build_global().unwrap();
 
     let scene = Scene::from_path(&input_path);
-    println!("Scene bounds: {:?}", scene.bounds);
+    println!("Scene bounds: {:?} View box: {:?}", scene.bounds, scene.view_box);
+    //println!("{:#?}", scene.objects[0]);
 
     let start_time = Instant::now();
     let mut built_scene = BuiltScene::new(&scene.view_box, scene.objects.len() as u32);
@@ -161,7 +162,7 @@ struct GroupStyle {
 impl ComputedStyle {
     fn new() -> ComputedStyle {
         ComputedStyle {
-            fill_color: None,
+            fill_color: Some(SvgColor::black()),
             stroke_width: 1.0,
             stroke_color: None,
             transform: Transform2D::identity(),
@@ -245,7 +246,6 @@ impl Scene {
         }
 
         return scene;
-
     }
 
     fn push_group_style(&mut self,
@@ -281,7 +281,13 @@ impl Scene {
                                     Transform2D::row_major(a, b, c, d, e, f).cast();
                                 current_transform = current_transform.pre_mul(&transform)
                             }
-                            _ => {}
+                            Ok(TransformListToken::Scale { sx, sy }) => {
+                                current_transform =
+                                    current_transform.pre_scale(sx as f32, sy as f32)
+                            }
+                            _ => {
+                                eprintln!("warning: unknown transform list token");
+                            }
                         }
                     }
                     group_style.transform = Some(current_transform);
@@ -1059,6 +1065,7 @@ impl<'o> Tiler<'o> {
                      current_tile_x,
                      current_subtile_x,
                      current_winding);
+            println!("... segment={:#?}", active_edge.segment);
             */
 
             // FIXME(pcwalton): Remove this debug code!
@@ -1097,7 +1104,7 @@ impl<'o> Tiler<'o> {
             debug_assert!(current_tile_x == segment_tile_x);
             debug_assert!(current_tile_x < self.built_object.tile_rect.max_x());
             let segment_subtile_x = segment_x - (current_tile_x as f32) * TILE_WIDTH;
-            if segment_subtile_x >= current_subtile_x {
+            if segment_subtile_x > current_subtile_x {
                 let current_x = (current_tile_x as f32) * TILE_WIDTH + current_subtile_x;
                 let left = Point2D::new(current_x, tile_origin_y);
                 let right = Point2D::new(segment_x, tile_origin_y);
@@ -1135,7 +1142,18 @@ impl<'o> Tiler<'o> {
         // TODO(pcwalton): Could use a bitset of processed edges…
         let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point());
         let next_endpoint_index = contour.next_endpoint_index_of(point_index.point());
+        /*
+        println!("adding new active edge, tile_y={} point_index={:?} prev={} next={} pos={:?} prevpos={:?} nextpos={:?}",
+                 tile_y,
+                 point_index,
+                 prev_endpoint_index,
+                 next_endpoint_index,
+                 contour.position_of(point_index.point()),
+                 contour.position_of(prev_endpoint_index),
+                 contour.position_of(next_endpoint_index));
+        */
         if contour.point_is_logically_above(point_index.point(), prev_endpoint_index) {
+            //println!("... adding prev endpoint");
             process_active_segment(contour,
                                    prev_endpoint_index,
                                    &mut self.active_edges,
@@ -1146,9 +1164,15 @@ impl<'o> Tiler<'o> {
                 point_index: PointIndex::new(point_index.contour(), prev_endpoint_index),
                 y: contour.position_of(prev_endpoint_index).y,
             });
+            //println!("... done adding prev endpoint");
         }
 
         if contour.point_is_logically_above(point_index.point(), next_endpoint_index) {
+            /*
+            println!("... adding next endpoint {} -> {}",
+                     point_index.point(),
+                     next_endpoint_index);
+            */
             process_active_segment(contour,
                                    point_index.point(),
                                    &mut self.active_edges,
@@ -1159,6 +1183,7 @@ impl<'o> Tiler<'o> {
                 point_index: PointIndex::new(point_index.contour(), next_endpoint_index),
                 y: contour.position_of(next_endpoint_index).y,
             });
+            //println!("... done adding next endpoint");
         }
     }
 
@@ -1171,13 +1196,17 @@ impl<'o> Tiler<'o> {
             let mut cur_endpoint_index = 0;
             let mut prev_endpoint_index = contour.prev_endpoint_index_of(cur_endpoint_index);
             let mut next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
-            while cur_endpoint_index < next_endpoint_index {
+            loop {
                 if contour.point_is_logically_above(cur_endpoint_index, prev_endpoint_index) &&
                         contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index) {
                     self.point_queue.push(QueuedEndpoint {
                         point_index: PointIndex::new(contour_index, cur_endpoint_index),
                         y: contour.position_of(cur_endpoint_index).y,
                     });
+                }
+
+                if cur_endpoint_index >= next_endpoint_index {
+                    break
                 }
 
                 prev_endpoint_index = cur_endpoint_index;
@@ -1194,9 +1223,9 @@ fn process_active_segment(contour: &Contour,
                           built_object: &mut BuiltObject,
                           tile_y: i16) {
     let mut segment = contour.segment_after(from_endpoint_index);
-    if segment.is_degenerate() {
+    /*if segment.is_degenerate() {
         return
-    }
+    }*/
 
     process_active_edge(&mut segment, built_object, tile_y);
 
