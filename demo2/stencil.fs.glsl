@@ -27,16 +27,15 @@ void main() {
     // Determine winding, and sort into a consistent order so we only need to find one root below.
     bool winding = from.x < to.x;
     vec2 left = winding ? from : to, right = winding ? to : from;
-    vec2 v0 = ctrl - left, v1 = right - ctrl;
 
     // Shoot a vertical ray toward the curve.
     vec2 window = clamp(vec2(from.x, to.x), -0.5, 0.5);
     float offset = mix(window.x, window.y, 0.5) - left.x;
-    float t = offset / (v0.x + sqrt(v1.x * offset - v0.x * (offset - v0.x)));
+    float t = offset / (right.x - left.x);
 
     // Compute position and derivative to form a line approximation.
-    float y = mix(mix(left.y, ctrl.y, t), mix(ctrl.y, right.y, t), t);
-    float d = mix(v0.y, v1.y, t) / mix(v0.x, v1.x, t);
+    float y = mix(left.y, right.y, t);
+    float d = (right.y - left.y) / (right.x - left.x);
 
     // Look up area under that line, and scale horizontally to the window size.
     float dX = window.x - window.y;
