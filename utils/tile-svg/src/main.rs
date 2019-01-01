@@ -22,6 +22,7 @@ use euclid::{Point2D, Rect, Size2D, Transform2D, Vector2D};
 use fixedbitset::FixedBitSet;
 use jemallocator;
 use lyon_geom::cubic_bezier::Flattened;
+use lyon_geom::math::Transform;
 use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
@@ -294,7 +295,9 @@ impl Scene {
                 }
                 b"stroke-width" => {
                     if let Ok(width) = reader.decode(&attribute.value).parse() {
-                        group_style.stroke_width = Some(width)
+                        let width: f32 = width;
+                        //group_style.stroke_width = Some(1.0);
+                        group_style.stroke_width = Some(width);
                     }
                 }
                 _ => {}
@@ -366,16 +369,18 @@ impl Scene {
     }
 
     fn push_svg_path(&mut self, value: &str, style: StyleId, name: String) {
-        if self.get_style(style).stroke_color.is_some() {
+        let global_transform = Transform2D::create_scale(SCALE_FACTOR, SCALE_FACTOR);
+        let transform = global_transform.pre_mul(&self.get_style(style).transform);
+
+        if self.get_style(style).fill_color.is_some() {
             let computed_style = self.get_style(style);
             let mut path_parser = PathParser::from(&*value);
             let path = SvgPathToPathEvents::new(&mut path_parser);
-            let path = PathIter::new(path);
-            let path = StrokeToFillIter::new(path, StrokeStyle::new(computed_style.stroke_width));
+            let path = PathTransformingIter::new(path, &transform);
             let path = MonotonicConversionIter::new(path);
             let outline = Outline::from_path_events(path, computed_style);
 
-            let color = match computed_style.stroke_color {
+            let color = match computed_style.fill_color {
                 None => ColorU::black(),
                 Some(color) => ColorU::from_svg_color(color),
             };
@@ -384,14 +389,17 @@ impl Scene {
             self.objects.push(PathObject::new(outline, color, style, name.clone()));
         }
 
-        if self.get_style(style).fill_color.is_some() {
+        if self.get_style(style).stroke_color.is_some() {
             let computed_style = self.get_style(style);
             let mut path_parser = PathParser::from(&*value);
             let path = SvgPathToPathEvents::new(&mut path_parser);
+            let path = PathIter::new(path);
+            let path = StrokeToFillIter::new(path, StrokeStyle::new(computed_style.stroke_width));
+            let path = PathTransformingIter::new(path, &transform);
             let path = MonotonicConversionIter::new(path);
             let outline = Outline::from_path_events(path, computed_style);
 
-            let color = match computed_style.fill_color {
+            let color = match computed_style.stroke_color {
                 None => ColorU::black(),
                 Some(color) => ColorU::from_svg_color(color),
             };
@@ -436,14 +444,12 @@ impl Outline {
         }
     }
 
+    // NB: Assumes the path has already been transformed.
     fn from_path_events<I>(path_events: I, style: &ComputedStyle) -> Outline
                            where I: Iterator<Item = PathEvent> {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
         let mut bounding_points = None;
-
-        let global_transform = Transform2D::create_scale(SCALE_FACTOR, SCALE_FACTOR);
-        let transform = global_transform.pre_mul(&style.transform);
 
         for path_event in path_events {
             match path_event {
@@ -451,40 +457,25 @@ impl Outline {
                     if !current_contour.is_empty() {
                         outline.contours.push(mem::replace(&mut current_contour, Contour::new()))
                     }
-                    current_contour.push_transformed_point(&to,
-                                                           PointFlags::empty(),
-                                                           &transform,
-                                                           &mut bounding_points);
+                    current_contour.push_point(&to, PointFlags::empty(), &mut bounding_points);
                 }
                 PathEvent::LineTo(to) => {
-                    current_contour.push_transformed_point(&to,
-                                                           PointFlags::empty(),
-                                                           &transform,
-                                                           &mut bounding_points);
+                    current_contour.push_point(&to, PointFlags::empty(), &mut bounding_points);
                 }
                 PathEvent::QuadraticTo(ctrl, to) => {
-                    current_contour.push_transformed_point(&ctrl,
-                                                           PointFlags::CONTROL_POINT_0,
-                                                           &transform,
-                                                           &mut bounding_points);
-                    current_contour.push_transformed_point(&to,
-                                                           PointFlags::empty(),
-                                                           &transform,
-                                                           &mut bounding_points);
+                    current_contour.push_point(&ctrl,
+                                               PointFlags::CONTROL_POINT_0,
+                                               &mut bounding_points);
+                    current_contour.push_point(&to, PointFlags::empty(), &mut bounding_points);
                 }
                 PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                    current_contour.push_transformed_point(&ctrl0,
-                                                           PointFlags::CONTROL_POINT_0,
-                                                           &transform,
-                                                           &mut bounding_points);
-                    current_contour.push_transformed_point(&ctrl1,
-                                                           PointFlags::CONTROL_POINT_1,
-                                                           &transform,
-                                                           &mut bounding_points);
-                    current_contour.push_transformed_point(&to,
-                                                           PointFlags::empty(),
-                                                           &transform,
-                                                           &mut bounding_points);
+                    current_contour.push_point(&ctrl0,
+                                               PointFlags::CONTROL_POINT_0,
+                                               &mut bounding_points);
+                    current_contour.push_point(&ctrl1,
+                                               PointFlags::CONTROL_POINT_1,
+                                               &mut bounding_points);
+                    current_contour.push_point(&to, PointFlags::empty(), &mut bounding_points);
                 }
                 PathEvent::Close => {
                     if !current_contour.is_empty() {
@@ -527,21 +518,19 @@ impl Contour {
         self.points[index as usize]
     }
 
-    fn push_transformed_point(&mut self,
-                              point: &Point2D<f32>,
-                              flags: PointFlags,
-                              transform: &Transform2D<f32>,
-                              bounding_points: &mut Option<(Point2D<f32>, Point2D<f32>)>) {
-        let point = transform.transform_point(point);
-        self.points.push(point);
+    fn push_point(&mut self,
+                  point: &Point2D<f32>,
+                  flags: PointFlags,
+                  bounding_points: &mut Option<(Point2D<f32>, Point2D<f32>)>) {
+        self.points.push(*point);
         self.flags.push(flags);
 
         match *bounding_points {
             Some((ref mut upper_left, ref mut lower_right)) => {
-                *upper_left = upper_left.min(point);
-                *lower_right = lower_right.max(point);
+                *upper_left = upper_left.min(*point);
+                *lower_right = lower_right.max(*point);
             }
-            None => *bounding_points = Some((point, point)),
+            None => *bounding_points = Some((*point, *point)),
         }
     }
 
@@ -636,19 +625,53 @@ impl Debug for Contour {
         }
         for (index, segment) in self.iter().enumerate() {
             if index > 0 {
-                formatter.write_str(",")?;
+                formatter.write_str(" ")?;
             }
             if formatter.alternate() {
                 formatter.write_str("\n    ")?;
-            } else {
-                formatter.write_str(" ")?;
             }
-            segment.fmt(formatter)?;
+            write_path_event(formatter, &segment)?;
         }
         if formatter.alternate() {
             formatter.write_str("\n")?
         }
-        formatter.write_str("]")
+        formatter.write_str("]")?;
+
+        return Ok(());
+
+        fn write_path_event(formatter: &mut Formatter, path_event: &PathEvent) -> fmt::Result {
+            match *path_event {
+                PathEvent::Arc(..) => {
+                    // TODO(pcwalton)
+                    formatter.write_str("TODO: arcs")?;
+                }
+                PathEvent::Close => formatter.write_str("z")?,
+                PathEvent::MoveTo(ref to) => {
+                    formatter.write_str("M")?;
+                    write_point(formatter, to)?;
+                }
+                PathEvent::LineTo(ref to) => {
+                    formatter.write_str("L")?;
+                    write_point(formatter, to)?;
+                }
+                PathEvent::QuadraticTo(ref ctrl, ref to) => {
+                    formatter.write_str("Q")?;
+                    write_point(formatter, ctrl)?;
+                    write_point(formatter, to)?;
+                }
+                PathEvent::CubicTo(ref ctrl0, ref ctrl1, ref to) => {
+                    formatter.write_str("C")?;
+                    write_point(formatter, ctrl0)?;
+                    write_point(formatter, ctrl1)?;
+                    write_point(formatter, to)?;
+                }
+            }
+            return Ok(());
+        }
+
+        fn write_point(formatter: &mut Formatter, point: &Point2D<f32>) -> fmt::Result {
+            write!(formatter, " {},{}", point.x, point.y)
+        }
     }
 }
 
@@ -798,67 +821,8 @@ impl Segment {
         const EPSILON: f32 = 0.0001;
     }
 
-    fn clip_x(&self, range: Range<f32>) -> Option<Segment> {
-        // Trivial cases.
-        if (self.from.x <= range.start && self.to.x <= range.start) ||
-                (self.from.x >= range.end && self.to.x >= range.end) {
-            return None
-        }
-        let (start, end) = (f32::min(self.from.x, self.to.x), f32::max(self.from.x, self.to.x));
-        if start >= range.start && end <= range.end {
-            return Some(*self)
-        }
-
-        // FIXME(pcwalton): Reduce code duplication!
-        if let Some(mut line_segment) = self.as_line_segment() {
-            if let Some(t) = LineAxis::from_x(&line_segment).solve_for_t(range.start) {
-                let (prev, next) = line_segment.split(t);
-                if line_segment.from.x < line_segment.to.x {
-                    line_segment = next
-                } else {
-                    line_segment = prev
-                }
-            }
-
-            if let Some(t) = LineAxis::from_x(&line_segment).solve_for_t(range.end) {
-                let (prev, next) = line_segment.split(t);
-                if line_segment.from.x < line_segment.to.x {
-                    line_segment = prev
-                } else {
-                    line_segment = next
-                }
-            }
-
-            let clipped = Segment::from_line(&line_segment);
-            return Some(clipped);
-        }
-
-        // TODO(pcwalton): Don't degree elevate!
-        let mut cubic_segment = self.as_cubic_segment().unwrap();
-
-        if let Some(t) = CubicAxis::from_x(&cubic_segment).solve_for_t(range.start) {
-            let (prev, next) = cubic_segment.split(t);
-            if cubic_segment.from.x < cubic_segment.to.x {
-                cubic_segment = next
-            } else {
-                cubic_segment = prev
-            }
-        }
-
-        if let Some(t) = CubicAxis::from_x(&cubic_segment).solve_for_t(range.end) {
-            let (prev, next) = cubic_segment.split(t);
-            if cubic_segment.from.x < cubic_segment.to.x {
-                cubic_segment = prev
-            } else {
-                cubic_segment = next
-            }
-        }
-
-        let clipped = Segment::from_cubic(&cubic_segment);
-        return Some(clipped);
-    }
-
     fn split_y(&self, y: f32) -> (Option<Segment>, Option<Segment>) {
+
         // Trivial cases.
         if self.from.y <= y && self.to.y <= y {
             return (Some(*self), None)
@@ -877,9 +841,11 @@ impl Segment {
             None => {
                 // TODO(pcwalton): Don't degree elevate!
                 let cubic_segment = self.as_cubic_segment().unwrap();
+                //println!("split_y({}): cubic_segment={:?}", y, cubic_segment);
                 let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
                 let t = t.expect("Failed to solve cubic for Y!");
                 let (prev, next) = cubic_segment.split(t);
+                //println!("... split at {} = {:?} / {:?}", t, prev, next);
                 (Segment::from_cubic(&prev), Segment::from_cubic(&next))
             }
         };
@@ -900,6 +866,7 @@ impl Segment {
 
         // TODO(pcwalton): Don't degree elevate!
         let segment = self.as_cubic_segment().unwrap();
+        //println!("generate_fill_primitives(segment={:?})", segment);
         let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
         let mut from = self.from;
         for to in flattener {
@@ -910,6 +877,14 @@ impl Segment {
         fn generate_fill_primitives_for_line(mut segment: LineSegment<f32>,
                                              built_object: &mut BuiltObject,
                                              tile_y: i16) {
+            /*
+            println!("segment={:?} tile_y={} ({}-{})",
+                     segment,
+                     tile_y,
+                     tile_y as f32 * TILE_HEIGHT,
+                     (tile_y + 1) as f32 * TILE_HEIGHT);
+            */
+
             let winding = segment.from.x > segment.to.x;
             let (segment_left, segment_right) = if !winding {
                 (segment.from.x, segment.to.x)
@@ -1454,13 +1429,25 @@ impl BuiltObject {
     fn add_fill(&mut self, from: &Point2D<f32>, to: &Point2D<f32>, tile_x: i16, tile_y: i16) {
         let tile_origin = Vector2D::new(tile_x as f32 * TILE_WIDTH, tile_y as f32 * TILE_HEIGHT);
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
-        self.fills.push(FillObjectPrimitive {
-            from: *from - tile_origin,
-            to: *to - tile_origin,
-            tile_x,
-            tile_y,
-        });
+        let (from, to) = (*from - tile_origin, *to - tile_origin);
+
+        /*
+        println!("from={:?} to={:?}", from, to);
+        debug_assert!(from.x > -EPSILON);
+        debug_assert!(from.x < TILE_WIDTH + EPSILON);
+        debug_assert!(to.x > -EPSILON);
+        debug_assert!(to.x < TILE_WIDTH + EPSILON);
+        debug_assert!(from.y > -EPSILON);
+        debug_assert!(from.y < TILE_HEIGHT + EPSILON);
+        debug_assert!(to.y > -EPSILON);
+        debug_assert!(to.y < TILE_HEIGHT + EPSILON);
+        */
+
+        self.fills.push(FillObjectPrimitive { from, to, tile_x, tile_y });
         self.solid_tiles.set(tile_index as usize, false);
+
+        // FIXME(pcwalton): This is really sloppy!
+        const EPSILON: f32 = 0.25;
     }
 
     // FIXME(pcwalton): Use a `Point2D<i16>` instead?
@@ -1686,6 +1673,30 @@ impl<'a, I> Iterator for SvgPathToPathEvents<'a, I> where I: Iterator<Item = Svg
     }
 }
 
+// Path transformation utilities
+
+struct PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
+    inner: I,
+    transform: Transform2D<f32>,
+}
+
+impl<I> Iterator for PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
+    type Item = PathEvent;
+
+    fn next(&mut self) -> Option<PathEvent> {
+        self.inner.next().map(|event| event.transform(&self.transform))
+    }
+}
+
+impl<I> PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
+    fn new(inner: I, transform: &Transform2D<f32>) -> PathTransformingIter<I> {
+        PathTransformingIter {
+            inner,
+            transform: *transform,
+        }
+    }
+}
+
 // Monotonic conversion utilities
 
 // TODO(pcwalton): I think we only need to be monotonic in Y, maybe?
@@ -1722,22 +1733,24 @@ impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEve
                     ctrl2: ctrl1,
                     to,
                 };
+                //println!("considering segment {:?}...", segment);
                 if segment.is_monotonic() {
+                    //println!("... is monotonic");
                     self.last_point = to;
                     return Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
                 }
                 // FIXME(pcwalton): O(n^2)!
-                let mut t = None;
+                let mut t = 1.0;
                 segment.for_each_monotonic_t(|split_t| {
-                    if t.is_none() {
-                        t = Some(split_t)
-                    }
+                    //println!("... split t={}", split_t);
+                    t = f32::min(t, split_t);
                 });
-                let t = t.unwrap();
                 if t_is_too_close_to_zero_or_one(t) {
+                    //println!("... segment t={} is too close to bounds, pushing", t);
                     self.last_point = to;
                     return Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
                 }
+                //println!("... making segment monotonic @ t={}", t);
                 let (prev, next) = segment.split(t);
                 self.last_point = next.from;
                 self.buffer = Some(PathEvent::CubicTo(next.ctrl1, next.ctrl2, next.to));
@@ -1750,13 +1763,11 @@ impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEve
                     return Some(PathEvent::QuadraticTo(ctrl, to))
                 }
                 // FIXME(pcwalton): O(n^2)!
-                let mut t = None;
+                let mut t = 1.0;
                 segment.for_each_monotonic_t(|split_t| {
-                    if t.is_none() {
-                        t = Some(split_t)
-                    }
+                    //println!("... split t={}", split_t);
+                    t = f32::min(t, split_t);
                 });
-                let t = t.unwrap();
                 if t_is_too_close_to_zero_or_one(t) {
                     self.last_point = to;
                     return Some(PathEvent::QuadraticTo(ctrl, to))
@@ -1974,6 +1985,39 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
         };
         this_x.partial_cmp(&other_x)
     }
+}
+
+// Path utilities
+
+/*
+fn cubic_segment_is_nearly_monotonic(segment: &CubicBezierSegment<f32>) -> bool {
+    let min_x = f32::min(segment.from.x, segment.to.x) - EPSILON;
+    let max_x = f32::max(segment.from.x, segment.to.x) + EPSILON;
+    let min_y = f32::min(segment.from.y, segment.to.y) - EPSILON;
+    let max_y = f32::max(segment.from.y, segment.to.y) + EPSILON;
+
+    return min_x <= segment.ctrl1.x && segment.ctrl1.x <= max_x &&
+        min_x <= segment.ctrl2.x && segment.ctrl2.x <= max_x &&
+        min_y <= segment.ctrl1.y && segment.ctrl1.y <= max_y &&
+        min_y <= segment.ctrl2.y && segment.ctrl2.y <= max_y;
+
+    const EPSILON: f32 = 0.1;
+}
+*/
+
+fn cubic_segment_is_nearly_monotonic(segment: &CubicBezierSegment<f32>) -> bool {
+    let mut t = None;
+    segment.for_each_monotonic_t(|split_t| {
+        if t.is_none() {
+            t = Some(split_t)
+        }
+    });
+    return match t {
+        None => true,
+        Some(t) => t < EPSILON || t > 1.0 - EPSILON,
+    };
+
+    const EPSILON: f32 = 0.01;
 }
 
 // Trivial utilities

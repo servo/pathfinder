@@ -33,7 +33,8 @@ vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
 void main() {
     vec2 tileOrigin = computeTileOffset(aTileIndex, uFramebufferSize.x);
 
-    vec2 from = aFrom, to = aTo;
+    vec2 from = clamp(aFrom, vec2(0.0), uTileSize);
+    vec2 to = clamp(aTo, vec2(0.0), uTileSize);
 
     vec2 position;
     bool zeroArea = !(abs(from.x - to.x) > 0.1) || !(abs(uTileSize.y - min(from.y, to.y)) > 0.1);
