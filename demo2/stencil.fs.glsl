@@ -15,14 +15,13 @@ precision highp float;
 uniform sampler2D uAreaLUT;
 
 in vec2 vFrom;
-in vec2 vCtrl;
 in vec2 vTo;
 
 out vec4 oFragColor;
 
 void main() {
     // Unpack.
-    vec2 from = vFrom, ctrl = vCtrl, to = vTo;
+    vec2 from = vFrom, to = vTo;
 
     // Determine winding, and sort into a consistent order so we only need to find one root below.
     bool winding = from.x < to.x;

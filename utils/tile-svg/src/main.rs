@@ -40,7 +40,7 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Instant;
-use std::u32;
+use std::u16;
 use svgtypes::{Color as SvgColor, PathParser, PathSegment as SvgPathSegment, TransformListParser};
 use svgtypes::{TransformListToken};
 
@@ -339,7 +339,7 @@ impl Scene {
         &self.styles[style.0 as usize]
     }
 
-    fn build_shader(&self, object_index: u32) -> ObjectShader {
+    fn build_shader(&self, object_index: u16) -> ObjectShader {
         ObjectShader {
             fill_color: self.objects[object_index as usize].color,
         }
@@ -349,9 +349,9 @@ impl Scene {
     fn build_objects_sequentially(&self) -> Vec<BuiltObject> {
         self.objects.iter().enumerate().map(|(object_index, object)| {
             let mut tiler = Tiler::new(&object.outline,
-                                       object_index as u32,
+                                       object_index as u16,
                                        &self.view_box,
-                                       &self.build_shader(object_index as u32));
+                                       &self.build_shader(object_index as u16));
             tiler.generate_tiles();
             tiler.built_object
         }).collect()
@@ -360,9 +360,9 @@ impl Scene {
     fn build_objects(&self) -> Vec<BuiltObject> {
         self.objects.par_iter().enumerate().map(|(object_index, object)| {
             let mut tiler = Tiler::new(&object.outline,
-                                       object_index as u32,
+                                       object_index as u16,
                                        &self.view_box,
-                                       &self.build_shader(object_index as u32));
+                                       &self.build_shader(object_index as u16));
             tiler.generate_tiles();
             tiler.built_object
         }).collect()
@@ -946,7 +946,7 @@ const TILE_HEIGHT: f32 = 16.0;
 
 struct Tiler<'o> {
     outline: &'o Outline,
-    object_index: u32,
+    object_index: u16,
     built_object: BuiltObject,
 
     view_box: Rect<f32>,
@@ -958,7 +958,7 @@ struct Tiler<'o> {
 }
 
 impl<'o> Tiler<'o> {
-    fn new(outline: &'o Outline, object_index: u32, view_box: &Rect<f32>, shader: &ObjectShader)
+    fn new(outline: &'o Outline, object_index: u16, view_box: &Rect<f32>, shader: &ObjectShader)
            -> Tiler<'o> {
         let bounds = outline.bounds.intersection(&view_box).unwrap_or(Rect::zero());
         let built_object = BuiltObject::new(&bounds, shader);
@@ -1255,16 +1255,16 @@ impl BuiltScene {
                 }
 
                 let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
-                if z_buffer[scene_tile_index as usize] > object_index {
+                if z_buffer[scene_tile_index as usize] > object_index as u16 {
                     // Occluded.
                     continue
                 }
-                z_buffer[scene_tile_index as usize] = object_index;
+                z_buffer[scene_tile_index as usize] = object_index as u16;
 
                 scene.solid_tiles.push(SolidTileScenePrimitive {
                     tile_x: tile.tile_x,
                     tile_y: tile.tile_y,
-                    object_index: object_index as u32,
+                    object_index: object_index as u16,
                 });
             }
         }
@@ -1278,23 +1278,23 @@ impl BuiltScene {
             for (tile_index, tile) in object.tiles.iter().enumerate() {
                 // Skip solid tiles, since we handled them above already.
                 if object.solid_tiles[tile_index] {
-                    object_tile_index_to_scene_mask_tile_index.push(u32::MAX);
+                    object_tile_index_to_scene_mask_tile_index.push(u16::MAX);
                     continue;
                 }
 
                 // Cull occluded tiles.
                 let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
-                if z_buffer[scene_tile_index as usize] > object_index {
-                    object_tile_index_to_scene_mask_tile_index.push(u32::MAX);
+                if z_buffer[scene_tile_index as usize] as usize > object_index {
+                    object_tile_index_to_scene_mask_tile_index.push(u16::MAX);
                     continue;
                 }
 
                 // Visible mask tile.
-                let scene_mask_tile_index = scene.mask_tiles.len() as u32;
+                let scene_mask_tile_index = scene.mask_tiles.len() as u16;
                 object_tile_index_to_scene_mask_tile_index.push(scene_mask_tile_index);
                 scene.mask_tiles.push(MaskTileScenePrimitive {
                     tile: *tile,
-                    object_index: object_index as u32,
+                    object_index: object_index as u16,
                 });
             }
 
@@ -1302,11 +1302,13 @@ impl BuiltScene {
             for fill in &object.fills {
                 let object_tile_index = object.tile_coords_to_index(fill.tile_x, fill.tile_y);
                 match object_tile_index_to_scene_mask_tile_index[object_tile_index as usize] {
-                    u32::MAX => {}
+                    u16::MAX => {}
                     scene_mask_tile_index => {
                         scene.fills.push(FillScenePrimitive {
-                            from: fill.from,
-                            to: fill.to,
+                            from_px: fill.from_px,
+                            to_px: fill.to_px,
+                            from_subpx: fill.from_subpx,
+                            to_subpx: fill.to_subpx,
                             mask_tile_index: scene_mask_tile_index,
                         })
                     }
@@ -1351,8 +1353,10 @@ struct BuiltScene {
 
 #[derive(Clone, Copy, Debug)]
 struct FillObjectPrimitive {
-    from: Point2D<f32>,
-    to: Point2D<f32>,
+    from_px: Point2DU4,
+    to_px: Point2DU4,
+    from_subpx: Point2D<u8>,
+    to_subpx: Point2D<u8>,
     tile_x: i16,
     tile_y: i16,
 }
@@ -1361,27 +1365,29 @@ struct FillObjectPrimitive {
 struct TileObjectPrimitive {
     tile_x: i16,
     tile_y: i16,
-    backdrop: i32,
+    backdrop: i16,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct FillScenePrimitive {
-    from: Point2D<f32>,
-    to: Point2D<f32>,
-    mask_tile_index: u32,
+    from_px: Point2DU4,
+    to_px: Point2DU4,
+    from_subpx: Point2D<u8>,
+    to_subpx: Point2D<u8>,
+    mask_tile_index: u16,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct SolidTileScenePrimitive {
     tile_x: i16,
     tile_y: i16,
-    object_index: u32,
+    object_index: u16,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct MaskTileScenePrimitive {
     tile: TileObjectPrimitive,
-    object_index: u32,
+    object_index: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1431,6 +1437,11 @@ impl BuiltObject {
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
         let (from, to) = (*from - tile_origin, *to - tile_origin);
 
+        let from = Point2D::new(clamp(from.x, 0.0, MAX_U12), clamp(from.y, 0.0, MAX_U12));
+        let to   = Point2D::new(clamp(to.x,   0.0, MAX_U12), clamp(to.y,   0.0, MAX_U12));
+
+        const MAX_U12: f32 = 16.0 - 1.0 / 256.0;
+
         /*
         println!("from={:?} to={:?}", from, to);
         debug_assert!(from.x > -EPSILON);
@@ -1443,7 +1454,18 @@ impl BuiltObject {
         debug_assert!(to.y < TILE_HEIGHT + EPSILON);
         */
 
-        self.fills.push(FillObjectPrimitive { from, to, tile_x, tile_y });
+        let from_px = Point2DU4::new(from.x as u8, from.y as u8);
+        let to_px = Point2DU4::new(to.x as u8, to.y as u8);
+        let from_subpx = Point2D::new((from.x.fract() * 256.0) as u8,
+                                      (from.y.fract() * 256.0) as u8);
+        let to_subpx = Point2D::new((to.x.fract() * 256.0) as u8, (to.y.fract() * 256.0) as u8);
+
+        self.fills.push(FillObjectPrimitive {
+            from_px, to_px,
+            from_subpx, to_subpx,
+            tile_x, tile_y,
+        });
+
         self.solid_tiles.set(tile_index as usize, false);
 
         // FIXME(pcwalton): This is really sloppy!
@@ -1496,9 +1518,11 @@ impl BuiltScene {
         writer.write_all(b"fill")?;
         writer.write_u32::<LittleEndian>(fill_size as u32)?;
         for fill_primitive in &self.fills {
-            write_point(writer, &fill_primitive.from)?;
-            write_point(writer, &fill_primitive.to)?;
-            writer.write_u32::<LittleEndian>(fill_primitive.mask_tile_index)?;
+            writer.write_u8(fill_primitive.from_px.0)?;
+            writer.write_u8(fill_primitive.to_px.0)?;
+            write_point2d_u8(writer, fill_primitive.from_subpx)?;
+            write_point2d_u8(writer, fill_primitive.to_subpx)?;
+            writer.write_u16::<LittleEndian>(fill_primitive.mask_tile_index)?;
         }
 
         writer.write_all(b"soli")?;
@@ -1506,7 +1530,7 @@ impl BuiltScene {
         for &tile_primitive in &self.solid_tiles {
             writer.write_i16::<LittleEndian>(tile_primitive.tile_x)?;
             writer.write_i16::<LittleEndian>(tile_primitive.tile_y)?;
-            writer.write_u32::<LittleEndian>(tile_primitive.object_index)?;
+            writer.write_u16::<LittleEndian>(tile_primitive.object_index)?;
         }
 
         writer.write_all(b"mask")?;
@@ -1514,8 +1538,8 @@ impl BuiltScene {
         for &tile_primitive in &self.mask_tiles {
             writer.write_i16::<LittleEndian>(tile_primitive.tile.tile_x)?;
             writer.write_i16::<LittleEndian>(tile_primitive.tile.tile_y)?;
-            writer.write_i32::<LittleEndian>(tile_primitive.tile.backdrop)?;
-            writer.write_u32::<LittleEndian>(tile_primitive.object_index)?;
+            writer.write_i16::<LittleEndian>(tile_primitive.tile.backdrop)?;
+            writer.write_u16::<LittleEndian>(tile_primitive.object_index)?;
         }
 
         writer.write_all(b"shad")?;
@@ -1527,16 +1551,17 @@ impl BuiltScene {
 
         return Ok(());
 
-        fn write_point<W>(writer: &mut W, point: &Point2D<f32>) -> io::Result<()> where W: Write {
-            writer.write_f32::<LittleEndian>(point.x)?;
-            writer.write_f32::<LittleEndian>(point.y)?;
+        fn write_point2d_u8<W>(writer: &mut W, point: Point2D<u8>)
+                               -> io::Result<()> where W: Write {
+            writer.write_u8(point.x)?;
+            writer.write_u8(point.y)?;
             Ok(())
         }
     }
 }
 
 impl SolidTileScenePrimitive {
-    fn new(tile_x: i16, tile_y: i16, object_index: u32) -> SolidTileScenePrimitive {
+    fn new(tile_x: i16, tile_y: i16, object_index: u16) -> SolidTileScenePrimitive {
         SolidTileScenePrimitive { tile_x, tile_y, object_index }
     }
 }
@@ -1985,6 +2010,18 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
         };
         this_x.partial_cmp(&other_x)
     }
+}
+
+// Geometry
+
+#[derive(Clone, Copy, Debug)]
+struct Point2DU4(pub u8);
+
+impl Point2DU4 {
+    fn new(x: u8, y: u8) -> Point2DU4 { Point2DU4(x | (y << 4)) }
+
+    fn x(self) -> u8 { self.0 & 0xf }
+    fn y(self) -> u8 { self.0 >> 4  }
 }
 
 // Path utilities

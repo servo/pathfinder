@@ -22,7 +22,7 @@ uniform vec2 uViewBoxOrigin;
 in vec2 aTessCoord;
 in vec2 aTileOrigin;
 in int aBackdrop;
-in int aObject;
+in uint aObject;
 
 out vec2 vTexCoord;
 out float vBackdrop;

@@ -33,9 +33,9 @@ const QUAD_VERTEX_POSITIONS: Uint8Array = new Uint8Array([
     0, 1,
 ]);
 
-const FILL_INSTANCE_SIZE: number = 20;
-const SOLID_TILE_INSTANCE_SIZE: number = 8;
-const MASK_TILE_INSTANCE_SIZE: number = 12;
+const FILL_INSTANCE_SIZE: number = 8;
+const SOLID_TILE_INSTANCE_SIZE: number = 6;
+const MASK_TILE_INSTANCE_SIZE: number = 8;
 
 interface Color {
     r: number;
@@ -58,7 +58,10 @@ class App {
     private stencilTexture: WebGLTexture;
     private stencilFramebuffer: WebGLFramebuffer;
     private fillProgram: Program<'FramebufferSize' | 'TileSize' | 'AreaLUT',
-                                    'TessCoord' | 'From' | 'To' | 'TileIndex'>;
+                                 'TessCoord' |
+                                 'FromPx' | 'ToPx' |
+                                 'FromSubpx' | 'ToSubpx' |
+                                 'TileIndex'>;
     private solidTileProgram: Program<'FramebufferSize' |
                                       'TileSize' |
                                       'FillColorsTexture' | 'FillColorsTextureSize' |
@@ -115,6 +118,19 @@ class App {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
         this.fillColorsTexture = unwrapNull(gl.createTexture());
+
+        /*
+        const benchData = new Uint8Array(1600 * 1600 * 4);
+        for (let i = 0; i < benchData.length; i++)
+            benchData[i] = (Math.random() * 256) | 0;
+        const benchTexture = unwrapNull(gl.createTexture());
+        gl.bindTexture(gl.TEXTURE_2D, benchTexture);
+        const startTime = performance.now();
+        for (let i = 0; i < 100; i++)
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1600, 1600, 0, gl.RGBA, gl.UNSIGNED_BYTE, benchData);
+        const elapsedTime = (performance.now() - startTime) / 100;
+        console.log("texture upload: ", elapsedTime, "ms");
+        */
 
         this.stencilTexture = unwrapNull(gl.createTexture());
         gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
@@ -177,10 +193,15 @@ class App {
         this.solidTileProgram = solidTileProgram;
 
         const fillProgram = new Program(gl,
-                                           STENCIL_VERTEX_SHADER_SOURCE,
-                                           STENCIL_FRAGMENT_SHADER_SOURCE,
-                                           ['FramebufferSize', 'TileSize', 'AreaLUT'],
-                                           ['TessCoord', 'From', 'To', 'TileIndex']);
+                                        STENCIL_VERTEX_SHADER_SOURCE,
+                                        STENCIL_FRAGMENT_SHADER_SOURCE,
+                                        ['FramebufferSize', 'TileSize', 'AreaLUT'],
+                                        [
+                                            'TessCoord',
+                                            'FromPx', 'ToPx',
+                                            'FromSubpx', 'ToSubpx',
+                                            'TileIndex'
+                                        ]);
         this.fillProgram = fillProgram;
 
         // Initialize quad VBO.
@@ -203,29 +224,43 @@ class App {
                                0,
                                0);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.fillVertexBuffer);
-        gl.vertexAttribPointer(fillProgram.attributes.From,
+        gl.vertexAttribIPointer(fillProgram.attributes.FromPx,
+                                1,
+                                gl.UNSIGNED_BYTE,
+                                FILL_INSTANCE_SIZE,
+                                0);
+        gl.vertexAttribDivisor(fillProgram.attributes.FromPx, 1);
+        gl.vertexAttribIPointer(fillProgram.attributes.ToPx,
+                                1,
+                                gl.UNSIGNED_BYTE,
+                                FILL_INSTANCE_SIZE,
+                                1);
+        gl.vertexAttribDivisor(fillProgram.attributes.ToPx, 1);
+        gl.vertexAttribPointer(fillProgram.attributes.FromSubpx,
                                2,
-                               gl.FLOAT,
-                               false,
+                               gl.UNSIGNED_BYTE,
+                               true,
                                FILL_INSTANCE_SIZE,
-                               0);
-        gl.vertexAttribDivisor(fillProgram.attributes.From, 1);
-        gl.vertexAttribPointer(fillProgram.attributes.To,
+                               2);
+        gl.vertexAttribDivisor(fillProgram.attributes.FromSubpx, 1);
+        gl.vertexAttribPointer(fillProgram.attributes.ToSubpx,
                                2,
-                               gl.FLOAT,
-                               false,
+                               gl.UNSIGNED_BYTE,
+                               true,
                                FILL_INSTANCE_SIZE,
-                               8);
-        gl.vertexAttribDivisor(fillProgram.attributes.To, 1);
+                               4);
+        gl.vertexAttribDivisor(fillProgram.attributes.ToSubpx, 1);
         gl.vertexAttribIPointer(fillProgram.attributes.TileIndex,
                                 1,
-                                gl.UNSIGNED_INT,
+                                gl.UNSIGNED_SHORT,
                                 FILL_INSTANCE_SIZE,
-                                16);
+                                6);
         gl.vertexAttribDivisor(fillProgram.attributes.TileIndex, 1);
         gl.enableVertexAttribArray(fillProgram.attributes.TessCoord);
-        gl.enableVertexAttribArray(fillProgram.attributes.From);
-        gl.enableVertexAttribArray(fillProgram.attributes.To);
+        gl.enableVertexAttribArray(fillProgram.attributes.FromPx);
+        gl.enableVertexAttribArray(fillProgram.attributes.ToPx);
+        gl.enableVertexAttribArray(fillProgram.attributes.FromSubpx);
+        gl.enableVertexAttribArray(fillProgram.attributes.ToSubpx);
         gl.enableVertexAttribArray(fillProgram.attributes.TileIndex);
 
         // Initialize tile VBOs and IBOs.
@@ -253,7 +288,7 @@ class App {
         gl.vertexAttribDivisor(solidTileProgram.attributes.TileOrigin, 1);
         gl.vertexAttribIPointer(solidTileProgram.attributes.Object,
                                 1,
-                                gl.INT,
+                                gl.UNSIGNED_SHORT,
                                 SOLID_TILE_INSTANCE_SIZE,
                                 4);
         gl.vertexAttribDivisor(solidTileProgram.attributes.Object, 1);
@@ -282,15 +317,15 @@ class App {
         gl.vertexAttribDivisor(maskTileProgram.attributes.TileOrigin, 1);
         gl.vertexAttribIPointer(maskTileProgram.attributes.Backdrop,
                                 1,
-                                gl.INT,
+                                gl.SHORT,
                                 MASK_TILE_INSTANCE_SIZE,
                                 4);
         gl.vertexAttribDivisor(maskTileProgram.attributes.Backdrop, 1);
         gl.vertexAttribIPointer(maskTileProgram.attributes.Object,
                                 1,
-                                gl.INT,
+                                gl.UNSIGNED_SHORT,
                                 MASK_TILE_INSTANCE_SIZE,
-                                8);
+                                6);
         gl.vertexAttribDivisor(maskTileProgram.attributes.Object, 1);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TessCoord);
         gl.enableVertexAttribArray(maskTileProgram.attributes.TileOrigin);
@@ -313,14 +348,17 @@ class App {
 
         //console.log("viewBox", this.viewBox);
 
-        // Start timer.
-        let timerQuery = null;
+        // Initialize timers.
+        let fillTimerQuery = null, solidTimerQuery = null, maskTimerQuery = null;
         if (this.disjointTimerQueryExt != null) {
-            timerQuery = unwrapNull(gl.createQuery());
-            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, timerQuery);
+            fillTimerQuery = unwrapNull(gl.createQuery());
+            solidTimerQuery = unwrapNull(gl.createQuery());
+            maskTimerQuery = unwrapNull(gl.createQuery());
         }
 
         // Fill.
+        if (fillTimerQuery != null)
+            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, fillTimerQuery);
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.stencilFramebuffer);
         gl.viewport(0, 0, STENCIL_FRAMEBUFFER_SIZE.width, STENCIL_FRAMEBUFFER_SIZE.height);
         gl.clearColor(0.0, 0.0, 0.0, 0.0);
@@ -340,6 +378,8 @@ class App {
         gl.enable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(this.fillPrimitiveCount));
         gl.disable(gl.BLEND);
+        if (fillTimerQuery != null)
+            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
 
         // Read back stencil and dump it.
         //this.dumpStencil();
@@ -351,6 +391,8 @@ class App {
         gl.clearColor(0.85, 0.85, 0.85, 1.0);
         gl.clear(gl.COLOR_BUFFER_BIT);
 
+        if (solidTimerQuery != null)
+            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, solidTimerQuery);
         gl.bindVertexArray(this.solidVertexArray);
         gl.useProgram(this.solidTileProgram.program);
         gl.uniform2f(this.solidTileProgram.uniforms.FramebufferSize,
@@ -369,8 +411,12 @@ class App {
                      this.viewBox.origin.y);
         gl.disable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.solidTileCount);
+        if (solidTimerQuery != null)
+            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
 
         // Draw masked tiles.
+        if (maskTimerQuery != null)
+            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, maskTimerQuery);
         gl.bindVertexArray(this.maskVertexArray);
         gl.useProgram(this.maskTileProgram.program);
         gl.uniform2f(this.maskTileProgram.uniforms.FramebufferSize,
@@ -398,11 +444,16 @@ class App {
         gl.enable(gl.BLEND);
         gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.maskTileCount);
         gl.disable(gl.BLEND);
+        if (maskTimerQuery != null)
+            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
 
         // End timer.
-        if (timerQuery != null) {
-            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
-            waitForQuery(gl, this.disjointTimerQueryExt, timerQuery);
+        if (fillTimerQuery != null && solidTimerQuery != null && maskTimerQuery != null) {
+            processQueries(gl, this.disjointTimerQueryExt, {
+                fill: fillTimerQuery,
+                solid: solidTimerQuery,
+                mask: maskTimerQuery,
+            });
         }
     }
 
@@ -611,16 +662,37 @@ class RIFFChunk {
     }
 }
 
-function waitForQuery(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, query: WebGLQuery):
-                      void {
-    const queryResultAvailable = disjointTimerQueryExt.QUERY_RESULT_AVAILABLE_EXT;
-    const queryResult = disjointTimerQueryExt.QUERY_RESULT_EXT;
-    if (!disjointTimerQueryExt.getQueryObjectEXT(query, queryResultAvailable)) {
-        setTimeout(() => waitForQuery(gl, disjointTimerQueryExt, query), 10);
-        return;
+interface Queries {
+    fill: WebGLQuery;
+    solid: WebGLQuery;
+    mask: WebGLQuery;
+};
+
+function getQueryResult(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, query: WebGLQuery):
+                        Promise<number> {
+    function go(resolve: (n: number) => void): void {
+        const queryResultAvailable = disjointTimerQueryExt.QUERY_RESULT_AVAILABLE_EXT;
+        const queryResult = disjointTimerQueryExt.QUERY_RESULT_EXT;
+        if (!disjointTimerQueryExt.getQueryObjectEXT(query, queryResultAvailable)) {
+            setTimeout(() => go(resolve), 10);
+            return;
+        }
+        resolve(disjointTimerQueryExt.getQueryObjectEXT(query, queryResult) / 1000000.0);
     }
-    const elapsed = disjointTimerQueryExt.getQueryObjectEXT(query, queryResult) / 1000000.0;
-    console.log(elapsed + "ms elapsed");
+
+    return new Promise((resolve, reject) => go(resolve));
+}
+
+function processQueries(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, queries: Queries):
+                        void {
+    Promise.all([
+        getQueryResult(gl, disjointTimerQueryExt, queries.fill),
+        getQueryResult(gl, disjointTimerQueryExt, queries.solid),
+        getQueryResult(gl, disjointTimerQueryExt, queries.mask),
+    ]).then(results => {
+        const [fillResult, solidResult, maskResult] = results;
+        console.log(fillResult, "ms fill,", solidResult, "ms solid,", maskResult, "ms mask");
+    });
 }
 
 function loadAreaLUT(): Promise<HTMLImageElement> {
