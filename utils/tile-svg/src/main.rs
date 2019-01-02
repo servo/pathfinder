@@ -140,8 +140,14 @@ struct Scene {
 struct PathObject {
     outline: Outline,
     style: StyleId,
-    color: ColorU,
     name: String,
+    kind: PathObjectKind,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum PathObjectKind {
+    Fill,
+    Stroke,
 }
 
 #[derive(Debug)]
@@ -163,7 +169,7 @@ struct GroupStyle {
 impl ComputedStyle {
     fn new() -> ComputedStyle {
         ComputedStyle {
-            fill_color: Some(SvgColor::black()),
+            fill_color: None,
             stroke_width: 1.0,
             stroke_color: None,
             transform: Transform2D::identity(),
@@ -340,9 +346,17 @@ impl Scene {
     }
 
     fn build_shader(&self, object_index: u16) -> ObjectShader {
-        ObjectShader {
-            fill_color: self.objects[object_index as usize].color,
-        }
+        let object = &self.objects[object_index as usize];
+        let style = self.get_style(object.style);
+        let fill_color = match object.kind {
+            PathObjectKind::Fill => style.fill_color,
+            PathObjectKind::Stroke => style.stroke_color,
+        };
+        let fill_color = match fill_color {
+            None => ColorU::black(),
+            Some(fill_color) => ColorU::from_svg_color(fill_color),
+        };
+        ObjectShader { fill_color }
     }
 
     // This function exists to make profiling easier.
@@ -386,7 +400,7 @@ impl Scene {
             };
 
             self.bounds = self.bounds.union(&outline.bounds);
-            self.objects.push(PathObject::new(outline, color, style, name.clone()));
+            self.objects.push(PathObject::new(outline, style, name.clone(), PathObjectKind::Fill));
         }
 
         if self.get_style(style).stroke_color.is_some() {
@@ -405,14 +419,14 @@ impl Scene {
             };
 
             self.bounds = self.bounds.union(&outline.bounds);
-            self.objects.push(PathObject::new(outline, color, style, name));
+            self.objects.push(PathObject::new(outline, style, name, PathObjectKind::Stroke));
         }
     }
 }
 
 impl PathObject {
-    fn new(outline: Outline, color: ColorU, style: StyleId, name: String) -> PathObject {
-        PathObject { outline, color, style, name }
+    fn new(outline: Outline, style: StyleId, name: String, kind: PathObjectKind) -> PathObject {
+        PathObject { outline, style, name, kind }
     }
 }
 
