@@ -89,7 +89,11 @@ fn main() {
     // Build scene.
     let usvg = Tree::from_file(&input_path, &UsvgOptions::default()).unwrap();
     let scene = Scene::from_tree(usvg);
-    println!("Scene bounds: {:?} View box: {:?}", scene.bounds, scene.view_box);
+
+    println!("Scene bounds: {:?} View box: {:?} Object count: {}",
+             scene.bounds,
+             scene.view_box,
+             scene.objects.len());
     //println!("{:#?}", scene.objects[0]);
 
     let start_time = Instant::now();
