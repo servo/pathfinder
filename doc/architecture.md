@@ -32,7 +32,7 @@ Across all paths in parallel:
 
 #### Cull
 
-Sequentially (<span class="todo">TODO</span>: in parallel):
+Sequentially (<span style="text-transform: lowercase; font-variant: small-caps">TODO</span>: in parallel):
 
 * Cull tiles occluded by solid-color tiles.
 
@@ -65,10 +65,3 @@ In parallel:
 * Shade tiles back-to-front using the alpha mask generated during the fill step.
 
 Approximate GPU time: 2.3 ms.
-
-<style>
-    .todo {
-        text-transform: lowercase;
-        font-variant: small-caps;
-    }
-</style>
