@@ -382,7 +382,7 @@ class App {
             gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
 
         // Read back stencil and dump it.
-        //this.dumpStencil();
+        this.dumpStencil();
 
         // Draw solid tiles.
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);

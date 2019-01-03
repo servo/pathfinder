@@ -53,6 +53,8 @@ const SCALE_FACTOR: f32 = 1.0;
 // TODO(pcwalton): Make this configurable.
 const FLATTENING_TOLERANCE: f32 = 0.333;
 
+const HAIRLINE_STROKE_WIDTH: f32 = 0.5;
+
 fn main() {
     let matches =
         App::new("tile-svg").arg(Arg::with_name("runs").short("r")
@@ -394,29 +396,21 @@ impl Scene {
             let path = MonotonicConversionIter::new(path);
             let outline = Outline::from_path_events(path, computed_style);
 
-            let color = match computed_style.fill_color {
-                None => ColorU::black(),
-                Some(color) => ColorU::from_svg_color(color),
-            };
-
             self.bounds = self.bounds.union(&outline.bounds);
             self.objects.push(PathObject::new(outline, style, name.clone(), PathObjectKind::Fill));
         }
 
         if self.get_style(style).stroke_color.is_some() {
             let computed_style = self.get_style(style);
+            let stroke_width = f32::max(computed_style.stroke_width, HAIRLINE_STROKE_WIDTH);
+
             let mut path_parser = PathParser::from(&*value);
             let path = SvgPathToPathEvents::new(&mut path_parser);
             let path = PathIter::new(path);
-            let path = StrokeToFillIter::new(path, StrokeStyle::new(computed_style.stroke_width));
+            let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
             let path = PathTransformingIter::new(path, &transform);
             let path = MonotonicConversionIter::new(path);
             let outline = Outline::from_path_events(path, computed_style);
-
-            let color = match computed_style.stroke_color {
-                None => ColorU::black(),
-                Some(color) => ColorU::from_svg_color(color),
-            };
 
             self.bounds = self.bounds.union(&outline.bounds);
             self.objects.push(PathObject::new(outline, style, name, PathObjectKind::Stroke));
@@ -1065,18 +1059,11 @@ impl<'o> Tiler<'o> {
             let segment_tile_x = f32::floor(segment_x / TILE_WIDTH) as i16;
             if current_tile_x < segment_tile_x && current_subtile_x > 0.0 {
                 let current_x = (current_tile_x as f32) * TILE_WIDTH + current_subtile_x;
-                let left = Point2D::new(current_x, tile_origin_y);
-                let right = Point2D::new((current_tile_x + 1) as f32 * TILE_WIDTH, tile_origin_y);
-                if current_winding != 0 {
-                    self.built_object.add_fill(if current_winding < 0 { &left  } else { &right },
-                                               if current_winding < 0 { &right } else { &left  },
-                                               current_tile_x,
-                                               tile_y);
-                    /*
-                    println!("... emitting initial fill {} -> {} winding {} @ tile {}",
-                             left.x, right.x, current_winding, current_tile_x);
-                    */
-                }
+                self.built_object.add_active_fill(current_x,
+                                                  (current_tile_x + 1) as f32 * TILE_WIDTH,
+                                                  current_winding,
+                                                  current_tile_x,
+                                                  tile_y);
                 current_tile_x += 1;
                 current_subtile_x = 0.0;
             }
@@ -1095,18 +1082,11 @@ impl<'o> Tiler<'o> {
             let segment_subtile_x = segment_x - (current_tile_x as f32) * TILE_WIDTH;
             if segment_subtile_x > current_subtile_x {
                 let current_x = (current_tile_x as f32) * TILE_WIDTH + current_subtile_x;
-                let left = Point2D::new(current_x, tile_origin_y);
-                let right = Point2D::new(segment_x, tile_origin_y);
-                if current_winding != 0 {
-                    /*
-                    println!("... emitting final fill {} -> {} winding {} @ tile {}",
-                             left.x, right.x, current_winding, current_tile_x);
-                    */
-                    self.built_object.add_fill(if current_winding < 0 { &left  } else { &right },
-                                               if current_winding < 0 { &right } else { &left  },
-                                               current_tile_x,
-                                               tile_y);
-                }
+                self.built_object.add_active_fill(current_x,
+                                                  segment_x,
+                                                  current_winding,
+                                                  current_tile_x,
+                                                  tile_y);
                 current_subtile_x = segment_subtile_x;
             }
 
@@ -1119,6 +1099,8 @@ impl<'o> Tiler<'o> {
                 self.active_edges.push(active_edge);
             }
         }
+
+        debug_assert_eq!(current_winding, 0);
     }
 
     #[inline(never)]
@@ -1132,9 +1114,9 @@ impl<'o> Tiler<'o> {
         let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point());
         let next_endpoint_index = contour.next_endpoint_index_of(point_index.point());
         /*
-        println!("adding new active edge, tile_y={} point_index={:?} prev={} next={} pos={:?} prevpos={:?} nextpos={:?}",
+        println!("adding new active edge, tile_y={} point_index={} prev={} next={} pos={:?} prevpos={:?} nextpos={:?}",
                  tile_y,
-                 point_index,
+                 point_index.point(),
                  prev_endpoint_index,
                  next_endpoint_index,
                  contour.position_of(point_index.point()),
@@ -1484,6 +1466,38 @@ impl BuiltObject {
 
         // FIXME(pcwalton): This is really sloppy!
         const EPSILON: f32 = 0.25;
+    }
+
+    fn add_active_fill(&mut self,
+                       left: f32,
+                       right: f32,
+                       mut winding: i16,
+                       tile_x: i16,
+                       tile_y: i16) {
+        let tile_origin_y = tile_y as f32 * TILE_HEIGHT;
+        let mut left = Point2D::new(left, tile_origin_y);
+        let mut right = Point2D::new(right, tile_origin_y);
+
+        if winding > 0 {
+            mem::swap(&mut left, &mut right);
+        }
+
+        /*
+        println!("... emitting fill {} -> {} winding {} @ tile {}",
+                 left.x,
+                 right.x,
+                 winding,
+                 tile_x);
+        */
+
+        while winding != 0 {
+            self.add_fill(&left, &right, tile_x, tile_y);
+            if winding < 0 {
+                winding += 1
+            } else {
+                winding -= 1
+            }
+        }
     }
 
     // FIXME(pcwalton): Use a `Point2D<i16>` instead?
