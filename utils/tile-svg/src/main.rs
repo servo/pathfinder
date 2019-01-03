@@ -865,7 +865,6 @@ impl Segment {
         }
     }
 
-    #[inline(never)]
     fn generate_fill_primitives(&self, built_object: &mut BuiltObject, tile_y: i16) {
         if let Some(line_segment) = self.as_line_segment() {
             generate_fill_primitives_for_line(line_segment, built_object, tile_y);
@@ -985,7 +984,6 @@ impl<'o> Tiler<'o> {
         }
     }
 
-    #[inline(never)]
     fn generate_tiles(&mut self) {
         // Initialize the point queue.
         self.init_point_queue();
@@ -1003,7 +1001,6 @@ impl<'o> Tiler<'o> {
         //println!("{:#?}", self.built_object);
     }
 
-    #[inline(never)]
     fn generate_strip(&mut self, strip_origin_y: i16) {
         // Process old active edges.
         self.process_old_active_edges(strip_origin_y);
@@ -1018,7 +1015,6 @@ impl<'o> Tiler<'o> {
         }
     }
 
-    #[inline(never)]
     fn process_old_active_edges(&mut self, tile_y: i16) {
         let tile_origin_y = tile_y as f32 * TILE_HEIGHT;
 
@@ -1103,7 +1099,6 @@ impl<'o> Tiler<'o> {
         debug_assert_eq!(current_winding, 0);
     }
 
-    #[inline(never)]
     fn add_new_active_edge(&mut self, tile_y: i16) {
         let outline = &self.outline;
         let point_index = self.point_queue.pop().unwrap().point_index;
@@ -1158,7 +1153,6 @@ impl<'o> Tiler<'o> {
         }
     }
 
-    #[inline(never)]
     fn init_point_queue(&mut self) {
         // Find MIN points.
         self.point_queue.clear();
@@ -1234,7 +1228,6 @@ impl BuiltScene {
         }
     }
 
-    #[inline(never)]
     fn from_objects(view_box: &Rect<f32>, objects: &[BuiltObject]) -> BuiltScene {
         let mut scene = BuiltScene::new(view_box, objects.len() as u32);
 
