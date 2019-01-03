@@ -1,6 +1,6 @@
 // pathfinder/utils/tile-svg/main.rs
 //
-// Copyright © 2018 The Pathfinder Project Developers.
+// Copyright © 2019 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -27,22 +27,19 @@ use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
-use quick_xml::Reader;
-use quick_xml::events::{BytesStart, Event};
 use rayon::ThreadPoolBuilder;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Write};
+use std::io::{self, BufWriter, Write};
 use std::mem;
-use std::ops::Range;
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::path::PathBuf;
 use std::time::Instant;
 use std::u16;
-use svgtypes::{Color as SvgColor, PathParser, PathSegment as SvgPathSegment, TransformListParser};
-use svgtypes::{TransformListToken};
+use svgtypes::Color as SvgColor;
+use usvg::{Node, NodeExt, NodeKind, Options as UsvgOptions, Paint, PathSegment as UsvgPathSegment};
+use usvg::{Rect as UsvgRect, Transform as UsvgTransform, Tree};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -89,7 +86,9 @@ fn main() {
     }
     thread_pool_builder.build_global().unwrap();
 
-    let scene = Scene::from_path(&input_path);
+    // Build scene.
+    let usvg = Tree::from_file(&input_path, &UsvgOptions::default()).unwrap();
+    let scene = Scene::from_tree(usvg);
     println!("Scene bounds: {:?} View box: {:?}", scene.bounds, scene.view_box);
     //println!("{:#?}", scene.objects[0]);
 
@@ -154,29 +153,7 @@ pub enum PathObjectKind {
 
 #[derive(Debug)]
 struct ComputedStyle {
-    fill_color: Option<SvgColor>,
-    stroke_width: f32,
-    stroke_color: Option<SvgColor>,
-    transform: Transform2D<f32>,
-}
-
-#[derive(Default)]
-struct GroupStyle {
-    fill_color: Option<SvgColor>,
-    stroke_width: Option<f32>,
-    stroke_color: Option<SvgColor>,
-    transform: Option<Transform2D<f32>>,
-}
-
-impl ComputedStyle {
-    fn new() -> ComputedStyle {
-        ComputedStyle {
-            fill_color: None,
-            stroke_width: 1.0,
-            stroke_color: None,
-            transform: Transform2D::identity(),
-        }
-    }
+    color: Option<SvgColor>,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -187,17 +164,76 @@ impl Scene {
         Scene { objects: vec![], styles: vec![], bounds: Rect::zero(), view_box: Rect::zero() }
     }
 
-    fn from_path(path: &Path) -> Scene {
-        let mut reader = Reader::from_file(&path).unwrap();
-
+    fn from_tree(tree: Tree) -> Scene {
         let global_transform = Transform2D::create_scale(SCALE_FACTOR, SCALE_FACTOR);
-
-        let mut xml_buffer = vec![];
-        let mut group_styles = vec![];
-        let mut style = None;
 
         let mut scene = Scene::new();
 
+        let root = &tree.root();
+        match *root.borrow() {
+            NodeKind::Svg(ref svg) => {
+                scene.view_box = usvg_rect_to_euclid_rect(&svg.view_box.rect);
+                for kid in root.children() {
+                    process_node(&mut scene, &kid, &global_transform);
+                }
+            }
+            _ => unreachable!(),
+        };
+
+        return scene;
+
+        fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2D<f32>) {
+            let node_transform = usvg_transform_to_euclid_transform_2d(&node.transform());
+            let transform = transform.pre_mul(&node_transform);
+
+            match *node.borrow() {
+                NodeKind::Group(_) => {
+                    for kid in node.children() {
+                        process_node(scene, &kid, &transform)
+                    }
+                }
+                NodeKind::Path(ref path) => {
+                    if let Some(ref fill) = path.fill {
+                        let style = scene.push_paint(&fill.paint);
+
+                        let path = UsvgPathToPathEvents::new(path.segments.iter().cloned());
+                        let path = PathTransformingIter::new(path, &transform);
+                        let path = MonotonicConversionIter::new(path);
+                        let outline = Outline::from_path_events(path);
+
+                        scene.bounds = scene.bounds.union(&outline.bounds);
+                        scene.objects.push(PathObject::new(outline,
+                                                           style,
+                                                           node.id().to_string(),
+                                                           PathObjectKind::Fill));
+                    }
+
+                    if let Some(ref stroke) = path.stroke {
+                        let style = scene.push_paint(&stroke.paint);
+                        let stroke_width = f32::max(stroke.width.value() as f32,
+                                                    HAIRLINE_STROKE_WIDTH);
+
+                        let path = UsvgPathToPathEvents::new(path.segments.iter().cloned());
+                        let path = PathIter::new(path);
+                        let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
+                        let path = PathTransformingIter::new(path, &transform);
+                        let path = MonotonicConversionIter::new(path);
+                        let outline = Outline::from_path_events(path);
+
+                        scene.bounds = scene.bounds.union(&outline.bounds);
+                        scene.objects.push(PathObject::new(outline,
+                                                           style,
+                                                           node.id().to_string(),
+                                                           PathObjectKind::Stroke));
+                    }
+                }
+                _ => {
+                    // TODO(pcwalton): Handle these by punting to WebRender.
+                }
+            }
+        }
+
+        /*
         loop {
             match reader.read_event(&mut xml_buffer) {
                 Ok(Event::Start(ref event)) |
@@ -255,91 +291,18 @@ impl Scene {
         }
 
         return scene;
+
+        */
     }
 
-    fn push_group_style(&mut self,
-                        reader: &mut Reader<BufReader<File>>,
-                        event: &BytesStart,
-                        group_styles: &mut Vec<GroupStyle>,
-                        style: &mut Option<StyleId>) {
-        let mut group_style = GroupStyle::default();
-        let attributes = event.attributes();
-        for attribute in attributes {
-            let attribute = attribute.unwrap();
-            match attribute.key {
-                b"fill" => {
-                    let value = reader.decode(&attribute.value);
-                    if let Ok(color) = SvgColor::from_str(&value) {
-                        group_style.fill_color = Some(color);
-                    }
-                }
-                b"stroke" => {
-                    let value = reader.decode(&attribute.value);
-                    if let Ok(color) = SvgColor::from_str(&value) {
-                        group_style.stroke_color = Some(color)
-                    }
-                }
-                b"transform" => {
-                    let value = reader.decode(&attribute.value);
-                    let mut current_transform = Transform2D::identity();
-                    let transform_list_parser = TransformListParser::from(&*value);
-                    for transform in transform_list_parser {
-                        match transform {
-                            Ok(TransformListToken::Matrix { a, b, c, d, e, f }) => {
-                                let transform: Transform2D<f32> =
-                                    Transform2D::row_major(a, b, c, d, e, f).cast();
-                                current_transform = current_transform.pre_mul(&transform)
-                            }
-                            Ok(TransformListToken::Scale { sx, sy }) => {
-                                current_transform =
-                                    current_transform.pre_scale(sx as f32, sy as f32)
-                            }
-                            _ => {
-                                eprintln!("warning: unknown transform list token");
-                            }
-                        }
-                    }
-                    group_style.transform = Some(current_transform);
-                }
-                b"stroke-width" => {
-                    if let Ok(width) = reader.decode(&attribute.value).parse() {
-                        let width: f32 = width;
-                        //group_style.stroke_width = Some(1.0);
-                        group_style.stroke_width = Some(width);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        group_styles.push(group_style);
-        *style = None;
-    }
-
-    fn ensure_style(&mut self, current_style: &mut Option<StyleId>, group_styles: &[GroupStyle])
-                    -> StyleId {
-        if let Some(current_style) = *current_style {
-            return current_style
-        }
-
-        let mut computed_style = ComputedStyle::new();
-        for group_style in group_styles {
-            if let Some(fill_color) = group_style.fill_color {
-                computed_style.fill_color = Some(fill_color)
-            }
-            if let Some(stroke_width) = group_style.stroke_width {
-                computed_style.stroke_width = stroke_width
-            }
-            if let Some(stroke_color) = group_style.stroke_color {
-                computed_style.stroke_color = Some(stroke_color)
-            }
-            if let Some(transform) = group_style.transform {
-                computed_style.transform = computed_style.transform.pre_mul(&transform)
-            }
-        }
-
+    fn push_paint(&mut self, paint: &Paint) -> StyleId {
         let id = StyleId(self.styles.len() as u32);
-        self.styles.push(computed_style);
+        self.styles.push(ComputedStyle {
+            color: match *paint {
+                Paint::Color(color) => Some(color),
+                Paint::Link(..) => None,
+            }
+        });
         id
     }
 
@@ -350,15 +313,8 @@ impl Scene {
     fn build_shader(&self, object_index: u16) -> ObjectShader {
         let object = &self.objects[object_index as usize];
         let style = self.get_style(object.style);
-        let fill_color = match object.kind {
-            PathObjectKind::Fill => style.fill_color,
-            PathObjectKind::Stroke => style.stroke_color,
-        };
-        let fill_color = match fill_color {
-            None => ColorU::black(),
-            Some(fill_color) => ColorU::from_svg_color(fill_color),
-        };
-        ObjectShader { fill_color }
+        let color = style.color.map(ColorU::from_svg_color).unwrap_or(ColorU::black());
+        ObjectShader { fill_color: color }
     }
 
     // This function exists to make profiling easier.
@@ -384,6 +340,7 @@ impl Scene {
         }).collect()
     }
 
+    /*
     fn push_svg_path(&mut self, value: &str, style: StyleId, name: String) {
         let global_transform = Transform2D::create_scale(SCALE_FACTOR, SCALE_FACTOR);
         let transform = global_transform.pre_mul(&self.get_style(style).transform);
@@ -394,7 +351,7 @@ impl Scene {
             let path = SvgPathToPathEvents::new(&mut path_parser);
             let path = PathTransformingIter::new(path, &transform);
             let path = MonotonicConversionIter::new(path);
-            let outline = Outline::from_path_events(path, computed_style);
+            let outline = Outline::from_path_events(path);
 
             self.bounds = self.bounds.union(&outline.bounds);
             self.objects.push(PathObject::new(outline, style, name.clone(), PathObjectKind::Fill));
@@ -410,12 +367,13 @@ impl Scene {
             let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
             let path = PathTransformingIter::new(path, &transform);
             let path = MonotonicConversionIter::new(path);
-            let outline = Outline::from_path_events(path, computed_style);
+            let outline = Outline::from_path_events(path);
 
             self.bounds = self.bounds.union(&outline.bounds);
             self.objects.push(PathObject::new(outline, style, name, PathObjectKind::Stroke));
         }
     }
+    */
 }
 
 impl PathObject {
@@ -453,8 +411,7 @@ impl Outline {
     }
 
     // NB: Assumes the path has already been transformed.
-    fn from_path_events<I>(path_events: I, style: &ComputedStyle) -> Outline
-                           where I: Iterator<Item = PathEvent> {
+    fn from_path_events<I>(path_events: I) -> Outline where I: Iterator<Item = PathEvent> {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
         let mut bounding_points = None;
@@ -925,17 +882,6 @@ impl Segment {
     fn is_none(&self) -> bool {
         !self.flags.contains(SegmentFlags::HAS_ENDPOINTS)
     }
-
-    fn min_x(&self) -> f32 { f32::min(self.from.x, self.to.x) }
-    fn max_x(&self) -> f32 { f32::max(self.from.x, self.to.x) }
-
-    fn winding(&self) -> i32 {
-        match self.from.x.partial_cmp(&self.to.x) {
-            Some(Ordering::Less) => -1,
-            Some(Ordering::Greater) => 1,
-            Some(Ordering::Equal) | None => 0,
-        }
-    }
 }
 
 bitflags! {
@@ -1016,8 +962,6 @@ impl<'o> Tiler<'o> {
     }
 
     fn process_old_active_edges(&mut self, tile_y: i16) {
-        let tile_origin_y = tile_y as f32 * TILE_HEIGHT;
-
         let mut current_tile_x = self.built_object.tile_rect.origin.x;
         let mut current_subtile_x = 0.0;
         let mut current_winding = 0;
@@ -1431,18 +1375,6 @@ impl BuiltObject {
 
         const MAX_U12: f32 = 16.0 - 1.0 / 256.0;
 
-        /*
-        println!("from={:?} to={:?}", from, to);
-        debug_assert!(from.x > -EPSILON);
-        debug_assert!(from.x < TILE_WIDTH + EPSILON);
-        debug_assert!(to.x > -EPSILON);
-        debug_assert!(to.x < TILE_WIDTH + EPSILON);
-        debug_assert!(from.y > -EPSILON);
-        debug_assert!(from.y < TILE_HEIGHT + EPSILON);
-        debug_assert!(to.y > -EPSILON);
-        debug_assert!(to.y < TILE_HEIGHT + EPSILON);
-        */
-
         let from_px = Point2DU4::new(from.x as u8, from.y as u8);
         let to_px = Point2DU4::new(to.x as u8, to.y as u8);
         let from_subpx = Point2D::new((from.x.fract() * 256.0) as u8,
@@ -1456,9 +1388,6 @@ impl BuiltObject {
         });
 
         self.solid_tiles.set(tile_index as usize, false);
-
-        // FIXME(pcwalton): This is really sloppy!
-        const EPSILON: f32 = 0.25;
     }
 
     fn add_active_fill(&mut self,
@@ -1614,107 +1543,45 @@ fn round_rect_out_to_tile_bounds(rect: &Rect<f32>) -> Rect<i16> {
     Rect::new(tile_origin, tile_size)
 }
 
-// SVG stuff
+// USVG stuff
 
-struct SvgPathToPathEvents<'a, I> where I: Iterator<Item = SvgPathSegment> {
-    iter: &'a mut I,
-    last_endpoint: Point2D<f32>,
-    last_ctrl_point: Option<Point2D<f32>>,
+fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> Rect<f32> {
+    Rect::new(Point2D::new(rect.x, rect.y), Size2D::new(rect.width, rect.height)).to_f32()
 }
 
-impl<'a, I> SvgPathToPathEvents<'a, I> where I: Iterator<Item = SvgPathSegment> {
-    fn new(iter: &'a mut I) -> SvgPathToPathEvents<'a, I> {
-        SvgPathToPathEvents { iter, last_endpoint: Point2D::zero(), last_ctrl_point: None }
+fn usvg_transform_to_euclid_transform_2d(transform: &UsvgTransform) -> Transform2D<f32> {
+    Transform2D::row_major(transform.a as f32, transform.b as f32,
+                           transform.c as f32, transform.d as f32,
+                           transform.e as f32, transform.f as f32)
+}
+
+struct UsvgPathToPathEvents<I> where I: Iterator<Item = UsvgPathSegment> {
+    iter: I,
+}
+
+impl<I> UsvgPathToPathEvents<I> where I: Iterator<Item = UsvgPathSegment> {
+    fn new(iter: I) -> UsvgPathToPathEvents<I> {
+        UsvgPathToPathEvents { iter }
     }
 }
 
-impl<'a, I> Iterator for SvgPathToPathEvents<'a, I> where I: Iterator<Item = SvgPathSegment> {
+impl<I> Iterator for UsvgPathToPathEvents<I> where I: Iterator<Item = UsvgPathSegment> {
     type Item = PathEvent;
 
     fn next(&mut self) -> Option<PathEvent> {
-        return match self.iter.next() {
-            None => None,
-            Some(SvgPathSegment::MoveTo { abs, x, y }) => {
-                let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = to;
-                self.last_ctrl_point = None;
-                Some(PathEvent::MoveTo(to))
+        match self.iter.next()? {
+            UsvgPathSegment::MoveTo { x, y } => {
+                Some(PathEvent::MoveTo(Point2D::new(x, y).to_f32()))
             }
-            Some(SvgPathSegment::LineTo { abs, x, y }) => {
-                let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = to;
-                self.last_ctrl_point = None;
-                Some(PathEvent::LineTo(to))
+            UsvgPathSegment::LineTo { x, y } => {
+                Some(PathEvent::LineTo(Point2D::new(x, y).to_f32()))
             }
-            Some(SvgPathSegment::HorizontalLineTo { abs, x }) => {
-                let to = compute_point(x, 0.0, abs, &self.last_endpoint);
-                self.last_endpoint = to;
-                self.last_ctrl_point = None;
-                Some(PathEvent::LineTo(to))
+            UsvgPathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
+                Some(PathEvent::CubicTo(Point2D::new(x1, y1).to_f32(),
+                                        Point2D::new(x2, y2).to_f32(),
+                                        Point2D::new(x,  y) .to_f32()))
             }
-            Some(SvgPathSegment::VerticalLineTo { abs, y }) => {
-                let to = compute_point(0.0, y, abs, &self.last_endpoint);
-                self.last_endpoint = to;
-                self.last_ctrl_point = None;
-                Some(PathEvent::LineTo(to))
-            }
-            Some(SvgPathSegment::Quadratic { abs, x1, y1, x, y }) => {
-                let ctrl = compute_point(x1, y1, abs, &self.last_endpoint);
-                self.last_ctrl_point = Some(ctrl);
-                let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = to;
-                Some(PathEvent::QuadraticTo(ctrl, to))
-            }
-            Some(SvgPathSegment::SmoothQuadratic { abs, x, y }) => {
-                let ctrl = reflect_point(&self.last_endpoint, &self.last_ctrl_point);
-                self.last_ctrl_point = Some(ctrl);
-                let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = to;
-                Some(PathEvent::QuadraticTo(ctrl, to))
-            }
-            Some(SvgPathSegment::CurveTo { abs, x1, y1, x2, y2, x, y }) => {
-                let ctrl0 = compute_point(x1, y1, abs, &self.last_endpoint);
-                let ctrl1 = compute_point(x2, y2, abs, &self.last_endpoint);
-                self.last_ctrl_point = Some(ctrl1);
-                let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = to;
-                Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
-            }
-            Some(SvgPathSegment::SmoothCurveTo { abs, x2, y2, x, y }) => {
-                let ctrl0 = reflect_point(&self.last_endpoint, &self.last_ctrl_point);
-                let ctrl1 = compute_point(x2, y2, abs, &self.last_endpoint);
-                self.last_ctrl_point = Some(ctrl1);
-                let to = compute_point(x, y, abs, &self.last_endpoint);
-                self.last_endpoint = to;
-                Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
-            }
-            Some(SvgPathSegment::ClosePath { abs: _ }) => {
-                // FIXME(pcwalton): Current endpoint becomes path initial point!
-                self.last_ctrl_point = None;
-                Some(PathEvent::Close)
-            }
-            Some(SvgPathSegment::EllipticalArc { .. }) => unimplemented!("arcs"),
-        };
-
-        fn compute_point(x: f64, y: f64, abs: bool, last_endpoint: &Point2D<f32>)
-                         -> Point2D<f32> {
-            let point = Point2D::new(x, y).to_f32();
-            if !abs {
-                *last_endpoint + point.to_vector()
-            } else {
-                point
-            }
-        }
-
-        fn reflect_point(last_endpoint: &Point2D<f32>, last_ctrl_point: &Option<Point2D<f32>>)
-                         -> Point2D<f32> {
-            match *last_ctrl_point {
-                Some(ref last_ctrl_point) => {
-                    let vector = *last_endpoint - *last_ctrl_point;
-                    *last_endpoint + vector
-                }
-                None => *last_endpoint,
-            }
+            UsvgPathSegment::ClosePath => Some(PathEvent::Close),
         }
     }
 }
@@ -1785,6 +1652,10 @@ impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEve
                     self.last_point = to;
                     return Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
                 }
+                if cubic_segment_is_tiny(&segment) {
+                    self.last_point = to;
+                    return Some(PathEvent::CubicTo(ctrl0, ctrl1, to))
+                }
                 // FIXME(pcwalton): O(n^2)!
                 let mut t = 1.0;
                 segment.for_each_monotonic_t(|split_t| {
@@ -1805,6 +1676,10 @@ impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEve
             PathEvent::QuadraticTo(ctrl, to) => {
                 let segment = QuadraticBezierSegment { from: self.last_point, ctrl: ctrl, to };
                 if segment.is_monotonic() {
+                    self.last_point = to;
+                    return Some(PathEvent::QuadraticTo(ctrl, to))
+                }
+                if quadratic_segment_is_tiny(&segment) {
                     self.last_point = to;
                     return Some(PathEvent::QuadraticTo(ctrl, to))
                 }
@@ -2040,9 +1915,6 @@ struct Point2DU4(pub u8);
 
 impl Point2DU4 {
     fn new(x: u8, y: u8) -> Point2DU4 { Point2DU4(x | (y << 4)) }
-
-    fn x(self) -> u8 { self.0 & 0xf }
-    fn y(self) -> u8 { self.0 >> 4  }
 }
 
 // Path utilities
@@ -2061,7 +1933,6 @@ fn cubic_segment_is_nearly_monotonic(segment: &CubicBezierSegment<f32>) -> bool 
 
     const EPSILON: f32 = 0.1;
 }
-*/
 
 fn cubic_segment_is_nearly_monotonic(segment: &CubicBezierSegment<f32>) -> bool {
     let mut t = None;
@@ -2076,6 +1947,24 @@ fn cubic_segment_is_nearly_monotonic(segment: &CubicBezierSegment<f32>) -> bool 
     };
 
     const EPSILON: f32 = 0.01;
+}
+*/
+
+const TINY_EPSILON: f32 = 0.1;
+
+fn cubic_segment_is_tiny(segment: &CubicBezierSegment<f32>) -> bool {
+    let (x0, x1) = segment.fast_bounding_range_x();
+    let (y0, y1) = segment.fast_bounding_range_y();
+    let (x_delta, y_delta) = (f32::abs(x0 - x1), f32::abs(y0 - y1));
+    return x_delta < TINY_EPSILON || y_delta < TINY_EPSILON;
+}
+
+fn quadratic_segment_is_tiny(segment: &QuadraticBezierSegment<f32>) -> bool {
+    let (x0, x1) = segment.fast_bounding_range_x();
+    let (y0, y1) = segment.fast_bounding_range_y();
+    let (x_delta, y_delta) = (f32::abs(x0 - x1), f32::abs(y0 - y1));
+    return x_delta < TINY_EPSILON || y_delta < TINY_EPSILON;
+
 }
 
 // Trivial utilities

@@ -13,9 +13,9 @@ fixedbitset = "0.1"
 jemallocator = "0.1"
 lyon_geom = "0.12"
 lyon_path = "0.12"
-quick-xml = "0.12"
 rayon = "1.0"
-svgtypes = "0.2"
+svgtypes = "0.3"
+usvg = "0.4"
 
 [dependencies.pathfinder_path_utils]
 path = "../../path-utils"
