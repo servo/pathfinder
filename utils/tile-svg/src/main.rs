@@ -30,11 +30,14 @@ use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use rayon::ThreadPoolBuilder;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use simdeez::Simd;
+use simdeez::sse41::Sse41;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::mem;
+use std::ops::{Mul, Sub};
 use std::path::PathBuf;
 use std::time::Instant;
 use std::u16;
@@ -288,7 +291,7 @@ struct Outline {
 }
 
 struct Contour {
-    points: Vec<Point2D<f32>>,
+    points: Vec<Point2DF32>,
     flags: Vec<PointFlags>,
 }
 
@@ -315,29 +318,37 @@ impl Outline {
 
         for path_event in path_events {
             match path_event {
-                PathEvent::MoveTo(to) => {
+                PathEvent::MoveTo(ref to) => {
                     if !current_contour.is_empty() {
                         outline.contours.push(mem::replace(&mut current_contour, Contour::new()))
                     }
-                    current_contour.push_point(&to, PointFlags::empty(), &mut bounding_points);
+                    current_contour.push_point(&Point2DF32::from_euclid(to),
+                                               PointFlags::empty(),
+                                               &mut bounding_points);
                 }
-                PathEvent::LineTo(to) => {
-                    current_contour.push_point(&to, PointFlags::empty(), &mut bounding_points);
+                PathEvent::LineTo(ref to) => {
+                    current_contour.push_point(&Point2DF32::from_euclid(to),
+                                               PointFlags::empty(),
+                                               &mut bounding_points);
                 }
-                PathEvent::QuadraticTo(ctrl, to) => {
-                    current_contour.push_point(&ctrl,
+                PathEvent::QuadraticTo(ref ctrl, ref to) => {
+                    current_contour.push_point(&Point2DF32::from_euclid(ctrl),
                                                PointFlags::CONTROL_POINT_0,
                                                &mut bounding_points);
-                    current_contour.push_point(&to, PointFlags::empty(), &mut bounding_points);
+                    current_contour.push_point(&Point2DF32::from_euclid(to),
+                                               PointFlags::empty(),
+                                               &mut bounding_points);
                 }
-                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                    current_contour.push_point(&ctrl0,
+                PathEvent::CubicTo(ref ctrl0, ref ctrl1, ref to) => {
+                    current_contour.push_point(&Point2DF32::from_euclid(ctrl0),
                                                PointFlags::CONTROL_POINT_0,
                                                &mut bounding_points);
-                    current_contour.push_point(&ctrl1,
+                    current_contour.push_point(&Point2DF32::from_euclid(ctrl1),
                                                PointFlags::CONTROL_POINT_1,
                                                &mut bounding_points);
-                    current_contour.push_point(&to, PointFlags::empty(), &mut bounding_points);
+                    current_contour.push_point(&Point2DF32::from_euclid(to),
+                                               PointFlags::empty(),
+                                               &mut bounding_points);
                 }
                 PathEvent::Close => {
                     if !current_contour.is_empty() {
@@ -352,7 +363,10 @@ impl Outline {
         }
 
         if let Some((upper_left, lower_right)) = bounding_points {
-            outline.bounds = Rect::from_points([upper_left, lower_right].into_iter())
+            outline.bounds = Rect::from_points([
+                upper_left.as_euclid(),
+                lower_right.as_euclid(),
+            ].into_iter())
         }
 
         outline
@@ -376,21 +390,22 @@ impl Contour {
         self.points.len() as u32
     }
 
-    fn position_of(&self, index: u32) -> Point2D<f32> {
+    fn position_of(&self, index: u32) -> Point2DF32 {
         self.points[index as usize]
     }
 
+    // TODO(pcwalton): Pack both min and max into a single SIMD register?
     fn push_point(&mut self,
-                  point: &Point2D<f32>,
+                  point: &Point2DF32,
                   flags: PointFlags,
-                  bounding_points: &mut Option<(Point2D<f32>, Point2D<f32>)>) {
+                  bounding_points: &mut Option<(Point2DF32, Point2DF32)>) {
         self.points.push(*point);
         self.flags.push(flags);
 
         match *bounding_points {
             Some((ref mut upper_left, ref mut lower_right)) => {
-                *upper_left = upper_left.min(*point);
-                *lower_right = lower_right.max(*point);
+                *upper_left = upper_left.min(point);
+                *lower_right = lower_right.max(point);
             }
             None => *bounding_points = Some((*point, *point)),
         }
@@ -440,7 +455,7 @@ impl Contour {
     }
 
     fn point_is_logically_above(&self, a: u32, b: u32) -> bool {
-        let (a_y, b_y) = (self.points[a as usize].y, self.points[b as usize].y);
+        let (a_y, b_y) = (self.points[a as usize].y(), self.points[b as usize].y());
         a_y < b_y || (a_y == b_y && a < b)
     }
 
@@ -578,73 +593,74 @@ impl<'a> Iterator for ContourIter<'a> {
         let point0 = contour.position_of(point0_index);
         self.index += 1;
         if point0_index == 0 {
-            return Some(PathEvent::MoveTo(point0))
+            return Some(PathEvent::MoveTo(point0.as_euclid()))
         }
         if contour.point_is_endpoint(point0_index) {
-            return Some(PathEvent::LineTo(point0))
+            return Some(PathEvent::LineTo(point0.as_euclid()))
         }
 
         let point1_index = self.index;
         let point1 = contour.position_of(point1_index);
         self.index += 1;
         if contour.point_is_endpoint(point1_index) {
-            return Some(PathEvent::QuadraticTo(point0, point1))
+            return Some(PathEvent::QuadraticTo(point0.as_euclid(), point1.as_euclid()))
         }
 
         let point2_index = self.index;
         let point2 = contour.position_of(point2_index);
         self.index += 1;
         debug_assert!(contour.point_is_endpoint(point2_index));
-        Some(PathEvent::CubicTo(point0, point1, point2))
+        Some(PathEvent::CubicTo(point0.as_euclid(), point1.as_euclid(), point2.as_euclid()))
     }
 }
 
+// TODO(pcwalton): Pack endpoints together into a single SIMD register?
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Segment {
-    from: Point2D<f32>,
-    ctrl0: Point2D<f32>,
-    ctrl1: Point2D<f32>,
-    to: Point2D<f32>,
+    from: Point2DF32,
+    ctrl0: Point2DF32,
+    ctrl1: Point2DF32,
+    to: Point2DF32,
     flags: SegmentFlags,
 }
 
 impl Segment {
     fn new() -> Segment {
         Segment {
-            from: Point2D::zero(),
-            ctrl0: Point2D::zero(),
-            ctrl1: Point2D::zero(),
-            to: Point2D::zero(),
+            from: Point2DF32::default(),
+            ctrl0: Point2DF32::default(),
+            ctrl1: Point2DF32::default(),
+            to: Point2DF32::default(),
             flags: SegmentFlags::empty(),
         }
     }
 
     fn from_line(line: &LineSegment<f32>) -> Segment {
         Segment {
-            from: line.from,
-            ctrl0: Point2D::zero(),
-            ctrl1: Point2D::zero(),
-            to: line.to,
+            from: Point2DF32::from_euclid(&line.from),
+            ctrl0: Point2DF32::default(),
+            ctrl1: Point2DF32::default(),
+            to: Point2DF32::from_euclid(&line.to),
             flags: SegmentFlags::HAS_ENDPOINTS,
         }
     }
 
     fn from_quadratic(curve: &QuadraticBezierSegment<f32>) -> Segment {
         Segment {
-            from: curve.from,
-            ctrl0: curve.ctrl,
-            ctrl1: Point2D::zero(),
-            to: curve.to,
+            from: Point2DF32::from_euclid(&curve.from),
+            ctrl0: Point2DF32::from_euclid(&curve.ctrl),
+            ctrl1: Point2DF32::default(),
+            to: Point2DF32::from_euclid(&curve.to),
             flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0
         }
     }
 
     fn from_cubic(curve: &CubicBezierSegment<f32>) -> Segment {
         Segment {
-            from: curve.from,
-            ctrl0: curve.ctrl1,
-            ctrl1: curve.ctrl2,
-            to: curve.to,
+            from: Point2DF32::from_euclid(&curve.from),
+            ctrl0: Point2DF32::from_euclid(&curve.ctrl1),
+            ctrl1: Point2DF32::from_euclid(&curve.ctrl2),
+            to: Point2DF32::from_euclid(&curve.to),
             flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
                 SegmentFlags::HAS_CONTROL_POINT_1,
         }
@@ -652,7 +668,7 @@ impl Segment {
 
     fn as_line_segment(&self) -> Option<LineSegment<f32>> {
         if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
-            Some(LineSegment { from: self.from, to: self.to })
+            Some(LineSegment { from: self.from.as_euclid(), to: self.to.as_euclid() })
         } else {
             None
         }
@@ -664,26 +680,26 @@ impl Segment {
             None
         } else if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
             Some((QuadraticBezierSegment {
-                from: self.from,
-                ctrl: self.ctrl0,
-                to: self.to,
+                from: self.from.as_euclid(),
+                ctrl: self.ctrl0.as_euclid(),
+                to: self.to.as_euclid(),
             }).to_cubic())
         } else {
             Some(CubicBezierSegment {
-                from: self.from,
-                ctrl1: self.ctrl0,
-                ctrl2: self.ctrl1,
-                to: self.to,
+                from: self.from.as_euclid(),
+                ctrl1: self.ctrl0.as_euclid(),
+                ctrl2: self.ctrl1.as_euclid(),
+                to: self.to.as_euclid(),
             })
         }
     }
 
     fn split_y(&self, y: f32) -> (Option<Segment>, Option<Segment>) {
         // Trivial cases.
-        if self.from.y <= y && self.to.y <= y {
+        if self.from.y() <= y && self.to.y() <= y {
             return (Some(*self), None)
         }
-        if self.from.y >= y && self.to.y >= y {
+        if self.from.y() >= y && self.to.y() >= y {
             return (None, Some(*self))
         }
 
@@ -706,7 +722,7 @@ impl Segment {
             }
         };
 
-        if self.from.y < self.to.y {
+        if self.from.y() < self.to.y() {
             (Some(prev), Some(next))
         } else {
             (Some(next), Some(prev))
@@ -725,8 +741,10 @@ impl Segment {
         let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
         let mut from = self.from;
         for to in flattener {
-            generate_fill_primitives_for_line(LineSegment { from, to }, built_object, tile_y);
-            from = to;
+            generate_fill_primitives_for_line(LineSegment { from: from.as_euclid(), to },
+                                              built_object,
+                                              tile_y);
+            from = Point2DF32::from_euclid(&to);
         }
 
         fn generate_fill_primitives_for_line(mut segment: LineSegment<f32>,
@@ -751,17 +769,18 @@ impl Segment {
             let segment_tile_right = f32::ceil(segment_right / TILE_WIDTH) as i16;
 
             for subsegment_tile_x in segment_tile_left..segment_tile_right {
-                let (mut fill_from, mut fill_to) = (segment.from, segment.to);
+                let mut fill_from = Point2DF32::from_euclid(&segment.from);
+                let mut fill_to = Point2DF32::from_euclid(&segment.to);
                 let subsegment_tile_right = (subsegment_tile_x + 1) as f32 * TILE_WIDTH;
                 if subsegment_tile_right < segment_right {
                     let x = subsegment_tile_right;
-                    let point = Point2D::new(x, segment.solve_y_for_x(x));
+                    let point = Point2DF32::new(x, segment.solve_y_for_x(x));
                     if !winding {
                         fill_to = point;
-                        segment.from = point;
+                        segment.from = point.as_euclid();
                     } else {
                         fill_from = point;
-                        segment.to = point;
+                        segment.to = point.as_euclid();
                     }
                 }
 
@@ -862,10 +881,10 @@ impl<'o> Tiler<'o> {
         for mut active_edge in self.old_active_edges.drain(..) {
             // Determine x-intercept and winding.
             let (segment_x, edge_winding) =
-                if active_edge.segment.from.y < active_edge.segment.to.y {
-                    (active_edge.segment.from.x, 1)
+                if active_edge.segment.from.y() < active_edge.segment.to.y() {
+                    (active_edge.segment.from.x(), 1)
                 } else {
-                    (active_edge.segment.to.x, -1)
+                    (active_edge.segment.to.x(), -1)
                 };
 
             /*
@@ -960,7 +979,7 @@ impl<'o> Tiler<'o> {
 
             self.point_queue.push(QueuedEndpoint {
                 point_index: PointIndex::new(point_index.contour(), prev_endpoint_index),
-                y: contour.position_of(prev_endpoint_index).y,
+                y: contour.position_of(prev_endpoint_index).y(),
             });
             //println!("... done adding prev endpoint");
         }
@@ -979,7 +998,7 @@ impl<'o> Tiler<'o> {
 
             self.point_queue.push(QueuedEndpoint {
                 point_index: PointIndex::new(point_index.contour(), next_endpoint_index),
-                y: contour.position_of(next_endpoint_index).y,
+                y: contour.position_of(next_endpoint_index).y(),
             });
             //println!("... done adding next endpoint");
         }
@@ -998,7 +1017,7 @@ impl<'o> Tiler<'o> {
                         contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index) {
                     self.point_queue.push(QueuedEndpoint {
                         point_index: PointIndex::new(contour_index, cur_endpoint_index),
-                        y: contour.position_of(cur_endpoint_index).y,
+                        y: contour.position_of(cur_endpoint_index).y(),
                     });
                 }
 
@@ -1284,26 +1303,31 @@ impl BuiltObject {
         }
     }
 
-    fn add_fill(&mut self, from: &Point2D<f32>, to: &Point2D<f32>, tile_x: i16, tile_y: i16) {
-        let tile_origin = Vector2D::new(tile_x as f32 * TILE_WIDTH, tile_y as f32 * TILE_HEIGHT);
+    // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
+    fn add_fill(&mut self, from: &Point2DF32, to: &Point2DF32, tile_x: i16, tile_y: i16) {
+        let tile_origin = Point2DF32::new(tile_x as f32 * TILE_WIDTH, tile_y as f32 * TILE_HEIGHT);
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
-        let (from, to) = (*from - tile_origin, *to - tile_origin);
+        let (mut from, mut to) = (*from - tile_origin, *to - tile_origin);
 
-        let from = Point2D::new(clamp(from.x, 0.0, MAX_U12), clamp(from.y, 0.0, MAX_U12));
-        let to   = Point2D::new(clamp(to.x,   0.0, MAX_U12), clamp(to.y,   0.0, MAX_U12));
+        let tile_upper_left = Point2DF32::default();
+        let tile_lower_right = Point2DF32::splat(MAX_U12);
+        from = from.clamp(&tile_upper_left, &tile_lower_right);
+        to = to.clamp(&tile_upper_left, &tile_lower_right);
 
         const MAX_U12: f32 = 16.0 - 1.0 / 256.0;
 
-        let from_px = Point2DU4::new(from.x as u8, from.y as u8);
-        let to_px = Point2DU4::new(to.x as u8, to.y as u8);
-        let from_subpx = Point2D::new((from.x.fract() * 256.0) as u8,
-                                      (from.y.fract() * 256.0) as u8);
-        let to_subpx = Point2D::new((to.x.fract() * 256.0) as u8, (to.y.fract() * 256.0) as u8);
+        let subpx_scale = Point2DF32::splat(256.0);
+        let from_subpx = (from.fract() * subpx_scale).to_u8();
+        let to_subpx = (to.fract() * subpx_scale).to_u8();
 
         // Cull degenerate fills.
-        if from.x as u8 == to.x as u8 && from_subpx.x == to_subpx.x {
+        let (from_px, to_px) = (from.to_u8(), to.to_u8());
+        if from_px.x == to_px.x && from_subpx.x == to_subpx.x {
             return
         }
+
+        let from_px = Point2DU4::new(from_px.x, from_px.y);
+        let to_px = Point2DU4::new(to_px.x, to_px.y);
 
         self.fills.push(FillObjectPrimitive {
             from_px, to_px,
@@ -1321,8 +1345,8 @@ impl BuiltObject {
                        tile_x: i16,
                        tile_y: i16) {
         let tile_origin_y = tile_y as f32 * TILE_HEIGHT;
-        let mut left = Point2D::new(left, tile_origin_y);
-        let mut right = Point2D::new(right, tile_origin_y);
+        let mut left = Point2DF32::new(left, tile_origin_y);
+        let mut right = Point2DF32::new(right, tile_origin_y);
 
         if winding > 0 {
             mem::swap(&mut left, &mut right);
@@ -1861,15 +1885,15 @@ impl ActiveEdge {
 
 impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
-        let this_x = if self.segment.from.y < self.segment.to.y {
-            self.segment.from.x
+        let this_x = if self.segment.from.y() < self.segment.to.y() {
+            self.segment.from.x()
         } else {
-            self.segment.to.x
+            self.segment.to.x()
         };
-        let other_x = if other.segment.from.y < other.segment.to.y {
-            other.segment.from.x
+        let other_x = if other.segment.from.y() < other.segment.to.y() {
+            other.segment.from.x()
         } else {
-            other.segment.to.x
+            other.segment.to.x()
         };
         this_x.partial_cmp(&other_x)
     }
@@ -1882,6 +1906,84 @@ struct Point2DU4(pub u8);
 
 impl Point2DU4 {
     fn new(x: u8, y: u8) -> Point2DU4 { Point2DU4(x | (y << 4)) }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Point2DF32(pub <Sse41 as Simd>::Vf32);
+
+impl Point2DF32 {
+    pub fn new(x: f32, y: f32) -> Point2DF32 {
+        unsafe {
+            let array = [0.0, 0.0, y, x];
+            Point2DF32(Sse41::load_ps(&array[0]))
+        }
+    }
+
+    pub fn splat(value: f32) -> Point2DF32 { unsafe { Point2DF32(Sse41::set1_ps(value)) } }
+
+    pub fn from_euclid(point: &Point2D<f32>) -> Point2DF32 { Point2DF32::new(point.x, point.y) }
+    pub fn as_euclid(&self) -> Point2D<f32> { Point2D::new(self.0[3], self.0[2]) }
+
+    pub fn x(&self) -> f32 { self.0[3] }
+    pub fn y(&self) -> f32 { self.0[2] }
+
+    pub fn min(&self, other: &Point2DF32) -> Point2DF32 {
+        unsafe {
+            Point2DF32(Sse41::min_ps(self.0, other.0))
+        }
+    }
+    pub fn max(&self, other: &Point2DF32) -> Point2DF32 {
+        unsafe {
+            Point2DF32(Sse41::max_ps(self.0, other.0))
+        }
+    }
+
+    pub fn clamp(&self, min: &Point2DF32, max: &Point2DF32) -> Point2DF32 {
+        self.max(min).min(max)
+    }
+
+    pub fn floor(&self) -> Point2DF32 { unsafe { Point2DF32(Sse41::fastfloor_ps(self.0)) } }
+
+    pub fn fract(&self) -> Point2DF32 { *self - self.floor() }
+
+    // TODO(pcwalton): Have an actual packed u8 point type!
+    pub fn to_u8(&self) -> Point2D<u8> {
+        unsafe {
+            let int_values = Sse41::cvtps_epi32(self.0);
+            Point2D::new(int_values[3] as u8, int_values[2] as u8)
+        }
+    }
+}
+
+impl PartialEq for Point2DF32 {
+    fn eq(&self, other: &Point2DF32) -> bool {
+        unsafe {
+            let results: <Sse41 as Simd>::Vi32 = mem::transmute(Sse41::cmpeq_ps(self.0, other.0));
+            results[2] == -1 && results[3] == -1
+        }
+    }
+}
+
+impl Default for Point2DF32 {
+    fn default() -> Point2DF32 {
+        unsafe {
+            Point2DF32(Sse41::setzero_ps())
+        }
+    }
+}
+
+impl Sub<Point2DF32> for Point2DF32 {
+    type Output = Point2DF32;
+    fn sub(self, other: Point2DF32) -> Point2DF32 {
+        Point2DF32(self.0 - other.0)
+    }
+}
+
+impl Mul<Point2DF32> for Point2DF32 {
+    type Output = Point2DF32;
+    fn mul(self, other: Point2DF32) -> Point2DF32 {
+        Point2DF32(self.0 * other.0)
+    }
 }
 
 // Path utilities

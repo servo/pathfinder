@@ -1399,6 +1399,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "simdeez"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "simplecss"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1534,6 +1539,7 @@ dependencies = [
  "quickcheck 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "rayon 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "simdeez 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "svgtypes 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "usvg 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1881,6 +1887,7 @@ source = "git+https://github.com/SergioBenitez/ring?branch=v0.12#9ccfa153a27aecc
 "checksum servo-fontconfig 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a088f8d775a5c5314aae09bd77340bc9c67d72b9a45258be34c83548b4814cd9"
 "checksum servo-fontconfig-sys 4.0.6 (registry+https://github.com/rust-lang/crates.io-index)" = "b0aa080856db55f188aaf36f01cae8c03448a6056552adb77d461179e44e1a14"
 "checksum servo-freetype-sys 4.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "9232032c2e85118c0282c6562c84cab12316e655491ba0a5d1905b2320060d1b"
+"checksum simdeez 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "53d1e4a8ee9c44fa7c2d6464b679bd62c6b156edb865f084eb51af7b34efaa63"
 "checksum simplecss 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "135685097a85a64067df36e28a243e94a94f76d829087ce0be34eeb014260c0e"
 "checksum siphasher 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "0b8de496cf83d4ed58b6be86c3a275b8602f6ffe98d3024a869e124147a9a3ac"
 "checksum slab 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "5f9776d6b986f77b35c6cf846c11ad986ff128fe0b2b63a3628e3755e8d3102d"
