@@ -85,7 +85,7 @@ class App {
     private viewBox: Rect;
 
     private solidTileCount: number;
-    private objectCount: number;
+    private shaderCount: number;
 
     constructor(areaLUT: HTMLImageElement) {
         const canvas = staticCast(document.getElementById('canvas'), HTMLCanvasElement);
@@ -247,7 +247,7 @@ class App {
         this.canvas.addEventListener('click', event => this.onClick(event), false);
 
         this.solidTileCount = 0;
-        this.objectCount = 0;
+        this.shaderCount = 0;
     }
 
     redraw(): void {
@@ -284,7 +284,7 @@ class App {
         gl.uniform1i(this.solidTileProgram.uniforms.FillColorsTexture, 0);
         // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
         gl.uniform2f(this.solidTileProgram.uniforms.FillColorsTextureSize,
-                     this.objectCount,
+                     this.shaderCount,
                      1.0);
         gl.uniform2f(this.solidTileProgram.uniforms.ViewBoxOrigin,
                      this.viewBox.origin.x,
@@ -317,6 +317,7 @@ class App {
             gl.blendFunc(gl.ONE, gl.ONE);
             gl.enable(gl.BLEND);
             gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(batch.fillPrimitiveCount));
+            console.log("drawing ", batch.fillPrimitiveCount, " fills");
             gl.disable(gl.BLEND);
 
             // Read back stencil and dump it.
@@ -344,7 +345,7 @@ class App {
             gl.uniform1i(this.maskTileProgram.uniforms.FillColorsTexture, 1);
             // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
             gl.uniform2f(this.maskTileProgram.uniforms.FillColorsTextureSize,
-                        this.objectCount,
+                        this.shaderCount,
                         1.0);
             gl.uniform2f(this.maskTileProgram.uniforms.ViewBoxOrigin,
                         this.viewBox.origin.x,
@@ -426,7 +427,7 @@ class App {
                                                             this.solidTileVertexBuffer,
                                                             SOLID_TILE_INSTANCE_SIZE);
                 } else if (id === 'shad') {
-                    this.objectCount = subchunk.length() / 4;
+                    this.shaderCount = subchunk.length() / 4;
                     gl.activeTexture(gl.TEXTURE0);
                     gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
                     const textureDataView = subchunk.contents();
@@ -436,7 +437,7 @@ class App {
                     gl.texImage2D(gl.TEXTURE_2D,
                                   0,
                                   gl.RGBA,
-                                  this.objectCount,
+                                  this.shaderCount,
                                   1,
                                   0,
                                   gl.RGBA,

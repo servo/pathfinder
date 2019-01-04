@@ -1300,6 +1300,11 @@ impl BuiltObject {
                                       (from.y.fract() * 256.0) as u8);
         let to_subpx = Point2D::new((to.x.fract() * 256.0) as u8, (to.y.fract() * 256.0) as u8);
 
+        // Cull degenerate fills.
+        if from.x as u8 == to.x as u8 && from_subpx.x == to_subpx.x {
+            return
+        }
+
         self.fills.push(FillObjectPrimitive {
             from_px, to_px,
             from_subpx, to_subpx,
