@@ -609,6 +609,15 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "hashbrown"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "byteorder 1.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "scopeguard 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "httparse"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1517,6 +1526,7 @@ dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "euclid 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "fixedbitset 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hashbrown 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "jemallocator 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "lyon_geom 0.12.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lyon_path 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1787,6 +1797,7 @@ source = "git+https://github.com/SergioBenitez/ring?branch=v0.12#9ccfa153a27aecc
 "checksum glib-sys 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d9693049613ff52b93013cc3d2590366d8e530366d288438724b73f6c7dc4be8"
 "checksum gobject-sys 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "60d507c87a71b1143c66ed21a969be9b99a76df234b342d733e787e6c9c7d7c2"
 "checksum half 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "ee6c0438de3ca4d8cac2eec62b228e2f8865cfe9ebefea720406774223fa2d2e"
+"checksum hashbrown 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)" = "64b7d419d0622ae02fe5da6b9a5e1964b610a65bb37923b976aeebb6dbb8f86e"
 "checksum httparse 1.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7b6288d7db100340ca12873fd4d08ad1b8f206a9457798dfb17c018a33fee540"
 "checksum humantime 1.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "0484fda3e7007f2a4a0d9c3a703ca38c71c54c55602ce4660c419fd32e188c9e"
 "checksum hyper 0.10.13 (registry+https://github.com/rust-lang/crates.io-index)" = "368cb56b2740ebf4230520e2b90ebb0461e69034d85d1945febd9b3971426db2"

@@ -22,7 +22,7 @@ import {staticCast, unwrapNull} from "./util";
 const SVGPath: (path: string) => SVGPath = require('svgpath');
 
 const STENCIL_FRAMEBUFFER_SIZE: Size2D = {
-    width: TILE_SIZE.width * 128,
+    width: TILE_SIZE.width * 256,
     height: TILE_SIZE.height * 256,
 };
 
@@ -46,6 +46,23 @@ interface Color {
 
 type Edge = 'left' | 'top' | 'right' | 'bottom';
 
+type FillProgram =
+    Program<'FramebufferSize' | 'TileSize' | 'AreaLUT',
+            'TessCoord' | 'FromPx' | 'ToPx' | 'FromSubpx' | 'ToSubpx' | 'TileIndex'>;
+type SolidTileProgram =
+    Program<'FramebufferSize' |
+            'TileSize' |
+            'FillColorsTexture' | 'FillColorsTextureSize' |
+            'ViewBoxOrigin',
+            'TessCoord' | 'TileOrigin' | 'Object'>;
+type MaskTileProgram =
+    Program<'FramebufferSize' |
+            'TileSize' |
+            'StencilTexture' | 'StencilTextureSize' |
+            'FillColorsTexture' | 'FillColorsTextureSize' |
+            'ViewBoxOrigin',
+            'TessCoord' | 'TileOrigin' | 'Backdrop' | 'Object'>;
+
 class App {
     private canvas: HTMLCanvasElement;
     private openButton: HTMLInputElement;
@@ -57,36 +74,17 @@ class App {
     private fillColorsTexture: WebGLTexture;
     private stencilTexture: WebGLTexture;
     private stencilFramebuffer: WebGLFramebuffer;
-    private fillProgram: Program<'FramebufferSize' | 'TileSize' | 'AreaLUT',
-                                 'TessCoord' |
-                                 'FromPx' | 'ToPx' |
-                                 'FromSubpx' | 'ToSubpx' |
-                                 'TileIndex'>;
-    private solidTileProgram: Program<'FramebufferSize' |
-                                      'TileSize' |
-                                      'FillColorsTexture' | 'FillColorsTextureSize' |
-                                      'ViewBoxOrigin',
-                                      'TessCoord' | 'TileOrigin' | 'Object'>;
-    private maskTileProgram:
-        Program<'FramebufferSize' |
-                'TileSize' |
-                'StencilTexture' | 'StencilTextureSize' |
-                'FillColorsTexture' | 'FillColorsTextureSize' |
-                'ViewBoxOrigin',
-                'TessCoord' | 'TileOrigin' | 'Backdrop' | 'Object'>;
+    private fillProgram: FillProgram;
+    private solidTileProgram: SolidTileProgram;
+    private maskTileProgram: MaskTileProgram;
     private quadVertexBuffer: WebGLBuffer;
-    private fillVertexBuffer: WebGLBuffer;
-    private fillVertexArray: WebGLVertexArrayObject;
     private solidTileVertexBuffer: WebGLBuffer;
     private solidVertexArray: WebGLVertexArrayObject;
-    private maskTileVertexBuffer: WebGLBuffer;
-    private maskVertexArray: WebGLVertexArrayObject;
+    private batchBuffers: BatchBuffers[];
 
     private viewBox: Rect;
 
-    private fillPrimitiveCount: number;
     private solidTileCount: number;
-    private maskTileCount: number;
     private objectCount: number;
 
     constructor(areaLUT: HTMLImageElement) {
@@ -209,14 +207,307 @@ class App {
         gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, QUAD_VERTEX_POSITIONS, gl.STATIC_DRAW);
 
+        // Initialize tile VBOs and IBOs.
+        this.solidTileVertexBuffer = unwrapNull(gl.createBuffer());
+
+        // Initialize solid tile VAO.
+        this.solidVertexArray = unwrapNull(gl.createVertexArray());
+        gl.bindVertexArray(this.solidVertexArray);
+        gl.useProgram(this.solidTileProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
+        gl.vertexAttribPointer(solidTileProgram.attributes.TessCoord,
+                               2,
+                               gl.UNSIGNED_BYTE,
+                               false,
+                               0,
+                               0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.solidTileVertexBuffer);
+        gl.vertexAttribPointer(solidTileProgram.attributes.TileOrigin,
+                               2,
+                               gl.SHORT,
+                               false,
+                               SOLID_TILE_INSTANCE_SIZE,
+                               0);
+        gl.vertexAttribDivisor(solidTileProgram.attributes.TileOrigin, 1);
+        gl.vertexAttribIPointer(solidTileProgram.attributes.Object,
+                                1,
+                                gl.UNSIGNED_SHORT,
+                                SOLID_TILE_INSTANCE_SIZE,
+                                4);
+        gl.vertexAttribDivisor(solidTileProgram.attributes.Object, 1);
+        gl.enableVertexAttribArray(solidTileProgram.attributes.TessCoord);
+        gl.enableVertexAttribArray(solidTileProgram.attributes.TileOrigin);
+        gl.enableVertexAttribArray(solidTileProgram.attributes.Object);
+
+        this.batchBuffers = [];
+
+        this.viewBox = new Rect(new Point2D(0.0, 0.0), new Size2D(0.0, 0.0));
+
+        // Set up event handlers.
+        this.canvas.addEventListener('click', event => this.onClick(event), false);
+
+        this.solidTileCount = 0;
+        this.objectCount = 0;
+    }
+
+    redraw(): void {
+        const gl = this.gl, canvas = this.canvas;
+
+        //console.log("viewBox", this.viewBox);
+
+        // Initialize timers.
+        let fillTimerQuery = null, solidTimerQuery = null, maskTimerQuery = null;
+        if (this.disjointTimerQueryExt != null) {
+            fillTimerQuery = unwrapNull(gl.createQuery());
+            solidTimerQuery = unwrapNull(gl.createQuery());
+            maskTimerQuery = unwrapNull(gl.createQuery());
+        }
+
+        // Clear.
+        if (solidTimerQuery != null)
+            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, solidTimerQuery);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        const framebufferSize = {width: canvas.width, height: canvas.height};
+        gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
+        gl.clearColor(0.85, 0.85, 0.85, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        // Draw solid tiles.
+        gl.bindVertexArray(this.solidVertexArray);
+        gl.useProgram(this.solidTileProgram.program);
+        gl.uniform2f(this.solidTileProgram.uniforms.FramebufferSize,
+                     framebufferSize.width,
+                     framebufferSize.height);
+        gl.uniform2f(this.solidTileProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
+        gl.uniform1i(this.solidTileProgram.uniforms.FillColorsTexture, 0);
+        // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
+        gl.uniform2f(this.solidTileProgram.uniforms.FillColorsTextureSize,
+                     this.objectCount,
+                     1.0);
+        gl.uniform2f(this.solidTileProgram.uniforms.ViewBoxOrigin,
+                     this.viewBox.origin.x,
+                     this.viewBox.origin.y);
+        gl.disable(gl.BLEND);
+        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.solidTileCount);
+        if (solidTimerQuery != null)
+            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
+
+        // Draw batches.
+        if (fillTimerQuery != null)
+            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, fillTimerQuery);
+        for (const batch of this.batchBuffers) {
+            // Fill.
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.stencilFramebuffer);
+            gl.viewport(0, 0, STENCIL_FRAMEBUFFER_SIZE.width, STENCIL_FRAMEBUFFER_SIZE.height);
+            gl.clearColor(0.0, 0.0, 0.0, 0.0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.bindVertexArray(batch.fillVertexArray);
+            gl.useProgram(this.fillProgram.program);
+            gl.uniform2f(this.fillProgram.uniforms.FramebufferSize,
+                        STENCIL_FRAMEBUFFER_SIZE.width,
+                        STENCIL_FRAMEBUFFER_SIZE.height);
+            gl.uniform2f(this.fillProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, this.areaLUTTexture);
+            gl.uniform1i(this.fillProgram.uniforms.AreaLUT, 0);
+            gl.blendEquation(gl.FUNC_ADD);
+            gl.blendFunc(gl.ONE, gl.ONE);
+            gl.enable(gl.BLEND);
+            gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(batch.fillPrimitiveCount));
+            gl.disable(gl.BLEND);
+
+            // Read back stencil and dump it.
+            //this.dumpStencil();
+
+            // Draw masked tiles.
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
+            gl.bindVertexArray(batch.maskVertexArray);
+            gl.useProgram(this.maskTileProgram.program);
+            gl.uniform2f(this.maskTileProgram.uniforms.FramebufferSize,
+                        framebufferSize.width,
+                        framebufferSize.height);
+            gl.uniform2f(this.maskTileProgram.uniforms.TileSize,
+                         TILE_SIZE.width,
+                         TILE_SIZE.height);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
+            gl.uniform1i(this.maskTileProgram.uniforms.StencilTexture, 0);
+            gl.uniform2f(this.maskTileProgram.uniforms.StencilTextureSize,
+                        STENCIL_FRAMEBUFFER_SIZE.width,
+                        STENCIL_FRAMEBUFFER_SIZE.height);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
+            gl.uniform1i(this.maskTileProgram.uniforms.FillColorsTexture, 1);
+            // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
+            gl.uniform2f(this.maskTileProgram.uniforms.FillColorsTextureSize,
+                        this.objectCount,
+                        1.0);
+            gl.uniform2f(this.maskTileProgram.uniforms.ViewBoxOrigin,
+                        this.viewBox.origin.x,
+                        this.viewBox.origin.y);
+            gl.blendEquation(gl.FUNC_ADD);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.enable(gl.BLEND);
+            gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, batch.maskTileCount);
+            gl.disable(gl.BLEND);
+        }
+        if (fillTimerQuery != null)
+            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
+
+        // End timer.
+        if (fillTimerQuery != null && solidTimerQuery != null) {
+            processQueries(gl, this.disjointTimerQueryExt, {
+                fill: fillTimerQuery,
+                solid: solidTimerQuery,
+            });
+        }
+    }
+
+    private dumpStencil(): void {
+        const gl = this.gl;
+
+        const totalStencilFramebufferSize = STENCIL_FRAMEBUFFER_SIZE.width *
+            STENCIL_FRAMEBUFFER_SIZE.height * 4;
+        const stencilData = new Float32Array(totalStencilFramebufferSize);
+        gl.readPixels(0, 0,
+                      STENCIL_FRAMEBUFFER_SIZE.width, STENCIL_FRAMEBUFFER_SIZE.height,
+                      gl.RGBA,
+                      gl.FLOAT,
+                      stencilData);
+        const stencilDumpData = new Uint8ClampedArray(totalStencilFramebufferSize);
+        for (let i = 0; i < stencilData.length; i++)
+            stencilDumpData[i] = stencilData[i] * 255.0;
+        const stencilDumpCanvas = document.createElement('canvas');
+        stencilDumpCanvas.width = STENCIL_FRAMEBUFFER_SIZE.width;
+        stencilDumpCanvas.height = STENCIL_FRAMEBUFFER_SIZE.height;
+        stencilDumpCanvas.style.width =
+            (STENCIL_FRAMEBUFFER_SIZE.width / window.devicePixelRatio) + "px";
+        stencilDumpCanvas.style.height =
+            (STENCIL_FRAMEBUFFER_SIZE.height / window.devicePixelRatio) + "px";
+        const stencilDumpCanvasContext = unwrapNull(stencilDumpCanvas.getContext('2d'));
+        const stencilDumpImageData = new ImageData(stencilDumpData,
+                                                   STENCIL_FRAMEBUFFER_SIZE.width,
+                                                   STENCIL_FRAMEBUFFER_SIZE.height);
+        stencilDumpCanvasContext.putImageData(stencilDumpImageData, 0, 0);
+        document.body.appendChild(stencilDumpCanvas);
+        //console.log(stencilData);
+    }
+
+    private loadFile(): void {
+        console.log("loadFile");
+        // TODO(pcwalton)
+        const file = unwrapNull(unwrapNull(this.openButton.files)[0]);
+        const reader = new FileReader;
+        reader.addEventListener('loadend', () => {
+            const gl = this.gl;
+            const arrayBuffer = staticCast(reader.result, ArrayBuffer);
+            const root = new RIFFChunk(new DataView(arrayBuffer));
+            for (const subchunk of root.subchunks(4)) {
+                const self = this;
+
+                const id = subchunk.stringID();
+                if (id === 'head') {
+                    const headerData = subchunk.contents();
+                    const version = headerData.getUint32(0, true);
+                    if (version !== 0)
+                        throw new Error("Unknown version!");
+                    // Ignore the batch count and fetch the view box.
+                    this.viewBox = new Rect(new Point2D(headerData.getFloat32(8, true),
+                                                        headerData.getFloat32(12, true)),
+                                            new Size2D(headerData.getFloat32(16, true),
+                                                       headerData.getFloat32(20, true)));
+                    continue;
+                } else if (id === 'soli') {
+                    self.solidTileCount = uploadArrayBuffer(subchunk,
+                                                            this.solidTileVertexBuffer,
+                                                            SOLID_TILE_INSTANCE_SIZE);
+                } else if (id === 'shad') {
+                    this.objectCount = subchunk.length() / 4;
+                    gl.activeTexture(gl.TEXTURE0);
+                    gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
+                    const textureDataView = subchunk.contents();
+                    const textureData = new Uint8Array(textureDataView.buffer,
+                                                       textureDataView.byteOffset,
+                                                       textureDataView.byteLength);
+                    gl.texImage2D(gl.TEXTURE_2D,
+                                  0,
+                                  gl.RGBA,
+                                  this.objectCount,
+                                  1,
+                                  0,
+                                  gl.RGBA,
+                                  gl.UNSIGNED_BYTE,
+                                  textureData);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                } else if (id === 'batc') {
+                    const batch = new BatchBuffers(this.gl,
+                                                   this.fillProgram,
+                                                   this.maskTileProgram,
+                                                   this.quadVertexBuffer);
+                    for (const subsubchunk of subchunk.subchunks()) {
+                        const id = subsubchunk.stringID();
+                        console.log("id=", id);
+                        if (id === 'fill') {
+                            batch.fillPrimitiveCount = uploadArrayBuffer(subsubchunk,
+                                                                         batch.fillVertexBuffer,
+                                                                         FILL_INSTANCE_SIZE);
+                        } else if (id === 'mask') {
+                            batch.maskTileCount = uploadArrayBuffer(subsubchunk,
+                                                                    batch.maskTileVertexBuffer,
+                                                                    MASK_TILE_INSTANCE_SIZE);
+                        }
+                    }
+
+                    this.batchBuffers.push(batch);
+                }
+
+                function uploadArrayBuffer(chunk: RIFFChunk,
+                                           buffer: WebGLBuffer,
+                                           instanceSize: number):
+                                           number {
+                    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                    gl.bufferData(gl.ARRAY_BUFFER, chunk.contents(), gl.DYNAMIC_DRAW);
+                    return chunk.length() / instanceSize;
+                }
+            }
+
+            this.redraw();
+        }, false);
+        reader.readAsArrayBuffer(file);
+    }
+
+    private onClick(event: MouseEvent): void {
+        this.redraw();
+    }
+}
+
+class BatchBuffers {
+    fillVertexBuffer: WebGLBuffer;
+    fillVertexArray: WebGLVertexArrayObject;
+    maskTileVertexBuffer: WebGLBuffer;
+    maskVertexArray: WebGLVertexArrayObject;
+    fillPrimitiveCount: number;
+    maskTileCount: number;
+
+    constructor(gl: WebGL2RenderingContext,
+                fillProgram: FillProgram,
+                maskTileProgram: MaskTileProgram,
+                quadVertexBuffer: WebGLBuffer) {
         // Initialize fill VBOs.
         this.fillVertexBuffer = unwrapNull(gl.createBuffer());
 
         // Initialize fill VAO.
         this.fillVertexArray = unwrapNull(gl.createVertexArray());
         gl.bindVertexArray(this.fillVertexArray);
-        gl.useProgram(this.fillProgram.program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
+        gl.useProgram(fillProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadVertexBuffer);
         gl.vertexAttribPointer(fillProgram.attributes.TessCoord,
                                2,
                                gl.UNSIGNED_BYTE,
@@ -263,44 +554,14 @@ class App {
         gl.enableVertexAttribArray(fillProgram.attributes.ToSubpx);
         gl.enableVertexAttribArray(fillProgram.attributes.TileIndex);
 
-        // Initialize tile VBOs and IBOs.
-        this.solidTileVertexBuffer = unwrapNull(gl.createBuffer());
+        // Initialize tile VBOs.
         this.maskTileVertexBuffer = unwrapNull(gl.createBuffer());
-
-        // Initialize solid tile VAO.
-        this.solidVertexArray = unwrapNull(gl.createVertexArray());
-        gl.bindVertexArray(this.solidVertexArray);
-        gl.useProgram(this.solidTileProgram.program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
-        gl.vertexAttribPointer(solidTileProgram.attributes.TessCoord,
-                               2,
-                               gl.UNSIGNED_BYTE,
-                               false,
-                               0,
-                               0);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.solidTileVertexBuffer);
-        gl.vertexAttribPointer(solidTileProgram.attributes.TileOrigin,
-                               2,
-                               gl.SHORT,
-                               false,
-                               SOLID_TILE_INSTANCE_SIZE,
-                               0);
-        gl.vertexAttribDivisor(solidTileProgram.attributes.TileOrigin, 1);
-        gl.vertexAttribIPointer(solidTileProgram.attributes.Object,
-                                1,
-                                gl.UNSIGNED_SHORT,
-                                SOLID_TILE_INSTANCE_SIZE,
-                                4);
-        gl.vertexAttribDivisor(solidTileProgram.attributes.Object, 1);
-        gl.enableVertexAttribArray(solidTileProgram.attributes.TessCoord);
-        gl.enableVertexAttribArray(solidTileProgram.attributes.TileOrigin);
-        gl.enableVertexAttribArray(solidTileProgram.attributes.Object);
 
         // Initialize mask tile VAO.
         this.maskVertexArray = unwrapNull(gl.createVertexArray());
         gl.bindVertexArray(this.maskVertexArray);
-        gl.useProgram(this.maskTileProgram.program);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadVertexBuffer);
+        gl.useProgram(maskTileProgram.program);
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadVertexBuffer);
         gl.vertexAttribPointer(maskTileProgram.attributes.TessCoord,
                                2,
                                gl.UNSIGNED_BYTE,
@@ -332,244 +593,8 @@ class App {
         gl.enableVertexAttribArray(maskTileProgram.attributes.Backdrop);
         gl.enableVertexAttribArray(maskTileProgram.attributes.Object);
 
-        this.viewBox = new Rect(new Point2D(0.0, 0.0), new Size2D(0.0, 0.0));
-
-        // Set up event handlers.
-        this.canvas.addEventListener('click', event => this.onClick(event), false);
-
         this.fillPrimitiveCount = 0;
-        this.solidTileCount = 0;
         this.maskTileCount = 0;
-        this.objectCount = 0;
-    }
-
-    redraw(): void {
-        const gl = this.gl, canvas = this.canvas;
-
-        //console.log("viewBox", this.viewBox);
-
-        // Initialize timers.
-        let fillTimerQuery = null, solidTimerQuery = null, maskTimerQuery = null;
-        if (this.disjointTimerQueryExt != null) {
-            fillTimerQuery = unwrapNull(gl.createQuery());
-            solidTimerQuery = unwrapNull(gl.createQuery());
-            maskTimerQuery = unwrapNull(gl.createQuery());
-        }
-
-        // Fill.
-        if (fillTimerQuery != null)
-            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, fillTimerQuery);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.stencilFramebuffer);
-        gl.viewport(0, 0, STENCIL_FRAMEBUFFER_SIZE.width, STENCIL_FRAMEBUFFER_SIZE.height);
-        gl.clearColor(0.0, 0.0, 0.0, 0.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        gl.bindVertexArray(this.fillVertexArray);
-        gl.useProgram(this.fillProgram.program);
-        gl.uniform2f(this.fillProgram.uniforms.FramebufferSize,
-                     STENCIL_FRAMEBUFFER_SIZE.width,
-                     STENCIL_FRAMEBUFFER_SIZE.height);
-        gl.uniform2f(this.fillProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.areaLUTTexture);
-        gl.uniform1i(this.fillProgram.uniforms.AreaLUT, 0);
-        gl.blendEquation(gl.FUNC_ADD);
-        gl.blendFunc(gl.ONE, gl.ONE);
-        gl.enable(gl.BLEND);
-        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, unwrapNull(this.fillPrimitiveCount));
-        gl.disable(gl.BLEND);
-        if (fillTimerQuery != null)
-            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
-
-        // Read back stencil and dump it.
-        this.dumpStencil();
-
-        // Draw solid tiles.
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        const framebufferSize = {width: canvas.width, height: canvas.height};
-        gl.viewport(0, 0, framebufferSize.width, framebufferSize.height);
-        gl.clearColor(0.85, 0.85, 0.85, 1.0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
-
-        if (solidTimerQuery != null)
-            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, solidTimerQuery);
-        gl.bindVertexArray(this.solidVertexArray);
-        gl.useProgram(this.solidTileProgram.program);
-        gl.uniform2f(this.solidTileProgram.uniforms.FramebufferSize,
-                     framebufferSize.width,
-                     framebufferSize.height);
-        gl.uniform2f(this.solidTileProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
-        gl.uniform1i(this.solidTileProgram.uniforms.FillColorsTexture, 0);
-        // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
-        gl.uniform2f(this.solidTileProgram.uniforms.FillColorsTextureSize,
-                     this.objectCount,
-                     1.0);
-        gl.uniform2f(this.solidTileProgram.uniforms.ViewBoxOrigin,
-                     this.viewBox.origin.x,
-                     this.viewBox.origin.y);
-        gl.disable(gl.BLEND);
-        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.solidTileCount);
-        if (solidTimerQuery != null)
-            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
-
-        // Draw masked tiles.
-        if (maskTimerQuery != null)
-            gl.beginQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT, maskTimerQuery);
-        gl.bindVertexArray(this.maskVertexArray);
-        gl.useProgram(this.maskTileProgram.program);
-        gl.uniform2f(this.maskTileProgram.uniforms.FramebufferSize,
-                     framebufferSize.width,
-                     framebufferSize.height);
-        gl.uniform2f(this.maskTileProgram.uniforms.TileSize, TILE_SIZE.width, TILE_SIZE.height);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
-        gl.uniform1i(this.maskTileProgram.uniforms.StencilTexture, 0);
-        gl.uniform2f(this.maskTileProgram.uniforms.StencilTextureSize,
-                     STENCIL_FRAMEBUFFER_SIZE.width,
-                     STENCIL_FRAMEBUFFER_SIZE.height);
-        gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
-        gl.uniform1i(this.maskTileProgram.uniforms.FillColorsTexture, 1);
-        // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
-        gl.uniform2f(this.maskTileProgram.uniforms.FillColorsTextureSize,
-                     this.objectCount,
-                     1.0);
-        gl.uniform2f(this.maskTileProgram.uniforms.ViewBoxOrigin,
-                     this.viewBox.origin.x,
-                     this.viewBox.origin.y);
-        gl.blendEquation(gl.FUNC_ADD);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-        gl.enable(gl.BLEND);
-        gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, this.maskTileCount);
-        gl.disable(gl.BLEND);
-        if (maskTimerQuery != null)
-            gl.endQuery(this.disjointTimerQueryExt.TIME_ELAPSED_EXT);
-
-        // End timer.
-        if (fillTimerQuery != null && solidTimerQuery != null && maskTimerQuery != null) {
-            processQueries(gl, this.disjointTimerQueryExt, {
-                fill: fillTimerQuery,
-                solid: solidTimerQuery,
-                mask: maskTimerQuery,
-            });
-        }
-    }
-
-    private dumpStencil(): void {
-        const gl = this.gl;
-
-        const totalStencilFramebufferSize = STENCIL_FRAMEBUFFER_SIZE.width *
-            STENCIL_FRAMEBUFFER_SIZE.height * 4;
-        const stencilData = new Float32Array(totalStencilFramebufferSize);
-        gl.readPixels(0, 0,
-                      STENCIL_FRAMEBUFFER_SIZE.width, STENCIL_FRAMEBUFFER_SIZE.height,
-                      gl.RGBA,
-                      gl.FLOAT,
-                      stencilData);
-        const stencilDumpData = new Uint8ClampedArray(totalStencilFramebufferSize);
-        for (let i = 0; i < stencilData.length; i++)
-            stencilDumpData[i] = stencilData[i] * 255.0;
-        const stencilDumpCanvas = document.createElement('canvas');
-        stencilDumpCanvas.width = STENCIL_FRAMEBUFFER_SIZE.width;
-        stencilDumpCanvas.height = STENCIL_FRAMEBUFFER_SIZE.height;
-        stencilDumpCanvas.style.width =
-            (STENCIL_FRAMEBUFFER_SIZE.width / window.devicePixelRatio) + "px";
-        stencilDumpCanvas.style.height =
-            (STENCIL_FRAMEBUFFER_SIZE.height / window.devicePixelRatio) + "px";
-        const stencilDumpCanvasContext = unwrapNull(stencilDumpCanvas.getContext('2d'));
-        const stencilDumpImageData = new ImageData(stencilDumpData,
-                                                   STENCIL_FRAMEBUFFER_SIZE.width,
-                                                   STENCIL_FRAMEBUFFER_SIZE.height);
-        stencilDumpCanvasContext.putImageData(stencilDumpImageData, 0, 0);
-        document.body.appendChild(stencilDumpCanvas);
-        //console.log(stencilData);
-    }
-
-    private loadFile(): void {
-        console.log("loadFile");
-        // TODO(pcwalton)
-        const file = unwrapNull(unwrapNull(this.openButton.files)[0]);
-        const reader = new FileReader;
-        reader.addEventListener('loadend', () => {
-            const gl = this.gl;
-            const arrayBuffer = staticCast(reader.result, ArrayBuffer);
-            const root = new RIFFChunk(new DataView(arrayBuffer));
-            for (const subchunk of root.subchunks()) {
-                const self = this;
-
-                const id = subchunk.stringID();
-                if (id === 'head') {
-                    const headerData = subchunk.contents();
-                    this.viewBox = new Rect(new Point2D(headerData.getFloat32(0, true),
-                                                        headerData.getFloat32(4, true)),
-                                            new Size2D(headerData.getFloat32(8, true),
-                                                       headerData.getFloat32(12, true)));
-                    continue;
-                }
-
-                switch (id) {
-                case 'fill':
-                    uploadArrayBuffer(this.fillVertexBuffer,
-                                      'fillPrimitiveCount',
-                                      FILL_INSTANCE_SIZE);
-                    break;
-                case 'soli':
-                    uploadArrayBuffer(this.solidTileVertexBuffer,
-                                      'solidTileCount',
-                                      SOLID_TILE_INSTANCE_SIZE);
-                    break;
-                case 'mask':
-                    uploadArrayBuffer(this.maskTileVertexBuffer,
-                                      'maskTileCount',
-                                      MASK_TILE_INSTANCE_SIZE);
-                    break;
-                case 'shad':
-                    this.objectCount = subchunk.length() / 4;
-                    gl.activeTexture(gl.TEXTURE0);
-                    gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
-                    const textureDataView = subchunk.contents();
-                    const textureData = new Uint8Array(textureDataView.buffer,
-                                                       textureDataView.byteOffset,
-                                                       textureDataView.byteLength);
-                    gl.texImage2D(gl.TEXTURE_2D,
-                                  0,
-                                  gl.RGBA,
-                                  this.objectCount,
-                                  1,
-                                  0,
-                                  gl.RGBA,
-                                  gl.UNSIGNED_BYTE,
-                                  textureData);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-                    break;
-                default:
-                    throw new Error("Unexpected subchunk ID: " + id);
-                }
-
-                type CountFieldName = 'fillPrimitiveCount' | 'solidTileCount' | 'maskTileCount';
-
-                function uploadArrayBuffer(buffer: WebGLBuffer,
-                                           countFieldName: CountFieldName,
-                                           instanceSize: number):
-                                           void {
-                    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-                    gl.bufferData(gl.ARRAY_BUFFER, subchunk.contents(), gl.DYNAMIC_DRAW);
-                    self[countFieldName] = subchunk.length() / instanceSize;
-                }
-            }
-
-            this.redraw();
-        }, false);
-        reader.readAsArrayBuffer(file);
-    }
-
-    private onClick(event: MouseEvent): void {
-        this.redraw();
     }
 }
 
@@ -647,10 +672,10 @@ class RIFFChunk {
         return new DataView(this.data.buffer, this.data.byteOffset + 8, this.length());
     }
 
-    subchunks(): RIFFChunk[] {
+    subchunks(initialOffset?: number | undefined): RIFFChunk[] {
         const subchunks = [];
         const contents = this.contents(), length = this.length();
-        let offset = 4;
+        let offset = initialOffset == null ? 0 : initialOffset;
         while (offset < length) {
             const subchunk = new RIFFChunk(new DataView(contents.buffer,
                                                         contents.byteOffset + offset,
@@ -665,7 +690,6 @@ class RIFFChunk {
 interface Queries {
     fill: WebGLQuery;
     solid: WebGLQuery;
-    mask: WebGLQuery;
 };
 
 function getQueryResult(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, query: WebGLQuery):
@@ -688,10 +712,9 @@ function processQueries(gl: WebGL2RenderingContext, disjointTimerQueryExt: any, 
     Promise.all([
         getQueryResult(gl, disjointTimerQueryExt, queries.fill),
         getQueryResult(gl, disjointTimerQueryExt, queries.solid),
-        getQueryResult(gl, disjointTimerQueryExt, queries.mask),
     ]).then(results => {
-        const [fillResult, solidResult, maskResult] = results;
-        console.log(fillResult, "ms fill,", solidResult, "ms solid,", maskResult, "ms mask");
+        const [fillResult, solidResult] = results;
+        console.log(fillResult, "ms fill/mask,", solidResult, "ms solid");
     });
 }
 

@@ -20,6 +20,7 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use clap::{App, Arg};
 use euclid::{Point2D, Rect, Size2D, Transform2D, Vector2D};
 use fixedbitset::FixedBitSet;
+use hashbrown::HashMap;
 use jemallocator;
 use lyon_geom::cubic_bezier::Flattened;
 use lyon_geom::math::Transform;
@@ -28,7 +29,7 @@ use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use rayon::ThreadPoolBuilder;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
@@ -38,8 +39,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 use std::u16;
 use svgtypes::Color as SvgColor;
-use usvg::{Node, NodeExt, NodeKind, Options as UsvgOptions, Paint, PathSegment as UsvgPathSegment};
-use usvg::{Rect as UsvgRect, Transform as UsvgTransform, Tree};
+use usvg::{Node, NodeExt, NodeKind, Options as UsvgOptions, Paint as UsvgPaint};
+use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform, Tree};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -90,43 +91,34 @@ fn main() {
     let usvg = Tree::from_file(&input_path, &UsvgOptions::default()).unwrap();
     let scene = Scene::from_tree(usvg);
 
-    println!("Scene bounds: {:?} View box: {:?} Object count: {}",
-             scene.bounds,
-             scene.view_box,
-             scene.objects.len());
-    //println!("{:#?}", scene.objects[0]);
+    println!("Scene bounds: {:?} View box: {:?}", scene.bounds, scene.view_box);
+    println!("{} objects, {} paints", scene.objects.len(), scene.paints.len());
 
     let start_time = Instant::now();
-    let mut built_scene = BuiltScene::new(&scene.view_box, scene.objects.len() as u32);
+    let mut built_scene = BuiltScene::new(&scene.view_box, vec![]);
     for _ in 0..runs {
         let built_objects = match jobs {
             Some(1) => scene.build_objects_sequentially(),
             _ => scene.build_objects(),
         };
-        built_scene = BuiltScene::from_objects(&scene.view_box, &built_objects);
+        let built_shaders = scene.build_shaders();
+        built_scene = BuiltScene::from_objects_and_shaders(&scene.view_box,
+                                                           &built_objects,
+                                                           built_shaders);
     }
     let elapsed_time = Instant::now() - start_time;
 
     let elapsed_ms = elapsed_time.as_secs() as f64 * 1000.0 +
         elapsed_time.subsec_micros() as f64 / 1000.0;
     println!("{:.3}ms elapsed", elapsed_ms / runs as f64);
-    println!("{} fill primitives generated", built_scene.fills.len());
-    println!("{} tiles ({} solid, {} mask) generated",
-             built_scene.solid_tiles.len() + built_scene.mask_tiles.len(),
-             built_scene.solid_tiles.len(),
-             built_scene.mask_tiles.len());
 
-    /*
-    println!("solid tiles:");
-    for (index, tile) in built_scene.solid_tiles.iter().enumerate() {
-        println!("... {}: {:?}", index, tile);
+    println!("{} solid tiles", built_scene.solid_tiles.len());
+    for (batch_index, batch) in built_scene.batches.iter().enumerate() {
+        println!("Batch {}: {} fills, {} mask tiles",
+                 batch_index,
+                 batch.fills.len(),
+                 batch.mask_tiles.len());
     }
-
-    println!("fills:");
-    for (index, fill) in built_scene.fills.iter().enumerate() {
-        println!("... {}: {:?}", index, fill);
-    }
-    */
 
     if let Some(output_path) = output_path {
         built_scene.write(&mut BufWriter::new(File::create(output_path).unwrap())).unwrap();
@@ -136,7 +128,8 @@ fn main() {
 #[derive(Debug)]
 struct Scene {
     objects: Vec<PathObject>,
-    styles: Vec<ComputedStyle>,
+    paints: Vec<Paint>,
+    paint_cache: HashMap<Paint, PaintId>,
     bounds: Rect<f32>,
     view_box: Rect<f32>,
 }
@@ -144,7 +137,7 @@ struct Scene {
 #[derive(Debug)]
 struct PathObject {
     outline: Outline,
-    style: StyleId,
+    paint: PaintId,
     name: String,
     kind: PathObjectKind,
 }
@@ -155,17 +148,23 @@ pub enum PathObjectKind {
     Stroke,
 }
 
-#[derive(Debug)]
-struct ComputedStyle {
-    color: Option<SvgColor>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct Paint {
+    color: ColorU,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-struct StyleId(u32);
+struct PaintId(u16);
 
 impl Scene {
     fn new() -> Scene {
-        Scene { objects: vec![], styles: vec![], bounds: Rect::zero(), view_box: Rect::zero() }
+        Scene {
+            objects: vec![],
+            paints: vec![],
+            paint_cache: HashMap::new(),
+            bounds: Rect::zero(),
+            view_box: Rect::zero(),
+        }
     }
 
     fn from_tree(tree: Tree) -> Scene {
@@ -184,6 +183,10 @@ impl Scene {
             _ => unreachable!(),
         };
 
+        // FIXME(pcwalton): This is needed to avoid stack exhaustion in debug builds when
+        // recursively dropping reference counts on very large SVGs. :(
+        mem::forget(tree);
+
         return scene;
 
         fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2D<f32>) {
@@ -198,7 +201,7 @@ impl Scene {
                 }
                 NodeKind::Path(ref path) => {
                     if let Some(ref fill) = path.fill {
-                        let style = scene.push_paint(&fill.paint);
+                        let style = scene.push_paint(&Paint::from_svg_paint(&fill.paint));
 
                         let path = UsvgPathToPathEvents::new(path.segments.iter().cloned());
                         let path = PathTransformingIter::new(path, &transform);
@@ -213,7 +216,7 @@ impl Scene {
                     }
 
                     if let Some(ref stroke) = path.stroke {
-                        let style = scene.push_paint(&stroke.paint);
+                        let style = scene.push_paint(&Paint::from_svg_paint(&stroke.paint));
                         let stroke_width = f32::max(stroke.width.value() as f32,
                                                     HAIRLINE_STROKE_WIDTH);
 
@@ -236,153 +239,43 @@ impl Scene {
                 }
             }
         }
+    }
 
-        /*
-        loop {
-            match reader.read_event(&mut xml_buffer) {
-                Ok(Event::Start(ref event)) |
-                Ok(Event::Empty(ref event)) if event.name() == b"path" => {
-                    scene.push_group_style(&mut reader, event, &mut group_styles, &mut style);
-
-                    let attributes = event.attributes();
-                    let (mut encoded_path, mut name) = (String::new(), String::new());
-                    for attribute in attributes {
-                        let attribute = attribute.unwrap();
-                        if attribute.key == b"d" {
-                            encoded_path = reader.decode(&attribute.value).to_string();
-                        } else if attribute.key == b"id" {
-                            name = reader.decode(&attribute.value).to_string();
-                        }
-                    }
-
-                    let computed_style = scene.ensure_style(&mut style, &mut group_styles);
-                    scene.push_svg_path(&encoded_path, computed_style, name);
-
-                    group_styles.pop();
-                    style = None;
-                }
-
-                Ok(Event::Start(ref event)) if event.name() == b"g" => {
-                    scene.push_group_style(&mut reader, event, &mut group_styles, &mut style);
-                }
-
-                Ok(Event::End(ref event)) if event.name() == b"g" => {
-                    group_styles.pop();
-                    style = None;
-                }
-
-                Ok(Event::Start(ref event)) if event.name() == b"svg" => {
-                    let attributes = event.attributes();
-                    for attribute in attributes {
-                        let attribute = attribute.unwrap();
-                        if attribute.key == b"viewBox" {
-                            let view_box = reader.decode(&attribute.value);
-                            let mut elements = view_box.split_whitespace()
-                                                       .map(|value| f32::from_str(value).unwrap());
-                            let view_box = Rect::new(Point2D::new(elements.next().unwrap(),
-                                                                  elements.next().unwrap()),
-                                                     Size2D::new(elements.next().unwrap(),
-                                                                 elements.next().unwrap()));
-                            scene.view_box = global_transform.transform_rect(&view_box);
-                        }
-                    }
-                }
-
-                Ok(Event::Eof) | Err(_) => break,
-                Ok(_) => {}
-            }
-            xml_buffer.clear();
+    fn push_paint(&mut self, paint: &Paint) -> PaintId {
+        if let Some(paint_id) = self.paint_cache.get(paint) {
+            return *paint_id
         }
 
-        return scene;
-
-        */
+        let paint_id = PaintId(self.paints.len() as u16);
+        self.paint_cache.insert(*paint, paint_id);
+        self.paints.push(*paint);
+        paint_id
     }
 
-    fn push_paint(&mut self, paint: &Paint) -> StyleId {
-        let id = StyleId(self.styles.len() as u32);
-        self.styles.push(ComputedStyle {
-            color: match *paint {
-                Paint::Color(color) => Some(color),
-                Paint::Link(..) => None,
-            }
-        });
-        id
+    fn build_shaders(&self) -> Vec<ObjectShader> {
+        self.paints.iter().map(|paint| ObjectShader { fill_color: paint.color }).collect()
     }
 
-    fn get_style(&self, style: StyleId) -> &ComputedStyle {
-        &self.styles[style.0 as usize]
-    }
-
-    fn build_shader(&self, object_index: u16) -> ObjectShader {
-        let object = &self.objects[object_index as usize];
-        let style = self.get_style(object.style);
-        let color = style.color.map(ColorU::from_svg_color).unwrap_or(ColorU::black());
-        ObjectShader { fill_color: color }
-    }
-
-    // This function exists to make profiling easier.
     fn build_objects_sequentially(&self) -> Vec<BuiltObject> {
-        self.objects.iter().enumerate().map(|(object_index, object)| {
-            let mut tiler = Tiler::new(&object.outline,
-                                       object_index as u16,
-                                       &self.view_box,
-                                       &self.build_shader(object_index as u16));
+        self.objects.iter().map(|object| {
+            let mut tiler = Tiler::new(&object.outline, &self.view_box, ShaderId(object.paint.0));
             tiler.generate_tiles();
             tiler.built_object
         }).collect()
     }
 
     fn build_objects(&self) -> Vec<BuiltObject> {
-        self.objects.par_iter().enumerate().map(|(object_index, object)| {
-            let mut tiler = Tiler::new(&object.outline,
-                                       object_index as u16,
-                                       &self.view_box,
-                                       &self.build_shader(object_index as u16));
+        self.objects.par_iter().map(|object| {
+            let mut tiler = Tiler::new(&object.outline, &self.view_box, ShaderId(object.paint.0));
             tiler.generate_tiles();
             tiler.built_object
         }).collect()
     }
-
-    /*
-    fn push_svg_path(&mut self, value: &str, style: StyleId, name: String) {
-        let global_transform = Transform2D::create_scale(SCALE_FACTOR, SCALE_FACTOR);
-        let transform = global_transform.pre_mul(&self.get_style(style).transform);
-
-        if self.get_style(style).fill_color.is_some() {
-            let computed_style = self.get_style(style);
-            let mut path_parser = PathParser::from(&*value);
-            let path = SvgPathToPathEvents::new(&mut path_parser);
-            let path = PathTransformingIter::new(path, &transform);
-            let path = MonotonicConversionIter::new(path);
-            let outline = Outline::from_path_events(path);
-
-            self.bounds = self.bounds.union(&outline.bounds);
-            self.objects.push(PathObject::new(outline, style, name.clone(), PathObjectKind::Fill));
-        }
-
-        if self.get_style(style).stroke_color.is_some() {
-            let computed_style = self.get_style(style);
-            let stroke_width = f32::max(computed_style.stroke_width, HAIRLINE_STROKE_WIDTH);
-
-            let mut path_parser = PathParser::from(&*value);
-            let path = SvgPathToPathEvents::new(&mut path_parser);
-            let path = PathIter::new(path);
-            let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
-            let path = PathTransformingIter::new(path, &transform);
-            let path = MonotonicConversionIter::new(path);
-            let outline = Outline::from_path_events(path);
-
-            self.bounds = self.bounds.union(&outline.bounds);
-            self.objects.push(PathObject::new(outline, style, name, PathObjectKind::Stroke));
-        }
-    }
-    */
 }
 
 impl PathObject {
-    fn new(outline: Outline, style: StyleId, name: String, kind: PathObjectKind) -> PathObject {
-        PathObject { outline, style, name, kind }
+    fn new(outline: Outline, paint: PaintId, name: String, kind: PathObjectKind) -> PathObject {
+        PathObject { outline, paint, name, kind }
     }
 }
 
@@ -649,6 +542,8 @@ struct PointIndex(u32);
 
 impl PointIndex {
     fn new(contour: u32, point: u32) -> PointIndex {
+        debug_assert!(contour <= 0xfff);
+        debug_assert!(point <= 0x000fffff);
         PointIndex((contour << 20) | point)
     }
 
@@ -783,15 +678,7 @@ impl Segment {
         }
     }
 
-    fn is_degenerate(&self) -> bool {
-        return f32::abs(self.to.x - self.from.x) < EPSILON ||
-            f32::abs(self.to.y - self.from.y) < EPSILON;
-
-        const EPSILON: f32 = 0.0001;
-    }
-
     fn split_y(&self, y: f32) -> (Option<Segment>, Option<Segment>) {
-
         // Trivial cases.
         if self.from.y <= y && self.to.y <= y {
             return (Some(*self), None)
@@ -903,7 +790,6 @@ const TILE_HEIGHT: f32 = 16.0;
 
 struct Tiler<'o> {
     outline: &'o Outline,
-    object_index: u16,
     built_object: BuiltObject,
 
     view_box: Rect<f32>,
@@ -915,14 +801,12 @@ struct Tiler<'o> {
 }
 
 impl<'o> Tiler<'o> {
-    fn new(outline: &'o Outline, object_index: u16, view_box: &Rect<f32>, shader: &ObjectShader)
-           -> Tiler<'o> {
+    fn new(outline: &'o Outline, view_box: &Rect<f32>, shader: ShaderId) -> Tiler<'o> {
         let bounds = outline.bounds.intersection(&view_box).unwrap_or(Rect::zero());
         let built_object = BuiltObject::new(&bounds, shader);
 
         Tiler {
             outline,
-            object_index,
             built_object,
 
             view_box: *view_box,
@@ -1044,7 +928,7 @@ impl<'o> Tiler<'o> {
             }
         }
 
-        debug_assert_eq!(current_winding, 0);
+        //debug_assert_eq!(current_winding, 0);
     }
 
     fn add_new_active_edge(&mut self, tile_y: i16) {
@@ -1136,10 +1020,6 @@ fn process_active_segment(contour: &Contour,
                           built_object: &mut BuiltObject,
                           tile_y: i16) {
     let mut segment = contour.segment_after(from_endpoint_index);
-    /*if segment.is_degenerate() {
-        return
-    }*/
-
     process_active_edge(&mut segment, built_object, tile_y);
 
     if !segment.is_none() {
@@ -1164,20 +1044,23 @@ fn process_active_edge(active_edge: &mut Segment, built_object: &mut BuiltObject
 // Scene construction
 
 impl BuiltScene {
-    fn new(view_box: &Rect<f32>, object_count: u32) -> BuiltScene {
+    fn new(view_box: &Rect<f32>, shaders: Vec<ObjectShader>) -> BuiltScene {
         BuiltScene {
             view_box: *view_box,
-            fills: vec![],
+            batches: vec![],
             solid_tiles: vec![],
-            mask_tiles: vec![],
-            shaders: vec![ObjectShader::default(); object_count as usize],
+            shaders,
 
             tile_rect: round_rect_out_to_tile_bounds(view_box),
         }
     }
 
-    fn from_objects(view_box: &Rect<f32>, objects: &[BuiltObject]) -> BuiltScene {
-        let mut scene = BuiltScene::new(view_box, objects.len() as u32);
+    fn from_objects_and_shaders(view_box: &Rect<f32>,
+                                objects: &[BuiltObject],
+                                shaders: Vec<ObjectShader>)
+                                -> BuiltScene {
+        let mut scene = BuiltScene::new(view_box, shaders);
+        scene.add_batch();
 
         let tile_area = scene.tile_rect.size.width as usize * scene.tile_rect.size.height as usize;
         let mut z_buffer = vec![0; tile_area];
@@ -1192,20 +1075,21 @@ impl BuiltScene {
                 }
 
                 let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
-                if z_buffer[scene_tile_index as usize] > object_index as u16 {
+                if z_buffer[scene_tile_index as usize] > object_index as u32 {
                     // Occluded.
                     continue
                 }
-                z_buffer[scene_tile_index as usize] = object_index as u16;
+                z_buffer[scene_tile_index as usize] = object_index as u32;
 
                 scene.solid_tiles.push(SolidTileScenePrimitive {
                     tile_x: tile.tile_x,
                     tile_y: tile.tile_y,
-                    object_index: object_index as u16,
+                    shader: object.shader,
                 });
             }
         }
 
+        // Build batches.
         let mut object_tile_index_to_scene_mask_tile_index = vec![];
         for (object_index, object) in objects.iter().enumerate() {
             object_tile_index_to_scene_mask_tile_index.clear();
@@ -1215,53 +1099,76 @@ impl BuiltScene {
             for (tile_index, tile) in object.tiles.iter().enumerate() {
                 // Skip solid tiles, since we handled them above already.
                 if object.solid_tiles[tile_index] {
-                    object_tile_index_to_scene_mask_tile_index.push(u16::MAX);
+                    object_tile_index_to_scene_mask_tile_index.push(BLANK);
                     continue;
                 }
 
                 // Cull occluded tiles.
                 let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
                 if z_buffer[scene_tile_index as usize] as usize > object_index {
-                    object_tile_index_to_scene_mask_tile_index.push(u16::MAX);
+                    object_tile_index_to_scene_mask_tile_index.push(BLANK);
                     continue;
                 }
 
                 // Visible mask tile.
-                let scene_mask_tile_index = scene.mask_tiles.len() as u16;
-                object_tile_index_to_scene_mask_tile_index.push(scene_mask_tile_index);
-                scene.mask_tiles.push(MaskTileScenePrimitive {
+                let mut scene_mask_tile_index = scene.batches.last().unwrap().mask_tiles.len() as
+                    u16;
+                if scene_mask_tile_index == u16::MAX {
+                    scene.add_batch();
+                    scene_mask_tile_index = 0;
+                }
+
+                object_tile_index_to_scene_mask_tile_index.push(SceneMaskTileIndex {
+                    batch_index: scene.batches.len() as u16 - 1,
+                    mask_tile_index: scene_mask_tile_index,
+                });
+
+                scene.batches.last_mut().unwrap().mask_tiles.push(MaskTileBatchPrimitive {
                     tile: *tile,
-                    object_index: object_index as u16,
+                    shader: object.shader,
                 });
             }
 
             // Remap and copy fills, culling as necessary.
             for fill in &object.fills {
                 let object_tile_index = object.tile_coords_to_index(fill.tile_x, fill.tile_y);
-                match object_tile_index_to_scene_mask_tile_index[object_tile_index as usize] {
-                    u16::MAX => {}
-                    scene_mask_tile_index => {
-                        scene.fills.push(FillScenePrimitive {
-                            from_px: fill.from_px,
-                            to_px: fill.to_px,
-                            from_subpx: fill.from_subpx,
-                            to_subpx: fill.to_subpx,
-                            mask_tile_index: scene_mask_tile_index,
-                        })
-                    }
+                let SceneMaskTileIndex {
+                    batch_index,
+                    mask_tile_index,
+                } = object_tile_index_to_scene_mask_tile_index[object_tile_index as usize];
+                if batch_index < u16::MAX {
+                    scene.batches[batch_index as usize].fills.push(FillBatchPrimitive {
+                        from_px: fill.from_px,
+                        to_px: fill.to_px,
+                        from_subpx: fill.from_subpx,
+                        to_subpx: fill.to_subpx,
+                        mask_tile_index,
+                    });
                 }
             }
-
-            // Copy shader.
-            scene.shaders[object_index as usize] = object.shader;
         }
 
-        scene
+        return scene;
+
+        #[derive(Clone, Copy, Debug)]
+        struct SceneMaskTileIndex {
+            batch_index: u16,
+            mask_tile_index: u16,
+        }
+
+        const BLANK: SceneMaskTileIndex = SceneMaskTileIndex {
+            batch_index: 0,
+            mask_tile_index: 0,
+        };
     }
 
     fn scene_tile_index(&self, tile_x: i16, tile_y: i16) -> u32 {
         (tile_y - self.tile_rect.origin.y) as u32 * self.tile_rect.size.width as u32 +
             (tile_x - self.tile_rect.origin.x) as u32
+    }
+
+    fn add_batch(&mut self) {
+        self.batches.push(Batch::new());
     }
 }
 
@@ -1274,18 +1181,23 @@ struct BuiltObject {
     tiles: Vec<TileObjectPrimitive>,
     fills: Vec<FillObjectPrimitive>,
     solid_tiles: FixedBitSet,
-    shader: ObjectShader,
+    shader: ShaderId,
 }
 
 #[derive(Debug)]
 struct BuiltScene {
     view_box: Rect<f32>,
-    fills: Vec<FillScenePrimitive>,
+    batches: Vec<Batch>,
     solid_tiles: Vec<SolidTileScenePrimitive>,
-    mask_tiles: Vec<MaskTileScenePrimitive>,
     shaders: Vec<ObjectShader>,
 
     tile_rect: Rect<i16>,
+}
+
+#[derive(Debug)]
+struct Batch {
+    fills: Vec<FillBatchPrimitive>,
+    mask_tiles: Vec<MaskTileBatchPrimitive>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1306,7 +1218,7 @@ struct TileObjectPrimitive {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct FillScenePrimitive {
+struct FillBatchPrimitive {
     from_px: Point2DU4,
     to_px: Point2DU4,
     from_subpx: Point2D<u8>,
@@ -1318,21 +1230,24 @@ struct FillScenePrimitive {
 struct SolidTileScenePrimitive {
     tile_x: i16,
     tile_y: i16,
-    object_index: u16,
+    shader: ShaderId,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct MaskTileScenePrimitive {
+struct MaskTileBatchPrimitive {
     tile: TileObjectPrimitive,
-    object_index: u16,
+    shader: ShaderId,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ShaderId(pub u16);
 
 #[derive(Clone, Copy, Debug, Default)]
 struct ObjectShader {
     fill_color: ColorU,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 struct ColorU {
     r: u8,
     g: u8,
@@ -1343,7 +1258,7 @@ struct ColorU {
 // Utilities for built objects
 
 impl BuiltObject {
-    fn new(bounds: &Rect<f32>, shader: &ObjectShader) -> BuiltObject {
+    fn new(bounds: &Rect<f32>, shader: ShaderId) -> BuiltObject {
         // Compute the tile rect.
         let tile_rect = round_rect_out_to_tile_bounds(&bounds);
 
@@ -1365,7 +1280,7 @@ impl BuiltObject {
             tiles,
             fills: vec![],
             solid_tiles,
-            shader: *shader,
+            shader,
         }
     }
 
@@ -1442,41 +1357,63 @@ impl BuiltObject {
     }
 }
 
+impl Paint {
+    fn from_svg_paint(svg_paint: &UsvgPaint) -> Paint {
+        Paint {
+            color: match *svg_paint {
+                UsvgPaint::Color(color) => ColorU::from_svg_color(color),
+                UsvgPaint::Link(_) => {
+                    // TODO(pcwalton)
+                    ColorU::black()
+                }
+            },
+        }
+    }
+}
+
 // Scene serialization
 
 impl BuiltScene {
     fn write<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
         writer.write_all(b"RIFF")?;
 
-        let header_size = 4 * 4;
-        let fill_size = self.fills.len() * mem::size_of::<FillScenePrimitive>();
+        let header_size = 4 * 6;
+
         let solid_tiles_size = self.solid_tiles.len() * mem::size_of::<SolidTileScenePrimitive>();
-        let mask_tiles_size = self.mask_tiles.len() * mem::size_of::<MaskTileScenePrimitive>();
+
+        let batch_sizes: Vec<_> = self.batches.iter().map(|batch| {
+            BatchSizes {
+                fills: (batch.fills.len() * mem::size_of::<FillBatchPrimitive>()),
+                mask_tiles: (batch.mask_tiles.len() * mem::size_of::<MaskTileBatchPrimitive>()),
+            }
+        }).collect();
+
+        let total_batch_sizes: usize = batch_sizes.iter().map(|sizes| 8 + sizes.total()).sum();
+
         let shaders_size = self.shaders.len() * mem::size_of::<ObjectShader>();
+
         writer.write_u32::<LittleEndian>((4 +
                                           8 + header_size +
-                                          8 + fill_size +
                                           8 + solid_tiles_size +
-                                          8 + mask_tiles_size +
-                                          8 + shaders_size) as u32)?;
+                                          8 + shaders_size +
+                                          total_batch_sizes) as u32)?;
 
         writer.write_all(b"PF3S")?;
 
         writer.write_all(b"head")?;
         writer.write_u32::<LittleEndian>(header_size as u32)?;
+        writer.write_u32::<LittleEndian>(FILE_VERSION)?;
+        writer.write_u32::<LittleEndian>(self.batches.len() as u32)?;
         writer.write_f32::<LittleEndian>(self.view_box.origin.x)?;
         writer.write_f32::<LittleEndian>(self.view_box.origin.y)?;
         writer.write_f32::<LittleEndian>(self.view_box.size.width)?;
         writer.write_f32::<LittleEndian>(self.view_box.size.height)?;
 
-        writer.write_all(b"fill")?;
-        writer.write_u32::<LittleEndian>(fill_size as u32)?;
-        for fill_primitive in &self.fills {
-            writer.write_u8(fill_primitive.from_px.0)?;
-            writer.write_u8(fill_primitive.to_px.0)?;
-            write_point2d_u8(writer, fill_primitive.from_subpx)?;
-            write_point2d_u8(writer, fill_primitive.to_subpx)?;
-            writer.write_u16::<LittleEndian>(fill_primitive.mask_tile_index)?;
+        writer.write_all(b"shad")?;
+        writer.write_u32::<LittleEndian>(shaders_size as u32)?;
+        for &shader in &self.shaders {
+            let fill_color = shader.fill_color;
+            writer.write_all(&[fill_color.r, fill_color.g, fill_color.b, fill_color.a])?;
         }
 
         writer.write_all(b"soli")?;
@@ -1484,23 +1421,31 @@ impl BuiltScene {
         for &tile_primitive in &self.solid_tiles {
             writer.write_i16::<LittleEndian>(tile_primitive.tile_x)?;
             writer.write_i16::<LittleEndian>(tile_primitive.tile_y)?;
-            writer.write_u16::<LittleEndian>(tile_primitive.object_index)?;
+            writer.write_u16::<LittleEndian>(tile_primitive.shader.0)?;
         }
 
-        writer.write_all(b"mask")?;
-        writer.write_u32::<LittleEndian>(mask_tiles_size as u32)?;
-        for &tile_primitive in &self.mask_tiles {
-            writer.write_i16::<LittleEndian>(tile_primitive.tile.tile_x)?;
-            writer.write_i16::<LittleEndian>(tile_primitive.tile.tile_y)?;
-            writer.write_i16::<LittleEndian>(tile_primitive.tile.backdrop)?;
-            writer.write_u16::<LittleEndian>(tile_primitive.object_index)?;
-        }
+        for (batch, sizes) in self.batches.iter().zip(batch_sizes.iter()) {
+            writer.write_all(b"batc")?;
+            writer.write_u32::<LittleEndian>(sizes.total() as u32)?;
 
-        writer.write_all(b"shad")?;
-        writer.write_u32::<LittleEndian>(shaders_size as u32)?;
-        for &shader in &self.shaders {
-            let fill_color = shader.fill_color;
-            writer.write_all(&[fill_color.r, fill_color.g, fill_color.b, fill_color.a])?;
+            writer.write_all(b"fill")?;
+            writer.write_u32::<LittleEndian>(sizes.fills as u32)?;
+            for fill_primitive in &batch.fills {
+                writer.write_u8(fill_primitive.from_px.0)?;
+                writer.write_u8(fill_primitive.to_px.0)?;
+                write_point2d_u8(writer, fill_primitive.from_subpx)?;
+                write_point2d_u8(writer, fill_primitive.to_subpx)?;
+                writer.write_u16::<LittleEndian>(fill_primitive.mask_tile_index)?;
+            }
+
+            writer.write_all(b"mask")?;
+            writer.write_u32::<LittleEndian>(sizes.mask_tiles as u32)?;
+            for &tile_primitive in &batch.mask_tiles {
+                writer.write_i16::<LittleEndian>(tile_primitive.tile.tile_x)?;
+                writer.write_i16::<LittleEndian>(tile_primitive.tile.tile_y)?;
+                writer.write_i16::<LittleEndian>(tile_primitive.tile.backdrop)?;
+                writer.write_u16::<LittleEndian>(tile_primitive.shader.0)?;
+            }
         }
 
         return Ok(());
@@ -1511,12 +1456,25 @@ impl BuiltScene {
             writer.write_u8(point.y)?;
             Ok(())
         }
+
+        const FILE_VERSION: u32 = 0;
+
+        struct BatchSizes {
+            fills: usize,
+            mask_tiles: usize,
+        }
+
+        impl BatchSizes {
+            fn total(&self) -> usize {
+                8 + self.fills + 8 + self.mask_tiles
+            }
+        }
     }
 }
 
-impl SolidTileScenePrimitive {
-    fn new(tile_x: i16, tile_y: i16, object_index: u16) -> SolidTileScenePrimitive {
-        SolidTileScenePrimitive { tile_x, tile_y, object_index }
+impl Batch {
+    fn new() -> Batch {
+        Batch { fills: vec![], mask_tiles: vec![] }
     }
 }
 
