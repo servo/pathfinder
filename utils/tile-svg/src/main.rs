@@ -1886,37 +1886,6 @@ impl Point2DU4 {
 
 // Path utilities
 
-/*
-fn cubic_segment_is_nearly_monotonic(segment: &CubicBezierSegment<f32>) -> bool {
-    let min_x = f32::min(segment.from.x, segment.to.x) - EPSILON;
-    let max_x = f32::max(segment.from.x, segment.to.x) + EPSILON;
-    let min_y = f32::min(segment.from.y, segment.to.y) - EPSILON;
-    let max_y = f32::max(segment.from.y, segment.to.y) + EPSILON;
-
-    return min_x <= segment.ctrl1.x && segment.ctrl1.x <= max_x &&
-        min_x <= segment.ctrl2.x && segment.ctrl2.x <= max_x &&
-        min_y <= segment.ctrl1.y && segment.ctrl1.y <= max_y &&
-        min_y <= segment.ctrl2.y && segment.ctrl2.y <= max_y;
-
-    const EPSILON: f32 = 0.1;
-}
-
-fn cubic_segment_is_nearly_monotonic(segment: &CubicBezierSegment<f32>) -> bool {
-    let mut t = None;
-    segment.for_each_monotonic_t(|split_t| {
-        if t.is_none() {
-            t = Some(split_t)
-        }
-    });
-    return match t {
-        None => true,
-        Some(t) => t < EPSILON || t > 1.0 - EPSILON,
-    };
-
-    const EPSILON: f32 = 0.01;
-}
-*/
-
 const TINY_EPSILON: f32 = 0.1;
 
 fn cubic_segment_is_tiny(segment: &CubicBezierSegment<f32>) -> bool {
