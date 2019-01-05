@@ -31,7 +31,9 @@ use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use rayon::ThreadPoolBuilder;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use simdeez::Simd;
+use simdeez::overloads::I32x4_41;
 use simdeez::sse41::Sse41;
+use std::arch::x86_64;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
@@ -1306,7 +1308,6 @@ impl BuiltObject {
     }
 
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
-    // FIXME(pcwalton): Use a line segment.
     fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i16, tile_y: i16) {
         let tile_origin = Point2DF32::new((tile_x as i32 * TILE_WIDTH as i32) as f32,
                                           (tile_y as i32 * TILE_HEIGHT as i32) as f32);
@@ -1327,7 +1328,6 @@ impl BuiltObject {
             return
         }
         */
-
 
         self.fills.push(FillObjectPrimitive { px, subpx, tile_x, tile_y });
 
@@ -2047,25 +2047,20 @@ impl LineSegmentF32 {
         }
     }
 
-    // FIXME(pcwalton): Use `pshufb`!
     fn to_line_segment_u4(&self) -> LineSegmentU4 {
         unsafe {
             let values = Sse41::cvtps_epi32(Sse41::fastfloor_ps(self.0));
-            LineSegmentU4(values[0] as u16 |
-                          ((values[1] as u16) << 4) |
-                          ((values[2] as u16) << 8) |
-                          ((values[3] as u16) << 12))
+            let mask = Sse41::set1_epi32(0x0c040800);
+            let values_0213 = Sse41::shuffle_epi8(values, mask)[0] as u32;
+            LineSegmentU4((values_0213 | (values_0213 >> 12)) as u16)
         }
     }
 
-    // FIXME(pcwalton): Use `pshufb`!
     fn to_line_segment_u8(&self) -> LineSegmentU8 {
         unsafe {
             let values = Sse41::cvtps_epi32(Sse41::fastfloor_ps(self.0));
-            LineSegmentU8(values[0] as u32 |
-                          ((values[1] as u32) << 8) |
-                          ((values[2] as u32) << 16) |
-                          ((values[3] as u32) << 24))
+            let mask = Sse41::set1_epi32(0x0c080400);
+            LineSegmentU8(Sse41::shuffle_epi8(values, mask)[0] as u32)
         }
     }
 
@@ -2128,6 +2123,20 @@ fn quadratic_segment_is_tiny(segment: &QuadraticBezierSegment<f32>) -> bool {
     let (x_delta, y_delta) = (f32::abs(x0 - x1), f32::abs(y0 - y1));
     return x_delta < TINY_EPSILON || y_delta < TINY_EPSILON;
 
+}
+
+// SIMD extensions
+
+trait SimdExt: Simd {
+    // TODO(pcwalton): Default scalar implementation.
+    unsafe fn shuffle_epi8(a: Self::Vi32, b: Self::Vi32) -> Self::Vi32;
+}
+
+impl SimdExt for Sse41 {
+    #[inline(always)]
+    unsafe fn shuffle_epi8(a: Self::Vi32, b: Self::Vi32) -> Self::Vi32 {
+        I32x4_41(x86_64::_mm_shuffle_epi8(a.0, b.0))
+    }
 }
 
 // Trivial utilities
