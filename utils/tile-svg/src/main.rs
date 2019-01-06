@@ -18,7 +18,7 @@ extern crate rand;
 
 use byteorder::{LittleEndian, WriteBytesExt};
 use clap::{App, Arg};
-use euclid::{Point2D, Rect, Size2D, Transform2D, Vector2D};
+use euclid::{Point2D, Rect, Size2D, Transform2D};
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use jemallocator;
@@ -29,7 +29,7 @@ use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
 use rayon::ThreadPoolBuilder;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use simdeez::Simd;
 use simdeez::overloads::I32x4_41;
 use simdeez::sse41::Sse41;
@@ -41,6 +41,7 @@ use std::io::{self, BufWriter, Write};
 use std::mem;
 use std::ops::{Mul, Sub};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::time::Instant;
 use std::u16;
 use svgtypes::Color as SvgColor;
@@ -102,14 +103,18 @@ fn main() {
     let start_time = Instant::now();
     let mut built_scene = BuiltScene::new(&scene.view_box, vec![]);
     for _ in 0..runs {
+        let z_buffer = ZBuffer::new(&scene.view_box);
+
         let built_objects = match jobs {
-            Some(1) => scene.build_objects_sequentially(),
-            _ => scene.build_objects(),
+            Some(1) => scene.build_objects_sequentially(&z_buffer),
+            _ => scene.build_objects(&z_buffer),
         };
+
         let built_shaders = scene.build_shaders();
         built_scene = BuiltScene::from_objects_and_shaders(&scene.view_box,
                                                            &built_objects,
-                                                           built_shaders);
+                                                           built_shaders,
+                                                           &z_buffer);
     }
     let elapsed_time = Instant::now() - start_time;
 
@@ -261,17 +266,25 @@ impl Scene {
         self.paints.iter().map(|paint| ObjectShader { fill_color: paint.color }).collect()
     }
 
-    fn build_objects_sequentially(&self) -> Vec<BuiltObject> {
-        self.objects.iter().map(|object| {
-            let mut tiler = Tiler::new(&object.outline, &self.view_box, ShaderId(object.paint.0));
+    fn build_objects_sequentially(&self, z_buffer: &ZBuffer) -> Vec<BuiltObject> {
+        self.objects.iter().enumerate().map(|(object_index, object)| {
+            let mut tiler = Tiler::new(&object.outline,
+                                       &self.view_box,
+                                       object_index as u16,
+                                       ShaderId(object.paint.0),
+                                       z_buffer);
             tiler.generate_tiles();
             tiler.built_object
         }).collect()
     }
 
-    fn build_objects(&self) -> Vec<BuiltObject> {
-        self.objects.par_iter().map(|object| {
-            let mut tiler = Tiler::new(&object.outline, &self.view_box, ShaderId(object.paint.0));
+    fn build_objects(&self, z_buffer: &ZBuffer) -> Vec<BuiltObject> {
+        self.objects.par_iter().enumerate().map(|(object_index, object)| {
+            let mut tiler = Tiler::new(&object.outline,
+                                       &self.view_box,
+                                       object_index as u16,
+                                       ShaderId(object.paint.0),
+                                       z_buffer);
             tiler.generate_tiles();
             tiler.built_object
         }).collect()
@@ -813,9 +826,11 @@ bitflags! {
 const TILE_WIDTH: u32 = 16;
 const TILE_HEIGHT: u32 = 16;
 
-struct Tiler<'o> {
+struct Tiler<'o, 'z> {
     outline: &'o Outline,
     built_object: BuiltObject,
+    object_index: u16,
+    z_buffer: &'z ZBuffer,
 
     view_box: Rect<f32>,
     bounds: Rect<f32>,
@@ -825,14 +840,21 @@ struct Tiler<'o> {
     old_active_edges: Vec<ActiveEdge>,
 }
 
-impl<'o> Tiler<'o> {
-    fn new(outline: &'o Outline, view_box: &Rect<f32>, shader: ShaderId) -> Tiler<'o> {
+impl<'o, 'z> Tiler<'o, 'z> {
+    fn new(outline: &'o Outline,
+           view_box: &Rect<f32>,
+           object_index: u16,
+           shader: ShaderId,
+           z_buffer: &'z ZBuffer)
+           -> Tiler<'o, 'z> {
         let bounds = outline.bounds.intersection(&view_box).unwrap_or(Rect::zero());
         let built_object = BuiltObject::new(&bounds, shader);
 
         Tiler {
             outline,
             built_object,
+            object_index,
+            z_buffer,
 
             view_box: *view_box,
             bounds,
@@ -857,6 +879,8 @@ impl<'o> Tiler<'o> {
             self.generate_strip(strip_origin_y);
         }
 
+        // Cull.
+        self.cull();
         //println!("{:#?}", self.built_object);
     }
 
@@ -871,6 +895,15 @@ impl<'o> Tiler<'o> {
                 break
             }
             self.add_new_active_edge(strip_origin_y);
+        }
+    }
+
+    fn cull(&self) {
+        for solid_tile_index in self.built_object.solid_tiles.ones() {
+            let tile = &self.built_object.tiles[solid_tile_index];
+            if tile.backdrop != 0 {
+                self.z_buffer.update(tile.tile_x, tile.tile_y, self.object_index);
+            }
         }
     }
 
@@ -1087,14 +1120,13 @@ impl BuiltScene {
     #[inline(never)]
     fn from_objects_and_shaders(view_box: &Rect<f32>,
                                 objects: &[BuiltObject],
-                                shaders: Vec<ObjectShader>)
+                                shaders: Vec<ObjectShader>,
+                                z_buffer: &ZBuffer)
                                 -> BuiltScene {
         let mut scene = BuiltScene::new(view_box, shaders);
         scene.add_batch();
 
         // Initialize z-buffer, and fill solid tiles.
-        let mut z_buffer = ZBuffer::new(&scene.tile_rect.size);
-        z_buffer.cull(&scene, objects);
         z_buffer.push_solid_tiles(&mut scene, objects);
 
         // Build batches.
@@ -1112,7 +1144,9 @@ impl BuiltScene {
                 }
 
                 // Cull occluded tiles.
-                let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
+                let scene_tile_index = scene_tile_index(tile.tile_x,
+                                                        tile.tile_y,
+                                                        &scene.tile_rect);
                 if !z_buffer.test(scene_tile_index, object_index as u16) {
                     object_tile_index_to_scene_mask_tile_index.push(BLANK);
                     continue;
@@ -1168,59 +1202,62 @@ impl BuiltScene {
         };
     }
 
-    fn scene_tile_index(&self, tile_x: i16, tile_y: i16) -> u32 {
-        (tile_y - self.tile_rect.origin.y) as u32 * self.tile_rect.size.width as u32 +
-            (tile_x - self.tile_rect.origin.x) as u32
-    }
-
     fn add_batch(&mut self) {
         self.batches.push(Batch::new());
     }
 }
 
+fn scene_tile_index(tile_x: i16, tile_y: i16, tile_rect: &Rect<i16>) -> u32 {
+    (tile_y - tile_rect.origin.y) as u32 * tile_rect.size.width as u32 +
+        (tile_x - tile_rect.origin.x) as u32
+}
+
 // Culling
 
 struct ZBuffer {
-    buffer: Vec<u16>,
+    buffer: Vec<AtomicUsize>,
+    tile_rect: Rect<i16>,
 }
 
 impl ZBuffer {
-    fn new(tile_size: &Size2D<i16>) -> ZBuffer {
+    fn new(view_box: &Rect<f32>) -> ZBuffer {
+        let tile_rect = round_rect_out_to_tile_bounds(view_box);
+        let tile_area = tile_rect.size.width as usize * tile_rect.size.height as usize;
         ZBuffer {
-            buffer: vec![0; tile_size.width as usize * tile_size.height as usize],
+            buffer: (0..tile_area).map(|_| AtomicUsize::new(0)).collect(),
+            tile_rect,
         }
     }
 
     fn test(&self, scene_tile_index: u32, object_index: u16) -> bool {
-        self.buffer[scene_tile_index as usize] < object_index + 1
+        let existing_depth = self.buffer[scene_tile_index as usize].load(AtomicOrdering::SeqCst);
+        existing_depth < object_index as usize + 1
     }
 
-    #[inline(never)]
-    fn cull(&mut self, scene: &BuiltScene, objects: &[BuiltObject]) {
-        for (object_index, object) in objects.iter().enumerate().rev() {
-            for solid_tile_index in object.solid_tiles.ones() {
-                let tile = &object.tiles[solid_tile_index];
-                if tile.backdrop == 0 {
-                    // Tile is transparent and can't be solid.
-                    continue
-                }
-
-                let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
-                if self.test(scene_tile_index, object_index as u16) {
-                    self.buffer[scene_tile_index as usize] = (object_index + 1) as u16;
-                }
+    fn update(&self, tile_x: i16, tile_y: i16, object_index: u16) {
+        let scene_tile_index = scene_tile_index(tile_x, tile_y, &self.tile_rect) as usize;
+        let mut old_depth = self.buffer[scene_tile_index].load(AtomicOrdering::SeqCst);
+        let new_depth = (object_index + 1) as usize;
+        while old_depth < new_depth {
+            let prev_depth = self.buffer[scene_tile_index]
+                                 .compare_and_swap(old_depth,
+                                                   new_depth,
+                                                   AtomicOrdering::SeqCst);
+            if prev_depth == old_depth {
+                // Successfully written.
+                return
             }
+            old_depth = prev_depth;
         }
     }
 
-    #[inline(never)]
     fn push_solid_tiles(&self, scene: &mut BuiltScene, objects: &[BuiltObject]) {
         let tile_rect = scene.tile_rect;
         for scene_tile_y in 0..tile_rect.size.height {
             for scene_tile_x in 0..tile_rect.size.width {
                 let scene_tile_index = scene_tile_y as usize * tile_rect.size.width as usize +
                     scene_tile_x as usize;
-                let depth = self.buffer[scene_tile_index];
+                let depth = self.buffer[scene_tile_index].load(AtomicOrdering::Relaxed);
                 if depth == 0 {
                     continue
                 }
