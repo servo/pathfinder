@@ -1084,6 +1084,7 @@ impl BuiltScene {
         }
     }
 
+    #[inline(never)]
     fn from_objects_and_shaders(view_box: &Rect<f32>,
                                 objects: &[BuiltObject],
                                 shaders: Vec<ObjectShader>)
@@ -1091,32 +1092,10 @@ impl BuiltScene {
         let mut scene = BuiltScene::new(view_box, shaders);
         scene.add_batch();
 
-        let tile_area = scene.tile_rect.size.width as usize * scene.tile_rect.size.height as usize;
-        let mut z_buffer = vec![0; tile_area];
-
         // Initialize z-buffer, and fill solid tiles.
-        for (object_index, object) in objects.iter().enumerate().rev() {
-            for solid_tile_index in object.solid_tiles.ones() {
-                let tile = &object.tiles[solid_tile_index];
-                if tile.backdrop == 0 {
-                    // Tile is transparent and can't be solid.
-                    continue
-                }
-
-                let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
-                if z_buffer[scene_tile_index as usize] > object_index as u32 {
-                    // Occluded.
-                    continue
-                }
-                z_buffer[scene_tile_index as usize] = object_index as u32;
-
-                scene.solid_tiles.push(SolidTileScenePrimitive {
-                    tile_x: tile.tile_x,
-                    tile_y: tile.tile_y,
-                    shader: object.shader,
-                });
-            }
-        }
+        let mut z_buffer = ZBuffer::new(&scene.tile_rect.size);
+        z_buffer.cull(&scene, objects);
+        z_buffer.push_solid_tiles(&mut scene, objects);
 
         // Build batches.
         let mut object_tile_index_to_scene_mask_tile_index = vec![];
@@ -1134,7 +1113,7 @@ impl BuiltScene {
 
                 // Cull occluded tiles.
                 let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
-                if z_buffer[scene_tile_index as usize] as usize > object_index {
+                if !z_buffer.test(scene_tile_index, object_index as u16) {
                     object_tile_index_to_scene_mask_tile_index.push(BLANK);
                     continue;
                 }
@@ -1196,6 +1175,63 @@ impl BuiltScene {
 
     fn add_batch(&mut self) {
         self.batches.push(Batch::new());
+    }
+}
+
+// Culling
+
+struct ZBuffer {
+    buffer: Vec<u16>,
+}
+
+impl ZBuffer {
+    fn new(tile_size: &Size2D<i16>) -> ZBuffer {
+        ZBuffer {
+            buffer: vec![0; tile_size.width as usize * tile_size.height as usize],
+        }
+    }
+
+    fn test(&self, scene_tile_index: u32, object_index: u16) -> bool {
+        self.buffer[scene_tile_index as usize] < object_index + 1
+    }
+
+    #[inline(never)]
+    fn cull(&mut self, scene: &BuiltScene, objects: &[BuiltObject]) {
+        for (object_index, object) in objects.iter().enumerate().rev() {
+            for solid_tile_index in object.solid_tiles.ones() {
+                let tile = &object.tiles[solid_tile_index];
+                if tile.backdrop == 0 {
+                    // Tile is transparent and can't be solid.
+                    continue
+                }
+
+                let scene_tile_index = scene.scene_tile_index(tile.tile_x, tile.tile_y);
+                if self.test(scene_tile_index, object_index as u16) {
+                    self.buffer[scene_tile_index as usize] = (object_index + 1) as u16;
+                }
+            }
+        }
+    }
+
+    #[inline(never)]
+    fn push_solid_tiles(&self, scene: &mut BuiltScene, objects: &[BuiltObject]) {
+        let tile_rect = scene.tile_rect;
+        for scene_tile_y in 0..tile_rect.size.height {
+            for scene_tile_x in 0..tile_rect.size.width {
+                let scene_tile_index = scene_tile_y as usize * tile_rect.size.width as usize +
+                    scene_tile_x as usize;
+                let depth = self.buffer[scene_tile_index];
+                if depth == 0 {
+                    continue
+                }
+                let object_index = (depth - 1) as usize;
+                scene.solid_tiles.push(SolidTileScenePrimitive {
+                    tile_x: scene_tile_x + tile_rect.origin.x,
+                    tile_y: scene_tile_y + tile_rect.origin.y,
+                    shader: objects[object_index].shader,
+                });
+            }
+        }
     }
 }
 
