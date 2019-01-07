@@ -731,9 +731,9 @@ impl Segment {
                 //println!("split_y({}): cubic_segment={:?}", y, cubic_segment);
                 let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
                 let t = t.expect("Failed to solve cubic for Y!");
-                let (prev, next) = cubic_segment.split(t);
+                let (prev, next) = self.as_cubic_segment().split(t);
                 //println!("... split at {} = {:?} / {:?}", t, prev, next);
-                (Segment::from_cubic(&prev), Segment::from_cubic(&next))
+                (prev, next)
             }
         };
 
@@ -869,19 +869,73 @@ impl<'s> CubicSegment<'s> {
         b0
     }
 
-    // FIXME(pcwalton): Better SIMD utilization!
-    fn split_after(self, t: f32) -> Segment {
-        let p01 = self.0.baseline.from().lerp(&self.0.ctrl.from(), t);
-        let p12 = self.0.ctrl.from().lerp(&self.0.ctrl.to(), t);
-        let p23 = self.0.ctrl.to().lerp(&self.0.baseline.to(), t);
-        let (p012, p123) = (p01.lerp(&p12, t), p12.lerp(&p23, t));
-        let p0123 = p012.lerp(&p123, t);
-        Segment {
-            baseline: LineSegmentF32::new(&p0123, &self.0.baseline.to()),
-            ctrl: LineSegmentF32::new(&p123, &p23),
-            flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
-                SegmentFlags::HAS_CONTROL_POINT_1,
+    fn split(self, t: f32) -> (Segment, Segment) {
+        unsafe {
+            let tttt = Sse41::set1_ps(t);
+
+            let p0p3 = self.0.baseline.0;
+            let p1p2 = self.0.ctrl.0;
+            let p0p1 = assemble(&p0p3, &p1p2, 0, 0);
+
+            // p01 = lerp(p0, p1, t), p12 = lerp(p1, p2, t), p23 = lerp(p2, p3, t)
+            let p01p12 = Sse41::add_ps(p0p1, Sse41::mul_ps(tttt, Sse41::sub_ps(p1p2, p0p1)));
+            let pxxp23 = Sse41::add_ps(p1p2, Sse41::mul_ps(tttt, Sse41::sub_ps(p0p3, p1p2)));
+
+            let p12p23 = assemble(&p01p12, &pxxp23, 1, 1);
+
+            // p012 = lerp(p01, p12, t), p123 = lerp(p12, p23, t)
+            let p012p123 = Sse41::add_ps(p01p12, Sse41::mul_ps(tttt,
+                                                               Sse41::sub_ps(p12p23, p01p12)));
+
+            let p123 = pluck(&p012p123, 1);
+
+            // p0123 = lerp(p012, p123, t)
+            let p0123 = Sse41::add_ps(p012p123,
+                                      Sse41::mul_ps(tttt, Sse41::sub_ps(p123, p012p123)));
+
+            let baseline0 = assemble(&p0p3, &p0123, 0, 0);
+            let ctrl0 = assemble(&p01p12, &p012p123, 0, 0);
+            let baseline1 = assemble(&p0123, &p0p3, 0, 1);
+            let ctrl1 = assemble(&p012p123, &p12p23, 1, 1);
+
+            let flags = SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
+                SegmentFlags::HAS_CONTROL_POINT_1;
+
+            return (Segment {
+                baseline: LineSegmentF32(baseline0),
+                ctrl: LineSegmentF32(ctrl0),
+                flags,
+            }, Segment {
+                baseline: LineSegmentF32(baseline1),
+                ctrl: LineSegmentF32(ctrl1),
+                flags,
+            })
         }
+
+        // Constructs a new 4-element vector from two pairs of adjacent lanes in two input vectors.
+        unsafe fn assemble(a_data: &<Sse41 as Simd>::Vf32,
+                           b_data: &<Sse41 as Simd>::Vf32,
+                           a_index: usize,
+                           b_index: usize)
+                           -> <Sse41 as Simd>::Vf32 {
+            let (a_data, b_data) = (Sse41::castps_pd(*a_data), Sse41::castps_pd(*b_data));
+            let mut result = Sse41::setzero_pd();
+            result[0] = a_data[a_index];
+            result[1] = b_data[b_index];
+            Sse41::castpd_ps(result)
+        }
+
+        // Constructs a new 2-element vector from a pair of adjacent lanes in an input vector.
+        unsafe fn pluck(data: &<Sse41 as Simd>::Vf32, index: usize) -> <Sse41 as Simd>::Vf32 {
+            let data = Sse41::castps_pd(*data);
+            let mut result = Sse41::setzero_pd();
+            result[0] = data[index];
+            Sse41::castpd_ps(result)
+        }
+    }
+
+    fn split_after(self, t: f32) -> Segment {
+        self.split(t).1
     }
 }
 
