@@ -39,7 +39,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::mem;
-use std::ops::{Mul, Sub};
+use std::ops::{Add, Mul, Sub};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::time::Instant;
@@ -690,7 +690,7 @@ impl Segment {
     }
 
     // FIXME(pcwalton): We should basically never use this function.
-    fn as_cubic_segment(&self) -> Option<CubicBezierSegment<f32>> {
+    fn as_lyon_cubic_segment(&self) -> Option<CubicBezierSegment<f32>> {
         if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
             None
         } else if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
@@ -727,7 +727,7 @@ impl Segment {
             }
             None => {
                 // TODO(pcwalton): Don't degree elevate!
-                let cubic_segment = self.as_cubic_segment().unwrap();
+                let cubic_segment = self.as_lyon_cubic_segment().unwrap();
                 //println!("split_y({}): cubic_segment={:?}", y, cubic_segment);
                 let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
                 let t = t.expect("Failed to solve cubic for Y!");
@@ -750,17 +750,37 @@ impl Segment {
             return;
         }
 
-        // TODO(pcwalton): Don't degree elevate!
-        let segment = self.as_cubic_segment().unwrap();
-        //println!("generate_fill_primitives(segment={:?})", segment);
-        let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
-        let mut from = self.baseline.from();
-        for to in flattener {
-            let to = Point2DF32::from_euclid(&to);
+        if self.is_cubic_segment() {
+            let segment = self.as_cubic_segment();
+            let flattener = segment.flattener();
+            let mut from = self.baseline.from();
+            for to in flattener {
+                generate_fill_primitives_for_line(LineSegmentF32::new(&from, &to),
+                                                  built_object,
+                                                  tile_y);
+                from = to;
+            }
+            let to = self.baseline.to();
             generate_fill_primitives_for_line(LineSegmentF32::new(&from, &to),
                                               built_object,
                                               tile_y);
-            from = to;
+        } else {
+            // TODO(pcwalton): Don't degree elevate!
+            let segment = self.as_lyon_cubic_segment().unwrap();
+            //println!("generate_fill_primitives(segment={:?})", segment);
+            let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
+            let mut from = self.baseline.from();
+            for to in flattener {
+                let to = Point2DF32::from_euclid(&to);
+                generate_fill_primitives_for_line(LineSegmentF32::new(&from, &to),
+                                                  built_object,
+                                                  tile_y);
+                from = to;
+            }
+            let to = self.baseline.to();
+            generate_fill_primitives_for_line(LineSegmentF32::new(&from, &to),
+                                                built_object,
+                                                tile_y);
         }
 
         // TODO(pcwalton): Optimize this better with SIMD!
@@ -811,6 +831,15 @@ impl Segment {
     fn is_none(&self) -> bool {
         !self.flags.contains(SegmentFlags::HAS_ENDPOINTS)
     }
+
+    fn is_cubic_segment(&self) -> bool {
+        self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0 | SegmentFlags::HAS_CONTROL_POINT_1)
+    }
+
+    fn as_cubic_segment(&self) -> CubicSegment {
+        debug_assert!(self.is_cubic_segment());
+        CubicSegment(self)
+    }
 }
 
 bitflags! {
@@ -818,6 +847,41 @@ bitflags! {
         const HAS_ENDPOINTS       = 0x01;
         const HAS_CONTROL_POINT_0 = 0x02;
         const HAS_CONTROL_POINT_1 = 0x04;
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CubicSegment<'s>(&'s Segment);
+
+impl<'s> CubicSegment<'s> {
+    fn flattener(self) -> CubicCurveFlattener {
+        CubicCurveFlattener { curve: *self.0 }
+    }
+
+    fn sample(self, t: f32) -> Point2DF32 {
+        let (from, to) = (self.0.baseline.from(), self.0.baseline.to());
+        let (ctrl0, ctrl1) = (self.0.ctrl.from(), self.0.ctrl.to());
+
+        let b3 = to + (ctrl0 - ctrl1).scale(3.0) - from;
+        let b2 = (from - ctrl0 - ctrl0 + ctrl1).scale(3.0) + b3.scale(t);
+        let b1 = (ctrl0 - from).scale(3.0) + b2.scale(t);
+        let b0 = from + b1.scale(t);
+        b0
+    }
+
+    // FIXME(pcwalton): Better SIMD utilization!
+    fn split_after(self, t: f32) -> Segment {
+        let p01 = self.0.baseline.from().lerp(&self.0.ctrl.from(), t);
+        let p12 = self.0.ctrl.from().lerp(&self.0.ctrl.to(), t);
+        let p23 = self.0.ctrl.to().lerp(&self.0.baseline.to(), t);
+        let (p012, p123) = (p01.lerp(&p12, t), p12.lerp(&p23, t));
+        let p0123 = p012.lerp(&p123, t);
+        Segment {
+            baseline: LineSegmentF32::new(&p0123, &self.0.baseline.to()),
+            ctrl: LineSegmentF32::new(&p123, &p23),
+            flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
+                SegmentFlags::HAS_CONTROL_POINT_1,
+        }
     }
 }
 
@@ -1981,10 +2045,10 @@ impl Point2DU4 {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Point2DF32(pub <Sse41 as Simd>::Vf32);
+struct Point2DF32(<Sse41 as Simd>::Vf32);
 
 impl Point2DF32 {
-    pub fn new(x: f32, y: f32) -> Point2DF32 {
+    fn new(x: f32, y: f32) -> Point2DF32 {
         unsafe {
             let mut data = Sse41::setzero_ps();
             data[0] = x;
@@ -1993,35 +2057,45 @@ impl Point2DF32 {
         }
     }
 
-    pub fn splat(value: f32) -> Point2DF32 { unsafe { Point2DF32(Sse41::set1_ps(value)) } }
+    fn splat(value: f32) -> Point2DF32 { unsafe { Point2DF32(Sse41::set1_ps(value)) } }
 
-    pub fn from_euclid(point: &Point2D<f32>) -> Point2DF32 { Point2DF32::new(point.x, point.y) }
-    pub fn as_euclid(&self) -> Point2D<f32> { Point2D::new(self.0[0], self.0[1]) }
+    fn from_euclid(point: &Point2D<f32>) -> Point2DF32 { Point2DF32::new(point.x, point.y) }
+    fn as_euclid(&self) -> Point2D<f32> { Point2D::new(self.0[0], self.0[1]) }
 
-    pub fn x(&self) -> f32 { self.0[0] }
-    pub fn y(&self) -> f32 { self.0[1] }
+    fn x(&self) -> f32 { self.0[0] }
+    fn y(&self) -> f32 { self.0[1] }
 
-    pub fn min(&self, other: &Point2DF32) -> Point2DF32 {
-        unsafe {
-            Point2DF32(Sse41::min_ps(self.0, other.0))
-        }
-    }
-    pub fn max(&self, other: &Point2DF32) -> Point2DF32 {
-        unsafe {
-            Point2DF32(Sse41::max_ps(self.0, other.0))
-        }
+    fn scale(&self, factor: f32) -> Point2DF32 {
+        unsafe { Point2DF32(Sse41::mul_ps(self.0, Sse41::set1_ps(factor))) }
     }
 
-    pub fn clamp(&self, min: &Point2DF32, max: &Point2DF32) -> Point2DF32 {
+    fn min(&self, other: &Point2DF32) -> Point2DF32 {
+        unsafe { Point2DF32(Sse41::min_ps(self.0, other.0)) }
+    }
+
+    fn max(&self, other: &Point2DF32) -> Point2DF32 {
+        unsafe { Point2DF32(Sse41::max_ps(self.0, other.0)) }
+    }
+
+    fn clamp(&self, min: &Point2DF32, max: &Point2DF32) -> Point2DF32 {
         self.max(min).min(max)
     }
 
-    pub fn floor(&self) -> Point2DF32 { unsafe { Point2DF32(Sse41::fastfloor_ps(self.0)) } }
+    fn lerp(&self, other: &Point2DF32, t: f32) -> Point2DF32 {
+        *self + (*other - *self).scale(t)
+    }
 
-    pub fn fract(&self) -> Point2DF32 { *self - self.floor() }
+    // TODO(pcwalton): Optimize this a bit.
+    fn det(&self, other: &Point2DF32) -> f32 {
+        self.0[0] * other.0[1] - self.0[1] * other.0[0]
+    }
+
+    fn floor(&self) -> Point2DF32 { unsafe { Point2DF32(Sse41::fastfloor_ps(self.0)) } }
+
+    fn fract(&self) -> Point2DF32 { *self - self.floor() }
 
     // TODO(pcwalton): Have an actual packed u8 point type!
-    pub fn to_u8(&self) -> Point2D<u8> {
+    fn to_u8(&self) -> Point2D<u8> {
         unsafe {
             let int_values = Sse41::cvtps_epi32(self.0);
             Point2D::new(int_values[0] as u8, int_values[1] as u8)
@@ -2040,6 +2114,11 @@ impl PartialEq for Point2DF32 {
 
 impl Default for Point2DF32 {
     fn default() -> Point2DF32 { unsafe { Point2DF32(Sse41::setzero_ps()) } }
+}
+
+impl Add<Point2DF32> for Point2DF32 {
+    type Output = Point2DF32;
+    fn add(self, other: Point2DF32) -> Point2DF32 { Point2DF32(self.0 + other.0) }
 }
 
 impl Sub<Point2DF32> for Point2DF32 {
@@ -2178,6 +2257,40 @@ struct LineSegmentU4(u16);
 
 #[derive(Clone, Copy, Debug)]
 struct LineSegmentU8(u32);
+
+// Curve flattening
+
+struct CubicCurveFlattener {
+    curve: Segment,
+}
+
+impl Iterator for CubicCurveFlattener {
+    type Item = Point2DF32;
+
+    fn next(&mut self) -> Option<Point2DF32> {
+        let v01 = self.curve.ctrl.from() - self.curve.baseline.from();
+        let v02 = self.curve.ctrl.to() - self.curve.baseline.from();
+
+        let v02_cross_v01: f32 = v02.det(&v01);
+        if v02_cross_v01 == 0.0 {
+            return None;
+        }
+
+        let s2inv = v01.x().hypot(v01.y()) / v02_cross_v01;
+
+        let t = 2.0 * (FLATTENING_TOLERANCE * s2inv.abs() * (1.0 / 3.0)).sqrt();
+        if t >= 1.0 - EPSILON || t == 0.0 {
+            return None;
+        }
+
+        //println!("split t={} {:#?}", t, self.curve);
+        self.curve = self.curve.as_cubic_segment().split_after(t);
+        //println!("... {:#?}", self.curve);
+        return Some(self.curve.baseline.from());
+
+        const EPSILON: f32 = 0.005;
+    }
+}
 
 // Path utilities
 
