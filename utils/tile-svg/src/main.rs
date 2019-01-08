@@ -721,7 +721,7 @@ impl Segment {
         // TODO(pcwalton): Reduce code duplication?
         let (prev, next) = match self.as_line_segment() {
             Some(line_segment) => {
-                let t = LineAxis::from_y(&line_segment).solve_for_t(y).unwrap();
+                let t = LineAxis::from_y(&line_segment).solve_for_t(y, 0.0, 1.0).unwrap();
                 let (prev, next) = line_segment.split(t);
                 (Segment::from_line(&prev), Segment::from_line(&next))
             }
@@ -730,7 +730,7 @@ impl Segment {
                 let cubic_segment = self.to_cubic();
                 let cubic_segment = cubic_segment.as_cubic_segment();
                 //println!("split_y({}): cubic_segment={:?}", y, cubic_segment);
-                let t = CubicAxis::from_y(cubic_segment).solve_for_t(y);
+                let t = CubicAxis::from_y(cubic_segment).solve_for_t(y, 0.0, 1.0);
                 let t = t.expect("Failed to solve cubic for Y!");
                 let (prev, next) = self.as_cubic_segment().split(t);
                 //println!("... split at {} = {:?} / {:?}", t, prev, next);
@@ -777,7 +777,11 @@ impl Segment {
             generate_fill_primitives_for_line_outer(&mut subsegment, built_object, tile_y);
 
             if !subsegment.is_none() {
-                *self = self.split_y(tile_bottom).1.unwrap_or(Segment::new());
+                let mut bottom_part = segment.split_y_after(tile_bottom, 0.0, 1.0);
+                if winds_up {
+                    bottom_part = bottom_part.reversed();
+                }
+                *self = bottom_part;
                 return;
             }
 
@@ -794,7 +798,11 @@ impl Segment {
         generate_fill_primitives_for_line_outer(&mut subsegment, built_object, tile_y);
 
         if !subsegment.is_none() {
-            *self = self.split_y(tile_bottom).1.unwrap_or(Segment::new());
+            let mut bottom_part = segment.split_y_after(tile_bottom, 0.0, 1.0);
+            if winds_up {
+                bottom_part = bottom_part.reversed();
+            }
+            *self = bottom_part;
             return;
         }
 
@@ -994,6 +1002,12 @@ impl<'s> CubicSegment<'s> {
     }
 
     fn split_after(self, t: f32) -> Segment {
+        self.split(t).1
+    }
+
+    fn split_y_after(&self, y: f32, t_min: f32, t_max: f32) -> Segment {
+        let t = CubicAxis::from_y(*self).solve_for_t(y, t_min, t_max);
+        let t = t.expect("Failed to solve cubic for Y!");
         self.split(t).1
     }
 }
@@ -1963,12 +1977,11 @@ trait SolveT: Debug {
     fn sample(&self, t: f32) -> f32;
 
     // Dekker's method.
-    fn solve_for_t(&self, x: f32) -> Option<f32> {
+    fn solve_for_t(&self, x: f32, mut t0: f32, mut t1: f32) -> Option<f32> {
         const TOLERANCE: f32 = 0.001;
 
         //println!("solve_for_t({:?}, x={})", self, x);
 
-        let (mut t0, mut t1) = (0.0, 1.0);
         let (mut f_t0, mut f_t1) = (self.sample(t0) - x, self.sample(t1) - x);
 
         let (mut t2, mut f_t2) = (t0, f_t0);
