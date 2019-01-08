@@ -2322,24 +2322,37 @@ impl Iterator for CubicCurveFlattener {
     type Item = Point2DF32;
 
     fn next(&mut self) -> Option<Point2DF32> {
-        let v01 = self.curve.ctrl.from() - self.curve.baseline.from();
-        let v02 = self.curve.ctrl.to() - self.curve.baseline.from();
+        let s2inv;
+        unsafe {
+            let (baseline, ctrl) = (self.curve.baseline.0, self.curve.ctrl.0);
+            let from_from = Sse41::shuffle_ps(baseline, baseline, 0b01000100);
 
-        let v02_cross_v01: f32 = v02.det(&v01);
-        if v02_cross_v01 == 0.0 {
-            return None;
+            let v0102 = Sse41::sub_ps(ctrl, from_from);
+
+            //      v01.x   v01.y   v02.x v02.y
+            //    * v01.x   v01.y   v01.y v01.x
+            //    -------------------------
+            //      v01.x^2 v01.y^2 ad    bc
+            //         |       |     |     |
+            //         +-------+     +-----+
+            //             +            -
+            //         v01 len^2   determinant
+            let products = Sse41::mul_ps(v0102, Sse41::shuffle_ps(v0102, v0102, 0b00010100));
+
+            let det = products[2] - products[3];
+            if det == 0.0 {
+                return None;
+            }
+
+            s2inv = (products[0] + products[1]).sqrt() / det;
         }
 
-        let s2inv = v01.x().hypot(v01.y()) / v02_cross_v01;
-
-        let t = 2.0 * (FLATTENING_TOLERANCE * s2inv.abs() * (1.0 / 3.0)).sqrt();
+        let t = 2.0 * ((FLATTENING_TOLERANCE / 3.0) * s2inv.abs()).sqrt();
         if t >= 1.0 - EPSILON || t == 0.0 {
             return None;
         }
 
-        //println!("split t={} {:#?}", t, self.curve);
         self.curve = self.curve.as_cubic_segment().split_after(t);
-        //println!("... {:#?}", self.curve);
         return Some(self.curve.baseline.from());
 
         const EPSILON: f32 = 0.005;
