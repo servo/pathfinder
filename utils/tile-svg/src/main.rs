@@ -745,43 +745,73 @@ impl Segment {
         }
     }
 
-    fn generate_fill_primitives(&self, built_object: &mut BuiltObject, tile_y: i16) {
-        if let Some(line_segment) = self.as_line_segment() {
-            generate_fill_primitives_for_line(line_segment, built_object, tile_y);
+    fn process_active_edge(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
+        let tile_bottom = ((tile_y as i32 + 1) * TILE_HEIGHT as i32) as f32;
+
+        if self.is_line_segment() {
+            generate_fill_primitives_for_line_outer(self, built_object, tile_y);
             return;
         }
 
-        if self.is_cubic_segment() {
-            let segment = self.as_cubic_segment();
-            let flattener = segment.flattener();
-            let mut from = self.baseline.from();
-            for to in flattener {
-                generate_fill_primitives_for_line(LineSegmentF32::new(&from, &to),
-                                                  built_object,
-                                                  tile_y);
-                from = to;
+        // TODO(pcwalton): Don't degree elevate!
+        if !self.is_cubic_segment() {
+            *self = self.to_cubic();
+        }
+
+        let mut segment = *self;
+        let winds_up = segment.baseline.from_y() > segment.baseline.to_y();
+        if winds_up {
+            segment = segment.reversed();
+        }
+
+        let segment = segment.as_cubic_segment();
+        let flattener = segment.flattener();
+        let mut from = segment.0.baseline.from();
+        for to in flattener {
+            let mut subsegment = if !winds_up {
+                Segment::from_line(&LineSegmentF32::new(&from, &to))
+            } else {
+                Segment::from_line(&LineSegmentF32::new(&to, &from))
+            };
+
+            generate_fill_primitives_for_line_outer(&mut subsegment, built_object, tile_y);
+
+            if !subsegment.is_none() {
+                *self = self.split_y(tile_bottom).1.unwrap_or(Segment::new());
+                return;
             }
-            let to = self.baseline.to();
-            generate_fill_primitives_for_line(LineSegmentF32::new(&from, &to),
-                                              built_object,
-                                              tile_y);
+
+            from = to;
+        }
+
+        let to = segment.0.baseline.to();
+        let mut subsegment = if !winds_up {
+            Segment::from_line(&LineSegmentF32::new(&from, &to))
         } else {
-            // TODO(pcwalton): Don't degree elevate!
-            let segment = self.as_lyon_cubic_segment().unwrap();
-            //println!("generate_fill_primitives(segment={:?})", segment);
-            let flattener = Flattened::new(segment, FLATTENING_TOLERANCE);
-            let mut from = self.baseline.from();
-            for to in flattener {
-                let to = Point2DF32::from_euclid(&to);
-                generate_fill_primitives_for_line(LineSegmentF32::new(&from, &to),
+            Segment::from_line(&LineSegmentF32::new(&to, &from))
+        };
+
+        generate_fill_primitives_for_line_outer(&mut subsegment, built_object, tile_y);
+
+        if !subsegment.is_none() {
+            *self = self.split_y(tile_bottom).1.unwrap_or(Segment::new());
+            return;
+        }
+
+        *self = Segment::new();
+        return;
+
+        fn generate_fill_primitives_for_line_outer(segment: &mut Segment,
+                                                   built_object: &mut BuiltObject,
+                                                   tile_y: i16) {
+            let tile_bottom = ((tile_y as i32 + 1) * TILE_HEIGHT as i32) as f32;
+            let (upper_segment, lower_segment) = segment.split_y(tile_bottom);
+            if let Some(upper_segment) = upper_segment {
+                generate_fill_primitives_for_line(upper_segment.as_line_segment().unwrap(),
                                                   built_object,
                                                   tile_y);
-                from = to;
             }
-            let to = self.baseline.to();
-            generate_fill_primitives_for_line(LineSegmentF32::new(&from, &to),
-                                                built_object,
-                                                tile_y);
+            *segment = lower_segment.unwrap_or(Segment::new());
         }
 
         // TODO(pcwalton): Optimize this better with SIMD!
@@ -833,6 +863,12 @@ impl Segment {
         !self.flags.contains(SegmentFlags::HAS_ENDPOINTS)
     }
 
+    fn is_line_segment(&self) -> bool {
+        self.flags.contains(SegmentFlags::HAS_ENDPOINTS) &&
+            !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0 |
+                                 SegmentFlags::HAS_CONTROL_POINT_1)
+    }
+
     fn is_cubic_segment(&self) -> bool {
         self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0 | SegmentFlags::HAS_CONTROL_POINT_1)
     }
@@ -854,6 +890,14 @@ impl Segment {
         new_segment.ctrl = LineSegmentF32::new(&(self.baseline.from() + p1_2),
                                                &(p1_2 + self.baseline.to())).scale(1.0 / 3.0);
         new_segment
+    }
+
+    fn reversed(&self) -> Segment {
+        Segment {
+            baseline: self.baseline.reversed(),
+            ctrl: self.ctrl.reversed(),
+            flags: self.flags,
+        }
     }
 }
 
@@ -1116,7 +1160,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
             current_winding += edge_winding;
 
             // Process the edge.
-            process_active_edge(&mut active_edge.segment, &mut self.built_object, tile_y);
+            active_edge.segment.process_active_edge(&mut self.built_object, tile_y);
             if !active_edge.segment.is_none() {
                 self.active_edges.push(active_edge);
             }
@@ -1214,13 +1258,14 @@ fn process_active_segment(contour: &Contour,
                           built_object: &mut BuiltObject,
                           tile_y: i16) {
     let mut segment = contour.segment_after(from_endpoint_index);
-    process_active_edge(&mut segment, built_object, tile_y);
+    segment.process_active_edge(built_object, tile_y);
 
     if !segment.is_none() {
         active_edges.push(ActiveEdge::new(segment));
     }
 }
 
+/*
 fn process_active_edge(active_edge: &mut Segment, built_object: &mut BuiltObject, tile_y: i16) {
     // Chop the segment.
     // TODO(pcwalton): Maybe these shouldn't be Options?
@@ -1235,6 +1280,7 @@ fn process_active_edge(active_edge: &mut Segment, built_object: &mut BuiltObject
     // Queue lower part.
     *active_edge = lower_segment.unwrap_or(Segment::new());
 }
+*/
 
 // Scene construction
 
@@ -2382,6 +2428,12 @@ impl LineSegmentF32 {
     // FIXME(pcwalton): Optimize this!
     fn solve_y_for_x(&self, x: f32) -> f32 {
         self.as_lyon_line_segment().solve_y_for_x(x)
+    }
+
+    fn reversed(&self) -> LineSegmentF32 {
+        unsafe {
+            LineSegmentF32(Sse41::shuffle_ps(self.0, self.0, 0b01001110))
+        }
     }
 }
 
