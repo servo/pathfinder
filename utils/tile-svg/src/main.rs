@@ -1898,14 +1898,94 @@ impl<I> MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
 
 // Path utilities
 
-trait SolveT {
+trait SolveT: Debug {
     fn sample(&self, t: f32) -> f32;
     fn sample_deriv(&self, t: f32) -> f32;
 
-    // TODO(pcwalton): Use Brent's method.
+    // Dekker's method.
+    #[inline(never)]
     fn solve_for_t(&self, x: f32) -> Option<f32> {
-        const MAX_ITERATIONS: u32 = 64;
         const TOLERANCE: f32 = 0.001;
+
+        //println!("solve_for_t({:?}, x={})", self, x);
+
+        let (mut t0, mut t1) = (0.0, 1.0);
+        let (mut f_t0, mut f_t1) = (self.sample(t0) - x, self.sample(t1) - x);
+
+        let (mut t2, mut f_t2) = (t0, f_t0);
+        loop {
+            if same_signs(f_t1, f_t2) {
+                t2 = t0;
+                f_t2 = f_t0;
+            }
+
+            // Make sure `f(t1)` is the smallest value.
+            if f_t2.abs() < f_t1.abs() {
+                t0 = t1;
+                f_t0 = f_t1;
+                t1 = t2;
+                f_t1 = f_t2;
+                t2 = t0;
+                f_t2 = f_t0;
+            }
+
+            // Calculate midpoint.
+            let mid = lerp(t1, t2, 0.5);
+            if (mid - t1).abs() <= TOLERANCE {
+                return Some(mid)
+            }
+
+            // Calculate secant.
+            let (mut p, mut q) = ((t1 - t0) * f_t1, f_t0 - f_t1);
+            if p < 0.0 {
+                p = -p;
+                q = -q;
+            }
+
+            // Record point.
+            t0 = t1;
+            f_t0 = f_t1;
+
+            // Pick next point.
+            if p > 0.00001 && p <= (mid - t1) * q {
+                // Use the secant method.
+                //println!("...iteration {}: secant t0={} t1={} t2={}", iteration, t0, t1, t2);
+                t1 += p / q;
+            } else {
+                // Fall back to bisection.
+                //println!("...iteration {}: bisection t0={} t1={} t2={}", iteration, t0, t1, t2);
+                t1 = mid;
+            }
+            f_t1 = self.sample(t1) - x;
+        }
+
+        /*
+        let (mut t0, mut t1) = (0.0, 1.0);
+        let (mut x_t0, mut x_t1) = (self.sample(t0) - x, self.sample(t1) - x);
+        let mut iteration = 0;
+        loop {
+            let t2 = t1 - x_t1 * (t1 - t0) / (x_t1 - x_t0);
+            println!("iteration {}: t={} t0={} x_t0={} t1={} x_t1={}",
+                     iteration,
+                     t2, t0, x_t0, t1, x_t1);
+            let x_t2 = self.sample(t2) - x;
+            if x_t2.abs() < TOLERANCE || iteration >= MAX_ITERATIONS {
+                if iteration >= MAX_ITERATIONS {
+                    println!("warning: failed to solve {:?} t={}", self, t2);
+                }
+                return Some(t2);
+            }
+
+            t0 = t1;
+            x_t0 = x_t1;
+            t1 = t2;
+            x_t1 = x_t2;
+
+            iteration += 1;
+        }
+        */
+
+        /*
 
         let (mut min, mut max) = (0.0, 1.0);
         let (mut x_min, x_max) = (self.sample(min) - x, self.sample(max) - x);
@@ -1934,11 +2014,14 @@ trait SolveT {
 
             iteration += 1;
         }
+
+        */
     }
 }
 
 // FIXME(pcwalton): This is probably dumb and inefficient.
 // FIXME(pcwalton): SIMDify!
+#[derive(Debug)]
 struct LineAxis { from: f32, to: f32 }
 impl LineAxis {
     fn from_x(segment: &LineSegmentF32) -> LineAxis {
@@ -1957,6 +2040,7 @@ impl SolveT for LineAxis {
     }
 }
 
+#[derive(Debug)]
 struct QuadraticAxis { from: f32, ctrl: f32, to: f32 }
 impl QuadraticAxis {
     fn from_x(segment: &QuadraticBezierSegment<f32>) -> QuadraticAxis {
@@ -1975,6 +2059,7 @@ impl SolveT for QuadraticAxis {
     }
 }
 
+#[derive(Debug)]
 struct CubicAxis { from: f32, ctrl0: f32, ctrl1: f32, to: f32 }
 impl CubicAxis {
     fn from_x(segment: &CubicBezierSegment<f32>) -> CubicAxis {
@@ -2410,6 +2495,10 @@ fn t_is_too_close_to_zero_or_one(t: f32) -> bool {
     const EPSILON: f32 = 0.001;
 
     t < EPSILON || t > 1.0 - EPSILON
+}
+
+fn same_signs(a: f32, b: f32) -> bool {
+    (a < 0.0 && b < 0.0) || (a >= 0.0 && b >= 0.0)
 }
 
 // Testing
