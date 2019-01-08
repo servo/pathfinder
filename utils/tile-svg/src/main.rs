@@ -727,9 +727,10 @@ impl Segment {
             }
             None => {
                 // TODO(pcwalton): Don't degree elevate!
-                let cubic_segment = self.as_lyon_cubic_segment().unwrap();
+                let cubic_segment = self.to_cubic();
+                let cubic_segment = cubic_segment.as_cubic_segment();
                 //println!("split_y({}): cubic_segment={:?}", y, cubic_segment);
-                let t = CubicAxis::from_y(&cubic_segment).solve_for_t(y);
+                let t = CubicAxis::from_y(cubic_segment).solve_for_t(y);
                 let t = t.expect("Failed to solve cubic for Y!");
                 let (prev, next) = self.as_cubic_segment().split(t);
                 //println!("... split at {} = {:?} / {:?}", t, prev, next);
@@ -839,6 +840,20 @@ impl Segment {
     fn as_cubic_segment(&self) -> CubicSegment {
         debug_assert!(self.is_cubic_segment());
         CubicSegment(self)
+    }
+
+    // FIXME(pcwalton): We should basically never use this function.
+    // FIXME(pcwalton): Handle lines!
+    fn to_cubic(&self) -> Segment {
+        if self.is_cubic_segment() {
+            return *self;
+        }
+
+        let mut new_segment = *self;
+        let p1_2 = self.ctrl.from() + self.ctrl.from();
+        new_segment.ctrl = LineSegmentF32::new(&(self.baseline.from() + p1_2),
+                                               &(p1_2 + self.baseline.to())).scale(1.0 / 3.0);
+        new_segment
     }
 }
 
@@ -1900,10 +1915,8 @@ impl<I> MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
 
 trait SolveT: Debug {
     fn sample(&self, t: f32) -> f32;
-    fn sample_deriv(&self, t: f32) -> f32;
 
     // Dekker's method.
-    #[inline(never)]
     fn solve_for_t(&self, x: f32) -> Option<f32> {
         const TOLERANCE: f32 = 0.001;
 
@@ -2035,9 +2048,6 @@ impl SolveT for LineAxis {
     fn sample(&self, t: f32) -> f32 {
         lerp(self.from, self.to, t)
     }
-    fn sample_deriv(&self, _: f32) -> f32 {
-        self.to - self.from
-    }
 }
 
 #[derive(Debug)]
@@ -2054,44 +2064,53 @@ impl SolveT for QuadraticAxis {
     fn sample(&self, t: f32) -> f32 {
         lerp(lerp(self.from, self.ctrl, t), lerp(self.ctrl, self.to, t), t)
     }
-    fn sample_deriv(&self, t: f32) -> f32 {
-        2.0 * lerp(self.ctrl - self.from, self.to - self.ctrl, t)
-    }
 }
 
 #[derive(Debug)]
-struct CubicAxis { from: f32, ctrl0: f32, ctrl1: f32, to: f32 }
+struct CubicAxis(<Sse41 as Simd>::Vf32);
+
 impl CubicAxis {
-    fn from_x(segment: &CubicBezierSegment<f32>) -> CubicAxis {
-        CubicAxis {
-            from: segment.from.x,
-            ctrl0: segment.ctrl1.x,
-            ctrl1: segment.ctrl2.x,
-            to: segment.to.x,
+    fn from_x(segment: CubicSegment) -> CubicAxis {
+        unsafe {
+            let mut vector = Sse41::setzero_ps();
+            let (baseline, ctrl) = (segment.0.baseline, segment.0.ctrl);
+            vector[0] = baseline.from().x();
+            vector[1] = ctrl.from().x();
+            vector[2] = ctrl.to().x();
+            vector[3] = baseline.to().x();
+            CubicAxis(vector)
         }
     }
-    fn from_y(segment: &CubicBezierSegment<f32>) -> CubicAxis {
-        CubicAxis {
-            from: segment.from.y,
-            ctrl0: segment.ctrl1.y,
-            ctrl1: segment.ctrl2.y,
-            to: segment.to.y,
+
+    fn from_y(segment: CubicSegment) -> CubicAxis {
+        unsafe {
+            let mut vector = Sse41::setzero_ps();
+            let (baseline, ctrl) = (segment.0.baseline, segment.0.ctrl);
+            vector[0] = baseline.from().y();
+            vector[1] = ctrl.from().y();
+            vector[2] = ctrl.to().y();
+            vector[3] = baseline.to().y();
+            CubicAxis(vector)
         }
     }
 }
+
 impl SolveT for CubicAxis {
     fn sample(&self, t: f32) -> f32 {
-        let b3 = self.to + 3.0 * (self.ctrl0 - self.ctrl1) - self.from;
-        let b2 = 3.0 * (self.from - 2.0 * self.ctrl0 + self.ctrl1) + b3 * t;
-        let b1 = 3.0 * (self.ctrl0 - self.from) + b2 * t;
-        let b0 = self.from + b1 * t;
-        b0
-    }
-    fn sample_deriv(&self, t: f32) -> f32 {
-        let inv_t = 1.0 - t;
-        3.0 * inv_t * inv_t * (self.ctrl0 - self.from) +
-            6.0 * inv_t * t * (self.ctrl1 - self.ctrl0) +
-            3.0 * t * t * (self.to - self.ctrl1)
+        unsafe {
+            let self_x3 = Sse41::mul_ps(self.0, Sse41::set1_ps(3.0));
+
+            let (from, to) = (self.0[0], self.0[3]);
+            let (from_x3, ctrl0_x3, ctrl1_x3) = (self_x3[0], self_x3[1], self_x3[2]);
+
+            let (v01_x3, v12_x3) = (ctrl0_x3 - from_x3, ctrl1_x3 - ctrl0_x3);
+
+            let b3 = to - v12_x3 - from;
+            let b2 = v12_x3 - v01_x3 + b3 * t;
+            let b1 = v01_x3 + b2 * t;
+            let b0 = from + b1 * t;
+            b0
+        }
     }
 }
 
