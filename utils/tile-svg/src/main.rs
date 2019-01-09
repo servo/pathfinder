@@ -1916,27 +1916,15 @@ impl ActiveEdge {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         // println!("process_active_edge({:#?}, tile_y={}({}))", self, tile_y, tile_bottom);
 
-        /*let mut down_segment = self.segment;
-        let winds_up = down_segment.baseline.from_y() > down_segment.baseline.to_y();
-        if winds_up {
-            down_segment = down_segment.reversed();
-        }*/
-
         let mut segment = self.segment;
         let winding = segment.baseline.y_winding();
 
         if segment.is_line_segment() {
             let line_segment = segment.as_line_segment().unwrap();
-            if line_segment.max_y() > tile_bottom {
-                let (upper_part, lower_part) = line_segment.split_at_y(tile_bottom);
-                self.crossing = upper_part.lower_point();
-                built_object.generate_fill_primitives_for_line(upper_part, tile_y);
-                self.segment = Segment::from_line(&lower_part);
-                return;
-            }
-
-            built_object.generate_fill_primitives_for_line(line_segment, tile_y);
-            self.segment = Segment::new();
+            self.segment = match self.process_line_segment(&line_segment, built_object, tile_y) {
+                Some(lower_part) => Segment::from_line(&lower_part),
+                None => Segment::new(),
+            };
             return;
         }
 
@@ -1946,81 +1934,59 @@ impl ActiveEdge {
         }
 
         // If necessary, draw initial line.
-        //assert!(down_segment.baseline.from_y() < tile_bottom);
         if self.crossing.y() < segment.baseline.min_y() {
             let first_line_segment =
                 LineSegmentF32::new(&self.crossing,
                                     &segment.baseline.upper_point()).orient(winding);
-            if first_line_segment.max_y() > tile_bottom {
-                // Shouldn't happen much…
-                // FIXME(pcwalton): Reduce duplication!
-
-                let (upper_part, _) = first_line_segment.split_at_y(tile_bottom);
-                self.crossing = upper_part.lower_point();
-
-                // println!("... FIRST crossed tile Y {}", tile_bottom);
-                built_object.generate_fill_primitives_for_line(upper_part, tile_y);
+            if self.process_line_segment(&first_line_segment, built_object, tile_y).is_some() {
                 return;
             }
-
-            built_object.generate_fill_primitives_for_line(first_line_segment, tile_y);
         }
 
         loop {
             let rest_segment = match segment.orient(winding).as_cubic_segment().flatten_once() {
                 None => {
                     let line_segment = segment.baseline;
-
-                    // FIXME(pcwalton): Eliminate duplication with below!!
-                    if line_segment.max_y() > tile_bottom {
-                        let (upper_part, lower_part) = line_segment.split_at_y(tile_bottom);
-                        self.crossing = upper_part.lower_point();
-
-                        /*
-                        println!("... cubic crossed tile Y {} (LAST); down_line_segment={:#?} \
-                                  down_lower_part={:#?}",
-                                tile_bottom,
-                                down_line_segment,
-                                down_lower_part);
-                        */
-
-                        built_object.generate_fill_primitives_for_line(upper_part, tile_y);
-                        self.segment = Segment::from_line(&lower_part);
-                        return;
-                    }
-
-                    built_object.generate_fill_primitives_for_line(line_segment, tile_y);
-                    self.segment = Segment::new();
+                    self.segment = match self.process_line_segment(&line_segment,
+                                                                   built_object,
+                                                                   tile_y) {
+                        Some(ref lower_part) => Segment::from_line(lower_part),
+                        None => Segment::new(),
+                    };
                     return;
                 }
                 Some(rest_segment) => rest_segment.orient(winding),
             };
 
             debug_assert!(segment.baseline.min_y() <= tile_bottom);
+
             let line_segment =
                 LineSegmentF32::new(&segment.baseline.upper_point(),
                                     &rest_segment.baseline.upper_point()).orient(winding);
-            if line_segment.max_y() > tile_bottom {
-                let (upper_part, _) = line_segment.split_at_y(tile_bottom);
-                self.crossing = upper_part.lower_point();
-
-                /*
-                println!("... cubic crossed tile Y {}; down_line_segment={:#?} down_rest={:#?}",
-                         tile_bottom,
-                         down_line_segment,
-                         rest_down_segment);
-                */
-
-                built_object.generate_fill_primitives_for_line(upper_part, tile_y);
-
+            if self.process_line_segment(&line_segment, built_object, tile_y).is_some() {
                 self.segment = rest_segment;
                 return;
             }
 
             segment = rest_segment;
-
-            built_object.generate_fill_primitives_for_line(line_segment, tile_y);
         }
+    }
+
+    fn process_line_segment(&mut self,
+                            line_segment: &LineSegmentF32,
+                            built_object: &mut BuiltObject,
+                            tile_y: i16)
+                            -> Option<LineSegmentF32> {
+        let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
+        if line_segment.max_y() <= tile_bottom {
+            built_object.generate_fill_primitives_for_line(*line_segment, tile_y);
+            return None;
+        }
+
+        let (upper_part, lower_part) = line_segment.split_at_y(tile_bottom);
+        built_object.generate_fill_primitives_for_line(upper_part, tile_y);
+        self.crossing = lower_part.upper_point();
+        Some(lower_part)
     }
 }
 
@@ -2211,14 +2177,6 @@ impl LineSegmentF32 {
             self.from()
         } else {
             self.to()
-        }
-    }
-
-    fn lower_point(&self) -> Point2DF32 {
-        if self.from_y() < self.to_y() {
-            self.to()
-        } else {
-            self.from()
         }
     }
 
