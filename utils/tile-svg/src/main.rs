@@ -745,128 +745,6 @@ impl Segment {
         }
     }
 
-    fn process_active_edge(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
-        let tile_bottom = ((tile_y as i32 + 1) * TILE_HEIGHT as i32) as f32;
-
-        if self.is_line_segment() {
-            generate_fill_primitives_for_line_outer(self, built_object, tile_y);
-            return;
-        }
-
-        // TODO(pcwalton): Don't degree elevate!
-        if !self.is_cubic_segment() {
-            *self = self.to_cubic();
-        }
-
-        let mut segment = *self;
-        let winds_up = segment.baseline.from_y() > segment.baseline.to_y();
-        if winds_up {
-            segment = segment.reversed();
-        }
-
-        let segment = segment.as_cubic_segment();
-        let flattener = segment.flattener();
-        let mut from = segment.0.baseline.from();
-        for to in flattener {
-            let mut subsegment = if !winds_up {
-                Segment::from_line(&LineSegmentF32::new(&from, &to))
-            } else {
-                Segment::from_line(&LineSegmentF32::new(&to, &from))
-            };
-
-            generate_fill_primitives_for_line_outer(&mut subsegment, built_object, tile_y);
-
-            if !subsegment.is_none() {
-                let mut bottom_part = segment.split_y_after(tile_bottom, 0.0, 1.0);
-                if winds_up {
-                    bottom_part = bottom_part.reversed();
-                }
-                *self = bottom_part;
-                return;
-            }
-
-            from = to;
-        }
-
-        let to = segment.0.baseline.to();
-        let mut subsegment = if !winds_up {
-            Segment::from_line(&LineSegmentF32::new(&from, &to))
-        } else {
-            Segment::from_line(&LineSegmentF32::new(&to, &from))
-        };
-
-        generate_fill_primitives_for_line_outer(&mut subsegment, built_object, tile_y);
-
-        if !subsegment.is_none() {
-            let mut bottom_part = segment.split_y_after(tile_bottom, 0.0, 1.0);
-            if winds_up {
-                bottom_part = bottom_part.reversed();
-            }
-            *self = bottom_part;
-            return;
-        }
-
-        *self = Segment::new();
-        return;
-
-        fn generate_fill_primitives_for_line_outer(segment: &mut Segment,
-                                                   built_object: &mut BuiltObject,
-                                                   tile_y: i16) {
-            let tile_bottom = ((tile_y as i32 + 1) * TILE_HEIGHT as i32) as f32;
-            let (upper_segment, lower_segment) = segment.split_y(tile_bottom);
-            if let Some(upper_segment) = upper_segment {
-                generate_fill_primitives_for_line(upper_segment.as_line_segment().unwrap(),
-                                                  built_object,
-                                                  tile_y);
-            }
-            *segment = lower_segment.unwrap_or(Segment::new());
-        }
-
-        // TODO(pcwalton): Optimize this better with SIMD!
-        fn generate_fill_primitives_for_line(mut segment: LineSegmentF32,
-                                             built_object: &mut BuiltObject,
-                                             tile_y: i16) {
-            /*
-            println!("segment={:?} tile_y={} ({}-{})",
-                     segment,
-                     tile_y,
-                     tile_y as f32 * TILE_HEIGHT,
-                     (tile_y + 1) as f32 * TILE_HEIGHT);
-            */
-
-            let winding = segment.from_x() > segment.to_x();
-            let (segment_left, segment_right) = if !winding {
-                (segment.from_x(), segment.to_x())
-            } else {
-                (segment.to_x(), segment.from_x())
-            };
-
-            let segment_tile_left = (f32::floor(segment_left) as i32 / TILE_WIDTH as i32) as i16;
-            let segment_tile_right = alignup_i32(f32::ceil(segment_right) as i32,
-                                                 TILE_WIDTH as i32) as i16;
-
-            for subsegment_tile_x in segment_tile_left..segment_tile_right {
-                let (mut fill_from, mut fill_to) = (segment.from(), segment.to());
-                let subsegment_tile_right = ((subsegment_tile_x as i32 + 1) * TILE_HEIGHT as i32)
-                    as f32;
-                if subsegment_tile_right < segment_right {
-                    let x = subsegment_tile_right;
-                    let point = Point2DF32::new(x, segment.solve_y_for_x(x));
-                    if !winding {
-                        fill_to = point;
-                        segment = LineSegmentF32::new(&point, &segment.to());
-                    } else {
-                        fill_from = point;
-                        segment = LineSegmentF32::new(&segment.from(), &point);
-                    }
-                }
-
-                let fill_segment = LineSegmentF32::new(&fill_from, &fill_to);
-                built_object.add_fill(&fill_segment, subsegment_tile_x, tile_y);
-            }
-        }
-    }
-
     fn is_none(&self) -> bool {
         !self.flags.contains(SegmentFlags::HAS_ENDPOINTS)
     }
@@ -903,7 +781,11 @@ impl Segment {
     fn reversed(&self) -> Segment {
         Segment {
             baseline: self.baseline.reversed(),
-            ctrl: self.ctrl.reversed(),
+            ctrl: if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
+                self.ctrl
+            } else {
+                self.ctrl.reversed()
+            },
             flags: self.flags,
         }
     }
@@ -921,8 +803,40 @@ bitflags! {
 struct CubicSegment<'s>(&'s Segment);
 
 impl<'s> CubicSegment<'s> {
-    fn flattener(self) -> CubicCurveFlattener {
-        CubicCurveFlattener { curve: *self.0 }
+    fn flatten_once(self) -> Option<Segment> {
+        let s2inv;
+        unsafe {
+            let (baseline, ctrl) = (self.0.baseline.0, self.0.ctrl.0);
+            let from_from = Sse41::shuffle_ps(baseline, baseline, 0b01000100);
+
+            let v0102 = Sse41::sub_ps(ctrl, from_from);
+
+            //      v01.x   v01.y   v02.x v02.y
+            //    * v01.x   v01.y   v01.y v01.x
+            //    -------------------------
+            //      v01.x^2 v01.y^2 ad    bc
+            //         |       |     |     |
+            //         +-------+     +-----+
+            //             +            -
+            //         v01 len^2   determinant
+            let products = Sse41::mul_ps(v0102, Sse41::shuffle_ps(v0102, v0102, 0b00010100));
+
+            let det = products[2] - products[3];
+            if det == 0.0 {
+                return None;
+            }
+
+            s2inv = (products[0] + products[1]).sqrt() / det;
+        }
+
+        let t = 2.0 * ((FLATTENING_TOLERANCE / 3.0) * s2inv.abs()).sqrt();
+        if t >= 1.0 - EPSILON || t == 0.0 {
+            return None;
+        }
+
+        return Some(self.split_after(t));
+
+        const EPSILON: f32 = 0.005;
     }
 
     fn sample(self, t: f32) -> Point2DF32 {
@@ -1108,24 +1022,31 @@ impl<'o, 'z> Tiler<'o, 'z> {
 
         let mut last_segment_x = -9999.0;
 
+        /*
+        println!("----------");
+        println!("old active edges: {:#?}", self.old_active_edges);
+        */
+
         for mut active_edge in self.old_active_edges.drain(..) {
             // Determine x-intercept and winding.
-            let (segment_x, edge_winding) =
+            let segment_x = active_edge.crossing.x();
+            let edge_winding =
                 if active_edge.segment.baseline.from_y() < active_edge.segment.baseline.to_y() {
-                    (active_edge.segment.baseline.from_x(), 1)
+                    1
                 } else {
-                    (active_edge.segment.baseline.to_x(), -1)
+                    -1
                 };
 
             /*
-            println!("tile Y {}: segment_x={} edge_winding={} current_tile_x={} current_subtile_x={} current_winding={}",
+            println!("tile Y {}: segment_x={} edge_winding={} current_tile_x={} \
+                      current_subtile_x={} current_winding={}",
                      tile_y,
                      segment_x,
                      edge_winding,
                      current_tile_x,
                      current_subtile_x,
                      current_winding);
-            println!("... segment={:#?}", active_edge.segment);
+            println!("... segment={:#?} crossing={:?}", active_edge.segment, active_edge.crossing);
             */
 
             // FIXME(pcwalton): Remove this debug code!
@@ -1174,7 +1095,10 @@ impl<'o, 'z> Tiler<'o, 'z> {
             current_winding += edge_winding;
 
             // Process the edge.
-            active_edge.segment.process_active_edge(&mut self.built_object, tile_y);
+            //println!("about to process existing active edge {:#?}", active_edge);
+            let tile_top = ((tile_y as i32) * TILE_HEIGHT as i32) as f32;
+            debug_assert!(f32::abs(active_edge.crossing.y() - tile_top) < 0.1);
+            active_edge.process(&mut self.built_object, tile_y);
             if !active_edge.segment.is_none() {
                 self.active_edges.push(active_edge);
             }
@@ -1193,7 +1117,8 @@ impl<'o, 'z> Tiler<'o, 'z> {
         let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point());
         let next_endpoint_index = contour.next_endpoint_index_of(point_index.point());
         /*
-        println!("adding new active edge, tile_y={} point_index={} prev={} next={} pos={:?} prevpos={:?} nextpos={:?}",
+        println!("adding new active edge, tile_y={} point_index={} prev={} next={} pos={:?} \
+                  prevpos={:?} nextpos={:?}",
                  tile_y,
                  point_index.point(),
                  prev_endpoint_index,
@@ -1202,6 +1127,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
                  contour.position_of(prev_endpoint_index),
                  contour.position_of(next_endpoint_index));
         */
+
         if contour.point_is_logically_above(point_index.point(), prev_endpoint_index) {
             //println!("... adding prev endpoint");
             process_active_segment(contour,
@@ -1271,11 +1197,10 @@ fn process_active_segment(contour: &Contour,
                           active_edges: &mut SortedVector<ActiveEdge>,
                           built_object: &mut BuiltObject,
                           tile_y: i16) {
-    let mut segment = contour.segment_after(from_endpoint_index);
-    segment.process_active_edge(built_object, tile_y);
-
-    if !segment.is_none() {
-        active_edges.push(ActiveEdge::new(segment));
+    let mut active_edge = ActiveEdge::from_segment(&contour.segment_after(from_endpoint_index));
+    active_edge.process(built_object, tile_y);
+    if !active_edge.segment.is_none() {
+        active_edges.push(active_edge);
     }
 }
 
@@ -2227,28 +2152,235 @@ impl PartialOrd<QueuedEndpoint> for QueuedEndpoint {
 #[derive(Clone, PartialEq, Debug)]
 struct ActiveEdge {
     segment: Segment,
+    // TODO(pcwalton): Shrink `crossing` down to just one f32?
+    crossing: Point2DF32,
 }
 
 impl ActiveEdge {
-    fn new(segment: Segment) -> ActiveEdge {
-        ActiveEdge { segment }
+    fn from_segment(segment: &Segment) -> ActiveEdge {
+        let crossing = if segment.baseline.from_y() < segment.baseline.to_y() {
+            segment.baseline.from()
+        } else {
+            segment.baseline.to()
+        };
+        ActiveEdge::from_segment_and_crossing(segment, &crossing)
     }
+
+    fn from_segment_and_crossing(segment: &Segment, crossing: &Point2DF32) -> ActiveEdge {
+        ActiveEdge { segment: *segment, crossing: *crossing }
+    }
+
+    fn is_none(&self) -> bool { self.segment.is_none() }
+
+    fn process(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
+        let tile_bottom = ((tile_y as i32 + 1) * TILE_HEIGHT as i32) as f32;
+        // println!("process_active_edge({:#?}, tile_y={}({}))", self, tile_y, tile_bottom);
+
+        let mut down_segment = self.segment;
+        let winds_up = down_segment.baseline.from_y() > down_segment.baseline.to_y();
+        if winds_up {
+            down_segment = down_segment.reversed();
+        }
+
+        if down_segment.is_line_segment() {
+            let down_line_segment = down_segment.as_line_segment().unwrap();
+            if down_line_segment.to_y() > tile_bottom {
+                let (mut upper_part, mut lower_part) = down_line_segment.split_at_y(tile_bottom);
+                self.crossing = upper_part.to();
+
+                if winds_up {
+                    upper_part = upper_part.reversed();
+                    lower_part = lower_part.reversed();
+                }
+
+                generate_fill_primitives_for_line(upper_part, built_object, tile_y);
+                self.segment = Segment::from_line(&lower_part);
+                return;
+            }
+
+            let mut line_segment = down_line_segment;
+            if winds_up {
+                line_segment = line_segment.reversed();
+            }
+
+            generate_fill_primitives_for_line(line_segment, built_object, tile_y);
+            self.segment = Segment::new();
+            return;
+        }
+
+        // TODO(pcwalton): Don't degree elevate!
+        if !down_segment.is_cubic_segment() {
+            down_segment = down_segment.to_cubic();
+        }
+
+        // If necessary, draw initial line.
+        //assert!(down_segment.baseline.from_y() < tile_bottom);
+        if self.crossing.y() < down_segment.baseline.from_y() {
+            let first_down_line_segment = LineSegmentF32::new(&self.crossing,
+                                                              &down_segment.baseline.from());
+            if first_down_line_segment.to_y() > tile_bottom {
+                // Shouldn't happen much…
+                // FIXME(pcwalton): Reduce duplication!
+
+                let (down_upper_part, _) = first_down_line_segment.split_at_y(tile_bottom);
+                self.crossing = down_upper_part.to();
+
+                let mut upper_part = down_upper_part;
+                if winds_up {
+                    upper_part = upper_part.reversed();
+                }
+
+                // println!("... FIRST crossed tile Y {}", tile_bottom);
+                generate_fill_primitives_for_line(upper_part, built_object, tile_y);
+                return;
+            }
+
+            let mut first_line_segment = first_down_line_segment;
+            if winds_up {
+                first_line_segment = first_line_segment.reversed();
+            }
+
+            generate_fill_primitives_for_line(first_line_segment, built_object, tile_y);
+        }
+
+        loop {
+            let rest_down_segment = match down_segment.as_cubic_segment().flatten_once() {
+                None => {
+                    let down_line_segment = down_segment.baseline;
+
+                    // FIXME(pcwalton): Eliminate duplication with below!!
+                    if down_line_segment.to_y() > tile_bottom {
+                        let (down_upper_part, down_lower_part) =
+                            down_line_segment.split_at_y(tile_bottom);
+                        self.crossing = down_upper_part.to();
+
+                        let mut upper_part = down_upper_part;
+                        if winds_up {
+                            upper_part = upper_part.reversed();
+                        }
+
+                        /*
+                        println!("... cubic crossed tile Y {} (LAST); down_line_segment={:#?} \
+                                  down_lower_part={:#?}",
+                                tile_bottom,
+                                down_line_segment,
+                                down_lower_part);
+                        */
+
+                        generate_fill_primitives_for_line(upper_part, built_object, tile_y);
+
+                        let mut lower_part = down_lower_part;
+                        if winds_up {
+                            lower_part = lower_part.reversed();
+                        }
+
+                        self.segment = Segment::from_line(&lower_part);
+                        return;
+                    }
+
+                    let mut line_segment = down_segment.baseline;
+                    if winds_up {
+                        line_segment = line_segment.reversed();
+                    }
+
+                    generate_fill_primitives_for_line(line_segment, built_object, tile_y);
+
+                    self.segment = Segment::new();
+                    return;
+                }
+                Some(rest_down_segment) => rest_down_segment,
+            };
+
+            debug_assert!(down_segment.baseline.from_y() <= tile_bottom);
+            let down_line_segment = LineSegmentF32::new(&down_segment.baseline.from(),
+                                                        &rest_down_segment.baseline.from());
+            if down_line_segment.to_y() > tile_bottom {
+                let (down_upper_part, _) = down_line_segment.split_at_y(tile_bottom);
+                self.crossing = down_upper_part.to();
+
+                let mut upper_part = down_upper_part;
+                if winds_up {
+                    upper_part = upper_part.reversed();
+                }
+
+                /*
+                println!("... cubic crossed tile Y {}; down_line_segment={:#?} down_rest={:#?}",
+                         tile_bottom,
+                         down_line_segment,
+                         rest_down_segment);
+                */
+
+                generate_fill_primitives_for_line(upper_part, built_object, tile_y);
+
+                let mut rest_segment = rest_down_segment;
+                if winds_up {
+                    rest_segment = rest_segment.reversed();
+                }
+
+                self.segment = rest_segment;
+                return;
+            }
+
+            down_segment = rest_down_segment;
+
+            let mut line_segment = down_line_segment;
+            if winds_up {
+                line_segment = line_segment.reversed();
+            }
+
+            generate_fill_primitives_for_line(line_segment, built_object, tile_y);
+        }
+
+        // TODO(pcwalton): Optimize this better with SIMD!
+        fn generate_fill_primitives_for_line(mut segment: LineSegmentF32,
+                                             built_object: &mut BuiltObject,
+                                             tile_y: i16) {
+            /*
+            println!("... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
+                     segment,
+                     tile_y,
+                     tile_y as f32 * TILE_HEIGHT as f32,
+                     (tile_y + 1) as f32 * TILE_HEIGHT as f32);
+            */
+
+            let winding = segment.from_x() > segment.to_x();
+            let (segment_left, segment_right) = if !winding {
+                (segment.from_x(), segment.to_x())
+            } else {
+                (segment.to_x(), segment.from_x())
+            };
+
+            let segment_tile_left = (f32::floor(segment_left) as i32 / TILE_WIDTH as i32) as i16;
+            let segment_tile_right = alignup_i32(f32::ceil(segment_right) as i32,
+                                                 TILE_WIDTH as i32) as i16;
+
+            for subsegment_tile_x in segment_tile_left..segment_tile_right {
+                let (mut fill_from, mut fill_to) = (segment.from(), segment.to());
+                let subsegment_tile_right = ((subsegment_tile_x as i32 + 1) * TILE_HEIGHT as i32)
+                    as f32;
+                if subsegment_tile_right < segment_right {
+                    let x = subsegment_tile_right;
+                    let point = Point2DF32::new(x, segment.solve_y_for_x(x));
+                    if !winding {
+                        fill_to = point;
+                        segment = LineSegmentF32::new(&point, &segment.to());
+                    } else {
+                        fill_from = point;
+                        segment = LineSegmentF32::new(&segment.from(), &point);
+                    }
+                }
+
+                let fill_segment = LineSegmentF32::new(&fill_from, &fill_to);
+                built_object.add_fill(&fill_segment, subsegment_tile_x, tile_y);
+            }
+        }
+    }
+
 }
 
 impl PartialOrd<ActiveEdge> for ActiveEdge {
-    // FIXME(pcwalton): SIMDify?
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
-        let this_x = if self.segment.baseline.from_y() < self.segment.baseline.to_y() {
-            self.segment.baseline.from_x()
-        } else {
-            self.segment.baseline.to_x()
-        };
-        let other_x = if other.segment.baseline.from_y() < other.segment.baseline.to_y() {
-            other.segment.baseline.from_x()
-        } else {
-            other.segment.baseline.to_x()
-        };
-        this_x.partial_cmp(&other_x)
+        self.crossing.x().partial_cmp(&other.crossing.x())
     }
 }
 
@@ -2402,6 +2534,8 @@ impl LineSegmentF32 {
     }
 
     fn split(&self, t: f32) -> (LineSegmentF32, LineSegmentF32) {
+        //println!("LineSegmentF32::split(t={})", t);
+        debug_assert!(t >= 0.0 && t <= 1.0);
         unsafe {
             let from_from = Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(self.0),
                                                                 Sse41::castps_pd(self.0)));
@@ -2414,6 +2548,11 @@ impl LineSegmentF32 {
              LineSegmentF32(Sse41::castpd_ps(Sse41::unpackhi_pd(Sse41::castps_pd(mid_mid),
                                                                 Sse41::castps_pd(to_to)))))
         }
+    }
+
+    // TODO(pcwalton): Optimize?
+    fn split_at_y(&self, y: f32) -> (LineSegmentF32, LineSegmentF32) {
+        self.split((y - self.from_y()) / (self.to_y() - self.from_y()))
     }
 
     fn to_line_segment_u4(&self) -> LineSegmentU4 {
@@ -2480,53 +2619,6 @@ struct LineSegmentU4(u16);
 
 #[derive(Clone, Copy, Debug)]
 struct LineSegmentU8(u32);
-
-// Curve flattening
-
-struct CubicCurveFlattener {
-    curve: Segment,
-}
-
-impl Iterator for CubicCurveFlattener {
-    type Item = Point2DF32;
-
-    fn next(&mut self) -> Option<Point2DF32> {
-        let s2inv;
-        unsafe {
-            let (baseline, ctrl) = (self.curve.baseline.0, self.curve.ctrl.0);
-            let from_from = Sse41::shuffle_ps(baseline, baseline, 0b01000100);
-
-            let v0102 = Sse41::sub_ps(ctrl, from_from);
-
-            //      v01.x   v01.y   v02.x v02.y
-            //    * v01.x   v01.y   v01.y v01.x
-            //    -------------------------
-            //      v01.x^2 v01.y^2 ad    bc
-            //         |       |     |     |
-            //         +-------+     +-----+
-            //             +            -
-            //         v01 len^2   determinant
-            let products = Sse41::mul_ps(v0102, Sse41::shuffle_ps(v0102, v0102, 0b00010100));
-
-            let det = products[2] - products[3];
-            if det == 0.0 {
-                return None;
-            }
-
-            s2inv = (products[0] + products[1]).sqrt() / det;
-        }
-
-        let t = 2.0 * ((FLATTENING_TOLERANCE / 3.0) * s2inv.abs()).sqrt();
-        if t >= 1.0 - EPSILON || t == 0.0 {
-            return None;
-        }
-
-        self.curve = self.curve.as_cubic_segment().split_after(t);
-        return Some(self.curve.baseline.from());
-
-        const EPSILON: f32 = 0.005;
-    }
-}
 
 // Path utilities
 
