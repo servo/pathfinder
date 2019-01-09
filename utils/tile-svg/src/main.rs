@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#![allow(clippy::float_cmp)]
+
 #[macro_use]
 extern crate bitflags;
 
@@ -144,7 +146,7 @@ fn main() {
 }
 
 fn duration_to_ms(duration: &Duration) -> f64 {
-    duration.as_secs() as f64 * 1000.0 + duration.subsec_micros() as f64 / 1000.0
+    duration.as_secs() as f64 * 1000.0 + f64::from(duration.subsec_micros()) / 1000.0
 }
 
 #[derive(Debug)]
@@ -263,6 +265,7 @@ impl Scene {
         }
     }
 
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     fn push_paint(&mut self, paint: &Paint) -> PaintId {
         if let Some(paint_id) = self.paint_cache.get(paint) {
             return *paint_id
@@ -345,35 +348,35 @@ impl Outline {
 
         for path_event in path_events {
             match path_event {
-                PathEvent::MoveTo(ref to) => {
+                PathEvent::MoveTo(to) => {
                     if !current_contour.is_empty() {
                         outline.contours.push(mem::replace(&mut current_contour, Contour::new()))
                     }
-                    current_contour.push_point(&Point2DF32::from_euclid(to),
+                    current_contour.push_point(Point2DF32::from_euclid(to),
                                                PointFlags::empty(),
                                                &mut bounding_points);
                 }
-                PathEvent::LineTo(ref to) => {
-                    current_contour.push_point(&Point2DF32::from_euclid(to),
+                PathEvent::LineTo(to) => {
+                    current_contour.push_point(Point2DF32::from_euclid(to),
                                                PointFlags::empty(),
                                                &mut bounding_points);
                 }
-                PathEvent::QuadraticTo(ref ctrl, ref to) => {
-                    current_contour.push_point(&Point2DF32::from_euclid(ctrl),
+                PathEvent::QuadraticTo(ctrl, to) => {
+                    current_contour.push_point(Point2DF32::from_euclid(ctrl),
                                                PointFlags::CONTROL_POINT_0,
                                                &mut bounding_points);
-                    current_contour.push_point(&Point2DF32::from_euclid(to),
+                    current_contour.push_point(Point2DF32::from_euclid(to),
                                                PointFlags::empty(),
                                                &mut bounding_points);
                 }
-                PathEvent::CubicTo(ref ctrl0, ref ctrl1, ref to) => {
-                    current_contour.push_point(&Point2DF32::from_euclid(ctrl0),
+                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
+                    current_contour.push_point(Point2DF32::from_euclid(ctrl0),
                                                PointFlags::CONTROL_POINT_0,
                                                &mut bounding_points);
-                    current_contour.push_point(&Point2DF32::from_euclid(ctrl1),
+                    current_contour.push_point(Point2DF32::from_euclid(ctrl1),
                                                PointFlags::CONTROL_POINT_1,
                                                &mut bounding_points);
-                    current_contour.push_point(&Point2DF32::from_euclid(to),
+                    current_contour.push_point(Point2DF32::from_euclid(to),
                                                PointFlags::empty(),
                                                &mut bounding_points);
                 }
@@ -393,7 +396,7 @@ impl Outline {
             outline.bounds = Rect::from_points([
                 upper_left.as_euclid(),
                 lower_right.as_euclid(),
-            ].into_iter())
+            ].iter())
         }
 
         outline
@@ -423,10 +426,10 @@ impl Contour {
 
     // TODO(pcwalton): Pack both min and max into a single SIMD register?
     fn push_point(&mut self,
-                  point: &Point2DF32,
+                  point: Point2DF32,
                   flags: PointFlags,
                   bounding_points: &mut Option<(Point2DF32, Point2DF32)>) {
-        self.points.push(*point);
+        self.points.push(point);
         self.flags.push(flags);
 
         match *bounding_points {
@@ -434,7 +437,7 @@ impl Contour {
                 *upper_left = upper_left.min(point);
                 *lower_right = lower_right.max(point);
             }
-            None => *bounding_points = Some((*point, *point)),
+            None => *bounding_points = Some((point, point)),
         }
     }
 
@@ -557,30 +560,30 @@ impl Debug for Contour {
                     formatter.write_str("TODO: arcs")?;
                 }
                 PathEvent::Close => formatter.write_str("z")?,
-                PathEvent::MoveTo(ref to) => {
+                PathEvent::MoveTo(to) => {
                     formatter.write_str("M")?;
                     write_point(formatter, to)?;
                 }
-                PathEvent::LineTo(ref to) => {
+                PathEvent::LineTo(to) => {
                     formatter.write_str("L")?;
                     write_point(formatter, to)?;
                 }
-                PathEvent::QuadraticTo(ref ctrl, ref to) => {
+                PathEvent::QuadraticTo(ctrl, to) => {
                     formatter.write_str("Q")?;
                     write_point(formatter, ctrl)?;
                     write_point(formatter, to)?;
                 }
-                PathEvent::CubicTo(ref ctrl0, ref ctrl1, ref to) => {
+                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
                     formatter.write_str("C")?;
                     write_point(formatter, ctrl0)?;
                     write_point(formatter, ctrl1)?;
                     write_point(formatter, to)?;
                 }
             }
-            return Ok(());
+            Ok(())
         }
 
-        fn write_point(formatter: &mut Formatter, point: &Point2D<f32>) -> fmt::Result {
+        fn write_point(formatter: &mut Formatter, point: Point2D<f32>) -> fmt::Result {
             write!(formatter, " {},{}", point.x, point.y)
         }
     }
@@ -592,7 +595,7 @@ struct PointIndex(u32);
 impl PointIndex {
     fn new(contour: u32, point: u32) -> PointIndex {
         debug_assert!(contour <= 0xfff);
-        debug_assert!(point <= 0x000fffff);
+        debug_assert!(point <= 0x000f_ffff);
         PointIndex((contour << 20) | point)
     }
 
@@ -601,7 +604,7 @@ impl PointIndex {
     }
 
     fn point(self) -> u32 {
-        self.0 & 0x000fffff
+        self.0 & 0x000f_ffff
     }
 }
 
@@ -742,7 +745,7 @@ impl<'s> CubicSegment<'s> {
         let s2inv;
         unsafe {
             let (baseline, ctrl) = (self.0.baseline.0, self.0.ctrl.0);
-            let from_from = Sse41::shuffle_ps(baseline, baseline, 0b01000100);
+            let from_from = Sse41::shuffle_ps(baseline, baseline, 0b0100_0100);
 
             let v0102 = Sse41::sub_ps(ctrl, from_from);
 
@@ -754,7 +757,7 @@ impl<'s> CubicSegment<'s> {
             //         +-------+     +-----+
             //             +            -
             //         v01 len^2   determinant
-            let products = Sse41::mul_ps(v0102, Sse41::shuffle_ps(v0102, v0102, 0b00010100));
+            let products = Sse41::mul_ps(v0102, Sse41::shuffle_ps(v0102, v0102, 0b0001_0100));
 
             let det = products[2] - products[3];
             if det == 0.0 {
@@ -861,6 +864,7 @@ struct Tiler<'o, 'z> {
 }
 
 impl<'o, 'z> Tiler<'o, 'z> {
+    #[allow(clippy::or_fun_call)]
     fn new(outline: &'o Outline,
            view_box: &Rect<f32>,
            object_index: u16,
@@ -906,7 +910,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         self.process_old_active_edges(strip_origin_y);
 
         // Add new active edges.
-        let strip_max_y = ((strip_origin_y as i32 + 1) * TILE_HEIGHT as i32) as f32;
+        let strip_max_y = ((i32::from(strip_origin_y) + 1) * TILE_HEIGHT as i32) as f32;
         while let Some(queued_endpoint) = self.point_queue.peek() {
             if queued_endpoint.y >= strip_max_y {
                 break
@@ -968,9 +972,9 @@ impl<'o, 'z> Tiler<'o, 'z> {
             // Do initial subtile fill, if necessary.
             let segment_tile_x = (f32::floor(segment_x) as i32 / TILE_WIDTH as i32) as i16;
             if current_tile_x < segment_tile_x && current_subtile_x > 0.0 {
-                let current_x = (current_tile_x as i32 * TILE_WIDTH as i32) as f32 +
+                let current_x = (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 +
                     current_subtile_x;
-                let tile_right_x = ((current_tile_x + 1) as i32 * TILE_WIDTH as i32) as f32;
+                let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
                 self.built_object.add_active_fill(current_x,
                                                   tile_right_x,
                                                   current_winding,
@@ -991,9 +995,10 @@ impl<'o, 'z> Tiler<'o, 'z> {
             // Do final subtile fill, if necessary.
             debug_assert!(current_tile_x == segment_tile_x);
             debug_assert!(current_tile_x < self.built_object.tile_rect.max_x());
-            let segment_subtile_x = segment_x - (current_tile_x as i32 * TILE_WIDTH as i32) as f32;
+            let segment_subtile_x =
+                segment_x - (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32;
             if segment_subtile_x > current_subtile_x {
-                let current_x = (current_tile_x as i32 * TILE_WIDTH as i32) as f32 +
+                let current_x = (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 +
                     current_subtile_x;
                 self.built_object.add_active_fill(current_x,
                                                   segment_x,
@@ -1008,7 +1013,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
 
             // Process the edge.
             //println!("about to process existing active edge {:#?}", active_edge);
-            let tile_top = ((tile_y as i32) * TILE_HEIGHT as i32) as f32;
+            let tile_top = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
             debug_assert!(f32::abs(active_edge.crossing.y() - tile_top) < 0.1);
             active_edge.process(&mut self.built_object, tile_y);
             if !active_edge.segment.is_none() {
@@ -1130,6 +1135,7 @@ impl BuiltScene {
         }
     }
 
+    // TODO(pcwalton): Turn this into a streaming batch model, for pipelining.
     #[inline(never)]
     fn from_objects_and_shaders(view_box: &Rect<f32>,
                                 objects: &[BuiltObject],
@@ -1157,9 +1163,7 @@ impl BuiltScene {
                 }
 
                 // Cull occluded tiles.
-                let scene_tile_index = scene_tile_index(tile.tile_x,
-                                                        tile.tile_y,
-                                                        &scene.tile_rect);
+                let scene_tile_index = scene_tile_index(tile.tile_x, tile.tile_y, scene.tile_rect);
                 if !z_buffer.test(scene_tile_index, object_index as u16) {
                     object_tile_index_to_scene_mask_tile_index.push(BLANK);
                     continue;
@@ -1220,7 +1224,7 @@ impl BuiltScene {
     }
 }
 
-fn scene_tile_index(tile_x: i16, tile_y: i16, tile_rect: &Rect<i16>) -> u32 {
+fn scene_tile_index(tile_x: i16, tile_y: i16, tile_rect: Rect<i16>) -> u32 {
     (tile_y - tile_rect.origin.y) as u32 * tile_rect.size.width as u32 +
         (tile_x - tile_rect.origin.x) as u32
 }
@@ -1248,7 +1252,7 @@ impl ZBuffer {
     }
 
     fn update(&self, tile_x: i16, tile_y: i16, object_index: u16) {
-        let scene_tile_index = scene_tile_index(tile_x, tile_y, &self.tile_rect) as usize;
+        let scene_tile_index = scene_tile_index(tile_x, tile_y, self.tile_rect) as usize;
         let mut old_depth = self.buffer[scene_tile_index].load(AtomicOrdering::SeqCst);
         let new_depth = (object_index + 1) as usize;
         while old_depth < new_depth {
@@ -1395,8 +1399,8 @@ impl BuiltObject {
 
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
     fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i16, tile_y: i16) {
-        let tile_origin = Point2DF32::new((tile_x as i32 * TILE_WIDTH as i32) as f32,
-                                          (tile_y as i32 * TILE_HEIGHT as i32) as f32);
+        let tile_origin = Point2DF32::new((i32::from(tile_x) * TILE_WIDTH as i32) as f32,
+                                          (i32::from(tile_y) * TILE_HEIGHT as i32) as f32);
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
         let mut segment = *segment - tile_origin;
 
@@ -1426,7 +1430,7 @@ impl BuiltObject {
                        mut winding: i16,
                        tile_x: i16,
                        tile_y: i16) {
-        let tile_origin_y = (tile_y as i32 * TILE_HEIGHT as i32) as f32;
+        let tile_origin_y = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
         let left = Point2DF32::new(left, tile_origin_y);
         let right = Point2DF32::new(right, tile_origin_y);
 
@@ -1738,10 +1742,10 @@ impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEve
                 let (prev, next) = segment.split(t);
                 self.last_point = next.from;
                 self.buffer = Some(PathEvent::CubicTo(next.ctrl1, next.ctrl2, next.to));
-                return Some(PathEvent::CubicTo(prev.ctrl1, prev.ctrl2, prev.to));
+                Some(PathEvent::CubicTo(prev.ctrl1, prev.ctrl2, prev.to))
             }
             PathEvent::QuadraticTo(ctrl, to) => {
-                let segment = QuadraticBezierSegment { from: self.last_point, ctrl: ctrl, to };
+                let segment = QuadraticBezierSegment { from: self.last_point, ctrl, to };
                 if segment.is_monotonic() {
                     self.last_point = to;
                     return Some(PathEvent::QuadraticTo(ctrl, to))
@@ -1763,12 +1767,12 @@ impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEve
                 let (prev, next) = segment.split(t);
                 self.last_point = next.from;
                 self.buffer = Some(PathEvent::QuadraticTo(next.ctrl, next.to));
-                return Some(PathEvent::QuadraticTo(prev.ctrl, prev.to));
+                Some(PathEvent::QuadraticTo(prev.ctrl, prev.to))
             }
             PathEvent::Close => Some(PathEvent::Close),
             PathEvent::Arc(a, b, c, d) => {
                 // FIXME(pcwalton): Make these monotonic too.
-                return Some(PathEvent::Arc(a, b, c, d))
+                Some(PathEvent::Arc(a, b, c, d))
             }
         }
     }
@@ -1857,7 +1861,7 @@ impl ActiveEdge {
     }
 
     fn process(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
-        let tile_bottom = ((tile_y as i32 + 1) * TILE_HEIGHT as i32) as f32;
+        let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         // println!("process_active_edge({:#?}, tile_y={}({}))", self, tile_y, tile_bottom);
 
         let mut down_segment = self.segment;
@@ -2040,8 +2044,8 @@ impl ActiveEdge {
 
             for subsegment_tile_x in segment_tile_left..segment_tile_right {
                 let (mut fill_from, mut fill_to) = (segment.from(), segment.to());
-                let subsegment_tile_right = ((subsegment_tile_x as i32 + 1) * TILE_HEIGHT as i32)
-                    as f32;
+                let subsegment_tile_right =
+                    ((i32::from(subsegment_tile_x) + 1) * TILE_HEIGHT as i32) as f32;
                 if subsegment_tile_right < segment_right {
                     let x = subsegment_tile_right;
                     let point = Point2DF32::new(x, segment.solve_y_for_x(x));
@@ -2079,23 +2083,23 @@ impl Point2DF32 {
             let mut data = Sse41::setzero_ps();
             data[0] = x;
             data[1] = y;
-            return Point2DF32(data);
+            Point2DF32(data)
         }
     }
 
     fn splat(value: f32) -> Point2DF32 { unsafe { Point2DF32(Sse41::set1_ps(value)) } }
 
-    fn from_euclid(point: &Point2D<f32>) -> Point2DF32 { Point2DF32::new(point.x, point.y) }
+    fn from_euclid(point: Point2D<f32>) -> Point2DF32 { Point2DF32::new(point.x, point.y) }
     fn as_euclid(&self) -> Point2D<f32> { Point2D::new(self.0[0], self.0[1]) }
 
     fn x(&self) -> f32 { self.0[0] }
     fn y(&self) -> f32 { self.0[1] }
 
-    fn min(&self, other: &Point2DF32) -> Point2DF32 {
+    fn min(&self, other: Point2DF32) -> Point2DF32 {
         unsafe { Point2DF32(Sse41::min_ps(self.0, other.0)) }
     }
 
-    fn max(&self, other: &Point2DF32) -> Point2DF32 {
+    fn max(&self, other: Point2DF32) -> Point2DF32 {
         unsafe { Point2DF32(Sse41::max_ps(self.0, other.0)) }
     }
 }
@@ -2152,8 +2156,11 @@ impl LineSegmentF32 {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_x(&self) -> f32 { self.0[0] }
+    #[allow(clippy::wrong_self_convention)]
     fn from_y(&self) -> f32 { self.0[1] }
+
     fn to_x(&self)   -> f32 { self.0[2] }
     fn to_y(&self)   -> f32 { self.0[3] }
 
@@ -2206,7 +2213,7 @@ impl LineSegmentF32 {
     fn to_line_segment_u4(&self) -> LineSegmentU4 {
         unsafe {
             let values = Sse41::cvtps_epi32(Sse41::fastfloor_ps(self.0));
-            let mask = Sse41::set1_epi32(0x0c040800);
+            let mask = Sse41::set1_epi32(0x0c04_0800);
             let values_0213 = Sse41::shuffle_epi8(values, mask)[0] as u32;
             LineSegmentU4((values_0213 | (values_0213 >> 12)) as u16)
         }
@@ -2215,7 +2222,7 @@ impl LineSegmentF32 {
     fn to_line_segment_u8(&self) -> LineSegmentU8 {
         unsafe {
             let values = Sse41::cvtps_epi32(Sse41::fastfloor_ps(self.0));
-            let mask = Sse41::set1_epi32(0x0c080400);
+            let mask = Sse41::set1_epi32(0x0c08_0400);
             LineSegmentU8(Sse41::shuffle_epi8(values, mask)[0] as u32)
         }
     }
@@ -2232,7 +2239,7 @@ impl LineSegmentF32 {
 
     fn reversed(&self) -> LineSegmentF32 {
         unsafe {
-            LineSegmentF32(Sse41::shuffle_ps(self.0, self.0, 0b01001110))
+            LineSegmentF32(Sse41::shuffle_ps(self.0, self.0, 0b0100_1110))
         }
     }
 }
@@ -2276,14 +2283,14 @@ fn cubic_segment_is_tiny(segment: &CubicBezierSegment<f32>) -> bool {
     let (x0, x1) = segment.fast_bounding_range_x();
     let (y0, y1) = segment.fast_bounding_range_y();
     let (x_delta, y_delta) = (f32::abs(x0 - x1), f32::abs(y0 - y1));
-    return x_delta < TINY_EPSILON || y_delta < TINY_EPSILON;
+    x_delta < TINY_EPSILON || y_delta < TINY_EPSILON
 }
 
 fn quadratic_segment_is_tiny(segment: &QuadraticBezierSegment<f32>) -> bool {
     let (x0, x1) = segment.fast_bounding_range_x();
     let (y0, y1) = segment.fast_bounding_range_y();
     let (x_delta, y_delta) = (f32::abs(x0 - x1), f32::abs(y0 - y1));
-    return x_delta < TINY_EPSILON || y_delta < TINY_EPSILON;
+    x_delta < TINY_EPSILON || y_delta < TINY_EPSILON
 
 }
 
