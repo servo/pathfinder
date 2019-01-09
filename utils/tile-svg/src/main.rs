@@ -22,7 +22,6 @@ use euclid::{Point2D, Rect, Size2D, Transform2D};
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use jemallocator;
-use lyon_geom::cubic_bezier::Flattened;
 use lyon_geom::math::Transform;
 use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
@@ -434,7 +433,7 @@ impl Contour {
         let from = self.position_of(point_index);
         let mut ctrl0 = Point2DF32::default();
         let mut ctrl1 = Point2DF32::default();
-        let mut to = Point2DF32::default();
+        let to;
 
         let point1_index = self.add_to_point_index(point_index, 1);
         if self.point_is_endpoint(point1_index) {
@@ -660,88 +659,11 @@ impl Segment {
         }
     }
 
-    fn from_quadratic(curve: &QuadraticBezierSegment<f32>) -> Segment {
-        Segment {
-            baseline: LineSegmentF32::new(&Point2DF32::from_euclid(&curve.from),
-                                          &Point2DF32::from_euclid(&curve.to)),
-            ctrl: LineSegmentF32::new(&Point2DF32::from_euclid(&curve.ctrl),
-                                      &Point2DF32::default()),
-            flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0
-        }
-    }
-
-    fn from_cubic(curve: &CubicBezierSegment<f32>) -> Segment {
-        Segment {
-            baseline: LineSegmentF32::new(&Point2DF32::from_euclid(&curve.from),
-                                          &Point2DF32::from_euclid(&curve.to)),
-            ctrl: LineSegmentF32::new(&Point2DF32::from_euclid(&curve.ctrl1),
-                                      &Point2DF32::from_euclid(&curve.ctrl2)),
-            flags: SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
-                SegmentFlags::HAS_CONTROL_POINT_1,
-        }
-    }
-
     fn as_line_segment(&self) -> Option<LineSegmentF32> {
         if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
             Some(self.baseline)
         } else {
             None
-        }
-    }
-
-    // FIXME(pcwalton): We should basically never use this function.
-    fn as_lyon_cubic_segment(&self) -> Option<CubicBezierSegment<f32>> {
-        if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
-            None
-        } else if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
-            Some((QuadraticBezierSegment {
-                from: self.baseline.from().as_euclid(),
-                ctrl: self.ctrl.from().as_euclid(),
-                to: self.baseline.to().as_euclid(),
-            }).to_cubic())
-        } else {
-            Some(CubicBezierSegment {
-                from: self.baseline.from().as_euclid(),
-                ctrl1: self.ctrl.from().as_euclid(),
-                ctrl2: self.ctrl.to().as_euclid(),
-                to: self.baseline.to().as_euclid(),
-            })
-        }
-    }
-
-    fn split_y(&self, y: f32) -> (Option<Segment>, Option<Segment>) {
-        // Trivial cases.
-        if self.baseline.from_y() <= y && self.baseline.to_y() <= y {
-            return (Some(*self), None)
-        }
-        if self.baseline.from_y() >= y && self.baseline.to_y() >= y {
-            return (None, Some(*self))
-        }
-
-        // TODO(pcwalton): Reduce code duplication?
-        let (prev, next) = match self.as_line_segment() {
-            Some(line_segment) => {
-                let t = LineAxis::from_y(&line_segment).solve_for_t(y, 0.0, 1.0).unwrap();
-                let (prev, next) = line_segment.split(t);
-                (Segment::from_line(&prev), Segment::from_line(&next))
-            }
-            None => {
-                // TODO(pcwalton): Don't degree elevate!
-                let cubic_segment = self.to_cubic();
-                let cubic_segment = cubic_segment.as_cubic_segment();
-                //println!("split_y({}): cubic_segment={:?}", y, cubic_segment);
-                let t = CubicAxis::from_y(cubic_segment).solve_for_t(y, 0.0, 1.0);
-                let t = t.expect("Failed to solve cubic for Y!");
-                let (prev, next) = self.as_cubic_segment().split(t);
-                //println!("... split at {} = {:?} / {:?}", t, prev, next);
-                (prev, next)
-            }
-        };
-
-        if self.baseline.from_y() < self.baseline.to_y() {
-            (Some(prev), Some(next))
-        } else {
-            (Some(next), Some(prev))
         }
     }
 
@@ -839,17 +761,6 @@ impl<'s> CubicSegment<'s> {
         const EPSILON: f32 = 0.005;
     }
 
-    fn sample(self, t: f32) -> Point2DF32 {
-        let (from, to) = (self.0.baseline.from(), self.0.baseline.to());
-        let (ctrl0, ctrl1) = (self.0.ctrl.from(), self.0.ctrl.to());
-
-        let b3 = to + (ctrl0 - ctrl1).scale(3.0) - from;
-        let b2 = (from - ctrl0 - ctrl0 + ctrl1).scale(3.0) + b3.scale(t);
-        let b1 = (ctrl0 - from).scale(3.0) + b2.scale(t);
-        let b0 = from + b1.scale(t);
-        b0
-    }
-
     fn split(self, t: f32) -> (Segment, Segment) {
         unsafe {
             let tttt = Sse41::set1_ps(t);
@@ -918,12 +829,6 @@ impl<'s> CubicSegment<'s> {
     fn split_after(self, t: f32) -> Segment {
         self.split(t).1
     }
-
-    fn split_y_after(&self, y: f32, t_min: f32, t_max: f32) -> Segment {
-        let t = CubicAxis::from_y(*self).solve_for_t(y, t_min, t_max);
-        let t = t.expect("Failed to solve cubic for Y!");
-        self.split(t).1
-    }
 }
 
 // Tiling
@@ -936,9 +841,6 @@ struct Tiler<'o, 'z> {
     built_object: BuiltObject,
     object_index: u16,
     z_buffer: &'z ZBuffer,
-
-    view_box: Rect<f32>,
-    bounds: Rect<f32>,
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
@@ -960,9 +862,6 @@ impl<'o, 'z> Tiler<'o, 'z> {
             built_object,
             object_index,
             z_buffer,
-
-            view_box: *view_box,
-            bounds,
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
@@ -1666,13 +1565,6 @@ impl BuiltScene {
 
         return Ok(());
 
-        fn write_point2d_u8<W>(writer: &mut W, point: Point2D<u8>)
-                               -> io::Result<()> where W: Write {
-            writer.write_u8(point.x)?;
-            writer.write_u8(point.y)?;
-            Ok(())
-        }
-
         const FILE_VERSION: u32 = 0;
 
         struct BatchSizes {
@@ -1896,208 +1788,6 @@ impl<I> MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
     }
 }
 
-// Path utilities
-
-trait SolveT: Debug {
-    fn sample(&self, t: f32) -> f32;
-
-    // Dekker's method.
-    fn solve_for_t(&self, x: f32, mut t0: f32, mut t1: f32) -> Option<f32> {
-        const TOLERANCE: f32 = 0.001;
-
-        //println!("solve_for_t({:?}, x={})", self, x);
-
-        let (mut f_t0, mut f_t1) = (self.sample(t0) - x, self.sample(t1) - x);
-
-        let (mut t2, mut f_t2) = (t0, f_t0);
-        loop {
-            if same_signs(f_t1, f_t2) {
-                t2 = t0;
-                f_t2 = f_t0;
-            }
-
-            // Make sure `f(t1)` is the smallest value.
-            if f_t2.abs() < f_t1.abs() {
-                t0 = t1;
-                f_t0 = f_t1;
-                t1 = t2;
-                f_t1 = f_t2;
-                t2 = t0;
-                f_t2 = f_t0;
-            }
-
-            // Calculate midpoint.
-            let mid = lerp(t1, t2, 0.5);
-            if (mid - t1).abs() <= TOLERANCE {
-                return Some(mid)
-            }
-
-            // Calculate secant.
-            let (mut p, mut q) = ((t1 - t0) * f_t1, f_t0 - f_t1);
-            if p < 0.0 {
-                p = -p;
-                q = -q;
-            }
-
-            // Record point.
-            t0 = t1;
-            f_t0 = f_t1;
-
-            // Pick next point.
-            if p > 0.00001 && p <= (mid - t1) * q {
-                // Use the secant method.
-                //println!("...iteration {}: secant t0={} t1={} t2={}", iteration, t0, t1, t2);
-                t1 += p / q;
-            } else {
-                // Fall back to bisection.
-                //println!("...iteration {}: bisection t0={} t1={} t2={}", iteration, t0, t1, t2);
-                t1 = mid;
-            }
-            f_t1 = self.sample(t1) - x;
-        }
-
-        /*
-        let (mut t0, mut t1) = (0.0, 1.0);
-        let (mut x_t0, mut x_t1) = (self.sample(t0) - x, self.sample(t1) - x);
-        let mut iteration = 0;
-        loop {
-            let t2 = t1 - x_t1 * (t1 - t0) / (x_t1 - x_t0);
-            println!("iteration {}: t={} t0={} x_t0={} t1={} x_t1={}",
-                     iteration,
-                     t2, t0, x_t0, t1, x_t1);
-            let x_t2 = self.sample(t2) - x;
-            if x_t2.abs() < TOLERANCE || iteration >= MAX_ITERATIONS {
-                if iteration >= MAX_ITERATIONS {
-                    println!("warning: failed to solve {:?} t={}", self, t2);
-                }
-                return Some(t2);
-            }
-
-            t0 = t1;
-            x_t0 = x_t1;
-            t1 = t2;
-            x_t1 = x_t2;
-
-            iteration += 1;
-        }
-        */
-
-        /*
-
-        let (mut min, mut max) = (0.0, 1.0);
-        let (mut x_min, x_max) = (self.sample(min) - x, self.sample(max) - x);
-        if (x_min < 0.0 && x_max < 0.0) || (x_min > 0.0 && x_max > 0.0) {
-            return None
-        }
-
-        let mut iteration = 0;
-        loop {
-            let mid = lerp(min, max, 0.5);
-            if iteration >= MAX_ITERATIONS || (max - min) * 0.5 < TOLERANCE {
-                return Some(mid)
-            }
-
-            let x_mid = self.sample(mid) - x;
-            if x_mid == 0.0 {
-                return Some(mid)
-            }
-
-            if (x_min < 0.0 && x_mid < 0.0) || (x_min > 0.0 && x_mid > 0.0) {
-                min = mid;
-                x_min = x_mid;
-            } else {
-                max = mid;
-            }
-
-            iteration += 1;
-        }
-
-        */
-    }
-}
-
-// FIXME(pcwalton): This is probably dumb and inefficient.
-// FIXME(pcwalton): SIMDify!
-#[derive(Debug)]
-struct LineAxis { from: f32, to: f32 }
-impl LineAxis {
-    fn from_x(segment: &LineSegmentF32) -> LineAxis {
-        LineAxis { from: segment.from_x(), to: segment.to_x() }
-    }
-    fn from_y(segment: &LineSegmentF32) -> LineAxis {
-        LineAxis { from: segment.from_y(), to: segment.to_y() }
-    }
-}
-impl SolveT for LineAxis {
-    fn sample(&self, t: f32) -> f32 {
-        lerp(self.from, self.to, t)
-    }
-}
-
-#[derive(Debug)]
-struct QuadraticAxis { from: f32, ctrl: f32, to: f32 }
-impl QuadraticAxis {
-    fn from_x(segment: &QuadraticBezierSegment<f32>) -> QuadraticAxis {
-        QuadraticAxis { from: segment.from.x, ctrl: segment.ctrl.x, to: segment.to.x }
-    }
-    fn from_y(segment: &QuadraticBezierSegment<f32>) -> QuadraticAxis {
-        QuadraticAxis { from: segment.from.y, ctrl: segment.ctrl.y, to: segment.to.y }
-    }
-}
-impl SolveT for QuadraticAxis {
-    fn sample(&self, t: f32) -> f32 {
-        lerp(lerp(self.from, self.ctrl, t), lerp(self.ctrl, self.to, t), t)
-    }
-}
-
-#[derive(Debug)]
-struct CubicAxis(<Sse41 as Simd>::Vf32);
-
-impl CubicAxis {
-    fn from_x(segment: CubicSegment) -> CubicAxis {
-        unsafe {
-            let mut vector = Sse41::setzero_ps();
-            let (baseline, ctrl) = (segment.0.baseline, segment.0.ctrl);
-            vector[0] = baseline.from().x();
-            vector[1] = ctrl.from().x();
-            vector[2] = ctrl.to().x();
-            vector[3] = baseline.to().x();
-            CubicAxis(vector)
-        }
-    }
-
-    fn from_y(segment: CubicSegment) -> CubicAxis {
-        unsafe {
-            let mut vector = Sse41::setzero_ps();
-            let (baseline, ctrl) = (segment.0.baseline, segment.0.ctrl);
-            vector[0] = baseline.from().y();
-            vector[1] = ctrl.from().y();
-            vector[2] = ctrl.to().y();
-            vector[3] = baseline.to().y();
-            CubicAxis(vector)
-        }
-    }
-}
-
-impl SolveT for CubicAxis {
-    fn sample(&self, t: f32) -> f32 {
-        unsafe {
-            let self_x3 = Sse41::mul_ps(self.0, Sse41::set1_ps(3.0));
-
-            let (from, to) = (self.0[0], self.0[3]);
-            let (from_x3, ctrl0_x3, ctrl1_x3) = (self_x3[0], self_x3[1], self_x3[2]);
-
-            let (v01_x3, v12_x3) = (ctrl0_x3 - from_x3, ctrl1_x3 - ctrl0_x3);
-
-            let b3 = to - v12_x3 - from;
-            let b2 = v12_x3 - v01_x3 + b3 * t;
-            let b1 = v01_x3 + b2 * t;
-            let b0 = from + b1 * t;
-            b0
-        }
-    }
-}
-
 // SortedVector
 
 #[derive(Clone, Debug)]
@@ -2169,8 +1859,6 @@ impl ActiveEdge {
     fn from_segment_and_crossing(segment: &Segment, crossing: &Point2DF32) -> ActiveEdge {
         ActiveEdge { segment: *segment, crossing: *crossing }
     }
-
-    fn is_none(&self) -> bool { self.segment.is_none() }
 
     fn process(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
         let tile_bottom = ((tile_y as i32 + 1) * TILE_HEIGHT as i32) as f32;
@@ -2387,13 +2075,6 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
 // Geometry
 
 #[derive(Clone, Copy, Debug)]
-struct Point2DU4(pub u8);
-
-impl Point2DU4 {
-    fn new(x: u8, y: u8) -> Point2DU4 { Point2DU4(x | (y << 4)) }
-}
-
-#[derive(Clone, Copy, Debug)]
 struct Point2DF32(<Sse41 as Simd>::Vf32);
 
 impl Point2DF32 {
@@ -2414,41 +2095,12 @@ impl Point2DF32 {
     fn x(&self) -> f32 { self.0[0] }
     fn y(&self) -> f32 { self.0[1] }
 
-    fn scale(&self, factor: f32) -> Point2DF32 {
-        unsafe { Point2DF32(Sse41::mul_ps(self.0, Sse41::set1_ps(factor))) }
-    }
-
     fn min(&self, other: &Point2DF32) -> Point2DF32 {
         unsafe { Point2DF32(Sse41::min_ps(self.0, other.0)) }
     }
 
     fn max(&self, other: &Point2DF32) -> Point2DF32 {
         unsafe { Point2DF32(Sse41::max_ps(self.0, other.0)) }
-    }
-
-    fn clamp(&self, min: &Point2DF32, max: &Point2DF32) -> Point2DF32 {
-        self.max(min).min(max)
-    }
-
-    fn lerp(&self, other: &Point2DF32, t: f32) -> Point2DF32 {
-        *self + (*other - *self).scale(t)
-    }
-
-    // TODO(pcwalton): Optimize this a bit.
-    fn det(&self, other: &Point2DF32) -> f32 {
-        self.0[0] * other.0[1] - self.0[1] * other.0[0]
-    }
-
-    fn floor(&self) -> Point2DF32 { unsafe { Point2DF32(Sse41::fastfloor_ps(self.0)) } }
-
-    fn fract(&self) -> Point2DF32 { *self - self.floor() }
-
-    // TODO(pcwalton): Have an actual packed u8 point type!
-    fn to_u8(&self) -> Point2D<u8> {
-        unsafe {
-            let int_values = Sse41::cvtps_epi32(self.0);
-            Point2D::new(int_values[0] as u8, int_values[1] as u8)
-        }
     }
 }
 
@@ -2655,14 +2307,6 @@ impl SimdExt for Sse41 {
 
 // Trivial utilities
 
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
-fn clamp(x: f32, min: f32, max: f32) -> f32 {
-    f32::max(f32::min(x, max), min)
-}
-
 fn alignup_i32(a: i32, b: i32) -> i32 {
     (a + b - 1) / b
 }
@@ -2671,10 +2315,6 @@ fn t_is_too_close_to_zero_or_one(t: f32) -> bool {
     const EPSILON: f32 = 0.001;
 
     t < EPSILON || t > 1.0 - EPSILON
-}
-
-fn same_signs(a: f32, b: f32) -> bool {
-    (a < 0.0 && b < 0.0) || (a >= 0.0 && b >= 0.0)
 }
 
 // Testing
