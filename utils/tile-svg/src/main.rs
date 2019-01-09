@@ -41,7 +41,7 @@ use std::mem;
 use std::ops::{Add, Mul, Sub};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::u16;
 use svgtypes::Color as SvgColor;
 use usvg::{Node, NodeExt, NodeKind, Options as UsvgOptions, Paint as UsvgPaint};
@@ -99,27 +99,36 @@ fn main() {
     println!("Scene bounds: {:?} View box: {:?}", scene.bounds, scene.view_box);
     println!("{} objects, {} paints", scene.objects.len(), scene.paints.len());
 
-    let start_time = Instant::now();
+    let (mut elapsed_object_build_time, mut elapsed_scene_build_time) = (0.0, 0.0);
+
     let mut built_scene = BuiltScene::new(&scene.view_box, vec![]);
     for _ in 0..runs {
         let z_buffer = ZBuffer::new(&scene.view_box);
 
+        let start_time = Instant::now();
         let built_objects = match jobs {
             Some(1) => scene.build_objects_sequentially(&z_buffer),
             _ => scene.build_objects(&z_buffer),
         };
+        elapsed_object_build_time += duration_to_ms(&(Instant::now() - start_time));
 
+        let start_time = Instant::now();
         let built_shaders = scene.build_shaders();
         built_scene = BuiltScene::from_objects_and_shaders(&scene.view_box,
                                                            &built_objects,
                                                            built_shaders,
                                                            &z_buffer);
+        elapsed_scene_build_time += duration_to_ms(&(Instant::now() - start_time));
     }
-    let elapsed_time = Instant::now() - start_time;
 
-    let elapsed_ms = elapsed_time.as_secs() as f64 * 1000.0 +
-        elapsed_time.subsec_micros() as f64 / 1000.0;
-    println!("{:.3}ms elapsed", elapsed_ms / runs as f64);
+    elapsed_object_build_time /= runs as f64;
+    elapsed_scene_build_time /= runs as f64;
+    let total_elapsed_time = elapsed_object_build_time + elapsed_scene_build_time;
+
+    println!("{:.3}ms ({:.3}ms objects, {:.3}ms scene) elapsed",
+             total_elapsed_time,
+             elapsed_object_build_time,
+             elapsed_scene_build_time);
 
     println!("{} solid tiles", built_scene.solid_tiles.len());
     for (batch_index, batch) in built_scene.batches.iter().enumerate() {
@@ -132,6 +141,10 @@ fn main() {
     if let Some(output_path) = output_path {
         built_scene.write(&mut BufWriter::new(File::create(output_path).unwrap())).unwrap();
     }
+}
+
+fn duration_to_ms(duration: &Duration) -> f64 {
+    duration.as_secs() as f64 * 1000.0 + duration.subsec_micros() as f64 / 1000.0
 }
 
 #[derive(Debug)]
@@ -1102,23 +1115,6 @@ fn process_active_segment(contour: &Contour,
         active_edges.push(active_edge);
     }
 }
-
-/*
-fn process_active_edge(active_edge: &mut Segment, built_object: &mut BuiltObject, tile_y: i16) {
-    // Chop the segment.
-    // TODO(pcwalton): Maybe these shouldn't be Options?
-    let (upper_segment, lower_segment) =
-        active_edge.split_y(((tile_y as i32 + 1) * TILE_HEIGHT as i32) as f32);
-
-    // Add fill primitives for upper part.
-    if let Some(segment) = upper_segment {
-        segment.generate_fill_primitives(built_object, tile_y);
-    }
-
-    // Queue lower part.
-    *active_edge = lower_segment.unwrap_or(Segment::new());
-}
-*/
 
 // Scene construction
 
