@@ -345,13 +345,13 @@ class App {
             gl.uniform1i(this.maskTileProgram.uniforms.FillColorsTexture, 1);
             // FIXME(pcwalton): Maybe this should be an ivec2 or uvec2?
             gl.uniform2f(this.maskTileProgram.uniforms.FillColorsTextureSize,
-                        this.shaderCount,
-                        1.0);
+                         this.shaderCount,
+                         1.0);
             gl.uniform2f(this.maskTileProgram.uniforms.ViewBoxOrigin,
                         this.viewBox.origin.x,
                         this.viewBox.origin.y);
             gl.blendEquation(gl.FUNC_ADD);
-            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
             gl.enable(gl.BLEND);
             gl.drawArraysInstanced(gl.TRIANGLE_FAN, 0, 4, batch.maskTileCount);
             gl.disable(gl.BLEND);

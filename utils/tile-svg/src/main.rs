@@ -61,7 +61,7 @@ const SCALE_FACTOR: f32 = 1.0;
 // TODO(pcwalton): Make this configurable.
 const FLATTENING_TOLERANCE: f32 = 0.1;
 
-const HAIRLINE_STROKE_WIDTH: f32 = 0.5;
+const HAIRLINE_STROKE_WIDTH: f32 = 0.1;
 
 const MAX_FILLS_PER_BATCH: usize = 0x0002_0000;
 const MAX_MASKS_PER_BATCH: u16 = 0xffff;
