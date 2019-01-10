@@ -1,6 +1,6 @@
-// pathfinder/path-utils/src/lib.rs
+// pathfinder/geometry/src/lib.rs
 //
-// Copyright © 2018 The Pathfinder Project Developers.
+// Copyright © 2019 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -8,9 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Various utilities for manipulating Bézier curves.
+//! Utilities for Bézier curves.
 //!
-//! Most of these should go upstream to Lyon at some point.
+//! These may be merged into upstream Lyon eventually.
 
 extern crate arrayvec;
 extern crate lyon_path;

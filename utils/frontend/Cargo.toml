@@ -11,8 +11,8 @@ lyon_path = "0.12"
 git = "https://github.com/pcwalton/font-kit"
 features = ["loader-freetype-default"]
 
+[dependencies.pathfinder_geometry]
+path = "../../geometry"
+
 [dependencies.pathfinder_partitioner]
 path = "../../partitioner"
-
-[dependencies.pathfinder_path_utils]
-path = "../../path-utils"

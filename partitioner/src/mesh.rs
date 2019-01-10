@@ -11,8 +11,8 @@
 use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Rect, Size2D, Vector2D};
 use lyon_path::PathEvent;
-use pathfinder_path_utils::normals::PathNormals;
-use pathfinder_path_utils::segments::{self, SegmentIter};
+use pathfinder_geometry::normals::PathNormals;
+use pathfinder_geometry::segments::{self, SegmentIter};
 use std::f32;
 use std::u32;
 

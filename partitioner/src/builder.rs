@@ -12,7 +12,7 @@ use arrayvec::ArrayVec;
 use euclid::{Angle, Point2D, Vector2D};
 use lyon_geom::{CubicBezierSegment, QuadraticBezierSegment};
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
-use pathfinder_path_utils::cubic_to_quadratic::CubicToQuadraticSegmentIter;
+use pathfinder_builder::cubic_to_quadratic::CubicToQuadraticSegmentIter;
 use std::ops::Range;
 
 const TANGENT_PARAMETER_TOLERANCE: f32 = 0.001;

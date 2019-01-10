@@ -1,6 +1,6 @@
-// pathfinder/partitioner/src/cubic_to_quadratic.rs
+// pathfinder/geometry/src/cubic_to_quadratic.rs
 //
-// Copyright © 2018 The Pathfinder Project Developers.
+// Copyright © 2019 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license

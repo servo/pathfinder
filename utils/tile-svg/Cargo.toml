@@ -19,8 +19,8 @@ simdeez = "0.4"
 svgtypes = "0.3"
 usvg = "0.4"
 
-[dependencies.pathfinder_path_utils]
-path = "../../path-utils"
+[dependencies.pathfinder_geometry]
+path = "../../geometry"
 
 [dev-dependencies]
 quickcheck = "0.7"

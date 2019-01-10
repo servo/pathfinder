@@ -28,7 +28,7 @@ use lyon_geom::math::Transform;
 use lyon_geom::{CubicBezierSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
-use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
+use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
 use rayon::ThreadPoolBuilder;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use simdeez::Simd;

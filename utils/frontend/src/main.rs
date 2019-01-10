@@ -26,8 +26,8 @@
 extern crate clap;
 extern crate font_kit;
 extern crate lyon_path;
+extern crate pathfinder_geometry;
 extern crate pathfinder_partitioner;
-extern crate pathfinder_path_utils;
 
 use clap::{App, Arg};
 use font_kit::font::Font;
@@ -35,9 +35,9 @@ use font_kit::hinting::HintingOptions;
 use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use lyon_path::default::Path as LyonPath;
-use pathfinder_partitioner::FillRule;
-use pathfinder_partitioner::mesh_pack::MeshPack;
-use pathfinder_partitioner::partitioner::Partitioner;
+use pathfinder_geometry::FillRule;
+use pathfinder_geometry::mesh_pack::MeshPack;
+use pathfinder_geometry::partitioner::Partitioner;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process;

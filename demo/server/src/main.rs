@@ -21,8 +21,8 @@ extern crate image;
 extern crate lru_cache;
 extern crate lyon_geom;
 extern crate lyon_path;
+extern crate pathfinder_geometry;
 extern crate pathfinder_partitioner;
-extern crate pathfinder_path_utils;
 extern crate rocket;
 extern crate rocket_contrib;
 
@@ -46,14 +46,14 @@ use image::{DynamicImage, ImageBuffer, ImageFormat, ImageRgba8};
 use lru_cache::LruCache;
 use lyon_path::PathEvent;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
+use pathfinder_geometry::cubic_to_quadratic::CubicToQuadraticTransformer;
+use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
+use pathfinder_geometry::transform::Transform2DPathIter;
 use lyon_path::iterator::PathIter;
 use pathfinder_partitioner::FillRule;
 use pathfinder_partitioner::mesh::Mesh;
 use pathfinder_partitioner::mesh_pack::MeshPack;
 use pathfinder_partitioner::partitioner::Partitioner;
-use pathfinder_path_utils::cubic_to_quadratic::CubicToQuadraticTransformer;
-use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
-use pathfinder_path_utils::transform::Transform2DPathIter;
 use rocket::http::{ContentType, Header, Status};
 use rocket::request::Request;
 use rocket::response::{NamedFile, Redirect, Responder, Response};
@@ -844,7 +844,7 @@ fn main() {
 mod tiling {
     use euclid::{Point2D, Rect, Size2D, Vector2D};
     use lyon_path::PathEvent;
-    use pathfinder_path_utils::clip::RectClipper;
+    use pathfinder_geometry::clip::RectClipper;
     use std::f32;
     use std::mem;
 

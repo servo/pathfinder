@@ -1,6 +1,6 @@
 [package]
-name = "pathfinder_path_utils"
-version = "0.2.0"
+name = "pathfinder_geometry"
+version = "0.3.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
