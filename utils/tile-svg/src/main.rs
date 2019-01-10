@@ -857,20 +857,27 @@ impl<'s> CubicSegment<'s> {
         self.split(t).1
     }
 
-    // TODO(pcwalton): Optimize with SIMD.
     fn y_extrema(self) -> (Option<f32>, Option<f32>) {
-        let (from, to) = (self.0.baseline.from_y(), self.0.baseline.to_y());
-        let (ctrl0, ctrl1) = (self.0.ctrl.from_y(), self.0.ctrl.to_y());
-        let discrim = -from * ctrl1 + from * to + ctrl0 * ctrl0 - ctrl0 * ctrl1 - ctrl0 * to +
-            ctrl1 * ctrl1;
-        if discrim < 0.0 {
-            return (None, None)
+        let (t0, t1);
+        unsafe {
+            let mut p0p1p2p3 = Sse41::setzero_ps();
+            p0p1p2p3[0] = self.0.baseline.from_y();
+            p0p1p2p3[1] = self.0.ctrl.from_y();
+            p0p1p2p3[2] = self.0.ctrl.to_y();
+            p0p1p2p3[3] = self.0.baseline.to_y();
+
+            let pxp0p1p2 = Sse41::shuffle_ps(p0p1p2p3, p0p1p2p3, 0b1001_0000);
+            let pxv0v1v2 = Sse41::sub_ps(p0p1p2p3, pxp0p1p2);
+            let (v0, v1, v2) = (pxv0v1v2[1], pxv0v1v2[2], pxv0v1v2[3]);
+
+            let (v0_to_v1, v2_to_v1) = (v0 - v1, v2 - v1);
+            let discrim = f32::sqrt(v1 * v1 - v0 * v2);
+            let denom = 1.0 / (v0_to_v1 + v2_to_v1);
+
+            t0 = (v0_to_v1 + discrim) * denom;
+            t1 = (v0_to_v1 - discrim) * denom;
         }
-        let discrim_sqrt = discrim.sqrt();
-        let b = from - 2.0 * ctrl0 + ctrl1;
-        let denom = from - 3.0 * ctrl0 + 3.0 * ctrl1 - to;
-        let (t0, t1) = ((b + discrim_sqrt) / denom, (b - discrim_sqrt) / denom);
-        //println!("t0={} t1={}", t0, t1);
+
         return match (t0 > EPSILON && t0 < 1.0 - EPSILON, t1 > EPSILON && t1 < 1.0 - EPSILON) {
             (false, false) => (None, None),
             (true, false) => (Some(t0), None),
