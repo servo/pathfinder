@@ -39,12 +39,14 @@ use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
+use std::iter;
 use std::mem;
 use std::ops::{Add, Mul, Sub};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
 use std::u16;
+use std::u32;
 use svgtypes::Color as SvgColor;
 use usvg::{Node, NodeExt, NodeKind, Options as UsvgOptions, Paint as UsvgPaint};
 use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform, Tree};
@@ -59,6 +61,9 @@ const SCALE_FACTOR: f32 = 1.0;
 const FLATTENING_TOLERANCE: f32 = 0.1;
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.5;
+
+const MAX_FILLS_PER_BATCH: usize = 0x0002_0000;
+const MAX_MASKS_PER_BATCH: u16 = 0xffff;
 
 fn main() {
     let matches =
@@ -103,7 +108,7 @@ fn main() {
 
     let (mut elapsed_object_build_time, mut elapsed_scene_build_time) = (0.0, 0.0);
 
-    let mut built_scene = BuiltScene::new(&scene.view_box, vec![]);
+    let mut built_scene = BuiltScene::new(&scene.view_box);
     for _ in 0..runs {
         let z_buffer = ZBuffer::new(&scene.view_box);
 
@@ -115,11 +120,13 @@ fn main() {
         elapsed_object_build_time += duration_to_ms(&(Instant::now() - start_time));
 
         let start_time = Instant::now();
-        let built_shaders = scene.build_shaders();
-        built_scene = BuiltScene::from_objects_and_shaders(&scene.view_box,
-                                                           &built_objects,
-                                                           built_shaders,
-                                                           &z_buffer);
+        built_scene = BuiltScene::new(&scene.view_box);
+        built_scene.shaders = scene.build_shaders();
+        let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, &scene.view_box);
+        built_scene.solid_tiles = scene_builder.build_solid_tiles();
+        while let Some(batch) = scene_builder.build_batch() {
+            built_scene.batches.push(batch);
+        }
         elapsed_scene_build_time += duration_to_ms(&(Instant::now() - start_time));
     }
 
@@ -1127,65 +1134,71 @@ fn process_active_segment(contour: &Contour,
 // Scene construction
 
 impl BuiltScene {
-    fn new(view_box: &Rect<f32>, shaders: Vec<ObjectShader>) -> BuiltScene {
-        BuiltScene {
-            view_box: *view_box,
-            batches: vec![],
-            solid_tiles: vec![],
-            shaders,
+    fn new(view_box: &Rect<f32>) -> BuiltScene {
+        BuiltScene { view_box: *view_box, batches: vec![], solid_tiles: vec![], shaders: vec![] }
+    }
+}
 
-            tile_rect: round_rect_out_to_tile_bounds(view_box),
-        }
+fn scene_tile_index(tile_x: i16, tile_y: i16, tile_rect: Rect<i16>) -> u32 {
+    (tile_y - tile_rect.origin.y) as u32 * tile_rect.size.width as u32 +
+        (tile_x - tile_rect.origin.x) as u32
+}
+
+struct SceneBuilder {
+    objects: Vec<BuiltObject>,
+    z_buffer: ZBuffer,
+    tile_rect: Rect<i16>,
+
+    current_object_index: usize,
+}
+
+impl SceneBuilder {
+    fn new(objects: Vec<BuiltObject>, z_buffer: ZBuffer, view_box: &Rect<f32>) -> SceneBuilder {
+        let tile_rect = round_rect_out_to_tile_bounds(view_box);
+        SceneBuilder { objects, z_buffer, tile_rect, current_object_index: 0 }
     }
 
-    // TODO(pcwalton): Turn this into a streaming batch model, for pipelining.
-    #[inline(never)]
-    fn from_objects_and_shaders(view_box: &Rect<f32>,
-                                objects: &[BuiltObject],
-                                shaders: Vec<ObjectShader>,
-                                z_buffer: &ZBuffer)
-                                -> BuiltScene {
-        let mut scene = BuiltScene::new(view_box, shaders);
-        scene.add_batch();
+    fn build_solid_tiles(&self) -> Vec<SolidTileScenePrimitive> {
+        self.z_buffer.build_solid_tiles(&self.objects, &self.tile_rect)
+    }
 
-        // Initialize z-buffer, and fill solid tiles.
-        z_buffer.push_solid_tiles(&mut scene, objects);
+    fn build_batch(&mut self) -> Option<Batch> {
+        let mut batch = Batch::new();
 
-        // Build batches.
-        let mut object_tile_index_to_scene_mask_tile_index = vec![];
-        for (object_index, object) in objects.iter().enumerate() {
-            object_tile_index_to_scene_mask_tile_index.clear();
-            object_tile_index_to_scene_mask_tile_index.reserve(object.tiles.len());
+        let mut object_tile_index_to_batch_mask_tile_index = vec![];
+        while self.current_object_index < self.objects.len() {
+            let object = &self.objects[self.current_object_index];
+
+            if batch.fills.len() + object.fills.len() > MAX_FILLS_PER_BATCH {
+                break;
+            }
+
+            object_tile_index_to_batch_mask_tile_index.clear();
+            object_tile_index_to_batch_mask_tile_index.extend(
+                iter::repeat(u16::MAX).take(object.tiles.len()));
 
             // Copy mask tiles.
             for (tile_index, tile) in object.tiles.iter().enumerate() {
                 // Skip solid tiles, since we handled them above already.
                 if object.solid_tiles[tile_index] {
-                    object_tile_index_to_scene_mask_tile_index.push(BLANK);
                     continue;
                 }
 
                 // Cull occluded tiles.
-                let scene_tile_index = scene_tile_index(tile.tile_x, tile.tile_y, scene.tile_rect);
-                if !z_buffer.test(scene_tile_index, object_index as u16) {
-                    object_tile_index_to_scene_mask_tile_index.push(BLANK);
+                let scene_tile_index = scene_tile_index(tile.tile_x, tile.tile_y, self.tile_rect);
+                if !self.z_buffer.test(scene_tile_index, self.current_object_index as u32) {
                     continue;
                 }
 
                 // Visible mask tile.
-                let mut scene_mask_tile_index = scene.batches.last().unwrap().mask_tiles.len() as
-                    u16;
-                if scene_mask_tile_index == u16::MAX {
-                    scene.add_batch();
-                    scene_mask_tile_index = 0;
+                let batch_mask_tile_index = batch.mask_tiles.len() as u16;
+                if batch_mask_tile_index == MAX_MASKS_PER_BATCH {
+                    break;
                 }
 
-                object_tile_index_to_scene_mask_tile_index.push(SceneMaskTileIndex {
-                    batch_index: scene.batches.len() as u16 - 1,
-                    mask_tile_index: scene_mask_tile_index,
-                });
+                object_tile_index_to_batch_mask_tile_index[tile_index] = batch_mask_tile_index;
 
-                scene.batches.last_mut().unwrap().mask_tiles.push(MaskTileBatchPrimitive {
+                batch.mask_tiles.push(MaskTileBatchPrimitive {
                     tile: *tile,
                     shader: object.shader,
                 });
@@ -1194,42 +1207,26 @@ impl BuiltScene {
             // Remap and copy fills, culling as necessary.
             for fill in &object.fills {
                 let object_tile_index = object.tile_coords_to_index(fill.tile_x, fill.tile_y);
-                let SceneMaskTileIndex {
-                    batch_index,
-                    mask_tile_index,
-                } = object_tile_index_to_scene_mask_tile_index[object_tile_index as usize];
-                if batch_index < u16::MAX {
-                    scene.batches[batch_index as usize].fills.push(FillBatchPrimitive {
+                let mask_tile_index =
+                    object_tile_index_to_batch_mask_tile_index[object_tile_index as usize];
+                if mask_tile_index < u16::MAX {
+                    batch.fills.push(FillBatchPrimitive {
                         px: fill.px,
                         subpx: fill.subpx,
                         mask_tile_index,
                     });
                 }
             }
+
+            self.current_object_index += 1;
         }
 
-        return scene;
-
-        #[derive(Clone, Copy, Debug)]
-        struct SceneMaskTileIndex {
-            batch_index: u16,
-            mask_tile_index: u16,
+        if batch.is_empty() {
+            None
+        } else {
+            Some(batch)
         }
-
-        const BLANK: SceneMaskTileIndex = SceneMaskTileIndex {
-            batch_index: 0,
-            mask_tile_index: 0,
-        };
     }
-
-    fn add_batch(&mut self) {
-        self.batches.push(Batch::new());
-    }
-}
-
-fn scene_tile_index(tile_x: i16, tile_y: i16, tile_rect: Rect<i16>) -> u32 {
-    (tile_y - tile_rect.origin.y) as u32 * tile_rect.size.width as u32 +
-        (tile_x - tile_rect.origin.x) as u32
 }
 
 // Culling
@@ -1249,7 +1246,7 @@ impl ZBuffer {
         }
     }
 
-    fn test(&self, scene_tile_index: u32, object_index: u16) -> bool {
+    fn test(&self, scene_tile_index: u32, object_index: u32) -> bool {
         let existing_depth = self.buffer[scene_tile_index as usize].load(AtomicOrdering::SeqCst);
         existing_depth < object_index as usize + 1
     }
@@ -1271,8 +1268,9 @@ impl ZBuffer {
         }
     }
 
-    fn push_solid_tiles(&self, scene: &mut BuiltScene, objects: &[BuiltObject]) {
-        let tile_rect = scene.tile_rect;
+    fn build_solid_tiles(&self, objects: &[BuiltObject], tile_rect: &Rect<i16>)
+                         -> Vec<SolidTileScenePrimitive> {
+        let mut solid_tiles = vec![];
         for scene_tile_y in 0..tile_rect.size.height {
             for scene_tile_x in 0..tile_rect.size.width {
                 let scene_tile_index = scene_tile_y as usize * tile_rect.size.width as usize +
@@ -1282,13 +1280,15 @@ impl ZBuffer {
                     continue
                 }
                 let object_index = (depth - 1) as usize;
-                scene.solid_tiles.push(SolidTileScenePrimitive {
+                solid_tiles.push(SolidTileScenePrimitive {
                     tile_x: scene_tile_x + tile_rect.origin.x,
                     tile_y: scene_tile_y + tile_rect.origin.y,
                     shader: objects[object_index].shader,
                 });
             }
         }
+
+        solid_tiles
     }
 }
 
@@ -1310,8 +1310,6 @@ struct BuiltScene {
     batches: Vec<Batch>,
     solid_tiles: Vec<SolidTileScenePrimitive>,
     shaders: Vec<ObjectShader>,
-
-    tile_rect: Rect<i16>,
 }
 
 #[derive(Debug)]
@@ -1640,6 +1638,8 @@ impl Batch {
     fn new() -> Batch {
         Batch { fills: vec![], mask_tiles: vec![] }
     }
+
+    fn is_empty(&self) -> bool { self.mask_tiles.is_empty() }
 }
 
 impl TileObjectPrimitive {
