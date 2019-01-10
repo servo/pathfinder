@@ -25,7 +25,7 @@ use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use jemallocator;
 use lyon_geom::math::Transform;
-use lyon_geom::{CubicBezierSegment, LineSegment, QuadraticBezierSegment};
+use lyon_geom::{CubicBezierSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
 use pathfinder_path_utils::stroke::{StrokeStyle, StrokeToFillIter};
@@ -56,7 +56,7 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 const SCALE_FACTOR: f32 = 1.0;
 
 // TODO(pcwalton): Make this configurable.
-const FLATTENING_TOLERANCE: f32 = 0.333;
+const FLATTENING_TOLERANCE: f32 = 0.1;
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.5;
 
@@ -441,39 +441,32 @@ impl Contour {
         }
     }
 
-    // TODO(pcwalton): Optimize this more with SIMD?
     fn segment_after(&self, point_index: u32) -> Segment {
         debug_assert!(self.point_is_endpoint(point_index));
 
-        let mut flags = SegmentFlags::HAS_ENDPOINTS;
-        let from = self.position_of(point_index);
-        let mut ctrl0 = Point2DF32::default();
-        let mut ctrl1 = Point2DF32::default();
-        let to;
+        let mut segment = Segment::new();
+        segment.flags |= SegmentFlags::HAS_ENDPOINTS;
+        segment.baseline.set_from(&self.position_of(point_index));
 
         let point1_index = self.add_to_point_index(point_index, 1);
         if self.point_is_endpoint(point1_index) {
-            to = self.position_of(point1_index);
+            segment.baseline.set_to(&self.position_of(point1_index));
         } else {
-            ctrl0 = self.position_of(point1_index);
-            flags |= SegmentFlags::HAS_CONTROL_POINT_0;
+            segment.ctrl.set_from(&self.position_of(point1_index));
+            segment.flags |= SegmentFlags::HAS_CONTROL_POINT_0;
 
             let point2_index = self.add_to_point_index(point_index, 2);
             if self.point_is_endpoint(point2_index) {
-                to = self.position_of(point2_index);
+                segment.baseline.set_to(&self.position_of(point2_index));
             } else {
-                ctrl1 = self.position_of(point2_index);
-                flags |= SegmentFlags::HAS_CONTROL_POINT_1;
+                segment.ctrl.set_to(&self.position_of(point2_index));
+                segment.flags |= SegmentFlags::HAS_CONTROL_POINT_1;
 
                 let point3_index = self.add_to_point_index(point_index, 3);
-                to = self.position_of(point3_index);
+                segment.baseline.set_to(&self.position_of(point3_index));
             }
         }
 
-        let mut segment = Segment::new();
-        segment.baseline = LineSegmentF32::new(&from, &to);
-        segment.ctrl = LineSegmentF32::new(&ctrl0, &ctrl1);
-        segment.flags = flags;
         segment
     }
 
@@ -1409,16 +1402,28 @@ impl BuiltObject {
 
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
     fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i16, tile_y: i16) {
-        let tile_origin = Point2DF32::new((i32::from(tile_x) * TILE_WIDTH as i32) as f32,
-                                          (i32::from(tile_y) * TILE_HEIGHT as i32) as f32);
+        let (px, subpx);
+        unsafe {
+            let mut segment = Sse41::cvtps_epi32(Sse41::mul_ps(segment.0, Sse41::set1_ps(256.0)));
+
+            let mut tile_origin = Sse41::setzero_epi32();
+            tile_origin[0] = (tile_x as i32) * (TILE_WIDTH as i32) * 256;
+            tile_origin[1] = (tile_y as i32) * (TILE_HEIGHT as i32) * 256;
+            tile_origin = Sse41::shuffle_epi32(tile_origin, 0b0100_0100);
+
+            segment = Sse41::sub_epi32(segment, tile_origin);
+            segment = Sse41::min_epi32(segment, Sse41::set1_epi32(0x0fff));
+
+            let mut shuffle_mask = Sse41::setzero_epi32();
+            shuffle_mask[0] = 0x0c08_0400;
+            shuffle_mask[1] = 0x0d05_0901;
+            segment = Sse41::shuffle_epi8(segment, shuffle_mask);
+
+            px = LineSegmentU4((segment[1] | (segment[1] >> 12)) as u16);
+            subpx = LineSegmentU8(segment[0] as u32);
+        }
+
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
-        let mut segment = *segment - tile_origin;
-
-        let (tile_min, tile_max) = (Point2DF32::default(), Point2DF32::splat(16.0 - 1.0 / 256.0));
-        segment = segment.clamp(&tile_min, &tile_max);
-
-        let px = segment.to_line_segment_u4();
-        let subpx = segment.fract().scale(256.0).to_line_segment_u8();
 
         /*
         // TODO(pcwalton): Cull degenerate fills again.
@@ -1430,7 +1435,6 @@ impl BuiltObject {
         */
 
         self.fills.push(FillObjectPrimitive { px, subpx, tile_x, tile_y });
-
         self.solid_tiles.set(tile_index as usize, false);
     }
 
@@ -2073,10 +2077,27 @@ impl LineSegmentF32 {
                                                            Sse41::setzero_pd())))
         }
     }
+
     fn to(&self) -> Point2DF32 {
         unsafe {
             Point2DF32(Sse41::castpd_ps(Sse41::unpackhi_pd(Sse41::castps_pd(self.0),
                                                            Sse41::setzero_pd())))
+        }
+    }
+
+    fn set_from(&mut self, point: &Point2DF32) {
+        unsafe {
+            let (mut this, point) = (Sse41::castps_pd(self.0), Sse41::castps_pd(point.0));
+            this[0] = point[0];
+            self.0 = Sse41::castpd_ps(this);
+        }
+    }
+
+    fn set_to(&mut self, point: &Point2DF32) {
+        unsafe {
+            let (mut this, point) = (Sse41::castps_pd(self.0), Sse41::castps_pd(point.0));
+            this[1] = point[0];
+            self.0 = Sse41::castpd_ps(this);
         }
     }
 
@@ -2087,6 +2108,14 @@ impl LineSegmentF32 {
 
     fn to_x(&self)   -> f32 { self.0[2] }
     fn to_y(&self)   -> f32 { self.0[3] }
+
+    fn min(&self, max: &Point2DF32) -> LineSegmentF32 {
+        unsafe {
+            let max_max = Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(max.0),
+                                                              Sse41::castps_pd(max.0)));
+            LineSegmentF32(Sse41::min_ps(max_max, self.0))
+        }
+    }
 
     fn clamp(&self, min: &Point2DF32, max: &Point2DF32) -> LineSegmentF32 {
         unsafe {
@@ -2104,7 +2133,11 @@ impl LineSegmentF32 {
         }
     }
 
-    fn floor(&self) -> LineSegmentF32 { unsafe { LineSegmentF32(Sse41::fastfloor_ps(self.0)) } }
+    fn floor(&self) -> LineSegmentF32 {
+        unsafe {
+            LineSegmentF32(Sse41::fastfloor_ps(self.0))
+        }
+    }
 
     fn fract(&self) -> LineSegmentF32 {
         unsafe {
@@ -2131,7 +2164,7 @@ impl LineSegmentF32 {
 
     // Returns the upper segment first, followed by the lower segment.
     fn split_at_y(&self, y: f32) -> (LineSegmentF32, LineSegmentF32) {
-        let (min_part, max_part) = self.split((y - self.from_y()) / (self.to_y() - self.from_y()));
+        let (min_part, max_part) = self.split(self.solve_t_for_y(y));
         if min_part.from_y() < max_part.from_y() {
             (min_part, max_part)
         } else {
@@ -2156,14 +2189,16 @@ impl LineSegmentF32 {
         }
     }
 
-    // FIXME(pcwalton): Eliminate all uses of this!
-    fn as_lyon_line_segment(&self) -> LineSegment<f32> {
-        LineSegment { from: self.from().as_euclid(), to: self.to().as_euclid() }
+    fn solve_t_for_x(&self, x: f32) -> f32 {
+        (x - self.from_x()) / (self.to_x() - self.from_x())
     }
 
-    // FIXME(pcwalton): Optimize this!
+    fn solve_t_for_y(&self, y: f32) -> f32 {
+        (y - self.from_y()) / (self.to_y() - self.from_y())
+    }
+
     fn solve_y_for_x(&self, x: f32) -> f32 {
-        self.as_lyon_line_segment().solve_y_for_x(x)
+        lerp(self.from_y(), self.to_y(), self.solve_t_for_x(x))
     }
 
     fn reversed(&self) -> LineSegmentF32 {
@@ -2263,6 +2298,10 @@ impl SimdExt for Sse41 {
 }
 
 // Trivial utilities
+
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
 
 fn alignup_i32(a: i32, b: i32) -> i32 {
     (a + b - 1) / b
