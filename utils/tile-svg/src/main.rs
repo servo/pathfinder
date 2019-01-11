@@ -25,7 +25,6 @@ use euclid::{Point2D, Rect, Size2D, Transform2D};
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use jemallocator;
-use lyon_geom::math::Transform;
 use lyon_geom::{CubicBezierSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
@@ -200,7 +199,7 @@ impl Scene {
     }
 
     fn from_tree(tree: Tree) -> Scene {
-        let global_transform = Transform2D::create_scale(SCALE_FACTOR, SCALE_FACTOR);
+        let global_transform = Transform2DF32::from_scale(&Point2DF32::splat(SCALE_FACTOR));
 
         let mut scene = Scene::new();
 
@@ -221,8 +220,8 @@ impl Scene {
 
         return scene;
 
-        fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2D<f32>) {
-            let node_transform = usvg_transform_to_euclid_transform_2d(&node.transform());
+        fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2DF32) {
+            let node_transform = usvg_transform_to_transform_2d(&node.transform());
             let transform = transform.pre_mul(&node_transform);
 
             match *node.borrow() {
@@ -1721,6 +1720,12 @@ fn usvg_transform_to_euclid_transform_2d(transform: &UsvgTransform) -> Transform
                            transform.e as f32, transform.f as f32)
 }
 
+fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2DF32 {
+    Transform2DF32::row_major(transform.a as f32, transform.b as f32,
+                              transform.c as f32, transform.d as f32,
+                              transform.e as f32, transform.f as f32)
+}
+
 struct UsvgPathToPathEvents<I> where I: Iterator<Item = UsvgPathSegment> {
     iter: I,
 }
@@ -1756,23 +1761,50 @@ impl<I> Iterator for UsvgPathToPathEvents<I> where I: Iterator<Item = UsvgPathSe
 
 struct PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
     inner: I,
-    transform: Transform2D<f32>,
+    transform: Transform2DF32,
 }
 
 impl<I> Iterator for PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
     type Item = PathEvent;
 
     fn next(&mut self) -> Option<PathEvent> {
-        self.inner.next().map(|event| event.transform(&self.transform))
+        self.inner.next().map(|event| {
+            match event {
+                PathEvent::Close => PathEvent::Close,
+                PathEvent::Arc(a, b, c, d) => {
+                    // TODO(pcwalton): Transform these!
+                    PathEvent::Arc(a, b, c, d)
+                }
+                PathEvent::MoveTo(to) => {
+                    PathEvent::MoveTo(self.transform_euclid(&to))
+                }
+                PathEvent::LineTo(to) => {
+                    PathEvent::LineTo(self.transform_euclid(&to))
+                }
+                PathEvent::QuadraticTo(ctrl, to) => {
+                    PathEvent::QuadraticTo(self.transform_euclid(&ctrl),
+                                           self.transform_euclid(&to))
+                }
+                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
+                    PathEvent::CubicTo(self.transform_euclid(&ctrl0),
+                                       self.transform_euclid(&ctrl1),
+                                       self.transform_euclid(&to))
+                }
+            }
+        })
     }
 }
 
 impl<I> PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
-    fn new(inner: I, transform: &Transform2D<f32>) -> PathTransformingIter<I> {
+    fn new(inner: I, transform: &Transform2DF32) -> PathTransformingIter<I> {
         PathTransformingIter {
             inner,
             transform: *transform,
         }
+    }
+
+    fn transform_euclid(&self, point: &Point2D<f32>) -> Point2D<f32> {
+        self.transform.transform_point(&Point2DF32::from_euclid(*point)).as_euclid()
     }
 }
 
@@ -2309,6 +2341,78 @@ struct LineSegmentU4(u16);
 
 #[derive(Clone, Copy, Debug)]
 struct LineSegmentU8(u32);
+
+// Affine transforms
+
+#[derive(Clone, Copy)]
+struct Transform2DF32 {
+    // Row-major order.
+    matrix: <Sse41 as Simd>::Vf32,
+    vector: Point2DF32,
+}
+
+impl Default for Transform2DF32 {
+    fn default() -> Transform2DF32 {
+        unsafe {
+            let mut matrix = <Sse41 as Simd>::setzero_ps();
+            matrix[0] = 1.0;
+            matrix[3] = 1.0;
+            Transform2DF32 { matrix, vector: Point2DF32::default() }
+        }
+    }
+}
+
+impl Transform2DF32 {
+    fn from_scale(scale: &Point2DF32) -> Transform2DF32 {
+        unsafe {
+            let mut matrix = Sse41::setzero_ps();
+            matrix[0] = scale.x();
+            matrix[3] = scale.y();
+            Transform2DF32 { matrix, vector: Point2DF32::default() }
+        }
+    }
+
+    fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2DF32 {
+        unsafe {
+            let mut matrix = Sse41::setzero_ps();
+            matrix[0] = m11;
+            matrix[1] = m12;
+            matrix[2] = m21;
+            matrix[3] = m22;
+            Transform2DF32 { matrix, vector: Point2DF32::new(m31, m32) }
+        }
+    }
+
+    fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
+        unsafe {
+            let xxyy = Sse41::shuffle_ps(point.0, point.0, 0b0101_0000);
+            let x11_x12_y21_y22 = Sse41::mul_ps(xxyy, self.matrix);
+            let y21_y22 = Sse41::shuffle_ps(x11_x12_y21_y22, x11_x12_y21_y22, 0b0000_1110);
+            Point2DF32(Sse41::add_ps(Sse41::add_ps(x11_x12_y21_y22, y21_y22), self.vector.0))
+        }
+    }
+
+    fn post_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
+        unsafe {
+            // Here `a` is self and `b` is `other`.
+            let a11a21a11a21 = Sse41::shuffle_ps(self.matrix, self.matrix, 0b1000_1000);
+            let b11b11b12b12 = Sse41::shuffle_ps(other.matrix, other.matrix, 0b0101_0000);
+            let lhs = Sse41::mul_ps(a11a21a11a21, b11b11b12b12);
+
+            let a12a22a12a22 = Sse41::shuffle_ps(self.matrix, self.matrix, 0b1101_1101);
+            let b21b21b22b22 = Sse41::shuffle_ps(other.matrix, other.matrix, 0b1111_1010);
+            let rhs = Sse41::mul_ps(a12a22a12a22, b21b21b22b22);
+
+            let matrix = Sse41::add_ps(lhs, rhs);
+            let vector = other.transform_point(&self.vector) + other.vector;
+            Transform2DF32 { matrix, vector }
+        }
+    }
+
+    fn pre_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
+        other.post_mul(self)
+    }
+}
 
 // Path utilities
 
