@@ -234,8 +234,8 @@ impl Scene {
                         let style = scene.push_paint(&Paint::from_svg_paint(&fill.paint));
 
                         let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                        let path = SegmentsToPathEvents::new(path);
                         let path = PathTransformingIter::new(path, &transform);
+                        let path = SegmentsToPathEvents::new(path);
                         let path = MonotonicConversionIter::new(path);
                         let outline = Outline::from_path_events(path);
 
@@ -255,7 +255,9 @@ impl Scene {
                         let path = SegmentsToPathEvents::new(path);
                         let path = PathIter::new(path);
                         let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
+                        let path = PathEventsToSegments::new(path);
                         let path = PathTransformingIter::new(path, &transform);
+                        let path = SegmentsToPathEvents::new(path);
                         let path = MonotonicConversionIter::new(path);
                         let outline = Outline::from_path_events(path);
 
@@ -698,24 +700,24 @@ impl Segment {
     }
 
     fn as_line_segment(&self) -> LineSegmentF32 {
-        debug_assert!(self.is_line_segment());
+        debug_assert!(self.is_line());
         self.baseline
     }
 
-    fn is_none(&self)              -> bool { self.kind == SegmentKind::None      }
-    fn is_line_segment(&self)      -> bool { self.kind == SegmentKind::Line      }
-    fn is_quadratic_segment(&self) -> bool { self.kind == SegmentKind::Quadratic }
-    fn is_cubic_segment(&self)     -> bool { self.kind == SegmentKind::Cubic     }
+    fn is_none(&self)      -> bool { self.kind == SegmentKind::None      }
+    fn is_line(&self)      -> bool { self.kind == SegmentKind::Line      }
+    fn is_quadratic(&self) -> bool { self.kind == SegmentKind::Quadratic }
+    fn is_cubic(&self)     -> bool { self.kind == SegmentKind::Cubic     }
 
     fn as_cubic_segment(&self) -> CubicSegment {
-        debug_assert!(self.is_cubic_segment());
+        debug_assert!(self.is_cubic());
         CubicSegment(self)
     }
 
     // FIXME(pcwalton): We should basically never use this function.
     // FIXME(pcwalton): Handle lines!
     fn to_cubic(&self) -> Segment {
-        if self.is_cubic_segment() {
+        if self.is_cubic() {
             return *self;
         }
 
@@ -729,7 +731,7 @@ impl Segment {
     fn reversed(&self) -> Segment {
         Segment {
             baseline: self.baseline.reversed(),
-            ctrl: if self.is_quadratic_segment() { self.ctrl } else { self.ctrl.reversed() },
+            ctrl: if self.is_quadratic() { self.ctrl } else { self.ctrl.reversed() },
             kind: self.kind,
             flags: self.flags,
         }
@@ -1935,52 +1937,34 @@ impl<I> Iterator for SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
 
 // Path transformation utilities
 
-struct PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
-    inner: I,
+struct PathTransformingIter<I> where I: Iterator<Item = Segment> {
+    iter: I,
     transform: Transform2DF32,
 }
 
-impl<I> Iterator for PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
-    type Item = PathEvent;
+impl<I> Iterator for PathTransformingIter<I> where I: Iterator<Item = Segment> {
+    type Item = Segment;
 
-    fn next(&mut self) -> Option<PathEvent> {
-        self.inner.next().map(|event| {
-            match event {
-                PathEvent::Close => PathEvent::Close,
-                PathEvent::Arc(a, b, c, d) => {
-                    // TODO(pcwalton): Transform these!
-                    PathEvent::Arc(a, b, c, d)
-                }
-                PathEvent::MoveTo(to) => {
-                    PathEvent::MoveTo(self.transform_euclid(&to))
-                }
-                PathEvent::LineTo(to) => {
-                    PathEvent::LineTo(self.transform_euclid(&to))
-                }
-                PathEvent::QuadraticTo(ctrl, to) => {
-                    PathEvent::QuadraticTo(self.transform_euclid(&ctrl),
-                                           self.transform_euclid(&to))
-                }
-                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                    PathEvent::CubicTo(self.transform_euclid(&ctrl0),
-                                       self.transform_euclid(&ctrl1),
-                                       self.transform_euclid(&to))
+    fn next(&mut self) -> Option<Segment> {
+        // TODO(pcwalton): Can we go faster by transforming an entire line segment with SIMD?
+        let mut segment = self.iter.next()?;
+        if !segment.is_none() {
+            segment.baseline.set_from(&self.transform.transform_point(&segment.baseline.from()));
+            segment.baseline.set_to(&self.transform.transform_point(&segment.baseline.to()));
+            if !segment.is_line() {
+                segment.ctrl.set_from(&self.transform.transform_point(&segment.ctrl.from()));
+                if !segment.is_quadratic() {
+                    segment.ctrl.set_to(&self.transform.transform_point(&segment.ctrl.to()));
                 }
             }
-        })
+        }
+        Some(segment)
     }
 }
 
-impl<I> PathTransformingIter<I> where I: Iterator<Item = PathEvent> {
-    fn new(inner: I, transform: &Transform2DF32) -> PathTransformingIter<I> {
-        PathTransformingIter {
-            inner,
-            transform: *transform,
-        }
-    }
-
-    fn transform_euclid(&self, point: &Point2D<f32>) -> Point2D<f32> {
-        self.transform.transform_point(&Point2DF32::from_euclid(*point)).as_euclid()
+impl<I> PathTransformingIter<I> where I: Iterator<Item = Segment> {
+    fn new(iter: I, transform: &Transform2DF32) -> PathTransformingIter<I> {
+        PathTransformingIter { iter, transform: *transform }
     }
 }
 
@@ -2176,7 +2160,7 @@ impl ActiveEdge {
         let mut segment = self.segment;
         let winding = segment.baseline.y_winding();
 
-        if segment.is_line_segment() {
+        if segment.is_line() {
             let line_segment = segment.as_line_segment();
             self.segment = match self.process_line_segment(&line_segment, built_object, tile_y) {
                 Some(lower_part) => Segment::line(&lower_part),
@@ -2186,7 +2170,7 @@ impl ActiveEdge {
         }
 
         // TODO(pcwalton): Don't degree elevate!
-        if !segment.is_cubic_segment() {
+        if !segment.is_cubic() {
             segment = segment.to_cubic();
         }
 
