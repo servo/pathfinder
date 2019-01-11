@@ -8,10 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::orientation::Orientation;
 use euclid::approxeq::ApproxEq;
 use euclid::{Point2D, Vector2D};
 use lyon_path::PathEvent;
-use orientation::Orientation;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SegmentNormals {

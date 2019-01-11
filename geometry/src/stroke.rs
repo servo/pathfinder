@@ -10,10 +10,9 @@
 
 //! Utilities for converting path strokes to fills.
 
+use crate::segments::{Segment, SegmentIter};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIterator;
-
-use segments::{Segment, SegmentIter};
 
 #[derive(Clone, Copy, Debug)]
 pub struct StrokeStyle {

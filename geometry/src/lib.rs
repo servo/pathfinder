@@ -12,16 +12,16 @@
 //!
 //! These may be merged into upstream Lyon eventually.
 
-extern crate arrayvec;
-extern crate lyon_path;
+use simdeez::sse41::Sse41;
 
-use lyon_path::geom as lyon_geom;
-use lyon_path::geom::euclid;
+// TODO(pcwalton): Make this configurable.
+pub type SimdImpl = Sse41;
 
 pub mod clip;
 pub mod cubic_to_quadratic;
 pub mod normals;
 pub mod orientation;
+pub mod point;
 pub mod segments;
 pub mod stroke;
 pub mod transform;

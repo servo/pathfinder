@@ -27,6 +27,7 @@ use hashbrown::HashMap;
 use jemallocator;
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
+use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
 use rayon::ThreadPoolBuilder;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -40,7 +41,7 @@ use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::iter;
 use std::mem;
-use std::ops::{Add, Mul, Sub};
+use std::ops::Sub;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
@@ -236,8 +237,7 @@ impl Scene {
                         let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                         let path = PathTransformingIter::new(path, &transform);
                         let path = MonotonicConversionIter::new(path);
-                        let path = SegmentsToPathEvents::new(path);
-                        let outline = Outline::from_path_events(path);
+                        let outline = Outline::from_segments(path);
 
                         scene.bounds = scene.bounds.union(&outline.bounds);
                         scene.objects.push(PathObject::new(outline,
@@ -258,8 +258,7 @@ impl Scene {
                         let path = PathEventsToSegments::new(path);
                         let path = PathTransformingIter::new(path, &transform);
                         let path = MonotonicConversionIter::new(path);
-                        let path = SegmentsToPathEvents::new(path);
-                        let outline = Outline::from_path_events(path);
+                        let outline = Outline::from_segments(path);
 
                         scene.bounds = scene.bounds.union(&outline.bounds);
                         scene.objects.push(PathObject::new(outline,
@@ -350,54 +349,48 @@ impl Outline {
         }
     }
 
-    // NB: Assumes the path has already been transformed.
-    fn from_path_events<I>(path_events: I) -> Outline where I: Iterator<Item = PathEvent> {
+    fn from_segments<I>(segments: I) -> Outline where I: Iterator<Item = Segment> {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
         let mut bounding_points = None;
 
-        for path_event in path_events {
-            match path_event {
-                PathEvent::MoveTo(to) => {
-                    if !current_contour.is_empty() {
-                        outline.contours.push(mem::replace(&mut current_contour, Contour::new()))
-                    }
-                    current_contour.push_point(Point2DF32::from_euclid(to),
-                                               PointFlags::empty(),
-                                               &mut bounding_points);
+        for segment in segments {
+            if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
+                if !current_contour.is_empty() {
+                    outline.contours.push(mem::replace(&mut current_contour, Contour::new()));
                 }
-                PathEvent::LineTo(to) => {
-                    current_contour.push_point(Point2DF32::from_euclid(to),
-                                               PointFlags::empty(),
-                                               &mut bounding_points);
+                current_contour.push_point(segment.baseline.from(),
+                                           PointFlags::empty(),
+                                           &mut bounding_points);
+            }
+
+            if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
+                if !current_contour.is_empty() {
+                    outline.contours.push(mem::replace(&mut current_contour, Contour::new()));
                 }
-                PathEvent::QuadraticTo(ctrl, to) => {
-                    current_contour.push_point(Point2DF32::from_euclid(ctrl),
-                                               PointFlags::CONTROL_POINT_0,
-                                               &mut bounding_points);
-                    current_contour.push_point(Point2DF32::from_euclid(to),
-                                               PointFlags::empty(),
-                                               &mut bounding_points);
-                }
-                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                    current_contour.push_point(Point2DF32::from_euclid(ctrl0),
-                                               PointFlags::CONTROL_POINT_0,
-                                               &mut bounding_points);
-                    current_contour.push_point(Point2DF32::from_euclid(ctrl1),
+                continue;
+            }
+
+            if segment.is_none() {
+                continue;
+            }
+
+            if !segment.is_line() {
+                current_contour.push_point(segment.ctrl.from(),
+                                           PointFlags::CONTROL_POINT_0,
+                                           &mut bounding_points);
+                if !segment.is_quadratic() {
+                    current_contour.push_point(segment.ctrl.to(),
                                                PointFlags::CONTROL_POINT_1,
                                                &mut bounding_points);
-                    current_contour.push_point(Point2DF32::from_euclid(to),
-                                               PointFlags::empty(),
-                                               &mut bounding_points);
                 }
-                PathEvent::Close => {
-                    if !current_contour.is_empty() {
-                        outline.contours.push(mem::replace(&mut current_contour, Contour::new()));
-                    }
-                }
-                PathEvent::Arc(..) => unimplemented!("arcs"),
             }
+
+            current_contour.push_point(segment.baseline.to(),
+                                       PointFlags::empty(),
+                                       &mut bounding_points);
         }
+
         if !current_contour.is_empty() {
             outline.contours.push(current_contour)
         }
@@ -2178,64 +2171,6 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
 }
 
 // Geometry
-
-#[derive(Clone, Copy, Debug)]
-struct Point2DF32(<Sse41 as Simd>::Vf32);
-
-impl Point2DF32 {
-    fn new(x: f32, y: f32) -> Point2DF32 {
-        unsafe {
-            let mut data = Sse41::setzero_ps();
-            data[0] = x;
-            data[1] = y;
-            Point2DF32(data)
-        }
-    }
-
-    fn splat(value: f32) -> Point2DF32 { unsafe { Point2DF32(Sse41::set1_ps(value)) } }
-
-    fn from_euclid(point: Point2D<f32>) -> Point2DF32 { Point2DF32::new(point.x, point.y) }
-    fn as_euclid(&self) -> Point2D<f32> { Point2D::new(self.0[0], self.0[1]) }
-
-    fn x(&self) -> f32 { self.0[0] }
-    fn y(&self) -> f32 { self.0[1] }
-
-    fn min(&self, other: Point2DF32) -> Point2DF32 {
-        unsafe { Point2DF32(Sse41::min_ps(self.0, other.0)) }
-    }
-
-    fn max(&self, other: Point2DF32) -> Point2DF32 {
-        unsafe { Point2DF32(Sse41::max_ps(self.0, other.0)) }
-    }
-}
-
-impl PartialEq for Point2DF32 {
-    fn eq(&self, other: &Point2DF32) -> bool {
-        unsafe {
-            let results: <Sse41 as Simd>::Vi32 = mem::transmute(Sse41::cmpeq_ps(self.0, other.0));
-            results[0] == -1 && results[1] == -1
-        }
-    }
-}
-
-impl Default for Point2DF32 {
-    fn default() -> Point2DF32 { unsafe { Point2DF32(Sse41::setzero_ps()) } }
-}
-
-impl Add<Point2DF32> for Point2DF32 {
-    type Output = Point2DF32;
-    fn add(self, other: Point2DF32) -> Point2DF32 { Point2DF32(self.0 + other.0) }
-}
-
-impl Sub<Point2DF32> for Point2DF32 {
-    type Output = Point2DF32;
-    fn sub(self, other: Point2DF32) -> Point2DF32 { Point2DF32(self.0 - other.0) }
-}
-
-impl Mul<Point2DF32> for Point2DF32 {
-    type Output = Point2DF32;
-    fn mul(self, other: Point2DF32) -> Point2DF32 { Point2DF32(self.0 * other.0) }
-}
 
 #[derive(Clone, Copy, Debug)]
 struct LineSegmentF32(pub <Sse41 as Simd>::Vf32);
