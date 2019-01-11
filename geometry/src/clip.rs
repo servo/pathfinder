@@ -11,7 +11,6 @@
 use euclid::{Point2D, Rect, Vector3D};
 use lyon_path::PathEvent;
 use std::mem;
-use std::ops::Range;
 
 pub struct RectClipper<'a> {
     clip_rect: Rect<f32>,

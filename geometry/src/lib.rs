@@ -19,9 +19,11 @@ pub type SimdImpl = Sse41;
 
 pub mod clip;
 pub mod cubic_to_quadratic;
+pub mod line_segment;
 pub mod normals;
 pub mod orientation;
 pub mod point;
 pub mod segments;
 pub mod stroke;
 pub mod transform;
+pub mod util;

@@ -27,8 +27,10 @@ use hashbrown::HashMap;
 use jemallocator;
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
+use pathfinder_geometry::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
+use pathfinder_geometry::util;
 use rayon::ThreadPoolBuilder;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use simdeez::Simd;
@@ -41,7 +43,6 @@ use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::iter;
 use std::mem;
-use std::ops::Sub;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::time::{Duration, Instant};
@@ -1536,8 +1537,8 @@ impl BuiltObject {
         };
 
         let segment_tile_left = (f32::floor(segment_left) as i32 / TILE_WIDTH as i32) as i16;
-        let segment_tile_right = alignup_i32(f32::ceil(segment_right) as i32,
-                                             TILE_WIDTH as i32) as i16;
+        let segment_tile_right = util::alignup_i32(f32::ceil(segment_right) as i32,
+                                                   TILE_WIDTH as i32) as i16;
 
         for subsegment_tile_x in segment_tile_left..segment_tile_right {
             let (mut fill_from, mut fill_to) = (segment.from(), segment.to());
@@ -1712,8 +1713,8 @@ fn round_rect_out_to_tile_bounds(rect: &Rect<f32>) -> Rect<i16> {
     let tile_origin = Point2D::new((f32::floor(rect.origin.x) as i32 / TILE_WIDTH as i32) as i16,
                                    (f32::floor(rect.origin.y) as i32 / TILE_HEIGHT as i32) as i16);
     let tile_extent =
-        Point2D::new(alignup_i32(f32::ceil(rect.max_x()) as i32, TILE_WIDTH as i32) as i16,
-                     alignup_i32(f32::ceil(rect.max_y()) as i32, TILE_HEIGHT as i32) as i16);
+        Point2D::new(util::alignup_i32(f32::ceil(rect.max_x()) as i32, TILE_WIDTH as i32) as i16,
+                     util::alignup_i32(f32::ceil(rect.max_y()) as i32, TILE_HEIGHT as i32) as i16);
     let tile_size = Size2D::new(tile_extent.x - tile_origin.x, tile_extent.y - tile_origin.y);
     Rect::new(tile_origin, tile_size)
 }
@@ -2172,162 +2173,6 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
 
 // Geometry
 
-#[derive(Clone, Copy, Debug)]
-struct LineSegmentF32(pub <Sse41 as Simd>::Vf32);
-
-impl LineSegmentF32 {
-    fn new(from: &Point2DF32, to: &Point2DF32) -> LineSegmentF32 {
-        unsafe {
-            LineSegmentF32(Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(from.0),
-                                                               Sse41::castps_pd(to.0))))
-        }
-    }
-
-    fn from(&self) -> Point2DF32 {
-        unsafe {
-            Point2DF32(Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(self.0),
-                                                           Sse41::setzero_pd())))
-        }
-    }
-
-    fn to(&self) -> Point2DF32 {
-        unsafe {
-            Point2DF32(Sse41::castpd_ps(Sse41::unpackhi_pd(Sse41::castps_pd(self.0),
-                                                           Sse41::setzero_pd())))
-        }
-    }
-
-    fn set_from(&mut self, point: &Point2DF32) {
-        unsafe {
-            let (mut this, point) = (Sse41::castps_pd(self.0), Sse41::castps_pd(point.0));
-            this[0] = point[0];
-            self.0 = Sse41::castpd_ps(this);
-        }
-    }
-
-    fn set_to(&mut self, point: &Point2DF32) {
-        unsafe {
-            let (mut this, point) = (Sse41::castps_pd(self.0), Sse41::castps_pd(point.0));
-            this[1] = point[0];
-            self.0 = Sse41::castpd_ps(this);
-        }
-    }
-
-    #[allow(clippy::wrong_self_convention)]
-    fn from_x(&self) -> f32 { self.0[0] }
-    #[allow(clippy::wrong_self_convention)]
-    fn from_y(&self) -> f32 { self.0[1] }
-
-    fn to_x(&self)   -> f32 { self.0[2] }
-    fn to_y(&self)   -> f32 { self.0[3] }
-
-    fn scale(&self, factor: f32) -> LineSegmentF32 {
-        unsafe {
-            LineSegmentF32(Sse41::mul_ps(self.0, Sse41::set1_ps(factor)))
-        }
-    }
-
-    fn split(&self, t: f32) -> (LineSegmentF32, LineSegmentF32) {
-        debug_assert!(t >= 0.0 && t <= 1.0);
-        unsafe {
-            let from_from = Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(self.0),
-                                                                Sse41::castps_pd(self.0)));
-            let to_to = Sse41::castpd_ps(Sse41::unpackhi_pd(Sse41::castps_pd(self.0),
-                                                            Sse41::castps_pd(self.0)));
-            let d_d = to_to - from_from;
-            let mid_mid = from_from + d_d * Sse41::set1_ps(t);
-            (LineSegmentF32(Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(from_from),
-                                                                Sse41::castps_pd(mid_mid)))),
-             LineSegmentF32(Sse41::castpd_ps(Sse41::unpackhi_pd(Sse41::castps_pd(mid_mid),
-                                                                Sse41::castps_pd(to_to)))))
-        }
-    }
-
-    // Returns the upper segment first, followed by the lower segment.
-    fn split_at_y(&self, y: f32) -> (LineSegmentF32, LineSegmentF32) {
-        let (min_part, max_part) = self.split(self.solve_t_for_y(y));
-        if min_part.from_y() < max_part.from_y() {
-            (min_part, max_part)
-        } else {
-            (max_part, min_part)
-        }
-    }
-
-    fn solve_t_for_x(&self, x: f32) -> f32 {
-        (x - self.from_x()) / (self.to_x() - self.from_x())
-    }
-
-    fn solve_t_for_y(&self, y: f32) -> f32 {
-        (y - self.from_y()) / (self.to_y() - self.from_y())
-    }
-
-    fn solve_y_for_x(&self, x: f32) -> f32 {
-        lerp(self.from_y(), self.to_y(), self.solve_t_for_x(x))
-    }
-
-    fn reversed(&self) -> LineSegmentF32 {
-        unsafe {
-            LineSegmentF32(Sse41::shuffle_ps(self.0, self.0, 0b0100_1110))
-        }
-    }
-
-    fn upper_point(&self) -> Point2DF32 {
-        if self.from_y() < self.to_y() {
-            self.from()
-        } else {
-            self.to()
-        }
-    }
-
-    fn min_y(&self) -> f32 { f32::min(self.from_y(), self.to_y()) }
-    fn max_y(&self) -> f32 { f32::max(self.from_y(), self.to_y()) }
-
-    fn y_winding(&self) -> i32 {
-        if self.from_y() < self.to_y() { 1 } else { -1 }
-    }
-
-    // Reverses if necessary so that the from point is above the to point. Calling this method
-    // again will undo the transformation.
-    fn orient(&self, y_winding: i32) -> LineSegmentF32 {
-        if y_winding >= 0 {
-            *self
-        } else {
-            self.reversed()
-        }
-    }
-}
-
-impl PartialEq for LineSegmentF32 {
-    fn eq(&self, other: &LineSegmentF32) -> bool {
-        unsafe {
-            let results = Sse41::castps_epi32(Sse41::cmpeq_ps(self.0, other.0));
-            // FIXME(pcwalton): Is there a better way to do this?
-            results[0] == -1 && results[1] == -1 && results[2] == -1 && results[3] == -1
-        }
-    }
-}
-
-impl Default for LineSegmentF32 {
-    fn default() -> LineSegmentF32 { unsafe { LineSegmentF32(Sse41::setzero_ps()) } }
-}
-
-impl Sub<Point2DF32> for LineSegmentF32 {
-    type Output = LineSegmentF32;
-    fn sub(self, point: Point2DF32) -> LineSegmentF32 {
-        unsafe {
-            let point_point = Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(point.0),
-                                                                  Sse41::castps_pd(point.0)));
-            LineSegmentF32(self.0 - point_point)
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct LineSegmentU4(u16);
-
-#[derive(Clone, Copy, Debug)]
-struct LineSegmentU8(u32);
-
 // Affine transforms
 
 #[derive(Clone, Copy)]
@@ -2412,16 +2257,6 @@ impl SimdExt for Sse41 {
     unsafe fn shuffle_epi8(a: Self::Vi32, b: Self::Vi32) -> Self::Vi32 {
         I32x4_41(x86_64::_mm_shuffle_epi8(a.0, b.0))
     }
-}
-
-// Trivial utilities
-
-fn lerp(a: f32, b: f32, t: f32) -> f32 {
-    a + (b - a) * t
-}
-
-fn alignup_i32(a: i32, b: i32) -> i32 {
-    (a + b - 1) / b
 }
 
 // Testing
