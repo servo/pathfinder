@@ -233,7 +233,8 @@ impl Scene {
                     if let Some(ref fill) = path.fill {
                         let style = scene.push_paint(&Paint::from_svg_paint(&fill.paint));
 
-                        let path = UsvgPathToPathEvents::new(path.segments.iter().cloned());
+                        let path = UsvgPathToSegments::new(path.segments.iter().cloned());
+                        let path = SegmentsToPathEvents::new(path);
                         let path = PathTransformingIter::new(path, &transform);
                         let path = MonotonicConversionIter::new(path);
                         let outline = Outline::from_path_events(path);
@@ -250,7 +251,8 @@ impl Scene {
                         let stroke_width = f32::max(stroke.width.value() as f32,
                                                     HAIRLINE_STROKE_WIDTH);
 
-                        let path = UsvgPathToPathEvents::new(path.segments.iter().cloned());
+                        let path = UsvgPathToSegments::new(path.segments.iter().cloned());
+                        let path = SegmentsToPathEvents::new(path);
                         let path = PathIter::new(path);
                         let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
                         let path = PathTransformingIter::new(path, &transform);
@@ -655,6 +657,7 @@ struct Segment {
     baseline: LineSegmentF32,
     ctrl: LineSegmentF32,
     kind: SegmentKind,
+    flags: SegmentFlags,
 }
 
 impl Segment {
@@ -663,14 +666,34 @@ impl Segment {
             baseline: LineSegmentF32::default(),
             ctrl: LineSegmentF32::default(),
             kind: SegmentKind::None,
+            flags: SegmentFlags::empty(),
         }
     }
 
-    fn from_line(line: &LineSegmentF32) -> Segment {
+    fn line(line: &LineSegmentF32) -> Segment {
         Segment {
             baseline: *line,
             ctrl: LineSegmentF32::default(),
             kind: SegmentKind::Line,
+            flags: SegmentFlags::empty(),
+        }
+    }
+
+    fn quadratic(baseline: &LineSegmentF32, ctrl: &Point2DF32) -> Segment {
+        Segment {
+            baseline: *baseline,
+            ctrl: LineSegmentF32::new(ctrl, &Point2DF32::default()),
+            kind: SegmentKind::Cubic,
+            flags: SegmentFlags::empty(),
+        }
+    }
+
+    fn cubic(baseline: &LineSegmentF32, ctrl: &LineSegmentF32) -> Segment {
+        Segment {
+            baseline: *baseline,
+            ctrl: *ctrl,
+            kind: SegmentKind::Cubic,
+            flags: SegmentFlags::empty(),
         }
     }
 
@@ -708,6 +731,7 @@ impl Segment {
             baseline: self.baseline.reversed(),
             ctrl: if self.is_quadratic_segment() { self.ctrl } else { self.ctrl.reversed() },
             kind: self.kind,
+            flags: self.flags,
         }
     }
 
@@ -723,11 +747,19 @@ impl Segment {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u8)]
 enum SegmentKind {
     None,
     Line,
     Quadratic,
     Cubic,
+}
+
+bitflags! {
+    struct SegmentFlags: u8 {
+        const FIRST_IN_SUBPATH = 0x01;
+        const CLOSES_SUBPATH = 0x02;
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -799,14 +831,17 @@ impl<'s> CubicSegment<'s> {
             let baseline1 = assemble(&p0123, &p0p3, 0, 1);
             let ctrl1 = assemble(&p012p123, &p12p23, 1, 1);
 
+            // FIXME(pcwalton): Set flags appropriately!
             return (Segment {
                 baseline: LineSegmentF32(baseline0),
                 ctrl: LineSegmentF32(ctrl0),
                 kind: SegmentKind::Cubic,
+                flags: SegmentFlags::empty(),
             }, Segment {
                 baseline: LineSegmentF32(baseline1),
                 ctrl: LineSegmentF32(ctrl1),
                 kind: SegmentKind::Cubic,
+                flags: SegmentFlags::empty(),
             })
         }
 
@@ -1700,33 +1735,200 @@ fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2DF32 {
                               transform.e as f32, transform.f as f32)
 }
 
-struct UsvgPathToPathEvents<I> where I: Iterator<Item = UsvgPathSegment> {
+struct UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegment> {
     iter: I,
+    first_subpath_point: Point2DF32,
+    last_subpath_point: Point2DF32,
+    just_moved: bool,
 }
 
-impl<I> UsvgPathToPathEvents<I> where I: Iterator<Item = UsvgPathSegment> {
-    fn new(iter: I) -> UsvgPathToPathEvents<I> {
-        UsvgPathToPathEvents { iter }
+impl<I> UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegment> {
+    fn new(iter: I) -> UsvgPathToSegments<I> {
+        UsvgPathToSegments {
+            iter,
+            first_subpath_point: Point2DF32::default(),
+            last_subpath_point: Point2DF32::default(),
+            just_moved: false,
+        }
     }
 }
 
-impl<I> Iterator for UsvgPathToPathEvents<I> where I: Iterator<Item = UsvgPathSegment> {
+impl<I> Iterator for UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegment> {
+    type Item = Segment;
+
+    fn next(&mut self) -> Option<Segment> {
+        match self.iter.next()? {
+            UsvgPathSegment::MoveTo { x, y } => {
+                let to = Point2DF32::new(x as f32, y as f32);
+                self.first_subpath_point = to;
+                self.last_subpath_point = to;
+                self.just_moved = true;
+                self.next()
+            }
+            UsvgPathSegment::LineTo { x, y } => {
+                let to = Point2DF32::new(x as f32, y as f32);
+                let mut segment =
+                    Segment::line(&LineSegmentF32::new(&self.last_subpath_point, &to));
+                if self.just_moved {
+                    segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
+                }
+                self.last_subpath_point = to;
+                self.just_moved = false;
+                Some(segment)
+            }
+            UsvgPathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
+                let ctrl0 = Point2DF32::new(x1 as f32, y1 as f32);
+                let ctrl1 = Point2DF32::new(x2 as f32, y2 as f32);
+                let to = Point2DF32::new(x as f32, y as f32);
+                let mut segment =
+                    Segment::cubic(&LineSegmentF32::new(&self.last_subpath_point, &to),
+                                   &LineSegmentF32::new(&ctrl0, &ctrl1));
+                if self.just_moved {
+                    segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
+                }
+                self.last_subpath_point = to;
+                self.just_moved = false;
+                Some(segment)
+            }
+            UsvgPathSegment::ClosePath => {
+                let mut segment = Segment::line(&LineSegmentF32::new(&self.last_subpath_point,
+                                                                     &self.first_subpath_point));
+                segment.flags.insert(SegmentFlags::CLOSES_SUBPATH);
+                self.just_moved = false;
+                self.last_subpath_point = self.first_subpath_point;
+                Some(segment)
+            }
+        }
+    }
+}
+
+// Euclid interoperability
+//
+// TODO(pcwalton): Remove this once we're fully on Pathfinder's native geometry.
+
+struct PathEventsToSegments<I> where I: Iterator<Item = PathEvent> {
+    iter: I,
+    first_subpath_point: Point2DF32,
+    last_subpath_point: Point2DF32,
+    just_moved: bool,
+}
+
+impl<I> PathEventsToSegments<I> where I: Iterator<Item = PathEvent> {
+    fn new(iter: I) -> PathEventsToSegments<I> {
+        PathEventsToSegments {
+            iter,
+            first_subpath_point: Point2DF32::default(),
+            last_subpath_point: Point2DF32::default(),
+            just_moved: false,
+        }
+    }
+}
+
+impl<I> Iterator for PathEventsToSegments<I> where I: Iterator<Item = PathEvent> {
+    type Item = Segment;
+
+    fn next(&mut self) -> Option<Segment> {
+        match self.iter.next()? {
+            PathEvent::MoveTo(to) => {
+                let to = Point2DF32::from_euclid(to);
+                self.first_subpath_point = to;
+                self.last_subpath_point = to;
+                self.just_moved = true;
+                self.next()
+            }
+            PathEvent::LineTo(to) => {
+                let to = Point2DF32::from_euclid(to);
+                let mut segment =
+                    Segment::line(&LineSegmentF32::new(&self.last_subpath_point, &to));
+                if self.just_moved {
+                    segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
+                }
+                self.last_subpath_point = to;
+                self.just_moved = false;
+                Some(segment)
+            }
+            PathEvent::QuadraticTo(ctrl, to) => {
+                let (ctrl, to) = (Point2DF32::from_euclid(ctrl), Point2DF32::from_euclid(to));
+                let mut segment =
+                    Segment::quadratic(&LineSegmentF32::new(&self.last_subpath_point, &to),
+                                       &ctrl);
+                if self.just_moved {
+                    segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
+                }
+                self.last_subpath_point = to;
+                self.just_moved = false;
+                Some(segment)
+            }
+            PathEvent::CubicTo(ctrl0, ctrl1, to) => {
+                let ctrl0 = Point2DF32::from_euclid(ctrl0);
+                let ctrl1 = Point2DF32::from_euclid(ctrl1);
+                let to = Point2DF32::from_euclid(to);
+                let mut segment =
+                    Segment::cubic(&LineSegmentF32::new(&self.last_subpath_point, &to),
+                                   &LineSegmentF32::new(&ctrl0, &ctrl1));
+                if self.just_moved {
+                    segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
+                }
+                self.last_subpath_point = to;
+                self.just_moved = false;
+                Some(segment)
+            }
+            PathEvent::Close => {
+                let mut segment = Segment::line(&LineSegmentF32::new(&self.last_subpath_point,
+                                                                     &self.first_subpath_point));
+                segment.flags.insert(SegmentFlags::CLOSES_SUBPATH);
+                self.just_moved = false;
+                self.last_subpath_point = self.first_subpath_point;
+                Some(segment)
+            }
+            PathEvent::Arc(..) => panic!("TODO: arcs"),
+        }
+    }
+}
+
+struct SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
+    iter: I,
+    buffer: Option<PathEvent>,
+}
+
+impl<I> SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
+    fn new(iter: I) -> SegmentsToPathEvents<I> {
+        SegmentsToPathEvents { iter, buffer: None }
+    }
+}
+
+impl<I> Iterator for SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
     type Item = PathEvent;
 
     fn next(&mut self) -> Option<PathEvent> {
-        match self.iter.next()? {
-            UsvgPathSegment::MoveTo { x, y } => {
-                Some(PathEvent::MoveTo(Point2D::new(x, y).to_f32()))
+        if let Some(event) = self.buffer.take() {
+            return Some(event);
+        }
+
+        let segment = self.iter.next()?;
+        if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
+            return Some(PathEvent::Close);
+        }
+
+        let event = match segment.kind {
+            SegmentKind::None => return self.next(),
+            SegmentKind::Line => PathEvent::LineTo(segment.baseline.to().as_euclid()),
+            SegmentKind::Quadratic => {
+                PathEvent::QuadraticTo(segment.ctrl.from().as_euclid(),
+                                       segment.baseline.to().as_euclid())
             }
-            UsvgPathSegment::LineTo { x, y } => {
-                Some(PathEvent::LineTo(Point2D::new(x, y).to_f32()))
+            SegmentKind::Cubic => {
+                PathEvent::CubicTo(segment.ctrl.from().as_euclid(),
+                                   segment.ctrl.to().as_euclid(),
+                                   segment.baseline.to().as_euclid())
             }
-            UsvgPathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
-                Some(PathEvent::CubicTo(Point2D::new(x1, y1).to_f32(),
-                                        Point2D::new(x2, y2).to_f32(),
-                                        Point2D::new(x,  y) .to_f32()))
-            }
-            UsvgPathSegment::ClosePath => Some(PathEvent::Close),
+        };
+
+        if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
+            self.buffer = Some(event);
+            Some(PathEvent::MoveTo(segment.baseline.from().as_euclid()))
+        } else {
+            Some(event)
         }
     }
 }
@@ -1977,7 +2179,7 @@ impl ActiveEdge {
         if segment.is_line_segment() {
             let line_segment = segment.as_line_segment();
             self.segment = match self.process_line_segment(&line_segment, built_object, tile_y) {
-                Some(lower_part) => Segment::from_line(&lower_part),
+                Some(lower_part) => Segment::line(&lower_part),
                 None => Segment::none(),
             };
             return;
@@ -2005,7 +2207,7 @@ impl ActiveEdge {
                     self.segment = match self.process_line_segment(&line_segment,
                                                                    built_object,
                                                                    tile_y) {
-                        Some(ref lower_part) => Segment::from_line(lower_part),
+                        Some(ref lower_part) => Segment::line(lower_part),
                         None => Segment::none(),
                     };
                     return;
