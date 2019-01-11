@@ -21,11 +21,10 @@ extern crate rand;
 use arrayvec::ArrayVec;
 use byteorder::{LittleEndian, WriteBytesExt};
 use clap::{App, Arg};
-use euclid::{Point2D, Rect, Size2D, Transform2D};
+use euclid::{Point2D, Rect, Size2D};
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use jemallocator;
-use lyon_geom::{CubicBezierSegment, QuadraticBezierSegment};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
@@ -451,23 +450,23 @@ impl Contour {
     fn segment_after(&self, point_index: u32) -> Segment {
         debug_assert!(self.point_is_endpoint(point_index));
 
-        let mut segment = Segment::new();
-        segment.flags |= SegmentFlags::HAS_ENDPOINTS;
+        let mut segment = Segment::none();
         segment.baseline.set_from(&self.position_of(point_index));
 
         let point1_index = self.add_to_point_index(point_index, 1);
         if self.point_is_endpoint(point1_index) {
             segment.baseline.set_to(&self.position_of(point1_index));
+            segment.kind = SegmentKind::Line;
         } else {
             segment.ctrl.set_from(&self.position_of(point1_index));
-            segment.flags |= SegmentFlags::HAS_CONTROL_POINT_0;
 
             let point2_index = self.add_to_point_index(point_index, 2);
             if self.point_is_endpoint(point2_index) {
                 segment.baseline.set_to(&self.position_of(point2_index));
+                segment.kind = SegmentKind::Quadratic;
             } else {
                 segment.ctrl.set_to(&self.position_of(point2_index));
-                segment.flags |= SegmentFlags::HAS_CONTROL_POINT_1;
+                segment.kind = SegmentKind::Cubic;
 
                 let point3_index = self.add_to_point_index(point_index, 3);
                 segment.baseline.set_to(&self.position_of(point3_index));
@@ -655,15 +654,15 @@ impl<'a> Iterator for ContourIter<'a> {
 struct Segment {
     baseline: LineSegmentF32,
     ctrl: LineSegmentF32,
-    flags: SegmentFlags,
+    kind: SegmentKind,
 }
 
 impl Segment {
-    fn new() -> Segment {
+    fn none() -> Segment {
         Segment {
             baseline: LineSegmentF32::default(),
             ctrl: LineSegmentF32::default(),
-            flags: SegmentFlags::empty(),
+            kind: SegmentKind::None,
         }
     }
 
@@ -671,31 +670,19 @@ impl Segment {
         Segment {
             baseline: *line,
             ctrl: LineSegmentF32::default(),
-            flags: SegmentFlags::HAS_ENDPOINTS,
+            kind: SegmentKind::Line,
         }
     }
 
-    fn as_line_segment(&self) -> Option<LineSegmentF32> {
-        if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0) {
-            Some(self.baseline)
-        } else {
-            None
-        }
+    fn as_line_segment(&self) -> LineSegmentF32 {
+        debug_assert!(self.is_line_segment());
+        self.baseline
     }
 
-    fn is_none(&self) -> bool {
-        !self.flags.contains(SegmentFlags::HAS_ENDPOINTS)
-    }
-
-    fn is_line_segment(&self) -> bool {
-        self.flags.contains(SegmentFlags::HAS_ENDPOINTS) &&
-            !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0 |
-                                 SegmentFlags::HAS_CONTROL_POINT_1)
-    }
-
-    fn is_cubic_segment(&self) -> bool {
-        self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_0 | SegmentFlags::HAS_CONTROL_POINT_1)
-    }
+    fn is_none(&self)              -> bool { self.kind == SegmentKind::None      }
+    fn is_line_segment(&self)      -> bool { self.kind == SegmentKind::Line      }
+    fn is_quadratic_segment(&self) -> bool { self.kind == SegmentKind::Quadratic }
+    fn is_cubic_segment(&self)     -> bool { self.kind == SegmentKind::Cubic     }
 
     fn as_cubic_segment(&self) -> CubicSegment {
         debug_assert!(self.is_cubic_segment());
@@ -719,12 +706,8 @@ impl Segment {
     fn reversed(&self) -> Segment {
         Segment {
             baseline: self.baseline.reversed(),
-            ctrl: if !self.flags.contains(SegmentFlags::HAS_CONTROL_POINT_1) {
-                self.ctrl
-            } else {
-                self.ctrl.reversed()
-            },
-            flags: self.flags,
+            ctrl: if self.is_quadratic_segment() { self.ctrl } else { self.ctrl.reversed() },
+            kind: self.kind,
         }
     }
 
@@ -739,12 +722,12 @@ impl Segment {
     }
 }
 
-bitflags! {
-    struct SegmentFlags: u8 {
-        const HAS_ENDPOINTS       = 0x01;
-        const HAS_CONTROL_POINT_0 = 0x02;
-        const HAS_CONTROL_POINT_1 = 0x04;
-    }
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum SegmentKind {
+    None,
+    Line,
+    Quadratic,
+    Cubic,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -816,17 +799,14 @@ impl<'s> CubicSegment<'s> {
             let baseline1 = assemble(&p0123, &p0p3, 0, 1);
             let ctrl1 = assemble(&p012p123, &p12p23, 1, 1);
 
-            let flags = SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
-                SegmentFlags::HAS_CONTROL_POINT_1;
-
             return (Segment {
                 baseline: LineSegmentF32(baseline0),
                 ctrl: LineSegmentF32(ctrl0),
-                flags,
+                kind: SegmentKind::Cubic,
             }, Segment {
                 baseline: LineSegmentF32(baseline1),
                 ctrl: LineSegmentF32(ctrl1),
-                flags,
+                kind: SegmentKind::Cubic,
             })
         }
 
@@ -1714,12 +1694,6 @@ fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> Rect<f32> {
     Rect::new(Point2D::new(rect.x, rect.y), Size2D::new(rect.width, rect.height)).to_f32()
 }
 
-fn usvg_transform_to_euclid_transform_2d(transform: &UsvgTransform) -> Transform2D<f32> {
-    Transform2D::row_major(transform.a as f32, transform.b as f32,
-                           transform.c as f32, transform.d as f32,
-                           transform.e as f32, transform.f as f32)
-}
-
 fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2DF32 {
     Transform2DF32::row_major(transform.a as f32, transform.b as f32,
                               transform.c as f32, transform.d as f32,
@@ -1849,23 +1823,22 @@ impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEve
                 Some(PathEvent::LineTo(to))
             }
             PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                let mut segment = Segment::new();
+                let mut segment = Segment::none();
                 segment.baseline = LineSegmentF32::new(&Point2DF32::from_euclid(self.last_point),
                                                        &Point2DF32::from_euclid(to));
                 segment.ctrl = LineSegmentF32::new(&Point2DF32::from_euclid(ctrl0),
                                                    &Point2DF32::from_euclid(ctrl1));
-                segment.flags = SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0 |
-                    SegmentFlags::HAS_CONTROL_POINT_1;
+                segment.kind = SegmentKind::Cubic;
                 return self.handle_cubic(&segment);
             }
             PathEvent::QuadraticTo(ctrl, to) => {
                 // TODO(pcwalton): Don't degree elevate!
-                let mut segment = Segment::new();
+                let mut segment = Segment::none();
                 segment.baseline = LineSegmentF32::new(&Point2DF32::from_euclid(self.last_point),
                                                        &Point2DF32::from_euclid(to));
                 segment.ctrl = LineSegmentF32::new(&Point2DF32::from_euclid(ctrl),
                                                    &Point2DF32::default());
-                segment.flags = SegmentFlags::HAS_ENDPOINTS | SegmentFlags::HAS_CONTROL_POINT_0;
+                segment.kind = SegmentKind::Quadratic;
                 return self.handle_cubic(&segment.to_cubic());
             }
             PathEvent::Close => Some(PathEvent::Close),
@@ -2002,10 +1975,10 @@ impl ActiveEdge {
         let winding = segment.baseline.y_winding();
 
         if segment.is_line_segment() {
-            let line_segment = segment.as_line_segment().unwrap();
+            let line_segment = segment.as_line_segment();
             self.segment = match self.process_line_segment(&line_segment, built_object, tile_y) {
                 Some(lower_part) => Segment::from_line(&lower_part),
-                None => Segment::new(),
+                None => Segment::none(),
             };
             return;
         }
@@ -2033,7 +2006,7 @@ impl ActiveEdge {
                                                                    built_object,
                                                                    tile_y) {
                         Some(ref lower_part) => Segment::from_line(lower_part),
-                        None => Segment::new(),
+                        None => Segment::none(),
                     };
                     return;
                 }
@@ -2187,44 +2160,13 @@ impl LineSegmentF32 {
     fn to_x(&self)   -> f32 { self.0[2] }
     fn to_y(&self)   -> f32 { self.0[3] }
 
-    fn min(&self, max: &Point2DF32) -> LineSegmentF32 {
-        unsafe {
-            let max_max = Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(max.0),
-                                                              Sse41::castps_pd(max.0)));
-            LineSegmentF32(Sse41::min_ps(max_max, self.0))
-        }
-    }
-
-    fn clamp(&self, min: &Point2DF32, max: &Point2DF32) -> LineSegmentF32 {
-        unsafe {
-            let min_min = Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(min.0),
-                                                            Sse41::castps_pd(min.0)));
-            let max_max = Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(max.0),
-                                                            Sse41::castps_pd(max.0)));
-            LineSegmentF32(Sse41::min_ps(max_max, Sse41::max_ps(min_min, self.0)))
-        }
-    }
-
     fn scale(&self, factor: f32) -> LineSegmentF32 {
         unsafe {
             LineSegmentF32(Sse41::mul_ps(self.0, Sse41::set1_ps(factor)))
         }
     }
 
-    fn floor(&self) -> LineSegmentF32 {
-        unsafe {
-            LineSegmentF32(Sse41::fastfloor_ps(self.0))
-        }
-    }
-
-    fn fract(&self) -> LineSegmentF32 {
-        unsafe {
-            LineSegmentF32(Sse41::sub_ps(self.0, self.floor().0))
-        }
-    }
-
     fn split(&self, t: f32) -> (LineSegmentF32, LineSegmentF32) {
-        //println!("LineSegmentF32::split(t={})", t);
         debug_assert!(t >= 0.0 && t <= 1.0);
         unsafe {
             let from_from = Sse41::castpd_ps(Sse41::unpacklo_pd(Sse41::castps_pd(self.0),
@@ -2247,23 +2189,6 @@ impl LineSegmentF32 {
             (min_part, max_part)
         } else {
             (max_part, min_part)
-        }
-    }
-
-    fn to_line_segment_u4(&self) -> LineSegmentU4 {
-        unsafe {
-            let values = Sse41::cvtps_epi32(Sse41::fastfloor_ps(self.0));
-            let mask = Sse41::set1_epi32(0x0c04_0800);
-            let values_0213 = Sse41::shuffle_epi8(values, mask)[0] as u32;
-            LineSegmentU4((values_0213 | (values_0213 >> 12)) as u16)
-        }
-    }
-
-    fn to_line_segment_u8(&self) -> LineSegmentU8 {
-        unsafe {
-            let values = Sse41::cvtps_epi32(Sse41::fastfloor_ps(self.0));
-            let mask = Sse41::set1_epi32(0x0c08_0400);
-            LineSegmentU8(Sse41::shuffle_epi8(values, mask)[0] as u32)
         }
     }
 
@@ -2414,25 +2339,6 @@ impl Transform2DF32 {
     }
 }
 
-// Path utilities
-
-const TINY_EPSILON: f32 = 0.1;
-
-fn cubic_segment_is_tiny(segment: &CubicBezierSegment<f32>) -> bool {
-    let (x0, x1) = segment.fast_bounding_range_x();
-    let (y0, y1) = segment.fast_bounding_range_y();
-    let (x_delta, y_delta) = (f32::abs(x0 - x1), f32::abs(y0 - y1));
-    x_delta < TINY_EPSILON || y_delta < TINY_EPSILON
-}
-
-fn quadratic_segment_is_tiny(segment: &QuadraticBezierSegment<f32>) -> bool {
-    let (x0, x1) = segment.fast_bounding_range_x();
-    let (y0, y1) = segment.fast_bounding_range_y();
-    let (x_delta, y_delta) = (f32::abs(x0 - x1), f32::abs(y0 - y1));
-    x_delta < TINY_EPSILON || y_delta < TINY_EPSILON
-
-}
-
 // SIMD extensions
 
 trait SimdExt: Simd {
@@ -2455,12 +2361,6 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 
 fn alignup_i32(a: i32, b: i32) -> i32 {
     (a + b - 1) / b
-}
-
-fn t_is_too_close_to_zero_or_one(t: f32) -> bool {
-    const EPSILON: f32 = 0.001;
-
-    t < EPSILON || t > 1.0 - EPSILON
 }
 
 // Testing
