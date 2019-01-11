@@ -235,8 +235,8 @@ impl Scene {
 
                         let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                         let path = PathTransformingIter::new(path, &transform);
-                        let path = SegmentsToPathEvents::new(path);
                         let path = MonotonicConversionIter::new(path);
+                        let path = SegmentsToPathEvents::new(path);
                         let outline = Outline::from_path_events(path);
 
                         scene.bounds = scene.bounds.union(&outline.bounds);
@@ -257,8 +257,8 @@ impl Scene {
                         let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
                         let path = PathEventsToSegments::new(path);
                         let path = PathTransformingIter::new(path, &transform);
-                        let path = SegmentsToPathEvents::new(path);
                         let path = MonotonicConversionIter::new(path);
+                        let path = SegmentsToPathEvents::new(path);
                         let outline = Outline::from_path_events(path);
 
                         scene.bounds = scene.bounds.union(&outline.bounds);
@@ -838,12 +838,12 @@ impl<'s> CubicSegment<'s> {
                 baseline: LineSegmentF32(baseline0),
                 ctrl: LineSegmentF32(ctrl0),
                 kind: SegmentKind::Cubic,
-                flags: SegmentFlags::empty(),
+                flags: self.0.flags & SegmentFlags::FIRST_IN_SUBPATH,
             }, Segment {
                 baseline: LineSegmentF32(baseline1),
                 ctrl: LineSegmentF32(ctrl1),
                 kind: SegmentKind::Cubic,
-                flags: SegmentFlags::empty(),
+                flags: self.0.flags & SegmentFlags::CLOSES_SUBPATH,
             })
         }
 
@@ -1971,112 +1971,52 @@ impl<I> PathTransformingIter<I> where I: Iterator<Item = Segment> {
 // Monotonic conversion utilities
 
 // TODO(pcwalton): I think we only need to be monotonic in Y, maybe?
-struct MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
-    inner: I,
-    buffer: ArrayVec<[PathEvent; 2]>,
-    last_point: Point2D<f32>,
+struct MonotonicConversionIter<I> where I: Iterator<Item = Segment> {
+    iter: I,
+    buffer: ArrayVec<[Segment; 2]>,
 }
 
-impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
-    type Item = PathEvent;
+impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = Segment> {
+    type Item = Segment;
 
-    fn next(&mut self) -> Option<PathEvent> {
-        if let Some(event) = self.buffer.pop() {
-            match event {
-                PathEvent::MoveTo(to) |
-                PathEvent::LineTo(to) |
-                PathEvent::QuadraticTo(_, to) |
-                PathEvent::CubicTo(_, _, to) => {
-                    self.last_point = to;
-                }
-                PathEvent::Arc(..) | PathEvent::Close => {}
-            }
-            return Some(event);
+    fn next(&mut self) -> Option<Segment> {
+        if let Some(segment) = self.buffer.pop() {
+            return Some(segment);
         }
 
-        let event = match self.inner.next() {
-            None => return None,
-            Some(event) => event,
-        };
-
-        match event {
-            PathEvent::MoveTo(to) => {
-                self.last_point = to;
-                Some(PathEvent::MoveTo(to))
-            }
-            PathEvent::LineTo(to) => {
-                self.last_point = to;
-                Some(PathEvent::LineTo(to))
-            }
-            PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                let mut segment = Segment::none();
-                segment.baseline = LineSegmentF32::new(&Point2DF32::from_euclid(self.last_point),
-                                                       &Point2DF32::from_euclid(to));
-                segment.ctrl = LineSegmentF32::new(&Point2DF32::from_euclid(ctrl0),
-                                                   &Point2DF32::from_euclid(ctrl1));
-                segment.kind = SegmentKind::Cubic;
-                return self.handle_cubic(&segment);
-            }
-            PathEvent::QuadraticTo(ctrl, to) => {
+        let segment = self.iter.next()?;
+        match segment.kind {
+            SegmentKind::None => self.next(),
+            SegmentKind::Line => Some(segment),
+            SegmentKind::Cubic => self.handle_cubic(&segment),
+            SegmentKind::Quadratic => {
                 // TODO(pcwalton): Don't degree elevate!
-                let mut segment = Segment::none();
-                segment.baseline = LineSegmentF32::new(&Point2DF32::from_euclid(self.last_point),
-                                                       &Point2DF32::from_euclid(to));
-                segment.ctrl = LineSegmentF32::new(&Point2DF32::from_euclid(ctrl),
-                                                   &Point2DF32::default());
-                segment.kind = SegmentKind::Quadratic;
-                return self.handle_cubic(&segment.to_cubic());
-            }
-            PathEvent::Close => Some(PathEvent::Close),
-            PathEvent::Arc(a, b, c, d) => {
-                // FIXME(pcwalton): Make these monotonic too.
-                Some(PathEvent::Arc(a, b, c, d))
+                self.handle_cubic(&segment.to_cubic())
             }
         }
     }
 }
 
-impl<I> MonotonicConversionIter<I> where I: Iterator<Item = PathEvent> {
-    fn new(inner: I) -> MonotonicConversionIter<I> {
-        MonotonicConversionIter {
-            inner,
-            buffer: ArrayVec::new(),
-            last_point: Point2D::zero(),
-        }
+impl<I> MonotonicConversionIter<I> where I: Iterator<Item = Segment> {
+    fn new(iter: I) -> MonotonicConversionIter<I> {
+        MonotonicConversionIter { iter, buffer: ArrayVec::new() }
     }
 
-    fn handle_cubic(&mut self, segment: &Segment) -> Option<PathEvent> {
+    fn handle_cubic(&mut self, segment: &Segment) -> Option<Segment> {
         match segment.as_cubic_segment().y_extrema() {
             (Some(t0), Some(t1)) => {
                 let (segments_01, segment_2) = segment.as_cubic_segment().split(t1);
-                self.buffer.push(PathEvent::CubicTo(segment_2.ctrl.from().as_euclid(),
-                                                    segment_2.ctrl.to().as_euclid(),
-                                                    segment_2.baseline.to().as_euclid()));
+                self.buffer.push(segment_2);
                 let (segment_0, segment_1) = segments_01.as_cubic_segment().split(t0 / t1);
-                self.buffer.push(PathEvent::CubicTo(segment_1.ctrl.from().as_euclid(),
-                                                    segment_1.ctrl.to().as_euclid(),
-                                                    segment_1.baseline.to().as_euclid()));
-                self.last_point = segment_0.baseline.to().as_euclid();
-                return Some(PathEvent::CubicTo(segment_0.ctrl.from().as_euclid(),
-                                               segment_0.ctrl.to().as_euclid(),
-                                               segment_0.baseline.to().as_euclid()));
+                self.buffer.push(segment_1);
+                Some(segment_0)
             }
             (Some(t0), None) | (None, Some(t0)) => {
                 let (segment_0, segment_1) = segment.as_cubic_segment().split(t0);
-                self.buffer.push(PathEvent::CubicTo(segment_1.ctrl.from().as_euclid(),
-                                                    segment_1.ctrl.to().as_euclid(),
-                                                    segment_1.baseline.to().as_euclid()));
-                self.last_point = segment_0.baseline.to().as_euclid();
-                return Some(PathEvent::CubicTo(segment_0.ctrl.from().as_euclid(),
-                                               segment_0.ctrl.to().as_euclid(),
-                                               segment_0.baseline.to().as_euclid()));
+                self.buffer.push(segment_1);
+                Some(segment_0)
             }
-            (None, None) => {
-                self.last_point = segment.baseline.to().as_euclid();
-                return Some(PathEvent::CubicTo(segment.ctrl.from().as_euclid(),
-                                               segment.ctrl.to().as_euclid(),
-                                               segment.baseline.to().as_euclid()));
-            }
+            (None, None) => Some(*segment),
         }
     }
 }
