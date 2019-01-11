@@ -12,6 +12,9 @@
 //!
 //! These may be merged into upstream Lyon eventually.
 
+#[macro_use]
+extern crate bitflags;
+
 use simdeez::sse41::Sse41;
 
 // TODO(pcwalton): Make this configurable.
@@ -23,6 +26,7 @@ pub mod line_segment;
 pub mod normals;
 pub mod orientation;
 pub mod point;
+pub mod segment;
 pub mod segments;
 pub mod stroke;
 pub mod transform;

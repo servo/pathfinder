@@ -6,6 +6,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
 arrayvec = "0.4"
+bitflags = "1.0"
 euclid = "0.19"
 lyon_geom = "0.12"
 lyon_path = "0.12"
