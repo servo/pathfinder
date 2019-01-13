@@ -10,10 +10,9 @@
 
 //! Line or curve segments, optimized with SIMD.
 
-use crate::SimdImpl;
 use crate::line_segment::LineSegmentF32;
 use crate::point::Point2DF32;
-use simdeez::Simd;
+use crate::simd::F32x4;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Segment {
@@ -160,30 +159,26 @@ pub struct CubicSegment<'s>(&'s Segment);
 impl<'s> CubicSegment<'s> {
     #[inline]
     pub fn flatten_once(self, tolerance: f32) -> Option<Segment> {
-        let s2inv;
-        unsafe {
-            let (baseline, ctrl) = (self.0.baseline.0, self.0.ctrl.0);
-            let from_from = SimdImpl::shuffle_ps(baseline, baseline, 0b0100_0100);
+        let (baseline, ctrl) = (self.0.baseline.0, self.0.ctrl.0);
+        let from_from = baseline.splat_low_half();
+        let v0102 = ctrl - from_from;
 
-            let v0102 = SimdImpl::sub_ps(ctrl, from_from);
+        //      v01.x   v01.y   v02.x v02.y
+        //    * v01.x   v01.y   v01.y v01.x
+        //    -------------------------
+        //      v01.x^2 v01.y^2 ad    bc
+        //         |       |     |     |
+        //         +-------+     +-----+
+        //             +            -
+        //         v01 len^2   determinant
+        let products = v0102 * F32x4::new(v0102[0], v0102[1], v0102[1], v0102[0]);
 
-            //      v01.x   v01.y   v02.x v02.y
-            //    * v01.x   v01.y   v01.y v01.x
-            //    -------------------------
-            //      v01.x^2 v01.y^2 ad    bc
-            //         |       |     |     |
-            //         +-------+     +-----+
-            //             +            -
-            //         v01 len^2   determinant
-            let products = SimdImpl::mul_ps(v0102, SimdImpl::shuffle_ps(v0102, v0102, 0b0001_0100));
-
-            let det = products[2] - products[3];
-            if det == 0.0 {
-                return None;
-            }
-
-            s2inv = (products[0] + products[1]).sqrt() / det;
+        let det = products[2] - products[3];
+        if det == 0.0 {
+            return None;
         }
+
+        let s2inv = (products[0] + products[1]).sqrt() / det;
 
         let t = 2.0 * ((tolerance / 3.0) * s2inv.abs()).sqrt();
         if t >= 1.0 - EPSILON || t == 0.0 {
@@ -197,71 +192,40 @@ impl<'s> CubicSegment<'s> {
 
     #[inline]
     pub fn split(self, t: f32) -> (Segment, Segment) {
-        unsafe {
-            let tttt = SimdImpl::set1_ps(t);
+        let tttt = F32x4::splat(t);
 
-            let p0p3 = self.0.baseline.0;
-            let p1p2 = self.0.ctrl.0;
-            let p0p1 = assemble(&p0p3, &p1p2, 0, 0);
+        let p0p3 = self.0.baseline.0;
+        let p1p2 = self.0.ctrl.0;
+        let p0p1 = F32x4::new(p0p3[0], p0p3[1], p1p2[0], p1p2[1]);
 
-            // p01 = lerp(p0, p1, t), p12 = lerp(p1, p2, t), p23 = lerp(p2, p3, t)
-            let p01p12 = SimdImpl::add_ps(p0p1, SimdImpl::mul_ps(tttt, SimdImpl::sub_ps(p1p2, p0p1)));
-            let pxxp23 = SimdImpl::add_ps(p1p2, SimdImpl::mul_ps(tttt, SimdImpl::sub_ps(p0p3, p1p2)));
+        // p01 = lerp(p0, p1, t), p12 = lerp(p1, p2, t), p23 = lerp(p2, p3, t)
+        let p01p12 = p0p1 + tttt * (p1p2 - p0p1);
+        let pxxp23 = p1p2 + tttt * (p0p3 - p1p2);
+        let p12p23 = F32x4::new(p01p12[2], p01p12[3], pxxp23[2], pxxp23[3]);
 
-            let p12p23 = assemble(&p01p12, &pxxp23, 1, 1);
+        // p012 = lerp(p01, p12, t), p123 = lerp(p12, p23, t)
+        let p012p123 = p01p12 + tttt * (p12p23 - p01p12);
+        let p123 = p012p123.splat_high_half();
 
-            // p012 = lerp(p01, p12, t), p123 = lerp(p12, p23, t)
-            let p012p123 =
-                SimdImpl::add_ps(p01p12, SimdImpl::mul_ps(tttt, SimdImpl::sub_ps(p12p23, p01p12)));
+        // p0123 = lerp(p012, p123, t)
+        let p0123 = p012p123 + tttt * (p123 - p012p123);
 
-            let p123 = pluck(&p012p123, 1);
+        let baseline0 = F32x4::new(p0p3[0], p0p3[1], p0123[0], p0123[1]);
+        let ctrl0 = F32x4::new(p01p12[0], p01p12[1], p012p123[0], p012p123[1]);
+        let baseline1 = F32x4::new(p0123[0], p0123[1], p0p3[2], p0p3[3]);
+        let ctrl1 = F32x4::new(p012p123[2], p012p123[3], p12p23[2], p12p23[3]);
 
-            // p0123 = lerp(p012, p123, t)
-            let p0123 = SimdImpl::add_ps(p012p123, SimdImpl::mul_ps(tttt, SimdImpl::sub_ps(p123, p012p123)));
-
-            let baseline0 = assemble(&p0p3, &p0123, 0, 0);
-            let ctrl0 = assemble(&p01p12, &p012p123, 0, 0);
-            let baseline1 = assemble(&p0123, &p0p3, 0, 1);
-            let ctrl1 = assemble(&p012p123, &p12p23, 1, 1);
-
-            // FIXME(pcwalton): Set flags appropriately!
-            return (
-                Segment {
-                    baseline: LineSegmentF32(baseline0),
-                    ctrl: LineSegmentF32(ctrl0),
-                    kind: SegmentKind::Cubic,
-                    flags: self.0.flags & SegmentFlags::FIRST_IN_SUBPATH,
-                },
-                Segment {
-                    baseline: LineSegmentF32(baseline1),
-                    ctrl: LineSegmentF32(ctrl1),
-                    kind: SegmentKind::Cubic,
-                    flags: self.0.flags & SegmentFlags::CLOSES_SUBPATH,
-                },
-            );
-        }
-
-        // Constructs a new 4-element vector from two pairs of adjacent lanes in two input vectors.
-        unsafe fn assemble(
-            a_data: &<SimdImpl as Simd>::Vf32,
-            b_data: &<SimdImpl as Simd>::Vf32,
-            a_index: usize,
-            b_index: usize,
-        ) -> <SimdImpl as Simd>::Vf32 {
-            let (a_data, b_data) = (SimdImpl::castps_pd(*a_data), SimdImpl::castps_pd(*b_data));
-            let mut result = SimdImpl::setzero_pd();
-            result[0] = a_data[a_index];
-            result[1] = b_data[b_index];
-            SimdImpl::castpd_ps(result)
-        }
-
-        // Constructs a new 2-element vector from a pair of adjacent lanes in an input vector.
-        unsafe fn pluck(data: &<SimdImpl as Simd>::Vf32, index: usize) -> <SimdImpl as Simd>::Vf32 {
-            let data = SimdImpl::castps_pd(*data);
-            let mut result = SimdImpl::setzero_pd();
-            result[0] = data[index];
-            SimdImpl::castpd_ps(result)
-        }
+        (Segment {
+            baseline: LineSegmentF32(baseline0),
+            ctrl: LineSegmentF32(ctrl0),
+            kind: SegmentKind::Cubic,
+            flags: self.0.flags & SegmentFlags::FIRST_IN_SUBPATH,
+        }, Segment {
+            baseline: LineSegmentF32(baseline1),
+            ctrl: LineSegmentF32(ctrl1),
+            kind: SegmentKind::Cubic,
+            flags: self.0.flags & SegmentFlags::CLOSES_SUBPATH,
+        })
     }
 
     #[inline]
@@ -272,24 +236,23 @@ impl<'s> CubicSegment<'s> {
     #[inline]
     pub fn y_extrema(self) -> (Option<f32>, Option<f32>) {
         let (t0, t1);
-        unsafe {
-            let mut p0p1p2p3 = SimdImpl::setzero_ps();
-            p0p1p2p3[0] = self.0.baseline.from_y();
-            p0p1p2p3[1] = self.0.ctrl.from_y();
-            p0p1p2p3[2] = self.0.ctrl.to_y();
-            p0p1p2p3[3] = self.0.baseline.to_y();
+        let p0p1p2p3 = F32x4::new(self.0.baseline.from_y(),
+                                  self.0.ctrl.from_y(),
+                                  self.0.ctrl.to_y(),
+                                  self.0.baseline.to_y());
+        let pxp0p1p2 = F32x4::new(self.0.baseline.from_y(),
+                                  self.0.baseline.from_y(),
+                                  self.0.ctrl.from_y(),
+                                  self.0.ctrl.to_y());
+        let pxv0v1v2 = p0p1p2p3 - pxp0p1p2;
+        let (v0, v1, v2) = (pxv0v1v2[1], pxv0v1v2[2], pxv0v1v2[3]);
 
-            let pxp0p1p2 = SimdImpl::shuffle_ps(p0p1p2p3, p0p1p2p3, 0b1001_0000);
-            let pxv0v1v2 = SimdImpl::sub_ps(p0p1p2p3, pxp0p1p2);
-            let (v0, v1, v2) = (pxv0v1v2[1], pxv0v1v2[2], pxv0v1v2[3]);
+        let (v0_to_v1, v2_to_v1) = (v0 - v1, v2 - v1);
+        let discrim = f32::sqrt(v1 * v1 - v0 * v2);
+        let denom = 1.0 / (v0_to_v1 + v2_to_v1);
 
-            let (v0_to_v1, v2_to_v1) = (v0 - v1, v2 - v1);
-            let discrim = f32::sqrt(v1 * v1 - v0 * v2);
-            let denom = 1.0 / (v0_to_v1 + v2_to_v1);
-
-            t0 = (v0_to_v1 + discrim) * denom;
-            t1 = (v0_to_v1 - discrim) * denom;
-        }
+        t0 = (v0_to_v1 + discrim) * denom;
+        t1 = (v0_to_v1 - discrim) * denom;
 
         return match (
             t0 > EPSILON && t0 < 1.0 - EPSILON,

@@ -15,11 +15,6 @@
 #[macro_use]
 extern crate bitflags;
 
-use simdeez::sse41::Sse41;
-
-// TODO(pcwalton): Make this configurable.
-pub type SimdImpl = Sse41;
-
 pub mod clip;
 pub mod cubic_to_quadratic;
 pub mod line_segment;
@@ -28,6 +23,7 @@ pub mod orientation;
 pub mod point;
 pub mod segment;
 pub mod segments;
+pub mod simd;
 pub mod stroke;
 pub mod transform;
 pub mod util;

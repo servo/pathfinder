@@ -10,62 +10,40 @@
 
 //! Line segment types, optimized with SIMD.
 
-use crate::SimdImpl;
 use crate::point::Point2DF32;
+use crate::simd::F32x4;
 use crate::util;
-use simdeez::Simd;
 use std::ops::Sub;
 
-#[derive(Clone, Copy, Debug)]
-pub struct LineSegmentF32(pub <SimdImpl as Simd>::Vf32);
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct LineSegmentF32(pub F32x4);
 
 impl LineSegmentF32 {
     #[inline]
     pub fn new(from: &Point2DF32, to: &Point2DF32) -> LineSegmentF32 {
-        unsafe {
-            LineSegmentF32(SimdImpl::castpd_ps(SimdImpl::unpacklo_pd(
-                SimdImpl::castps_pd(from.0),
-                SimdImpl::castps_pd(to.0),
-            )))
-        }
+        LineSegmentF32(F32x4::new(from.x(), from.y(), to.x(), to.y()))
     }
 
     #[inline]
     pub fn from(&self) -> Point2DF32 {
-        unsafe {
-            Point2DF32(SimdImpl::castpd_ps(SimdImpl::unpacklo_pd(
-                SimdImpl::castps_pd(self.0),
-                SimdImpl::setzero_pd(),
-            )))
-        }
+        Point2DF32(self.0)
     }
 
     #[inline]
     pub fn to(&self) -> Point2DF32 {
-        unsafe {
-            Point2DF32(SimdImpl::castpd_ps(SimdImpl::unpackhi_pd(
-                SimdImpl::castps_pd(self.0),
-                SimdImpl::setzero_pd(),
-            )))
-        }
+        Point2DF32(self.0.swap_halves())
     }
 
     #[inline]
     pub fn set_from(&mut self, point: &Point2DF32) {
-        unsafe {
-            let (mut this, point) = (SimdImpl::castps_pd(self.0), SimdImpl::castps_pd(point.0));
-            this[0] = point[0];
-            self.0 = SimdImpl::castpd_ps(this);
-        }
+        self.0[0] = point.x();
+        self.0[1] = point.y();
     }
 
     #[inline]
     pub fn set_to(&mut self, point: &Point2DF32) {
-        unsafe {
-            let (mut this, point) = (SimdImpl::castps_pd(self.0), SimdImpl::castps_pd(point.0));
-            this[1] = point[0];
-            self.0 = SimdImpl::castpd_ps(this);
-        }
+        self.0[2] = point.x();
+        self.0[3] = point.y();
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -92,34 +70,17 @@ impl LineSegmentF32 {
 
     #[inline]
     pub fn scale(&self, factor: f32) -> LineSegmentF32 {
-        unsafe { LineSegmentF32(SimdImpl::mul_ps(self.0, SimdImpl::set1_ps(factor))) }
+        LineSegmentF32(self.0 * F32x4::splat(factor))
     }
 
     #[inline]
     pub fn split(&self, t: f32) -> (LineSegmentF32, LineSegmentF32) {
         debug_assert!(t >= 0.0 && t <= 1.0);
-        unsafe {
-            let from_from = SimdImpl::castpd_ps(SimdImpl::unpacklo_pd(
-                SimdImpl::castps_pd(self.0),
-                SimdImpl::castps_pd(self.0),
-            ));
-            let to_to = SimdImpl::castpd_ps(SimdImpl::unpackhi_pd(
-                SimdImpl::castps_pd(self.0),
-                SimdImpl::castps_pd(self.0),
-            ));
-            let d_d = to_to - from_from;
-            let mid_mid = from_from + d_d * SimdImpl::set1_ps(t);
-            (
-                LineSegmentF32(SimdImpl::castpd_ps(SimdImpl::unpacklo_pd(
-                    SimdImpl::castps_pd(from_from),
-                    SimdImpl::castps_pd(mid_mid),
-                ))),
-                LineSegmentF32(SimdImpl::castpd_ps(SimdImpl::unpackhi_pd(
-                    SimdImpl::castps_pd(mid_mid),
-                    SimdImpl::castps_pd(to_to),
-                ))),
-            )
-        }
+        let (from_from, to_to) = (self.0.splat_low_half(), self.0.splat_high_half());
+        let d_d = to_to - from_from;
+        let mid_mid = from_from + d_d * F32x4::splat(t);
+        (LineSegmentF32(F32x4::new(from_from[0], from_from[1], mid_mid[0], mid_mid[1])),
+            LineSegmentF32(F32x4::new(mid_mid[0], mid_mid[1], to_to[0], to_to[1])))
     }
 
     // Returns the upper segment first, followed by the lower segment.
@@ -150,7 +111,7 @@ impl LineSegmentF32 {
 
     #[inline]
     pub fn reversed(&self) -> LineSegmentF32 {
-        unsafe { LineSegmentF32(SimdImpl::shuffle_ps(self.0, self.0, 0b0100_1110)) }
+        LineSegmentF32(self.0.swap_halves())
     }
 
     #[inline]
@@ -193,35 +154,11 @@ impl LineSegmentF32 {
     }
 }
 
-impl PartialEq for LineSegmentF32 {
-    #[inline]
-    fn eq(&self, other: &LineSegmentF32) -> bool {
-        unsafe {
-            let results = SimdImpl::castps_epi32(SimdImpl::cmpeq_ps(self.0, other.0));
-            // FIXME(pcwalton): Is there a better way to do this?
-            results[0] == -1 && results[1] == -1 && results[2] == -1 && results[3] == -1
-        }
-    }
-}
-
-impl Default for LineSegmentF32 {
-    #[inline]
-    fn default() -> LineSegmentF32 {
-        unsafe { LineSegmentF32(SimdImpl::setzero_ps()) }
-    }
-}
-
 impl Sub<Point2DF32> for LineSegmentF32 {
     type Output = LineSegmentF32;
     #[inline]
     fn sub(self, point: Point2DF32) -> LineSegmentF32 {
-        unsafe {
-            let point_point = SimdImpl::castpd_ps(SimdImpl::unpacklo_pd(
-                SimdImpl::castps_pd(point.0),
-                SimdImpl::castps_pd(point.0),
-            ));
-            LineSegmentF32(self.0 - point_point)
-        }
+        LineSegmentF32(self.0 - point.0.splat_low_half())
     }
 }
 

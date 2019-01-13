@@ -30,14 +30,11 @@ use lyon_path::iterator::PathIter;
 use pathfinder_geometry::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::segment::{Segment, SegmentFlags, SegmentKind};
+use pathfinder_geometry::simd::{F32x4, I32x4};
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
 use pathfinder_geometry::util;
 use rayon::ThreadPoolBuilder;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use simdeez::Simd;
-use simdeez::overloads::I32x4_41;
-use simdeez::sse41::Sse41;
-use std::arch::x86_64;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
@@ -1193,32 +1190,26 @@ impl BuiltObject {
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
     fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i16, tile_y: i16) {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
-        let (px, subpx);
-        unsafe {
-            let mut segment = Sse41::cvtps_epi32(Sse41::mul_ps(segment.0, Sse41::set1_ps(256.0)));
+        let mut segment = (segment.0 * F32x4::splat(256.0)).to_i32x4();
 
-            let mut tile_origin = Sse41::setzero_epi32();
-            tile_origin[0] = (tile_x as i32) * (TILE_WIDTH as i32) * 256;
-            tile_origin[1] = (tile_y as i32) * (TILE_HEIGHT as i32) * 256;
-            tile_origin = Sse41::shuffle_epi32(tile_origin, 0b0100_0100);
+        let tile_origin_x = (tile_x as i32) * (TILE_WIDTH as i32) * 256;
+        let tile_origin_y = (tile_y as i32) * (TILE_HEIGHT as i32) * 256;
+        let tile_origin = I32x4::new(tile_origin_x, tile_origin_y, tile_origin_x, tile_origin_y);
 
-            segment = Sse41::sub_epi32(segment, tile_origin);
-            /*
-            println!("... before min: {} {} {} {}",
-                     segment[0], segment[1], segment[2], segment[3]);
-            */
-            //segment = Sse41::max_epi32(segment, Sse41::setzero_epi32());
-            segment = Sse41::min_epi32(segment, Sse41::set1_epi32(0x0fff));
-            //println!("... after min: {} {} {} {}", segment[0], segment[1], segment[2], segment[3]);
+        segment = segment - tile_origin;
+        /*
+        println!("... before min: {} {} {} {}",
+                    segment[0], segment[1], segment[2], segment[3]);
+        */
+        //segment = Sse41::max_epi32(segment, Sse41::setzero_epi32());
+        segment = segment.min(I32x4::splat(0x0fff));
+        //println!("... after min: {} {} {} {}", segment[0], segment[1], segment[2], segment[3]);
 
-            let mut shuffle_mask = Sse41::setzero_epi32();
-            shuffle_mask[0] = 0x0c08_0400;
-            shuffle_mask[1] = 0x0d05_0901;
-            segment = Sse41::shuffle_epi8(segment, shuffle_mask);
+        let shuffle_mask = I32x4::new(0x0c08_0400, 0x0d05_0901, 0, 0);
+        segment = segment.as_u8x16().shuffle(shuffle_mask.as_u8x16()).as_i32x4();
 
-            px = LineSegmentU4((segment[1] | (segment[1] >> 12)) as u16);
-            subpx = LineSegmentU8(segment[0] as u32);
-        }
+        let px = LineSegmentU4((segment[1] | (segment[1] >> 12)) as u16);
+        let subpx = LineSegmentU8(segment[0] as u32);
 
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
 
@@ -1930,84 +1921,60 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
 #[derive(Clone, Copy)]
 struct Transform2DF32 {
     // Row-major order.
-    matrix: <Sse41 as Simd>::Vf32,
+    matrix: F32x4,
     vector: Point2DF32,
 }
 
 impl Default for Transform2DF32 {
     fn default() -> Transform2DF32 {
-        unsafe {
-            let mut matrix = <Sse41 as Simd>::setzero_ps();
-            matrix[0] = 1.0;
-            matrix[3] = 1.0;
-            Transform2DF32 { matrix, vector: Point2DF32::default() }
-        }
+        Self::from_scale(&Point2DF32::splat(1.0))
     }
 }
 
 impl Transform2DF32 {
     fn from_scale(scale: &Point2DF32) -> Transform2DF32 {
-        unsafe {
-            let mut matrix = Sse41::setzero_ps();
-            matrix[0] = scale.x();
-            matrix[3] = scale.y();
-            Transform2DF32 { matrix, vector: Point2DF32::default() }
+        Transform2DF32 {
+            matrix: F32x4::new(scale.x(), 0.0, 0.0, scale.y()),
+            vector: Point2DF32::default(),
         }
     }
 
     fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2DF32 {
-        unsafe {
-            let mut matrix = Sse41::setzero_ps();
-            matrix[0] = m11;
-            matrix[1] = m12;
-            matrix[2] = m21;
-            matrix[3] = m22;
-            Transform2DF32 { matrix, vector: Point2DF32::new(m31, m32) }
+        Transform2DF32 {
+            matrix: F32x4::new(m11, m12, m21, m22),
+            vector: Point2DF32::new(m31, m32),
         }
     }
 
+    fn m11(&self) -> f32 { self.matrix[0] }
+    fn m12(&self) -> f32 { self.matrix[1] }
+    fn m21(&self) -> f32 { self.matrix[2] }
+    fn m22(&self) -> f32 { self.matrix[3] }
+
     fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
-        unsafe {
-            let xxyy = Sse41::shuffle_ps(point.0, point.0, 0b0101_0000);
-            let x11_x12_y21_y22 = Sse41::mul_ps(xxyy, self.matrix);
-            let y21_y22 = Sse41::shuffle_ps(x11_x12_y21_y22, x11_x12_y21_y22, 0b0000_1110);
-            Point2DF32(Sse41::add_ps(Sse41::add_ps(x11_x12_y21_y22, y21_y22), self.vector.0))
-        }
+        let xxyy = F32x4::new(point.x(), point.x(), point.y(), point.y());
+        let x11_x12_y21_y22 = xxyy * self.matrix;
+        let y21_y22 = x11_x12_y21_y22.splat_high_half();
+        Point2DF32(x11_x12_y21_y22 + y21_y22 + self.vector.0)
     }
 
     fn post_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
-        unsafe {
-            // Here `a` is self and `b` is `other`.
-            let a11a21a11a21 = Sse41::shuffle_ps(self.matrix, self.matrix, 0b1000_1000);
-            let b11b11b12b12 = Sse41::shuffle_ps(other.matrix, other.matrix, 0b0101_0000);
-            let lhs = Sse41::mul_ps(a11a21a11a21, b11b11b12b12);
+        // Here `a` is self and `b` is `other`.
+        let a11a21a11a21 = F32x4::new(self.m11(), self.m21(), self.m11(), self.m21());
+        let b11b11b12b12 = F32x4::new(other.m11(), other.m11(), other.m12(), other.m12());
+        let lhs = a11a21a11a21 * b11b11b12b12;
 
-            let a12a22a12a22 = Sse41::shuffle_ps(self.matrix, self.matrix, 0b1101_1101);
-            let b21b21b22b22 = Sse41::shuffle_ps(other.matrix, other.matrix, 0b1111_1010);
-            let rhs = Sse41::mul_ps(a12a22a12a22, b21b21b22b22);
+        let a12a22a12a22 = F32x4::new(self.m12(), self.m22(), self.m12(), self.m22());
+        let b21b21b22b22 = F32x4::new(other.m21(), other.m21(), other.m22(), other.m22());
+        let rhs = a12a22a12a22 * b21b21b22b22;
 
-            let matrix = Sse41::add_ps(lhs, rhs);
-            let vector = other.transform_point(&self.vector) + other.vector;
-            Transform2DF32 { matrix, vector }
-        }
+        let matrix = lhs + rhs;
+        let vector = other.transform_point(&self.vector) + other.vector;
+        Transform2DF32 { matrix, vector }
     }
 
     fn pre_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
         other.post_mul(self)
-    }
-}
-
-// SIMD extensions
-
-trait SimdExt: Simd {
-    // TODO(pcwalton): Default scalar implementation.
-    unsafe fn shuffle_epi8(a: Self::Vi32, b: Self::Vi32) -> Self::Vi32;
-}
-
-impl SimdExt for Sse41 {
-    #[inline(always)]
-    unsafe fn shuffle_epi8(a: Self::Vi32, b: Self::Vi32) -> Self::Vi32 {
-        I32x4_41(x86_64::_mm_shuffle_epi8(a.0, b.0))
     }
 }
 

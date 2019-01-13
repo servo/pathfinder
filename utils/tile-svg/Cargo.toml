@@ -16,7 +16,6 @@ jemallocator = "0.1"
 lyon_geom = "0.12"
 lyon_path = "0.12"
 rayon = "1.0"
-simdeez = "0.4"
 svgtypes = "0.3"
 usvg = "0.4"
 

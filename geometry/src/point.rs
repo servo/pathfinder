@@ -10,28 +10,22 @@
 
 //! A SIMD-optimized point type.
 
-use crate::SimdImpl;
+use crate::simd::F32x4;
 use euclid::Point2D;
-use simdeez::Simd;
 use std::ops::{Add, Mul, Sub};
 
-#[derive(Clone, Copy, Debug)]
-pub struct Point2DF32(pub <SimdImpl as Simd>::Vf32);
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Point2DF32(pub F32x4);
 
 impl Point2DF32 {
     #[inline]
     pub fn new(x: f32, y: f32) -> Point2DF32 {
-        unsafe {
-            let mut data = SimdImpl::setzero_ps();
-            data[0] = x;
-            data[1] = y;
-            Point2DF32(data)
-        }
+        Point2DF32(F32x4::new(x, y, 0.0, 0.0))
     }
 
     #[inline]
     pub fn splat(value: f32) -> Point2DF32 {
-        unsafe { Point2DF32(SimdImpl::set1_ps(value)) }
+        Point2DF32(F32x4::splat(value))
     }
 
     #[inline]
@@ -56,29 +50,20 @@ impl Point2DF32 {
 
     #[inline]
     pub fn min(&self, other: Point2DF32) -> Point2DF32 {
-        unsafe { Point2DF32(SimdImpl::min_ps(self.0, other.0)) }
+        Point2DF32(self.0.min(other.0))
     }
 
     #[inline]
     pub fn max(&self, other: Point2DF32) -> Point2DF32 {
-        unsafe { Point2DF32(SimdImpl::max_ps(self.0, other.0)) }
+        Point2DF32(self.0.max(other.0))
     }
 }
 
 impl PartialEq for Point2DF32 {
     #[inline]
     fn eq(&self, other: &Point2DF32) -> bool {
-        unsafe {
-            let results = SimdImpl::castps_epi32(SimdImpl::cmpeq_ps(self.0, other.0));
-            results[0] == -1 && results[1] == -1
-        }
-    }
-}
-
-impl Default for Point2DF32 {
-    #[inline]
-    fn default() -> Point2DF32 {
-        unsafe { Point2DF32(SimdImpl::setzero_ps()) }
+        let results = self.0.packed_eq(other.0);
+        results[0] != 0 && results[1] != 0
     }
 }
 
