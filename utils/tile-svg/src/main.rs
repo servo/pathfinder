@@ -25,16 +25,16 @@ use euclid::{Point2D, Rect, Size2D};
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use jemallocator;
-use lyon_path::PathEvent;
 use lyon_path::iterator::PathIter;
+use lyon_path::PathEvent;
 use pathfinder_geometry::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::segment::{Segment, SegmentFlags, SegmentKind};
 use pathfinder_geometry::simd::{F32x4, I32x4};
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
 use pathfinder_geometry::util;
-use rayon::ThreadPoolBuilder;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::ThreadPoolBuilder;
 use std::cmp::Ordering;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
@@ -65,29 +65,43 @@ const MAX_FILLS_PER_BATCH: usize = 0x0002_0000;
 const MAX_MASKS_PER_BATCH: u16 = 0xffff;
 
 fn main() {
-    let matches =
-        App::new("tile-svg").arg(Arg::with_name("runs").short("r")
-                                                       .long("runs")
-                                                       .value_name("COUNT")
-                                                       .takes_value(true)
-                                                       .help("Run a benchmark with COUNT runs"))
-                            .arg(Arg::with_name("jobs").short("j")
-                                                       .long("jobs")
-                                                       .value_name("THREADS")
-                                                       .takes_value(true)
-                                                       .help("Number of threads to use"))
-                            .arg(Arg::with_name("INPUT").help("Path to the SVG file to render")
-                                                        .required(true)
-                                                        .index(1))
-                            .arg(Arg::with_name("OUTPUT").help("Path to the output PF3 data")
-                                                         .required(false)
-                                                         .index(2))
-                            .get_matches();
+    let matches = App::new("tile-svg")
+        .arg(
+            Arg::with_name("runs")
+                .short("r")
+                .long("runs")
+                .value_name("COUNT")
+                .takes_value(true)
+                .help("Run a benchmark with COUNT runs"),
+        )
+        .arg(
+            Arg::with_name("jobs")
+                .short("j")
+                .long("jobs")
+                .value_name("THREADS")
+                .takes_value(true)
+                .help("Number of threads to use"),
+        )
+        .arg(
+            Arg::with_name("INPUT")
+                .help("Path to the SVG file to render")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::with_name("OUTPUT")
+                .help("Path to the output PF3 data")
+                .required(false)
+                .index(2),
+        )
+        .get_matches();
     let runs: usize = match matches.value_of("runs") {
         Some(runs) => runs.parse().unwrap(),
         None => 1,
     };
-    let jobs: Option<usize> = matches.value_of("jobs").map(|string| string.parse().unwrap());
+    let jobs: Option<usize> = matches
+        .value_of("jobs")
+        .map(|string| string.parse().unwrap());
     let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
     let output_path = matches.value_of("OUTPUT").map(PathBuf::from);
 
@@ -102,8 +116,15 @@ fn main() {
     let usvg = Tree::from_file(&input_path, &UsvgOptions::default()).unwrap();
     let scene = Scene::from_tree(usvg);
 
-    println!("Scene bounds: {:?} View box: {:?}", scene.bounds, scene.view_box);
-    println!("{} objects, {} paints", scene.objects.len(), scene.paints.len());
+    println!(
+        "Scene bounds: {:?} View box: {:?}",
+        scene.bounds, scene.view_box
+    );
+    println!(
+        "{} objects, {} paints",
+        scene.objects.len(),
+        scene.paints.len()
+    );
 
     let (mut elapsed_object_build_time, mut elapsed_scene_build_time) = (0.0, 0.0);
 
@@ -133,21 +154,25 @@ fn main() {
     elapsed_scene_build_time /= runs as f64;
     let total_elapsed_time = elapsed_object_build_time + elapsed_scene_build_time;
 
-    println!("{:.3}ms ({:.3}ms objects, {:.3}ms scene) elapsed",
-             total_elapsed_time,
-             elapsed_object_build_time,
-             elapsed_scene_build_time);
+    println!(
+        "{:.3}ms ({:.3}ms objects, {:.3}ms scene) elapsed",
+        total_elapsed_time, elapsed_object_build_time, elapsed_scene_build_time
+    );
 
     println!("{} solid tiles", built_scene.solid_tiles.len());
     for (batch_index, batch) in built_scene.batches.iter().enumerate() {
-        println!("Batch {}: {} fills, {} mask tiles",
-                 batch_index,
-                 batch.fills.len(),
-                 batch.mask_tiles.len());
+        println!(
+            "Batch {}: {} fills, {} mask tiles",
+            batch_index,
+            batch.fills.len(),
+            batch.mask_tiles.len()
+        );
     }
 
     if let Some(output_path) = output_path {
-        built_scene.write(&mut BufWriter::new(File::create(output_path).unwrap())).unwrap();
+        built_scene
+            .write(&mut BufWriter::new(File::create(output_path).unwrap()))
+            .unwrap();
     }
 }
 
@@ -239,16 +264,18 @@ impl Scene {
                         let outline = Outline::from_segments(path);
 
                         scene.bounds = scene.bounds.union(&outline.bounds);
-                        scene.objects.push(PathObject::new(outline,
-                                                           style,
-                                                           node.id().to_string(),
-                                                           PathObjectKind::Fill));
+                        scene.objects.push(PathObject::new(
+                            outline,
+                            style,
+                            node.id().to_string(),
+                            PathObjectKind::Fill,
+                        ));
                     }
 
                     if let Some(ref stroke) = path.stroke {
                         let style = scene.push_paint(&Paint::from_svg_paint(&stroke.paint));
-                        let stroke_width = f32::max(stroke.width.value() as f32,
-                                                    HAIRLINE_STROKE_WIDTH);
+                        let stroke_width =
+                            f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
 
                         let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                         let path = SegmentsToPathEvents::new(path);
@@ -260,10 +287,12 @@ impl Scene {
                         let outline = Outline::from_segments(path);
 
                         scene.bounds = scene.bounds.union(&outline.bounds);
-                        scene.objects.push(PathObject::new(outline,
-                                                           style,
-                                                           node.id().to_string(),
-                                                           PathObjectKind::Stroke));
+                        scene.objects.push(PathObject::new(
+                            outline,
+                            style,
+                            node.id().to_string(),
+                            PathObjectKind::Stroke,
+                        ));
                     }
                 }
                 _ => {
@@ -276,7 +305,7 @@ impl Scene {
     #[allow(clippy::trivially_copy_pass_by_ref)]
     fn push_paint(&mut self, paint: &Paint) -> PaintId {
         if let Some(paint_id) = self.paint_cache.get(paint) {
-            return *paint_id
+            return *paint_id;
         }
 
         let paint_id = PaintId(self.paints.len() as u16);
@@ -286,37 +315,59 @@ impl Scene {
     }
 
     fn build_shaders(&self) -> Vec<ObjectShader> {
-        self.paints.iter().map(|paint| ObjectShader { fill_color: paint.color }).collect()
+        self.paints
+            .iter()
+            .map(|paint| ObjectShader {
+                fill_color: paint.color,
+            })
+            .collect()
     }
 
     fn build_objects_sequentially(&self, z_buffer: &ZBuffer) -> Vec<BuiltObject> {
-        self.objects.iter().enumerate().map(|(object_index, object)| {
-            let mut tiler = Tiler::new(&object.outline,
-                                       &self.view_box,
-                                       object_index as u16,
-                                       ShaderId(object.paint.0),
-                                       z_buffer);
-            tiler.generate_tiles();
-            tiler.built_object
-        }).collect()
+        self.objects
+            .iter()
+            .enumerate()
+            .map(|(object_index, object)| {
+                let mut tiler = Tiler::new(
+                    &object.outline,
+                    &self.view_box,
+                    object_index as u16,
+                    ShaderId(object.paint.0),
+                    z_buffer,
+                );
+                tiler.generate_tiles();
+                tiler.built_object
+            })
+            .collect()
     }
 
     fn build_objects(&self, z_buffer: &ZBuffer) -> Vec<BuiltObject> {
-        self.objects.par_iter().enumerate().map(|(object_index, object)| {
-            let mut tiler = Tiler::new(&object.outline,
-                                       &self.view_box,
-                                       object_index as u16,
-                                       ShaderId(object.paint.0),
-                                       z_buffer);
-            tiler.generate_tiles();
-            tiler.built_object
-        }).collect()
+        self.objects
+            .par_iter()
+            .enumerate()
+            .map(|(object_index, object)| {
+                let mut tiler = Tiler::new(
+                    &object.outline,
+                    &self.view_box,
+                    object_index as u16,
+                    ShaderId(object.paint.0),
+                    z_buffer,
+                );
+                tiler.generate_tiles();
+                tiler.built_object
+            })
+            .collect()
     }
 }
 
 impl PathObject {
     fn new(outline: Outline, paint: PaintId, name: String, kind: PathObjectKind) -> PathObject {
-        PathObject { outline, paint, name, kind }
+        PathObject {
+            outline,
+            paint,
+            name,
+            kind,
+        }
     }
 }
 
@@ -348,7 +399,10 @@ impl Outline {
         }
     }
 
-    fn from_segments<I>(segments: I) -> Outline where I: Iterator<Item = Segment> {
+    fn from_segments<I>(segments: I) -> Outline
+    where
+        I: Iterator<Item = Segment>,
+    {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
         let mut bounding_points = None;
@@ -356,16 +410,22 @@ impl Outline {
         for segment in segments {
             if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
                 if !current_contour.is_empty() {
-                    outline.contours.push(mem::replace(&mut current_contour, Contour::new()));
+                    outline
+                        .contours
+                        .push(mem::replace(&mut current_contour, Contour::new()));
                 }
-                current_contour.push_point(segment.baseline.from(),
-                                           PointFlags::empty(),
-                                           &mut bounding_points);
+                current_contour.push_point(
+                    segment.baseline.from(),
+                    PointFlags::empty(),
+                    &mut bounding_points,
+                );
             }
 
             if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
                 if !current_contour.is_empty() {
-                    outline.contours.push(mem::replace(&mut current_contour, Contour::new()));
+                    outline
+                        .contours
+                        .push(mem::replace(&mut current_contour, Contour::new()));
                 }
                 continue;
             }
@@ -375,19 +435,25 @@ impl Outline {
             }
 
             if !segment.is_line() {
-                current_contour.push_point(segment.ctrl.from(),
-                                           PointFlags::CONTROL_POINT_0,
-                                           &mut bounding_points);
+                current_contour.push_point(
+                    segment.ctrl.from(),
+                    PointFlags::CONTROL_POINT_0,
+                    &mut bounding_points,
+                );
                 if !segment.is_quadratic() {
-                    current_contour.push_point(segment.ctrl.to(),
-                                               PointFlags::CONTROL_POINT_1,
-                                               &mut bounding_points);
+                    current_contour.push_point(
+                        segment.ctrl.to(),
+                        PointFlags::CONTROL_POINT_1,
+                        &mut bounding_points,
+                    );
                 }
             }
 
-            current_contour.push_point(segment.baseline.to(),
-                                       PointFlags::empty(),
-                                       &mut bounding_points);
+            current_contour.push_point(
+                segment.baseline.to(),
+                PointFlags::empty(),
+                &mut bounding_points,
+            );
         }
 
         if !current_contour.is_empty() {
@@ -395,10 +461,8 @@ impl Outline {
         }
 
         if let Some((upper_left, lower_right)) = bounding_points {
-            outline.bounds = Rect::from_points([
-                upper_left.as_euclid(),
-                lower_right.as_euclid(),
-            ].iter())
+            outline.bounds =
+                Rect::from_points([upper_left.as_euclid(), lower_right.as_euclid()].iter())
         }
 
         outline
@@ -407,11 +471,17 @@ impl Outline {
 
 impl Contour {
     fn new() -> Contour {
-        Contour { points: vec![], flags: vec![] }
+        Contour {
+            points: vec![],
+            flags: vec![],
+        }
     }
 
     fn iter(&self) -> ContourIter {
-        ContourIter { contour: self, index: 0 }
+        ContourIter {
+            contour: self,
+            index: 0,
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -427,10 +497,12 @@ impl Contour {
     }
 
     // TODO(pcwalton): Pack both min and max into a single SIMD register?
-    fn push_point(&mut self,
-                  point: Point2DF32,
-                  flags: PointFlags,
-                  bounding_points: &mut Option<(Point2DF32, Point2DF32)>) {
+    fn push_point(
+        &mut self,
+        point: Point2DF32,
+        flags: PointFlags,
+        bounding_points: &mut Option<(Point2DF32, Point2DF32)>,
+    ) {
         self.points.push(point);
         self.flags.push(flags);
 
@@ -473,8 +545,8 @@ impl Contour {
     }
 
     fn point_is_endpoint(&self, point_index: u32) -> bool {
-        !self.flags[point_index as usize].intersects(PointFlags::CONTROL_POINT_0 |
-                                                     PointFlags::CONTROL_POINT_1)
+        !self.flags[point_index as usize]
+            .intersects(PointFlags::CONTROL_POINT_0 | PointFlags::CONTROL_POINT_1)
     }
 
     fn add_to_point_index(&self, point_index: u32, addend: u32) -> u32 {
@@ -495,7 +567,7 @@ impl Contour {
         loop {
             point_index = self.prev_point_index_of(point_index);
             if self.point_is_endpoint(point_index) {
-                return point_index
+                return point_index;
             }
         }
     }
@@ -504,7 +576,7 @@ impl Contour {
         loop {
             point_index = self.next_point_index_of(point_index);
             if self.point_is_endpoint(point_index) {
-                return point_index
+                return point_index;
             }
         }
     }
@@ -614,35 +686,42 @@ impl<'a> Iterator for ContourIter<'a> {
     fn next(&mut self) -> Option<PathEvent> {
         let contour = self.contour;
         if self.index == contour.len() + 1 {
-            return None
+            return None;
         }
         if self.index == contour.len() {
             self.index += 1;
-            return Some(PathEvent::Close)
+            return Some(PathEvent::Close);
         }
 
         let point0_index = self.index;
         let point0 = contour.position_of(point0_index);
         self.index += 1;
         if point0_index == 0 {
-            return Some(PathEvent::MoveTo(point0.as_euclid()))
+            return Some(PathEvent::MoveTo(point0.as_euclid()));
         }
         if contour.point_is_endpoint(point0_index) {
-            return Some(PathEvent::LineTo(point0.as_euclid()))
+            return Some(PathEvent::LineTo(point0.as_euclid()));
         }
 
         let point1_index = self.index;
         let point1 = contour.position_of(point1_index);
         self.index += 1;
         if contour.point_is_endpoint(point1_index) {
-            return Some(PathEvent::QuadraticTo(point0.as_euclid(), point1.as_euclid()))
+            return Some(PathEvent::QuadraticTo(
+                point0.as_euclid(),
+                point1.as_euclid(),
+            ));
         }
 
         let point2_index = self.index;
         let point2 = contour.position_of(point2_index);
         self.index += 1;
         debug_assert!(contour.point_is_endpoint(point2_index));
-        Some(PathEvent::CubicTo(point0.as_euclid(), point1.as_euclid(), point2.as_euclid()))
+        Some(PathEvent::CubicTo(
+            point0.as_euclid(),
+            point1.as_euclid(),
+            point2.as_euclid(),
+        ))
     }
 }
 
@@ -664,13 +743,17 @@ struct Tiler<'o, 'z> {
 
 impl<'o, 'z> Tiler<'o, 'z> {
     #[allow(clippy::or_fun_call)]
-    fn new(outline: &'o Outline,
-           view_box: &Rect<f32>,
-           object_index: u16,
-           shader: ShaderId,
-           z_buffer: &'z ZBuffer)
-           -> Tiler<'o, 'z> {
-        let bounds = outline.bounds.intersection(&view_box).unwrap_or(Rect::zero());
+    fn new(
+        outline: &'o Outline,
+        view_box: &Rect<f32>,
+        object_index: u16,
+        shader: ShaderId,
+        z_buffer: &'z ZBuffer,
+    ) -> Tiler<'o, 'z> {
+        let bounds = outline
+            .bounds
+            .intersection(&view_box)
+            .unwrap_or(Rect::zero());
         let built_object = BuiltObject::new(&bounds, shader);
 
         Tiler {
@@ -712,7 +795,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         let strip_max_y = ((i32::from(strip_origin_y) + 1) * TILE_HEIGHT as i32) as f32;
         while let Some(queued_endpoint) = self.point_queue.peek() {
             if queued_endpoint.y >= strip_max_y {
-                break
+                break;
             }
             self.add_new_active_edge(strip_origin_y);
         }
@@ -722,7 +805,8 @@ impl<'o, 'z> Tiler<'o, 'z> {
         for solid_tile_index in self.built_object.solid_tiles.ones() {
             let tile = &self.built_object.tiles[solid_tile_index];
             if tile.backdrop != 0 {
-                self.z_buffer.update(tile.tile_x, tile.tile_y, self.object_index);
+                self.z_buffer
+                    .update(tile.tile_x, tile.tile_y, self.object_index);
             }
         }
     }
@@ -771,14 +855,16 @@ impl<'o, 'z> Tiler<'o, 'z> {
             // Do initial subtile fill, if necessary.
             let segment_tile_x = (f32::floor(segment_x) as i32 / TILE_WIDTH as i32) as i16;
             if current_tile_x < segment_tile_x && current_subtile_x > 0.0 {
-                let current_x = (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 +
-                    current_subtile_x;
+                let current_x =
+                    (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
-                self.built_object.add_active_fill(current_x,
-                                                  tile_right_x,
-                                                  current_winding,
-                                                  current_tile_x,
-                                                  tile_y);
+                self.built_object.add_active_fill(
+                    current_x,
+                    tile_right_x,
+                    current_winding,
+                    current_tile_x,
+                    tile_y,
+                );
                 current_tile_x += 1;
                 current_subtile_x = 0.0;
             }
@@ -786,7 +872,9 @@ impl<'o, 'z> Tiler<'o, 'z> {
             // Move over to the correct tile, filling in as we go.
             while current_tile_x < segment_tile_x {
                 //println!("... emitting backdrop {} @ tile {}", current_winding, current_tile_x);
-                self.built_object.get_tile_mut(current_tile_x, tile_y).backdrop = current_winding;
+                self.built_object
+                    .get_tile_mut(current_tile_x, tile_y)
+                    .backdrop = current_winding;
                 current_tile_x += 1;
                 current_subtile_x = 0.0;
             }
@@ -797,13 +885,15 @@ impl<'o, 'z> Tiler<'o, 'z> {
             let segment_subtile_x =
                 segment_x - (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32;
             if segment_subtile_x > current_subtile_x {
-                let current_x = (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 +
-                    current_subtile_x;
-                self.built_object.add_active_fill(current_x,
-                                                  segment_x,
-                                                  current_winding,
-                                                  current_tile_x,
-                                                  tile_y);
+                let current_x =
+                    (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
+                self.built_object.add_active_fill(
+                    current_x,
+                    segment_x,
+                    current_winding,
+                    current_tile_x,
+                    tile_y,
+                );
                 current_subtile_x = segment_subtile_x;
             }
 
@@ -845,11 +935,13 @@ impl<'o, 'z> Tiler<'o, 'z> {
 
         if contour.point_is_logically_above(point_index.point(), prev_endpoint_index) {
             //println!("... adding prev endpoint");
-            process_active_segment(contour,
-                                   prev_endpoint_index,
-                                   &mut self.active_edges,
-                                   &mut self.built_object,
-                                   tile_y);
+            process_active_segment(
+                contour,
+                prev_endpoint_index,
+                &mut self.active_edges,
+                &mut self.built_object,
+                tile_y,
+            );
 
             self.point_queue.push(QueuedEndpoint {
                 point_index: PointIndex::new(point_index.contour(), prev_endpoint_index),
@@ -864,11 +956,13 @@ impl<'o, 'z> Tiler<'o, 'z> {
                      point_index.point(),
                      next_endpoint_index);
             */
-            process_active_segment(contour,
-                                   point_index.point(),
-                                   &mut self.active_edges,
-                                   &mut self.built_object,
-                                   tile_y);
+            process_active_segment(
+                contour,
+                point_index.point(),
+                &mut self.active_edges,
+                &mut self.built_object,
+                tile_y,
+            );
 
             self.point_queue.push(QueuedEndpoint {
                 point_index: PointIndex::new(point_index.contour(), next_endpoint_index),
@@ -887,8 +981,9 @@ impl<'o, 'z> Tiler<'o, 'z> {
             let mut prev_endpoint_index = contour.prev_endpoint_index_of(cur_endpoint_index);
             let mut next_endpoint_index = contour.next_endpoint_index_of(cur_endpoint_index);
             loop {
-                if contour.point_is_logically_above(cur_endpoint_index, prev_endpoint_index) &&
-                        contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index) {
+                if contour.point_is_logically_above(cur_endpoint_index, prev_endpoint_index)
+                    && contour.point_is_logically_above(cur_endpoint_index, next_endpoint_index)
+                {
                     self.point_queue.push(QueuedEndpoint {
                         point_index: PointIndex::new(contour_index, cur_endpoint_index),
                         y: contour.position_of(cur_endpoint_index).y(),
@@ -896,7 +991,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
                 }
 
                 if cur_endpoint_index >= next_endpoint_index {
-                    break
+                    break;
                 }
 
                 prev_endpoint_index = cur_endpoint_index;
@@ -907,11 +1002,13 @@ impl<'o, 'z> Tiler<'o, 'z> {
     }
 }
 
-fn process_active_segment(contour: &Contour,
-                          from_endpoint_index: u32,
-                          active_edges: &mut SortedVector<ActiveEdge>,
-                          built_object: &mut BuiltObject,
-                          tile_y: i16) {
+fn process_active_segment(
+    contour: &Contour,
+    from_endpoint_index: u32,
+    active_edges: &mut SortedVector<ActiveEdge>,
+    built_object: &mut BuiltObject,
+    tile_y: i16,
+) {
     let mut active_edge = ActiveEdge::from_segment(&contour.segment_after(from_endpoint_index));
     //println!("... process_active_segment({:#?})", active_edge);
     active_edge.process(built_object, tile_y);
@@ -924,13 +1021,18 @@ fn process_active_segment(contour: &Contour,
 
 impl BuiltScene {
     fn new(view_box: &Rect<f32>) -> BuiltScene {
-        BuiltScene { view_box: *view_box, batches: vec![], solid_tiles: vec![], shaders: vec![] }
+        BuiltScene {
+            view_box: *view_box,
+            batches: vec![],
+            solid_tiles: vec![],
+            shaders: vec![],
+        }
     }
 }
 
 fn scene_tile_index(tile_x: i16, tile_y: i16, tile_rect: Rect<i16>) -> u32 {
-    (tile_y - tile_rect.origin.y) as u32 * tile_rect.size.width as u32 +
-        (tile_x - tile_rect.origin.x) as u32
+    (tile_y - tile_rect.origin.y) as u32 * tile_rect.size.width as u32
+        + (tile_x - tile_rect.origin.x) as u32
 }
 
 struct SceneBuilder {
@@ -944,11 +1046,17 @@ struct SceneBuilder {
 impl SceneBuilder {
     fn new(objects: Vec<BuiltObject>, z_buffer: ZBuffer, view_box: &Rect<f32>) -> SceneBuilder {
         let tile_rect = round_rect_out_to_tile_bounds(view_box);
-        SceneBuilder { objects, z_buffer, tile_rect, current_object_index: 0 }
+        SceneBuilder {
+            objects,
+            z_buffer,
+            tile_rect,
+            current_object_index: 0,
+        }
     }
 
     fn build_solid_tiles(&self) -> Vec<SolidTileScenePrimitive> {
-        self.z_buffer.build_solid_tiles(&self.objects, &self.tile_rect)
+        self.z_buffer
+            .build_solid_tiles(&self.objects, &self.tile_rect)
     }
 
     fn build_batch(&mut self) -> Option<Batch> {
@@ -963,8 +1071,8 @@ impl SceneBuilder {
             }
 
             object_tile_index_to_batch_mask_tile_index.clear();
-            object_tile_index_to_batch_mask_tile_index.extend(
-                iter::repeat(u16::MAX).take(object.tiles.len()));
+            object_tile_index_to_batch_mask_tile_index
+                .extend(iter::repeat(u16::MAX).take(object.tiles.len()));
 
             // Copy mask tiles.
             for (tile_index, tile) in object.tiles.iter().enumerate() {
@@ -975,7 +1083,10 @@ impl SceneBuilder {
 
                 // Cull occluded tiles.
                 let scene_tile_index = scene_tile_index(tile.tile_x, tile.tile_y, self.tile_rect);
-                if !self.z_buffer.test(scene_tile_index, self.current_object_index as u32) {
+                if !self
+                    .z_buffer
+                    .test(scene_tile_index, self.current_object_index as u32)
+                {
                     continue;
                 }
 
@@ -1045,28 +1156,32 @@ impl ZBuffer {
         let mut old_depth = self.buffer[scene_tile_index].load(AtomicOrdering::SeqCst);
         let new_depth = (object_index + 1) as usize;
         while old_depth < new_depth {
-            let prev_depth = self.buffer[scene_tile_index]
-                                 .compare_and_swap(old_depth,
-                                                   new_depth,
-                                                   AtomicOrdering::SeqCst);
+            let prev_depth = self.buffer[scene_tile_index].compare_and_swap(
+                old_depth,
+                new_depth,
+                AtomicOrdering::SeqCst,
+            );
             if prev_depth == old_depth {
                 // Successfully written.
-                return
+                return;
             }
             old_depth = prev_depth;
         }
     }
 
-    fn build_solid_tiles(&self, objects: &[BuiltObject], tile_rect: &Rect<i16>)
-                         -> Vec<SolidTileScenePrimitive> {
+    fn build_solid_tiles(
+        &self,
+        objects: &[BuiltObject],
+        tile_rect: &Rect<i16>,
+    ) -> Vec<SolidTileScenePrimitive> {
         let mut solid_tiles = vec![];
         for scene_tile_y in 0..tile_rect.size.height {
             for scene_tile_x in 0..tile_rect.size.width {
-                let scene_tile_index = scene_tile_y as usize * tile_rect.size.width as usize +
-                    scene_tile_x as usize;
+                let scene_tile_index =
+                    scene_tile_y as usize * tile_rect.size.width as usize + scene_tile_x as usize;
                 let depth = self.buffer[scene_tile_index].load(AtomicOrdering::Relaxed);
                 if depth == 0 {
-                    continue
+                    continue;
                 }
                 let object_index = (depth - 1) as usize;
                 solid_tiles.push(SolidTileScenePrimitive {
@@ -1206,7 +1321,10 @@ impl BuiltObject {
         //println!("... after min: {} {} {} {}", segment[0], segment[1], segment[2], segment[3]);
 
         let shuffle_mask = I32x4::new(0x0c08_0400, 0x0d05_0901, 0, 0);
-        segment = segment.as_u8x16().shuffle(shuffle_mask.as_u8x16()).as_i32x4();
+        segment = segment
+            .as_u8x16()
+            .shuffle(shuffle_mask.as_u8x16())
+            .as_i32x4();
 
         let px = LineSegmentU4((segment[1] | (segment[1] >> 12)) as u16);
         let subpx = LineSegmentU8(segment[0] as u32);
@@ -1222,16 +1340,23 @@ impl BuiltObject {
         }
         */
 
-        self.fills.push(FillObjectPrimitive { px, subpx, tile_x, tile_y });
+        self.fills.push(FillObjectPrimitive {
+            px,
+            subpx,
+            tile_x,
+            tile_y,
+        });
         self.solid_tiles.set(tile_index as usize, false);
     }
 
-    fn add_active_fill(&mut self,
-                       left: f32,
-                       right: f32,
-                       mut winding: i16,
-                       tile_x: i16,
-                       tile_y: i16) {
+    fn add_active_fill(
+        &mut self,
+        left: f32,
+        right: f32,
+        mut winding: i16,
+        tile_x: i16,
+        tile_y: i16,
+    ) {
         let tile_origin_y = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
         let left = Point2DF32::new(left, tile_origin_y);
         let right = Point2DF32::new(right, tile_origin_y);
@@ -1278,8 +1403,8 @@ impl BuiltObject {
         };
 
         let segment_tile_left = (f32::floor(segment_left) as i32 / TILE_WIDTH as i32) as i16;
-        let segment_tile_right = util::alignup_i32(f32::ceil(segment_right) as i32,
-                                                   TILE_WIDTH as i32) as i16;
+        let segment_tile_right =
+            util::alignup_i32(f32::ceil(segment_right) as i32, TILE_WIDTH as i32) as i16;
 
         for subsegment_tile_x in segment_tile_left..segment_tile_right {
             let (mut fill_from, mut fill_to) = (segment.from(), segment.to());
@@ -1305,11 +1430,11 @@ impl BuiltObject {
     // FIXME(pcwalton): Use a `Point2D<i16>` instead?
     fn tile_coords_to_index(&self, tile_x: i16, tile_y: i16) -> u32 {
         /*println!("tile_coords_to_index(x={}, y={}, tile_rect={:?})",
-                 tile_x,
-                 tile_y,
-                 self.tile_rect);*/
-        (tile_y - self.tile_rect.origin.y) as u32 * self.tile_rect.size.width as u32 +
-            (tile_x - self.tile_rect.origin.x) as u32
+        tile_x,
+        tile_y,
+        self.tile_rect);*/
+        (tile_y - self.tile_rect.origin.y) as u32 * self.tile_rect.size.width as u32
+            + (tile_x - self.tile_rect.origin.x) as u32
     }
 
     fn get_tile_mut(&mut self, tile_x: i16, tile_y: i16) -> &mut TileObjectPrimitive {
@@ -1335,29 +1460,33 @@ impl Paint {
 // Scene serialization
 
 impl BuiltScene {
-    fn write<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
+    fn write<W>(&self, writer: &mut W) -> io::Result<()>
+    where
+        W: Write,
+    {
         writer.write_all(b"RIFF")?;
 
         let header_size = 4 * 6;
 
         let solid_tiles_size = self.solid_tiles.len() * mem::size_of::<SolidTileScenePrimitive>();
 
-        let batch_sizes: Vec<_> = self.batches.iter().map(|batch| {
-            BatchSizes {
+        let batch_sizes: Vec<_> = self
+            .batches
+            .iter()
+            .map(|batch| BatchSizes {
                 fills: (batch.fills.len() * mem::size_of::<FillBatchPrimitive>()),
                 mask_tiles: (batch.mask_tiles.len() * mem::size_of::<MaskTileBatchPrimitive>()),
-            }
-        }).collect();
+            })
+            .collect();
 
         let total_batch_sizes: usize = batch_sizes.iter().map(|sizes| 8 + sizes.total()).sum();
 
         let shaders_size = self.shaders.len() * mem::size_of::<ObjectShader>();
 
-        writer.write_u32::<LittleEndian>((4 +
-                                          8 + header_size +
-                                          8 + solid_tiles_size +
-                                          8 + shaders_size +
-                                          total_batch_sizes) as u32)?;
+        writer.write_u32::<LittleEndian>(
+            (4 + 8 + header_size + 8 + solid_tiles_size + 8 + shaders_size + total_batch_sizes)
+                as u32,
+        )?;
 
         writer.write_all(b"PF3S")?;
 
@@ -1426,36 +1555,58 @@ impl BuiltScene {
 
 impl Batch {
     fn new() -> Batch {
-        Batch { fills: vec![], mask_tiles: vec![] }
+        Batch {
+            fills: vec![],
+            mask_tiles: vec![],
+        }
     }
 
-    fn is_empty(&self) -> bool { self.mask_tiles.is_empty() }
+    fn is_empty(&self) -> bool {
+        self.mask_tiles.is_empty()
+    }
 }
 
 impl TileObjectPrimitive {
     fn new(tile_x: i16, tile_y: i16) -> TileObjectPrimitive {
-        TileObjectPrimitive { tile_x, tile_y, backdrop: 0 }
+        TileObjectPrimitive {
+            tile_x,
+            tile_y,
+            backdrop: 0,
+        }
     }
 }
 
 impl ColorU {
     fn black() -> ColorU {
-        ColorU { r: 0, g: 0, b: 0, a: 255 }
+        ColorU {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 255,
+        }
     }
 
     fn from_svg_color(svg_color: SvgColor) -> ColorU {
-        ColorU { r: svg_color.red, g: svg_color.green, b: svg_color.blue, a: 255 }
+        ColorU {
+            r: svg_color.red,
+            g: svg_color.green,
+            b: svg_color.blue,
+            a: 255,
+        }
     }
 }
 
 // Tile geometry utilities
 
 fn round_rect_out_to_tile_bounds(rect: &Rect<f32>) -> Rect<i16> {
-    let tile_origin = Point2D::new((f32::floor(rect.origin.x) as i32 / TILE_WIDTH as i32) as i16,
-                                   (f32::floor(rect.origin.y) as i32 / TILE_HEIGHT as i32) as i16);
-    let tile_extent =
-        Point2D::new(util::alignup_i32(f32::ceil(rect.max_x()) as i32, TILE_WIDTH as i32) as i16,
-                     util::alignup_i32(f32::ceil(rect.max_y()) as i32, TILE_HEIGHT as i32) as i16);
+    let tile_origin = Point2D::new(
+        (f32::floor(rect.origin.x) as i32 / TILE_WIDTH as i32) as i16,
+        (f32::floor(rect.origin.y) as i32 / TILE_HEIGHT as i32) as i16,
+    );
+    let tile_extent = Point2D::new(
+        util::alignup_i32(f32::ceil(rect.max_x()) as i32, TILE_WIDTH as i32) as i16,
+        util::alignup_i32(f32::ceil(rect.max_y()) as i32, TILE_HEIGHT as i32) as i16,
+    );
     let tile_size = Size2D::new(tile_extent.x - tile_origin.x, tile_extent.y - tile_origin.y);
     Rect::new(tile_origin, tile_size)
 }
@@ -1463,23 +1614,38 @@ fn round_rect_out_to_tile_bounds(rect: &Rect<f32>) -> Rect<i16> {
 // USVG stuff
 
 fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> Rect<f32> {
-    Rect::new(Point2D::new(rect.x, rect.y), Size2D::new(rect.width, rect.height)).to_f32()
+    Rect::new(
+        Point2D::new(rect.x, rect.y),
+        Size2D::new(rect.width, rect.height),
+    )
+    .to_f32()
 }
 
 fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2DF32 {
-    Transform2DF32::row_major(transform.a as f32, transform.b as f32,
-                              transform.c as f32, transform.d as f32,
-                              transform.e as f32, transform.f as f32)
+    Transform2DF32::row_major(
+        transform.a as f32,
+        transform.b as f32,
+        transform.c as f32,
+        transform.d as f32,
+        transform.e as f32,
+        transform.f as f32,
+    )
 }
 
-struct UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegment> {
+struct UsvgPathToSegments<I>
+where
+    I: Iterator<Item = UsvgPathSegment>,
+{
     iter: I,
     first_subpath_point: Point2DF32,
     last_subpath_point: Point2DF32,
     just_moved: bool,
 }
 
-impl<I> UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegment> {
+impl<I> UsvgPathToSegments<I>
+where
+    I: Iterator<Item = UsvgPathSegment>,
+{
     fn new(iter: I) -> UsvgPathToSegments<I> {
         UsvgPathToSegments {
             iter,
@@ -1490,7 +1656,10 @@ impl<I> UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegment> {
     }
 }
 
-impl<I> Iterator for UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegment> {
+impl<I> Iterator for UsvgPathToSegments<I>
+where
+    I: Iterator<Item = UsvgPathSegment>,
+{
     type Item = Segment;
 
     fn next(&mut self) -> Option<Segment> {
@@ -1513,13 +1682,21 @@ impl<I> Iterator for UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegm
                 self.just_moved = false;
                 Some(segment)
             }
-            UsvgPathSegment::CurveTo { x1, y1, x2, y2, x, y } => {
+            UsvgPathSegment::CurveTo {
+                x1,
+                y1,
+                x2,
+                y2,
+                x,
+                y,
+            } => {
                 let ctrl0 = Point2DF32::new(x1 as f32, y1 as f32);
                 let ctrl1 = Point2DF32::new(x2 as f32, y2 as f32);
                 let to = Point2DF32::new(x as f32, y as f32);
-                let mut segment =
-                    Segment::cubic(&LineSegmentF32::new(&self.last_subpath_point, &to),
-                                   &LineSegmentF32::new(&ctrl0, &ctrl1));
+                let mut segment = Segment::cubic(
+                    &LineSegmentF32::new(&self.last_subpath_point, &to),
+                    &LineSegmentF32::new(&ctrl0, &ctrl1),
+                );
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
                 }
@@ -1528,8 +1705,10 @@ impl<I> Iterator for UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegm
                 Some(segment)
             }
             UsvgPathSegment::ClosePath => {
-                let mut segment = Segment::line(&LineSegmentF32::new(&self.last_subpath_point,
-                                                                     &self.first_subpath_point));
+                let mut segment = Segment::line(&LineSegmentF32::new(
+                    &self.last_subpath_point,
+                    &self.first_subpath_point,
+                ));
                 segment.flags.insert(SegmentFlags::CLOSES_SUBPATH);
                 self.just_moved = false;
                 self.last_subpath_point = self.first_subpath_point;
@@ -1543,14 +1722,20 @@ impl<I> Iterator for UsvgPathToSegments<I> where I: Iterator<Item = UsvgPathSegm
 //
 // TODO(pcwalton): Remove this once we're fully on Pathfinder's native geometry.
 
-struct PathEventsToSegments<I> where I: Iterator<Item = PathEvent> {
+struct PathEventsToSegments<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     iter: I,
     first_subpath_point: Point2DF32,
     last_subpath_point: Point2DF32,
     just_moved: bool,
 }
 
-impl<I> PathEventsToSegments<I> where I: Iterator<Item = PathEvent> {
+impl<I> PathEventsToSegments<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     fn new(iter: I) -> PathEventsToSegments<I> {
         PathEventsToSegments {
             iter,
@@ -1561,7 +1746,10 @@ impl<I> PathEventsToSegments<I> where I: Iterator<Item = PathEvent> {
     }
 }
 
-impl<I> Iterator for PathEventsToSegments<I> where I: Iterator<Item = PathEvent> {
+impl<I> Iterator for PathEventsToSegments<I>
+where
+    I: Iterator<Item = PathEvent>,
+{
     type Item = Segment;
 
     fn next(&mut self) -> Option<Segment> {
@@ -1587,8 +1775,7 @@ impl<I> Iterator for PathEventsToSegments<I> where I: Iterator<Item = PathEvent>
             PathEvent::QuadraticTo(ctrl, to) => {
                 let (ctrl, to) = (Point2DF32::from_euclid(ctrl), Point2DF32::from_euclid(to));
                 let mut segment =
-                    Segment::quadratic(&LineSegmentF32::new(&self.last_subpath_point, &to),
-                                       &ctrl);
+                    Segment::quadratic(&LineSegmentF32::new(&self.last_subpath_point, &to), &ctrl);
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
                 }
@@ -1600,9 +1787,10 @@ impl<I> Iterator for PathEventsToSegments<I> where I: Iterator<Item = PathEvent>
                 let ctrl0 = Point2DF32::from_euclid(ctrl0);
                 let ctrl1 = Point2DF32::from_euclid(ctrl1);
                 let to = Point2DF32::from_euclid(to);
-                let mut segment =
-                    Segment::cubic(&LineSegmentF32::new(&self.last_subpath_point, &to),
-                                   &LineSegmentF32::new(&ctrl0, &ctrl1));
+                let mut segment = Segment::cubic(
+                    &LineSegmentF32::new(&self.last_subpath_point, &to),
+                    &LineSegmentF32::new(&ctrl0, &ctrl1),
+                );
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
                 }
@@ -1611,8 +1799,10 @@ impl<I> Iterator for PathEventsToSegments<I> where I: Iterator<Item = PathEvent>
                 Some(segment)
             }
             PathEvent::Close => {
-                let mut segment = Segment::line(&LineSegmentF32::new(&self.last_subpath_point,
-                                                                     &self.first_subpath_point));
+                let mut segment = Segment::line(&LineSegmentF32::new(
+                    &self.last_subpath_point,
+                    &self.first_subpath_point,
+                ));
                 segment.flags.insert(SegmentFlags::CLOSES_SUBPATH);
                 self.just_moved = false;
                 self.last_subpath_point = self.first_subpath_point;
@@ -1623,18 +1813,27 @@ impl<I> Iterator for PathEventsToSegments<I> where I: Iterator<Item = PathEvent>
     }
 }
 
-struct SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
+struct SegmentsToPathEvents<I>
+where
+    I: Iterator<Item = Segment>,
+{
     iter: I,
     buffer: Option<PathEvent>,
 }
 
-impl<I> SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
+impl<I> SegmentsToPathEvents<I>
+where
+    I: Iterator<Item = Segment>,
+{
     fn new(iter: I) -> SegmentsToPathEvents<I> {
         SegmentsToPathEvents { iter, buffer: None }
     }
 }
 
-impl<I> Iterator for SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
+impl<I> Iterator for SegmentsToPathEvents<I>
+where
+    I: Iterator<Item = Segment>,
+{
     type Item = PathEvent;
 
     fn next(&mut self) -> Option<PathEvent> {
@@ -1650,15 +1849,15 @@ impl<I> Iterator for SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
         let event = match segment.kind {
             SegmentKind::None => return self.next(),
             SegmentKind::Line => PathEvent::LineTo(segment.baseline.to().as_euclid()),
-            SegmentKind::Quadratic => {
-                PathEvent::QuadraticTo(segment.ctrl.from().as_euclid(),
-                                       segment.baseline.to().as_euclid())
-            }
-            SegmentKind::Cubic => {
-                PathEvent::CubicTo(segment.ctrl.from().as_euclid(),
-                                   segment.ctrl.to().as_euclid(),
-                                   segment.baseline.to().as_euclid())
-            }
+            SegmentKind::Quadratic => PathEvent::QuadraticTo(
+                segment.ctrl.from().as_euclid(),
+                segment.baseline.to().as_euclid(),
+            ),
+            SegmentKind::Cubic => PathEvent::CubicTo(
+                segment.ctrl.from().as_euclid(),
+                segment.ctrl.to().as_euclid(),
+                segment.baseline.to().as_euclid(),
+            ),
         };
 
         if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
@@ -1672,24 +1871,38 @@ impl<I> Iterator for SegmentsToPathEvents<I> where I: Iterator<Item = Segment> {
 
 // Path transformation utilities
 
-struct PathTransformingIter<I> where I: Iterator<Item = Segment> {
+struct PathTransformingIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
     iter: I,
     transform: Transform2DF32,
 }
 
-impl<I> Iterator for PathTransformingIter<I> where I: Iterator<Item = Segment> {
+impl<I> Iterator for PathTransformingIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
     type Item = Segment;
 
     fn next(&mut self) -> Option<Segment> {
         // TODO(pcwalton): Can we go faster by transforming an entire line segment with SIMD?
         let mut segment = self.iter.next()?;
         if !segment.is_none() {
-            segment.baseline.set_from(&self.transform.transform_point(&segment.baseline.from()));
-            segment.baseline.set_to(&self.transform.transform_point(&segment.baseline.to()));
+            segment
+                .baseline
+                .set_from(&self.transform.transform_point(&segment.baseline.from()));
+            segment
+                .baseline
+                .set_to(&self.transform.transform_point(&segment.baseline.to()));
             if !segment.is_line() {
-                segment.ctrl.set_from(&self.transform.transform_point(&segment.ctrl.from()));
+                segment
+                    .ctrl
+                    .set_from(&self.transform.transform_point(&segment.ctrl.from()));
                 if !segment.is_quadratic() {
-                    segment.ctrl.set_to(&self.transform.transform_point(&segment.ctrl.to()));
+                    segment
+                        .ctrl
+                        .set_to(&self.transform.transform_point(&segment.ctrl.to()));
                 }
             }
         }
@@ -1697,21 +1910,33 @@ impl<I> Iterator for PathTransformingIter<I> where I: Iterator<Item = Segment> {
     }
 }
 
-impl<I> PathTransformingIter<I> where I: Iterator<Item = Segment> {
+impl<I> PathTransformingIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
     fn new(iter: I, transform: &Transform2DF32) -> PathTransformingIter<I> {
-        PathTransformingIter { iter, transform: *transform }
+        PathTransformingIter {
+            iter,
+            transform: *transform,
+        }
     }
 }
 
 // Monotonic conversion utilities
 
 // TODO(pcwalton): I think we only need to be monotonic in Y, maybe?
-struct MonotonicConversionIter<I> where I: Iterator<Item = Segment> {
+struct MonotonicConversionIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
     iter: I,
     buffer: ArrayVec<[Segment; 2]>,
 }
 
-impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = Segment> {
+impl<I> Iterator for MonotonicConversionIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
     type Item = Segment;
 
     fn next(&mut self) -> Option<Segment> {
@@ -1732,9 +1957,15 @@ impl<I> Iterator for MonotonicConversionIter<I> where I: Iterator<Item = Segment
     }
 }
 
-impl<I> MonotonicConversionIter<I> where I: Iterator<Item = Segment> {
+impl<I> MonotonicConversionIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
     fn new(iter: I) -> MonotonicConversionIter<I> {
-        MonotonicConversionIter { iter, buffer: ArrayVec::new() }
+        MonotonicConversionIter {
+            iter,
+            buffer: ArrayVec::new(),
+        }
     }
 
     fn handle_cubic(&mut self, segment: &Segment) -> Option<Segment> {
@@ -1759,11 +1990,17 @@ impl<I> MonotonicConversionIter<I> where I: Iterator<Item = Segment> {
 // SortedVector
 
 #[derive(Clone, Debug)]
-pub struct SortedVector<T> where T: PartialOrd {
+pub struct SortedVector<T>
+where
+    T: PartialOrd,
+{
     array: Vec<T>,
 }
 
-impl<T> SortedVector<T> where T: PartialOrd {
+impl<T> SortedVector<T>
+where
+    T: PartialOrd,
+{
     fn new() -> SortedVector<T> {
         SortedVector { array: vec![] }
     }
@@ -1774,18 +2011,26 @@ impl<T> SortedVector<T> where T: PartialOrd {
         while index > 0 {
             index -= 1;
             if self.array[index] <= self.array[index + 1] {
-                break
+                break;
             }
             self.array.swap(index, index + 1);
         }
     }
 
-    fn peek(&self) -> Option<&T>   { self.array.last()     }
-    fn pop(&mut self) -> Option<T> { self.array.pop()      }
-    fn clear(&mut self)            { self.array.clear()    }
+    fn peek(&self) -> Option<&T> {
+        self.array.last()
+    }
+    fn pop(&mut self) -> Option<T> {
+        self.array.pop()
+    }
+    fn clear(&mut self) {
+        self.array.clear()
+    }
 
     #[allow(dead_code)]
-    fn is_empty(&self) -> bool     { self.array.is_empty() }
+    fn is_empty(&self) -> bool {
+        self.array.is_empty()
+    }
 }
 
 // Queued endpoints
@@ -1825,7 +2070,10 @@ impl ActiveEdge {
     }
 
     fn from_segment_and_crossing(segment: &Segment, crossing: &Point2DF32) -> ActiveEdge {
-        ActiveEdge { segment: *segment, crossing: *crossing }
+        ActiveEdge {
+            segment: *segment,
+            crossing: *crossing,
+        }
     }
 
     fn process(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
@@ -1852,25 +2100,29 @@ impl ActiveEdge {
         // If necessary, draw initial line.
         if self.crossing.y() < segment.baseline.min_y() {
             let first_line_segment =
-                LineSegmentF32::new(&self.crossing,
-                                    &segment.baseline.upper_point()).orient(winding);
-            if self.process_line_segment(&first_line_segment, built_object, tile_y).is_some() {
+                LineSegmentF32::new(&self.crossing, &segment.baseline.upper_point())
+                    .orient(winding);
+            if self
+                .process_line_segment(&first_line_segment, built_object, tile_y)
+                .is_some()
+            {
                 return;
             }
         }
 
         loop {
-            let rest_segment = match segment.orient(winding)
-                                            .as_cubic_segment()
-                                            .flatten_once(FLATTENING_TOLERANCE) {
+            let rest_segment = match segment
+                .orient(winding)
+                .as_cubic_segment()
+                .flatten_once(FLATTENING_TOLERANCE)
+            {
                 None => {
                     let line_segment = segment.baseline;
-                    self.segment = match self.process_line_segment(&line_segment,
-                                                                   built_object,
-                                                                   tile_y) {
-                        Some(ref lower_part) => Segment::line(lower_part),
-                        None => Segment::none(),
-                    };
+                    self.segment =
+                        match self.process_line_segment(&line_segment, built_object, tile_y) {
+                            Some(ref lower_part) => Segment::line(lower_part),
+                            None => Segment::none(),
+                        };
                     return;
                 }
                 Some(rest_segment) => rest_segment.orient(winding),
@@ -1878,10 +2130,15 @@ impl ActiveEdge {
 
             debug_assert!(segment.baseline.min_y() <= tile_bottom);
 
-            let line_segment =
-                LineSegmentF32::new(&segment.baseline.upper_point(),
-                                    &rest_segment.baseline.upper_point()).orient(winding);
-            if self.process_line_segment(&line_segment, built_object, tile_y).is_some() {
+            let line_segment = LineSegmentF32::new(
+                &segment.baseline.upper_point(),
+                &rest_segment.baseline.upper_point(),
+            )
+            .orient(winding);
+            if self
+                .process_line_segment(&line_segment, built_object, tile_y)
+                .is_some()
+            {
                 self.segment = rest_segment;
                 return;
             }
@@ -1890,11 +2147,12 @@ impl ActiveEdge {
         }
     }
 
-    fn process_line_segment(&mut self,
-                            line_segment: &LineSegmentF32,
-                            built_object: &mut BuiltObject,
-                            tile_y: i16)
-                            -> Option<LineSegmentF32> {
+    fn process_line_segment(
+        &mut self,
+        line_segment: &LineSegmentF32,
+        built_object: &mut BuiltObject,
+        tile_y: i16,
+    ) -> Option<LineSegmentF32> {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         if line_segment.max_y() <= tile_bottom {
             built_object.generate_fill_primitives_for_line(*line_segment, tile_y);
@@ -1946,10 +2204,18 @@ impl Transform2DF32 {
         }
     }
 
-    fn m11(&self) -> f32 { self.matrix[0] }
-    fn m12(&self) -> f32 { self.matrix[1] }
-    fn m21(&self) -> f32 { self.matrix[2] }
-    fn m22(&self) -> f32 { self.matrix[3] }
+    fn m11(&self) -> f32 {
+        self.matrix[0]
+    }
+    fn m12(&self) -> f32 {
+        self.matrix[1]
+    }
+    fn m21(&self) -> f32 {
+        self.matrix[2]
+    }
+    fn m22(&self) -> f32 {
+        self.matrix[3]
+    }
 
     fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
         let xxyy = F32x4::new(point.x(), point.x(), point.y(), point.y());
