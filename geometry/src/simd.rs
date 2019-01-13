@@ -8,22 +8,24 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#[cfg(feature = "pf-no-simd")]
+#![allow(dead_code)]
+
+#[cfg(any(feature = "pf-no-simd", all(not(target_arch = "x86"), not(target_arch = "x86_64"))))]
 pub type F32x4 = scalar::F32x4;
-#[cfg(feature = "pf-no-simd")]
+#[cfg(any(feature = "pf-no-simd", all(not(target_arch = "x86"), not(target_arch = "x86_64"))))]
 pub type I32x4 = scalar::I32x4;
-#[cfg(feature = "pf-no-simd")]
+#[cfg(any(feature = "pf-no-simd", all(not(target_arch = "x86"), not(target_arch = "x86_64"))))]
 pub type U32x4 = scalar::U32x4;
-#[cfg(feature = "pf-no-simd")]
+#[cfg(any(feature = "pf-no-simd", all(not(target_arch = "x86"), not(target_arch = "x86_64"))))]
 pub type U8x16 = scalar::U8x16;
 
-#[cfg(not(feature = "pf-no-simd"))]
+#[cfg(all(not(feature = "pf-no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
 pub type F32x4 = x86::F32x4;
-#[cfg(not(feature = "pf-no-simd"))]
+#[cfg(all(not(feature = "pf-no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
 pub type I32x4 = x86::I32x4;
-#[cfg(not(feature = "pf-no-simd"))]
+#[cfg(all(not(feature = "pf-no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
 pub type U32x4 = x86::U32x4;
-#[cfg(not(feature = "pf-no-simd"))]
+#[cfg(all(not(feature = "pf-no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
 pub type U8x16 = x86::U8x16;
 
 mod scalar {
@@ -323,6 +325,7 @@ mod scalar {
     }
 }
 
+#[cfg(any(not(feature = "pf-no-simd"), target_arch = "x86", target_arch = "x86_64"))]
 mod x86 {
     use std::arch::x86_64::{self, __m128, __m128d, __m128i};
     use std::cmp::PartialEq;
