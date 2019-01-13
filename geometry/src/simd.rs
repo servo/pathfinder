@@ -14,7 +14,7 @@ pub type U32x4 = x86::U32x4;
 pub type U8x16 = x86::U8x16;
 
 mod x86 {
-    use std::arch::x86_64::{self, __m128, __m128i};
+    use std::arch::x86_64::{self, __m128, __m128d, __m128i};
     use std::cmp::PartialEq;
     use std::fmt::{self, Debug, Formatter};
     use std::mem;
@@ -58,19 +58,66 @@ mod x86 {
             }
         }
 
+        // Casts these packed floats to 64-bit floats.
+        //
+        // NB: This is a pure bitcast and does no actual conversion; only use this if you know what
+        // you're doing.
         #[inline]
-        pub fn swap_halves(self) -> F32x4 {
-            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0100_1110)) }
+        pub fn as_f64x2(self) -> F64x2 {
+            unsafe { F64x2(x86_64::_mm_castps_pd(self.0)) }
+        }
+
+        // Converts these packed floats to integers.
+        #[inline]
+        pub fn to_i32x4(self) -> I32x4 {
+            unsafe { I32x4(x86_64::_mm_cvtps_epi32(self.0)) }
+        }
+
+        // Shuffles
+
+        #[inline]
+        pub fn xxyy(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0101_0000)) }
         }
 
         #[inline]
-        pub fn splat_low_half(self) -> F32x4 {
+        pub fn xyxy(self) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0100_0100)) }
         }
 
         #[inline]
-        pub fn splat_high_half(self) -> F32x4 {
+        pub fn xyyx(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0001_0100)) }
+        }
+
+        #[inline]
+        pub fn xzxz(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1000_1000)) }
+        }
+
+        #[inline]
+        pub fn ywyw(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1101_1101)) }
+        }
+
+        #[inline]
+        pub fn zzww(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1111_1010)) }
+        }
+
+        #[inline]
+        pub fn zwxy(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0100_1110)) }
+        }
+
+        #[inline]
+        pub fn zwzw(self) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1110_1110)) }
+        }
+
+        #[inline]
+        pub fn wxyz(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1001_0011)) }
         }
 
         #[inline]
@@ -81,11 +128,6 @@ mod x86 {
                     F32x4(x86_64::_mm_unpackhi_ps(self.0, other.0)),
                 )
             }
-        }
-
-        #[inline]
-        pub fn to_i32x4(self) -> I32x4 {
-            unsafe { I32x4(x86_64::_mm_cvtps_epi32(self.0)) }
         }
     }
 
@@ -146,6 +188,44 @@ mod x86 {
         #[inline]
         fn sub(self, other: F32x4) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_sub_ps(self.0, other.0)) }
+        }
+    }
+
+    // 64-bit floats
+
+    #[derive(Clone, Copy)]
+    pub struct F64x2(pub __m128d);
+
+    impl F64x2 {
+        // Shuffles
+
+        #[inline]
+        pub fn interleave(self, other: F64x2) -> (F64x2, F64x2) {
+            unsafe {
+                (
+                    F64x2(x86_64::_mm_unpacklo_pd(self.0, other.0)),
+                    F64x2(x86_64::_mm_unpackhi_pd(self.0, other.0)),
+                )
+            }
+        }
+
+        // Creates `<self[0], self[1], other[2], other[3]>`.
+        #[inline]
+        pub fn combine_low_high(self, other: F64x2) -> F64x2 {
+            unsafe {
+                F64x2(x86_64::_mm_shuffle_pd(self.0, other.0, 0b10))
+            }
+        }
+
+        // Casts these packed floats to 32-bit floats.
+        //
+        // NB: This is a pure bitcast and does no actual conversion; only use this if you know what
+        // you're doing.
+        #[inline]
+        pub fn as_f32x4(self) -> F32x4 {
+            unsafe {
+                F32x4(x86_64::_mm_castpd_ps(self.0))
+            }
         }
     }
 

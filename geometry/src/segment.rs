@@ -160,7 +160,7 @@ impl<'s> CubicSegment<'s> {
     #[inline]
     pub fn flatten_once(self, tolerance: f32) -> Option<Segment> {
         let (baseline, ctrl) = (self.0.baseline.0, self.0.ctrl.0);
-        let from_from = baseline.splat_low_half();
+        let from_from = baseline.xyxy();
         let v0102 = ctrl - from_from;
 
         //      v01.x   v01.y   v02.x v02.y
@@ -171,7 +171,7 @@ impl<'s> CubicSegment<'s> {
         //         +-------+     +-----+
         //             +            -
         //         v01 len^2   determinant
-        let products = v0102 * F32x4::new(v0102[0], v0102[1], v0102[1], v0102[0]);
+        let products = v0102 * v0102.xyyx();
 
         let det = products[2] - products[3];
         if det == 0.0 {
@@ -194,26 +194,25 @@ impl<'s> CubicSegment<'s> {
     pub fn split(self, t: f32) -> (Segment, Segment) {
         let tttt = F32x4::splat(t);
 
-        let p0p3 = self.0.baseline.0;
-        let p1p2 = self.0.ctrl.0;
-        let p0p1 = F32x4::new(p0p3[0], p0p3[1], p1p2[0], p1p2[1]);
+        let (p0p3, p1p2) = (self.0.baseline.0, self.0.ctrl.0);
+        let p0p1 = p0p3.as_f64x2().interleave(p1p2.as_f64x2()).0.as_f32x4();
 
         // p01 = lerp(p0, p1, t), p12 = lerp(p1, p2, t), p23 = lerp(p2, p3, t)
         let p01p12 = p0p1 + tttt * (p1p2 - p0p1);
         let pxxp23 = p1p2 + tttt * (p0p3 - p1p2);
-        let p12p23 = F32x4::new(p01p12[2], p01p12[3], pxxp23[2], pxxp23[3]);
+        let p12p23 = p01p12.as_f64x2().interleave(pxxp23.as_f64x2()).1.as_f32x4();
 
         // p012 = lerp(p01, p12, t), p123 = lerp(p12, p23, t)
         let p012p123 = p01p12 + tttt * (p12p23 - p01p12);
-        let p123 = p012p123.splat_high_half();
+        let p123 = p012p123.zwzw();
 
         // p0123 = lerp(p012, p123, t)
         let p0123 = p012p123 + tttt * (p123 - p012p123);
 
-        let baseline0 = F32x4::new(p0p3[0], p0p3[1], p0123[0], p0123[1]);
-        let ctrl0 = F32x4::new(p01p12[0], p01p12[1], p012p123[0], p012p123[1]);
-        let baseline1 = F32x4::new(p0123[0], p0123[1], p0p3[2], p0p3[3]);
-        let ctrl1 = F32x4::new(p012p123[2], p012p123[3], p12p23[2], p12p23[3]);
+        let baseline0 = p0p3.as_f64x2().interleave(p0123.as_f64x2()).0.as_f32x4();
+        let ctrl0 = p01p12.as_f64x2().interleave(p012p123.as_f64x2()).0.as_f32x4();
+        let baseline1 = p0123.as_f64x2().combine_low_high(p0p3.as_f64x2()).as_f32x4();
+        let ctrl1 = p012p123.as_f64x2().interleave(p12p23.as_f64x2()).1.as_f32x4();
 
         (Segment {
             baseline: LineSegmentF32(baseline0),
@@ -235,15 +234,11 @@ impl<'s> CubicSegment<'s> {
 
     #[inline]
     pub fn y_extrema(self) -> (Option<f32>, Option<f32>) {
-        let (t0, t1);
         let p0p1p2p3 = F32x4::new(self.0.baseline.from_y(),
                                   self.0.ctrl.from_y(),
                                   self.0.ctrl.to_y(),
                                   self.0.baseline.to_y());
-        let pxp0p1p2 = F32x4::new(self.0.baseline.from_y(),
-                                  self.0.baseline.from_y(),
-                                  self.0.ctrl.from_y(),
-                                  self.0.ctrl.to_y());
+        let pxp0p1p2 = p0p1p2p3.wxyz();
         let pxv0v1v2 = p0p1p2p3 - pxp0p1p2;
         let (v0, v1, v2) = (pxv0v1v2[1], pxv0v1v2[2], pxv0v1v2[3]);
 
@@ -251,8 +246,8 @@ impl<'s> CubicSegment<'s> {
         let discrim = f32::sqrt(v1 * v1 - v0 * v2);
         let denom = 1.0 / (v0_to_v1 + v2_to_v1);
 
-        t0 = (v0_to_v1 + discrim) * denom;
-        t1 = (v0_to_v1 - discrim) * denom;
+        let t0 = (v0_to_v1 + discrim) * denom;
+        let t1 = (v0_to_v1 - discrim) * denom;
 
         return match (
             t0 > EPSILON && t0 < 1.0 - EPSILON,

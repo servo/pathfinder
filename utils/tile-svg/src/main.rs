@@ -1307,8 +1307,8 @@ impl BuiltObject {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
         let mut segment = (segment.0 * F32x4::splat(256.0)).to_i32x4();
 
-        let tile_origin_x = (tile_x as i32) * (TILE_WIDTH as i32) * 256;
-        let tile_origin_y = (tile_y as i32) * (TILE_HEIGHT as i32) * 256;
+        let tile_origin_x = (TILE_WIDTH as i32) * 256 * (tile_x as i32);
+        let tile_origin_y = (TILE_HEIGHT as i32) * 256 * (tile_y as i32);
         let tile_origin = I32x4::new(tile_origin_x, tile_origin_y, tile_origin_x, tile_origin_y);
 
         segment = segment - tile_origin;
@@ -2204,36 +2204,14 @@ impl Transform2DF32 {
         }
     }
 
-    fn m11(&self) -> f32 {
-        self.matrix[0]
-    }
-    fn m12(&self) -> f32 {
-        self.matrix[1]
-    }
-    fn m21(&self) -> f32 {
-        self.matrix[2]
-    }
-    fn m22(&self) -> f32 {
-        self.matrix[3]
-    }
-
     fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
-        let xxyy = F32x4::new(point.x(), point.x(), point.y(), point.y());
-        let x11_x12_y21_y22 = xxyy * self.matrix;
-        let y21_y22 = x11_x12_y21_y22.splat_high_half();
-        Point2DF32(x11_x12_y21_y22 + y21_y22 + self.vector.0)
+        let x11x12y21y22 = point.0.xxyy() * self.matrix;
+        Point2DF32(x11x12y21y22 + x11x12y21y22.zwzw() + self.vector.0)
     }
 
     fn post_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
-        // Here `a` is self and `b` is `other`.
-        let a11a21a11a21 = F32x4::new(self.m11(), self.m21(), self.m11(), self.m21());
-        let b11b11b12b12 = F32x4::new(other.m11(), other.m11(), other.m12(), other.m12());
-        let lhs = a11a21a11a21 * b11b11b12b12;
-
-        let a12a22a12a22 = F32x4::new(self.m12(), self.m22(), self.m12(), self.m22());
-        let b21b21b22b22 = F32x4::new(other.m21(), other.m21(), other.m22(), other.m22());
-        let rhs = a12a22a12a22 * b21b21b22b22;
-
+        let lhs = self.matrix.xzxz() * other.matrix.xxyy();
+        let rhs = self.matrix.ywyw() * other.matrix.zzww();
         let matrix = lhs + rhs;
         let vector = other.transform_point(&self.vector) + other.vector;
         Transform2DF32 { matrix, vector }
