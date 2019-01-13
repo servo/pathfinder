@@ -325,7 +325,7 @@ mod scalar {
     }
 }
 
-#[cfg(any(not(feature = "pf-no-simd"), target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(all(not(feature = "pf-no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
 mod x86 {
     use std::arch::x86_64::{self, __m128, __m128d, __m128i};
     use std::cmp::PartialEq;
