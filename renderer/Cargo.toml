@@ -1,0 +1,18 @@
+[package]
+name = "pathfinder_renderer"
+version = "0.1.0"
+edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]
+byteorder = "1.2"
+euclid = "0.19"
+fixedbitset = "0.1"
+hashbrown = "0.1"
+rayon = "1.0"
+
+[dependencies.pathfinder_geometry]
+path = "../geometry"
+
+[dev-dependencies]
+quickcheck = "0.7"

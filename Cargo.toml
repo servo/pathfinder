@@ -2,6 +2,8 @@
 members = [
     "geometry",
     "gfx-utils",
+    "renderer",
+    "svg",
     "utils/area-lut",
     "utils/gamma-lut",
     "utils/tile-svg",
