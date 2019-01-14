@@ -11,6 +11,7 @@
 //! Applies a transform to paths.
 
 use crate::point::Point2DF32;
+use crate::segment::Segment;
 use crate::simd::F32x4;
 use euclid::Transform2D;
 use lyon_path::PathEvent;
@@ -66,6 +67,60 @@ impl Transform2DF32 {
     #[inline]
     pub fn pre_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
         other.post_mul(self)
+    }
+}
+
+/// Transforms a path with a SIMD 2D transform.
+pub struct Transform2DF32PathIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
+    iter: I,
+    transform: Transform2DF32,
+}
+
+impl<I> Iterator for Transform2DF32PathIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
+    type Item = Segment;
+
+    #[inline]
+    fn next(&mut self) -> Option<Segment> {
+        // TODO(pcwalton): Can we go faster by transforming an entire line segment with SIMD?
+        let mut segment = self.iter.next()?;
+        if !segment.is_none() {
+            segment
+                .baseline
+                .set_from(&self.transform.transform_point(&segment.baseline.from()));
+            segment
+                .baseline
+                .set_to(&self.transform.transform_point(&segment.baseline.to()));
+            if !segment.is_line() {
+                segment
+                    .ctrl
+                    .set_from(&self.transform.transform_point(&segment.ctrl.from()));
+                if !segment.is_quadratic() {
+                    segment
+                        .ctrl
+                        .set_to(&self.transform.transform_point(&segment.ctrl.to()));
+                }
+            }
+        }
+        Some(segment)
+    }
+}
+
+impl<I> Transform2DF32PathIter<I>
+where
+    I: Iterator<Item = Segment>,
+{
+    #[inline]
+    pub fn new(iter: I, transform: &Transform2DF32) -> Transform2DF32PathIter<I> {
+        Transform2DF32PathIter {
+            iter,
+            transform: *transform,
+        }
     }
 }
 

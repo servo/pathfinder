@@ -30,7 +30,7 @@ use pathfinder_geometry::segment::{PathEventsToSegments, Segment, SegmentFlags};
 use pathfinder_geometry::segment::{SegmentKind, SegmentsToPathEvents};
 use pathfinder_geometry::simd::{F32x4, I32x4};
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
-use pathfinder_geometry::transform::Transform2DF32;
+use pathfinder_geometry::transform::{Transform2DF32, Transform2DF32PathIter};
 use pathfinder_geometry::util;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rayon::ThreadPoolBuilder;
@@ -257,7 +257,7 @@ impl Scene {
                         let style = scene.push_paint(&Paint::from_svg_paint(&fill.paint));
 
                         let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                        let path = PathTransformingIter::new(path, &transform);
+                        let path = Transform2DF32PathIter::new(path, &transform);
                         let path = MonotonicConversionIter::new(path);
                         let outline = Outline::from_segments(path);
 
@@ -280,7 +280,7 @@ impl Scene {
                         let path = PathIter::new(path);
                         let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
                         let path = PathEventsToSegments::new(path);
-                        let path = PathTransformingIter::new(path, &transform);
+                        let path = Transform2DF32PathIter::new(path, &transform);
                         let path = MonotonicConversionIter::new(path);
                         let outline = Outline::from_segments(path);
 
@@ -1358,59 +1358,6 @@ where
                 self.last_subpath_point = self.first_subpath_point;
                 Some(segment)
             }
-        }
-    }
-}
-
-// Path transformation utilities
-
-struct PathTransformingIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    iter: I,
-    transform: Transform2DF32,
-}
-
-impl<I> Iterator for PathTransformingIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    type Item = Segment;
-
-    fn next(&mut self) -> Option<Segment> {
-        // TODO(pcwalton): Can we go faster by transforming an entire line segment with SIMD?
-        let mut segment = self.iter.next()?;
-        if !segment.is_none() {
-            segment
-                .baseline
-                .set_from(&self.transform.transform_point(&segment.baseline.from()));
-            segment
-                .baseline
-                .set_to(&self.transform.transform_point(&segment.baseline.to()));
-            if !segment.is_line() {
-                segment
-                    .ctrl
-                    .set_from(&self.transform.transform_point(&segment.ctrl.from()));
-                if !segment.is_quadratic() {
-                    segment
-                        .ctrl
-                        .set_to(&self.transform.transform_point(&segment.ctrl.to()));
-                }
-            }
-        }
-        Some(segment)
-    }
-}
-
-impl<I> PathTransformingIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    fn new(iter: I, transform: &Transform2DF32) -> PathTransformingIter<I> {
-        PathTransformingIter {
-            iter,
-            transform: *transform,
         }
     }
 }
