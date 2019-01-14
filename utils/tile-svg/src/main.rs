@@ -30,6 +30,7 @@ use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::segment::{Segment, SegmentFlags, SegmentKind};
 use pathfinder_geometry::simd::{F32x4, I32x4};
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
+use pathfinder_geometry::transform::Transform2DF32;
 use pathfinder_geometry::util;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rayon::ThreadPoolBuilder;
@@ -1812,56 +1813,6 @@ impl ActiveEdge {
 impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
         self.crossing.x().partial_cmp(&other.crossing.x())
-    }
-}
-
-// Geometry
-
-// Affine transforms
-
-#[derive(Clone, Copy)]
-struct Transform2DF32 {
-    // Row-major order.
-    matrix: F32x4,
-    vector: Point2DF32,
-}
-
-impl Default for Transform2DF32 {
-    fn default() -> Transform2DF32 {
-        Self::from_scale(&Point2DF32::splat(1.0))
-    }
-}
-
-impl Transform2DF32 {
-    fn from_scale(scale: &Point2DF32) -> Transform2DF32 {
-        Transform2DF32 {
-            matrix: F32x4::new(scale.x(), 0.0, 0.0, scale.y()),
-            vector: Point2DF32::default(),
-        }
-    }
-
-    fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2DF32 {
-        Transform2DF32 {
-            matrix: F32x4::new(m11, m12, m21, m22),
-            vector: Point2DF32::new(m31, m32),
-        }
-    }
-
-    fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
-        let x11x12y21y22 = point.0.xxyy() * self.matrix;
-        Point2DF32(x11x12y21y22 + x11x12y21y22.zwzw() + self.vector.0)
-    }
-
-    fn post_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
-        let lhs = self.matrix.xzxz() * other.matrix.xxyy();
-        let rhs = self.matrix.ywyw() * other.matrix.zzww();
-        let matrix = lhs + rhs;
-        let vector = other.transform_point(&self.vector) + other.vector;
-        Transform2DF32 { matrix, vector }
-    }
-
-    fn pre_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
-        other.post_mul(self)
     }
 }
 
