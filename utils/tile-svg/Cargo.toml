@@ -9,7 +9,6 @@ pf-no-simd = []
 
 [dependencies]
 arrayvec = "0.4"
-bitflags = "1.0"
 byteorder = "1.2"
 clap = "2.32"
 euclid = "0.19"

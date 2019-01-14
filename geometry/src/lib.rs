@@ -20,6 +20,7 @@ pub mod cubic_to_quadratic;
 pub mod line_segment;
 pub mod normals;
 pub mod orientation;
+pub mod outline;
 pub mod point;
 pub mod segment;
 pub mod segments;

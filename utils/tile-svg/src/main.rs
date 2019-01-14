@@ -10,9 +10,6 @@
 
 #![allow(clippy::float_cmp)]
 
-#[macro_use]
-extern crate bitflags;
-
 #[cfg(test)]
 extern crate quickcheck;
 #[cfg(test)]
@@ -28,6 +25,7 @@ use jemallocator;
 use lyon_path::iterator::PathIter;
 use lyon_path::PathEvent;
 use pathfinder_geometry::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::segment::{Segment, SegmentFlags, SegmentKind};
 use pathfinder_geometry::simd::{F32x4, I32x4};
@@ -36,7 +34,6 @@ use pathfinder_geometry::util;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rayon::ThreadPoolBuilder;
 use std::cmp::Ordering;
-use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::iter;
@@ -263,7 +260,7 @@ impl Scene {
                         let path = MonotonicConversionIter::new(path);
                         let outline = Outline::from_segments(path);
 
-                        scene.bounds = scene.bounds.union(&outline.bounds);
+                        scene.bounds = scene.bounds.union(outline.bounds());
                         scene.objects.push(PathObject::new(
                             outline,
                             style,
@@ -286,7 +283,7 @@ impl Scene {
                         let path = MonotonicConversionIter::new(path);
                         let outline = Outline::from_segments(path);
 
-                        scene.bounds = scene.bounds.union(&outline.bounds);
+                        scene.bounds = scene.bounds.union(outline.bounds());
                         scene.objects.push(PathObject::new(
                             outline,
                             style,
@@ -371,360 +368,6 @@ impl PathObject {
     }
 }
 
-// Outlines
-
-#[derive(Debug)]
-struct Outline {
-    contours: Vec<Contour>,
-    bounds: Rect<f32>,
-}
-
-struct Contour {
-    points: Vec<Point2DF32>,
-    flags: Vec<PointFlags>,
-}
-
-bitflags! {
-    struct PointFlags: u8 {
-        const CONTROL_POINT_0 = 0x01;
-        const CONTROL_POINT_1 = 0x02;
-    }
-}
-
-impl Outline {
-    fn new() -> Outline {
-        Outline {
-            contours: vec![],
-            bounds: Rect::zero(),
-        }
-    }
-
-    fn from_segments<I>(segments: I) -> Outline
-    where
-        I: Iterator<Item = Segment>,
-    {
-        let mut outline = Outline::new();
-        let mut current_contour = Contour::new();
-        let mut bounding_points = None;
-
-        for segment in segments {
-            if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
-                if !current_contour.is_empty() {
-                    outline
-                        .contours
-                        .push(mem::replace(&mut current_contour, Contour::new()));
-                }
-                current_contour.push_point(
-                    segment.baseline.from(),
-                    PointFlags::empty(),
-                    &mut bounding_points,
-                );
-            }
-
-            if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
-                if !current_contour.is_empty() {
-                    outline
-                        .contours
-                        .push(mem::replace(&mut current_contour, Contour::new()));
-                }
-                continue;
-            }
-
-            if segment.is_none() {
-                continue;
-            }
-
-            if !segment.is_line() {
-                current_contour.push_point(
-                    segment.ctrl.from(),
-                    PointFlags::CONTROL_POINT_0,
-                    &mut bounding_points,
-                );
-                if !segment.is_quadratic() {
-                    current_contour.push_point(
-                        segment.ctrl.to(),
-                        PointFlags::CONTROL_POINT_1,
-                        &mut bounding_points,
-                    );
-                }
-            }
-
-            current_contour.push_point(
-                segment.baseline.to(),
-                PointFlags::empty(),
-                &mut bounding_points,
-            );
-        }
-
-        if !current_contour.is_empty() {
-            outline.contours.push(current_contour)
-        }
-
-        if let Some((upper_left, lower_right)) = bounding_points {
-            outline.bounds =
-                Rect::from_points([upper_left.as_euclid(), lower_right.as_euclid()].iter())
-        }
-
-        outline
-    }
-}
-
-impl Contour {
-    fn new() -> Contour {
-        Contour {
-            points: vec![],
-            flags: vec![],
-        }
-    }
-
-    fn iter(&self) -> ContourIter {
-        ContourIter {
-            contour: self,
-            index: 0,
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.points.is_empty()
-    }
-
-    fn len(&self) -> u32 {
-        self.points.len() as u32
-    }
-
-    fn position_of(&self, index: u32) -> Point2DF32 {
-        self.points[index as usize]
-    }
-
-    // TODO(pcwalton): Pack both min and max into a single SIMD register?
-    fn push_point(
-        &mut self,
-        point: Point2DF32,
-        flags: PointFlags,
-        bounding_points: &mut Option<(Point2DF32, Point2DF32)>,
-    ) {
-        self.points.push(point);
-        self.flags.push(flags);
-
-        match *bounding_points {
-            Some((ref mut upper_left, ref mut lower_right)) => {
-                *upper_left = upper_left.min(point);
-                *lower_right = lower_right.max(point);
-            }
-            None => *bounding_points = Some((point, point)),
-        }
-    }
-
-    fn segment_after(&self, point_index: u32) -> Segment {
-        debug_assert!(self.point_is_endpoint(point_index));
-
-        let mut segment = Segment::none();
-        segment.baseline.set_from(&self.position_of(point_index));
-
-        let point1_index = self.add_to_point_index(point_index, 1);
-        if self.point_is_endpoint(point1_index) {
-            segment.baseline.set_to(&self.position_of(point1_index));
-            segment.kind = SegmentKind::Line;
-        } else {
-            segment.ctrl.set_from(&self.position_of(point1_index));
-
-            let point2_index = self.add_to_point_index(point_index, 2);
-            if self.point_is_endpoint(point2_index) {
-                segment.baseline.set_to(&self.position_of(point2_index));
-                segment.kind = SegmentKind::Quadratic;
-            } else {
-                segment.ctrl.set_to(&self.position_of(point2_index));
-                segment.kind = SegmentKind::Cubic;
-
-                let point3_index = self.add_to_point_index(point_index, 3);
-                segment.baseline.set_to(&self.position_of(point3_index));
-            }
-        }
-
-        segment
-    }
-
-    fn point_is_endpoint(&self, point_index: u32) -> bool {
-        !self.flags[point_index as usize]
-            .intersects(PointFlags::CONTROL_POINT_0 | PointFlags::CONTROL_POINT_1)
-    }
-
-    fn add_to_point_index(&self, point_index: u32, addend: u32) -> u32 {
-        let (index, limit) = (point_index + addend, self.len());
-        if index >= limit {
-            index - limit
-        } else {
-            index
-        }
-    }
-
-    fn point_is_logically_above(&self, a: u32, b: u32) -> bool {
-        let (a_y, b_y) = (self.points[a as usize].y(), self.points[b as usize].y());
-        a_y < b_y || (a_y == b_y && a < b)
-    }
-
-    fn prev_endpoint_index_of(&self, mut point_index: u32) -> u32 {
-        loop {
-            point_index = self.prev_point_index_of(point_index);
-            if self.point_is_endpoint(point_index) {
-                return point_index;
-            }
-        }
-    }
-
-    fn next_endpoint_index_of(&self, mut point_index: u32) -> u32 {
-        loop {
-            point_index = self.next_point_index_of(point_index);
-            if self.point_is_endpoint(point_index) {
-                return point_index;
-            }
-        }
-    }
-
-    fn prev_point_index_of(&self, point_index: u32) -> u32 {
-        if point_index == 0 {
-            self.len() - 1
-        } else {
-            point_index - 1
-        }
-    }
-
-    fn next_point_index_of(&self, point_index: u32) -> u32 {
-        if point_index == self.len() - 1 {
-            0
-        } else {
-            point_index + 1
-        }
-    }
-}
-
-impl Debug for Contour {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        formatter.write_str("[")?;
-        if formatter.alternate() {
-            formatter.write_str("\n")?
-        }
-        for (index, segment) in self.iter().enumerate() {
-            if index > 0 {
-                formatter.write_str(" ")?;
-            }
-            if formatter.alternate() {
-                formatter.write_str("\n    ")?;
-            }
-            write_path_event(formatter, &segment)?;
-        }
-        if formatter.alternate() {
-            formatter.write_str("\n")?
-        }
-        formatter.write_str("]")?;
-
-        return Ok(());
-
-        fn write_path_event(formatter: &mut Formatter, path_event: &PathEvent) -> fmt::Result {
-            match *path_event {
-                PathEvent::Arc(..) => {
-                    // TODO(pcwalton)
-                    formatter.write_str("TODO: arcs")?;
-                }
-                PathEvent::Close => formatter.write_str("z")?,
-                PathEvent::MoveTo(to) => {
-                    formatter.write_str("M")?;
-                    write_point(formatter, to)?;
-                }
-                PathEvent::LineTo(to) => {
-                    formatter.write_str("L")?;
-                    write_point(formatter, to)?;
-                }
-                PathEvent::QuadraticTo(ctrl, to) => {
-                    formatter.write_str("Q")?;
-                    write_point(formatter, ctrl)?;
-                    write_point(formatter, to)?;
-                }
-                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                    formatter.write_str("C")?;
-                    write_point(formatter, ctrl0)?;
-                    write_point(formatter, ctrl1)?;
-                    write_point(formatter, to)?;
-                }
-            }
-            Ok(())
-        }
-
-        fn write_point(formatter: &mut Formatter, point: Point2D<f32>) -> fmt::Result {
-            write!(formatter, " {},{}", point.x, point.y)
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-struct PointIndex(u32);
-
-impl PointIndex {
-    fn new(contour: u32, point: u32) -> PointIndex {
-        debug_assert!(contour <= 0xfff);
-        debug_assert!(point <= 0x000f_ffff);
-        PointIndex((contour << 20) | point)
-    }
-
-    fn contour(self) -> u32 {
-        self.0 >> 20
-    }
-
-    fn point(self) -> u32 {
-        self.0 & 0x000f_ffff
-    }
-}
-
-struct ContourIter<'a> {
-    contour: &'a Contour,
-    index: u32,
-}
-
-impl<'a> Iterator for ContourIter<'a> {
-    type Item = PathEvent;
-
-    fn next(&mut self) -> Option<PathEvent> {
-        let contour = self.contour;
-        if self.index == contour.len() + 1 {
-            return None;
-        }
-        if self.index == contour.len() {
-            self.index += 1;
-            return Some(PathEvent::Close);
-        }
-
-        let point0_index = self.index;
-        let point0 = contour.position_of(point0_index);
-        self.index += 1;
-        if point0_index == 0 {
-            return Some(PathEvent::MoveTo(point0.as_euclid()));
-        }
-        if contour.point_is_endpoint(point0_index) {
-            return Some(PathEvent::LineTo(point0.as_euclid()));
-        }
-
-        let point1_index = self.index;
-        let point1 = contour.position_of(point1_index);
-        self.index += 1;
-        if contour.point_is_endpoint(point1_index) {
-            return Some(PathEvent::QuadraticTo(
-                point0.as_euclid(),
-                point1.as_euclid(),
-            ));
-        }
-
-        let point2_index = self.index;
-        let point2 = contour.position_of(point2_index);
-        self.index += 1;
-        debug_assert!(contour.point_is_endpoint(point2_index));
-        Some(PathEvent::CubicTo(
-            point0.as_euclid(),
-            point1.as_euclid(),
-            point2.as_euclid(),
-        ))
-    }
-}
-
 // Tiling
 
 const TILE_WIDTH: u32 = 16;
@@ -751,7 +394,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         z_buffer: &'z ZBuffer,
     ) -> Tiler<'o, 'z> {
         let bounds = outline
-            .bounds
+            .bounds()
             .intersection(&view_box)
             .unwrap_or(Rect::zero());
         let built_object = BuiltObject::new(&bounds, shader);
