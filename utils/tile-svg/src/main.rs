@@ -15,7 +15,6 @@ extern crate quickcheck;
 #[cfg(test)]
 extern crate rand;
 
-use arrayvec::ArrayVec;
 use byteorder::{LittleEndian, WriteBytesExt};
 use clap::{App, Arg};
 use euclid::{Point2D, Rect, Size2D};
@@ -24,10 +23,11 @@ use hashbrown::HashMap;
 use jemallocator;
 use lyon_path::iterator::PathIter;
 use pathfinder_geometry::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::monotonic::MonotonicConversionIter;
 use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::point::Point2DF32;
-use pathfinder_geometry::segment::{PathEventsToSegments, Segment, SegmentFlags};
-use pathfinder_geometry::segment::{SegmentKind, SegmentsToPathEvents};
+use pathfinder_geometry::segment::{PathEventsToSegments, Segment};
+use pathfinder_geometry::segment::{SegmentFlags, SegmentsToPathEvents};
 use pathfinder_geometry::simd::{F32x4, I32x4};
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
 use pathfinder_geometry::transform::{Transform2DF32, Transform2DF32PathIter};
@@ -1363,69 +1363,6 @@ where
 }
 
 // Monotonic conversion utilities
-
-// TODO(pcwalton): I think we only need to be monotonic in Y, maybe?
-struct MonotonicConversionIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    iter: I,
-    buffer: ArrayVec<[Segment; 2]>,
-}
-
-impl<I> Iterator for MonotonicConversionIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    type Item = Segment;
-
-    fn next(&mut self) -> Option<Segment> {
-        if let Some(segment) = self.buffer.pop() {
-            return Some(segment);
-        }
-
-        let segment = self.iter.next()?;
-        match segment.kind {
-            SegmentKind::None => self.next(),
-            SegmentKind::Line => Some(segment),
-            SegmentKind::Cubic => self.handle_cubic(&segment),
-            SegmentKind::Quadratic => {
-                // TODO(pcwalton): Don't degree elevate!
-                self.handle_cubic(&segment.to_cubic())
-            }
-        }
-    }
-}
-
-impl<I> MonotonicConversionIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    fn new(iter: I) -> MonotonicConversionIter<I> {
-        MonotonicConversionIter {
-            iter,
-            buffer: ArrayVec::new(),
-        }
-    }
-
-    fn handle_cubic(&mut self, segment: &Segment) -> Option<Segment> {
-        match segment.as_cubic_segment().y_extrema() {
-            (Some(t0), Some(t1)) => {
-                let (segments_01, segment_2) = segment.as_cubic_segment().split(t1);
-                self.buffer.push(segment_2);
-                let (segment_0, segment_1) = segments_01.as_cubic_segment().split(t0 / t1);
-                self.buffer.push(segment_1);
-                Some(segment_0)
-            }
-            (Some(t0), None) | (None, Some(t0)) => {
-                let (segment_0, segment_1) = segment.as_cubic_segment().split(t0);
-                self.buffer.push(segment_1);
-                Some(segment_0)
-            }
-            (None, None) => Some(*segment),
-        }
-    }
-}
 
 // SortedVector
 
