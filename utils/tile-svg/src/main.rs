@@ -23,11 +23,11 @@ use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use jemallocator;
 use lyon_path::iterator::PathIter;
-use lyon_path::PathEvent;
 use pathfinder_geometry::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::point::Point2DF32;
-use pathfinder_geometry::segment::{Segment, SegmentFlags, SegmentKind};
+use pathfinder_geometry::segment::{PathEventsToSegments, Segment, SegmentFlags};
+use pathfinder_geometry::segment::{SegmentKind, SegmentsToPathEvents};
 use pathfinder_geometry::simd::{F32x4, I32x4};
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
 use pathfinder_geometry::transform::Transform2DF32;
@@ -1358,157 +1358,6 @@ where
                 self.last_subpath_point = self.first_subpath_point;
                 Some(segment)
             }
-        }
-    }
-}
-
-// Euclid interoperability
-//
-// TODO(pcwalton): Remove this once we're fully on Pathfinder's native geometry.
-
-struct PathEventsToSegments<I>
-where
-    I: Iterator<Item = PathEvent>,
-{
-    iter: I,
-    first_subpath_point: Point2DF32,
-    last_subpath_point: Point2DF32,
-    just_moved: bool,
-}
-
-impl<I> PathEventsToSegments<I>
-where
-    I: Iterator<Item = PathEvent>,
-{
-    fn new(iter: I) -> PathEventsToSegments<I> {
-        PathEventsToSegments {
-            iter,
-            first_subpath_point: Point2DF32::default(),
-            last_subpath_point: Point2DF32::default(),
-            just_moved: false,
-        }
-    }
-}
-
-impl<I> Iterator for PathEventsToSegments<I>
-where
-    I: Iterator<Item = PathEvent>,
-{
-    type Item = Segment;
-
-    fn next(&mut self) -> Option<Segment> {
-        match self.iter.next()? {
-            PathEvent::MoveTo(to) => {
-                let to = Point2DF32::from_euclid(to);
-                self.first_subpath_point = to;
-                self.last_subpath_point = to;
-                self.just_moved = true;
-                self.next()
-            }
-            PathEvent::LineTo(to) => {
-                let to = Point2DF32::from_euclid(to);
-                let mut segment =
-                    Segment::line(&LineSegmentF32::new(&self.last_subpath_point, &to));
-                if self.just_moved {
-                    segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
-                }
-                self.last_subpath_point = to;
-                self.just_moved = false;
-                Some(segment)
-            }
-            PathEvent::QuadraticTo(ctrl, to) => {
-                let (ctrl, to) = (Point2DF32::from_euclid(ctrl), Point2DF32::from_euclid(to));
-                let mut segment =
-                    Segment::quadratic(&LineSegmentF32::new(&self.last_subpath_point, &to), &ctrl);
-                if self.just_moved {
-                    segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
-                }
-                self.last_subpath_point = to;
-                self.just_moved = false;
-                Some(segment)
-            }
-            PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                let ctrl0 = Point2DF32::from_euclid(ctrl0);
-                let ctrl1 = Point2DF32::from_euclid(ctrl1);
-                let to = Point2DF32::from_euclid(to);
-                let mut segment = Segment::cubic(
-                    &LineSegmentF32::new(&self.last_subpath_point, &to),
-                    &LineSegmentF32::new(&ctrl0, &ctrl1),
-                );
-                if self.just_moved {
-                    segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
-                }
-                self.last_subpath_point = to;
-                self.just_moved = false;
-                Some(segment)
-            }
-            PathEvent::Close => {
-                let mut segment = Segment::line(&LineSegmentF32::new(
-                    &self.last_subpath_point,
-                    &self.first_subpath_point,
-                ));
-                segment.flags.insert(SegmentFlags::CLOSES_SUBPATH);
-                self.just_moved = false;
-                self.last_subpath_point = self.first_subpath_point;
-                Some(segment)
-            }
-            PathEvent::Arc(..) => panic!("TODO: arcs"),
-        }
-    }
-}
-
-struct SegmentsToPathEvents<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    iter: I,
-    buffer: Option<PathEvent>,
-}
-
-impl<I> SegmentsToPathEvents<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    fn new(iter: I) -> SegmentsToPathEvents<I> {
-        SegmentsToPathEvents { iter, buffer: None }
-    }
-}
-
-impl<I> Iterator for SegmentsToPathEvents<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    type Item = PathEvent;
-
-    fn next(&mut self) -> Option<PathEvent> {
-        if let Some(event) = self.buffer.take() {
-            return Some(event);
-        }
-
-        let segment = self.iter.next()?;
-        if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
-            return Some(PathEvent::Close);
-        }
-
-        let event = match segment.kind {
-            SegmentKind::None => return self.next(),
-            SegmentKind::Line => PathEvent::LineTo(segment.baseline.to().as_euclid()),
-            SegmentKind::Quadratic => PathEvent::QuadraticTo(
-                segment.ctrl.from().as_euclid(),
-                segment.baseline.to().as_euclid(),
-            ),
-            SegmentKind::Cubic => PathEvent::CubicTo(
-                segment.ctrl.from().as_euclid(),
-                segment.ctrl.to().as_euclid(),
-                segment.baseline.to().as_euclid(),
-            ),
-        };
-
-        if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
-            self.buffer = Some(event);
-            Some(PathEvent::MoveTo(segment.baseline.from().as_euclid()))
-        } else {
-            Some(event)
         }
     }
 }
