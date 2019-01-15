@@ -12,6 +12,8 @@ use clap::{App, Arg};
 use euclid::Size2D;
 use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use jemallocator;
+use pathfinder_geometry::point::Point2DF32;
+use pathfinder_geometry::transform::Transform2DF32;
 use pathfinder_renderer::builder::SceneBuilder;
 use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
 use pathfinder_renderer::paint::ObjectShader;
@@ -52,7 +54,8 @@ const FILL_COLORS_TEXTURE_WIDTH: u32 = 256;
 const FILL_COLORS_TEXTURE_HEIGHT: u32 = 256;
 
 fn main() {
-    let scene = load_scene();
+    let options = Options::get();
+    let base_scene = load_scene(&options);
 
     let sdl_context = sdl2::init().unwrap();
     let sdl_video = sdl_context.video().unwrap();
@@ -68,7 +71,7 @@ fn main() {
                  .build()
                  .unwrap();
 
-    let gl_context = window.gl_create_context().unwrap();
+    let _gl_context = window.gl_create_context().unwrap();
     gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
 
     let mut sdl_event_pump = sdl_context.event_pump().unwrap();
@@ -77,11 +80,19 @@ fn main() {
     let (drawable_width, drawable_height) = window.drawable_size();
     let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
 
+    let mut scale = 1.0;
+
     while !exit {
+        let mut scene = base_scene.clone();
+        scene.transform(&Transform2DF32::from_scale(&Point2DF32::new(scale, scale)));
+        scale -= 0.1;
+
+        let built_scene = build_scene(&scene, &options);
+
         unsafe {
             gl::ClearColor(1.0, 1.0, 1.0, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
-            renderer.render_scene(&scene);
+            renderer.render_scene(&built_scene);
         }
 
         window.gl_swap_window();
@@ -97,37 +108,48 @@ fn main() {
     }
 }
 
-fn load_scene() -> BuiltScene {
-    let matches = App::new("tile-svg")
-        .arg(
-            Arg::with_name("jobs")
-                .short("j")
-                .long("jobs")
-                .value_name("THREADS")
-                .takes_value(true)
-                .help("Number of threads to use"),
-        )
-        .arg(
-            Arg::with_name("INPUT")
-                .help("Path to the SVG file to render")
-                .required(true)
-                .index(1),
-        )
-        .get_matches();
-    let jobs: Option<usize> = matches
-        .value_of("jobs")
-        .map(|string| string.parse().unwrap());
-    let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
+struct Options {
+    jobs: Option<usize>,
+    input_path: PathBuf,
+}
 
-    // Set up Rayon.
-    let mut thread_pool_builder = ThreadPoolBuilder::new();
-    if let Some(jobs) = jobs {
-        thread_pool_builder = thread_pool_builder.num_threads(jobs);
+impl Options {
+    fn get() -> Options {
+        let matches = App::new("tile-svg")
+            .arg(
+                Arg::with_name("jobs")
+                    .short("j")
+                    .long("jobs")
+                    .value_name("THREADS")
+                    .takes_value(true)
+                    .help("Number of threads to use"),
+            )
+            .arg(
+                Arg::with_name("INPUT")
+                    .help("Path to the SVG file to render")
+                    .required(true)
+                    .index(1),
+            )
+            .get_matches();
+        let jobs: Option<usize> = matches
+            .value_of("jobs")
+            .map(|string| string.parse().unwrap());
+        let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
+
+        // Set up Rayon.
+        let mut thread_pool_builder = ThreadPoolBuilder::new();
+        if let Some(jobs) = jobs {
+            thread_pool_builder = thread_pool_builder.num_threads(jobs);
+        }
+        thread_pool_builder.build_global().unwrap();
+
+        Options { jobs, input_path }
     }
-    thread_pool_builder.build_global().unwrap();
+}
 
+fn load_scene(options: &Options) -> Scene {
     // Build scene.
-    let usvg = Tree::from_file(&input_path, &UsvgOptions::default()).unwrap();
+    let usvg = Tree::from_file(&options.input_path, &UsvgOptions::default()).unwrap();
     let scene = Scene::from_tree(usvg);
 
     println!(
@@ -140,20 +162,23 @@ fn load_scene() -> BuiltScene {
         scene.paints.len()
     );
 
+    scene
+}
+
+fn build_scene(scene: &Scene, options: &Options) -> BuiltScene {
     let (mut elapsed_object_build_time, mut elapsed_scene_build_time) = (0.0, 0.0);
 
-    let mut built_scene = BuiltScene::new(&scene.view_box);
     let z_buffer = ZBuffer::new(&scene.view_box);
 
     let start_time = Instant::now();
-    let built_objects = match jobs {
+    let built_objects = match options.jobs {
         Some(1) => scene.build_objects_sequentially(&z_buffer),
         _ => scene.build_objects(&z_buffer),
     };
     elapsed_object_build_time += duration_to_ms(&(Instant::now() - start_time));
 
     let start_time = Instant::now();
-    built_scene = BuiltScene::new(&scene.view_box);
+    let mut built_scene = BuiltScene::new(&scene.view_box);
     built_scene.shaders = scene.build_shaders();
     let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, &scene.view_box);
     built_scene.solid_tiles = scene_builder.build_solid_tiles();
@@ -191,6 +216,7 @@ struct Renderer {
     solid_tile_program: SolidTileProgram,
     mask_tile_program: MaskTileProgram,
     area_lut_texture: Texture,
+    #[allow(dead_code)]
     quad_vertex_positions_buffer: Buffer,
     fill_vertex_array: FillVertexArray,
     mask_tile_vertex_array: MaskTileVertexArray,
@@ -676,7 +702,9 @@ impl Uniform {
 
 struct Program {
     gl_program: GLuint,
+    #[allow(dead_code)]
     vertex_shader: Shader,
+    #[allow(dead_code)]
     fragment_shader: Shader,
 }
 

@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo2/cover.vs.glsl
+// pathfinder/demo3/resources/shaders/mask_tile.vs.glsl
 //
 // Copyright © 2018 The Pathfinder Project Developers.
 //

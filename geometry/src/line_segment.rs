@@ -81,6 +81,17 @@ impl LineSegmentF32 {
             LineSegmentF32(mid_mid.as_f64x2().interleave(to_to.as_f64x2()).0.as_f32x4()))
     }
 
+    // Returns the left segment first, followed by the right segment.
+    #[inline]
+    pub fn split_at_x(&self, x: f32) -> (LineSegmentF32, LineSegmentF32) {
+        let (min_part, max_part) = self.split(self.solve_t_for_x(x));
+        if min_part.from_x() < max_part.from_x() {
+            (min_part, max_part)
+        } else {
+            (max_part, min_part)
+        }
+    }
+
     // Returns the upper segment first, followed by the lower segment.
     #[inline]
     pub fn split_at_y(&self, y: f32) -> (LineSegmentF32, LineSegmentF32) {
@@ -119,6 +130,16 @@ impl LineSegmentF32 {
         } else {
             self.to()
         }
+    }
+
+    #[inline]
+    pub fn min_x(&self) -> f32 {
+        f32::min(self.from_x(), self.to_x())
+    }
+
+    #[inline]
+    pub fn max_x(&self) -> f32 {
+        f32::max(self.from_x(), self.to_x())
     }
 
     #[inline]

@@ -17,9 +17,10 @@ use crate::z_buffer::ZBuffer;
 use euclid::Rect;
 use hashbrown::HashMap;
 use pathfinder_geometry::outline::Outline;
+use pathfinder_geometry::transform::Transform2DF32;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Scene {
     pub objects: Vec<PathObject>,
     pub paints: Vec<Paint>,
@@ -96,9 +97,16 @@ impl Scene {
             })
             .collect()
     }
+
+    pub fn transform(&mut self, transform: &Transform2DF32) {
+        // TODO(pcwalton): Transform bounds?
+        for object in &mut self.objects {
+            object.outline.transform(transform)
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PathObject {
     outline: Outline,
     paint: PaintId,

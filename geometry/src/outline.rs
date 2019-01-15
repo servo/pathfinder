@@ -12,17 +12,19 @@
 
 use crate::point::Point2DF32;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
+use crate::transform::Transform2DF32;
 use euclid::{Point2D, Rect};
 use lyon_path::PathEvent;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Outline {
     pub contours: Vec<Contour>,
     bounds: Rect<f32>,
 }
 
+#[derive(Clone)]
 pub struct Contour {
     points: Vec<Point2DF32>,
     flags: Vec<PointFlags>,
@@ -117,6 +119,11 @@ impl Outline {
     #[inline]
     pub fn bounds(&self) -> &Rect<f32> {
         &self.bounds
+    }
+
+    #[inline]
+    pub fn transform(&mut self, transform: &Transform2DF32) {
+        self.contours.iter_mut().for_each(|contour| contour.transform(transform));
     }
 }
 
@@ -259,6 +266,13 @@ impl Contour {
             0
         } else {
             point_index + 1
+        }
+    }
+
+    #[inline]
+    pub fn transform(&mut self, transform: &Transform2DF32) {
+        for point in &mut self.points {
+            *point = transform.transform_point(point)
         }
     }
 }

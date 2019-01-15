@@ -59,6 +59,7 @@ pub struct TileObjectPrimitive {
     pub backdrop: i16,
 }
 
+// FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
 #[derive(Clone, Copy, Debug)]
 #[repr(packed)]
 pub struct FillBatchPrimitive {

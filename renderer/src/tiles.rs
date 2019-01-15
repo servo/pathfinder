@@ -177,7 +177,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
             }
 
             // Do final subtile fill, if necessary.
-            debug_assert!(current_tile_x == segment_tile_x);
+            debug_assert_eq!(current_tile_x, segment_tile_x);
             debug_assert!(current_tile_x < self.built_object.tile_rect.max_x());
             let segment_subtile_x =
                 segment_x - (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32;
