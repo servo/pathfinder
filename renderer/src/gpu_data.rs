@@ -52,6 +52,7 @@ pub struct FillObjectPrimitive {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[repr(C)]
 pub struct TileObjectPrimitive {
     pub tile_x: i16,
     pub tile_y: i16,
@@ -59,6 +60,7 @@ pub struct TileObjectPrimitive {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[repr(C)]
 pub struct FillBatchPrimitive {
     pub px: LineSegmentU4,
     pub subpx: LineSegmentU8,
@@ -66,6 +68,7 @@ pub struct FillBatchPrimitive {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[repr(C)]
 pub struct SolidTileScenePrimitive {
     pub tile_x: i16,
     pub tile_y: i16,
@@ -73,6 +76,7 @@ pub struct SolidTileScenePrimitive {
 }
 
 #[derive(Clone, Copy, Debug)]
+#[repr(C)]
 pub struct MaskTileBatchPrimitive {
     pub tile: TileObjectPrimitive,
     pub shader: ShaderId,

@@ -1,0 +1,28 @@
+[package]
+name = "demo3"
+version = "0.1.0"
+edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]
+clap = "2.32"
+euclid = "0.19"
+gl = "0.6"
+jemallocator = "0.1"
+rayon = "1.0"
+sdl2 = "0.32"
+usvg = "0.4"
+
+[dependencies.image]
+version = "0.21"
+default-features = false
+features = ["png_codec"]
+
+[dependencies.pathfinder_geometry]
+path = "../geometry"
+
+[dependencies.pathfinder_renderer]
+path = "../renderer"
+
+[dependencies.pathfinder_svg]
+path = "../svg"
