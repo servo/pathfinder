@@ -338,8 +338,8 @@ class App {
             gl.bindTexture(gl.TEXTURE_2D, this.stencilTexture);
             gl.uniform1i(this.maskTileProgram.uniforms.StencilTexture, 0);
             gl.uniform2f(this.maskTileProgram.uniforms.StencilTextureSize,
-                        STENCIL_FRAMEBUFFER_SIZE.width,
-                        STENCIL_FRAMEBUFFER_SIZE.height);
+                         STENCIL_FRAMEBUFFER_SIZE.width,
+                         STENCIL_FRAMEBUFFER_SIZE.height);
             gl.activeTexture(gl.TEXTURE1);
             gl.bindTexture(gl.TEXTURE_2D, this.fillColorsTexture);
             gl.uniform1i(this.maskTileProgram.uniforms.FillColorsTexture, 1);

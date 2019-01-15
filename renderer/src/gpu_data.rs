@@ -60,7 +60,7 @@ pub struct TileObjectPrimitive {
 }
 
 #[derive(Clone, Copy, Debug)]
-#[repr(C)]
+#[repr(packed)]
 pub struct FillBatchPrimitive {
     pub px: LineSegmentU4,
     pub subpx: LineSegmentU8,

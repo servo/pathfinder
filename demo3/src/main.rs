@@ -10,10 +10,11 @@
 
 use clap::{App, Arg};
 use euclid::Size2D;
-use gl::types::{GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
+use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use jemallocator;
 use pathfinder_renderer::builder::SceneBuilder;
-use pathfinder_renderer::gpu_data::{Batch, BuiltScene, FillBatchPrimitive};
+use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
+use pathfinder_renderer::paint::ObjectShader;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_renderer::z_buffer::ZBuffer;
@@ -44,9 +45,11 @@ const MASK_TILE_INSTANCE_SIZE: GLint = 8;
 const MASK_FRAMEBUFFER_WIDTH: u32 = TILE_WIDTH * 256;
 const MASK_FRAMEBUFFER_HEIGHT: u32 = TILE_HEIGHT * 256;
 
-// FIXME(pcwalton): Make this dynamic!
 const MAIN_FRAMEBUFFER_WIDTH: u32 = 800;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
+
+const FILL_COLORS_TEXTURE_WIDTH: u32 = 256;
+const FILL_COLORS_TEXTURE_HEIGHT: u32 = 256;
 
 fn main() {
     let scene = load_scene();
@@ -61,6 +64,7 @@ fn main() {
     let window =
         sdl_video.window("Pathfinder Demo", MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT)
                  .opengl()
+                 .allow_highdpi()
                  .build()
                  .unwrap();
 
@@ -69,9 +73,11 @@ fn main() {
 
     let mut sdl_event_pump = sdl_context.event_pump().unwrap();
     let mut exit = false;
-    while !exit {
-        let mut renderer = Renderer::new();
 
+    let (drawable_width, drawable_height) = window.drawable_size();
+    let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
+
+    while !exit {
         unsafe {
             gl::ClearColor(1.0, 1.0, 1.0, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
@@ -190,10 +196,13 @@ struct Renderer {
     mask_tile_vertex_array: MaskTileVertexArray,
     solid_tile_vertex_array: SolidTileVertexArray,
     mask_framebuffer: Framebuffer,
+    fill_colors_texture: Texture,
+
+    main_framebuffer_size: Size2D<u32>,
 }
 
 impl Renderer {
-    fn new() -> Renderer {
+    fn new(main_framebuffer_size: &Size2D<u32>) -> Renderer {
         let fill_program = FillProgram::new();
         let solid_tile_program = SolidTileProgram::new();
         let mask_tile_program = MaskTileProgram::new();
@@ -212,6 +221,9 @@ impl Renderer {
         let mask_framebuffer = Framebuffer::new(&Size2D::new(MASK_FRAMEBUFFER_WIDTH,
                                                              MASK_FRAMEBUFFER_HEIGHT));
 
+        let fill_colors_texture = Texture::new_rgba(&Size2D::new(FILL_COLORS_TEXTURE_WIDTH,
+                                                                 FILL_COLORS_TEXTURE_HEIGHT));
+
         Renderer {
             fill_program,
             solid_tile_program,
@@ -222,15 +234,39 @@ impl Renderer {
             mask_tile_vertex_array,
             solid_tile_vertex_array,
             mask_framebuffer,
+            fill_colors_texture,
+
+            main_framebuffer_size: *main_framebuffer_size,
         }
     }
 
     fn render_scene(&mut self, built_scene: &BuiltScene) {
+        self.upload_shaders(&built_scene.shaders);
+
+        self.upload_solid_tiles(&built_scene.solid_tiles);
+        self.draw_solid_tiles(&built_scene.solid_tiles);
+
         for batch in &built_scene.batches {
             self.upload_batch(batch);
             self.draw_batch_fills(batch);
             self.draw_batch_mask_tiles(batch);
         }
+    }
+
+    fn upload_shaders(&mut self, shaders: &[ObjectShader]) {
+        let size = Size2D::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
+        let mut fill_colors = vec![0; size.width as usize * size.height as usize * 4];
+        for (shader_index, shader) in shaders.iter().enumerate() {
+            fill_colors[shader_index * 4 + 0] = shader.fill_color.r;
+            fill_colors[shader_index * 4 + 1] = shader.fill_color.g;
+            fill_colors[shader_index * 4 + 2] = shader.fill_color.b;
+            fill_colors[shader_index * 4 + 3] = shader.fill_color.a;
+        }
+        self.fill_colors_texture.upload_rgba(&size, &fill_colors);
+    }
+
+    fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileScenePrimitive]) {
+        self.solid_tile_vertex_array.vertex_buffer.upload(solid_tiles, BufferUploadMode::Dynamic);
     }
 
     fn upload_batch(&mut self, batch: &Batch) {
@@ -268,13 +304,16 @@ impl Renderer {
     fn draw_batch_mask_tiles(&mut self, batch: &Batch) {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::Viewport(0, 0, MAIN_FRAMEBUFFER_WIDTH as GLint, MAIN_FRAMEBUFFER_HEIGHT as GLint);
+            gl::Viewport(0,
+                         0,
+                         self.main_framebuffer_size.width as GLint,
+                         self.main_framebuffer_size.height as GLint);
 
             gl::BindVertexArray(self.mask_tile_vertex_array.gl_vertex_array);
             gl::UseProgram(self.mask_tile_program.program.gl_program);
             gl::Uniform2f(self.mask_tile_program.framebuffer_size_uniform.location,
-                          MAIN_FRAMEBUFFER_WIDTH as GLfloat,
-                          MAIN_FRAMEBUFFER_HEIGHT as GLfloat);
+                          self.main_framebuffer_size.width as GLfloat,
+                          self.main_framebuffer_size.height as GLfloat);
             gl::Uniform2f(self.mask_tile_program.tile_size_uniform.location,
                           TILE_WIDTH as GLfloat,
                           TILE_HEIGHT as GLfloat);
@@ -283,6 +322,11 @@ impl Renderer {
             gl::Uniform2f(self.mask_tile_program.stencil_texture_size_uniform.location,
                           MASK_FRAMEBUFFER_WIDTH as GLfloat,
                           MASK_FRAMEBUFFER_HEIGHT as GLfloat);
+            self.fill_colors_texture.bind(1);
+            gl::Uniform1i(self.mask_tile_program.fill_colors_texture_uniform.location, 1);
+            gl::Uniform2f(self.mask_tile_program.fill_colors_texture_size_uniform.location,
+                          FILL_COLORS_TEXTURE_WIDTH as GLfloat,
+                          FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
             // FIXME(pcwalton): Fill this in properly!
             gl::Uniform2f(self.mask_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
             gl::BlendEquation(gl::FUNC_ADD);
@@ -290,6 +334,34 @@ impl Renderer {
             gl::Enable(gl::BLEND);
             gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, batch.mask_tiles.len() as GLint);
             gl::Disable(gl::BLEND);
+        }
+    }
+
+    fn draw_solid_tiles(&mut self, solid_tiles: &[SolidTileScenePrimitive]) {
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::Viewport(0,
+                         0,
+                         self.main_framebuffer_size.width as GLint,
+                         self.main_framebuffer_size.height as GLint);
+
+            gl::BindVertexArray(self.solid_tile_vertex_array.gl_vertex_array);
+            gl::UseProgram(self.solid_tile_program.program.gl_program);
+            gl::Uniform2f(self.solid_tile_program.framebuffer_size_uniform.location,
+                          self.main_framebuffer_size.width as GLfloat,
+                          self.main_framebuffer_size.height as GLfloat);
+            gl::Uniform2f(self.solid_tile_program.tile_size_uniform.location,
+                          TILE_WIDTH as GLfloat,
+                          TILE_HEIGHT as GLfloat);
+            self.fill_colors_texture.bind(0);
+            gl::Uniform1i(self.solid_tile_program.fill_colors_texture_uniform.location, 0);
+            gl::Uniform2f(self.solid_tile_program.fill_colors_texture_size_uniform.location,
+                          FILL_COLORS_TEXTURE_WIDTH as GLfloat,
+                          FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
+            // FIXME(pcwalton): Fill this in properly!
+            gl::Uniform2f(self.solid_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
+            gl::Disable(gl::BLEND);
+            gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, solid_tiles.len() as GLint);
         }
     }
 }
@@ -587,6 +659,7 @@ impl MaskTileProgram {
     }
 }
 
+#[derive(Debug)]
 struct Uniform {
     location: GLint,
 }
@@ -727,6 +800,26 @@ impl Texture {
         texture
     }
 
+    fn new_rgba(size: &Size2D<u32>) -> Texture {
+        let mut texture = Texture { gl_texture: 0 };
+        unsafe {
+            gl::GenTextures(1, &mut texture.gl_texture);
+            texture.bind(0);
+            gl::TexImage2D(gl::TEXTURE_2D,
+                           0,
+                           gl::RGBA as GLint,
+                           size.width as GLsizei,
+                           size.height as GLsizei,
+                           0,
+                           gl::RGBA,
+                           gl::UNSIGNED_BYTE,
+                           ptr::null());
+        }
+
+        texture.set_parameters();
+        texture
+    }
+
     fn from_png(name: &str) -> Texture {
         let path = format!("textures/{}.png", name);
         let image = image::open(&path).unwrap().to_luma();
@@ -755,6 +848,24 @@ impl Texture {
             gl::ActiveTexture(gl::TEXTURE0 + unit);
             gl::BindTexture(gl::TEXTURE_2D, self.gl_texture);
         }
+    }
+
+    fn upload_rgba(&self, size: &Size2D<u32>, data: &[u8]) {
+        assert!(data.len() >= size.width as usize * size.height as usize * 4);
+        unsafe {
+            self.bind(0);
+            gl::TexImage2D(gl::TEXTURE_2D,
+                           0,
+                           gl::RGBA as GLint,
+                           size.width as GLsizei,
+                           size.height as GLsizei,
+                           0,
+                           gl::RGBA,
+                           gl::UNSIGNED_BYTE,
+                           data.as_ptr() as *const GLvoid);
+        }
+
+        self.set_parameters();
     }
 
     fn set_parameters(&self) {

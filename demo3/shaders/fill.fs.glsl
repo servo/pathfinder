@@ -24,8 +24,7 @@ void main() {
     vec2 from = vFrom, to = vTo;
 
     // Determine winding, and sort into a consistent order so we only need to find one root below.
-    bool winding = from.x < to.x;
-    vec2 left = winding ? from : to, right = winding ? to : from;
+    vec2 left = from.x < to.x ? from : to, right = from.x < to.x ? to : from;
 
     // Shoot a vertical ray toward the curve.
     vec2 window = clamp(vec2(from.x, to.x), -0.5, 0.5);

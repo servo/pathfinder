@@ -24,8 +24,14 @@ in uint aObject;
 
 out vec4 vColor;
 
+vec2 computeFillColorTexCoord(uint object, vec2 textureSize) {
+    uint width = uint(textureSize.x);
+    return (vec2(float(object % width), float(object / width)) + vec2(0.5)) / textureSize;
+}
+
 void main() {
     vec2 position = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
-    vColor = texture(uFillColorsTexture, vec2(float(aObject) / uFillColorsTextureSize.x, 0.0));
+    vec2 colorTexCoord = computeFillColorTexCoord(aObject, uFillColorsTextureSize);
+    vColor = texture(uFillColorsTexture, colorTexCoord);
     gl_Position = vec4((position / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0), 0.0, 1.0);
 }

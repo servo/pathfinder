@@ -1,8 +1,8 @@
 #version 330
 
-// pathfinder/demo2/stencil.vs.glsl
+// pathfinder/demo3/fill.vs.glsl
 //
-// Copyright © 2018 The Pathfinder Project Developers.
+// Copyright © 2019 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -38,7 +38,6 @@ void main() {
     vec2 to = vec2(aToPx & 15u, aToPx >> 4u) + aToSubpx;
 
     vec2 position;
-    bool zeroArea = !(abs(from.x - to.x) > 0.1) || !(abs(uTileSize.y - min(from.y, to.y)) > 0.1);
     if (aTessCoord.x < 0.5)
         position.x = floor(min(from.x, to.x));
     else
@@ -51,7 +50,7 @@ void main() {
     vFrom = from - position;
     vTo = to - position;
 
-    if (zeroArea)
+    if (!(abs(from.x - to.x) > 0.1) || !(abs(uTileSize.y - min(from.y, to.y)) > 0.1))
         gl_Position = vec4(0.0);
     else
         gl_Position = vec4((tileOrigin + position) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
