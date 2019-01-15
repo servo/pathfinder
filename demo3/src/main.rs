@@ -80,16 +80,16 @@ fn main() {
     let (drawable_width, drawable_height) = window.drawable_size();
     let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
 
-    let mut scale = 1.0;
-    //let mut theta = 0.0;
+    //let mut scale = 1.0;
+    let mut theta = 0.0;
 
     while !exit {
         let mut scene = base_scene.clone();
-        //scene.transform(&Transform2DF32::from_rotation(theta));
-        scene.transform(&Transform2DF32::from_scale(&Point2DF32::splat(scale)));
-        //theta += 0.01;
+        scene.transform(&Transform2DF32::from_rotation(theta));
+        //scene.transform(&Transform2DF32::from_scale(&Point2DF32::splat(scale)));
+        theta += 0.001;
         //scale -= 0.0003;
-        scale += 0.0001;
+        //scale += 0.0001;
 
         let built_scene = build_scene(&scene, &options);
 

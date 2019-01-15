@@ -11,6 +11,8 @@
 //! A compressed in-memory representation of paths.
 
 use crate::clip::ContourRectClipper;
+use crate::line_segment::LineSegmentF32;
+use crate::monotonic::MonotonicConversionIter;
 use crate::point::Point2DF32;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
 use crate::transform::Transform2DF32;
@@ -133,7 +135,7 @@ impl Contour {
 
     #[inline]
     pub fn iter(&self) -> ContourIter {
-        ContourIter { contour: self, index: 0 }
+        ContourIter { contour: self, index: 1 }
     }
 
     #[inline]
@@ -164,6 +166,25 @@ impl Contour {
 
         self.points.push(point);
         self.flags.push(flags);
+    }
+
+    pub(crate) fn push_segment(&mut self, segment: Segment) {
+        if segment.is_none() {
+            return
+        }
+
+        if self.is_empty() {
+            self.push_point(segment.baseline.from(), PointFlags::empty());
+        }
+
+        if !segment.is_line() {
+            self.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0);
+            if !segment.is_quadratic() {
+                self.push_point(segment.ctrl.to(), PointFlags::CONTROL_POINT_1);
+            }
+        }
+
+        self.push_point(segment.baseline.to(), PointFlags::empty());
     }
 
     #[inline]
@@ -262,6 +283,17 @@ impl Contour {
             *point = transform.transform_point(point);
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
+
+        // TODO(pcwalton): Skip this step if the transform is rectilinear.
+        self.make_monotonic();
+    }
+
+    #[inline]
+    pub fn make_monotonic(&mut self) {
+        let contour = mem::replace(self, Contour::new());
+        for segment in MonotonicConversionIter::new(contour.iter()) {
+            self.push_segment(segment);
+        }
     }
 }
 
@@ -279,7 +311,7 @@ impl Debug for Contour {
             if formatter.alternate() {
                 formatter.write_str("\n    ")?;
             }
-            write_path_event(formatter, &segment)?;
+            segment.fmt(formatter)?;
         }
         if formatter.alternate() {
             formatter.write_str("\n")?
@@ -287,40 +319,6 @@ impl Debug for Contour {
         formatter.write_str("]")?;
 
         return Ok(());
-
-        fn write_path_event(formatter: &mut Formatter, path_event: &PathEvent) -> fmt::Result {
-            match *path_event {
-                PathEvent::Arc(..) => {
-                    // TODO(pcwalton)
-                    formatter.write_str("TODO: arcs")?;
-                }
-                PathEvent::Close => formatter.write_str("z")?,
-                PathEvent::MoveTo(to) => {
-                    formatter.write_str("M")?;
-                    write_point(formatter, to)?;
-                }
-                PathEvent::LineTo(to) => {
-                    formatter.write_str("L")?;
-                    write_point(formatter, to)?;
-                }
-                PathEvent::QuadraticTo(ctrl, to) => {
-                    formatter.write_str("Q")?;
-                    write_point(formatter, ctrl)?;
-                    write_point(formatter, to)?;
-                }
-                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                    formatter.write_str("C")?;
-                    write_point(formatter, ctrl0)?;
-                    write_point(formatter, ctrl1)?;
-                    write_point(formatter, to)?;
-                }
-            }
-            Ok(())
-        }
-
-        fn write_point(formatter: &mut Formatter, point: Point2D<f32>) -> fmt::Result {
-            write!(formatter, " {},{}", point.x, point.y)
-        }
     }
 }
 
@@ -352,48 +350,43 @@ pub struct ContourIter<'a> {
 }
 
 impl<'a> Iterator for ContourIter<'a> {
-    type Item = PathEvent;
+    type Item = Segment;
 
     #[inline]
-    fn next(&mut self) -> Option<PathEvent> {
+    fn next(&mut self) -> Option<Segment> {
         let contour = self.contour;
         if self.index == contour.len() + 1 {
             return None;
         }
-        if self.index == contour.len() {
-            self.index += 1;
-            return Some(PathEvent::Close);
-        }
 
-        let point0_index = self.index;
+        let point0_index = self.index - 1;
         let point0 = contour.position_of(point0_index);
-        self.index += 1;
-        if point0_index == 0 {
-            return Some(PathEvent::MoveTo(point0.as_euclid()));
-        }
-        if contour.point_is_endpoint(point0_index) {
-            return Some(PathEvent::LineTo(point0.as_euclid()));
+        if self.index == contour.len() {
+            let point1 = contour.position_of(0);
+            self.index += 1;
+            return Some(Segment::line(&LineSegmentF32::new(&point0, &point1)));
         }
 
         let point1_index = self.index;
-        let point1 = contour.position_of(point1_index);
         self.index += 1;
+        let point1 = contour.position_of(point1_index);
         if contour.point_is_endpoint(point1_index) {
-            return Some(PathEvent::QuadraticTo(
-                point0.as_euclid(),
-                point1.as_euclid(),
-            ));
+            return Some(Segment::line(&LineSegmentF32::new(&point0, &point1)));
         }
 
         let point2_index = self.index;
         let point2 = contour.position_of(point2_index);
         self.index += 1;
-        debug_assert!(contour.point_is_endpoint(point2_index));
-        Some(PathEvent::CubicTo(
-            point0.as_euclid(),
-            point1.as_euclid(),
-            point2.as_euclid(),
-        ))
+        if contour.point_is_endpoint(point2_index) {
+            return Some(Segment::quadratic(&LineSegmentF32::new(&point0, &point2), &point1));
+        }
+
+        let point3_index = self.index;
+        let point3 = contour.position_of(point3_index);
+        self.index += 1;
+        debug_assert!(contour.point_is_endpoint(point3_index));
+        return Some(Segment::cubic(&LineSegmentF32::new(&point0, &point3),
+                                   &LineSegmentF32::new(&point1, &point2)));
     }
 }
 
