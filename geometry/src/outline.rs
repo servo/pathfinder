@@ -10,10 +10,11 @@
 
 //! A compressed in-memory representation of paths.
 
+use crate::clip::ContourRectClipper;
 use crate::point::Point2DF32;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
 use crate::transform::Transform2DF32;
-use euclid::{Point2D, Rect};
+use euclid::{Point2D, Rect, Size2D};
 use lyon_path::PathEvent;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -28,6 +29,7 @@ pub struct Outline {
 pub struct Contour {
     points: Vec<Point2DF32>,
     flags: Vec<PointFlags>,
+    bounds: Rect<f32>,
 }
 
 bitflags! {
@@ -53,7 +55,6 @@ impl Outline {
     {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
-        let mut bounding_points = None;
 
         for segment in segments {
             if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
@@ -62,18 +63,12 @@ impl Outline {
                         .contours
                         .push(mem::replace(&mut current_contour, Contour::new()));
                 }
-                current_contour.push_point(
-                    segment.baseline.from(),
-                    PointFlags::empty(),
-                    &mut bounding_points,
-                );
+                current_contour.push_point(segment.baseline.from(), PointFlags::empty());
             }
 
             if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
                 if !current_contour.is_empty() {
-                    outline
-                        .contours
-                        .push(mem::replace(&mut current_contour, Contour::new()));
+                    outline.push_contour(mem::replace(&mut current_contour, Contour::new()));
                 }
                 continue;
             }
@@ -83,34 +78,17 @@ impl Outline {
             }
 
             if !segment.is_line() {
-                current_contour.push_point(
-                    segment.ctrl.from(),
-                    PointFlags::CONTROL_POINT_0,
-                    &mut bounding_points,
-                );
+                current_contour.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0);
                 if !segment.is_quadratic() {
-                    current_contour.push_point(
-                        segment.ctrl.to(),
-                        PointFlags::CONTROL_POINT_1,
-                        &mut bounding_points,
-                    );
+                    current_contour.push_point(segment.ctrl.to(), PointFlags::CONTROL_POINT_1);
                 }
             }
 
-            current_contour.push_point(
-                segment.baseline.to(),
-                PointFlags::empty(),
-                &mut bounding_points,
-            );
+            current_contour.push_point(segment.baseline.to(), PointFlags::empty());
         }
 
         if !current_contour.is_empty() {
-            outline.contours.push(current_contour)
-        }
-
-        if let Some((upper_left, lower_right)) = bounding_points {
-            outline.bounds =
-                Rect::from_points([upper_left.as_euclid(), lower_right.as_euclid()].iter())
+            outline.push_contour(current_contour);
         }
 
         outline
@@ -124,24 +102,38 @@ impl Outline {
     #[inline]
     pub fn transform(&mut self, transform: &Transform2DF32) {
         self.contours.iter_mut().for_each(|contour| contour.transform(transform));
+        self.bounds = transform.transform_rect(&self.bounds);
+    }
+
+    #[inline]
+    fn push_contour(&mut self, contour: Contour) {
+        if self.contours.is_empty() {
+            self.bounds = contour.bounds;
+        } else {
+            self.bounds = self.bounds.union(&contour.bounds);
+        }
+        self.contours.push(contour);
+    }
+
+    pub fn clip_against_rect(&mut self, clip_rect: &Rect<f32>) {
+        for contour in mem::replace(&mut self.contours, vec![]) {
+            let contour = ContourRectClipper::new(clip_rect, contour).clip();
+            if !contour.is_empty() {
+                self.push_contour(contour);
+            }
+        }
     }
 }
 
 impl Contour {
     #[inline]
     pub fn new() -> Contour {
-        Contour {
-            points: vec![],
-            flags: vec![],
-        }
+        Contour { points: vec![], flags: vec![], bounds: Rect::zero() }
     }
 
     #[inline]
     pub fn iter(&self) -> ContourIter {
-        ContourIter {
-            contour: self,
-            index: 0,
-        }
+        ContourIter { contour: self, index: 0 }
     }
 
     #[inline]
@@ -155,28 +147,23 @@ impl Contour {
     }
 
     #[inline]
+    pub fn bounds(&self) -> &Rect<f32> {
+        &self.bounds
+    }
+
+    #[inline]
     pub fn position_of(&self, index: u32) -> Point2DF32 {
         self.points[index as usize]
     }
 
-    // TODO(pcwalton): Pack both min and max into a single SIMD register?
+    // TODO(pcwalton): SIMD.
     #[inline]
-    fn push_point(
-        &mut self,
-        point: Point2DF32,
-        flags: PointFlags,
-        bounding_points: &mut Option<(Point2DF32, Point2DF32)>,
-    ) {
+    pub(crate) fn push_point(&mut self, point: Point2DF32, flags: PointFlags) {
+        let first = self.is_empty();
+        union_rect(&mut self.bounds, point, first);
+
         self.points.push(point);
         self.flags.push(flags);
-
-        match *bounding_points {
-            Some((ref mut upper_left, ref mut lower_right)) => {
-                *upper_left = upper_left.min(point);
-                *lower_right = lower_right.max(point);
-            }
-            None => *bounding_points = Some((point, point)),
-        }
     }
 
     #[inline]
@@ -271,8 +258,9 @@ impl Contour {
 
     #[inline]
     pub fn transform(&mut self, transform: &Transform2DF32) {
-        for point in &mut self.points {
-            *point = transform.transform_point(point)
+        for (point_index, point) in self.points.iter_mut().enumerate() {
+            *point = transform.transform_point(point);
+            union_rect(&mut self.bounds, *point, point_index == 0);
         }
     }
 }
@@ -407,4 +395,20 @@ impl<'a> Iterator for ContourIter<'a> {
             point2.as_euclid(),
         ))
     }
+}
+
+#[inline]
+fn union_rect(bounds: &mut Rect<f32>, new_point: Point2DF32, first: bool) {
+    if first {
+        *bounds = Rect::new(new_point.as_euclid(), Size2D::zero());
+        return;
+    }
+
+    let (mut min_x, mut min_y) = (bounds.origin.x, bounds.origin.y);
+    let (mut max_x, mut max_y) = (bounds.max_x(), bounds.max_y());
+    min_x = min_x.min(new_point.x());
+    min_y = min_y.min(new_point.y());
+    max_x = max_x.max(new_point.x());
+    max_y = max_y.max(new_point.y());
+    *bounds = Rect::new(Point2D::new(min_x, min_y), Size2D::new(max_x - min_x, max_y - min_y));
 }

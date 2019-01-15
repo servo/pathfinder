@@ -215,6 +215,8 @@ impl BuiltObject {
         let segment_tile_left = (f32::floor(segment_left) as i32 / TILE_WIDTH as i32) as i16;
         let segment_tile_right =
             util::alignup_i32(f32::ceil(segment_right) as i32, TILE_WIDTH as i32) as i16;
+        /*println!("segment_tile_left={} segment_tile_right={} tile_rect={:?}",
+                 segment_tile_left, segment_tile_right, self.tile_rect);*/
 
         for subsegment_tile_x in segment_tile_left..segment_tile_right {
             let (mut fill_from, mut fill_to) = (segment.from(), segment.to());

@@ -116,6 +116,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         debug_assert!(self.old_active_edges.is_empty());
         mem::swap(&mut self.old_active_edges, &mut self.active_edges.array);
 
+        // FIXME(pcwalton): Yuck.
         let mut last_segment_x = -9999.0;
 
         let tile_top = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
@@ -178,7 +179,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
 
             // Do final subtile fill, if necessary.
             debug_assert_eq!(current_tile_x, segment_tile_x);
-            debug_assert!(current_tile_x < self.built_object.tile_rect.max_x());
+            debug_assert!(current_tile_x <= self.built_object.tile_rect.max_x());
             let segment_subtile_x =
                 segment_x - (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32;
             if segment_subtile_x > current_subtile_x {

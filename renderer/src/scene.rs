@@ -99,10 +99,20 @@ impl Scene {
     }
 
     pub fn transform(&mut self, transform: &Transform2DF32) {
-        // TODO(pcwalton): Transform bounds?
-        for object in &mut self.objects {
-            object.outline.transform(transform)
+        let mut bounds = Rect::zero();
+        for (object_index, object) in self.objects.iter_mut().enumerate() {
+            object.outline.transform(transform);
+            object.outline.clip_against_rect(&self.view_box);
+
+            if object_index == 0 {
+                bounds = *object.outline.bounds();
+            } else {
+                bounds = bounds.union(object.outline.bounds());
+            }
         }
+
+        //println!("new bounds={:?}", bounds);
+        self.bounds = bounds;
     }
 }
 

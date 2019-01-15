@@ -47,7 +47,7 @@ const MASK_TILE_INSTANCE_SIZE: GLint = 8;
 const MASK_FRAMEBUFFER_WIDTH: u32 = TILE_WIDTH * 256;
 const MASK_FRAMEBUFFER_HEIGHT: u32 = TILE_HEIGHT * 256;
 
-const MAIN_FRAMEBUFFER_WIDTH: u32 = 800;
+const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 
 const FILL_COLORS_TEXTURE_WIDTH: u32 = 256;
@@ -81,11 +81,15 @@ fn main() {
     let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
 
     let mut scale = 1.0;
+    //let mut theta = 0.0;
 
     while !exit {
         let mut scene = base_scene.clone();
-        scene.transform(&Transform2DF32::from_scale(&Point2DF32::new(scale, scale)));
-        scale -= 0.1;
+        //scene.transform(&Transform2DF32::from_rotation(theta));
+        scene.transform(&Transform2DF32::from_scale(&Point2DF32::splat(scale)));
+        //theta += 0.01;
+        //scale -= 0.0003;
+        scale += 0.0001;
 
         let built_scene = build_scene(&scene, &options);
 
@@ -189,6 +193,7 @@ fn build_scene(scene: &Scene, options: &Options) -> BuiltScene {
 
     let total_elapsed_time = elapsed_object_build_time + elapsed_scene_build_time;
 
+    /*
     println!(
         "{:.3}ms ({:.3}ms objects, {:.3}ms scene) elapsed",
         total_elapsed_time, elapsed_object_build_time, elapsed_scene_build_time
@@ -203,6 +208,7 @@ fn build_scene(scene: &Scene, options: &Options) -> BuiltScene {
             batch.mask_tiles.len()
         );
     }
+    */
 
     built_scene
 }

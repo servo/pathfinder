@@ -13,7 +13,7 @@
 use crate::point::Point2DF32;
 use crate::segment::Segment;
 use crate::simd::F32x4;
-use euclid::Transform2D;
+use euclid::{Point2D, Rect, Size2D, Transform2D};
 use lyon_path::PathEvent;
 
 /// An affine transform, optimized with SIMD.
@@ -41,6 +41,15 @@ impl Transform2DF32 {
     }
 
     #[inline]
+    pub fn from_rotation(theta: f32) -> Transform2DF32 {
+        let (sin_theta, cos_theta) = (theta.sin(), theta.cos());
+        Transform2DF32 {
+            matrix: F32x4::new(cos_theta, -sin_theta, sin_theta, cos_theta),
+            vector: Point2DF32::default(),
+        }
+    }
+
+    #[inline]
     pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32)
                      -> Transform2DF32 {
         Transform2DF32 {
@@ -53,6 +62,21 @@ impl Transform2DF32 {
     pub fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
         let x11x12y21y22 = point.0.xxyy() * self.matrix;
         Point2DF32(x11x12y21y22 + x11x12y21y22.zwzw() + self.vector.0)
+    }
+
+    // TODO(pcwalton): SIMD.
+    #[inline]
+    pub fn transform_rect(&self, rect: &Rect<f32>) -> Rect<f32> {
+        let upper_left = self.transform_point(&Point2DF32::from_euclid(rect.origin));
+        let upper_right = self.transform_point(&Point2DF32::from_euclid(rect.top_right()));
+        let lower_left = self.transform_point(&Point2DF32::from_euclid(rect.bottom_left()));
+        let lower_right = self.transform_point(&Point2DF32::from_euclid(rect.bottom_right()));
+        let min_x = upper_left.x().min(upper_right.x()).min(lower_left.x()).min(lower_right.x());
+        let min_y = upper_left.y().min(upper_right.y()).min(lower_left.y()).min(lower_right.y());
+        let max_x = upper_left.x().max(upper_right.x()).max(lower_left.x()).max(lower_right.x());
+        let max_y = upper_left.y().max(upper_right.y()).max(lower_left.y()).max(lower_right.y());
+        let (width, height) = (max_x - min_x, max_y - min_y);
+        Rect::new(Point2D::new(min_x, min_y), Size2D::new(width, height))
     }
 
     #[inline]

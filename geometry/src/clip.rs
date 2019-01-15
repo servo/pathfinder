@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::outline::{Contour, PointFlags};
+use crate::point::Point2DF32;
 use euclid::{Point2D, Rect, Vector3D};
 use lyon_path::PathEvent;
 use std::mem;
@@ -113,5 +115,68 @@ impl Edge {
         };
         let intersection = start_point.cross(endpoint).cross(edge);
         Point2D::new(intersection.x / intersection.z, intersection.y / intersection.z)
+    }
+}
+
+pub(crate) struct ContourRectClipper {
+    clip_rect: Rect<f32>,
+    contour: Contour,
+}
+
+impl ContourRectClipper {
+    #[inline]
+    pub(crate) fn new(clip_rect: &Rect<f32>, contour: Contour) -> ContourRectClipper {
+        ContourRectClipper { clip_rect: *clip_rect, contour }
+    }
+
+    pub(crate) fn clip(mut self) -> Contour {
+        if self.clip_rect.contains_rect(&self.contour.bounds()) {
+            return self.contour
+        }
+
+        self.clip_against(Edge::Left(self.clip_rect.origin.x));
+        self.clip_against(Edge::Top(self.clip_rect.origin.y));
+        self.clip_against(Edge::Right(self.clip_rect.max_x()));
+        self.clip_against(Edge::Bottom(self.clip_rect.max_y()));
+        self.contour
+    }
+
+    fn clip_against(&mut self, edge: Edge) {
+        let (mut from, mut first_point) = (Point2D::zero(), false);
+        let input = mem::replace(&mut self.contour, Contour::new());
+        for event in input.iter() {
+            let to = match event {
+                PathEvent::MoveTo(to) => {
+                    from = to;
+                    first_point = true;
+                    continue
+                }
+                PathEvent::Close => break,
+                PathEvent::LineTo(to) |
+                PathEvent::QuadraticTo(_, to) |
+                PathEvent::CubicTo(_, _, to) => to,
+                PathEvent::Arc(..) => panic!("Arcs unsupported!"),
+            };
+
+            if edge.point_is_inside(&to) {
+                if !edge.point_is_inside(&from) {
+                    //println!("clip: {:?} {:?}", from, to);
+                    add_line(&edge.line_intersection(&from, &to),
+                             &mut self.contour,
+                             &mut first_point);
+                }
+                add_line(&to, &mut self.contour, &mut first_point);
+            } else if edge.point_is_inside(&from) {
+                //println!("clip: {:?} {:?}", from, to);
+                add_line(&edge.line_intersection(&from, &to), &mut self.contour, &mut first_point);
+            }
+
+            from = to;
+        }
+
+        fn add_line(to: &Point2D<f32>, output: &mut Contour, first_point: &mut bool) {
+            output.push_point(Point2DF32::from_euclid(*to), PointFlags::empty());
+            *first_point = false;
+        }
     }
 }
