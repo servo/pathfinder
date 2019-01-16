@@ -151,6 +151,11 @@ mod scalar {
             (F32x4([self[0], other[0], self[1], other[1]]),
              F32x4([self[2], other[2], self[3], other[3]]))
         }
+
+        #[inline]
+        pub fn transpose4(a: &mut F32x4, b: &mut F32x4, c: &mut F32x4, d: &mut F32x4) {
+            unimplemented!()
+        }
     }
 
     impl Index<usize> for F32x4 {
@@ -440,6 +445,13 @@ mod x86 {
                     F32x4(x86_64::_mm_unpacklo_ps(self.0, other.0)),
                     F32x4(x86_64::_mm_unpackhi_ps(self.0, other.0)),
                 )
+            }
+        }
+
+        #[inline]
+        pub fn transpose_4x4(a: &mut F32x4, b: &mut F32x4, c: &mut F32x4, d: &mut F32x4) {
+            unsafe {
+                x86_64::_MM_TRANSPOSE4_PS(&mut a.0, &mut b.0, &mut c.0, &mut d.0)
             }
         }
     }

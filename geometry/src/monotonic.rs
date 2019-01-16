@@ -10,7 +10,6 @@
 
 //! Converts paths to monotonically increasing/decreasing segments.
 
-use crate::outline::Contour;
 use crate::segment::{Segment, SegmentKind};
 use arrayvec::ArrayVec;
 
