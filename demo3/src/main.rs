@@ -14,6 +14,7 @@ use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use jemallocator;
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::transform::Transform2DF32;
+use pathfinder_geometry::transform3d::Transform3DF32;
 use pathfinder_renderer::builder::SceneBuilder;
 use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
 use pathfinder_renderer::paint::ObjectShader;
@@ -81,13 +82,17 @@ fn main() {
     let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
 
     //let mut scale = 1.0;
-    let mut theta = 0.0;
+    //let mut theta = 0.0;
+
+    let mut transform = Transform3DF32::from_perspective(f32::PI / 4.0, 4.0 / 3.0, 0.01, 1000.0);
+    transform = transform.pre_mul(Transform3DF32::from_translation(0.0, 0.0, -100.0));
 
     while !exit {
         let mut scene = base_scene.clone();
-        scene.transform(&Transform2DF32::from_rotation(theta));
+        scene.transform_3d(&transform);
+        //scene.transform(&Transform2DF32::from_rotation(theta));
         //scene.transform(&Transform2DF32::from_scale(&Point2DF32::splat(scale)));
-        theta += 0.001;
+        //theta += 0.001;
         //scale -= 0.0003;
         //scale += 0.0001;
 

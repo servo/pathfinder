@@ -101,7 +101,7 @@ impl Mul<Point2DF32> for Point2DF32 {
 
 // 3D homogeneous points.
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Point4DF32(pub F32x4);
 
 impl Point4DF32 {
