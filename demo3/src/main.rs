@@ -138,9 +138,19 @@ fn main() {
                 Event::KeyDown { keycode: Some(Keycode::S), .. } => {
                     camera_velocity.set_z(CAMERA_VELOCITY)
                 }
+                Event::KeyDown { keycode: Some(Keycode::A), .. } => {
+                    camera_velocity.set_x(-CAMERA_VELOCITY)
+                }
+                Event::KeyDown { keycode: Some(Keycode::D), .. } => {
+                    camera_velocity.set_x(CAMERA_VELOCITY)
+                }
                 Event::KeyUp { keycode: Some(Keycode::W), .. } |
                 Event::KeyUp { keycode: Some(Keycode::S), .. } => {
                     camera_velocity.set_z(0.0);
+                }
+                Event::KeyUp { keycode: Some(Keycode::A), .. } |
+                Event::KeyUp { keycode: Some(Keycode::D), .. } => {
+                    camera_velocity.set_x(0.0);
                 }
                 _ => {}
             }
