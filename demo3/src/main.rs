@@ -14,7 +14,7 @@ use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use jemallocator;
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::transform::Transform2DF32;
-use pathfinder_geometry::transform3d::Transform3DF32;
+use pathfinder_geometry::transform3d::{Perspective, Transform3DF32};
 use pathfinder_renderer::builder::SceneBuilder;
 use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
 use pathfinder_renderer::paint::ObjectShader;
@@ -26,6 +26,7 @@ use rayon::ThreadPoolBuilder;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
+use std::f32::consts::FRAC_PI_4;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
@@ -84,12 +85,14 @@ fn main() {
     //let mut scale = 1.0;
     //let mut theta = 0.0;
 
-    let mut transform = Transform3DF32::from_perspective(f32::PI / 4.0, 4.0 / 3.0, 0.01, 1000.0);
-    transform = transform.pre_mul(Transform3DF32::from_translation(0.0, 0.0, -100.0));
+    let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.01, 100.0);
+    transform = transform.post_mul(&Transform3DF32::from_translation(0.0, 0.0, -6.0));
+    let window_size = Size2D::new(MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT);
+    let perspective = Perspective::new(&transform, &window_size);
 
     while !exit {
         let mut scene = base_scene.clone();
-        scene.transform_3d(&transform);
+        scene.apply_perspective(&perspective);
         //scene.transform(&Transform2DF32::from_rotation(theta));
         //scene.transform(&Transform2DF32::from_scale(&Point2DF32::splat(scale)));
         //theta += 0.001;

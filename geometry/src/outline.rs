@@ -15,9 +15,9 @@ use crate::line_segment::LineSegmentF32;
 use crate::monotonic::MonotonicConversionIter;
 use crate::point::Point2DF32;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
+use crate::transform3d::Perspective;
 use crate::transform::Transform2DF32;
 use euclid::{Point2D, Rect, Size2D};
-use lyon_path::PathEvent;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 
@@ -105,6 +105,12 @@ impl Outline {
     pub fn transform(&mut self, transform: &Transform2DF32) {
         self.contours.iter_mut().for_each(|contour| contour.transform(transform));
         self.bounds = transform.transform_rect(&self.bounds);
+    }
+
+    #[inline]
+    pub fn apply_perspective(&mut self, perspective: &Perspective) {
+        self.contours.iter_mut().for_each(|contour| contour.apply_perspective(perspective));
+        self.bounds = perspective.transform_rect(&self.bounds);
     }
 
     #[inline]
@@ -285,6 +291,16 @@ impl Contour {
         }
 
         // TODO(pcwalton): Skip this step if the transform is rectilinear.
+        self.make_monotonic();
+    }
+
+    #[inline]
+    pub fn apply_perspective(&mut self, perspective: &Perspective) {
+        for (point_index, point) in self.points.iter_mut().enumerate() {
+            *point = perspective.transform_point(point);
+            union_rect(&mut self.bounds, *point, point_index == 0);
+        }
+
         self.make_monotonic();
     }
 

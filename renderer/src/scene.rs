@@ -17,6 +17,7 @@ use crate::z_buffer::ZBuffer;
 use euclid::Rect;
 use hashbrown::HashMap;
 use pathfinder_geometry::outline::Outline;
+use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform::Transform2DF32;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
@@ -102,6 +103,23 @@ impl Scene {
         let mut bounds = Rect::zero();
         for (object_index, object) in self.objects.iter_mut().enumerate() {
             object.outline.transform(transform);
+            object.outline.clip_against_rect(&self.view_box);
+
+            if object_index == 0 {
+                bounds = *object.outline.bounds();
+            } else {
+                bounds = bounds.union(object.outline.bounds());
+            }
+        }
+
+        //println!("new bounds={:?}", bounds);
+        self.bounds = bounds;
+    }
+
+    pub fn apply_perspective(&mut self, perspective: &Perspective) {
+        let mut bounds = Rect::zero();
+        for (object_index, object) in self.objects.iter_mut().enumerate() {
+            object.outline.apply_perspective(perspective);
             object.outline.clip_against_rect(&self.view_box);
 
             if object_index == 0 {
