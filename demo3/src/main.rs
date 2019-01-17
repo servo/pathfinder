@@ -111,7 +111,7 @@ fn main() {
         let built_scene = build_scene(&scene, &options);
 
         unsafe {
-            gl::ClearColor(1.0, 1.0, 1.0, 1.0);
+            gl::ClearColor(0.7, 0.7, 0.7, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
             renderer.render_scene(&built_scene);
         }

@@ -17,7 +17,7 @@ use euclid::{Point2D, Rect, Size2D, Transform2D};
 use lyon_path::PathEvent;
 
 /// An affine transform, optimized with SIMD.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Transform2DF32 {
     // Row-major order.
     matrix: F32x4,
@@ -68,8 +68,8 @@ impl Transform2DF32 {
 
     #[inline]
     pub fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
-        let x11x12y21y22 = point.0.xxyy() * self.matrix;
-        Point2DF32(x11x12y21y22 + x11x12y21y22.zwzw() + self.vector.0)
+        let bxbzbybw = point.0.xxyy() * self.matrix.xzyw();
+        Point2DF32(bxbzbybw + bxbzbybw.zwzw() + self.vector.0)
     }
 
     // TODO(pcwalton): SIMD.
@@ -89,10 +89,10 @@ impl Transform2DF32 {
 
     #[inline]
     pub fn post_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
-        let lhs = self.matrix.xzxz() * other.matrix.xxyy();
-        let rhs = self.matrix.ywyw() * other.matrix.zzww();
+        let lhs = self.matrix.xwxw() * other.matrix;
+        let rhs = self.matrix.zyzy() * other.matrix.yxwz();
         let matrix = lhs + rhs;
-        let vector = other.transform_point(&self.vector) + other.vector;
+        let vector = other.transform_point(&self.vector);
         Transform2DF32 { matrix, vector }
     }
 

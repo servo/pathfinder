@@ -404,6 +404,11 @@ mod x86 {
         }
 
         #[inline]
+        pub fn xwxw(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1100_1100)) }
+        }
+
+        #[inline]
         pub fn xyyx(self) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0001_0100)) }
         }
@@ -414,8 +419,23 @@ mod x86 {
         }
 
         #[inline]
+        pub fn xzyw(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1101_1000)) }
+        }
+
+        #[inline]
+        pub fn yxwz(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1011_0001)) }
+        }
+
+        #[inline]
         pub fn ywyw(self) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1101_1101)) }
+        }
+
+        #[inline]
+        pub fn zyzy(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0110_0110)) }
         }
 
         #[inline]
