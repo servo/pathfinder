@@ -12,7 +12,7 @@ use clap::{App, Arg};
 use euclid::Size2D;
 use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use jemallocator;
-use pathfinder_geometry::point::Point2DF32;
+use pathfinder_geometry::point::{Point2DF32, Point4DF32};
 use pathfinder_geometry::transform::Transform2DF32;
 use pathfinder_geometry::transform3d::{Perspective, Transform3DF32};
 use pathfinder_renderer::builder::SceneBuilder;
@@ -56,6 +56,7 @@ const FILL_COLORS_TEXTURE_WIDTH: u32 = 256;
 const FILL_COLORS_TEXTURE_HEIGHT: u32 = 256;
 
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.01;
+const CAMERA_VELOCITY: f32 = 0.03;
 
 fn main() {
     let options = Options::get();
@@ -90,30 +91,27 @@ fn main() {
     let (drawable_width, drawable_height) = window.drawable_size();
     let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
 
-    //let mut scale = 1.0;
-    //let mut theta = 0.0;
-    let mut camera_position = [0.0, 0.0, 3.0];
-    let (mut camera_roll, mut camera_pitch, mut camera_yaw) = (0.0, 0.0, 0.0);
+    let mut camera_position = Point4DF32::new(0.0, 0.0, 3.0, 1.0);
+    let mut camera_velocity = Point4DF32::new(0.0, 0.0, 0.0, 1.0);
+    let (mut camera_yaw, mut camera_pitch, mut camera_roll) = (0.0, 0.0, 0.0);
 
     let window_size = Size2D::new(MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT);
 
     while !exit {
+        let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, -camera_roll);
+        camera_position = camera_position + rotation.transform_point(camera_velocity);
+
         let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.01, 100.0);
-        transform = transform.post_mul(&Transform3DF32::from_rotation(camera_roll,
+        transform = transform.post_mul(&Transform3DF32::from_rotation(camera_yaw,
                                                                       camera_pitch,
-                                                                      camera_yaw));
-        transform = transform.post_mul(&Transform3DF32::from_translation(-camera_position[0],
-                                                                         -camera_position[1],
-                                                                         -camera_position[2]));
+                                                                      camera_roll));
+        transform = transform.post_mul(&Transform3DF32::from_translation(-camera_position.x(),
+                                                                         -camera_position.y(),
+                                                                         -camera_position.z()));
         let perspective = Perspective::new(&transform, &window_size);
 
         let mut scene = base_scene.clone();
         scene.apply_perspective(&perspective);
-        //scene.transform(&Transform2DF32::from_rotation(theta));
-        //scene.transform(&Transform2DF32::from_scale(&Point2DF32::splat(scale)));
-        //theta += 0.001;
-        //scale -= 0.0003;
-        //scale += 0.0001;
 
         let built_scene = build_scene(&scene, &options);
 
@@ -132,11 +130,18 @@ fn main() {
                 }
                 Event::MouseMotion { xrel, yrel, .. } => {
                     camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                    camera_pitch += yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                    camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
                 }
-                /*Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-
-                }*/
+                Event::KeyDown { keycode: Some(Keycode::W), .. } => {
+                    camera_velocity.set_z(-CAMERA_VELOCITY)
+                }
+                Event::KeyDown { keycode: Some(Keycode::S), .. } => {
+                    camera_velocity.set_z(CAMERA_VELOCITY)
+                }
+                Event::KeyUp { keycode: Some(Keycode::W), .. } |
+                Event::KeyUp { keycode: Some(Keycode::S), .. } => {
+                    camera_velocity.set_z(0.0);
+                }
                 _ => {}
             }
         }

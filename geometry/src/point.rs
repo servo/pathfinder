@@ -12,7 +12,7 @@
 
 use crate::simd::F32x4;
 use euclid::Point2D;
-use std::ops::{Add, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, Sub};
 
 // 2D points.
 
@@ -141,8 +141,28 @@ impl Point4DF32 {
     }
 
     #[inline]
+    pub fn set_z(&mut self, z: f32) {
+        self.0[2] = z
+    }
+
+    #[inline]
     pub fn perspective_divide(self) -> Point4DF32 {
         self * Point4DF32::splat(1.0 / self.w())
+    }
+}
+
+impl Add<Point4DF32> for Point4DF32 {
+    type Output = Point4DF32;
+    #[inline]
+    fn add(self, other: Point4DF32) -> Point4DF32 {
+        Point4DF32(self.0 + other.0)
+    }
+}
+
+impl AddAssign for Point4DF32 {
+    #[inline]
+    fn add_assign(&mut self, other: Point4DF32) {
+        self.0 += other.0
     }
 }
 

@@ -70,19 +70,19 @@ impl Transform3DF32 {
     }
 
     // TODO(pcwalton): Optimize.
-    pub fn from_rotation(roll: f32, pitch: f32, yaw: f32) -> Transform3DF32 {
-        let (cos_roll, sin_roll) = (roll.cos(), roll.sin());
-        let (cos_pitch, sin_pitch) = (pitch.cos(), pitch.sin());
-        let (cos_yaw, sin_yaw) = (yaw.cos(), yaw.sin());
-        let m00 = cos_yaw * cos_pitch;
-        let m01 = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
-        let m02 = cos_yaw * sin_pitch * sin_roll + sin_yaw * sin_roll;
-        let m10 = sin_yaw * cos_pitch;
-        let m11 = sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll;
-        let m12 = sin_yaw * sin_pitch * cos_roll + cos_yaw * sin_roll;
-        let m20 = -sin_pitch;
-        let m21 = cos_pitch * sin_roll;
-        let m22 = cos_pitch * cos_roll;
+    pub fn from_rotation(yaw: f32, pitch: f32, roll: f32) -> Transform3DF32 {
+        let (cos_b, sin_b) = (yaw.cos(),   yaw.sin());
+        let (cos_c, sin_c) = (pitch.cos(), pitch.sin());
+        let (cos_a, sin_a) = (roll.cos(),  roll.sin());
+        let m00 = cos_a * cos_b;
+        let m01 = cos_a * sin_b * sin_c - sin_a * cos_c;
+        let m02 = cos_a * sin_b * cos_c + sin_a * sin_c;
+        let m10 = sin_a * cos_b;
+        let m11 = sin_a * sin_b * sin_c + cos_a * cos_c;
+        let m12 = sin_a * sin_b * cos_c - cos_a * sin_c;
+        let m20 = -sin_b;
+        let m21 = cos_b * sin_c;
+        let m22 = cos_b * cos_c;
         Transform3DF32::row_major(m00, m01, m02, 0.0,
                                   m10, m11, m12, 0.0,
                                   m20, m21, m22, 0.0,

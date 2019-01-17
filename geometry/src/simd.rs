@@ -336,7 +336,7 @@ mod x86 {
     use std::cmp::PartialEq;
     use std::fmt::{self, Debug, Formatter};
     use std::mem;
-    use std::ops::{Add, Index, IndexMut, Mul, Sub};
+    use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Sub};
 
     // 32-bit floats
 
@@ -497,6 +497,13 @@ mod x86 {
         #[inline]
         fn add(self, other: F32x4) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_add_ps(self.0, other.0)) }
+        }
+    }
+
+    impl AddAssign for F32x4 {
+        #[inline]
+        fn add_assign(&mut self, other: F32x4) {
+            unsafe { self.0 = x86_64::_mm_add_ps(self.0, other.0) }
         }
     }
 
