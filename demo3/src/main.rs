@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use clap::{App, Arg};
-use euclid::Size2D;
+use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLchar, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use jemallocator;
 use pathfinder_geometry::point::{Point2DF32, Point4DF32};
@@ -61,13 +61,6 @@ const CAMERA_VELOCITY: f32 = 0.03;
 fn main() {
     let options = Options::get();
 
-    let mut base_scene = load_scene(&options);
-
-    let mut base_transform = Transform2DF32::from_scale(&Point2DF32::splat(1.0 / 800.0));
-    base_transform =
-        base_transform.pre_mul(&Transform2DF32::from_translation(&Point2DF32::splat(-1.0)));
-    base_scene.transform(&base_transform);
-
     let sdl_context = sdl2::init().unwrap();
     let sdl_video = sdl_context.video().unwrap();
 
@@ -91,11 +84,15 @@ fn main() {
     let (drawable_width, drawable_height) = window.drawable_size();
     let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
 
-    let mut camera_position = Point4DF32::new(0.0, 0.0, 3.0, 1.0);
+    let mut camera_position = Point4DF32::new(1.1, 1.0, 3.0, 1.0);
     let mut camera_velocity = Point4DF32::new(0.0, 0.0, 0.0, 1.0);
     let (mut camera_yaw, mut camera_pitch, mut camera_roll) = (0.0, 0.0, 0.0);
 
-    let window_size = Size2D::new(MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT);
+    let window_size = Size2D::new(drawable_width, drawable_height);
+
+    let mut base_scene = load_scene(&options, &window_size);
+    let base_transform = Transform2DF32::from_scale(&Point2DF32::splat(1.0 / 800.0));
+    base_scene.transform(&base_transform);
 
     while !exit {
         let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, -camera_roll);
@@ -197,10 +194,12 @@ impl Options {
     }
 }
 
-fn load_scene(options: &Options) -> Scene {
+fn load_scene(options: &Options, window_size: &Size2D<u32>) -> Scene {
     // Build scene.
     let usvg = Tree::from_file(&options.input_path, &UsvgOptions::default()).unwrap();
-    let scene = Scene::from_tree(usvg);
+
+    let mut scene = Scene::from_tree(usvg);
+    scene.view_box = Rect::new(Point2D::zero(), window_size.to_f32());
 
     println!(
         "Scene bounds: {:?} View box: {:?}",
