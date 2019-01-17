@@ -114,6 +114,11 @@ impl LineSegmentF32 {
     }
 
     #[inline]
+    pub fn solve_x_for_y(&self, y: f32) -> f32 {
+        util::lerp(self.from_x(), self.to_x(), self.solve_t_for_y(y))
+    }
+
+    #[inline]
     pub fn solve_y_for_x(&self, x: f32) -> f32 {
         util::lerp(self.from_y(), self.to_y(), self.solve_t_for_x(x))
     }

@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::line_segment::LineSegmentF32;
 use crate::outline::{Contour, PointFlags};
 use crate::point::Point2DF32;
 use euclid::{Point2D, Rect, Vector3D};
@@ -37,11 +38,12 @@ impl<'a> RectClipper<'a> {
     }
 
     fn clip_against(&self, edge: Edge, output: &mut Vec<PathEvent>) {
-        let (mut from, mut path_start, mut first_point) = (Point2D::zero(), None, false);
+        let (mut from, mut path_start, mut first_point) = (Point2DF32::default(), None, false);
         let input = mem::replace(output, vec![]);
         for event in input {
             let to = match event {
                 PathEvent::MoveTo(to) => {
+                    let to = Point2DF32::from_euclid(to);
                     path_start = Some(to);
                     from = to;
                     first_point = true;
@@ -55,17 +57,19 @@ impl<'a> RectClipper<'a> {
                 }
                 PathEvent::LineTo(to) |
                 PathEvent::QuadraticTo(_, to) |
-                PathEvent::CubicTo(_, _, to) => to,
+                PathEvent::CubicTo(_, _, to) => Point2DF32::from_euclid(to),
                 PathEvent::Arc(..) => panic!("Arcs unsupported!"),
             };
 
             if edge.point_is_inside(&to) {
                 if !edge.point_is_inside(&from) {
-                    add_line(&edge.line_intersection(&from, &to), output, &mut first_point);
+                    let intersection = edge.line_intersection(&LineSegmentF32::new(&from, &to));
+                    add_line(&intersection, output, &mut first_point);
                 }
                 add_line(&to, output, &mut first_point);
             } else if edge.point_is_inside(&from) {
-                add_line(&edge.line_intersection(&from, &to), output, &mut first_point);
+                let intersection = edge.line_intersection(&LineSegmentF32::new(&from, &to));
+                add_line(&intersection, output, &mut first_point);
             }
 
             from = to;
@@ -76,12 +80,13 @@ impl<'a> RectClipper<'a> {
             }
         }
 
-        fn add_line(to: &Point2D<f32>, output: &mut Vec<PathEvent>, first_point: &mut bool) {
+        fn add_line(to: &Point2DF32, output: &mut Vec<PathEvent>, first_point: &mut bool) {
+            let to = to.as_euclid();
             if *first_point {
-                output.push(PathEvent::MoveTo(*to));
+                output.push(PathEvent::MoveTo(to));
                 *first_point = false;
             } else {
-                output.push(PathEvent::LineTo(*to));
+                output.push(PathEvent::LineTo(to));
             }
         }
     }
@@ -96,25 +101,24 @@ enum Edge {
 }
 
 impl Edge {
-    fn point_is_inside(&self, point: &Point2D<f32>) -> bool {
+    fn point_is_inside(&self, point: &Point2DF32) -> bool {
         match *self {
-            Edge::Left(x_edge) => point.x >= x_edge,
-            Edge::Top(y_edge) => point.y >= y_edge,
-            Edge::Right(x_edge) => point.x <= x_edge,
-            Edge::Bottom(y_edge) => point.y <= y_edge,
+            Edge::Left(x_edge) => point.x() >= x_edge,
+            Edge::Top(y_edge) => point.y() >= y_edge,
+            Edge::Right(x_edge) => point.x() <= x_edge,
+            Edge::Bottom(y_edge) => point.y() <= y_edge,
         }
     }
 
-    fn line_intersection(&self, start_point: &Point2D<f32>, endpoint: &Point2D<f32>)
-                         -> Point2D<f32> {
-        let start_point = Vector3D::new(start_point.x, start_point.y, 1.0);
-        let endpoint = Vector3D::new(endpoint.x, endpoint.y, 1.0);
-        let edge = match *self {
-            Edge::Left(x_edge) | Edge::Right(x_edge) => Vector3D::new(1.0, 0.0, -x_edge),
-            Edge::Top(y_edge) | Edge::Bottom(y_edge) => Vector3D::new(0.0, 1.0, -y_edge),
-        };
-        let intersection = start_point.cross(endpoint).cross(edge);
-        Point2D::new(intersection.x / intersection.z, intersection.y / intersection.z)
+    fn line_intersection(&self, line_segment: &LineSegmentF32) -> Point2DF32 {
+        match *self {
+            Edge::Left(x_edge) | Edge::Right(x_edge) => {
+                Point2DF32::new(x_edge, line_segment.solve_y_for_x(x_edge))
+            }
+            Edge::Top(y_edge) | Edge::Bottom(y_edge) => {
+                Point2DF32::new(line_segment.solve_x_for_y(y_edge), y_edge)
+            }
+        }
     }
 }
 
@@ -146,21 +150,17 @@ impl ContourRectClipper {
         let input = mem::replace(&mut self.contour, Contour::new());
         for event in input.iter() {
             let (from, to) = (event.baseline.from(), event.baseline.to());
-            if edge.point_is_inside(&to.as_euclid()) {
-                if !edge.point_is_inside(&from.as_euclid()) {
+            if edge.point_is_inside(&to) {
+                if !edge.point_is_inside(&from) {
                     //println!("clip: {:?} {:?}", from, to);
-                    add_line(&Point2DF32::from_euclid(edge.line_intersection(&from.as_euclid(),
-                                                                             &to.as_euclid())),
-                             &mut self.contour,
-                             &mut first_point);
+                    let intersection = edge.line_intersection(&LineSegmentF32::new(&from, &to));
+                    add_line(&intersection, &mut self.contour, &mut first_point);
                 }
                 add_line(&to, &mut self.contour, &mut first_point);
-            } else if edge.point_is_inside(&from.as_euclid()) {
+            } else if edge.point_is_inside(&from) {
                 //println!("clip: {:?} {:?}", from, to);
-                add_line(&Point2DF32::from_euclid(edge.line_intersection(&from.as_euclid(),
-                                                                         &to.as_euclid())),
-                         &mut self.contour,
-                         &mut first_point);
+                let intersection = edge.line_intersection(&LineSegmentF32::new(&from, &to));
+                add_line(&intersection, &mut self.contour, &mut first_point);
             }
         }
 
