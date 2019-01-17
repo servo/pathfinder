@@ -33,7 +33,6 @@ use std::io::Read;
 use std::mem;
 use std::path::PathBuf;
 use std::ptr;
-use std::time::{Duration, Instant};
 use usvg::{Options as UsvgOptions, Tree};
 
 #[global_allocator]
@@ -86,7 +85,7 @@ fn main() {
 
     let mut camera_position = Point4DF32::new(1.1, 1.0, 3.0, 1.0);
     let mut camera_velocity = Point4DF32::new(0.0, 0.0, 0.0, 1.0);
-    let (mut camera_yaw, mut camera_pitch, mut camera_roll) = (0.0, 0.0, 0.0);
+    let (mut camera_yaw, mut camera_pitch) = (0.0, 0.0);
 
     let window_size = Size2D::new(drawable_width, drawable_height);
 
@@ -95,13 +94,12 @@ fn main() {
     base_scene.transform(&base_transform);
 
     while !exit {
-        let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, -camera_roll);
+        let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
         camera_position = camera_position + rotation.transform_point(camera_velocity);
 
         let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.01, 100.0);
-        transform = transform.post_mul(&Transform3DF32::from_rotation(camera_yaw,
-                                                                      camera_pitch,
-                                                                      camera_roll));
+        transform =
+            transform.post_mul(&Transform3DF32::from_rotation(camera_yaw, camera_pitch, 0.0));
         transform = transform.post_mul(&Transform3DF32::from_translation(-camera_position.x(),
                                                                          -camera_position.y(),
                                                                          -camera_position.z()));
@@ -215,51 +213,22 @@ fn load_scene(options: &Options, window_size: &Size2D<u32>) -> Scene {
 }
 
 fn build_scene(scene: &Scene, options: &Options) -> BuiltScene {
-    let (mut elapsed_object_build_time, mut elapsed_scene_build_time) = (0.0, 0.0);
-
     let z_buffer = ZBuffer::new(&scene.view_box);
 
-    let start_time = Instant::now();
     let built_objects = match options.jobs {
         Some(1) => scene.build_objects_sequentially(&z_buffer),
         _ => scene.build_objects(&z_buffer),
     };
-    elapsed_object_build_time += duration_to_ms(&(Instant::now() - start_time));
 
-    let start_time = Instant::now();
     let mut built_scene = BuiltScene::new(&scene.view_box);
     built_scene.shaders = scene.build_shaders();
+
     let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, &scene.view_box);
     built_scene.solid_tiles = scene_builder.build_solid_tiles();
     while let Some(batch) = scene_builder.build_batch() {
         built_scene.batches.push(batch);
     }
-    elapsed_scene_build_time += duration_to_ms(&(Instant::now() - start_time));
-
-    let total_elapsed_time = elapsed_object_build_time + elapsed_scene_build_time;
-
-    /*
-    println!(
-        "{:.3}ms ({:.3}ms objects, {:.3}ms scene) elapsed",
-        total_elapsed_time, elapsed_object_build_time, elapsed_scene_build_time
-    );
-
-    println!("{} solid tiles", built_scene.solid_tiles.len());
-    for (batch_index, batch) in built_scene.batches.iter().enumerate() {
-        println!(
-            "Batch {}: {} fills, {} mask tiles",
-            batch_index,
-            batch.fills.len(),
-            batch.mask_tiles.len()
-        );
-    }
-    */
-
     built_scene
-}
-
-fn duration_to_ms(duration: &Duration) -> f64 {
-    duration.as_secs() as f64 * 1000.0 + f64::from(duration.subsec_micros()) / 1000.0
 }
 
 struct Renderer {
@@ -477,6 +446,15 @@ impl FillVertexArray {
     }
 }
 
+impl Drop for FillVertexArray {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
+        }
+    }
+}
+
 struct MaskTileVertexArray {
     gl_vertex_array: GLuint,
     vertex_buffer: Buffer,
@@ -508,6 +486,15 @@ impl MaskTileVertexArray {
     }
 }
 
+impl Drop for MaskTileVertexArray {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
+        }
+    }
+}
+
 struct SolidTileVertexArray {
     gl_vertex_array: GLuint,
     vertex_buffer: Buffer,
@@ -534,6 +521,15 @@ impl SolidTileVertexArray {
         }
 
         SolidTileVertexArray { gl_vertex_array, vertex_buffer }
+    }
+}
+
+impl Drop for SolidTileVertexArray {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
+        }
     }
 }
 
