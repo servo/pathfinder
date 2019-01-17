@@ -50,6 +50,14 @@ impl Transform2DF32 {
     }
 
     #[inline]
+    pub fn from_translation(vector: &Point2DF32) -> Transform2DF32 {
+        Transform2DF32 {
+            matrix: F32x4::new(1.0, 0.0, 0.0, 1.0),
+            vector: *vector,
+        }
+    }
+
+    #[inline]
     pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32)
                      -> Transform2DF32 {
         Transform2DF32 {

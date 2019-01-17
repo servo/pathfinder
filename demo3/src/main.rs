@@ -55,9 +55,17 @@ const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 const FILL_COLORS_TEXTURE_WIDTH: u32 = 256;
 const FILL_COLORS_TEXTURE_HEIGHT: u32 = 256;
 
+const MOUSELOOK_ROTATION_SPEED: f32 = 0.01;
+
 fn main() {
     let options = Options::get();
-    let base_scene = load_scene(&options);
+
+    let mut base_scene = load_scene(&options);
+
+    let mut base_transform = Transform2DF32::from_scale(&Point2DF32::splat(1.0 / 800.0));
+    base_transform =
+        base_transform.pre_mul(&Transform2DF32::from_translation(&Point2DF32::splat(-1.0)));
+    base_scene.transform(&base_transform);
 
     let sdl_context = sdl2::init().unwrap();
     let sdl_video = sdl_context.video().unwrap();
@@ -84,13 +92,21 @@ fn main() {
 
     //let mut scale = 1.0;
     //let mut theta = 0.0;
+    let mut camera_position = [0.0, 0.0, 3.0];
+    let (mut camera_roll, mut camera_pitch, mut camera_yaw) = (0.0, 0.0, 0.0);
 
-    let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.01, 100.0);
-    transform = transform.post_mul(&Transform3DF32::from_translation(0.0, 0.0, -6.0));
     let window_size = Size2D::new(MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT);
-    let perspective = Perspective::new(&transform, &window_size);
 
     while !exit {
+        let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.01, 100.0);
+        transform = transform.post_mul(&Transform3DF32::from_rotation(camera_roll,
+                                                                      camera_pitch,
+                                                                      camera_yaw));
+        transform = transform.post_mul(&Transform3DF32::from_translation(-camera_position[0],
+                                                                         -camera_position[1],
+                                                                         -camera_position[2]));
+        let perspective = Perspective::new(&transform, &window_size);
+
         let mut scene = base_scene.clone();
         scene.apply_perspective(&perspective);
         //scene.transform(&Transform2DF32::from_rotation(theta));
@@ -114,6 +130,13 @@ fn main() {
                 Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     exit = true;
                 }
+                Event::MouseMotion { xrel, yrel, .. } => {
+                    camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                    camera_pitch += yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                }
+                /*Event::KeyDown { keycode: Some(Keycode::W), .. } => {
+
+                }*/
                 _ => {}
             }
         }
