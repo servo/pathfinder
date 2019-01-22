@@ -239,6 +239,13 @@ impl<'s> CubicSegment<'s> {
                                   self.0.ctrl.from_y(),
                                   self.0.ctrl.to_y(),
                                   self.0.baseline.to_y());
+
+        // TODO(pcwalton): Optimize this.
+        if p0p1p2p3[0] <= p0p1p2p3[1] && p0p1p2p3[0] <= p0p1p2p3[2] &&
+                p0p1p2p3[1] <= p0p1p2p3[3] && p0p1p2p3[2] <= p0p1p2p3[3] {
+            return (None, None);
+        }
+
         let pxp0p1p2 = p0p1p2p3.wxyz();
         let pxv0v1v2 = p0p1p2p3 - pxp0p1p2;
         let (v0, v1, v2) = (pxv0v1v2[1], pxv0v1v2[2], pxv0v1v2[3]);
@@ -262,6 +269,15 @@ impl<'s> CubicSegment<'s> {
 
         const EPSILON: f32 = 0.001;
     }
+
+    #[inline]
+    pub fn min_x(&self) -> f32 { f32::min(self.0.baseline.min_x(), self.0.ctrl.min_x()) }
+    #[inline]
+    pub fn min_y(&self) -> f32 { f32::min(self.0.baseline.min_y(), self.0.ctrl.min_y()) }
+    #[inline]
+    pub fn max_x(&self) -> f32 { f32::max(self.0.baseline.max_x(), self.0.ctrl.max_x()) }
+    #[inline]
+    pub fn max_y(&self) -> f32 { f32::max(self.0.baseline.max_y(), self.0.ctrl.max_y()) }
 }
 
 // Lyon interoperability

@@ -197,13 +197,11 @@ impl BuiltObject {
 
     // TODO(pcwalton): Optimize this better with SIMD!
     pub fn generate_fill_primitives_for_line(&mut self, mut segment: LineSegmentF32, tile_y: i16) {
-        /*
-        println!("... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
+        /*println!("... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
                     segment,
                     tile_y,
                     tile_y as f32 * TILE_HEIGHT as f32,
-                    (tile_y + 1) as f32 * TILE_HEIGHT as f32);
-        */
+                    (tile_y + 1) as f32 * TILE_HEIGHT as f32);*/
 
         let winding = segment.from_x() > segment.to_x();
         let (segment_left, segment_right) = if !winding {

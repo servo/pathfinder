@@ -449,6 +449,8 @@ impl ActiveEdge {
         tile_y: i16,
     ) -> Option<LineSegmentF32> {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
+        /*println!("process_line_segment({:?}, tile_y={}) tile_bottom={}",
+                 line_segment, tile_y, tile_bottom);*/
         if line_segment.max_y() <= tile_bottom {
             built_object.generate_fill_primitives_for_line(*line_segment, tile_y);
             return None;

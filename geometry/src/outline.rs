@@ -29,9 +29,9 @@ pub struct Outline {
 
 #[derive(Clone)]
 pub struct Contour {
-    points: Vec<Point2DF32>,
-    flags: Vec<PointFlags>,
-    bounds: Rect<f32>,
+    pub(crate) points: Vec<Point2DF32>,
+    pub(crate) flags: Vec<PointFlags>,
+    pub(crate) bounds: Rect<f32>,
 }
 
 bitflags! {
@@ -162,6 +162,11 @@ impl Contour {
     #[inline]
     pub fn position_of(&self, index: u32) -> Point2DF32 {
         self.points[index as usize]
+    }
+
+    #[inline]
+    pub(crate) fn last_position(&self) -> Option<Point2DF32> {
+        self.points.last().cloned()
     }
 
     // TODO(pcwalton): SIMD.

@@ -67,6 +67,26 @@ impl LineSegmentF32 {
     }
 
     #[inline]
+    pub fn set_from_x(&mut self, x: f32) {
+        self.0[0] = x
+    }
+
+    #[inline]
+    pub fn set_from_y(&mut self, y: f32) {
+        self.0[1] = y
+    }
+
+    #[inline]
+    pub fn set_to_x(&mut self, x: f32) {
+        self.0[2] = x
+    }
+
+    #[inline]
+    pub fn set_to_y(&mut self, y: f32) {
+        self.0[3] = y
+    }
+
+    #[inline]
     pub fn scale(&self, factor: f32) -> LineSegmentF32 {
         LineSegmentF32(self.0 * F32x4::splat(factor))
     }
@@ -175,6 +195,13 @@ impl LineSegmentF32 {
         } else {
             self.reversed()
         }
+    }
+
+    // TODO(pcwalton): Optimize with SIMD.
+    #[inline]
+    pub fn square_length(&self) -> f32 {
+        let (dx, dy) = (self.to_x() - self.from_x(), self.to_y() - self.from_y());
+        dx * dx + dy * dy
     }
 }
 
