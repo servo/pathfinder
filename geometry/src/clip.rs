@@ -12,9 +12,9 @@ use crate::line_segment::LineSegmentF32;
 use crate::outline::{Contour, PointFlags};
 use crate::point::Point2DF32;
 use crate::segment::Segment;
+use crate::simd::F32x4;
 use crate::util::lerp;
-use arrayvec::ArrayVec;
-use euclid::{Point2D, Rect, Vector3D};
+use euclid::Rect;
 use lyon_path::PathEvent;
 use std::mem;
 
@@ -33,10 +33,10 @@ impl<'a> RectClipper<'a> {
 
     pub fn clip(&self) -> Vec<PathEvent> {
         let mut output = self.subject.to_vec();
-        self.clip_against(Edge::Left(self.clip_rect.origin.x), &mut output);
-        self.clip_against(Edge::Top(self.clip_rect.origin.y), &mut output);
-        self.clip_against(Edge::Right(self.clip_rect.max_x()), &mut output);
-        self.clip_against(Edge::Bottom(self.clip_rect.max_y()), &mut output);
+        self.clip_against(Edge::left(&self.clip_rect), &mut output);
+        self.clip_against(Edge::top(&self.clip_rect), &mut output);
+        self.clip_against(Edge::right(&self.clip_rect), &mut output);
+        self.clip_against(Edge::bottom(&self.clip_rect), &mut output);
         output
     }
 
@@ -66,13 +66,17 @@ impl<'a> RectClipper<'a> {
 
             if edge.point_is_inside(&to) {
                 if !edge.point_is_inside(&from) {
-                    let intersection = edge.line_intersection(&LineSegmentF32::new(&from, &to));
-                    add_line(&intersection, output, &mut first_point);
+                    let line_segment = LineSegmentF32::new(&from, &to);
+                    if let Some(intersection) = edge.line_intersection(&line_segment) {
+                        add_line(&intersection, output, &mut first_point);
+                    }
                 }
                 add_line(&to, output, &mut first_point);
             } else if edge.point_is_inside(&from) {
-                let intersection = edge.line_intersection(&LineSegmentF32::new(&from, &to));
-                add_line(&intersection, output, &mut first_point);
+                let line_segment = LineSegmentF32::new(&from, &to);
+                if let Some(intersection) = edge.line_intersection(&line_segment) {
+                    add_line(&intersection, output, &mut first_point);
+                }
             }
 
             from = to;
@@ -96,25 +100,41 @@ impl<'a> RectClipper<'a> {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum Edge {
-    Left(f32),
-    Top(f32),
-    Right(f32),
-    Bottom(f32),
-}
+struct Edge(LineSegmentF32);
 
 impl Edge {
+    #[inline]
+    fn left(rect: &Rect<f32>) -> Edge {
+        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_left()),
+                                 &Point2DF32::from_euclid(rect.origin)))
+    }
+
+    #[inline]
+    fn top(rect: &Rect<f32>) -> Edge {
+        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.origin),
+                                 &Point2DF32::from_euclid(rect.top_right())))
+    }
+
+    #[inline]
+    fn right(rect: &Rect<f32>) -> Edge {
+        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.top_right()),
+                                 &Point2DF32::from_euclid(rect.bottom_right())))
+    }
+
+    #[inline]
+    fn bottom(rect: &Rect<f32>) -> Edge {
+        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_right()),
+                                 &Point2DF32::from_euclid(rect.bottom_left())))
+    }
+
+    #[inline]
     fn point_is_inside(&self, point: &Point2DF32) -> bool {
-        match *self {
-            Edge::Left(x_edge) => point.x() > x_edge,
-            Edge::Top(y_edge) => point.y() > y_edge,
-            Edge::Right(x_edge) => point.x() < x_edge,
-            Edge::Bottom(y_edge) => point.y() < y_edge,
-        }
+        (self.0.to() - self.0.from()).det(*point - self.0.from()) >= 0.0
     }
 
     fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
         let from_inside = self.point_is_inside(&segment.baseline.from());
+        //println!("point {:?} inside {:?}: {:?}", segment.baseline.from(), self, from_inside);
         if from_inside != self.point_is_inside(&segment.baseline.to()) {
             return EdgeRelativeLocation::Intersecting;
         }
@@ -131,14 +151,18 @@ impl Edge {
         if from_inside { EdgeRelativeLocation::Inside } else { EdgeRelativeLocation::Outside }
     }
 
-    fn line_intersection(&self, line_segment: &LineSegmentF32) -> Point2DF32 {
-        match *self {
-            Edge::Left(x_edge) | Edge::Right(x_edge) => {
-                Point2DF32::new(x_edge, line_segment.solve_y_for_x(x_edge))
-            }
-            Edge::Top(y_edge) | Edge::Bottom(y_edge) => {
-                Point2DF32::new(line_segment.solve_x_for_y(y_edge), y_edge)
-            }
+    fn line_intersection(&self, other: &LineSegmentF32) -> Option<Point2DF32> {
+        let (this_line, other_line) = (self.0.line_coords(), other.line_coords());
+        let result = this_line.cross(other_line);
+        let z = result[2];
+        if z == 0.0 {
+            return None;
+        }
+        let result = Point2DF32((result * F32x4::splat(1.0 / z)).xyxy());
+        if result.x() <= other.min_x() || result.x() >= other.max_x() {
+            None
+        } else {
+            Some(result)
         }
     }
 
@@ -158,34 +182,14 @@ impl Edge {
     }
 
     fn split_line_segment(&self, segment: &Segment) -> Option<(Segment, Segment)> {
-        let intersection;
-        match *self {
-            Edge::Left(x_edge) | Edge::Right(x_edge) => {
-                if (segment.baseline.from_x() <= x_edge && segment.baseline.to_x() <= x_edge) ||
-                        (segment.baseline.from_x() >= x_edge &&
-                         segment.baseline.to_x() >= x_edge) {
-                    return None
-                }
-                intersection = Point2DF32::new(x_edge, segment.baseline.solve_y_for_x(x_edge));
-            }
-            Edge::Top(y_edge) | Edge::Bottom(y_edge) => {
-                if (segment.baseline.from_y() <= y_edge && segment.baseline.to_y() <= y_edge) ||
-                        (segment.baseline.from_y() >= y_edge &&
-                         segment.baseline.to_y() >= y_edge) {
-                    return None
-                }
-                intersection = Point2DF32::new(segment.baseline.solve_x_for_y(y_edge), y_edge);
-            }
-        };
+        let intersection = self.line_intersection(&segment.baseline)?;
         Some((Segment::line(&LineSegmentF32::new(&segment.baseline.from(), &intersection)),
               Segment::line(&LineSegmentF32::new(&intersection, &segment.baseline.to()))))
     }
 
     fn intersect_cubic_segment(&self, segment: &Segment, t_min: f32, t_max: f32) -> Option<f32> {
-        /*
-        println!("... intersect_cubic_segment({:?}, {:?}, t=({}, {}))",
-                 self, segment, t_min, t_max);
-        */
+        /*println!("... intersect_cubic_segment({:?}, {:?}, t=({}, {}))",
+                 self, segment, t_min, t_max);*/
         let t_mid = lerp(t_min, t_max, 0.5);
         if t_max - t_min < 0.001 {
             return Some(t_mid);
@@ -196,30 +200,12 @@ impl Edge {
         let prev_cubic_segment = prev_segment.as_cubic_segment();
         let next_cubic_segment = next_segment.as_cubic_segment();
 
-        let (prev_min, prev_max, next_min, next_max, edge);
-        match *self {
-            Edge::Left(x) | Edge::Right(x) => {
-                prev_min = prev_cubic_segment.min_x();
-                prev_max = prev_cubic_segment.max_x();
-                next_min = next_cubic_segment.min_x();
-                next_max = next_cubic_segment.max_x();
-                edge = x;
-            }
-            Edge::Top(y) | Edge::Bottom(y) => {
-                prev_min = prev_cubic_segment.min_y();
-                prev_max = prev_cubic_segment.max_y();
-                next_min = next_cubic_segment.min_y();
-                next_max = next_cubic_segment.max_y();
-                edge = y;
-            }
-        }
-
-        if prev_min < edge && edge < prev_max {
+        if self.line_intersection(&prev_segment.baseline).is_some() {
             self.intersect_cubic_segment(segment, t_min, t_mid)
-        } else if next_min < edge && edge < next_max {
+        } else if self.line_intersection(&next_segment.baseline).is_some() {
             self.intersect_cubic_segment(segment, t_mid, t_max)
-        } else if (prev_max == edge && next_min == edge) ||
-                (prev_min == edge && next_max == edge) {
+        } else if prev_segment.baseline.to() == self.0.from() ||
+                prev_segment.baseline.to() == self.0.to() {
             Some(t_mid)
         } else {
             None
@@ -227,8 +213,20 @@ impl Edge {
     }
 
     fn fixup_clipped_segments(&self, segment: &(Segment, Segment)) -> (Segment, Segment) {
-        let (mut before, mut after) = *segment;
-        match *self {
+        let (mut prev, mut next) = *segment;
+        let point = prev.baseline.to();
+
+        let line_coords = self.0.line_coords();
+        let (a, b, c) = (line_coords[0], line_coords[1], line_coords[2]);
+        let denom = 1.0 / (a * a + b * b);
+        let factor = b * point.x() - a * point.y();
+        let snapped = Point2DF32::new(b * factor - a * c, a * -factor - b * c) *
+            Point2DF32::splat(denom);
+
+        prev.baseline.set_to(&snapped);
+        next.baseline.set_from(&snapped);
+
+        /*match *self {
             Edge::Left(x) | Edge::Right(x) => {
                 before.baseline.set_to_x(x);
                 after.baseline.set_from_x(x);
@@ -237,8 +235,9 @@ impl Edge {
                 before.baseline.set_to_y(y);
                 after.baseline.set_from_y(y);
             }
-        }
-        (before, after)
+        }*/
+
+        (prev, next)
     }
 }
 
@@ -258,10 +257,23 @@ impl ContourRectClipper {
             return self.contour
         }
 
-        self.clip_against(Edge::Left(self.clip_rect.origin.x));
-        self.clip_against(Edge::Top(self.clip_rect.origin.y));
-        self.clip_against(Edge::Right(self.clip_rect.max_x()));
-        self.clip_against(Edge::Bottom(self.clip_rect.max_y()));
+        self.clip_against(Edge::left(&self.clip_rect));
+        self.clip_against(Edge::top(&self.clip_rect));
+        self.clip_against(Edge::right(&self.clip_rect));
+        self.clip_against(Edge::bottom(&self.clip_rect));
+
+        /*
+        let top = Point2DF32::new(lerp(self.clip_rect.origin.x, self.clip_rect.max_x(), 0.5),
+                                  self.clip_rect.origin.y);
+        self.clip_against(Edge(LineSegmentF32::new(&Point2DF32::from_euclid(self.clip_rect
+                                                                                .bottom_left()),
+                                                   &top)));
+        self.clip_against(Edge(LineSegmentF32::new(&top,
+                                                   &Point2DF32::from_euclid(self.clip_rect
+                                                                                .bottom_right()))));
+        self.clip_against(Edge::bottom(&self.clip_rect));
+        */
+
         self.contour
     }
 

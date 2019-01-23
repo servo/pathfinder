@@ -156,6 +156,11 @@ mod scalar {
         pub fn transpose4(a: &mut F32x4, b: &mut F32x4, c: &mut F32x4, d: &mut F32x4) {
             unimplemented!()
         }
+
+        #[inline]
+        pub fn cross(&self, other: F32x4) -> F32x4 {
+            unimplemented!()
+        }
     }
 
     impl Index<usize> for F32x4 {
@@ -429,8 +434,18 @@ mod x86 {
         }
 
         #[inline]
+        pub fn yzxw(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1100_1001)) }
+        }
+
+        #[inline]
         pub fn ywyw(self) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1101_1101)) }
+        }
+
+        #[inline]
+        pub fn zxyw(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1101_0010)) }
         }
 
         #[inline]
@@ -473,6 +488,11 @@ mod x86 {
             unsafe {
                 x86_64::_MM_TRANSPOSE4_PS(&mut a.0, &mut b.0, &mut c.0, &mut d.0)
             }
+        }
+
+        #[inline]
+        pub fn cross(&self, other: F32x4) -> F32x4 {
+            self.yzxw() * other.zxyw() - self.zxyw() * other.yzxw()
         }
     }
 

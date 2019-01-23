@@ -65,6 +65,12 @@ impl Point2DF32 {
     pub fn max(&self, other: Point2DF32) -> Point2DF32 {
         Point2DF32(self.0.max(other.0))
     }
+
+    // TODO(pcwalton): Optimize with SIMD.
+    #[inline]
+    pub fn det(&self, other: Point2DF32) -> f32 {
+        self.x() * other.y() - self.y() * other.x()
+    }
 }
 
 impl PartialEq for Point2DF32 {
