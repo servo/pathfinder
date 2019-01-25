@@ -10,7 +10,7 @@
 
 use crate::line_segment::LineSegmentF32;
 use crate::outline::{Contour, PointFlags};
-use crate::point::Point2DF32;
+use crate::point::{Point2DF32, Point3DF32};
 use crate::segment::Segment;
 use crate::simd::F32x4;
 use crate::util::lerp;
@@ -352,4 +352,83 @@ enum EdgeRelativeLocation {
     Intersecting,
     Inside,
     Outside,
+}
+
+// 3D quad clipping
+
+pub struct PolygonClipper3D {
+    subject: Vec<Point3DF32>,
+}
+
+impl PolygonClipper3D {
+    #[inline]
+    pub fn new(subject: Vec<Point3DF32>) -> PolygonClipper3D {
+        PolygonClipper3D { subject }
+    }
+
+    pub fn clip(mut self) -> Vec<Point3DF32> {
+        // TODO(pcwalton): Fast path for completely contained polygon?
+
+        self.clip_against(Edge3D::Left);
+        self.clip_against(Edge3D::Right);
+        self.clip_against(Edge3D::Bottom);
+        self.clip_against(Edge3D::Top);
+        self.clip_against(Edge3D::Near);
+        self.clip_against(Edge3D::Far);
+
+        self.subject
+    }
+
+    fn clip_against(&mut self, edge: Edge3D) {
+        let input = mem::replace(&mut self.subject, vec![]);
+        let mut prev = match input.last() {
+            None => return,
+            Some(point) => *point,
+        };
+        for next in input {
+            if edge.point_is_inside(next) {
+                if !edge.point_is_inside(prev) {
+                    self.subject.push(edge.line_intersection(prev, next));
+                }
+                self.subject.push(next);
+            } else if edge.point_is_inside(prev) {
+                self.subject.push(edge.line_intersection(prev, next));
+            }
+            prev = next;
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Edge3D {
+    Left,
+    Right,
+    Bottom,
+    Top,
+    Near,
+    Far
+}
+
+impl Edge3D {
+    #[inline]
+    fn point_is_inside(self, point: Point3DF32) -> bool {
+        match self {
+            Edge3D::Left   => point.x() > -1.0, Edge3D::Right => point.x() < 1.0,
+            Edge3D::Bottom => point.y() > -1.0, Edge3D::Top   => point.y() < 1.0,
+            Edge3D::Near   => point.z() > -1.0, Edge3D::Far   => point.z() < 1.0,
+        }
+    }
+
+    fn line_intersection(self, prev: Point3DF32, next: Point3DF32) -> Point3DF32 {
+        let (x0, x1) = match self {
+            Edge3D::Left   | Edge3D::Right => (prev.x(), next.x()),
+            Edge3D::Bottom | Edge3D::Top   => (prev.y(), next.y()),
+            Edge3D::Near   | Edge3D::Far   => (prev.z(), next.z()),
+        };
+        let x = match self {
+            Edge3D::Left  | Edge3D::Bottom | Edge3D::Near => -1.0,
+            Edge3D::Right | Edge3D::Top    | Edge3D::Far  =>  1.0,
+        };
+        prev.lerp(next, (x0 - x) / (x1 - x0))
+    }
 }

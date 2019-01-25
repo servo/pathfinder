@@ -16,7 +16,9 @@ use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
 use euclid::Rect;
 use hashbrown::HashMap;
+use pathfinder_geometry::clip::PolygonClipper3D;
 use pathfinder_geometry::outline::Outline;
+use pathfinder_geometry::point::Point3DF32;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform::Transform2DF32;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -117,6 +119,9 @@ impl Scene {
     }
 
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
+        let quad = self.clip_bounding_quad_with_perspective(perspective);
+        println!("bounds={:?} quad={:?}", self.bounds, quad);
+
         let mut bounds = Rect::zero();
         for (object_index, object) in self.objects.iter_mut().enumerate() {
             object.outline.apply_perspective(perspective);
@@ -131,6 +136,19 @@ impl Scene {
 
         //println!("new bounds={:?}", bounds);
         self.bounds = bounds;
+    }
+
+    fn clip_bounding_quad_with_perspective(&self, perspective: &Perspective) -> Vec<Point3DF32> {
+        let mut points = vec![
+            Point3DF32::from_euclid_2d(&self.bounds.origin),
+            Point3DF32::from_euclid_2d(&self.bounds.top_right()),
+            Point3DF32::from_euclid_2d(&self.bounds.bottom_right()),
+            Point3DF32::from_euclid_2d(&self.bounds.bottom_left()),
+        ];
+        for point in &mut points {
+            *point = perspective.transform_point_3d(point);
+        }
+        PolygonClipper3D::new(points).clip()
     }
 }
 

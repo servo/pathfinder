@@ -13,14 +13,89 @@
 use crate::point::Point2DF32;
 use crate::segment::Segment;
 use crate::simd::F32x4;
+use crate::transform3d::Transform3DF32;
 use euclid::{Point2D, Rect, Size2D, Transform2D};
 use lyon_path::PathEvent;
+use std::ops::Sub;
+
+/// A 2x2 matrix, optimized with SIMD, in column-major order.
+#[derive(Clone, Copy, Debug)]
+pub struct Matrix2x2F32(pub F32x4);
+
+impl Default for Matrix2x2F32 {
+    #[inline]
+    fn default() -> Matrix2x2F32 {
+        Self::from_scale(&Point2DF32::splat(1.0))
+    }
+}
+
+impl Matrix2x2F32 {
+    #[inline]
+    pub fn from_scale(scale: &Point2DF32) -> Matrix2x2F32 {
+        Matrix2x2F32(F32x4::new(scale.x(), 0.0, 0.0, scale.y()))
+    }
+
+    #[inline]
+    pub fn from_rotation(theta: f32) -> Matrix2x2F32 {
+        let (sin_theta, cos_theta) = (theta.sin(), theta.cos());
+        Matrix2x2F32(F32x4::new(cos_theta, sin_theta, -sin_theta, cos_theta))
+    }
+
+    #[inline]
+    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32) -> Matrix2x2F32 {
+        Matrix2x2F32(F32x4::new(m11, m21, m12, m22))
+    }
+
+    #[inline]
+    pub fn post_mul(&self, other: &Matrix2x2F32) -> Matrix2x2F32 {
+        Matrix2x2F32(self.0.xyxy() * other.0.xxzz() + self.0.zwzw() * other.0.yyww())
+    }
+
+    #[inline]
+    pub fn pre_mul(&self, other: &Matrix2x2F32) -> Matrix2x2F32 {
+        other.post_mul(self)
+    }
+
+    #[inline]
+    pub fn entrywise_mul(&self, other: &Matrix2x2F32) -> Matrix2x2F32 {
+        Matrix2x2F32(self.0 * other.0)
+    }
+
+    #[inline]
+    pub fn adjugate(&self) -> Matrix2x2F32 {
+        Matrix2x2F32(self.0.wyzx() * F32x4::new(1.0, -1.0, -1.0, 1.0))
+    }
+
+    #[inline]
+    pub fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
+        let halves = self.0 * point.0.xxyy();
+        Point2DF32(halves + halves.zwzw())
+    }
+
+    #[inline]
+    pub fn det(&self) -> f32 {
+        self.0[0] * self.0[3] - self.0[2] * self.0[1]
+    }
+
+    #[inline]
+    pub fn inverse(&self) -> Matrix2x2F32 {
+        Matrix2x2F32(F32x4::splat(1.0 / self.det()) * self.adjugate().0)
+    }
+}
+
+impl Sub<Matrix2x2F32> for Matrix2x2F32 {
+    type Output = Matrix2x2F32;
+    #[inline]
+    fn sub(self, other: Matrix2x2F32) -> Matrix2x2F32 {
+        Matrix2x2F32(self.0 - other.0)
+    }
+}
 
 /// An affine transform, optimized with SIMD.
 #[derive(Clone, Copy, Debug)]
 pub struct Transform2DF32 {
     // Row-major order.
-    matrix: F32x4,
+    matrix: Matrix2x2F32,
     vector: Point2DF32,
 }
 
@@ -35,16 +110,15 @@ impl Transform2DF32 {
     #[inline]
     pub fn from_scale(scale: &Point2DF32) -> Transform2DF32 {
         Transform2DF32 {
-            matrix: F32x4::new(scale.x(), 0.0, 0.0, scale.y()),
+            matrix: Matrix2x2F32::from_scale(scale),
             vector: Point2DF32::default(),
         }
     }
 
     #[inline]
     pub fn from_rotation(theta: f32) -> Transform2DF32 {
-        let (sin_theta, cos_theta) = (theta.sin(), theta.cos());
         Transform2DF32 {
-            matrix: F32x4::new(cos_theta, -sin_theta, sin_theta, cos_theta),
+            matrix: Matrix2x2F32::from_rotation(theta),
             vector: Point2DF32::default(),
         }
     }
@@ -52,7 +126,7 @@ impl Transform2DF32 {
     #[inline]
     pub fn from_translation(vector: &Point2DF32) -> Transform2DF32 {
         Transform2DF32 {
-            matrix: F32x4::new(1.0, 0.0, 0.0, 1.0),
+            matrix: Matrix2x2F32::default(),
             vector: *vector,
         }
     }
@@ -61,15 +135,14 @@ impl Transform2DF32 {
     pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32)
                      -> Transform2DF32 {
         Transform2DF32 {
-            matrix: F32x4::new(m11, m12, m21, m22),
+            matrix: Matrix2x2F32::row_major(m11, m12, m21, m22),
             vector: Point2DF32::new(m31, m32),
         }
     }
 
     #[inline]
     pub fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
-        let bxbzbybw = point.0.xxyy() * self.matrix.xzyw();
-        Point2DF32(bxbzbybw + bxbzbybw.zwzw() + self.vector.0)
+        self.matrix.transform_point(point) + self.vector
     }
 
     // TODO(pcwalton): SIMD.
@@ -89,9 +162,7 @@ impl Transform2DF32 {
 
     #[inline]
     pub fn post_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
-        let lhs = self.matrix.xwxw() * other.matrix;
-        let rhs = self.matrix.zyzy() * other.matrix.yxwz();
-        let matrix = lhs + rhs;
+        let matrix = self.matrix.post_mul(&other.matrix);
         let vector = other.transform_point(&self.vector);
         Transform2DF32 { matrix, vector }
     }
@@ -99,6 +170,15 @@ impl Transform2DF32 {
     #[inline]
     pub fn pre_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
         other.post_mul(self)
+    }
+
+    // TODO(pcwalton): Optimize better with SIMD.
+    #[inline]
+    pub fn to_3d(&self) -> Transform3DF32 {
+        Transform3DF32::row_major(self.matrix.0[0], self.matrix.0[1], 0.0, self.vector.x(),
+                                  self.matrix.0[2], self.matrix.0[3], 0.0, self.vector.y(),
+                                  0.0,              0.0,              0.0, 0.0,
+                                  0.0,              0.0,              0.0, 1.0)
     }
 }
 

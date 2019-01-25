@@ -302,7 +302,7 @@ impl Contour {
     #[inline]
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
         for (point_index, point) in self.points.iter_mut().enumerate() {
-            *point = perspective.transform_point(point);
+            *point = perspective.transform_point_2d(point);
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
 

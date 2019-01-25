@@ -90,19 +90,19 @@ fn main() {
     let window_size = Size2D::new(drawable_width, drawable_height);
 
     let mut base_scene = load_scene(&options, &window_size);
-    let base_transform = Transform2DF32::from_scale(&Point2DF32::splat(1.0 / 800.0));
-    base_scene.transform(&base_transform);
 
     while !exit {
         let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
         camera_position = camera_position + rotation.transform_point(camera_velocity);
 
         let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.01, 100.0);
-        transform =
-            transform.post_mul(&Transform3DF32::from_rotation(camera_yaw, camera_pitch, 0.0));
+        transform = transform.post_mul(&Transform3DF32::from_rotation(camera_yaw,
+                                                                      camera_pitch,
+                                                                      0.0));
         transform = transform.post_mul(&Transform3DF32::from_translation(-camera_position.x(),
                                                                          -camera_position.y(),
                                                                          -camera_position.z()));
+        transform = transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0, 1.0 / 800.0, 1.0));
         let perspective = Perspective::new(&transform, &window_size);
 
         let mut scene = base_scene.clone();

@@ -10,10 +10,12 @@
 
 //! 3D transforms that can be applied to paths.
 
-use crate::point::{Point2DF32, Point4DF32};
+use crate::point::{Point2DF32, Point3DF32, Point4DF32};
 use crate::segment::Segment;
 use crate::simd::F32x4;
+use crate::transform::Matrix2x2F32;
 use euclid::{Point2D, Rect, Size2D};
+use std::ops::{Add, Neg};
 
 /// An transform, optimized with SIMD.
 ///
@@ -121,6 +123,21 @@ impl Transform3DF32 {
                                   0.0, 0.0, m32, 0.0)
     }
 
+    //     +-     -+
+    //     |  A B  |
+    //     |  C D  |
+    //     +-     -+
+    #[inline]
+    pub fn from_submatrices(a: Matrix2x2F32, b: Matrix2x2F32, c: Matrix2x2F32, d: Matrix2x2F32)
+                            -> Transform3DF32 {
+        Transform3DF32 {
+            c0: a.0.combine_axaybxby(c.0),
+            c1: a.0.combine_azawbzbw(c.0),
+            c2: b.0.combine_axaybxby(d.0),
+            c3: b.0.combine_azawbzbw(d.0),
+        }
+    }
+
     #[inline]
     pub fn transpose(&self) -> Transform3DF32 {
         let mut m = *self;
@@ -161,6 +178,69 @@ impl Transform3DF32 {
         let term3 = self.c3 * F32x4::splat(point.w());
         Point4DF32(term0 + term1 + term2 + term3)
     }
+
+    #[inline]
+    pub fn upper_left(&self) -> Matrix2x2F32 {
+        Matrix2x2F32(self.c0.combine_axaybxby(self.c1))
+    }
+
+    #[inline]
+    pub fn upper_right(&self) -> Matrix2x2F32 {
+        Matrix2x2F32(self.c2.combine_axaybxby(self.c3))
+    }
+
+    #[inline]
+    pub fn lower_left(&self) -> Matrix2x2F32 {
+        Matrix2x2F32(self.c0.combine_azawbzbw(self.c1))
+    }
+
+    #[inline]
+    pub fn lower_right(&self) -> Matrix2x2F32 {
+        Matrix2x2F32(self.c2.combine_azawbzbw(self.c3))
+    }
+
+    // https://en.wikipedia.org/wiki/Invertible_matrix#Blockwise_inversion
+    pub fn inverse(&self) -> Transform3DF32 {
+        // Extract submatrices.
+        let (a, b) = (self.upper_left(), self.upper_right());
+        let (c, d) = (self.lower_left(), self.lower_right());
+
+        // Compute temporary matrices.
+        let a_inv = a.inverse();
+        let x = c.post_mul(&a_inv);
+        let y = (d - x.post_mul(&b)).inverse();
+        let z = a_inv.post_mul(&b);
+
+        // Compute new submatrices.
+        let (a_new, b_new) = (a_inv + z.post_mul(&y).post_mul(&x), (-z).post_mul(&y));
+        let (c_new, d_new) = ((-y).post_mul(&x),                   y);
+
+        // Construct inverse.
+        Transform3DF32::from_submatrices(a_new, b_new, c_new, d_new)
+    }
+
+    pub fn approx_eq(&self, other: &Transform3DF32, epsilon: f32) -> bool {
+        self.c0.approx_eq(other.c0, epsilon) &&
+            self.c1.approx_eq(other.c1, epsilon) &&
+            self.c2.approx_eq(other.c2, epsilon) &&
+            self.c3.approx_eq(other.c3, epsilon)
+    }
+}
+
+impl Add<Matrix2x2F32> for Matrix2x2F32 {
+    type Output = Matrix2x2F32;
+    #[inline]
+    fn add(self, other: Matrix2x2F32) -> Matrix2x2F32 {
+        Matrix2x2F32(self.0 + other.0)
+    }
+}
+
+impl Neg for Matrix2x2F32 {
+    type Output = Matrix2x2F32;
+    #[inline]
+    fn neg(self) -> Matrix2x2F32 {
+        Matrix2x2F32(-self.0)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -176,20 +256,25 @@ impl Perspective {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
+    pub fn transform_point_2d(&self, point: &Point2DF32) -> Point2DF32 {
         let point = self.transform.transform_point(point.to_4d()).perspective_divide().to_2d();
         let window_size = self.window_size.to_f32();
         let size_scale = Point2DF32::new(window_size.width * 0.5, window_size.height * 0.5);
         (point + Point2DF32::splat(1.0)) * size_scale
     }
 
+    #[inline]
+    pub fn transform_point_3d(&self, point: &Point3DF32) -> Point3DF32 {
+        self.transform.transform_point(point.to_4d()).perspective_divide()
+    }
+
     // TODO(pcwalton): SIMD?
     #[inline]
     pub fn transform_rect(&self, rect: &Rect<f32>) -> Rect<f32> {
-        let upper_left = self.transform_point(&Point2DF32::from_euclid(rect.origin));
-        let upper_right = self.transform_point(&Point2DF32::from_euclid(rect.top_right()));
-        let lower_left = self.transform_point(&Point2DF32::from_euclid(rect.bottom_left()));
-        let lower_right = self.transform_point(&Point2DF32::from_euclid(rect.bottom_right()));
+        let upper_left = self.transform_point_2d(&Point2DF32::from_euclid(rect.origin));
+        let upper_right = self.transform_point_2d(&Point2DF32::from_euclid(rect.top_right()));
+        let lower_left = self.transform_point_2d(&Point2DF32::from_euclid(rect.bottom_left()));
+        let lower_right = self.transform_point_2d(&Point2DF32::from_euclid(rect.bottom_right()));
         let min_x = upper_left.x().min(upper_right.x()).min(lower_left.x()).min(lower_right.x());
         let min_y = upper_left.y().min(upper_right.y()).min(lower_left.y()).min(lower_right.y());
         let max_x = upper_left.x().max(upper_right.x()).max(lower_left.x()).max(lower_right.x());
@@ -218,12 +303,13 @@ where
     fn next(&mut self) -> Option<Segment> {
         let mut segment = self.iter.next()?;
         if !segment.is_none() {
-            segment.baseline.set_from(&self.perspective.transform_point(&segment.baseline.from()));
-            segment.baseline.set_to(&self.perspective.transform_point(&segment.baseline.to()));
+            segment.baseline.set_from(&self.perspective
+                                           .transform_point_2d(&segment.baseline.from()));
+            segment.baseline.set_to(&self.perspective.transform_point_2d(&segment.baseline.to()));
             if !segment.is_line() {
-                segment.ctrl.set_from(&self.perspective.transform_point(&segment.ctrl.from()));
+                segment.ctrl.set_from(&self.perspective.transform_point_2d(&segment.ctrl.from()));
                 if !segment.is_quadratic() {
-                    segment.ctrl.set_to(&self.perspective.transform_point(&segment.ctrl.to()));
+                    segment.ctrl.set_to(&self.perspective.transform_point_2d(&segment.ctrl.to()));
                 }
             }
         }
@@ -302,5 +388,25 @@ mod test {
                                           4.0, 6.0, 8.0, 3.0,
                                           5.0, 5.0, 9.0, 2.0);
         assert_eq!(a.transpose(), b);
+    }
+
+    #[test]
+    fn test_inverse() {
+        // Random matrix.
+        let m = Transform3DF32::row_major(0.86277982, 0.15986552, 0.90739898, 0.60066808,
+                                          0.17386167, 0.016353  , 0.8535783 , 0.12969608,
+                                          0.0946466 , 0.43248631, 0.63480505, 0.08154603,
+                                          0.50305436, 0.48359687, 0.51057162, 0.24812012);
+        let p0 = Point4DF32::new(0.95536648, 0.80633691, 0.16357357, 0.5477598);
+        let p1 = m.transform_point(p0);
+        let m_inv = m.inverse();
+        let m_inv_exp =
+            Transform3DF32::row_major(-2.47290136   ,  3.48865688, -6.12298336  ,  6.17536696 ,
+                                       0.00124033357, -1.72561993,  2.16876606  ,  0.186227748,
+                                      -0.375021729  ,  1.53883017, -0.0558194403,  0.121857058,
+                                       5.78300323   , -6.87635769,  8.30196620  , -9.10374060);
+        assert!(m_inv.approx_eq(&m_inv_exp, 0.0001));
+        let p2 = m_inv.transform_point(p1);
+        assert!(p0.approx_eq(&p2, 0.0001));
     }
 }

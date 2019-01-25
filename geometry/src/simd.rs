@@ -337,11 +337,11 @@ mod scalar {
 
 #[cfg(all(not(feature = "pf-no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
 mod x86 {
-    use std::arch::x86_64::{self, __m128, __m128d, __m128i};
+    use std::arch::x86_64::{self, __m128, __m128i};
     use std::cmp::PartialEq;
     use std::fmt::{self, Debug, Formatter};
     use std::mem;
-    use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Sub};
+    use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Neg, Sub};
 
     // 32-bit floats
 
@@ -373,6 +373,14 @@ mod x86 {
         }
 
         #[inline]
+        pub fn abs(self) -> F32x4 {
+            unsafe {
+                let tmp = x86_64::_mm_srli_epi32(I32x4::splat(-1).0, 1);
+                F32x4(x86_64::_mm_and_ps(x86_64::_mm_castsi128_ps(tmp), self.0))
+            }
+        }
+
+        #[inline]
         pub fn packed_eq(self, other: F32x4) -> U32x4 {
             unsafe {
                 U32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpeq_ps(
@@ -381,13 +389,18 @@ mod x86 {
             }
         }
 
-        // Casts these packed floats to 64-bit floats.
-        //
-        // NB: This is a pure bitcast and does no actual conversion; only use this if you know what
-        // you're doing.
         #[inline]
-        pub fn as_f64x2(self) -> F64x2 {
-            unsafe { F64x2(x86_64::_mm_castps_pd(self.0)) }
+        pub fn packed_gt(self, other: F32x4) -> U32x4 {
+            unsafe {
+                U32x4(x86_64::_mm_castps_si128(x86_64::_mm_cmpgt_ps(
+                    self.0, other.0,
+                )))
+            }
+        }
+
+        #[inline]
+        pub fn approx_eq(self, other: F32x4, epsilon: f32) -> bool {
+            (self - other).abs().packed_gt(F32x4::splat(epsilon)).is_all_zeroes()
         }
 
         // Converts these packed floats to integers.
@@ -401,6 +414,11 @@ mod x86 {
         #[inline]
         pub fn xxyy(self) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0101_0000)) }
+        }
+
+        #[inline]
+        pub fn xxzz(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1010_0000)) }
         }
 
         #[inline]
@@ -431,6 +449,11 @@ mod x86 {
         #[inline]
         pub fn yxwz(self) -> F32x4 {
             unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1011_0001)) }
+        }
+
+        #[inline]
+        pub fn yyww(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b1111_0101)) }
         }
 
         #[inline]
@@ -474,13 +497,58 @@ mod x86 {
         }
 
         #[inline]
-        pub fn interleave(self, other: F32x4) -> (F32x4, F32x4) {
+        pub fn wyzx(self) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, self.0, 0b0010_0111)) }
+        }
+
+        #[inline]
+        pub fn combine_axbxayby(self, other: F32x4) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_unpacklo_ps(self.0, other.0)) }
+        }
+
+        #[inline]
+        pub fn combine_axaybxby(self, other: F32x4) -> F32x4 {
             unsafe {
-                (
-                    F32x4(x86_64::_mm_unpacklo_ps(self.0, other.0)),
-                    F32x4(x86_64::_mm_unpackhi_ps(self.0, other.0)),
-                )
+                let this = x86_64::_mm_castps_pd(self.0);
+                let other = x86_64::_mm_castps_pd(other.0);
+                let result = x86_64::_mm_unpacklo_pd(this, other);
+                F32x4(x86_64::_mm_castpd_ps(result))
             }
+        }
+
+        #[inline]
+        pub fn combine_axaybzbw(self, other: F32x4) -> F32x4 {
+            unsafe {
+                let this = x86_64::_mm_castps_pd(self.0);
+                let other = x86_64::_mm_castps_pd(other.0);
+                let result = x86_64::_mm_shuffle_pd(this, other, 0b10);
+                F32x4(x86_64::_mm_castpd_ps(result))
+            }
+        }
+
+        #[inline]
+        pub fn combine_axazbxbz(self, other: F32x4) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, other.0, 0b1000_1000)) }
+        }
+
+        #[inline]
+        pub fn combine_ayawbybw(self, other: F32x4) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, other.0, 0b1101_1101)) }
+        }
+
+        #[inline]
+        pub fn combine_azawbzbw(self, other: F32x4) -> F32x4 {
+            unsafe {
+                let this = x86_64::_mm_castps_pd(self.0);
+                let other = x86_64::_mm_castps_pd(other.0);
+                let result = x86_64::_mm_unpackhi_pd(this, other);
+                F32x4(x86_64::_mm_castpd_ps(result))
+            }
+        }
+
+        #[inline]
+        pub fn combine_azbzawbw(self, other: F32x4) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_unpackhi_ps(self.0, other.0)) }
         }
 
         #[inline]
@@ -490,6 +558,7 @@ mod x86 {
             }
         }
 
+        // FIXME(pcwalton): Move to `Point4DF32`!
         #[inline]
         pub fn cross(&self, other: F32x4) -> F32x4 {
             self.yzxw() * other.zxyw() - self.zxyw() * other.yzxw()
@@ -563,10 +632,19 @@ mod x86 {
         }
     }
 
-    // 64-bit floats
+    impl Neg for F32x4 {
+        type Output = F32x4;
+        #[inline]
+        fn neg(self) -> F32x4 {
+            F32x4::default() - self
+        }
+    }
+
+    /*
+    // Two pairs of 32-bit floats
 
     #[derive(Clone, Copy)]
-    pub struct F64x2(pub __m128d);
+    pub struct F64x2x2(pub __m128d);
 
     impl F64x2 {
         // Shuffles
@@ -600,6 +678,7 @@ mod x86 {
             }
         }
     }
+    */
 
     // 32-bit signed integers
 
@@ -656,6 +735,11 @@ mod x86 {
         #[inline]
         fn is_all_ones(&self) -> bool {
             unsafe { x86_64::_mm_test_all_ones(self.0) != 0 }
+        }
+
+        #[inline]
+        fn is_all_zeroes(&self) -> bool {
+            unsafe { x86_64::_mm_test_all_zeros(self.0, self.0) != 0 }
         }
     }
 

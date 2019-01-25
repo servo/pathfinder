@@ -21,7 +21,7 @@ pub struct LineSegmentF32(pub F32x4);
 impl LineSegmentF32 {
     #[inline]
     pub fn new(from: &Point2DF32, to: &Point2DF32) -> LineSegmentF32 {
-        LineSegmentF32(from.0.as_f64x2().interleave(to.0.as_f64x2()).0.as_f32x4())
+        LineSegmentF32(from.0.combine_axaybxby(to.0))
     }
 
     #[inline]
@@ -36,12 +36,12 @@ impl LineSegmentF32 {
 
     #[inline]
     pub fn set_from(&mut self, point: &Point2DF32) {
-        self.0 = point.0.as_f64x2().combine_low_high(self.0.as_f64x2()).as_f32x4()
+        self.0 = point.0.combine_axaybzbw(self.0)
     }
 
     #[inline]
     pub fn set_to(&mut self, point: &Point2DF32) {
-        self.0 = self.0.as_f64x2().interleave(point.0.as_f64x2()).0.as_f32x4()
+        self.0 = self.0.combine_axaybxby(point.0)
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -97,8 +97,8 @@ impl LineSegmentF32 {
         let (from_from, to_to) = (self.0.xyxy(), self.0.zwzw());
         let d_d = to_to - from_from;
         let mid_mid = from_from + d_d * F32x4::splat(t);
-        (LineSegmentF32(from_from.as_f64x2().interleave(mid_mid.as_f64x2()).0.as_f32x4()),
-            LineSegmentF32(mid_mid.as_f64x2().interleave(to_to.as_f64x2()).0.as_f32x4()))
+        (LineSegmentF32(from_from.combine_axaybxby(mid_mid)),
+         LineSegmentF32(mid_mid.combine_axaybxby(to_to)))
     }
 
     // Returns the left segment first, followed by the right segment.

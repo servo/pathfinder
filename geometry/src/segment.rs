@@ -196,12 +196,12 @@ impl<'s> CubicSegment<'s> {
         let tttt = F32x4::splat(t);
 
         let (p0p3, p1p2) = (self.0.baseline.0, self.0.ctrl.0);
-        let p0p1 = p0p3.as_f64x2().interleave(p1p2.as_f64x2()).0.as_f32x4();
+        let p0p1 = p0p3.combine_axaybxby(p1p2);
 
         // p01 = lerp(p0, p1, t), p12 = lerp(p1, p2, t), p23 = lerp(p2, p3, t)
         let p01p12 = p0p1 + tttt * (p1p2 - p0p1);
         let pxxp23 = p1p2 + tttt * (p0p3 - p1p2);
-        let p12p23 = p01p12.as_f64x2().interleave(pxxp23.as_f64x2()).1.as_f32x4();
+        let p12p23 = p01p12.combine_azawbzbw(pxxp23);
 
         // p012 = lerp(p01, p12, t), p123 = lerp(p12, p23, t)
         let p012p123 = p01p12 + tttt * (p12p23 - p01p12);
@@ -210,10 +210,10 @@ impl<'s> CubicSegment<'s> {
         // p0123 = lerp(p012, p123, t)
         let p0123 = p012p123 + tttt * (p123 - p012p123);
 
-        let baseline0 = p0p3.as_f64x2().interleave(p0123.as_f64x2()).0.as_f32x4();
-        let ctrl0 = p01p12.as_f64x2().interleave(p012p123.as_f64x2()).0.as_f32x4();
-        let baseline1 = p0123.as_f64x2().combine_low_high(p0p3.as_f64x2()).as_f32x4();
-        let ctrl1 = p012p123.as_f64x2().interleave(p12p23.as_f64x2()).1.as_f32x4();
+        let baseline0 = p0p3.combine_axaybxby(p0123);
+        let ctrl0 = p01p12.combine_axaybxby(p012p123);
+        let baseline1 = p0123.combine_axaybzbw(p0p3);
+        let ctrl1 = p012p123.combine_azawbzbw(p12p23);
 
         (Segment {
             baseline: LineSegmentF32(baseline0),
