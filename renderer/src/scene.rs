@@ -120,10 +120,16 @@ impl Scene {
 
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
         let quad = self.clip_bounding_quad_with_perspective(perspective);
-        println!("bounds={:?} quad={:?}", self.bounds, quad);
+        println!("bounds={:?} PRE-transform quad={:?}", self.bounds, quad);
+        let inverse_transform = perspective.transform.inverse();
+        let quad: Vec<_> = quad.into_iter().map(|point| {
+            inverse_transform.transform_point_3d(point).to_2d()
+        }).collect();
+        println!("bounds={:?} POST-transform quad={:?}", self.bounds, quad);
 
         let mut bounds = Rect::zero();
         for (object_index, object) in self.objects.iter_mut().enumerate() {
+            object.outline.clip_against_polygon(&quad);
             object.outline.apply_perspective(perspective);
             object.outline.clip_against_rect(&self.view_box);
 
@@ -145,9 +151,13 @@ impl Scene {
             Point3DF32::from_euclid_2d(&self.bounds.bottom_right()),
             Point3DF32::from_euclid_2d(&self.bounds.bottom_left()),
         ];
+        println!("-----");
+        println!("bounds={:?} ORIGINAL quad={:?}", self.bounds, points);
         for point in &mut points {
-            *point = perspective.transform_point_3d(point);
+            *point = perspective.transform.transform_point_3d(*point);
         }
+        println!("PERSPECTIVE quad={:?}", points);
+        //points
         PolygonClipper3D::new(points).clip()
     }
 }

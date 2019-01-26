@@ -16,6 +16,7 @@ use crate::simd::F32x4;
 use crate::util::lerp;
 use euclid::Rect;
 use lyon_path::PathEvent;
+use smallvec::SmallVec;
 use std::mem;
 
 pub struct RectClipper<'a> {
@@ -241,26 +242,43 @@ impl Edge {
     }
 }
 
-pub(crate) struct ContourRectClipper {
-    clip_rect: Rect<f32>,
+pub(crate) struct ContourClipper {
+    clip_polygon: SmallVec<[Point2DF32; 4]>,
     contour: Contour,
 }
 
-impl ContourRectClipper {
+impl ContourClipper {
     #[inline]
-    pub(crate) fn new(clip_rect: &Rect<f32>, contour: Contour) -> ContourRectClipper {
-        ContourRectClipper { clip_rect: *clip_rect, contour }
+    pub(crate) fn new(clip_polygon: &[Point2DF32], contour: Contour) -> ContourClipper {
+        debug_assert!(!clip_polygon.is_empty());
+        ContourClipper { clip_polygon: SmallVec::from_slice(clip_polygon), contour }
+    }
+
+    #[inline]
+    pub(crate) fn from_rect(clip_rect: &Rect<f32>, contour: Contour) -> ContourClipper {
+        ContourClipper::new(&[
+            Point2DF32::from_euclid(clip_rect.origin),
+            Point2DF32::from_euclid(clip_rect.top_right()),
+            Point2DF32::from_euclid(clip_rect.bottom_right()),
+            Point2DF32::from_euclid(clip_rect.bottom_left()),
+        ], contour)
     }
 
     pub(crate) fn clip(mut self) -> Contour {
-        if self.clip_rect.contains_rect(&self.contour.bounds()) {
+        // TODO(pcwalton): Reenable this optimization.
+        /*if self.clip_rect.contains_rect(&self.contour.bounds()) {
             return self.contour
-        }
+        }*/
 
-        self.clip_against(Edge::left(&self.clip_rect));
-        self.clip_against(Edge::top(&self.clip_rect));
-        self.clip_against(Edge::right(&self.clip_rect));
-        self.clip_against(Edge::bottom(&self.clip_rect));
+        let clip_polygon = mem::replace(&mut self.clip_polygon, SmallVec::default());
+        let mut prev = match clip_polygon.last() {
+            None => return Contour::new(),
+            Some(prev) => *prev,
+        };
+        for &next in &clip_polygon {
+            self.clip_against(Edge(LineSegmentF32::new(&prev, &next)));
+            prev = next;
+        }
 
         /*
         let top = Point2DF32::new(lerp(self.clip_rect.origin.x, self.clip_rect.max_x(), 0.5),
@@ -399,7 +417,7 @@ impl PolygonClipper3D {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Edge3D {
     Left,
     Right,
@@ -413,9 +431,9 @@ impl Edge3D {
     #[inline]
     fn point_is_inside(self, point: Point3DF32) -> bool {
         match self {
-            Edge3D::Left   => point.x() > -1.0, Edge3D::Right => point.x() < 1.0,
-            Edge3D::Bottom => point.y() > -1.0, Edge3D::Top   => point.y() < 1.0,
-            Edge3D::Near   => point.z() > -1.0, Edge3D::Far   => point.z() < 1.0,
+            Edge3D::Left   => point.x() >= -1.0, Edge3D::Right => point.x() <= 1.0,
+            Edge3D::Bottom => point.y() >= -1.0, Edge3D::Top   => point.y() <= 1.0,
+            Edge3D::Near   => point.z() >= -1.0, Edge3D::Far   => point.z() <= 1.0,
         }
     }
 
@@ -429,6 +447,6 @@ impl Edge3D {
             Edge3D::Left  | Edge3D::Bottom | Edge3D::Near => -1.0,
             Edge3D::Right | Edge3D::Top    | Edge3D::Far  =>  1.0,
         };
-        prev.lerp(next, (x0 - x) / (x1 - x0))
+        prev.lerp(next, (x - x0) / (x1 - x0))
     }
 }

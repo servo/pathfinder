@@ -180,6 +180,11 @@ impl Transform3DF32 {
     }
 
     #[inline]
+    pub fn transform_point_3d(&self, point: Point3DF32) -> Point3DF32 {
+        self.transform_point(point.to_4d()).perspective_divide()
+    }
+
+    #[inline]
     pub fn upper_left(&self) -> Matrix2x2F32 {
         Matrix2x2F32(self.c0.combine_axaybxby(self.c1))
     }
@@ -200,6 +205,9 @@ impl Transform3DF32 {
     }
 
     // https://en.wikipedia.org/wiki/Invertible_matrix#Blockwise_inversion
+    //
+    // If A is the upper left submatrix of this matrix, this method assumes that A and the Schur
+    // complement of A are invertible.
     pub fn inverse(&self) -> Transform3DF32 {
         // Extract submatrices.
         let (a, b) = (self.upper_left(), self.upper_right());
@@ -261,11 +269,6 @@ impl Perspective {
         let window_size = self.window_size.to_f32();
         let size_scale = Point2DF32::new(window_size.width * 0.5, window_size.height * 0.5);
         (point + Point2DF32::splat(1.0)) * size_scale
-    }
-
-    #[inline]
-    pub fn transform_point_3d(&self, point: &Point3DF32) -> Point3DF32 {
-        self.transform.transform_point(point.to_4d()).perspective_divide()
     }
 
     // TODO(pcwalton): SIMD?
