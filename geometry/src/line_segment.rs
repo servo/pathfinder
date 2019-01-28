@@ -224,8 +224,11 @@ impl LineSegmentF32 {
     pub fn intersection_t(&self, other: &LineSegmentF32) -> f32 {
         let d0d1 = self.vector().0.combine_axaybxby(other.vector().0);
         let offset = other.from() - self.from();
-        let terms = d0d1 * d0d1.combine_awazbybx(offset.0);
-        (terms[3] - terms[2]) / (terms[0] - terms[1])
+        let factors = d0d1.combine_awazbybx(offset.0);
+        let terms = d0d1 * factors;
+        let t = (terms[3] - terms[2]) / (terms[0] - terms[1]);
+        //println!("intersection_t({:?}, {:?})={} (d0d1={:?}, factors={:?})", self, other, t, d0d1, factors);
+        t
     }
 
     #[inline]

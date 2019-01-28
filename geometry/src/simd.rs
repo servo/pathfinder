@@ -553,7 +553,7 @@ mod x86 {
 
         #[inline]
         pub fn combine_awazbybx(self, other: F32x4) -> F32x4 {
-            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, other.0, 0b1110_0100)) }
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, other.0, 0b0001_1011)) }
         }
 
         #[inline]

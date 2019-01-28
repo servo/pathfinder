@@ -14,6 +14,7 @@ use crate::point::{Point2DF32, Point3DF32};
 use crate::segment::Segment;
 use crate::simd::F32x4;
 use crate::util::lerp;
+use arrayvec::ArrayVec;
 use euclid::Rect;
 use lyon_path::PathEvent;
 use smallvec::SmallVec;
@@ -68,14 +69,16 @@ impl<'a> RectClipper<'a> {
             if edge.point_is_inside(&to) {
                 if !edge.point_is_inside(&from) {
                     let line_segment = LineSegmentF32::new(&from, &to);
-                    if let Some(intersection) = edge.line_intersection(&line_segment) {
+                    for t in edge.intersect_line_segment(&line_segment) {
+                        let intersection = line_segment.sample(t);
                         add_line(&intersection, output, &mut first_point);
                     }
                 }
                 add_line(&to, output, &mut first_point);
             } else if edge.point_is_inside(&from) {
                 let line_segment = LineSegmentF32::new(&from, &to);
-                if let Some(intersection) = edge.line_intersection(&line_segment) {
+                for t in edge.intersect_line_segment(&line_segment) {
+                    let intersection = line_segment.sample(t);
                     add_line(&intersection, output, &mut first_point);
                 }
             }
@@ -154,21 +157,9 @@ impl Edge {
         if from_inside { EdgeRelativeLocation::Inside } else { EdgeRelativeLocation::Outside }
     }
 
-    fn line_intersection(&self, other: &LineSegmentF32) -> Option<Point2DF32> {
-        let t = other.intersection_t(&self.0);
-        //println!("line_intersection({:?}, {:?}) t={:?}", self, other, t);
-        if t < 0.0 || t > 1.0 {
-            None
-        } else {
-            // FIXME(pcwalton)
-            //Some(other.sample(t))
-            Some(self.0.sample(self.0.intersection_t(&other)))
-        }
-    }
-
-    fn split_segment(&self, segment: &Segment) -> Option<(Segment, Segment)> {
+    fn intersect_segment(&self, segment: &Segment) -> ArrayVec<[f32; 3]> {
         if segment.is_line() {
-            return self.split_line_segment(segment);
+            return self.intersect_line_segment(&segment.baseline);
         }
 
         let mut segment = *segment;
@@ -176,32 +167,56 @@ impl Edge {
             segment = segment.to_cubic();
         }
 
-        self.intersect_cubic_segment(&segment, 0.0, 1.0).and_then(|t| {
-            self.fixup_clipped_segments(&segment.as_cubic_segment().split(t))
-        })
+        let mut results = ArrayVec::new();
+        let mut prev_t = 0.0;
+        while !results.is_full() {
+            if prev_t >= 1.0 {
+                break
+            }
+            let next_t = match self.intersect_cubic_segment(&segment, prev_t, 1.0) {
+                None => break,
+                Some(next_t) => next_t,
+            };
+            results.push(next_t);
+            prev_t = next_t + EPSILON;
+        }
+        return results;
+
+        const EPSILON: f32 = 0.0001;
     }
 
-    fn split_line_segment(&self, segment: &Segment) -> Option<(Segment, Segment)> {
-        let intersection = self.line_intersection(&segment.baseline)?;
-        Some((Segment::line(&LineSegmentF32::new(&segment.baseline.from(), &intersection)),
-              Segment::line(&LineSegmentF32::new(&intersection, &segment.baseline.to()))))
+    fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]> {
+        let mut results = ArrayVec::new();
+        let t = segment.intersection_t(&self.0);
+        if t >= 0.0 && t <= 1.0 {
+            results.push(t);
+        }
+        results
     }
 
-    fn intersect_cubic_segment(&self, segment: &Segment, t_min: f32, t_max: f32) -> Option<f32> {
+    fn intersect_cubic_segment(&self, segment: &Segment, mut t_min: f32, mut t_max: f32)
+                               -> Option<f32> {
         /*println!("... intersect_cubic_segment({:?}, {:?}, t=({}, {}))",
                  self, segment, t_min, t_max);*/
-        let t_mid = lerp(t_min, t_max, 0.5);
-        if t_max - t_min < 0.001 {
-            return Some(t_mid);
-        }
+        let cubic_segment = segment.as_cubic_segment();
+        loop {
+            let t_mid = lerp(t_min, t_max, 0.5);
+            if t_max - t_min < 0.00001 {
+                return Some(t_mid);
+            }
 
-        let (prev_segment, next_segment) = segment.as_cubic_segment().split(t_mid);
-        if self.line_intersection(&prev_segment.baseline).is_some() {
-            self.intersect_cubic_segment(segment, t_min, t_mid)
-        } else if self.line_intersection(&next_segment.baseline).is_some() {
-            self.intersect_cubic_segment(segment, t_mid, t_max)
-        } else {
-            None
+            let min_sign = self.point_is_inside(&cubic_segment.sample(t_min));
+            let mid_sign = self.point_is_inside(&cubic_segment.sample(t_mid));
+            let max_sign = self.point_is_inside(&cubic_segment.sample(t_max));
+            /*println!("... ... ({}, {}, {}) ({}, {}, {})",
+                     t_min, t_mid, t_max,
+                     min_sign, mid_sign, max_sign);*/
+
+            match (min_sign == mid_sign, max_sign == mid_sign) {
+                (true, false) => t_min = t_mid,
+                (false, true) => t_max = t_mid,
+                _ => return None,
+            }
         }
     }
 
@@ -319,20 +334,20 @@ impl ContourClipper {
             }
 
             // We have a potential intersection.
-            println!("potential intersection: {:?} edge: {:?}", segment, edge);
+            //println!("potential intersection: {:?} edge: {:?}", segment, edge);
             let mut starts_inside = edge.point_is_inside(&segment.baseline.from());
-            for _ in 0..3 {
-                let (before_split, after_split) = match edge.split_segment(&segment) {
-                    None => break,
-                    Some((before_split, after_split)) => (before_split, after_split),
-                };
+            let intersection_ts = edge.intersect_segment(&segment);
+            let mut last_t = 0.0;
+            //println!("... intersections: {:?}", intersection_ts);
+            for t in intersection_ts {
+                let (before_split, after_split) = segment.split((t - last_t) / (1.0 - last_t));
 
                 // Push the split segment if appropriate.
-                println!("... ... edge={:?} before_split={:?} after_split={:?} starts_inside={:?}",
+                /*println!("... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
                          edge.0,
                          before_split,
-                         after_split,
-                         starts_inside);
+                         t,
+                         starts_inside);*/
                 if starts_inside {
                     //println!("... split segment case, pushing segment");
                     push_segment(&mut self.contour, &before_split, edge);
@@ -340,6 +355,7 @@ impl ContourClipper {
 
                 // We've now transitioned from inside to outside or vice versa.
                 starts_inside = !starts_inside;
+                last_t = t;
                 segment = after_split;
             }
 

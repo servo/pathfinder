@@ -142,6 +142,17 @@ impl Segment {
         const EPSILON: f32 = 0.0001;
         self.baseline.square_length() < EPSILON
     }
+
+    #[inline]
+    pub fn split(&self, t: f32) -> (Segment, Segment) {
+        // FIXME(pcwalton): Don't degree elevate!
+        if self.is_line() {
+            let (before, after) = self.as_line_segment().split(t);
+            (Segment::line(&before), Segment::line(&after))
+        } else {
+            self.to_cubic().as_cubic_segment().split(t)
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -237,6 +248,12 @@ impl<'s> CubicSegment<'s> {
     #[inline]
     pub fn split_after(self, t: f32) -> Segment {
         self.split(t).1
+    }
+
+    // FIXME(pcwalton): Use Horner's method!
+    #[inline]
+    pub fn sample(self, t: f32) -> Point2DF32 {
+        self.split(t).0.baseline.to()
     }
 
     #[inline]
