@@ -214,6 +214,24 @@ impl LineSegmentF32 {
         let to = F32x4::new(self.0[2], self.0[3], 1.0, 0.0);
         from.cross(to)
     }
+
+    #[inline]
+    pub fn vector(&self) -> Point2DF32 {
+        self.to() - self.from()
+    }
+
+    // http://www.cs.swan.ac.uk/~cssimon/line_intersection.html
+    pub fn intersection_t(&self, other: &LineSegmentF32) -> f32 {
+        let d0d1 = self.vector().0.combine_axaybxby(other.vector().0);
+        let offset = other.from() - self.from();
+        let terms = d0d1 * d0d1.combine_awazbybx(offset.0);
+        (terms[3] - terms[2]) / (terms[0] - terms[1])
+    }
+
+    #[inline]
+    pub fn sample(&self, t: f32) -> Point2DF32 {
+        self.from() + self.vector().scale(t)
+    }
 }
 
 impl Sub<Point2DF32> for LineSegmentF32 {

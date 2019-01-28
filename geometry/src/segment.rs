@@ -136,6 +136,12 @@ impl Segment {
             self.reversed()
         }
     }
+
+    #[inline]
+    pub fn is_tiny(&self) -> bool {
+        const EPSILON: f32 = 0.0001;
+        self.baseline.square_length() < EPSILON
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

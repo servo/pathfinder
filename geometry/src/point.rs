@@ -57,6 +57,16 @@ impl Point2DF32 {
     }
 
     #[inline]
+    pub fn set_x(&mut self, x: f32) {
+        self.0[0] = x;
+    }
+
+    #[inline]
+    pub fn set_y(&mut self, y: f32) {
+        self.0[1] = y;
+    }
+
+    #[inline]
     pub fn min(&self, other: Point2DF32) -> Point2DF32 {
         Point2DF32(self.0.min(other.0))
     }
@@ -66,10 +76,14 @@ impl Point2DF32 {
         Point2DF32(self.0.max(other.0))
     }
 
-    // TODO(pcwalton): Optimize with SIMD.
     #[inline]
     pub fn det(&self, other: Point2DF32) -> f32 {
         self.x() * other.y() - self.y() * other.x()
+    }
+
+    #[inline]
+    pub fn scale(&self, x: f32) -> Point2DF32 {
+        Point2DF32(self.0 * F32x4::splat(x))
     }
 }
 

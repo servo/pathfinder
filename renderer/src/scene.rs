@@ -129,7 +129,7 @@ impl Scene {
 
         let mut bounds = Rect::zero();
         for (object_index, object) in self.objects.iter_mut().enumerate() {
-            object.outline.clip_against_polygon(&quad);
+            //object.outline.clip_against_polygon(&quad);
             object.outline.apply_perspective(perspective);
             object.outline.clip_against_rect(&self.view_box);
 

@@ -130,7 +130,9 @@ impl Edge {
 
     #[inline]
     fn point_is_inside(&self, point: &Point2DF32) -> bool {
-        (self.0.to() - self.0.from()).det(*point - self.0.from()) >= 0.0
+        let area = (self.0.to() - self.0.from()).det(*point - self.0.from());
+        //println!("point_is_inside({:?}, {:?}), area={}", self, point, area);
+        area >= 0.0
     }
 
     fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
@@ -153,17 +155,14 @@ impl Edge {
     }
 
     fn line_intersection(&self, other: &LineSegmentF32) -> Option<Point2DF32> {
-        let (this_line, other_line) = (self.0.line_coords(), other.line_coords());
-        let result = this_line.cross(other_line);
-        let z = result[2];
-        if z == 0.0 {
-            return None;
-        }
-        let result = Point2DF32((result * F32x4::splat(1.0 / z)).xyxy());
-        if result.x() <= other.min_x() || result.x() >= other.max_x() {
+        let t = other.intersection_t(&self.0);
+        //println!("line_intersection({:?}, {:?}) t={:?}", self, other, t);
+        if t < 0.0 || t > 1.0 {
             None
         } else {
-            Some(result)
+            // FIXME(pcwalton)
+            //Some(other.sample(t))
+            Some(self.0.sample(self.0.intersection_t(&other)))
         }
     }
 
@@ -177,7 +176,7 @@ impl Edge {
             segment = segment.to_cubic();
         }
 
-        self.intersect_cubic_segment(&segment, 0.0, 1.0).map(|t| {
+        self.intersect_cubic_segment(&segment, 0.0, 1.0).and_then(|t| {
             self.fixup_clipped_segments(&segment.as_cubic_segment().split(t))
         })
     }
@@ -197,24 +196,18 @@ impl Edge {
         }
 
         let (prev_segment, next_segment) = segment.as_cubic_segment().split(t_mid);
-
-        let prev_cubic_segment = prev_segment.as_cubic_segment();
-        let next_cubic_segment = next_segment.as_cubic_segment();
-
         if self.line_intersection(&prev_segment.baseline).is_some() {
             self.intersect_cubic_segment(segment, t_min, t_mid)
         } else if self.line_intersection(&next_segment.baseline).is_some() {
             self.intersect_cubic_segment(segment, t_mid, t_max)
-        } else if prev_segment.baseline.to() == self.0.from() ||
-                prev_segment.baseline.to() == self.0.to() {
-            Some(t_mid)
         } else {
             None
         }
     }
 
-    fn fixup_clipped_segments(&self, segment: &(Segment, Segment)) -> (Segment, Segment) {
+    fn fixup_clipped_segments(&self, segment: &(Segment, Segment)) -> Option<(Segment, Segment)> {
         let (mut prev, mut next) = *segment;
+
         let point = prev.baseline.to();
 
         let line_coords = self.0.line_coords();
@@ -227,6 +220,23 @@ impl Edge {
         prev.baseline.set_to(&snapped);
         next.baseline.set_from(&snapped);
 
+        // FIXME(pcwalton): Do this more efficiently...
+        // FIXME(pcwalton): Remove duplication!
+        if self.0.from_x() == self.0.to_x() {
+            let x = self.0.from_x();
+            prev.baseline.set_to_x(x);
+            next.baseline.set_from_x(x);
+        }
+        if self.0.from_y() == self.0.to_y() {
+            let y = self.0.from_y();
+            prev.baseline.set_to_y(y);
+            next.baseline.set_from_y(y);
+        }
+
+        if prev.is_tiny() {
+            return None
+        }
+
         /*match *self {
             Edge::Left(x) | Edge::Right(x) => {
                 before.baseline.set_to_x(x);
@@ -238,7 +248,7 @@ impl Edge {
             }
         }*/
 
-        (prev, next)
+        Some((prev, next))
     }
 }
 
@@ -250,7 +260,6 @@ pub(crate) struct ContourClipper {
 impl ContourClipper {
     #[inline]
     pub(crate) fn new(clip_polygon: &[Point2DF32], contour: Contour) -> ContourClipper {
-        debug_assert!(!clip_polygon.is_empty());
         ContourClipper { clip_polygon: SmallVec::from_slice(clip_polygon), contour }
     }
 
@@ -310,16 +319,20 @@ impl ContourClipper {
             }
 
             // We have a potential intersection.
-            //println!("potential intersection: {:?} edge: {:?}", segment, edge);
+            println!("potential intersection: {:?} edge: {:?}", segment, edge);
             let mut starts_inside = edge.point_is_inside(&segment.baseline.from());
-            while let Some((before_split, after_split)) = edge.split_segment(&segment) {
+            for _ in 0..3 {
+                let (before_split, after_split) = match edge.split_segment(&segment) {
+                    None => break,
+                    Some((before_split, after_split)) => (before_split, after_split),
+                };
+
                 // Push the split segment if appropriate.
-                /*
-                println!("... ... before_split={:?} after_split={:?} starts_inside={:?}",
+                println!("... ... edge={:?} before_split={:?} after_split={:?} starts_inside={:?}",
+                         edge.0,
                          before_split,
                          after_split,
                          starts_inside);
-                  */
                 if starts_inside {
                     //println!("... split segment case, pushing segment");
                     push_segment(&mut self.contour, &before_split, edge);

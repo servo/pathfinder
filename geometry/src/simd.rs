@@ -552,6 +552,11 @@ mod x86 {
         }
 
         #[inline]
+        pub fn combine_awazbybx(self, other: F32x4) -> F32x4 {
+            unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, other.0, 0b1110_0100)) }
+        }
+
+        #[inline]
         pub fn transpose_4x4(a: &mut F32x4, b: &mut F32x4, c: &mut F32x4, d: &mut F32x4) {
             unsafe {
                 x86_64::_MM_TRANSPOSE4_PS(&mut a.0, &mut b.0, &mut c.0, &mut d.0)
