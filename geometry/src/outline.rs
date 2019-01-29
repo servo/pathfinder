@@ -21,7 +21,7 @@ use euclid::{Point2D, Rect, Size2D};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Outline {
     pub contours: Vec<Contour>,
     bounds: Rect<f32>,
@@ -139,6 +139,18 @@ impl Outline {
                 self.push_contour(contour);
             }
         }
+    }
+}
+
+impl Debug for Outline {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        for (contour_index, contour) in self.contours.iter().enumerate() {
+            if contour_index > 0 {
+                write!(formatter, " ")?;
+            }
+            contour.fmt(formatter)?;
+        }
+        Ok(())
     }
 }
 
@@ -328,27 +340,45 @@ impl Contour {
 }
 
 impl Debug for Contour {
-    #[inline]
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        formatter.write_str("[")?;
-        if formatter.alternate() {
-            formatter.write_str("\n")?
-        }
-        for (index, segment) in self.iter().enumerate() {
-            if index > 0 {
-                formatter.write_str(" ")?;
+        for (segment_index, segment) in self.iter().enumerate() {
+            if segment_index == 0 {
+                write!(formatter,
+                       "M {} {}",
+                       segment.baseline.from_x(),
+                       segment.baseline.from_y())?;
             }
-            if formatter.alternate() {
-                formatter.write_str("\n    ")?;
-            }
-            segment.fmt(formatter)?;
-        }
-        if formatter.alternate() {
-            formatter.write_str("\n")?
-        }
-        formatter.write_str("]")?;
 
-        return Ok(());
+            match segment.kind {
+                SegmentKind::None => {}
+                SegmentKind::Line => {
+                    write!(formatter,
+                           " L {} {}",
+                           segment.baseline.to_x(),
+                           segment.baseline.to_y())?;
+                }
+                SegmentKind::Quadratic => {
+                    write!(formatter,
+                           " Q {} {} {} {}",
+                           segment.ctrl.from_x(),
+                           segment.ctrl.from_y(),
+                           segment.baseline.to_x(),
+                           segment.baseline.to_y())?;
+                }
+                SegmentKind::Cubic => {
+                    write!(formatter,
+                           " C {} {} {} {} {} {}",
+                           segment.ctrl.from_x(),
+                           segment.ctrl.from_y(),
+                           segment.ctrl.to_x(),
+                           segment.ctrl.to_y(),
+                           segment.baseline.to_x(),
+                           segment.baseline.to_y())?;
+                }
+            }
+        }
+
+        write!(formatter, " z")
     }
 }
 

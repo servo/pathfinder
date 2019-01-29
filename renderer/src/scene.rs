@@ -22,8 +22,9 @@ use pathfinder_geometry::point::Point3DF32;
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform::Transform2DF32;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use std::fmt::{self, Debug, Formatter};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Scene {
     pub objects: Vec<PathObject>,
     pub paints: Vec<Paint>,
@@ -162,6 +163,27 @@ impl Scene {
     }
 }
 
+impl Debug for Scene {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        writeln!(formatter,
+                 "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\">",
+                 self.view_box.origin.x,
+                 self.view_box.origin.y,
+                 self.view_box.size.width,
+                 self.view_box.size.height)?;
+        for object in &self.objects {
+            let paint = &self.paints[object.paint.0 as usize];
+            write!(formatter, "    <path")?;
+            if !object.name.is_empty() {
+                write!(formatter, " id=\"{}\"", object.name)?;
+            }
+            writeln!(formatter, " fill=\"{:?}\" d=\"{:?}\" />", paint.color, object.outline)?;
+        }
+        writeln!(formatter, "</svg>")?;
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PathObject {
     outline: Outline,
@@ -186,6 +208,11 @@ impl PathObject {
             name,
             kind,
         }
+    }
+
+    #[inline]
+    pub fn outline(&self) -> &Outline {
+        &self.outline
     }
 }
 

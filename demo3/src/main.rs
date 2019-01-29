@@ -90,23 +90,35 @@ fn main() {
     let window_size = Size2D::new(drawable_width, drawable_height);
 
     let mut base_scene = load_scene(&options, &window_size);
+    let mut dump_transformed_scene = false;
 
     while !exit {
-        let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
-        camera_position = camera_position + rotation.transform_point(camera_velocity);
-
-        let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.01, 100.0);
-        transform = transform.post_mul(&Transform3DF32::from_rotation(camera_yaw,
-                                                                      camera_pitch,
-                                                                      0.0));
-        transform = transform.post_mul(&Transform3DF32::from_translation(-camera_position.x(),
-                                                                         -camera_position.y(),
-                                                                         -camera_position.z()));
-        transform = transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0, 1.0 / 800.0, 1.0));
-        let perspective = Perspective::new(&transform, &window_size);
-
         let mut scene = base_scene.clone();
-        scene.apply_perspective(&perspective);
+
+        if options.run_in_3d {
+            let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
+            camera_position = camera_position + rotation.transform_point(camera_velocity);
+
+            let mut transform =
+                Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.0001, 100.0);
+            transform = transform.post_mul(&Transform3DF32::from_rotation(camera_yaw,
+                                                                          camera_pitch,
+                                                                          0.0));
+            transform =
+                transform.post_mul(&Transform3DF32::from_translation(-camera_position.x(),
+                                                                     -camera_position.y(),
+                                                                     -camera_position.z()));
+            transform =
+                transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0, 1.0 / 800.0, 1.0));
+
+            let perspective = Perspective::new(&transform, &window_size);
+            scene.apply_perspective(&perspective);
+        }
+
+        if dump_transformed_scene {
+            println!("{:?}", scene);
+            dump_transformed_scene = false;
+        }
 
         let built_scene = build_scene(&scene, &options);
 
@@ -139,6 +151,9 @@ fn main() {
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
                     camera_velocity.set_x(CAMERA_VELOCITY)
                 }
+                Event::KeyDown { keycode: Some(Keycode::T), .. } => {
+                    dump_transformed_scene = true;
+                }
                 Event::KeyUp { keycode: Some(Keycode::W), .. } |
                 Event::KeyUp { keycode: Some(Keycode::S), .. } => {
                     camera_velocity.set_z(0.0);
@@ -155,6 +170,7 @@ fn main() {
 
 struct Options {
     jobs: Option<usize>,
+    run_in_3d: bool,
     input_path: PathBuf,
 }
 
@@ -170,6 +186,12 @@ impl Options {
                     .help("Number of threads to use"),
             )
             .arg(
+                Arg::with_name("3d")
+                    .short("3")
+                    .long("3d")
+                    .help("Run in 3D"),
+            )
+            .arg(
                 Arg::with_name("INPUT")
                     .help("Path to the SVG file to render")
                     .required(true)
@@ -179,6 +201,7 @@ impl Options {
         let jobs: Option<usize> = matches
             .value_of("jobs")
             .map(|string| string.parse().unwrap());
+        let run_in_3d = matches.is_present("3d");
         let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
 
         // Set up Rayon.
@@ -188,7 +211,7 @@ impl Options {
         }
         thread_pool_builder.build_global().unwrap();
 
-        Options { jobs, input_path }
+        Options { jobs, run_in_3d, input_path }
     }
 }
 
