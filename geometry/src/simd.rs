@@ -645,46 +645,6 @@ mod x86 {
         }
     }
 
-    /*
-    // Two pairs of 32-bit floats
-
-    #[derive(Clone, Copy)]
-    pub struct F64x2x2(pub __m128d);
-
-    impl F64x2 {
-        // Shuffles
-
-        #[inline]
-        pub fn interleave(self, other: F64x2) -> (F64x2, F64x2) {
-            unsafe {
-                (
-                    F64x2(x86_64::_mm_unpacklo_pd(self.0, other.0)),
-                    F64x2(x86_64::_mm_unpackhi_pd(self.0, other.0)),
-                )
-            }
-        }
-
-        // Creates `<self[0], self[1], other[2], other[3]>`.
-        #[inline]
-        pub fn combine_low_high(self, other: F64x2) -> F64x2 {
-            unsafe {
-                F64x2(x86_64::_mm_shuffle_pd(self.0, other.0, 0b10))
-            }
-        }
-
-        // Casts these packed floats to 32-bit floats.
-        //
-        // NB: This is a pure bitcast and does no actual conversion; only use this if you know what
-        // you're doing.
-        #[inline]
-        pub fn as_f32x4(self) -> F32x4 {
-            unsafe {
-                F32x4(x86_64::_mm_castpd_ps(self.0))
-            }
-        }
-    }
-    */
-
     // 32-bit signed integers
 
     #[derive(Clone, Copy)]

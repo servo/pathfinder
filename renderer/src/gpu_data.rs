@@ -136,19 +136,17 @@ impl BuiltObject {
             .shuffle(shuffle_mask.as_u8x16())
             .as_i32x4();
 
+        // Unpack whole and fractional pixels.
         let px = LineSegmentU4((segment[1] | (segment[1] >> 12)) as u16);
         let subpx = LineSegmentU8(segment[0] as u32);
 
-        let tile_index = self.tile_coords_to_index(tile_x, tile_y);
-
-        /*
-        // TODO(pcwalton): Cull degenerate fills again.
         // Cull degenerate fills.
-        let (from_px, to_px) = (from.to_u8(), to.to_u8());
-        if from_px.x == to_px.x && from_subpx.x == to_subpx.x {
-            return
+        if (px.0 & 0xf) as u8 == ((px.0 >> 8) & 0xf) as u8 &&
+                (subpx.0 & 0xff) as u8 == ((subpx.0 >> 16) & 0xff) as u8 {
+            return;
         }
-        */
+
+        let tile_index = self.tile_coords_to_index(tile_x, tile_y);
 
         self.fills.push(FillObjectPrimitive {
             px,

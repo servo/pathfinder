@@ -50,8 +50,5 @@ void main() {
     vFrom = from - position;
     vTo = to - position;
 
-    if (!(abs(from.x - to.x) > 0.1) || !(abs(uTileSize.y - min(from.y, to.y)) > 0.1))
-        gl_Position = vec4(0.0);
-    else
-        gl_Position = vec4((tileOrigin + position) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
+    gl_Position = vec4((tileOrigin + position) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
 }
