@@ -121,8 +121,8 @@ impl<'o, 'z> Tiler<'o, 'z> {
         let mut last_segment_x = -9999.0;
 
         let tile_top = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
-        //println!("---------- tile y {}({}) ----------", tile_y, tile_top);
-        //println!("old active edges: {:#?}", self.old_active_edges);
+        /*println!("---------- tile y {}({}) ----------", tile_y, tile_top);
+        println!("old active edges: {:#?}", self.old_active_edges);*/
 
         for mut active_edge in self.old_active_edges.drain(..) {
             // Determine x-intercept and winding.
@@ -134,8 +134,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
                     -1
                 };
 
-            /*
-            println!("tile Y {}({}): segment_x={} edge_winding={} current_tile_x={} \
+            /*println!("tile Y {}({}): segment_x={} edge_winding={} current_tile_x={} \
                       current_subtile_x={} current_winding={}",
                      tile_y,
                      tile_top,
@@ -325,6 +324,7 @@ fn process_active_segment(
     //println!("... process_active_segment({:#?})", active_edge);
     active_edge.process(built_object, tile_y);
     if !active_edge.segment.is_none() {
+        //println!("... ... pushing resulting active edge: {:#?}", active_edge);
         active_edges.push(active_edge);
     }
 }
@@ -374,7 +374,7 @@ impl ActiveEdge {
 
     fn process(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
-        // println!("process_active_edge({:#?}, tile_y={}({}))", self, tile_y, tile_bottom);
+        //println!("process_active_edge({:#?}, tile_y={}({}))", self, tile_y, tile_bottom);
 
         let mut segment = self.segment;
         let winding = segment.baseline.y_winding();

@@ -116,7 +116,10 @@ impl LineSegmentF32 {
     #[inline]
     pub fn split_at_y(&self, y: f32) -> (LineSegmentF32, LineSegmentF32) {
         let (min_part, max_part) = self.split(self.solve_t_for_y(y));
-        if min_part.from_y() < max_part.from_y() {
+
+        // Make sure we compare `from_y` and `to_y` to properly handle the case in which one of the
+        // two segments is zero-length.
+        if min_part.from_y() < max_part.to_y() {
             (min_part, max_part)
         } else {
             (max_part, min_part)

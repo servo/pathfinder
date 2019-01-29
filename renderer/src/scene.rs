@@ -102,6 +102,12 @@ impl Scene {
             .collect()
     }
 
+    pub fn prepare(&mut self) {
+        for object in &mut self.objects {
+            object.outline.make_monotonic();
+        }
+    }
+
     pub fn transform(&mut self, transform: &Transform2DF32) {
         let mut bounds = Rect::zero();
         for (object_index, object) in self.objects.iter_mut().enumerate() {

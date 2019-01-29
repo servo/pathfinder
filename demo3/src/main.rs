@@ -92,6 +92,8 @@ fn main() {
     let mut base_scene = load_scene(&options, &window_size);
     let mut dump_transformed_scene = false;
 
+    let mut events = vec![];
+
     while !exit {
         let mut scene = base_scene.clone();
 
@@ -113,6 +115,8 @@ fn main() {
 
             let perspective = Perspective::new(&transform, &window_size);
             scene.apply_perspective(&perspective);
+        } else {
+            scene.prepare();
         }
 
         if dump_transformed_scene {
@@ -130,39 +134,49 @@ fn main() {
 
         window.gl_swap_window();
 
-        for event in sdl_event_pump.poll_iter() {
-            match event {
-                Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                    exit = true;
+        let mut event_handled = false;
+        while !event_handled {
+            events.push(sdl_event_pump.wait_event());
+            for event in sdl_event_pump.poll_iter() {
+                events.push(event);
+            }
+
+            for event in events.drain(..) {
+                match event {
+                    Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                        exit = true;
+                    }
+                    Event::MouseMotion { xrel, yrel, .. } => {
+                        camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                        camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                    }
+                    Event::KeyDown { keycode: Some(Keycode::W), .. } => {
+                        camera_velocity.set_z(-CAMERA_VELOCITY)
+                    }
+                    Event::KeyDown { keycode: Some(Keycode::S), .. } => {
+                        camera_velocity.set_z(CAMERA_VELOCITY)
+                    }
+                    Event::KeyDown { keycode: Some(Keycode::A), .. } => {
+                        camera_velocity.set_x(-CAMERA_VELOCITY)
+                    }
+                    Event::KeyDown { keycode: Some(Keycode::D), .. } => {
+                        camera_velocity.set_x(CAMERA_VELOCITY)
+                    }
+                    Event::KeyDown { keycode: Some(Keycode::T), .. } => {
+                        dump_transformed_scene = true;
+                    }
+                    Event::KeyUp { keycode: Some(Keycode::W), .. } |
+                    Event::KeyUp { keycode: Some(Keycode::S), .. } => {
+                        camera_velocity.set_z(0.0);
+                    }
+                    Event::KeyUp { keycode: Some(Keycode::A), .. } |
+                    Event::KeyUp { keycode: Some(Keycode::D), .. } => {
+                        camera_velocity.set_x(0.0);
+                    }
+                    _ => continue,
                 }
-                Event::MouseMotion { xrel, yrel, .. } => {
-                    camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                    camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                }
-                Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-                    camera_velocity.set_z(-CAMERA_VELOCITY)
-                }
-                Event::KeyDown { keycode: Some(Keycode::S), .. } => {
-                    camera_velocity.set_z(CAMERA_VELOCITY)
-                }
-                Event::KeyDown { keycode: Some(Keycode::A), .. } => {
-                    camera_velocity.set_x(-CAMERA_VELOCITY)
-                }
-                Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-                    camera_velocity.set_x(CAMERA_VELOCITY)
-                }
-                Event::KeyDown { keycode: Some(Keycode::T), .. } => {
-                    dump_transformed_scene = true;
-                }
-                Event::KeyUp { keycode: Some(Keycode::W), .. } |
-                Event::KeyUp { keycode: Some(Keycode::S), .. } => {
-                    camera_velocity.set_z(0.0);
-                }
-                Event::KeyUp { keycode: Some(Keycode::A), .. } |
-                Event::KeyUp { keycode: Some(Keycode::D), .. } => {
-                    camera_velocity.set_x(0.0);
-                }
-                _ => {}
+
+                event_handled = true;
             }
         }
     }

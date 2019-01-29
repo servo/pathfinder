@@ -102,6 +102,11 @@ impl Outline {
     }
 
     #[inline]
+    pub fn make_monotonic(&mut self) {
+        self.contours.iter_mut().for_each(|contour| contour.make_monotonic());
+    }
+
+    #[inline]
     pub fn transform(&mut self, transform: &Transform2DF32) {
         self.contours.iter_mut().for_each(|contour| contour.transform(transform));
         self.bounds = transform.transform_rect(&self.bounds);
