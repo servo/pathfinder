@@ -136,7 +136,9 @@ fn main() {
 
         let mut event_handled = false;
         while !event_handled {
-            events.push(sdl_event_pump.wait_event());
+            if camera_velocity.is_zero() {
+                events.push(sdl_event_pump.wait_event());
+            }
             for event in sdl_event_pump.poll_iter() {
                 events.push(event);
             }
@@ -176,6 +178,11 @@ fn main() {
                     _ => continue,
                 }
 
+                event_handled = true;
+            }
+
+            // FIXME(pcwalton): This is so ugly!
+            if !camera_velocity.is_zero() {
                 event_handled = true;
             }
         }

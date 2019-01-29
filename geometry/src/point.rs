@@ -238,6 +238,15 @@ impl Point4DF32 {
     pub fn approx_eq(&self, other: &Point4DF32, epsilon: f32) -> bool {
         self.0.approx_eq(other.0, epsilon)
     }
+
+    /// Checks to see whether this *homogeneous* coordinate equals zero.
+    ///
+    /// Note that since this treats the coordinate as a homogeneous coordinate, the `w` is ignored.
+    // TODO(pcwalton): Optimize with SIMD.
+    #[inline]
+    pub fn is_zero(self) -> bool {
+        self.x() == 0.0 && self.y() == 0.0 && self.z() == 0.0
+    }
 }
 
 impl Add<Point4DF32> for Point4DF32 {
