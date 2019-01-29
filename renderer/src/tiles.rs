@@ -18,6 +18,7 @@ use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::segment::Segment;
 use pathfinder_geometry::util;
+use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::mem;
 
@@ -405,40 +406,46 @@ impl ActiveEdge {
             }
         }
 
+        let mut oriented_segment = segment.orient(winding);
         loop {
-            let rest_segment = match segment
-                .orient(winding)
-                .as_cubic_segment()
-                .flatten_once(FLATTENING_TOLERANCE)
-            {
-                None => {
-                    let line_segment = segment.baseline;
-                    self.segment =
-                        match self.process_line_segment(&line_segment, built_object, tile_y) {
-                            Some(ref lower_part) => Segment::line(lower_part),
-                            None => Segment::none(),
-                        };
-                    return;
-                }
-                Some(rest_segment) => rest_segment.orient(winding),
-            };
+            let mut split_t = 1.0;
+            let mut before_segment = oriented_segment;
+            let mut after_segment = None;
 
-            debug_assert!(segment.baseline.min_y() <= tile_bottom);
-
-            let line_segment = LineSegmentF32::new(
-                &segment.baseline.upper_point(),
-                &rest_segment.baseline.upper_point(),
-            )
-            .orient(winding);
-            if self
-                .process_line_segment(&line_segment, built_object, tile_y)
-                .is_some()
-            {
-                self.segment = rest_segment;
-                return;
+            while !before_segment.as_cubic_segment().is_flat(FLATTENING_TOLERANCE) {
+                let next_t = 0.5 * split_t;
+                let (before, after) = oriented_segment.as_cubic_segment().split(next_t);
+                before_segment = before;
+                after_segment = Some(after);
+                split_t = next_t;
             }
 
-            segment = rest_segment;
+            /*
+            println!("... tile_y={} winding={} segment={:?} t={} before_segment={:?} after_segment={:?}",
+                     tile_y,
+                     winding,
+                     segment,
+                     split_t,
+                     before_segment,
+                     after_segment);
+                     */
+
+            let line = before_segment.baseline.orient(winding);
+            match self.process_line_segment(&line, built_object, tile_y) {
+                Some(ref lower_part) if split_t == 1.0 => {
+                    self.segment = Segment::line(&lower_part);
+                    return;
+                }
+                None if split_t == 1.0 => {
+                    self.segment = Segment::none();
+                    return;
+                }
+                Some(_) => {
+                    self.segment = after_segment.unwrap().orient(winding);
+                    return;
+                }
+                None => oriented_segment = after_segment.unwrap(),
+            }
         }
     }
 

@@ -175,38 +175,27 @@ bitflags! {
 pub struct CubicSegment<'s>(&'s Segment);
 
 impl<'s> CubicSegment<'s> {
+    // See Kaspar Fischer, "Piecewise Linear Approximation of Bézier Curves", 2000.
+    #[inline]
+    pub fn is_flat(self, tolerance: f32) -> bool {
+        let mut uv = F32x4::splat(3.0) * self.0.ctrl.0 -
+            self.0.baseline.0 - self.0.baseline.0 -
+            self.0.baseline.reversed().0;
+        uv = uv * uv;
+        uv = uv.max(uv.zwxy());
+        uv[0] + uv[1] <= 16.0 * tolerance * tolerance
+    }
+
+    /*
     #[inline]
     pub fn flatten_once(self, tolerance: f32) -> Option<Segment> {
-        let (baseline, ctrl) = (self.0.baseline.0, self.0.ctrl.0);
-        let from_from = baseline.xyxy();
-        let v0102 = ctrl - from_from;
-
-        //      v01.x   v01.y   v02.x v02.y
-        //    * v01.x   v01.y   v01.y v01.x
-        //    -------------------------
-        //      v01.x^2 v01.y^2 ad    bc
-        //         |       |     |     |
-        //         +-------+     +-----+
-        //             +            -
-        //         v01 len^2   determinant
-        let products = v0102 * v0102.xyyx();
-
-        let det = products[2] - products[3];
-        if det == 0.0 {
-            return None;
+        if self.is_flat(tolerance) {
+            None
+        } else {
+            Some(self.split_after(0.5))
         }
-
-        let s2inv = (products[0] + products[1]).sqrt() / det;
-
-        let t = 2.0 * ((tolerance / 3.0) * s2inv.abs()).sqrt();
-        if t >= 1.0 - EPSILON || t == 0.0 {
-            return None;
-        }
-
-        return Some(self.split_after(t));
-
-        const EPSILON: f32 = 0.005;
     }
+    */
 
     #[inline]
     pub fn split(self, t: f32) -> (Segment, Segment) {
