@@ -13,7 +13,7 @@ extern crate serde_derive;
 
 use crate::debug_text::DebugRenderer;
 use crate::device::{Buffer, BufferTarget, BufferUploadMode, Framebuffer, Program, Texture};
-use crate::device::{Uniform, VertexAttr};
+use crate::device::{TimerQuery, Uniform, VertexAttr};
 use clap::{App, Arg};
 use euclid::{Point2D, Rect, Size2D};
 use gl::types::{GLfloat, GLint, GLuint};
@@ -31,8 +31,9 @@ use rayon::ThreadPoolBuilder;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
+use std::collections::VecDeque;
 use std::f32::consts::FRAC_PI_4;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::path::PathBuf;
 use usvg::{Options as UsvgOptions, Tree};
 
@@ -152,7 +153,8 @@ fn main() {
             gl::Clear(gl::COLOR_BUFFER_BIT);
             renderer.render_scene(&built_scene);
 
-            renderer.debug_renderer.draw(elapsed_prepare_time, elapsed_tile_time);
+            let rendering_time = renderer.shift_timer_query();
+            renderer.debug_renderer.draw(elapsed_prepare_time, elapsed_tile_time, rendering_time);
         }
 
         window.gl_swap_window();
@@ -311,6 +313,9 @@ struct Renderer {
     mask_framebuffer: Framebuffer,
     fill_colors_texture: Texture,
 
+    pending_timer_queries: VecDeque<TimerQuery>,
+    free_timer_queries: Vec<TimerQuery>,
+
     debug_renderer: DebugRenderer,
 
     main_framebuffer_size: Size2D<u32>,
@@ -355,6 +360,9 @@ impl Renderer {
             mask_framebuffer,
             fill_colors_texture,
 
+            pending_timer_queries: VecDeque::new(),
+            free_timer_queries: vec![],
+
             debug_renderer,
 
             main_framebuffer_size: *main_framebuffer_size,
@@ -362,6 +370,9 @@ impl Renderer {
     }
 
     fn render_scene(&mut self, built_scene: &BuiltScene) {
+        let timer_query = self.free_timer_queries.pop().unwrap_or_else(|| TimerQuery::new());
+        timer_query.begin();
+
         self.upload_shaders(&built_scene.shaders);
 
         self.upload_solid_tiles(&built_scene.solid_tiles);
@@ -372,6 +383,20 @@ impl Renderer {
             self.draw_batch_fills(batch);
             self.draw_batch_mask_tiles(batch);
         }
+
+        timer_query.end();
+        self.pending_timer_queries.push_back(timer_query);
+    }
+
+    fn shift_timer_query(&mut self) -> Option<Duration> {
+        let query = self.pending_timer_queries.front()?;
+        if !query.is_available() {
+            return None
+        }
+        let query = self.pending_timer_queries.pop_front().unwrap();
+        let result = Duration::from_nanos(query.get());
+        self.free_timer_queries.push(query);
+        Some(result)
     }
 
     fn upload_shaders(&mut self, shaders: &[ObjectShader]) {

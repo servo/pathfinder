@@ -373,3 +373,59 @@ impl Texture {
         }
     }
 }
+
+pub struct TimerQuery {
+    gl_query: GLuint,
+}
+
+impl Drop for TimerQuery {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteQueries(1, &mut self.gl_query);
+        }
+    }
+}
+
+impl TimerQuery {
+    #[inline]
+    pub fn new() -> TimerQuery {
+        let mut query = TimerQuery { gl_query: 0 };
+        unsafe {
+            gl::GenQueries(1, &mut query.gl_query);
+        }
+        query
+    }
+
+    #[inline]
+    pub fn begin(&self) {
+        unsafe {
+            gl::BeginQuery(gl::TIME_ELAPSED, self.gl_query);
+        }
+    }
+
+    #[inline]
+    pub fn end(&self) {
+        unsafe {
+            gl::EndQuery(gl::TIME_ELAPSED);
+        }
+    }
+
+    #[inline]
+    pub fn is_available(&self) -> bool {
+        unsafe {
+            let mut result = 0;
+            gl::GetQueryObjectiv(self.gl_query, gl::QUERY_RESULT_AVAILABLE, &mut result);
+            result != gl::FALSE as GLint
+        }
+    }
+
+    #[inline]
+    pub fn get(&self) -> u64 {
+        unsafe {
+            let mut result = 0;
+            gl::GetQueryObjectui64v(self.gl_query, gl::QUERY_RESULT, &mut result);
+            result
+        }
+    }
+}
