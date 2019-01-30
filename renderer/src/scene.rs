@@ -18,10 +18,11 @@ use euclid::Rect;
 use hashbrown::HashMap;
 use pathfinder_geometry::clip::PolygonClipper3D;
 use pathfinder_geometry::outline::Outline;
-use pathfinder_geometry::point::Point3DF32;
+use pathfinder_geometry::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform::Transform2DF32;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator};
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone)]
@@ -102,6 +103,19 @@ impl Scene {
             .collect()
     }
 
+    fn update_bounds(&mut self) {
+        let mut bounds = Rect::zero();
+        for (object_index, object) in self.objects.iter_mut().enumerate() {
+            if object_index == 0 {
+                bounds = *object.outline.bounds();
+            } else {
+                bounds = bounds.union(object.outline.bounds());
+            }
+        }
+
+        self.bounds = bounds;
+    }
+
     pub fn prepare(&mut self) {
         for object in &mut self.objects {
             object.outline.make_monotonic();
@@ -109,46 +123,45 @@ impl Scene {
     }
 
     pub fn transform(&mut self, transform: &Transform2DF32) {
-        let mut bounds = Rect::zero();
-        for (object_index, object) in self.objects.iter_mut().enumerate() {
+        for object in &mut self.objects {
             object.outline.transform(transform);
             object.outline.clip_against_rect(&self.view_box);
-
-            if object_index == 0 {
-                bounds = *object.outline.bounds();
-            } else {
-                bounds = bounds.union(object.outline.bounds());
-            }
         }
 
-        //println!("new bounds={:?}", bounds);
-        self.bounds = bounds;
+        self.update_bounds();
     }
 
-    pub fn apply_perspective(&mut self, perspective: &Perspective) {
+    fn apply_perspective_to_quad(&self, perspective: &Perspective) -> Vec<Point2DF32> {
         let quad = self.clip_bounding_quad_with_perspective(perspective);
-        //println!("bounds={:?} PRE-transform quad={:?}", self.bounds, quad);
         let inverse_transform = perspective.transform.inverse();
-        let quad: Vec<_> = quad.into_iter().map(|point| {
-            inverse_transform.transform_point_3d(point).to_2d()
-        }).collect();
-        //println!("bounds={:?} POST-transform quad={:?}", self.bounds, quad);
+        quad.into_iter()
+            .map(|point| inverse_transform.transform_point_3d(point).to_2d())
+            .collect()
+    }
 
-        let mut bounds = Rect::zero();
-        for (object_index, object) in self.objects.iter_mut().enumerate() {
+    pub fn apply_perspective_sequentially(&mut self, perspective: &Perspective) {
+        let quad = self.apply_perspective_to_quad(perspective);
+
+        for object in &mut self.objects {
             object.outline.clip_against_polygon(&quad);
             object.outline.apply_perspective(perspective);
             object.outline.clip_against_rect(&self.view_box);
-
-            if object_index == 0 {
-                bounds = *object.outline.bounds();
-            } else {
-                bounds = bounds.union(object.outline.bounds());
-            }
         }
 
-        //println!("new bounds={:?}", bounds);
-        self.bounds = bounds;
+        self.update_bounds();
+    }
+
+    pub fn apply_perspective(&mut self, perspective: &Perspective) {
+        let quad = self.apply_perspective_to_quad(perspective);
+        let view_box = &self.view_box;
+
+        self.objects.par_iter_mut().for_each(|object| {
+            object.outline.clip_against_polygon(&quad);
+            object.outline.apply_perspective(perspective);
+            object.outline.clip_against_rect(&view_box);
+        });
+
+        self.update_bounds();
     }
 
     fn clip_bounding_quad_with_perspective(&self, perspective: &Perspective) -> Vec<Point3DF32> {
