@@ -18,7 +18,6 @@ use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::segment::Segment;
 use pathfinder_geometry::util;
-use smallvec::SmallVec;
 use std::cmp::Ordering;
 use std::mem;
 
@@ -92,9 +91,14 @@ impl<'o, 'z> Tiler<'o, 'z> {
         // Add new active edges.
         let strip_max_y = ((i32::from(strip_origin_y) + 1) * TILE_HEIGHT as i32) as f32;
         while let Some(queued_endpoint) = self.point_queue.peek() {
-            if queued_endpoint.y >= strip_max_y {
+            // We're done when we see an endpoint that belongs to the next tile.
+            //
+            // Note that this test must be `>`, not `>=`, in order to make sure we don't miss
+            // active edges that lie precisely on the tile boundary.
+            if queued_endpoint.y > strip_max_y {
                 break;
             }
+
             self.add_new_active_edge(strip_origin_y);
         }
     }
@@ -121,8 +125,8 @@ impl<'o, 'z> Tiler<'o, 'z> {
         let mut last_segment_x = -9999.0;
 
         let tile_top = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
-        /*println!("---------- tile y {}({}) ----------", tile_y, tile_top);
-        println!("old active edges: {:#?}", self.old_active_edges);*/
+        //println!("---------- tile y {}({}) ----------", tile_y, tile_top);
+        //println!("old active edges: {:#?}", self.old_active_edges);
 
         for mut active_edge in self.old_active_edges.drain(..) {
             // Determine x-intercept and winding.

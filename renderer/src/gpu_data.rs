@@ -115,6 +115,7 @@ impl BuiltObject {
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
     fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i16, tile_y: i16) {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
+
         let mut segment = (segment.0 * F32x4::splat(256.0)).to_i32x4();
 
         let tile_origin_x = (TILE_WIDTH as i32) * 256 * (tile_x as i32);
@@ -143,10 +144,13 @@ impl BuiltObject {
         // Cull degenerate fills.
         if (px.0 & 0xf) as u8 == ((px.0 >> 8) & 0xf) as u8 &&
                 (subpx.0 & 0xff) as u8 == ((subpx.0 >> 16) & 0xff) as u8 {
+            //println!("... ... culling!");
             return;
         }
 
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
+
+        //println!("... ... OK, pushing");
 
         self.fills.push(FillObjectPrimitive {
             px,
@@ -175,13 +179,12 @@ impl BuiltObject {
             LineSegmentF32::new(&right, &left)
         };
 
-        /*
-        println!("... emitting active fill {} -> {} winding {} @ tile {}",
+        /*println!("... emitting active fill {} -> {} winding {} @ tile {},{}",
                  left.x(),
                  right.x(),
                  winding,
-                 tile_x);
-        */
+                 tile_x,
+                 tile_y);*/
 
         while winding != 0 {
             self.add_fill(&segment, tile_x, tile_y);
