@@ -172,7 +172,7 @@ bitflags! {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct CubicSegment<'s>(&'s Segment);
+pub struct CubicSegment<'s>(pub &'s Segment);
 
 impl<'s> CubicSegment<'s> {
     // See Kaspar Fischer, "Piecewise Linear Approximation of Bézier Curves", 2000.
@@ -199,39 +199,59 @@ impl<'s> CubicSegment<'s> {
 
     #[inline]
     pub fn split(self, t: f32) -> (Segment, Segment) {
-        let tttt = F32x4::splat(t);
+        let (baseline0, ctrl0, baseline1, ctrl1);
+        if t <= 0.0 {
+            let from = &self.0.baseline.from();
+            baseline0 = LineSegmentF32::new(from, from);
+            ctrl0 = LineSegmentF32::new(from, from);
+            baseline1 = self.0.baseline;
+            ctrl1 = self.0.ctrl;
+        } else if t >= 1.0 {
+            let to = &self.0.baseline.to();
+            baseline0 = self.0.baseline;
+            ctrl0 = self.0.ctrl;
+            baseline1 = LineSegmentF32::new(to, to);
+            ctrl1 = LineSegmentF32::new(to, to);
+        } else {
+            let tttt = F32x4::splat(t);
 
-        let (p0p3, p1p2) = (self.0.baseline.0, self.0.ctrl.0);
-        let p0p1 = p0p3.combine_axaybxby(p1p2);
+            let (p0p3, p1p2) = (self.0.baseline.0, self.0.ctrl.0);
+            let p0p1 = p0p3.combine_axaybxby(p1p2);
 
-        // p01 = lerp(p0, p1, t), p12 = lerp(p1, p2, t), p23 = lerp(p2, p3, t)
-        let p01p12 = p0p1 + tttt * (p1p2 - p0p1);
-        let pxxp23 = p1p2 + tttt * (p0p3 - p1p2);
-        let p12p23 = p01p12.combine_azawbzbw(pxxp23);
+            // p01 = lerp(p0, p1, t), p12 = lerp(p1, p2, t), p23 = lerp(p2, p3, t)
+            let p01p12 = p0p1 + tttt * (p1p2 - p0p1);
+            let pxxp23 = p1p2 + tttt * (p0p3 - p1p2);
+            let p12p23 = p01p12.combine_azawbzbw(pxxp23);
 
-        // p012 = lerp(p01, p12, t), p123 = lerp(p12, p23, t)
-        let p012p123 = p01p12 + tttt * (p12p23 - p01p12);
-        let p123 = p012p123.zwzw();
+            // p012 = lerp(p01, p12, t), p123 = lerp(p12, p23, t)
+            let p012p123 = p01p12 + tttt * (p12p23 - p01p12);
+            let p123 = p012p123.zwzw();
 
-        // p0123 = lerp(p012, p123, t)
-        let p0123 = p012p123 + tttt * (p123 - p012p123);
+            // p0123 = lerp(p012, p123, t)
+            let p0123 = p012p123 + tttt * (p123 - p012p123);
 
-        let baseline0 = p0p3.combine_axaybxby(p0123);
-        let ctrl0 = p01p12.combine_axaybxby(p012p123);
-        let baseline1 = p0123.combine_axaybzbw(p0p3);
-        let ctrl1 = p012p123.combine_azawbzbw(p12p23);
+            baseline0 = LineSegmentF32(p0p3.combine_axaybxby(p0123));
+            ctrl0 = LineSegmentF32(p01p12.combine_axaybxby(p012p123));
+            baseline1 = LineSegmentF32(p0123.combine_axaybzbw(p0p3));
+            ctrl1 = LineSegmentF32(p012p123.combine_azawbzbw(p12p23));
+        }
 
         (Segment {
-            baseline: LineSegmentF32(baseline0),
-            ctrl: LineSegmentF32(ctrl0),
+            baseline: baseline0,
+            ctrl: ctrl0,
             kind: SegmentKind::Cubic,
             flags: self.0.flags & SegmentFlags::FIRST_IN_SUBPATH,
         }, Segment {
-            baseline: LineSegmentF32(baseline1),
-            ctrl: LineSegmentF32(ctrl1),
+            baseline: baseline1,
+            ctrl: ctrl1,
             kind: SegmentKind::Cubic,
             flags: self.0.flags & SegmentFlags::CLOSES_SUBPATH,
         })
+    }
+
+    #[inline]
+    pub fn split_before(self, t: f32) -> Segment {
+        self.split(t).0
     }
 
     #[inline]

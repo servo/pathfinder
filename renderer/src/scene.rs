@@ -118,6 +118,7 @@ impl Scene {
 
     pub fn prepare(&mut self) {
         for object in &mut self.objects {
+            object.outline.clip_against_rect(&self.view_box);
             object.outline.make_monotonic();
         }
     }
@@ -126,6 +127,7 @@ impl Scene {
         for object in &mut self.objects {
             object.outline.transform(transform);
             object.outline.clip_against_rect(&self.view_box);
+            object.outline.make_monotonic();
         }
 
         self.update_bounds();
@@ -146,6 +148,7 @@ impl Scene {
             object.outline.clip_against_polygon(&quad);
             object.outline.apply_perspective(perspective);
             object.outline.clip_against_rect(&self.view_box);
+            object.outline.make_monotonic();
         }
 
         self.update_bounds();
@@ -159,6 +162,7 @@ impl Scene {
             object.outline.clip_against_polygon(&quad);
             object.outline.apply_perspective(perspective);
             object.outline.clip_against_rect(&view_box);
+            object.outline.make_monotonic();
         });
 
         self.update_bounds();

@@ -320,9 +320,6 @@ impl Contour {
             *point = transform.transform_point(point);
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
-
-        // TODO(pcwalton): Skip this step if the transform is rectilinear.
-        self.make_monotonic();
     }
 
     #[inline]
@@ -331,8 +328,6 @@ impl Contour {
             *point = perspective.transform_point_2d(point);
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
-
-        self.make_monotonic();
     }
 
     #[inline]

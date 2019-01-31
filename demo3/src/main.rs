@@ -24,8 +24,10 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
 use std::f32::consts::FRAC_PI_4;
-use std::time::Instant;
+use std::panic;
 use std::path::PathBuf;
+use std::process;
+use std::time::Instant;
 use usvg::{Options as UsvgOptions, Tree};
 
 #[global_allocator]
@@ -259,9 +261,20 @@ fn load_scene(options: &Options, window_size: &Size2D<u32>) -> Scene {
 fn build_scene(scene: &Scene, options: &Options) -> BuiltScene {
     let z_buffer = ZBuffer::new(&scene.view_box);
 
-    let built_objects = match options.jobs {
-        Some(1) => scene.build_objects_sequentially(&z_buffer),
-        _ => scene.build_objects(&z_buffer),
+    let built_objects = panic::catch_unwind(|| {
+         match options.jobs {
+            Some(1) => scene.build_objects_sequentially(&z_buffer),
+            _ => scene.build_objects(&z_buffer),
+        }
+    });
+
+    let built_objects = match built_objects {
+        Ok(built_objects) => built_objects,
+        Err(_) => {
+            eprintln!("Scene building crashed! Dumping scene:");
+            println!("{:?}", scene);
+            process::exit(1);
+        }
     };
 
     let mut built_scene = BuiltScene::new(&scene.view_box);

@@ -11,8 +11,7 @@
 use crate::line_segment::LineSegmentF32;
 use crate::outline::{Contour, PointFlags};
 use crate::point::{Point2DF32, Point3DF32};
-use crate::segment::Segment;
-use crate::simd::F32x4;
+use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
 use arrayvec::ArrayVec;
 use euclid::Rect;
@@ -198,72 +197,37 @@ impl Edge {
                                -> Option<f32> {
         /*println!("... intersect_cubic_segment({:?}, {:?}, t=({}, {}))",
                  self, segment, t_min, t_max);*/
-        let cubic_segment = segment.as_cubic_segment();
+        let mut segment = segment.as_cubic_segment().split_after(t_min);
+        segment = segment.as_cubic_segment().split_before(t_max / (1.0 - t_min));
+
+        if !self.intersects_cubic_segment_hull(segment.as_cubic_segment()) {
+            return None
+        }
+
         loop {
             let t_mid = lerp(t_min, t_max, 0.5);
             if t_max - t_min < 0.00001 {
                 return Some(t_mid);
             }
 
-            let min_sign = self.point_is_inside(&cubic_segment.sample(t_min));
-            let mid_sign = self.point_is_inside(&cubic_segment.sample(t_mid));
-            let max_sign = self.point_is_inside(&cubic_segment.sample(t_max));
-            /*println!("... ... ({}, {}, {}) ({}, {}, {})",
-                     t_min, t_mid, t_max,
-                     min_sign, mid_sign, max_sign);*/
-
-            match (min_sign == mid_sign, max_sign == mid_sign) {
-                (true, false) => t_min = t_mid,
-                (false, true) => t_max = t_mid,
-                _ => return None,
+            let (prev_segment, next_segment) = segment.as_cubic_segment().split(0.5);
+            if self.intersects_cubic_segment_hull(prev_segment.as_cubic_segment()) {
+                t_max = t_mid;
+                segment = prev_segment;
+            } else if self.intersects_cubic_segment_hull(next_segment.as_cubic_segment()) {
+                t_min = t_mid;
+                segment = next_segment;
+            } else {
+                return None;
             }
         }
     }
 
-    fn fixup_clipped_segments(&self, segment: &(Segment, Segment)) -> Option<(Segment, Segment)> {
-        let (mut prev, mut next) = *segment;
-
-        let point = prev.baseline.to();
-
-        let line_coords = self.0.line_coords();
-        let (a, b, c) = (line_coords[0], line_coords[1], line_coords[2]);
-        let denom = 1.0 / (a * a + b * b);
-        let factor = b * point.x() - a * point.y();
-        let snapped = Point2DF32::new(b * factor - a * c, a * -factor - b * c) *
-            Point2DF32::splat(denom);
-
-        prev.baseline.set_to(&snapped);
-        next.baseline.set_from(&snapped);
-
-        // FIXME(pcwalton): Do this more efficiently...
-        // FIXME(pcwalton): Remove duplication!
-        if self.0.from_x() == self.0.to_x() {
-            let x = self.0.from_x();
-            prev.baseline.set_to_x(x);
-            next.baseline.set_from_x(x);
-        }
-        if self.0.from_y() == self.0.to_y() {
-            let y = self.0.from_y();
-            prev.baseline.set_to_y(y);
-            next.baseline.set_from_y(y);
-        }
-
-        if prev.is_tiny() {
-            return None
-        }
-
-        /*match *self {
-            Edge::Left(x) | Edge::Right(x) => {
-                before.baseline.set_to_x(x);
-                after.baseline.set_from_x(x);
-            }
-            Edge::Top(y) | Edge::Bottom(y) => {
-                before.baseline.set_to_y(y);
-                after.baseline.set_from_y(y);
-            }
-        }*/
-
-        Some((prev, next))
+    fn intersects_cubic_segment_hull(&self, cubic_segment: CubicSegment) -> bool {
+        let inside = self.point_is_inside(&cubic_segment.0.baseline.from());
+        inside != self.point_is_inside(&cubic_segment.0.ctrl.from()) ||
+            inside != self.point_is_inside(&cubic_segment.0.ctrl.to()) ||
+            inside != self.point_is_inside(&cubic_segment.0.baseline.to())
     }
 }
 
