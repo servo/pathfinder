@@ -1,4 +1,4 @@
-// pathfinder/demo3/src/debug_text.rs
+// pathfinder/gl/src/debug.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Minimal text rendering.
+//! A debug overlay.
 //!
 //! We don't render the demo UI text using Pathfinder itself so that we can use the debug UI to
 //! debug Pathfinder if it's totally busted.
