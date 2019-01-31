@@ -181,7 +181,8 @@ impl Transform3DF32 {
 
     #[inline]
     pub fn transform_point_3d(&self, point: Point3DF32) -> Point3DF32 {
-        self.transform_point(point.to_4d()).perspective_divide()
+        let point4d = self.transform_point(point.to_4d());
+        point4d.perspective_divide()
     }
 
     #[inline]

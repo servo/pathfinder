@@ -10,7 +10,7 @@
 
 use crate::line_segment::LineSegmentF32;
 use crate::outline::{Contour, PointFlags};
-use crate::point::{Point2DF32, Point3DF32};
+use crate::point::{Point2DF32, Point4DF32};
 use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
 use arrayvec::ArrayVec;
@@ -268,18 +268,6 @@ impl ContourClipper {
             prev = next;
         }
 
-        /*
-        let top = Point2DF32::new(lerp(self.clip_rect.origin.x, self.clip_rect.max_x(), 0.5),
-                                  self.clip_rect.origin.y);
-        self.clip_against(Edge(LineSegmentF32::new(&Point2DF32::from_euclid(self.clip_rect
-                                                                                .bottom_left()),
-                                                   &top)));
-        self.clip_against(Edge(LineSegmentF32::new(&top,
-                                                   &Point2DF32::from_euclid(self.clip_rect
-                                                                                .bottom_right()))));
-        self.clip_against(Edge::bottom(&self.clip_rect));
-        */
-
         self.contour
     }
 
@@ -335,27 +323,12 @@ impl ContourClipper {
             if let Some(last_position) = contour.last_position() {
                 if last_position != segment.baseline.from() {
                     // Add a line to join up segments.
-                    //check_point(&segment.baseline.from(), edge);
                     contour.push_point(segment.baseline.from(), PointFlags::empty());
                 }
             }
 
-            //check_point(&segment.baseline.to(), edge);
             contour.push_segment(*segment);
         }
-
-        /*
-        fn check_point(point: &Point2DF32, edge: Edge) {
-            match edge {
-                Edge::Left(x) if point.x() + 0.1 >= x => return,
-                Edge::Top(y) if point.y() + 0.1 >= y => return,
-                Edge::Right(x) if point.x() - 0.1 <= x => return,
-                Edge::Bottom(y) if point.y() - 0.1 <= y => return,
-                _ => {}
-            }
-            panic!("point {:?} outside edge {:?}", point, edge);
-        }
-        */
     }
 }
 
@@ -368,24 +341,31 @@ enum EdgeRelativeLocation {
 // 3D quad clipping
 
 pub struct PolygonClipper3D {
-    subject: Vec<Point3DF32>,
+    subject: Vec<Point4DF32>,
 }
 
 impl PolygonClipper3D {
     #[inline]
-    pub fn new(subject: Vec<Point3DF32>) -> PolygonClipper3D {
+    pub fn new(subject: Vec<Point4DF32>) -> PolygonClipper3D {
         PolygonClipper3D { subject }
     }
 
-    pub fn clip(mut self) -> Vec<Point3DF32> {
+    pub fn clip(mut self) -> Vec<Point4DF32> {
         // TODO(pcwalton): Fast path for completely contained polygon?
 
-        self.clip_against(Edge3D::Left);
-        self.clip_against(Edge3D::Right);
+        //println!("before clipping against bottom: {:?}", self.subject);
         self.clip_against(Edge3D::Bottom);
+        //println!("before clipping against top: {:?}", self.subject);
         self.clip_against(Edge3D::Top);
-        self.clip_against(Edge3D::Near);
+        //println!("before clipping against left: {:?}", self.subject);
+        self.clip_against(Edge3D::Left);
+        //println!("before clipping against right: {:?}", self.subject);
+        self.clip_against(Edge3D::Right);
+        //println!("before clipping against far: {:?}", self.subject);
         self.clip_against(Edge3D::Far);
+        //println!("before clipping against near: {:?}", self.subject);
+        self.clip_against(Edge3D::Near);
+        //println!("after clipping: {:?}", self.subject);
 
         self.subject
     }
@@ -422,24 +402,28 @@ enum Edge3D {
 
 impl Edge3D {
     #[inline]
-    fn point_is_inside(self, point: Point3DF32) -> bool {
+    fn point_is_inside(self, point: Point4DF32) -> bool {
+        let w = point.w();
         match self {
-            Edge3D::Left   => point.x() >= -1.0, Edge3D::Right => point.x() <= 1.0,
-            Edge3D::Bottom => point.y() >= -1.0, Edge3D::Top   => point.y() <= 1.0,
-            Edge3D::Near   => point.z() >= -1.0, Edge3D::Far   => point.z() <= 1.0,
+            Edge3D::Left   => point.x() >= -w, Edge3D::Right => point.x() <= w,
+            Edge3D::Bottom => point.y() >= -w, Edge3D::Top   => point.y() <= w,
+            Edge3D::Near   => point.z() >= -w, Edge3D::Far   => point.z() <= w,
         }
     }
 
-    fn line_intersection(self, prev: Point3DF32, next: Point3DF32) -> Point3DF32 {
+    // Blinn & Newell, "Clipping using homogeneous coordinates", SIGGRAPH 1978.
+    fn line_intersection(self, prev: Point4DF32, next: Point4DF32) -> Point4DF32 {
         let (x0, x1) = match self {
             Edge3D::Left   | Edge3D::Right => (prev.x(), next.x()),
             Edge3D::Bottom | Edge3D::Top   => (prev.y(), next.y()),
             Edge3D::Near   | Edge3D::Far   => (prev.z(), next.z()),
         };
-        let x = match self {
+        let (w0, w1) = (prev.w(), next.w());
+        let sign = match self {
             Edge3D::Left  | Edge3D::Bottom | Edge3D::Near => -1.0,
             Edge3D::Right | Edge3D::Top    | Edge3D::Far  =>  1.0,
         };
-        prev.lerp(next, (x - x0) / (x1 - x0))
+        let alpha = ((x0 - sign * w0) as f64) / ((sign * (w1 - w0) - (x1 - x0)) as f64);
+        prev.lerp(next, alpha as f32)
     }
 }

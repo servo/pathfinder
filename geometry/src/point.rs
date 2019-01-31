@@ -180,6 +180,11 @@ impl Point4DF32 {
     }
 
     #[inline]
+    pub fn from_euclid_2d(point: &Point2D<f32>) -> Point4DF32 {
+        Point4DF32::new(point.x, point.y, 0.0, 1.0)
+    }
+
+    #[inline]
     pub fn splat(value: f32) -> Point4DF32 {
         Point4DF32(F32x4::splat(value))
     }
@@ -246,6 +251,11 @@ impl Point4DF32 {
     #[inline]
     pub fn is_zero(self) -> bool {
         self.x() == 0.0 && self.y() == 0.0 && self.z() == 0.0
+    }
+
+    #[inline]
+    pub fn lerp(self, other: Point4DF32, t: f32) -> Point4DF32 {
+        Point4DF32(self.0 + (other.0 - self.0) * F32x4::splat(t))
     }
 }
 

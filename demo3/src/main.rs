@@ -37,7 +37,7 @@ const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.01;
-const CAMERA_VELOCITY: f32 = 0.03;
+const CAMERA_VELOCITY: f32 = 60.0;
 
 fn main() {
     let options = Options::get();
@@ -65,7 +65,7 @@ fn main() {
     let (drawable_width, drawable_height) = window.drawable_size();
     let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
 
-    let mut camera_position = Point4DF32::new(1.1, 1.0, 3.0, 1.0);
+    let mut camera_position = Point4DF32::new(500.0, 500.0, 3000.0, 1.0);
     let mut camera_velocity = Point4DF32::new(0.0, 0.0, 0.0, 1.0);
     let (mut camera_yaw, mut camera_pitch) = (0.0, 0.0);
 
@@ -87,7 +87,11 @@ fn main() {
             camera_position = camera_position + rotation.transform_point(camera_velocity);
 
             let mut transform =
-                Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.0001, 100.0);
+                Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.025, 100.0);
+
+            transform = transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0,
+                                                                       1.0 / 800.0,
+                                                                       1.0 / 800.0));
             transform = transform.post_mul(&Transform3DF32::from_rotation(camera_yaw,
                                                                           camera_pitch,
                                                                           0.0));
@@ -95,8 +99,6 @@ fn main() {
                 transform.post_mul(&Transform3DF32::from_translation(-camera_position.x(),
                                                                      -camera_position.y(),
                                                                      -camera_position.z()));
-            transform =
-                transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0, 1.0 / 800.0, 1.0));
 
             let perspective = Perspective::new(&transform, &window_size);
 
