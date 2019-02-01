@@ -12,7 +12,7 @@ use std::arch::x86_64::{self, __m128, __m128i};
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Neg, Sub};
+use std::ops::{Add, AddAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign};
 
 // 32-bit floats
 
@@ -20,6 +20,8 @@ use std::ops::{Add, AddAssign, Index, IndexMut, Mul, Neg, Sub};
 pub struct F32x4(pub __m128);
 
 impl F32x4 {
+    // Constructors
+
     #[inline]
     pub fn new(a: f32, b: f32, c: f32, d: f32) -> F32x4 {
         unsafe {
@@ -32,6 +34,52 @@ impl F32x4 {
     pub fn splat(x: f32) -> F32x4 {
         unsafe { F32x4(x86_64::_mm_set1_ps(x)) }
     }
+
+    // Accessors
+
+    #[inline]
+    pub fn x(self) -> f32 {
+        self[0]
+    }
+
+    #[inline]
+    pub fn y(self) -> f32 {
+        self[1]
+    }
+
+    #[inline]
+    pub fn z(self) -> f32 {
+        self[2]
+    }
+
+    #[inline]
+    pub fn w(self) -> f32 {
+        self[3]
+    }
+
+    // Mutators
+
+    #[inline]
+    pub fn set_x(&mut self, x: f32) {
+        self[0] = x
+    }
+
+    #[inline]
+    pub fn set_y(&mut self, y: f32) {
+        self[1] = y
+    }
+
+    #[inline]
+    pub fn set_z(&mut self, z: f32) {
+        self[2] = z
+    }
+
+    #[inline]
+    pub fn set_w(&mut self, w: f32) {
+        self[3] = w
+    }
+
+    // Basic ops
 
     #[inline]
     pub fn min(self, other: F32x4) -> F32x4 {
@@ -71,7 +119,10 @@ impl F32x4 {
 
     #[inline]
     pub fn approx_eq(self, other: F32x4, epsilon: f32) -> bool {
-        (self - other).abs().packed_gt(F32x4::splat(epsilon)).is_all_zeroes()
+        (self - other)
+            .abs()
+            .packed_gt(F32x4::splat(epsilon))
+            .is_all_zeroes()
     }
 
     // Converts these packed floats to integers.
@@ -80,7 +131,7 @@ impl F32x4 {
         unsafe { I32x4(x86_64::_mm_cvtps_epi32(self.0)) }
     }
 
-    // Shuffles
+    // Swizzles
 
     #[inline]
     pub fn xxxx(self) -> F32x4 {
@@ -1400,9 +1451,7 @@ impl F32x4 {
 
     #[inline]
     pub fn transpose_4x4(a: &mut F32x4, b: &mut F32x4, c: &mut F32x4, d: &mut F32x4) {
-        unsafe {
-            x86_64::_MM_TRANSPOSE4_PS(&mut a.0, &mut b.0, &mut c.0, &mut d.0)
-        }
+        unsafe { x86_64::_MM_TRANSPOSE4_PS(&mut a.0, &mut b.0, &mut c.0, &mut d.0) }
     }
 
     // FIXME(pcwalton): Move to `Point4DF32`!
@@ -1471,11 +1520,25 @@ impl Mul<F32x4> for F32x4 {
     }
 }
 
+impl MulAssign for F32x4 {
+    #[inline]
+    fn mul_assign(&mut self, other: F32x4) {
+        unsafe { self.0 = x86_64::_mm_mul_ps(self.0, other.0) }
+    }
+}
+
 impl Sub<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn sub(self, other: F32x4) -> F32x4 {
         unsafe { F32x4(x86_64::_mm_sub_ps(self.0, other.0)) }
+    }
+}
+
+impl SubAssign for F32x4 {
+    #[inline]
+    fn sub_assign(&mut self, other: F32x4) {
+        unsafe { self.0 = x86_64::_mm_sub_ps(self.0, other.0) }
     }
 }
 
@@ -1493,6 +1556,8 @@ impl Neg for F32x4 {
 pub struct I32x4(pub __m128i);
 
 impl I32x4 {
+    // Constructors
+
     #[inline]
     pub fn new(a: i32, b: i32, c: i32, d: i32) -> I32x4 {
         unsafe {
@@ -1506,10 +1571,14 @@ impl I32x4 {
         unsafe { I32x4(x86_64::_mm_set1_epi32(x)) }
     }
 
+    // Conversions
+
     #[inline]
     pub fn as_u8x16(self) -> U8x16 {
         U8x16(self.0)
     }
+
+    // Basic operations
 
     #[inline]
     pub fn min(self, other: I32x4) -> I32x4 {
