@@ -209,7 +209,7 @@ impl SceneThread {
         thread::spawn(move || (SceneThread { scene, sender, receiver, options }).run());
     }
 
-    fn run(mut self) {
+    fn run(self) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 MainToSceneMsg::Exit => return,

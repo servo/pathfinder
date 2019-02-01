@@ -308,6 +308,8 @@ impl MaskTileVertexArray {
             let backdrop_attr = VertexAttr::new(&mask_tile_program.program, "Backdrop");
             let object_attr = VertexAttr::new(&mask_tile_program.program, "Object");
 
+            // NB: The object must be of type short, not unsigned short, to work around a macOS
+            // Radeon driver bug.
             gl::GenVertexArrays(1, &mut gl_vertex_array);
             gl::BindVertexArray(gl_vertex_array);
             gl::UseProgram(mask_tile_program.program.gl_program);
@@ -316,7 +318,7 @@ impl MaskTileVertexArray {
             gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
             tile_origin_attr.configure_float(2, gl::SHORT, false, MASK_TILE_INSTANCE_SIZE, 0, 1);
             backdrop_attr.configure_int(1, gl::SHORT, MASK_TILE_INSTANCE_SIZE, 4, 1);
-            object_attr.configure_int(2, gl::UNSIGNED_SHORT, MASK_TILE_INSTANCE_SIZE, 6, 1);
+            object_attr.configure_int(2, gl::SHORT, MASK_TILE_INSTANCE_SIZE, 6, 1);
         }
 
         MaskTileVertexArray { gl_vertex_array, vertex_buffer }
@@ -347,6 +349,8 @@ impl SolidTileVertexArray {
             let tile_origin_attr = VertexAttr::new(&solid_tile_program.program, "TileOrigin");
             let object_attr = VertexAttr::new(&solid_tile_program.program, "Object");
 
+            // NB: The object must be of type short, not unsigned short, to work around a macOS
+            // Radeon driver bug.
             gl::GenVertexArrays(1, &mut gl_vertex_array);
             gl::BindVertexArray(gl_vertex_array);
             gl::UseProgram(solid_tile_program.program.gl_program);
@@ -354,7 +358,7 @@ impl SolidTileVertexArray {
             tess_coord_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
             gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
             tile_origin_attr.configure_float(2, gl::SHORT, false, SOLID_TILE_INSTANCE_SIZE, 0, 1);
-            object_attr.configure_int(1, gl::UNSIGNED_SHORT, SOLID_TILE_INSTANCE_SIZE, 4, 1);
+            object_attr.configure_int(1, gl::SHORT, SOLID_TILE_INSTANCE_SIZE, 4, 1);
         }
 
         SolidTileVertexArray { gl_vertex_array, vertex_buffer }
