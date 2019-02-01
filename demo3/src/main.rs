@@ -27,7 +27,9 @@ use std::f32::consts::FRAC_PI_4;
 use std::panic;
 use std::path::PathBuf;
 use std::process;
-use std::time::Instant;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use std::time::{Duration, Instant};
 use usvg::{Options as UsvgOptions, Tree};
 
 #[global_allocator]
@@ -36,8 +38,8 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 
-const MOUSELOOK_ROTATION_SPEED: f32 = 0.01;
-const CAMERA_VELOCITY: f32 = 60.0;
+const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
+const CAMERA_VELOCITY: f32 = 25.0;
 
 fn main() {
     let options = Options::get();
@@ -73,16 +75,14 @@ fn main() {
     renderer.debug_renderer.set_framebuffer_size(&window_size);
 
     let base_scene = load_scene(&options, &window_size);
-    let mut dump_transformed_scene = false;
+    let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
 
     let mut events = vec![];
+    let mut first_frame = true;
 
     while !exit {
-        let mut scene = base_scene.clone();
-
-        let mut start_time = Instant::now();
-
-        if options.run_in_3d {
+        // Update the scene.
+        let perspective = if options.run_in_3d {
             let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
             camera_position = camera_position + rotation.transform_point(camera_velocity);
 
@@ -100,43 +100,33 @@ fn main() {
                                                                      -camera_position.y(),
                                                                      -camera_position.z()));
 
-            let perspective = Perspective::new(&transform, &window_size);
-
-            match options.jobs {
-                Some(1) => scene.apply_perspective_sequentially(&perspective),
-                _ => scene.apply_perspective(&perspective),
-            }
+            Some(Perspective::new(&transform, &window_size))
         } else {
-            scene.prepare();
-        }
+            None
+        };
 
-        let elapsed_prepare_time = Instant::now() - start_time;
-
-        if dump_transformed_scene {
-            println!("{:?}", scene);
-            dump_transformed_scene = false;
-        }
-
-        // Tile the scene.
-
-        start_time = Instant::now();
-
-        let built_scene = build_scene(&scene, &options);
-
-        let elapsed_tile_time = Instant::now() - start_time;
+        scene_thread_proxy.sender.send(MainToSceneMsg::Build(perspective)).unwrap();
 
         // Draw the scene.
+        if !first_frame {
+            if let Ok(SceneToMainMsg::Render {
+                built_scene,
+                prepare_time,
+                tile_time
+            }) = scene_thread_proxy.receiver.recv() {
+                unsafe {
+                    gl::ClearColor(0.7, 0.7, 0.7, 1.0);
+                    gl::Clear(gl::COLOR_BUFFER_BIT);
+                    renderer.render_scene(&built_scene);
 
-        unsafe {
-            gl::ClearColor(0.7, 0.7, 0.7, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-            renderer.render_scene(&built_scene);
-
-            let rendering_time = renderer.shift_timer_query();
-            renderer.debug_renderer.draw(elapsed_prepare_time, elapsed_tile_time, rendering_time);
+                    let rendering_time = renderer.shift_timer_query();
+                    renderer.debug_renderer.draw(prepare_time, tile_time, rendering_time);
+                }
+            }
         }
 
         window.gl_swap_window();
+        first_frame = false;
 
         let mut event_handled = false;
         while !event_handled {
@@ -168,9 +158,6 @@ fn main() {
                     Event::KeyDown { keycode: Some(Keycode::D), .. } => {
                         camera_velocity.set_x(CAMERA_VELOCITY)
                     }
-                    Event::KeyDown { keycode: Some(Keycode::T), .. } => {
-                        dump_transformed_scene = true;
-                    }
                     Event::KeyUp { keycode: Some(Keycode::W), .. } |
                     Event::KeyUp { keycode: Some(Keycode::S), .. } => {
                         camera_velocity.set_z(0.0);
@@ -193,6 +180,83 @@ fn main() {
     }
 }
 
+struct SceneThreadProxy {
+    sender: Sender<MainToSceneMsg>,
+    receiver: Receiver<SceneToMainMsg>,
+}
+
+impl SceneThreadProxy {
+    fn new(scene: Scene, options: Options) -> SceneThreadProxy {
+        let (main_to_scene_sender, main_to_scene_receiver) = mpsc::channel();
+        let (scene_to_main_sender, scene_to_main_receiver) = mpsc::channel();
+        SceneThread::new(scene, scene_to_main_sender, main_to_scene_receiver, options);
+        SceneThreadProxy { sender: main_to_scene_sender, receiver: scene_to_main_receiver }
+    }
+}
+
+struct SceneThread {
+    scene: Scene,
+    sender: Sender<SceneToMainMsg>,
+    receiver: Receiver<MainToSceneMsg>,
+    options: Options,
+}
+
+impl SceneThread {
+    fn new(scene: Scene,
+           sender: Sender<SceneToMainMsg>,
+           receiver: Receiver<MainToSceneMsg>,
+           options: Options) {
+        thread::spawn(move || (SceneThread { scene, sender, receiver, options }).run());
+    }
+
+    fn run(mut self) {
+        while let Ok(msg) = self.receiver.recv() {
+            match msg {
+                MainToSceneMsg::Exit => return,
+                MainToSceneMsg::Build(perspective) => {
+                    // FIXME(pcwalton): Stop cloning scenes?
+                    let mut start_time = Instant::now();
+                    let mut scene = self.scene.clone();
+                    match perspective {
+                        Some(perspective) => {
+                            match self.options.jobs {
+                                Some(1) => scene.apply_perspective_sequentially(&perspective),
+                                _ => scene.apply_perspective(&perspective),
+                            }
+                        }
+                        None => scene.prepare(),
+                    }
+                    let prepare_time = Instant::now() - start_time;
+
+                    start_time = Instant::now();
+                    let built_scene = build_scene(&scene, &self.options);
+                    let tile_time = Instant::now() - start_time;
+
+                    self.sender.send(SceneToMainMsg::Render {
+                        built_scene,
+                        prepare_time,
+                        tile_time,
+                    }).unwrap();
+                }
+            }
+        }
+    }
+}
+
+enum MainToSceneMsg {
+    Build(Option<Perspective>),
+    Exit,
+}
+
+enum SceneToMainMsg {
+    Render {
+        built_scene: BuiltScene,
+        prepare_time: Duration,
+        tile_time: Duration,
+    }
+}
+
+#[derive(Clone)]
 struct Options {
     jobs: Option<usize>,
     run_in_3d: bool,
