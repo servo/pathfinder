@@ -10,8 +10,8 @@
 
 //! A SIMD-optimized point type.
 
-use crate::simd::F32x4;
 use euclid::Point2D;
+use pathfinder_simd::default::F32x4;
 use std::ops::{Add, AddAssign, Mul, Sub};
 
 // 2D points.

@@ -16,8 +16,8 @@ use euclid::Rect;
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::point::Point2DF32;
-use pathfinder_geometry::simd::{F32x4, I32x4};
 use pathfinder_geometry::util;
+use pathfinder_simd::default::{F32x4, I32x4};
 
 #[derive(Debug)]
 pub struct BuiltObject {

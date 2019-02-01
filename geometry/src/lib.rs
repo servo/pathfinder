@@ -25,7 +25,6 @@ pub mod outline;
 pub mod point;
 pub mod segment;
 pub mod segments;
-pub mod simd;
 pub mod stroke;
 pub mod transform;
 pub mod transform3d;

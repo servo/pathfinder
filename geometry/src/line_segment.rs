@@ -11,8 +11,8 @@
 //! Line segment types, optimized with SIMD.
 
 use crate::point::Point2DF32;
-use crate::simd::F32x4;
 use crate::util;
+use pathfinder_simd::default::F32x4;
 use std::ops::Sub;
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]

@@ -12,8 +12,8 @@
 
 use crate::line_segment::LineSegmentF32;
 use crate::point::Point2DF32;
-use crate::simd::F32x4;
 use lyon_path::PathEvent;
+use pathfinder_simd::default::F32x4;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Segment {

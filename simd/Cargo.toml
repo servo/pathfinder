@@ -1,0 +1,7 @@
+[package]
+name = "pathfinder_simd"
+version = "0.3.0"
+edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[dependencies]

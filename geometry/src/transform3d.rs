@@ -12,9 +12,9 @@
 
 use crate::point::{Point2DF32, Point3DF32, Point4DF32};
 use crate::segment::Segment;
-use crate::simd::F32x4;
 use crate::transform::Matrix2x2F32;
 use euclid::{Point2D, Rect, Size2D};
+use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Neg};
 
 /// An transform, optimized with SIMD.

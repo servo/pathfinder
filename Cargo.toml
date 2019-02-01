@@ -5,6 +5,7 @@ members = [
     "gfx-utils",
     "gl",
     "renderer",
+    "simd",
     "svg",
     "utils/area-lut",
     "utils/gamma-lut",

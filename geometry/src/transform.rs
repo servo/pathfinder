@@ -12,10 +12,10 @@
 
 use crate::point::Point2DF32;
 use crate::segment::Segment;
-use crate::simd::F32x4;
 use crate::transform3d::Transform3DF32;
 use euclid::{Point2D, Rect, Size2D, Transform2D};
 use lyon_path::PathEvent;
+use pathfinder_simd::default::F32x4;
 use std::ops::Sub;
 
 /// A 2x2 matrix, optimized with SIMD, in column-major order.
