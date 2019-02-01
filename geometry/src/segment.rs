@@ -216,12 +216,12 @@ impl<'s> CubicSegment<'s> {
             let tttt = F32x4::splat(t);
 
             let (p0p3, p1p2) = (self.0.baseline.0, self.0.ctrl.0);
-            let p0p1 = p0p3.combine_axaybxby(p1p2);
+            let p0p1 = p0p3.concat_xy_xy(p1p2);
 
             // p01 = lerp(p0, p1, t), p12 = lerp(p1, p2, t), p23 = lerp(p2, p3, t)
             let p01p12 = p0p1 + tttt * (p1p2 - p0p1);
             let pxxp23 = p1p2 + tttt * (p0p3 - p1p2);
-            let p12p23 = p01p12.combine_azawbzbw(pxxp23);
+            let p12p23 = p01p12.concat_zw_zw(pxxp23);
 
             // p012 = lerp(p01, p12, t), p123 = lerp(p12, p23, t)
             let p012p123 = p01p12 + tttt * (p12p23 - p01p12);
@@ -230,10 +230,10 @@ impl<'s> CubicSegment<'s> {
             // p0123 = lerp(p012, p123, t)
             let p0123 = p012p123 + tttt * (p123 - p012p123);
 
-            baseline0 = LineSegmentF32(p0p3.combine_axaybxby(p0123));
-            ctrl0 = LineSegmentF32(p01p12.combine_axaybxby(p012p123));
-            baseline1 = LineSegmentF32(p0123.combine_axaybzbw(p0p3));
-            ctrl1 = LineSegmentF32(p012p123.combine_azawbzbw(p12p23));
+            baseline0 = LineSegmentF32(p0p3.concat_xy_xy(p0123));
+            ctrl0 = LineSegmentF32(p01p12.concat_xy_xy(p012p123));
+            baseline1 = LineSegmentF32(p0123.concat_xy_zw(p0p3));
+            ctrl1 = LineSegmentF32(p012p123.concat_zw_zw(p12p23));
         }
 
         (Segment {

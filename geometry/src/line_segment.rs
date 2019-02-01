@@ -21,7 +21,7 @@ pub struct LineSegmentF32(pub F32x4);
 impl LineSegmentF32 {
     #[inline]
     pub fn new(from: &Point2DF32, to: &Point2DF32) -> LineSegmentF32 {
-        LineSegmentF32(from.0.combine_axaybxby(to.0))
+        LineSegmentF32(from.0.concat_xy_xy(to.0))
     }
 
     #[inline]
@@ -36,12 +36,12 @@ impl LineSegmentF32 {
 
     #[inline]
     pub fn set_from(&mut self, point: &Point2DF32) {
-        self.0 = point.0.combine_axaybzbw(self.0)
+        self.0 = point.0.concat_xy_zw(self.0)
     }
 
     #[inline]
     pub fn set_to(&mut self, point: &Point2DF32) {
-        self.0 = self.0.combine_axaybxby(point.0)
+        self.0 = self.0.concat_xy_xy(point.0)
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -97,8 +97,8 @@ impl LineSegmentF32 {
         let (from_from, to_to) = (self.0.xyxy(), self.0.zwzw());
         let d_d = to_to - from_from;
         let mid_mid = from_from + d_d * F32x4::splat(t);
-        (LineSegmentF32(from_from.combine_axaybxby(mid_mid)),
-         LineSegmentF32(mid_mid.combine_axaybxby(to_to)))
+        (LineSegmentF32(from_from.concat_xy_xy(mid_mid)),
+         LineSegmentF32(mid_mid.concat_xy_xy(to_to)))
     }
 
     // Returns the left segment first, followed by the right segment.
@@ -225,9 +225,9 @@ impl LineSegmentF32 {
 
     // http://www.cs.swan.ac.uk/~cssimon/line_intersection.html
     pub fn intersection_t(&self, other: &LineSegmentF32) -> f32 {
-        let d0d1 = self.vector().0.combine_axaybxby(other.vector().0);
+        let d0d1 = self.vector().0.concat_xy_xy(other.vector().0);
         let offset = other.from() - self.from();
-        let factors = d0d1.combine_awazbybx(offset.0);
+        let factors = d0d1.concat_wz_yx(offset.0);
         let terms = d0d1 * factors;
         let t = (terms[3] - terms[2]) / (terms[0] - terms[1]);
         //println!("intersection_t({:?}, {:?})={} (d0d1={:?}, factors={:?})", self, other, t, d0d1, factors);

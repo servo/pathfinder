@@ -131,10 +131,10 @@ impl Transform3DF32 {
     pub fn from_submatrices(a: Matrix2x2F32, b: Matrix2x2F32, c: Matrix2x2F32, d: Matrix2x2F32)
                             -> Transform3DF32 {
         Transform3DF32 {
-            c0: a.0.combine_axaybxby(c.0),
-            c1: a.0.combine_azawbzbw(c.0),
-            c2: b.0.combine_axaybxby(d.0),
-            c3: b.0.combine_azawbzbw(d.0),
+            c0: a.0.concat_xy_xy(c.0),
+            c1: a.0.concat_zw_zw(c.0),
+            c2: b.0.concat_xy_xy(d.0),
+            c3: b.0.concat_zw_zw(d.0),
         }
     }
 
@@ -187,22 +187,22 @@ impl Transform3DF32 {
 
     #[inline]
     pub fn upper_left(&self) -> Matrix2x2F32 {
-        Matrix2x2F32(self.c0.combine_axaybxby(self.c1))
+        Matrix2x2F32(self.c0.concat_xy_xy(self.c1))
     }
 
     #[inline]
     pub fn upper_right(&self) -> Matrix2x2F32 {
-        Matrix2x2F32(self.c2.combine_axaybxby(self.c3))
+        Matrix2x2F32(self.c2.concat_xy_xy(self.c3))
     }
 
     #[inline]
     pub fn lower_left(&self) -> Matrix2x2F32 {
-        Matrix2x2F32(self.c0.combine_azawbzbw(self.c1))
+        Matrix2x2F32(self.c0.concat_zw_zw(self.c1))
     }
 
     #[inline]
     pub fn lower_right(&self) -> Matrix2x2F32 {
-        Matrix2x2F32(self.c2.combine_azawbzbw(self.c3))
+        Matrix2x2F32(self.c2.concat_zw_zw(self.c3))
     }
 
     // https://en.wikipedia.org/wiki/Invertible_matrix#Blockwise_inversion
