@@ -57,6 +57,7 @@ impl Outline {
     {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
+        let mut bounds = None;
 
         for segment in segments {
             if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
@@ -70,7 +71,9 @@ impl Outline {
 
             if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
                 if !current_contour.is_empty() {
-                    outline.push_contour(mem::replace(&mut current_contour, Contour::new()));
+                    let contour = mem::replace(&mut current_contour, Contour::new());
+                    contour.update_bounds(&mut bounds);
+                    outline.contours.push(contour);
                 }
                 continue;
             }
@@ -90,7 +93,12 @@ impl Outline {
         }
 
         if !current_contour.is_empty() {
-            outline.push_contour(current_contour);
+            current_contour.update_bounds(&mut bounds);
+            outline.contours.push(current_contour);
+        }
+
+        if let Some(bounds) = bounds {
+            outline.bounds = bounds;
         }
 
         outline
@@ -108,42 +116,47 @@ impl Outline {
 
     #[inline]
     pub fn transform(&mut self, transform: &Transform2DF32) {
-        self.contours.iter_mut().for_each(|contour| contour.transform(transform));
-        self.bounds = transform.transform_rect(&self.bounds);
+        let mut new_bounds = None;
+        for contour in &mut self.contours {
+            contour.transform(transform);
+            contour.update_bounds(&mut new_bounds);
+        }
+        self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
     }
 
     #[inline]
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
-        self.contours.iter_mut().for_each(|contour| contour.apply_perspective(perspective));
-        self.bounds = perspective.transform_rect(&self.bounds);
+        let mut new_bounds = None;
+        for contour in &mut self.contours {
+            contour.apply_perspective(perspective);
+            contour.update_bounds(&mut new_bounds);
+        }
+        self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
     }
 
     #[inline]
-    fn push_contour(&mut self, contour: Contour) {
-        if self.contours.is_empty() {
-            self.bounds = contour.bounds;
-        } else {
-            self.bounds = self.bounds.union(&contour.bounds);
-        }
-        self.contours.push(contour);
-    }
-
     pub fn clip_against_polygon(&mut self, clip_polygon: &[Point2DF32]) {
+        let mut new_bounds = None;
         for contour in mem::replace(&mut self.contours, vec![]) {
             let contour = ContourPolygonClipper::new(clip_polygon, contour).clip();
             if !contour.is_empty() {
-                self.push_contour(contour);
+                contour.update_bounds(&mut new_bounds);
+                self.contours.push(contour);
             }
         }
+        self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
     }
 
     pub fn clip_against_rect(&mut self, clip_rect: &Rect<f32>) {
+        let mut new_bounds = None;
         for contour in mem::replace(&mut self.contours, vec![]) {
             let contour = ContourRectClipper::new(clip_rect, contour).clip();
             if !contour.is_empty() {
-                self.push_contour(contour);
+                contour.update_bounds(&mut new_bounds);
+                self.contours.push(contour);
             }
         }
+        self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
     }
 }
 
@@ -336,6 +349,13 @@ impl Contour {
         for segment in MonotonicConversionIter::new(contour.iter()) {
             self.push_segment(segment);
         }
+    }
+
+    fn update_bounds(&self, bounds: &mut Option<Rect<f32>>) {
+        *bounds = Some(match *bounds {
+            None => self.bounds,
+            Some(bounds) => bounds.union(&self.bounds),
+        })
     }
 }
 

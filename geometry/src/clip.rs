@@ -404,10 +404,9 @@ impl ContourRectClipper {
     }
 
     pub(crate) fn clip(mut self) -> Contour {
-        // TODO(pcwalton): Reenable this optimization.
-        /*if self.clip_rect.contains_rect(&self.contour.bounds()) {
+        if self.clip_rect.contains_rect(&self.contour.bounds()) {
             return self.contour
-        }*/
+        }
 
         self.clip_against(AxisAlignedEdge::Left(self.clip_rect.origin.x));
         self.clip_against(AxisAlignedEdge::Top(self.clip_rect.origin.y));
