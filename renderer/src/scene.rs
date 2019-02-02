@@ -68,11 +68,12 @@ impl Scene {
 
     pub fn build_objects_sequentially(&self, build_transform: &BuildTransform, z_buffer: &ZBuffer)
                                       -> Vec<BuiltObject> {
+        let build_transform = build_transform.prepare(&self.bounds);
         self.objects
             .iter()
             .enumerate()
             .map(|(object_index, object)| {
-                let outline = self.apply_build_transform(&object.outline, build_transform);
+                let outline = self.apply_build_transform(&object.outline, &build_transform);
                 let mut tiler = Tiler::new(
                     &outline,
                     &self.view_box,
@@ -88,11 +89,12 @@ impl Scene {
 
     pub fn build_objects(&self, build_transform: &BuildTransform, z_buffer: &ZBuffer)
                          -> Vec<BuiltObject> {
+        let build_transform = build_transform.prepare(&self.bounds);
         self.objects
             .par_iter()
             .enumerate()
             .map(|(object_index, object)| {
-                let outline = self.apply_build_transform(&object.outline, build_transform);
+                let outline = self.apply_build_transform(&object.outline, &build_transform);
                 let mut tiler = Tiler::new(
                     &outline,
                     &self.view_box,
@@ -106,51 +108,23 @@ impl Scene {
             .collect()
     }
 
-    fn apply_build_transform(&self, outline: &Outline, build_transform: &BuildTransform)
+    fn apply_build_transform(&self, outline: &Outline, build_transform: &PreparedBuildTransform)
                              -> Outline {
         // FIXME(pcwalton): Don't clone?
         let mut outline = (*outline).clone();
         match *build_transform {
-            BuildTransform::Perspective(ref perspective) => {
-                // FIXME(pcwalton): Do this only once!
-                let quad = self.apply_perspective_to_quad(perspective);
-                outline.clip_against_polygon(&quad);
+            PreparedBuildTransform::Perspective(ref perspective, ref quad) => {
+                outline.clip_against_polygon(quad);
                 outline.apply_perspective(perspective);
             }
-            BuildTransform::Transform2D(ref transform) => {
+            PreparedBuildTransform::Transform2D(ref transform) => {
                 outline.transform(transform);
             }
-            BuildTransform::None => {}
+            PreparedBuildTransform::None => {}
         }
         outline.clip_against_rect(&self.view_box);
         outline.make_monotonic();
         outline
-    }
-
-    fn apply_perspective_to_quad(&self, perspective: &Perspective) -> Vec<Point2DF32> {
-        let quad = self.clip_bounding_quad_with_perspective(perspective);
-        let inverse_transform = perspective.transform.inverse();
-        quad.into_iter()
-            .map(|point| inverse_transform.transform_point(point).perspective_divide().to_2d())
-            .collect()
-    }
-
-    fn clip_bounding_quad_with_perspective(&self, perspective: &Perspective) -> Vec<Point3DF32> {
-        let mut points = vec![
-            Point3DF32::from_euclid_2d(&self.bounds.origin),
-            Point3DF32::from_euclid_2d(&self.bounds.top_right()),
-            Point3DF32::from_euclid_2d(&self.bounds.bottom_right()),
-            Point3DF32::from_euclid_2d(&self.bounds.bottom_left()),
-        ];
-        //println!("-----");
-        //println!("bounds={:?} ORIGINAL quad={:?}", self.bounds, points);
-        for point in &mut points {
-            *point = perspective.transform.transform_point(*point);
-        }
-        //println!("... PERSPECTIVE quad={:?}", points);
-        points = PolygonClipper3D::new(points).clip();
-        //println!("... CLIPPED quad={:?}", points);
-        points.into_iter().map(|point| point.perspective_divide()).collect()
     }
 }
 
@@ -217,4 +191,45 @@ pub enum BuildTransform {
     None,
     Transform2D(Transform2DF32),
     Perspective(Perspective),
+}
+
+impl BuildTransform {
+    fn prepare(&self, bounds: &Rect<f32>) -> PreparedBuildTransform {
+        let perspective = match self {
+            BuildTransform::None => return PreparedBuildTransform::None,
+            BuildTransform::Transform2D(ref transform) => {
+                return PreparedBuildTransform::Transform2D(*transform)
+            }
+            BuildTransform::Perspective(ref perspective) => *perspective,
+        };
+
+        let mut points = vec![
+            Point3DF32::from_euclid_2d(&bounds.origin),
+            Point3DF32::from_euclid_2d(&bounds.top_right()),
+            Point3DF32::from_euclid_2d(&bounds.bottom_right()),
+            Point3DF32::from_euclid_2d(&bounds.bottom_left()),
+        ];
+        //println!("-----");
+        //println!("bounds={:?} ORIGINAL quad={:?}", self.bounds, points);
+        for point in &mut points {
+            *point = perspective.transform.transform_point(*point);
+        }
+        //println!("... PERSPECTIVE quad={:?}", points);
+        points = PolygonClipper3D::new(points).clip();
+        //println!("... CLIPPED quad={:?}", points);
+        for point in &mut points {
+            *point = point.perspective_divide()
+        }
+        let inverse_transform = perspective.transform.inverse();
+        let points = points.into_iter().map(|point| {
+            inverse_transform.transform_point(point).perspective_divide().to_2d()
+        }).collect();
+        PreparedBuildTransform::Perspective(perspective, points)
+    }
+}
+
+enum PreparedBuildTransform {
+    None,
+    Transform2D(Transform2DF32),
+    Perspective(Perspective, Vec<Point2DF32>),
 }

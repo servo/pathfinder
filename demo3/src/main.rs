@@ -229,10 +229,7 @@ enum MainToSceneMsg {
 }
 
 enum SceneToMainMsg {
-    Render {
-        built_scene: BuiltScene,
-        tile_time: Duration,
-    }
+    Render { built_scene: BuiltScene, tile_time: Duration }
 }
 
 #[derive(Clone)]
