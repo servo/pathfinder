@@ -10,7 +10,7 @@
 
 //! A compressed in-memory representation of paths.
 
-use crate::clip::ContourPolygonClipper;
+use crate::clip::{ContourPolygonClipper, ContourRectClipper};
 use crate::line_segment::LineSegmentF32;
 use crate::monotonic::MonotonicConversionIter;
 use crate::point::Point2DF32;
@@ -139,7 +139,7 @@ impl Outline {
 
     pub fn clip_against_rect(&mut self, clip_rect: &Rect<f32>) {
         for contour in mem::replace(&mut self.contours, vec![]) {
-            let contour = ContourPolygonClipper::from_rect(clip_rect, contour).clip();
+            let contour = ContourRectClipper::new(clip_rect, contour).clip();
             if !contour.is_empty() {
                 self.push_contour(contour);
             }

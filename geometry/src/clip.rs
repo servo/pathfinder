@@ -113,32 +113,13 @@ impl TEdge for Edge {
         area >= 0.0
     }
 
-    fn intersect_segment(&self, segment: &Segment) -> ArrayVec<[f32; 3]> {
-        if segment.is_line() {
-            return self.intersect_line_segment(&segment.baseline);
-        }
-
-        let mut segment = *segment;
-        if segment.is_quadratic() {
-            segment = segment.to_cubic();
-        }
-
+    fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
-        let mut prev_t = 0.0;
-        while !results.is_full() {
-            if prev_t >= 1.0 {
-                break
-            }
-            let next_t = match self.intersect_cubic_segment(&segment, prev_t, 1.0) {
-                None => break,
-                Some(next_t) => next_t,
-            };
-            results.push(next_t);
-            prev_t = next_t + EPSILON;
+        let t = segment.intersection_t(&self.0);
+        if t >= 0.0 && t <= 1.0 {
+            results.push(t);
         }
-        return results;
-
-        const EPSILON: f32 = 0.0001;
+        results
     }
 }
 
@@ -166,14 +147,89 @@ impl Edge {
         Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_right()),
                                  &Point2DF32::from_euclid(rect.bottom_left())))
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum AxisAlignedEdge {
+    Left(f32),
+    Top(f32),
+    Right(f32),
+    Bottom(f32),
+}
+
+impl TEdge for AxisAlignedEdge {
+    #[inline]
+    fn point_is_inside(&self, point: &Point2DF32) -> bool {
+        match *self {
+            AxisAlignedEdge::Left(x)   => point.x() >= x,
+            AxisAlignedEdge::Top(y)    => point.y() >= y,
+            AxisAlignedEdge::Right(x)  => point.x() <= x,
+            AxisAlignedEdge::Bottom(y) => point.y() <= y,
+        }
+    }
 
     fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
-        let t = segment.intersection_t(&self.0);
+        let t = match *self {
+            AxisAlignedEdge::Left(x) | AxisAlignedEdge::Right(x)  => segment.solve_t_for_x(x),
+            AxisAlignedEdge::Top(y)  | AxisAlignedEdge::Bottom(y) => segment.solve_t_for_y(y),
+        };
         if t >= 0.0 && t <= 1.0 {
             results.push(t);
         }
         results
+    }
+}
+
+trait TEdge {
+    fn point_is_inside(&self, point: &Point2DF32) -> bool;
+    fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]>;
+
+    fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
+        let from_inside = self.point_is_inside(&segment.baseline.from());
+        //println!("point {:?} inside {:?}: {:?}", segment.baseline.from(), self, from_inside);
+        if from_inside != self.point_is_inside(&segment.baseline.to()) {
+            return EdgeRelativeLocation::Intersecting;
+        }
+        if !segment.is_line() {
+            if from_inside != self.point_is_inside(&segment.ctrl.from()) {
+                return EdgeRelativeLocation::Intersecting;
+            }
+            if !segment.is_quadratic() {
+                if from_inside != self.point_is_inside(&segment.ctrl.to()) {
+                    return EdgeRelativeLocation::Intersecting;
+                }
+            }
+        }
+        if from_inside { EdgeRelativeLocation::Inside } else { EdgeRelativeLocation::Outside }
+    }
+
+    fn intersect_segment(&self, segment: &Segment) -> ArrayVec<[f32; 3]> {
+        if segment.is_line() {
+            return self.intersect_line_segment(&segment.baseline);
+        }
+
+        let mut segment = *segment;
+        if segment.is_quadratic() {
+            segment = segment.to_cubic();
+        }
+
+        let mut results = ArrayVec::new();
+        let mut prev_t = 0.0;
+        while !results.is_full() {
+            if prev_t >= 1.0 {
+                break
+            }
+            let next_t = match self.intersect_cubic_segment(&segment, prev_t, 1.0) {
+                None => break,
+                Some(next_t) => next_t,
+            };
+            results.push(next_t);
+            prev_t = next_t + EPSILON;
+        }
+        return results;
+
+        const EPSILON: f32 = 0.0001;
     }
 
     fn intersect_cubic_segment(&self, segment: &Segment, mut t_min: f32, mut t_max: f32)
@@ -212,31 +268,6 @@ impl Edge {
             inside != self.point_is_inside(&cubic_segment.0.ctrl.to()) ||
             inside != self.point_is_inside(&cubic_segment.0.baseline.to())
     }
-}
-
-trait TEdge {
-    fn point_is_inside(&self, point: &Point2DF32) -> bool;
-    fn intersect_segment(&self, segment: &Segment) -> ArrayVec<[f32; 3]>;
-
-    fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
-        let from_inside = self.point_is_inside(&segment.baseline.from());
-        //println!("point {:?} inside {:?}: {:?}", segment.baseline.from(), self, from_inside);
-        if from_inside != self.point_is_inside(&segment.baseline.to()) {
-            return EdgeRelativeLocation::Intersecting;
-        }
-        if !segment.is_line() {
-            if from_inside != self.point_is_inside(&segment.ctrl.from()) {
-                return EdgeRelativeLocation::Intersecting;
-            }
-            if !segment.is_quadratic() {
-                if from_inside != self.point_is_inside(&segment.ctrl.to()) {
-                    return EdgeRelativeLocation::Intersecting;
-                }
-            }
-        }
-        if from_inside { EdgeRelativeLocation::Inside } else { EdgeRelativeLocation::Outside }
-    }
-
 }
 
 trait ContourClipper where Self::Edge: TEdge {
@@ -305,6 +336,8 @@ trait ContourClipper where Self::Edge: TEdge {
     }
 }
 
+// General convex polygon clipping in 2D
+
 pub(crate) struct ContourPolygonClipper {
     clip_polygon: SmallVec<[Point2DF32; 4]>,
     contour: Contour,
@@ -325,21 +358,8 @@ impl ContourPolygonClipper {
         ContourPolygonClipper { clip_polygon: SmallVec::from_slice(clip_polygon), contour }
     }
 
-    #[inline]
-    pub(crate) fn from_rect(clip_rect: &Rect<f32>, contour: Contour) -> ContourPolygonClipper {
-        ContourPolygonClipper::new(&[
-            Point2DF32::from_euclid(clip_rect.origin),
-            Point2DF32::from_euclid(clip_rect.top_right()),
-            Point2DF32::from_euclid(clip_rect.bottom_right()),
-            Point2DF32::from_euclid(clip_rect.bottom_left()),
-        ], contour)
-    }
-
     pub(crate) fn clip(mut self) -> Contour {
-        // TODO(pcwalton): Reenable this optimization.
-        /*if self.clip_rect.contains_rect(&self.contour.bounds()) {
-            return self.contour
-        }*/
+        // TODO(pcwalton): Maybe have a coarse circumscribed rect and use that for clipping?
 
         let clip_polygon = mem::replace(&mut self.clip_polygon, SmallVec::default());
         let mut prev = match clip_polygon.last() {
@@ -359,6 +379,43 @@ enum EdgeRelativeLocation {
     Intersecting,
     Inside,
     Outside,
+}
+
+// Fast axis-aligned box 2D clipping
+
+pub(crate) struct ContourRectClipper {
+    clip_rect: Rect<f32>,
+    contour: Contour,
+}
+
+impl ContourClipper for ContourRectClipper {
+    type Edge = AxisAlignedEdge;
+
+    #[inline]
+    fn contour_mut(&mut self) -> &mut Contour {
+        &mut self.contour
+    }
+}
+
+impl ContourRectClipper {
+    #[inline]
+    pub(crate) fn new(clip_rect: &Rect<f32>, contour: Contour) -> ContourRectClipper {
+        ContourRectClipper { clip_rect: *clip_rect, contour }
+    }
+
+    pub(crate) fn clip(mut self) -> Contour {
+        // TODO(pcwalton): Reenable this optimization.
+        /*if self.clip_rect.contains_rect(&self.contour.bounds()) {
+            return self.contour
+        }*/
+
+        self.clip_against(AxisAlignedEdge::Left(self.clip_rect.origin.x));
+        self.clip_against(AxisAlignedEdge::Top(self.clip_rect.origin.y));
+        self.clip_against(AxisAlignedEdge::Right(self.clip_rect.max_x()));
+        self.clip_against(AxisAlignedEdge::Bottom(self.clip_rect.max_y()));
+
+        self.contour
+    }
 }
 
 // 3D quad clipping
