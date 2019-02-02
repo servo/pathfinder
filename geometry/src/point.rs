@@ -119,55 +119,6 @@ impl Mul<Point2DF32> for Point2DF32 {
     }
 }
 
-// 3D points.
-
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct Point3DF32(pub F32x4);
-
-impl Point3DF32 {
-    #[inline]
-    pub fn new(x: f32, y: f32, z: f32) -> Point3DF32 {
-        Point3DF32(F32x4::new(x, y, z, 1.0))
-    }
-
-    #[inline]
-    pub fn from_euclid_2d(point: &Point2D<f32>) -> Point3DF32 {
-        Point3DF32::new(point.x, point.y, 0.0)
-    }
-
-    #[inline]
-    pub fn x(self) -> f32 {
-        self.0[0]
-    }
-
-    #[inline]
-    pub fn y(self) -> f32 {
-        self.0[1]
-    }
-
-    #[inline]
-    pub fn z(self) -> f32 {
-        self.0[2]
-    }
-
-    #[inline]
-    pub fn to_2d(self) -> Point2DF32 {
-        Point2DF32(self.0)
-    }
-
-    #[inline]
-    pub fn to_4d(self) -> Point4DF32 {
-        let mut point = Point4DF32(self.0);
-        point.set_w(1.0);
-        point
-    }
-
-    #[inline]
-    pub fn lerp(self, other: Point3DF32, t: f32) -> Point3DF32 {
-        Point3DF32(self.0 + (other.0 - self.0) * F32x4::splat(t))
-    }
-}
-
 // 3D homogeneous points.
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -235,8 +186,8 @@ impl Point4DF32 {
     }
 
     #[inline]
-    pub fn perspective_divide(self) -> Point3DF32 {
-        Point3DF32(self.0 * F32x4::splat(1.0 / self.w()))
+    pub fn perspective_divide(self) -> Point4DF32 {
+        Point4DF32(self.0 * F32x4::splat(1.0 / self.w()))
     }
 
     #[inline]

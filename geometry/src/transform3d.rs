@@ -10,7 +10,7 @@
 
 //! 3D transforms that can be applied to paths.
 
-use crate::point::{Point2DF32, Point3DF32, Point4DF32};
+use crate::point::{Point2DF32, Point4DF32};
 use crate::segment::Segment;
 use crate::transform::Matrix2x2F32;
 use euclid::{Point2D, Rect, Size2D};
@@ -177,12 +177,6 @@ impl Transform3DF32 {
         let term2 = self.c2 * F32x4::splat(point.z());
         let term3 = self.c3 * F32x4::splat(point.w());
         Point4DF32(term0 + term1 + term2 + term3)
-    }
-
-    #[inline]
-    pub fn transform_point_3d(&self, point: Point3DF32) -> Point3DF32 {
-        let point4d = self.transform_point(point.to_4d());
-        point4d.perspective_divide()
     }
 
     #[inline]
