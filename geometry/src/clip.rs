@@ -286,7 +286,7 @@ trait ContourClipper where Self::Edge: TEdge {
             }
         }
 
-        let input = mem::replace(self.contour_mut(), Contour::new());
+        let input = self.contour_mut().take();
         for mut segment in input.iter() {
             // Easy cases.
             match edge.trivially_test_segment(&segment) {

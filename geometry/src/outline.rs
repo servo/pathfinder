@@ -178,6 +178,17 @@ impl Contour {
         Contour { points: vec![], flags: vec![], bounds: Rect::zero() }
     }
 
+    // Replaces this contour with a new one, with arrays preallocated to match `self`.
+    #[inline]
+    pub(crate) fn take(&mut self) -> Contour {
+        let length = self.len() as usize;
+        mem::replace(self, Contour {
+            points: Vec::with_capacity(length),
+            flags: Vec::with_capacity(length),
+            bounds: Rect::zero(),
+        })
+    }
+
     #[inline]
     pub fn iter(&self) -> ContourIter {
         ContourIter { contour: self, index: 1 }
@@ -345,7 +356,8 @@ impl Contour {
 
     #[inline]
     pub fn make_monotonic(&mut self) {
-        let contour = mem::replace(self, Contour::new());
+        // TODO(pcwalton): Make monotonic in place?
+        let contour = self.take();
         for segment in MonotonicConversionIter::new(contour.iter()) {
             self.push_segment(segment);
         }
