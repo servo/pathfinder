@@ -276,6 +276,16 @@ trait ContourClipper where Self::Edge: TEdge {
     fn contour_mut(&mut self) -> &mut Contour;
 
     fn clip_against(&mut self, edge: Self::Edge) {
+        // Fast path to avoid allocation in the no-clip case.
+        match self.check_for_fast_clip(&edge) {
+            FastClipResult::SlowPath => {}
+            FastClipResult::AllInside => return,
+            FastClipResult::AllOutside => {
+                *self.contour_mut() = Contour::new();
+                return;
+            }
+        }
+
         let input = mem::replace(self.contour_mut(), Contour::new());
         for mut segment in input.iter() {
             // Easy cases.
@@ -334,6 +344,32 @@ trait ContourClipper where Self::Edge: TEdge {
             contour.push_segment(*segment);
         }
     }
+
+    fn check_for_fast_clip(&mut self, edge: &Self::Edge) -> FastClipResult {
+        let mut result = None;
+        for segment in self.contour_mut().iter() {
+            let location = edge.trivially_test_segment(&segment);
+            match (result, location) {
+                (None, EdgeRelativeLocation::Outside) => {
+                    result = Some(FastClipResult::AllOutside);
+                }
+                (None, EdgeRelativeLocation::Inside) => {
+                    result = Some(FastClipResult::AllInside);
+                }
+                (Some(FastClipResult::AllInside), EdgeRelativeLocation::Inside) |
+                (Some(FastClipResult::AllOutside), EdgeRelativeLocation::Outside) => {}
+                (_, _) => return FastClipResult::SlowPath,
+            }
+        }
+        result.unwrap_or(FastClipResult::AllOutside)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum FastClipResult {
+    SlowPath,
+    AllInside,
+    AllOutside,
 }
 
 // General convex polygon clipping in 2D
@@ -375,6 +411,7 @@ impl ContourPolygonClipper {
     }
 }
 
+#[derive(PartialEq)]
 enum EdgeRelativeLocation {
     Intersecting,
     Inside,
