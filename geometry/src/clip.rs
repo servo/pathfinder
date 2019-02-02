@@ -10,7 +10,7 @@
 
 use crate::line_segment::LineSegmentF32;
 use crate::outline::{Contour, PointFlags};
-use crate::point::{Point2DF32, Point4DF32};
+use crate::point::{Point2DF32, Point3DF32};
 use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
 use arrayvec::ArrayVec;
@@ -341,16 +341,16 @@ enum EdgeRelativeLocation {
 // 3D quad clipping
 
 pub struct PolygonClipper3D {
-    subject: Vec<Point4DF32>,
+    subject: Vec<Point3DF32>,
 }
 
 impl PolygonClipper3D {
     #[inline]
-    pub fn new(subject: Vec<Point4DF32>) -> PolygonClipper3D {
+    pub fn new(subject: Vec<Point3DF32>) -> PolygonClipper3D {
         PolygonClipper3D { subject }
     }
 
-    pub fn clip(mut self) -> Vec<Point4DF32> {
+    pub fn clip(mut self) -> Vec<Point3DF32> {
         // TODO(pcwalton): Fast path for completely contained polygon?
 
         //println!("before clipping against bottom: {:?}", self.subject);
@@ -402,7 +402,7 @@ enum Edge3D {
 
 impl Edge3D {
     #[inline]
-    fn point_is_inside(self, point: Point4DF32) -> bool {
+    fn point_is_inside(self, point: Point3DF32) -> bool {
         let w = point.w();
         match self {
             Edge3D::Left   => point.x() >= -w, Edge3D::Right => point.x() <= w,
@@ -412,7 +412,7 @@ impl Edge3D {
     }
 
     // Blinn & Newell, "Clipping using homogeneous coordinates", SIGGRAPH 1978.
-    fn line_intersection(self, prev: Point4DF32, next: Point4DF32) -> Point4DF32 {
+    fn line_intersection(self, prev: Point3DF32, next: Point3DF32) -> Point3DF32 {
         let (x0, x1) = match self {
             Edge3D::Left   | Edge3D::Right => (prev.x(), next.x()),
             Edge3D::Bottom | Edge3D::Top   => (prev.y(), next.y()),

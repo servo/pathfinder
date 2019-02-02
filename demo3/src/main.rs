@@ -11,7 +11,7 @@
 use clap::{App, Arg};
 use euclid::{Point2D, Rect, Size2D};
 use jemallocator;
-use pathfinder_geometry::point::Point4DF32;
+use pathfinder_geometry::point::Point3DF32;
 use pathfinder_geometry::transform3d::{Perspective, Transform3DF32};
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::SceneBuilder;
@@ -67,8 +67,8 @@ fn main() {
     let (drawable_width, drawable_height) = window.drawable_size();
     let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
 
-    let mut camera_position = Point4DF32::new(500.0, 500.0, 3000.0, 1.0);
-    let mut camera_velocity = Point4DF32::new(0.0, 0.0, 0.0, 1.0);
+    let mut camera_position = Point3DF32::new(500.0, 500.0, 3000.0, 1.0);
+    let mut camera_velocity = Point3DF32::new(0.0, 0.0, 0.0, 1.0);
     let (mut camera_yaw, mut camera_pitch) = (0.0, 0.0);
 
     let window_size = Size2D::new(drawable_width, drawable_height);

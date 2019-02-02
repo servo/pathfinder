@@ -1407,7 +1407,7 @@ impl F32x4 {
         unsafe { x86_64::_MM_TRANSPOSE4_PS(&mut a.0, &mut b.0, &mut c.0, &mut d.0) }
     }
 
-    // FIXME(pcwalton): Move to `Point4DF32`!
+    // FIXME(pcwalton): Move to `Point3DF32`!
     #[inline]
     pub fn cross(&self, other: F32x4) -> F32x4 {
         self.yzxw() * other.zxyw() - self.zxyw() * other.yzxw()

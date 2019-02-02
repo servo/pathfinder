@@ -18,7 +18,7 @@ use euclid::Rect;
 use hashbrown::HashMap;
 use pathfinder_geometry::clip::PolygonClipper3D;
 use pathfinder_geometry::outline::Outline;
-use pathfinder_geometry::point::{Point2DF32, Point4DF32};
+use pathfinder_geometry::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform::Transform2DF32;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator};
@@ -168,12 +168,12 @@ impl Scene {
         self.update_bounds();
     }
 
-    fn clip_bounding_quad_with_perspective(&self, perspective: &Perspective) -> Vec<Point4DF32> {
+    fn clip_bounding_quad_with_perspective(&self, perspective: &Perspective) -> Vec<Point3DF32> {
         let mut points = vec![
-            Point4DF32::from_euclid_2d(&self.bounds.origin),
-            Point4DF32::from_euclid_2d(&self.bounds.top_right()),
-            Point4DF32::from_euclid_2d(&self.bounds.bottom_right()),
-            Point4DF32::from_euclid_2d(&self.bounds.bottom_left()),
+            Point3DF32::from_euclid_2d(&self.bounds.origin),
+            Point3DF32::from_euclid_2d(&self.bounds.top_right()),
+            Point3DF32::from_euclid_2d(&self.bounds.bottom_right()),
+            Point3DF32::from_euclid_2d(&self.bounds.bottom_left()),
         ];
         //println!("-----");
         //println!("bounds={:?} ORIGINAL quad={:?}", self.bounds, points);

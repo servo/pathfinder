@@ -10,7 +10,7 @@
 
 //! 3D transforms that can be applied to paths.
 
-use crate::point::{Point2DF32, Point4DF32};
+use crate::point::{Point2DF32, Point3DF32};
 use crate::segment::Segment;
 use crate::transform::Matrix2x2F32;
 use euclid::{Point2D, Rect, Size2D};
@@ -171,12 +171,12 @@ impl Transform3DF32 {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Point4DF32) -> Point4DF32 {
+    pub fn transform_point(&self, point: Point3DF32) -> Point3DF32 {
         let term0 = self.c0 * F32x4::splat(point.x());
         let term1 = self.c1 * F32x4::splat(point.y());
         let term2 = self.c2 * F32x4::splat(point.z());
         let term3 = self.c3 * F32x4::splat(point.w());
-        Point4DF32(term0 + term1 + term2 + term3)
+        Point3DF32(term0 + term1 + term2 + term3)
     }
 
     #[inline]
@@ -327,7 +327,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::point::Point4DF32;
+    use crate::point::Point3DF32;
     use crate::transform3d::Transform3DF32;
 
     #[test]
@@ -370,8 +370,8 @@ mod test {
                                           9.0, 2.0, 6.0, 5.0,
                                           3.0, 5.0, 8.0, 9.0,
                                           7.0, 9.0, 3.0, 2.0);
-        let p = Point4DF32::new(3.0, 8.0, 4.0, 6.0);
-        let q = Point4DF32::new(63.0, 97.0, 135.0, 117.0);
+        let p = Point3DF32::new(3.0, 8.0, 4.0, 6.0);
+        let q = Point3DF32::new(63.0, 97.0, 135.0, 117.0);
         assert_eq!(a.transform_point(p), q);
     }
 
@@ -395,7 +395,7 @@ mod test {
                                           0.17386167, 0.016353  , 0.8535783 , 0.12969608,
                                           0.0946466 , 0.43248631, 0.63480505, 0.08154603,
                                           0.50305436, 0.48359687, 0.51057162, 0.24812012);
-        let p0 = Point4DF32::new(0.95536648, 0.80633691, 0.16357357, 0.5477598);
+        let p0 = Point3DF32::new(0.95536648, 0.80633691, 0.16357357, 0.5477598);
         let p1 = m.transform_point(p0);
         let m_inv = m.inverse();
         let m_inv_exp =
