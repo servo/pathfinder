@@ -105,55 +105,12 @@ impl<'a> RectClipper<'a> {
 #[derive(Clone, Copy, Debug)]
 struct Edge(LineSegmentF32);
 
-impl Edge {
-    #[inline]
-    fn left(rect: &Rect<f32>) -> Edge {
-        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_left()),
-                                 &Point2DF32::from_euclid(rect.origin)))
-    }
-
-    #[inline]
-    fn top(rect: &Rect<f32>) -> Edge {
-        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.origin),
-                                 &Point2DF32::from_euclid(rect.top_right())))
-    }
-
-    #[inline]
-    fn right(rect: &Rect<f32>) -> Edge {
-        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.top_right()),
-                                 &Point2DF32::from_euclid(rect.bottom_right())))
-    }
-
-    #[inline]
-    fn bottom(rect: &Rect<f32>) -> Edge {
-        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_right()),
-                                 &Point2DF32::from_euclid(rect.bottom_left())))
-    }
-
+impl TEdge for Edge {
     #[inline]
     fn point_is_inside(&self, point: &Point2DF32) -> bool {
         let area = (self.0.to() - self.0.from()).det(*point - self.0.from());
         //println!("point_is_inside({:?}, {:?}), area={}", self, point, area);
         area >= 0.0
-    }
-
-    fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
-        let from_inside = self.point_is_inside(&segment.baseline.from());
-        //println!("point {:?} inside {:?}: {:?}", segment.baseline.from(), self, from_inside);
-        if from_inside != self.point_is_inside(&segment.baseline.to()) {
-            return EdgeRelativeLocation::Intersecting;
-        }
-        if !segment.is_line() {
-            if from_inside != self.point_is_inside(&segment.ctrl.from()) {
-                return EdgeRelativeLocation::Intersecting;
-            }
-            if !segment.is_quadratic() {
-                if from_inside != self.point_is_inside(&segment.ctrl.to()) {
-                    return EdgeRelativeLocation::Intersecting;
-                }
-            }
-        }
-        if from_inside { EdgeRelativeLocation::Inside } else { EdgeRelativeLocation::Outside }
     }
 
     fn intersect_segment(&self, segment: &Segment) -> ArrayVec<[f32; 3]> {
@@ -182,6 +139,32 @@ impl Edge {
         return results;
 
         const EPSILON: f32 = 0.0001;
+    }
+}
+
+impl Edge {
+    #[inline]
+    fn left(rect: &Rect<f32>) -> Edge {
+        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_left()),
+                                 &Point2DF32::from_euclid(rect.origin)))
+    }
+
+    #[inline]
+    fn top(rect: &Rect<f32>) -> Edge {
+        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.origin),
+                                 &Point2DF32::from_euclid(rect.top_right())))
+    }
+
+    #[inline]
+    fn right(rect: &Rect<f32>) -> Edge {
+        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.top_right()),
+                                 &Point2DF32::from_euclid(rect.bottom_right())))
+    }
+
+    #[inline]
+    fn bottom(rect: &Rect<f32>) -> Edge {
+        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_right()),
+                                 &Point2DF32::from_euclid(rect.bottom_left())))
     }
 
     fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]> {
@@ -231,20 +214,120 @@ impl Edge {
     }
 }
 
-pub(crate) struct ContourClipper {
+trait TEdge {
+    fn point_is_inside(&self, point: &Point2DF32) -> bool;
+    fn intersect_segment(&self, segment: &Segment) -> ArrayVec<[f32; 3]>;
+
+    fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
+        let from_inside = self.point_is_inside(&segment.baseline.from());
+        //println!("point {:?} inside {:?}: {:?}", segment.baseline.from(), self, from_inside);
+        if from_inside != self.point_is_inside(&segment.baseline.to()) {
+            return EdgeRelativeLocation::Intersecting;
+        }
+        if !segment.is_line() {
+            if from_inside != self.point_is_inside(&segment.ctrl.from()) {
+                return EdgeRelativeLocation::Intersecting;
+            }
+            if !segment.is_quadratic() {
+                if from_inside != self.point_is_inside(&segment.ctrl.to()) {
+                    return EdgeRelativeLocation::Intersecting;
+                }
+            }
+        }
+        if from_inside { EdgeRelativeLocation::Inside } else { EdgeRelativeLocation::Outside }
+    }
+
+}
+
+trait ContourClipper where Self::Edge: TEdge {
+    type Edge;
+
+    fn contour_mut(&mut self) -> &mut Contour;
+
+    fn clip_against(&mut self, edge: Self::Edge) {
+        let input = mem::replace(self.contour_mut(), Contour::new());
+        for mut segment in input.iter() {
+            // Easy cases.
+            match edge.trivially_test_segment(&segment) {
+                EdgeRelativeLocation::Outside => continue,
+                EdgeRelativeLocation::Inside => {
+                    //println!("trivial test inside, pushing segment");
+                    push_segment(self.contour_mut(), &segment);
+                    continue;
+                }
+                EdgeRelativeLocation::Intersecting => {}
+            }
+
+            // We have a potential intersection.
+            //println!("potential intersection: {:?} edge: {:?}", segment, edge);
+            let mut starts_inside = edge.point_is_inside(&segment.baseline.from());
+            let intersection_ts = edge.intersect_segment(&segment);
+            let mut last_t = 0.0;
+            //println!("... intersections: {:?}", intersection_ts);
+            for t in intersection_ts {
+                let (before_split, after_split) = segment.split((t - last_t) / (1.0 - last_t));
+
+                // Push the split segment if appropriate.
+                /*println!("... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
+                         edge.0,
+                         before_split,
+                         t,
+                         starts_inside);*/
+                if starts_inside {
+                    //println!("... split segment case, pushing segment");
+                    push_segment(self.contour_mut(), &before_split);
+                }
+
+                // We've now transitioned from inside to outside or vice versa.
+                starts_inside = !starts_inside;
+                last_t = t;
+                segment = after_split;
+            }
+
+            // No more intersections. Push the last segment if applicable.
+            if starts_inside {
+                //println!("... last segment case, pushing segment");
+                push_segment(self.contour_mut(), &segment);
+            }
+        }
+
+        fn push_segment(contour: &mut Contour, segment: &Segment) {
+            //println!("... push_segment({:?}, edge={:?}", segment, edge);
+            if let Some(last_position) = contour.last_position() {
+                if last_position != segment.baseline.from() {
+                    // Add a line to join up segments.
+                    contour.push_point(segment.baseline.from(), PointFlags::empty());
+                }
+            }
+
+            contour.push_segment(*segment);
+        }
+    }
+}
+
+pub(crate) struct ContourPolygonClipper {
     clip_polygon: SmallVec<[Point2DF32; 4]>,
     contour: Contour,
 }
 
-impl ContourClipper {
+impl ContourClipper for ContourPolygonClipper {
+    type Edge = Edge;
+
     #[inline]
-    pub(crate) fn new(clip_polygon: &[Point2DF32], contour: Contour) -> ContourClipper {
-        ContourClipper { clip_polygon: SmallVec::from_slice(clip_polygon), contour }
+    fn contour_mut(&mut self) -> &mut Contour {
+        &mut self.contour
+    }
+}
+
+impl ContourPolygonClipper {
+    #[inline]
+    pub(crate) fn new(clip_polygon: &[Point2DF32], contour: Contour) -> ContourPolygonClipper {
+        ContourPolygonClipper { clip_polygon: SmallVec::from_slice(clip_polygon), contour }
     }
 
     #[inline]
-    pub(crate) fn from_rect(clip_rect: &Rect<f32>, contour: Contour) -> ContourClipper {
-        ContourClipper::new(&[
+    pub(crate) fn from_rect(clip_rect: &Rect<f32>, contour: Contour) -> ContourPolygonClipper {
+        ContourPolygonClipper::new(&[
             Point2DF32::from_euclid(clip_rect.origin),
             Point2DF32::from_euclid(clip_rect.top_right()),
             Point2DF32::from_euclid(clip_rect.bottom_right()),
@@ -269,66 +352,6 @@ impl ContourClipper {
         }
 
         self.contour
-    }
-
-    fn clip_against(&mut self, edge: Edge) {
-        let input = mem::replace(&mut self.contour, Contour::new());
-        for mut segment in input.iter() {
-            // Easy cases.
-            match edge.trivially_test_segment(&segment) {
-                EdgeRelativeLocation::Outside => continue,
-                EdgeRelativeLocation::Inside => {
-                    //println!("trivial test inside, pushing segment");
-                    push_segment(&mut self.contour, &segment, edge);
-                    continue;
-                }
-                EdgeRelativeLocation::Intersecting => {}
-            }
-
-            // We have a potential intersection.
-            //println!("potential intersection: {:?} edge: {:?}", segment, edge);
-            let mut starts_inside = edge.point_is_inside(&segment.baseline.from());
-            let intersection_ts = edge.intersect_segment(&segment);
-            let mut last_t = 0.0;
-            //println!("... intersections: {:?}", intersection_ts);
-            for t in intersection_ts {
-                let (before_split, after_split) = segment.split((t - last_t) / (1.0 - last_t));
-
-                // Push the split segment if appropriate.
-                /*println!("... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
-                         edge.0,
-                         before_split,
-                         t,
-                         starts_inside);*/
-                if starts_inside {
-                    //println!("... split segment case, pushing segment");
-                    push_segment(&mut self.contour, &before_split, edge);
-                }
-
-                // We've now transitioned from inside to outside or vice versa.
-                starts_inside = !starts_inside;
-                last_t = t;
-                segment = after_split;
-            }
-
-            // No more intersections. Push the last segment if applicable.
-            if starts_inside {
-                //println!("... last segment case, pushing segment");
-                push_segment(&mut self.contour, &segment, edge);
-            }
-        }
-
-        fn push_segment(contour: &mut Contour, segment: &Segment, edge: Edge) {
-            //println!("... push_segment({:?}, edge={:?}", segment, edge);
-            if let Some(last_position) = contour.last_position() {
-                if last_position != segment.baseline.from() {
-                    // Add a line to join up segments.
-                    contour.push_point(segment.baseline.from(), PointFlags::empty());
-                }
-            }
-
-            contour.push_segment(*segment);
-        }
     }
 }
 
