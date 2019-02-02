@@ -287,62 +287,67 @@ trait ContourClipper where Self::Edge: TEdge {
         }
 
         let input = self.contour_mut().take();
-        for mut segment in input.iter() {
-            // Easy cases.
-            match edge.trivially_test_segment(&segment) {
-                EdgeRelativeLocation::Outside => continue,
-                EdgeRelativeLocation::Inside => {
-                    //println!("trivial test inside, pushing segment");
-                    push_segment(self.contour_mut(), &segment);
-                    continue;
-                }
-                EdgeRelativeLocation::Intersecting => {}
+        for segment in input.iter() {
+            self.clip_segment_against(segment, &edge);
+        }
+    }
+
+    fn clip_segment_against(&mut self, mut segment: Segment, edge: &Self::Edge) {
+        // Easy cases.
+        match edge.trivially_test_segment(&segment) {
+            EdgeRelativeLocation::Outside => return,
+            EdgeRelativeLocation::Inside => {
+                //println!("trivial test inside, pushing segment");
+                self.push_segment(&segment);
+                return;
             }
+            EdgeRelativeLocation::Intersecting => {}
+        }
 
-            // We have a potential intersection.
-            //println!("potential intersection: {:?} edge: {:?}", segment, edge);
-            let mut starts_inside = edge.point_is_inside(&segment.baseline.from());
-            let intersection_ts = edge.intersect_segment(&segment);
-            let mut last_t = 0.0;
-            //println!("... intersections: {:?}", intersection_ts);
-            for t in intersection_ts {
-                let (before_split, after_split) = segment.split((t - last_t) / (1.0 - last_t));
+        // We have a potential intersection.
+        //println!("potential intersection: {:?} edge: {:?}", segment, edge);
+        let mut starts_inside = edge.point_is_inside(&segment.baseline.from());
+        let intersection_ts = edge.intersect_segment(&segment);
+        let mut last_t = 0.0;
+        //println!("... intersections: {:?}", intersection_ts);
+        for t in intersection_ts {
+            let (before_split, after_split) = segment.split((t - last_t) / (1.0 - last_t));
 
-                // Push the split segment if appropriate.
-                /*println!("... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
-                         edge.0,
-                         before_split,
-                         t,
-                         starts_inside);*/
-                if starts_inside {
-                    //println!("... split segment case, pushing segment");
-                    push_segment(self.contour_mut(), &before_split);
-                }
-
-                // We've now transitioned from inside to outside or vice versa.
-                starts_inside = !starts_inside;
-                last_t = t;
-                segment = after_split;
-            }
-
-            // No more intersections. Push the last segment if applicable.
+            // Push the split segment if appropriate.
+            /*println!("... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
+                        edge.0,
+                        before_split,
+                        t,
+                        starts_inside);*/
             if starts_inside {
-                //println!("... last segment case, pushing segment");
-                push_segment(self.contour_mut(), &segment);
+                //println!("... split segment case, pushing segment");
+                self.push_segment(&before_split);
+            }
+
+            // We've now transitioned from inside to outside or vice versa.
+            starts_inside = !starts_inside;
+            last_t = t;
+            segment = after_split;
+        }
+
+        // No more intersections. Push the last segment if applicable.
+        if starts_inside {
+            //println!("... last segment case, pushing segment");
+            self.push_segment(&segment);
+        }
+    }
+
+    fn push_segment(&mut self, segment: &Segment) {
+        //println!("... push_segment({:?}, edge={:?}", segment, edge);
+        let contour = self.contour_mut();
+        if let Some(last_position) = contour.last_position() {
+            if last_position != segment.baseline.from() {
+                // Add a line to join up segments.
+                contour.push_point(segment.baseline.from(), PointFlags::empty());
             }
         }
 
-        fn push_segment(contour: &mut Contour, segment: &Segment) {
-            //println!("... push_segment({:?}, edge={:?}", segment, edge);
-            if let Some(last_position) = contour.last_position() {
-                if last_position != segment.baseline.from() {
-                    // Add a line to join up segments.
-                    contour.push_point(segment.baseline.from(), PointFlags::empty());
-                }
-            }
-
-            contour.push_segment(*segment);
-        }
+        contour.push_segment(*segment);
     }
 
     fn check_for_fast_clip(&mut self, edge: &Self::Edge) -> FastClipResult {

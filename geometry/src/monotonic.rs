@@ -8,12 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Converts paths to monotonically increasing/decreasing segments.
+//! Converts paths to monotonically increasing/decreasing segments in Y.
 
 use crate::segment::{Segment, SegmentKind};
 use arrayvec::ArrayVec;
 
-// TODO(pcwalton): I think we only need to be monotonic in Y, maybe?
 pub struct MonotonicConversionIter<I>
 where
     I: Iterator<Item = Segment>,

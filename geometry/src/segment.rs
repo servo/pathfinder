@@ -113,6 +113,16 @@ impl Segment {
     }
 
     #[inline]
+    pub fn is_monotonic(&self) -> bool {
+        // FIXME(pcwalton): Don't degree elevate!
+        match self.kind {
+            SegmentKind::None | SegmentKind::Line => true,
+            SegmentKind::Quadratic => self.to_cubic().as_cubic_segment().is_monotonic(),
+            SegmentKind::Cubic => self.as_cubic_segment().is_monotonic(),
+        }
+    }
+
+    #[inline]
     pub fn reversed(&self) -> Segment {
         Segment {
             baseline: self.baseline.reversed(),
@@ -266,17 +276,23 @@ impl<'s> CubicSegment<'s> {
     }
 
     #[inline]
+    pub fn is_monotonic(self) -> bool {
+        // TODO(pcwalton): Optimize this.
+        let (p0, p3) = (self.0.baseline.from_y(), self.0.baseline.to_y());
+        let (p1, p2) = (self.0.ctrl.from_y(), self.0.ctrl.to_y());
+        (p0 <= p1 && p1 <= p2 && p2 <= p3) || (p0 >= p1 && p1 >= p2 && p2 >= p3)
+    }
+
+    #[inline]
     pub fn y_extrema(self) -> (Option<f32>, Option<f32>) {
+        if self.is_monotonic() {
+            return (None, None)
+        }
+
         let p0p1p2p3 = F32x4::new(self.0.baseline.from_y(),
                                   self.0.ctrl.from_y(),
                                   self.0.ctrl.to_y(),
                                   self.0.baseline.to_y());
-
-        // TODO(pcwalton): Optimize this.
-        if p0p1p2p3[0] <= p0p1p2p3[1] && p0p1p2p3[0] <= p0p1p2p3[2] &&
-                p0p1p2p3[1] <= p0p1p2p3[3] && p0p1p2p3[2] <= p0p1p2p3[3] {
-            return (None, None);
-        }
 
         let pxp0p1p2 = p0p1p2p3.wxyz();
         let pxv0v1v2 = p0p1p2p3 - pxp0p1p2;

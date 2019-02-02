@@ -356,7 +356,12 @@ impl Contour {
 
     #[inline]
     pub fn make_monotonic(&mut self) {
-        // TODO(pcwalton): Make monotonic in place?
+        // Fast path.
+        if self.iter().all(|segment| segment.is_monotonic()) {
+            return;
+        }
+
+        // Slow path.
         let contour = self.take();
         for segment in MonotonicConversionIter::new(contour.iter()) {
             self.push_segment(segment);
