@@ -31,7 +31,7 @@ const DEBUG_FONT_VERTEX_SIZE:  GLint = 8;
 const DEBUG_SOLID_VERTEX_SIZE: GLint = 4;
 
 const WINDOW_WIDTH: i16 = 400;
-const WINDOW_HEIGHT: i16 = LINE_HEIGHT * 3 + PADDING + 3;
+const WINDOW_HEIGHT: i16 = LINE_HEIGHT * 2 + PADDING + 2;
 const PADDING: i16 = 12;
 const FONT_ASCENT: i16 = 28;
 const LINE_HEIGHT: i16 = 42;
@@ -112,26 +112,20 @@ impl DebugRenderer {
         self.framebuffer_size = *window_size;
     }
 
-    pub fn draw(&self,
-                prepare_time: Duration,
-                tile_time: Duration,
-                rendering_time: Option<Duration>) {
+    pub fn draw(&self, tile_time: Duration, rendering_time: Option<Duration>) {
         let window_rect =
             Rect::new(Point2D::new(self.framebuffer_size.width as i16 - PADDING - WINDOW_WIDTH,
                                    self.framebuffer_size.height as i16 - PADDING - WINDOW_HEIGHT),
                       Size2D::new(WINDOW_WIDTH, WINDOW_HEIGHT));
         self.draw_solid_rect(&window_rect, WINDOW_COLOR);
-        self.draw_text(&format!("Preparation: {:.3} ms", duration_ms(prepare_time)),
-                       &Point2D::new(window_rect.origin.x + PADDING,
-                                     window_rect.origin.y + PADDING + FONT_ASCENT));
         self.draw_text(&format!("Tiling: {:.3} ms", duration_ms(tile_time)),
                        &Point2D::new(window_rect.origin.x + PADDING,
-                                     window_rect.origin.y + PADDING + FONT_ASCENT + LINE_HEIGHT));
+                                     window_rect.origin.y + PADDING + FONT_ASCENT));
         if let Some(rendering_time) = rendering_time {
             self.draw_text(&format!("Rendering: {:.3} ms", duration_ms(rendering_time)),
                            &Point2D::new(
                                window_rect.origin.x + PADDING,
-                               window_rect.origin.y + PADDING + FONT_ASCENT + LINE_HEIGHT * 2));
+                               window_rect.origin.y + PADDING + FONT_ASCENT + LINE_HEIGHT));
         }
     }
 

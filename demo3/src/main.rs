@@ -16,7 +16,7 @@ use pathfinder_geometry::transform3d::{Perspective, Transform3DF32};
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::SceneBuilder;
 use pathfinder_renderer::gpu_data::BuiltScene;
-use pathfinder_renderer::scene::Scene;
+use pathfinder_renderer::scene::{BuildTransform, Scene};
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::SceneExt;
 use rayon::ThreadPoolBuilder;
@@ -111,7 +111,6 @@ fn main() {
         if !first_frame {
             if let Ok(SceneToMainMsg::Render {
                 built_scene,
-                prepare_time,
                 tile_time
             }) = scene_thread_proxy.receiver.recv() {
                 unsafe {
@@ -120,7 +119,7 @@ fn main() {
                     renderer.render_scene(&built_scene);
 
                     let rendering_time = renderer.shift_timer_query();
-                    renderer.debug_renderer.draw(prepare_time, tile_time, rendering_time);
+                    renderer.debug_renderer.draw(tile_time, rendering_time);
                 }
             }
         }
@@ -214,29 +213,10 @@ impl SceneThread {
             match msg {
                 MainToSceneMsg::Exit => return,
                 MainToSceneMsg::Build(perspective) => {
-                    // FIXME(pcwalton): Stop cloning scenes?
-                    let mut start_time = Instant::now();
-                    let mut scene = self.scene.clone();
-                    match perspective {
-                        Some(perspective) => {
-                            match self.options.jobs {
-                                Some(1) => scene.apply_perspective_sequentially(&perspective),
-                                _ => scene.apply_perspective(&perspective),
-                            }
-                        }
-                        None => scene.prepare(),
-                    }
-                    let prepare_time = Instant::now() - start_time;
-
-                    start_time = Instant::now();
-                    let built_scene = build_scene(&scene, &self.options);
+                    let start_time = Instant::now();
+                    let built_scene = build_scene(&self.scene, perspective, &self.options);
                     let tile_time = Instant::now() - start_time;
-
-                    self.sender.send(SceneToMainMsg::Render {
-                        built_scene,
-                        prepare_time,
-                        tile_time,
-                    }).unwrap();
+                    self.sender.send(SceneToMainMsg::Render { built_scene, tile_time }).unwrap();
                 }
             }
         }
@@ -251,7 +231,6 @@ enum MainToSceneMsg {
 enum SceneToMainMsg {
     Render {
         built_scene: BuiltScene,
-        prepare_time: Duration,
         tile_time: Duration,
     }
 }
@@ -324,13 +303,18 @@ fn load_scene(options: &Options, window_size: &Size2D<u32>) -> Scene {
     scene
 }
 
-fn build_scene(scene: &Scene, options: &Options) -> BuiltScene {
+fn build_scene(scene: &Scene, perspective: Option<Perspective>, options: &Options) -> BuiltScene {
     let z_buffer = ZBuffer::new(&scene.view_box);
+
+    let build_transform = match perspective {
+        None => BuildTransform::None,
+        Some(perspective) => BuildTransform::Perspective(perspective),
+    };
 
     let built_objects = panic::catch_unwind(|| {
          match options.jobs {
-            Some(1) => scene.build_objects_sequentially(&z_buffer),
-            _ => scene.build_objects(&z_buffer),
+            Some(1) => scene.build_objects_sequentially(&build_transform, &z_buffer),
+            _ => scene.build_objects(&build_transform, &z_buffer),
         }
     });
 

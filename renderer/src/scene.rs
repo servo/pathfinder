@@ -21,8 +21,7 @@ use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::transform3d::Perspective;
 use pathfinder_geometry::transform::Transform2DF32;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator};
-use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone)]
@@ -67,13 +66,15 @@ impl Scene {
             .collect()
     }
 
-    pub fn build_objects_sequentially(&self, z_buffer: &ZBuffer) -> Vec<BuiltObject> {
+    pub fn build_objects_sequentially(&self, build_transform: &BuildTransform, z_buffer: &ZBuffer)
+                                      -> Vec<BuiltObject> {
         self.objects
             .iter()
             .enumerate()
             .map(|(object_index, object)| {
+                let outline = self.apply_build_transform(&object.outline, build_transform);
                 let mut tiler = Tiler::new(
-                    &object.outline,
+                    &outline,
                     &self.view_box,
                     object_index as u16,
                     ShaderId(object.paint.0),
@@ -85,13 +86,15 @@ impl Scene {
             .collect()
     }
 
-    pub fn build_objects(&self, z_buffer: &ZBuffer) -> Vec<BuiltObject> {
+    pub fn build_objects(&self, build_transform: &BuildTransform, z_buffer: &ZBuffer)
+                         -> Vec<BuiltObject> {
         self.objects
             .par_iter()
             .enumerate()
             .map(|(object_index, object)| {
+                let outline = self.apply_build_transform(&object.outline, build_transform);
                 let mut tiler = Tiler::new(
-                    &object.outline,
+                    &outline,
                     &self.view_box,
                     object_index as u16,
                     ShaderId(object.paint.0),
@@ -103,34 +106,25 @@ impl Scene {
             .collect()
     }
 
-    fn update_bounds(&mut self) {
-        let mut bounds = Rect::zero();
-        for (object_index, object) in self.objects.iter_mut().enumerate() {
-            if object_index == 0 {
-                bounds = *object.outline.bounds();
-            } else {
-                bounds = bounds.union(object.outline.bounds());
+    fn apply_build_transform(&self, outline: &Outline, build_transform: &BuildTransform)
+                             -> Outline {
+        // FIXME(pcwalton): Don't clone?
+        let mut outline = (*outline).clone();
+        match *build_transform {
+            BuildTransform::Perspective(ref perspective) => {
+                // FIXME(pcwalton): Do this only once!
+                let quad = self.apply_perspective_to_quad(perspective);
+                outline.clip_against_polygon(&quad);
+                outline.apply_perspective(perspective);
             }
+            BuildTransform::Transform2D(ref transform) => {
+                outline.transform(transform);
+            }
+            BuildTransform::None => {}
         }
-
-        self.bounds = bounds;
-    }
-
-    pub fn prepare(&mut self) {
-        for object in &mut self.objects {
-            object.outline.clip_against_rect(&self.view_box);
-            object.outline.make_monotonic();
-        }
-    }
-
-    pub fn transform(&mut self, transform: &Transform2DF32) {
-        for object in &mut self.objects {
-            object.outline.transform(transform);
-            object.outline.clip_against_rect(&self.view_box);
-            object.outline.make_monotonic();
-        }
-
-        self.update_bounds();
+        outline.clip_against_rect(&self.view_box);
+        outline.make_monotonic();
+        outline
     }
 
     fn apply_perspective_to_quad(&self, perspective: &Perspective) -> Vec<Point2DF32> {
@@ -139,33 +133,6 @@ impl Scene {
         quad.into_iter()
             .map(|point| inverse_transform.transform_point(point).perspective_divide().to_2d())
             .collect()
-    }
-
-    pub fn apply_perspective_sequentially(&mut self, perspective: &Perspective) {
-        let quad = self.apply_perspective_to_quad(perspective);
-
-        for object in &mut self.objects {
-            object.outline.clip_against_polygon(&quad);
-            object.outline.apply_perspective(perspective);
-            object.outline.clip_against_rect(&self.view_box);
-            object.outline.make_monotonic();
-        }
-
-        self.update_bounds();
-    }
-
-    pub fn apply_perspective(&mut self, perspective: &Perspective) {
-        let quad = self.apply_perspective_to_quad(perspective);
-        let view_box = &self.view_box;
-
-        self.objects.par_iter_mut().for_each(|object| {
-            object.outline.clip_against_polygon(&quad);
-            object.outline.apply_perspective(perspective);
-            object.outline.clip_against_rect(&view_box);
-            object.outline.make_monotonic();
-        });
-
-        self.update_bounds();
     }
 
     fn clip_bounding_quad_with_perspective(&self, perspective: &Perspective) -> Vec<Point3DF32> {
@@ -244,4 +211,10 @@ impl PathObject {
 pub fn scene_tile_index(tile_x: i16, tile_y: i16, tile_rect: Rect<i16>) -> u32 {
     (tile_y - tile_rect.origin.y) as u32 * tile_rect.size.width as u32
         + (tile_x - tile_rect.origin.x) as u32
+}
+
+pub enum BuildTransform {
+    None,
+    Transform2D(Transform2DF32),
+    Perspective(Perspective),
 }
