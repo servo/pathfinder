@@ -17,3 +17,7 @@ pub use crate::x86 as default;
 
 pub mod scalar;
 pub mod x86;
+mod extras;
+
+#[cfg(test)]
+mod test;

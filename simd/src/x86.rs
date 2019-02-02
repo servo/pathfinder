@@ -35,51 +35,7 @@ impl F32x4 {
         unsafe { F32x4(x86_64::_mm_set1_ps(x)) }
     }
 
-    // Accessors
-
-    #[inline]
-    pub fn x(self) -> f32 {
-        self[0]
-    }
-
-    #[inline]
-    pub fn y(self) -> f32 {
-        self[1]
-    }
-
-    #[inline]
-    pub fn z(self) -> f32 {
-        self[2]
-    }
-
-    #[inline]
-    pub fn w(self) -> f32 {
-        self[3]
-    }
-
-    // Mutators
-
-    #[inline]
-    pub fn set_x(&mut self, x: f32) {
-        self[0] = x
-    }
-
-    #[inline]
-    pub fn set_y(&mut self, y: f32) {
-        self[1] = y
-    }
-
-    #[inline]
-    pub fn set_z(&mut self, z: f32) {
-        self[2] = z
-    }
-
-    #[inline]
-    pub fn set_w(&mut self, w: f32) {
-        self[3] = w
-    }
-
-    // Basic ops
+    // Basic operations
 
     #[inline]
     pub fn min(self, other: F32x4) -> F32x4 {
@@ -99,6 +55,8 @@ impl F32x4 {
         }
     }
 
+    // Packed comparisons
+
     #[inline]
     pub fn packed_eq(self, other: F32x4) -> U32x4 {
         unsafe {
@@ -117,15 +75,9 @@ impl F32x4 {
         }
     }
 
-    #[inline]
-    pub fn approx_eq(self, other: F32x4, epsilon: f32) -> bool {
-        (self - other)
-            .abs()
-            .packed_gt(F32x4::splat(epsilon))
-            .is_all_zeroes()
-    }
+    // Conversions
 
-    // Converts these packed floats to integers.
+    /// Converts these packed floats to integers.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
         unsafe { I32x4(x86_64::_mm_cvtps_epi32(self.0)) }
@@ -1425,6 +1377,7 @@ impl F32x4 {
         }
     }
 
+    #[inline]
     pub fn concat_xy_zw(self, other: F32x4) -> F32x4 {
         unsafe {
             let this = x86_64::_mm_castps_pd(self.0);
@@ -1584,6 +1537,13 @@ impl I32x4 {
     pub fn min(self, other: I32x4) -> I32x4 {
         unsafe { I32x4(x86_64::_mm_min_epi32(self.0, other.0)) }
     }
+
+    // Packed comparisons
+
+    #[inline]
+    pub fn packed_eq(self, other: I32x4) -> U32x4 {
+        unsafe { U32x4(x86_64::_mm_cmpeq_epi32(self.0, other.0)) }
+    }
 }
 
 impl Index<usize> for I32x4 {
@@ -1602,20 +1562,60 @@ impl Sub<I32x4> for I32x4 {
     }
 }
 
+impl Debug for I32x4 {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "<{}, {}, {}, {}>", self[0], self[1], self[2], self[3])
+    }
+}
+
+impl PartialEq for I32x4 {
+    #[inline]
+    fn eq(&self, other: &I32x4) -> bool {
+        self.packed_eq(*other).is_all_ones()
+    }
+}
+
 // 32-bit unsigned integers
 
 #[derive(Clone, Copy)]
 pub struct U32x4(pub __m128i);
 
 impl U32x4 {
+    // Constructors
+
     #[inline]
-    fn is_all_ones(&self) -> bool {
+    pub fn new(a: u32, b: u32, c: u32, d: u32) -> U32x4 {
+        unsafe {
+            let vector = [a, b, c, d];
+            U32x4(x86_64::_mm_loadu_si128(vector.as_ptr() as *const __m128i))
+        }
+    }
+
+    // Basic operations
+
+    #[inline]
+    pub fn is_all_ones(self) -> bool {
         unsafe { x86_64::_mm_test_all_ones(self.0) != 0 }
     }
 
     #[inline]
-    fn is_all_zeroes(&self) -> bool {
+    pub fn is_all_zeroes(self) -> bool {
         unsafe { x86_64::_mm_test_all_zeros(self.0, self.0) != 0 }
+    }
+
+    // Packed comparisons
+
+    #[inline]
+    pub fn packed_eq(self, other: U32x4) -> U32x4 {
+        unsafe { U32x4(x86_64::_mm_cmpeq_epi32(self.0, other.0)) }
+    }
+}
+
+impl Debug for U32x4 {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
+        write!(f, "<{}, {}, {}, {}>", self[0], self[1], self[2], self[3])
     }
 }
 
@@ -1624,6 +1624,13 @@ impl Index<usize> for U32x4 {
     #[inline]
     fn index(&self, index: usize) -> &u32 {
         unsafe { &mem::transmute::<&__m128i, &[u32; 4]>(&self.0)[index] }
+    }
+}
+
+impl PartialEq for U32x4 {
+    #[inline]
+    fn eq(&self, other: &U32x4) -> bool {
+        self.packed_eq(*other).is_all_ones()
     }
 }
 
