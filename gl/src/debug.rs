@@ -16,9 +16,11 @@
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
 use crate::device::{Buffer, BufferTarget, BufferUploadMode, Program, Texture, Uniform, VertexAttr};
-use euclid::{Point2D, Rect, Size2D};
+use euclid::Size2D;
 use gl::types::{GLfloat, GLint, GLsizei, GLuint};
 use gl;
+use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_renderer::paint::ColorU;
 use serde_json;
 use std::collections::HashMap;
@@ -30,11 +32,11 @@ use std::time::Duration;
 const DEBUG_FONT_VERTEX_SIZE:  GLint = 8;
 const DEBUG_SOLID_VERTEX_SIZE: GLint = 4;
 
-const WINDOW_WIDTH: i16 = 400;
-const WINDOW_HEIGHT: i16 = LINE_HEIGHT * 2 + PADDING + 2;
-const PADDING: i16 = 12;
-const FONT_ASCENT: i16 = 28;
-const LINE_HEIGHT: i16 = 42;
+const WINDOW_WIDTH: i32 = 400;
+const WINDOW_HEIGHT: i32 = LINE_HEIGHT * 2 + PADDING + 2;
+const PADDING: i32 = 12;
+const FONT_ASCENT: i32 = 28;
+const LINE_HEIGHT: i32 = 42;
 
 static WINDOW_COLOR: ColorU = ColorU { r: 30, g: 30, b: 30, a: 255 - 30 };
 
@@ -57,15 +59,15 @@ pub struct DebugFont {
 
 #[derive(Deserialize)]
 struct DebugCharacter {
-    x: u16,
-    y: u16,
-    width: u16,
-    height: u16,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
     #[serde(rename = "originX")]
-    origin_x: i16,
+    origin_x: i32,
     #[serde(rename = "originY")]
-    origin_y: i16,
-    advance: i16,
+    origin_y: i32,
+    advance: i32,
 }
 
 impl DebugFont {
@@ -113,28 +115,28 @@ impl DebugRenderer {
     }
 
     pub fn draw(&self, tile_time: Duration, rendering_time: Option<Duration>) {
-        let window_rect =
-            Rect::new(Point2D::new(self.framebuffer_size.width as i16 - PADDING - WINDOW_WIDTH,
-                                   self.framebuffer_size.height as i16 - PADDING - WINDOW_HEIGHT),
-                      Size2D::new(WINDOW_WIDTH, WINDOW_HEIGHT));
-        self.draw_solid_rect(&window_rect, WINDOW_COLOR);
+        let window_rect = RectI32::new(
+            Point2DI32::new(self.framebuffer_size.width as i32 - PADDING - WINDOW_WIDTH,
+                            self.framebuffer_size.height as i32 - PADDING - WINDOW_HEIGHT),
+            Point2DI32::new(WINDOW_WIDTH, WINDOW_HEIGHT));
+        self.draw_solid_rect(window_rect, WINDOW_COLOR);
         self.draw_text(&format!("Tiling: {:.3} ms", duration_ms(tile_time)),
-                       &Point2D::new(window_rect.origin.x + PADDING,
-                                     window_rect.origin.y + PADDING + FONT_ASCENT));
+                       Point2DI32::new(window_rect.min_x() + PADDING,
+                                       window_rect.min_y() + PADDING + FONT_ASCENT));
         if let Some(rendering_time) = rendering_time {
             self.draw_text(&format!("Rendering: {:.3} ms", duration_ms(rendering_time)),
-                           &Point2D::new(
-                               window_rect.origin.x + PADDING,
-                               window_rect.origin.y + PADDING + FONT_ASCENT + LINE_HEIGHT));
+                           Point2DI32::new(
+                               window_rect.min_x() + PADDING,
+                               window_rect.min_y() + PADDING + FONT_ASCENT + LINE_HEIGHT));
         }
     }
 
-    fn draw_solid_rect(&self, rect: &Rect<i16>, color: ColorU) {
+    fn draw_solid_rect(&self, rect: RectI32, color: ColorU) {
         let vertex_data = [
-            DebugSolidVertex::new(rect.origin),
-            DebugSolidVertex::new(rect.top_right()),
-            DebugSolidVertex::new(rect.bottom_right()),
-            DebugSolidVertex::new(rect.bottom_left()),
+            DebugSolidVertex::new(rect.origin()),
+            DebugSolidVertex::new(rect.upper_right()),
+            DebugSolidVertex::new(rect.lower_right()),
+            DebugSolidVertex::new(rect.lower_left()),
         ];
         self.solid_vertex_array
             .vertex_buffer
@@ -159,8 +161,8 @@ impl DebugRenderer {
         }
     }
 
-    fn draw_text(&self, string: &str, origin: &Point2D<i16>) {
-        let mut next = *origin;
+    fn draw_text(&self, string: &str, origin: Point2DI32) {
+        let mut next = origin;
         let char_count = string.chars().count();
         let mut vertex_data = Vec::with_capacity(char_count * 4);
         let mut index_data = Vec::with_capacity(char_count * 6);
@@ -168,21 +170,24 @@ impl DebugRenderer {
             if !self.font.characters.contains_key(&character) {
                 character = '?';
             }
+
             let info = &self.font.characters[&character];
             let position_rect =
-                Rect::new(Point2D::new(next.x - info.origin_x, next.y - info.origin_y),
-                          Size2D::new(info.width as i16, info.height as i16));
-            let tex_coord_rect = Rect::new(Point2D::new(info.x, info.y),
-                                           Size2D::new(info.width, info.height));
+                RectI32::new(Point2DI32::new(next.x() - info.origin_x, next.y() - info.origin_y),
+                             Point2DI32::new(info.width as i32, info.height as i32));
+            let tex_coord_rect = RectI32::new(Point2DI32::new(info.x, info.y),
+                                              Point2DI32::new(info.width, info.height));
             let first_vertex_index = vertex_data.len();
             vertex_data.extend_from_slice(&[
-                DebugFontVertex::new(position_rect.origin,         tex_coord_rect.origin),
-                DebugFontVertex::new(position_rect.top_right(),    tex_coord_rect.top_right()),
-                DebugFontVertex::new(position_rect.bottom_right(), tex_coord_rect.bottom_right()),
-                DebugFontVertex::new(position_rect.bottom_left(),  tex_coord_rect.bottom_left()),
+                DebugFontVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
+                DebugFontVertex::new(position_rect.upper_right(), tex_coord_rect.upper_right()),
+                DebugFontVertex::new(position_rect.lower_right(), tex_coord_rect.lower_right()),
+                DebugFontVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
             ]);
             index_data.extend(QUAD_INDICES.iter().map(|&i| i + first_vertex_index as u32));
-            next.x += info.advance;
+
+            let next_x = next.x() + info.advance;
+            next.set_x(next_x);
         }
 
         self.font_vertex_array
@@ -349,12 +354,12 @@ struct DebugFontVertex {
 }
 
 impl DebugFontVertex {
-    fn new(position: Point2D<i16>, tex_coord: Point2D<u16>) -> DebugFontVertex {
+    fn new(position: Point2DI32, tex_coord: Point2DI32) -> DebugFontVertex {
         DebugFontVertex {
-            position_x: position.x,
-            position_y: position.y,
-            tex_coord_x: tex_coord.x,
-            tex_coord_y: tex_coord.y,
+            position_x: position.x() as i16,
+            position_y: position.y() as i16,
+            tex_coord_x: tex_coord.x() as u16,
+            tex_coord_y: tex_coord.y() as u16,
         }
     }
 }
@@ -367,8 +372,8 @@ struct DebugSolidVertex {
 }
 
 impl DebugSolidVertex {
-    fn new(position: Point2D<i16>) -> DebugSolidVertex {
-        DebugSolidVertex { position_x: position.x, position_y: position.y }
+    fn new(position: Point2DI32) -> DebugSolidVertex {
+        DebugSolidVertex { position_x: position.x() as i16, position_y: position.y() as i16 }
     }
 }
 

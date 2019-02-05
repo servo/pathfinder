@@ -55,6 +55,16 @@ impl F32x4 {
         }
     }
 
+    #[inline]
+    pub fn floor(self) -> F32x4 {
+        unsafe { F32x4(x86_64::_mm_floor_ps(self.0)) }
+    }
+
+    #[inline]
+    pub fn ceil(self) -> F32x4 {
+        unsafe { F32x4(x86_64::_mm_ceil_ps(self.0)) }
+    }
+
     // Packed comparisons
 
     #[inline]
@@ -1534,6 +1544,18 @@ impl I32x4 {
         unsafe { I32x4(x86_64::_mm_set1_epi32(x)) }
     }
 
+    // Concatenations
+
+    #[inline]
+    pub fn concat_xy_xy(self, other: I32x4) -> I32x4 {
+        unsafe {
+            let this = x86_64::_mm_castsi128_pd(self.0);
+            let other = x86_64::_mm_castsi128_pd(other.0);
+            let result = x86_64::_mm_unpacklo_pd(this, other);
+            I32x4(x86_64::_mm_castpd_si128(result))
+        }
+    }
+
     // Conversions
 
     #[inline]
@@ -1554,6 +1576,47 @@ impl I32x4 {
     pub fn packed_eq(self, other: I32x4) -> U32x4 {
         unsafe { U32x4(x86_64::_mm_cmpeq_epi32(self.0, other.0)) }
     }
+
+    // Swizzles
+
+    #[inline]
+    pub fn xyxy(self) -> I32x4 {
+        unsafe {
+            let this = x86_64::_mm_castsi128_ps(self.0);
+            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 68)))
+        }
+    }
+
+    #[inline]
+    pub fn xwzy(self) -> I32x4 {
+        unsafe {
+            let this = x86_64::_mm_castsi128_ps(self.0);
+            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 108)))
+        }
+    }
+
+    #[inline]
+    pub fn zyxw(self) -> I32x4 {
+        unsafe {
+            let this = x86_64::_mm_castsi128_ps(self.0);
+            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 198)))
+        }
+    }
+
+    #[inline]
+    pub fn zwxy(self) -> I32x4 {
+        unsafe {
+            let this = x86_64::_mm_castsi128_ps(self.0);
+            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 78)))
+        }
+    }
+}
+
+impl Default for I32x4 {
+    #[inline]
+    fn default() -> I32x4 {
+        unsafe { I32x4(x86_64::_mm_setzero_si128()) }
+    }
 }
 
 impl Index<usize> for I32x4 {
@@ -1561,6 +1624,21 @@ impl Index<usize> for I32x4 {
     #[inline]
     fn index(&self, index: usize) -> &i32 {
         unsafe { &mem::transmute::<&__m128i, &[i32; 4]>(&self.0)[index] }
+    }
+}
+
+impl IndexMut<usize> for I32x4 {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut i32 {
+        unsafe { &mut mem::transmute::<&mut __m128i, &mut [i32; 4]>(&mut self.0)[index] }
+    }
+}
+
+impl Add<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn add(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(x86_64::_mm_add_epi32(self.0, other.0)) }
     }
 }
 

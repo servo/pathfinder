@@ -10,8 +10,8 @@
 
 //! 2D axis-aligned rectangles, optimized with SIMD.
 
-use crate::basic::point::Point2DF32;
-use pathfinder_simd::default::F32x4;
+use crate::basic::point::{Point2DF32, Point2DI32};
+use pathfinder_simd::default::{F32x4, I32x4};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct RectF32(pub F32x4);
@@ -113,6 +113,81 @@ impl RectF32 {
 
     #[inline]
     pub fn max_y(self) -> f32 {
+        self.0[3]
+    }
+
+    #[inline]
+    pub fn scale_xy(self, factors: Point2DF32) -> RectF32 {
+        RectF32(self.0 * factors.0.concat_xy_xy(factors.0))
+    }
+
+    #[inline]
+    pub fn round_out(self) -> RectF32 {
+        RectF32::from_points(self.origin().floor(), self.lower_right().ceil())
+    }
+
+    #[inline]
+    pub fn to_i32(&self) -> RectI32 {
+        RectI32(self.0.to_i32x4())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct RectI32(pub I32x4);
+
+impl RectI32 {
+    #[inline]
+    pub fn new(origin: Point2DI32, size: Point2DI32) -> RectI32 {
+        RectI32(origin.0.concat_xy_xy(origin.0 + size.0))
+    }
+
+    #[inline]
+    pub fn from_points(origin: Point2DI32, lower_right: Point2DI32) -> RectI32 {
+        RectI32(origin.0.concat_xy_xy(lower_right.0))
+    }
+
+    #[inline]
+    pub fn origin(&self) -> Point2DI32 {
+        Point2DI32(self.0)
+    }
+
+    #[inline]
+    pub fn size(&self) -> Point2DI32 {
+        Point2DI32(self.0.zwxy() - self.0.xyxy())
+    }
+
+    #[inline]
+    pub fn upper_right(&self) -> Point2DI32 {
+        Point2DI32(self.0.zyxw())
+    }
+
+    #[inline]
+    pub fn lower_left(&self) -> Point2DI32 {
+        Point2DI32(self.0.xwzy())
+    }
+
+    #[inline]
+    pub fn lower_right(&self) -> Point2DI32 {
+        Point2DI32(self.0.zwxy())
+    }
+
+    #[inline]
+    pub fn min_x(self) -> i32 {
+        self.0[0]
+    }
+
+    #[inline]
+    pub fn min_y(self) -> i32 {
+        self.0[1]
+    }
+
+    #[inline]
+    pub fn max_x(self) -> i32 {
+        self.0[2]
+    }
+
+    #[inline]
+    pub fn max_y(self) -> i32 {
         self.0[3]
     }
 }

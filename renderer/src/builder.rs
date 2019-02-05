@@ -15,8 +15,7 @@ use crate::gpu_data::{MaskTileBatchPrimitive, SolidTileScenePrimitive};
 use crate::scene;
 use crate::tiles;
 use crate::z_buffer::ZBuffer;
-use euclid::Rect;
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use std::iter;
 use std::u16;
 
@@ -26,25 +25,24 @@ const MAX_MASKS_PER_BATCH: u16 = 0xffff;
 pub struct SceneBuilder {
     objects: Vec<BuiltObject>,
     z_buffer: ZBuffer,
-    tile_rect: Rect<i16>,
+    tile_rect: RectI32,
 
     current_object_index: usize,
 }
 
 impl SceneBuilder {
     pub fn new(objects: Vec<BuiltObject>, z_buffer: ZBuffer, view_box: RectF32) -> SceneBuilder {
-        let tile_rect = tiles::round_rect_out_to_tile_bounds(view_box);
         SceneBuilder {
             objects,
             z_buffer,
-            tile_rect,
+            tile_rect: tiles::round_rect_out_to_tile_bounds(view_box),
             current_object_index: 0,
         }
     }
 
     pub fn build_solid_tiles(&self) -> Vec<SolidTileScenePrimitive> {
         self.z_buffer
-            .build_solid_tiles(&self.objects, &self.tile_rect)
+            .build_solid_tiles(&self.objects, self.tile_rect)
     }
 
     pub fn build_batch(&mut self) -> Option<Batch> {
@@ -70,8 +68,9 @@ impl SceneBuilder {
                 }
 
                 // Cull occluded tiles.
-                let scene_tile_index =
-                    scene::scene_tile_index(tile.tile_x, tile.tile_y, self.tile_rect);
+                let scene_tile_index = scene::scene_tile_index(tile.tile_x as i32,
+                                                               tile.tile_y as i32,
+                                                               self.tile_rect);
                 if !self
                     .z_buffer
                     .test(scene_tile_index, self.current_object_index as u32)
@@ -95,7 +94,8 @@ impl SceneBuilder {
 
             // Remap and copy fills, culling as necessary.
             for fill in &object.fills {
-                let object_tile_index = object.tile_coords_to_index(fill.tile_x, fill.tile_y);
+                let object_tile_index = object.tile_coords_to_index(fill.tile_x as i32,
+                                                                    fill.tile_y as i32);
                 let mask_tile_index =
                     object_tile_index_to_batch_mask_tile_index[object_tile_index as usize];
                 if mask_tile_index < u16::MAX {

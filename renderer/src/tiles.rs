@@ -12,13 +12,11 @@ use crate::gpu_data::BuiltObject;
 use crate::paint::ShaderId;
 use crate::sorted_vector::SortedVector;
 use crate::z_buffer::ZBuffer;
-use euclid::{Point2D, Rect, Size2D};
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::Point2DF32;
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::segment::Segment;
-use pathfinder_geometry::util;
 use std::cmp::Ordering;
 use std::mem;
 
@@ -73,7 +71,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
 
         // Generate strips.
         let tile_rect = self.built_object.tile_rect;
-        for strip_origin_y in tile_rect.origin.y..tile_rect.max_y() {
+        for strip_origin_y in tile_rect.min_y()..tile_rect.max_y() {
             self.generate_strip(strip_origin_y);
         }
 
@@ -82,7 +80,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         //println!("{:#?}", self.built_object);
     }
 
-    fn generate_strip(&mut self, strip_origin_y: i16) {
+    fn generate_strip(&mut self, strip_origin_y: i32) {
         // Process old active edges.
         self.process_old_active_edges(strip_origin_y);
 
@@ -105,14 +103,13 @@ impl<'o, 'z> Tiler<'o, 'z> {
         for solid_tile_index in self.built_object.solid_tiles.ones() {
             let tile = &self.built_object.tiles[solid_tile_index];
             if tile.backdrop != 0 {
-                self.z_buffer
-                    .update(tile.tile_x, tile.tile_y, self.object_index);
+                self.z_buffer.update(tile.tile_x as i32, tile.tile_y as i32, self.object_index);
             }
         }
     }
 
-    fn process_old_active_edges(&mut self, tile_y: i16) {
-        let mut current_tile_x = self.built_object.tile_rect.origin.x;
+    fn process_old_active_edges(&mut self, tile_y: i32) {
+        let mut current_tile_x = self.built_object.tile_rect.min_x();
         let mut current_subtile_x = 0.0;
         let mut current_winding = 0;
 
@@ -153,7 +150,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
             last_segment_x = segment_x;
 
             // Do initial subtile fill, if necessary.
-            let segment_tile_x = (f32::floor(segment_x) as i32 / TILE_WIDTH as i32) as i16;
+            let segment_tile_x = f32::floor(segment_x) as i32 / TILE_WIDTH as i32;
             if current_tile_x < segment_tile_x && current_subtile_x > 0.0 {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
@@ -212,7 +209,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         //debug_assert_eq!(current_winding, 0);
     }
 
-    fn add_new_active_edge(&mut self, tile_y: i16) {
+    fn add_new_active_edge(&mut self, tile_y: i32) {
         let outline = &self.outline;
         let point_index = self.point_queue.pop().unwrap().point_index;
 
@@ -302,15 +299,10 @@ impl<'o, 'z> Tiler<'o, 'z> {
     }
 }
 
-pub fn round_rect_out_to_tile_bounds(rect: RectF32) -> Rect<i16> {
-    let tile_origin = Point2D::new((f32::floor(rect.min_x()) as i32 / TILE_WIDTH as i32) as i16,
-                                   (f32::floor(rect.min_y()) as i32 / TILE_HEIGHT as i32) as i16);
-    let tile_extent = Point2D::new(
-        util::alignup_i32(f32::ceil(rect.max_x()) as i32, TILE_WIDTH as i32) as i16,
-        util::alignup_i32(f32::ceil(rect.max_y()) as i32, TILE_HEIGHT as i32) as i16,
-    );
-    let tile_size = Size2D::new(tile_extent.x - tile_origin.x, tile_extent.y - tile_origin.y);
-    Rect::new(tile_origin, tile_size)
+pub fn round_rect_out_to_tile_bounds(rect: RectF32) -> RectI32 {
+    rect.scale_xy(Point2DF32::new(1.0 / TILE_WIDTH as f32, 1.0 / TILE_HEIGHT as f32))
+        .round_out()
+        .to_i32()
 }
 
 fn process_active_segment(
@@ -318,7 +310,7 @@ fn process_active_segment(
     from_endpoint_index: u32,
     active_edges: &mut SortedVector<ActiveEdge>,
     built_object: &mut BuiltObject,
-    tile_y: i16,
+    tile_y: i32,
 ) {
     let mut active_edge = ActiveEdge::from_segment(&contour.segment_after(from_endpoint_index));
     //println!("... process_active_segment({:#?})", active_edge);
@@ -372,7 +364,7 @@ impl ActiveEdge {
         }
     }
 
-    fn process(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
+    fn process(&mut self, built_object: &mut BuiltObject, tile_y: i32) {
         //let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         //println!("process_active_edge({:#?}, tile_y={}({}))", self, tile_y, tile_bottom);
 
@@ -453,7 +445,7 @@ impl ActiveEdge {
         &mut self,
         line_segment: &LineSegmentF32,
         built_object: &mut BuiltObject,
-        tile_y: i16,
+        tile_y: i32,
     ) -> Option<LineSegmentF32> {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         /*println!("process_line_segment({:?}, tile_y={}) tile_bottom={}",

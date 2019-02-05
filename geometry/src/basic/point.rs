@@ -11,11 +11,10 @@
 //! A SIMD-optimized point type.
 
 use euclid::Point2D;
-use pathfinder_simd::default::F32x4;
+use pathfinder_simd::default::{F32x4, I32x4};
 use std::ops::{Add, AddAssign, Mul, Sub};
 
-// 2D points.
-
+/// 2D points with 32-bit floating point coordinates.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Point2DF32(pub F32x4);
 
@@ -89,6 +88,16 @@ impl Point2DF32 {
     pub fn scale(&self, x: f32) -> Point2DF32 {
         Point2DF32(self.0 * F32x4::splat(x))
     }
+
+    #[inline]
+    pub fn floor(&self) -> Point2DF32 {
+        Point2DF32(self.0.floor())
+    }
+
+    #[inline]
+    pub fn ceil(&self) -> Point2DF32 {
+        Point2DF32(self.0.ceil())
+    }
 }
 
 impl PartialEq for Point2DF32 {
@@ -123,8 +132,43 @@ impl Mul<Point2DF32> for Point2DF32 {
     }
 }
 
-// 3D homogeneous points.
+/// 2D points with 32-bit signed integer coordinates.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Point2DI32(pub I32x4);
 
+impl Point2DI32 {
+    #[inline]
+    pub fn new(x: i32, y: i32) -> Point2DI32 {
+        Point2DI32(I32x4::new(x, y, 0, 0))
+    }
+
+    #[inline]
+    pub fn splat(value: i32) -> Point2DI32 {
+        Point2DI32(I32x4::splat(value))
+    }
+
+    #[inline]
+    pub fn x(&self) -> i32 {
+        self.0[0]
+    }
+
+    #[inline]
+    pub fn y(&self) -> i32 {
+        self.0[1]
+    }
+
+    #[inline]
+    pub fn set_x(&mut self, x: i32) {
+        self.0[0] = x;
+    }
+
+    #[inline]
+    pub fn set_y(&mut self, y: i32) {
+        self.0[1] = y;
+    }
+}
+
+/// 3D homogeneous points.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Point3DF32(pub F32x4);
 

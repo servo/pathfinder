@@ -12,18 +12,17 @@
 
 use crate::paint::{ObjectShader, ShaderId};
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
-use euclid::Rect;
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::basic::point::Point2DF32;
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 
 #[derive(Debug)]
 pub struct BuiltObject {
     pub bounds: RectF32,
-    pub tile_rect: Rect<i16>,
+    pub tile_rect: RectI32,
     pub tiles: Vec<TileObjectPrimitive>,
     pub fills: Vec<FillObjectPrimitive>,
     pub solid_tiles: FixedBitSet,
@@ -92,11 +91,11 @@ impl BuiltObject {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
 
         // Allocate tiles.
-        let tile_count = tile_rect.size.width as usize * tile_rect.size.height as usize;
+        let tile_count = tile_rect.size().x() as usize * tile_rect.size().y() as usize;
         let mut tiles = Vec::with_capacity(tile_count);
-        for y in tile_rect.origin.y..tile_rect.max_y() {
-            for x in tile_rect.origin.x..tile_rect.max_x() {
-                tiles.push(TileObjectPrimitive::new(x, y));
+        for y in tile_rect.min_y()..tile_rect.max_y() {
+            for x in tile_rect.min_x()..tile_rect.max_x() {
+                tiles.push(TileObjectPrimitive::new(x as i16, y as i16));
             }
         }
 
@@ -107,13 +106,13 @@ impl BuiltObject {
     }
 
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
-    fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i16, tile_y: i16) {
+    fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i32, tile_y: i32) {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
 
         let mut segment = (segment.0 * F32x4::splat(256.0)).to_i32x4();
 
-        let tile_origin_x = (TILE_WIDTH as i32) * 256 * (tile_x as i32);
-        let tile_origin_y = (TILE_HEIGHT as i32) * 256 * (tile_y as i32);
+        let tile_origin_x = (TILE_WIDTH as i32) * 256 * tile_x;
+        let tile_origin_y = (TILE_HEIGHT as i32) * 256 * tile_y;
         let tile_origin = I32x4::new(tile_origin_x, tile_origin_y, tile_origin_x, tile_origin_y);
 
         segment = segment - tile_origin;
@@ -149,8 +148,8 @@ impl BuiltObject {
         self.fills.push(FillObjectPrimitive {
             px,
             subpx,
-            tile_x,
-            tile_y,
+            tile_x: tile_x as i16,
+            tile_y: tile_y as i16,
         });
         self.solid_tiles.set(tile_index as usize, false);
     }
@@ -160,8 +159,8 @@ impl BuiltObject {
         left: f32,
         right: f32,
         mut winding: i16,
-        tile_x: i16,
-        tile_y: i16,
+        tile_x: i32,
+        tile_y: i32,
     ) {
         let tile_origin_y = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
         let left = Point2DF32::new(left, tile_origin_y);
@@ -190,8 +189,7 @@ impl BuiltObject {
         }
     }
 
-    // TODO(pcwalton): Optimize this better with SIMD!
-    pub fn generate_fill_primitives_for_line(&mut self, mut segment: LineSegmentF32, tile_y: i16) {
+    pub fn generate_fill_primitives_for_line(&mut self, mut segment: LineSegmentF32, tile_y: i32) {
         /*println!("... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
                     segment,
                     tile_y,
@@ -205,9 +203,10 @@ impl BuiltObject {
             (segment.to_x(), segment.from_x())
         };
 
-        let segment_tile_left = (f32::floor(segment_left) as i32 / TILE_WIDTH as i32) as i16;
+        // FIXME(pcwalton): Optimize this.
+        let segment_tile_left = f32::floor(segment_left) as i32 / TILE_WIDTH as i32;
         let segment_tile_right =
-            util::alignup_i32(f32::ceil(segment_right) as i32, TILE_WIDTH as i32) as i16;
+            util::alignup_i32(f32::ceil(segment_right) as i32, TILE_WIDTH as i32);
         /*println!("segment_tile_left={} segment_tile_right={} tile_rect={:?}",
                  segment_tile_left, segment_tile_right, self.tile_rect);*/
 
@@ -232,17 +231,17 @@ impl BuiltObject {
         }
     }
 
-    // FIXME(pcwalton): Use a `Point2D<i16>` instead?
-    pub fn tile_coords_to_index(&self, tile_x: i16, tile_y: i16) -> u32 {
+    // FIXME(pcwalton): Use a `Point2DI32` instead?
+    pub fn tile_coords_to_index(&self, tile_x: i32, tile_y: i32) -> u32 {
         /*println!("tile_coords_to_index(x={}, y={}, tile_rect={:?})",
         tile_x,
         tile_y,
         self.tile_rect);*/
-        (tile_y - self.tile_rect.origin.y) as u32 * self.tile_rect.size.width as u32
-            + (tile_x - self.tile_rect.origin.x) as u32
+        (tile_y - self.tile_rect.min_y()) as u32 * self.tile_rect.size().x() as u32
+            + (tile_x - self.tile_rect.min_x()) as u32
     }
 
-    pub fn get_tile_mut(&mut self, tile_x: i16, tile_y: i16) -> &mut TileObjectPrimitive {
+    pub fn get_tile_mut(&mut self, tile_x: i32, tile_y: i32) -> &mut TileObjectPrimitive {
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
         &mut self.tiles[tile_index as usize]
     }
