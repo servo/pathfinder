@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/transform.rs
+// pathfinder/geometry/src/basic/transform2d.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,11 +8,11 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Applies a transform to paths.
+//! 2D affine transforms.
 
-use crate::point::Point2DF32;
+use crate::basic::point::Point2DF32;
+use crate::basic::transform3d::Transform3DF32;
 use crate::segment::Segment;
-use crate::transform3d::Transform3DF32;
 use euclid::{Point2D, Rect, Size2D, Transform2D};
 use lyon_path::PathEvent;
 use pathfinder_simd::default::F32x4;

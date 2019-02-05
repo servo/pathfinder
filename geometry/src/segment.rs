@@ -10,8 +10,8 @@
 
 //! Line or curve segments, optimized with SIMD.
 
-use crate::line_segment::LineSegmentF32;
-use crate::point::Point2DF32;
+use crate::basic::line_segment::LineSegmentF32;
+use crate::basic::point::Point2DF32;
 use lyon_path::PathEvent;
 use pathfinder_simd::default::F32x4;
 

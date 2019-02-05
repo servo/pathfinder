@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/point.rs
+// pathfinder/geometry/src/basic/point.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

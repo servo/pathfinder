@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/transform3d.rs
+// pathfinder/geometry/src/basic/transform3d.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -10,9 +10,9 @@
 
 //! 3D transforms that can be applied to paths.
 
-use crate::point::{Point2DF32, Point3DF32};
+use crate::basic::point::{Point2DF32, Point3DF32};
+use crate::basic::transform2d::Matrix2x2F32;
 use crate::segment::Segment;
-use crate::transform::Matrix2x2F32;
 use euclid::{Point2D, Rect, Size2D};
 use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Neg};
@@ -327,8 +327,8 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::point::Point3DF32;
-    use crate::transform3d::Transform3DF32;
+    use crate::basic::point::Point3DF32;
+    use crate::basic::transform3d::Transform3DF32;
 
     #[test]
     fn test_post_mul() {

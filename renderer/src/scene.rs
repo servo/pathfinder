@@ -16,11 +16,11 @@ use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
 use euclid::Rect;
 use hashbrown::HashMap;
+use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
+use pathfinder_geometry::basic::transform2d::Transform2DF32;
+use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
 use pathfinder_geometry::outline::Outline;
-use pathfinder_geometry::point::{Point2DF32, Point3DF32};
-use pathfinder_geometry::transform3d::Perspective;
-use pathfinder_geometry::transform::Transform2DF32;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::fmt::{self, Debug, Formatter};
 

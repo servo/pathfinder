@@ -19,7 +19,7 @@ use clap::{App, Arg};
 use jemallocator;
 use pathfinder_renderer::builder::SceneBuilder;
 use pathfinder_renderer::gpu_data::BuiltScene;
-use pathfinder_renderer::scene::Scene;
+use pathfinder_renderer::scene::{BuildTransform, Scene};
 use pathfinder_renderer::serialization::RiffSerialize;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::SceneExt;
@@ -103,8 +103,8 @@ fn main() {
 
         let start_time = Instant::now();
         let built_objects = match jobs {
-            Some(1) => scene.build_objects_sequentially(&z_buffer),
-            _ => scene.build_objects(&z_buffer),
+            Some(1) => scene.build_objects_sequentially(&BuildTransform::None, &z_buffer),
+            _ => scene.build_objects(&BuildTransform::None, &z_buffer),
         };
         elapsed_object_build_time += duration_to_ms(&(Instant::now() - start_time));
 

@@ -12,14 +12,14 @@
 
 use euclid::{Point2D, Rect, Size2D};
 use lyon_path::iterator::PathIter;
-use pathfinder_geometry::line_segment::LineSegmentF32;
+use pathfinder_geometry::basic::line_segment::LineSegmentF32;
+use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32PathIter};
 use pathfinder_geometry::monotonic::MonotonicConversionIter;
 use pathfinder_geometry::outline::Outline;
-use pathfinder_geometry::point::Point2DF32;
 use pathfinder_geometry::segment::{PathEventsToSegments, Segment};
 use pathfinder_geometry::segment::{SegmentFlags, SegmentsToPathEvents};
 use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
-use pathfinder_geometry::transform::{Transform2DF32, Transform2DF32PathIter};
 use pathfinder_renderer::paint::{ColorU, Paint};
 use pathfinder_renderer::scene::{PathObject, PathObjectKind, Scene};
 use std::mem;

@@ -14,8 +14,8 @@ use crate::paint::{ObjectShader, ShaderId};
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use euclid::Rect;
 use fixedbitset::FixedBitSet;
-use pathfinder_geometry::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::point::Point2DF32;
+use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 

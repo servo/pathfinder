@@ -11,8 +11,8 @@
 use clap::{App, Arg};
 use euclid::{Point2D, Rect, Size2D};
 use jemallocator;
-use pathfinder_geometry::point::Point3DF32;
-use pathfinder_geometry::transform3d::{Perspective, Transform3DF32};
+use pathfinder_geometry::basic::point::Point3DF32;
+use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::SceneBuilder;
 use pathfinder_renderer::gpu_data::BuiltScene;

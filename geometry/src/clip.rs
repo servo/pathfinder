@@ -8,9 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::line_segment::LineSegmentF32;
+use crate::basic::line_segment::LineSegmentF32;
+use crate::basic::point::{Point2DF32, Point3DF32};
 use crate::outline::{Contour, PointFlags};
-use crate::point::{Point2DF32, Point3DF32};
 use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
 use arrayvec::ArrayVec;

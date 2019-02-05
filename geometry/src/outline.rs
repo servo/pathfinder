@@ -10,14 +10,13 @@
 
 //! A compressed in-memory representation of paths.
 
+use crate::basic::line_segment::LineSegmentF32;
+use crate::basic::point::Point2DF32;
+use crate::basic::transform2d::Transform2DF32;
+use crate::basic::transform3d::Perspective;
 use crate::clip::{ContourPolygonClipper, ContourRectClipper};
-use crate::line_segment::LineSegmentF32;
 use crate::monotonic::MonotonicConversionIter;
-use crate::point::Point2DF32;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
-use crate::transform3d::Perspective;
-use crate::transform::Transform2DF32;
-use crate::util;
 use euclid::{Point2D, Rect, Size2D};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;

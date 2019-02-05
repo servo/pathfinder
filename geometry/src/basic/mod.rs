@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/lib.rs
+// pathfinder/geometry/src/basic/mod.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,21 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! Utilities for Bézier curves.
-//!
-//! These may be merged into upstream Lyon eventually.
+//! Basic geometry and linear algebra primitives, optimized with SIMD.
 
-#[macro_use]
-extern crate bitflags;
-
-pub mod basic;
-pub mod clip;
-pub mod cubic_to_quadratic;
-pub mod monotonic;
-pub mod normals;
-pub mod orientation;
-pub mod outline;
-pub mod segment;
-pub mod segments;
-pub mod stroke;
-pub mod util;
+pub mod line_segment;
+pub mod point;
+pub mod transform2d;
+pub mod transform3d;

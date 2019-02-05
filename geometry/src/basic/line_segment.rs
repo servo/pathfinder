@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/line_segment.rs
+// pathfinder/geometry/src/basic/line_segment.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -10,7 +10,7 @@
 
 //! Line segment types, optimized with SIMD.
 
-use crate::point::Point2DF32;
+use crate::basic::point::Point2DF32;
 use crate::util;
 use pathfinder_simd::default::F32x4;
 use std::ops::Sub;
