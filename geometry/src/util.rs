@@ -10,10 +10,18 @@
 
 //! Various utilities.
 
+use std::f32;
+
 /// Linear interpolation.
 #[inline]
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
+}
+
+/// Clamping.
+#[inline]
+pub fn clamp(x: f32, min_val: f32, max_val: f32) -> f32 {
+    f32::min(max_val, f32::max(min_val, x))
 }
 
 /// Divides `a` by `b`, rounding up.

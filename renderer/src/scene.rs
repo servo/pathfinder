@@ -116,14 +116,17 @@ impl Scene {
             PreparedBuildTransform::Perspective(ref perspective, ref quad) => {
                 outline.clip_against_polygon(quad);
                 outline.apply_perspective(perspective);
+                outline.prepare_for_tiling(&self.view_box);
             }
             PreparedBuildTransform::Transform2D(ref transform) => {
                 outline.transform(transform);
+                outline.clip_against_rect(&self.view_box);
             }
-            PreparedBuildTransform::None => {}
+            PreparedBuildTransform::None => {
+                outline.clip_against_rect(&self.view_box);
+            }
         }
-        outline.clip_against_rect(&self.view_box);
-        outline.make_monotonic();
+        outline.prepare_for_tiling(&self.view_box);
         outline
     }
 }

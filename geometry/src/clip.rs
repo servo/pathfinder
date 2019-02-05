@@ -343,11 +343,11 @@ trait ContourClipper where Self::Edge: TEdge {
         if let Some(last_position) = contour.last_position() {
             if last_position != segment.baseline.from() {
                 // Add a line to join up segments.
-                contour.push_point(segment.baseline.from(), PointFlags::empty());
+                contour.push_point(segment.baseline.from(), PointFlags::empty(), true);
             }
         }
 
-        contour.push_segment(*segment);
+        contour.push_segment(*segment, true);
     }
 
     fn check_for_fast_clip(&mut self, edge: &Self::Edge) -> FastClipResult {

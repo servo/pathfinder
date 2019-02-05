@@ -91,10 +91,10 @@ impl<'o, 'z> Tiler<'o, 'z> {
         // Add new active edges.
         let strip_max_y = ((i32::from(strip_origin_y) + 1) * TILE_HEIGHT as i32) as f32;
         while let Some(queued_endpoint) = self.point_queue.peek() {
-            // We're done when we see an endpoint that belongs to the next tile.
+            // We're done when we see an endpoint that belongs to the next tile strip.
             //
             // Note that this test must be `>`, not `>=`, in order to make sure we don't miss
-            // active edges that lie precisely on the tile boundary.
+            // active edges that lie precisely on the tile strip boundary.
             if queued_endpoint.y > strip_max_y {
                 break;
             }

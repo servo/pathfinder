@@ -77,6 +77,11 @@ impl Point2DF32 {
     }
 
     #[inline]
+    pub fn clamp(&self, min_val: Point2DF32, max_val: Point2DF32) -> Point2DF32 {
+        self.max(min_val).min(max_val)
+    }
+
+    #[inline]
     pub fn det(&self, other: Point2DF32) -> f32 {
         self.x() * other.y() - self.y() * other.x()
     }

@@ -33,6 +33,7 @@ const FILL_COLORS_TEXTURE_WIDTH: u32 = 256;
 const FILL_COLORS_TEXTURE_HEIGHT: u32 = 256;
 
 pub struct Renderer {
+    // Core shaders
     fill_program: FillProgram,
     solid_tile_program: SolidTileProgram,
     mask_tile_program: MaskTileProgram,
@@ -45,11 +46,16 @@ pub struct Renderer {
     mask_framebuffer: Framebuffer,
     fill_colors_texture: Texture,
 
+    // Postprocessing shaders
+    defringe_program: DefringeProgram,
+    defringe_vertex_array: DefringeVertexArray,
+
+    // Debug
     pending_timer_queries: VecDeque<TimerQuery>,
     free_timer_queries: Vec<TimerQuery>,
-
     pub debug_renderer: DebugRenderer,
 
+    // Extra info
     main_framebuffer_size: Size2D<u32>,
 }
 
@@ -58,6 +64,8 @@ impl Renderer {
         let fill_program = FillProgram::new();
         let solid_tile_program = SolidTileProgram::new();
         let mask_tile_program = MaskTileProgram::new();
+
+        let defringe_program = DefringeProgram::new();
 
         let area_lut_texture = Texture::from_png("area-lut");
 
@@ -71,6 +79,9 @@ impl Renderer {
                                                               &quad_vertex_positions_buffer);
         let solid_tile_vertex_array = SolidTileVertexArray::new(&solid_tile_program,
                                                                 &quad_vertex_positions_buffer);
+
+        let defringe_vertex_array = DefringeVertexArray::new(&defringe_program,
+                                                             &quad_vertex_positions_buffer);
 
         let mask_framebuffer = Framebuffer::new(&Size2D::new(MASK_FRAMEBUFFER_WIDTH,
                                                              MASK_FRAMEBUFFER_HEIGHT));
@@ -91,6 +102,9 @@ impl Renderer {
             solid_tile_vertex_array,
             mask_framebuffer,
             fill_colors_texture,
+
+            defringe_program,
+            defringe_vertex_array,
 
             pending_timer_queries: VecDeque::new(),
             free_timer_queries: vec![],
@@ -449,6 +463,54 @@ impl MaskTileProgram {
             fill_colors_texture_uniform,
             fill_colors_texture_size_uniform,
             view_box_origin_uniform,
+        }
+    }
+}
+
+struct DefringeProgram {
+    program: Program,
+    source_uniform: Uniform,
+    framebuffer_size_uniform: Uniform,
+    kernel_uniform: Uniform,
+}
+
+impl DefringeProgram {
+    fn new() -> DefringeProgram {
+        let program = Program::new("defringe");
+        let source_uniform = Uniform::new(&program, "Source");
+        let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
+        let kernel_uniform = Uniform::new(&program, "Kernel");
+        DefringeProgram { program, source_uniform, framebuffer_size_uniform, kernel_uniform }
+    }
+}
+
+struct DefringeVertexArray {
+    gl_vertex_array: GLuint,
+}
+
+impl DefringeVertexArray {
+    fn new(defringe_program: &DefringeProgram, quad_vertex_positions_buffer: &Buffer)
+           -> DefringeVertexArray {
+        let mut gl_vertex_array = 0;
+        unsafe {
+            let position_attr = VertexAttr::new(&defringe_program.program, "Position");
+
+            gl::GenVertexArrays(1, &mut gl_vertex_array);
+            gl::BindVertexArray(gl_vertex_array);
+            gl::UseProgram(defringe_program.program.gl_program);
+            gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
+            position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
+        }
+
+        DefringeVertexArray { gl_vertex_array }
+    }
+}
+
+impl Drop for DefringeVertexArray {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
         }
     }
 }

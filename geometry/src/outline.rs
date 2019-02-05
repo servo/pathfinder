@@ -17,6 +17,7 @@ use crate::point::Point2DF32;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
 use crate::transform3d::Perspective;
 use crate::transform::Transform2DF32;
+use crate::util;
 use euclid::{Point2D, Rect, Size2D};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -66,7 +67,7 @@ impl Outline {
                         .contours
                         .push(mem::replace(&mut current_contour, Contour::new()));
                 }
-                current_contour.push_point(segment.baseline.from(), PointFlags::empty());
+                current_contour.push_point(segment.baseline.from(), PointFlags::empty(), true);
             }
 
             if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
@@ -83,13 +84,15 @@ impl Outline {
             }
 
             if !segment.is_line() {
-                current_contour.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0);
+                current_contour.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0, true);
                 if !segment.is_quadratic() {
-                    current_contour.push_point(segment.ctrl.to(), PointFlags::CONTROL_POINT_1);
+                    current_contour.push_point(segment.ctrl.to(),
+                                               PointFlags::CONTROL_POINT_1,
+                                               true);
                 }
             }
 
-            current_contour.push_point(segment.baseline.to(), PointFlags::empty());
+            current_contour.push_point(segment.baseline.to(), PointFlags::empty(), true);
         }
 
         if !current_contour.is_empty() {
@@ -109,12 +112,6 @@ impl Outline {
         &self.bounds
     }
 
-    #[inline]
-    pub fn make_monotonic(&mut self) {
-        self.contours.iter_mut().for_each(|contour| contour.make_monotonic());
-    }
-
-    #[inline]
     pub fn transform(&mut self, transform: &Transform2DF32) {
         let mut new_bounds = None;
         for contour in &mut self.contours {
@@ -124,7 +121,6 @@ impl Outline {
         self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
     }
 
-    #[inline]
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
         let mut new_bounds = None;
         for contour in &mut self.contours {
@@ -134,7 +130,13 @@ impl Outline {
         self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
     }
 
-    #[inline]
+    pub fn prepare_for_tiling(&mut self, view_box: &Rect<f32>) {
+        for contour in &mut self.contours {
+            contour.prepare_for_tiling(view_box);
+        }
+        self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| Rect::zero());
+    }
+
     pub fn clip_against_polygon(&mut self, clip_polygon: &[Point2DF32]) {
         let mut new_bounds = None;
         for contour in mem::replace(&mut self.contours, vec![]) {
@@ -148,6 +150,10 @@ impl Outline {
     }
 
     pub fn clip_against_rect(&mut self, clip_rect: &Rect<f32>) {
+        if clip_rect.contains_rect(&self.bounds) {
+            return;
+        }
+
         let mut new_bounds = None;
         for contour in mem::replace(&mut self.contours, vec![]) {
             let contour = ContourRectClipper::new(clip_rect, contour).clip();
@@ -221,31 +227,36 @@ impl Contour {
 
     // TODO(pcwalton): SIMD.
     #[inline]
-    pub(crate) fn push_point(&mut self, point: Point2DF32, flags: PointFlags) {
-        let first = self.is_empty();
-        union_rect(&mut self.bounds, point, first);
+    pub(crate) fn push_point(&mut self,
+                             point: Point2DF32,
+                             flags: PointFlags,
+                             update_bounds: bool) {
+        if update_bounds {
+            let first = self.is_empty();
+            union_rect(&mut self.bounds, point, first);
+        }
 
         self.points.push(point);
         self.flags.push(flags);
     }
 
-    pub(crate) fn push_segment(&mut self, segment: Segment) {
+    pub(crate) fn push_segment(&mut self, segment: Segment, update_bounds: bool) {
         if segment.is_none() {
             return
         }
 
         if self.is_empty() {
-            self.push_point(segment.baseline.from(), PointFlags::empty());
+            self.push_point(segment.baseline.from(), PointFlags::empty(), update_bounds);
         }
 
         if !segment.is_line() {
-            self.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0);
+            self.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0, update_bounds);
             if !segment.is_quadratic() {
-                self.push_point(segment.ctrl.to(), PointFlags::CONTROL_POINT_1);
+                self.push_point(segment.ctrl.to(), PointFlags::CONTROL_POINT_1, update_bounds);
             }
         }
 
-        self.push_point(segment.baseline.to(), PointFlags::empty());
+        self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
     }
 
     #[inline]
@@ -338,7 +349,6 @@ impl Contour {
         }
     }
 
-    #[inline]
     pub fn transform(&mut self, transform: &Transform2DF32) {
         for (point_index, point) in self.points.iter_mut().enumerate() {
             *point = transform.transform_point(point);
@@ -346,7 +356,6 @@ impl Contour {
         }
     }
 
-    #[inline]
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
         for (point_index, point) in self.points.iter_mut().enumerate() {
             *point = perspective.transform_point_2d(point);
@@ -354,18 +363,80 @@ impl Contour {
         }
     }
 
-    #[inline]
-    pub fn make_monotonic(&mut self) {
-        // Fast path.
-        if self.iter().all(|segment| segment.is_monotonic()) {
-            return;
+    fn prepare_for_tiling(&mut self, view_box: &Rect<f32>) {
+        // Snap points to the view box bounds. This mops up floating point error from the clipping
+        // process.
+        let origin_upper_left  = Point2DF32::from_euclid(view_box.origin);
+        let origin_lower_right = Point2DF32::from_euclid(view_box.bottom_right());
+        let (mut last_endpoint_index, mut contour_is_monotonic) = (None, true);
+        for point_index in 0..(self.points.len() as u32) {
+            let position = &mut self.points[point_index as usize];
+            *position = position.clamp(origin_upper_left, origin_lower_right);
+
+            if contour_is_monotonic {
+                if self.point_is_endpoint(point_index) {
+                    if let Some(last_endpoint_index) = last_endpoint_index {
+                        if !self.curve_with_endpoints_is_monotonic(last_endpoint_index,
+                                                                   point_index) {
+                            contour_is_monotonic = false;
+                        }
+                    }
+                    last_endpoint_index = Some(point_index);
+                }
+            }
         }
 
-        // Slow path.
-        let contour = self.take();
-        for segment in MonotonicConversionIter::new(contour.iter()) {
-            self.push_segment(segment);
+        // Convert to monotonic, if necessary.
+        if !contour_is_monotonic {
+            let contour = self.take();
+            self.bounds = contour.bounds;
+            for segment in MonotonicConversionIter::new(contour.iter()) {
+                self.push_segment(segment, false);
+            }
         }
+
+        // Update bounds.
+        self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| Rect::zero());
+    }
+
+    fn curve_with_endpoints_is_monotonic(&self, start_endpoint_index: u32, end_endpoint_index: u32)
+                                         -> bool {
+        let start_position = self.points[start_endpoint_index as usize];
+        let end_position = self.points[end_endpoint_index as usize];
+
+        if start_position.x() <= end_position.x() {
+            for point_index in start_endpoint_index..end_endpoint_index {
+                if self.points[point_index as usize].x() >
+                        self.points[point_index as usize + 1].x() {
+                    return false;
+                }
+            }
+        } else {
+            for point_index in start_endpoint_index..end_endpoint_index {
+                if self.points[point_index as usize].x() <
+                        self.points[point_index as usize + 1].x() {
+                    return false;
+                }
+            }
+        }
+
+        if start_position.y() <= end_position.y() {
+            for point_index in start_endpoint_index..end_endpoint_index {
+                if self.points[point_index as usize].y() >
+                        self.points[point_index as usize + 1].y() {
+                    return false;
+                }
+            }
+        } else {
+            for point_index in start_endpoint_index..end_endpoint_index {
+                if self.points[point_index as usize].y() <
+                        self.points[point_index as usize + 1].y() {
+                    return false;
+                }
+            }
+        }
+
+        true
     }
 
     fn update_bounds(&self, bounds: &mut Option<Rect<f32>>) {
