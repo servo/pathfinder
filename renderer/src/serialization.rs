@@ -54,10 +54,10 @@ impl RiffSerialize for BuiltScene {
         writer.write_u32::<LittleEndian>(header_size as u32)?;
         writer.write_u32::<LittleEndian>(FILE_VERSION)?;
         writer.write_u32::<LittleEndian>(self.batches.len() as u32)?;
-        writer.write_f32::<LittleEndian>(self.view_box.origin.x)?;
-        writer.write_f32::<LittleEndian>(self.view_box.origin.y)?;
-        writer.write_f32::<LittleEndian>(self.view_box.size.width)?;
-        writer.write_f32::<LittleEndian>(self.view_box.size.height)?;
+        writer.write_f32::<LittleEndian>(self.view_box.origin().x())?;
+        writer.write_f32::<LittleEndian>(self.view_box.origin().y())?;
+        writer.write_f32::<LittleEndian>(self.view_box.size().x())?;
+        writer.write_f32::<LittleEndian>(self.view_box.size().y())?;
 
         writer.write_all(b"shad")?;
         writer.write_u32::<LittleEndian>(shaders_size as u32)?;

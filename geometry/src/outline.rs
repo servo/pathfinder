@@ -12,26 +12,26 @@
 
 use crate::basic::line_segment::LineSegmentF32;
 use crate::basic::point::Point2DF32;
+use crate::basic::rect::RectF32;
 use crate::basic::transform2d::Transform2DF32;
 use crate::basic::transform3d::Perspective;
 use crate::clip::{ContourPolygonClipper, ContourRectClipper};
 use crate::monotonic::MonotonicConversionIter;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
-use euclid::{Point2D, Rect, Size2D};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 
 #[derive(Clone)]
 pub struct Outline {
     pub contours: Vec<Contour>,
-    bounds: Rect<f32>,
+    bounds: RectF32,
 }
 
 #[derive(Clone)]
 pub struct Contour {
     pub(crate) points: Vec<Point2DF32>,
     pub(crate) flags: Vec<PointFlags>,
-    pub(crate) bounds: Rect<f32>,
+    pub(crate) bounds: RectF32,
 }
 
 bitflags! {
@@ -44,10 +44,7 @@ bitflags! {
 impl Outline {
     #[inline]
     pub fn new() -> Outline {
-        Outline {
-            contours: vec![],
-            bounds: Rect::zero(),
-        }
+        Outline { contours: vec![], bounds: RectF32::default() }
     }
 
     #[inline]
@@ -107,8 +104,8 @@ impl Outline {
     }
 
     #[inline]
-    pub fn bounds(&self) -> &Rect<f32> {
-        &self.bounds
+    pub fn bounds(&self) -> RectF32 {
+        self.bounds
     }
 
     pub fn transform(&mut self, transform: &Transform2DF32) {
@@ -117,7 +114,7 @@ impl Outline {
             contour.transform(transform);
             contour.update_bounds(&mut new_bounds);
         }
-        self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
+        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
@@ -126,14 +123,14 @@ impl Outline {
             contour.apply_perspective(perspective);
             contour.update_bounds(&mut new_bounds);
         }
-        self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
+        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 
-    pub fn prepare_for_tiling(&mut self, view_box: &Rect<f32>) {
+    pub fn prepare_for_tiling(&mut self, view_box: RectF32) {
         for contour in &mut self.contours {
             contour.prepare_for_tiling(view_box);
         }
-        self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| Rect::zero());
+        self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| RectF32::default());
     }
 
     pub fn clip_against_polygon(&mut self, clip_polygon: &[Point2DF32]) {
@@ -145,11 +142,11 @@ impl Outline {
                 self.contours.push(contour);
             }
         }
-        self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
+        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 
-    pub fn clip_against_rect(&mut self, clip_rect: &Rect<f32>) {
-        if clip_rect.contains_rect(&self.bounds) {
+    pub fn clip_against_rect(&mut self, clip_rect: RectF32) {
+        if clip_rect.contains_rect(self.bounds) {
             return;
         }
 
@@ -161,7 +158,7 @@ impl Outline {
                 self.contours.push(contour);
             }
         }
-        self.bounds = new_bounds.unwrap_or_else(|| Rect::zero());
+        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 }
 
@@ -180,7 +177,7 @@ impl Debug for Outline {
 impl Contour {
     #[inline]
     pub fn new() -> Contour {
-        Contour { points: vec![], flags: vec![], bounds: Rect::zero() }
+        Contour { points: vec![], flags: vec![], bounds: RectF32::default() }
     }
 
     // Replaces this contour with a new one, with arrays preallocated to match `self`.
@@ -190,7 +187,7 @@ impl Contour {
         mem::replace(self, Contour {
             points: Vec::with_capacity(length),
             flags: Vec::with_capacity(length),
-            bounds: Rect::zero(),
+            bounds: RectF32::default(),
         })
     }
 
@@ -210,8 +207,8 @@ impl Contour {
     }
 
     #[inline]
-    pub fn bounds(&self) -> &Rect<f32> {
-        &self.bounds
+    pub fn bounds(&self) -> RectF32 {
+        self.bounds
     }
 
     #[inline]
@@ -362,11 +359,10 @@ impl Contour {
         }
     }
 
-    fn prepare_for_tiling(&mut self, view_box: &Rect<f32>) {
+    fn prepare_for_tiling(&mut self, view_box: RectF32) {
         // Snap points to the view box bounds. This mops up floating point error from the clipping
         // process.
-        let origin_upper_left  = Point2DF32::from_euclid(view_box.origin);
-        let origin_lower_right = Point2DF32::from_euclid(view_box.bottom_right());
+        let (origin_upper_left, origin_lower_right) = (view_box.origin(), view_box.lower_right());
         let (mut last_endpoint_index, mut contour_is_monotonic) = (None, true);
         for point_index in 0..(self.points.len() as u32) {
             let position = &mut self.points[point_index as usize];
@@ -395,7 +391,7 @@ impl Contour {
         }
 
         // Update bounds.
-        self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| Rect::zero());
+        self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| RectF32::default());
     }
 
     fn curve_with_endpoints_is_monotonic(&self, start_endpoint_index: u32, end_endpoint_index: u32)
@@ -438,10 +434,10 @@ impl Contour {
         true
     }
 
-    fn update_bounds(&self, bounds: &mut Option<Rect<f32>>) {
+    fn update_bounds(&self, bounds: &mut Option<RectF32>) {
         *bounds = Some(match *bounds {
             None => self.bounds,
-            Some(bounds) => bounds.union(&self.bounds),
+            Some(bounds) => bounds.union_rect(self.bounds),
         })
     }
 }
@@ -558,17 +554,10 @@ impl<'a> Iterator for ContourIter<'a> {
 }
 
 #[inline]
-fn union_rect(bounds: &mut Rect<f32>, new_point: Point2DF32, first: bool) {
+fn union_rect(bounds: &mut RectF32, new_point: Point2DF32, first: bool) {
     if first {
-        *bounds = Rect::new(new_point.as_euclid(), Size2D::zero());
-        return;
+        *bounds = RectF32::from_points(new_point, new_point);
+    } else {
+        *bounds = bounds.union_point(new_point)
     }
-
-    let (mut min_x, mut min_y) = (bounds.origin.x, bounds.origin.y);
-    let (mut max_x, mut max_y) = (bounds.max_x(), bounds.max_y());
-    min_x = min_x.min(new_point.x());
-    min_y = min_y.min(new_point.y());
-    max_x = max_x.max(new_point.x());
-    max_y = max_y.max(new_point.y());
-    *bounds = Rect::new(Point2D::new(min_x, min_y), Size2D::new(max_x - min_x, max_y - min_y));
 }

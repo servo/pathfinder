@@ -10,34 +10,31 @@
 
 use crate::basic::line_segment::LineSegmentF32;
 use crate::basic::point::{Point2DF32, Point3DF32};
+use crate::basic::rect::RectF32;
 use crate::outline::{Contour, PointFlags};
 use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
 use arrayvec::ArrayVec;
-use euclid::Rect;
 use lyon_path::PathEvent;
 use smallvec::SmallVec;
 use std::mem;
 
 pub struct RectClipper<'a> {
-    clip_rect: Rect<f32>,
+    clip_rect: RectF32,
     subject: &'a [PathEvent],
 }
 
 impl<'a> RectClipper<'a> {
-    pub fn new<'aa>(clip_rect: &Rect<f32>, subject: &'aa [PathEvent]) -> RectClipper<'aa> {
-        RectClipper {
-            clip_rect: *clip_rect,
-            subject,
-        }
+    pub fn new<'aa>(clip_rect: RectF32, subject: &'aa [PathEvent]) -> RectClipper<'aa> {
+        RectClipper { clip_rect, subject }
     }
 
     pub fn clip(&self) -> Vec<PathEvent> {
         let mut output = self.subject.to_vec();
-        self.clip_against(Edge::left(&self.clip_rect), &mut output);
-        self.clip_against(Edge::top(&self.clip_rect), &mut output);
-        self.clip_against(Edge::right(&self.clip_rect), &mut output);
-        self.clip_against(Edge::bottom(&self.clip_rect), &mut output);
+        self.clip_against(Edge::left(self.clip_rect), &mut output);
+        self.clip_against(Edge::top(self.clip_rect), &mut output);
+        self.clip_against(Edge::right(self.clip_rect), &mut output);
+        self.clip_against(Edge::bottom(self.clip_rect), &mut output);
         output
     }
 
@@ -125,27 +122,23 @@ impl TEdge for Edge {
 
 impl Edge {
     #[inline]
-    fn left(rect: &Rect<f32>) -> Edge {
-        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_left()),
-                                 &Point2DF32::from_euclid(rect.origin)))
+    fn left(rect: RectF32) -> Edge {
+        Edge(LineSegmentF32::new(&rect.lower_left(), &rect.origin()))
     }
 
     #[inline]
-    fn top(rect: &Rect<f32>) -> Edge {
-        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.origin),
-                                 &Point2DF32::from_euclid(rect.top_right())))
+    fn top(rect: RectF32) -> Edge {
+        Edge(LineSegmentF32::new(&rect.origin(), &rect.upper_right()))
     }
 
     #[inline]
-    fn right(rect: &Rect<f32>) -> Edge {
-        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.top_right()),
-                                 &Point2DF32::from_euclid(rect.bottom_right())))
+    fn right(rect: RectF32) -> Edge {
+        Edge(LineSegmentF32::new(&rect.upper_right(), &rect.lower_right()))
     }
 
     #[inline]
-    fn bottom(rect: &Rect<f32>) -> Edge {
-        Edge(LineSegmentF32::new(&Point2DF32::from_euclid(rect.bottom_right()),
-                                 &Point2DF32::from_euclid(rect.bottom_left())))
+    fn bottom(rect: RectF32) -> Edge {
+        Edge(LineSegmentF32::new(&rect.lower_right(), &rect.lower_left()))
     }
 }
 
@@ -426,7 +419,7 @@ enum EdgeRelativeLocation {
 // Fast axis-aligned box 2D clipping
 
 pub(crate) struct ContourRectClipper {
-    clip_rect: Rect<f32>,
+    clip_rect: RectF32,
     contour: Contour,
 }
 
@@ -441,17 +434,17 @@ impl ContourClipper for ContourRectClipper {
 
 impl ContourRectClipper {
     #[inline]
-    pub(crate) fn new(clip_rect: &Rect<f32>, contour: Contour) -> ContourRectClipper {
-        ContourRectClipper { clip_rect: *clip_rect, contour }
+    pub(crate) fn new(clip_rect: RectF32, contour: Contour) -> ContourRectClipper {
+        ContourRectClipper { clip_rect, contour }
     }
 
     pub(crate) fn clip(mut self) -> Contour {
-        if self.clip_rect.contains_rect(&self.contour.bounds()) {
+        if self.clip_rect.contains_rect(self.contour.bounds()) {
             return self.contour
         }
 
-        self.clip_against(AxisAlignedEdge::Left(self.clip_rect.origin.x));
-        self.clip_against(AxisAlignedEdge::Top(self.clip_rect.origin.y));
+        self.clip_against(AxisAlignedEdge::Left(self.clip_rect.min_x()));
+        self.clip_against(AxisAlignedEdge::Top(self.clip_rect.min_y()));
         self.clip_against(AxisAlignedEdge::Right(self.clip_rect.max_x()));
         self.clip_against(AxisAlignedEdge::Bottom(self.clip_rect.max_y()));
 

@@ -16,7 +16,8 @@ use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
 use euclid::Rect;
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
+use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
@@ -29,8 +30,8 @@ pub struct Scene {
     pub objects: Vec<PathObject>,
     pub paints: Vec<Paint>,
     pub paint_cache: HashMap<Paint, PaintId>,
-    pub bounds: Rect<f32>,
-    pub view_box: Rect<f32>,
+    pub bounds: RectF32,
+    pub view_box: RectF32,
 }
 
 impl Scene {
@@ -40,8 +41,8 @@ impl Scene {
             objects: vec![],
             paints: vec![],
             paint_cache: HashMap::new(),
-            bounds: Rect::zero(),
-            view_box: Rect::zero(),
+            bounds: RectF32::default(),
+            view_box: RectF32::default(),
         }
     }
 
@@ -68,7 +69,7 @@ impl Scene {
 
     pub fn build_objects_sequentially(&self, build_transform: &BuildTransform, z_buffer: &ZBuffer)
                                       -> Vec<BuiltObject> {
-        let build_transform = build_transform.prepare(&self.bounds);
+        let build_transform = build_transform.prepare(self.bounds);
         self.objects
             .iter()
             .enumerate()
@@ -76,7 +77,7 @@ impl Scene {
                 let outline = self.apply_build_transform(&object.outline, &build_transform);
                 let mut tiler = Tiler::new(
                     &outline,
-                    &self.view_box,
+                    self.view_box,
                     object_index as u16,
                     ShaderId(object.paint.0),
                     z_buffer,
@@ -89,7 +90,7 @@ impl Scene {
 
     pub fn build_objects(&self, build_transform: &BuildTransform, z_buffer: &ZBuffer)
                          -> Vec<BuiltObject> {
-        let build_transform = build_transform.prepare(&self.bounds);
+        let build_transform = build_transform.prepare(self.bounds);
         self.objects
             .par_iter()
             .enumerate()
@@ -97,7 +98,7 @@ impl Scene {
                 let outline = self.apply_build_transform(&object.outline, &build_transform);
                 let mut tiler = Tiler::new(
                     &outline,
-                    &self.view_box,
+                    self.view_box,
                     object_index as u16,
                     ShaderId(object.paint.0),
                     z_buffer,
@@ -116,17 +117,17 @@ impl Scene {
             PreparedBuildTransform::Perspective(ref perspective, ref quad) => {
                 outline.clip_against_polygon(quad);
                 outline.apply_perspective(perspective);
-                outline.prepare_for_tiling(&self.view_box);
+                outline.prepare_for_tiling(self.view_box);
             }
             PreparedBuildTransform::Transform2D(ref transform) => {
                 outline.transform(transform);
-                outline.clip_against_rect(&self.view_box);
+                outline.clip_against_rect(self.view_box);
             }
             PreparedBuildTransform::None => {
-                outline.clip_against_rect(&self.view_box);
+                outline.clip_against_rect(self.view_box);
             }
         }
-        outline.prepare_for_tiling(&self.view_box);
+        outline.prepare_for_tiling(self.view_box);
         outline
     }
 }
@@ -135,10 +136,10 @@ impl Debug for Scene {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         writeln!(formatter,
                  "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\">",
-                 self.view_box.origin.x,
-                 self.view_box.origin.y,
-                 self.view_box.size.width,
-                 self.view_box.size.height)?;
+                 self.view_box.origin().x(),
+                 self.view_box.origin().y(),
+                 self.view_box.size().x(),
+                 self.view_box.size().y())?;
         for object in &self.objects {
             let paint = &self.paints[object.paint.0 as usize];
             write!(formatter, "    <path")?;
@@ -197,7 +198,7 @@ pub enum BuildTransform {
 }
 
 impl BuildTransform {
-    fn prepare(&self, bounds: &Rect<f32>) -> PreparedBuildTransform {
+    fn prepare(&self, bounds: RectF32) -> PreparedBuildTransform {
         let perspective = match self {
             BuildTransform::None => return PreparedBuildTransform::None,
             BuildTransform::Transform2D(ref transform) => {
@@ -207,10 +208,10 @@ impl BuildTransform {
         };
 
         let mut points = vec![
-            Point3DF32::from_euclid_2d(&bounds.origin),
-            Point3DF32::from_euclid_2d(&bounds.top_right()),
-            Point3DF32::from_euclid_2d(&bounds.bottom_right()),
-            Point3DF32::from_euclid_2d(&bounds.bottom_left()),
+            bounds.origin().to_3d(),
+            bounds.upper_right().to_3d(),
+            bounds.lower_right().to_3d(),
+            bounds.lower_left().to_3d(),
         ];
         //println!("-----");
         //println!("bounds={:?} ORIGINAL quad={:?}", self.bounds, points);

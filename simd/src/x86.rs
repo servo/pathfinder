@@ -12,7 +12,7 @@ use std::arch::x86_64::{self, __m128, __m128i};
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::ops::{Add, AddAssign, Index, IndexMut, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::ops::{Add, AddAssign, BitXor, Index, IndexMut, Mul, MulAssign, Neg, Not, Sub, SubAssign};
 
 // 32-bit floats
 
@@ -73,6 +73,16 @@ impl F32x4 {
                 self.0, other.0,
             )))
         }
+    }
+
+    #[inline]
+    pub fn packed_lt(self, other: F32x4) -> U32x4 {
+        other.packed_gt(self)
+    }
+
+    #[inline]
+    pub fn packed_le(self, other: F32x4) -> U32x4 {
+        !self.packed_gt(other)
     }
 
     // Conversions
@@ -1592,6 +1602,11 @@ impl U32x4 {
         }
     }
 
+    #[inline]
+    pub fn splat(x: u32) -> U32x4 {
+        unsafe { U32x4(x86_64::_mm_set1_epi32(x as i32)) }
+    }
+
     // Basic operations
 
     #[inline]
@@ -1631,6 +1646,24 @@ impl PartialEq for U32x4 {
     #[inline]
     fn eq(&self, other: &U32x4) -> bool {
         self.packed_eq(*other).is_all_ones()
+    }
+}
+
+impl Not for U32x4 {
+    type Output = U32x4;
+    #[inline]
+    fn not(self) -> U32x4 {
+        self ^ U32x4::splat(!0)
+    }
+}
+
+impl BitXor<U32x4> for U32x4 {
+    type Output = U32x4;
+    #[inline]
+    fn bitxor(self, other: U32x4) -> U32x4 {
+        unsafe {
+            U32x4(x86_64::_mm_xor_si128(self.0, other.0))
+        }
     }
 }
 

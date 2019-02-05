@@ -16,6 +16,7 @@ use crate::scene;
 use crate::tiles;
 use crate::z_buffer::ZBuffer;
 use euclid::Rect;
+use pathfinder_geometry::basic::rect::RectF32;
 use std::iter;
 use std::u16;
 
@@ -31,8 +32,7 @@ pub struct SceneBuilder {
 }
 
 impl SceneBuilder {
-    pub fn new(objects: Vec<BuiltObject>, z_buffer: ZBuffer, view_box: &Rect<f32>)
-               -> SceneBuilder {
+    pub fn new(objects: Vec<BuiltObject>, z_buffer: ZBuffer, view_box: RectF32) -> SceneBuilder {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(view_box);
         SceneBuilder {
             objects,

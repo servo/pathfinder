@@ -11,9 +11,10 @@
 //! 3D transforms that can be applied to paths.
 
 use crate::basic::point::{Point2DF32, Point3DF32};
+use crate::basic::rect::RectF32;
 use crate::basic::transform2d::Matrix2x2F32;
 use crate::segment::Segment;
-use euclid::{Point2D, Rect, Size2D};
+use euclid::Size2D;
 use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Neg};
 
@@ -260,7 +261,7 @@ impl Perspective {
 
     #[inline]
     pub fn transform_point_2d(&self, point: &Point2DF32) -> Point2DF32 {
-        let point = self.transform.transform_point(point.to_4d()).perspective_divide().to_2d();
+        let point = self.transform.transform_point(point.to_3d()).perspective_divide().to_2d();
         let window_size = self.window_size.to_f32();
         let size_scale = Point2DF32::new(window_size.width * 0.5, window_size.height * 0.5);
         (point + Point2DF32::splat(1.0)) * size_scale
@@ -268,17 +269,14 @@ impl Perspective {
 
     // TODO(pcwalton): SIMD?
     #[inline]
-    pub fn transform_rect(&self, rect: &Rect<f32>) -> Rect<f32> {
-        let upper_left = self.transform_point_2d(&Point2DF32::from_euclid(rect.origin));
-        let upper_right = self.transform_point_2d(&Point2DF32::from_euclid(rect.top_right()));
-        let lower_left = self.transform_point_2d(&Point2DF32::from_euclid(rect.bottom_left()));
-        let lower_right = self.transform_point_2d(&Point2DF32::from_euclid(rect.bottom_right()));
-        let min_x = upper_left.x().min(upper_right.x()).min(lower_left.x()).min(lower_right.x());
-        let min_y = upper_left.y().min(upper_right.y()).min(lower_left.y()).min(lower_right.y());
-        let max_x = upper_left.x().max(upper_right.x()).max(lower_left.x()).max(lower_right.x());
-        let max_y = upper_left.y().max(upper_right.y()).max(lower_left.y()).max(lower_right.y());
-        let (width, height) = (max_x - min_x, max_y - min_y);
-        Rect::new(Point2D::new(min_x, min_y), Size2D::new(width, height))
+    pub fn transform_rect(&self, rect: RectF32) -> RectF32 {
+        let upper_left = self.transform_point_2d(&rect.origin());
+        let upper_right = self.transform_point_2d(&rect.upper_right());
+        let lower_left = self.transform_point_2d(&rect.lower_left());
+        let lower_right = self.transform_point_2d(&rect.lower_right());
+        let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
+        let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
+        RectF32::from_points(min_point, max_point)
     }
 }
 

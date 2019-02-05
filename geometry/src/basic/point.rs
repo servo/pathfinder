@@ -40,10 +40,9 @@ impl Point2DF32 {
         Point2D::new(self.0[0], self.0[1])
     }
 
-    // TODO(pcwalton): Optimize this!
     #[inline]
-    pub fn to_4d(self) -> Point3DF32 {
-        Point3DF32::new(self.0[0], self.0[1], 0.0, 1.0)
+    pub fn to_3d(self) -> Point3DF32 {
+        Point3DF32(self.0.concat_xy_xy(F32x4::new(0.0, 1.0, 0.0, 0.0)))
     }
 
     #[inline]

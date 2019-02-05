@@ -15,6 +15,7 @@ use crate::z_buffer::ZBuffer;
 use euclid::{Point2D, Rect, Size2D};
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::segment::Segment;
 use pathfinder_geometry::util;
@@ -42,16 +43,13 @@ impl<'o, 'z> Tiler<'o, 'z> {
     #[allow(clippy::or_fun_call)]
     pub fn new(
         outline: &'o Outline,
-        view_box: &Rect<f32>,
+        view_box: RectF32,
         object_index: u16,
         shader: ShaderId,
         z_buffer: &'z ZBuffer,
     ) -> Tiler<'o, 'z> {
-        let bounds = outline
-            .bounds()
-            .intersection(&view_box)
-            .unwrap_or(Rect::zero());
-        let built_object = BuiltObject::new(&bounds, shader);
+        let bounds = outline.bounds().intersection(view_box).unwrap_or(RectF32::default());
+        let built_object = BuiltObject::new(bounds, shader);
 
         Tiler {
             outline,
@@ -304,11 +302,9 @@ impl<'o, 'z> Tiler<'o, 'z> {
     }
 }
 
-pub fn round_rect_out_to_tile_bounds(rect: &Rect<f32>) -> Rect<i16> {
-    let tile_origin = Point2D::new(
-        (f32::floor(rect.origin.x) as i32 / TILE_WIDTH as i32) as i16,
-        (f32::floor(rect.origin.y) as i32 / TILE_HEIGHT as i32) as i16,
-    );
+pub fn round_rect_out_to_tile_bounds(rect: RectF32) -> Rect<i16> {
+    let tile_origin = Point2D::new((f32::floor(rect.min_x()) as i32 / TILE_WIDTH as i32) as i16,
+                                   (f32::floor(rect.min_y()) as i32 / TILE_HEIGHT as i32) as i16);
     let tile_extent = Point2D::new(
         util::alignup_i32(f32::ceil(rect.max_x()) as i32, TILE_WIDTH as i32) as i16,
         util::alignup_i32(f32::ceil(rect.max_y()) as i32, TILE_HEIGHT as i32) as i16,
@@ -377,7 +373,7 @@ impl ActiveEdge {
     }
 
     fn process(&mut self, built_object: &mut BuiltObject, tile_y: i16) {
-        let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
+        //let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         //println!("process_active_edge({:#?}, tile_y={}({}))", self, tile_y, tile_bottom);
 
         let mut segment = self.segment;

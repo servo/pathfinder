@@ -10,10 +10,10 @@
 
 //! Converts a subset of SVG to a Pathfinder scene.
 
-use euclid::{Point2D, Rect, Size2D};
 use lyon_path::iterator::PathIter;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32PathIter};
 use pathfinder_geometry::monotonic::MonotonicConversionIter;
 use pathfinder_geometry::outline::Outline;
@@ -78,7 +78,7 @@ fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2DF32) {
                 let path = MonotonicConversionIter::new(path);
                 let outline = Outline::from_segments(path);
 
-                scene.bounds = scene.bounds.union(outline.bounds());
+                scene.bounds = scene.bounds.union_rect(outline.bounds());
                 scene.objects.push(PathObject::new(
                     outline,
                     style,
@@ -101,7 +101,7 @@ fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2DF32) {
                 let path = MonotonicConversionIter::new(path);
                 let outline = Outline::from_segments(path);
 
-                scene.bounds = scene.bounds.union(outline.bounds());
+                scene.bounds = scene.bounds.union_rect(outline.bounds());
                 scene.objects.push(PathObject::new(
                     outline,
                     style,
@@ -135,12 +135,11 @@ impl PaintExt for Paint {
     }
 }
 
-fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> Rect<f32> {
-    Rect::new(
-        Point2D::new(rect.x, rect.y),
-        Size2D::new(rect.width, rect.height),
+fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> RectF32 {
+    RectF32::new(
+        Point2DF32::new(rect.x as f32, rect.y as f32),
+        Point2DF32::new(rect.width as f32, rect.height as f32),
     )
-    .to_f32()
 }
 
 fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2DF32 {

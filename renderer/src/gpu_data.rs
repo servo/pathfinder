@@ -16,12 +16,13 @@ use euclid::Rect;
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 
 #[derive(Debug)]
 pub struct BuiltObject {
-    pub bounds: Rect<f32>,
+    pub bounds: RectF32,
     pub tile_rect: Rect<i16>,
     pub tiles: Vec<TileObjectPrimitive>,
     pub fills: Vec<FillObjectPrimitive>,
@@ -31,7 +32,7 @@ pub struct BuiltObject {
 
 #[derive(Debug)]
 pub struct BuiltScene {
-    pub view_box: Rect<f32>,
+    pub view_box: RectF32,
     pub batches: Vec<Batch>,
     pub solid_tiles: Vec<SolidTileScenePrimitive>,
     pub shaders: Vec<ObjectShader>,
@@ -86,9 +87,9 @@ pub struct MaskTileBatchPrimitive {
 // Utilities for built objects
 
 impl BuiltObject {
-    pub fn new(bounds: &Rect<f32>, shader: ShaderId) -> BuiltObject {
+    pub fn new(bounds: RectF32, shader: ShaderId) -> BuiltObject {
         // Compute the tile rect.
-        let tile_rect = tiles::round_rect_out_to_tile_bounds(&bounds);
+        let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
 
         // Allocate tiles.
         let tile_count = tile_rect.size.width as usize * tile_rect.size.height as usize;
@@ -102,14 +103,7 @@ impl BuiltObject {
         let mut solid_tiles = FixedBitSet::with_capacity(tile_count);
         solid_tiles.insert_range(..);
 
-        BuiltObject {
-            bounds: *bounds,
-            tile_rect,
-            tiles,
-            fills: vec![],
-            solid_tiles,
-            shader,
-        }
+        BuiltObject { bounds, tile_rect, tiles, fills: vec![], solid_tiles, shader }
     }
 
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
@@ -256,13 +250,8 @@ impl BuiltObject {
 
 impl BuiltScene {
     #[inline]
-    pub fn new(view_box: &Rect<f32>) -> BuiltScene {
-        BuiltScene {
-            view_box: *view_box,
-            batches: vec![],
-            solid_tiles: vec![],
-            shaders: vec![],
-        }
+    pub fn new(view_box: RectF32) -> BuiltScene {
+        BuiltScene { view_box, batches: vec![], solid_tiles: vec![], shaders: vec![] }
     }
 }
 

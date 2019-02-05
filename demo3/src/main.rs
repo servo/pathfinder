@@ -9,9 +9,10 @@
 // except according to those terms.
 
 use clap::{App, Arg};
-use euclid::{Point2D, Rect, Size2D};
+use euclid::Size2D;
 use jemallocator;
-use pathfinder_geometry::basic::point::Point3DF32;
+use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
+use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::SceneBuilder;
@@ -211,7 +212,6 @@ impl SceneThread {
     fn run(self) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                MainToSceneMsg::Exit => return,
                 MainToSceneMsg::Build(perspective) => {
                     let start_time = Instant::now();
                     let built_scene = build_scene(&self.scene, perspective, &self.options);
@@ -225,7 +225,6 @@ impl SceneThread {
 
 enum MainToSceneMsg {
     Build(Option<Perspective>),
-    Exit,
 }
 
 enum SceneToMainMsg {
@@ -285,7 +284,9 @@ fn load_scene(options: &Options, window_size: &Size2D<u32>) -> Scene {
     let usvg = Tree::from_file(&options.input_path, &UsvgOptions::default()).unwrap();
 
     let mut scene = Scene::from_tree(usvg);
-    scene.view_box = Rect::new(Point2D::zero(), window_size.to_f32());
+    scene.view_box =
+        RectF32::new(Point2DF32::default(),
+                     Point2DF32::new(window_size.width as f32, window_size.height as f32));
 
     println!(
         "Scene bounds: {:?} View box: {:?}",
@@ -301,7 +302,7 @@ fn load_scene(options: &Options, window_size: &Size2D<u32>) -> Scene {
 }
 
 fn build_scene(scene: &Scene, perspective: Option<Perspective>, options: &Options) -> BuiltScene {
-    let z_buffer = ZBuffer::new(&scene.view_box);
+    let z_buffer = ZBuffer::new(scene.view_box);
 
     let build_transform = match perspective {
         None => BuildTransform::None,
@@ -324,10 +325,10 @@ fn build_scene(scene: &Scene, perspective: Option<Perspective>, options: &Option
         }
     };
 
-    let mut built_scene = BuiltScene::new(&scene.view_box);
+    let mut built_scene = BuiltScene::new(scene.view_box);
     built_scene.shaders = scene.build_shaders();
 
-    let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, &scene.view_box);
+    let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, scene.view_box);
     built_scene.solid_tiles = scene_builder.build_solid_tiles();
     while let Some(batch) = scene_builder.build_batch() {
         built_scene.batches.push(batch);

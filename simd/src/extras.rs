@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::default::F32x4;
+use crate::default::{F32x4, U32x4};
 
 impl F32x4 {
     // Accessors

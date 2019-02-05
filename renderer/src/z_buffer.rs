@@ -14,6 +14,7 @@ use crate::gpu_data::{BuiltObject, SolidTileScenePrimitive};
 use crate::scene;
 use crate::tiles;
 use euclid::Rect;
+use pathfinder_geometry::basic::rect::RectF32;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 pub struct ZBuffer {
@@ -22,7 +23,7 @@ pub struct ZBuffer {
 }
 
 impl ZBuffer {
-    pub fn new(view_box: &Rect<f32>) -> ZBuffer {
+    pub fn new(view_box: RectF32) -> ZBuffer {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(view_box);
         let tile_area = tile_rect.size.width as usize * tile_rect.size.height as usize;
         ZBuffer {

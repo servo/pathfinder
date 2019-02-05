@@ -12,5 +12,6 @@
 
 pub mod line_segment;
 pub mod point;
+pub mod rect;
 pub mod transform2d;
 pub mod transform3d;
