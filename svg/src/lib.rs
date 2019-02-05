@@ -15,7 +15,6 @@ use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32PathIter};
-use pathfinder_geometry::monotonic::MonotonicConversionIter;
 use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::segment::{PathEventsToSegments, Segment};
 use pathfinder_geometry::segment::{SegmentFlags, SegmentsToPathEvents};
@@ -75,7 +74,6 @@ fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2DF32) {
 
                 let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                 let path = Transform2DF32PathIter::new(path, &transform);
-                let path = MonotonicConversionIter::new(path);
                 let outline = Outline::from_segments(path);
 
                 scene.bounds = scene.bounds.union_rect(outline.bounds());
@@ -98,7 +96,6 @@ fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2DF32) {
                 let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
                 let path = PathEventsToSegments::new(path);
                 let path = Transform2DF32PathIter::new(path, &transform);
-                let path = MonotonicConversionIter::new(path);
                 let outline = Outline::from_segments(path);
 
                 scene.bounds = scene.bounds.union_rect(outline.bounds());
