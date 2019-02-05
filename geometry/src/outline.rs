@@ -236,6 +236,7 @@ impl Contour {
         self.flags.push(flags);
     }
 
+    #[inline]
     pub(crate) fn push_segment(&mut self, segment: Segment, update_bounds: bool) {
         if segment.is_none() {
             return
@@ -383,15 +384,67 @@ impl Contour {
 
         // Convert to monotonic, if necessary.
         if !contour_is_monotonic {
-            let contour = self.take();
-            self.bounds = contour.bounds;
-            for segment in MonotonicConversionIter::new(contour.iter()) {
-                self.push_segment(segment, false);
-            }
+            self.make_monotonic();
         }
 
         // Update bounds.
         self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| RectF32::default());
+    }
+
+    fn make_monotonic(&mut self) {
+        let contour = self.take();
+        self.bounds = contour.bounds;
+
+        let mut last_endpoint_index = None;
+        let input_point_count = contour.points.len() as u32;
+        for point_index in 0..(input_point_count + 1) {
+            if point_index < input_point_count && !contour.point_is_endpoint(point_index) {
+                continue;
+            }
+
+            if let Some(last_endpoint_index) = last_endpoint_index {
+                let position_index =
+                    if point_index == input_point_count { 0 } else { point_index };
+                let baseline = LineSegmentF32::new(&contour.points[last_endpoint_index as usize],
+                                                   &contour.points[position_index as usize]);
+                let point_count = point_index - last_endpoint_index + 1;
+                if point_count == 3 {
+                    let ctrl_point_index = last_endpoint_index as usize + 1;
+                    let ctrl_position = &contour.points[ctrl_point_index];
+                    handle_cubic(self, Segment::quadratic(&baseline, &ctrl_position).to_cubic());
+                } else if point_count == 4 {
+                    let first_ctrl_point_index = last_endpoint_index as usize + 1;
+                    let ctrl_position_0 = &contour.points[first_ctrl_point_index + 0];
+                    let ctrl_position_1 = &contour.points[first_ctrl_point_index + 1];
+                    let ctrl = LineSegmentF32::new(&ctrl_position_0, &ctrl_position_1);
+                    handle_cubic(self, Segment::cubic(&baseline, &ctrl));
+                }
+
+                self.push_point(contour.points[position_index as usize],
+                                PointFlags::empty(),
+                                false);
+            }
+
+            last_endpoint_index = Some(point_index);
+        }
+
+        fn handle_cubic(contour: &mut Contour, segment: Segment) {
+            match segment.as_cubic_segment().y_extrema() {
+                (Some(t0), Some(t1)) => {
+                    let (segments_01, segment_2) = segment.as_cubic_segment().split(t1);
+                    let (segment_0, segment_1) = segments_01.as_cubic_segment().split(t0 / t1);
+                    contour.push_segment(segment_0, false);
+                    contour.push_segment(segment_1, false);
+                    contour.push_segment(segment_2, false);
+                }
+                (Some(t0), None) | (None, Some(t0)) => {
+                    let (segment_0, segment_1) = segment.as_cubic_segment().split(t0);
+                    contour.push_segment(segment_0, false);
+                    contour.push_segment(segment_1, false);
+                }
+                (None, None) => contour.push_segment(segment, false),
+            }
+        }
     }
 
     fn curve_with_endpoints_is_monotonic(&self, start_endpoint_index: u32, end_endpoint_index: u32)
