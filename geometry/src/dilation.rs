@@ -25,14 +25,13 @@ impl<'a> ContourDilator<'a> {
     }
 
     pub fn dilate(&mut self) {
-        //println!("---");
+        // Determine orientation.
         let scale = self.amount.scale_xy(match self.orientation {
             Orientation::Ccw => Point2DF32::new( 1.0, -1.0),
             Orientation::Cw  => Point2DF32::new(-1.0,  1.0),
         });
 
-        //let input = self.contour.clone();
-
+        // Find the starting and previous positions.
         let first_position = self.contour.position_of(0);
         let mut prev_point_index = 0;
         let mut prev_position;
@@ -45,7 +44,7 @@ impl<'a> ContourDilator<'a> {
             }
         }
 
-        // Find the starting position.
+        // Initialize our loop.
         let first_point_index = self.contour.next_point_index_of(prev_point_index);
         let mut current_point_index = first_point_index;
         let mut position = first_position;
@@ -122,8 +121,6 @@ impl<'a> ContourDilator<'a> {
             }
 
             // Continue.
-            prev_point_index = next_point_index - 1;
-            prev_position = position;
             prev_vector = next_vector;
             position = next_position;
             current_point_index = next_point_index;
