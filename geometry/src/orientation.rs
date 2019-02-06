@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::outline::Outline;
 use euclid::Point2D;
 use lyon_path::PathEvent;
 
@@ -49,6 +50,26 @@ impl Orientation {
                 }
             }
         }
+        Orientation::from_area(area)
+    }
+
+    // Pathfinder 3 version
+    pub fn from_outline(outline: &Outline) -> Orientation {
+        let mut area = 0.0;
+        for contour in &outline.contours {
+            let mut prev_position = match contour.last_position() {
+                None => continue,
+                Some(position) => position,
+            };
+            for &next_position in &contour.points {
+                area += prev_position.det(next_position);
+                prev_position = next_position;
+            }
+        }
+        Orientation::from_area(area)
+    }
+
+    fn from_area(area: f32) -> Orientation {
         if area <= 0.0 {
             Orientation::Ccw
         } else {
@@ -60,3 +81,4 @@ impl Orientation {
 fn det(a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
     a.x * b.y - a.y * b.x
 }
+

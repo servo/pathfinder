@@ -9,75 +9,113 @@
 // except according to those terms.
 
 use crate::basic::point::Point2DF32;
+use crate::orientation::Orientation;
 use crate::outline::Contour;
 
 pub struct ContourDilator<'a> {
     contour: &'a mut Contour,
     amount: Point2DF32,
+    orientation: Orientation,
 }
 
 impl<'a> ContourDilator<'a> {
-    pub fn new(contour: &'a mut Contour, amount: Point2DF32) -> ContourDilator<'a> {
-        ContourDilator { contour, amount }
+    pub fn new(contour: &'a mut Contour, amount: Point2DF32, orientation: Orientation)
+               -> ContourDilator<'a> {
+        ContourDilator { contour, amount, orientation }
     }
 
     pub fn dilate(&mut self) {
-        let mut position = self.contour.position_of(0);
+        let scale = self.amount.scale_xy(match self.orientation {
+            Orientation::Ccw => Point2DF32::new( 1.0, -1.0),
+            Orientation::Cw  => Point2DF32::new(-1.0,  1.0),
+        });
+
+        let input = self.contour.clone();
+
+        let mut position = input.position_of(0);
         let mut prev_point_index = 0;
         let mut prev_position;
+
         loop {
-            prev_point_index = self.contour.prev_point_index_of(prev_point_index);
-            prev_position = self.contour.position_of(prev_point_index);
+            prev_point_index = input.prev_point_index_of(prev_point_index);
+            prev_position = input.position_of(prev_point_index);
             if prev_point_index == 0 || prev_position != position {
                 break;
             }
         }
 
-        let mut point_index = 0;
+        let mut prev_vector = (position - prev_position).normalize();
+        let mut current_point_index = 0;
+
         loop {
             // Find the next non-degenerate position.
-            let mut next_point_index = point_index;
+            let mut next_point_index = current_point_index;
             let mut next_position;
             loop {
-                next_point_index = self.contour.next_point_index_of(next_point_index);
-                next_position = self.contour.position_of(next_point_index);
-                if next_point_index == point_index || next_position != position {
+                next_point_index = input.next_point_index_of(next_point_index);
+                next_position = input.position_of(next_point_index);
+                if next_point_index == current_point_index || next_position != position {
                     break;
                 }
             }
 
             // Calculate new position by moving the point by the bisector.
-            let (prev_vector, next_vector) = (position - prev_position, next_position - position);
-            let bisector = prev_vector.scale(next_vector.length()) +
-                           next_vector.scale(prev_vector.length());
+            let next_vector = (next_position - position).normalize();
+            //let (prev_vector, next_vector) = (prev_position - position, next_position - position);
+
+            let bisector = prev_vector.yx() + next_vector.yx();
+            /*let bisector = prev_vector.scale(next_vector.length()) +
+                           next_vector.scale(prev_vector.length());*/
             let bisector_length = bisector.length();
-            let new_position = if bisector_length == 0.0 {
-                position
+            let scaled_bisector = if bisector_length == 0.0 {
+                Point2DF32::default()
             } else {
-                position - bisector.scale_xy(self.amount).scale(1.0 / bisector_length)
+                bisector.scale_xy(scale).scale(1.0 / bisector_length)
             };
 
-            /*println!("dilate({:?}): {:?} -> {:?} (bisector {:?}, length {:?})",
-                     self.amount,
+            let new_position = position - scaled_bisector;
+
+            /*
+            println!("dilate(): prev={}({:?}) cur={}({:?}) next={}({:?}) bisector={:?}({:?}, {:?})",
+                     prev_point_index,
+                     prev_position,
+                     current_point_index,
                      position,
-                     new_position,
+                     next_point_index,
+                     next_position,
                      bisector,
-                     bisector_length);*/
+                     bisector_length,
+                     scaled_bisector);
+            */
+
+            /*if bisector_length == 0.0 {
+                println!("dilate({:?}): {:?} -> {:?} (bisector {:?}, length {:?})",
+                        self.amount,
+                        position,
+                        new_position,
+                        bisector,
+                        bisector_length);
+            }*/
 
             // Update all points.
-            for point_index in point_index..next_point_index {
+            let mut point_index = current_point_index;
+            while point_index != next_point_index {
                 self.contour.points[point_index as usize] = new_position;
+                //println!("... updating {:?}", point_index);
+                point_index = input.next_point_index_of(point_index);
             }
 
             // We're done if we start to loop around.
-            if next_point_index < point_index {
+            if next_point_index < current_point_index {
                 break;
             }
 
             // Continue.
+            prev_point_index = next_point_index - 1;
             prev_position = position;
+            prev_vector = next_vector;
             position = next_position;
-            point_index = next_point_index;
+            current_point_index = next_point_index;
         }
     }
 }

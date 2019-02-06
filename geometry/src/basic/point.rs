@@ -110,6 +110,18 @@ impl Point2DF32 {
         let squared = self.0 * self.0;
         f32::sqrt(squared[0] + squared[1])
     }
+
+    /// Treats this point as a vector and normalizes it.
+    #[inline]
+    pub fn normalize(&self) -> Point2DF32 {
+        self.scale(1.0 / self.length())
+    }
+
+    /// Swaps y and x.
+    #[inline]
+    pub fn yx(&self) -> Point2DF32 {
+        Point2DF32(self.0.yxwz())
+    }
 }
 
 impl PartialEq for Point2DF32 {

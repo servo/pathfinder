@@ -17,6 +17,7 @@ use crate::basic::transform2d::Transform2DF32;
 use crate::basic::transform3d::Perspective;
 use crate::clip::{ContourPolygonClipper, ContourRectClipper};
 use crate::dilation::ContourDilator;
+use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -127,7 +128,8 @@ impl Outline {
     }
 
     pub fn dilate(&mut self, amount: Point2DF32) {
-        self.contours.iter_mut().for_each(|contour| contour.dilate(amount));
+        let orientation = Orientation::from_outline(self);
+        self.contours.iter_mut().for_each(|contour| contour.dilate(amount, orientation));
         self.bounds = self.bounds.dilate(amount);
     }
 
@@ -363,8 +365,8 @@ impl Contour {
         }
     }
 
-    pub fn dilate(&mut self, amount: Point2DF32) {
-        ContourDilator::new(self, amount).dilate();
+    pub fn dilate(&mut self, amount: Point2DF32, orientation: Orientation) {
+        ContourDilator::new(self, amount, orientation).dilate();
         self.bounds = self.bounds.dilate(amount);
     }
 
