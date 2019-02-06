@@ -25,6 +25,7 @@ impl<'a> ContourDilator<'a> {
     }
 
     pub fn dilate(&mut self) {
+        println!("---");
         let scale = self.amount.scale_xy(match self.orientation {
             Orientation::Ccw => Point2DF32::new( 1.0, -1.0),
             Orientation::Cw  => Point2DF32::new(-1.0,  1.0),
@@ -32,20 +33,24 @@ impl<'a> ContourDilator<'a> {
 
         let input = self.contour.clone();
 
-        let mut position = input.position_of(0);
+        let first_position = input.position_of(0);
         let mut prev_point_index = 0;
         let mut prev_position;
 
         loop {
             prev_point_index = input.prev_point_index_of(prev_point_index);
             prev_position = input.position_of(prev_point_index);
-            if prev_point_index == 0 || prev_position != position {
+            if prev_point_index == 0 || prev_position != first_position {
                 break;
             }
         }
 
+        // Find the starting position.
+        let first_point_index = input.next_point_index_of(prev_point_index);
+        let mut current_point_index = first_point_index;
+        let mut position = first_position;
+
         let mut prev_vector = (position - prev_position).normalize();
-        let mut current_point_index = 0;
 
         loop {
             // Find the next non-degenerate position.
@@ -53,26 +58,32 @@ impl<'a> ContourDilator<'a> {
             let mut next_position;
             loop {
                 next_point_index = input.next_point_index_of(next_point_index);
+                if next_point_index == first_point_index {
+                    next_position = first_position;
+                    break;
+                }
                 next_position = input.position_of(next_point_index);
                 if next_point_index == current_point_index || next_position != position {
                     break;
                 }
             }
+            let next_vector = (next_position - position).normalize();
+
+            /*
+            println!("prev={} cur={} next={}",
+                     prev_point_index,
+                     current_point_index,
+                     next_point_index);
+            */
 
             // Calculate new position by moving the point by the bisector.
-            let next_vector = (next_position - position).normalize();
-            //let (prev_vector, next_vector) = (prev_position - position, next_position - position);
-
             let bisector = prev_vector.yx() + next_vector.yx();
-            /*let bisector = prev_vector.scale(next_vector.length()) +
-                           next_vector.scale(prev_vector.length());*/
             let bisector_length = bisector.length();
             let scaled_bisector = if bisector_length == 0.0 {
                 Point2DF32::default()
             } else {
                 bisector.scale_xy(scale).scale(1.0 / bisector_length)
             };
-
             let new_position = position - scaled_bisector;
 
             /*
@@ -105,8 +116,8 @@ impl<'a> ContourDilator<'a> {
                 point_index = input.next_point_index_of(point_index);
             }
 
-            // We're done if we start to loop around.
-            if next_point_index < current_point_index {
+            // Check to see if we're done.
+            if next_point_index == first_point_index {
                 break;
             }
 
