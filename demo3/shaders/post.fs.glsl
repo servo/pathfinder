@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/shaders/defringe.fs.glsl
+// pathfinder/demo3/shaders/post.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -16,12 +16,25 @@
 precision highp float;
 
 uniform sampler2D uSource;
+uniform sampler2D uGammaLUT;
 uniform vec2 uFramebufferSize;
 uniform vec4 uKernel;
+uniform vec4 uBGColor;
 
 in vec2 vTexCoord;
 
 out vec4 oFragColor;
+
+float gammaCorrectChannel(float fgColor) {
+    return texture(uGammaLUT, vec2(fgColor, 1.0 - uBGColor)).r;
+}
+
+// `fgColor` is in linear space.
+vec3 gammaCorrect(vec3 fgColor) {
+    return vec3(gammaCorrectChannel(fgColor.r),
+                gammaCorrectChannel(fgColor.g),
+                gammaCorrectChannel(fgColor.b));
+}
 
 float sample1Tap(float offset) {
     return texture(uSource, vec2(vTexCoord.x + offset, vTexCoord.y)).r;
@@ -47,13 +60,25 @@ float convolve7Tap(vec4 alpha0, vec3 alpha1) {
 }
 
 void main() {
-    vec4 alphaLeft, alphaRight;
-    float alphaCenter;
-    sample9Tap(alphaLeft, alphaCenter, alphaRight, 1.0 / uFramebufferSize.x);
+    // Apply defringing if necessary.
+    vec3 fgColor;
+    if (uKernel.w == 0.0) {
+        fgColor = texture(uSource, vTexCoord).rgb;
+    } else {
+        vec4 alphaLeft, alphaRight;
+        float alphaCenter;
+        sample9Tap(alphaLeft, alphaCenter, alphaRight, 1.0 / uFramebufferSize.x);
 
-    vec3 alpha = vec3(convolve7Tap(alphaLeft, vec3(alphaCenter, alphaRight.xy)),
-                      convolve7Tap(vec4(alphaLeft.yzw, alphaCenter), alphaRight.xyz),
-                      convolve7Tap(vec4(alphaLeft.zw, alphaCenter, alphaRight.x), alphaRight.yzw));
+        fgColor =
+            vec3(convolve7Tap(alphaLeft, vec3(alphaCenter, alphaRight.xy)),
+                 convolve7Tap(vec4(alphaLeft.yzw, alphaCenter), alphaRight.xyz),
+                 convolve7Tap(vec4(alphaLeft.zw, alphaCenter, alphaRight.x), alphaRight.yzw));
+    }
 
-    oFragColor = vec4(alpha, 1.0);
+    // Apply gamma correction if necessary.
+    if (uBGColor.a > 0.0)
+        fgColor = gammaCorrect(fgColor);
+
+    // Finish.
+    oFragColor = vec4(fgColor, 1.0);
 }

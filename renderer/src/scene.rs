@@ -116,7 +116,7 @@ impl Scene {
             PreparedBuildTransform::Perspective(ref perspective, ref quad) => {
                 outline.clip_against_polygon(quad);
                 outline.apply_perspective(perspective);
-                outline.prepare_for_tiling(self.view_box);
+                outline.dilate(Point2DF32::splat(4.0));
             }
             PreparedBuildTransform::Transform2D(ref transform) => {
                 outline.transform(transform);

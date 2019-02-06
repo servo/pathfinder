@@ -90,6 +90,11 @@ impl Point2DF32 {
     }
 
     #[inline]
+    pub fn scale_xy(&self, factors: Point2DF32) -> Point2DF32 {
+        Point2DF32(self.0 * factors.0)
+    }
+
+    #[inline]
     pub fn floor(&self) -> Point2DF32 {
         Point2DF32(self.0.floor())
     }
@@ -97,6 +102,13 @@ impl Point2DF32 {
     #[inline]
     pub fn ceil(&self) -> Point2DF32 {
         Point2DF32(self.0.ceil())
+    }
+
+    /// Treats this point as a vector and calculates its length.
+    #[inline]
+    pub fn length(&self) -> f32 {
+        let squared = self.0 * self.0;
+        f32::sqrt(squared[0] + squared[1])
     }
 }
 

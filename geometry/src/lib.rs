@@ -26,3 +26,5 @@ pub mod segment;
 pub mod segments;
 pub mod stroke;
 pub mod util;
+
+mod dilation;

@@ -16,7 +16,7 @@ use crate::basic::rect::RectF32;
 use crate::basic::transform2d::Transform2DF32;
 use crate::basic::transform3d::Perspective;
 use crate::clip::{ContourPolygonClipper, ContourRectClipper};
-use crate::monotonic::MonotonicConversionIter;
+use crate::dilation::ContourDilator;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -126,10 +126,13 @@ impl Outline {
         self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 
+    pub fn dilate(&mut self, amount: Point2DF32) {
+        self.contours.iter_mut().for_each(|contour| contour.dilate(amount));
+        self.bounds = self.bounds.dilate(amount);
+    }
+
     pub fn prepare_for_tiling(&mut self, view_box: RectF32) {
-        for contour in &mut self.contours {
-            contour.prepare_for_tiling(view_box);
-        }
+        self.contours.iter_mut().for_each(|contour| contour.prepare_for_tiling(view_box));
         self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| RectF32::default());
     }
 
@@ -358,6 +361,11 @@ impl Contour {
             *point = perspective.transform_point_2d(point);
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
+    }
+
+    pub fn dilate(&mut self, amount: Point2DF32) {
+        ContourDilator::new(self, amount).dilate();
+        self.bounds = self.bounds.dilate(amount);
     }
 
     fn prepare_for_tiling(&mut self, view_box: RectF32) {

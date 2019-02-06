@@ -196,17 +196,6 @@ impl<'s> CubicSegment<'s> {
         uv[0] + uv[1] <= 16.0 * tolerance * tolerance
     }
 
-    /*
-    #[inline]
-    pub fn flatten_once(self, tolerance: f32) -> Option<Segment> {
-        if self.is_flat(tolerance) {
-            None
-        } else {
-            Some(self.split_after(0.5))
-        }
-    }
-    */
-
     #[inline]
     pub fn split(self, t: f32) -> (Segment, Segment) {
         let (baseline0, ctrl0, baseline1, ctrl1);

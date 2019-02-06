@@ -46,9 +46,10 @@ pub struct Renderer {
     mask_framebuffer: Framebuffer,
     fill_colors_texture: Texture,
 
-    // Postprocessing shaders
-    defringe_program: DefringeProgram,
-    defringe_vertex_array: DefringeVertexArray,
+    // Postprocessing shader
+    postprocess_program: PostprocessProgram,
+    postprocess_vertex_array: PostprocessVertexArray,
+    gamma_lut_texture: Texture,
 
     // Debug
     pending_timer_queries: VecDeque<TimerQuery>,
@@ -65,9 +66,10 @@ impl Renderer {
         let solid_tile_program = SolidTileProgram::new();
         let mask_tile_program = MaskTileProgram::new();
 
-        let defringe_program = DefringeProgram::new();
+        let postprocess_program = PostprocessProgram::new();
 
         let area_lut_texture = Texture::from_png("area-lut");
+        let gamma_lut_texture = Texture::from_png("gamma-lut");
 
         let quad_vertex_positions_buffer = Buffer::new();
         quad_vertex_positions_buffer.upload(&QUAD_VERTEX_POSITIONS,
@@ -80,8 +82,8 @@ impl Renderer {
         let solid_tile_vertex_array = SolidTileVertexArray::new(&solid_tile_program,
                                                                 &quad_vertex_positions_buffer);
 
-        let defringe_vertex_array = DefringeVertexArray::new(&defringe_program,
-                                                             &quad_vertex_positions_buffer);
+        let postprocess_vertex_array = PostprocessVertexArray::new(&postprocess_program,
+                                                                   &quad_vertex_positions_buffer);
 
         let mask_framebuffer = Framebuffer::new(&Size2D::new(MASK_FRAMEBUFFER_WIDTH,
                                                              MASK_FRAMEBUFFER_HEIGHT));
@@ -103,8 +105,9 @@ impl Renderer {
             mask_framebuffer,
             fill_colors_texture,
 
-            defringe_program,
-            defringe_vertex_array,
+            postprocess_program,
+            postprocess_vertex_array,
+            gamma_lut_texture,
 
             pending_timer_queries: VecDeque::new(),
             free_timer_queries: vec![],
@@ -467,46 +470,57 @@ impl MaskTileProgram {
     }
 }
 
-struct DefringeProgram {
+struct PostprocessProgram {
     program: Program,
     source_uniform: Uniform,
     framebuffer_size_uniform: Uniform,
     kernel_uniform: Uniform,
+    gamma_lut_uniform: Uniform,
+    bg_color_uniform: Uniform,
 }
 
-impl DefringeProgram {
-    fn new() -> DefringeProgram {
-        let program = Program::new("defringe");
+impl PostprocessProgram {
+    fn new() -> PostprocessProgram {
+        let program = Program::new("post");
         let source_uniform = Uniform::new(&program, "Source");
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let kernel_uniform = Uniform::new(&program, "Kernel");
-        DefringeProgram { program, source_uniform, framebuffer_size_uniform, kernel_uniform }
+        let gamma_lut_uniform = Uniform::new(&program, "GammaLUT");
+        let bg_color_uniform = Uniform::new(&program, "BGColor");
+        PostprocessProgram {
+            program,
+            source_uniform,
+            framebuffer_size_uniform,
+            kernel_uniform,
+            gamma_lut_uniform,
+            bg_color_uniform,
+        }
     }
 }
 
-struct DefringeVertexArray {
+struct PostprocessVertexArray {
     gl_vertex_array: GLuint,
 }
 
-impl DefringeVertexArray {
-    fn new(defringe_program: &DefringeProgram, quad_vertex_positions_buffer: &Buffer)
-           -> DefringeVertexArray {
+impl PostprocessVertexArray {
+    fn new(postprocess_program: &PostprocessProgram, quad_vertex_positions_buffer: &Buffer)
+           -> PostprocessVertexArray {
         let mut gl_vertex_array = 0;
         unsafe {
-            let position_attr = VertexAttr::new(&defringe_program.program, "Position");
+            let position_attr = VertexAttr::new(&postprocess_program.program, "Position");
 
             gl::GenVertexArrays(1, &mut gl_vertex_array);
             gl::BindVertexArray(gl_vertex_array);
-            gl::UseProgram(defringe_program.program.gl_program);
+            gl::UseProgram(postprocess_program.program.gl_program);
             gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
             position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
         }
 
-        DefringeVertexArray { gl_vertex_array }
+        PostprocessVertexArray { gl_vertex_array }
     }
 }
 
-impl Drop for DefringeVertexArray {
+impl Drop for PostprocessVertexArray {
     #[inline]
     fn drop(&mut self) {
         unsafe {

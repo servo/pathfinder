@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/shaders/defringe.vs.glsl
+// pathfinder/demo3/shaders/post.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

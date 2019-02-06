@@ -127,6 +127,11 @@ impl RectF32 {
     }
 
     #[inline]
+    pub fn dilate(self, amount: Point2DF32) -> RectF32 {
+        RectF32::from_points(self.origin() - amount, self.lower_right() + amount)
+    }
+
+    #[inline]
     pub fn to_i32(&self) -> RectI32 {
         RectI32(self.0.to_i32x4())
     }
