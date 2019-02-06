@@ -25,28 +25,28 @@ impl<'a> ContourDilator<'a> {
     }
 
     pub fn dilate(&mut self) {
-        println!("---");
+        //println!("---");
         let scale = self.amount.scale_xy(match self.orientation {
             Orientation::Ccw => Point2DF32::new( 1.0, -1.0),
             Orientation::Cw  => Point2DF32::new(-1.0,  1.0),
         });
 
-        let input = self.contour.clone();
+        //let input = self.contour.clone();
 
-        let first_position = input.position_of(0);
+        let first_position = self.contour.position_of(0);
         let mut prev_point_index = 0;
         let mut prev_position;
 
         loop {
-            prev_point_index = input.prev_point_index_of(prev_point_index);
-            prev_position = input.position_of(prev_point_index);
+            prev_point_index = self.contour.prev_point_index_of(prev_point_index);
+            prev_position = self.contour.position_of(prev_point_index);
             if prev_point_index == 0 || prev_position != first_position {
                 break;
             }
         }
 
         // Find the starting position.
-        let first_point_index = input.next_point_index_of(prev_point_index);
+        let first_point_index = self.contour.next_point_index_of(prev_point_index);
         let mut current_point_index = first_point_index;
         let mut position = first_position;
 
@@ -57,12 +57,12 @@ impl<'a> ContourDilator<'a> {
             let mut next_point_index = current_point_index;
             let mut next_position;
             loop {
-                next_point_index = input.next_point_index_of(next_point_index);
+                next_point_index = self.contour.next_point_index_of(next_point_index);
                 if next_point_index == first_point_index {
                     next_position = first_position;
                     break;
                 }
-                next_position = input.position_of(next_point_index);
+                next_position = self.contour.position_of(next_point_index);
                 if next_point_index == current_point_index || next_position != position {
                     break;
                 }
@@ -113,7 +113,7 @@ impl<'a> ContourDilator<'a> {
             while point_index != next_point_index {
                 self.contour.points[point_index as usize] = new_position;
                 //println!("... updating {:?}", point_index);
-                point_index = input.next_point_index_of(point_index);
+                point_index = self.contour.next_point_index_of(point_index);
             }
 
             // Check to see if we're done.
