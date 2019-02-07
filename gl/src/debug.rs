@@ -32,21 +32,27 @@ use std::time::Duration;
 const DEBUG_TEXTURE_VERTEX_SIZE: GLint = 8;
 const DEBUG_SOLID_VERTEX_SIZE:   GLint = 4;
 
-const WINDOW_WIDTH: i32 = 300;
-const WINDOW_HEIGHT: i32 = LINE_HEIGHT * 2 + PADDING + 2;
+const PERF_WINDOW_WIDTH: i32 = 300;
+const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 2 + PADDING + 2;
+const EFFECTS_WINDOW_WIDTH: i32 = 400;
+const EFFECTS_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 3 + PADDING + 2;
 const PADDING: i32 = 12;
 const FONT_ASCENT: i32 = 28;
 const LINE_HEIGHT: i32 = 42;
 const ICON_SIZE: i32 = 48;
 const BUTTON_WIDTH: i32 = PADDING * 2 + ICON_SIZE;
 const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
+const SWITCH_HALF_SIZE: i32 = 64;
+const SWITCH_SIZE: i32 = PADDING * 2 + SWITCH_HALF_SIZE * 2 - 1;
 
-static WINDOW_COLOR: ColorU = ColorU { r: 30, g: 30, b: 30, a: 255 - 30 };
+static WINDOW_COLOR: ColorU = ColorU { r: 30,  g: 30,  b: 30,  a: 255 - 30 };
+static TEXT_COLOR:   ColorU = ColorU { r: 255, g: 255, b: 255, a: 255      };
 
 static JSON_PATH: &'static str = "resources/debug-font.json";
 
+static EFFECTS_PNG_NAME: &'static str = "debug-effects";
 static FONT_PNG_NAME: &'static str = "debug-font";
-static SETTINGS_PNG_NAME: &'static str = "debug-settings";
+static OPEN_PNG_NAME: &'static str = "debug-open";
 
 static QUAD_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
@@ -89,7 +95,8 @@ pub struct DebugRenderer {
     solid_program: DebugSolidProgram,
     solid_vertex_array: DebugSolidVertexArray,
     font_texture: Texture,
-    settings_texture: Texture,
+    effects_texture: Texture,
+    open_texture: Texture,
 }
 
 impl DebugRenderer {
@@ -105,7 +112,8 @@ impl DebugRenderer {
                                                BufferUploadMode::Static);
 
         let font_texture = Texture::from_png(FONT_PNG_NAME);
-        let settings_texture = Texture::from_png(SETTINGS_PNG_NAME);
+        let effects_texture = Texture::from_png(EFFECTS_PNG_NAME);
+        let open_texture = Texture::from_png(OPEN_PNG_NAME);
 
         DebugRenderer {
             framebuffer_size: *framebuffer_size,
@@ -115,7 +123,8 @@ impl DebugRenderer {
             solid_program,
             solid_vertex_array,
             font_texture,
-            settings_texture,
+            effects_texture,
+            open_texture,
         }
     }
 
@@ -127,9 +136,9 @@ impl DebugRenderer {
         // Draw performance window.
         let bottom = self.framebuffer_size.height as i32 - PADDING;
         let window_rect = RectI32::new(
-            Point2DI32::new(self.framebuffer_size.width as i32 - PADDING - WINDOW_WIDTH,
-                            bottom - WINDOW_HEIGHT),
-            Point2DI32::new(WINDOW_WIDTH, WINDOW_HEIGHT));
+            Point2DI32::new(self.framebuffer_size.width as i32 - PADDING - PERF_WINDOW_WIDTH,
+                            bottom - PERF_WINDOW_HEIGHT),
+            Point2DI32::new(PERF_WINDOW_WIDTH, PERF_WINDOW_HEIGHT));
         self.draw_solid_rect(window_rect, WINDOW_COLOR);
         self.draw_text(&format!("CPU: {:.3} ms", duration_ms(tile_time)),
                        Point2DI32::new(window_rect.min_x() + PADDING,
@@ -141,15 +150,61 @@ impl DebugRenderer {
                                window_rect.min_y() + PADDING + FONT_ASCENT + LINE_HEIGHT));
         }
 
-        // Draw settings button.
+        // Draw effects button.
         self.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT),
                                           Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
                              WINDOW_COLOR);
         self.draw_texture(Point2DI32::new(PADDING + PADDING, bottom - BUTTON_HEIGHT + PADDING),
-                          &self.settings_texture);
+                          &self.effects_texture);
+
+        // Draw open button.
+        let open_button_x = PADDING + BUTTON_WIDTH + PADDING;
+        self.draw_solid_rect(RectI32::new(Point2DI32::new(open_button_x, bottom - BUTTON_HEIGHT),
+                                          Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
+                             WINDOW_COLOR);
+        self.draw_texture(Point2DI32::new(open_button_x + PADDING,
+                                          bottom - BUTTON_HEIGHT + PADDING),
+                          &self.open_texture);
+
+        // Draw 3D switch.
+        let threed_switch_x = PADDING + (BUTTON_WIDTH + PADDING) * 2;
+        self.draw_switch(Point2DI32::new(threed_switch_x, bottom - BUTTON_HEIGHT), "2D", "3D");
+
+        // Draw effects window.
+        let effects_window_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_WINDOW_HEIGHT);
+        self.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_window_y),
+                                          Point2DI32::new(EFFECTS_WINDOW_WIDTH,
+                                                          EFFECTS_WINDOW_HEIGHT)),
+                             WINDOW_COLOR);
+        let effects_text_origin = effects_window_y + PADDING + FONT_ASCENT;
+        self.draw_text("Gamma Correction", Point2DI32::new(PADDING * 2, effects_text_origin));
+        self.draw_text("Stem Darkening",
+                       Point2DI32::new(PADDING * 2, effects_text_origin + LINE_HEIGHT));
+        self.draw_text("Subpixel AA",
+                       Point2DI32::new(PADDING * 2, effects_text_origin + LINE_HEIGHT * 2));
+    }
+
+    fn draw_switch(&self, origin: Point2DI32, off_text: &str, on_text: &str) {
+        //self.draw_solid_rect(RectI32::new(origin, Point2DI32::new(SWITCH_SIZE), WINDOW_COLOR);
+        self.draw_rect_outline(RectI32::new(origin, Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT)),
+                               TEXT_COLOR);
+        self.draw_solid_rect(RectI32::new(origin + Point2DI32::new(SWITCH_HALF_SIZE, 0),
+                                          Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT)),
+                             TEXT_COLOR);
+        self.draw_text(off_text, origin + Point2DI32::new(PADDING, PADDING + FONT_ASCENT));
+        self.draw_text(on_text, origin + Point2DI32::new(SWITCH_HALF_SIZE + PADDING,
+                                                         PADDING + FONT_ASCENT));
     }
 
     fn draw_solid_rect(&self, rect: RectI32, color: ColorU) {
+        self.draw_rect(rect, color, true);
+    }
+
+    fn draw_rect_outline(&self, rect: RectI32, color: ColorU) {
+        self.draw_rect(rect, color, false);
+    }
+
+    fn draw_rect(&self, rect: RectI32, color: ColorU, filled: bool) {
         let vertex_data = [
             DebugSolidVertex::new(rect.origin()),
             DebugSolidVertex::new(rect.upper_right()),
@@ -174,7 +229,11 @@ impl DebugRenderer {
             gl::BlendEquation(gl::FUNC_ADD);
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
             gl::Enable(gl::BLEND);
-            gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
+            if filled {
+                gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
+            } else {
+                gl::DrawArrays(gl::LINE_LOOP, 0, 4);
+            }
             gl::Disable(gl::BLEND);
         }
     }

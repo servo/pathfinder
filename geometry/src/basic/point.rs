@@ -197,6 +197,14 @@ impl Point2DI32 {
     }
 }
 
+impl Add<Point2DI32> for Point2DI32 {
+    type Output = Point2DI32;
+    #[inline]
+    fn add(self, other: Point2DI32) -> Point2DI32 {
+        Point2DI32(self.0 + other.0)
+    }
+}
+
 /// 3D homogeneous points.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Point3DF32(pub F32x4);
