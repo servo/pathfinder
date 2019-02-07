@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::debug::DebugRenderer;
+use crate::debug::DebugUI;
 use crate::device::{Buffer, BufferTarget, BufferUploadMode, Framebuffer, Program, Texture};
 use crate::device::{TimerQuery, Uniform, VertexAttr};
 use euclid::Size2D;
@@ -54,7 +54,7 @@ pub struct Renderer {
     // Debug
     pending_timer_queries: VecDeque<TimerQuery>,
     free_timer_queries: Vec<TimerQuery>,
-    pub debug_renderer: DebugRenderer,
+    pub debug_ui: DebugUI,
 
     // Extra info
     main_framebuffer_size: Size2D<u32>,
@@ -91,7 +91,7 @@ impl Renderer {
         let fill_colors_texture = Texture::new_rgba(&Size2D::new(FILL_COLORS_TEXTURE_WIDTH,
                                                                  FILL_COLORS_TEXTURE_HEIGHT));
 
-        let debug_renderer = DebugRenderer::new(main_framebuffer_size);
+        let debug_ui = DebugUI::new(main_framebuffer_size);
 
         Renderer {
             fill_program,
@@ -112,7 +112,7 @@ impl Renderer {
             pending_timer_queries: VecDeque::new(),
             free_timer_queries: vec![],
 
-            debug_renderer,
+            debug_ui,
 
             main_framebuffer_size: *main_framebuffer_size,
         }
@@ -150,7 +150,7 @@ impl Renderer {
 
     pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: &Size2D<u32>) {
         self.main_framebuffer_size = *new_framebuffer_size;
-        self.debug_renderer.set_framebuffer_size(new_framebuffer_size);
+        self.debug_ui.set_framebuffer_size(new_framebuffer_size);
     }
 
     fn upload_shaders(&mut self, shaders: &[ObjectShader]) {

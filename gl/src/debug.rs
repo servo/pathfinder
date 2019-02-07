@@ -23,36 +23,36 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_renderer::paint::ColorU;
 use serde_json;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
 use std::ptr;
 use std::time::Duration;
 
+const SAMPLE_BUFFER_SIZE: usize = 60;
+
 const DEBUG_TEXTURE_VERTEX_SIZE: GLint = 8;
 const DEBUG_SOLID_VERTEX_SIZE:   GLint = 4;
 
+pub const PADDING: i32 = 12;
+pub const BUTTON_WIDTH: i32 = PADDING * 2 + ICON_SIZE;
+pub const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
+pub const BUTTON_TEXT_OFFSET: i32 = PADDING + 36;
+
+pub static TEXT_COLOR:   ColorU = ColorU { r: 255, g: 255, b: 255, a: 255      };
+pub static WINDOW_COLOR: ColorU = ColorU { r: 30,  g: 30,  b: 30,  a: 255 - 30 };
+
 const PERF_WINDOW_WIDTH: i32 = 300;
 const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 2 + PADDING + 2;
-const EFFECTS_WINDOW_WIDTH: i32 = 400;
-const EFFECTS_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 3 + PADDING + 2;
-const PADDING: i32 = 12;
 const FONT_ASCENT: i32 = 28;
 const LINE_HEIGHT: i32 = 42;
 const ICON_SIZE: i32 = 48;
-const BUTTON_WIDTH: i32 = PADDING * 2 + ICON_SIZE;
-const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
-const SWITCH_HALF_SIZE: i32 = 64;
-const SWITCH_SIZE: i32 = PADDING * 2 + SWITCH_HALF_SIZE * 2 - 1;
 
-static WINDOW_COLOR: ColorU = ColorU { r: 30,  g: 30,  b: 30,  a: 255 - 30 };
-static TEXT_COLOR:   ColorU = ColorU { r: 255, g: 255, b: 255, a: 255      };
+static INVERTED_TEXT_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255      };
 
 static JSON_PATH: &'static str = "resources/debug-font.json";
 
-static EFFECTS_PNG_NAME: &'static str = "debug-effects";
 static FONT_PNG_NAME: &'static str = "debug-font";
-static OPEN_PNG_NAME: &'static str = "debug-open";
 
 static QUAD_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
@@ -87,20 +87,22 @@ impl DebugFont {
     }
 }
 
-pub struct DebugRenderer {
+pub struct DebugUI {
     framebuffer_size: Size2D<u32>,
+
     texture_program: DebugTextureProgram,
     texture_vertex_array: DebugTextureVertexArray,
     font: DebugFont,
     solid_program: DebugSolidProgram,
     solid_vertex_array: DebugSolidVertexArray,
     font_texture: Texture,
-    effects_texture: Texture,
-    open_texture: Texture,
+
+    cpu_samples: SampleBuffer,
+    gpu_samples: SampleBuffer,
 }
 
-impl DebugRenderer {
-    pub fn new(framebuffer_size: &Size2D<u32>) -> DebugRenderer {
+impl DebugUI {
+    pub fn new(framebuffer_size: &Size2D<u32>) -> DebugUI {
         let texture_program = DebugTextureProgram::new();
         let texture_vertex_array = DebugTextureVertexArray::new(&texture_program);
         let font = DebugFont::load();
@@ -112,10 +114,8 @@ impl DebugRenderer {
                                                BufferUploadMode::Static);
 
         let font_texture = Texture::from_png(FONT_PNG_NAME);
-        let effects_texture = Texture::from_png(EFFECTS_PNG_NAME);
-        let open_texture = Texture::from_png(OPEN_PNG_NAME);
 
-        DebugRenderer {
+        DebugUI {
             framebuffer_size: *framebuffer_size,
             texture_program,
             texture_vertex_array,
@@ -123,16 +123,27 @@ impl DebugRenderer {
             solid_program,
             solid_vertex_array,
             font_texture,
-            effects_texture,
-            open_texture,
+            cpu_samples: SampleBuffer::new(),
+            gpu_samples: SampleBuffer::new(),
         }
+    }
+
+    pub fn framebuffer_size(&self) -> Size2D<u32> {
+        self.framebuffer_size
     }
 
     pub fn set_framebuffer_size(&mut self, window_size: &Size2D<u32>) {
         self.framebuffer_size = *window_size;
     }
 
-    pub fn draw(&self, tile_time: Duration, rendering_time: Option<Duration>) {
+    pub fn add_sample(&mut self, tile_time: Duration, rendering_time: Option<Duration>) {
+        self.cpu_samples.push(tile_time);
+        if let Some(rendering_time) = rendering_time {
+            self.gpu_samples.push(rendering_time);
+        }
+    }
+
+    pub fn draw(&self) {
         // Draw performance window.
         let bottom = self.framebuffer_size.height as i32 - PADDING;
         let window_rect = RectI32::new(
@@ -140,67 +151,22 @@ impl DebugRenderer {
                             bottom - PERF_WINDOW_HEIGHT),
             Point2DI32::new(PERF_WINDOW_WIDTH, PERF_WINDOW_HEIGHT));
         self.draw_solid_rect(window_rect, WINDOW_COLOR);
-        self.draw_text(&format!("CPU: {:.3} ms", duration_ms(tile_time)),
+        self.draw_text(&format!("CPU: {:.3} ms", self.cpu_samples.mean_ms()),
                        Point2DI32::new(window_rect.min_x() + PADDING,
-                                       window_rect.min_y() + PADDING + FONT_ASCENT));
-        if let Some(rendering_time) = rendering_time {
-            self.draw_text(&format!("GPU: {:.3} ms", duration_ms(rendering_time)),
-                           Point2DI32::new(
-                               window_rect.min_x() + PADDING,
-                               window_rect.min_y() + PADDING + FONT_ASCENT + LINE_HEIGHT));
-        }
-
-        // Draw effects button.
-        self.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT),
-                                          Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
-                             WINDOW_COLOR);
-        self.draw_texture(Point2DI32::new(PADDING + PADDING, bottom - BUTTON_HEIGHT + PADDING),
-                          &self.effects_texture);
-
-        // Draw open button.
-        let open_button_x = PADDING + BUTTON_WIDTH + PADDING;
-        self.draw_solid_rect(RectI32::new(Point2DI32::new(open_button_x, bottom - BUTTON_HEIGHT),
-                                          Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
-                             WINDOW_COLOR);
-        self.draw_texture(Point2DI32::new(open_button_x + PADDING,
-                                          bottom - BUTTON_HEIGHT + PADDING),
-                          &self.open_texture);
-
-        // Draw 3D switch.
-        let threed_switch_x = PADDING + (BUTTON_WIDTH + PADDING) * 2;
-        self.draw_switch(Point2DI32::new(threed_switch_x, bottom - BUTTON_HEIGHT), "2D", "3D");
-
-        // Draw effects window.
-        let effects_window_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_WINDOW_HEIGHT);
-        self.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_window_y),
-                                          Point2DI32::new(EFFECTS_WINDOW_WIDTH,
-                                                          EFFECTS_WINDOW_HEIGHT)),
-                             WINDOW_COLOR);
-        let effects_text_origin = effects_window_y + PADDING + FONT_ASCENT;
-        self.draw_text("Gamma Correction", Point2DI32::new(PADDING * 2, effects_text_origin));
-        self.draw_text("Stem Darkening",
-                       Point2DI32::new(PADDING * 2, effects_text_origin + LINE_HEIGHT));
-        self.draw_text("Subpixel AA",
-                       Point2DI32::new(PADDING * 2, effects_text_origin + LINE_HEIGHT * 2));
+                                       window_rect.min_y() + PADDING + FONT_ASCENT),
+                       false);
+        self.draw_text(&format!("GPU: {:.3} ms", self.gpu_samples.mean_ms()),
+                        Point2DI32::new(
+                            window_rect.min_x() + PADDING,
+                            window_rect.min_y() + PADDING + FONT_ASCENT + LINE_HEIGHT),
+                       false);
     }
 
-    fn draw_switch(&self, origin: Point2DI32, off_text: &str, on_text: &str) {
-        //self.draw_solid_rect(RectI32::new(origin, Point2DI32::new(SWITCH_SIZE), WINDOW_COLOR);
-        self.draw_rect_outline(RectI32::new(origin, Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT)),
-                               TEXT_COLOR);
-        self.draw_solid_rect(RectI32::new(origin + Point2DI32::new(SWITCH_HALF_SIZE, 0),
-                                          Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT)),
-                             TEXT_COLOR);
-        self.draw_text(off_text, origin + Point2DI32::new(PADDING, PADDING + FONT_ASCENT));
-        self.draw_text(on_text, origin + Point2DI32::new(SWITCH_HALF_SIZE + PADDING,
-                                                         PADDING + FONT_ASCENT));
-    }
-
-    fn draw_solid_rect(&self, rect: RectI32, color: ColorU) {
+    pub fn draw_solid_rect(&self, rect: RectI32, color: ColorU) {
         self.draw_rect(rect, color, true);
     }
 
-    fn draw_rect_outline(&self, rect: RectI32, color: ColorU) {
+    pub fn draw_rect_outline(&self, rect: RectI32, color: ColorU) {
         self.draw_rect(rect, color, false);
     }
 
@@ -221,11 +187,7 @@ impl DebugRenderer {
             gl::Uniform2f(self.solid_program.framebuffer_size_uniform.location,
                           self.framebuffer_size.width as GLfloat,
                           self.framebuffer_size.height as GLfloat);
-            gl::Uniform4f(self.solid_program.color_uniform.location,
-                          color.r as f32 * (1.0 / 255.0),
-                          color.g as f32 * (1.0 / 255.0),
-                          color.b as f32 * (1.0 / 255.0),
-                          color.a as f32 * (1.0 / 255.0));
+            set_color_uniform(&self.solid_program.color_uniform, color);
             gl::BlendEquation(gl::FUNC_ADD);
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
             gl::Enable(gl::BLEND);
@@ -238,7 +200,7 @@ impl DebugRenderer {
         }
     }
 
-    fn draw_text(&self, string: &str, origin: Point2DI32) {
+    pub fn draw_text(&self, string: &str, origin: Point2DI32, invert: bool) {
         let mut next = origin;
         let char_count = string.chars().count();
         let mut vertex_data = Vec::with_capacity(char_count * 4);
@@ -267,10 +229,11 @@ impl DebugRenderer {
             next.set_x(next_x);
         }
 
-        self.draw_texture_with_vertex_data(&vertex_data, &index_data, &self.font_texture);
+        let color = if invert { INVERTED_TEXT_COLOR } else { TEXT_COLOR };
+        self.draw_texture_with_vertex_data(&vertex_data, &index_data, &self.font_texture, color);
     }
 
-    fn draw_texture(&self, origin: Point2DI32, texture: &Texture) {
+    pub fn draw_texture(&self, origin: Point2DI32, texture: &Texture, color: ColorU) {
         let size = Point2DI32::new(texture.size.width as i32, texture.size.height as i32);
         let position_rect = RectI32::new(origin, size);
         let tex_coord_rect = RectI32::new(Point2DI32::default(), size);
@@ -281,13 +244,27 @@ impl DebugRenderer {
             DebugTextureVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
         ];
 
-        self.draw_texture_with_vertex_data(&vertex_data, &QUAD_INDICES, texture);
+        self.draw_texture_with_vertex_data(&vertex_data, &QUAD_INDICES, texture, color);
+    }
+
+    pub fn measure_text(&self, string: &str) -> i32 {
+        let mut next = 0;
+        for mut character in string.chars() {
+            if !self.font.characters.contains_key(&character) {
+                character = '?';
+            }
+
+            let info = &self.font.characters[&character];
+            next += info.advance;
+        }
+        next
     }
 
     fn draw_texture_with_vertex_data(&self,
                                      vertex_data: &[DebugTextureVertex],
                                      index_data: &[u32],
-                                     texture: &Texture) {
+                                     texture: &Texture,
+                                     color: ColorU) {
         self.texture_vertex_array
             .vertex_buffer
             .upload(&vertex_data, BufferTarget::Vertex, BufferUploadMode::Dynamic);
@@ -304,6 +281,7 @@ impl DebugRenderer {
             gl::Uniform2f(self.texture_program.texture_size_uniform.location,
                           texture.size.width as GLfloat,
                           texture.size.height as GLfloat);
+            set_color_uniform(&self.texture_program.color_uniform, color);
             texture.bind(0);
             gl::Uniform1i(self.texture_program.texture_uniform.location, 0);
             gl::BlendEquation(gl::FUNC_ADD);
@@ -410,6 +388,7 @@ struct DebugTextureProgram {
     framebuffer_size_uniform: Uniform,
     texture_size_uniform: Uniform,
     texture_uniform: Uniform,
+    color_uniform: Uniform,
 }
 
 impl DebugTextureProgram {
@@ -418,11 +397,13 @@ impl DebugTextureProgram {
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let texture_size_uniform = Uniform::new(&program, "TextureSize");
         let texture_uniform = Uniform::new(&program, "Texture");
+        let color_uniform = Uniform::new(&program, "Color");
         DebugTextureProgram {
             program,
             framebuffer_size_uniform,
             texture_size_uniform,
             texture_uniform,
+            color_uniform,
         }
     }
 }
@@ -475,6 +456,41 @@ impl DebugSolidVertex {
     }
 }
 
-fn duration_ms(time: Duration) -> f64 {
-    time.as_secs() as f64 * 1000.0 + time.subsec_nanos() as f64 / 1000000.0
+struct SampleBuffer {
+    samples: VecDeque<Duration>,
+}
+
+impl SampleBuffer {
+    fn new() -> SampleBuffer {
+        SampleBuffer { samples: VecDeque::with_capacity(SAMPLE_BUFFER_SIZE) }
+    }
+
+    fn push(&mut self, time: Duration) {
+        self.samples.push_back(time);
+        while self.samples.len() > SAMPLE_BUFFER_SIZE {
+            self.samples.pop_front();
+        }
+    }
+
+    fn mean_ms(&self) -> f64 {
+        if self.samples.is_empty() {
+            return 0.0;
+        }
+
+        let mut ms = 0.0;
+        for time in &self.samples {
+            ms += time.as_secs() as f64 * 1000.0 + time.subsec_nanos() as f64 / 1000000.0;
+        }
+        ms / self.samples.len() as f64
+    }
+}
+
+fn set_color_uniform(uniform: &Uniform, color: ColorU) {
+    unsafe {
+        gl::Uniform4f(uniform.location,
+                      color.r as f32 * (1.0 / 255.0),
+                      color.g as f32 * (1.0 / 255.0),
+                      color.b as f32 * (1.0 / 255.0),
+                      color.a as f32 * (1.0 / 255.0));
+    }
 }

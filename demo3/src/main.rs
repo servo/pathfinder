@@ -11,10 +11,13 @@
 use clap::{App, Arg};
 use euclid::Size2D;
 use jemallocator;
-use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
+use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
+use pathfinder_gl::debug::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, DebugUI, PADDING};
+use pathfinder_gl::debug::{TEXT_COLOR, WINDOW_COLOR};
+use pathfinder_gl::device::Texture;
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu_data::BuiltScene;
@@ -44,6 +47,15 @@ const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
 const CAMERA_VELOCITY: f32 = 25.0;
 
 const BACKGROUND_COLOR: f32 = 0.22;
+
+const EFFECTS_WINDOW_WIDTH: i32 = 550;
+const EFFECTS_WINDOW_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
+
+const SWITCH_SIZE: i32 = SWITCH_HALF_SIZE * 2 + 1;
+const SWITCH_HALF_SIZE: i32 = 96;
+
+static EFFECTS_PNG_NAME: &'static str = "demo-effects";
+static OPEN_PNG_NAME: &'static str = "demo-open";
 
 fn main() {
     let options = Options::get();
@@ -80,6 +92,8 @@ fn main() {
     let base_scene = load_scene(&options);
     let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
     scene_thread_proxy.set_window_size(&window_size);
+
+    let mut demo_ui = DemoUI::new();
 
     let mut events = vec![];
     let mut first_frame = true;
@@ -124,7 +138,9 @@ fn main() {
                     renderer.render_scene(&built_scene);
 
                     let rendering_time = renderer.shift_timer_query();
-                    renderer.debug_renderer.draw(tile_time, rendering_time);
+                    renderer.debug_ui.add_sample(tile_time, rendering_time);
+                    renderer.debug_ui.draw();
+                    demo_ui.update(&mut renderer.debug_ui);
                 }
             }
         }
@@ -344,4 +360,134 @@ fn build_scene(scene: &Scene, perspective: Option<Perspective>, options: &Option
         built_scene.batches.push(batch);
     }
     built_scene
+}
+
+struct DemoUI {
+    effects_texture: Texture,
+    open_texture: Texture,
+
+    threed_enabled: bool,
+    gamma_correction_effect_enabled: bool,
+    stem_darkening_effect_enabled: bool,
+    subpixel_aa_effect_enabled: bool,
+}
+
+impl DemoUI {
+    fn new() -> DemoUI {
+        let effects_texture = Texture::from_png(EFFECTS_PNG_NAME);
+        let open_texture = Texture::from_png(OPEN_PNG_NAME);
+
+        DemoUI {
+            effects_texture,
+            open_texture,
+            threed_enabled: true,
+            gamma_correction_effect_enabled: false,
+            stem_darkening_effect_enabled: false,
+            subpixel_aa_effect_enabled: false,
+        }
+    }
+
+    fn update(&mut self, debug_ui: &mut DebugUI) {
+        let bottom = debug_ui.framebuffer_size().height as i32 - PADDING;
+
+        // Draw effects button.
+        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT),
+                                              Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
+                                 WINDOW_COLOR);
+        debug_ui.draw_texture(Point2DI32::new(PADDING + PADDING, bottom - BUTTON_HEIGHT + PADDING),
+                              &self.effects_texture,
+                              TEXT_COLOR);
+
+        // Draw open button.
+        let open_button_x = PADDING + BUTTON_WIDTH + PADDING;
+        let open_button_y = bottom - BUTTON_HEIGHT;
+        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(open_button_x, open_button_y),
+                                             Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
+                                 WINDOW_COLOR);
+        debug_ui.draw_texture(Point2DI32::new(open_button_x + PADDING, open_button_y + PADDING),
+                              &self.open_texture,
+                              TEXT_COLOR);
+
+        // Draw 3D switch.
+        let threed_switch_x = PADDING + (BUTTON_WIDTH + PADDING) * 2;
+        let threed_switch_origin = Point2DI32::new(threed_switch_x, open_button_y);
+        debug_ui.draw_solid_rect(RectI32::new(threed_switch_origin,
+                                              Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT)),
+                                 WINDOW_COLOR);
+        self.threed_enabled =
+            self.draw_switch(debug_ui, threed_switch_origin, "2D", "3D", self.threed_enabled);
+
+        // Draw effects window.
+        let effects_window_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_WINDOW_HEIGHT);
+        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_window_y),
+                                              Point2DI32::new(EFFECTS_WINDOW_WIDTH,
+                                                              EFFECTS_WINDOW_HEIGHT)),
+                                 WINDOW_COLOR);
+        self.gamma_correction_effect_enabled =
+            self.draw_effects_switch(debug_ui,
+                                     "Gamma Correction",
+                                     0,
+                                     effects_window_y,
+                                     self.gamma_correction_effect_enabled);
+        self.stem_darkening_effect_enabled =
+            self.draw_effects_switch(debug_ui,
+                                     "Stem Darkening",
+                                     1,
+                                     effects_window_y,
+                                     self.stem_darkening_effect_enabled);
+        self.subpixel_aa_effect_enabled =
+            self.draw_effects_switch(debug_ui,
+                                     "Subpixel AA",
+                                     2,
+                                     effects_window_y,
+                                     self.subpixel_aa_effect_enabled);
+    }
+
+    fn draw_effects_switch(&self,
+                           debug_ui: &mut DebugUI,
+                           text: &str,
+                           index: i32,
+                           window_y: i32,
+                           value: bool)
+                           -> bool {
+        let text_x = PADDING * 2;
+        let text_y = window_y + PADDING + BUTTON_TEXT_OFFSET + (BUTTON_HEIGHT + PADDING) * index;
+        debug_ui.draw_text(text, Point2DI32::new(text_x, text_y), false);
+
+        let switch_x = PADDING + EFFECTS_WINDOW_WIDTH - (SWITCH_SIZE + PADDING);
+        let switch_y = window_y + PADDING + (BUTTON_HEIGHT + PADDING) * index;
+        self.draw_switch(debug_ui, Point2DI32::new(switch_x, switch_y), "Off", "On", value)
+    }
+
+    fn draw_switch(&self,
+                   debug_ui: &mut DebugUI,
+                   origin: Point2DI32,
+                   off_text: &str,
+                   on_text: &str,
+                   value: bool)
+                   -> bool {
+        let size = Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT);
+        debug_ui.draw_rect_outline(RectI32::new(origin, size), TEXT_COLOR);
+
+        let highlight_size = Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT);
+        if !value {
+            debug_ui.draw_solid_rect(RectI32::new(origin, highlight_size), TEXT_COLOR);
+        } else {
+            let x_offset = SWITCH_HALF_SIZE + 1;
+            debug_ui.draw_solid_rect(RectI32::new(origin + Point2DI32::new(x_offset, 0),
+                                                  highlight_size),
+                                     TEXT_COLOR);
+        }
+
+        let off_size = debug_ui.measure_text(off_text);
+        let on_size = debug_ui.measure_text(on_text);
+        let off_offset = SWITCH_HALF_SIZE / 2 - off_size / 2;
+        let on_offset  = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 - on_size / 2;
+        let text_top = BUTTON_TEXT_OFFSET;
+
+        debug_ui.draw_text(off_text, origin + Point2DI32::new(off_offset, text_top), !value);
+        debug_ui.draw_text(on_text, origin + Point2DI32::new(on_offset, text_top), value);
+
+        value
+    }
 }
