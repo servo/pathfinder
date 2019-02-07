@@ -43,6 +43,8 @@ const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
 const CAMERA_VELOCITY: f32 = 25.0;
 
+const BACKGROUND_COLOR: f32 = 0.22;
+
 fn main() {
     let options = Options::get();
 
@@ -117,7 +119,7 @@ fn main() {
                 tile_time
             }) = scene_thread_proxy.receiver.recv() {
                 unsafe {
-                    gl::ClearColor(0.7, 0.7, 0.7, 1.0);
+                    gl::ClearColor(BACKGROUND_COLOR, BACKGROUND_COLOR, BACKGROUND_COLOR, 1.0);
                     gl::Clear(gl::COLOR_BUFFER_BIT);
                     renderer.render_scene(&built_scene);
 

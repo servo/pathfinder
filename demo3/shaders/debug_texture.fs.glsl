@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/shaders/debug_font.vs.glsl
+// pathfinder/demo3/shaders/debug_font.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -12,16 +12,13 @@
 
 precision highp float;
 
-uniform vec2 uFramebufferSize;
-uniform vec2 uFontTextureSize;
+uniform sampler2D uTexture;
 
-in vec2 aPosition;
-in vec2 aTexCoord;
+in vec2 vTexCoord;
 
-out vec2 vTexCoord;
+out vec4 oFragColor;
 
 void main() {
-    vTexCoord = aTexCoord / uFontTextureSize;
-    vec2 position = aPosition / uFramebufferSize * 2.0 - 1.0;
-    gl_Position = vec4(position.x, -position.y, 0.0, 1.0);
+    float alpha = texture(uTexture, vTexCoord).r;
+    oFragColor = vec4(alpha);
 }

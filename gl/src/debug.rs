@@ -29,19 +29,24 @@ use std::io::BufReader;
 use std::ptr;
 use std::time::Duration;
 
-const DEBUG_FONT_VERTEX_SIZE:  GLint = 8;
-const DEBUG_SOLID_VERTEX_SIZE: GLint = 4;
+const DEBUG_TEXTURE_VERTEX_SIZE: GLint = 8;
+const DEBUG_SOLID_VERTEX_SIZE:   GLint = 4;
 
-const WINDOW_WIDTH: i32 = 400;
+const WINDOW_WIDTH: i32 = 300;
 const WINDOW_HEIGHT: i32 = LINE_HEIGHT * 2 + PADDING + 2;
 const PADDING: i32 = 12;
 const FONT_ASCENT: i32 = 28;
 const LINE_HEIGHT: i32 = 42;
+const ICON_SIZE: i32 = 48;
+const BUTTON_WIDTH: i32 = PADDING * 2 + ICON_SIZE;
+const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
 
 static WINDOW_COLOR: ColorU = ColorU { r: 30, g: 30, b: 30, a: 255 - 30 };
 
 static JSON_PATH: &'static str = "resources/debug-font.json";
-static PNG_NAME: &'static str = "debug-font";
+
+static FONT_PNG_NAME: &'static str = "debug-font";
+static SETTINGS_PNG_NAME: &'static str = "debug-settings";
 
 static QUAD_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
@@ -78,19 +83,19 @@ impl DebugFont {
 
 pub struct DebugRenderer {
     framebuffer_size: Size2D<u32>,
-    font_program: DebugFontProgram,
-    font_vertex_array: DebugFontVertexArray,
-    font_texture: Texture,
+    texture_program: DebugTextureProgram,
+    texture_vertex_array: DebugTextureVertexArray,
     font: DebugFont,
     solid_program: DebugSolidProgram,
     solid_vertex_array: DebugSolidVertexArray,
+    font_texture: Texture,
+    settings_texture: Texture,
 }
 
 impl DebugRenderer {
     pub fn new(framebuffer_size: &Size2D<u32>) -> DebugRenderer {
-        let font_program = DebugFontProgram::new();
-        let font_vertex_array = DebugFontVertexArray::new(&font_program);
-        let font_texture = Texture::from_png(PNG_NAME);
+        let texture_program = DebugTextureProgram::new();
+        let texture_vertex_array = DebugTextureVertexArray::new(&texture_program);
         let font = DebugFont::load();
 
         let solid_program = DebugSolidProgram::new();
@@ -99,14 +104,18 @@ impl DebugRenderer {
                                                BufferTarget::Index,
                                                BufferUploadMode::Static);
 
+        let font_texture = Texture::from_png(FONT_PNG_NAME);
+        let settings_texture = Texture::from_png(SETTINGS_PNG_NAME);
+
         DebugRenderer {
             framebuffer_size: *framebuffer_size,
-            font_program,
-            font_vertex_array,
-            font_texture,
+            texture_program,
+            texture_vertex_array,
             font,
             solid_program,
             solid_vertex_array,
+            font_texture,
+            settings_texture,
         }
     }
 
@@ -115,20 +124,29 @@ impl DebugRenderer {
     }
 
     pub fn draw(&self, tile_time: Duration, rendering_time: Option<Duration>) {
+        // Draw performance window.
+        let bottom = self.framebuffer_size.height as i32 - PADDING;
         let window_rect = RectI32::new(
             Point2DI32::new(self.framebuffer_size.width as i32 - PADDING - WINDOW_WIDTH,
-                            self.framebuffer_size.height as i32 - PADDING - WINDOW_HEIGHT),
+                            bottom - WINDOW_HEIGHT),
             Point2DI32::new(WINDOW_WIDTH, WINDOW_HEIGHT));
         self.draw_solid_rect(window_rect, WINDOW_COLOR);
-        self.draw_text(&format!("Tiling: {:.3} ms", duration_ms(tile_time)),
+        self.draw_text(&format!("CPU: {:.3} ms", duration_ms(tile_time)),
                        Point2DI32::new(window_rect.min_x() + PADDING,
                                        window_rect.min_y() + PADDING + FONT_ASCENT));
         if let Some(rendering_time) = rendering_time {
-            self.draw_text(&format!("Rendering: {:.3} ms", duration_ms(rendering_time)),
+            self.draw_text(&format!("GPU: {:.3} ms", duration_ms(rendering_time)),
                            Point2DI32::new(
                                window_rect.min_x() + PADDING,
                                window_rect.min_y() + PADDING + FONT_ASCENT + LINE_HEIGHT));
         }
+
+        // Draw settings button.
+        self.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT),
+                                          Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
+                             WINDOW_COLOR);
+        self.draw_texture(Point2DI32::new(PADDING + PADDING, bottom - BUTTON_HEIGHT + PADDING),
+                          &self.settings_texture);
     }
 
     fn draw_solid_rect(&self, rect: RectI32, color: ColorU) {
@@ -179,10 +197,10 @@ impl DebugRenderer {
                                               Point2DI32::new(info.width, info.height));
             let first_vertex_index = vertex_data.len();
             vertex_data.extend_from_slice(&[
-                DebugFontVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
-                DebugFontVertex::new(position_rect.upper_right(), tex_coord_rect.upper_right()),
-                DebugFontVertex::new(position_rect.lower_right(), tex_coord_rect.lower_right()),
-                DebugFontVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
+                DebugTextureVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
+                DebugTextureVertex::new(position_rect.upper_right(), tex_coord_rect.upper_right()),
+                DebugTextureVertex::new(position_rect.lower_right(), tex_coord_rect.lower_right()),
+                DebugTextureVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
             ]);
             index_data.extend(QUAD_INDICES.iter().map(|&i| i + first_vertex_index as u32));
 
@@ -190,24 +208,45 @@ impl DebugRenderer {
             next.set_x(next_x);
         }
 
-        self.font_vertex_array
+        self.draw_texture_with_vertex_data(&vertex_data, &index_data, &self.font_texture);
+    }
+
+    fn draw_texture(&self, origin: Point2DI32, texture: &Texture) {
+        let size = Point2DI32::new(texture.size.width as i32, texture.size.height as i32);
+        let position_rect = RectI32::new(origin, size);
+        let tex_coord_rect = RectI32::new(Point2DI32::default(), size);
+        let vertex_data = [
+            DebugTextureVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
+            DebugTextureVertex::new(position_rect.upper_right(), tex_coord_rect.upper_right()),
+            DebugTextureVertex::new(position_rect.lower_right(), tex_coord_rect.lower_right()),
+            DebugTextureVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
+        ];
+
+        self.draw_texture_with_vertex_data(&vertex_data, &QUAD_INDICES, texture);
+    }
+
+    fn draw_texture_with_vertex_data(&self,
+                                     vertex_data: &[DebugTextureVertex],
+                                     index_data: &[u32],
+                                     texture: &Texture) {
+        self.texture_vertex_array
             .vertex_buffer
             .upload(&vertex_data, BufferTarget::Vertex, BufferUploadMode::Dynamic);
-        self.font_vertex_array
+        self.texture_vertex_array
             .index_buffer
             .upload(&index_data, BufferTarget::Index, BufferUploadMode::Dynamic);
 
         unsafe {
-            gl::BindVertexArray(self.font_vertex_array.gl_vertex_array);
-            gl::UseProgram(self.font_program.program.gl_program);
-            gl::Uniform2f(self.font_program.framebuffer_size_uniform.location,
+            gl::BindVertexArray(self.texture_vertex_array.gl_vertex_array);
+            gl::UseProgram(self.texture_program.program.gl_program);
+            gl::Uniform2f(self.texture_program.framebuffer_size_uniform.location,
                           self.framebuffer_size.width as GLfloat,
                           self.framebuffer_size.height as GLfloat);
-            gl::Uniform2f(self.font_program.font_texture_size_uniform.location,
-                          self.font_texture.size.width as GLfloat,
-                          self.font_texture.size.height as GLfloat);
-            self.font_texture.bind(0);
-            gl::Uniform1i(self.font_program.font_texture_uniform.location, 0);
+            gl::Uniform2f(self.texture_program.texture_size_uniform.location,
+                          texture.size.width as GLfloat,
+                          texture.size.height as GLfloat);
+            texture.bind(0);
+            gl::Uniform1i(self.texture_program.texture_uniform.location, 0);
             gl::BlendEquation(gl::FUNC_ADD);
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
             gl::Enable(gl::BLEND);
@@ -220,45 +259,45 @@ impl DebugRenderer {
     }
 }
 
-struct DebugFontVertexArray {
+struct DebugTextureVertexArray {
     gl_vertex_array: GLuint,
     vertex_buffer: Buffer,
     index_buffer: Buffer,
 }
 
-impl DebugFontVertexArray {
-    fn new(debug_font_program: &DebugFontProgram) -> DebugFontVertexArray {
+impl DebugTextureVertexArray {
+    fn new(debug_texture_program: &DebugTextureProgram) -> DebugTextureVertexArray {
         let vertex_buffer = Buffer::new();
         let index_buffer = Buffer::new();
         let mut gl_vertex_array = 0;
         unsafe {
-            let position_attr = VertexAttr::new(&debug_font_program.program, "Position");
-            let tex_coord_attr = VertexAttr::new(&debug_font_program.program, "TexCoord");
+            let position_attr = VertexAttr::new(&debug_texture_program.program, "Position");
+            let tex_coord_attr = VertexAttr::new(&debug_texture_program.program, "TexCoord");
 
             gl::GenVertexArrays(1, &mut gl_vertex_array);
             gl::BindVertexArray(gl_vertex_array);
-            gl::UseProgram(debug_font_program.program.gl_program);
+            gl::UseProgram(debug_texture_program.program.gl_program);
             gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
             position_attr.configure_float(2,
                                           gl::UNSIGNED_SHORT,
                                           false,
-                                          DEBUG_FONT_VERTEX_SIZE,
+                                          DEBUG_TEXTURE_VERTEX_SIZE,
                                           0,
                                           0);
             tex_coord_attr.configure_float(2,
                                            gl::UNSIGNED_SHORT,
                                            false,
-                                           DEBUG_FONT_VERTEX_SIZE,
+                                           DEBUG_TEXTURE_VERTEX_SIZE,
                                            4,
                                            0);
             gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, index_buffer.gl_buffer);
         }
 
-        DebugFontVertexArray { gl_vertex_array, vertex_buffer, index_buffer }
+        DebugTextureVertexArray { gl_vertex_array, vertex_buffer, index_buffer }
     }
 }
 
-impl Drop for DebugFontVertexArray {
+impl Drop for DebugTextureVertexArray {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -307,24 +346,24 @@ impl Drop for DebugSolidVertexArray {
     }
 }
 
-struct DebugFontProgram {
+struct DebugTextureProgram {
     program: Program,
     framebuffer_size_uniform: Uniform,
-    font_texture_size_uniform: Uniform,
-    font_texture_uniform: Uniform,
+    texture_size_uniform: Uniform,
+    texture_uniform: Uniform,
 }
 
-impl DebugFontProgram {
-    fn new() -> DebugFontProgram {
-        let program = Program::new("debug_font");
+impl DebugTextureProgram {
+    fn new() -> DebugTextureProgram {
+        let program = Program::new("debug_texture");
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
-        let font_texture_size_uniform = Uniform::new(&program, "FontTextureSize");
-        let font_texture_uniform = Uniform::new(&program, "FontTexture");
-        DebugFontProgram {
+        let texture_size_uniform = Uniform::new(&program, "TextureSize");
+        let texture_uniform = Uniform::new(&program, "Texture");
+        DebugTextureProgram {
             program,
             framebuffer_size_uniform,
-            font_texture_size_uniform,
-            font_texture_uniform,
+            texture_size_uniform,
+            texture_uniform,
         }
     }
 }
@@ -346,16 +385,16 @@ impl DebugSolidProgram {
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
-struct DebugFontVertex {
+struct DebugTextureVertex {
     position_x: i16,
     position_y: i16,
     tex_coord_x: u16,
     tex_coord_y: u16,
 }
 
-impl DebugFontVertex {
-    fn new(position: Point2DI32, tex_coord: Point2DI32) -> DebugFontVertex {
-        DebugFontVertex {
+impl DebugTextureVertex {
+    fn new(position: Point2DI32, tex_coord: Point2DI32) -> DebugTextureVertex {
+        DebugTextureVertex {
             position_x: position.x() as i16,
             position_y: position.y() as i16,
             tex_coord_x: tex_coord.x() as u16,
