@@ -13,15 +13,16 @@ use euclid::Size2D;
 use jemallocator;
 use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_gl::renderer::Renderer;
-use pathfinder_renderer::builder::SceneBuilder;
+use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu_data::BuiltScene;
-use pathfinder_renderer::scene::{BuildTransform, Scene};
+use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::SceneExt;
 use rayon::ThreadPoolBuilder;
-use sdl2::event::Event;
+use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
 use std::f32::consts::FRAC_PI_4;
@@ -55,6 +56,7 @@ fn main() {
     let window =
         sdl_video.window("Pathfinder Demo", MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT)
                  .opengl()
+                 .resizable()
                  .allow_highdpi()
                  .build()
                  .unwrap();
@@ -66,20 +68,20 @@ fn main() {
     let mut exit = false;
 
     let (drawable_width, drawable_height) = window.drawable_size();
-    let mut renderer = Renderer::new(&Size2D::new(drawable_width, drawable_height));
+    let mut window_size = Size2D::new(drawable_width, drawable_height);
+    let mut renderer = Renderer::new(&window_size);
 
     let mut camera_position = Point3DF32::new(500.0, 500.0, 3000.0, 1.0);
     let mut camera_velocity = Point3DF32::new(0.0, 0.0, 0.0, 1.0);
     let (mut camera_yaw, mut camera_pitch) = (0.0, 0.0);
 
-    let window_size = Size2D::new(drawable_width, drawable_height);
-    renderer.debug_renderer.set_framebuffer_size(&window_size);
-
-    let base_scene = load_scene(&options, &window_size);
+    let base_scene = load_scene(&options);
     let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
+    scene_thread_proxy.set_window_size(&window_size);
 
     let mut events = vec![];
     let mut first_frame = true;
+    let mut mouselook_enabled = false;
 
     while !exit {
         // Update the scene.
@@ -87,8 +89,8 @@ fn main() {
             let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
             camera_position = camera_position + rotation.transform_point(camera_velocity);
 
-            let mut transform =
-                Transform3DF32::from_perspective(FRAC_PI_4, 4.0 / 3.0, 0.025, 100.0);
+            let aspect = window_size.width as f32 / window_size.height as f32;
+            let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
 
             transform = transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0,
                                                                        1.0 / 800.0,
@@ -142,7 +144,14 @@ fn main() {
                     Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                         exit = true;
                     }
-                    Event::MouseMotion { xrel, yrel, .. } => {
+                    Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
+                        let (window_width, window_height) = window.drawable_size();
+                        window_size = Size2D::new(window_width as u32, window_height as u32);
+                        scene_thread_proxy.set_window_size(&window_size);
+                        renderer.set_main_framebuffer_size(&window_size);
+                    }
+                    Event::MouseButtonDown { .. } => mouselook_enabled = !mouselook_enabled,
+                    Event::MouseMotion { xrel, yrel, .. } if mouselook_enabled => {
                         camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
                         camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
                     }
@@ -192,6 +201,10 @@ impl SceneThreadProxy {
         SceneThread::new(scene, scene_to_main_sender, main_to_scene_receiver, options);
         SceneThreadProxy { sender: main_to_scene_sender, receiver: scene_to_main_receiver }
     }
+
+    fn set_window_size(&self, window_size: &Size2D<u32>) {
+        self.sender.send(MainToSceneMsg::SetWindowSize(*window_size)).unwrap();
+    }
 }
 
 struct SceneThread {
@@ -209,9 +222,14 @@ impl SceneThread {
         thread::spawn(move || (SceneThread { scene, sender, receiver, options }).run());
     }
 
-    fn run(self) {
+    fn run(mut self) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
+                MainToSceneMsg::SetWindowSize(size) => {
+                    self.scene.view_box =
+                        RectF32::new(Point2DF32::default(),
+                                     Point2DF32::new(size.width as f32, size.height as f32));
+                }
                 MainToSceneMsg::Build(perspective) => {
                     let start_time = Instant::now();
                     let built_scene = build_scene(&self.scene, perspective, &self.options);
@@ -224,6 +242,7 @@ impl SceneThread {
 }
 
 enum MainToSceneMsg {
+    SetWindowSize(Size2D<u32>),
     Build(Option<Perspective>),
 }
 
@@ -279,40 +298,29 @@ impl Options {
     }
 }
 
-fn load_scene(options: &Options, window_size: &Size2D<u32>) -> Scene {
-    // Build scene.
+fn load_scene(options: &Options) -> Scene {
     let usvg = Tree::from_file(&options.input_path, &UsvgOptions::default()).unwrap();
-
-    let mut scene = Scene::from_tree(usvg);
-    scene.view_box =
-        RectF32::new(Point2DF32::default(),
-                     Point2DF32::new(window_size.width as f32, window_size.height as f32));
-
-    println!(
-        "Scene bounds: {:?} View box: {:?}",
-        scene.bounds, scene.view_box
-    );
-    println!(
-        "{} objects, {} paints",
-        scene.objects.len(),
-        scene.paints.len()
-    );
-
+    let scene = Scene::from_tree(usvg);
+    println!("Scene bounds: {:?}", scene.bounds);
+    println!("{} objects, {} paints", scene.objects.len(), scene.paints.len());
     scene
 }
 
 fn build_scene(scene: &Scene, perspective: Option<Perspective>, options: &Options) -> BuiltScene {
     let z_buffer = ZBuffer::new(scene.view_box);
 
-    let build_transform = match perspective {
-        None => BuildTransform::None,
-        Some(perspective) => BuildTransform::Perspective(perspective),
+    let render_options = RenderOptions {
+        transform: match perspective {
+            None => RenderTransform::Transform2D(Transform2DF32::default()),
+            Some(perspective) => RenderTransform::Perspective(perspective),
+        },
+        dilation: Point2DF32::default(),
     };
 
     let built_objects = panic::catch_unwind(|| {
          match options.jobs {
-            Some(1) => scene.build_objects_sequentially(&build_transform, &z_buffer),
-            _ => scene.build_objects(&build_transform, &z_buffer),
+            Some(1) => scene.build_objects_sequentially(render_options, &z_buffer),
+            _ => scene.build_objects(render_options, &z_buffer),
         }
     });
 

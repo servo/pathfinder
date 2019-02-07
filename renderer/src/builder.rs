@@ -15,7 +15,11 @@ use crate::gpu_data::{MaskTileBatchPrimitive, SolidTileScenePrimitive};
 use crate::scene;
 use crate::tiles;
 use crate::z_buffer::ZBuffer;
+use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::basic::transform2d::Transform2DF32;
+use pathfinder_geometry::basic::transform3d::Perspective;
+use pathfinder_geometry::clip::PolygonClipper3D;
 use std::iter;
 use std::u16;
 
@@ -116,4 +120,80 @@ impl SceneBuilder {
             Some(batch)
         }
     }
+}
+
+#[derive(Clone, Default)]
+pub struct RenderOptions {
+    pub transform: RenderTransform,
+    pub dilation: Point2DF32,
+}
+
+impl RenderOptions {
+    pub fn prepare(self, bounds: RectF32) -> PreparedRenderOptions {
+        PreparedRenderOptions {
+            transform: self.transform.prepare(bounds),
+            dilation: self.dilation,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum RenderTransform {
+    Transform2D(Transform2DF32),
+    Perspective(Perspective),
+}
+
+impl Default for RenderTransform {
+    #[inline]
+    fn default() -> RenderTransform {
+        RenderTransform::Transform2D(Transform2DF32::default())
+    }
+}
+
+impl RenderTransform {
+    fn prepare(&self, bounds: RectF32) -> PreparedRenderTransform {
+        let perspective = match self {
+            RenderTransform::Transform2D(ref transform) => {
+                if transform.is_identity() {
+                    return PreparedRenderTransform::None;
+                }
+                return PreparedRenderTransform::Transform2D(*transform);
+            }
+            RenderTransform::Perspective(ref perspective) => *perspective,
+        };
+
+        let mut points = vec![
+            bounds.origin().to_3d(),
+            bounds.upper_right().to_3d(),
+            bounds.lower_right().to_3d(),
+            bounds.lower_left().to_3d(),
+        ];
+        //println!("-----");
+        //println!("bounds={:?} ORIGINAL quad={:?}", self.bounds, points);
+        for point in &mut points {
+            *point = perspective.transform.transform_point(*point);
+        }
+        //println!("... PERSPECTIVE quad={:?}", points);
+        points = PolygonClipper3D::new(points).clip();
+        //println!("... CLIPPED quad={:?}", points);
+        for point in &mut points {
+            *point = point.perspective_divide()
+        }
+        let inverse_transform = perspective.transform.inverse();
+        let clip_polygon = points.into_iter().map(|point| {
+            inverse_transform.transform_point(point).perspective_divide().to_2d()
+        }).collect();
+        PreparedRenderTransform::Perspective { perspective, clip_polygon }
+    }
+}
+
+pub struct PreparedRenderOptions {
+    pub transform: PreparedRenderTransform,
+    pub dilation: Point2DF32,
+}
+
+pub enum PreparedRenderTransform {
+    None,
+    Transform2D(Transform2DF32),
+    Perspective { perspective: Perspective, clip_polygon: Vec<Point2DF32> }
 }

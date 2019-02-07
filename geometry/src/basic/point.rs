@@ -122,6 +122,11 @@ impl Point2DF32 {
     pub fn yx(&self) -> Point2DF32 {
         Point2DF32(self.0.yxwz())
     }
+
+    #[inline]
+    pub fn is_zero(&self) -> bool {
+        *self == Point2DF32::default()
+    }
 }
 
 impl PartialEq for Point2DF32 {

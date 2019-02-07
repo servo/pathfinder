@@ -10,16 +10,13 @@
 
 //! A set of paths to be rendered.
 
+use crate::builder::{PreparedRenderOptions, PreparedRenderTransform, RenderOptions};
 use crate::gpu_data::BuiltObject;
 use crate::paint::{ObjectShader, Paint, PaintId, ShaderId};
 use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
-use pathfinder_geometry::basic::transform2d::Transform2DF32;
-use pathfinder_geometry::basic::transform3d::Perspective;
-use pathfinder_geometry::clip::PolygonClipper3D;
 use pathfinder_geometry::outline::Outline;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::fmt::{self, Debug, Formatter};
@@ -66,14 +63,14 @@ impl Scene {
             .collect()
     }
 
-    pub fn build_objects_sequentially(&self, build_transform: &BuildTransform, z_buffer: &ZBuffer)
+    pub fn build_objects_sequentially(&self, options: RenderOptions, z_buffer: &ZBuffer)
                                       -> Vec<BuiltObject> {
-        let build_transform = build_transform.prepare(self.bounds);
+        let built_options = options.prepare(self.bounds);
         self.objects
             .iter()
             .enumerate()
             .map(|(object_index, object)| {
-                let outline = self.apply_build_transform(&object.outline, &build_transform);
+                let outline = self.apply_render_options(&object.outline, &built_options);
                 let mut tiler = Tiler::new(
                     &outline,
                     self.view_box,
@@ -87,14 +84,13 @@ impl Scene {
             .collect()
     }
 
-    pub fn build_objects(&self, build_transform: &BuildTransform, z_buffer: &ZBuffer)
-                         -> Vec<BuiltObject> {
-        let build_transform = build_transform.prepare(self.bounds);
+    pub fn build_objects(&self, options: RenderOptions, z_buffer: &ZBuffer) -> Vec<BuiltObject> {
+        let built_options = options.prepare(self.bounds);
         self.objects
             .par_iter()
             .enumerate()
             .map(|(object_index, object)| {
-                let outline = self.apply_build_transform(&object.outline, &build_transform);
+                let outline = self.apply_render_options(&object.outline, &built_options);
                 let mut tiler = Tiler::new(
                     &outline,
                     self.view_box,
@@ -108,24 +104,27 @@ impl Scene {
             .collect()
     }
 
-    fn apply_build_transform(&self, outline: &Outline, build_transform: &PreparedBuildTransform)
-                             -> Outline {
+    fn apply_render_options(&self, outline: &Outline, options: &PreparedRenderOptions) -> Outline {
         // FIXME(pcwalton): Don't clone?
         let mut outline = (*outline).clone();
-        match *build_transform {
-            PreparedBuildTransform::Perspective(ref perspective, ref quad) => {
-                outline.clip_against_polygon(quad);
+        match options.transform {
+            PreparedRenderTransform::Perspective { ref perspective, ref clip_polygon } => {
+                outline.clip_against_polygon(clip_polygon);
                 outline.apply_perspective(perspective);
-                outline.dilate(Point2DF32::splat(4.0));
             }
-            PreparedBuildTransform::Transform2D(ref transform) => {
+            PreparedRenderTransform::Transform2D(ref transform) => {
                 outline.transform(transform);
                 outline.clip_against_rect(self.view_box);
             }
-            PreparedBuildTransform::None => {
+            PreparedRenderTransform::None => {
                 outline.clip_against_rect(self.view_box);
             }
         }
+
+        if !options.dilation.is_zero() {
+            outline.dilate(options.dilation);
+        }
+
         outline.prepare_for_tiling(self.view_box);
         outline
     }
@@ -189,51 +188,4 @@ impl PathObject {
 pub fn scene_tile_index(tile_x: i32, tile_y: i32, tile_rect: RectI32) -> u32 {
     (tile_y - tile_rect.min_y()) as u32 * tile_rect.size().x() as u32
         + (tile_x - tile_rect.min_x()) as u32
-}
-
-pub enum BuildTransform {
-    None,
-    Transform2D(Transform2DF32),
-    Perspective(Perspective),
-}
-
-impl BuildTransform {
-    fn prepare(&self, bounds: RectF32) -> PreparedBuildTransform {
-        let perspective = match self {
-            BuildTransform::None => return PreparedBuildTransform::None,
-            BuildTransform::Transform2D(ref transform) => {
-                return PreparedBuildTransform::Transform2D(*transform)
-            }
-            BuildTransform::Perspective(ref perspective) => *perspective,
-        };
-
-        let mut points = vec![
-            bounds.origin().to_3d(),
-            bounds.upper_right().to_3d(),
-            bounds.lower_right().to_3d(),
-            bounds.lower_left().to_3d(),
-        ];
-        //println!("-----");
-        //println!("bounds={:?} ORIGINAL quad={:?}", self.bounds, points);
-        for point in &mut points {
-            *point = perspective.transform.transform_point(*point);
-        }
-        //println!("... PERSPECTIVE quad={:?}", points);
-        points = PolygonClipper3D::new(points).clip();
-        //println!("... CLIPPED quad={:?}", points);
-        for point in &mut points {
-            *point = point.perspective_divide()
-        }
-        let inverse_transform = perspective.transform.inverse();
-        let points = points.into_iter().map(|point| {
-            inverse_transform.transform_point(point).perspective_divide().to_2d()
-        }).collect();
-        PreparedBuildTransform::Perspective(perspective, points)
-    }
-}
-
-enum PreparedBuildTransform {
-    None,
-    Transform2D(Transform2DF32),
-    Perspective(Perspective, Vec<Point2DF32>),
 }

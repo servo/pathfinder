@@ -20,7 +20,7 @@ use pathfinder_simd::default::F32x4;
 use std::ops::Sub;
 
 /// A 2x2 matrix, optimized with SIMD, in column-major order.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Matrix2x2F32(pub F32x4);
 
 impl Default for Matrix2x2F32 {
@@ -93,7 +93,7 @@ impl Sub<Matrix2x2F32> for Matrix2x2F32 {
 }
 
 /// An affine transform, optimized with SIMD.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transform2DF32 {
     // Row-major order.
     matrix: Matrix2x2F32,
@@ -176,6 +176,11 @@ impl Transform2DF32 {
                                   self.matrix.0[2], self.matrix.0[3], 0.0, self.vector.y(),
                                   0.0,              0.0,              0.0, 0.0,
                                   0.0,              0.0,              0.0, 1.0)
+    }
+
+    #[inline]
+    pub fn is_identity(&self) -> bool {
+        *self == Transform2DF32::default()
     }
 }
 

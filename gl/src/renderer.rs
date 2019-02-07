@@ -148,6 +148,11 @@ impl Renderer {
         Some(result)
     }
 
+    pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: &Size2D<u32>) {
+        self.main_framebuffer_size = *new_framebuffer_size;
+        self.debug_renderer.set_framebuffer_size(new_framebuffer_size);
+    }
+
     fn upload_shaders(&mut self, shaders: &[ObjectShader]) {
         let size = Size2D::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
         let mut fill_colors = vec![0; size.width as usize * size.height as usize * 4];
