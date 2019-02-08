@@ -264,6 +264,13 @@ impl Point3DF32 {
     }
 
     #[inline]
+    pub fn scale(&self, x: f32) -> Point3DF32 {
+        let mut factors = F32x4::splat(x);
+        factors[3] = 1.0;
+        Point3DF32(self.0 * factors)
+    }
+
+    #[inline]
     pub fn set_x(&mut self, x: f32) {
         self.0[0] = x
     }

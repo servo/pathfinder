@@ -27,9 +27,10 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::SceneExt;
 use rayon::ThreadPoolBuilder;
+use sdl2::{EventPump, Sdl, VideoSubsystem};
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
-use sdl2::video::GLProfile;
+use sdl2::video::{GLContext, GLProfile, Window};
 use std::f32::consts::FRAC_PI_4;
 use std::panic;
 use std::path::PathBuf;
@@ -62,196 +63,245 @@ static EFFECTS_PNG_NAME: &'static str = "demo-effects";
 static OPEN_PNG_NAME: &'static str = "demo-open";
 
 fn main() {
-    let options = Options::get();
+    DemoApp::new().run();
+}
 
-    let sdl_context = sdl2::init().unwrap();
-    let sdl_video = sdl_context.video().unwrap();
+struct DemoApp {
+    window: Window,
+    #[allow(dead_code)]
+    sdl_context: Sdl,
+    #[allow(dead_code)]
+    sdl_video: VideoSubsystem,
+    sdl_event_pump: EventPump,
+    #[allow(dead_code)]
+    gl_context: GLContext,
 
-    let gl_attributes = sdl_video.gl_attr();
-    gl_attributes.set_context_profile(GLProfile::Core);
-    gl_attributes.set_context_version(3, 3);
+    scale_factor: f32,
 
-    let window =
-        sdl_video.window("Pathfinder Demo", MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT)
-                 .opengl()
-                 .resizable()
-                 .allow_highdpi()
-                 .build()
-                 .unwrap();
+    camera_position: Point3DF32,
+    camera_velocity: Point3DF32,
+    camera_yaw: f32,
+    camera_pitch: f32,
 
-    let _gl_context = window.gl_create_context().unwrap();
-    gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
+    ui: DemoUI,
+    scene_thread_proxy: SceneThreadProxy,
+    renderer: Renderer,
+}
 
-    let mut sdl_event_pump = sdl_context.event_pump().unwrap();
-    let mut exit = false;
+impl DemoApp {
+    fn new() -> DemoApp {
+        let options = Options::get();
 
-    let (window_width, _) = window.size();
-    let (drawable_width, drawable_height) = window.drawable_size();
-    let scale_factor = drawable_width / window_width;
-    let mut drawable_size = Size2D::new(drawable_width, drawable_height);
-    let mut renderer = Renderer::new(&drawable_size);
+        let sdl_context = sdl2::init().unwrap();
+        let sdl_video = sdl_context.video().unwrap();
 
-    let mut camera_position = Point3DF32::new(500.0, 500.0, 3000.0, 1.0);
-    let mut camera_velocity = Point3DF32::new(0.0, 0.0, 0.0, 1.0);
-    let (mut camera_yaw, mut camera_pitch) = (0.0, 0.0);
+        let gl_attributes = sdl_video.gl_attr();
+        gl_attributes.set_context_profile(GLProfile::Core);
+        gl_attributes.set_context_version(3, 3);
 
-    let base_scene = load_scene(&options);
-    let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
-    scene_thread_proxy.set_drawable_size(&drawable_size);
+        let window =
+            sdl_video.window("Pathfinder Demo", MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT)
+                    .opengl()
+                    .resizable()
+                    .allow_highdpi()
+                    .build()
+                    .unwrap();
 
-    let mut demo_ui = DemoUI::new(options);
+        let gl_context = window.gl_create_context().unwrap();
+        gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
 
-    let mut events = vec![];
-    let mut frame_counter = 0;
-    let mut mouselook_enabled = false;
-    let mut ui_event_handled_last_frame = false;
+        let sdl_event_pump = sdl_context.event_pump().unwrap();
 
-    while !exit {
-        // Update the scene.
-        let perspective = if demo_ui.threed_enabled {
-            let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
-            camera_position = camera_position + rotation.transform_point(camera_velocity);
+        let (window_width, _) = window.size();
+        let (drawable_width, drawable_height) = window.drawable_size();
+        let drawable_size = Size2D::new(drawable_width, drawable_height);
 
-            let aspect = drawable_size.width as f32 / drawable_size.height as f32;
-            let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
+        let base_scene = load_scene(&options);
+        let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
+        scene_thread_proxy.set_drawable_size(&drawable_size);
 
-            transform = transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0,
-                                                                       1.0 / 800.0,
-                                                                       1.0 / 800.0));
-            transform = transform.post_mul(&Transform3DF32::from_rotation(camera_yaw,
-                                                                          camera_pitch,
-                                                                          0.0));
-            transform =
-                transform.post_mul(&Transform3DF32::from_translation(-camera_position.x(),
-                                                                     -camera_position.y(),
-                                                                     -camera_position.z()));
+        DemoApp {
+            window,
+            sdl_context,
+            sdl_video,
+            sdl_event_pump,
+            gl_context,
 
-            Some(Perspective::new(&transform, &drawable_size))
-        } else {
-            None
-        };
+            scale_factor: drawable_width as f32 / window_width as f32,
 
-        let count = if frame_counter == 0 { 2 } else { 1 };
-        for _ in 0..count {
-            scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
-                perspective,
-                stem_darkening_font_size: if demo_ui.stem_darkening_effect_enabled {
-                    Some(APPROX_FONT_SIZE * scale_factor as f32)
-                } else {
-                    None
-                },
-            })).unwrap();
+            camera_position: Point3DF32::new(500.0, 500.0, 3000.0, 1.0),
+            camera_velocity: Point3DF32::new(0.0, 0.0, 0.0, 1.0),
+            camera_yaw: 0.0,
+            camera_pitch: 0.0,
+
+            ui: DemoUI::new(options),
+            scene_thread_proxy,
+            renderer: Renderer::new(&drawable_size),
         }
+    }
 
-        // FIXME(pcwalton): This can cause us to miss UI events if things get backed up...
-        let mut ui_event = UIEvent::None;
-        let mut event_handled = false;
-        while !event_handled {
-            let wait_for_event =
-                !camera_velocity.is_zero() &&
-                frame_counter >= 2 &&
-                !ui_event_handled_last_frame;
-            if wait_for_event {
-                events.push(sdl_event_pump.wait_event());
-            }
-            for event in sdl_event_pump.poll_iter() {
-                events.push(event);
+    fn run(&mut self) {
+        let mut exit = false;
+        let mut events = vec![];
+        let mut frame_counter = 0;
+        let mut mouselook_enabled = false;
+        let mut ui_event_handled_last_frame = false;
+
+        let (drawable_width, drawable_height) = self.window.drawable_size();
+        let mut drawable_size = Size2D::new(drawable_width, drawable_height);
+
+        while !exit {
+            // Update the scene.
+            let perspective = if self.ui.threed_enabled {
+                let rotation = Transform3DF32::from_rotation(-self.camera_yaw,
+                                                             -self.camera_pitch,
+                                                             0.0);
+                self.camera_position = self.camera_position +
+                    rotation.transform_point(self.camera_velocity);
+
+                let aspect = drawable_size.width as f32 / drawable_size.height as f32;
+                let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
+
+                transform = transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0,
+                                                                        1.0 / 800.0,
+                                                                        1.0 / 800.0));
+                transform = transform.post_mul(&Transform3DF32::from_rotation(self.camera_yaw,
+                                                                              self.camera_pitch,
+                                                                              0.0));
+                let translation = self.camera_position.scale(-1.0);
+                transform = transform.post_mul(&Transform3DF32::from_translation(translation.x(),
+                                                                                 translation.y(),
+                                                                                 translation.z()));
+
+                Some(Perspective::new(&transform, &drawable_size))
+            } else {
+                None
+            };
+
+            let count = if frame_counter == 0 { 2 } else { 1 };
+            for _ in 0..count {
+                self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
+                    perspective,
+                    stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
+                        Some(APPROX_FONT_SIZE * self.scale_factor)
+                    } else {
+                        None
+                    },
+                })).unwrap();
             }
 
-            for event in events.drain(..) {
-                match event {
-                    Event::Quit { .. } | Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                        exit = true;
-                    }
-                    Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
-                        let (drawable_width, drawable_height) = window.drawable_size();
-                        drawable_size = Size2D::new(drawable_width as u32, drawable_height as u32);
-                        scene_thread_proxy.set_drawable_size(&drawable_size);
-                        renderer.set_main_framebuffer_size(&drawable_size);
-                    }
-                    Event::MouseButtonDown { x, y, .. } => {
-                        let point = Point2DI32::new(x, y).scale(scale_factor as i32);
-                        ui_event = UIEvent::MouseDown(point);
-                    }
-                    Event::MouseMotion { xrel, yrel, .. } if mouselook_enabled => {
-                        camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                        camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                    }
-                    Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-                        camera_velocity.set_z(-CAMERA_VELOCITY)
-                    }
-                    Event::KeyDown { keycode: Some(Keycode::S), .. } => {
-                        camera_velocity.set_z(CAMERA_VELOCITY)
-                    }
-                    Event::KeyDown { keycode: Some(Keycode::A), .. } => {
-                        camera_velocity.set_x(-CAMERA_VELOCITY)
-                    }
-                    Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-                        camera_velocity.set_x(CAMERA_VELOCITY)
-                    }
-                    Event::KeyUp { keycode: Some(Keycode::W), .. } |
-                    Event::KeyUp { keycode: Some(Keycode::S), .. } => {
-                        camera_velocity.set_z(0.0);
-                    }
-                    Event::KeyUp { keycode: Some(Keycode::A), .. } |
-                    Event::KeyUp { keycode: Some(Keycode::D), .. } => {
-                        camera_velocity.set_x(0.0);
-                    }
-                    _ => continue,
+            // FIXME(pcwalton): This can cause us to miss UI events if things get backed up...
+            let mut ui_event = UIEvent::None;
+            let mut event_handled = false;
+            while !event_handled {
+                let wait_for_event =
+                    !self.camera_velocity.is_zero() &&
+                    frame_counter >= 2 &&
+                    !ui_event_handled_last_frame;
+                if wait_for_event {
+                    events.push(self.sdl_event_pump.wait_event());
+                }
+                for event in self.sdl_event_pump.poll_iter() {
+                    events.push(event);
                 }
 
-                event_handled = true;
+                for event in events.drain(..) {
+                    match event {
+                        Event::Quit { .. } |
+                        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                            exit = true;
+                        }
+                        Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
+                            let (drawable_width, drawable_height) = self.window.drawable_size();
+                            drawable_size = Size2D::new(drawable_width as u32,
+                                                        drawable_height as u32);
+                            self.scene_thread_proxy.set_drawable_size(&drawable_size);
+                            self.renderer.set_main_framebuffer_size(&drawable_size);
+                        }
+                        Event::MouseButtonDown { x, y, .. } => {
+                            let point = Point2DI32::new(x, y).scale(self.scale_factor as i32);
+                            ui_event = UIEvent::MouseDown(point);
+                        }
+                        Event::MouseMotion { xrel, yrel, .. } if mouselook_enabled => {
+                            self.camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                            self.camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                        }
+                        Event::KeyDown { keycode: Some(Keycode::W), .. } => {
+                            self.camera_velocity.set_z(-CAMERA_VELOCITY)
+                        }
+                        Event::KeyDown { keycode: Some(Keycode::S), .. } => {
+                            self.camera_velocity.set_z(CAMERA_VELOCITY)
+                        }
+                        Event::KeyDown { keycode: Some(Keycode::A), .. } => {
+                            self.camera_velocity.set_x(-CAMERA_VELOCITY)
+                        }
+                        Event::KeyDown { keycode: Some(Keycode::D), .. } => {
+                            self.camera_velocity.set_x(CAMERA_VELOCITY)
+                        }
+                        Event::KeyUp { keycode: Some(Keycode::W), .. } |
+                        Event::KeyUp { keycode: Some(Keycode::S), .. } => {
+                            self.camera_velocity.set_z(0.0);
+                        }
+                        Event::KeyUp { keycode: Some(Keycode::A), .. } |
+                        Event::KeyUp { keycode: Some(Keycode::D), .. } => {
+                            self.camera_velocity.set_x(0.0);
+                        }
+                        _ => continue,
+                    }
+
+                    event_handled = true;
+                }
+
+                // FIXME(pcwalton): This is so ugly!
+                if !wait_for_event {
+                    event_handled = true;
+                }
             }
 
-            // FIXME(pcwalton): This is so ugly!
-            if !wait_for_event {
-                event_handled = true;
+            // Draw the scene.
+            let SceneToMainMsg::Render {
+                built_scene,
+                tile_time
+            } = self.scene_thread_proxy.receiver.recv().unwrap();
+            unsafe {
+                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                gl::ClearColor(BACKGROUND_COLOR.r as f32 / 255.0,
+                               BACKGROUND_COLOR.g as f32 / 255.0,
+                               BACKGROUND_COLOR.b as f32 / 255.0,
+                               BACKGROUND_COLOR.a as f32 / 255.0);
+                gl::Clear(gl::COLOR_BUFFER_BIT);
+
+                if self.ui.gamma_correction_effect_enabled {
+                    self.renderer.enable_gamma_correction(BACKGROUND_COLOR);
+                } else {
+                    self.renderer.disable_gamma_correction();
+                }
+
+                if self.ui.subpixel_aa_effect_enabled {
+                    self.renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
+                } else {
+                    self.renderer.disable_subpixel_aa();
+                }
+
+                self.renderer.render_scene(&built_scene);
+
+                let rendering_time = self.renderer.shift_timer_query();
+                self.renderer.debug_ui.add_sample(tile_time, rendering_time);
+                self.renderer.debug_ui.draw();
+
+                let had_ui_event = ui_event.is_none();
+                self.ui.update(&mut self.renderer.debug_ui, &mut ui_event);
+                ui_event_handled_last_frame = had_ui_event && ui_event.is_none();
+
+                // If nothing handled the mouse-down event, toggle mouselook.
+                if let UIEvent::MouseDown(_) = ui_event {
+                    mouselook_enabled = !mouselook_enabled;
+                }
             }
+
+            self.window.gl_swap_window();
+            frame_counter += 1;
         }
-
-        // Draw the scene.
-        let SceneToMainMsg::Render {
-            built_scene,
-            tile_time
-        } = scene_thread_proxy.receiver.recv().unwrap();
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::ClearColor(BACKGROUND_COLOR.r as f32 / 255.0,
-                           BACKGROUND_COLOR.g as f32 / 255.0,
-                           BACKGROUND_COLOR.b as f32 / 255.0,
-                           BACKGROUND_COLOR.a as f32 / 255.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-
-            if demo_ui.gamma_correction_effect_enabled {
-                renderer.enable_gamma_correction(BACKGROUND_COLOR);
-            } else {
-                renderer.disable_gamma_correction();
-            }
-
-            if demo_ui.subpixel_aa_effect_enabled {
-                renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
-            } else {
-                renderer.disable_subpixel_aa();
-            }
-
-            renderer.render_scene(&built_scene);
-
-            let rendering_time = renderer.shift_timer_query();
-            renderer.debug_ui.add_sample(tile_time, rendering_time);
-            renderer.debug_ui.draw();
-
-            let had_ui_event = ui_event.is_none();
-            demo_ui.update(&mut renderer.debug_ui, &mut ui_event);
-            ui_event_handled_last_frame = had_ui_event && ui_event.is_none();
-
-            // If nothing handled the mouse-down event, toggle mouselook.
-            if let UIEvent::MouseDown(_) = ui_event {
-                mouselook_enabled = !mouselook_enabled;
-            }
-        }
-
-        window.gl_swap_window();
-        frame_counter += 1;
     }
 }
 
