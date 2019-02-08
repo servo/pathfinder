@@ -59,6 +59,8 @@ const SWITCH_HALF_SIZE: i32 = 96;
 
 const APPROX_FONT_SIZE: f32 = 16.0;
 
+const WORLD_SCALE: f32 = 1.0 / 800.0;
+
 static EFFECTS_PNG_NAME: &'static str = "demo-effects";
 static OPEN_PNG_NAME: &'static str = "demo-open";
 
@@ -82,6 +84,12 @@ struct DemoApp {
     camera_velocity: Point3DF32,
     camera_yaw: f32,
     camera_pitch: f32,
+
+    frame_counter: u32,
+    events: Vec<Event>,
+    exit: bool,
+    mouselook_enabled: bool,
+    ui_event_handled_last_frame: bool,
 
     ui: DemoUI,
     scene_thread_proxy: SceneThreadProxy,
@@ -134,6 +142,12 @@ impl DemoApp {
             camera_yaw: 0.0,
             camera_pitch: 0.0,
 
+            frame_counter: 0,
+            events: vec![],
+            exit: false,
+            mouselook_enabled: false,
+            ui_event_handled_last_frame: false,
+
             ui: DemoUI::new(options),
             scene_thread_proxy,
             renderer: Renderer::new(&drawable_size),
@@ -141,167 +155,164 @@ impl DemoApp {
     }
 
     fn run(&mut self) {
-        let mut exit = false;
-        let mut events = vec![];
-        let mut frame_counter = 0;
-        let mut mouselook_enabled = false;
-        let mut ui_event_handled_last_frame = false;
-
-        let (drawable_width, drawable_height) = self.window.drawable_size();
-        let mut drawable_size = Size2D::new(drawable_width, drawable_height);
-
-        while !exit {
+        while !self.exit {
             // Update the scene.
-            let perspective = if self.ui.threed_enabled {
-                let rotation = Transform3DF32::from_rotation(-self.camera_yaw,
-                                                             -self.camera_pitch,
-                                                             0.0);
-                self.camera_position = self.camera_position +
-                    rotation.transform_point(self.camera_velocity);
+            self.build_scene();
 
-                let aspect = drawable_size.width as f32 / drawable_size.height as f32;
-                let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
-
-                transform = transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0,
-                                                                        1.0 / 800.0,
-                                                                        1.0 / 800.0));
-                transform = transform.post_mul(&Transform3DF32::from_rotation(self.camera_yaw,
-                                                                              self.camera_pitch,
-                                                                              0.0));
-                let translation = self.camera_position.scale(-1.0);
-                transform = transform.post_mul(&Transform3DF32::from_translation(translation.x(),
-                                                                                 translation.y(),
-                                                                                 translation.z()));
-
-                Some(Perspective::new(&transform, &drawable_size))
-            } else {
-                None
-            };
-
-            let count = if frame_counter == 0 { 2 } else { 1 };
-            for _ in 0..count {
-                self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
-                    perspective,
-                    stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
-                        Some(APPROX_FONT_SIZE * self.scale_factor)
-                    } else {
-                        None
-                    },
-                })).unwrap();
-            }
-
+            // Handle events.
             // FIXME(pcwalton): This can cause us to miss UI events if things get backed up...
-            let mut ui_event = UIEvent::None;
-            let mut event_handled = false;
-            while !event_handled {
-                let wait_for_event =
-                    !self.camera_velocity.is_zero() &&
-                    frame_counter >= 2 &&
-                    !ui_event_handled_last_frame;
-                if wait_for_event {
-                    events.push(self.sdl_event_pump.wait_event());
-                }
-                for event in self.sdl_event_pump.poll_iter() {
-                    events.push(event);
-                }
-
-                for event in events.drain(..) {
-                    match event {
-                        Event::Quit { .. } |
-                        Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                            exit = true;
-                        }
-                        Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
-                            let (drawable_width, drawable_height) = self.window.drawable_size();
-                            drawable_size = Size2D::new(drawable_width as u32,
-                                                        drawable_height as u32);
-                            self.scene_thread_proxy.set_drawable_size(&drawable_size);
-                            self.renderer.set_main_framebuffer_size(&drawable_size);
-                        }
-                        Event::MouseButtonDown { x, y, .. } => {
-                            let point = Point2DI32::new(x, y).scale(self.scale_factor as i32);
-                            ui_event = UIEvent::MouseDown(point);
-                        }
-                        Event::MouseMotion { xrel, yrel, .. } if mouselook_enabled => {
-                            self.camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                            self.camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                        }
-                        Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-                            self.camera_velocity.set_z(-CAMERA_VELOCITY)
-                        }
-                        Event::KeyDown { keycode: Some(Keycode::S), .. } => {
-                            self.camera_velocity.set_z(CAMERA_VELOCITY)
-                        }
-                        Event::KeyDown { keycode: Some(Keycode::A), .. } => {
-                            self.camera_velocity.set_x(-CAMERA_VELOCITY)
-                        }
-                        Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-                            self.camera_velocity.set_x(CAMERA_VELOCITY)
-                        }
-                        Event::KeyUp { keycode: Some(Keycode::W), .. } |
-                        Event::KeyUp { keycode: Some(Keycode::S), .. } => {
-                            self.camera_velocity.set_z(0.0);
-                        }
-                        Event::KeyUp { keycode: Some(Keycode::A), .. } |
-                        Event::KeyUp { keycode: Some(Keycode::D), .. } => {
-                            self.camera_velocity.set_x(0.0);
-                        }
-                        _ => continue,
-                    }
-
-                    event_handled = true;
-                }
-
-                // FIXME(pcwalton): This is so ugly!
-                if !wait_for_event {
-                    event_handled = true;
-                }
-            }
+            let ui_event = self.handle_events();
 
             // Draw the scene.
-            let SceneToMainMsg::Render {
-                built_scene,
-                tile_time
-            } = self.scene_thread_proxy.receiver.recv().unwrap();
-            unsafe {
-                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-                gl::ClearColor(BACKGROUND_COLOR.r as f32 / 255.0,
-                               BACKGROUND_COLOR.g as f32 / 255.0,
-                               BACKGROUND_COLOR.b as f32 / 255.0,
-                               BACKGROUND_COLOR.a as f32 / 255.0);
-                gl::Clear(gl::COLOR_BUFFER_BIT);
+            let render_msg = self.scene_thread_proxy.receiver.recv().unwrap();
+            self.draw_scene(render_msg, ui_event);
+        }
+    }
 
-                if self.ui.gamma_correction_effect_enabled {
-                    self.renderer.enable_gamma_correction(BACKGROUND_COLOR);
+    fn build_scene(&mut self) {
+        let (drawable_width, drawable_height) = self.window.drawable_size();
+        let drawable_size = Size2D::new(drawable_width, drawable_height);
+
+        let perspective = if self.ui.threed_enabled {
+            let rotation = Transform3DF32::from_rotation(-self.camera_yaw,
+                                                         -self.camera_pitch,
+                                                         0.0);
+            self.camera_position = self.camera_position +
+                rotation.transform_point(self.camera_velocity);
+
+            let aspect = drawable_size.width as f32 / drawable_size.height as f32;
+            let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
+
+            transform = transform.post_mul(&Transform3DF32::from_scale(WORLD_SCALE,
+                                                                       WORLD_SCALE,
+                                                                       WORLD_SCALE));
+            transform = transform.post_mul(&Transform3DF32::from_rotation(self.camera_yaw,
+                                                                          self.camera_pitch,
+                                                                          0.0));
+            let translation = self.camera_position.scale(-1.0);
+            transform = transform.post_mul(&Transform3DF32::from_translation(translation.x(),
+                                                                             translation.y(),
+                                                                             translation.z()));
+
+            Some(Perspective::new(&transform, &drawable_size))
+        } else {
+            None
+        };
+
+        let count = if self.frame_counter == 0 { 2 } else { 1 };
+        for _ in 0..count {
+            self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
+                perspective,
+                stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
+                    Some(APPROX_FONT_SIZE * self.scale_factor)
                 } else {
-                    self.renderer.disable_gamma_correction();
+                    None
+                },
+            })).unwrap();
+        }
+    }
+
+    fn handle_events(&mut self) -> UIEvent {
+        let mut ui_event = UIEvent::None;
+
+        let wait_for_event = !self.camera_velocity.is_zero() && self.frame_counter >= 2 &&
+            !self.ui_event_handled_last_frame;
+        if wait_for_event {
+            self.events.push(self.sdl_event_pump.wait_event());
+        }
+        for event in self.sdl_event_pump.poll_iter() {
+            self.events.push(event);
+        }
+
+        for event in self.events.drain(..) {
+            match event {
+                Event::Quit { .. } |
+                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                    self.exit = true;
                 }
-
-                if self.ui.subpixel_aa_effect_enabled {
-                    self.renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
-                } else {
-                    self.renderer.disable_subpixel_aa();
+                Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
+                    let (drawable_width, drawable_height) = self.window.drawable_size();
+                    let drawable_size = Size2D::new(drawable_width as u32,
+                                                    drawable_height as u32);
+                    self.scene_thread_proxy.set_drawable_size(&drawable_size);
+                    self.renderer.set_main_framebuffer_size(&drawable_size);
                 }
-
-                self.renderer.render_scene(&built_scene);
-
-                let rendering_time = self.renderer.shift_timer_query();
-                self.renderer.debug_ui.add_sample(tile_time, rendering_time);
-                self.renderer.debug_ui.draw();
-
-                let had_ui_event = ui_event.is_none();
-                self.ui.update(&mut self.renderer.debug_ui, &mut ui_event);
-                ui_event_handled_last_frame = had_ui_event && ui_event.is_none();
-
-                // If nothing handled the mouse-down event, toggle mouselook.
-                if let UIEvent::MouseDown(_) = ui_event {
-                    mouselook_enabled = !mouselook_enabled;
+                Event::MouseButtonDown { x, y, .. } => {
+                    let point = Point2DI32::new(x, y).scale(self.scale_factor as i32);
+                    ui_event = UIEvent::MouseDown(point);
                 }
+                Event::MouseMotion { xrel, yrel, .. } if self.mouselook_enabled => {
+                    self.camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                    self.camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                }
+                Event::KeyDown { keycode: Some(Keycode::W), .. } => {
+                    self.camera_velocity.set_z(-CAMERA_VELOCITY)
+                }
+                Event::KeyDown { keycode: Some(Keycode::S), .. } => {
+                    self.camera_velocity.set_z(CAMERA_VELOCITY)
+                }
+                Event::KeyDown { keycode: Some(Keycode::A), .. } => {
+                    self.camera_velocity.set_x(-CAMERA_VELOCITY)
+                }
+                Event::KeyDown { keycode: Some(Keycode::D), .. } => {
+                    self.camera_velocity.set_x(CAMERA_VELOCITY)
+                }
+                Event::KeyUp { keycode: Some(Keycode::W), .. } |
+                Event::KeyUp { keycode: Some(Keycode::S), .. } => {
+                    self.camera_velocity.set_z(0.0);
+                }
+                Event::KeyUp { keycode: Some(Keycode::A), .. } |
+                Event::KeyUp { keycode: Some(Keycode::D), .. } => {
+                    self.camera_velocity.set_x(0.0);
+                }
+                _ => continue,
+            }
+        }
+
+        ui_event
+    }
+
+    fn draw_scene(&mut self, render_msg: SceneToMainMsg, mut ui_event: UIEvent) {
+        let SceneToMainMsg::Render { built_scene, tile_time } = render_msg;
+
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::ClearColor(BACKGROUND_COLOR.r as f32 / 255.0,
+                           BACKGROUND_COLOR.g as f32 / 255.0,
+                           BACKGROUND_COLOR.b as f32 / 255.0,
+                           BACKGROUND_COLOR.a as f32 / 255.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+
+            if self.ui.gamma_correction_effect_enabled {
+                self.renderer.enable_gamma_correction(BACKGROUND_COLOR);
+            } else {
+                self.renderer.disable_gamma_correction();
             }
 
-            self.window.gl_swap_window();
-            frame_counter += 1;
+            if self.ui.subpixel_aa_effect_enabled {
+                self.renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
+            } else {
+                self.renderer.disable_subpixel_aa();
+            }
+
+            self.renderer.render_scene(&built_scene);
+
+            let rendering_time = self.renderer.shift_timer_query();
+            self.renderer.debug_ui.add_sample(tile_time, rendering_time);
+            self.renderer.debug_ui.draw();
+
+            let had_ui_event = ui_event.is_none();
+            self.ui.update(&mut self.renderer.debug_ui, &mut ui_event);
+            self.ui_event_handled_last_frame = had_ui_event && ui_event.is_none();
+
+            // If nothing handled the mouse-down event, toggle mouselook.
+            if let UIEvent::MouseDown(_) = ui_event {
+                self.mouselook_enabled = !self.mouselook_enabled;
+            }
         }
+
+        self.window.gl_swap_window();
+        self.frame_counter += 1;
     }
 }
 
@@ -468,6 +479,7 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
     while let Some(batch) = scene_builder.build_batch() {
         built_scene.batches.push(batch);
     }
+
     built_scene
 }
 
@@ -527,34 +539,43 @@ impl DemoUI {
                                                self.threed_enabled);
 
         // Draw effects window, if necessary.
-        if self.effects_window_visible {
-            let effects_window_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_WINDOW_HEIGHT);
-            debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_window_y),
-                                                Point2DI32::new(EFFECTS_WINDOW_WIDTH,
-                                                                EFFECTS_WINDOW_HEIGHT)),
-                                    WINDOW_COLOR);
-            self.gamma_correction_effect_enabled =
-                self.draw_effects_switch(debug_ui,
-                                        event,
-                                        "Gamma Correction",
-                                        0,
-                                        effects_window_y,
-                                        self.gamma_correction_effect_enabled);
-            self.stem_darkening_effect_enabled =
-                self.draw_effects_switch(debug_ui,
-                                        event,
-                                        "Stem Darkening",
-                                        1,
-                                        effects_window_y,
-                                        self.stem_darkening_effect_enabled);
-            self.subpixel_aa_effect_enabled =
-                self.draw_effects_switch(debug_ui,
-                                        event,
-                                        "Subpixel AA",
-                                        2,
-                                        effects_window_y,
-                                        self.subpixel_aa_effect_enabled);
+        self.draw_effects_window(debug_ui, event);
+    }
+
+    fn draw_effects_window(&mut self, debug_ui: &mut DebugUI, event: &mut UIEvent) {
+        if !self.effects_window_visible {
+            return;
         }
+
+        let bottom = debug_ui.framebuffer_size().height as i32 - PADDING;
+        let effects_window_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_WINDOW_HEIGHT);
+        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_window_y),
+                                            Point2DI32::new(EFFECTS_WINDOW_WIDTH,
+                                                            EFFECTS_WINDOW_HEIGHT)),
+                                WINDOW_COLOR);
+
+        self.gamma_correction_effect_enabled =
+            self.draw_effects_switch(debug_ui,
+                                    event,
+                                    "Gamma Correction",
+                                    0,
+                                    effects_window_y,
+                                    self.gamma_correction_effect_enabled);
+        self.stem_darkening_effect_enabled =
+            self.draw_effects_switch(debug_ui,
+                                    event,
+                                    "Stem Darkening",
+                                    1,
+                                    effects_window_y,
+                                    self.stem_darkening_effect_enabled);
+        self.subpixel_aa_effect_enabled =
+            self.draw_effects_switch(debug_ui,
+                                    event,
+                                    "Subpixel AA",
+                                    2,
+                                    effects_window_y,
+                                    self.subpixel_aa_effect_enabled);
+
     }
 
     fn draw_button(&self,
