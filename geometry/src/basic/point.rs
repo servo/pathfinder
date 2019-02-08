@@ -195,6 +195,11 @@ impl Point2DI32 {
     pub fn set_y(&mut self, y: i32) {
         self.0[1] = y;
     }
+
+    #[inline]
+    pub fn scale(&self, factor: i32) -> Point2DI32 {
+        Point2DI32(self.0 * I32x4::splat(factor))
+    }
 }
 
 impl Add<Point2DI32> for Point2DI32 {
@@ -202,6 +207,14 @@ impl Add<Point2DI32> for Point2DI32 {
     #[inline]
     fn add(self, other: Point2DI32) -> Point2DI32 {
         Point2DI32(self.0 + other.0)
+    }
+}
+
+impl Sub<Point2DI32> for Point2DI32 {
+    type Output = Point2DI32;
+    #[inline]
+    fn sub(self, other: Point2DI32) -> Point2DI32 {
+        Point2DI32(self.0 - other.0)
     }
 }
 

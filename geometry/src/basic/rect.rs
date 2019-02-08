@@ -195,4 +195,11 @@ impl RectI32 {
     pub fn max_y(self) -> i32 {
         self.0[3]
     }
+
+    #[inline]
+    pub fn contains_point(&self, point: Point2DI32) -> bool {
+        // self.origin <= point && point <= self.lower_right - 1
+        let lower_right = self.lower_right() - Point2DI32::splat(1);
+        self.0.concat_xy_xy(point.0).packed_le(point.0.concat_xy_xy(lower_right.0)).is_all_ones()
+    }
 }

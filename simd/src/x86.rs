@@ -1610,6 +1610,20 @@ impl I32x4 {
             I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 78)))
         }
     }
+
+    // Comparisons
+
+    #[inline]
+    pub fn packed_gt(self, other: I32x4) -> U32x4 {
+        unsafe {
+            U32x4(x86_64::_mm_cmpgt_epi32(self.0, other.0))
+        }
+    }
+
+    #[inline]
+    pub fn packed_le(self, other: I32x4) -> U32x4 {
+        !self.packed_gt(other)
+    }
 }
 
 impl Default for I32x4 {
@@ -1647,6 +1661,14 @@ impl Sub<I32x4> for I32x4 {
     #[inline]
     fn sub(self, other: I32x4) -> I32x4 {
         unsafe { I32x4(x86_64::_mm_sub_epi32(self.0, other.0)) }
+    }
+}
+
+impl Mul<I32x4> for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn mul(self, other: I32x4) -> I32x4 {
+        unsafe { I32x4(x86_64::_mm_mullo_epi32(self.0, other.0)) }
     }
 }
 

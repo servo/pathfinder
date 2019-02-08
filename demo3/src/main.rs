@@ -81,9 +81,11 @@ fn main() {
     let mut sdl_event_pump = sdl_context.event_pump().unwrap();
     let mut exit = false;
 
+    let (window_width, _) = window.size();
     let (drawable_width, drawable_height) = window.drawable_size();
-    let mut window_size = Size2D::new(drawable_width, drawable_height);
-    let mut renderer = Renderer::new(&window_size);
+    let scale_factor = drawable_width / window_width;
+    let mut drawable_size = Size2D::new(drawable_width, drawable_height);
+    let mut renderer = Renderer::new(&drawable_size);
 
     let mut camera_position = Point3DF32::new(500.0, 500.0, 3000.0, 1.0);
     let mut camera_velocity = Point3DF32::new(0.0, 0.0, 0.0, 1.0);
@@ -91,7 +93,7 @@ fn main() {
 
     let base_scene = load_scene(&options);
     let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
-    scene_thread_proxy.set_window_size(&window_size);
+    scene_thread_proxy.set_drawable_size(&drawable_size);
 
     let mut demo_ui = DemoUI::new();
 
@@ -105,7 +107,7 @@ fn main() {
             let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
             camera_position = camera_position + rotation.transform_point(camera_velocity);
 
-            let aspect = window_size.width as f32 / window_size.height as f32;
+            let aspect = drawable_size.width as f32 / drawable_size.height as f32;
             let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
 
             transform = transform.post_mul(&Transform3DF32::from_scale(1.0 / 800.0,
@@ -119,36 +121,18 @@ fn main() {
                                                                      -camera_position.y(),
                                                                      -camera_position.z()));
 
-            Some(Perspective::new(&transform, &window_size))
+            Some(Perspective::new(&transform, &drawable_size))
         } else {
             None
         };
 
         scene_thread_proxy.sender.send(MainToSceneMsg::Build(perspective)).unwrap();
 
-        // Draw the scene.
-        if !first_frame {
-            if let Ok(SceneToMainMsg::Render {
-                built_scene,
-                tile_time
-            }) = scene_thread_proxy.receiver.recv() {
-                unsafe {
-                    gl::ClearColor(BACKGROUND_COLOR, BACKGROUND_COLOR, BACKGROUND_COLOR, 1.0);
-                    gl::Clear(gl::COLOR_BUFFER_BIT);
-                    renderer.render_scene(&built_scene);
-
-                    let rendering_time = renderer.shift_timer_query();
-                    renderer.debug_ui.add_sample(tile_time, rendering_time);
-                    renderer.debug_ui.draw();
-                    demo_ui.update(&mut renderer.debug_ui);
-                }
-            }
-        }
-
-        window.gl_swap_window();
-        first_frame = false;
-
         let mut event_handled = false;
+
+        // FIXME(pcwalton): This can cause us to miss UI events if things get backed up...
+        let mut ui_event = UIEvent::None;
+
         while !event_handled {
             if camera_velocity.is_zero() {
                 events.push(sdl_event_pump.wait_event());
@@ -163,12 +147,15 @@ fn main() {
                         exit = true;
                     }
                     Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
-                        let (window_width, window_height) = window.drawable_size();
-                        window_size = Size2D::new(window_width as u32, window_height as u32);
-                        scene_thread_proxy.set_window_size(&window_size);
-                        renderer.set_main_framebuffer_size(&window_size);
+                        let (drawable_width, drawable_height) = window.drawable_size();
+                        drawable_size = Size2D::new(drawable_width as u32, drawable_height as u32);
+                        scene_thread_proxy.set_drawable_size(&drawable_size);
+                        renderer.set_main_framebuffer_size(&drawable_size);
                     }
-                    Event::MouseButtonDown { .. } => mouselook_enabled = !mouselook_enabled,
+                    Event::MouseButtonDown { x, y, .. } => {
+                        let point = Point2DI32::new(x, y).scale(scale_factor as i32);
+                        ui_event = UIEvent::MouseDown(point);
+                    }
                     Event::MouseMotion { xrel, yrel, .. } if mouselook_enabled => {
                         camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
                         camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
@@ -204,6 +191,34 @@ fn main() {
                 event_handled = true;
             }
         }
+
+        // Draw the scene.
+        if !first_frame {
+            if let Ok(SceneToMainMsg::Render {
+                built_scene,
+                tile_time
+            }) = scene_thread_proxy.receiver.recv() {
+                unsafe {
+                    gl::ClearColor(BACKGROUND_COLOR, BACKGROUND_COLOR, BACKGROUND_COLOR, 1.0);
+                    gl::Clear(gl::COLOR_BUFFER_BIT);
+                    renderer.render_scene(&built_scene);
+
+                    let rendering_time = renderer.shift_timer_query();
+                    renderer.debug_ui.add_sample(tile_time, rendering_time);
+                    renderer.debug_ui.draw();
+
+                    demo_ui.update(&mut renderer.debug_ui, &mut ui_event);
+
+                    // If nothing handled the mouse-down event, toggle mouselook.
+                    if let UIEvent::MouseDown(_) = ui_event {
+                        mouselook_enabled = !mouselook_enabled;
+                    }
+                }
+            }
+        }
+
+        window.gl_swap_window();
+        first_frame = false;
     }
 }
 
@@ -220,8 +235,8 @@ impl SceneThreadProxy {
         SceneThreadProxy { sender: main_to_scene_sender, receiver: scene_to_main_receiver }
     }
 
-    fn set_window_size(&self, window_size: &Size2D<u32>) {
-        self.sender.send(MainToSceneMsg::SetWindowSize(*window_size)).unwrap();
+    fn set_drawable_size(&self, drawable_size: &Size2D<u32>) {
+        self.sender.send(MainToSceneMsg::SetDrawableSize(*drawable_size)).unwrap();
     }
 }
 
@@ -243,7 +258,7 @@ impl SceneThread {
     fn run(mut self) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                MainToSceneMsg::SetWindowSize(size) => {
+                MainToSceneMsg::SetDrawableSize(size) => {
                     self.scene.view_box =
                         RectF32::new(Point2DF32::default(),
                                      Point2DF32::new(size.width as f32, size.height as f32));
@@ -260,7 +275,7 @@ impl SceneThread {
 }
 
 enum MainToSceneMsg {
-    SetWindowSize(Size2D<u32>),
+    SetDrawableSize(Size2D<u32>),
     Build(Option<Perspective>),
 }
 
@@ -367,6 +382,7 @@ struct DemoUI {
     open_texture: Texture,
 
     threed_enabled: bool,
+    effects_window_visible: bool,
     gamma_correction_effect_enabled: bool,
     stem_darkening_effect_enabled: bool,
     subpixel_aa_effect_enabled: bool,
@@ -381,32 +397,27 @@ impl DemoUI {
             effects_texture,
             open_texture,
             threed_enabled: true,
+            effects_window_visible: false,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,
         }
     }
 
-    fn update(&mut self, debug_ui: &mut DebugUI) {
+    fn update(&mut self, debug_ui: &mut DebugUI, event: &mut UIEvent) {
         let bottom = debug_ui.framebuffer_size().height as i32 - PADDING;
 
         // Draw effects button.
-        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT),
-                                              Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
-                                 WINDOW_COLOR);
-        debug_ui.draw_texture(Point2DI32::new(PADDING + PADDING, bottom - BUTTON_HEIGHT + PADDING),
-                              &self.effects_texture,
-                              TEXT_COLOR);
+        let effects_button_position = Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT);
+        if self.draw_button(debug_ui, event, effects_button_position, &self.effects_texture) {
+            self.effects_window_visible = !self.effects_window_visible;
+        }
 
         // Draw open button.
         let open_button_x = PADDING + BUTTON_WIDTH + PADDING;
         let open_button_y = bottom - BUTTON_HEIGHT;
-        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(open_button_x, open_button_y),
-                                             Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT)),
-                                 WINDOW_COLOR);
-        debug_ui.draw_texture(Point2DI32::new(open_button_x + PADDING, open_button_y + PADDING),
-                              &self.open_texture,
-                              TEXT_COLOR);
+        let open_button_position = Point2DI32::new(open_button_x, open_button_y);
+        self.draw_button(debug_ui, event, open_button_position, &self.open_texture);
 
         // Draw 3D switch.
         let threed_switch_x = PADDING + (BUTTON_WIDTH + PADDING) * 2;
@@ -414,37 +425,60 @@ impl DemoUI {
         debug_ui.draw_solid_rect(RectI32::new(threed_switch_origin,
                                               Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT)),
                                  WINDOW_COLOR);
-        self.threed_enabled =
-            self.draw_switch(debug_ui, threed_switch_origin, "2D", "3D", self.threed_enabled);
+        self.threed_enabled = self.draw_switch(debug_ui,
+                                               event,
+                                               threed_switch_origin,
+                                               "2D",
+                                               "3D",
+                                               self.threed_enabled);
 
-        // Draw effects window.
-        let effects_window_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_WINDOW_HEIGHT);
-        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_window_y),
-                                              Point2DI32::new(EFFECTS_WINDOW_WIDTH,
-                                                              EFFECTS_WINDOW_HEIGHT)),
-                                 WINDOW_COLOR);
-        self.gamma_correction_effect_enabled =
-            self.draw_effects_switch(debug_ui,
-                                     "Gamma Correction",
-                                     0,
-                                     effects_window_y,
-                                     self.gamma_correction_effect_enabled);
-        self.stem_darkening_effect_enabled =
-            self.draw_effects_switch(debug_ui,
-                                     "Stem Darkening",
-                                     1,
-                                     effects_window_y,
-                                     self.stem_darkening_effect_enabled);
-        self.subpixel_aa_effect_enabled =
-            self.draw_effects_switch(debug_ui,
-                                     "Subpixel AA",
-                                     2,
-                                     effects_window_y,
-                                     self.subpixel_aa_effect_enabled);
+        // Draw effects window, if necessary.
+        if self.effects_window_visible {
+            let effects_window_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_WINDOW_HEIGHT);
+            debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_window_y),
+                                                Point2DI32::new(EFFECTS_WINDOW_WIDTH,
+                                                                EFFECTS_WINDOW_HEIGHT)),
+                                    WINDOW_COLOR);
+            self.gamma_correction_effect_enabled =
+                self.draw_effects_switch(debug_ui,
+                                        event,
+                                        "Gamma Correction",
+                                        0,
+                                        effects_window_y,
+                                        self.gamma_correction_effect_enabled);
+            self.stem_darkening_effect_enabled =
+                self.draw_effects_switch(debug_ui,
+                                        event,
+                                        "Stem Darkening",
+                                        1,
+                                        effects_window_y,
+                                        self.stem_darkening_effect_enabled);
+            self.subpixel_aa_effect_enabled =
+                self.draw_effects_switch(debug_ui,
+                                        event,
+                                        "Subpixel AA",
+                                        2,
+                                        effects_window_y,
+                                        self.subpixel_aa_effect_enabled);
+        }
+    }
+
+    fn draw_button(&self,
+                   debug_ui: &mut DebugUI,
+                   event: &mut UIEvent,
+                   origin: Point2DI32,
+                   texture: &Texture)
+                   -> bool {
+        let button_rect = RectI32::new(origin, Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT));
+        debug_ui.draw_solid_rect(button_rect, WINDOW_COLOR);
+        debug_ui.draw_rect_outline(button_rect, TEXT_COLOR);
+        debug_ui.draw_texture(origin + Point2DI32::new(PADDING, PADDING), texture, TEXT_COLOR);
+        event.handle_mouse_down_in_rect(button_rect)
     }
 
     fn draw_effects_switch(&self,
                            debug_ui: &mut DebugUI,
+                           event: &mut UIEvent,
                            text: &str,
                            index: i32,
                            window_y: i32,
@@ -456,18 +490,23 @@ impl DemoUI {
 
         let switch_x = PADDING + EFFECTS_WINDOW_WIDTH - (SWITCH_SIZE + PADDING);
         let switch_y = window_y + PADDING + (BUTTON_HEIGHT + PADDING) * index;
-        self.draw_switch(debug_ui, Point2DI32::new(switch_x, switch_y), "Off", "On", value)
+        self.draw_switch(debug_ui, event, Point2DI32::new(switch_x, switch_y), "Off", "On", value)
     }
 
     fn draw_switch(&self,
                    debug_ui: &mut DebugUI,
+                   event: &mut UIEvent,
                    origin: Point2DI32,
                    off_text: &str,
                    on_text: &str,
-                   value: bool)
+                   mut value: bool)
                    -> bool {
-        let size = Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT);
-        debug_ui.draw_rect_outline(RectI32::new(origin, size), TEXT_COLOR);
+        let widget_rect = RectI32::new(origin, Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT));
+        if event.handle_mouse_down_in_rect(widget_rect) {
+            value = !value;
+        }
+
+        debug_ui.draw_rect_outline(widget_rect, TEXT_COLOR);
 
         let highlight_size = Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT);
         if !value {
@@ -489,5 +528,22 @@ impl DemoUI {
         debug_ui.draw_text(on_text, origin + Point2DI32::new(on_offset, text_top), value);
 
         value
+    }
+}
+
+enum UIEvent {
+    None,
+    MouseDown(Point2DI32),
+}
+
+impl UIEvent {
+    fn handle_mouse_down_in_rect(&mut self, rect: RectI32) -> bool {
+        if let UIEvent::MouseDown(point) = *self {
+            if rect.contains_point(point) {
+                *self = UIEvent::None;
+                return true;
+            }
+        }
+        false
     }
 }
