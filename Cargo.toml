@@ -2,7 +2,6 @@
 members = [
     "demo3",
     "geometry",
-    "gfx-utils",
     "gl",
     "renderer",
     "simd",
