@@ -70,8 +70,7 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    pub fn new(size: &Size2D<u32>) -> Framebuffer {
-        let texture = Texture::new_r16f(size);
+    pub fn new(texture: Texture) -> Framebuffer {
         let mut gl_framebuffer = 0;
         unsafe {
             gl::GenFramebuffers(1, &mut gl_framebuffer);
@@ -271,7 +270,7 @@ pub struct Texture {
 }
 
 impl Texture {
-    fn new_r16f(size: &Size2D<u32>) -> Texture {
+    pub fn new_r16f(size: &Size2D<u32>) -> Texture {
         let mut texture = Texture { gl_texture: 0, size: *size };
         unsafe {
             gl::GenTextures(1, &mut texture.gl_texture);

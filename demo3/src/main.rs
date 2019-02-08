@@ -21,6 +21,8 @@ use pathfinder_gl::device::Texture;
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu_data::BuiltScene;
+use pathfinder_renderer::paint::ColorU;
+use pathfinder_renderer::post::DEFRINGING_KERNEL_CORE_GRAPHICS;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::SceneExt;
@@ -46,7 +48,7 @@ const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
 const CAMERA_VELOCITY: f32 = 25.0;
 
-const BACKGROUND_COLOR: f32 = 0.22;
+const BACKGROUND_COLOR: ColorU = ColorU { r: 32, g: 32, b: 32, a: 255 };
 
 const EFFECTS_WINDOW_WIDTH: i32 = 550;
 const EFFECTS_WINDOW_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
@@ -129,7 +131,9 @@ fn main() {
 
         let count = if frame_counter == 0 { 2 } else { 1 };
         for _ in 0..count {
-            scene_thread_proxy.sender.send(MainToSceneMsg::Build(perspective)).unwrap();
+            scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
+                perspective
+            })).unwrap();
         }
 
         // FIXME(pcwalton): This can cause us to miss UI events if things get backed up...
@@ -204,8 +208,24 @@ fn main() {
             tile_time
         } = scene_thread_proxy.receiver.recv().unwrap();
         unsafe {
-            gl::ClearColor(BACKGROUND_COLOR, BACKGROUND_COLOR, BACKGROUND_COLOR, 1.0);
+            gl::ClearColor(BACKGROUND_COLOR.r as f32 / 255.0,
+                           BACKGROUND_COLOR.g as f32 / 255.0,
+                           BACKGROUND_COLOR.b as f32 / 255.0,
+                           BACKGROUND_COLOR.a as f32 / 255.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
+
+            if demo_ui.gamma_correction_effect_enabled {
+                renderer.enable_gamma_correction(BACKGROUND_COLOR);
+            } else {
+                renderer.disable_gamma_correction();
+            }
+
+            if demo_ui.subpixel_aa_effect_enabled {
+                renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
+            } else {
+                renderer.disable_subpixel_aa();
+            }
+
             renderer.render_scene(&built_scene);
 
             let rendering_time = renderer.shift_timer_query();
@@ -268,9 +288,9 @@ impl SceneThread {
                         RectF32::new(Point2DF32::default(),
                                      Point2DF32::new(size.width as f32, size.height as f32));
                 }
-                MainToSceneMsg::Build(perspective) => {
+                MainToSceneMsg::Build(build_options) => {
                     let start_time = Instant::now();
-                    let built_scene = build_scene(&self.scene, perspective, &self.options);
+                    let built_scene = build_scene(&self.scene, build_options, self.options.jobs);
                     let tile_time = Instant::now() - start_time;
                     self.sender.send(SceneToMainMsg::Render { built_scene, tile_time }).unwrap();
                 }
@@ -281,7 +301,11 @@ impl SceneThread {
 
 enum MainToSceneMsg {
     SetDrawableSize(Size2D<u32>),
-    Build(Option<Perspective>),
+    Build(BuildOptions),
+}
+
+struct BuildOptions {
+    perspective: Option<Perspective>,
 }
 
 enum SceneToMainMsg {
@@ -344,11 +368,11 @@ fn load_scene(options: &Options) -> Scene {
     scene
 }
 
-fn build_scene(scene: &Scene, perspective: Option<Perspective>, options: &Options) -> BuiltScene {
+fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) -> BuiltScene {
     let z_buffer = ZBuffer::new(scene.view_box);
 
     let render_options = RenderOptions {
-        transform: match perspective {
+        transform: match build_options.perspective {
             None => RenderTransform::Transform2D(Transform2DF32::default()),
             Some(perspective) => RenderTransform::Perspective(perspective),
         },
@@ -356,7 +380,7 @@ fn build_scene(scene: &Scene, perspective: Option<Perspective>, options: &Option
     };
 
     let built_objects = panic::catch_unwind(|| {
-         match options.jobs {
+         match jobs {
             Some(1) => scene.build_objects_sequentially(render_options, &z_buffer),
             _ => scene.build_objects(render_options, &z_buffer),
         }

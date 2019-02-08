@@ -14,9 +14,11 @@ use crate::device::{TimerQuery, Uniform, VertexAttr};
 use euclid::Size2D;
 use gl::types::{GLfloat, GLint, GLuint};
 use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
-use pathfinder_renderer::paint::ObjectShader;
+use pathfinder_renderer::paint::{ColorU, ObjectShader};
+use pathfinder_renderer::post::DefringingKernel;
 use pathfinder_renderer::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use std::collections::VecDeque;
+use std::ptr;
 use std::time::Duration;
 
 static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
@@ -47,6 +49,7 @@ pub struct Renderer {
     fill_colors_texture: Texture,
 
     // Postprocessing shader
+    postprocess_source_framebuffer: Option<Framebuffer>,
     postprocess_program: PostprocessProgram,
     postprocess_vertex_array: PostprocessVertexArray,
     gamma_lut_texture: Texture,
@@ -58,6 +61,7 @@ pub struct Renderer {
 
     // Extra info
     main_framebuffer_size: Size2D<u32>,
+    postprocess_options: PostprocessOptions,
 }
 
 impl Renderer {
@@ -85,8 +89,9 @@ impl Renderer {
         let postprocess_vertex_array = PostprocessVertexArray::new(&postprocess_program,
                                                                    &quad_vertex_positions_buffer);
 
-        let mask_framebuffer = Framebuffer::new(&Size2D::new(MASK_FRAMEBUFFER_WIDTH,
-                                                             MASK_FRAMEBUFFER_HEIGHT));
+        let mask_framebuffer_texture = Texture::new_r16f(&Size2D::new(MASK_FRAMEBUFFER_WIDTH,
+                                                                      MASK_FRAMEBUFFER_HEIGHT));
+        let mask_framebuffer = Framebuffer::new(mask_framebuffer_texture);
 
         let fill_colors_texture = Texture::new_rgba(&Size2D::new(FILL_COLORS_TEXTURE_WIDTH,
                                                                  FILL_COLORS_TEXTURE_HEIGHT));
@@ -105,6 +110,7 @@ impl Renderer {
             mask_framebuffer,
             fill_colors_texture,
 
+            postprocess_source_framebuffer: None,
             postprocess_program,
             postprocess_vertex_array,
             gamma_lut_texture,
@@ -115,10 +121,13 @@ impl Renderer {
             debug_ui,
 
             main_framebuffer_size: *main_framebuffer_size,
+            postprocess_options: PostprocessOptions::default(),
         }
     }
 
     pub fn render_scene(&mut self, built_scene: &BuiltScene) {
+        self.init_postprocessing_framebuffer();
+
         let timer_query = self.free_timer_queries.pop().unwrap_or_else(|| TimerQuery::new());
         timer_query.begin();
 
@@ -131,6 +140,10 @@ impl Renderer {
             self.upload_batch(batch);
             self.draw_batch_fills(batch);
             self.draw_batch_mask_tiles(batch);
+        }
+
+        if self.postprocessing_needed() {
+            self.postprocess();
         }
 
         timer_query.end();
@@ -148,9 +161,30 @@ impl Renderer {
         Some(result)
     }
 
+    #[inline]
     pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: &Size2D<u32>) {
         self.main_framebuffer_size = *new_framebuffer_size;
         self.debug_ui.set_framebuffer_size(new_framebuffer_size);
+    }
+
+    #[inline]
+    pub fn disable_subpixel_aa(&mut self) {
+        self.postprocess_options.defringing_kernel = None;
+    }
+
+    #[inline]
+    pub fn enable_subpixel_aa(&mut self, defringing_kernel: &DefringingKernel) {
+        self.postprocess_options.defringing_kernel = Some(*defringing_kernel);
+    }
+
+    #[inline]
+    pub fn disable_gamma_correction(&mut self) {
+        self.postprocess_options.gamma_correction_bg_color = None;
+    }
+
+    #[inline]
+    pub fn enable_gamma_correction(&mut self, bg_color: ColorU) {
+        self.postprocess_options.gamma_correction_bg_color = Some(bg_color);
     }
 
     fn upload_shaders(&mut self, shaders: &[ObjectShader]) {
@@ -208,11 +242,8 @@ impl Renderer {
 
     fn draw_batch_mask_tiles(&mut self, batch: &Batch) {
         unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::Viewport(0,
-                         0,
-                         self.main_framebuffer_size.width as GLint,
-                         self.main_framebuffer_size.height as GLint);
+            self.bind_draw_framebuffer();
+            self.set_main_viewport();
 
             gl::BindVertexArray(self.mask_tile_vertex_array.gl_vertex_array);
             gl::UseProgram(self.mask_tile_program.program.gl_program);
@@ -244,11 +275,8 @@ impl Renderer {
 
     fn draw_solid_tiles(&mut self, solid_tiles: &[SolidTileScenePrimitive]) {
         unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::Viewport(0,
-                         0,
-                         self.main_framebuffer_size.width as GLint,
-                         self.main_framebuffer_size.height as GLint);
+            self.bind_draw_framebuffer();
+            self.set_main_viewport();
 
             gl::BindVertexArray(self.solid_tile_vertex_array.gl_vertex_array);
             gl::UseProgram(self.solid_tile_program.program.gl_program);
@@ -269,6 +297,100 @@ impl Renderer {
             gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, solid_tiles.len() as GLint);
         }
     }
+
+    fn postprocess(&mut self) {
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            self.set_main_viewport();
+
+            gl::BindVertexArray(self.postprocess_vertex_array.gl_vertex_array);
+            gl::UseProgram(self.postprocess_program.program.gl_program);
+            gl::Uniform2f(self.postprocess_program.framebuffer_size_uniform.location,
+                          self.main_framebuffer_size.width as GLfloat,
+                          self.main_framebuffer_size.height as GLfloat);
+            match self.postprocess_options.defringing_kernel {
+                Some(ref kernel) => {
+                    debug_assert!(kernel.0.len() == 4);
+                    let data: *const f32 = kernel.0.as_ptr();
+                    gl::Uniform4fv(self.postprocess_program.kernel_uniform.location, 1, data);
+                }
+                None => {
+                    gl::Uniform4f(self.postprocess_program.kernel_uniform.location,
+                                  0.0,
+                                  0.0,
+                                  0.0,
+                                  0.0);
+                }
+            }
+            self.postprocess_source_framebuffer.as_ref().unwrap().texture.bind(0);
+            gl::Uniform1i(self.postprocess_program.source_uniform.location, 0);
+            self.gamma_lut_texture.bind(1);
+            gl::Uniform1i(self.postprocess_program.gamma_lut_uniform.location, 1);
+            let gamma_correction_bg_color_uniform_location =
+                self.postprocess_program.gamma_correction_bg_color_uniform.location;
+            match self.postprocess_options.gamma_correction_bg_color {
+                None => {
+                    gl::Uniform4f(gamma_correction_bg_color_uniform_location, 0.0, 0.0, 0.0, 0.0);
+                }
+                Some(color) => {
+                    gl::Uniform4f(gamma_correction_bg_color_uniform_location,
+                                  color.r as f32 / 255.0,
+                                  color.g as f32 / 255.0,
+                                  color.b as f32 / 255.0,
+                                  color.a as f32 / 255.0);
+                }
+            }
+            gl::Disable(gl::BLEND);
+            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
+        }
+    }
+
+    fn bind_draw_framebuffer(&self) {
+        unsafe {
+            if self.postprocessing_needed() {
+                let fbo = self.postprocess_source_framebuffer.as_ref().unwrap().gl_framebuffer;
+                gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
+            } else {
+                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            }
+        }
+    }
+
+    fn set_main_viewport(&self) {
+        unsafe {
+            gl::Viewport(0,
+                         0,
+                         self.main_framebuffer_size.width as GLint,
+                         self.main_framebuffer_size.height as GLint);
+        }
+    }
+
+    fn init_postprocessing_framebuffer(&mut self) {
+        if !self.postprocessing_needed() {
+            self.postprocess_source_framebuffer = None;
+            return;
+        }
+
+        if let Some(ref existing_framebuffer) = self.postprocess_source_framebuffer {
+            if existing_framebuffer.texture.size == self.main_framebuffer_size {
+                return;
+            }
+        }
+
+        self.postprocess_source_framebuffer =
+            Some(Framebuffer::new(Texture::new_rgba(&self.main_framebuffer_size)));
+    }
+
+    fn postprocessing_needed(&self) -> bool {
+        self.postprocess_options.defringing_kernel.is_some() ||
+            self.postprocess_options.gamma_correction_bg_color.is_some()
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct PostprocessOptions {
+    defringing_kernel: Option<DefringingKernel>,
+    gamma_correction_bg_color: Option<ColorU>,
 }
 
 struct FillVertexArray {
@@ -481,7 +603,7 @@ struct PostprocessProgram {
     framebuffer_size_uniform: Uniform,
     kernel_uniform: Uniform,
     gamma_lut_uniform: Uniform,
-    bg_color_uniform: Uniform,
+    gamma_correction_bg_color_uniform: Uniform,
 }
 
 impl PostprocessProgram {
@@ -491,14 +613,14 @@ impl PostprocessProgram {
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let kernel_uniform = Uniform::new(&program, "Kernel");
         let gamma_lut_uniform = Uniform::new(&program, "GammaLUT");
-        let bg_color_uniform = Uniform::new(&program, "BGColor");
+        let gamma_correction_bg_color_uniform = Uniform::new(&program, "GammaCorrectionBGColor");
         PostprocessProgram {
             program,
             source_uniform,
             framebuffer_size_uniform,
             kernel_uniform,
             gamma_lut_uniform,
-            bg_color_uniform,
+            gamma_correction_bg_color_uniform,
         }
     }
 }

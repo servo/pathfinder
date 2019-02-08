@@ -18,15 +18,17 @@ precision highp float;
 uniform sampler2D uSource;
 uniform sampler2D uGammaLUT;
 uniform vec2 uFramebufferSize;
+// Zero if no subpixel AA is to be performed.
 uniform vec4 uKernel;
-uniform vec4 uBGColor;
+// Zero if no gamma correction is to be performed.
+uniform vec4 uGammaCorrectionBGColor;
 
 in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
 float gammaCorrectChannel(float fgColor) {
-    return texture(uGammaLUT, vec2(fgColor, 1.0 - uBGColor)).r;
+    return texture(uGammaLUT, vec2(fgColor, 1.0 - uGammaCorrectionBGColor)).r;
 }
 
 // `fgColor` is in linear space.
@@ -76,7 +78,7 @@ void main() {
     }
 
     // Apply gamma correction if necessary.
-    if (uBGColor.a > 0.0)
+    if (uGammaCorrectionBGColor.a > 0.0)
         fgColor = gammaCorrect(fgColor);
 
     // Finish.
