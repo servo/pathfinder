@@ -1,4 +1,4 @@
-// pathfinder/demo3/src/main.rs
+// pathfinder/demo/src/main.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

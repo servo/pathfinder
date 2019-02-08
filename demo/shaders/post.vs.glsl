@@ -1,8 +1,8 @@
 #version 330
 
-// pathfinder/demo3/resources/shaders/mask_tile.fs.glsl
+// pathfinder/demo/shaders/post.vs.glsl
 //
-// Copyright © 2018 The Pathfinder Project Developers.
+// Copyright © 2019 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -12,15 +12,11 @@
 
 precision highp float;
 
-uniform sampler2D uStencilTexture;
+in vec2 aPosition;
 
-in vec2 vTexCoord;
-in float vBackdrop;
-in vec4 vColor;
-
-out vec4 oFragColor;
+out vec2 vTexCoord;
 
 void main() {
-    float coverage = abs(texture(uStencilTexture, vTexCoord).r + vBackdrop);
-    oFragColor = vec4(vColor.rgb, vColor.a * coverage);
+    vTexCoord = aPosition;
+    gl_Position = vec4(aPosition * 2.0 - 1.0, 0.0, 1.0);
 }

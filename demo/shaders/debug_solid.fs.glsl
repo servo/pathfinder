@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/shaders/post.vs.glsl
+// pathfinder/demo/shaders/debug_solid.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -12,11 +12,10 @@
 
 precision highp float;
 
-in vec2 aPosition;
+uniform vec4 uColor;
 
-out vec2 vTexCoord;
+out vec4 oFragColor;
 
 void main() {
-    vTexCoord = aPosition;
-    gl_Position = vec4(aPosition * 2.0 - 1.0, 0.0, 1.0);
+    oFragColor = uColor;
 }

@@ -1,4 +1,4 @@
-// pathfinder/demo3/src/device.rs
+// pathfinder/demo/src/device.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

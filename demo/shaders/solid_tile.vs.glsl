@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/resources/shaders/solid_tile.vs.glsl
+// pathfinder/demo/resources/shaders/solid_tile.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

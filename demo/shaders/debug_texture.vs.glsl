@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/shaders/debug_texture.fs.glsl
+// pathfinder/demo/shaders/debug_texture.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -12,14 +12,16 @@
 
 precision highp float;
 
-uniform sampler2D uTexture;
-uniform vec4 uColor;
+uniform vec2 uFramebufferSize;
+uniform vec2 uTextureSize;
 
-in vec2 vTexCoord;
+in vec2 aPosition;
+in vec2 aTexCoord;
 
-out vec4 oFragColor;
+out vec2 vTexCoord;
 
 void main() {
-    float alpha = texture(uTexture, vTexCoord).r;
-    oFragColor = uColor * alpha;
+    vTexCoord = aTexCoord / uTextureSize;
+    vec2 position = aPosition / uFramebufferSize * 2.0 - 1.0;
+    gl_Position = vec4(position.x, -position.y, 0.0, 1.0);
 }

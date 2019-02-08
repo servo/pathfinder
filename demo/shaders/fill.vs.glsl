@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/fill.vs.glsl
+// pathfinder/demo/fill.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

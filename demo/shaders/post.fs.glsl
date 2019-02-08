@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/shaders/post.fs.glsl
+// pathfinder/demo/shaders/post.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

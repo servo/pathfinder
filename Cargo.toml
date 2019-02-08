@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "demo3",
+    "demo",
     "geometry",
     "gl",
     "renderer",

@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/demo3/shaders/debug_solid.vs.glsl
+// pathfinder/demo/shaders/debug_solid.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

@@ -1,5 +1,5 @@
 [package]
-name = "demo3"
+name = "demo"
 version = "0.1.0"
 edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
