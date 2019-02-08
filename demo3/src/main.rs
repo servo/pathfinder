@@ -95,15 +95,16 @@ fn main() {
     let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
     scene_thread_proxy.set_drawable_size(&drawable_size);
 
-    let mut demo_ui = DemoUI::new();
+    let mut demo_ui = DemoUI::new(options);
 
     let mut events = vec![];
-    let mut first_frame = true;
+    let mut frame_counter = 0;
     let mut mouselook_enabled = false;
+    let mut ui_event_handled_last_frame = false;
 
     while !exit {
         // Update the scene.
-        let perspective = if options.run_in_3d {
+        let perspective = if demo_ui.threed_enabled {
             let rotation = Transform3DF32::from_rotation(-camera_yaw, -camera_pitch, 0.0);
             camera_position = camera_position + rotation.transform_point(camera_velocity);
 
@@ -126,15 +127,20 @@ fn main() {
             None
         };
 
-        scene_thread_proxy.sender.send(MainToSceneMsg::Build(perspective)).unwrap();
-
-        let mut event_handled = false;
+        let count = if frame_counter == 0 { 2 } else { 1 };
+        for _ in 0..count {
+            scene_thread_proxy.sender.send(MainToSceneMsg::Build(perspective)).unwrap();
+        }
 
         // FIXME(pcwalton): This can cause us to miss UI events if things get backed up...
         let mut ui_event = UIEvent::None;
-
+        let mut event_handled = false;
         while !event_handled {
-            if camera_velocity.is_zero() {
+            let wait_for_event =
+                !camera_velocity.is_zero() &&
+                frame_counter >= 2 &&
+                !ui_event_handled_last_frame;
+            if wait_for_event {
                 events.push(sdl_event_pump.wait_event());
             }
             for event in sdl_event_pump.poll_iter() {
@@ -187,38 +193,37 @@ fn main() {
             }
 
             // FIXME(pcwalton): This is so ugly!
-            if !camera_velocity.is_zero() {
+            if !wait_for_event {
                 event_handled = true;
             }
         }
 
         // Draw the scene.
-        if !first_frame {
-            if let Ok(SceneToMainMsg::Render {
-                built_scene,
-                tile_time
-            }) = scene_thread_proxy.receiver.recv() {
-                unsafe {
-                    gl::ClearColor(BACKGROUND_COLOR, BACKGROUND_COLOR, BACKGROUND_COLOR, 1.0);
-                    gl::Clear(gl::COLOR_BUFFER_BIT);
-                    renderer.render_scene(&built_scene);
+        let SceneToMainMsg::Render {
+            built_scene,
+            tile_time
+        } = scene_thread_proxy.receiver.recv().unwrap();
+        unsafe {
+            gl::ClearColor(BACKGROUND_COLOR, BACKGROUND_COLOR, BACKGROUND_COLOR, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+            renderer.render_scene(&built_scene);
 
-                    let rendering_time = renderer.shift_timer_query();
-                    renderer.debug_ui.add_sample(tile_time, rendering_time);
-                    renderer.debug_ui.draw();
+            let rendering_time = renderer.shift_timer_query();
+            renderer.debug_ui.add_sample(tile_time, rendering_time);
+            renderer.debug_ui.draw();
 
-                    demo_ui.update(&mut renderer.debug_ui, &mut ui_event);
+            let had_ui_event = ui_event.is_none();
+            demo_ui.update(&mut renderer.debug_ui, &mut ui_event);
+            ui_event_handled_last_frame = had_ui_event && ui_event.is_none();
 
-                    // If nothing handled the mouse-down event, toggle mouselook.
-                    if let UIEvent::MouseDown(_) = ui_event {
-                        mouselook_enabled = !mouselook_enabled;
-                    }
-                }
+            // If nothing handled the mouse-down event, toggle mouselook.
+            if let UIEvent::MouseDown(_) = ui_event {
+                mouselook_enabled = !mouselook_enabled;
             }
         }
 
         window.gl_swap_window();
-        first_frame = false;
+        frame_counter += 1;
     }
 }
 
@@ -286,7 +291,7 @@ enum SceneToMainMsg {
 #[derive(Clone)]
 struct Options {
     jobs: Option<usize>,
-    run_in_3d: bool,
+    threed: bool,
     input_path: PathBuf,
 }
 
@@ -317,7 +322,7 @@ impl Options {
         let jobs: Option<usize> = matches
             .value_of("jobs")
             .map(|string| string.parse().unwrap());
-        let run_in_3d = matches.is_present("3d");
+        let threed = matches.is_present("3d");
         let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
 
         // Set up Rayon.
@@ -327,7 +332,7 @@ impl Options {
         }
         thread_pool_builder.build_global().unwrap();
 
-        Options { jobs, run_in_3d, input_path }
+        Options { jobs, threed, input_path }
     }
 }
 
@@ -389,14 +394,14 @@ struct DemoUI {
 }
 
 impl DemoUI {
-    fn new() -> DemoUI {
+    fn new(options: Options) -> DemoUI {
         let effects_texture = Texture::from_png(EFFECTS_PNG_NAME);
         let open_texture = Texture::from_png(OPEN_PNG_NAME);
 
         DemoUI {
             effects_texture,
             open_texture,
-            threed_enabled: true,
+            threed_enabled: options.threed,
             effects_window_visible: false,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
@@ -537,6 +542,10 @@ enum UIEvent {
 }
 
 impl UIEvent {
+    fn is_none(&self) -> bool {
+        match *self { UIEvent::None => true, _ => false }
+    }
+
     fn handle_mouse_down_in_rect(&mut self, rect: RectI32) -> bool {
         if let UIEvent::MouseDown(point) = *self {
             if rect.contains_point(point) {
