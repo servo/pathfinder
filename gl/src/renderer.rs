@@ -18,7 +18,6 @@ use pathfinder_renderer::paint::{ColorU, ObjectShader};
 use pathfinder_renderer::post::DefringingKernel;
 use pathfinder_renderer::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use std::collections::VecDeque;
-use std::ptr;
 use std::time::Duration;
 
 static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
@@ -216,7 +215,7 @@ impl Renderer {
 
     fn draw_batch_fills(&mut self, batch: &Batch) {
         unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, self.mask_framebuffer.gl_framebuffer);
+            self.mask_framebuffer.bind();
             gl::Viewport(0, 0, MASK_FRAMEBUFFER_WIDTH as GLint, MASK_FRAMEBUFFER_HEIGHT as GLint);
             // TODO(pcwalton): Only clear the appropriate portion?
             gl::ClearColor(0.0, 0.0, 0.0, 0.0);
@@ -265,9 +264,7 @@ impl Renderer {
                           FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
             // FIXME(pcwalton): Fill this in properly!
             gl::Uniform2f(self.mask_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
-            gl::BlendEquation(gl::FUNC_ADD);
-            gl::BlendFuncSeparate(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::ONE, gl::ONE);
-            gl::Enable(gl::BLEND);
+            self.enable_blending();
             gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, batch.mask_tiles.len() as GLint);
             gl::Disable(gl::BLEND);
         }
@@ -340,8 +337,9 @@ impl Renderer {
                                   color.a as f32 / 255.0);
                 }
             }
-            gl::Disable(gl::BLEND);
+            self.enable_blending();
             gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
+            gl::Disable(gl::BLEND);
         }
     }
 
@@ -371,19 +369,33 @@ impl Renderer {
             return;
         }
 
-        if let Some(ref existing_framebuffer) = self.postprocess_source_framebuffer {
-            if existing_framebuffer.texture.size == self.main_framebuffer_size {
-                return;
+        match self.postprocess_source_framebuffer {
+            Some(ref existing_framebuffer) if
+                    existing_framebuffer.texture.size == self.main_framebuffer_size => {}
+            _ => {
+                self.postprocess_source_framebuffer =
+                    Some(Framebuffer::new(Texture::new_rgba(&self.main_framebuffer_size)));
             }
-        }
+        };
 
-        self.postprocess_source_framebuffer =
-            Some(Framebuffer::new(Texture::new_rgba(&self.main_framebuffer_size)));
+        unsafe {
+            self.postprocess_source_framebuffer.as_ref().unwrap().bind();
+            gl::ClearColor(0.0, 0.0, 0.0, 0.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+        }
     }
 
     fn postprocessing_needed(&self) -> bool {
         self.postprocess_options.defringing_kernel.is_some() ||
             self.postprocess_options.gamma_correction_bg_color.is_some()
+    }
+
+    fn enable_blending(&self) {
+        unsafe {
+            gl::BlendEquation(gl::FUNC_ADD);
+            gl::BlendFuncSeparate(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::ONE, gl::ONE);
+            gl::Enable(gl::BLEND);
+        }
     }
 }
 

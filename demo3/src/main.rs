@@ -22,7 +22,7 @@ use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu_data::BuiltScene;
 use pathfinder_renderer::paint::ColorU;
-use pathfinder_renderer::post::DEFRINGING_KERNEL_CORE_GRAPHICS;
+use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::SceneExt;
@@ -55,6 +55,8 @@ const EFFECTS_WINDOW_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
 
 const SWITCH_SIZE: i32 = SWITCH_HALF_SIZE * 2 + 1;
 const SWITCH_HALF_SIZE: i32 = 96;
+
+const APPROX_FONT_SIZE: f32 = 16.0;
 
 static EFFECTS_PNG_NAME: &'static str = "demo-effects";
 static OPEN_PNG_NAME: &'static str = "demo-open";
@@ -132,7 +134,12 @@ fn main() {
         let count = if frame_counter == 0 { 2 } else { 1 };
         for _ in 0..count {
             scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
-                perspective
+                perspective,
+                stem_darkening_font_size: if demo_ui.stem_darkening_effect_enabled {
+                    Some(APPROX_FONT_SIZE * scale_factor as f32)
+                } else {
+                    None
+                },
             })).unwrap();
         }
 
@@ -208,6 +215,7 @@ fn main() {
             tile_time
         } = scene_thread_proxy.receiver.recv().unwrap();
         unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             gl::ClearColor(BACKGROUND_COLOR.r as f32 / 255.0,
                            BACKGROUND_COLOR.g as f32 / 255.0,
                            BACKGROUND_COLOR.b as f32 / 255.0,
@@ -306,6 +314,7 @@ enum MainToSceneMsg {
 
 struct BuildOptions {
     perspective: Option<Perspective>,
+    stem_darkening_font_size: Option<f32>,
 }
 
 enum SceneToMainMsg {
@@ -376,7 +385,13 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
             None => RenderTransform::Transform2D(Transform2DF32::default()),
             Some(perspective) => RenderTransform::Perspective(perspective),
         },
-        dilation: Point2DF32::default(),
+        dilation: match build_options.stem_darkening_font_size {
+            None => Point2DF32::default(),
+            Some(font_size) => {
+                let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
+                Point2DF32::new(x, y).scale(font_size)
+            }
+        },
     };
 
     let built_objects = panic::catch_unwind(|| {

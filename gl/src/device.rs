@@ -86,6 +86,12 @@ impl Framebuffer {
         }
         Framebuffer { gl_framebuffer, texture }
     }
+
+    pub fn bind(&self) {
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.gl_framebuffer);
+        }
+    }
 }
 
 impl Drop for Framebuffer {

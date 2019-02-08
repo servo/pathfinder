@@ -25,3 +25,11 @@ pub static DEFRINGING_KERNEL_FREETYPE: DefringingKernel = DefringingKernel([
     0.0, 0.031372549, 0.301960784, 0.337254902
 ]);
 
+/// Should match macOS 10.13 High Sierra.
+pub static STEM_DARKENING_FACTORS: [f32; 2] = [0.0121, 0.0121 * 1.25];
+
+/// Should match macOS 10.13 High Sierra.
+pub const MAX_STEM_DARKENING_AMOUNT: [f32; 2] = [0.3, 0.3];
+
+/// This value is a subjective cutoff. Above this ppem value, no stem darkening is performed.
+pub const MAX_STEM_DARKENING_PIXELS_PER_EM: f32 = 72.0;

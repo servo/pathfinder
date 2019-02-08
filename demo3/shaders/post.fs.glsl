@@ -63,15 +63,13 @@ float convolve7Tap(vec4 alpha0, vec3 alpha1) {
 
 void main() {
     // Apply defringing if necessary.
-    vec3 fgColor;
-    if (uKernel.w == 0.0) {
-        fgColor = texture(uSource, vTexCoord).rgb;
-    } else {
+    vec4 fgColor = texture(uSource, vTexCoord);
+    if (uKernel.w != 0.0) {
         vec4 alphaLeft, alphaRight;
         float alphaCenter;
         sample9Tap(alphaLeft, alphaCenter, alphaRight, 1.0 / uFramebufferSize.x);
 
-        fgColor =
+        fgColor.rgb =
             vec3(convolve7Tap(alphaLeft, vec3(alphaCenter, alphaRight.xy)),
                  convolve7Tap(vec4(alphaLeft.yzw, alphaCenter), alphaRight.xyz),
                  convolve7Tap(vec4(alphaLeft.zw, alphaCenter, alphaRight.x), alphaRight.yzw));
@@ -79,8 +77,8 @@ void main() {
 
     // Apply gamma correction if necessary.
     if (uGammaCorrectionBGColor.a > 0.0)
-        fgColor = gammaCorrect(fgColor);
+        fgColor.rgb = gammaCorrect(fgColor.rgb);
 
     // Finish.
-    oFragColor = vec4(fgColor, 1.0);
+    oFragColor = fgColor;
 }
