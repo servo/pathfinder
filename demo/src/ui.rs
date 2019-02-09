@@ -9,11 +9,13 @@
 // except according to those terms.
 
 use crate::Options;
+use nfd::Response;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::debug::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, DebugUI, PADDING};
 use pathfinder_gl::debug::{TEXT_COLOR, WINDOW_COLOR};
 use pathfinder_gl::device::Texture;
+use std::path::PathBuf;
 
 const SWITCH_SIZE: i32 = SWITCH_HALF_SIZE * 2 + 1;
 const SWITCH_HALF_SIZE: i32 = 96;
@@ -33,6 +35,7 @@ pub struct DemoUI {
     pub gamma_correction_effect_enabled: bool,
     pub stem_darkening_effect_enabled: bool,
     pub subpixel_aa_effect_enabled: bool,
+    pub file_to_open: Option<PathBuf>,
 }
 
 impl DemoUI {
@@ -48,6 +51,7 @@ impl DemoUI {
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,
+            file_to_open: None,
         }
     }
 
@@ -64,7 +68,11 @@ impl DemoUI {
         let open_button_x = PADDING + BUTTON_WIDTH + PADDING;
         let open_button_y = bottom - BUTTON_HEIGHT;
         let open_button_position = Point2DI32::new(open_button_x, open_button_y);
-        self.draw_button(debug_ui, event, open_button_position, &self.open_texture);
+        if self.draw_button(debug_ui, event, open_button_position, &self.open_texture) {
+            if let Ok(Response::Okay(file)) = nfd::open_file_dialog(Some("svg"), None) {
+                self.file_to_open = Some(PathBuf::from(file));
+            }
+        }
 
         // Draw 3D switch.
         let threed_switch_x = PADDING + (BUTTON_WIDTH + PADDING) * 2;
