@@ -89,7 +89,7 @@ struct DemoApp {
     events: Vec<Event>,
     exit: bool,
     mouselook_enabled: bool,
-    ui_event_handled_last_frame: bool,
+    dirty: bool,
 
     ui: DemoUI,
     scene_thread_proxy: SceneThreadProxy,
@@ -146,7 +146,7 @@ impl DemoApp {
             events: vec![],
             exit: false,
             mouselook_enabled: false,
-            ui_event_handled_last_frame: false,
+            dirty: true,
 
             ui: DemoUI::new(options),
             scene_thread_proxy,
@@ -177,8 +177,12 @@ impl DemoApp {
             let rotation = Transform3DF32::from_rotation(-self.camera_yaw,
                                                          -self.camera_pitch,
                                                          0.0);
-            self.camera_position = self.camera_position +
-                rotation.transform_point(self.camera_velocity);
+
+            if !self.camera_velocity.is_zero() {
+                self.camera_position = self.camera_position +
+                    rotation.transform_point(self.camera_velocity);
+                self.dirty = true;
+            }
 
             let aspect = drawable_size.width as f32 / drawable_size.height as f32;
             let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
@@ -210,16 +214,21 @@ impl DemoApp {
                 },
             })).unwrap();
         }
+
+        if count == 2 {
+            self.dirty = true;
+        }
     }
 
     fn handle_events(&mut self) -> UIEvent {
         let mut ui_event = UIEvent::None;
 
-        let wait_for_event = !self.camera_velocity.is_zero() && self.frame_counter >= 2 &&
-            !self.ui_event_handled_last_frame;
-        if wait_for_event {
+        if !self.dirty {
             self.events.push(self.sdl_event_pump.wait_event());
+        } else {
+            self.dirty = false;
         }
+
         for event in self.sdl_event_pump.poll_iter() {
             self.events.push(event);
         }
@@ -229,6 +238,7 @@ impl DemoApp {
                 Event::Quit { .. } |
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     self.exit = true;
+                    self.dirty = true;
                 }
                 Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
                     let (drawable_width, drawable_height) = self.window.drawable_size();
@@ -236,6 +246,7 @@ impl DemoApp {
                                                     drawable_height as u32);
                     self.scene_thread_proxy.set_drawable_size(&drawable_size);
                     self.renderer.set_main_framebuffer_size(&drawable_size);
+                    self.dirty = true;
                 }
                 Event::MouseButtonDown { x, y, .. } => {
                     let point = Point2DI32::new(x, y).scale(self.scale_factor as i32);
@@ -244,26 +255,33 @@ impl DemoApp {
                 Event::MouseMotion { xrel, yrel, .. } if self.mouselook_enabled => {
                     self.camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
                     self.camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                    self.dirty = true;
                 }
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-                    self.camera_velocity.set_z(-CAMERA_VELOCITY)
+                    self.camera_velocity.set_z(-CAMERA_VELOCITY);
+                    self.dirty = true;
                 }
                 Event::KeyDown { keycode: Some(Keycode::S), .. } => {
-                    self.camera_velocity.set_z(CAMERA_VELOCITY)
+                    self.camera_velocity.set_z(CAMERA_VELOCITY);
+                    self.dirty = true;
                 }
                 Event::KeyDown { keycode: Some(Keycode::A), .. } => {
-                    self.camera_velocity.set_x(-CAMERA_VELOCITY)
+                    self.camera_velocity.set_x(-CAMERA_VELOCITY);
+                    self.dirty = true;
                 }
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-                    self.camera_velocity.set_x(CAMERA_VELOCITY)
+                    self.camera_velocity.set_x(CAMERA_VELOCITY);
+                    self.dirty = true;
                 }
                 Event::KeyUp { keycode: Some(Keycode::W), .. } |
                 Event::KeyUp { keycode: Some(Keycode::S), .. } => {
                     self.camera_velocity.set_z(0.0);
+                    self.dirty = true;
                 }
                 Event::KeyUp { keycode: Some(Keycode::A), .. } |
                 Event::KeyUp { keycode: Some(Keycode::D), .. } => {
                     self.camera_velocity.set_x(0.0);
+                    self.dirty = true;
                 }
                 _ => continue,
             }
@@ -301,9 +319,11 @@ impl DemoApp {
             self.renderer.debug_ui.add_sample(tile_time, rendering_time);
             self.renderer.debug_ui.draw();
 
-            let had_ui_event = ui_event.is_none();
+            if !ui_event.is_none() {
+                self.dirty = true;
+            }
+
             self.ui.update(&mut self.renderer.debug_ui, &mut ui_event);
-            self.ui_event_handled_last_frame = had_ui_event && ui_event.is_none();
 
             // If nothing handled the mouse-down event, toggle mouselook.
             if let UIEvent::MouseDown(_) = ui_event {
@@ -556,25 +576,25 @@ impl DemoUI {
 
         self.gamma_correction_effect_enabled =
             self.draw_effects_switch(debug_ui,
-                                    event,
-                                    "Gamma Correction",
-                                    0,
-                                    effects_window_y,
-                                    self.gamma_correction_effect_enabled);
+                                     event,
+                                     "Gamma Correction",
+                                     0,
+                                     effects_window_y,
+                                     self.gamma_correction_effect_enabled);
         self.stem_darkening_effect_enabled =
             self.draw_effects_switch(debug_ui,
-                                    event,
-                                    "Stem Darkening",
-                                    1,
-                                    effects_window_y,
-                                    self.stem_darkening_effect_enabled);
+                                     event,
+                                     "Stem Darkening",
+                                     1,
+                                     effects_window_y,
+                                     self.stem_darkening_effect_enabled);
         self.subpixel_aa_effect_enabled =
             self.draw_effects_switch(debug_ui,
-                                    event,
-                                    "Subpixel AA",
-                                    2,
-                                    effects_window_y,
-                                    self.subpixel_aa_effect_enabled);
+                                     event,
+                                     "Subpixel AA",
+                                     2,
+                                     effects_window_y,
+                                     self.subpixel_aa_effect_enabled);
 
     }
 
