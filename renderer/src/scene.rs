@@ -104,19 +104,27 @@ impl Scene {
             .collect()
     }
 
-    fn apply_render_options(&self, outline: &Outline, options: &PreparedRenderOptions) -> Outline {
-        // FIXME(pcwalton): Don't clone?
-        let mut outline = (*outline).clone();
+    fn apply_render_options(&self, original_outline: &Outline, options: &PreparedRenderOptions)
+                            -> Outline {
+        let mut outline;
         match options.transform {
             PreparedRenderTransform::Perspective { ref perspective, ref clip_polygon } => {
-                outline.clip_against_polygon(clip_polygon);
-                outline.apply_perspective(perspective);
+                if original_outline.is_outside_polygon(clip_polygon) {
+                    outline = Outline::new();
+                } else {
+                    outline = (*original_outline).clone();
+                    outline.clip_against_polygon(clip_polygon);
+                    outline.apply_perspective(perspective);
+                }
             }
             PreparedRenderTransform::Transform2D(ref transform) => {
+                // TODO(pcwalton): Short circuit.
+                outline = (*original_outline).clone();
                 outline.transform(transform);
                 outline.clip_against_rect(self.view_box);
             }
             PreparedRenderTransform::None => {
+                outline = (*original_outline).clone();
                 outline.clip_against_rect(self.view_box);
             }
         }

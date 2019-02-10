@@ -15,7 +15,7 @@ use crate::basic::point::Point2DF32;
 use crate::basic::rect::RectF32;
 use crate::basic::transform2d::Transform2DF32;
 use crate::basic::transform3d::Perspective;
-use crate::clip::{ContourPolygonClipper, ContourRectClipper};
+use crate::clip::{self, ContourPolygonClipper, ContourRectClipper};
 use crate::dilation::ContourDilator;
 use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
@@ -138,7 +138,20 @@ impl Outline {
         self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| RectF32::default());
     }
 
+    pub fn is_outside_polygon(&self, clip_polygon: &[Point2DF32]) -> bool {
+        clip::rect_is_outside_polygon(self.bounds, clip_polygon)
+    }
+
+    fn is_inside_polygon(&self, clip_polygon: &[Point2DF32]) -> bool {
+        clip::rect_is_inside_polygon(self.bounds, clip_polygon)
+    }
+
     pub fn clip_against_polygon(&mut self, clip_polygon: &[Point2DF32]) {
+        // Quick check.
+        if self.is_inside_polygon(clip_polygon) {
+            return;
+        }
+
         let mut new_bounds = None;
         for contour in mem::replace(&mut self.contours, vec![]) {
             let contour = ContourPolygonClipper::new(clip_polygon, contour).clip();

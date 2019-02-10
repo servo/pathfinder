@@ -541,3 +541,67 @@ impl Edge3D {
         prev.lerp(next, alpha as f32)
     }
 }
+
+/// Coarse collision detection
+
+// Separating axis theorem. Requires that the polygon be convex.
+pub(crate) fn rect_is_outside_polygon(rect: RectF32, polygon_points: &[Point2DF32]) -> bool {
+    let mut outcode = Outcode::all();
+    for point in polygon_points {
+        if point.x() > rect.min_x() { outcode.remove(Outcode::LEFT);   }
+        if point.x() < rect.max_x() { outcode.remove(Outcode::RIGHT);  }
+        if point.y() > rect.min_y() { outcode.remove(Outcode::TOP);    }
+        if point.y() < rect.max_y() { outcode.remove(Outcode::BOTTOM); }
+    }
+    if !outcode.is_empty() {
+        return true
+    }
+
+    // FIXME(pcwalton): Check winding!
+    let rect_points = [rect.origin(), rect.upper_right(), rect.lower_left(), rect.lower_right()];
+    for (next_point_index, &next) in polygon_points.iter().enumerate() {
+        let prev_point_index = if next_point_index == 0 {
+            polygon_points.len() - 1
+        } else {
+            next_point_index - 1
+        };
+        let prev = polygon_points[prev_point_index];
+        let polygon_edge_vector = next - prev;
+        if rect_points.iter().all(|&rect_point| polygon_edge_vector.det(rect_point - prev) < 0.0) {
+            return true
+        }
+    }
+
+    false
+}
+
+// Edge equation method. Requires that the polygon be convex.
+pub(crate) fn rect_is_inside_polygon(rect: RectF32, polygon_points: &[Point2DF32]) -> bool {
+    // FIXME(pcwalton): Check winding!
+    let rect_points = [rect.origin(), rect.upper_right(), rect.lower_left(), rect.lower_right()];
+    for (next_point_index, &next) in polygon_points.iter().enumerate() {
+        let prev_point_index = if next_point_index == 0 {
+            polygon_points.len() - 1
+        } else {
+            next_point_index - 1
+        };
+        let prev = polygon_points[prev_point_index];
+        let polygon_edge_vector = next - prev;
+        for &rect_point in &rect_points {
+            if polygon_edge_vector.det(rect_point - prev) < 0.0 {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+bitflags! {
+    struct Outcode: u8 {
+        const LEFT   = 0x01;
+        const RIGHT  = 0x02;
+        const TOP    = 0x04;
+        const BOTTOM = 0x08;
+    }
+}
