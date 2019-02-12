@@ -31,7 +31,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::video::{GLContext, GLProfile, Window};
 use std::f32::consts::FRAC_PI_4;
 use std::panic;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -115,9 +115,9 @@ impl DemoApp {
         let (drawable_width, drawable_height) = window.drawable_size();
         let drawable_size = Size2D::new(drawable_width, drawable_height);
 
-        let base_scene = load_scene(&options);
+        let base_scene = load_scene(&options.input_path);
         let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
-        scene_thread_proxy.set_drawable_size(&drawable_size);
+        update_drawable_size(&window, &scene_thread_proxy);
 
         DemoApp {
             window,
@@ -232,10 +232,8 @@ impl DemoApp {
                     self.dirty = true;
                 }
                 Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
-                    let (drawable_width, drawable_height) = self.window.drawable_size();
-                    let drawable_size = Size2D::new(drawable_width as u32,
-                                                    drawable_height as u32);
-                    self.scene_thread_proxy.set_drawable_size(&drawable_size);
+                    let drawable_size = update_drawable_size(&self.window,
+                                                             &self.scene_thread_proxy);
                     self.renderer.set_main_framebuffer_size(&drawable_size);
                     self.dirty = true;
                 }
@@ -316,6 +314,14 @@ impl DemoApp {
 
             self.ui.update(&mut self.renderer.debug_ui, &mut ui_event);
 
+            // Open a new file if requested.
+            if let Some(path) = self.ui.file_to_open.take() {
+                let scene = load_scene(&path);
+                self.scene_thread_proxy.load_scene(scene);
+                update_drawable_size(&self.window, &self.scene_thread_proxy);
+                self.dirty = true;
+            }
+
             // If nothing handled the mouse-down event, toggle mouselook.
             if let UIEvent::MouseDown(_) = ui_event {
                 self.mouselook_enabled = !self.mouselook_enabled;
@@ -338,6 +344,10 @@ impl SceneThreadProxy {
         let (scene_to_main_sender, scene_to_main_receiver) = mpsc::channel();
         SceneThread::new(scene, scene_to_main_sender, main_to_scene_receiver, options);
         SceneThreadProxy { sender: main_to_scene_sender, receiver: scene_to_main_receiver }
+    }
+
+    fn load_scene(&self, scene: Scene) {
+        self.sender.send(MainToSceneMsg::LoadScene(scene)).unwrap();
     }
 
     fn set_drawable_size(&self, drawable_size: &Size2D<u32>) {
@@ -443,8 +453,8 @@ impl Options {
     }
 }
 
-fn load_scene(options: &Options) -> Scene {
-    let usvg = Tree::from_file(&options.input_path, &UsvgOptions::default()).unwrap();
+fn load_scene(input_path: &Path) -> Scene {
+    let usvg = Tree::from_file(input_path, &UsvgOptions::default()).unwrap();
     let scene = Scene::from_tree(usvg);
     println!("Scene bounds: {:?}", scene.bounds);
     println!("{} objects, {} paints", scene.objects.len(), scene.paints.len());
@@ -494,4 +504,11 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
     }
 
     built_scene
+}
+
+fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) -> Size2D<u32> {
+    let (drawable_width, drawable_height) = window.drawable_size();
+    let drawable_size = Size2D::new(drawable_width as u32, drawable_height as u32);
+    scene_thread_proxy.set_drawable_size(&drawable_size);
+    drawable_size
 }
