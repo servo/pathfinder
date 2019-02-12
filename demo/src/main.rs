@@ -247,6 +247,11 @@ impl DemoApp {
                     self.camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
                     self.dirty = true;
                 }
+                Event::MouseMotion { x, y, mousestate, .. } if mousestate.left() => {
+                    let point = Point2DI32::new(x, y).scale(self.scale_factor as i32);
+                    ui_event = UIEvent::MouseDragged(point);
+                    self.dirty = true;
+                }
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
                     self.camera_velocity.set_z(-CAMERA_VELOCITY);
                     self.dirty = true;

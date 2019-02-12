@@ -178,7 +178,7 @@ impl DemoUI {
         let (widget_x, widget_y) = (ROTATE_PANEL_X + PADDING, rotate_panel_y + PADDING);
         let widget_rect = RectI32::new(Point2DI32::new(widget_x, widget_y),
                                        Point2DI32::new(SLIDER_WIDTH, SLIDER_KNOB_HEIGHT));
-        if let Some(position) = event.handle_mouse_down_in_rect(widget_rect) {
+        if let Some(position) = event.handle_mouse_down_or_dragged_in_rect(widget_rect) {
             self.rotation = position.x();
         }
 
@@ -267,6 +267,7 @@ impl DemoUI {
 pub enum UIEvent {
     None,
     MouseDown(Point2DI32),
+    MouseDragged(Point2DI32),
 }
 
 impl UIEvent {
@@ -282,5 +283,16 @@ impl UIEvent {
             }
         }
         None
+    }
+
+    fn handle_mouse_down_or_dragged_in_rect(&mut self, rect: RectI32) -> Option<Point2DI32> {
+        match *self {
+            UIEvent::MouseDown(point) |
+                    UIEvent::MouseDragged(point) if rect.contains_point(point) => {
+                *self = UIEvent::None;
+                Some(point - rect.origin())
+            }
+            _ => None,
+        }
     }
 }
