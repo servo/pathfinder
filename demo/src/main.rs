@@ -164,7 +164,7 @@ impl DemoApp {
         let (drawable_width, drawable_height) = self.window.drawable_size();
         let drawable_size = Size2D::new(drawable_width, drawable_height);
 
-        let perspective = if self.ui.threed_enabled {
+        let render_transform = if self.ui.threed_enabled {
             let rotation = Transform3DF32::from_rotation(-self.camera_yaw,
                                                          -self.camera_pitch,
                                                          0.0);
@@ -189,15 +189,16 @@ impl DemoApp {
                                                                              translation.y(),
                                                                              translation.z()));
 
-            Some(Perspective::new(&transform, &drawable_size))
+            RenderTransform::Perspective(Perspective::new(&transform, &drawable_size))
         } else {
-            None
+            let transform = Transform2DF32::from_rotation(self.ui.rotation());
+            RenderTransform::Transform2D(transform)
         };
 
         let count = if self.frame_counter == 0 { 2 } else { 1 };
         for _ in 0..count {
             self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
-                perspective,
+                render_transform: render_transform.clone(),
                 stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
                     Some(APPROX_FONT_SIZE * self.scale_factor)
                 } else {
@@ -397,7 +398,7 @@ enum MainToSceneMsg {
 }
 
 struct BuildOptions {
-    perspective: Option<Perspective>,
+    render_transform: RenderTransform,
     stem_darkening_font_size: Option<f32>,
 }
 
@@ -465,10 +466,7 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
     let z_buffer = ZBuffer::new(scene.view_box);
 
     let render_options = RenderOptions {
-        transform: match build_options.perspective {
-            None => RenderTransform::Transform2D(Transform2DF32::default()),
-            Some(perspective) => RenderTransform::Perspective(perspective),
-        },
+        transform: build_options.render_transform,
         dilation: match build_options.stem_darkening_font_size {
             None => Point2DF32::default(),
             Some(font_size) => {

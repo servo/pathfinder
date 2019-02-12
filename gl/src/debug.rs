@@ -40,7 +40,7 @@ pub const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
 pub const BUTTON_TEXT_OFFSET: i32 = PADDING + 36;
 
 pub static TEXT_COLOR:   ColorU = ColorU { r: 255, g: 255, b: 255, a: 255      };
-pub static WINDOW_COLOR: ColorU = ColorU { r: 30,  g: 30,  b: 30,  a: 255 - 30 };
+pub static WINDOW_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255 - 90 };
 
 const PERF_WINDOW_WIDTH: i32 = 300;
 const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 2 + PADDING + 2;
