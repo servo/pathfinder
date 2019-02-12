@@ -47,6 +47,8 @@ const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
 const CAMERA_VELOCITY: f32 = 25.0;
 
+const CAMERA_SCALE_SPEED_2D: f32 = 2.0;
+
 const BACKGROUND_COLOR: ColorU = ColorU { r: 32, g: 32, b: 32, a: 255 };
 
 const APPROX_FONT_SIZE: f32 = 16.0;
@@ -182,8 +184,10 @@ impl DemoApp {
 
                 RenderTransform::Perspective(Perspective::new(&transform, &drawable_size))
             }
-            Camera::TwoD { ref position } => {
+            Camera::TwoD { ref position, scale } => {
                 let mut transform = Transform2DF32::from_rotation(self.ui.rotation());
+                transform =
+                    transform.post_mul(&Transform2DF32::from_scale(&Point2DF32::splat(scale)));
                 transform = transform.post_mul(&Transform2DF32::from_translation(position));
                 RenderTransform::Transform2D(transform)
             }
@@ -250,6 +254,11 @@ impl DemoApp {
                         Point2DI32::new(xrel, yrel).scale(self.scale_factor as i32);
                     ui_event = UIEvent::MouseDragged { absolute_position, relative_position };
                     self.dirty = true;
+                }
+                Event::MultiGesture { d_dist, .. } => {
+                    if let Camera::TwoD { ref mut scale, .. } = self.camera {
+                        *scale *= 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
+                    }
                 }
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
@@ -354,7 +363,7 @@ impl DemoApp {
                     self.mouselook_enabled = !self.mouselook_enabled;
                 }
                 UIEvent::MouseDragged { relative_position, .. } => {
-                    if let Camera::TwoD { ref mut position } = self.camera {
+                    if let Camera::TwoD { ref mut position, .. } = self.camera {
                         *position = *position + relative_position.to_f32();
                     }
                 }
@@ -545,13 +554,13 @@ fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) 
 }
 
 enum Camera {
-    TwoD { position: Point2DF32 },
+    TwoD { position: Point2DF32, scale: f32 },
     ThreeD { position: Point3DF32, velocity: Point3DF32, yaw: f32, pitch: f32 },
 }
 
 impl Camera {
     fn two_d() -> Camera {
-        Camera::TwoD { position: Point2DF32::new(0.0, 0.0) }
+        Camera::TwoD { position: Point2DF32::new(0.0, 0.0), scale: 1.0 }
     }
 
     fn three_d() -> Camera {
