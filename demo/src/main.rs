@@ -363,6 +363,7 @@ impl SceneThread {
     fn run(mut self) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
+                MainToSceneMsg::LoadScene(scene) => self.scene = scene,
                 MainToSceneMsg::SetDrawableSize(size) => {
                     self.scene.view_box =
                         RectF32::new(Point2DF32::default(),
@@ -380,6 +381,7 @@ impl SceneThread {
 }
 
 enum MainToSceneMsg {
+    LoadScene(Scene),
     SetDrawableSize(Size2D<u32>),
     Build(BuildOptions),
 }
