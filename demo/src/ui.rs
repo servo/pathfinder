@@ -66,7 +66,7 @@ impl DemoUI {
             rotate_texture,
             threed_enabled: options.threed,
             effects_panel_visible: false,
-            rotate_panel_visible: true,
+            rotate_panel_visible: false,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,
@@ -267,7 +267,10 @@ impl DemoUI {
 pub enum UIEvent {
     None,
     MouseDown(Point2DI32),
-    MouseDragged(Point2DI32),
+    MouseDragged {
+        absolute_position: Point2DI32,
+        relative_position: Point2DI32,
+    }
 }
 
 impl UIEvent {
@@ -287,8 +290,8 @@ impl UIEvent {
 
     fn handle_mouse_down_or_dragged_in_rect(&mut self, rect: RectI32) -> Option<Point2DI32> {
         match *self {
-            UIEvent::MouseDown(point) |
-                    UIEvent::MouseDragged(point) if rect.contains_point(point) => {
+            UIEvent::MouseDown(point) | UIEvent::MouseDragged { absolute_position: point, .. }
+                    if rect.contains_point(point) => {
                 *self = UIEvent::None;
                 Some(point - rect.origin())
             }

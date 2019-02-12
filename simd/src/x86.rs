@@ -1563,6 +1563,12 @@ impl I32x4 {
         U8x16(self.0)
     }
 
+    /// Converts these packed integers to floats.
+    #[inline]
+    pub fn to_f32x4(self) -> F32x4 {
+        unsafe { F32x4(x86_64::_mm_cvtepi32_ps(self.0)) }
+    }
+
     // Basic operations
 
     #[inline]

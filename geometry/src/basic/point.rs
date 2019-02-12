@@ -200,6 +200,11 @@ impl Point2DI32 {
     pub fn scale(&self, factor: i32) -> Point2DI32 {
         Point2DI32(self.0 * I32x4::splat(factor))
     }
+
+    #[inline]
+    pub fn to_f32(&self) -> Point2DF32 {
+        Point2DF32(self.0.to_f32x4())
+    }
 }
 
 impl Add<Point2DI32> for Point2DI32 {

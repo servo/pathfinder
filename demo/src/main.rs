@@ -71,11 +71,7 @@ struct DemoApp {
 
     scale_factor: f32,
 
-    camera_position: Point3DF32,
-    camera_velocity: Point3DF32,
-    camera_yaw: f32,
-    camera_pitch: f32,
-
+    camera: Camera,
     frame_counter: u32,
     events: Vec<Event>,
     exit: bool,
@@ -119,6 +115,8 @@ impl DemoApp {
         let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
 
+        let camera = if options.threed { Camera::three_d() } else { Camera::two_d() };
+
         DemoApp {
             window,
             sdl_context,
@@ -128,11 +126,7 @@ impl DemoApp {
 
             scale_factor: drawable_width as f32 / window_width as f32,
 
-            camera_position: Point3DF32::new(500.0, 500.0, 3000.0, 1.0),
-            camera_velocity: Point3DF32::new(0.0, 0.0, 0.0, 1.0),
-            camera_yaw: 0.0,
-            camera_pitch: 0.0,
-
+            camera,
             frame_counter: 0,
             events: vec![],
             exit: false,
@@ -164,35 +158,35 @@ impl DemoApp {
         let (drawable_width, drawable_height) = self.window.drawable_size();
         let drawable_size = Size2D::new(drawable_width, drawable_height);
 
-        let render_transform = if self.ui.threed_enabled {
-            let rotation = Transform3DF32::from_rotation(-self.camera_yaw,
-                                                         -self.camera_pitch,
-                                                         0.0);
+        let render_transform = match self.camera {
+            Camera::ThreeD { ref mut position, velocity, yaw, pitch } => {
+                let rotation = Transform3DF32::from_rotation(-yaw, -pitch, 0.0);
 
-            if !self.camera_velocity.is_zero() {
-                self.camera_position = self.camera_position +
-                    rotation.transform_point(self.camera_velocity);
-                self.dirty = true;
+                if !velocity.is_zero() {
+                    *position = *position + rotation.transform_point(velocity);
+                    self.dirty = true;
+                }
+
+                let aspect = drawable_size.width as f32 / drawable_size.height as f32;
+                let mut transform =
+                    Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
+
+                transform = transform.post_mul(&Transform3DF32::from_scale(WORLD_SCALE,
+                                                                           WORLD_SCALE,
+                                                                           WORLD_SCALE));
+                transform = transform.post_mul(&Transform3DF32::from_rotation(yaw, pitch, 0.0));
+                let translation = position.scale(-1.0);
+                transform = transform.post_mul(&Transform3DF32::from_translation(translation.x(),
+                                                                                translation.y(),
+                                                                                translation.z()));
+
+                RenderTransform::Perspective(Perspective::new(&transform, &drawable_size))
             }
-
-            let aspect = drawable_size.width as f32 / drawable_size.height as f32;
-            let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
-
-            transform = transform.post_mul(&Transform3DF32::from_scale(WORLD_SCALE,
-                                                                       WORLD_SCALE,
-                                                                       WORLD_SCALE));
-            transform = transform.post_mul(&Transform3DF32::from_rotation(self.camera_yaw,
-                                                                          self.camera_pitch,
-                                                                          0.0));
-            let translation = self.camera_position.scale(-1.0);
-            transform = transform.post_mul(&Transform3DF32::from_translation(translation.x(),
-                                                                             translation.y(),
-                                                                             translation.z()));
-
-            RenderTransform::Perspective(Perspective::new(&transform, &drawable_size))
-        } else {
-            let transform = Transform2DF32::from_rotation(self.ui.rotation());
-            RenderTransform::Transform2D(transform)
+            Camera::TwoD { ref position } => {
+                let mut transform = Transform2DF32::from_rotation(self.ui.rotation());
+                transform = transform.post_mul(&Transform2DF32::from_translation(position));
+                RenderTransform::Transform2D(transform)
+            }
         };
 
         let count = if self.frame_counter == 0 { 2 } else { 1 };
@@ -243,40 +237,57 @@ impl DemoApp {
                     ui_event = UIEvent::MouseDown(point);
                 }
                 Event::MouseMotion { xrel, yrel, .. } if self.mouselook_enabled => {
-                    self.camera_yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                    self.camera_pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                    self.dirty = true;
+                    if let Camera::ThreeD { ref mut yaw, ref mut pitch, .. } =
+                            self.camera {
+                        *yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                        *pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                        self.dirty = true;
+                    }
                 }
-                Event::MouseMotion { x, y, mousestate, .. } if mousestate.left() => {
-                    let point = Point2DI32::new(x, y).scale(self.scale_factor as i32);
-                    ui_event = UIEvent::MouseDragged(point);
+                Event::MouseMotion { x, y, xrel, yrel, mousestate, .. } if mousestate.left() => {
+                    let absolute_position = Point2DI32::new(x, y).scale(self.scale_factor as i32);
+                    let relative_position =
+                        Point2DI32::new(xrel, yrel).scale(self.scale_factor as i32);
+                    ui_event = UIEvent::MouseDragged { absolute_position, relative_position };
                     self.dirty = true;
                 }
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
-                    self.camera_velocity.set_z(-CAMERA_VELOCITY);
-                    self.dirty = true;
+                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                        velocity.set_z(-CAMERA_VELOCITY);
+                        self.dirty = true;
+                    }
                 }
                 Event::KeyDown { keycode: Some(Keycode::S), .. } => {
-                    self.camera_velocity.set_z(CAMERA_VELOCITY);
-                    self.dirty = true;
+                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                        velocity.set_z(CAMERA_VELOCITY);
+                        self.dirty = true;
+                    }
                 }
                 Event::KeyDown { keycode: Some(Keycode::A), .. } => {
-                    self.camera_velocity.set_x(-CAMERA_VELOCITY);
-                    self.dirty = true;
+                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                        velocity.set_x(-CAMERA_VELOCITY);
+                        self.dirty = true;
+                    }
                 }
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
-                    self.camera_velocity.set_x(CAMERA_VELOCITY);
-                    self.dirty = true;
+                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                        velocity.set_x(CAMERA_VELOCITY);
+                        self.dirty = true;
+                    }
                 }
                 Event::KeyUp { keycode: Some(Keycode::W), .. } |
                 Event::KeyUp { keycode: Some(Keycode::S), .. } => {
-                    self.camera_velocity.set_z(0.0);
-                    self.dirty = true;
+                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                        velocity.set_z(0.0);
+                        self.dirty = true;
+                    }
                 }
                 Event::KeyUp { keycode: Some(Keycode::A), .. } |
                 Event::KeyUp { keycode: Some(Keycode::D), .. } => {
-                    self.camera_velocity.set_x(0.0);
-                    self.dirty = true;
+                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                        velocity.set_x(0.0);
+                        self.dirty = true;
+                    }
                 }
                 _ => continue,
             }
@@ -328,9 +339,26 @@ impl DemoApp {
                 self.dirty = true;
             }
 
-            // If nothing handled the mouse-down event, toggle mouselook.
-            if let UIEvent::MouseDown(_) = ui_event {
-                self.mouselook_enabled = !self.mouselook_enabled;
+            // Switch camera mode (2D/3D) if requested.
+            //
+            // FIXME(pcwalton): This mess should really be an MVC setup.
+            match (&self.camera, self.ui.threed_enabled) {
+                (&Camera::TwoD { .. }, true) => self.camera = Camera::three_d(),
+                (&Camera::ThreeD { .. }, false) => self.camera = Camera::two_d(),
+                _ => {}
+            }
+
+            match ui_event {
+                UIEvent::MouseDown(_) if self.camera.is_3d() => {
+                    // If nothing handled the mouse-down event, toggle mouselook.
+                    self.mouselook_enabled = !self.mouselook_enabled;
+                }
+                UIEvent::MouseDragged { relative_position, .. } => {
+                    if let Camera::TwoD { ref mut position } = self.camera {
+                        *position = *position + relative_position.to_f32();
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -514,4 +542,31 @@ fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) 
     let drawable_size = Size2D::new(drawable_width as u32, drawable_height as u32);
     scene_thread_proxy.set_drawable_size(&drawable_size);
     drawable_size
+}
+
+enum Camera {
+    TwoD { position: Point2DF32 },
+    ThreeD { position: Point3DF32, velocity: Point3DF32, yaw: f32, pitch: f32 },
+}
+
+impl Camera {
+    fn two_d() -> Camera {
+        Camera::TwoD { position: Point2DF32::new(0.0, 0.0) }
+    }
+
+    fn three_d() -> Camera {
+        Camera::ThreeD {
+            position: Point3DF32::new(500.0, 500.0, 3000.0, 1.0),
+            velocity: Point3DF32::new(0.0, 0.0, 0.0, 1.0),
+            yaw: 0.0,
+            pitch: 0.0,
+        }
+    }
+
+    fn is_3d(&self) -> bool {
+        match *self {
+            Camera::ThreeD { .. } => true,
+            Camera::TwoD { .. } => false,
+        }
+    }
 }
