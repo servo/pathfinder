@@ -8,6 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+//! A demo app for Pathfinder.
+
 use crate::ui::{DemoUI, UIEvent};
 use clap::{App, Arg};
 use euclid::Size2D;
@@ -40,6 +42,8 @@ use usvg::{Options as UsvgOptions, Tree};
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
+static DEFAULT_SVG_PATH: &'static str = "../resources/svg/ghostscript-tiger-big-opt.svg";
 
 const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
@@ -472,18 +476,16 @@ impl Options {
                     .long("3d")
                     .help("Run in 3D"),
             )
-            .arg(
-                Arg::with_name("INPUT")
-                    .help("Path to the SVG file to render")
-                    .required(true)
-                    .index(1),
-            )
+            .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
         let jobs: Option<usize> = matches
             .value_of("jobs")
             .map(|string| string.parse().unwrap());
         let threed = matches.is_present("3d");
-        let input_path = PathBuf::from(matches.value_of("INPUT").unwrap());
+        let input_path = match matches.value_of("INPUT") {
+            Some(path) => PathBuf::from(path),
+            None => PathBuf::from(DEFAULT_SVG_PATH),
+        };
 
         // Set up Rayon.
         let mut thread_pool_builder = ThreadPoolBuilder::new();
@@ -573,9 +575,6 @@ impl Camera {
     }
 
     fn is_3d(&self) -> bool {
-        match *self {
-            Camera::ThreeD { .. } => true,
-            Camera::TwoD { .. } => false,
-        }
+        match *self { Camera::ThreeD { .. } => true, Camera::TwoD { .. } => false }
     }
 }
