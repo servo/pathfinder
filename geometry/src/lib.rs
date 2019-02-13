@@ -17,7 +17,6 @@ extern crate bitflags;
 
 pub mod basic;
 pub mod clip;
-pub mod cubic_to_quadratic;
 pub mod monotonic;
 pub mod normals;
 pub mod orientation;
