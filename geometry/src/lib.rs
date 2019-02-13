@@ -18,7 +18,6 @@ extern crate bitflags;
 pub mod basic;
 pub mod clip;
 pub mod monotonic;
-pub mod normals;
 pub mod orientation;
 pub mod outline;
 pub mod segment;
