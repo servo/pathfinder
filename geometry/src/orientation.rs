@@ -9,8 +9,6 @@
 // except according to those terms.
 
 use crate::outline::Outline;
-use euclid::Point2D;
-use lyon_path::PathEvent;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Orientation {
@@ -20,40 +18,6 @@ pub enum Orientation {
 
 impl Orientation {
     /// This follows the FreeType algorithm.
-    pub fn from_path<I>(stream: I) -> Orientation where I: Iterator<Item = PathEvent> {
-        let (mut from, mut subpath_start) = (Point2D::zero(), Point2D::zero());
-        let mut area = 0.0;
-        for event in stream {
-            match event {
-                PathEvent::MoveTo(to) => {
-                    from = to;
-                    subpath_start = to;
-                }
-                PathEvent::LineTo(to) => {
-                    area += det(&from, &to);
-                    from = to;
-                }
-                PathEvent::QuadraticTo(ctrl, to) => {
-                    area += det(&from, &ctrl) + det(&ctrl, &to);
-                    from = to;
-                }
-                PathEvent::CubicTo(ctrl0, ctrl1, to) => {
-                    area += det(&from, &ctrl0) + det(&ctrl0, &ctrl1) + det(&ctrl1, &to);
-                    from = to;
-                }
-                PathEvent::Arc(..) => {
-                    // TODO(pcwalton)
-                }
-                PathEvent::Close => {
-                    area += det(&from, &subpath_start);
-                    from = subpath_start;
-                }
-            }
-        }
-        Orientation::from_area(area)
-    }
-
-    // Pathfinder 3 version
     pub fn from_outline(outline: &Outline) -> Orientation {
         let mut area = 0.0;
         for contour in &outline.contours {
@@ -77,8 +41,3 @@ impl Orientation {
         }
     }
 }
-
-fn det(a: &Point2D<f32>, b: &Point2D<f32>) -> f32 {
-    a.x * b.y - a.y * b.x
-}
-
