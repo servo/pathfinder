@@ -10,7 +10,7 @@
 
 //! A demo app for Pathfinder.
 
-use crate::ui::{DemoUI, UIEvent};
+use crate::ui::{DemoUI, UIAction, UIEvent};
 use clap::{App, Arg};
 use euclid::Size2D;
 use jemallocator;
@@ -51,7 +51,10 @@ const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
 const CAMERA_VELOCITY: f32 = 25.0;
 
+// How much the scene is scaled when a scale gesture is performed.
 const CAMERA_SCALE_SPEED_2D: f32 = 2.0;
+// How much the scene is scaled when a zoom button is clicked.
+const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
 
 const BACKGROUND_COLOR: ColorU = ColorU { r: 32, g: 32, b: 32, a: 255 };
 
@@ -342,14 +345,30 @@ impl DemoApp {
                 self.dirty = true;
             }
 
-            self.ui.update(&mut self.renderer.debug_ui, &mut ui_event);
+            let mut ui_action = UIAction::None;
+            self.ui.update(&mut self.renderer.debug_ui, &mut ui_event, &mut ui_action);
 
-            // Open a new file if requested.
-            if let Some(path) = self.ui.file_to_open.take() {
-                let scene = load_scene(&path);
-                self.scene_thread_proxy.load_scene(scene);
-                update_drawable_size(&self.window, &self.scene_thread_proxy);
-                self.dirty = true;
+            // Handle UI actions.
+            match ui_action {
+                UIAction::None => {}
+                UIAction::OpenFile(path) => {
+                    let scene = load_scene(&path);
+                    self.scene_thread_proxy.load_scene(scene);
+                    update_drawable_size(&self.window, &self.scene_thread_proxy);
+                    self.dirty = true;
+                }
+                UIAction::ZoomIn => {
+                    if let Camera::TwoD { ref mut scale, .. } = self.camera {
+                        *scale *= 1.0 + CAMERA_ZOOM_AMOUNT_2D;
+                        self.dirty = true;
+                    }
+                }
+                UIAction::ZoomOut => {
+                    if let Camera::TwoD { ref mut scale, .. } = self.camera {
+                        *scale *= 1.0 - CAMERA_ZOOM_AMOUNT_2D;
+                        self.dirty = true;
+                    }
+                }
             }
 
             // Switch camera mode (2D/3D) if requested.

@@ -37,11 +37,15 @@ const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
 static EFFECTS_PNG_NAME: &'static str = "demo-effects";
 static OPEN_PNG_NAME: &'static str = "demo-open";
 static ROTATE_PNG_NAME: &'static str = "demo-rotate";
+static ZOOM_IN_PNG_NAME: &'static str = "demo-zoom-in";
+static ZOOM_OUT_PNG_NAME: &'static str = "demo-zoom-out";
 
 pub struct DemoUI {
     effects_texture: Texture,
     open_texture: Texture,
     rotate_texture: Texture,
+    zoom_in_texture: Texture,
+    zoom_out_texture: Texture,
 
     effects_panel_visible: bool,
     rotate_panel_visible: bool,
@@ -50,7 +54,6 @@ pub struct DemoUI {
     pub gamma_correction_effect_enabled: bool,
     pub stem_darkening_effect_enabled: bool,
     pub subpixel_aa_effect_enabled: bool,
-    pub file_to_open: Option<PathBuf>,
     pub rotation: i32,
 }
 
@@ -59,18 +62,21 @@ impl DemoUI {
         let effects_texture = Texture::from_png(EFFECTS_PNG_NAME);
         let open_texture = Texture::from_png(OPEN_PNG_NAME);
         let rotate_texture = Texture::from_png(ROTATE_PNG_NAME);
+        let zoom_in_texture = Texture::from_png(ZOOM_IN_PNG_NAME);
+        let zoom_out_texture = Texture::from_png(ZOOM_OUT_PNG_NAME);
 
         DemoUI {
             effects_texture,
             open_texture,
             rotate_texture,
+            zoom_in_texture,
+            zoom_out_texture,
             threed_enabled: options.threed,
             effects_panel_visible: false,
             rotate_panel_visible: false,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,
-            file_to_open: None,
             rotation: SLIDER_WIDTH / 2,
         }
     }
@@ -79,7 +85,7 @@ impl DemoUI {
         (self.rotation as f32 / SLIDER_WIDTH as f32 * 2.0 - 1.0) * PI
     }
 
-    pub fn update(&mut self, debug_ui: &mut DebugUI, event: &mut UIEvent) {
+    pub fn update(&mut self, debug_ui: &mut DebugUI, event: &mut UIEvent, action: &mut UIAction) {
         let bottom = debug_ui.framebuffer_size().height as i32 - PADDING;
 
         // Draw effects button.
@@ -94,7 +100,7 @@ impl DemoUI {
         let open_button_position = Point2DI32::new(open_button_x, open_button_y);
         if self.draw_button(debug_ui, event, open_button_position, &self.open_texture) {
             if let Ok(Response::Okay(file)) = nfd::open_file_dialog(Some("svg"), None) {
-                self.file_to_open = Some(PathBuf::from(file));
+                *action = UIAction::OpenFile(PathBuf::from(file));
             }
         }
 
@@ -111,12 +117,27 @@ impl DemoUI {
                                                "3D",
                                                self.threed_enabled);
 
-        // Draw rotate button, if applicable.
+        // Draw rotate and zoom buttons, if applicable.
         if !self.threed_enabled {
             let rotate_button_y = bottom - BUTTON_HEIGHT;
             let rotate_button_position = Point2DI32::new(ROTATE_PANEL_X, rotate_button_y);
             if self.draw_button(debug_ui, event, rotate_button_position, &self.rotate_texture) {
                 self.rotate_panel_visible = !self.rotate_panel_visible;
+            }
+
+            let zoom_in_button_x = ROTATE_PANEL_X + BUTTON_WIDTH + PADDING;
+            let zoom_in_button_position = Point2DI32::new(zoom_in_button_x, rotate_button_y);
+            if self.draw_button(debug_ui, event, zoom_in_button_position, &self.zoom_in_texture) {
+                *action = UIAction::ZoomIn;
+            }
+
+            let zoom_out_button_x = ROTATE_PANEL_X + (BUTTON_WIDTH + PADDING) * 2;
+            let zoom_out_button_position = Point2DI32::new(zoom_out_button_x, rotate_button_y);
+            if self.draw_button(debug_ui,
+                                event,
+                                zoom_out_button_position,
+                                &self.zoom_out_texture) {
+                *action = UIAction::ZoomOut;
             }
         }
 
@@ -262,6 +283,14 @@ impl DemoUI {
 
         value
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UIAction {
+    None,
+    OpenFile(PathBuf),
+    ZoomIn,
+    ZoomOut,
 }
 
 pub enum UIEvent {
