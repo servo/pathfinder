@@ -12,7 +12,7 @@
 
 use euclid::Point2D;
 use pathfinder_simd::default::{F32x4, I32x4};
-use std::ops::{Add, AddAssign, Mul, Sub};
+use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 /// 2D points with 32-bit floating point coordinates.
 #[derive(Clone, Copy, Debug, Default)]
@@ -158,6 +158,14 @@ impl Mul<Point2DF32> for Point2DF32 {
     #[inline]
     fn mul(self, other: Point2DF32) -> Point2DF32 {
         Point2DF32(self.0 * other.0)
+    }
+}
+
+impl Neg for Point2DF32 {
+    type Output = Point2DF32;
+    #[inline]
+    fn neg(self) -> Point2DF32 {
+        Point2DF32(-self.0)
     }
 }
 

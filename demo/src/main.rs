@@ -191,13 +191,7 @@ impl DemoApp {
 
                 RenderTransform::Perspective(Perspective::new(&transform, &drawable_size))
             }
-            Camera::TwoD { ref position, scale } => {
-                let mut transform = Transform2DF32::from_rotation(self.ui.rotation());
-                transform =
-                    transform.post_mul(&Transform2DF32::from_scale(&Point2DF32::splat(scale)));
-                transform = transform.post_mul(&Transform2DF32::from_translation(position));
-                RenderTransform::Transform2D(transform)
-            }
+            Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         };
 
         let count = if self.frame_counter == 0 { 2 } else { 1 };
@@ -263,8 +257,14 @@ impl DemoApp {
                     self.dirty = true;
                 }
                 Event::MultiGesture { d_dist, .. } => {
-                    if let Camera::TwoD { ref mut scale, .. } = self.camera {
-                        *scale *= 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
+                    if let Camera::TwoD(ref mut transform) = self.camera {
+                        let mouse_state = self.sdl_event_pump.mouse_state();
+                        let position = Point2DI32::new(mouse_state.x(), mouse_state.y());
+                        let position = position.to_f32().scale(self.scale_factor);
+                        *transform = transform.post_translate(-position);
+                        let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
+                        *transform = transform.post_scale(Point2DF32::splat(scale_delta));
+                        *transform = transform.post_translate(position);
                     }
                 }
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
@@ -358,15 +358,32 @@ impl DemoApp {
                     self.dirty = true;
                 }
                 UIAction::ZoomIn => {
-                    if let Camera::TwoD { ref mut scale, .. } = self.camera {
-                        *scale *= 1.0 + CAMERA_ZOOM_AMOUNT_2D;
+                    if let Camera::TwoD(ref mut transform) = self.camera {
+                        let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
+                        let center = center_of_window(&self.window);
+                        *transform = transform.post_translate(-center)
+                                              .post_scale(scale)
+                                              .post_translate(center);
                         self.dirty = true;
                     }
                 }
                 UIAction::ZoomOut => {
-                    if let Camera::TwoD { ref mut scale, .. } = self.camera {
-                        *scale *= 1.0 - CAMERA_ZOOM_AMOUNT_2D;
+                    if let Camera::TwoD(ref mut transform) = self.camera {
+                        let scale = Point2DF32::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
+                        let center = center_of_window(&self.window);
+                        *transform = transform.post_translate(-center)
+                                              .post_scale(scale)
+                                              .post_translate(center);
                         self.dirty = true;
+                    }
+                }
+                UIAction::Rotate(theta) => {
+                    if let Camera::TwoD(ref mut transform) = self.camera {
+                        let old_rotation = transform.rotation();
+                        let center = center_of_window(&self.window);
+                        *transform = transform.post_translate(-center)
+                                              .post_rotate(theta - old_rotation)
+                                              .post_translate(center);
                     }
                 }
             }
@@ -386,8 +403,8 @@ impl DemoApp {
                     self.mouselook_enabled = !self.mouselook_enabled;
                 }
                 UIEvent::MouseDragged { relative_position, .. } => {
-                    if let Camera::TwoD { ref mut position, .. } = self.camera {
-                        *position = *position + relative_position.to_f32();
+                    if let Camera::TwoD(ref mut transform) = self.camera {
+                        *transform = transform.post_translate(relative_position.to_f32());
                     }
                 }
                 _ => {}
@@ -574,14 +591,19 @@ fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) 
     drawable_size
 }
 
+fn center_of_window(window: &Window) -> Point2DF32 {
+    let (drawable_width, drawable_height) = window.drawable_size();
+    Point2DI32::new(drawable_width as i32, drawable_height as i32).to_f32().scale(0.5)
+}
+
 enum Camera {
-    TwoD { position: Point2DF32, scale: f32 },
+    TwoD(Transform2DF32),
     ThreeD { position: Point3DF32, velocity: Point3DF32, yaw: f32, pitch: f32 },
 }
 
 impl Camera {
     fn two_d() -> Camera {
-        Camera::TwoD { position: Point2DF32::new(0.0, 0.0), scale: 1.0 }
+        Camera::TwoD(Transform2DF32::default())
     }
 
     fn three_d() -> Camera {

@@ -81,7 +81,7 @@ impl DemoUI {
         }
     }
 
-    pub fn rotation(&self) -> f32 {
+    fn rotation(&self) -> f32 {
         (self.rotation as f32 / SLIDER_WIDTH as f32 * 2.0 - 1.0) * PI
     }
 
@@ -145,7 +145,7 @@ impl DemoUI {
         self.draw_effects_panel(debug_ui, event);
 
         // Draw rotate panel, if necessary.
-        self.draw_rotate_panel(debug_ui, event);
+        self.draw_rotate_panel(debug_ui, event, action);
     }
 
     fn draw_effects_panel(&mut self, debug_ui: &mut DebugUI, event: &mut UIEvent) {
@@ -156,8 +156,8 @@ impl DemoUI {
         let bottom = debug_ui.framebuffer_size().height as i32 - PADDING;
         let effects_panel_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_PANEL_HEIGHT);
         debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_panel_y),
-                                            Point2DI32::new(EFFECTS_PANEL_WIDTH,
-                                                            EFFECTS_PANEL_HEIGHT)),
+                                              Point2DI32::new(EFFECTS_PANEL_WIDTH,
+                                                              EFFECTS_PANEL_HEIGHT)),
                                 WINDOW_COLOR);
 
         self.gamma_correction_effect_enabled =
@@ -184,7 +184,10 @@ impl DemoUI {
 
     }
 
-    fn draw_rotate_panel(&mut self, debug_ui: &mut DebugUI, event: &mut UIEvent) {
+    fn draw_rotate_panel(&mut self,
+                         debug_ui: &mut DebugUI,
+                         event: &mut UIEvent,
+                         action: &mut UIAction) {
         if !self.rotate_panel_visible {
             return;
         }
@@ -201,6 +204,7 @@ impl DemoUI {
                                        Point2DI32::new(SLIDER_WIDTH, SLIDER_KNOB_HEIGHT));
         if let Some(position) = event.handle_mouse_down_or_dragged_in_rect(widget_rect) {
             self.rotation = position.x();
+            *action = UIAction::Rotate(self.rotation());
         }
 
         let slider_track_y = rotate_panel_y + PADDING + SLIDER_KNOB_HEIGHT / 2 -
@@ -291,6 +295,7 @@ pub enum UIAction {
     OpenFile(PathBuf),
     ZoomIn,
     ZoomOut,
+    Rotate(f32),
 }
 
 pub enum UIEvent {

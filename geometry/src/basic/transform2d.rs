@@ -82,6 +82,15 @@ impl Matrix2x2F32 {
     pub fn inverse(&self) -> Matrix2x2F32 {
         Matrix2x2F32(F32x4::splat(1.0 / self.det()) * self.adjugate().0)
     }
+
+    #[inline]
+    pub fn m11(&self) -> f32 { self.0[0] }
+    #[inline]
+    pub fn m21(&self) -> f32 { self.0[1] }
+    #[inline]
+    pub fn m12(&self) -> f32 { self.0[2] }
+    #[inline]
+    pub fn m22(&self) -> f32 { self.0[3] }
 }
 
 impl Sub<Matrix2x2F32> for Matrix2x2F32 {
@@ -133,6 +142,14 @@ impl Transform2DF32 {
     }
 
     #[inline]
+    pub fn from_scale_rotation_translation(scale: Point2DF32, theta: f32, translation: Point2DF32)
+                                           -> Transform2DF32 {
+        let rotation = Transform2DF32::from_rotation(theta);
+        let translation = Transform2DF32::from_translation(&translation);
+        Transform2DF32::from_scale(&scale).post_mul(&rotation).post_mul(&translation)
+    }
+
+    #[inline]
     pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32)
                      -> Transform2DF32 {
         Transform2DF32 {
@@ -181,6 +198,54 @@ impl Transform2DF32 {
     #[inline]
     pub fn is_identity(&self) -> bool {
         *self == Transform2DF32::default()
+    }
+
+    #[inline]
+    pub fn m11(&self) -> f32 { self.matrix.m11() }
+    #[inline]
+    pub fn m21(&self) -> f32 { self.matrix.m21() }
+    #[inline]
+    pub fn m12(&self) -> f32 { self.matrix.m12() }
+    #[inline]
+    pub fn m22(&self) -> f32 { self.matrix.m22() }
+
+    #[inline]
+    pub fn post_translate(&self, vector: Point2DF32) -> Transform2DF32 {
+        self.post_mul(&Transform2DF32::from_translation(&vector))
+    }
+
+    #[inline]
+    pub fn post_rotate(&self, theta: f32) -> Transform2DF32 {
+        self.post_mul(&Transform2DF32::from_rotation(theta))
+    }
+
+    #[inline]
+    pub fn post_scale(&self, scale: Point2DF32) -> Transform2DF32 {
+        self.post_mul(&Transform2DF32::from_scale(&scale))
+    }
+
+    /// Returns the translation part of this matrix.
+    ///
+    /// This decomposition assumes that scale, rotation, and translation are applied in that order.
+    #[inline]
+    pub fn translation(&self) -> Point2DF32 {
+        self.vector
+    }
+
+    /// Returns the rotation angle of this matrix.
+    ///
+    /// This decomposition assumes that scale, rotation, and translation are applied in that order.
+    #[inline]
+    pub fn rotation(&self) -> f32 {
+        f32::atan2(self.m21(), self.m11())
+    }
+
+    /// Returns the scale factor of this matrix.
+    ///
+    /// This decomposition assumes that scale, rotation, and translation are applied in that order.
+    #[inline]
+    pub fn scale_factor(&self) -> f32 {
+        Point2DF32(self.matrix.0.zwxy()).length()
     }
 }
 
