@@ -10,6 +10,7 @@
 
 //! How a path is to be filled.
 
+use pathfinder_simd::default::F32x4;
 use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -38,6 +39,12 @@ impl ColorU {
             a: 255,
         }
     }
+
+    #[inline]
+    pub fn to_f32(&self) -> ColorF {
+        let color = F32x4::new(self.r as f32, self.g as f32, self.b as f32, self.a as f32);
+        ColorF(color * F32x4::splat(1.0 / 255.0))
+    }
 }
 
 impl Debug for ColorU {
@@ -55,6 +62,30 @@ impl Debug for ColorU {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct ColorF(pub F32x4);
+
+impl ColorF {
+    #[inline]
+    pub fn r(&self) -> f32 {
+        self.0[0]
+    }
+
+    #[inline]
+    pub fn g(&self) -> f32 {
+        self.0[1]
+    }
+
+    #[inline]
+    pub fn b(&self) -> f32 {
+        self.0[2]
+    }
+
+    #[inline]
+    pub fn a(&self) -> f32 {
+        self.0[3]
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShaderId(pub u16);

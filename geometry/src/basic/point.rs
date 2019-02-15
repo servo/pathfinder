@@ -232,7 +232,7 @@ impl Sub<Point2DI32> for Point2DI32 {
 }
 
 /// 3D homogeneous points.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point3DF32(pub F32x4);
 
 impl Point3DF32 {
@@ -348,5 +348,14 @@ impl Mul<Point3DF32> for Point3DF32 {
     #[inline]
     fn mul(self, other: Point3DF32) -> Point3DF32 {
         Point3DF32(self.0 * other.0)
+    }
+}
+
+impl Default for Point3DF32 {
+    #[inline]
+    fn default() -> Point3DF32 {
+        let mut point = F32x4::default();
+        point.set_w(1.0);
+        Point3DF32(point)
     }
 }

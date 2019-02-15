@@ -18,6 +18,30 @@ use std::io::Read;
 use std::mem;
 use std::ptr;
 
+pub struct VertexArray {
+    pub gl_vertex_array: GLuint,
+}
+
+impl Drop for VertexArray {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
+        }
+    }
+}
+
+impl VertexArray {
+    #[inline]
+    pub fn new() -> VertexArray {
+        unsafe {
+            let mut array = VertexArray { gl_vertex_array: 0 };
+            gl::GenVertexArrays(1, &mut array.gl_vertex_array);
+            array
+        }
+    }
+}
+
 pub struct VertexAttr {
     attr: GLuint,
 }

@@ -22,6 +22,7 @@ use std::ops::{Add, Neg};
 ///
 /// In column-major order.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(C)]
 pub struct Transform3DF32 {
     c0: F32x4,
     c1: F32x4,
@@ -62,6 +63,11 @@ impl Transform3DF32 {
                                   0.0,   y, 0.0, 0.0,
                                   0.0, 0.0,   z, 0.0,
                                   0.0, 0.0, 0.0, 1.0)
+    }
+
+    #[inline]
+    pub fn from_uniform_scale(factor: f32) -> Transform3DF32 {
+        Transform3DF32::from_scale(factor, factor, factor)
     }
 
     #[inline]
@@ -229,6 +235,11 @@ impl Transform3DF32 {
             self.c2.approx_eq(other.c2, epsilon) &&
             self.c3.approx_eq(other.c3, epsilon)
     }
+
+    #[inline]
+    pub fn as_ptr(&self) -> *const f32 {
+        (&self.c0) as *const F32x4 as *const f32
+    }
 }
 
 impl Add<Matrix2x2F32> for Matrix2x2F32 {
@@ -261,7 +272,10 @@ impl Perspective {
 
     #[inline]
     pub fn transform_point_2d(&self, point: &Point2DF32) -> Point2DF32 {
-        let point = self.transform.transform_point(point.to_3d()).perspective_divide().to_2d();
+        let point = self.transform
+                        .transform_point(point.to_3d())
+                        .perspective_divide()
+                        .to_2d() * Point2DF32::new(1.0, -1.0);
         let window_size = self.window_size.to_f32();
         let size_scale = Point2DF32::new(window_size.width * 0.5, window_size.height * 0.5);
         (point + Point2DF32::splat(1.0)) * size_scale

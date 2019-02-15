@@ -10,9 +10,9 @@
 
 use crate::debug::DebugUI;
 use crate::device::{Buffer, BufferTarget, BufferUploadMode, Framebuffer, Program, Texture};
-use crate::device::{TimerQuery, Uniform, VertexAttr};
+use crate::device::{TimerQuery, Uniform, VertexArray, VertexAttr};
 use euclid::Size2D;
-use gl::types::{GLfloat, GLint, GLuint};
+use gl::types::{GLfloat, GLint};
 use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
 use pathfinder_renderer::paint::{ColorU, ObjectShader};
 use pathfinder_renderer::post::DefringingKernel;
@@ -39,7 +39,6 @@ pub struct Renderer {
     solid_tile_program: SolidTileProgram,
     mask_tile_program: MaskTileProgram,
     area_lut_texture: Texture,
-    #[allow(dead_code)]
     quad_vertex_positions_buffer: Buffer,
     fill_vertex_array: FillVertexArray,
     mask_tile_vertex_array: MaskTileVertexArray,
@@ -186,6 +185,11 @@ impl Renderer {
         self.postprocess_options.gamma_correction_bg_color = Some(bg_color);
     }
 
+    #[inline]
+    pub fn quad_vertex_positions_buffer(&self) -> &Buffer {
+        &self.quad_vertex_positions_buffer
+    }
+
     fn upload_shaders(&mut self, shaders: &[ObjectShader]) {
         let size = Size2D::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
         let mut fill_colors = vec![0; size.width as usize * size.height as usize * 4];
@@ -221,7 +225,7 @@ impl Renderer {
             gl::ClearColor(0.0, 0.0, 0.0, 0.0);
             gl::Clear(gl::COLOR_BUFFER_BIT);
 
-            gl::BindVertexArray(self.fill_vertex_array.gl_vertex_array);
+            gl::BindVertexArray(self.fill_vertex_array.vertex_array.gl_vertex_array);
             gl::UseProgram(self.fill_program.program.gl_program);
             gl::Uniform2f(self.fill_program.framebuffer_size_uniform.location,
                           MASK_FRAMEBUFFER_WIDTH as GLfloat,
@@ -244,7 +248,7 @@ impl Renderer {
             self.bind_draw_framebuffer();
             self.set_main_viewport();
 
-            gl::BindVertexArray(self.mask_tile_vertex_array.gl_vertex_array);
+            gl::BindVertexArray(self.mask_tile_vertex_array.vertex_array.gl_vertex_array);
             gl::UseProgram(self.mask_tile_program.program.gl_program);
             gl::Uniform2f(self.mask_tile_program.framebuffer_size_uniform.location,
                           self.main_framebuffer_size.width as GLfloat,
@@ -275,7 +279,7 @@ impl Renderer {
             self.bind_draw_framebuffer();
             self.set_main_viewport();
 
-            gl::BindVertexArray(self.solid_tile_vertex_array.gl_vertex_array);
+            gl::BindVertexArray(self.solid_tile_vertex_array.vertex_array.gl_vertex_array);
             gl::UseProgram(self.solid_tile_program.program.gl_program);
             gl::Uniform2f(self.solid_tile_program.framebuffer_size_uniform.location,
                           self.main_framebuffer_size.width as GLfloat,
@@ -300,7 +304,7 @@ impl Renderer {
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             self.set_main_viewport();
 
-            gl::BindVertexArray(self.postprocess_vertex_array.gl_vertex_array);
+            gl::BindVertexArray(self.postprocess_vertex_array.vertex_array.gl_vertex_array);
             gl::UseProgram(self.postprocess_program.program.gl_program);
             gl::Uniform2f(self.postprocess_program.framebuffer_size_uniform.location,
                           self.main_framebuffer_size.width as GLfloat,
@@ -406,14 +410,13 @@ struct PostprocessOptions {
 }
 
 struct FillVertexArray {
-    gl_vertex_array: GLuint,
+    vertex_array: VertexArray,
     vertex_buffer: Buffer,
 }
 
 impl FillVertexArray {
     fn new(fill_program: &FillProgram, quad_vertex_positions_buffer: &Buffer) -> FillVertexArray {
-        let vertex_buffer = Buffer::new();
-        let mut gl_vertex_array = 0;
+        let (vertex_array, vertex_buffer) = (VertexArray::new(), Buffer::new());
         unsafe {
             let tess_coord_attr = VertexAttr::new(&fill_program.program, "TessCoord");
             let from_px_attr = VertexAttr::new(&fill_program.program, "FromPx");
@@ -422,8 +425,7 @@ impl FillVertexArray {
             let to_subpx_attr = VertexAttr::new(&fill_program.program, "ToSubpx");
             let tile_index_attr = VertexAttr::new(&fill_program.program, "TileIndex");
 
-            gl::GenVertexArrays(1, &mut gl_vertex_array);
-            gl::BindVertexArray(gl_vertex_array);
+            gl::BindVertexArray(vertex_array.gl_vertex_array);
             gl::UseProgram(fill_program.program.gl_program);
             gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
             tess_coord_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
@@ -435,29 +437,19 @@ impl FillVertexArray {
             tile_index_attr.configure_int(1, gl::UNSIGNED_SHORT, FILL_INSTANCE_SIZE, 6, 1);
         }
 
-        FillVertexArray { gl_vertex_array, vertex_buffer }
-    }
-}
-
-impl Drop for FillVertexArray {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
-        }
+        FillVertexArray { vertex_array, vertex_buffer }
     }
 }
 
 struct MaskTileVertexArray {
-    gl_vertex_array: GLuint,
+    vertex_array: VertexArray,
     vertex_buffer: Buffer,
 }
 
 impl MaskTileVertexArray {
     fn new(mask_tile_program: &MaskTileProgram, quad_vertex_positions_buffer: &Buffer)
            -> MaskTileVertexArray {
-        let vertex_buffer = Buffer::new();
-        let mut gl_vertex_array = 0;
+        let (vertex_array, vertex_buffer) = (VertexArray::new(), Buffer::new());
         unsafe {
             let tess_coord_attr = VertexAttr::new(&mask_tile_program.program, "TessCoord");
             let tile_origin_attr = VertexAttr::new(&mask_tile_program.program, "TileOrigin");
@@ -466,8 +458,7 @@ impl MaskTileVertexArray {
 
             // NB: The object must be of type short, not unsigned short, to work around a macOS
             // Radeon driver bug.
-            gl::GenVertexArrays(1, &mut gl_vertex_array);
-            gl::BindVertexArray(gl_vertex_array);
+            gl::BindVertexArray(vertex_array.gl_vertex_array);
             gl::UseProgram(mask_tile_program.program.gl_program);
             gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
             tess_coord_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
@@ -477,29 +468,19 @@ impl MaskTileVertexArray {
             object_attr.configure_int(2, gl::SHORT, MASK_TILE_INSTANCE_SIZE, 6, 1);
         }
 
-        MaskTileVertexArray { gl_vertex_array, vertex_buffer }
-    }
-}
-
-impl Drop for MaskTileVertexArray {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
-        }
+        MaskTileVertexArray { vertex_array, vertex_buffer }
     }
 }
 
 struct SolidTileVertexArray {
-    gl_vertex_array: GLuint,
+    vertex_array: VertexArray,
     vertex_buffer: Buffer,
 }
 
 impl SolidTileVertexArray {
     fn new(solid_tile_program: &SolidTileProgram, quad_vertex_positions_buffer: &Buffer)
            -> SolidTileVertexArray {
-        let vertex_buffer = Buffer::new();
-        let mut gl_vertex_array = 0;
+        let (vertex_array, vertex_buffer) = (VertexArray::new(), Buffer::new());
         unsafe {
             let tess_coord_attr = VertexAttr::new(&solid_tile_program.program, "TessCoord");
             let tile_origin_attr = VertexAttr::new(&solid_tile_program.program, "TileOrigin");
@@ -507,8 +488,7 @@ impl SolidTileVertexArray {
 
             // NB: The object must be of type short, not unsigned short, to work around a macOS
             // Radeon driver bug.
-            gl::GenVertexArrays(1, &mut gl_vertex_array);
-            gl::BindVertexArray(gl_vertex_array);
+            gl::BindVertexArray(vertex_array.gl_vertex_array);
             gl::UseProgram(solid_tile_program.program.gl_program);
             gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
             tess_coord_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
@@ -517,16 +497,7 @@ impl SolidTileVertexArray {
             object_attr.configure_int(1, gl::SHORT, SOLID_TILE_INSTANCE_SIZE, 4, 1);
         }
 
-        SolidTileVertexArray { gl_vertex_array, vertex_buffer }
-    }
-}
-
-impl Drop for SolidTileVertexArray {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
-        }
+        SolidTileVertexArray { vertex_array, vertex_buffer }
     }
 }
 
@@ -638,32 +609,22 @@ impl PostprocessProgram {
 }
 
 struct PostprocessVertexArray {
-    gl_vertex_array: GLuint,
+    vertex_array: VertexArray,
 }
 
 impl PostprocessVertexArray {
     fn new(postprocess_program: &PostprocessProgram, quad_vertex_positions_buffer: &Buffer)
            -> PostprocessVertexArray {
-        let mut gl_vertex_array = 0;
+        let vertex_array = VertexArray::new();
         unsafe {
             let position_attr = VertexAttr::new(&postprocess_program.program, "Position");
 
-            gl::GenVertexArrays(1, &mut gl_vertex_array);
-            gl::BindVertexArray(gl_vertex_array);
+            gl::BindVertexArray(vertex_array.gl_vertex_array);
             gl::UseProgram(postprocess_program.program.gl_program);
             gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
             position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
         }
 
-        PostprocessVertexArray { gl_vertex_array }
-    }
-}
-
-impl Drop for PostprocessVertexArray {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
-        }
+        PostprocessVertexArray { vertex_array }
     }
 }

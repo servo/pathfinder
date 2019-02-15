@@ -13,11 +13,14 @@
 use crate::ui::{DemoUI, UIAction, UIEvent};
 use clap::{App, Arg};
 use euclid::Size2D;
+use gl::types::GLsizei;
 use jemallocator;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
+use pathfinder_gl::device::{Buffer, BufferTarget, BufferUploadMode, Program, Uniform};
+use pathfinder_gl::device::{VertexArray, VertexAttr};
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu_data::BuiltScene;
@@ -56,11 +59,15 @@ const CAMERA_SCALE_SPEED_2D: f32 = 2.0;
 // How much the scene is scaled when a zoom button is clicked.
 const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
 
-const BACKGROUND_COLOR: ColorU = ColorU { r: 32, g: 32, b: 32, a: 255 };
+const BACKGROUND_COLOR:   ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
+const GROUND_SOLID_COLOR: ColorU = ColorU { r: 80,  g: 80,  b: 80,  a: 255 };
+const GROUND_LINE_COLOR:  ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 
 const APPROX_FONT_SIZE: f32 = 16.0;
 
-const WORLD_SCALE: f32 = 1.0 / 800.0;
+const WORLD_SCALE: f32 = 800.0;
+const GROUND_SCALE: f32 = 2.0;
+const GRIDLINE_COUNT: u8 = 10;
 
 mod ui;
 
@@ -90,6 +97,11 @@ struct DemoApp {
     ui: DemoUI,
     scene_thread_proxy: SceneThreadProxy,
     renderer: Renderer,
+
+    device: DemoDevice,
+    ground_program: GroundProgram,
+    ground_solid_vertex_array: GroundSolidVertexArray,
+    ground_line_vertex_array: GroundLineVertexArray,
 }
 
 impl DemoApp {
@@ -121,10 +133,17 @@ impl DemoApp {
         let drawable_size = Size2D::new(drawable_width, drawable_height);
 
         let base_scene = load_scene(&options.input_path);
+        let renderer = Renderer::new(&drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
 
         let camera = if options.threed { Camera::three_d() } else { Camera::two_d() };
+
+        let grid_vertex_positions = create_grid_vertex_positions();
+        let ground_program = GroundProgram::new();
+        let ground_solid_vertex_array =
+            GroundSolidVertexArray::new(&ground_program, &renderer.quad_vertex_positions_buffer());
+        let ground_line_vertex_array = GroundLineVertexArray::new(&ground_program);
 
         DemoApp {
             window,
@@ -144,7 +163,12 @@ impl DemoApp {
 
             ui: DemoUI::new(options),
             scene_thread_proxy,
-            renderer: Renderer::new(&drawable_size),
+            renderer,
+
+            device: DemoDevice,
+            ground_program,
+            ground_solid_vertex_array,
+            ground_line_vertex_array,
         }
     }
 
@@ -165,31 +189,14 @@ impl DemoApp {
 
     fn build_scene(&mut self) {
         let (drawable_width, drawable_height) = self.window.drawable_size();
-        let drawable_size = Size2D::new(drawable_width, drawable_height);
+        let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
 
         let render_transform = match self.camera {
-            Camera::ThreeD { ref mut position, velocity, yaw, pitch } => {
-                let rotation = Transform3DF32::from_rotation(-yaw, -pitch, 0.0);
-
-                if !velocity.is_zero() {
-                    *position = *position + rotation.transform_point(velocity);
+            Camera::ThreeD { ref mut transform, ref mut velocity } => {
+                if transform.offset(*velocity) {
                     self.dirty = true;
                 }
-
-                let aspect = drawable_size.width as f32 / drawable_size.height as f32;
-                let mut transform =
-                    Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
-
-                transform = transform.post_mul(&Transform3DF32::from_scale(WORLD_SCALE,
-                                                                           WORLD_SCALE,
-                                                                           WORLD_SCALE));
-                transform = transform.post_mul(&Transform3DF32::from_rotation(yaw, pitch, 0.0));
-                let translation = position.scale(-1.0);
-                transform = transform.post_mul(&Transform3DF32::from_translation(translation.x(),
-                                                                                translation.y(),
-                                                                                translation.z()));
-
-                RenderTransform::Perspective(Perspective::new(&transform, &drawable_size))
+                RenderTransform::Perspective(transform.to_perspective(drawable_size, true))
             }
             Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         };
@@ -242,10 +249,9 @@ impl DemoApp {
                     ui_event = UIEvent::MouseDown(point);
                 }
                 Event::MouseMotion { xrel, yrel, .. } if self.mouselook_enabled => {
-                    if let Camera::ThreeD { ref mut yaw, ref mut pitch, .. } =
-                            self.camera {
-                        *yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                        *pitch -= yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                    if let Camera::ThreeD { ref mut transform, .. } = self.camera {
+                        transform.yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                        transform.pitch += yrel as f32 * MOUSELOOK_ROTATION_SPEED;
                         self.dirty = true;
                     }
                 }
@@ -315,104 +321,154 @@ impl DemoApp {
     fn draw_scene(&mut self, render_msg: SceneToMainMsg, mut ui_event: UIEvent) {
         let SceneToMainMsg::Render { built_scene, tile_time } = render_msg;
 
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::ClearColor(BACKGROUND_COLOR.r as f32 / 255.0,
-                           BACKGROUND_COLOR.g as f32 / 255.0,
-                           BACKGROUND_COLOR.b as f32 / 255.0,
-                           BACKGROUND_COLOR.a as f32 / 255.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+        self.device.clear();
+        self.draw_environment();
+        self.render_vector_scene(&built_scene);
 
-            if self.ui.gamma_correction_effect_enabled {
-                self.renderer.enable_gamma_correction(BACKGROUND_COLOR);
-            } else {
-                self.renderer.disable_gamma_correction();
+        let rendering_time = self.renderer.shift_timer_query();
+        self.renderer.debug_ui.add_sample(tile_time, rendering_time);
+        self.renderer.debug_ui.draw();
+
+        if !ui_event.is_none() {
+            self.dirty = true;
+        }
+
+        let mut ui_action = UIAction::None;
+        self.ui.update(&mut self.renderer.debug_ui, &mut ui_event, &mut ui_action);
+        self.handle_ui_action(&mut ui_action);
+
+        // Switch camera mode (2D/3D) if requested.
+        //
+        // FIXME(pcwalton): This mess should really be an MVC setup.
+        match (&self.camera, self.ui.threed_enabled) {
+            (&Camera::TwoD { .. }, true) => self.camera = Camera::three_d(),
+            (&Camera::ThreeD { .. }, false) => self.camera = Camera::two_d(),
+            _ => {}
+        }
+
+        match ui_event {
+            UIEvent::MouseDown(_) if self.camera.is_3d() => {
+                // If nothing handled the mouse-down event, toggle mouselook.
+                self.mouselook_enabled = !self.mouselook_enabled;
             }
-
-            if self.ui.subpixel_aa_effect_enabled {
-                self.renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
-            } else {
-                self.renderer.disable_subpixel_aa();
-            }
-
-            self.renderer.render_scene(&built_scene);
-
-            let rendering_time = self.renderer.shift_timer_query();
-            self.renderer.debug_ui.add_sample(tile_time, rendering_time);
-            self.renderer.debug_ui.draw();
-
-            if !ui_event.is_none() {
-                self.dirty = true;
-            }
-
-            let mut ui_action = UIAction::None;
-            self.ui.update(&mut self.renderer.debug_ui, &mut ui_event, &mut ui_action);
-
-            // Handle UI actions.
-            match ui_action {
-                UIAction::None => {}
-                UIAction::OpenFile(path) => {
-                    let scene = load_scene(&path);
-                    self.scene_thread_proxy.load_scene(scene);
-                    update_drawable_size(&self.window, &self.scene_thread_proxy);
-                    self.dirty = true;
-                }
-                UIAction::ZoomIn => {
-                    if let Camera::TwoD(ref mut transform) = self.camera {
-                        let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
-                        let center = center_of_window(&self.window);
-                        *transform = transform.post_translate(-center)
-                                              .post_scale(scale)
-                                              .post_translate(center);
-                        self.dirty = true;
-                    }
-                }
-                UIAction::ZoomOut => {
-                    if let Camera::TwoD(ref mut transform) = self.camera {
-                        let scale = Point2DF32::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
-                        let center = center_of_window(&self.window);
-                        *transform = transform.post_translate(-center)
-                                              .post_scale(scale)
-                                              .post_translate(center);
-                        self.dirty = true;
-                    }
-                }
-                UIAction::Rotate(theta) => {
-                    if let Camera::TwoD(ref mut transform) = self.camera {
-                        let old_rotation = transform.rotation();
-                        let center = center_of_window(&self.window);
-                        *transform = transform.post_translate(-center)
-                                              .post_rotate(theta - old_rotation)
-                                              .post_translate(center);
-                    }
+            UIEvent::MouseDragged { relative_position, .. } => {
+                if let Camera::TwoD(ref mut transform) = self.camera {
+                    *transform = transform.post_translate(relative_position.to_f32());
                 }
             }
-
-            // Switch camera mode (2D/3D) if requested.
-            //
-            // FIXME(pcwalton): This mess should really be an MVC setup.
-            match (&self.camera, self.ui.threed_enabled) {
-                (&Camera::TwoD { .. }, true) => self.camera = Camera::three_d(),
-                (&Camera::ThreeD { .. }, false) => self.camera = Camera::two_d(),
-                _ => {}
-            }
-
-            match ui_event {
-                UIEvent::MouseDown(_) if self.camera.is_3d() => {
-                    // If nothing handled the mouse-down event, toggle mouselook.
-                    self.mouselook_enabled = !self.mouselook_enabled;
-                }
-                UIEvent::MouseDragged { relative_position, .. } => {
-                    if let Camera::TwoD(ref mut transform) = self.camera {
-                        *transform = transform.post_translate(relative_position.to_f32());
-                    }
-                }
-                _ => {}
-            }
+            _ => {}
         }
 
         self.window.gl_swap_window();
         self.frame_counter += 1;
+    }
+
+    fn draw_environment(&self) {
+        let transform = match self.camera {
+            Camera::TwoD(..) => return,
+            Camera::ThreeD { ref transform, .. } => *transform,
+        };
+
+        let (drawable_width, drawable_height) = self.window.drawable_size();
+        let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
+        let perspective = transform.to_perspective(drawable_size, false);
+
+        unsafe {
+            let mut transform = perspective.transform;
+            transform =
+                transform.post_mul(&Transform3DF32::from_scale(GROUND_SCALE, 1.0, GROUND_SCALE));
+            gl::BindVertexArray(self.ground_solid_vertex_array.vertex_array.gl_vertex_array);
+            gl::UseProgram(self.ground_program.program.gl_program);
+            gl::UniformMatrix4fv(self.ground_program.transform_uniform.location,
+                                 1,
+                                 gl::FALSE,
+                                 transform.as_ptr());
+            let color = GROUND_SOLID_COLOR.to_f32();
+            gl::Uniform4f(self.ground_program.color_uniform.location,
+                          color.r(),
+                          color.g(),
+                          color.b(),
+                          color.a());
+            gl::Disable(gl::BLEND);
+            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
+
+            let mut transform = perspective.transform;
+            let gridline_scale = GROUND_SCALE / GRIDLINE_COUNT as f32;
+            transform = transform.post_mul(&Transform3DF32::from_scale(gridline_scale,
+                                                                       1.0,
+                                                                       gridline_scale));
+            gl::BindVertexArray(self.ground_line_vertex_array.vertex_array.gl_vertex_array);
+            gl::UseProgram(self.ground_program.program.gl_program);
+            gl::UniformMatrix4fv(self.ground_program.transform_uniform.location,
+                                 1,
+                                 gl::FALSE,
+                                 transform.as_ptr());
+            let color = GROUND_LINE_COLOR.to_f32();
+            gl::Uniform4f(self.ground_program.color_uniform.location,
+                          color.r(),
+                          color.g(),
+                          color.b(),
+                          color.a());
+            gl::Disable(gl::BLEND);
+            gl::DrawArrays(gl::LINES, 0, (GRIDLINE_COUNT as GLsizei + 1) * 4);
+        }
+    }
+
+    fn render_vector_scene(&mut self, built_scene: &BuiltScene) {
+        if self.ui.gamma_correction_effect_enabled {
+            self.renderer.enable_gamma_correction(BACKGROUND_COLOR);
+        } else {
+            self.renderer.disable_gamma_correction();
+        }
+
+        if self.ui.subpixel_aa_effect_enabled {
+            self.renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
+        } else {
+            self.renderer.disable_subpixel_aa();
+        }
+
+        self.renderer.render_scene(&built_scene);
+    }
+
+    fn handle_ui_action(&mut self, ui_action: &mut UIAction) {
+        match ui_action {
+            UIAction::None => {}
+            UIAction::OpenFile(ref path) => {
+                let scene = load_scene(&path);
+                self.scene_thread_proxy.load_scene(scene);
+                update_drawable_size(&self.window, &self.scene_thread_proxy);
+                self.dirty = true;
+            }
+            UIAction::ZoomIn => {
+                if let Camera::TwoD(ref mut transform) = self.camera {
+                    let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
+                    let center = center_of_window(&self.window);
+                    *transform = transform.post_translate(-center)
+                                          .post_scale(scale)
+                                          .post_translate(center);
+                    self.dirty = true;
+                }
+            }
+            UIAction::ZoomOut => {
+                if let Camera::TwoD(ref mut transform) = self.camera {
+                    let scale = Point2DF32::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
+                    let center = center_of_window(&self.window);
+                    *transform = transform.post_translate(-center)
+                                          .post_scale(scale)
+                                          .post_translate(center);
+                    self.dirty = true;
+                }
+            }
+            UIAction::Rotate(theta) => {
+                if let Camera::TwoD(ref mut transform) = self.camera {
+                    let old_rotation = transform.rotation();
+                    let center = center_of_window(&self.window);
+                    *transform = transform.post_translate(-center)
+                                          .post_rotate(*theta - old_rotation)
+                                          .post_translate(center);
+                }
+            }
+        }
     }
 }
 
@@ -598,7 +654,7 @@ fn center_of_window(window: &Window) -> Point2DF32 {
 
 enum Camera {
     TwoD(Transform2DF32),
-    ThreeD { position: Point3DF32, velocity: Point3DF32, yaw: f32, pitch: f32 },
+    ThreeD { transform: CameraTransform3D, velocity: Point3DF32 },
 }
 
 impl Camera {
@@ -607,15 +663,143 @@ impl Camera {
     }
 
     fn three_d() -> Camera {
-        Camera::ThreeD {
-            position: Point3DF32::new(500.0, 500.0, 3000.0, 1.0),
-            velocity: Point3DF32::new(0.0, 0.0, 0.0, 1.0),
-            yaw: 0.0,
-            pitch: 0.0,
-        }
+        Camera::ThreeD { transform: CameraTransform3D::new(), velocity: Point3DF32::default() }
     }
 
     fn is_3d(&self) -> bool {
         match *self { Camera::ThreeD { .. } => true, Camera::TwoD { .. } => false }
     }
+}
+
+#[derive(Clone, Copy)]
+struct CameraTransform3D {
+    position: Point3DF32,
+    yaw: f32,
+    pitch: f32,
+}
+
+impl CameraTransform3D {
+    fn new() -> CameraTransform3D {
+        CameraTransform3D {
+            position: Point3DF32::new(500.0, 500.0, 3000.0, 1.0),
+            yaw: 0.0,
+            pitch: 0.0,
+        }
+    }
+
+    fn offset(&mut self, vector: Point3DF32) -> bool {
+        let update = !vector.is_zero();
+        if update {
+            let rotation = Transform3DF32::from_rotation(-self.yaw, -self.pitch, 0.0);
+            self.position = self.position + rotation.transform_point(vector);
+        }
+        update
+    }
+
+    fn to_perspective(&self, drawable_size: Point2DI32, flip_y: bool) -> Perspective {
+        let aspect = drawable_size.x() as f32 / drawable_size.y() as f32;
+        let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
+
+        let scale_inv = 1.0 / WORLD_SCALE;
+        transform = transform.post_mul(&Transform3DF32::from_rotation(self.yaw, self.pitch, 0.0));
+        transform = transform.post_mul(&Transform3DF32::from_uniform_scale(scale_inv));
+        transform = transform.post_mul(&Transform3DF32::from_translation(-self.position.x(),
+                                                                         -self.position.y(),
+                                                                         -self.position.z()));
+
+        if flip_y {
+            transform = transform.post_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0));
+            transform =
+                transform.post_mul(&Transform3DF32::from_translation(0.0, -WORLD_SCALE, 0.0));
+        }
+
+        let drawable_size = Size2D::new(drawable_size.x() as u32, drawable_size.y() as u32);
+        Perspective::new(&transform, &drawable_size)
+    }
+}
+
+struct DemoDevice;
+
+impl DemoDevice {
+    fn clear(&self) {
+        let color = BACKGROUND_COLOR.to_f32();
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::ClearColor(color.r(), color.g(), color.b(), color.a());
+            gl::Clear(gl::COLOR_BUFFER_BIT);
+        }
+    }
+}
+
+struct GroundProgram {
+    program: Program,
+    transform_uniform: Uniform,
+    color_uniform: Uniform,
+}
+
+impl GroundProgram {
+    fn new() -> GroundProgram {
+        let program = Program::new("demo_ground");
+        let transform_uniform = Uniform::new(&program, "Transform");
+        let color_uniform = Uniform::new(&program, "Color");
+        GroundProgram { program, transform_uniform, color_uniform }
+    }
+}
+
+struct GroundSolidVertexArray {
+    vertex_array: VertexArray,
+}
+
+impl GroundSolidVertexArray {
+    fn new(ground_program: &GroundProgram, quad_vertex_positions_buffer: &Buffer)
+           -> GroundSolidVertexArray {
+        let vertex_array = VertexArray::new();
+        unsafe {
+            let position_attr = VertexAttr::new(&ground_program.program, "Position");
+
+            gl::BindVertexArray(vertex_array.gl_vertex_array);
+            gl::UseProgram(ground_program.program.gl_program);
+            gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
+            position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
+        }
+
+        GroundSolidVertexArray { vertex_array }
+    }
+}
+
+struct GroundLineVertexArray {
+    vertex_array: VertexArray,
+    grid_vertex_positions_buffer: Buffer,
+}
+
+impl GroundLineVertexArray {
+    fn new(ground_program: &GroundProgram) -> GroundLineVertexArray {
+        let grid_vertex_positions_buffer = Buffer::new();
+        grid_vertex_positions_buffer.upload(&create_grid_vertex_positions(),
+                                            BufferTarget::Vertex,
+                                            BufferUploadMode::Static);
+
+        let vertex_array = VertexArray::new();
+        unsafe {
+            let position_attr = VertexAttr::new(&ground_program.program, "Position");
+
+            gl::BindVertexArray(vertex_array.gl_vertex_array);
+            gl::UseProgram(ground_program.program.gl_program);
+            gl::BindBuffer(gl::ARRAY_BUFFER, grid_vertex_positions_buffer.gl_buffer);
+            position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
+        }
+
+        GroundLineVertexArray { vertex_array, grid_vertex_positions_buffer }
+    }
+}
+
+fn create_grid_vertex_positions() -> Vec<(u8, u8)> {
+    let mut positions = vec![];
+    for index in 0..(GRIDLINE_COUNT + 1) {
+        positions.extend_from_slice(&[
+            (0, index), (GRIDLINE_COUNT, index),
+            (index, 0), (index, GRIDLINE_COUNT),
+        ]);
+    }
+    positions
 }
