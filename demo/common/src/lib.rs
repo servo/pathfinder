@@ -108,6 +108,8 @@ impl DemoApp {
         let gl_attributes = sdl_video.gl_attr();
         gl_attributes.set_context_profile(GLProfile::Core);
         gl_attributes.set_context_version(3, 3);
+        gl_attributes.set_depth_size(24);
+        gl_attributes.set_stencil_size(8);
 
         let window =
             sdl_video.window("Pathfinder Demo", MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT)
@@ -370,24 +372,7 @@ impl DemoApp {
         let perspective = transform.to_perspective(drawable_size, false);
 
         unsafe {
-            let mut transform = perspective.transform;
-            transform =
-                transform.post_mul(&Transform3DF32::from_scale(GROUND_SCALE, 1.0, GROUND_SCALE));
-            gl::BindVertexArray(self.ground_solid_vertex_array.vertex_array.gl_vertex_array);
-            gl::UseProgram(self.ground_program.program.gl_program);
-            gl::UniformMatrix4fv(self.ground_program.transform_uniform.location,
-                                 1,
-                                 gl::FALSE,
-                                 transform.as_ptr());
-            let color = GROUND_SOLID_COLOR.to_f32();
-            gl::Uniform4f(self.ground_program.color_uniform.location,
-                          color.r(),
-                          color.g(),
-                          color.b(),
-                          color.a());
-            gl::Disable(gl::BLEND);
-            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
-
+            // Use the stencil buffer to avoid Z-fighting with the gridlines.
             let mut transform = perspective.transform;
             let gridline_scale = GROUND_SCALE / GRIDLINE_COUNT as f32;
             transform = transform.post_mul(&Transform3DF32::from_scale(gridline_scale,
@@ -405,8 +390,42 @@ impl DemoApp {
                           color.g(),
                           color.b(),
                           color.a());
+            gl::DepthFunc(gl::LESS);
+            gl::DepthMask(gl::FALSE);
+            gl::Enable(gl::DEPTH_TEST);
+            gl::StencilFunc(gl::ALWAYS, 1, !0);
+            gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
+            gl::Enable(gl::STENCIL_TEST);
             gl::Disable(gl::BLEND);
             gl::DrawArrays(gl::LINES, 0, (GRIDLINE_COUNT as GLsizei + 1) * 4);
+            gl::Disable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
+
+            let mut transform = perspective.transform;
+            transform =
+                transform.post_mul(&Transform3DF32::from_scale(GROUND_SCALE, 1.0, GROUND_SCALE));
+            gl::BindVertexArray(self.ground_solid_vertex_array.vertex_array.gl_vertex_array);
+            gl::UseProgram(self.ground_program.program.gl_program);
+            gl::UniformMatrix4fv(self.ground_program.transform_uniform.location,
+                                 1,
+                                 gl::FALSE,
+                                 transform.as_ptr());
+            let color = GROUND_SOLID_COLOR.to_f32();
+            gl::Uniform4f(self.ground_program.color_uniform.location,
+                          color.r(),
+                          color.g(),
+                          color.b(),
+                          color.a());
+            gl::DepthFunc(gl::LESS);
+            gl::DepthMask(gl::TRUE);
+            gl::Enable(gl::DEPTH_TEST);
+            gl::StencilFunc(gl::NOTEQUAL, 1, !0);
+            gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
+            gl::Enable(gl::STENCIL_TEST);
+            gl::Disable(gl::BLEND);
+            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
+            gl::Disable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
         }
     }
 
@@ -732,7 +751,11 @@ impl DemoDevice {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             gl::ClearColor(color.r(), color.g(), color.b(), color.a());
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::ClearDepth(1.0);
+            gl::ClearStencil(0);
+            gl::DepthMask(gl::TRUE);
+            gl::StencilMask(!0);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
         }
     }
 }

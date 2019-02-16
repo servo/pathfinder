@@ -235,6 +235,8 @@ impl Renderer {
                           TILE_HEIGHT as GLfloat);
             self.area_lut_texture.bind(0);
             gl::Uniform1i(self.fill_program.area_lut_uniform.location, 0);
+            gl::Disable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
             gl::BlendEquation(gl::FUNC_ADD);
             gl::BlendFunc(gl::ONE, gl::ONE);
             gl::Enable(gl::BLEND);
@@ -269,6 +271,7 @@ impl Renderer {
             // FIXME(pcwalton): Fill this in properly!
             gl::Uniform2f(self.mask_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
             self.enable_blending();
+            self.enable_depth_test();
             gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, batch.mask_tiles.len() as GLint);
             gl::Disable(gl::BLEND);
         }
@@ -295,6 +298,9 @@ impl Renderer {
             // FIXME(pcwalton): Fill this in properly!
             gl::Uniform2f(self.solid_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
             gl::Disable(gl::BLEND);
+            gl::DepthMask(gl::FALSE);
+            gl::Enable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
             gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, solid_tiles.len() as GLint);
         }
     }
@@ -399,6 +405,14 @@ impl Renderer {
             gl::BlendEquation(gl::FUNC_ADD);
             gl::BlendFuncSeparate(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::ONE, gl::ONE);
             gl::Enable(gl::BLEND);
+        }
+    }
+
+    fn enable_depth_test(&self) {
+        unsafe {
+            gl::DepthMask(gl::FALSE);
+            gl::Enable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
         }
     }
 }
