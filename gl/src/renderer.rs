@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::debug::DebugUI;
-use crate::device::{Buffer, BufferTarget, BufferUploadMode, Framebuffer, Program, Texture};
+use crate::device::{Buffer, BufferTarget, BufferUploadMode, Device, Framebuffer, Program, Texture};
 use crate::device::{TimerQuery, Uniform, VertexArray, VertexAttr};
 use euclid::Size2D;
 use gl::types::{GLfloat, GLint};
@@ -63,15 +63,15 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(main_framebuffer_size: &Size2D<u32>) -> Renderer {
-        let fill_program = FillProgram::new();
-        let solid_tile_program = SolidTileProgram::new();
-        let mask_tile_program = MaskTileProgram::new();
+    pub fn new(device: &Device, main_framebuffer_size: &Size2D<u32>) -> Renderer {
+        let fill_program = FillProgram::new(device);
+        let solid_tile_program = SolidTileProgram::new(device);
+        let mask_tile_program = MaskTileProgram::new(device);
 
-        let postprocess_program = PostprocessProgram::new();
+        let postprocess_program = PostprocessProgram::new(device);
 
-        let area_lut_texture = Texture::from_png("area-lut");
-        let gamma_lut_texture = Texture::from_png("gamma-lut");
+        let area_lut_texture = device.create_texture_from_png("area-lut");
+        let gamma_lut_texture = device.create_texture_from_png("gamma-lut");
 
         let quad_vertex_positions_buffer = Buffer::new();
         quad_vertex_positions_buffer.upload(&QUAD_VERTEX_POSITIONS,
@@ -94,7 +94,7 @@ impl Renderer {
         let fill_colors_texture = Texture::new_rgba(&Size2D::new(FILL_COLORS_TEXTURE_WIDTH,
                                                                  FILL_COLORS_TEXTURE_HEIGHT));
 
-        let debug_ui = DebugUI::new(main_framebuffer_size);
+        let debug_ui = DebugUI::new(device, main_framebuffer_size);
 
         Renderer {
             fill_program,
@@ -509,8 +509,8 @@ struct FillProgram {
 }
 
 impl FillProgram {
-    fn new() -> FillProgram {
-        let program = Program::new("fill");
+    fn new(device: &Device) -> FillProgram {
+        let program = device.create_program("fill");
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let tile_size_uniform = Uniform::new(&program, "TileSize");
         let area_lut_uniform = Uniform::new(&program, "AreaLUT");
@@ -528,8 +528,8 @@ struct SolidTileProgram {
 }
 
 impl SolidTileProgram {
-    fn new() -> SolidTileProgram {
-        let program = Program::new("solid_tile");
+    fn new(device: &Device) -> SolidTileProgram {
+        let program = device.create_program("solid_tile");
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let tile_size_uniform = Uniform::new(&program, "TileSize");
         let fill_colors_texture_uniform = Uniform::new(&program, "FillColorsTexture");
@@ -558,8 +558,8 @@ struct MaskTileProgram {
 }
 
 impl MaskTileProgram {
-    fn new() -> MaskTileProgram {
-        let program = Program::new("mask_tile");
+    fn new(device: &Device) -> MaskTileProgram {
+        let program = device.create_program("mask_tile");
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let tile_size_uniform = Uniform::new(&program, "TileSize");
         let stencil_texture_uniform = Uniform::new(&program, "StencilTexture");
@@ -590,8 +590,8 @@ struct PostprocessProgram {
 }
 
 impl PostprocessProgram {
-    fn new() -> PostprocessProgram {
-        let program = Program::new("post");
+    fn new(device: &Device) -> PostprocessProgram {
+        let program = device.create_program("post");
         let source_uniform = Uniform::new(&program, "Source");
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let kernel_uniform = Uniform::new(&program, "Kernel");

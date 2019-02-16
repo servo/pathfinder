@@ -15,7 +15,8 @@
 //!
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
-use crate::device::{Buffer, BufferTarget, BufferUploadMode, Program, Texture, Uniform, VertexAttr};
+use crate::device::{Buffer, BufferTarget, BufferUploadMode, Device, Program, Texture};
+use crate::device::{Uniform, VertexAttr};
 use euclid::Size2D;
 use gl::types::{GLfloat, GLint, GLsizei, GLuint};
 use gl;
@@ -50,8 +51,7 @@ const ICON_SIZE: i32 = 48;
 
 static INVERTED_TEXT_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255      };
 
-static JSON_PATH: &'static str = "resources/debug-font.json";
-
+static FONT_JSON_FILENAME: &'static str = "debug-font.json";
 static FONT_PNG_NAME: &'static str = "debug-font";
 
 static QUAD_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
@@ -82,8 +82,11 @@ struct DebugCharacter {
 }
 
 impl DebugFont {
-    fn load() -> DebugFont {
-        serde_json::from_reader(BufReader::new(File::open(JSON_PATH).unwrap())).unwrap()
+    fn load(device: &Device) -> DebugFont {
+        let mut path = device.resources_directory.clone();
+        path.push(FONT_JSON_FILENAME);
+
+        serde_json::from_reader(BufReader::new(File::open(path).unwrap())).unwrap()
     }
 }
 
@@ -102,18 +105,18 @@ pub struct DebugUI {
 }
 
 impl DebugUI {
-    pub fn new(framebuffer_size: &Size2D<u32>) -> DebugUI {
-        let texture_program = DebugTextureProgram::new();
+    pub fn new(device: &Device, framebuffer_size: &Size2D<u32>) -> DebugUI {
+        let texture_program = DebugTextureProgram::new(device);
         let texture_vertex_array = DebugTextureVertexArray::new(&texture_program);
-        let font = DebugFont::load();
+        let font = DebugFont::load(device);
 
-        let solid_program = DebugSolidProgram::new();
+        let solid_program = DebugSolidProgram::new(device);
         let solid_vertex_array = DebugSolidVertexArray::new(&solid_program);
         solid_vertex_array.index_buffer.upload(&QUAD_INDICES,
                                                BufferTarget::Index,
                                                BufferUploadMode::Static);
 
-        let font_texture = Texture::from_png(FONT_PNG_NAME);
+        let font_texture = device.create_texture_from_png(FONT_PNG_NAME);
 
         DebugUI {
             framebuffer_size: *framebuffer_size,
@@ -392,8 +395,8 @@ struct DebugTextureProgram {
 }
 
 impl DebugTextureProgram {
-    fn new() -> DebugTextureProgram {
-        let program = Program::new("debug_texture");
+    fn new(device: &Device) -> DebugTextureProgram {
+        let program = device.create_program("debug_texture");
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let texture_size_uniform = Uniform::new(&program, "TextureSize");
         let texture_uniform = Uniform::new(&program, "Texture");
@@ -415,8 +418,8 @@ struct DebugSolidProgram {
 }
 
 impl DebugSolidProgram {
-    fn new() -> DebugSolidProgram {
-        let program = Program::new("debug_solid");
+    fn new(device: &Device) -> DebugSolidProgram {
+        let program = device.create_program("debug_solid");
         let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
         let color_uniform = Uniform::new(&program, "Color");
         DebugSolidProgram { program, framebuffer_size_uniform, color_uniform }

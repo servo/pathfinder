@@ -12,11 +12,122 @@
 
 use euclid::Size2D;
 use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
+use std::env;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
 use std::mem;
+use std::path::PathBuf;
 use std::ptr;
+
+pub struct Device {
+    pub resources_directory: PathBuf,
+}
+
+impl Device {
+    #[inline]
+    pub fn new() -> Device {
+        Device { resources_directory: locate_resources_directory() }
+    }
+
+    #[inline]
+    pub fn create_texture_from_png(&self, name: &str) -> Texture {
+        let mut path = self.resources_directory.clone();
+        path.push("textures");
+        path.push(format!("{}.png", name));
+
+        let image = image::open(&path).unwrap().to_luma();
+
+        let mut texture = Texture {
+            gl_texture: 0,
+            size: Size2D::new(image.width(), image.height()),
+        };
+
+        unsafe {
+            gl::GenTextures(1, &mut texture.gl_texture);
+            texture.bind(0);
+            gl::TexImage2D(gl::TEXTURE_2D,
+                           0,
+                           gl::RED as GLint,
+                           image.width() as GLsizei,
+                           image.height() as GLsizei,
+                           0,
+                           gl::RED,
+                           gl::UNSIGNED_BYTE,
+                           image.as_ptr() as *const GLvoid);
+        }
+
+        texture.set_parameters();
+        texture
+    }
+
+    fn create_shader(&self, name: &str, kind: ShaderKind) -> Shader {
+        let suffix = match kind { ShaderKind::Vertex => 'v', ShaderKind::Fragment => 'f' };
+        let mut path = self.resources_directory.clone();
+        path.push("shaders");
+        path.push(format!("{}.{}s.glsl", name, suffix));
+
+        let mut source = vec![];
+        File::open(&path).unwrap().read_to_end(&mut source).unwrap();
+        unsafe {
+            let gl_shader_kind = match kind {
+                ShaderKind::Vertex => gl::VERTEX_SHADER,
+                ShaderKind::Fragment => gl::FRAGMENT_SHADER,
+            };
+            let gl_shader = gl::CreateShader(gl_shader_kind);
+            gl::ShaderSource(gl_shader,
+                             1,
+                             [source.as_ptr() as *const GLchar].as_ptr(),
+                             [source.len() as GLint].as_ptr());
+            gl::CompileShader(gl_shader);
+
+            let mut compile_status = 0;
+            gl::GetShaderiv(gl_shader, gl::COMPILE_STATUS, &mut compile_status);
+            if compile_status != gl::TRUE as GLint {
+                let mut info_log_length = 0;
+                gl::GetShaderiv(gl_shader, gl::INFO_LOG_LENGTH, &mut info_log_length);
+                let mut info_log = vec![0; info_log_length as usize];
+                gl::GetShaderInfoLog(gl_shader,
+                                     info_log.len() as GLint,
+                                     ptr::null_mut(),
+                                     info_log.as_mut_ptr() as *mut GLchar);
+                eprintln!("Shader info log:\n{}", String::from_utf8_lossy(&info_log));
+                panic!("{:?} shader '{}' compilation failed", kind, name);
+            }
+
+            Shader { gl_shader }
+        }
+    }
+
+    pub fn create_program(&self, name: &str) -> Program {
+        let vertex_shader = self.create_shader(name, ShaderKind::Vertex);
+        let fragment_shader = self.create_shader(name, ShaderKind::Fragment);
+
+        let gl_program;
+        unsafe {
+            gl_program = gl::CreateProgram();
+            gl::AttachShader(gl_program, vertex_shader.gl_shader);
+            gl::AttachShader(gl_program, fragment_shader.gl_shader);
+            gl::LinkProgram(gl_program);
+
+            let mut link_status = 0;
+            gl::GetProgramiv(gl_program, gl::LINK_STATUS, &mut link_status);
+            if link_status != gl::TRUE as GLint {
+                let mut info_log_length = 0;
+                gl::GetProgramiv(gl_program, gl::INFO_LOG_LENGTH, &mut info_log_length);
+                let mut info_log = vec![0; info_log_length as usize];
+                gl::GetProgramInfoLog(gl_program,
+                                      info_log.len() as GLint,
+                                      ptr::null_mut(),
+                                      info_log.as_mut_ptr() as *mut GLchar);
+                eprintln!("Program info log:\n{}", String::from_utf8_lossy(&info_log));
+                panic!("Program '{}' linking failed", name);
+            }
+        }
+
+        Program { gl_program, vertex_shader, fragment_shader }
+    }
+}
 
 pub struct VertexArray {
     pub gl_vertex_array: GLuint,
@@ -199,37 +310,6 @@ pub struct Program {
     fragment_shader: Shader,
 }
 
-impl Program {
-    pub fn new(name: &'static str) -> Program {
-        let vertex_shader = Shader::new(name, ShaderKind::Vertex);
-        let fragment_shader = Shader::new(name, ShaderKind::Fragment);
-
-        let gl_program;
-        unsafe {
-            gl_program = gl::CreateProgram();
-            gl::AttachShader(gl_program, vertex_shader.gl_shader);
-            gl::AttachShader(gl_program, fragment_shader.gl_shader);
-            gl::LinkProgram(gl_program);
-
-            let mut link_status = 0;
-            gl::GetProgramiv(gl_program, gl::LINK_STATUS, &mut link_status);
-            if link_status != gl::TRUE as GLint {
-                let mut info_log_length = 0;
-                gl::GetProgramiv(gl_program, gl::INFO_LOG_LENGTH, &mut info_log_length);
-                let mut info_log = vec![0; info_log_length as usize];
-                gl::GetProgramInfoLog(gl_program,
-                                      info_log.len() as GLint,
-                                      ptr::null_mut(),
-                                      info_log.as_mut_ptr() as *mut GLchar);
-                eprintln!("Program info log:\n{}", String::from_utf8_lossy(&info_log));
-                panic!("Program '{}' linking failed", name);
-            }
-        }
-
-        Program { gl_program, vertex_shader, fragment_shader }
-    }
-}
-
 impl Drop for Program {
     fn drop(&mut self) {
         unsafe {
@@ -240,44 +320,6 @@ impl Drop for Program {
 
 struct Shader {
     gl_shader: GLuint,
-}
-
-impl Shader {
-    fn new(name: &str, kind: ShaderKind) -> Shader {
-        let suffix = match kind { ShaderKind::Vertex => 'v', ShaderKind::Fragment => 'f' };
-        // FIXME(pcwalton): Put the shaders somewhere else. Maybe compile them in?
-        let path = format!("shaders/{}.{}s.glsl", name, suffix);
-        let mut source = vec![];
-        File::open(&path).unwrap().read_to_end(&mut source).unwrap();
-        unsafe {
-            let gl_shader_kind = match kind {
-                ShaderKind::Vertex => gl::VERTEX_SHADER,
-                ShaderKind::Fragment => gl::FRAGMENT_SHADER,
-            };
-            let gl_shader = gl::CreateShader(gl_shader_kind);
-            gl::ShaderSource(gl_shader,
-                             1,
-                             [source.as_ptr() as *const GLchar].as_ptr(),
-                             [source.len() as GLint].as_ptr());
-            gl::CompileShader(gl_shader);
-
-            let mut compile_status = 0;
-            gl::GetShaderiv(gl_shader, gl::COMPILE_STATUS, &mut compile_status);
-            if compile_status != gl::TRUE as GLint {
-                let mut info_log_length = 0;
-                gl::GetShaderiv(gl_shader, gl::INFO_LOG_LENGTH, &mut info_log_length);
-                let mut info_log = vec![0; info_log_length as usize];
-                gl::GetShaderInfoLog(gl_shader,
-                                     info_log.len() as GLint,
-                                     ptr::null_mut(),
-                                     info_log.as_mut_ptr() as *mut GLchar);
-                eprintln!("Shader info log:\n{}", String::from_utf8_lossy(&info_log));
-                panic!("{:?} shader '{}' compilation failed", kind, name);
-            }
-
-            Shader { gl_shader }
-        }
-    }
 }
 
 impl Drop for Shader {
@@ -334,33 +376,6 @@ impl Texture {
                            gl::RGBA,
                            gl::UNSIGNED_BYTE,
                            ptr::null());
-        }
-
-        texture.set_parameters();
-        texture
-    }
-
-    pub fn from_png(name: &str) -> Texture {
-        let path = format!("resources/textures/{}.png", name);
-        let image = image::open(&path).unwrap().to_luma();
-
-        let mut texture = Texture {
-            gl_texture: 0,
-            size: Size2D::new(image.width(), image.height()),
-        };
-
-        unsafe {
-            gl::GenTextures(1, &mut texture.gl_texture);
-            texture.bind(0);
-            gl::TexImage2D(gl::TEXTURE_2D,
-                           0,
-                           gl::RED as GLint,
-                           image.width() as GLsizei,
-                           image.height() as GLsizei,
-                           0,
-                           gl::RED,
-                           gl::UNSIGNED_BYTE,
-                           image.as_ptr() as *const GLvoid);
         }
 
         texture.set_parameters();
@@ -457,4 +472,29 @@ impl TimerQuery {
             result
         }
     }
+}
+
+// FIXME(pcwalton): Do something better!
+fn locate_resources_directory() -> PathBuf {
+    let mut parent_directory = env::current_dir().unwrap();
+    loop {
+        // So ugly :(
+        let mut resources_directory = parent_directory.clone();
+        resources_directory.push("resources");
+        if resources_directory.is_dir() {
+            let mut shaders_directory = resources_directory.clone();
+            let mut textures_directory = resources_directory.clone();
+            shaders_directory.push("shaders");
+            textures_directory.push("textures");
+            if shaders_directory.is_dir() && textures_directory.is_dir() {
+                return resources_directory;
+            }
+        }
+
+        if !parent_directory.pop() {
+            break;
+        }
+    }
+
+    panic!("No suitable `resources/` directory found!");
 }

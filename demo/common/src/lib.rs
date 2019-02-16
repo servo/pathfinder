@@ -1,4 +1,4 @@
-// pathfinder/demo/src/main.rs
+// pathfinder/demo/common/src/lib.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -19,7 +19,7 @@ use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
-use pathfinder_gl::device::{Buffer, BufferTarget, BufferUploadMode, Program, Uniform};
+use pathfinder_gl::device::{Buffer, BufferTarget, BufferUploadMode, Device, Program, Uniform};
 use pathfinder_gl::device::{VertexArray, VertexAttr};
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
@@ -46,7 +46,7 @@ use usvg::{Options as UsvgOptions, Tree};
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-static DEFAULT_SVG_PATH: &'static str = "../resources/svg/ghostscript-tiger-big-opt.svg";
+static DEFAULT_SVG_FILENAME: &'static str = "ghostscript-tiger-big-opt.svg";
 
 const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
@@ -71,11 +71,7 @@ const GRIDLINE_COUNT: u8 = 10;
 
 mod ui;
 
-fn main() {
-    DemoApp::new().run();
-}
-
-struct DemoApp {
+pub struct DemoApp {
     window: Window,
     #[allow(dead_code)]
     sdl_context: Sdl,
@@ -105,9 +101,7 @@ struct DemoApp {
 }
 
 impl DemoApp {
-    fn new() -> DemoApp {
-        let options = Options::get();
-
+    pub fn new() -> DemoApp {
         let sdl_context = sdl2::init().unwrap();
         let sdl_video = sdl_context.video().unwrap();
 
@@ -128,19 +122,21 @@ impl DemoApp {
 
         let sdl_event_pump = sdl_context.event_pump().unwrap();
 
+        let device = Device::new();
+        let options = Options::get(&device);
+
         let (window_width, _) = window.size();
         let (drawable_width, drawable_height) = window.drawable_size();
         let drawable_size = Size2D::new(drawable_width, drawable_height);
 
         let base_scene = load_scene(&options.input_path);
-        let renderer = Renderer::new(&drawable_size);
+        let renderer = Renderer::new(&device, &drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
 
         let camera = if options.threed { Camera::three_d() } else { Camera::two_d() };
 
-        let grid_vertex_positions = create_grid_vertex_positions();
-        let ground_program = GroundProgram::new();
+        let ground_program = GroundProgram::new(&device);
         let ground_solid_vertex_array =
             GroundSolidVertexArray::new(&ground_program, &renderer.quad_vertex_positions_buffer());
         let ground_line_vertex_array = GroundLineVertexArray::new(&ground_program);
@@ -161,18 +157,18 @@ impl DemoApp {
             mouselook_enabled: false,
             dirty: true,
 
-            ui: DemoUI::new(options),
+            ui: DemoUI::new(&device, options),
             scene_thread_proxy,
             renderer,
 
-            device: DemoDevice,
+            device: DemoDevice { device },
             ground_program,
             ground_solid_vertex_array,
             ground_line_vertex_array,
         }
     }
 
-    fn run(&mut self) {
+    pub fn run(&mut self) {
         while !self.exit {
             // Update the scene.
             self.build_scene();
@@ -552,7 +548,7 @@ pub struct Options {
 }
 
 impl Options {
-    fn get() -> Options {
+    fn get(device: &Device) -> Options {
         let matches = App::new("tile-svg")
             .arg(
                 Arg::with_name("jobs")
@@ -570,13 +566,20 @@ impl Options {
             )
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
+
         let jobs: Option<usize> = matches
             .value_of("jobs")
             .map(|string| string.parse().unwrap());
         let threed = matches.is_present("3d");
+
         let input_path = match matches.value_of("INPUT") {
             Some(path) => PathBuf::from(path),
-            None => PathBuf::from(DEFAULT_SVG_PATH),
+            None => {
+                let mut path = device.resources_directory.clone();
+                path.push("svg");
+                path.push(DEFAULT_SVG_FILENAME);
+                path
+            }
         };
 
         // Set up Rayon.
@@ -718,7 +721,10 @@ impl CameraTransform3D {
     }
 }
 
-struct DemoDevice;
+struct DemoDevice {
+    #[allow(dead_code)]
+    device: Device,
+}
 
 impl DemoDevice {
     fn clear(&self) {
@@ -738,8 +744,8 @@ struct GroundProgram {
 }
 
 impl GroundProgram {
-    fn new() -> GroundProgram {
-        let program = Program::new("demo_ground");
+    fn new(device: &Device) -> GroundProgram {
+        let program = device.create_program("demo_ground");
         let transform_uniform = Uniform::new(&program, "Transform");
         let color_uniform = Uniform::new(&program, "Color");
         GroundProgram { program, transform_uniform, color_uniform }
@@ -769,6 +775,7 @@ impl GroundSolidVertexArray {
 
 struct GroundLineVertexArray {
     vertex_array: VertexArray,
+    #[allow(dead_code)]
     grid_vertex_positions_buffer: Buffer,
 }
 

@@ -14,7 +14,7 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::debug::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, DebugUI, PADDING};
 use pathfinder_gl::debug::{TEXT_COLOR, WINDOW_COLOR};
-use pathfinder_gl::device::Texture;
+use pathfinder_gl::device::{Device, Texture};
 use std::f32::consts::PI;
 use std::path::PathBuf;
 
@@ -58,12 +58,12 @@ pub struct DemoUI {
 }
 
 impl DemoUI {
-    pub fn new(options: Options) -> DemoUI {
-        let effects_texture = Texture::from_png(EFFECTS_PNG_NAME);
-        let open_texture = Texture::from_png(OPEN_PNG_NAME);
-        let rotate_texture = Texture::from_png(ROTATE_PNG_NAME);
-        let zoom_in_texture = Texture::from_png(ZOOM_IN_PNG_NAME);
-        let zoom_out_texture = Texture::from_png(ZOOM_OUT_PNG_NAME);
+    pub fn new(device: &Device, options: Options) -> DemoUI {
+        let effects_texture = device.create_texture_from_png(EFFECTS_PNG_NAME);
+        let open_texture = device.create_texture_from_png(OPEN_PNG_NAME);
+        let rotate_texture = device.create_texture_from_png(ROTATE_PNG_NAME);
+        let zoom_in_texture = device.create_texture_from_png(ZOOM_IN_PNG_NAME);
+        let zoom_out_texture = device.create_texture_from_png(ZOOM_OUT_PNG_NAME);
 
         DemoUI {
             effects_texture,
