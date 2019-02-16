@@ -1,8 +1,10 @@
 /utils/gamma-lut/target
 .DS_Store
 target
-node_modules
 .cache
+/site/package-lock.json
+/site/dist
+node_modules
 
 # Editors
 *.swp
