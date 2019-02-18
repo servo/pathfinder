@@ -10,7 +10,7 @@
 
 //! A set of paths to be rendered.
 
-use crate::builder::{PreparedRenderOptions, PreparedRenderTransform, RenderOptions};
+use crate::builder::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::gpu_data::BuiltObject;
 use crate::paint::{ObjectShader, Paint, PaintId, ShaderId};
 use crate::tiles::Tiler;
@@ -63,9 +63,10 @@ impl Scene {
             .collect()
     }
 
-    pub fn build_objects_sequentially(&self, options: RenderOptions, z_buffer: &ZBuffer)
+    pub fn build_objects_sequentially(&self,
+                                      built_options: PreparedRenderOptions,
+                                      z_buffer: &ZBuffer)
                                       -> Vec<BuiltObject> {
-        let built_options = options.prepare(self.bounds);
         self.objects
             .iter()
             .enumerate()
@@ -84,8 +85,8 @@ impl Scene {
             .collect()
     }
 
-    pub fn build_objects(&self, options: RenderOptions, z_buffer: &ZBuffer) -> Vec<BuiltObject> {
-        let built_options = options.prepare(self.bounds);
+    pub fn build_objects(&self, built_options: PreparedRenderOptions, z_buffer: &ZBuffer)
+                         -> Vec<BuiltObject> {
         self.objects
             .par_iter()
             .enumerate()
@@ -108,7 +109,7 @@ impl Scene {
                             -> Outline {
         let mut outline;
         match options.transform {
-            PreparedRenderTransform::Perspective { ref perspective, ref clip_polygon } => {
+            PreparedRenderTransform::Perspective { ref perspective, ref clip_polygon, .. } => {
                 if original_outline.is_outside_polygon(clip_polygon) {
                     outline = Outline::new();
                 } else {

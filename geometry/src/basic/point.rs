@@ -85,6 +85,12 @@ impl Point2DF32 {
     }
 
     #[inline]
+    pub fn dot(&self, other: Point2DF32) -> f32 {
+        let xy = self.0 * other.0;
+        xy.x() + xy.y()
+    }
+
+    #[inline]
     pub fn scale(&self, x: f32) -> Point2DF32 {
         Point2DF32(self.0 * F32x4::splat(x))
     }

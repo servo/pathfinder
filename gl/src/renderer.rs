@@ -132,12 +132,12 @@ impl Renderer {
         self.upload_shaders(&built_scene.shaders);
 
         self.upload_solid_tiles(&built_scene.solid_tiles);
-        self.draw_solid_tiles(&built_scene.solid_tiles);
+        self.draw_solid_tiles(&built_scene);
 
         for batch in &built_scene.batches {
             self.upload_batch(batch);
             self.draw_batch_fills(batch);
-            self.draw_batch_mask_tiles(batch);
+            self.draw_batch_mask_tiles(&built_scene, batch);
         }
 
         if self.postprocessing_needed() {
@@ -245,7 +245,7 @@ impl Renderer {
         }
     }
 
-    fn draw_batch_mask_tiles(&mut self, batch: &Batch) {
+    fn draw_batch_mask_tiles(&mut self, built_scene: &BuiltScene, batch: &Batch) {
         unsafe {
             self.bind_draw_framebuffer();
             self.set_main_viewport();
@@ -270,6 +270,22 @@ impl Renderer {
                           FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
             // FIXME(pcwalton): Fill this in properly!
             gl::Uniform2f(self.mask_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
+            gl::Uniform3f(self.mask_tile_program.quad_p0_uniform.location,
+                          built_scene.quad[0].x(),
+                          built_scene.quad[0].y(),
+                          built_scene.quad[0].z());
+            gl::Uniform3f(self.mask_tile_program.quad_p1_uniform.location,
+                          built_scene.quad[1].x(),
+                          built_scene.quad[1].y(),
+                          built_scene.quad[1].z());
+            gl::Uniform3f(self.mask_tile_program.quad_p2_uniform.location,
+                          built_scene.quad[2].x(),
+                          built_scene.quad[2].y(),
+                          built_scene.quad[2].z());
+            gl::Uniform3f(self.mask_tile_program.quad_p3_uniform.location,
+                          built_scene.quad[3].x(),
+                          built_scene.quad[3].y(),
+                          built_scene.quad[3].z());
             self.enable_blending();
             self.enable_depth_test();
             gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, batch.mask_tiles.len() as GLint);
@@ -277,7 +293,7 @@ impl Renderer {
         }
     }
 
-    fn draw_solid_tiles(&mut self, solid_tiles: &[SolidTileScenePrimitive]) {
+    fn draw_solid_tiles(&mut self, built_scene: &BuiltScene) {
         unsafe {
             self.bind_draw_framebuffer();
             self.set_main_viewport();
@@ -297,11 +313,28 @@ impl Renderer {
                           FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
             // FIXME(pcwalton): Fill this in properly!
             gl::Uniform2f(self.solid_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
+            gl::Uniform3f(self.solid_tile_program.quad_p0_uniform.location,
+                          built_scene.quad[0].x(),
+                          built_scene.quad[0].y(),
+                          built_scene.quad[0].z());
+            gl::Uniform3f(self.solid_tile_program.quad_p1_uniform.location,
+                          built_scene.quad[1].x(),
+                          built_scene.quad[1].y(),
+                          built_scene.quad[1].z());
+            gl::Uniform3f(self.solid_tile_program.quad_p2_uniform.location,
+                          built_scene.quad[2].x(),
+                          built_scene.quad[2].y(),
+                          built_scene.quad[2].z());
+            gl::Uniform3f(self.solid_tile_program.quad_p3_uniform.location,
+                          built_scene.quad[3].x(),
+                          built_scene.quad[3].y(),
+                          built_scene.quad[3].z());
             gl::Disable(gl::BLEND);
             gl::DepthMask(gl::FALSE);
             gl::Enable(gl::DEPTH_TEST);
             gl::Disable(gl::STENCIL_TEST);
-            gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, solid_tiles.len() as GLint);
+            let count = built_scene.solid_tiles.len();
+            gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, count as GLint);
         }
     }
 
@@ -539,6 +572,10 @@ struct SolidTileProgram {
     fill_colors_texture_uniform: Uniform,
     fill_colors_texture_size_uniform: Uniform,
     view_box_origin_uniform: Uniform,
+    quad_p0_uniform: Uniform,
+    quad_p1_uniform: Uniform,
+    quad_p2_uniform: Uniform,
+    quad_p3_uniform: Uniform,
 }
 
 impl SolidTileProgram {
@@ -549,6 +586,10 @@ impl SolidTileProgram {
         let fill_colors_texture_uniform = Uniform::new(&program, "FillColorsTexture");
         let fill_colors_texture_size_uniform = Uniform::new(&program, "FillColorsTextureSize");
         let view_box_origin_uniform = Uniform::new(&program, "ViewBoxOrigin");
+        let quad_p0_uniform = Uniform::new(&program, "QuadP0");
+        let quad_p1_uniform = Uniform::new(&program, "QuadP1");
+        let quad_p2_uniform = Uniform::new(&program, "QuadP2");
+        let quad_p3_uniform = Uniform::new(&program, "QuadP3");
         SolidTileProgram {
             program,
             framebuffer_size_uniform,
@@ -556,6 +597,10 @@ impl SolidTileProgram {
             fill_colors_texture_uniform,
             fill_colors_texture_size_uniform,
             view_box_origin_uniform,
+            quad_p0_uniform,
+            quad_p1_uniform,
+            quad_p2_uniform,
+            quad_p3_uniform,
         }
     }
 }
@@ -569,6 +614,10 @@ struct MaskTileProgram {
     fill_colors_texture_uniform: Uniform,
     fill_colors_texture_size_uniform: Uniform,
     view_box_origin_uniform: Uniform,
+    quad_p0_uniform: Uniform,
+    quad_p1_uniform: Uniform,
+    quad_p2_uniform: Uniform,
+    quad_p3_uniform: Uniform,
 }
 
 impl MaskTileProgram {
@@ -581,6 +630,10 @@ impl MaskTileProgram {
         let fill_colors_texture_uniform = Uniform::new(&program, "FillColorsTexture");
         let fill_colors_texture_size_uniform = Uniform::new(&program, "FillColorsTextureSize");
         let view_box_origin_uniform = Uniform::new(&program, "ViewBoxOrigin");
+        let quad_p0_uniform = Uniform::new(&program, "QuadP0");
+        let quad_p1_uniform = Uniform::new(&program, "QuadP1");
+        let quad_p2_uniform = Uniform::new(&program, "QuadP2");
+        let quad_p3_uniform = Uniform::new(&program, "QuadP3");
         MaskTileProgram {
             program,
             framebuffer_size_uniform,
@@ -590,6 +643,10 @@ impl MaskTileProgram {
             fill_colors_texture_uniform,
             fill_colors_texture_size_uniform,
             view_box_origin_uniform,
+            quad_p0_uniform,
+            quad_p1_uniform,
+            quad_p2_uniform,
+            quad_p3_uniform,
         }
     }
 }

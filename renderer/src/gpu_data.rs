@@ -14,7 +14,7 @@ use crate::paint::{ObjectShader, ShaderId};
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
@@ -32,6 +32,7 @@ pub struct BuiltObject {
 #[derive(Debug)]
 pub struct BuiltScene {
     pub view_box: RectF32,
+    pub quad: [Point3DF32; 4],
     pub batches: Vec<Batch>,
     pub solid_tiles: Vec<SolidTileScenePrimitive>,
     pub shaders: Vec<ObjectShader>,
@@ -249,8 +250,8 @@ impl BuiltObject {
 
 impl BuiltScene {
     #[inline]
-    pub fn new(view_box: RectF32) -> BuiltScene {
-        BuiltScene { view_box, batches: vec![], solid_tiles: vec![], shaders: vec![] }
+    pub fn new(view_box: RectF32, quad: &[Point3DF32; 4]) -> BuiltScene {
+        BuiltScene { view_box, quad: *quad, batches: vec![], solid_tiles: vec![], shaders: vec![] }
     }
 }
 

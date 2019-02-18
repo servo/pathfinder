@@ -634,10 +634,13 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
         },
     };
 
+    let built_options = render_options.prepare(scene.bounds);
+    let quad = built_options.quad();
+
     let built_objects = panic::catch_unwind(|| {
          match jobs {
-            Some(1) => scene.build_objects_sequentially(render_options, &z_buffer),
-            _ => scene.build_objects(render_options, &z_buffer),
+            Some(1) => scene.build_objects_sequentially(built_options, &z_buffer),
+            _ => scene.build_objects(built_options, &z_buffer),
         }
     });
 
@@ -650,7 +653,7 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
         }
     };
 
-    let mut built_scene = BuiltScene::new(scene.view_box);
+    let mut built_scene = BuiltScene::new(scene.view_box, &quad);
     built_scene.shaders = scene.build_shaders();
 
     let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, scene.view_box);
