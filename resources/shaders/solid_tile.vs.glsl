@@ -52,11 +52,18 @@ void main() {
     vec2 pixelPosition = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
     vec2 position = (pixelPosition / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0);
 
-    vec4 depths = vec4(uQuadP0.z, uQuadP1.z, uQuadP2.z, uQuadP3.z);
-    float depth = dot(barycentricQuad(position), depths);
+    //vec4 depths = vec4(uQuadP0.z, uQuadP1.z, uQuadP2.z, uQuadP3.z);
+    //float depth = dot(barycentricQuad(position), depths);
+
+    vec4 lambda = barycentricQuad(position);
+    float red = lambda.x;
+    float green = lambda.y;
+    float blue = lambda.z;
+    float depth = 0.0;
 
     vec2 colorTexCoord = computeFillColorTexCoord(aObject, uFillColorsTextureSize);
 
-    vColor = texture(uFillColorsTexture, colorTexCoord);
+    //vColor = texture(uFillColorsTexture, colorTexCoord);
+    vColor = vec4(red, green, blue, 1.0);
     gl_Position = vec4(position, depth, 1.0);
 }

@@ -134,11 +134,13 @@ impl Renderer {
         self.upload_solid_tiles(&built_scene.solid_tiles);
         self.draw_solid_tiles(&built_scene);
 
+        /*
         for batch in &built_scene.batches {
             self.upload_batch(batch);
             self.draw_batch_fills(batch);
             self.draw_batch_mask_tiles(&built_scene, batch);
         }
+        */
 
         if self.postprocessing_needed() {
             self.postprocess();
