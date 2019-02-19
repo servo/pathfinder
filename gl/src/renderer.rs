@@ -13,6 +13,7 @@ use crate::device::{Buffer, BufferTarget, BufferUploadMode, Device, Framebuffer,
 use crate::device::{TimerQuery, Uniform, VertexArray, VertexAttr};
 use euclid::Size2D;
 use gl::types::{GLfloat, GLint};
+use pathfinder_geometry::basic::point::Point3DF32;
 use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
 use pathfinder_renderer::paint::{ColorU, ObjectShader};
 use pathfinder_renderer::post::DefringingKernel;
@@ -52,6 +53,10 @@ pub struct Renderer {
     postprocess_vertex_array: PostprocessVertexArray,
     gamma_lut_texture: Texture,
 
+    // Stencil shader
+    stencil_program: StencilProgram,
+    stencil_vertex_array: StencilVertexArray,
+
     // Debug
     pending_timer_queries: VecDeque<TimerQuery>,
     free_timer_queries: Vec<TimerQuery>,
@@ -60,6 +65,7 @@ pub struct Renderer {
     // Extra info
     main_framebuffer_size: Size2D<u32>,
     postprocess_options: PostprocessOptions,
+    use_depth: bool,
 }
 
 impl Renderer {
@@ -69,6 +75,7 @@ impl Renderer {
         let mask_tile_program = MaskTileProgram::new(device);
 
         let postprocess_program = PostprocessProgram::new(device);
+        let stencil_program = StencilProgram::new(device);
 
         let area_lut_texture = device.create_texture_from_png("area-lut");
         let gamma_lut_texture = device.create_texture_from_png("gamma-lut");
@@ -86,6 +93,7 @@ impl Renderer {
 
         let postprocess_vertex_array = PostprocessVertexArray::new(&postprocess_program,
                                                                    &quad_vertex_positions_buffer);
+        let stencil_vertex_array = StencilVertexArray::new(&stencil_program);
 
         let mask_framebuffer_texture = Texture::new_r16f(&Size2D::new(MASK_FRAMEBUFFER_WIDTH,
                                                                       MASK_FRAMEBUFFER_HEIGHT));
@@ -113,6 +121,9 @@ impl Renderer {
             postprocess_vertex_array,
             gamma_lut_texture,
 
+            stencil_program,
+            stencil_vertex_array,
+
             pending_timer_queries: VecDeque::new(),
             free_timer_queries: vec![],
 
@@ -120,6 +131,7 @@ impl Renderer {
 
             main_framebuffer_size: *main_framebuffer_size,
             postprocess_options: PostprocessOptions::default(),
+            use_depth: false,
         }
     }
 
@@ -131,16 +143,18 @@ impl Renderer {
 
         self.upload_shaders(&built_scene.shaders);
 
+        if self.use_depth {
+            self.draw_stencil(&built_scene.quad);
+        }
+
         self.upload_solid_tiles(&built_scene.solid_tiles);
         self.draw_solid_tiles(&built_scene);
 
-        /*
         for batch in &built_scene.batches {
             self.upload_batch(batch);
             self.draw_batch_fills(batch);
-            self.draw_batch_mask_tiles(&built_scene, batch);
+            self.draw_batch_mask_tiles(batch);
         }
-        */
 
         if self.postprocessing_needed() {
             self.postprocess();
@@ -185,6 +199,16 @@ impl Renderer {
     #[inline]
     pub fn enable_gamma_correction(&mut self, bg_color: ColorU) {
         self.postprocess_options.gamma_correction_bg_color = Some(bg_color);
+    }
+
+    #[inline]
+    pub fn disable_depth(&mut self) {
+        self.use_depth = false;
+    }
+
+    #[inline]
+    pub fn enable_depth(&mut self) {
+        self.use_depth = true;
     }
 
     #[inline]
@@ -247,7 +271,7 @@ impl Renderer {
         }
     }
 
-    fn draw_batch_mask_tiles(&mut self, built_scene: &BuiltScene, batch: &Batch) {
+    fn draw_batch_mask_tiles(&mut self, batch: &Batch) {
         unsafe {
             self.bind_draw_framebuffer();
             self.set_main_viewport();
@@ -272,26 +296,12 @@ impl Renderer {
                           FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
             // FIXME(pcwalton): Fill this in properly!
             gl::Uniform2f(self.mask_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
-            gl::Uniform3f(self.mask_tile_program.quad_p0_uniform.location,
-                          built_scene.quad[0].x(),
-                          built_scene.quad[0].y(),
-                          built_scene.quad[0].z());
-            gl::Uniform3f(self.mask_tile_program.quad_p1_uniform.location,
-                          built_scene.quad[1].x(),
-                          built_scene.quad[1].y(),
-                          built_scene.quad[1].z());
-            gl::Uniform3f(self.mask_tile_program.quad_p2_uniform.location,
-                          built_scene.quad[2].x(),
-                          built_scene.quad[2].y(),
-                          built_scene.quad[2].z());
-            gl::Uniform3f(self.mask_tile_program.quad_p3_uniform.location,
-                          built_scene.quad[3].x(),
-                          built_scene.quad[3].y(),
-                          built_scene.quad[3].z());
             self.enable_blending();
-            self.enable_depth_test();
+            gl::Disable(gl::DEPTH_TEST);
+            self.setup_stencil_mask();
             gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, batch.mask_tiles.len() as GLint);
             gl::Disable(gl::BLEND);
+            gl::Disable(gl::STENCIL_TEST);
         }
     }
 
@@ -315,28 +325,12 @@ impl Renderer {
                           FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
             // FIXME(pcwalton): Fill this in properly!
             gl::Uniform2f(self.solid_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
-            gl::Uniform3f(self.solid_tile_program.quad_p0_uniform.location,
-                          built_scene.quad[0].x(),
-                          built_scene.quad[0].y(),
-                          built_scene.quad[0].z());
-            gl::Uniform3f(self.solid_tile_program.quad_p1_uniform.location,
-                          built_scene.quad[1].x(),
-                          built_scene.quad[1].y(),
-                          built_scene.quad[1].z());
-            gl::Uniform3f(self.solid_tile_program.quad_p2_uniform.location,
-                          built_scene.quad[2].x(),
-                          built_scene.quad[2].y(),
-                          built_scene.quad[2].z());
-            gl::Uniform3f(self.solid_tile_program.quad_p3_uniform.location,
-                          built_scene.quad[3].x(),
-                          built_scene.quad[3].y(),
-                          built_scene.quad[3].z());
             gl::Disable(gl::BLEND);
-            gl::DepthMask(gl::FALSE);
-            gl::Enable(gl::DEPTH_TEST);
-            gl::Disable(gl::STENCIL_TEST);
+            gl::Disable(gl::DEPTH_TEST);
+            self.setup_stencil_mask();
             let count = built_scene.solid_tiles.len();
             gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, count as GLint);
+            gl::Disable(gl::STENCIL_TEST);
         }
     }
 
@@ -385,6 +379,30 @@ impl Renderer {
             self.enable_blending();
             gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
             gl::Disable(gl::BLEND);
+        }
+    }
+
+    fn draw_stencil(&self, quad_positions: &[Point3DF32]) {
+        self.stencil_vertex_array
+            .vertex_buffer
+            .upload(quad_positions, BufferTarget::Vertex, BufferUploadMode::Dynamic);
+        self.bind_draw_framebuffer();
+
+        unsafe {
+            gl::BindVertexArray(self.stencil_vertex_array.vertex_array.gl_vertex_array);
+            gl::UseProgram(self.stencil_program.program.gl_program);
+            gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
+            gl::DepthFunc(gl::LESS);
+            gl::Enable(gl::DEPTH_TEST);
+            gl::StencilFunc(gl::ALWAYS, 1, 1);
+            gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
+            gl::StencilMask(1);
+            gl::Enable(gl::STENCIL_TEST);
+            gl::Disable(gl::BLEND);
+            gl::DrawArrays(gl::TRIANGLE_FAN, 0, quad_positions.len() as GLint);
+            gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
+            gl::Disable(gl::DEPTH_TEST);
+            gl::Disable(gl::STENCIL_TEST);
         }
     }
 
@@ -443,11 +461,15 @@ impl Renderer {
         }
     }
 
-    fn enable_depth_test(&self) {
+    fn setup_stencil_mask(&self) {
         unsafe {
-            gl::DepthMask(gl::FALSE);
-            gl::Enable(gl::DEPTH_TEST);
-            gl::Disable(gl::STENCIL_TEST);
+            if self.use_depth {
+                gl::StencilFunc(gl::EQUAL, 1, 1);
+                gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
+                gl::Enable(gl::STENCIL_TEST);
+            } else {
+                gl::Disable(gl::STENCIL_TEST);
+            }
         }
     }
 }
@@ -574,10 +596,6 @@ struct SolidTileProgram {
     fill_colors_texture_uniform: Uniform,
     fill_colors_texture_size_uniform: Uniform,
     view_box_origin_uniform: Uniform,
-    quad_p0_uniform: Uniform,
-    quad_p1_uniform: Uniform,
-    quad_p2_uniform: Uniform,
-    quad_p3_uniform: Uniform,
 }
 
 impl SolidTileProgram {
@@ -588,10 +606,6 @@ impl SolidTileProgram {
         let fill_colors_texture_uniform = Uniform::new(&program, "FillColorsTexture");
         let fill_colors_texture_size_uniform = Uniform::new(&program, "FillColorsTextureSize");
         let view_box_origin_uniform = Uniform::new(&program, "ViewBoxOrigin");
-        let quad_p0_uniform = Uniform::new(&program, "QuadP0");
-        let quad_p1_uniform = Uniform::new(&program, "QuadP1");
-        let quad_p2_uniform = Uniform::new(&program, "QuadP2");
-        let quad_p3_uniform = Uniform::new(&program, "QuadP3");
         SolidTileProgram {
             program,
             framebuffer_size_uniform,
@@ -599,10 +613,6 @@ impl SolidTileProgram {
             fill_colors_texture_uniform,
             fill_colors_texture_size_uniform,
             view_box_origin_uniform,
-            quad_p0_uniform,
-            quad_p1_uniform,
-            quad_p2_uniform,
-            quad_p3_uniform,
         }
     }
 }
@@ -616,10 +626,6 @@ struct MaskTileProgram {
     fill_colors_texture_uniform: Uniform,
     fill_colors_texture_size_uniform: Uniform,
     view_box_origin_uniform: Uniform,
-    quad_p0_uniform: Uniform,
-    quad_p1_uniform: Uniform,
-    quad_p2_uniform: Uniform,
-    quad_p3_uniform: Uniform,
 }
 
 impl MaskTileProgram {
@@ -632,10 +638,6 @@ impl MaskTileProgram {
         let fill_colors_texture_uniform = Uniform::new(&program, "FillColorsTexture");
         let fill_colors_texture_size_uniform = Uniform::new(&program, "FillColorsTextureSize");
         let view_box_origin_uniform = Uniform::new(&program, "ViewBoxOrigin");
-        let quad_p0_uniform = Uniform::new(&program, "QuadP0");
-        let quad_p1_uniform = Uniform::new(&program, "QuadP1");
-        let quad_p2_uniform = Uniform::new(&program, "QuadP2");
-        let quad_p3_uniform = Uniform::new(&program, "QuadP3");
         MaskTileProgram {
             program,
             framebuffer_size_uniform,
@@ -645,10 +647,6 @@ impl MaskTileProgram {
             fill_colors_texture_uniform,
             fill_colors_texture_size_uniform,
             view_box_origin_uniform,
-            quad_p0_uniform,
-            quad_p1_uniform,
-            quad_p2_uniform,
-            quad_p3_uniform,
         }
     }
 }
@@ -699,5 +697,37 @@ impl PostprocessVertexArray {
         }
 
         PostprocessVertexArray { vertex_array }
+    }
+}
+
+struct StencilProgram {
+    program: Program,
+}
+
+impl StencilProgram {
+    fn new(device: &Device) -> StencilProgram {
+        let program = device.create_program("stencil");
+        StencilProgram { program }
+    }
+}
+
+struct StencilVertexArray {
+    vertex_array: VertexArray,
+    vertex_buffer: Buffer,
+}
+
+impl StencilVertexArray {
+    fn new(stencil_program: &StencilProgram) -> StencilVertexArray {
+        let (vertex_array, vertex_buffer) = (VertexArray::new(), Buffer::new());
+        unsafe {
+            let position_attr = VertexAttr::new(&stencil_program.program, "Position");
+
+            gl::BindVertexArray(vertex_array.gl_vertex_array);
+            gl::UseProgram(stencil_program.program.gl_program);
+            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
+            position_attr.configure_float(3, gl::FLOAT, false, 4 * 4, 0, 0);
+        }
+
+        StencilVertexArray { vertex_array, vertex_buffer }
     }
 }

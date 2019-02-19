@@ -390,11 +390,12 @@ impl DemoApp {
                           color.g(),
                           color.b(),
                           color.a());
-            gl::DepthFunc(gl::LESS);
-            gl::DepthMask(gl::FALSE);
+            gl::DepthFunc(gl::ALWAYS);
+            gl::DepthMask(gl::TRUE);
             gl::Enable(gl::DEPTH_TEST);
-            gl::StencilFunc(gl::ALWAYS, 1, !0);
+            gl::StencilFunc(gl::ALWAYS, 2, 2);
             gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
+            gl::StencilMask(2);
             gl::Enable(gl::STENCIL_TEST);
             gl::Disable(gl::BLEND);
             gl::DrawArrays(gl::LINES, 0, (GRIDLINE_COUNT as GLsizei + 1) * 4);
@@ -419,7 +420,7 @@ impl DemoApp {
             gl::DepthFunc(gl::LESS);
             gl::DepthMask(gl::TRUE);
             gl::Enable(gl::DEPTH_TEST);
-            gl::StencilFunc(gl::NOTEQUAL, 1, !0);
+            gl::StencilFunc(gl::NOTEQUAL, 2, 2);
             gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
             gl::Enable(gl::STENCIL_TEST);
             gl::Disable(gl::BLEND);
@@ -440,6 +441,12 @@ impl DemoApp {
             self.renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
         } else {
             self.renderer.disable_subpixel_aa();
+        }
+
+        if self.ui.threed_enabled {
+            self.renderer.enable_depth();
+        } else {
+            self.renderer.disable_depth();
         }
 
         self.renderer.render_scene(&built_scene);

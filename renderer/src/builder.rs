@@ -173,7 +173,7 @@ impl RenderTransform {
         for point in &mut points {
             *point = perspective.transform.transform_point(*point);
         }
-        println!("... PERSPECTIVE quad={:?}", points);
+        //println!("... PERSPECTIVE quad={:?}", points);
 
         // Compute depth.
         let quad = [
@@ -182,12 +182,7 @@ impl RenderTransform {
             points[2].perspective_divide(),
             points[3].perspective_divide(),
         ];
-        println!("barycentric(0, 0) = {:?}", compute_barycentric(&[
-            quad[0].to_2d(),
-            quad[1].to_2d(),
-            quad[2].to_2d(),
-            quad[3].to_2d(),
-        ], Point2DF32::new(0.0, 0.0)));
+        //println!("... PERSPECTIVE-DIVIDED points = {:?}", quad);
 
         points = PolygonClipper3D::new(points).clip();
         //println!("... CLIPPED quad={:?}", points);
@@ -200,20 +195,6 @@ impl RenderTransform {
             inverse_transform.transform_point(point).perspective_divide().to_2d()
         }).collect();
         return PreparedRenderTransform::Perspective { perspective, clip_polygon, quad };
-
-        fn compute_barycentric(quad: &[Point2DF32], point: Point2DF32) -> [f32; 4] {
-            let (s0, s1) = (quad[0] - point, quad[1] - point);
-            let (s2, s3) = (quad[2] - point, quad[3] - point);
-            let (a0, a1, a2, a3) = (s0.det(s1), s1.det(s2), s2.det(s3), s3.det(s0));
-            let (d0, d1, d2, d3) = (s0.dot(s1), s1.dot(s2), s2.dot(s3), s3.dot(s0));
-            let (r0, r1, r2, r3) = (s0.length(), s1.length(), s2.length(), s3.length());
-            let (t0, t1) = ((r0 * r1 - d0) / a0, (r1 * r2 - d1) / a1);
-            let (t2, t3) = ((r2 * r3 - d2) / a2, (r3 * r0 - d3) / a3);
-            let (u0, u1) = ((t3 + t0) / r0, (t2 + t1) / r1);
-            let (u2, u3) = ((t0 + t2) / r2, (t0 + t3) / r3);
-            let sum = u0 + u1 + u2 + u3;
-            [u0 / sum, u1 / sum, u2 / sum, u3 / sum]
-        }
     }
 }
 
