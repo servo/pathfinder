@@ -112,9 +112,10 @@ impl TEdge for Edge {
 
     fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
-        let t = segment.intersection_t(&self.0);
-        if t >= 0.0 && t <= 1.0 {
-            results.push(t);
+        if let Some(t) = segment.intersection_t(&self.0) {
+            if t >= 0.0 && t <= 1.0 {
+                results.push(t);
+            }
         }
         results
     }

@@ -13,7 +13,7 @@
 use crate::basic::point::Point2DF32;
 use crate::util;
 use pathfinder_simd::default::F32x4;
-use std::ops::Sub;
+use std::ops::{Add, Sub};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct LineSegmentF32(pub F32x4);
@@ -224,19 +224,41 @@ impl LineSegmentF32 {
     }
 
     // http://www.cs.swan.ac.uk/~cssimon/line_intersection.html
-    pub fn intersection_t(&self, other: &LineSegmentF32) -> f32 {
+    pub fn intersection_t(&self, other: &LineSegmentF32) -> Option<f32> {
         let d0d1 = self.vector().0.concat_xy_xy(other.vector().0);
         let offset = other.from() - self.from();
         let factors = d0d1.concat_wz_yx(offset.0);
         let terms = d0d1 * factors;
-        let t = (terms[3] - terms[2]) / (terms[0] - terms[1]);
-        //println!("intersection_t({:?}, {:?})={} (d0d1={:?}, factors={:?})", self, other, t, d0d1, factors);
-        t
+        let denom = terms[0] - terms[1];
+        if f32::abs(denom) < EPSILON {
+            return None;
+        }
+        return Some((terms[3] - terms[2]) / denom);
+
+        const EPSILON: f32 = 0.0001;
     }
 
     #[inline]
     pub fn sample(&self, t: f32) -> Point2DF32 {
         self.from() + self.vector().scale(t)
+    }
+
+    #[inline]
+    pub fn offset(&self, amount: f32) -> LineSegmentF32 {
+        *self + self.vector().yx().normalize().scale_xy(Point2DF32::new(-amount, amount))
+    }
+
+    #[inline]
+    pub fn is_zero_length(&self) -> bool {
+        self.vector().is_zero()
+    }
+}
+
+impl Add<Point2DF32> for LineSegmentF32 {
+    type Output = LineSegmentF32;
+    #[inline]
+    fn add(self, point: Point2DF32) -> LineSegmentF32 {
+        LineSegmentF32(self.0 + point.0.xyxy())
     }
 }
 

@@ -18,7 +18,7 @@ use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32Path
 use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::segment::{PathEventsToSegments, Segment};
 use pathfinder_geometry::segment::{SegmentFlags, SegmentsToPathEvents};
-use pathfinder_geometry::stroke::{StrokeStyle, StrokeToFillIter};
+use pathfinder_geometry::stroke::OutlineStrokeToFill;
 use pathfinder_renderer::paint::{ColorU, Paint};
 use pathfinder_renderer::scene::{PathObject, PathObjectKind, Scene};
 use std::mem;
@@ -91,12 +91,16 @@ fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2DF32) {
                     f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
 
                 let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                let path = SegmentsToPathEvents::new(path);
+                /*let path = SegmentsToPathEvents::new(path);
                 let path = PathIter::new(path);
                 let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
-                let path = PathEventsToSegments::new(path);
+                let path = PathEventsToSegments::new(path);*/
                 let path = Transform2DF32PathIter::new(path, &transform);
                 let outline = Outline::from_segments(path);
+
+                let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_width);
+                stroke_to_fill.offset();
+                let outline = stroke_to_fill.outline;
 
                 scene.bounds = scene.bounds.union_rect(outline.bounds());
                 scene.objects.push(PathObject::new(

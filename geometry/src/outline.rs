@@ -25,7 +25,7 @@ use std::mem;
 #[derive(Clone)]
 pub struct Outline {
     pub contours: Vec<Contour>,
-    bounds: RectF32,
+    pub(crate) bounds: RectF32,
 }
 
 #[derive(Clone)]
@@ -305,9 +305,16 @@ impl Contour {
     }
 
     #[inline]
+    pub fn hull_segment_after(&self, prev_point_index: u32) -> LineSegmentF32 {
+        let next_point_index = self.next_point_index_of(prev_point_index);
+        LineSegmentF32::new(&self.points[prev_point_index as usize],
+                            &self.points[next_point_index as usize])
+    }
+
+    #[inline]
     pub fn point_is_endpoint(&self, point_index: u32) -> bool {
         !self.flags[point_index as usize]
-            .intersects(PointFlags::CONTROL_POINT_0 | PointFlags::CONTROL_POINT_1)
+             .intersects(PointFlags::CONTROL_POINT_0 | PointFlags::CONTROL_POINT_1)
     }
 
     #[inline]
@@ -510,7 +517,7 @@ impl Contour {
         true
     }
 
-    fn update_bounds(&self, bounds: &mut Option<RectF32>) {
+    pub(crate) fn update_bounds(&self, bounds: &mut Option<RectF32>) {
         *bounds = Some(match *bounds {
             None => self.bounds,
             Some(bounds) => bounds.union_rect(self.bounds),

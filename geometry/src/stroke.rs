@@ -10,9 +10,13 @@
 
 //! Utilities for converting path strokes to fills.
 
+use crate::basic::line_segment::LineSegmentF32;
+use crate::basic::rect::RectF32;
+use crate::outline::{Contour, Outline};
 use crate::segments::{Segment, SegmentIter};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIterator;
+use std::mem;
 
 #[derive(Clone, Copy, Debug)]
 pub struct StrokeStyle {
@@ -143,4 +147,113 @@ impl<I> Iterator for StrokeToFillIter<I> where I: PathIterator {
 enum StrokeToFillState {
     Forward,
     Backward,
+}
+
+// Pathfinder 3
+
+pub struct OutlineStrokeToFill {
+    pub outline: Outline,
+    pub radius: f32,
+}
+
+impl OutlineStrokeToFill {
+    #[inline]
+    pub fn new(outline: Outline, radius: f32) -> OutlineStrokeToFill {
+        OutlineStrokeToFill { outline, radius }
+    }
+
+    #[inline]
+    pub fn offset(&mut self) {
+        let mut new_bounds = None;
+        for contour in &mut self.outline.contours {
+            let input = mem::replace(contour, Contour::new());
+            let mut contour_stroke_to_fill =
+                ContourStrokeToFill::new(input, Contour::new(), self.radius);
+            contour_stroke_to_fill.offset_forward();
+            contour_stroke_to_fill.offset_backward();
+            *contour = contour_stroke_to_fill.output;
+            contour.update_bounds(&mut new_bounds);
+        }
+
+        self.outline.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
+    }
+}
+
+struct ContourStrokeToFill {
+    input: Contour,
+    output: Contour,
+    radius: f32,
+}
+
+impl ContourStrokeToFill {
+    #[inline]
+    fn new(input: Contour, output: Contour, radius: f32) -> ContourStrokeToFill {
+        ContourStrokeToFill { input, output, radius }
+    }
+
+    fn offset_forward(&mut self) {
+        for point_index in 0..(self.input.points.len() as u32) {
+            let mut prev_point_index = self.input.prev_point_index_of(point_index);
+            while prev_point_index != point_index &&
+                    self.input.position_of(prev_point_index) ==
+                    self.input.position_of(point_index) {
+                prev_point_index = self.input.prev_point_index_of(prev_point_index);
+            }
+
+            let mut next_point_index = self.input.next_point_index_of(point_index);
+            while next_point_index != point_index &&
+                    self.input.position_of(next_point_index) ==
+                    self.input.position_of(point_index) {
+                next_point_index = self.input.next_point_index_of(next_point_index);
+            }
+
+            let prev_line_segment = LineSegmentF32::new(&self.input.position_of(prev_point_index),
+                                                        &self.input.position_of(point_index));
+            let next_line_segment = LineSegmentF32::new(&self.input.position_of(point_index),
+                                                        &self.input.position_of(next_point_index));
+            let prev_offset_line_segment = prev_line_segment.offset(self.radius);
+            let next_offset_line_segment = next_line_segment.offset(self.radius);
+
+            let new_position;
+            match prev_offset_line_segment.intersection_t(&next_offset_line_segment) {
+                None => new_position = self.input.position_of(point_index),
+                Some(t) => new_position = prev_offset_line_segment.sample(t),
+            }
+
+            self.output.push_point(new_position, self.input.flags[point_index as usize], true);
+        }
+    }
+
+    fn offset_backward(&mut self) {
+        for point_index in (0..(self.input.points.len() as u32)).rev() {
+            let mut prev_point_index = self.input.prev_point_index_of(point_index);
+            while prev_point_index != point_index &&
+                    self.input.position_of(prev_point_index) ==
+                    self.input.position_of(point_index) {
+                prev_point_index = self.input.prev_point_index_of(prev_point_index);
+            }
+
+            let mut next_point_index = self.input.next_point_index_of(point_index);
+            while next_point_index != point_index &&
+                    self.input.position_of(next_point_index) ==
+                    self.input.position_of(point_index) {
+                next_point_index = self.input.next_point_index_of(next_point_index);
+            }
+
+            let prev_line_segment = LineSegmentF32::new(&self.input.position_of(prev_point_index),
+                                                        &self.input.position_of(point_index));
+            let next_line_segment = LineSegmentF32::new(&self.input.position_of(point_index),
+                                                        &self.input.position_of(next_point_index));
+            let prev_offset_line_segment = prev_line_segment.offset(-self.radius);
+            let next_offset_line_segment = next_line_segment.offset(-self.radius);
+
+            let new_position;
+            match prev_offset_line_segment.intersection_t(&next_offset_line_segment) {
+                None => new_position = self.input.position_of(point_index),
+                Some(t) => new_position = prev_offset_line_segment.sample(t),
+            }
+
+            self.output.push_point(new_position, self.input.flags[point_index as usize], true);
+        }
+    }
 }
