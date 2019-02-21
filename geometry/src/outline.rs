@@ -245,6 +245,8 @@ impl Contour {
                              point: Point2DF32,
                              flags: PointFlags,
                              update_bounds: bool) {
+        debug_assert!(!point.x().is_nan() && !point.y().is_nan());
+
         if update_bounds {
             let first = self.is_empty();
             union_rect(&mut self.bounds, point, first);
@@ -263,6 +265,20 @@ impl Contour {
         if self.is_empty() {
             self.push_point(segment.baseline.from(), PointFlags::empty(), update_bounds);
         }
+
+        if !segment.is_line() {
+            self.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0, update_bounds);
+            if !segment.is_quadratic() {
+                self.push_point(segment.ctrl.to(), PointFlags::CONTROL_POINT_1, update_bounds);
+            }
+        }
+
+        self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
+    }
+
+    #[inline]
+    pub(crate) fn push_full_segment(&mut self, segment: &Segment, update_bounds: bool) {
+        self.push_point(segment.baseline.from(), PointFlags::empty(), update_bounds);
 
         if !segment.is_line() {
             self.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0, update_bounds);

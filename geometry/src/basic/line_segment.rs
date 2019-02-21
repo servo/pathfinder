@@ -244,8 +244,12 @@ impl LineSegmentF32 {
     }
 
     #[inline]
-    pub fn offset(&self, amount: f32) -> LineSegmentF32 {
-        *self + self.vector().yx().normalize().scale_xy(Point2DF32::new(-amount, amount))
+    pub fn offset(&self, distance: f32) -> LineSegmentF32 {
+        if self.is_zero_length() {
+            *self
+        } else {
+            *self + self.vector().yx().normalize().scale_xy(Point2DF32::new(-distance, distance))
+        }
     }
 
     #[inline]

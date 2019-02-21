@@ -13,6 +13,7 @@
 use crate::basic::line_segment::LineSegmentF32;
 use crate::basic::rect::RectF32;
 use crate::outline::{Contour, Outline};
+use crate::segment::Segment as SegmentPF3;
 use crate::segments::{Segment, SegmentIter};
 use lyon_path::PathEvent;
 use lyon_path::iterator::PathIterator;
@@ -192,68 +193,94 @@ impl ContourStrokeToFill {
     }
 
     fn offset_forward(&mut self) {
-        for point_index in 0..(self.input.points.len() as u32) {
-            let mut prev_point_index = self.input.prev_point_index_of(point_index);
-            while prev_point_index != point_index &&
-                    self.input.position_of(prev_point_index) ==
-                    self.input.position_of(point_index) {
-                prev_point_index = self.input.prev_point_index_of(prev_point_index);
-            }
-
-            let mut next_point_index = self.input.next_point_index_of(point_index);
-            while next_point_index != point_index &&
-                    self.input.position_of(next_point_index) ==
-                    self.input.position_of(point_index) {
-                next_point_index = self.input.next_point_index_of(next_point_index);
-            }
-
-            let prev_line_segment = LineSegmentF32::new(&self.input.position_of(prev_point_index),
-                                                        &self.input.position_of(point_index));
-            let next_line_segment = LineSegmentF32::new(&self.input.position_of(point_index),
-                                                        &self.input.position_of(next_point_index));
-            let prev_offset_line_segment = prev_line_segment.offset(self.radius);
-            let next_offset_line_segment = next_line_segment.offset(self.radius);
-
-            let new_position;
-            match prev_offset_line_segment.intersection_t(&next_offset_line_segment) {
-                None => new_position = self.input.position_of(point_index),
-                Some(t) => new_position = prev_offset_line_segment.sample(t),
-            }
-
-            self.output.push_point(new_position, self.input.flags[point_index as usize], true);
+        for segment in self.input.iter() {
+            segment.offset(self.radius, &mut self.output);
         }
     }
 
     fn offset_backward(&mut self) {
-        for point_index in (0..(self.input.points.len() as u32)).rev() {
-            let mut prev_point_index = self.input.prev_point_index_of(point_index);
-            while prev_point_index != point_index &&
-                    self.input.position_of(prev_point_index) ==
-                    self.input.position_of(point_index) {
-                prev_point_index = self.input.prev_point_index_of(prev_point_index);
-            }
-
-            let mut next_point_index = self.input.next_point_index_of(point_index);
-            while next_point_index != point_index &&
-                    self.input.position_of(next_point_index) ==
-                    self.input.position_of(point_index) {
-                next_point_index = self.input.next_point_index_of(next_point_index);
-            }
-
-            let prev_line_segment = LineSegmentF32::new(&self.input.position_of(prev_point_index),
-                                                        &self.input.position_of(point_index));
-            let next_line_segment = LineSegmentF32::new(&self.input.position_of(point_index),
-                                                        &self.input.position_of(next_point_index));
-            let prev_offset_line_segment = prev_line_segment.offset(-self.radius);
-            let next_offset_line_segment = next_line_segment.offset(-self.radius);
-
-            let new_position;
-            match prev_offset_line_segment.intersection_t(&next_offset_line_segment) {
-                None => new_position = self.input.position_of(point_index),
-                Some(t) => new_position = prev_offset_line_segment.sample(t),
-            }
-
-            self.output.push_point(new_position, self.input.flags[point_index as usize], true);
+        // FIXME(pcwalton)
+        let mut segments: Vec<_> = self.input.iter().map(|segment| segment.reversed()).collect();
+        segments.reverse();
+        for segment in &segments {
+            segment.offset(self.radius, &mut self.output);
         }
+    }
+}
+
+trait Offset {
+    fn offset(&self, distance: f32, contour: &mut Contour);
+}
+
+impl Offset for SegmentPF3 {
+    fn offset(&self, distance: f32, contour: &mut Contour) {
+        if self.is_line() {
+            contour.push_full_segment(&SegmentPF3::line(&self.baseline.offset(distance)), true);
+            return;
+        }
+
+        if self.is_quadratic() {
+            let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
+            let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(),     &self.baseline.to());
+            segment_0 = segment_0.offset(distance);
+            segment_1 = segment_1.offset(distance);
+            let ctrl = match segment_0.intersection_t(&segment_1) {
+                Some(t) => segment_0.sample(t),
+                None => segment_0.to().lerp(segment_1.from(), 0.5),
+            };
+            let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
+            contour.push_full_segment(&SegmentPF3::quadratic(&baseline, &ctrl), true);
+            return;
+        }
+
+        debug_assert!(self.is_cubic());
+
+        if self.baseline.from() == self.ctrl.from() {
+            let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.to());
+            let mut segment_1 = LineSegmentF32::new(&self.ctrl.to(),     &self.baseline.to());
+            segment_0 = segment_0.offset(distance);
+            segment_1 = segment_1.offset(distance);
+            let ctrl = match segment_0.intersection_t(&segment_1) {
+                Some(t) => segment_0.sample(t),
+                None => segment_0.to().lerp(segment_1.from(), 0.5),
+            };
+            let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
+            let ctrl = LineSegmentF32::new(&segment_0.from(), &ctrl);
+            contour.push_full_segment(&SegmentPF3::cubic(&baseline, &ctrl), true);
+            return;
+        }
+
+        if self.ctrl.to() == self.baseline.to() {
+            let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
+            let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(),     &self.baseline.to());
+            segment_0 = segment_0.offset(distance);
+            segment_1 = segment_1.offset(distance);
+            let ctrl = match segment_0.intersection_t(&segment_1) {
+                Some(t) => segment_0.sample(t),
+                None => segment_0.to().lerp(segment_1.from(), 0.5),
+            };
+            let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
+            let ctrl = LineSegmentF32::new(&ctrl, &segment_1.to());
+            contour.push_full_segment(&SegmentPF3::cubic(&baseline, &ctrl), true);
+            return;
+        }
+
+        let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
+        let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(),     &self.ctrl.to());
+        let mut segment_2 = LineSegmentF32::new(&self.ctrl.to(),       &self.baseline.to());
+        segment_0 = segment_0.offset(distance);
+        segment_1 = segment_1.offset(distance);
+        segment_2 = segment_2.offset(distance);
+        let (ctrl_0, ctrl_1) = match (segment_0.intersection_t(&segment_1),
+                                      segment_1.intersection_t(&segment_2)) {
+            (Some(t0), Some(t1)) => (segment_0.sample(t0), segment_1.sample(t1)),
+            _ => {
+                (segment_0.to().lerp(segment_1.from(), 0.5),
+                 segment_1.to().lerp(segment_2.from(), 0.5))
+            }
+        };
+        let baseline = LineSegmentF32::new(&segment_0.from(), &segment_2.to());
+        let ctrl = LineSegmentF32::new(&ctrl_0, &ctrl_1);
+        contour.push_full_segment(&SegmentPF3::cubic(&baseline, &ctrl), true);
     }
 }

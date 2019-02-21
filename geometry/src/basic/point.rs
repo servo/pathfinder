@@ -133,6 +133,11 @@ impl Point2DF32 {
     pub fn is_zero(&self) -> bool {
         *self == Point2DF32::default()
     }
+
+    #[inline]
+    pub fn lerp(&self, other: Point2DF32, t: f32) -> Point2DF32 {
+        *self + (other - *self).scale(t)
+    }
 }
 
 impl PartialEq for Point2DF32 {
