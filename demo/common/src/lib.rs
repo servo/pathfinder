@@ -135,7 +135,7 @@ impl DemoApp {
         let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
 
-        let camera = if options.threed { Camera::three_d() } else { Camera::two_d() };
+        let camera = if options.three_d { Camera::three_d() } else { Camera::two_d() };
 
         let ground_program = GroundProgram::new(&device);
         let ground_solid_vertex_array =
@@ -193,7 +193,7 @@ impl DemoApp {
                 if transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                RenderTransform::Perspective(transform.to_perspective(drawable_size, true))
+                RenderTransform::Perspective(transform.to_perspective(drawable_size))
             }
             Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         };
@@ -316,10 +316,14 @@ impl DemoApp {
     }
 
     fn draw_scene(&mut self, render_msg: SceneToMainMsg, mut ui_event: UIEvent) {
-        let SceneToMainMsg::Render { built_scene, tile_time } = render_msg;
+        let SceneToMainMsg::Render {
+            built_scene,
+            transform: render_transform,
+            tile_time,
+        } = render_msg;
 
         self.device.clear();
-        self.draw_environment();
+        self.draw_environment(&render_transform);
         self.render_vector_scene(&built_scene);
 
         let rendering_time = self.renderer.shift_timer_query();
@@ -337,7 +341,7 @@ impl DemoApp {
         // Switch camera mode (2D/3D) if requested.
         //
         // FIXME(pcwalton): This mess should really be an MVC setup.
-        match (&self.camera, self.ui.threed_enabled) {
+        match (&self.camera, self.ui.three_d_enabled) {
             (&Camera::TwoD { .. }, true) => self.camera = Camera::three_d(),
             (&Camera::ThreeD { .. }, false) => self.camera = Camera::two_d(),
             _ => {}
@@ -360,15 +364,11 @@ impl DemoApp {
         self.frame_counter += 1;
     }
 
-    fn draw_environment(&self) {
-        let transform = match self.camera {
-            Camera::TwoD(..) => return,
-            Camera::ThreeD { ref transform, .. } => *transform,
+    fn draw_environment(&self, render_transform: &RenderTransform) {
+        let perspective = match *render_transform {
+            RenderTransform::Transform2D(..) => return,
+            RenderTransform::Perspective(perspective) => perspective,
         };
-
-        let (drawable_width, drawable_height) = self.window.drawable_size();
-        let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
-        let perspective = transform.to_perspective(drawable_size, false);
 
         unsafe {
             // Use the stencil buffer to avoid Z-fighting with the gridlines.
@@ -442,7 +442,7 @@ impl DemoApp {
             self.renderer.disable_subpixel_aa();
         }
 
-        if self.ui.threed_enabled {
+        if self.ui.three_d_enabled {
             self.renderer.enable_depth();
         } else {
             self.renderer.disable_depth();
@@ -538,10 +538,15 @@ impl SceneThread {
                     self.scene.view_box = RectF32::new(Point2DF32::default(), size.to_f32());
                 }
                 MainToSceneMsg::Build(build_options) => {
+                    let render_transform = build_options.render_transform.clone();
                     let start_time = Instant::now();
                     let built_scene = build_scene(&self.scene, build_options, self.options.jobs);
                     let tile_time = Instant::now() - start_time;
-                    self.sender.send(SceneToMainMsg::Render { built_scene, tile_time }).unwrap();
+                    self.sender.send(SceneToMainMsg::Render {
+                        built_scene,
+                        transform: render_transform,
+                        tile_time,
+                    }).unwrap();
                 }
             }
         }
@@ -560,13 +565,13 @@ struct BuildOptions {
 }
 
 enum SceneToMainMsg {
-    Render { built_scene: BuiltScene, tile_time: Duration }
+    Render { built_scene: BuiltScene, transform: RenderTransform, tile_time: Duration }
 }
 
 #[derive(Clone)]
 pub struct Options {
     jobs: Option<usize>,
-    threed: bool,
+    three_d: bool,
     input_path: PathBuf,
 }
 
@@ -581,19 +586,14 @@ impl Options {
                     .takes_value(true)
                     .help("Number of threads to use"),
             )
-            .arg(
-                Arg::with_name("3d")
-                    .short("3")
-                    .long("3d")
-                    .help("Run in 3D"),
-            )
+            .arg(Arg::with_name("3d").short("3").long("3d").help("Run in 3D"))
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
 
         let jobs: Option<usize> = matches
             .value_of("jobs")
             .map(|string| string.parse().unwrap());
-        let threed = matches.is_present("3d");
+        let three_d = matches.is_present("3d");
 
         let input_path = match matches.value_of("INPUT") {
             Some(path) => PathBuf::from(path),
@@ -612,7 +612,7 @@ impl Options {
         }
         thread_pool_builder.build_global().unwrap();
 
-        Options { jobs, threed, input_path }
+        Options { jobs, three_d, input_path }
     }
 }
 
@@ -725,7 +725,7 @@ impl CameraTransform3D {
         update
     }
 
-    fn to_perspective(&self, drawable_size: Point2DI32, flip_y: bool) -> Perspective {
+    fn to_perspective(&self, drawable_size: Point2DI32) -> Perspective {
         let aspect = drawable_size.x() as f32 / drawable_size.y() as f32;
         let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
 
@@ -736,11 +736,9 @@ impl CameraTransform3D {
                                                                          -self.position.y(),
                                                                          -self.position.z()));
 
-        if flip_y {
-            transform = transform.post_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0));
-            transform =
-                transform.post_mul(&Transform3DF32::from_translation(0.0, -WORLD_SCALE, 0.0));
-        }
+        // Flip Y.
+        transform = transform.post_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0));
+        transform = transform.post_mul(&Transform3DF32::from_translation(0.0, -WORLD_SCALE, 0.0));
 
         Perspective::new(&transform, drawable_size)
     }

@@ -50,7 +50,7 @@ pub struct DemoUI {
     effects_panel_visible: bool,
     rotate_panel_visible: bool,
 
-    pub threed_enabled: bool,
+    pub three_d_enabled: bool,
     pub gamma_correction_effect_enabled: bool,
     pub stem_darkening_effect_enabled: bool,
     pub subpixel_aa_effect_enabled: bool,
@@ -71,7 +71,7 @@ impl DemoUI {
             rotate_texture,
             zoom_in_texture,
             zoom_out_texture,
-            threed_enabled: options.threed,
+            three_d_enabled: options.three_d,
             effects_panel_visible: false,
             rotate_panel_visible: false,
             gamma_correction_effect_enabled: false,
@@ -110,15 +110,15 @@ impl DemoUI {
         debug_ui.draw_solid_rect(RectI32::new(threed_switch_origin,
                                               Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT)),
                                  WINDOW_COLOR);
-        self.threed_enabled = self.draw_switch(debug_ui,
+        self.three_d_enabled = self.draw_switch(debug_ui,
                                                event,
                                                threed_switch_origin,
                                                "2D",
                                                "3D",
-                                               self.threed_enabled);
+                                               self.three_d_enabled);
 
         // Draw rotate and zoom buttons, if applicable.
-        if !self.threed_enabled {
+        if !self.three_d_enabled {
             let rotate_button_y = bottom - BUTTON_HEIGHT;
             let rotate_button_position = Point2DI32::new(ROTATE_PANEL_X, rotate_button_y);
             if self.draw_button(debug_ui, event, rotate_button_position, &self.rotate_texture) {
