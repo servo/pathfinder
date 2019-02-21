@@ -14,8 +14,6 @@ use crate::basic::point::Point2DF32;
 use crate::basic::rect::RectF32;
 use crate::basic::transform3d::Transform3DF32;
 use crate::segment::Segment;
-use euclid::Transform2D;
-use lyon_path::PathEvent;
 use pathfinder_simd::default::F32x4;
 use std::ops::Sub;
 
@@ -299,53 +297,6 @@ where
         Transform2DF32PathIter {
             iter,
             transform: *transform,
-        }
-    }
-}
-
-/// Transforms a path with a Euclid 2D transform.
-pub struct Transform2DPathIter<I> where I: Iterator<Item = PathEvent> {
-    inner: I,
-    transform: Transform2D<f32>,
-}
-
-impl<I> Transform2DPathIter<I> where I: Iterator<Item = PathEvent> {
-    #[inline]
-    pub fn new(inner: I, transform: &Transform2D<f32>) -> Transform2DPathIter<I> {
-        Transform2DPathIter {
-            inner: inner,
-            transform: *transform,
-        }
-    }
-}
-
-impl<I> Iterator for Transform2DPathIter<I> where I: Iterator<Item = PathEvent> {
-    type Item = PathEvent;
-
-    fn next(&mut self) -> Option<PathEvent> {
-        match self.inner.next() {
-            Some(PathEvent::MoveTo(to)) => {
-                Some(PathEvent::MoveTo(self.transform.transform_point(&to)))
-            }
-            Some(PathEvent::LineTo(to)) => {
-                Some(PathEvent::LineTo(self.transform.transform_point(&to)))
-            }
-            Some(PathEvent::QuadraticTo(ctrl, to)) => {
-                Some(PathEvent::QuadraticTo(self.transform.transform_point(&ctrl),
-                                            self.transform.transform_point(&to)))
-            }
-            Some(PathEvent::CubicTo(ctrl1, ctrl2, to)) => {
-                Some(PathEvent::CubicTo(self.transform.transform_point(&ctrl1),
-                                        self.transform.transform_point(&ctrl2),
-                                        self.transform.transform_point(&to)))
-            }
-            Some(PathEvent::Arc(center, radius, start, end)) => {
-                Some(PathEvent::Arc(self.transform.transform_point(&center),
-                                    self.transform.transform_vector(&radius),
-                                    start,
-                                    end))
-            }
-            event => event,
         }
     }
 }

@@ -10,14 +10,12 @@
 
 //! Converts a subset of SVG to a Pathfinder scene.
 
-use lyon_path::iterator::PathIter;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32PathIter};
 use pathfinder_geometry::outline::Outline;
-use pathfinder_geometry::segment::{PathEventsToSegments, Segment};
-use pathfinder_geometry::segment::{SegmentFlags, SegmentsToPathEvents};
+use pathfinder_geometry::segment::{Segment, SegmentFlags};
 use pathfinder_geometry::stroke::OutlineStrokeToFill;
 use pathfinder_renderer::paint::{ColorU, Paint};
 use pathfinder_renderer::scene::{PathObject, PathObjectKind, Scene};
@@ -91,10 +89,6 @@ fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2DF32) {
                     f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
 
                 let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                /*let path = SegmentsToPathEvents::new(path);
-                let path = PathIter::new(path);
-                let path = StrokeToFillIter::new(path, StrokeStyle::new(stroke_width));
-                let path = PathEventsToSegments::new(path);*/
                 let path = Transform2DF32PathIter::new(path, &transform);
                 let outline = Outline::from_segments(path);
 

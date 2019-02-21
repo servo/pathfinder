@@ -21,7 +21,6 @@ pub mod monotonic;
 pub mod orientation;
 pub mod outline;
 pub mod segment;
-pub mod segments;
 pub mod stroke;
 pub mod util;
 

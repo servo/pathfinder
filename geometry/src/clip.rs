@@ -15,89 +15,8 @@ use crate::outline::{Contour, PointFlags};
 use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
 use arrayvec::ArrayVec;
-use lyon_path::PathEvent;
 use smallvec::SmallVec;
 use std::mem;
-
-pub struct RectClipper<'a> {
-    clip_rect: RectF32,
-    subject: &'a [PathEvent],
-}
-
-impl<'a> RectClipper<'a> {
-    pub fn new<'aa>(clip_rect: RectF32, subject: &'aa [PathEvent]) -> RectClipper<'aa> {
-        RectClipper { clip_rect, subject }
-    }
-
-    pub fn clip(&self) -> Vec<PathEvent> {
-        let mut output = self.subject.to_vec();
-        self.clip_against(Edge::left(self.clip_rect), &mut output);
-        self.clip_against(Edge::top(self.clip_rect), &mut output);
-        self.clip_against(Edge::right(self.clip_rect), &mut output);
-        self.clip_against(Edge::bottom(self.clip_rect), &mut output);
-        output
-    }
-
-    fn clip_against(&self, edge: Edge, output: &mut Vec<PathEvent>) {
-        let (mut from, mut path_start, mut first_point) = (Point2DF32::default(), None, false);
-        let input = mem::replace(output, vec![]);
-        for event in input {
-            let to = match event {
-                PathEvent::MoveTo(to) => {
-                    let to = Point2DF32::from_euclid(to);
-                    path_start = Some(to);
-                    from = to;
-                    first_point = true;
-                    continue
-                }
-                PathEvent::Close => {
-                    match path_start {
-                        None => continue,
-                        Some(path_start) => path_start,
-                    }
-                }
-                PathEvent::LineTo(to) |
-                PathEvent::QuadraticTo(_, to) |
-                PathEvent::CubicTo(_, _, to) => Point2DF32::from_euclid(to),
-                PathEvent::Arc(..) => panic!("Arcs unsupported!"),
-            };
-
-            if edge.point_is_inside(&to) {
-                if !edge.point_is_inside(&from) {
-                    let line_segment = LineSegmentF32::new(&from, &to);
-                    for t in edge.intersect_line_segment(&line_segment) {
-                        let intersection = line_segment.sample(t);
-                        add_line(&intersection, output, &mut first_point);
-                    }
-                }
-                add_line(&to, output, &mut first_point);
-            } else if edge.point_is_inside(&from) {
-                let line_segment = LineSegmentF32::new(&from, &to);
-                for t in edge.intersect_line_segment(&line_segment) {
-                    let intersection = line_segment.sample(t);
-                    add_line(&intersection, output, &mut first_point);
-                }
-            }
-
-            from = to;
-
-            if let PathEvent::Close = event {
-                output.push(PathEvent::Close);
-                path_start = None;
-            }
-        }
-
-        fn add_line(to: &Point2DF32, output: &mut Vec<PathEvent>, first_point: &mut bool) {
-            let to = to.as_euclid();
-            if *first_point {
-                output.push(PathEvent::MoveTo(to));
-                *first_point = false;
-            } else {
-                output.push(PathEvent::LineTo(to));
-            }
-        }
-    }
-}
 
 #[derive(Clone, Copy, Debug)]
 struct Edge(LineSegmentF32);
@@ -118,28 +37,6 @@ impl TEdge for Edge {
             }
         }
         results
-    }
-}
-
-impl Edge {
-    #[inline]
-    fn left(rect: RectF32) -> Edge {
-        Edge(LineSegmentF32::new(&rect.lower_left(), &rect.origin()))
-    }
-
-    #[inline]
-    fn top(rect: RectF32) -> Edge {
-        Edge(LineSegmentF32::new(&rect.origin(), &rect.upper_right()))
-    }
-
-    #[inline]
-    fn right(rect: RectF32) -> Edge {
-        Edge(LineSegmentF32::new(&rect.upper_right(), &rect.lower_right()))
-    }
-
-    #[inline]
-    fn bottom(rect: RectF32) -> Edge {
-        Edge(LineSegmentF32::new(&rect.lower_right(), &rect.lower_left()))
     }
 }
 
