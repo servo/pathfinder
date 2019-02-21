@@ -33,6 +33,7 @@ pub struct Contour {
     pub(crate) points: Vec<Point2DF32>,
     pub(crate) flags: Vec<PointFlags>,
     pub(crate) bounds: RectF32,
+    pub(crate) closed: bool,
 }
 
 bitflags! {
@@ -69,6 +70,7 @@ impl Outline {
 
             if segment.flags.contains(SegmentFlags::CLOSES_SUBPATH) {
                 if !current_contour.is_empty() {
+                    current_contour.close();
                     let contour = mem::replace(&mut current_contour, Contour::new());
                     contour.update_bounds(&mut bounds);
                     outline.contours.push(contour);
@@ -195,7 +197,7 @@ impl Debug for Outline {
 impl Contour {
     #[inline]
     pub fn new() -> Contour {
-        Contour { points: vec![], flags: vec![], bounds: RectF32::default() }
+        Contour { points: vec![], flags: vec![], bounds: RectF32::default(), closed: false }
     }
 
     // Replaces this contour with a new one, with arrays preallocated to match `self`.
@@ -206,6 +208,7 @@ impl Contour {
             points: Vec::with_capacity(length),
             flags: Vec::with_capacity(length),
             bounds: RectF32::default(),
+            closed: false,
         })
     }
 
@@ -230,6 +233,11 @@ impl Contour {
     }
 
     #[inline]
+    pub fn is_closed(&self) -> bool {
+        self.closed
+    }
+
+    #[inline]
     pub fn position_of(&self, index: u32) -> Point2DF32 {
         self.points[index as usize]
     }
@@ -237,6 +245,11 @@ impl Contour {
     #[inline]
     pub(crate) fn last_position(&self) -> Option<Point2DF32> {
         self.points.last().cloned()
+    }
+
+    #[inline]
+    pub(crate) fn close(&mut self) {
+        self.closed = true;
     }
 
     // TODO(pcwalton): SIMD.
@@ -580,7 +593,11 @@ impl Debug for Contour {
             }
         }
 
-        write!(formatter, " z")
+        if self.closed {
+            write!(formatter, " z")?;
+        }
+
+        Ok(())
     }
 }
 
@@ -617,7 +634,8 @@ impl<'a> Iterator for ContourIter<'a> {
     #[inline]
     fn next(&mut self) -> Option<Segment> {
         let contour = self.contour;
-        if self.index == contour.len() + 1 {
+        if (self.index == contour.len() && !self.contour.closed) ||
+                self.index == contour.len() + 1 {
             return None;
         }
 
