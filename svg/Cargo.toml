@@ -5,7 +5,6 @@ edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
-lyon_path = "0.12"
 usvg = "0.4"
 
 [dependencies.pathfinder_geometry]

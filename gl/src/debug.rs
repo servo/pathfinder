@@ -17,7 +17,6 @@
 
 use crate::device::{Buffer, BufferTarget, BufferUploadMode, Device, Program, Texture};
 use crate::device::{Uniform, VertexAttr};
-use euclid::Size2D;
 use gl::types::{GLfloat, GLint, GLsizei, GLuint};
 use gl;
 use pathfinder_geometry::basic::point::Point2DI32;
@@ -91,7 +90,7 @@ impl DebugFont {
 }
 
 pub struct DebugUI {
-    framebuffer_size: Size2D<u32>,
+    framebuffer_size: Point2DI32,
 
     texture_program: DebugTextureProgram,
     texture_vertex_array: DebugTextureVertexArray,
@@ -105,7 +104,7 @@ pub struct DebugUI {
 }
 
 impl DebugUI {
-    pub fn new(device: &Device, framebuffer_size: &Size2D<u32>) -> DebugUI {
+    pub fn new(device: &Device, framebuffer_size: Point2DI32) -> DebugUI {
         let texture_program = DebugTextureProgram::new(device);
         let texture_vertex_array = DebugTextureVertexArray::new(&texture_program);
         let font = DebugFont::load(device);
@@ -119,7 +118,7 @@ impl DebugUI {
         let font_texture = device.create_texture_from_png(FONT_PNG_NAME);
 
         DebugUI {
-            framebuffer_size: *framebuffer_size,
+            framebuffer_size,
             texture_program,
             texture_vertex_array,
             font,
@@ -131,12 +130,12 @@ impl DebugUI {
         }
     }
 
-    pub fn framebuffer_size(&self) -> Size2D<u32> {
+    pub fn framebuffer_size(&self) -> Point2DI32 {
         self.framebuffer_size
     }
 
-    pub fn set_framebuffer_size(&mut self, window_size: &Size2D<u32>) {
-        self.framebuffer_size = *window_size;
+    pub fn set_framebuffer_size(&mut self, window_size: Point2DI32) {
+        self.framebuffer_size = window_size;
     }
 
     pub fn add_sample(&mut self, tile_time: Duration, rendering_time: Option<Duration>) {
@@ -148,9 +147,9 @@ impl DebugUI {
 
     pub fn draw(&self) {
         // Draw performance window.
-        let bottom = self.framebuffer_size.height as i32 - PADDING;
+        let bottom = self.framebuffer_size.y() - PADDING;
         let window_rect = RectI32::new(
-            Point2DI32::new(self.framebuffer_size.width as i32 - PADDING - PERF_WINDOW_WIDTH,
+            Point2DI32::new(self.framebuffer_size.x() - PADDING - PERF_WINDOW_WIDTH,
                             bottom - PERF_WINDOW_HEIGHT),
             Point2DI32::new(PERF_WINDOW_WIDTH, PERF_WINDOW_HEIGHT));
         self.draw_solid_rect(window_rect, WINDOW_COLOR);
@@ -188,8 +187,8 @@ impl DebugUI {
             gl::BindVertexArray(self.solid_vertex_array.gl_vertex_array);
             gl::UseProgram(self.solid_program.program.gl_program);
             gl::Uniform2f(self.solid_program.framebuffer_size_uniform.location,
-                          self.framebuffer_size.width as GLfloat,
-                          self.framebuffer_size.height as GLfloat);
+                          self.framebuffer_size.x() as GLfloat,
+                          self.framebuffer_size.y() as GLfloat);
             set_color_uniform(&self.solid_program.color_uniform, color);
             gl::BlendEquation(gl::FUNC_ADD);
             gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
@@ -237,9 +236,8 @@ impl DebugUI {
     }
 
     pub fn draw_texture(&self, origin: Point2DI32, texture: &Texture, color: ColorU) {
-        let size = Point2DI32::new(texture.size.width as i32, texture.size.height as i32);
-        let position_rect = RectI32::new(origin, size);
-        let tex_coord_rect = RectI32::new(Point2DI32::default(), size);
+        let position_rect = RectI32::new(origin, texture.size);
+        let tex_coord_rect = RectI32::new(Point2DI32::default(), texture.size);
         let vertex_data = [
             DebugTextureVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
             DebugTextureVertex::new(position_rect.upper_right(), tex_coord_rect.upper_right()),
@@ -279,11 +277,11 @@ impl DebugUI {
             gl::BindVertexArray(self.texture_vertex_array.gl_vertex_array);
             gl::UseProgram(self.texture_program.program.gl_program);
             gl::Uniform2f(self.texture_program.framebuffer_size_uniform.location,
-                          self.framebuffer_size.width as GLfloat,
-                          self.framebuffer_size.height as GLfloat);
+                          self.framebuffer_size.x() as GLfloat,
+                          self.framebuffer_size.y() as GLfloat);
             gl::Uniform2f(self.texture_program.texture_size_uniform.location,
-                          texture.size.width as GLfloat,
-                          texture.size.height as GLfloat);
+                          texture.size.x() as GLfloat,
+                          texture.size.y() as GLfloat);
             set_color_uniform(&self.texture_program.color_uniform, color);
             texture.bind(0);
             gl::Uniform1i(self.texture_program.texture_uniform.location, 0);

@@ -86,7 +86,7 @@ impl DemoUI {
     }
 
     pub fn update(&mut self, debug_ui: &mut DebugUI, event: &mut UIEvent, action: &mut UIAction) {
-        let bottom = debug_ui.framebuffer_size().height as i32 - PADDING;
+        let bottom = debug_ui.framebuffer_size().y() - PADDING;
 
         // Draw effects button.
         let effects_button_position = Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT);
@@ -153,7 +153,7 @@ impl DemoUI {
             return;
         }
 
-        let bottom = debug_ui.framebuffer_size().height as i32 - PADDING;
+        let bottom = debug_ui.framebuffer_size().y() - PADDING;
         let effects_panel_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_PANEL_HEIGHT);
         debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_panel_y),
                                               Point2DI32::new(EFFECTS_PANEL_WIDTH,
@@ -192,7 +192,7 @@ impl DemoUI {
             return;
         }
 
-        let bottom = debug_ui.framebuffer_size().height as i32 - PADDING;
+        let bottom = debug_ui.framebuffer_size().y() - PADDING;
         let rotate_panel_y = bottom - (BUTTON_HEIGHT + PADDING + ROTATE_PANEL_HEIGHT);
         debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(ROTATE_PANEL_X, rotate_panel_y),
                                               Point2DI32::new(ROTATE_PANEL_WIDTH,

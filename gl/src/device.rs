@@ -10,8 +10,8 @@
 
 //! Minimal abstractions over GPU device capabilities.
 
-use euclid::Size2D;
 use gl::types::{GLchar, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
+use pathfinder_geometry::basic::point::Point2DI32;
 use std::env;
 use std::ffi::CString;
 use std::fs::File;
@@ -40,7 +40,7 @@ impl Device {
 
         let mut texture = Texture {
             gl_texture: 0,
-            size: Size2D::new(image.width(), image.height()),
+            size: Point2DI32::new(image.width() as i32, image.height() as i32),
         };
 
         unsafe {
@@ -338,20 +338,20 @@ enum ShaderKind {
 
 pub struct Texture {
     gl_texture: GLuint,
-    pub size: Size2D<u32>,
+    pub size: Point2DI32,
 }
 
 impl Texture {
-    pub fn new_r16f(size: &Size2D<u32>) -> Texture {
-        let mut texture = Texture { gl_texture: 0, size: *size };
+    pub fn new_r16f(size: Point2DI32) -> Texture {
+        let mut texture = Texture { gl_texture: 0, size };
         unsafe {
             gl::GenTextures(1, &mut texture.gl_texture);
             texture.bind(0);
             gl::TexImage2D(gl::TEXTURE_2D,
                            0,
                            gl::R16F as GLint,
-                           size.width as GLsizei,
-                           size.height as GLsizei,
+                           size.x() as GLsizei,
+                           size.y() as GLsizei,
                            0,
                            gl::RED,
                            gl::HALF_FLOAT,
@@ -362,16 +362,16 @@ impl Texture {
         texture
     }
 
-    pub fn new_rgba(size: &Size2D<u32>) -> Texture {
-        let mut texture = Texture { gl_texture: 0, size: *size };
+    pub fn new_rgba(size: Point2DI32) -> Texture {
+        let mut texture = Texture { gl_texture: 0, size };
         unsafe {
             gl::GenTextures(1, &mut texture.gl_texture);
             texture.bind(0);
             gl::TexImage2D(gl::TEXTURE_2D,
                            0,
                            gl::RGBA as GLint,
-                           size.width as GLsizei,
-                           size.height as GLsizei,
+                           size.x() as GLsizei,
+                           size.y() as GLsizei,
                            0,
                            gl::RGBA,
                            gl::UNSIGNED_BYTE,
@@ -389,15 +389,15 @@ impl Texture {
         }
     }
 
-    pub fn upload_rgba(&self, size: &Size2D<u32>, data: &[u8]) {
-        assert!(data.len() >= size.width as usize * size.height as usize * 4);
+    pub fn upload_rgba(&self, size: Point2DI32, data: &[u8]) {
+        assert!(data.len() >= size.x() as usize * size.y() as usize * 4);
         unsafe {
             self.bind(0);
             gl::TexImage2D(gl::TEXTURE_2D,
                            0,
                            gl::RGBA as GLint,
-                           size.width as GLsizei,
-                           size.height as GLsizei,
+                           size.x() as GLsizei,
+                           size.y() as GLsizei,
                            0,
                            gl::RGBA,
                            gl::UNSIGNED_BYTE,

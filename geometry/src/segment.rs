@@ -162,6 +162,16 @@ impl Segment {
             self.to_cubic().as_cubic_segment().split(t)
         }
     }
+
+    #[inline]
+    pub fn sample(self, t: f32) -> Point2DF32 {
+        // FIXME(pcwalton): Don't degree elevate!
+        if self.is_line() {
+            self.as_line_segment().sample(t)
+        } else {
+            self.to_cubic().as_cubic_segment().sample(t)
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

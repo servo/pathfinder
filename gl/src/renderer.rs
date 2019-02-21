@@ -11,9 +11,8 @@
 use crate::debug::DebugUI;
 use crate::device::{Buffer, BufferTarget, BufferUploadMode, Device, Framebuffer, Program, Texture};
 use crate::device::{TimerQuery, Uniform, VertexArray, VertexAttr};
-use euclid::Size2D;
 use gl::types::{GLfloat, GLint};
-use pathfinder_geometry::basic::point::Point3DF32;
+use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
 use pathfinder_renderer::paint::{ColorU, ObjectShader};
 use pathfinder_renderer::post::DefringingKernel;
@@ -23,16 +22,16 @@ use std::time::Duration;
 
 static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 
-const MASK_FRAMEBUFFER_WIDTH: u32 = TILE_WIDTH * 256;
-const MASK_FRAMEBUFFER_HEIGHT: u32 = TILE_HEIGHT * 256;
+const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: GLint = 8;
 const SOLID_TILE_INSTANCE_SIZE: GLint = 6;
 const MASK_TILE_INSTANCE_SIZE: GLint = 8;
 
-const FILL_COLORS_TEXTURE_WIDTH: u32 = 256;
-const FILL_COLORS_TEXTURE_HEIGHT: u32 = 256;
+const FILL_COLORS_TEXTURE_WIDTH: i32 = 256;
+const FILL_COLORS_TEXTURE_HEIGHT: i32 = 256;
 
 pub struct Renderer {
     // Core shaders
@@ -63,13 +62,13 @@ pub struct Renderer {
     pub debug_ui: DebugUI,
 
     // Extra info
-    main_framebuffer_size: Size2D<u32>,
+    main_framebuffer_size: Point2DI32,
     postprocess_options: PostprocessOptions,
     use_depth: bool,
 }
 
 impl Renderer {
-    pub fn new(device: &Device, main_framebuffer_size: &Size2D<u32>) -> Renderer {
+    pub fn new(device: &Device, main_framebuffer_size: Point2DI32) -> Renderer {
         let fill_program = FillProgram::new(device);
         let solid_tile_program = SolidTileProgram::new(device);
         let mask_tile_program = MaskTileProgram::new(device);
@@ -95,12 +94,12 @@ impl Renderer {
                                                                    &quad_vertex_positions_buffer);
         let stencil_vertex_array = StencilVertexArray::new(&stencil_program);
 
-        let mask_framebuffer_texture = Texture::new_r16f(&Size2D::new(MASK_FRAMEBUFFER_WIDTH,
-                                                                      MASK_FRAMEBUFFER_HEIGHT));
+        let mask_framebuffer_texture = Texture::new_r16f(Point2DI32::new(MASK_FRAMEBUFFER_WIDTH,
+                                                                         MASK_FRAMEBUFFER_HEIGHT));
         let mask_framebuffer = Framebuffer::new(mask_framebuffer_texture);
 
-        let fill_colors_texture = Texture::new_rgba(&Size2D::new(FILL_COLORS_TEXTURE_WIDTH,
-                                                                 FILL_COLORS_TEXTURE_HEIGHT));
+        let fill_colors_texture = Texture::new_rgba(Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH,
+                                                                    FILL_COLORS_TEXTURE_HEIGHT));
 
         let debug_ui = DebugUI::new(device, main_framebuffer_size);
 
@@ -129,7 +128,7 @@ impl Renderer {
 
             debug_ui,
 
-            main_framebuffer_size: *main_framebuffer_size,
+            main_framebuffer_size,
             postprocess_options: PostprocessOptions::default(),
             use_depth: false,
         }
@@ -176,8 +175,8 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: &Size2D<u32>) {
-        self.main_framebuffer_size = *new_framebuffer_size;
+    pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Point2DI32) {
+        self.main_framebuffer_size = new_framebuffer_size;
         self.debug_ui.set_framebuffer_size(new_framebuffer_size);
     }
 
@@ -217,15 +216,15 @@ impl Renderer {
     }
 
     fn upload_shaders(&mut self, shaders: &[ObjectShader]) {
-        let size = Size2D::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
-        let mut fill_colors = vec![0; size.width as usize * size.height as usize * 4];
+        let size = Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
+        let mut fill_colors = vec![0; size.x() as usize * size.y() as usize * 4];
         for (shader_index, shader) in shaders.iter().enumerate() {
             fill_colors[shader_index * 4 + 0] = shader.fill_color.r;
             fill_colors[shader_index * 4 + 1] = shader.fill_color.g;
             fill_colors[shader_index * 4 + 2] = shader.fill_color.b;
             fill_colors[shader_index * 4 + 3] = shader.fill_color.a;
         }
-        self.fill_colors_texture.upload_rgba(&size, &fill_colors);
+        self.fill_colors_texture.upload_rgba(size, &fill_colors);
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileScenePrimitive]) {
@@ -279,8 +278,8 @@ impl Renderer {
             gl::BindVertexArray(self.mask_tile_vertex_array.vertex_array.gl_vertex_array);
             gl::UseProgram(self.mask_tile_program.program.gl_program);
             gl::Uniform2f(self.mask_tile_program.framebuffer_size_uniform.location,
-                          self.main_framebuffer_size.width as GLfloat,
-                          self.main_framebuffer_size.height as GLfloat);
+                          self.main_framebuffer_size.x() as GLfloat,
+                          self.main_framebuffer_size.y() as GLfloat);
             gl::Uniform2f(self.mask_tile_program.tile_size_uniform.location,
                           TILE_WIDTH as GLfloat,
                           TILE_HEIGHT as GLfloat);
@@ -313,8 +312,8 @@ impl Renderer {
             gl::BindVertexArray(self.solid_tile_vertex_array.vertex_array.gl_vertex_array);
             gl::UseProgram(self.solid_tile_program.program.gl_program);
             gl::Uniform2f(self.solid_tile_program.framebuffer_size_uniform.location,
-                          self.main_framebuffer_size.width as GLfloat,
-                          self.main_framebuffer_size.height as GLfloat);
+                          self.main_framebuffer_size.x() as GLfloat,
+                          self.main_framebuffer_size.y() as GLfloat);
             gl::Uniform2f(self.solid_tile_program.tile_size_uniform.location,
                           TILE_WIDTH as GLfloat,
                           TILE_HEIGHT as GLfloat);
@@ -342,8 +341,8 @@ impl Renderer {
             gl::BindVertexArray(self.postprocess_vertex_array.vertex_array.gl_vertex_array);
             gl::UseProgram(self.postprocess_program.program.gl_program);
             gl::Uniform2f(self.postprocess_program.framebuffer_size_uniform.location,
-                          self.main_framebuffer_size.width as GLfloat,
-                          self.main_framebuffer_size.height as GLfloat);
+                          self.main_framebuffer_size.x() as GLfloat,
+                          self.main_framebuffer_size.y() as GLfloat);
             match self.postprocess_options.defringing_kernel {
                 Some(ref kernel) => {
                     debug_assert!(kernel.0.len() == 4);
@@ -421,8 +420,8 @@ impl Renderer {
         unsafe {
             gl::Viewport(0,
                          0,
-                         self.main_framebuffer_size.width as GLint,
-                         self.main_framebuffer_size.height as GLint);
+                         self.main_framebuffer_size.x(),
+                         self.main_framebuffer_size.y());
         }
     }
 
@@ -437,7 +436,7 @@ impl Renderer {
                     existing_framebuffer.texture.size == self.main_framebuffer_size => {}
             _ => {
                 self.postprocess_source_framebuffer =
-                    Some(Framebuffer::new(Texture::new_rgba(&self.main_framebuffer_size)));
+                    Some(Framebuffer::new(Texture::new_rgba(self.main_framebuffer_size)));
             }
         };
 

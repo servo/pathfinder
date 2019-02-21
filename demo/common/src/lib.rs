@@ -12,7 +12,6 @@
 
 use crate::ui::{DemoUI, UIAction, UIEvent};
 use clap::{App, Arg};
-use euclid::Size2D;
 use gl::types::GLsizei;
 use jemallocator;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
@@ -129,10 +128,10 @@ impl DemoApp {
 
         let (window_width, _) = window.size();
         let (drawable_width, drawable_height) = window.drawable_size();
-        let drawable_size = Size2D::new(drawable_width, drawable_height);
+        let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
 
         let base_scene = load_scene(&options.input_path);
-        let renderer = Renderer::new(&device, &drawable_size);
+        let renderer = Renderer::new(&device, drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
 
@@ -239,7 +238,7 @@ impl DemoApp {
                 Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
                     let drawable_size = update_drawable_size(&self.window,
                                                              &self.scene_thread_proxy);
-                    self.renderer.set_main_framebuffer_size(&drawable_size);
+                    self.renderer.set_main_framebuffer_size(drawable_size);
                     self.dirty = true;
                 }
                 Event::MouseButtonDown { x, y, .. } => {
@@ -511,8 +510,8 @@ impl SceneThreadProxy {
         self.sender.send(MainToSceneMsg::LoadScene(scene)).unwrap();
     }
 
-    fn set_drawable_size(&self, drawable_size: &Size2D<u32>) {
-        self.sender.send(MainToSceneMsg::SetDrawableSize(*drawable_size)).unwrap();
+    fn set_drawable_size(&self, drawable_size: Point2DI32) {
+        self.sender.send(MainToSceneMsg::SetDrawableSize(drawable_size)).unwrap();
     }
 }
 
@@ -536,9 +535,7 @@ impl SceneThread {
             match msg {
                 MainToSceneMsg::LoadScene(scene) => self.scene = scene,
                 MainToSceneMsg::SetDrawableSize(size) => {
-                    self.scene.view_box =
-                        RectF32::new(Point2DF32::default(),
-                                     Point2DF32::new(size.width as f32, size.height as f32));
+                    self.scene.view_box = RectF32::new(Point2DF32::default(), size.to_f32());
                 }
                 MainToSceneMsg::Build(build_options) => {
                     let start_time = Instant::now();
@@ -553,7 +550,7 @@ impl SceneThread {
 
 enum MainToSceneMsg {
     LoadScene(Scene),
-    SetDrawableSize(Size2D<u32>),
+    SetDrawableSize(Point2DI32),
     Build(BuildOptions),
 }
 
@@ -672,10 +669,10 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
     built_scene
 }
 
-fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) -> Size2D<u32> {
+fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) -> Point2DI32 {
     let (drawable_width, drawable_height) = window.drawable_size();
-    let drawable_size = Size2D::new(drawable_width as u32, drawable_height as u32);
-    scene_thread_proxy.set_drawable_size(&drawable_size);
+    let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
+    scene_thread_proxy.set_drawable_size(drawable_size);
     drawable_size
 }
 
@@ -745,8 +742,7 @@ impl CameraTransform3D {
                 transform.post_mul(&Transform3DF32::from_translation(0.0, -WORLD_SCALE, 0.0));
         }
 
-        let drawable_size = Size2D::new(drawable_size.x() as u32, drawable_size.y() as u32);
-        Perspective::new(&transform, &drawable_size)
+        Perspective::new(&transform, drawable_size)
     }
 }
 

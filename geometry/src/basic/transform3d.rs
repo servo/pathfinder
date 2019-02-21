@@ -10,11 +10,10 @@
 
 //! 3D transforms that can be applied to paths.
 
-use crate::basic::point::{Point2DF32, Point3DF32};
+use crate::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use crate::basic::rect::RectF32;
 use crate::basic::transform2d::Matrix2x2F32;
 use crate::segment::Segment;
-use euclid::Size2D;
 use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Neg};
 
@@ -261,13 +260,13 @@ impl Neg for Matrix2x2F32 {
 #[derive(Clone, Copy, Debug)]
 pub struct Perspective {
     pub transform: Transform3DF32,
-    pub window_size: Size2D<u32>,
+    pub window_size: Point2DI32,
 }
 
 impl Perspective {
     #[inline]
-    pub fn new(transform: &Transform3DF32, window_size: &Size2D<u32>) -> Perspective {
-        Perspective { transform: *transform, window_size: *window_size }
+    pub fn new(transform: &Transform3DF32, window_size: Point2DI32) -> Perspective {
+        Perspective { transform: *transform, window_size }
     }
 
     #[inline]
@@ -276,9 +275,7 @@ impl Perspective {
                         .transform_point(point.to_3d())
                         .perspective_divide()
                         .to_2d() * Point2DF32::new(1.0, -1.0);
-        let window_size = self.window_size.to_f32();
-        let size_scale = Point2DF32::new(window_size.width * 0.5, window_size.height * 0.5);
-        (point + Point2DF32::splat(1.0)) * size_scale
+        (point + Point2DF32::splat(1.0)) * self.window_size.to_f32().scale(0.5)
     }
 
     // TODO(pcwalton): SIMD?

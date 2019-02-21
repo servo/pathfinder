@@ -16,6 +16,8 @@ use crate::outline::{Contour, Outline};
 use crate::segment::Segment as SegmentPF3;
 use std::mem;
 
+const TOLERANCE: f32 = 0.01;
+
 pub struct OutlineStrokeToFill {
     pub outline: Outline,
     pub radius: f32,
@@ -74,13 +76,34 @@ impl ContourStrokeToFill {
 
 trait Offset {
     fn offset(&self, distance: f32, contour: &mut Contour);
+    fn offset_once(&self, distance: f32) -> Self;
+    fn error_is_within_tolerance(&self, other: &SegmentPF3, distance: f32) -> bool;
 }
 
 impl Offset for SegmentPF3 {
     fn offset(&self, distance: f32, contour: &mut Contour) {
-        if self.is_line() {
-            contour.push_full_segment(&SegmentPF3::line(&self.baseline.offset(distance)), true);
+        if self.baseline.square_length() < TOLERANCE * TOLERANCE {
+            contour.push_full_segment(self, true);
             return;
+        }
+
+        let candidate = self.offset_once(distance);
+        if self.error_is_within_tolerance(&candidate, distance) {
+            contour.push_full_segment(&candidate, true);
+            return;
+        }
+
+        //println!("--- SPLITTING ---");
+        //println!("... PRE-SPLIT: {:?}", self);
+        let (before, after) = self.split(0.5);
+        //println!("... AFTER-SPLIT: {:?} {:?}", before, after);
+        before.offset(distance, contour);
+        after.offset(distance, contour);
+    }
+
+    fn offset_once(&self, distance: f32) -> SegmentPF3 {
+        if self.is_line() {
+            return SegmentPF3::line(&self.baseline.offset(distance));
         }
 
         if self.is_quadratic() {
@@ -93,8 +116,7 @@ impl Offset for SegmentPF3 {
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
             let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
-            contour.push_full_segment(&SegmentPF3::quadratic(&baseline, &ctrl), true);
-            return;
+            return SegmentPF3::quadratic(&baseline, &ctrl);
         }
 
         debug_assert!(self.is_cubic());
@@ -110,8 +132,7 @@ impl Offset for SegmentPF3 {
             };
             let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
             let ctrl = LineSegmentF32::new(&segment_0.from(), &ctrl);
-            contour.push_full_segment(&SegmentPF3::cubic(&baseline, &ctrl), true);
-            return;
+            return SegmentPF3::cubic(&baseline, &ctrl);
         }
 
         if self.ctrl.to() == self.baseline.to() {
@@ -125,8 +146,7 @@ impl Offset for SegmentPF3 {
             };
             let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
             let ctrl = LineSegmentF32::new(&ctrl, &segment_1.to());
-            contour.push_full_segment(&SegmentPF3::cubic(&baseline, &ctrl), true);
-            return;
+            return SegmentPF3::cubic(&baseline, &ctrl);
         }
 
         let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
@@ -145,6 +165,29 @@ impl Offset for SegmentPF3 {
         };
         let baseline = LineSegmentF32::new(&segment_0.from(), &segment_2.to());
         let ctrl = LineSegmentF32::new(&ctrl_0, &ctrl_1);
-        contour.push_full_segment(&SegmentPF3::cubic(&baseline, &ctrl), true);
+        SegmentPF3::cubic(&baseline, &ctrl)
+    }
+
+    fn error_is_within_tolerance(&self, other: &SegmentPF3, distance: f32) -> bool {
+        let (mut min, mut max) = (f32::abs(distance) - TOLERANCE, f32::abs(distance) + TOLERANCE);
+        min = if min <= 0.0 { 0.0 } else { min * min };
+        max = if max <= 0.0 { 0.0 } else { max * max };
+
+        for t_num in 0..(SAMPLE_COUNT + 1) {
+            let t = t_num as f32 / SAMPLE_COUNT as f32;
+            // FIXME(pcwalton): Use signed distance!
+            let (this_p, other_p) = (self.sample(t), other.sample(t));
+            let vector = this_p - other_p;
+            let square_distance = vector.square_length();
+            /*println!("this_p={:?} other_p={:?} vector={:?} sqdist={:?} min={:?} max={:?}",
+                     this_p, other_p, vector, square_distance, min, max);*/
+            if square_distance < min || square_distance > max {
+                return false;
+            }
+        }
+
+        return true;
+
+        const SAMPLE_COUNT: u32 = 16;
     }
 }

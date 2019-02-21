@@ -6,7 +6,6 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
 clap = "2.32"
-euclid = "0.19"
 gl = "0.6"
 jemallocator = "0.1"
 nfd = "0.0.4"

@@ -10,7 +10,6 @@
 
 //! A SIMD-optimized point type.
 
-use euclid::Point2D;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
@@ -27,16 +26,6 @@ impl Point2DF32 {
     #[inline]
     pub fn splat(value: f32) -> Point2DF32 {
         Point2DF32(F32x4::splat(value))
-    }
-
-    #[inline]
-    pub fn from_euclid(point: Point2D<f32>) -> Point2DF32 {
-        Point2DF32::new(point.x, point.y)
-    }
-
-    #[inline]
-    pub fn as_euclid(&self) -> Point2D<f32> {
-        Point2D::new(self.0[0], self.0[1])
     }
 
     #[inline]
@@ -110,11 +99,17 @@ impl Point2DF32 {
         Point2DF32(self.0.ceil())
     }
 
+    /// Treats this point as a vector and calculates its squared length.
+    #[inline]
+    pub fn square_length(&self) -> f32 {
+        let squared = self.0 * self.0;
+        squared[0] + squared[1]
+    }
+
     /// Treats this point as a vector and calculates its length.
     #[inline]
     pub fn length(&self) -> f32 {
-        let squared = self.0 * self.0;
-        f32::sqrt(squared[0] + squared[1])
+        f32::sqrt(self.square_length())
     }
 
     /// Treats this point as a vector and normalizes it.
@@ -242,6 +237,14 @@ impl Sub<Point2DI32> for Point2DI32 {
     }
 }
 
+impl PartialEq for Point2DI32 {
+    #[inline]
+    fn eq(&self, other: &Point2DI32) -> bool {
+        let results = self.0.packed_eq(other.0);
+        results[0] != 0 && results[1] != 0
+    }
+}
+
 /// 3D homogeneous points.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Point3DF32(pub F32x4);
@@ -250,11 +253,6 @@ impl Point3DF32 {
     #[inline]
     pub fn new(x: f32, y: f32, z: f32, w: f32) -> Point3DF32 {
         Point3DF32(F32x4::new(x, y, z, w))
-    }
-
-    #[inline]
-    pub fn from_euclid_2d(point: &Point2D<f32>) -> Point3DF32 {
-        Point3DF32::new(point.x, point.y, 0.0, 1.0)
     }
 
     #[inline]

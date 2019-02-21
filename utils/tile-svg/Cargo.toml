@@ -11,7 +11,6 @@ pf-no-simd = []
 arrayvec = "0.4"
 byteorder = "1.2"
 clap = "2.32"
-euclid = "0.19"
 fixedbitset = "0.1"
 hashbrown = "0.1"
 jemallocator = "0.1"
