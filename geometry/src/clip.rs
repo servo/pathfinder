@@ -181,6 +181,9 @@ trait ContourClipper where Self::Edge: TEdge {
         for segment in input.iter() {
             self.clip_segment_against(segment, &edge);
         }
+        if input.is_closed() {
+            self.contour_mut().close();
+        }
     }
 
     fn clip_segment_against(&mut self, mut segment: Segment, edge: &Self::Edge) {
