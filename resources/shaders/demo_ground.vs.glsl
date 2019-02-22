@@ -17,5 +17,5 @@ uniform mat4 uTransform;
 in vec2 aPosition;
 
 void main() {
-    gl_Position = uTransform * vec4(aPosition.x * 800.0, -30.0, aPosition.y * 800.0, 1.0);
+    gl_Position = uTransform * vec4(aPosition.x, 0.0, aPosition.y, 1.0);
 }

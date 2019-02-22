@@ -51,12 +51,15 @@ const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
-const CAMERA_VELOCITY: f32 = 25.0;
+const CAMERA_VELOCITY: f32 = 1000.0;
 
 // How much the scene is scaled when a scale gesture is performed.
 const CAMERA_SCALE_SPEED_2D: f32 = 2.0;
 // How much the scene is scaled when a zoom button is clicked.
 const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
+
+const NEAR_CLIP_PLANE: f32 = 0.01;
+const FAR_CLIP_PLANE: f32 = 10.0;
 
 const BACKGROUND_COLOR:   ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
 const GROUND_SOLID_COLOR: ColorU = ColorU { r: 80,  g: 80,  b: 80,  a: 255 };
@@ -64,7 +67,6 @@ const GROUND_LINE_COLOR:  ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 
 const APPROX_FONT_SIZE: f32 = 16.0;
 
-const GROUND_SCALE: f32 = 0.0015;
 const GRIDLINE_COUNT: u8 = 10;
 
 mod ui;
@@ -281,25 +283,29 @@ impl DemoApp {
                 }
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
-                        velocity.set_z(-CAMERA_VELOCITY);
+                        let scale_factor = scale_factor_for_view_box(self.scene_view_box);
+                        velocity.set_z(-CAMERA_VELOCITY * scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown { keycode: Some(Keycode::S), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
-                        velocity.set_z(CAMERA_VELOCITY);
+                        let scale_factor = scale_factor_for_view_box(self.scene_view_box);
+                        velocity.set_z(CAMERA_VELOCITY * scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown { keycode: Some(Keycode::A), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
-                        velocity.set_x(-CAMERA_VELOCITY);
+                        let scale_factor = scale_factor_for_view_box(self.scene_view_box);
+                        velocity.set_x(-CAMERA_VELOCITY * scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
-                        velocity.set_x(CAMERA_VELOCITY);
+                        let scale_factor = scale_factor_for_view_box(self.scene_view_box);
+                        velocity.set_x(CAMERA_VELOCITY * scale_factor);
                         self.dirty = true;
                     }
                 }
@@ -382,11 +388,17 @@ impl DemoApp {
             RenderTransform::Perspective(perspective) => perspective,
         };
 
-        let ground_scale = GROUND_SCALE / scale_factor_for_view_box(self.scene_view_box);
+        let ground_scale = self.scene_view_box.max_x() * 2.0;
+
+        let mut base_transform = perspective.transform;
+        base_transform = base_transform.post_mul(&Transform3DF32::from_translation(
+            -0.5 * self.scene_view_box.max_x(),
+            self.scene_view_box.max_y(),
+            -0.5 * ground_scale));
 
         unsafe {
             // Use the stencil buffer to avoid Z-fighting with the gridlines.
-            let mut transform = perspective.transform;
+            let mut transform = base_transform;
             let gridline_scale = ground_scale / GRIDLINE_COUNT as f32;
             transform = transform.post_mul(&Transform3DF32::from_scale(gridline_scale,
                                                                        1.0,
@@ -415,7 +427,7 @@ impl DemoApp {
             gl::Disable(gl::DEPTH_TEST);
             gl::Disable(gl::STENCIL_TEST);
 
-            let mut transform = perspective.transform;
+            let mut transform = base_transform;
             transform =
                 transform.post_mul(&Transform3DF32::from_scale(ground_scale, 1.0, ground_scale));
             gl::BindVertexArray(self.ground_solid_vertex_array.vertex_array.gl_vertex_array);
@@ -743,11 +755,15 @@ struct CameraTransform3D {
 
 impl CameraTransform3D {
     fn new(view_box: RectF32) -> CameraTransform3D {
+        let scale = scale_factor_for_view_box(view_box);
         CameraTransform3D {
-            position: Point3DF32::new(0.0, 0.0, 3000.0, 1.0),
+            position: Point3DF32::new(0.5 * view_box.max_x(),
+                                      -0.5 * view_box.max_y(),
+                                      1.5 / scale,
+                                      1.0),
             yaw: 0.0,
             pitch: 0.0,
-            scale: scale_factor_for_view_box(view_box),
+            scale,
         }
     }
 
@@ -762,7 +778,8 @@ impl CameraTransform3D {
 
     fn to_perspective(&self, drawable_size: Point2DI32) -> Perspective {
         let aspect = drawable_size.x() as f32 / drawable_size.y() as f32;
-        let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
+        let mut transform =
+            Transform3DF32::from_perspective(FRAC_PI_4, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
 
         transform = transform.post_mul(&Transform3DF32::from_rotation(self.yaw, self.pitch, 0.0));
         transform = transform.post_mul(&Transform3DF32::from_uniform_scale(2.0 * self.scale));
@@ -772,9 +789,6 @@ impl CameraTransform3D {
 
         // Flip Y.
         transform = transform.post_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0));
-        transform = transform.post_mul(&Transform3DF32::from_translation(0.0,
-                                                                         -1.0 / self.scale,
-                                                                         0.0));
 
         Perspective::new(&transform, drawable_size)
     }
