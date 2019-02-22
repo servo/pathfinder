@@ -39,7 +39,6 @@ impl SceneExt for Scene {
         let root = &tree.root();
         match *root.borrow() {
             NodeKind::Svg(ref svg) => {
-                println!("view_box={:?}", svg.view_box);
                 scene.view_box = usvg_rect_to_euclid_rect(&svg.view_box.rect);
                 for kid in root.children() {
                     process_node(&mut scene, &kid, &global_transform);

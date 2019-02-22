@@ -45,7 +45,7 @@ use usvg::{Options as UsvgOptions, Tree};
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-static DEFAULT_SVG_FILENAME: &'static str = "ghostscript-tiger-big-opt.svg";
+static DEFAULT_SVG_FILENAME: &'static str = "Ghostscript_Tiger.svg";
 
 const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
@@ -64,8 +64,7 @@ const GROUND_LINE_COLOR:  ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 
 const APPROX_FONT_SIZE: f32 = 16.0;
 
-const WORLD_SCALE: f32 = 800.0;
-const GROUND_SCALE: f32 = 2.0;
+const GROUND_SCALE: f32 = 0.0015;
 const GRIDLINE_COUNT: u8 = 10;
 
 mod ui;
@@ -81,6 +80,8 @@ pub struct DemoApp {
     gl_context: GLContext,
 
     scale_factor: f32,
+
+    scene_view_box: RectF32,
 
     camera: Camera,
     frame_counter: u32,
@@ -112,11 +113,11 @@ impl DemoApp {
 
         let window =
             sdl_video.window("Pathfinder Demo", MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT)
-                    .opengl()
-                    .resizable()
-                    .allow_highdpi()
-                    .build()
-                    .unwrap();
+                     .opengl()
+                     .resizable()
+                     .allow_highdpi()
+                     .build()
+                     .unwrap();
 
         let gl_context = window.gl_create_context().unwrap();
         gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
@@ -131,11 +132,16 @@ impl DemoApp {
         let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
 
         let base_scene = load_scene(&options.input_path);
+        let scene_view_box = base_scene.view_box;
         let renderer = Renderer::new(&device, drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
 
-        let camera = if options.three_d { Camera::three_d() } else { Camera::two_d() };
+        let camera = if options.three_d {
+            Camera::new_3d(scene_view_box)
+        } else {
+            Camera::new_2d(scene_view_box, drawable_size)
+        };
 
         let ground_program = GroundProgram::new(&device);
         let ground_solid_vertex_array =
@@ -150,6 +156,8 @@ impl DemoApp {
             gl_context,
 
             scale_factor: drawable_width as f32 / window_width as f32,
+
+            scene_view_box,
 
             camera,
             frame_counter: 0,
@@ -193,7 +201,8 @@ impl DemoApp {
                 if transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                RenderTransform::Perspective(transform.to_perspective(drawable_size))
+                let perspective = transform.to_perspective(drawable_size);
+                RenderTransform::Perspective(perspective)
             }
             Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         };
@@ -236,8 +245,8 @@ impl DemoApp {
                     self.dirty = true;
                 }
                 Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
-                    let drawable_size = update_drawable_size(&self.window,
-                                                             &self.scene_thread_proxy);
+                    update_drawable_size(&self.window, &self.scene_thread_proxy);
+                    let drawable_size = current_drawable_size(&self.window);
                     self.renderer.set_main_framebuffer_size(drawable_size);
                     self.dirty = true;
                 }
@@ -342,8 +351,11 @@ impl DemoApp {
         //
         // FIXME(pcwalton): This mess should really be an MVC setup.
         match (&self.camera, self.ui.three_d_enabled) {
-            (&Camera::TwoD { .. }, true) => self.camera = Camera::three_d(),
-            (&Camera::ThreeD { .. }, false) => self.camera = Camera::two_d(),
+            (&Camera::TwoD { .. }, true) => self.camera = Camera::new_3d(self.scene_view_box),
+            (&Camera::ThreeD { .. }, false) => {
+                let drawable_size = current_drawable_size(&self.window);
+                self.camera = Camera::new_2d(self.scene_view_box, drawable_size);
+            }
             _ => {}
         }
 
@@ -370,10 +382,12 @@ impl DemoApp {
             RenderTransform::Perspective(perspective) => perspective,
         };
 
+        let ground_scale = GROUND_SCALE / scale_factor_for_view_box(self.scene_view_box);
+
         unsafe {
             // Use the stencil buffer to avoid Z-fighting with the gridlines.
             let mut transform = perspective.transform;
-            let gridline_scale = GROUND_SCALE / GRIDLINE_COUNT as f32;
+            let gridline_scale = ground_scale / GRIDLINE_COUNT as f32;
             transform = transform.post_mul(&Transform3DF32::from_scale(gridline_scale,
                                                                        1.0,
                                                                        gridline_scale));
@@ -403,7 +417,7 @@ impl DemoApp {
 
             let mut transform = perspective.transform;
             transform =
-                transform.post_mul(&Transform3DF32::from_scale(GROUND_SCALE, 1.0, GROUND_SCALE));
+                transform.post_mul(&Transform3DF32::from_scale(ground_scale, 1.0, ground_scale));
             gl::BindVertexArray(self.ground_solid_vertex_array.vertex_array.gl_vertex_array);
             gl::UseProgram(self.ground_program.program.gl_program);
             gl::UniformMatrix4fv(self.ground_program.transform_uniform.location,
@@ -454,12 +468,24 @@ impl DemoApp {
     fn handle_ui_action(&mut self, ui_action: &mut UIAction) {
         match ui_action {
             UIAction::None => {}
+
             UIAction::OpenFile(ref path) => {
                 let scene = load_scene(&path);
-                self.scene_thread_proxy.load_scene(scene);
+                self.scene_view_box = scene.view_box;
+
                 update_drawable_size(&self.window, &self.scene_thread_proxy);
+                let drawable_size = current_drawable_size(&self.window);
+
+                self.camera = if self.ui.three_d_enabled {
+                    Camera::new_3d(scene.view_box)
+                } else {
+                    Camera::new_2d(scene.view_box, drawable_size)
+                };
+
+                self.scene_thread_proxy.load_scene(scene);
                 self.dirty = true;
             }
+
             UIAction::ZoomIn => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
@@ -669,11 +695,13 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
     built_scene
 }
 
-fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) -> Point2DI32 {
+fn current_drawable_size(window: &Window) -> Point2DI32 {
     let (drawable_width, drawable_height) = window.drawable_size();
-    let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
-    scene_thread_proxy.set_drawable_size(drawable_size);
-    drawable_size
+    Point2DI32::new(drawable_width as i32, drawable_height as i32)
+}
+
+fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) {
+    scene_thread_proxy.set_drawable_size(current_drawable_size(window));
 }
 
 fn center_of_window(window: &Window) -> Point2DF32 {
@@ -687,12 +715,17 @@ enum Camera {
 }
 
 impl Camera {
-    fn two_d() -> Camera {
-        Camera::TwoD(Transform2DF32::default())
+    fn new_2d(view_box: RectF32, drawable_size: Point2DI32) -> Camera {
+        let scale = i32::min(drawable_size.x(), drawable_size.y()) as f32 *
+            scale_factor_for_view_box(view_box);
+        Camera::TwoD(Transform2DF32::from_scale(&Point2DF32::splat(scale)))
     }
 
-    fn three_d() -> Camera {
-        Camera::ThreeD { transform: CameraTransform3D::new(), velocity: Point3DF32::default() }
+    fn new_3d(view_box: RectF32) -> Camera {
+        Camera::ThreeD {
+            transform: CameraTransform3D::new(view_box),
+            velocity: Point3DF32::default(),
+        }
     }
 
     fn is_3d(&self) -> bool {
@@ -705,14 +738,16 @@ struct CameraTransform3D {
     position: Point3DF32,
     yaw: f32,
     pitch: f32,
+    scale: f32,
 }
 
 impl CameraTransform3D {
-    fn new() -> CameraTransform3D {
+    fn new(view_box: RectF32) -> CameraTransform3D {
         CameraTransform3D {
-            position: Point3DF32::new(500.0, 500.0, 3000.0, 1.0),
+            position: Point3DF32::new(0.0, 0.0, 3000.0, 1.0),
             yaw: 0.0,
             pitch: 0.0,
+            scale: scale_factor_for_view_box(view_box),
         }
     }
 
@@ -729,16 +764,17 @@ impl CameraTransform3D {
         let aspect = drawable_size.x() as f32 / drawable_size.y() as f32;
         let mut transform = Transform3DF32::from_perspective(FRAC_PI_4, aspect, 0.025, 100.0);
 
-        let scale_inv = 1.0 / WORLD_SCALE;
         transform = transform.post_mul(&Transform3DF32::from_rotation(self.yaw, self.pitch, 0.0));
-        transform = transform.post_mul(&Transform3DF32::from_uniform_scale(scale_inv));
+        transform = transform.post_mul(&Transform3DF32::from_uniform_scale(2.0 * self.scale));
         transform = transform.post_mul(&Transform3DF32::from_translation(-self.position.x(),
                                                                          -self.position.y(),
                                                                          -self.position.z()));
 
         // Flip Y.
         transform = transform.post_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0));
-        transform = transform.post_mul(&Transform3DF32::from_translation(0.0, -WORLD_SCALE, 0.0));
+        transform = transform.post_mul(&Transform3DF32::from_translation(0.0,
+                                                                         -1.0 / self.scale,
+                                                                         0.0));
 
         Perspective::new(&transform, drawable_size)
     }
@@ -836,4 +872,8 @@ fn create_grid_vertex_positions() -> Vec<(u8, u8)> {
         ]);
     }
     positions
+}
+
+fn scale_factor_for_view_box(view_box: RectF32) -> f32 {
+    1.0 / f32::min(view_box.size().x(), view_box.size().y())
 }

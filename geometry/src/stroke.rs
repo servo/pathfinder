@@ -20,13 +20,13 @@ const TOLERANCE: f32 = 0.01;
 
 pub struct OutlineStrokeToFill {
     pub outline: Outline,
-    pub radius: f32,
+    pub stroke_width: f32,
 }
 
 impl OutlineStrokeToFill {
     #[inline]
-    pub fn new(outline: Outline, radius: f32) -> OutlineStrokeToFill {
-        OutlineStrokeToFill { outline, radius }
+    pub fn new(outline: Outline, stroke_width: f32) -> OutlineStrokeToFill {
+        OutlineStrokeToFill { outline, stroke_width }
     }
 
     #[inline]
@@ -35,7 +35,7 @@ impl OutlineStrokeToFill {
         for contour in &mut self.outline.contours {
             let input = mem::replace(contour, Contour::new());
             let mut contour_stroke_to_fill =
-                ContourStrokeToFill::new(input, Contour::new(), self.radius);
+                ContourStrokeToFill::new(input, Contour::new(), self.stroke_width * 0.5);
             contour_stroke_to_fill.offset_forward();
             contour_stroke_to_fill.offset_backward();
             *contour = contour_stroke_to_fill.output;
