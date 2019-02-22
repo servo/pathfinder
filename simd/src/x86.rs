@@ -48,6 +48,11 @@ impl F32x4 {
     }
 
     #[inline]
+    pub fn clamp(self, min: F32x4, max: F32x4) -> F32x4 {
+        self.max(min).min(max)
+    }
+
+    #[inline]
     pub fn abs(self) -> F32x4 {
         unsafe {
             let tmp = x86_64::_mm_srli_epi32(I32x4::splat(-1).0, 1);

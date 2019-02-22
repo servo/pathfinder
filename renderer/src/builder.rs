@@ -98,8 +98,8 @@ impl SceneBuilder {
 
             // Remap and copy fills, culling as necessary.
             for fill in &object.fills {
-                let object_tile_index = object.tile_coords_to_index(fill.tile_x as i32,
-                                                                    fill.tile_y as i32);
+                let object_tile_index =
+                    object.tile_coords_to_index(fill.tile_x as i32, fill.tile_y as i32).unwrap();
                 let mask_tile_index =
                     object_tile_index_to_batch_mask_tile_index[object_tile_index as usize];
                 if mask_tile_index < u16::MAX {

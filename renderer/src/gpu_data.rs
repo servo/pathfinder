@@ -109,27 +109,22 @@ impl BuiltObject {
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
     fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i32, tile_y: i32) {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
+        let tile_index = match self.tile_coords_to_index(tile_x, tile_y) {
+            None => return,
+            Some(tile_index) => tile_index,
+        };
 
-        let mut segment = (segment.0 * F32x4::splat(256.0)).to_i32x4();
+        debug_assert_eq!(TILE_WIDTH, TILE_HEIGHT);
+        let tile_size = F32x4::splat(TILE_WIDTH as f32);
+        let (min, max) = (F32x4::default(), F32x4::splat((TILE_WIDTH * 256 - 1) as f32));
+        let shuffle_mask = I32x4::new(0x0c08_0400, 0x0d05_0901, 0, 0).as_u8x16();
 
-        let tile_origin_x = (TILE_WIDTH as i32) * 256 * tile_x;
-        let tile_origin_y = (TILE_HEIGHT as i32) * 256 * tile_y;
-        let tile_origin = I32x4::new(tile_origin_x, tile_origin_y, tile_origin_x, tile_origin_y);
+        let tile_upper_left =
+            F32x4::new(tile_x as f32, tile_y as f32, tile_x as f32, tile_y as f32) * tile_size;
 
-        segment = segment - tile_origin;
-        /*
-        println!("... before min: {} {} {} {}",
-                    segment[0], segment[1], segment[2], segment[3]);
-        */
-        //segment = Sse41::max_epi32(segment, Sse41::setzero_epi32());
-        segment = segment.min(I32x4::splat(0x0fff));
-        //println!("... after min: {} {} {} {}", segment[0], segment[1], segment[2], segment[3]);
-
-        let shuffle_mask = I32x4::new(0x0c08_0400, 0x0d05_0901, 0, 0);
-        segment = segment
-            .as_u8x16()
-            .shuffle(shuffle_mask.as_u8x16())
-            .as_i32x4();
+        let segment = (segment.0 - tile_upper_left) * F32x4::splat(256.0);
+        let segment =
+            segment.clamp(min, max).to_i32x4().as_u8x16().shuffle(shuffle_mask).as_i32x4();
 
         // Unpack whole and fractional pixels.
         let px = LineSegmentU4((segment[1] | (segment[1] >> 12)) as u16);
@@ -141,8 +136,6 @@ impl BuiltObject {
             //println!("... ... culling!");
             return;
         }
-
-        let tile_index = self.tile_coords_to_index(tile_x, tile_y);
 
         //println!("... ... OK, pushing");
 
@@ -233,18 +226,26 @@ impl BuiltObject {
     }
 
     // FIXME(pcwalton): Use a `Point2DI32` instead?
-    pub fn tile_coords_to_index(&self, tile_x: i32, tile_y: i32) -> u32 {
+    pub fn tile_coords_to_index(&self, tile_x: i32, tile_y: i32) -> Option<u32> {
         /*println!("tile_coords_to_index(x={}, y={}, tile_rect={:?})",
         tile_x,
         tile_y,
         self.tile_rect);*/
-        (tile_y - self.tile_rect.min_y()) as u32 * self.tile_rect.size().x() as u32
-            + (tile_x - self.tile_rect.min_x()) as u32
+        if tile_x < self.tile_rect.min_x() || tile_x >= self.tile_rect.max_x() ||
+                tile_y < self.tile_rect.min_y() || tile_y >= self.tile_rect.max_y() {
+            None
+        } else {
+            Some((tile_y - self.tile_rect.min_y()) as u32 * self.tile_rect.size().x() as u32
+                + (tile_x - self.tile_rect.min_x()) as u32)
+        }
     }
 
-    pub fn get_tile_mut(&mut self, tile_x: i32, tile_y: i32) -> &mut TileObjectPrimitive {
+    pub fn get_tile_mut(&mut self, tile_x: i32, tile_y: i32) -> Option<&mut TileObjectPrimitive> {
         let tile_index = self.tile_coords_to_index(tile_x, tile_y);
-        &mut self.tiles[tile_index as usize]
+        match tile_index {
+            None => None,
+            Some(tile_index) => Some(&mut self.tiles[tile_index as usize]),
+        }
     }
 }
 

@@ -169,16 +169,17 @@ impl<'o, 'z> Tiler<'o, 'z> {
             // Move over to the correct tile, filling in as we go.
             while current_tile_x < segment_tile_x {
                 //println!("... emitting backdrop {} @ tile {}", current_winding, current_tile_x);
-                self.built_object
-                    .get_tile_mut(current_tile_x, tile_y)
-                    .backdrop = current_winding;
+                if let Some(tile) = self.built_object.get_tile_mut(current_tile_x, tile_y) {
+                    tile.backdrop = current_winding;
+                }
+
                 current_tile_x += 1;
                 current_subtile_x = 0.0;
             }
 
             // Do final subtile fill, if necessary.
             debug_assert_eq!(current_tile_x, segment_tile_x);
-            debug_assert!(current_tile_x <= self.built_object.tile_rect.max_x());
+            //debug_assert!(current_tile_x <= self.built_object.tile_rect.max_x());
             let segment_subtile_x =
                 segment_x - (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32;
             if segment_subtile_x > current_subtile_x {

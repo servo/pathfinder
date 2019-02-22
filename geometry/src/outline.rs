@@ -422,12 +422,8 @@ impl Contour {
     fn prepare_for_tiling(&mut self, view_box: RectF32) {
         // Snap points to the view box bounds. This mops up floating point error from the clipping
         // process.
-        let (origin_upper_left, origin_lower_right) = (view_box.origin(), view_box.lower_right());
         let (mut last_endpoint_index, mut contour_is_monotonic) = (None, true);
         for point_index in 0..(self.points.len() as u32) {
-            let position = &mut self.points[point_index as usize];
-            *position = position.clamp(origin_upper_left, origin_lower_right);
-
             if contour_is_monotonic {
                 if self.point_is_endpoint(point_index) {
                     if let Some(last_endpoint_index) = last_endpoint_index {
