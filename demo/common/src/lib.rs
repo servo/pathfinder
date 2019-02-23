@@ -61,7 +61,8 @@ const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
 const NEAR_CLIP_PLANE: f32 = 0.01;
 const FAR_CLIP_PLANE: f32 = 10.0;
 
-const BACKGROUND_COLOR:   ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
+const LIGHT_BG_COLOR:     ColorU = ColorU { r: 192, g: 192, b: 192, a: 255 };
+const DARK_BG_COLOR:      ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
 const GROUND_SOLID_COLOR: ColorU = ColorU { r: 80,  g: 80,  b: 80,  a: 255 };
 const GROUND_LINE_COLOR:  ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 
@@ -337,7 +338,7 @@ impl DemoApp {
             tile_time,
         } = render_msg;
 
-        self.device.clear();
+        self.device.clear(self.background_color());
         self.draw_environment(&render_transform);
         self.render_vector_scene(&built_scene);
 
@@ -457,7 +458,7 @@ impl DemoApp {
 
     fn render_vector_scene(&mut self, built_scene: &BuiltScene) {
         if self.ui.gamma_correction_effect_enabled {
-            self.renderer.enable_gamma_correction(BACKGROUND_COLOR);
+            self.renderer.enable_gamma_correction(self.background_color());
         } else {
             self.renderer.disable_gamma_correction();
         }
@@ -528,6 +529,10 @@ impl DemoApp {
                 }
             }
         }
+    }
+
+    fn background_color(&self) -> ColorU {
+        if self.ui.dark_background_enabled { DARK_BG_COLOR } else { LIGHT_BG_COLOR }
     }
 }
 
@@ -800,8 +805,8 @@ struct DemoDevice {
 }
 
 impl DemoDevice {
-    fn clear(&self) {
-        let color = BACKGROUND_COLOR.to_f32();
+    fn clear(&self, color: ColorU) {
+        let color = color.to_f32();
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
             gl::ClearColor(color.r(), color.g(), color.b(), color.a());

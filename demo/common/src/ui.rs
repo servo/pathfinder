@@ -30,7 +30,9 @@ const SLIDER_KNOB_HEIGHT: i32 = 48;
 const EFFECTS_PANEL_WIDTH: i32 = 550;
 const EFFECTS_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
 
-const ROTATE_PANEL_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 2 + PADDING + SWITCH_SIZE;
+const BACKGROUND_SWITCH_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 2 + PADDING + SWITCH_SIZE;
+
+const ROTATE_PANEL_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 2 + (PADDING + SWITCH_SIZE) * 2;
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
 
@@ -39,6 +41,8 @@ static OPEN_PNG_NAME: &'static str = "demo-open";
 static ROTATE_PNG_NAME: &'static str = "demo-rotate";
 static ZOOM_IN_PNG_NAME: &'static str = "demo-zoom-in";
 static ZOOM_OUT_PNG_NAME: &'static str = "demo-zoom-out";
+static BG_LIGHT_PNG_NAME: &'static str = "demo-bg-light";
+static BG_DARK_PNG_NAME: &'static str = "demo-bg-dark";
 
 pub struct DemoUI {
     effects_texture: Texture,
@@ -46,11 +50,14 @@ pub struct DemoUI {
     rotate_texture: Texture,
     zoom_in_texture: Texture,
     zoom_out_texture: Texture,
+    bg_light_texture: Texture,
+    bg_dark_texture: Texture,
 
     effects_panel_visible: bool,
     rotate_panel_visible: bool,
 
     pub three_d_enabled: bool,
+    pub dark_background_enabled: bool,
     pub gamma_correction_effect_enabled: bool,
     pub stem_darkening_effect_enabled: bool,
     pub subpixel_aa_effect_enabled: bool,
@@ -64,6 +71,8 @@ impl DemoUI {
         let rotate_texture = device.create_texture_from_png(ROTATE_PNG_NAME);
         let zoom_in_texture = device.create_texture_from_png(ZOOM_IN_PNG_NAME);
         let zoom_out_texture = device.create_texture_from_png(ZOOM_OUT_PNG_NAME);
+        let bg_light_texture = device.create_texture_from_png(BG_LIGHT_PNG_NAME);
+        let bg_dark_texture = device.create_texture_from_png(BG_DARK_PNG_NAME);
 
         DemoUI {
             effects_texture,
@@ -71,7 +80,10 @@ impl DemoUI {
             rotate_texture,
             zoom_in_texture,
             zoom_out_texture,
+            bg_light_texture,
+            bg_dark_texture,
             three_d_enabled: options.three_d,
+            dark_background_enabled: true,
             effects_panel_visible: false,
             rotate_panel_visible: false,
             gamma_correction_effect_enabled: false,
@@ -107,15 +119,21 @@ impl DemoUI {
         // Draw 3D switch.
         let threed_switch_x = PADDING + (BUTTON_WIDTH + PADDING) * 2;
         let threed_switch_origin = Point2DI32::new(threed_switch_x, open_button_y);
-        debug_ui.draw_solid_rect(RectI32::new(threed_switch_origin,
-                                              Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT)),
-                                 WINDOW_COLOR);
-        self.three_d_enabled = self.draw_switch(debug_ui,
-                                               event,
-                                               threed_switch_origin,
-                                               "2D",
-                                               "3D",
-                                               self.three_d_enabled);
+        self.three_d_enabled = self.draw_text_switch(debug_ui,
+                                                     event,
+                                                     threed_switch_origin,
+                                                     "2D",
+                                                     "3D",
+                                                     self.three_d_enabled);
+
+        // Draw background switch.
+        let background_switch_origin = Point2DI32::new(BACKGROUND_SWITCH_X, open_button_y);
+        self.dark_background_enabled = self.draw_image_switch(debug_ui,
+                                                              event,
+                                                              background_switch_origin,
+                                                              &self.bg_light_texture,
+                                                              &self.bg_dark_texture,
+                                                              self.dark_background_enabled);
 
         // Draw rotate and zoom buttons, if applicable.
         if !self.three_d_enabled {
@@ -248,15 +266,66 @@ impl DemoUI {
 
         let switch_x = PADDING + EFFECTS_PANEL_WIDTH - (SWITCH_SIZE + PADDING);
         let switch_y = window_y + PADDING + (BUTTON_HEIGHT + PADDING) * index;
-        self.draw_switch(debug_ui, event, Point2DI32::new(switch_x, switch_y), "Off", "On", value)
+        self.draw_text_switch(debug_ui,
+                              event,
+                              Point2DI32::new(switch_x, switch_y),
+                              "Off",
+                              "On",
+                              value)
+    }
+
+    fn draw_text_switch(&self,
+                        debug_ui: &mut DebugUI,
+                        event: &mut UIEvent,
+                        origin: Point2DI32,
+                        off_text: &str,
+                        on_text: &str,
+                        mut value: bool)
+                        -> bool {
+        value = self.draw_switch(debug_ui, event, origin, value);
+
+        let off_size = debug_ui.measure_text(off_text);
+        let on_size = debug_ui.measure_text(on_text);
+        let off_offset = SWITCH_HALF_SIZE / 2 - off_size / 2;
+        let on_offset  = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 - on_size / 2;
+        let text_top = BUTTON_TEXT_OFFSET;
+
+        debug_ui.draw_text(off_text, origin + Point2DI32::new(off_offset, text_top), !value);
+        debug_ui.draw_text(on_text, origin + Point2DI32::new(on_offset, text_top), value);
+
+        value
+    }
+
+    fn draw_image_switch(&self,
+                         debug_ui: &mut DebugUI,
+                         event: &mut UIEvent,
+                         origin: Point2DI32,
+                         off_texture: &Texture,
+                         on_texture: &Texture,
+                         mut value: bool)
+                         -> bool {
+        value = self.draw_switch(debug_ui, event, origin, value);
+
+        let off_offset = SWITCH_HALF_SIZE / 2 - off_texture.size.x() / 2;
+        let on_offset  = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 - on_texture.size.x() / 2;
+
+        let off_color = if !value { WINDOW_COLOR } else { TEXT_COLOR };
+        let on_color  = if  value { WINDOW_COLOR } else { TEXT_COLOR };
+
+        debug_ui.draw_texture(origin + Point2DI32::new(off_offset, PADDING),
+                              off_texture,
+                              off_color);
+        debug_ui.draw_texture(origin + Point2DI32::new(on_offset,  PADDING),
+                              on_texture,
+                              on_color);
+
+        value
     }
 
     fn draw_switch(&self,
                    debug_ui: &mut DebugUI,
                    event: &mut UIEvent,
                    origin: Point2DI32,
-                   off_text: &str,
-                   on_text: &str,
                    mut value: bool)
                    -> bool {
         let widget_rect = RectI32::new(origin, Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT));
@@ -264,6 +333,7 @@ impl DemoUI {
             value = !value;
         }
 
+        debug_ui.draw_solid_rect(widget_rect, WINDOW_COLOR);
         debug_ui.draw_rect_outline(widget_rect, TEXT_COLOR);
 
         let highlight_size = Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT);
@@ -275,15 +345,6 @@ impl DemoUI {
                                                   highlight_size),
                                      TEXT_COLOR);
         }
-
-        let off_size = debug_ui.measure_text(off_text);
-        let on_size = debug_ui.measure_text(on_text);
-        let off_offset = SWITCH_HALF_SIZE / 2 - off_size / 2;
-        let on_offset  = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 - on_size / 2;
-        let text_top = BUTTON_TEXT_OFFSET;
-
-        debug_ui.draw_text(off_text, origin + Point2DI32::new(off_offset, text_top), !value);
-        debug_ui.draw_text(on_text, origin + Point2DI32::new(on_offset, text_top), value);
 
         value
     }
