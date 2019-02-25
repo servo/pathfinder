@@ -30,19 +30,23 @@ const SLIDER_KNOB_HEIGHT: i32 = 48;
 const EFFECTS_PANEL_WIDTH: i32 = 550;
 const EFFECTS_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
 
-const BACKGROUND_SWITCH_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 2 + PADDING + SWITCH_SIZE;
+const OPEN_BUTTON_X:       i32 = PADDING + (BUTTON_WIDTH + PADDING) * 1;
+const SCREENSHOT_BUTTON_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 2;
+const THREE_D_SWITCH_X:    i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3;
+const BACKGROUND_SWITCH_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3 + PADDING + SWITCH_SIZE;
 
-const ROTATE_PANEL_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 2 + (PADDING + SWITCH_SIZE) * 2;
+const ROTATE_PANEL_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3 + (PADDING + SWITCH_SIZE) * 2;
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
 
-static EFFECTS_PNG_NAME: &'static str = "demo-effects";
-static OPEN_PNG_NAME: &'static str = "demo-open";
-static ROTATE_PNG_NAME: &'static str = "demo-rotate";
-static ZOOM_IN_PNG_NAME: &'static str = "demo-zoom-in";
-static ZOOM_OUT_PNG_NAME: &'static str = "demo-zoom-out";
-static BG_LIGHT_PNG_NAME: &'static str = "demo-bg-light";
-static BG_DARK_PNG_NAME: &'static str = "demo-bg-dark";
+static EFFECTS_PNG_NAME:    &'static str = "demo-effects";
+static OPEN_PNG_NAME:       &'static str = "demo-open";
+static ROTATE_PNG_NAME:     &'static str = "demo-rotate";
+static ZOOM_IN_PNG_NAME:    &'static str = "demo-zoom-in";
+static ZOOM_OUT_PNG_NAME:   &'static str = "demo-zoom-out";
+static BG_LIGHT_PNG_NAME:   &'static str = "demo-bg-light";
+static BG_DARK_PNG_NAME:    &'static str = "demo-bg-dark";
+static SCREENSHOT_PNG_NAME: &'static str = "demo-screenshot";
 
 pub struct DemoUI {
     effects_texture: Texture,
@@ -52,6 +56,7 @@ pub struct DemoUI {
     zoom_out_texture: Texture,
     bg_light_texture: Texture,
     bg_dark_texture: Texture,
+    screenshot_texture: Texture,
 
     effects_panel_visible: bool,
     rotate_panel_visible: bool,
@@ -73,6 +78,7 @@ impl DemoUI {
         let zoom_out_texture = device.create_texture_from_png(ZOOM_OUT_PNG_NAME);
         let bg_light_texture = device.create_texture_from_png(BG_LIGHT_PNG_NAME);
         let bg_dark_texture = device.create_texture_from_png(BG_DARK_PNG_NAME);
+        let screenshot_texture = device.create_texture_from_png(SCREENSHOT_PNG_NAME);
 
         DemoUI {
             effects_texture,
@@ -82,6 +88,7 @@ impl DemoUI {
             zoom_out_texture,
             bg_light_texture,
             bg_dark_texture,
+            screenshot_texture,
             three_d_enabled: options.three_d,
             dark_background_enabled: true,
             effects_panel_visible: false,
@@ -107,27 +114,36 @@ impl DemoUI {
         }
 
         // Draw open button.
-        let open_button_x = PADDING + BUTTON_WIDTH + PADDING;
-        let open_button_y = bottom - BUTTON_HEIGHT;
-        let open_button_position = Point2DI32::new(open_button_x, open_button_y);
+        let lower_button_y = bottom - BUTTON_HEIGHT;
+        let open_button_position = Point2DI32::new(OPEN_BUTTON_X, lower_button_y);
         if self.draw_button(debug_ui, event, open_button_position, &self.open_texture) {
             if let Ok(Response::Okay(file)) = nfd::open_file_dialog(Some("svg"), None) {
                 *action = UIAction::OpenFile(PathBuf::from(file));
             }
         }
 
+        // Draw screenshot button.
+        let screenshot_button_position = Point2DI32::new(SCREENSHOT_BUTTON_X, lower_button_y);
+        if self.draw_button(debug_ui,
+                            event,
+                            screenshot_button_position,
+                            &self.screenshot_texture) {
+            if let Ok(Response::Okay(file)) = nfd::open_save_dialog(Some("png"), None) {
+                *action = UIAction::TakeScreenshot(PathBuf::from(file));
+            }
+        }
+
         // Draw 3D switch.
-        let threed_switch_x = PADDING + (BUTTON_WIDTH + PADDING) * 2;
-        let threed_switch_origin = Point2DI32::new(threed_switch_x, open_button_y);
+        let three_d_switch_origin = Point2DI32::new(THREE_D_SWITCH_X, lower_button_y);
         self.three_d_enabled = self.draw_text_switch(debug_ui,
                                                      event,
-                                                     threed_switch_origin,
+                                                     three_d_switch_origin,
                                                      "2D",
                                                      "3D",
                                                      self.three_d_enabled);
 
         // Draw background switch.
-        let background_switch_origin = Point2DI32::new(BACKGROUND_SWITCH_X, open_button_y);
+        let background_switch_origin = Point2DI32::new(BACKGROUND_SWITCH_X, lower_button_y);
         self.dark_background_enabled = self.draw_image_switch(debug_ui,
                                                               event,
                                                               background_switch_origin,
@@ -354,6 +370,7 @@ impl DemoUI {
 pub enum UIAction {
     None,
     OpenFile(PathBuf),
+    TakeScreenshot(PathBuf),
     ZoomIn,
     ZoomOut,
     Rotate(f32),

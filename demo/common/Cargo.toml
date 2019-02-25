@@ -13,6 +13,11 @@ rayon = "1.0"
 sdl2 = "0.32"
 usvg = "0.4"
 
+[dependencies.image]
+version = "0.21"
+default-features = false
+features = ["png_codec"]
+
 [dependencies.pathfinder_geometry]
 path = "../../geometry"
 

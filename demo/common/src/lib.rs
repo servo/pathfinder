@@ -12,7 +12,8 @@
 
 use crate::ui::{DemoUI, UIAction, UIEvent};
 use clap::{App, Arg};
-use gl::types::GLsizei;
+use gl::types::{GLsizei, GLvoid};
+use image::ColorType;
 use jemallocator;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
@@ -89,6 +90,7 @@ pub struct DemoApp {
     camera: Camera,
     frame_counter: u32,
     events: Vec<Event>,
+    pending_screenshot_path: Option<PathBuf>,
     exit: bool,
     mouselook_enabled: bool,
     dirty: bool,
@@ -164,6 +166,7 @@ impl DemoApp {
 
             camera,
             frame_counter: 0,
+            pending_screenshot_path: None,
             events: vec![],
             exit: false,
             mouselook_enabled: false,
@@ -342,6 +345,10 @@ impl DemoApp {
         self.draw_environment(&render_transform);
         self.render_vector_scene(&built_scene);
 
+        if self.pending_screenshot_path.is_some() {
+            self.take_screenshot();
+        }
+
         let rendering_time = self.renderer.shift_timer_query();
         self.renderer.debug_ui.add_sample(tile_time, rendering_time);
         self.renderer.debug_ui.draw();
@@ -499,6 +506,11 @@ impl DemoApp {
                 self.dirty = true;
             }
 
+            UIAction::TakeScreenshot(ref path) => {
+                self.pending_screenshot_path = Some((*path).clone());
+                self.dirty = true;
+            }
+
             UIAction::ZoomIn => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
@@ -529,6 +541,17 @@ impl DemoApp {
                 }
             }
         }
+    }
+
+    fn take_screenshot(&mut self) {
+        let screenshot_path = self.pending_screenshot_path.take().unwrap();
+        let (drawable_width, drawable_height) = self.window.drawable_size();
+        let pixels = self.device.readback_pixels(drawable_width, drawable_height);
+        image::save_buffer(screenshot_path,
+                           &pixels,
+                           drawable_width,
+                           drawable_height,
+                           ColorType::RGBA(8)).unwrap();
     }
 
     fn background_color(&self) -> ColorU {
@@ -816,6 +839,29 @@ impl DemoDevice {
             gl::StencilMask(!0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
         }
+    }
+
+    fn readback_pixels(&self, width: u32, height: u32) -> Vec<u8> {
+        let mut pixels = vec![0; width as usize * height as usize * 4];
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            gl::ReadPixels(0, 0,
+                           width as GLsizei, height as GLsizei,
+                           gl::RGBA,
+                           gl::UNSIGNED_BYTE,
+                           pixels.as_mut_ptr() as *mut GLvoid);
+        }
+
+        // Flip right-side-up.
+        let stride = width as usize * 4;
+        for y in 0..(height as usize / 2) {
+            let (index_a, index_b) = (y * stride, (height as usize - y - 1) * stride);
+            for offset in 0..stride {
+                pixels.swap(index_a + offset, index_b + offset);
+            }
+        }
+
+        pixels
     }
 }
 
