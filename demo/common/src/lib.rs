@@ -10,17 +10,17 @@
 
 //! A demo app for Pathfinder.
 
+use crate::device::{DemoDevice, GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction, UIEvent};
 use clap::{App, Arg};
-use gl::types::{GLsizei, GLvoid};
+use gl::types::GLsizei;
 use image::ColorType;
 use jemallocator;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
-use pathfinder_gl::device::{Buffer, BufferTarget, BufferUploadMode, Device, Program, Uniform};
-use pathfinder_gl::device::{VertexArray, VertexAttr};
+use pathfinder_gl::device::Device;
 use pathfinder_gl::renderer::Renderer;
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu_data::BuiltScene;
@@ -69,8 +69,9 @@ const GROUND_LINE_COLOR:  ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 
 const APPROX_FONT_SIZE: f32 = 16.0;
 
-const GRIDLINE_COUNT: u8 = 10;
+pub const GRIDLINE_COUNT: u8 = 10;
 
+mod device;
 mod ui;
 
 pub struct DemoApp {
@@ -176,7 +177,7 @@ impl DemoApp {
             scene_thread_proxy,
             renderer,
 
-            device: DemoDevice { device },
+            device: DemoDevice::new(device),
             ground_program,
             ground_solid_vertex_array,
             ground_line_vertex_array,
@@ -820,123 +821,6 @@ impl CameraTransform3D {
 
         Perspective::new(&transform, drawable_size)
     }
-}
-
-struct DemoDevice {
-    #[allow(dead_code)]
-    device: Device,
-}
-
-impl DemoDevice {
-    fn clear(&self, color: ColorU) {
-        let color = color.to_f32();
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::ClearColor(color.r(), color.g(), color.b(), color.a());
-            gl::ClearDepth(1.0);
-            gl::ClearStencil(0);
-            gl::DepthMask(gl::TRUE);
-            gl::StencilMask(!0);
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
-        }
-    }
-
-    fn readback_pixels(&self, width: u32, height: u32) -> Vec<u8> {
-        let mut pixels = vec![0; width as usize * height as usize * 4];
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::ReadPixels(0, 0,
-                           width as GLsizei, height as GLsizei,
-                           gl::RGBA,
-                           gl::UNSIGNED_BYTE,
-                           pixels.as_mut_ptr() as *mut GLvoid);
-        }
-
-        // Flip right-side-up.
-        let stride = width as usize * 4;
-        for y in 0..(height as usize / 2) {
-            let (index_a, index_b) = (y * stride, (height as usize - y - 1) * stride);
-            for offset in 0..stride {
-                pixels.swap(index_a + offset, index_b + offset);
-            }
-        }
-
-        pixels
-    }
-}
-
-struct GroundProgram {
-    program: Program,
-    transform_uniform: Uniform,
-    color_uniform: Uniform,
-}
-
-impl GroundProgram {
-    fn new(device: &Device) -> GroundProgram {
-        let program = device.create_program("demo_ground");
-        let transform_uniform = Uniform::new(&program, "Transform");
-        let color_uniform = Uniform::new(&program, "Color");
-        GroundProgram { program, transform_uniform, color_uniform }
-    }
-}
-
-struct GroundSolidVertexArray {
-    vertex_array: VertexArray,
-}
-
-impl GroundSolidVertexArray {
-    fn new(ground_program: &GroundProgram, quad_vertex_positions_buffer: &Buffer)
-           -> GroundSolidVertexArray {
-        let vertex_array = VertexArray::new();
-        unsafe {
-            let position_attr = VertexAttr::new(&ground_program.program, "Position");
-
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(ground_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
-            position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
-        }
-
-        GroundSolidVertexArray { vertex_array }
-    }
-}
-
-struct GroundLineVertexArray {
-    vertex_array: VertexArray,
-    #[allow(dead_code)]
-    grid_vertex_positions_buffer: Buffer,
-}
-
-impl GroundLineVertexArray {
-    fn new(ground_program: &GroundProgram) -> GroundLineVertexArray {
-        let grid_vertex_positions_buffer = Buffer::new();
-        grid_vertex_positions_buffer.upload(&create_grid_vertex_positions(),
-                                            BufferTarget::Vertex,
-                                            BufferUploadMode::Static);
-
-        let vertex_array = VertexArray::new();
-        unsafe {
-            let position_attr = VertexAttr::new(&ground_program.program, "Position");
-
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(ground_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, grid_vertex_positions_buffer.gl_buffer);
-            position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
-        }
-
-        GroundLineVertexArray { vertex_array, grid_vertex_positions_buffer }
-    }
-}
-
-fn create_grid_vertex_positions() -> Vec<(u8, u8)> {
-    let mut positions = vec![];
-    for index in 0..(GRIDLINE_COUNT + 1) {
-        positions.extend_from_slice(&[
-            (0, index), (GRIDLINE_COUNT, index),
-            (index, 0), (index, GRIDLINE_COUNT),
-        ]);
-    }
-    positions
 }
 
 fn scale_factor_for_view_box(view_box: RectF32) -> f32 {
