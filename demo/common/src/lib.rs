@@ -60,7 +60,7 @@ const CAMERA_SCALE_SPEED_2D: f32 = 2.0;
 const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
 
 const NEAR_CLIP_PLANE: f32 = 0.01;
-const FAR_CLIP_PLANE: f32 = 10.0;
+const FAR_CLIP_PLANE:  f32 = 10.0;
 
 const LIGHT_BG_COLOR:     ColorU = ColorU { r: 192, g: 192, b: 192, a: 255 };
 const DARK_BG_COLOR:      ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
@@ -759,7 +759,8 @@ impl Camera {
     fn new_2d(view_box: RectF32, drawable_size: Point2DI32) -> Camera {
         let scale = i32::min(drawable_size.x(), drawable_size.y()) as f32 *
             scale_factor_for_view_box(view_box);
-        Camera::TwoD(Transform2DF32::from_scale(&Point2DF32::splat(scale)))
+        let origin = drawable_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
+        Camera::TwoD(Transform2DF32::from_scale(&Point2DF32::splat(scale)).post_translate(origin))
     }
 
     fn new_3d(view_box: RectF32) -> Camera {
