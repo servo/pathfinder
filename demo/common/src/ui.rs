@@ -12,11 +12,16 @@ use crate::Options;
 use nfd::Response;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_gl::debug::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, DebugUI, PADDING};
-use pathfinder_gl::debug::{TEXT_COLOR, WINDOW_COLOR};
+use pathfinder_gl::debug::{DebugUI, PADDING, TEXT_COLOR, WINDOW_COLOR};
 use pathfinder_gl::device::{Device, Texture};
 use std::f32::consts::PI;
 use std::path::PathBuf;
+
+const ICON_SIZE: i32 = 48;
+
+const BUTTON_WIDTH: i32 = PADDING * 2 + ICON_SIZE;
+const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
+const BUTTON_TEXT_OFFSET: i32 = PADDING + 36;
 
 const SWITCH_SIZE: i32 = SWITCH_HALF_SIZE * 2 + 1;
 const SWITCH_HALF_SIZE: i32 = 96;
@@ -189,10 +194,10 @@ impl DemoUI {
 
         let bottom = debug_ui.framebuffer_size().y() - PADDING;
         let effects_panel_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_PANEL_HEIGHT);
-        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(PADDING, effects_panel_y),
-                                              Point2DI32::new(EFFECTS_PANEL_WIDTH,
-                                                              EFFECTS_PANEL_HEIGHT)),
-                                WINDOW_COLOR);
+        debug_ui.draw_solid_rounded_rect(RectI32::new(Point2DI32::new(PADDING, effects_panel_y),
+                                                      Point2DI32::new(EFFECTS_PANEL_WIDTH,
+                                                                      EFFECTS_PANEL_HEIGHT)),
+                                         WINDOW_COLOR);
 
         self.gamma_correction_effect_enabled =
             self.draw_effects_switch(debug_ui,
@@ -228,10 +233,10 @@ impl DemoUI {
 
         let bottom = debug_ui.framebuffer_size().y() - PADDING;
         let rotate_panel_y = bottom - (BUTTON_HEIGHT + PADDING + ROTATE_PANEL_HEIGHT);
-        debug_ui.draw_solid_rect(RectI32::new(Point2DI32::new(ROTATE_PANEL_X, rotate_panel_y),
-                                              Point2DI32::new(ROTATE_PANEL_WIDTH,
-                                                              ROTATE_PANEL_HEIGHT)),
-                                 WINDOW_COLOR);
+        let rotate_panel_origin = Point2DI32::new(ROTATE_PANEL_X, rotate_panel_y);
+        let rotate_panel_size = Point2DI32::new(ROTATE_PANEL_WIDTH, ROTATE_PANEL_HEIGHT);
+        debug_ui.draw_solid_rounded_rect(RectI32::new(rotate_panel_origin, rotate_panel_size),
+                                         WINDOW_COLOR);
 
         let (widget_x, widget_y) = (ROTATE_PANEL_X + PADDING, rotate_panel_y + PADDING);
         let widget_rect = RectI32::new(Point2DI32::new(widget_x, widget_y),
@@ -262,8 +267,8 @@ impl DemoUI {
                    texture: &Texture)
                    -> bool {
         let button_rect = RectI32::new(origin, Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT));
-        debug_ui.draw_solid_rect(button_rect, WINDOW_COLOR);
-        debug_ui.draw_rect_outline(button_rect, TEXT_COLOR);
+        debug_ui.draw_solid_rounded_rect(button_rect, WINDOW_COLOR);
+        debug_ui.draw_rounded_rect_outline(button_rect, TEXT_COLOR);
         debug_ui.draw_texture(origin + Point2DI32::new(PADDING, PADDING), texture, TEXT_COLOR);
         event.handle_mouse_down_in_rect(button_rect).is_some()
     }
@@ -349,17 +354,17 @@ impl DemoUI {
             value = !value;
         }
 
-        debug_ui.draw_solid_rect(widget_rect, WINDOW_COLOR);
-        debug_ui.draw_rect_outline(widget_rect, TEXT_COLOR);
+        debug_ui.draw_solid_rounded_rect(widget_rect, WINDOW_COLOR);
+        debug_ui.draw_rounded_rect_outline(widget_rect, TEXT_COLOR);
 
         let highlight_size = Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT);
         if !value {
-            debug_ui.draw_solid_rect(RectI32::new(origin, highlight_size), TEXT_COLOR);
+            debug_ui.draw_solid_rounded_rect(RectI32::new(origin, highlight_size), TEXT_COLOR);
         } else {
             let x_offset = SWITCH_HALF_SIZE + 1;
-            debug_ui.draw_solid_rect(RectI32::new(origin + Point2DI32::new(x_offset, 0),
-                                                  highlight_size),
-                                     TEXT_COLOR);
+            debug_ui.draw_solid_rounded_rect(RectI32::new(origin + Point2DI32::new(x_offset, 0),
+                                                          highlight_size),
+                                             TEXT_COLOR);
         }
 
         value

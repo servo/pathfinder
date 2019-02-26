@@ -685,10 +685,7 @@ impl Options {
 }
 
 fn load_scene(input_path: &Path) -> Scene {
-    let usvg = Tree::from_file(input_path, &UsvgOptions::default()).unwrap();
-    let scene = Scene::from_tree(usvg);
-    println!("{} objects, {} paints", scene.objects.len(), scene.paints.len());
-    scene
+    Scene::from_tree(Tree::from_file(input_path, &UsvgOptions::default()).unwrap())
 }
 
 fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) -> BuiltScene {
