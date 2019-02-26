@@ -55,7 +55,7 @@ const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
 const CAMERA_VELOCITY: f32 = 1000.0;
 
 // How much the scene is scaled when a scale gesture is performed.
-const CAMERA_SCALE_SPEED_2D: f32 = 2.0;
+const CAMERA_SCALE_SPEED_2D: f32 = 6.0;
 // How much the scene is scaled when a zoom button is clicked.
 const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
 

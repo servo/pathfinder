@@ -41,12 +41,12 @@ pub const PADDING: i32 = 12;
 pub static TEXT_COLOR:   ColorU = ColorU { r: 255, g: 255, b: 255, a: 255      };
 pub static WINDOW_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255 - 90 };
 
+static INVERTED_TEXT_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255      };
+
 const PERF_WINDOW_WIDTH: i32 = 375;
 const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 6 + PADDING + 2;
 const FONT_ASCENT: i32 = 28;
 const LINE_HEIGHT: i32 = 42;
-
-static INVERTED_TEXT_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255      };
 
 static FONT_JSON_FILENAME: &'static str = "debug-font.json";
 static FONT_PNG_NAME: &'static str = "debug-font";

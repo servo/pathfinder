@@ -14,6 +14,7 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::debug::{DebugUI, PADDING, TEXT_COLOR, WINDOW_COLOR};
 use pathfinder_gl::device::{Device, Texture};
+use pathfinder_renderer::paint::ColorU;
 use std::f32::consts::PI;
 use std::path::PathBuf;
 
@@ -43,6 +44,9 @@ const BACKGROUND_SWITCH_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3 + PADDIN
 const ROTATE_PANEL_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3 + (PADDING + SWITCH_SIZE) * 2;
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
+
+static BUTTON_ICON_COLOR: ColorU = ColorU { r: 255, g: 255, b: 255, a: 255 };
+static OUTLINE_COLOR:     ColorU = ColorU { r: 255, g: 255, b: 255, a: 192 };
 
 static EFFECTS_PNG_NAME:    &'static str = "demo-effects";
 static OPEN_PNG_NAME:       &'static str = "demo-open";
@@ -94,10 +98,12 @@ impl DemoUI {
             bg_light_texture,
             bg_dark_texture,
             screenshot_texture,
-            three_d_enabled: options.three_d,
-            dark_background_enabled: true,
+
             effects_panel_visible: false,
             rotate_panel_visible: false,
+
+            three_d_enabled: options.three_d,
+            dark_background_enabled: true,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,
@@ -268,8 +274,10 @@ impl DemoUI {
                    -> bool {
         let button_rect = RectI32::new(origin, Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT));
         debug_ui.draw_solid_rounded_rect(button_rect, WINDOW_COLOR);
-        debug_ui.draw_rounded_rect_outline(button_rect, TEXT_COLOR);
-        debug_ui.draw_texture(origin + Point2DI32::new(PADDING, PADDING), texture, TEXT_COLOR);
+        debug_ui.draw_rounded_rect_outline(button_rect, OUTLINE_COLOR);
+        debug_ui.draw_texture(origin + Point2DI32::new(PADDING, PADDING),
+                              texture,
+                              BUTTON_ICON_COLOR);
         event.handle_mouse_down_in_rect(button_rect).is_some()
     }
 
@@ -355,7 +363,7 @@ impl DemoUI {
         }
 
         debug_ui.draw_solid_rounded_rect(widget_rect, WINDOW_COLOR);
-        debug_ui.draw_rounded_rect_outline(widget_rect, TEXT_COLOR);
+        debug_ui.draw_rounded_rect_outline(widget_rect, OUTLINE_COLOR);
 
         let highlight_size = Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT);
         if !value {

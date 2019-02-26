@@ -17,5 +17,5 @@ uniform vec4 uColor;
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = uColor;
+    oFragColor = vec4(uColor.rgb, 1.0) * uColor.a;
 }

@@ -20,6 +20,6 @@ in vec2 vTexCoord;
 out vec4 oFragColor;
 
 void main() {
-    float alpha = texture(uTexture, vTexCoord).r;
-    oFragColor = uColor * alpha;
+    float alpha = texture(uTexture, vTexCoord).r * uColor.a;
+    oFragColor = alpha * vec4(uColor.rgb, 1.0);
 }
