@@ -33,6 +33,7 @@ pub struct BuiltObject {
 pub struct BuiltScene {
     pub view_box: RectF32,
     pub quad: [Point3DF32; 4],
+    pub object_count: u32,
     pub batches: Vec<Batch>,
     pub solid_tiles: Vec<SolidTileScenePrimitive>,
     pub shaders: Vec<ObjectShader>,
@@ -82,6 +83,14 @@ pub struct SolidTileScenePrimitive {
 pub struct MaskTileBatchPrimitive {
     pub tile: TileObjectPrimitive,
     pub shader: ShaderId,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Stats {
+    pub object_count: u32,
+    pub solid_tile_count: u32,
+    pub mask_tile_count: u32,
+    pub fill_count: u32,
 }
 
 // Utilities for built objects
@@ -251,8 +260,24 @@ impl BuiltObject {
 
 impl BuiltScene {
     #[inline]
-    pub fn new(view_box: RectF32, quad: &[Point3DF32; 4]) -> BuiltScene {
-        BuiltScene { view_box, quad: *quad, batches: vec![], solid_tiles: vec![], shaders: vec![] }
+    pub fn new(view_box: RectF32, quad: &[Point3DF32; 4], object_count: u32) -> BuiltScene {
+    BuiltScene {
+            view_box,
+            quad: *quad,
+            object_count,
+            batches: vec![],
+            solid_tiles: vec![],
+            shaders: vec![],
+        }
+    }
+
+    pub fn stats(&self) -> Stats {
+        Stats {
+            object_count: self.object_count,
+            solid_tile_count: self.solid_tiles.len() as u32,
+            mask_tile_count: self.batches.iter().map(|batch| batch.mask_tiles.len() as u32).sum(),
+            fill_count: self.batches.iter().map(|batch| batch.fills.len() as u32).sum(),
+        }
     }
 }
 

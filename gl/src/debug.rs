@@ -21,11 +21,13 @@ use gl::types::{GLfloat, GLint, GLsizei, GLuint};
 use gl;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_renderer::gpu_data::Stats;
 use pathfinder_renderer::paint::ColorU;
 use serde_json;
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
+use std::ops::{Add, Div};
 use std::ptr;
 use std::time::Duration;
 
@@ -42,8 +44,8 @@ pub const BUTTON_TEXT_OFFSET: i32 = PADDING + 36;
 pub static TEXT_COLOR:   ColorU = ColorU { r: 255, g: 255, b: 255, a: 255      };
 pub static WINDOW_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255 - 90 };
 
-const PERF_WINDOW_WIDTH: i32 = 300;
-const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 2 + PADDING + 2;
+const PERF_WINDOW_WIDTH: i32 = 375;
+const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 6 + PADDING + 2;
 const FONT_ASCENT: i32 = 28;
 const LINE_HEIGHT: i32 = 42;
 const ICON_SIZE: i32 = 48;
@@ -99,8 +101,8 @@ pub struct DebugUI {
     solid_vertex_array: DebugSolidVertexArray,
     font_texture: Texture,
 
-    cpu_samples: SampleBuffer,
-    gpu_samples: SampleBuffer,
+    cpu_samples: SampleBuffer<CPUSample>,
+    gpu_samples: SampleBuffer<GPUSample>,
 }
 
 impl DebugUI {
@@ -138,10 +140,13 @@ impl DebugUI {
         self.framebuffer_size = window_size;
     }
 
-    pub fn add_sample(&mut self, tile_time: Duration, rendering_time: Option<Duration>) {
-        self.cpu_samples.push(tile_time);
+    pub fn add_sample(&mut self,
+                      stats: Stats,
+                      tile_time: Duration,
+                      rendering_time: Option<Duration>) {
+        self.cpu_samples.push(CPUSample { stats, elapsed: tile_time });
         if let Some(rendering_time) = rendering_time {
-            self.gpu_samples.push(rendering_time);
+            self.gpu_samples.push(GPUSample { elapsed: rendering_time });
         }
     }
 
@@ -153,14 +158,26 @@ impl DebugUI {
                             bottom - PERF_WINDOW_HEIGHT),
             Point2DI32::new(PERF_WINDOW_WIDTH, PERF_WINDOW_HEIGHT));
         self.draw_solid_rect(window_rect, WINDOW_COLOR);
-        self.draw_text(&format!("CPU: {:.3} ms", self.cpu_samples.mean_ms()),
-                       Point2DI32::new(window_rect.min_x() + PADDING,
-                                       window_rect.min_y() + PADDING + FONT_ASCENT),
+        let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
+
+        let mean_cpu_sample = self.cpu_samples.mean();
+        self.draw_text(&format!("Objects: {}", mean_cpu_sample.stats.object_count), origin, false);
+        self.draw_text(&format!("Solid Tiles: {}", mean_cpu_sample.stats.solid_tile_count),
+                       origin + Point2DI32::new(0, LINE_HEIGHT * 1),
                        false);
-        self.draw_text(&format!("GPU: {:.3} ms", self.gpu_samples.mean_ms()),
-                        Point2DI32::new(
-                            window_rect.min_x() + PADDING,
-                            window_rect.min_y() + PADDING + FONT_ASCENT + LINE_HEIGHT),
+        self.draw_text(&format!("Mask Tiles: {}", mean_cpu_sample.stats.mask_tile_count),
+                       origin + Point2DI32::new(0, LINE_HEIGHT * 2),
+                       false);
+        self.draw_text(&format!("Fills: {}", mean_cpu_sample.stats.fill_count),
+                       origin + Point2DI32::new(0, LINE_HEIGHT * 3),
+                       false);
+        self.draw_text(&format!("CPU Time: {:.3} ms", duration_to_ms(mean_cpu_sample.elapsed)),
+                       origin + Point2DI32::new(0, LINE_HEIGHT * 4),
+                       false);
+
+        let mean_gpu_sample = self.gpu_samples.mean();
+        self.draw_text(&format!("GPU Time: {:.3} ms", duration_to_ms(mean_gpu_sample.elapsed)),
+                       origin + Point2DI32::new(0, LINE_HEIGHT * 5),
                        false);
     }
 
@@ -457,32 +474,33 @@ impl DebugSolidVertex {
     }
 }
 
-struct SampleBuffer {
-    samples: VecDeque<Duration>,
+struct SampleBuffer<S> where S: Add<S, Output=S> + Div<u32, Output=S> + Clone + Default {
+    samples: VecDeque<S>,
 }
 
-impl SampleBuffer {
-    fn new() -> SampleBuffer {
+impl<S> SampleBuffer<S> where S: Add<S, Output=S> + Div<u32, Output=S> + Clone + Default {
+    fn new() -> SampleBuffer<S> {
         SampleBuffer { samples: VecDeque::with_capacity(SAMPLE_BUFFER_SIZE) }
     }
 
-    fn push(&mut self, time: Duration) {
+    fn push(&mut self, time: S) {
         self.samples.push_back(time);
         while self.samples.len() > SAMPLE_BUFFER_SIZE {
             self.samples.pop_front();
         }
     }
 
-    fn mean_ms(&self) -> f64 {
+    fn mean(&self) -> S {
+        let mut mean = Default::default();
         if self.samples.is_empty() {
-            return 0.0;
+            return mean;
         }
 
-        let mut ms = 0.0;
         for time in &self.samples {
-            ms += time.as_secs() as f64 * 1000.0 + time.subsec_nanos() as f64 / 1000000.0;
+            mean = mean + (*time).clone();
         }
-        ms / self.samples.len() as f64
+
+        mean / self.samples.len() as u32
     }
 }
 
@@ -494,4 +512,63 @@ fn set_color_uniform(uniform: &Uniform, color: ColorU) {
                       color.b as f32 * (1.0 / 255.0),
                       color.a as f32 * (1.0 / 255.0));
     }
+}
+
+#[derive(Clone, Default)]
+struct CPUSample {
+    elapsed: Duration,
+    stats: Stats,
+}
+
+impl Add<CPUSample> for CPUSample {
+    type Output = CPUSample;
+    fn add(self, other: CPUSample) -> CPUSample {
+        CPUSample {
+            elapsed: self.elapsed + other.elapsed,
+            stats: Stats {
+                object_count: self.stats.object_count + other.stats.object_count,
+                solid_tile_count: self.stats.solid_tile_count + other.stats.solid_tile_count,
+                mask_tile_count: self.stats.mask_tile_count + other.stats.mask_tile_count,
+                fill_count: self.stats.fill_count + other.stats.fill_count,
+            },
+        }
+    }
+}
+
+impl Div<u32> for CPUSample {
+    type Output = CPUSample;
+    fn div(self, divisor: u32) -> CPUSample {
+        CPUSample {
+            elapsed: self.elapsed / divisor,
+            stats: Stats {
+                object_count: self.stats.object_count / divisor,
+                solid_tile_count: self.stats.solid_tile_count / divisor,
+                mask_tile_count: self.stats.mask_tile_count / divisor,
+                fill_count: self.stats.fill_count / divisor,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct GPUSample {
+    elapsed: Duration,
+}
+
+impl Add<GPUSample> for GPUSample {
+    type Output = GPUSample;
+    fn add(self, other: GPUSample) -> GPUSample {
+        GPUSample { elapsed: self.elapsed + other.elapsed }
+    }
+}
+
+impl Div<u32> for GPUSample {
+    type Output = GPUSample;
+    fn div(self, divisor: u32) -> GPUSample {
+        GPUSample { elapsed: self.elapsed / divisor }
+    }
+}
+
+fn duration_to_ms(time: Duration) -> f64 {
+    time.as_secs() as f64 * 1000.0 + time.subsec_nanos() as f64 / 1000000.0
 }

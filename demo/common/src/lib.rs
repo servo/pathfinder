@@ -351,7 +351,8 @@ impl DemoApp {
         }
 
         let rendering_time = self.renderer.shift_timer_query();
-        self.renderer.debug_ui.add_sample(tile_time, rendering_time);
+        let stats = built_scene.stats();
+        self.renderer.debug_ui.add_sample(stats, tile_time, rendering_time);
         self.renderer.debug_ui.draw();
 
         if !ui_event.is_none() {
@@ -686,7 +687,6 @@ impl Options {
 fn load_scene(input_path: &Path) -> Scene {
     let usvg = Tree::from_file(input_path, &UsvgOptions::default()).unwrap();
     let scene = Scene::from_tree(usvg);
-    println!("Scene bounds: {:?}", scene.bounds);
     println!("{} objects, {} paints", scene.objects.len(), scene.paints.len());
     scene
 }
@@ -724,7 +724,7 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
         }
     };
 
-    let mut built_scene = BuiltScene::new(scene.view_box, &quad);
+    let mut built_scene = BuiltScene::new(scene.view_box, &quad, scene.objects.len() as u32);
     built_scene.shaders = scene.build_shaders();
 
     let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, scene.view_box);
