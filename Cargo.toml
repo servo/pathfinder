@@ -7,6 +7,7 @@ members = [
     "renderer",
     "simd",
     "svg",
+    "ui",
     "utils/area-lut",
     "utils/gamma-lut",
     "utils/tile-svg",

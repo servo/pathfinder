@@ -25,7 +25,6 @@
         <a class="navbar-brand text-light">Pathfinder</a>
         <ul class="navbar-nav">
             <li class="nav-item active"><a class="nav-link" href="/">Home</a></li>
-            <li class="nav-item"><a class="nav-link" href="/demo">Demo</a></li>
             <li class="nav-item"><a class="nav-link" href="/doc">Documentation</a></li>
         </ul>
         <ul class="navbar-nav ml-md-auto">
@@ -35,8 +34,40 @@
         </ul>
     </header>
     <main id="content" class="py-5">
-        <div class="container">
+        <div id="masthead" class="container">
             <h1 class="font-weight-bold">Pathfinder 3</h1>
+            <h2>Fast GPU text and vector graphics rendering for your OpenGL app.</h2>
+        </div>
+        <div id="features">
+            <div class="feature">
+                <h2>Built on Rust</h2>
+                <div>
+                    Pathfinder is written in Rust, with only the minimum unsafe code necessary to
+                    use SIMD and render with OpenGL. You can use it to render untrusted content
+                    without worrying about security problems or segfaults.
+                </div>
+            </div>
+            <div class="feature">
+                <h2>Works everywhere</h2>
+                <div>
+                    Pathfinder runs on any desktop or mobile GPU supporting OpenGL or OpenGL ES 3.0
+                    (roughly, any GPU manufactured after 2002). There's no need for fancy features
+                    like compute, geometry shaders, and tessellation shaders.
+                </div>
+            </div>
+            <div class="feature">
+                <h2>Easy to use</h2>
+                <div>
+                    Thanks to the inclusion of the resvg library, a subset of SVG is supported
+                    out-of-the-box. Rendering SVG content to the screen is just a few lines of
+                    code.
+                </div>
+            </div>
+        </div>
+        <div>
+            Pathfinder is an open-source Mozilla Research project under the Servo umbrella.
+            It's also a component of WebRender, the new Web renderer for Firefox. We welcome
+            contributions from anyone.
         </div>
     </main>
 </body>
