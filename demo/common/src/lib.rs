@@ -10,7 +10,7 @@
 
 //! A demo app for Pathfinder.
 
-use crate::device::{DemoDevice, GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
+use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction, UIEvent};
 use clap::{App, Arg};
 use gl::types::GLsizei;
@@ -20,8 +20,9 @@ use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
-use pathfinder_gl::device::Device;
+use pathfinder_gl::device::GLDevice;
 use pathfinder_gl::renderer::Renderer;
+use pathfinder_gpu::{Device, Resources};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu_data::BuiltScene;
 use pathfinder_renderer::paint::ColorU;
@@ -96,14 +97,13 @@ pub struct DemoApp {
     mouselook_enabled: bool,
     dirty: bool,
 
-    ui: DemoUI,
+    ui: DemoUI<GLDevice>,
     scene_thread_proxy: SceneThreadProxy,
-    renderer: Renderer,
+    renderer: Renderer<GLDevice>,
 
-    device: DemoDevice,
-    ground_program: GroundProgram,
-    ground_solid_vertex_array: GroundSolidVertexArray,
-    ground_line_vertex_array: GroundLineVertexArray,
+    ground_program: GroundProgram<GLDevice>,
+    ground_solid_vertex_array: GroundSolidVertexArray<GLDevice>,
+    ground_line_vertex_array: GroundLineVertexArray<GLDevice>,
 }
 
 impl DemoApp {
@@ -130,8 +130,9 @@ impl DemoApp {
 
         let sdl_event_pump = sdl_context.event_pump().unwrap();
 
-        let device = Device::new();
-        let options = Options::get(&device);
+        let device = GLDevice::new();
+        let resources = Resources::locate();
+        let options = Options::get(&resources);
 
         let (window_width, _) = window.size();
         let (drawable_width, drawable_height) = window.drawable_size();
@@ -139,7 +140,7 @@ impl DemoApp {
 
         let base_scene = load_scene(&options.input_path);
         let scene_view_box = base_scene.view_box;
-        let renderer = Renderer::new(&device, drawable_size);
+        let renderer = Renderer::new(device, &resources, drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
 
@@ -149,10 +150,15 @@ impl DemoApp {
             Camera::new_2d(scene_view_box, drawable_size)
         };
 
-        let ground_program = GroundProgram::new(&device);
+        let ground_program = GroundProgram::new(&renderer.device, &resources);
         let ground_solid_vertex_array =
-            GroundSolidVertexArray::new(&ground_program, &renderer.quad_vertex_positions_buffer());
-        let ground_line_vertex_array = GroundLineVertexArray::new(&ground_program);
+            GroundSolidVertexArray::new(&renderer.device,
+                                        &ground_program,
+                                        &renderer.quad_vertex_positions_buffer());
+        let ground_line_vertex_array = GroundLineVertexArray::new(&renderer.device,
+                                                                  &ground_program);
+
+        let ui = DemoUI::new(&renderer.device, &resources, options);
 
         DemoApp {
             window,
@@ -173,11 +179,10 @@ impl DemoApp {
             mouselook_enabled: false,
             dirty: true,
 
-            ui: DemoUI::new(&device, options),
+            ui,
             scene_thread_proxy,
             renderer,
 
-            device: DemoDevice::new(device),
             ground_program,
             ground_solid_vertex_array,
             ground_line_vertex_array,
@@ -342,7 +347,7 @@ impl DemoApp {
             tile_time,
         } = render_msg;
 
-        self.device.clear(self.background_color());
+        self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
         self.draw_environment(&render_transform);
         self.render_vector_scene(&built_scene);
 
@@ -353,14 +358,17 @@ impl DemoApp {
         let rendering_time = self.renderer.shift_timer_query();
         let stats = built_scene.stats();
         self.renderer.debug_ui.add_sample(stats, tile_time, rendering_time);
-        self.renderer.debug_ui.draw();
+        self.renderer.debug_ui.draw(&self.renderer.device);
 
         if !ui_event.is_none() {
             self.dirty = true;
         }
 
         let mut ui_action = UIAction::None;
-        self.ui.update(&mut self.renderer.debug_ui, &mut ui_event, &mut ui_action);
+        self.ui.update(&self.renderer.device,
+                       &mut self.renderer.debug_ui,
+                       &mut ui_event,
+                       &mut ui_action);
         self.handle_ui_action(&mut ui_action);
 
         // Switch camera mode (2D/3D) if requested.
@@ -548,7 +556,8 @@ impl DemoApp {
     fn take_screenshot(&mut self) {
         let screenshot_path = self.pending_screenshot_path.take().unwrap();
         let (drawable_width, drawable_height) = self.window.drawable_size();
-        let pixels = self.device.readback_pixels(drawable_width, drawable_height);
+        let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
+        let pixels = self.renderer.device.read_pixels_from_default_framebuffer(drawable_size);
         image::save_buffer(screenshot_path,
                            &pixels,
                            drawable_width,
@@ -644,7 +653,7 @@ pub struct Options {
 }
 
 impl Options {
-    fn get(device: &Device) -> Options {
+    fn get(resources: &Resources) -> Options {
         let matches = App::new("tile-svg")
             .arg(
                 Arg::with_name("jobs")
@@ -666,7 +675,7 @@ impl Options {
         let input_path = match matches.value_of("INPUT") {
             Some(path) => PathBuf::from(path),
             None => {
-                let mut path = device.resources_directory.clone();
+                let mut path = resources.resources_directory.clone();
                 path.push("svg");
                 path.push(DEFAULT_SVG_FILENAME);
                 path

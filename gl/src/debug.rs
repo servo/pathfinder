@@ -15,26 +15,24 @@
 //!
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
-use crate::device::{Buffer, BufferTarget, BufferUploadMode, Device, Program, Texture};
-use crate::device::{Uniform, VertexAttr};
-use gl::types::{GLfloat, GLint, GLsizei, GLuint};
-use gl;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, Device, Primitive, RenderState};
+use pathfinder_gpu::{Resources, UniformData, VertexAttrType};
 use pathfinder_renderer::gpu_data::Stats;
 use pathfinder_renderer::paint::ColorU;
+use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
 use std::ops::{Add, Div};
-use std::ptr;
 use std::time::Duration;
 
 const SAMPLE_BUFFER_SIZE: usize = 60;
 
-const DEBUG_TEXTURE_VERTEX_SIZE: GLint = 8;
-const DEBUG_SOLID_VERTEX_SIZE:   GLint = 4;
+const DEBUG_TEXTURE_VERTEX_SIZE: usize = 8;
+const DEBUG_SOLID_VERTEX_SIZE:   usize = 4;
 
 pub const PADDING: i32 = 12;
 
@@ -84,43 +82,44 @@ struct DebugCharacter {
 }
 
 impl DebugFont {
-    fn load(device: &Device) -> DebugFont {
-        let mut path = device.resources_directory.clone();
+    fn load(resources: &Resources) -> DebugFont {
+        let mut path = resources.resources_directory.clone();
         path.push(FONT_JSON_FILENAME);
 
         serde_json::from_reader(BufReader::new(File::open(path).unwrap())).unwrap()
     }
 }
 
-pub struct DebugUI {
+pub struct DebugUI<D> where D: Device {
     framebuffer_size: Point2DI32,
 
-    texture_program: DebugTextureProgram,
-    texture_vertex_array: DebugTextureVertexArray,
+    texture_program: DebugTextureProgram<D>,
+    texture_vertex_array: DebugTextureVertexArray<D>,
     font: DebugFont,
-    solid_program: DebugSolidProgram,
-    solid_vertex_array: DebugSolidVertexArray,
+    solid_program: DebugSolidProgram<D>,
+    solid_vertex_array: DebugSolidVertexArray<D>,
 
-    font_texture: Texture,
-    corner_fill_texture: Texture,
-    corner_outline_texture: Texture,
+    font_texture: D::Texture,
+    corner_fill_texture: D::Texture,
+    corner_outline_texture: D::Texture,
 
     cpu_samples: SampleBuffer<CPUSample>,
     gpu_samples: SampleBuffer<GPUSample>,
 }
 
-impl DebugUI {
-    pub fn new(device: &Device, framebuffer_size: Point2DI32) -> DebugUI {
-        let texture_program = DebugTextureProgram::new(device);
-        let texture_vertex_array = DebugTextureVertexArray::new(&texture_program);
-        let font = DebugFont::load(device);
+impl<D> DebugUI<D> where D: Device {
+    pub fn new(device: &D, resources: &Resources, framebuffer_size: Point2DI32) -> DebugUI<D> {
+        let texture_program = DebugTextureProgram::new(device, resources);
+        let texture_vertex_array = DebugTextureVertexArray::new(device, &texture_program);
+        let font = DebugFont::load(resources);
 
-        let solid_program = DebugSolidProgram::new(device);
-        let solid_vertex_array = DebugSolidVertexArray::new(&solid_program);
+        let solid_program = DebugSolidProgram::new(device, resources);
+        let solid_vertex_array = DebugSolidVertexArray::new(device, &solid_program);
 
-        let font_texture = device.create_texture_from_png(FONT_PNG_NAME);
-        let corner_fill_texture = device.create_texture_from_png(CORNER_FILL_PNG_NAME);
-        let corner_outline_texture = device.create_texture_from_png(CORNER_OUTLINE_PNG_NAME);
+        let font_texture = device.create_texture_from_png(resources, FONT_PNG_NAME);
+        let corner_fill_texture = device.create_texture_from_png(resources, CORNER_FILL_PNG_NAME);
+        let corner_outline_texture = device.create_texture_from_png(resources,
+                                                                    CORNER_OUTLINE_PNG_NAME);
 
         DebugUI {
             framebuffer_size,
@@ -158,47 +157,55 @@ impl DebugUI {
         }
     }
 
-    pub fn draw(&self) {
+    pub fn draw(&self, device: &D) {
         // Draw performance window.
         let bottom = self.framebuffer_size.y() - PADDING;
         let window_rect = RectI32::new(
             Point2DI32::new(self.framebuffer_size.x() - PADDING - PERF_WINDOW_WIDTH,
                             bottom - PERF_WINDOW_HEIGHT),
             Point2DI32::new(PERF_WINDOW_WIDTH, PERF_WINDOW_HEIGHT));
-        self.draw_solid_rounded_rect(window_rect, WINDOW_COLOR);
+        self.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
         let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
 
         let mean_cpu_sample = self.cpu_samples.mean();
-        self.draw_text(&format!("Objects: {}", mean_cpu_sample.stats.object_count), origin, false);
-        self.draw_text(&format!("Solid Tiles: {}", mean_cpu_sample.stats.solid_tile_count),
+        self.draw_text(device,
+                       &format!("Objects: {}", mean_cpu_sample.stats.object_count),
+                       origin,
+                       false);
+        self.draw_text(device,
+                       &format!("Solid Tiles: {}", mean_cpu_sample.stats.solid_tile_count),
                        origin + Point2DI32::new(0, LINE_HEIGHT * 1),
                        false);
-        self.draw_text(&format!("Mask Tiles: {}", mean_cpu_sample.stats.mask_tile_count),
+        self.draw_text(device,
+                       &format!("Mask Tiles: {}", mean_cpu_sample.stats.mask_tile_count),
                        origin + Point2DI32::new(0, LINE_HEIGHT * 2),
                        false);
-        self.draw_text(&format!("Fills: {}", mean_cpu_sample.stats.fill_count),
+        self.draw_text(device,
+                       &format!("Fills: {}", mean_cpu_sample.stats.fill_count),
                        origin + Point2DI32::new(0, LINE_HEIGHT * 3),
                        false);
 
-        self.draw_text(&format!("CPU Time: {:.3} ms", duration_to_ms(mean_cpu_sample.elapsed)),
+        self.draw_text(device,
+                       &format!("CPU Time: {:.3} ms", duration_to_ms(mean_cpu_sample.elapsed)),
                        origin + Point2DI32::new(0, LINE_HEIGHT * 4),
                        false);
 
         let mean_gpu_sample = self.gpu_samples.mean();
-        self.draw_text(&format!("GPU Time: {:.3} ms", duration_to_ms(mean_gpu_sample.elapsed)),
+        self.draw_text(device,
+                       &format!("GPU Time: {:.3} ms", duration_to_ms(mean_gpu_sample.elapsed)),
                        origin + Point2DI32::new(0, LINE_HEIGHT * 5),
                        false);
     }
 
-    pub fn draw_solid_rect(&self, rect: RectI32, color: ColorU) {
-        self.draw_rect(rect, color, true);
+    pub fn draw_solid_rect(&self, device: &D, rect: RectI32, color: ColorU) {
+        self.draw_rect(device, rect, color, true);
     }
 
-    pub fn draw_rect_outline(&self, rect: RectI32, color: ColorU) {
-        self.draw_rect(rect, color, false);
+    pub fn draw_rect_outline(&self, device: &D, rect: RectI32, color: ColorU) {
+        self.draw_rect(device, rect, color, false);
     }
 
-    fn draw_rect(&self, rect: RectI32, color: ColorU, filled: bool) {
+    fn draw_rect(&self, device: &D, rect: RectI32, color: ColorU, filled: bool) {
         let vertex_data = [
             DebugSolidVertex::new(rect.origin()),
             DebugSolidVertex::new(rect.upper_right()),
@@ -207,44 +214,50 @@ impl DebugUI {
         ];
 
         if filled {
-            self.draw_solid_rects_with_vertex_data(&vertex_data, &QUAD_INDICES, color, true);
+            self.draw_solid_rects_with_vertex_data(device,
+                                                   &vertex_data,
+                                                   &QUAD_INDICES,
+                                                   color,
+                                                   true);
         } else {
-            self.draw_solid_rects_with_vertex_data(&vertex_data, &RECT_LINE_INDICES, color, false);
+            self.draw_solid_rects_with_vertex_data(device,
+                                                   &vertex_data,
+                                                   &RECT_LINE_INDICES,
+                                                   color,
+                                                   false);
         }
     }
 
     fn draw_solid_rects_with_vertex_data(&self,
+                                         device: &D,
                                          vertex_data: &[DebugSolidVertex],
                                          index_data: &[u32],
                                          color: ColorU,
                                          filled: bool) {
-        unsafe {
-            gl::BindVertexArray(self.solid_vertex_array.gl_vertex_array);
-        }
+        device.bind_vertex_array(&self.solid_vertex_array.vertex_array);
 
-        self.solid_vertex_array
-            .vertex_buffer
-            .upload(vertex_data, BufferTarget::Vertex, BufferUploadMode::Dynamic);
-        self.solid_vertex_array
-            .index_buffer
-            .upload(index_data, BufferTarget::Index, BufferUploadMode::Dynamic);
+        device.upload_to_buffer(&self.solid_vertex_array.vertex_buffer,
+                                vertex_data,
+                                BufferTarget::Vertex,
+                                BufferUploadMode::Dynamic);
+        device.upload_to_buffer(&self.solid_vertex_array.index_buffer,
+                                index_data,
+                                BufferTarget::Index,
+                                BufferUploadMode::Dynamic);
 
-        unsafe {
-            gl::UseProgram(self.solid_program.program.gl_program);
-            gl::Uniform2f(self.solid_program.framebuffer_size_uniform.location,
-                          self.framebuffer_size.x() as GLfloat,
-                          self.framebuffer_size.y() as GLfloat);
-            set_color_uniform(&self.solid_program.color_uniform, color);
-            gl::BlendEquation(gl::FUNC_ADD);
-            gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
-            gl::Enable(gl::BLEND);
-            let primitive = if filled { gl::TRIANGLES } else { gl::LINES };
-            gl::DrawElements(primitive, index_data.len() as GLint, gl::UNSIGNED_INT, ptr::null());
-            gl::Disable(gl::BLEND);
-        }
+        device.use_program(&self.solid_program.program);
+        device.set_uniform(&self.solid_program.framebuffer_size_uniform,
+                           UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
+        set_color_uniform(device, &self.solid_program.color_uniform, color);
+
+        let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
+        device.draw_elements(primitive, index_data.len() as u32, &RenderState {
+            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+            ..RenderState::default()
+        });
     }
 
-    pub fn draw_text(&self, string: &str, origin: Point2DI32, invert: bool) {
+    pub fn draw_text(&self, device: &D, string: &str, origin: Point2DI32, invert: bool) {
         let mut next = origin;
         let char_count = string.chars().count();
         let mut vertex_data = Vec::with_capacity(char_count * 4);
@@ -274,12 +287,20 @@ impl DebugUI {
         }
 
         let color = if invert { INVERTED_TEXT_COLOR } else { TEXT_COLOR };
-        self.draw_texture_with_vertex_data(&vertex_data, &index_data, &self.font_texture, color);
+        self.draw_texture_with_vertex_data(device,
+                                           &vertex_data,
+                                           &index_data,
+                                           &self.font_texture,
+                                           color);
     }
 
-    pub fn draw_texture(&self, origin: Point2DI32, texture: &Texture, color: ColorU) {
-        let position_rect = RectI32::new(origin, texture.size);
-        let tex_coord_rect = RectI32::new(Point2DI32::default(), texture.size);
+    pub fn draw_texture(&self,
+                        device: &D,
+                        origin: Point2DI32,
+                        texture: &D::Texture,
+                        color: ColorU) {
+        let position_rect = RectI32::new(origin, device.texture_size(&texture));
+        let tex_coord_rect = RectI32::new(Point2DI32::default(), position_rect.size());
         let vertex_data = [
             DebugTextureVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
             DebugTextureVertex::new(position_rect.upper_right(), tex_coord_rect.upper_right()),
@@ -287,7 +308,7 @@ impl DebugUI {
             DebugTextureVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
         ];
 
-        self.draw_texture_with_vertex_data(&vertex_data, &QUAD_INDICES, texture, color);
+        self.draw_texture_with_vertex_data(device, &vertex_data, &QUAD_INDICES, texture, color);
     }
 
     pub fn measure_text(&self, string: &str) -> i32 {
@@ -303,10 +324,10 @@ impl DebugUI {
         next
     }
 
-    pub fn draw_solid_rounded_rect(&self, rect: RectI32, color: ColorU) {
+    pub fn draw_solid_rounded_rect(&self, device: &D, rect: RectI32, color: ColorU) {
         let corner_texture = self.corner_texture(true);
-        let corner_rects = CornerRects::new(rect, corner_texture);
-        self.draw_rounded_rect_corners(color, corner_texture, &corner_rects);
+        let corner_rects = CornerRects::new(device, rect, corner_texture);
+        self.draw_rounded_rect_corners(device, color, corner_texture, &corner_rects);
 
         let solid_rect_mid   = RectI32::from_points(corner_rects.upper_left.upper_right(),
                                                     corner_rects.lower_right.lower_left());
@@ -336,13 +357,17 @@ impl DebugUI {
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 4));
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 8));
 
-        self.draw_solid_rects_with_vertex_data(&vertex_data, &index_data[0..18], color, true);
+        self.draw_solid_rects_with_vertex_data(device,
+                                               &vertex_data,
+                                               &index_data[0..18],
+                                               color,
+                                               true);
     }
 
-    pub fn draw_rounded_rect_outline(&self, rect: RectI32, color: ColorU) {
+    pub fn draw_rounded_rect_outline(&self, device: &D, rect: RectI32, color: ColorU) {
         let corner_texture = self.corner_texture(false);
-        let corner_rects = CornerRects::new(rect, corner_texture);
-        self.draw_rounded_rect_corners(color, corner_texture, &corner_rects);
+        let corner_rects = CornerRects::new(device, rect, corner_texture);
+        self.draw_rounded_rect_corners(device, color, corner_texture, &corner_rects);
 
         let vertex_data = vec![
             DebugSolidVertex::new(corner_rects.upper_left.upper_right()),
@@ -356,14 +381,15 @@ impl DebugUI {
         ];
 
         let index_data = &OUTLINE_RECT_LINE_INDICES;
-        self.draw_solid_rects_with_vertex_data(&vertex_data, index_data, color, false);
+        self.draw_solid_rects_with_vertex_data(device, &vertex_data, index_data, color, false);
     }
 
     fn draw_rounded_rect_corners(&self,
+                                 device: &D,
                                  color: ColorU,
-                                 texture: &Texture,
+                                 texture: &D::Texture,
                                  corner_rects: &CornerRects) {
-        let corner_size = texture.size;
+        let corner_size = device.texture_size(&texture);
         let tex_coord_rect = RectI32::new(Point2DI32::default(), corner_size);
 
         let vertex_data = vec![
@@ -410,151 +436,126 @@ impl DebugUI {
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 8));
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 12));
 
-        self.draw_texture_with_vertex_data(&vertex_data, &index_data, texture, color);
+        self.draw_texture_with_vertex_data(device, &vertex_data, &index_data, texture, color);
     }
 
-    fn corner_texture(&self, filled: bool) -> &Texture {
+    fn corner_texture(&self, filled: bool) -> &D::Texture {
         if filled { &self.corner_fill_texture } else { &self.corner_outline_texture }
     }
 
     fn draw_texture_with_vertex_data(&self,
+                                     device: &D,
                                      vertex_data: &[DebugTextureVertex],
                                      index_data: &[u32],
-                                     texture: &Texture,
+                                     texture: &D::Texture,
                                      color: ColorU) {
-        self.texture_vertex_array
-            .vertex_buffer
-            .upload(&vertex_data, BufferTarget::Vertex, BufferUploadMode::Dynamic);
-        self.texture_vertex_array
-            .index_buffer
-            .upload(&index_data, BufferTarget::Index, BufferUploadMode::Dynamic);
+        device.upload_to_buffer(&self.texture_vertex_array.vertex_buffer,
+                                vertex_data,
+                                BufferTarget::Vertex,
+                                BufferUploadMode::Dynamic);
+        device.upload_to_buffer(&self.texture_vertex_array.index_buffer,
+                                index_data,
+                                BufferTarget::Index,
+                                BufferUploadMode::Dynamic);
 
-        unsafe {
-            gl::BindVertexArray(self.texture_vertex_array.gl_vertex_array);
-            gl::UseProgram(self.texture_program.program.gl_program);
-            gl::Uniform2f(self.texture_program.framebuffer_size_uniform.location,
-                          self.framebuffer_size.x() as GLfloat,
-                          self.framebuffer_size.y() as GLfloat);
-            gl::Uniform2f(self.texture_program.texture_size_uniform.location,
-                          texture.size.x() as GLfloat,
-                          texture.size.y() as GLfloat);
-            set_color_uniform(&self.texture_program.color_uniform, color);
-            texture.bind(0);
-            gl::Uniform1i(self.texture_program.texture_uniform.location, 0);
-            gl::BlendEquation(gl::FUNC_ADD);
-            gl::BlendFunc(gl::ONE, gl::ONE_MINUS_SRC_ALPHA);
-            gl::Enable(gl::BLEND);
-            gl::DrawElements(gl::TRIANGLES,
-                             index_data.len() as GLsizei,
-                             gl::UNSIGNED_INT,
-                             ptr::null());
-            gl::Disable(gl::BLEND);
-        }
+        device.bind_vertex_array(&self.texture_vertex_array.vertex_array);
+        device.use_program(&self.texture_program.program);
+        device.set_uniform(&self.texture_program.framebuffer_size_uniform,
+                           UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
+        device.set_uniform(&self.texture_program.texture_size_uniform,
+                           UniformData::Vec2(device.texture_size(&texture).0.to_f32x4()));
+        set_color_uniform(device, &self.texture_program.color_uniform, color);
+        device.bind_texture(texture, 0);
+        device.set_uniform(&self.texture_program.texture_uniform, UniformData::TextureUnit(0));
+
+        device.draw_elements(Primitive::Triangles, index_data.len() as u32, &RenderState {
+            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+            ..RenderState::default()
+        });
     }
 }
 
-struct DebugTextureVertexArray {
-    gl_vertex_array: GLuint,
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
+struct DebugTextureVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
+    vertex_buffer: D::Buffer,
+    index_buffer: D::Buffer,
 }
 
-impl DebugTextureVertexArray {
-    fn new(debug_texture_program: &DebugTextureProgram) -> DebugTextureVertexArray {
-        let vertex_buffer = Buffer::new();
-        let index_buffer = Buffer::new();
-        let mut gl_vertex_array = 0;
-        unsafe {
-            let position_attr = VertexAttr::new(&debug_texture_program.program, "Position");
-            let tex_coord_attr = VertexAttr::new(&debug_texture_program.program, "TexCoord");
+impl<D> DebugTextureVertexArray<D> where D: Device {
+    fn new(device: &D, debug_texture_program: &DebugTextureProgram<D>)
+           -> DebugTextureVertexArray<D> {
+        let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
+        let vertex_array = device.create_vertex_array();
 
-            gl::GenVertexArrays(1, &mut gl_vertex_array);
-            gl::BindVertexArray(gl_vertex_array);
-            gl::UseProgram(debug_texture_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
-            position_attr.configure_float(2,
-                                          gl::UNSIGNED_SHORT,
-                                          false,
-                                          DEBUG_TEXTURE_VERTEX_SIZE,
-                                          0,
-                                          0);
-            tex_coord_attr.configure_float(2,
-                                           gl::UNSIGNED_SHORT,
+        let position_attr = device.get_vertex_attr(&debug_texture_program.program, "Position");
+        let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord");
+
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&debug_texture_program.program);
+        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
+        device.bind_buffer(&index_buffer, BufferTarget::Index);
+        device.configure_float_vertex_attr(&position_attr,
+                                           2,
+                                           VertexAttrType::U16,
+                                           false,
+                                           DEBUG_TEXTURE_VERTEX_SIZE,
+                                           0,
+                                           0);
+        device.configure_float_vertex_attr(&tex_coord_attr,
+                                           2,
+                                           VertexAttrType::U16,
                                            false,
                                            DEBUG_TEXTURE_VERTEX_SIZE,
                                            4,
                                            0);
-            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, index_buffer.gl_buffer);
-        }
 
-        DebugTextureVertexArray { gl_vertex_array, vertex_buffer, index_buffer }
+        DebugTextureVertexArray { vertex_array, vertex_buffer, index_buffer }
     }
 }
 
-impl Drop for DebugTextureVertexArray {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
-        }
+struct DebugSolidVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
+    vertex_buffer: D::Buffer,
+    index_buffer: D::Buffer,
+}
+
+impl<D> DebugSolidVertexArray<D> where D: Device {
+    fn new(device: &D, debug_solid_program: &DebugSolidProgram<D>) -> DebugSolidVertexArray<D> {
+        let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
+        let vertex_array = device.create_vertex_array();
+
+        let position_attr = device.get_vertex_attr(&debug_solid_program.program, "Position");
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&debug_solid_program.program);
+        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
+        device.bind_buffer(&index_buffer, BufferTarget::Index);
+        device.configure_float_vertex_attr(&position_attr,
+                                           2,
+                                           VertexAttrType::U16,
+                                           false,
+                                           DEBUG_SOLID_VERTEX_SIZE,
+                                           0,
+                                           0);
+
+        DebugSolidVertexArray { vertex_array, vertex_buffer, index_buffer }
     }
 }
 
-struct DebugSolidVertexArray {
-    gl_vertex_array: GLuint,
-    vertex_buffer: Buffer,
-    index_buffer: Buffer,
+struct DebugTextureProgram<D> where D: Device {
+    program: D::Program,
+    framebuffer_size_uniform: D::Uniform,
+    texture_size_uniform: D::Uniform,
+    texture_uniform: D::Uniform,
+    color_uniform: D::Uniform,
 }
 
-impl DebugSolidVertexArray {
-    fn new(debug_solid_program: &DebugSolidProgram) -> DebugSolidVertexArray {
-        let vertex_buffer = Buffer::new();
-        let index_buffer = Buffer::new();
-        let mut gl_vertex_array = 0;
-        unsafe {
-            let position_attr = VertexAttr::new(&debug_solid_program.program, "Position");
-
-            gl::GenVertexArrays(1, &mut gl_vertex_array);
-            gl::BindVertexArray(gl_vertex_array);
-            gl::UseProgram(debug_solid_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
-            position_attr.configure_float(2,
-                                          gl::UNSIGNED_SHORT,
-                                          false,
-                                          DEBUG_SOLID_VERTEX_SIZE,
-                                          0,
-                                          0);
-            gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, index_buffer.gl_buffer);
-        }
-
-        DebugSolidVertexArray { gl_vertex_array, vertex_buffer, index_buffer }
-    }
-}
-
-impl Drop for DebugSolidVertexArray {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            gl::DeleteVertexArrays(1, &mut self.gl_vertex_array);
-        }
-    }
-}
-
-struct DebugTextureProgram {
-    program: Program,
-    framebuffer_size_uniform: Uniform,
-    texture_size_uniform: Uniform,
-    texture_uniform: Uniform,
-    color_uniform: Uniform,
-}
-
-impl DebugTextureProgram {
-    fn new(device: &Device) -> DebugTextureProgram {
-        let program = device.create_program("debug_texture");
-        let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
-        let texture_size_uniform = Uniform::new(&program, "TextureSize");
-        let texture_uniform = Uniform::new(&program, "Texture");
-        let color_uniform = Uniform::new(&program, "Color");
+impl<D> DebugTextureProgram<D> where D: Device {
+    fn new(device: &D, resources: &Resources) -> DebugTextureProgram<D> {
+        let program = device.create_program(resources, "debug_texture");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let texture_size_uniform = device.get_uniform(&program, "TextureSize");
+        let texture_uniform = device.get_uniform(&program, "Texture");
+        let color_uniform = device.get_uniform(&program, "Color");
         DebugTextureProgram {
             program,
             framebuffer_size_uniform,
@@ -565,17 +566,17 @@ impl DebugTextureProgram {
     }
 }
 
-struct DebugSolidProgram {
-    program: Program,
-    framebuffer_size_uniform: Uniform,
-    color_uniform: Uniform,
+struct DebugSolidProgram<D> where D: Device {
+    program: D::Program,
+    framebuffer_size_uniform: D::Uniform,
+    color_uniform: D::Uniform,
 }
 
-impl DebugSolidProgram {
-    fn new(device: &Device) -> DebugSolidProgram {
-        let program = device.create_program("debug_solid");
-        let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
-        let color_uniform = Uniform::new(&program, "Color");
+impl<D> DebugSolidProgram<D> where D: Device {
+    fn new(device: &D, resources: &Resources) -> DebugSolidProgram<D> {
+        let program = device.create_program(resources, "debug_solid");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let color_uniform = device.get_uniform(&program, "Color");
         DebugSolidProgram { program, framebuffer_size_uniform, color_uniform }
     }
 }
@@ -645,14 +646,9 @@ impl<S> SampleBuffer<S> where S: Add<S, Output=S> + Div<u32, Output=S> + Clone +
     }
 }
 
-fn set_color_uniform(uniform: &Uniform, color: ColorU) {
-    unsafe {
-        gl::Uniform4f(uniform.location,
-                      color.r as f32 * (1.0 / 255.0),
-                      color.g as f32 * (1.0 / 255.0),
-                      color.b as f32 * (1.0 / 255.0),
-                      color.a as f32 * (1.0 / 255.0));
-    }
+fn set_color_uniform<D>(device: &D, uniform: &D::Uniform, color: ColorU) where D: Device {
+    let color = F32x4::new(color.r as f32, color.g as f32, color.b as f32, color.a as f32);
+    device.set_uniform(uniform, UniformData::Vec4(color * F32x4::splat(1.0 / 255.0)));
 }
 
 #[derive(Clone, Default)]
@@ -722,8 +718,8 @@ struct CornerRects {
 }
 
 impl CornerRects {
-    fn new(rect: RectI32, texture: &Texture) -> CornerRects {
-        let size = texture.size;
+    fn new<D>(device: &D, rect: RectI32, texture: &D::Texture) -> CornerRects where D: Device {
+        let size = device.texture_size(texture);
         CornerRects {
             upper_left:  RectI32::new(rect.origin(),                                     size),
             upper_right: RectI32::new(rect.upper_right() - Point2DI32::new(size.x(), 0), size),

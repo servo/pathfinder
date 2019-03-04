@@ -1,14 +1,10 @@
 [package]
-name = "pathfinder_gl"
+name = "pathfinder_gpu"
 version = "0.1.0"
-edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+edition = "2018"
 
 [dependencies]
-gl = "0.6"
-serde = "1.0"
-serde_derive = "1.0"
-serde_json = "1.0"
 
 [dependencies.image]
 version = "0.21"
@@ -17,12 +13,6 @@ features = ["png_codec"]
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"
-
-[dependencies.pathfinder_gpu]
-path = "../gpu"
-
-[dependencies.pathfinder_renderer]
-path = "../renderer"
 
 [dependencies.pathfinder_simd]
 path = "../simd"

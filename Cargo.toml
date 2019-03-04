@@ -4,6 +4,7 @@ members = [
     "demo/native",
     "geometry",
     "gl",
+    "gpu",
     "renderer",
     "simd",
     "svg",

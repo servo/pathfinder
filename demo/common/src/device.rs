@@ -11,11 +11,9 @@
 //! GPU rendering code specifically for the demo.
 
 use crate::GRIDLINE_COUNT;
-use gl::types::{GLsizei, GLvoid};
-use pathfinder_gl::device::{Buffer, BufferTarget, BufferUploadMode, Device, Program, Uniform};
-use pathfinder_gl::device::{VertexArray, VertexAttr};
-use pathfinder_renderer::paint::ColorU;
+use pathfinder_gpu::{BufferTarget, BufferUploadMode, Device, Resources, VertexAttrType};
 
+/*
 pub struct DemoDevice {
     #[allow(dead_code)]
     device: Device,
@@ -62,65 +60,67 @@ impl DemoDevice {
         pixels
     }
 }
+*/
 
-pub struct GroundProgram {
-    pub program: Program,
-    pub transform_uniform: Uniform,
-    pub color_uniform: Uniform,
+pub struct GroundProgram<D> where D: Device {
+    pub program: D::Program,
+    pub transform_uniform: D::Uniform,
+    pub color_uniform: D::Uniform,
 }
 
-impl GroundProgram {
-    pub fn new(device: &Device) -> GroundProgram {
-        let program = device.create_program("demo_ground");
-        let transform_uniform = Uniform::new(&program, "Transform");
-        let color_uniform = Uniform::new(&program, "Color");
+impl<D> GroundProgram<D> where D: Device {
+    pub fn new(device: &D, resources: &Resources) -> GroundProgram<D> {
+        let program = device.create_program(resources, "demo_ground");
+        let transform_uniform = device.get_uniform(&program, "Transform");
+        let color_uniform = device.get_uniform(&program, "Color");
         GroundProgram { program, transform_uniform, color_uniform }
     }
 }
 
-pub struct GroundSolidVertexArray {
-    pub vertex_array: VertexArray,
+pub struct GroundSolidVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
 }
 
-impl GroundSolidVertexArray {
-    pub fn new(ground_program: &GroundProgram, quad_vertex_positions_buffer: &Buffer)
-               -> GroundSolidVertexArray {
-        let vertex_array = VertexArray::new();
-        unsafe {
-            let position_attr = VertexAttr::new(&ground_program.program, "Position");
+impl<D> GroundSolidVertexArray<D> where D: Device {
+    pub fn new(device: &D,
+               ground_program: &GroundProgram<D>,
+               quad_vertex_positions_buffer: &D::Buffer)
+               -> GroundSolidVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
 
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(ground_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
-            position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
-        }
+        let position_attr = device.get_vertex_attr(&ground_program.program, "Position");
+
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&ground_program.program);
+        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
 
         GroundSolidVertexArray { vertex_array }
     }
 }
 
-pub struct GroundLineVertexArray {
-    pub vertex_array: VertexArray,
+pub struct GroundLineVertexArray<D> where D: Device {
+    pub vertex_array: D::VertexArray,
     #[allow(dead_code)]
-    grid_vertex_positions_buffer: Buffer,
+    grid_vertex_positions_buffer: D::Buffer,
 }
 
-impl GroundLineVertexArray {
-    pub fn new(ground_program: &GroundProgram) -> GroundLineVertexArray {
-        let grid_vertex_positions_buffer = Buffer::new();
-        grid_vertex_positions_buffer.upload(&create_grid_vertex_positions(),
-                                            BufferTarget::Vertex,
-                                            BufferUploadMode::Static);
+impl<D> GroundLineVertexArray<D> where D: Device {
+    pub fn new(device: &D, ground_program: &GroundProgram<D>) -> GroundLineVertexArray<D> {
+        let grid_vertex_positions_buffer = device.create_buffer();
+        device.upload_to_buffer(&grid_vertex_positions_buffer,
+                                &create_grid_vertex_positions(),
+                                BufferTarget::Vertex,
+                                BufferUploadMode::Static);
 
-        let vertex_array = VertexArray::new();
-        unsafe {
-            let position_attr = VertexAttr::new(&ground_program.program, "Position");
+        let vertex_array = device.create_vertex_array();
 
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(ground_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, grid_vertex_positions_buffer.gl_buffer);
-            position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
-        }
+        let position_attr = device.get_vertex_attr(&ground_program.program, "Position");
+
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&ground_program.program);
+        device.bind_buffer(&grid_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
 
         GroundLineVertexArray { vertex_array, grid_vertex_positions_buffer }
     }

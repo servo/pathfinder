@@ -9,14 +9,15 @@
 // except according to those terms.
 
 use crate::debug::DebugUI;
-use crate::device::{Buffer, BufferTarget, BufferUploadMode, Device, Framebuffer, Program, Texture};
-use crate::device::{TimerQuery, Uniform, VertexArray, VertexAttr};
-use gl::types::{GLfloat, GLint};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
+use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, DepthState, Device};
+use pathfinder_gpu::{Primitive, RenderState, Resources, StencilFunc, StencilState, TextureFormat};
+use pathfinder_gpu::{UniformData, VertexAttrType};
 use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
 use pathfinder_renderer::paint::{ColorU, ObjectShader};
 use pathfinder_renderer::post::DefringingKernel;
 use pathfinder_renderer::tiles::{TILE_HEIGHT, TILE_WIDTH};
+use pathfinder_simd::default::{F32x4, I32x4};
 use std::collections::VecDeque;
 use std::time::Duration;
 
@@ -26,40 +27,43 @@ const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
 const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
-const FILL_INSTANCE_SIZE: GLint = 8;
-const SOLID_TILE_INSTANCE_SIZE: GLint = 6;
-const MASK_TILE_INSTANCE_SIZE: GLint = 8;
+const FILL_INSTANCE_SIZE: usize = 8;
+const SOLID_TILE_INSTANCE_SIZE: usize = 6;
+const MASK_TILE_INSTANCE_SIZE: usize = 8;
 
 const FILL_COLORS_TEXTURE_WIDTH: i32 = 256;
 const FILL_COLORS_TEXTURE_HEIGHT: i32 = 256;
 
-pub struct Renderer {
-    // Core shaders
-    fill_program: FillProgram,
-    solid_tile_program: SolidTileProgram,
-    mask_tile_program: MaskTileProgram,
-    area_lut_texture: Texture,
-    quad_vertex_positions_buffer: Buffer,
-    fill_vertex_array: FillVertexArray,
-    mask_tile_vertex_array: MaskTileVertexArray,
-    solid_tile_vertex_array: SolidTileVertexArray,
-    mask_framebuffer: Framebuffer,
-    fill_colors_texture: Texture,
+pub struct Renderer<D> where D: Device {
+    // Device
+    pub device: D,
+
+    // Core data
+    fill_program: FillProgram<D>,
+    solid_tile_program: SolidTileProgram<D>,
+    mask_tile_program: MaskTileProgram<D>,
+    area_lut_texture: D::Texture,
+    quad_vertex_positions_buffer: D::Buffer,
+    fill_vertex_array: FillVertexArray<D>,
+    mask_tile_vertex_array: MaskTileVertexArray<D>,
+    solid_tile_vertex_array: SolidTileVertexArray<D>,
+    mask_framebuffer: D::Framebuffer,
+    fill_colors_texture: D::Texture,
 
     // Postprocessing shader
-    postprocess_source_framebuffer: Option<Framebuffer>,
-    postprocess_program: PostprocessProgram,
-    postprocess_vertex_array: PostprocessVertexArray,
-    gamma_lut_texture: Texture,
+    postprocess_source_framebuffer: Option<D::Framebuffer>,
+    postprocess_program: PostprocessProgram<D>,
+    postprocess_vertex_array: PostprocessVertexArray<D>,
+    gamma_lut_texture: D::Texture,
 
     // Stencil shader
-    stencil_program: StencilProgram,
-    stencil_vertex_array: StencilVertexArray,
+    stencil_program: StencilProgram<D>,
+    stencil_vertex_array: StencilVertexArray<D>,
 
     // Debug
-    pending_timer_queries: VecDeque<TimerQuery>,
-    free_timer_queries: Vec<TimerQuery>,
-    pub debug_ui: DebugUI,
+    pending_timer_queries: VecDeque<D::TimerQuery>,
+    free_timer_queries: Vec<D::TimerQuery>,
+    pub debug_ui: DebugUI<D>,
 
     // Extra info
     main_framebuffer_size: Point2DI32,
@@ -67,43 +71,53 @@ pub struct Renderer {
     use_depth: bool,
 }
 
-impl Renderer {
-    pub fn new(device: &Device, main_framebuffer_size: Point2DI32) -> Renderer {
-        let fill_program = FillProgram::new(device);
-        let solid_tile_program = SolidTileProgram::new(device);
-        let mask_tile_program = MaskTileProgram::new(device);
+impl<D> Renderer<D> where D: Device {
+    pub fn new(device: D, resources: &Resources, main_framebuffer_size: Point2DI32)
+               -> Renderer<D> {
+        let fill_program = FillProgram::new(&device, &resources);
+        let solid_tile_program = SolidTileProgram::new(&device, &resources);
+        let mask_tile_program = MaskTileProgram::new(&device, &resources);
 
-        let postprocess_program = PostprocessProgram::new(device);
-        let stencil_program = StencilProgram::new(device);
+        let postprocess_program = PostprocessProgram::new(&device, &resources);
+        let stencil_program = StencilProgram::new(&device, &resources);
 
-        let area_lut_texture = device.create_texture_from_png("area-lut");
-        let gamma_lut_texture = device.create_texture_from_png("gamma-lut");
+        let area_lut_texture = device.create_texture_from_png(&resources, "area-lut");
+        let gamma_lut_texture = device.create_texture_from_png(&resources, "gamma-lut");
 
-        let quad_vertex_positions_buffer = Buffer::new();
-        quad_vertex_positions_buffer.upload(&QUAD_VERTEX_POSITIONS,
-                                            BufferTarget::Vertex,
-                                            BufferUploadMode::Static);
+        let quad_vertex_positions_buffer = device.create_buffer();
+        device.upload_to_buffer(&quad_vertex_positions_buffer,
+                                &QUAD_VERTEX_POSITIONS,
+                                BufferTarget::Vertex,
+                                BufferUploadMode::Static);
 
-        let fill_vertex_array = FillVertexArray::new(&fill_program, &quad_vertex_positions_buffer);
-        let mask_tile_vertex_array = MaskTileVertexArray::new(&mask_tile_program,
+        let fill_vertex_array = FillVertexArray::new(&device,
+                                                     &fill_program,
+                                                     &quad_vertex_positions_buffer);
+        let mask_tile_vertex_array = MaskTileVertexArray::new(&device,
+                                                              &mask_tile_program,
                                                               &quad_vertex_positions_buffer);
-        let solid_tile_vertex_array = SolidTileVertexArray::new(&solid_tile_program,
+        let solid_tile_vertex_array = SolidTileVertexArray::new(&device,
+                                                                &solid_tile_program,
                                                                 &quad_vertex_positions_buffer);
-
-        let postprocess_vertex_array = PostprocessVertexArray::new(&postprocess_program,
+        let postprocess_vertex_array = PostprocessVertexArray::new(&device,
+                                                                   &postprocess_program,
                                                                    &quad_vertex_positions_buffer);
-        let stencil_vertex_array = StencilVertexArray::new(&stencil_program);
+        let stencil_vertex_array = StencilVertexArray::new(&device, &stencil_program);
 
-        let mask_framebuffer_texture = Texture::new_r16f(Point2DI32::new(MASK_FRAMEBUFFER_WIDTH,
-                                                                         MASK_FRAMEBUFFER_HEIGHT));
-        let mask_framebuffer = Framebuffer::new(mask_framebuffer_texture);
+        let mask_framebuffer_size = Point2DI32::new(MASK_FRAMEBUFFER_WIDTH,
+                                                    MASK_FRAMEBUFFER_HEIGHT);
+        let mask_framebuffer_texture = device.create_texture(TextureFormat::R16F,
+                                                             mask_framebuffer_size);
+        let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
 
-        let fill_colors_texture = Texture::new_rgba(Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH,
-                                                                    FILL_COLORS_TEXTURE_HEIGHT));
+        let fill_colors_size = Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH,
+                                               FILL_COLORS_TEXTURE_HEIGHT);
+        let fill_colors_texture = device.create_texture(TextureFormat::RGBA8, fill_colors_size);
 
-        let debug_ui = DebugUI::new(device, main_framebuffer_size);
+        let debug_ui = DebugUI::new(&device, &resources, main_framebuffer_size);
 
         Renderer {
+            device,
             fill_program,
             solid_tile_program,
             mask_tile_program,
@@ -137,8 +151,10 @@ impl Renderer {
     pub fn render_scene(&mut self, built_scene: &BuiltScene) {
         self.init_postprocessing_framebuffer();
 
-        let timer_query = self.free_timer_queries.pop().unwrap_or_else(|| TimerQuery::new());
-        timer_query.begin();
+        let timer_query = self.free_timer_queries
+                              .pop()
+                              .unwrap_or_else(|| self.device.create_timer_query());
+        self.device.begin_timer_query(&timer_query);
 
         self.upload_shaders(&built_scene.shaders);
 
@@ -159,17 +175,17 @@ impl Renderer {
             self.postprocess();
         }
 
-        timer_query.end();
+        self.device.end_timer_query(&timer_query);
         self.pending_timer_queries.push_back(timer_query);
     }
 
     pub fn shift_timer_query(&mut self) -> Option<Duration> {
         let query = self.pending_timer_queries.front()?;
-        if !query.is_available() {
+        if !self.device.timer_query_is_available(&query) {
             return None
         }
         let query = self.pending_timer_queries.pop_front().unwrap();
-        let result = Duration::from_nanos(query.get());
+        let result = self.device.get_timer_query(&query);
         self.free_timer_queries.push(query);
         Some(result)
     }
@@ -211,7 +227,7 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn quad_vertex_positions_buffer(&self) -> &Buffer {
+    pub fn quad_vertex_positions_buffer(&self) -> &D::Buffer {
         &self.quad_vertex_positions_buffer
     }
 
@@ -224,204 +240,199 @@ impl Renderer {
             fill_colors[shader_index * 4 + 2] = shader.fill_color.b;
             fill_colors[shader_index * 4 + 3] = shader.fill_color.a;
         }
-        self.fill_colors_texture.upload_rgba(size, &fill_colors);
+        self.device.upload_to_texture(&self.fill_colors_texture, size, &fill_colors);
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileScenePrimitive]) {
-        self.solid_tile_vertex_array
-            .vertex_buffer
-            .upload(solid_tiles, BufferTarget::Vertex, BufferUploadMode::Dynamic);
+        self.device.upload_to_buffer(&self.solid_tile_vertex_array.vertex_buffer,
+                                     solid_tiles,
+                                     BufferTarget::Vertex,
+                                     BufferUploadMode::Dynamic);
     }
 
     fn upload_batch(&mut self, batch: &Batch) {
-        self.fill_vertex_array
-            .vertex_buffer
-            .upload(&batch.fills, BufferTarget::Vertex, BufferUploadMode::Dynamic);
-        self.mask_tile_vertex_array
-            .vertex_buffer
-            .upload(&batch.mask_tiles, BufferTarget::Vertex, BufferUploadMode::Dynamic);
+        self.device.upload_to_buffer(&self.fill_vertex_array.vertex_buffer,
+                                     &batch.fills,
+                                     BufferTarget::Vertex,
+                                     BufferUploadMode::Dynamic);
+        self.device.upload_to_buffer(&self.mask_tile_vertex_array.vertex_buffer,
+                                     &batch.mask_tiles,
+                                     BufferTarget::Vertex,
+                                     BufferUploadMode::Dynamic);
     }
 
     fn draw_batch_fills(&mut self, batch: &Batch) {
-        unsafe {
-            self.mask_framebuffer.bind();
-            gl::Viewport(0, 0, MASK_FRAMEBUFFER_WIDTH as GLint, MASK_FRAMEBUFFER_HEIGHT as GLint);
-            // TODO(pcwalton): Only clear the appropriate portion?
-            gl::ClearColor(0.0, 0.0, 0.0, 0.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+        self.device.bind_framebuffer(&self.mask_framebuffer);
+        // TODO(pcwalton): Only clear the appropriate portion?
+        self.device.clear(Some(F32x4::splat(0.0)), None, None);
 
-            gl::BindVertexArray(self.fill_vertex_array.vertex_array.gl_vertex_array);
-            gl::UseProgram(self.fill_program.program.gl_program);
-            gl::Uniform2f(self.fill_program.framebuffer_size_uniform.location,
-                          MASK_FRAMEBUFFER_WIDTH as GLfloat,
-                          MASK_FRAMEBUFFER_HEIGHT as GLfloat);
-            gl::Uniform2f(self.fill_program.tile_size_uniform.location,
-                          TILE_WIDTH as GLfloat,
-                          TILE_HEIGHT as GLfloat);
-            self.area_lut_texture.bind(0);
-            gl::Uniform1i(self.fill_program.area_lut_uniform.location, 0);
-            gl::Disable(gl::DEPTH_TEST);
-            gl::Disable(gl::STENCIL_TEST);
-            gl::BlendEquation(gl::FUNC_ADD);
-            gl::BlendFunc(gl::ONE, gl::ONE);
-            gl::Enable(gl::BLEND);
-            gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, batch.fills.len() as GLint);
-            gl::Disable(gl::BLEND);
-        }
+        self.device.bind_vertex_array(&self.fill_vertex_array.vertex_array);
+        self.device.use_program(&self.fill_program.program);
+        self.device.set_uniform(&self.fill_program.framebuffer_size_uniform,
+                                UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
+                                                             MASK_FRAMEBUFFER_HEIGHT,
+                                                             0,
+                                                             0).to_f32x4()));
+        self.device.set_uniform(&self.fill_program.tile_size_uniform,
+                                UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
+                                                             TILE_HEIGHT as i32,
+                                                             0,
+                                                             0).to_f32x4()));
+        self.device.bind_texture(&self.area_lut_texture, 0);
+        self.device.set_uniform(&self.fill_program.area_lut_uniform,
+                                UniformData::TextureUnit(0));
+        let render_state = RenderState {
+            blend: BlendState::RGBOneAlphaOne,
+            ..RenderState::default()
+        };
+        self.device.draw_arrays_instanced(Primitive::TriangleFan,
+                                          4,
+                                          batch.fills.len() as u32,
+                                          &render_state);
     }
 
     fn draw_batch_mask_tiles(&mut self, batch: &Batch) {
-        unsafe {
-            self.bind_draw_framebuffer();
-            self.set_main_viewport();
+        self.bind_draw_framebuffer();
 
-            gl::BindVertexArray(self.mask_tile_vertex_array.vertex_array.gl_vertex_array);
-            gl::UseProgram(self.mask_tile_program.program.gl_program);
-            gl::Uniform2f(self.mask_tile_program.framebuffer_size_uniform.location,
-                          self.main_framebuffer_size.x() as GLfloat,
-                          self.main_framebuffer_size.y() as GLfloat);
-            gl::Uniform2f(self.mask_tile_program.tile_size_uniform.location,
-                          TILE_WIDTH as GLfloat,
-                          TILE_HEIGHT as GLfloat);
-            self.mask_framebuffer.texture.bind(0);
-            gl::Uniform1i(self.mask_tile_program.stencil_texture_uniform.location, 0);
-            gl::Uniform2f(self.mask_tile_program.stencil_texture_size_uniform.location,
-                          MASK_FRAMEBUFFER_WIDTH as GLfloat,
-                          MASK_FRAMEBUFFER_HEIGHT as GLfloat);
-            self.fill_colors_texture.bind(1);
-            gl::Uniform1i(self.mask_tile_program.fill_colors_texture_uniform.location, 1);
-            gl::Uniform2f(self.mask_tile_program.fill_colors_texture_size_uniform.location,
-                          FILL_COLORS_TEXTURE_WIDTH as GLfloat,
-                          FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
-            // FIXME(pcwalton): Fill this in properly!
-            gl::Uniform2f(self.mask_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
-            self.enable_blending();
-            gl::Disable(gl::DEPTH_TEST);
-            self.setup_stencil_mask();
-            gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, batch.mask_tiles.len() as GLint);
-            gl::Disable(gl::BLEND);
-            gl::Disable(gl::STENCIL_TEST);
-        }
+        self.device.bind_vertex_array(&self.mask_tile_vertex_array.vertex_array);
+        self.device.use_program(&self.mask_tile_program.program);
+        self.device.set_uniform(&self.mask_tile_program.framebuffer_size_uniform,
+                                UniformData::Vec2(self.main_framebuffer_size.0.to_f32x4()));
+        self.device.set_uniform(&self.mask_tile_program.tile_size_uniform,
+                                UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
+                                                             TILE_HEIGHT as i32,
+                                                             0,
+                                                             0).to_f32x4()));
+        self.device.bind_texture(self.device.framebuffer_texture(&self.mask_framebuffer), 0);
+        self.device.set_uniform(&self.mask_tile_program.stencil_texture_uniform,
+                                UniformData::TextureUnit(0));
+        self.device.set_uniform(&self.mask_tile_program.stencil_texture_size_uniform,
+                                UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
+                                                             MASK_FRAMEBUFFER_HEIGHT,
+                                                             0,
+                                                             0).to_f32x4()));
+        self.device.bind_texture(&self.fill_colors_texture, 1);
+        self.device.set_uniform(&self.mask_tile_program.fill_colors_texture_uniform,
+                                UniformData::TextureUnit(1));
+        self.device.set_uniform(&self.mask_tile_program.fill_colors_texture_size_uniform,
+                                UniformData::Vec2(I32x4::new(FILL_COLORS_TEXTURE_WIDTH,
+                                                             FILL_COLORS_TEXTURE_HEIGHT,
+                                                             0,
+                                                             0).to_f32x4()));
+        // FIXME(pcwalton): Fill this in properly!
+        self.device.set_uniform(&self.mask_tile_program.view_box_origin_uniform,
+                                UniformData::Vec2(F32x4::default()));
+        let render_state = RenderState {
+            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+            stencil: self.stencil_state(),
+            ..RenderState::default()
+        };
+        self.device.draw_arrays_instanced(Primitive::TriangleFan,
+                                          4,
+                                          batch.mask_tiles.len() as u32,
+                                          &render_state);
     }
 
     fn draw_solid_tiles(&mut self, built_scene: &BuiltScene) {
-        unsafe {
-            self.bind_draw_framebuffer();
-            self.set_main_viewport();
-
-            gl::BindVertexArray(self.solid_tile_vertex_array.vertex_array.gl_vertex_array);
-            gl::UseProgram(self.solid_tile_program.program.gl_program);
-            gl::Uniform2f(self.solid_tile_program.framebuffer_size_uniform.location,
-                          self.main_framebuffer_size.x() as GLfloat,
-                          self.main_framebuffer_size.y() as GLfloat);
-            gl::Uniform2f(self.solid_tile_program.tile_size_uniform.location,
-                          TILE_WIDTH as GLfloat,
-                          TILE_HEIGHT as GLfloat);
-            self.fill_colors_texture.bind(0);
-            gl::Uniform1i(self.solid_tile_program.fill_colors_texture_uniform.location, 0);
-            gl::Uniform2f(self.solid_tile_program.fill_colors_texture_size_uniform.location,
-                          FILL_COLORS_TEXTURE_WIDTH as GLfloat,
-                          FILL_COLORS_TEXTURE_HEIGHT as GLfloat);
-            // FIXME(pcwalton): Fill this in properly!
-            gl::Uniform2f(self.solid_tile_program.view_box_origin_uniform.location, 0.0, 0.0);
-            gl::Disable(gl::BLEND);
-            gl::Disable(gl::DEPTH_TEST);
-            self.setup_stencil_mask();
-            let count = built_scene.solid_tiles.len();
-            gl::DrawArraysInstanced(gl::TRIANGLE_FAN, 0, 4, count as GLint);
-            gl::Disable(gl::STENCIL_TEST);
-        }
+        self.device.bind_vertex_array(&self.solid_tile_vertex_array.vertex_array);
+        self.device.use_program(&self.solid_tile_program.program);
+        self.device.set_uniform(&self.solid_tile_program.framebuffer_size_uniform,
+                                UniformData::Vec2(self.main_framebuffer_size.0.to_f32x4()));
+        self.device.set_uniform(&self.solid_tile_program.tile_size_uniform,
+                                UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
+                                                             TILE_HEIGHT as i32,
+                                                             0,
+                                                             0).to_f32x4()));
+        self.device.bind_texture(&self.fill_colors_texture, 0);
+        self.device.set_uniform(&self.solid_tile_program.fill_colors_texture_uniform,
+                                UniformData::TextureUnit(0));
+        self.device.set_uniform(&self.solid_tile_program.fill_colors_texture_size_uniform,
+                                UniformData::Vec2(I32x4::new(FILL_COLORS_TEXTURE_WIDTH,
+                                                             FILL_COLORS_TEXTURE_HEIGHT,
+                                                             0,
+                                                             0).to_f32x4()));
+        // FIXME(pcwalton): Fill this in properly!
+        self.device.set_uniform(&self.solid_tile_program.view_box_origin_uniform,
+                                UniformData::Vec2(F32x4::default()));
+        let render_state = RenderState {
+            stencil: self.stencil_state(),
+            ..RenderState::default()
+        };
+        let count = built_scene.solid_tiles.len() as u32;
+        self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
     }
 
     fn postprocess(&mut self) {
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            self.set_main_viewport();
+        self.device.bind_default_framebuffer(self.main_framebuffer_size);
 
-            gl::BindVertexArray(self.postprocess_vertex_array.vertex_array.gl_vertex_array);
-            gl::UseProgram(self.postprocess_program.program.gl_program);
-            gl::Uniform2f(self.postprocess_program.framebuffer_size_uniform.location,
-                          self.main_framebuffer_size.x() as GLfloat,
-                          self.main_framebuffer_size.y() as GLfloat);
-            match self.postprocess_options.defringing_kernel {
-                Some(ref kernel) => {
-                    debug_assert!(kernel.0.len() == 4);
-                    let data: *const f32 = kernel.0.as_ptr();
-                    gl::Uniform4fv(self.postprocess_program.kernel_uniform.location, 1, data);
-                }
-                None => {
-                    gl::Uniform4f(self.postprocess_program.kernel_uniform.location,
-                                  0.0,
-                                  0.0,
-                                  0.0,
-                                  0.0);
-                }
+        self.device.bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
+        self.device.use_program(&self.postprocess_program.program);
+        self.device.set_uniform(&self.postprocess_program.framebuffer_size_uniform,
+                                UniformData::Vec2(self.main_framebuffer_size.to_f32().0));
+        match self.postprocess_options.defringing_kernel {
+            Some(ref kernel) => {
+                self.device.set_uniform(&self.postprocess_program.kernel_uniform,
+                                        UniformData::Vec4(F32x4::from_slice(&kernel.0)));
             }
-            self.postprocess_source_framebuffer.as_ref().unwrap().texture.bind(0);
-            gl::Uniform1i(self.postprocess_program.source_uniform.location, 0);
-            self.gamma_lut_texture.bind(1);
-            gl::Uniform1i(self.postprocess_program.gamma_lut_uniform.location, 1);
-            let gamma_correction_bg_color_uniform_location =
-                self.postprocess_program.gamma_correction_bg_color_uniform.location;
-            match self.postprocess_options.gamma_correction_bg_color {
-                None => {
-                    gl::Uniform4f(gamma_correction_bg_color_uniform_location, 0.0, 0.0, 0.0, 0.0);
-                }
-                Some(color) => {
-                    gl::Uniform4f(gamma_correction_bg_color_uniform_location,
-                                  color.r as f32 / 255.0,
-                                  color.g as f32 / 255.0,
-                                  color.b as f32 / 255.0,
-                                  color.a as f32 / 255.0);
-                }
+            None => {
+                self.device.set_uniform(&self.postprocess_program.kernel_uniform,
+                                        UniformData::Vec4(F32x4::default()));
             }
-            self.enable_blending();
-            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
-            gl::Disable(gl::BLEND);
         }
+        let source_texture =
+            self.device.framebuffer_texture(self.postprocess_source_framebuffer.as_ref().unwrap());
+        self.device.bind_texture(&source_texture, 0);
+        self.device.set_uniform(&self.postprocess_program.source_uniform,
+                                UniformData::TextureUnit(0));
+        self.device.bind_texture(&self.gamma_lut_texture, 1);
+        self.device.set_uniform(&self.postprocess_program.gamma_lut_uniform,
+                                UniformData::TextureUnit(1));
+        let gamma_correction_bg_color_uniform = &self.postprocess_program
+                                                     .gamma_correction_bg_color_uniform;
+        match self.postprocess_options.gamma_correction_bg_color {
+            None => {
+                self.device.set_uniform(gamma_correction_bg_color_uniform,
+                                        UniformData::Vec4(F32x4::default()));
+            }
+            Some(color) => {
+                self.device.set_uniform(gamma_correction_bg_color_uniform,
+                                        UniformData::Vec4(color.to_f32().0));
+            }
+        }
+        self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
+            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+            ..RenderState::default()
+        });
     }
 
     fn draw_stencil(&self, quad_positions: &[Point3DF32]) {
-        self.stencil_vertex_array
-            .vertex_buffer
-            .upload(quad_positions, BufferTarget::Vertex, BufferUploadMode::Dynamic);
+        self.device.upload_to_buffer(&self.stencil_vertex_array.vertex_buffer,
+                                     quad_positions,
+                                     BufferTarget::Vertex,
+                                     BufferUploadMode::Dynamic);
         self.bind_draw_framebuffer();
 
-        unsafe {
-            gl::BindVertexArray(self.stencil_vertex_array.vertex_array.gl_vertex_array);
-            gl::UseProgram(self.stencil_program.program.gl_program);
-            gl::ColorMask(gl::FALSE, gl::FALSE, gl::FALSE, gl::FALSE);
-            gl::DepthFunc(gl::LESS);
-            gl::Enable(gl::DEPTH_TEST);
-            gl::StencilFunc(gl::ALWAYS, 1, 1);
-            gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
-            gl::StencilMask(1);
-            gl::Enable(gl::STENCIL_TEST);
-            gl::Disable(gl::BLEND);
-            gl::DrawArrays(gl::TRIANGLE_FAN, 0, quad_positions.len() as GLint);
-            gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE);
-            gl::Disable(gl::DEPTH_TEST);
-            gl::Disable(gl::STENCIL_TEST);
-        }
+        self.device.bind_vertex_array(&self.stencil_vertex_array.vertex_array);
+        self.device.use_program(&self.stencil_program.program);
+        self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
+            // FIXME(pcwalton): Should we really write to the depth buffer?
+            depth: Some(DepthState { func: DepthFunc::Less, write: true }),
+            stencil: Some(StencilState {
+                func: StencilFunc::Always,
+                reference: 1,
+                mask: 1,
+                pass_replace: true,
+            }),
+            color_mask: false,
+            ..RenderState::default()
+        })
     }
 
     fn bind_draw_framebuffer(&self) {
-        unsafe {
-            if self.postprocessing_needed() {
-                let fbo = self.postprocess_source_framebuffer.as_ref().unwrap().gl_framebuffer;
-                gl::BindFramebuffer(gl::FRAMEBUFFER, fbo);
-            } else {
-                gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            }
-        }
-    }
-
-    fn set_main_viewport(&self) {
-        unsafe {
-            gl::Viewport(0,
-                         0,
-                         self.main_framebuffer_size.x(),
-                         self.main_framebuffer_size.y());
+        if self.postprocessing_needed() {
+            self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
+        } else {
+            self.device.bind_default_framebuffer(self.main_framebuffer_size);
         }
     }
 
@@ -432,19 +443,18 @@ impl Renderer {
         }
 
         match self.postprocess_source_framebuffer {
-            Some(ref existing_framebuffer) if
-                    existing_framebuffer.texture.size == self.main_framebuffer_size => {}
+            Some(ref framebuffer) if
+                    self.device.texture_size(self.device.framebuffer_texture(framebuffer)) ==
+                    self.main_framebuffer_size => {}
             _ => {
-                self.postprocess_source_framebuffer =
-                    Some(Framebuffer::new(Texture::new_rgba(self.main_framebuffer_size)));
+                let texture = self.device.create_texture(TextureFormat::RGBA8,
+                                                         self.main_framebuffer_size);
+                self.postprocess_source_framebuffer = Some(self.device.create_framebuffer(texture))
             }
         };
 
-        unsafe {
-            self.postprocess_source_framebuffer.as_ref().unwrap().bind();
-            gl::ClearColor(0.0, 0.0, 0.0, 0.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
-        }
+        self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
+        self.device.clear(Some(F32x4::default()), None, None);
     }
 
     fn postprocessing_needed(&self) -> bool {
@@ -452,24 +462,12 @@ impl Renderer {
             self.postprocess_options.gamma_correction_bg_color.is_some()
     }
 
-    fn enable_blending(&self) {
-        unsafe {
-            gl::BlendEquation(gl::FUNC_ADD);
-            gl::BlendFuncSeparate(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::ONE, gl::ONE);
-            gl::Enable(gl::BLEND);
+    fn stencil_state(&self) -> Option<StencilState> {
+        if !self.use_depth {
+            return None;
         }
-    }
 
-    fn setup_stencil_mask(&self) {
-        unsafe {
-            if self.use_depth {
-                gl::StencilFunc(gl::EQUAL, 1, 1);
-                gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
-                gl::Enable(gl::STENCIL_TEST);
-            } else {
-                gl::Disable(gl::STENCIL_TEST);
-            }
-        }
+        Some(StencilState { func: StencilFunc::Equal, reference: 1, mask: 1, pass_replace: false })
     }
 }
 
@@ -479,132 +477,208 @@ struct PostprocessOptions {
     gamma_correction_bg_color: Option<ColorU>,
 }
 
-struct FillVertexArray {
-    vertex_array: VertexArray,
-    vertex_buffer: Buffer,
+struct FillVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
+    vertex_buffer: D::Buffer,
 }
 
-impl FillVertexArray {
-    fn new(fill_program: &FillProgram, quad_vertex_positions_buffer: &Buffer) -> FillVertexArray {
-        let (vertex_array, vertex_buffer) = (VertexArray::new(), Buffer::new());
-        unsafe {
-            let tess_coord_attr = VertexAttr::new(&fill_program.program, "TessCoord");
-            let from_px_attr = VertexAttr::new(&fill_program.program, "FromPx");
-            let to_px_attr = VertexAttr::new(&fill_program.program, "ToPx");
-            let from_subpx_attr = VertexAttr::new(&fill_program.program, "FromSubpx");
-            let to_subpx_attr = VertexAttr::new(&fill_program.program, "ToSubpx");
-            let tile_index_attr = VertexAttr::new(&fill_program.program, "TileIndex");
+impl<D> FillVertexArray<D> where D: Device {
+    fn new(device: &D, fill_program: &FillProgram<D>, quad_vertex_positions_buffer: &D::Buffer)
+           -> FillVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+        let vertex_buffer = device.create_buffer();
 
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(fill_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
-            tess_coord_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
-            from_px_attr.configure_int(1, gl::UNSIGNED_BYTE, FILL_INSTANCE_SIZE, 0, 1);
-            to_px_attr.configure_int(1, gl::UNSIGNED_BYTE, FILL_INSTANCE_SIZE, 1, 1);
-            from_subpx_attr.configure_float(2, gl::UNSIGNED_BYTE, true, FILL_INSTANCE_SIZE, 2, 1);
-            to_subpx_attr.configure_float(2, gl::UNSIGNED_BYTE, true, FILL_INSTANCE_SIZE, 4, 1);
-            tile_index_attr.configure_int(1, gl::UNSIGNED_SHORT, FILL_INSTANCE_SIZE, 6, 1);
-        }
+        let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord");
+        let from_px_attr = device.get_vertex_attr(&fill_program.program, "FromPx");
+        let to_px_attr = device.get_vertex_attr(&fill_program.program, "ToPx");
+        let from_subpx_attr = device.get_vertex_attr(&fill_program.program, "FromSubpx");
+        let to_subpx_attr = device.get_vertex_attr(&fill_program.program, "ToSubpx");
+        let tile_index_attr = device.get_vertex_attr(&fill_program.program, "TileIndex");
+
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&fill_program.program);
+        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&tess_coord_attr,
+                                           2,
+                                           VertexAttrType::U8,
+                                           false,
+                                           0,
+                                           0,
+                                           0);
+        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
+        device.configure_int_vertex_attr(&from_px_attr,
+                                         1,
+                                         VertexAttrType::U8,
+                                         FILL_INSTANCE_SIZE,
+                                         0,
+                                         1);
+        device.configure_int_vertex_attr(&to_px_attr,
+                                         1,
+                                         VertexAttrType::U8,
+                                         FILL_INSTANCE_SIZE,
+                                         1,
+                                         1);
+        device.configure_float_vertex_attr(&from_subpx_attr,
+                                           2,
+                                           VertexAttrType::U8,
+                                           true,
+                                           FILL_INSTANCE_SIZE,
+                                           2,
+                                           1);
+        device.configure_float_vertex_attr(&to_subpx_attr,
+                                           2,
+                                           VertexAttrType::U8,
+                                           true,
+                                           FILL_INSTANCE_SIZE,
+                                           4,
+                                           1);
+        device.configure_int_vertex_attr(&tile_index_attr,
+                                         1,
+                                         VertexAttrType::U16,
+                                         FILL_INSTANCE_SIZE,
+                                         6,
+                                         1);
 
         FillVertexArray { vertex_array, vertex_buffer }
     }
 }
 
-struct MaskTileVertexArray {
-    vertex_array: VertexArray,
-    vertex_buffer: Buffer,
+struct MaskTileVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
+    vertex_buffer: D::Buffer,
 }
 
-impl MaskTileVertexArray {
-    fn new(mask_tile_program: &MaskTileProgram, quad_vertex_positions_buffer: &Buffer)
-           -> MaskTileVertexArray {
-        let (vertex_array, vertex_buffer) = (VertexArray::new(), Buffer::new());
-        unsafe {
-            let tess_coord_attr = VertexAttr::new(&mask_tile_program.program, "TessCoord");
-            let tile_origin_attr = VertexAttr::new(&mask_tile_program.program, "TileOrigin");
-            let backdrop_attr = VertexAttr::new(&mask_tile_program.program, "Backdrop");
-            let object_attr = VertexAttr::new(&mask_tile_program.program, "Object");
+impl<D> MaskTileVertexArray<D> where D: Device {
+    fn new(device: &D,
+           mask_tile_program: &MaskTileProgram<D>,
+           quad_vertex_positions_buffer: &D::Buffer)
+           -> MaskTileVertexArray<D> {
+        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-            // NB: The object must be of type short, not unsigned short, to work around a macOS
-            // Radeon driver bug.
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(mask_tile_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
-            tess_coord_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
-            tile_origin_attr.configure_float(2, gl::SHORT, false, MASK_TILE_INSTANCE_SIZE, 0, 1);
-            backdrop_attr.configure_int(1, gl::SHORT, MASK_TILE_INSTANCE_SIZE, 4, 1);
-            object_attr.configure_int(2, gl::SHORT, MASK_TILE_INSTANCE_SIZE, 6, 1);
-        }
+        let tess_coord_attr = device.get_vertex_attr(&mask_tile_program.program, "TessCoord");
+        let tile_origin_attr = device.get_vertex_attr(&mask_tile_program.program, "TileOrigin");
+        let backdrop_attr = device.get_vertex_attr(&mask_tile_program.program, "Backdrop");
+        let object_attr = device.get_vertex_attr(&mask_tile_program.program, "Object");
+
+        // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
+        // driver bug.
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&mask_tile_program.program);
+        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&tess_coord_attr,
+                                            2,
+                                            VertexAttrType::U8,
+                                            false,
+                                            0,
+                                            0,
+                                            0);
+        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&tile_origin_attr,
+                                            2,
+                                            VertexAttrType::I16,
+                                            false,
+                                            MASK_TILE_INSTANCE_SIZE,
+                                            0,
+                                            1);
+        device.configure_int_vertex_attr(&backdrop_attr,
+                                            1,
+                                            VertexAttrType::I16,
+                                            MASK_TILE_INSTANCE_SIZE,
+                                            4,
+                                            1);
+        device.configure_int_vertex_attr(&object_attr,
+                                            2,
+                                            VertexAttrType::I16,
+                                            MASK_TILE_INSTANCE_SIZE,
+                                            6,
+                                            1);
 
         MaskTileVertexArray { vertex_array, vertex_buffer }
     }
 }
 
-struct SolidTileVertexArray {
-    vertex_array: VertexArray,
-    vertex_buffer: Buffer,
+struct SolidTileVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
+    vertex_buffer: D::Buffer,
 }
 
-impl SolidTileVertexArray {
-    fn new(solid_tile_program: &SolidTileProgram, quad_vertex_positions_buffer: &Buffer)
-           -> SolidTileVertexArray {
-        let (vertex_array, vertex_buffer) = (VertexArray::new(), Buffer::new());
-        unsafe {
-            let tess_coord_attr = VertexAttr::new(&solid_tile_program.program, "TessCoord");
-            let tile_origin_attr = VertexAttr::new(&solid_tile_program.program, "TileOrigin");
-            let object_attr = VertexAttr::new(&solid_tile_program.program, "Object");
+impl<D> SolidTileVertexArray<D> where D: Device {
+    fn new(device: &D,
+           solid_tile_program: &SolidTileProgram<D>,
+           quad_vertex_positions_buffer: &D::Buffer)
+           -> SolidTileVertexArray<D> {
+        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-            // NB: The object must be of type short, not unsigned short, to work around a macOS
-            // Radeon driver bug.
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(solid_tile_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
-            tess_coord_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
-            tile_origin_attr.configure_float(2, gl::SHORT, false, SOLID_TILE_INSTANCE_SIZE, 0, 1);
-            object_attr.configure_int(1, gl::SHORT, SOLID_TILE_INSTANCE_SIZE, 4, 1);
-        }
+        let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord");
+        let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin");
+        let object_attr = device.get_vertex_attr(&solid_tile_program.program, "Object");
+
+        // NB: The object must be of type short, not unsigned short, to work around a macOS
+        // Radeon driver bug.
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&solid_tile_program.program);
+        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&tess_coord_attr,
+                                            2,
+                                            VertexAttrType::U8,
+                                            false,
+                                            0,
+                                            0,
+                                            0);
+        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&tile_origin_attr,
+                                            2,
+                                            VertexAttrType::I16,
+                                            false,
+                                            SOLID_TILE_INSTANCE_SIZE,
+                                            0,
+                                            1);
+        device.configure_int_vertex_attr(&object_attr,
+                                            1,
+                                            VertexAttrType::I16,
+                                            SOLID_TILE_INSTANCE_SIZE,
+                                            4,
+                                            1);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }
     }
 }
 
-struct FillProgram {
-    program: Program,
-    framebuffer_size_uniform: Uniform,
-    tile_size_uniform: Uniform,
-    area_lut_uniform: Uniform,
+struct FillProgram<D> where D: Device {
+    program: D::Program,
+    framebuffer_size_uniform: D::Uniform,
+    tile_size_uniform: D::Uniform,
+    area_lut_uniform: D::Uniform,
 }
 
-impl FillProgram {
-    fn new(device: &Device) -> FillProgram {
-        let program = device.create_program("fill");
-        let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
-        let tile_size_uniform = Uniform::new(&program, "TileSize");
-        let area_lut_uniform = Uniform::new(&program, "AreaLUT");
+impl<D> FillProgram<D> where D: Device {
+    fn new(device: &D, resources: &Resources) -> FillProgram<D> {
+        let program = device.create_program(resources, "fill");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let area_lut_uniform = device.get_uniform(&program, "AreaLUT");
         FillProgram { program, framebuffer_size_uniform, tile_size_uniform, area_lut_uniform }
     }
 }
 
-struct SolidTileProgram {
-    program: Program,
-    framebuffer_size_uniform: Uniform,
-    tile_size_uniform: Uniform,
-    fill_colors_texture_uniform: Uniform,
-    fill_colors_texture_size_uniform: Uniform,
-    view_box_origin_uniform: Uniform,
+struct SolidTileProgram<D> where D: Device {
+    program: D::Program,
+    framebuffer_size_uniform: D::Uniform,
+    tile_size_uniform: D::Uniform,
+    fill_colors_texture_uniform: D::Uniform,
+    fill_colors_texture_size_uniform: D::Uniform,
+    view_box_origin_uniform: D::Uniform,
 }
 
-impl SolidTileProgram {
-    fn new(device: &Device) -> SolidTileProgram {
-        let program = device.create_program("solid_tile");
-        let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
-        let tile_size_uniform = Uniform::new(&program, "TileSize");
-        let fill_colors_texture_uniform = Uniform::new(&program, "FillColorsTexture");
-        let fill_colors_texture_size_uniform = Uniform::new(&program, "FillColorsTextureSize");
-        let view_box_origin_uniform = Uniform::new(&program, "ViewBoxOrigin");
+impl<D> SolidTileProgram<D> where D: Device {
+    fn new(device: &D, resources: &Resources) -> SolidTileProgram<D> {
+        let program = device.create_program(resources, "solid_tile");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let fill_colors_texture_uniform = device.get_uniform(&program, "FillColorsTexture");
+        let fill_colors_texture_size_uniform = device.get_uniform(&program,
+                                                                  "FillColorsTextureSize");
+        let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
         SolidTileProgram {
             program,
             framebuffer_size_uniform,
@@ -616,27 +690,28 @@ impl SolidTileProgram {
     }
 }
 
-struct MaskTileProgram {
-    program: Program,
-    framebuffer_size_uniform: Uniform,
-    tile_size_uniform: Uniform,
-    stencil_texture_uniform: Uniform,
-    stencil_texture_size_uniform: Uniform,
-    fill_colors_texture_uniform: Uniform,
-    fill_colors_texture_size_uniform: Uniform,
-    view_box_origin_uniform: Uniform,
+struct MaskTileProgram<D> where D: Device {
+    program: D::Program,
+    framebuffer_size_uniform: D::Uniform,
+    tile_size_uniform: D::Uniform,
+    stencil_texture_uniform: D::Uniform,
+    stencil_texture_size_uniform: D::Uniform,
+    fill_colors_texture_uniform: D::Uniform,
+    fill_colors_texture_size_uniform: D::Uniform,
+    view_box_origin_uniform: D::Uniform,
 }
 
-impl MaskTileProgram {
-    fn new(device: &Device) -> MaskTileProgram {
-        let program = device.create_program("mask_tile");
-        let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
-        let tile_size_uniform = Uniform::new(&program, "TileSize");
-        let stencil_texture_uniform = Uniform::new(&program, "StencilTexture");
-        let stencil_texture_size_uniform = Uniform::new(&program, "StencilTextureSize");
-        let fill_colors_texture_uniform = Uniform::new(&program, "FillColorsTexture");
-        let fill_colors_texture_size_uniform = Uniform::new(&program, "FillColorsTextureSize");
-        let view_box_origin_uniform = Uniform::new(&program, "ViewBoxOrigin");
+impl<D> MaskTileProgram<D> where D: Device {
+    fn new(device: &D, resources: &Resources) -> MaskTileProgram<D> {
+        let program = device.create_program(resources, "mask_tile");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
+        let stencil_texture_size_uniform = device.get_uniform(&program, "StencilTextureSize");
+        let fill_colors_texture_uniform = device.get_uniform(&program, "FillColorsTexture");
+        let fill_colors_texture_size_uniform = device.get_uniform(&program,
+                                                                  "FillColorsTextureSize");
+        let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
         MaskTileProgram {
             program,
             framebuffer_size_uniform,
@@ -650,23 +725,24 @@ impl MaskTileProgram {
     }
 }
 
-struct PostprocessProgram {
-    program: Program,
-    source_uniform: Uniform,
-    framebuffer_size_uniform: Uniform,
-    kernel_uniform: Uniform,
-    gamma_lut_uniform: Uniform,
-    gamma_correction_bg_color_uniform: Uniform,
+struct PostprocessProgram<D> where D: Device {
+    program: D::Program,
+    source_uniform: D::Uniform,
+    framebuffer_size_uniform: D::Uniform,
+    kernel_uniform: D::Uniform,
+    gamma_lut_uniform: D::Uniform,
+    gamma_correction_bg_color_uniform: D::Uniform,
 }
 
-impl PostprocessProgram {
-    fn new(device: &Device) -> PostprocessProgram {
-        let program = device.create_program("post");
-        let source_uniform = Uniform::new(&program, "Source");
-        let framebuffer_size_uniform = Uniform::new(&program, "FramebufferSize");
-        let kernel_uniform = Uniform::new(&program, "Kernel");
-        let gamma_lut_uniform = Uniform::new(&program, "GammaLUT");
-        let gamma_correction_bg_color_uniform = Uniform::new(&program, "GammaCorrectionBGColor");
+impl<D> PostprocessProgram<D> where D: Device {
+    fn new(device: &D, resources: &Resources) -> PostprocessProgram<D> {
+        let program = device.create_program(resources, "post");
+        let source_uniform = device.get_uniform(&program, "Source");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let kernel_uniform = device.get_uniform(&program, "Kernel");
+        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
+        let gamma_correction_bg_color_uniform = device.get_uniform(&program,
+                                                                   "GammaCorrectionBGColor");
         PostprocessProgram {
             program,
             source_uniform,
@@ -678,54 +754,65 @@ impl PostprocessProgram {
     }
 }
 
-struct PostprocessVertexArray {
-    vertex_array: VertexArray,
+struct PostprocessVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
 }
 
-impl PostprocessVertexArray {
-    fn new(postprocess_program: &PostprocessProgram, quad_vertex_positions_buffer: &Buffer)
-           -> PostprocessVertexArray {
-        let vertex_array = VertexArray::new();
-        unsafe {
-            let position_attr = VertexAttr::new(&postprocess_program.program, "Position");
+impl<D> PostprocessVertexArray<D> where D: Device {
+    fn new(device: &D,
+           postprocess_program: &PostprocessProgram<D>,
+           quad_vertex_positions_buffer: &D::Buffer)
+           -> PostprocessVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+        let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position");
 
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(postprocess_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, quad_vertex_positions_buffer.gl_buffer);
-            position_attr.configure_float(2, gl::UNSIGNED_BYTE, false, 0, 0, 0);
-        }
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&postprocess_program.program);
+        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&position_attr,
+                                            2,
+                                            VertexAttrType::U8,
+                                            false,
+                                            0,
+                                            0,
+                                            0);
 
         PostprocessVertexArray { vertex_array }
     }
 }
 
-struct StencilProgram {
-    program: Program,
+struct StencilProgram<D> where D: Device {
+    program: D::Program,
 }
 
-impl StencilProgram {
-    fn new(device: &Device) -> StencilProgram {
-        let program = device.create_program("stencil");
+impl<D> StencilProgram<D> where D: Device {
+    fn new(device: &D, resources: &Resources) -> StencilProgram<D> {
+        let program = device.create_program(resources, "stencil");
         StencilProgram { program }
     }
 }
 
-struct StencilVertexArray {
-    vertex_array: VertexArray,
-    vertex_buffer: Buffer,
+struct StencilVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
+    vertex_buffer: D::Buffer,
 }
 
-impl StencilVertexArray {
-    fn new(stencil_program: &StencilProgram) -> StencilVertexArray {
-        let (vertex_array, vertex_buffer) = (VertexArray::new(), Buffer::new());
-        unsafe {
-            let position_attr = VertexAttr::new(&stencil_program.program, "Position");
+impl<D> StencilVertexArray<D> where D: Device {
+    fn new(device: &D, stencil_program: &StencilProgram<D>) -> StencilVertexArray<D> {
+        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-            gl::BindVertexArray(vertex_array.gl_vertex_array);
-            gl::UseProgram(stencil_program.program.gl_program);
-            gl::BindBuffer(gl::ARRAY_BUFFER, vertex_buffer.gl_buffer);
-            position_attr.configure_float(3, gl::FLOAT, false, 4 * 4, 0, 0);
-        }
+        let position_attr = device.get_vertex_attr(&stencil_program.program, "Position");
+
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&stencil_program.program);
+        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&position_attr,
+                                           3,
+                                           VertexAttrType::F32,
+                                           false,
+                                           4 * 4,
+                                           0,
+                                           0);
 
         StencilVertexArray { vertex_array, vertex_buffer }
     }

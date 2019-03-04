@@ -8,9 +8,16 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::default::{F32x4, U32x4};
+use crate::default::F32x4;
 
 impl F32x4 {
+    // Constructors
+
+    #[inline]
+    pub fn from_slice(slice: &[f32]) -> F32x4 {
+        F32x4::new(slice[0], slice[1], slice[2], slice[3])
+    }
+
     // Accessors
 
     #[inline]

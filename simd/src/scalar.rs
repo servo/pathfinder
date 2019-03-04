@@ -132,11 +132,6 @@ impl F32x4 {
     }
 
     #[inline]
-    pub fn transpose4(a: &mut F32x4, b: &mut F32x4, c: &mut F32x4, d: &mut F32x4) {
-        unimplemented!()
-    }
-
-    #[inline]
     pub fn cross(&self, other: F32x4) -> F32x4 {
         unimplemented!()
     }

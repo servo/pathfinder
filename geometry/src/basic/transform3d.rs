@@ -144,13 +144,6 @@ impl Transform3DF32 {
         }
     }
 
-    #[inline]
-    pub fn transpose(&self) -> Transform3DF32 {
-        let mut m = *self;
-        F32x4::transpose_4x4(&mut m.c0, &mut m.c1, &mut m.c2, &mut m.c3);
-        m
-    }
-
     // FIXME(pcwalton): Is this right, due to transposition? I think we may have to reverse the
     // two.
     //
@@ -382,19 +375,6 @@ mod test {
         let p = Point3DF32::new(3.0, 8.0, 4.0, 6.0);
         let q = Point3DF32::new(63.0, 97.0, 135.0, 117.0);
         assert_eq!(a.transform_point(p), q);
-    }
-
-    #[test]
-    fn test_transpose() {
-        let a = Transform3DF32::row_major(3.0, 1.0, 4.0, 5.0,
-                                          9.0, 2.0, 6.0, 5.0,
-                                          3.0, 5.0, 8.0, 9.0,
-                                          7.0, 9.0, 3.0, 2.0);
-        let b = Transform3DF32::row_major(3.0, 9.0, 3.0, 7.0,
-                                          1.0, 2.0, 5.0, 9.0,
-                                          4.0, 6.0, 8.0, 3.0,
-                                          5.0, 5.0, 9.0, 2.0);
-        assert_eq!(a.transpose(), b);
     }
 
     #[test]
