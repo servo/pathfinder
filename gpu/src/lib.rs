@@ -153,6 +153,7 @@ pub enum ShaderKind {
 
 #[derive(Clone, Copy)]
 pub enum UniformData {
+    Mat4([F32x4; 4]),
     Vec2(F32x4),
     Vec4(F32x4),
     TextureUnit(u32),

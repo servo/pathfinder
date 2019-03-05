@@ -23,10 +23,10 @@ use std::ops::{Add, Neg};
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(C)]
 pub struct Transform3DF32 {
-    c0: F32x4,
-    c1: F32x4,
-    c2: F32x4,
-    c3: F32x4,
+    pub c0: F32x4,
+    pub c1: F32x4,
+    pub c2: F32x4,
+    pub c3: F32x4,
 }
 
 impl Default for Transform3DF32 {

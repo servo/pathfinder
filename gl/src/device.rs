@@ -10,7 +10,8 @@
 
 //! An OpenGL implementation of the device abstraction.
 
-use gl::types::{GLboolean, GLchar, GLdouble, GLenum, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
+use gl::types::{GLboolean, GLchar, GLdouble, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr};
+use gl::types::{GLuint, GLvoid};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, Device, Primitive};
 use pathfinder_gpu::{RenderState, ShaderKind, StencilFunc, TextureFormat};
@@ -335,6 +336,14 @@ impl Device for GLDevice {
     fn set_uniform(&self, uniform: &Self::Uniform, data: UniformData) {
         unsafe {
             match data {
+                UniformData::Mat4(data) => {
+                    assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
+                    let data_ptr: *const F32x4 = data.as_ptr();
+                    gl::UniformMatrix4fv(uniform.location,
+                                         1,
+                                         gl::FALSE,
+                                         data_ptr as *const GLfloat);
+                }
                 UniformData::Vec2(data) => {
                     gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
                 }

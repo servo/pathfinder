@@ -13,7 +13,6 @@
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction, UIEvent};
 use clap::{App, Arg};
-use gl::types::GLsizei;
 use image::ColorType;
 use jemallocator;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
@@ -22,7 +21,8 @@ use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_gl::device::GLDevice;
 use pathfinder_gl::renderer::Renderer;
-use pathfinder_gpu::{Device, Resources};
+use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, Resources};
+use pathfinder_gpu::{StencilFunc, StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu_data::BuiltScene;
 use pathfinder_renderer::paint::ColorU;
@@ -414,63 +414,57 @@ impl DemoApp {
             self.scene_view_box.max_y(),
             -0.5 * ground_scale));
 
-        unsafe {
-            // Use the stencil buffer to avoid Z-fighting with the gridlines.
-            let mut transform = base_transform;
-            let gridline_scale = ground_scale / GRIDLINE_COUNT as f32;
-            transform = transform.post_mul(&Transform3DF32::from_scale(gridline_scale,
-                                                                       1.0,
-                                                                       gridline_scale));
-            gl::BindVertexArray(self.ground_line_vertex_array.vertex_array.gl_vertex_array);
-            gl::UseProgram(self.ground_program.program.gl_program);
-            gl::UniformMatrix4fv(self.ground_program.transform_uniform.location,
-                                 1,
-                                 gl::FALSE,
-                                 transform.as_ptr());
-            let color = GROUND_LINE_COLOR.to_f32();
-            gl::Uniform4f(self.ground_program.color_uniform.location,
-                          color.r(),
-                          color.g(),
-                          color.b(),
-                          color.a());
-            gl::DepthFunc(gl::ALWAYS);
-            gl::DepthMask(gl::TRUE);
-            gl::Enable(gl::DEPTH_TEST);
-            gl::StencilFunc(gl::ALWAYS, 2, 2);
-            gl::StencilOp(gl::KEEP, gl::KEEP, gl::REPLACE);
-            gl::StencilMask(2);
-            gl::Enable(gl::STENCIL_TEST);
-            gl::Disable(gl::BLEND);
-            gl::DrawArrays(gl::LINES, 0, (GRIDLINE_COUNT as GLsizei + 1) * 4);
-            gl::Disable(gl::DEPTH_TEST);
-            gl::Disable(gl::STENCIL_TEST);
+        // Draw gridlines. Use the stencil buffer to avoid Z-fighting.
+        let mut transform = base_transform;
+        let gridline_scale = ground_scale / GRIDLINE_COUNT as f32;
+        transform =
+            transform.post_mul(&Transform3DF32::from_scale(gridline_scale, 1.0, gridline_scale));
+        let device = &self.renderer.device;
+        device.bind_vertex_array(&self.ground_line_vertex_array.vertex_array);
+        device.use_program(&self.ground_program.program);
+        device.set_uniform(&self.ground_program.transform_uniform, UniformData::Mat4([
+            transform.c0,
+            transform.c1,
+            transform.c2,
+            transform.c3,
+        ]));
+        device.set_uniform(&self.ground_program.color_uniform,
+                           UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0));
+        device.draw_arrays(Primitive::Lines, (GRIDLINE_COUNT as u32 + 1) * 4, &RenderState {
+            depth: Some(DepthState { func: DepthFunc::Always, write: true }),
+            stencil: Some(StencilState {
+                func: StencilFunc::Always,
+                reference: 2,
+                mask: 2,
+                write: true,
+            }),
+            ..RenderState::default()
+        });
 
-            let mut transform = base_transform;
-            transform =
-                transform.post_mul(&Transform3DF32::from_scale(ground_scale, 1.0, ground_scale));
-            gl::BindVertexArray(self.ground_solid_vertex_array.vertex_array.gl_vertex_array);
-            gl::UseProgram(self.ground_program.program.gl_program);
-            gl::UniformMatrix4fv(self.ground_program.transform_uniform.location,
-                                 1,
-                                 gl::FALSE,
-                                 transform.as_ptr());
-            let color = GROUND_SOLID_COLOR.to_f32();
-            gl::Uniform4f(self.ground_program.color_uniform.location,
-                          color.r(),
-                          color.g(),
-                          color.b(),
-                          color.a());
-            gl::DepthFunc(gl::LESS);
-            gl::DepthMask(gl::TRUE);
-            gl::Enable(gl::DEPTH_TEST);
-            gl::StencilFunc(gl::NOTEQUAL, 2, 2);
-            gl::StencilOp(gl::KEEP, gl::KEEP, gl::KEEP);
-            gl::Enable(gl::STENCIL_TEST);
-            gl::Disable(gl::BLEND);
-            gl::DrawArrays(gl::TRIANGLE_FAN, 0, 4);
-            gl::Disable(gl::DEPTH_TEST);
-            gl::Disable(gl::STENCIL_TEST);
-        }
+        // Fill ground.
+        let mut transform = base_transform;
+        transform =
+            transform.post_mul(&Transform3DF32::from_scale(ground_scale, 1.0, ground_scale));
+        device.bind_vertex_array(&self.ground_solid_vertex_array.vertex_array);
+        device.use_program(&self.ground_program.program);
+        device.set_uniform(&self.ground_program.transform_uniform, UniformData::Mat4([
+            transform.c0,
+            transform.c1,
+            transform.c2,
+            transform.c3,
+        ]));
+        device.set_uniform(&self.ground_program.color_uniform,
+                           UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0));
+        device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
+            depth: Some(DepthState { func: DepthFunc::Less, write: true }),
+            stencil: Some(StencilState {
+                func: StencilFunc::NotEqual,
+                reference: 2,
+                mask: 2,
+                write: false,
+            }),
+            ..RenderState::default()
+        });
     }
 
     fn render_vector_scene(&mut self, built_scene: &BuiltScene) {
