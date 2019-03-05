@@ -323,7 +323,7 @@ impl<D> Renderer<D> where D: Device {
         self.device.set_uniform(&self.mask_tile_program.view_box_origin_uniform,
                                 UniformData::Vec2(F32x4::default()));
         let render_state = RenderState {
-            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+            blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
@@ -400,7 +400,7 @@ impl<D> Renderer<D> where D: Device {
             }
         }
         self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
-            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+            blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
             ..RenderState::default()
         });
     }
@@ -421,7 +421,7 @@ impl<D> Renderer<D> where D: Device {
                 func: StencilFunc::Always,
                 reference: 1,
                 mask: 1,
-                pass_replace: true,
+                write: true,
             }),
             color_mask: false,
             ..RenderState::default()
@@ -467,7 +467,7 @@ impl<D> Renderer<D> where D: Device {
             return None;
         }
 
-        Some(StencilState { func: StencilFunc::Equal, reference: 1, mask: 1, pass_replace: false })
+        Some(StencilState { func: StencilFunc::Equal, reference: 1, mask: 1, write: false })
     }
 }
 

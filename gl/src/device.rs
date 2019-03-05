@@ -48,15 +48,25 @@ impl GLDevice {
                 BlendState::Off => {
                     gl::Disable(gl::BLEND); ck();
                 }
+                BlendState::RGBOneAlphaOne => {
+                    gl::BlendEquation(gl::FUNC_ADD); ck();
+                    gl::BlendFunc(gl::ONE, gl::ONE); ck();
+                    gl::Enable(gl::BLEND); ck();
+                }
                 BlendState::RGBOneAlphaOneMinusSrcAlpha => {
+                    gl::BlendEquation(gl::FUNC_ADD); ck();
                     gl::BlendFuncSeparate(gl::ONE,
                                           gl::ONE_MINUS_SRC_ALPHA,
                                           gl::ONE,
                                           gl::ONE); ck();
                     gl::Enable(gl::BLEND); ck();
                 }
-                BlendState::RGBOneAlphaOne => {
-                    gl::BlendFunc(gl::ONE, gl::ONE); ck();
+                BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
+                    gl::BlendEquation(gl::FUNC_ADD); ck();
+                    gl::BlendFuncSeparate(gl::SRC_ALPHA,
+                                          gl::ONE_MINUS_SRC_ALPHA,
+                                          gl::ONE,
+                                          gl::ONE); ck();
                     gl::Enable(gl::BLEND); ck();
                 }
             }
@@ -67,9 +77,9 @@ impl GLDevice {
                     gl::Disable(gl::DEPTH_TEST); ck();
                 }
                 Some(ref state) => {
-                    gl::Enable(gl::DEPTH_TEST); ck();
                     gl::DepthFunc(state.func.to_gl_depth_func()); ck();
                     gl::DepthMask(state.write as GLboolean); ck();
+                    gl::Enable(gl::DEPTH_TEST); ck();
                 }
             }
 
@@ -82,8 +92,13 @@ impl GLDevice {
                     gl::StencilFunc(state.func.to_gl_stencil_func(),
                                     state.reference as GLint,
                                     state.mask); ck();
-                    let pass_action = if state.pass_replace { gl::REPLACE } else { gl::KEEP };
+                    let (pass_action, write_mask) = if state.write {
+                        (gl::REPLACE, state.mask)
+                    } else {
+                        (gl::KEEP, 0)
+                    };
                     gl::StencilOp(gl::KEEP, gl::KEEP, pass_action); ck();
+                    gl::StencilMask(write_mask);
                     gl::Enable(gl::STENCIL_TEST); ck();
                 }
             }
@@ -98,7 +113,9 @@ impl GLDevice {
         unsafe {
             match render_state.blend {
                 BlendState::Off => {}
-                BlendState::RGBOneAlphaOneMinusSrcAlpha | BlendState::RGBOneAlphaOne => {
+                BlendState::RGBOneAlphaOneMinusSrcAlpha |
+                BlendState::RGBOneAlphaOne |
+                BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
                     gl::Disable(gl::BLEND); ck();
                 }
             }
@@ -108,6 +125,7 @@ impl GLDevice {
             }
 
             if render_state.stencil.is_some() {
+                gl::StencilMask(!0); ck();
                 gl::Disable(gl::STENCIL_TEST); ck();
             }
 
@@ -436,14 +454,17 @@ impl Device for GLDevice {
         unsafe {
             let mut flags = 0;
             if let Some(color) = color {
+                gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
                 gl::ClearColor(color.x(), color.y(), color.z(), color.w()); ck();
                 flags |= gl::COLOR_BUFFER_BIT;
             }
             if let Some(depth) = depth {
+                gl::DepthMask(gl::TRUE); ck();
                 gl::ClearDepth(depth as GLdouble); ck();
                 flags |= gl::DEPTH_BUFFER_BIT;
             }
             if let Some(stencil) = stencil {
+                gl::StencilMask(!0); ck();
                 gl::ClearStencil(stencil as GLint); ck();
                 flags |= gl::STENCIL_BUFFER_BIT;
             }

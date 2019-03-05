@@ -165,7 +165,7 @@ pub enum Primitive {
     Lines,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct RenderState {
     pub blend: BlendState,
     pub depth: Option<DepthState>,
@@ -176,8 +176,9 @@ pub struct RenderState {
 #[derive(Clone, Copy, Debug)]
 pub enum BlendState {
     Off,
-    RGBOneAlphaOneMinusSrcAlpha,
     RGBOneAlphaOne,
+    RGBOneAlphaOneMinusSrcAlpha,
+    RGBSrcAlphaAlphaOneMinusSrcAlpha,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
@@ -197,7 +198,7 @@ pub struct StencilState {
     pub func: StencilFunc,
     pub reference: u32,
     pub mask: u32,
-    pub pass_replace: bool,
+    pub write: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -205,6 +206,13 @@ pub enum StencilFunc {
     Always,
     Equal,
     NotEqual,
+}
+
+impl Default for RenderState {
+    #[inline]
+    fn default() -> RenderState {
+        RenderState { blend: BlendState::default(), depth: None, stencil: None, color_mask: true }
+    }
 }
 
 impl Default for BlendState {
@@ -217,7 +225,7 @@ impl Default for BlendState {
 impl Default for StencilState {
     #[inline]
     fn default() -> StencilState {
-        StencilState { func: StencilFunc::default(), reference: 0, mask: !0, pass_replace: false }
+        StencilState { func: StencilFunc::default(), reference: 0, mask: !0, write: false }
     }
 }
 
