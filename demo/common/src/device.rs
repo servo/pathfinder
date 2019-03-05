@@ -13,55 +13,6 @@
 use crate::GRIDLINE_COUNT;
 use pathfinder_gpu::{BufferTarget, BufferUploadMode, Device, Resources, VertexAttrType};
 
-/*
-pub struct DemoDevice {
-    #[allow(dead_code)]
-    device: Device,
-}
-
-impl DemoDevice {
-    pub fn new(device: Device) -> DemoDevice {
-        DemoDevice { device }
-    }
-
-    pub fn clear(&self, color: ColorU) {
-        let color = color.to_f32();
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::ClearColor(color.r(), color.g(), color.b(), color.a());
-            gl::ClearDepth(1.0);
-            gl::ClearStencil(0);
-            gl::DepthMask(gl::TRUE);
-            gl::StencilMask(!0);
-            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT | gl::STENCIL_BUFFER_BIT);
-        }
-    }
-
-    pub fn readback_pixels(&self, width: u32, height: u32) -> Vec<u8> {
-        let mut pixels = vec![0; width as usize * height as usize * 4];
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
-            gl::ReadPixels(0, 0,
-                           width as GLsizei, height as GLsizei,
-                           gl::RGBA,
-                           gl::UNSIGNED_BYTE,
-                           pixels.as_mut_ptr() as *mut GLvoid);
-        }
-
-        // Flip right-side-up.
-        let stride = width as usize * 4;
-        for y in 0..(height as usize / 2) {
-            let (index_a, index_b) = (y * stride, (height as usize - y - 1) * stride);
-            for offset in 0..stride {
-                pixels.swap(index_a + offset, index_b + offset);
-            }
-        }
-
-        pixels
-    }
-}
-*/
-
 pub struct GroundProgram<D> where D: Device {
     pub program: D::Program,
     pub transform_uniform: D::Uniform,
