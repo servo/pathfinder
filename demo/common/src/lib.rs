@@ -19,7 +19,7 @@ use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
-use pathfinder_gl::device::GLDevice;
+use pathfinder_gl::GLDevice;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, Resources};
 use pathfinder_gpu::{StencilFunc, StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
