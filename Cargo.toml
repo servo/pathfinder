@@ -11,6 +11,5 @@ members = [
     "ui",
     "utils/area-lut",
     "utils/gamma-lut",
-    "utils/tile-svg",
     "utils/svg-to-skia"
 ]

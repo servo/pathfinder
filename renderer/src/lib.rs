@@ -16,7 +16,6 @@ pub mod gpu_data;
 pub mod paint;
 pub mod post;
 pub mod scene;
-pub mod serialization;
 pub mod tiles;
 pub mod z_buffer;
 
