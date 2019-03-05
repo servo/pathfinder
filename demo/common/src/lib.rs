@@ -11,7 +11,7 @@
 //! A demo app for Pathfinder.
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
-use crate::ui::{DemoUI, UIAction, UIEvent};
+use crate::ui::{DemoUI, UIAction};
 use clap::{App, Arg};
 use image::ColorType;
 use jemallocator;
@@ -30,6 +30,7 @@ use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::SceneExt;
+use pathfinder_ui::UIEvent;
 use rayon::ThreadPoolBuilder;
 use sdl2::{EventPump, Sdl, VideoSubsystem};
 use sdl2::event::{Event, WindowEvent};

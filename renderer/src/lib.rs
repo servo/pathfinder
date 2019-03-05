@@ -10,9 +10,6 @@
 
 //! The CPU portion of Pathfinder's renderer.
 
-#[macro_use]
-extern crate serde_derive;
-
 pub mod builder;
 pub mod gpu;
 pub mod gpu_data;

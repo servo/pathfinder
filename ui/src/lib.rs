@@ -27,13 +27,26 @@ use serde_json;
 use std::fs::File;
 use std::io::BufReader;
 
+pub const PADDING: i32 = 12;
+
+pub const BUTTON_WIDTH: i32 = PADDING * 2 + ICON_SIZE;
+pub const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
+pub const BUTTON_TEXT_OFFSET: i32 = PADDING + 36;
+
+pub const SWITCH_SIZE: i32 = SWITCH_HALF_SIZE * 2 + 1;
+
 const DEBUG_TEXTURE_VERTEX_SIZE: usize = 8;
 const DEBUG_SOLID_VERTEX_SIZE:   usize = 4;
 
-pub const PADDING: i32 = 12;
+const ICON_SIZE: i32 = 48;
+
+const SWITCH_HALF_SIZE: i32 = 96;
 
 pub static TEXT_COLOR:   ColorU = ColorU { r: 255, g: 255, b: 255, a: 255      };
 pub static WINDOW_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255 - 90 };
+
+static BUTTON_ICON_COLOR: ColorU = ColorU { r: 255, g: 255, b: 255, a: 255 };
+static OUTLINE_COLOR:     ColorU = ColorU { r: 255, g: 255, b: 255, a: 192 };
 
 static INVERTED_TEXT_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255      };
 
@@ -409,6 +422,97 @@ impl<D> UI<D> where D: Device {
             ..RenderState::default()
         });
     }
+
+    pub fn draw_button(&self,
+                       device: &D,
+                       event: &mut UIEvent,
+                       origin: Point2DI32,
+                       texture: &D::Texture)
+                       -> bool {
+        let button_rect = RectI32::new(origin, Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT));
+        self.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
+        self.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
+        self.draw_texture(device,
+                          origin + Point2DI32::new(PADDING, PADDING),
+                          texture,
+                          BUTTON_ICON_COLOR);
+        event.handle_mouse_down_in_rect(button_rect).is_some()
+    }
+
+    pub fn draw_text_switch(&self,
+                            device: &D,
+                            event: &mut UIEvent,
+                            origin: Point2DI32,
+                            off_text: &str,
+                            on_text: &str,
+                            mut value: bool)
+                            -> bool {
+        value = self.draw_switch(device, event, origin, value);
+
+        let off_size = self.measure_text(off_text);
+        let on_size = self.measure_text(on_text);
+        let off_offset = SWITCH_HALF_SIZE / 2 - off_size / 2;
+        let on_offset  = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 - on_size / 2;
+        let text_top = BUTTON_TEXT_OFFSET;
+
+        self.draw_text(device, off_text, origin + Point2DI32::new(off_offset, text_top), !value);
+        self.draw_text(device, on_text, origin + Point2DI32::new(on_offset, text_top), value);
+
+        value
+    }
+
+    pub fn draw_image_switch(&self,
+                             device: &D,
+                             event: &mut UIEvent,
+                             origin: Point2DI32,
+                             off_texture: &D::Texture,
+                             on_texture: &D::Texture,
+                             mut value: bool)
+                             -> bool {
+        value = self.draw_switch(device, event, origin, value);
+
+        let off_offset = SWITCH_HALF_SIZE / 2 - device.texture_size(off_texture).x() / 2;
+        let on_offset = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 -
+            device.texture_size(on_texture).x() / 2;
+
+        let off_color = if !value { WINDOW_COLOR } else { TEXT_COLOR };
+        let on_color  = if  value { WINDOW_COLOR } else { TEXT_COLOR };
+
+        self.draw_texture(device,
+                          origin + Point2DI32::new(off_offset, PADDING),
+                          off_texture,
+                          off_color);
+        self.draw_texture(device,
+                          origin + Point2DI32::new(on_offset,  PADDING),
+                          on_texture,
+                          on_color);
+
+        value
+    }
+
+    fn draw_switch(&self, device: &D, event: &mut UIEvent, origin: Point2DI32, mut value: bool)
+                   -> bool {
+        let widget_rect = RectI32::new(origin, Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT));
+        if event.handle_mouse_down_in_rect(widget_rect).is_some() {
+            value = !value;
+        }
+
+        self.draw_solid_rounded_rect(device, widget_rect, WINDOW_COLOR);
+        self.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
+
+        let highlight_size = Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT);
+        if !value {
+            self.draw_solid_rounded_rect(device, RectI32::new(origin, highlight_size), TEXT_COLOR);
+        } else {
+            let x_offset = SWITCH_HALF_SIZE + 1;
+            self.draw_solid_rounded_rect(device,
+                                         RectI32::new(origin + Point2DI32::new(x_offset, 0),
+                                                      highlight_size),
+                                         TEXT_COLOR);
+        }
+
+        value
+    }
 }
 
 struct DebugTextureProgram<D> where D: Device {
@@ -574,4 +678,40 @@ impl CornerRects {
 fn set_color_uniform<D>(device: &D, uniform: &D::Uniform, color: ColorU) where D: Device {
     let color = F32x4::new(color.r as f32, color.g as f32, color.b as f32, color.a as f32);
     device.set_uniform(uniform, UniformData::Vec4(color * F32x4::splat(1.0 / 255.0)));
+}
+
+pub enum UIEvent {
+    None,
+    MouseDown(Point2DI32),
+    MouseDragged {
+        absolute_position: Point2DI32,
+        relative_position: Point2DI32,
+    }
+}
+
+impl UIEvent {
+    pub fn is_none(&self) -> bool {
+        match *self { UIEvent::None => true, _ => false }
+    }
+
+    fn handle_mouse_down_in_rect(&mut self, rect: RectI32) -> Option<Point2DI32> {
+        if let UIEvent::MouseDown(point) = *self {
+            if rect.contains_point(point) {
+                *self = UIEvent::None;
+                return Some(point - rect.origin());
+            }
+        }
+        None
+    }
+
+    pub fn handle_mouse_down_or_dragged_in_rect(&mut self, rect: RectI32) -> Option<Point2DI32> {
+        match *self {
+            UIEvent::MouseDown(point) | UIEvent::MouseDragged { absolute_position: point, .. }
+                    if rect.contains_point(point) => {
+                *self = UIEvent::None;
+                Some(point - rect.origin())
+            }
+            _ => None,
+        }
+    }
 }
