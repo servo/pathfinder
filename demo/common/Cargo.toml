@@ -32,3 +32,6 @@ path = "../../renderer"
 
 [dependencies.pathfinder_svg]
 path = "../../svg"
+
+[dependencies.pathfinder_ui]
+path = "../../ui"

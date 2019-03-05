@@ -23,5 +23,8 @@ path = "../gpu"
 [dependencies.pathfinder_simd]
 path = "../simd"
 
+[dependencies.pathfinder_ui]
+path = "../ui"
+
 [dev-dependencies]
 quickcheck = "0.7"

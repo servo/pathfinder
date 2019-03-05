@@ -3,3 +3,21 @@ name = "pathfinder_ui"
 version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
+
+[dependencies]
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+
+[dependencies.hashbrown]
+version = "0.1"
+features = ["serde"]
+
+[dependencies.pathfinder_geometry]
+path = "../geometry"
+
+[dependencies.pathfinder_gpu]
+path = "../gpu"
+
+[dependencies.pathfinder_simd]
+path = "../simd"

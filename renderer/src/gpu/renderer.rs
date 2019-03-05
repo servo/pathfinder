@@ -10,10 +10,11 @@
 
 use crate::gpu::debug::DebugUI;
 use crate::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
-use crate::paint::{ColorU, ObjectShader};
+use crate::paint::ObjectShader;
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
+use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, DepthState, Device};
 use pathfinder_gpu::{Primitive, RenderState, Resources, StencilFunc, StencilState, TextureFormat};
 use pathfinder_gpu::{UniformData, VertexAttrType};
@@ -193,7 +194,7 @@ impl<D> Renderer<D> where D: Device {
     #[inline]
     pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Point2DI32) {
         self.main_framebuffer_size = new_framebuffer_size;
-        self.debug_ui.set_framebuffer_size(new_framebuffer_size);
+        self.debug_ui.ui.set_framebuffer_size(new_framebuffer_size);
     }
 
     #[inline]

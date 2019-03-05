@@ -12,9 +12,10 @@ use crate::Options;
 use nfd::Response;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::{Device, Resources};
-use pathfinder_renderer::gpu::debug::{DebugUI, PADDING, TEXT_COLOR, WINDOW_COLOR};
-use pathfinder_renderer::paint::ColorU;
+use pathfinder_renderer::gpu::debug::DebugUI;
+use pathfinder_ui::{PADDING, TEXT_COLOR, WINDOW_COLOR};
 use std::f32::consts::PI;
 use std::path::PathBuf;
 
@@ -120,7 +121,7 @@ impl<D> DemoUI<D> where D: Device {
                   debug_ui: &mut DebugUI<D>,
                   event: &mut UIEvent,
                   action: &mut UIAction) {
-        let bottom = debug_ui.framebuffer_size().y() - PADDING;
+        let bottom = debug_ui.ui.framebuffer_size().y() - PADDING;
 
         // Draw effects button.
         let effects_button_position = Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT);
@@ -218,13 +219,13 @@ impl<D> DemoUI<D> where D: Device {
             return;
         }
 
-        let bottom = debug_ui.framebuffer_size().y() - PADDING;
+        let bottom = debug_ui.ui.framebuffer_size().y() - PADDING;
         let effects_panel_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_PANEL_HEIGHT);
-        debug_ui.draw_solid_rounded_rect(device,
-                                         RectI32::new(Point2DI32::new(PADDING, effects_panel_y),
-                                                      Point2DI32::new(EFFECTS_PANEL_WIDTH,
-                                                                      EFFECTS_PANEL_HEIGHT)),
-                                         WINDOW_COLOR);
+        debug_ui.ui.draw_solid_rounded_rect(device,
+                                            RectI32::new(Point2DI32::new(PADDING, effects_panel_y),
+                                                         Point2DI32::new(EFFECTS_PANEL_WIDTH,
+                                                                         EFFECTS_PANEL_HEIGHT)),
+                                            WINDOW_COLOR);
 
         self.gamma_correction_effect_enabled =
             self.draw_effects_switch(device,
@@ -262,13 +263,13 @@ impl<D> DemoUI<D> where D: Device {
             return;
         }
 
-        let bottom = debug_ui.framebuffer_size().y() - PADDING;
+        let bottom = debug_ui.ui.framebuffer_size().y() - PADDING;
         let rotate_panel_y = bottom - (BUTTON_HEIGHT + PADDING + ROTATE_PANEL_HEIGHT);
         let rotate_panel_origin = Point2DI32::new(ROTATE_PANEL_X, rotate_panel_y);
         let rotate_panel_size = Point2DI32::new(ROTATE_PANEL_WIDTH, ROTATE_PANEL_HEIGHT);
-        debug_ui.draw_solid_rounded_rect(device,
-                                         RectI32::new(rotate_panel_origin, rotate_panel_size),
-                                         WINDOW_COLOR);
+        debug_ui.ui.draw_solid_rounded_rect(device,
+                                            RectI32::new(rotate_panel_origin, rotate_panel_size),
+                                            WINDOW_COLOR);
 
         let (widget_x, widget_y) = (ROTATE_PANEL_X + PADDING, rotate_panel_y + PADDING);
         let widget_rect = RectI32::new(Point2DI32::new(widget_x, widget_y),
@@ -283,13 +284,13 @@ impl<D> DemoUI<D> where D: Device {
         let slider_track_rect =
             RectI32::new(Point2DI32::new(widget_x, slider_track_y),
                          Point2DI32::new(SLIDER_WIDTH, SLIDER_TRACK_HEIGHT));
-        debug_ui.draw_rect_outline(device, slider_track_rect, TEXT_COLOR);
+        debug_ui.ui.draw_rect_outline(device, slider_track_rect, TEXT_COLOR);
 
         let slider_knob_x = widget_x + self.rotation - SLIDER_KNOB_WIDTH / 2;
         let slider_knob_rect =
             RectI32::new(Point2DI32::new(slider_knob_x, widget_y),
                          Point2DI32::new(SLIDER_KNOB_WIDTH, SLIDER_KNOB_HEIGHT));
-        debug_ui.draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
+        debug_ui.ui.draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
     }
 
     fn draw_button(&self,
@@ -300,12 +301,12 @@ impl<D> DemoUI<D> where D: Device {
                    texture: &D::Texture)
                    -> bool {
         let button_rect = RectI32::new(origin, Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT));
-        debug_ui.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
-        debug_ui.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
-        debug_ui.draw_texture(device,
-                              origin + Point2DI32::new(PADDING, PADDING),
-                              texture,
-                              BUTTON_ICON_COLOR);
+        debug_ui.ui.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
+        debug_ui.ui.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
+        debug_ui.ui.draw_texture(device,
+                                 origin + Point2DI32::new(PADDING, PADDING),
+                                 texture,
+                                 BUTTON_ICON_COLOR);
         event.handle_mouse_down_in_rect(button_rect).is_some()
     }
 
@@ -320,7 +321,7 @@ impl<D> DemoUI<D> where D: Device {
                            -> bool {
         let text_x = PADDING * 2;
         let text_y = window_y + PADDING + BUTTON_TEXT_OFFSET + (BUTTON_HEIGHT + PADDING) * index;
-        debug_ui.draw_text(device, text, Point2DI32::new(text_x, text_y), false);
+        debug_ui.ui.draw_text(device, text, Point2DI32::new(text_x, text_y), false);
 
         let switch_x = PADDING + EFFECTS_PANEL_WIDTH - (SWITCH_SIZE + PADDING);
         let switch_y = window_y + PADDING + (BUTTON_HEIGHT + PADDING) * index;
@@ -344,17 +345,20 @@ impl<D> DemoUI<D> where D: Device {
                         -> bool {
         value = self.draw_switch(device, debug_ui, event, origin, value);
 
-        let off_size = debug_ui.measure_text(off_text);
-        let on_size = debug_ui.measure_text(on_text);
+        let off_size = debug_ui.ui.measure_text(off_text);
+        let on_size = debug_ui.ui.measure_text(on_text);
         let off_offset = SWITCH_HALF_SIZE / 2 - off_size / 2;
         let on_offset  = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 - on_size / 2;
         let text_top = BUTTON_TEXT_OFFSET;
 
-        debug_ui.draw_text(device,
-                           off_text,
-                           origin + Point2DI32::new(off_offset, text_top),
-                           !value);
-        debug_ui.draw_text(device, on_text, origin + Point2DI32::new(on_offset, text_top), value);
+        debug_ui.ui.draw_text(device,
+                              off_text,
+                              origin + Point2DI32::new(off_offset, text_top),
+                              !value);
+        debug_ui.ui.draw_text(device,
+                              on_text,
+                              origin + Point2DI32::new(on_offset, text_top),
+                              value);
 
         value
     }
@@ -377,14 +381,14 @@ impl<D> DemoUI<D> where D: Device {
         let off_color = if !value { WINDOW_COLOR } else { TEXT_COLOR };
         let on_color  = if  value { WINDOW_COLOR } else { TEXT_COLOR };
 
-        debug_ui.draw_texture(device,
-                              origin + Point2DI32::new(off_offset, PADDING),
-                              off_texture,
-                              off_color);
-        debug_ui.draw_texture(device,
-                              origin + Point2DI32::new(on_offset,  PADDING),
-                              on_texture,
-                              on_color);
+        debug_ui.ui.draw_texture(device,
+                                 origin + Point2DI32::new(off_offset, PADDING),
+                                 off_texture,
+                                 off_color);
+        debug_ui.ui.draw_texture(device,
+                                 origin + Point2DI32::new(on_offset,  PADDING),
+                                 on_texture,
+                                 on_color);
 
         value
     }
@@ -401,20 +405,20 @@ impl<D> DemoUI<D> where D: Device {
             value = !value;
         }
 
-        debug_ui.draw_solid_rounded_rect(device, widget_rect, WINDOW_COLOR);
-        debug_ui.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
+        debug_ui.ui.draw_solid_rounded_rect(device, widget_rect, WINDOW_COLOR);
+        debug_ui.ui.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
 
         let highlight_size = Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT);
         if !value {
-            debug_ui.draw_solid_rounded_rect(device,
-                                             RectI32::new(origin, highlight_size),
-                                             TEXT_COLOR);
+            debug_ui.ui.draw_solid_rounded_rect(device,
+                                                RectI32::new(origin, highlight_size),
+                                                TEXT_COLOR);
         } else {
             let x_offset = SWITCH_HALF_SIZE + 1;
-            debug_ui.draw_solid_rounded_rect(device,
-                                             RectI32::new(origin + Point2DI32::new(x_offset, 0),
-                                                          highlight_size),
-                                             TEXT_COLOR);
+            debug_ui.ui.draw_solid_rounded_rect(device,
+                                                RectI32::new(origin + Point2DI32::new(x_offset, 0),
+                                                             highlight_size),
+                                                TEXT_COLOR);
         }
 
         value
