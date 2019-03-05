@@ -1,4 +1,4 @@
-// pathfinder/gl/src/renderer.rs
+// pathfinder/renderer/src/gpu/renderer.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,15 +8,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::debug::DebugUI;
+use crate::gpu::debug::DebugUI;
+use crate::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
+use crate::paint::{ColorU, ObjectShader};
+use crate::post::DefringingKernel;
+use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, DepthState, Device};
 use pathfinder_gpu::{Primitive, RenderState, Resources, StencilFunc, StencilState, TextureFormat};
 use pathfinder_gpu::{UniformData, VertexAttrType};
-use pathfinder_renderer::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
-use pathfinder_renderer::paint::{ColorU, ObjectShader};
-use pathfinder_renderer::post::DefringingKernel;
-use pathfinder_renderer::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::collections::VecDeque;
 use std::time::Duration;

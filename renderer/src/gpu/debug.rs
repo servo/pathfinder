@@ -1,4 +1,4 @@
-// pathfinder/gl/src/debug.rs
+// pathfinder/renderer/src/gpu/debug.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -15,12 +15,12 @@
 //!
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
+use crate::gpu_data::Stats;
+use crate::paint::ColorU;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, Device, Primitive, RenderState};
 use pathfinder_gpu::{Resources, UniformData, VertexAttrType};
-use pathfinder_renderer::gpu_data::Stats;
-use pathfinder_renderer::paint::ColorU;
 use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::collections::{HashMap, VecDeque};
