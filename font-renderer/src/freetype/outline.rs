@@ -10,10 +10,11 @@
 
 use euclid::Point2D;
 use freetype_sys::freetype::{FT_Outline, FT_Vector};
+use libc::c_char;
 use lyon_path::iterator::PathIterator;
 use lyon_path::{PathEvent, PathState};
 
-const FREETYPE_POINT_ON_CURVE: i8 = 0x01;
+const FREETYPE_POINT_ON_CURVE: c_char = 0x01;
 
 #[derive(Clone)]
 pub struct Outline<'a> {
@@ -57,7 +58,7 @@ impl<'a> OutlineStream<'a> {
     }
 
     #[inline]
-    fn current_position_and_tag(&self) -> (Point2D<f32>, i8) {
+    fn current_position_and_tag(&self) -> (Point2D<f32>, c_char) {
         unsafe {
             let point_offset = self.point_index as isize;
             let position = ft_vector_to_f32(*self.outline.points.offset(point_offset));
