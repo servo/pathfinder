@@ -91,8 +91,6 @@ impl<D> DebugUI<D> where D: Device {
                           &format!("GPU Time: {:.3} ms", duration_to_ms(mean_gpu_sample.elapsed)),
                           origin + Point2DI32::new(0, LINE_HEIGHT * 5),
                           false);
-
-        self.ui.draw_tooltip(device, "Hello world", Point2DI32::default());
     }
 }
 

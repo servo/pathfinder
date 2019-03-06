@@ -17,7 +17,7 @@
 extern crate serde_derive;
 
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, Device, Primitive, RenderState};
@@ -65,41 +65,10 @@ static QUAD_INDICES:              [u32; 6] = [0, 1, 3, 1, 2, 3];
 static RECT_LINE_INDICES:         [u32; 8] = [0, 1, 1, 2, 2, 3, 3, 0];
 static OUTLINE_RECT_LINE_INDICES: [u32; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 
-#[derive(Deserialize)]
-#[allow(dead_code)]
-pub struct DebugFont {
-    name: String,
-    size: i32,
-    bold: bool,
-    italic: bool,
-    width: u32,
-    height: u32,
-    characters: HashMap<char, DebugCharacter>,
-}
-
-#[derive(Deserialize)]
-struct DebugCharacter {
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    #[serde(rename = "originX")]
-    origin_x: i32,
-    #[serde(rename = "originY")]
-    origin_y: i32,
-    advance: i32,
-}
-
-impl DebugFont {
-    fn load(resources: &Resources) -> DebugFont {
-        let mut path = resources.resources_directory.clone();
-        path.push(FONT_JSON_FILENAME);
-
-        serde_json::from_reader(BufReader::new(File::open(path).unwrap())).unwrap()
-    }
-}
-
 pub struct UI<D> where D: Device {
+    pub event: UIEvent,
+    pub mouse_position: Point2DF32,
+
     framebuffer_size: Point2DI32,
 
     texture_program: DebugTextureProgram<D>,
@@ -128,6 +97,9 @@ impl<D> UI<D> where D: Device {
                                                                     CORNER_OUTLINE_PNG_NAME);
 
         UI {
+            event: UIEvent::None,
+            mouse_position: Point2DF32::default(),
+
             framebuffer_size,
 
             texture_program,
@@ -428,12 +400,7 @@ impl<D> UI<D> where D: Device {
         });
     }
 
-    pub fn draw_button(&self,
-                       device: &D,
-                       event: &mut UIEvent,
-                       origin: Point2DI32,
-                       texture: &D::Texture)
-                       -> bool {
+    pub fn draw_button(&mut self, device: &D, origin: Point2DI32, texture: &D::Texture) -> bool {
         let button_rect = RectI32::new(origin, Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT));
         self.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
         self.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
@@ -441,18 +408,17 @@ impl<D> UI<D> where D: Device {
                           origin + Point2DI32::new(PADDING, PADDING),
                           texture,
                           BUTTON_ICON_COLOR);
-        event.handle_mouse_down_in_rect(button_rect).is_some()
+        self.event.handle_mouse_down_in_rect(button_rect).is_some()
     }
 
-    pub fn draw_text_switch(&self,
+    pub fn draw_text_switch(&mut self,
                             device: &D,
-                            event: &mut UIEvent,
                             origin: Point2DI32,
                             off_text: &str,
                             on_text: &str,
                             mut value: bool)
                             -> bool {
-        value = self.draw_switch(device, event, origin, value);
+        value = self.draw_switch(device, origin, value);
 
         let off_size = self.measure_text(off_text);
         let on_size = self.measure_text(on_text);
@@ -466,15 +432,14 @@ impl<D> UI<D> where D: Device {
         value
     }
 
-    pub fn draw_image_switch(&self,
+    pub fn draw_image_switch(&mut self,
                              device: &D,
-                             event: &mut UIEvent,
                              origin: Point2DI32,
                              off_texture: &D::Texture,
                              on_texture: &D::Texture,
                              mut value: bool)
                              -> bool {
-        value = self.draw_switch(device, event, origin, value);
+        value = self.draw_switch(device, origin, value);
 
         let off_offset = SWITCH_HALF_SIZE / 2 - device.texture_size(off_texture).x() / 2;
         let on_offset = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 -
@@ -495,10 +460,9 @@ impl<D> UI<D> where D: Device {
         value
     }
 
-    fn draw_switch(&self, device: &D, event: &mut UIEvent, origin: Point2DI32, mut value: bool)
-                   -> bool {
+    fn draw_switch(&mut self, device: &D, origin: Point2DI32, mut value: bool) -> bool {
         let widget_rect = RectI32::new(origin, Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT));
-        if event.handle_mouse_down_in_rect(widget_rect).is_some() {
+        if self.event.handle_mouse_down_in_rect(widget_rect).is_some() {
             value = !value;
         }
 
@@ -519,9 +483,15 @@ impl<D> UI<D> where D: Device {
         value
     }
 
-    pub fn draw_tooltip(&self, device: &D, string: &str, origin: Point2DI32) {
+    pub fn draw_tooltip(&self, device: &D, string: &str, rect: RectI32) {
+        if !rect.to_f32().contains_point(self.mouse_position) {
+            return;
+        }
+
         let text_size = self.measure_text(string);
         let window_size = Point2DI32::new(text_size + PADDING * 2, TOOLTIP_HEIGHT);
+        let origin = rect.origin() - Point2DI32::new(0, window_size.y() + PADDING);
+
         self.draw_solid_rounded_rect(device, RectI32::new(origin, window_size), WINDOW_COLOR);
         self.draw_text(device,
                        string,
@@ -728,5 +698,39 @@ impl UIEvent {
             }
             _ => None,
         }
+    }
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+pub struct DebugFont {
+    name: String,
+    size: i32,
+    bold: bool,
+    italic: bool,
+    width: u32,
+    height: u32,
+    characters: HashMap<char, DebugCharacter>,
+}
+
+#[derive(Deserialize)]
+struct DebugCharacter {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    #[serde(rename = "originX")]
+    origin_x: i32,
+    #[serde(rename = "originY")]
+    origin_y: i32,
+    advance: i32,
+}
+
+impl DebugFont {
+    fn load(resources: &Resources) -> DebugFont {
+        let mut path = resources.resources_directory.clone();
+        path.push(FONT_JSON_FILENAME);
+
+        serde_json::from_reader(BufReader::new(File::open(path).unwrap())).unwrap()
     }
 }

@@ -37,6 +37,7 @@ use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::{GLContext, GLProfile, Window};
 use std::f32::consts::FRAC_PI_4;
+use std::mem;
 use std::panic;
 use std::path::{Path, PathBuf};
 use std::process;
@@ -283,9 +284,7 @@ impl DemoApp {
                 }
                 Event::MultiGesture { d_dist, .. } => {
                     if let Camera::TwoD(ref mut transform) = self.camera {
-                        let mouse_state = self.sdl_event_pump.mouse_state();
-                        let position = Point2DI32::new(mouse_state.x(), mouse_state.y());
-                        let position = position.to_f32().scale(self.scale_factor);
+                        let position = get_mouse_position(&self.sdl_event_pump, self.scale_factor);
                         *transform = transform.post_translate(-position);
                         let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
                         *transform = transform.post_scale(Point2DF32::splat(scale_delta));
@@ -365,11 +364,14 @@ impl DemoApp {
             self.dirty = true;
         }
 
+        self.renderer.debug_ui.ui.event = ui_event;
+        self.renderer.debug_ui.ui.mouse_position = get_mouse_position(&self.sdl_event_pump,
+                                                                      self.scale_factor);
+
         let mut ui_action = UIAction::None;
-        self.ui.update(&self.renderer.device,
-                       &mut self.renderer.debug_ui,
-                       &mut ui_event,
-                       &mut ui_action);
+        self.ui.update(&self.renderer.device, &mut self.renderer.debug_ui, &mut ui_action);
+
+        ui_event = mem::replace(&mut self.renderer.debug_ui.ui.event, UIEvent::None);
         self.handle_ui_action(&mut ui_action);
 
         // Switch camera mode (2D/3D) if requested.
@@ -827,4 +829,9 @@ impl CameraTransform3D {
 
 fn scale_factor_for_view_box(view_box: RectF32) -> f32 {
     1.0 / f32::min(view_box.size().x(), view_box.size().y())
+}
+
+fn get_mouse_position(sdl_event_pump: &EventPump, scale_factor: f32) -> Point2DF32 {
+    let mouse_state = sdl_event_pump.mouse_state();
+    Point2DI32::new(mouse_state.x(), mouse_state.y()).to_f32().scale(scale_factor)
 }
