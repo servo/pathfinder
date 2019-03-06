@@ -29,11 +29,16 @@ use std::io::BufReader;
 
 pub const PADDING: i32 = 12;
 
+pub const LINE_HEIGHT: i32 = 42;
+pub const FONT_ASCENT: i32 = 28;
+
 pub const BUTTON_WIDTH: i32 = PADDING * 2 + ICON_SIZE;
 pub const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
 pub const BUTTON_TEXT_OFFSET: i32 = PADDING + 36;
 
 pub const SWITCH_SIZE: i32 = SWITCH_HALF_SIZE * 2 + 1;
+
+pub const TOOLTIP_HEIGHT: i32 = FONT_ASCENT + PADDING * 2;
 
 const DEBUG_TEXTURE_VERTEX_SIZE: usize = 8;
 const DEBUG_SOLID_VERTEX_SIZE:   usize = 4;
@@ -512,6 +517,16 @@ impl<D> UI<D> where D: Device {
         }
 
         value
+    }
+
+    pub fn draw_tooltip(&self, device: &D, string: &str, origin: Point2DI32) {
+        let text_size = self.measure_text(string);
+        let window_size = Point2DI32::new(text_size + PADDING * 2, TOOLTIP_HEIGHT);
+        self.draw_solid_rounded_rect(device, RectI32::new(origin, window_size), WINDOW_COLOR);
+        self.draw_text(device,
+                       string,
+                       origin + Point2DI32::new(PADDING, PADDING + FONT_ASCENT),
+                       false);
     }
 }
 

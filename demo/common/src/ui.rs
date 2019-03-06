@@ -28,11 +28,6 @@ const SLIDER_KNOB_HEIGHT: i32 = 48;
 const EFFECTS_PANEL_WIDTH: i32 = 550;
 const EFFECTS_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
 
-const OPEN_BUTTON_X:       i32 = PADDING + (BUTTON_WIDTH + PADDING) * 1;
-const SCREENSHOT_BUTTON_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 2;
-const THREE_D_SWITCH_X:    i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3;
-const BACKGROUND_SWITCH_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3 + PADDING + SWITCH_SIZE;
-
 const ROTATE_PANEL_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3 + (PADDING + SWITCH_SIZE) * 2;
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
@@ -110,79 +105,64 @@ impl<D> DemoUI<D> where D: Device {
                   event: &mut UIEvent,
                   action: &mut UIAction) {
         let bottom = debug_ui.ui.framebuffer_size().y() - PADDING;
+        let mut position = Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT);
 
         // Draw effects button.
-        let effects_button_position = Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT);
-        if debug_ui.ui.draw_button(device, event, effects_button_position, &self.effects_texture) {
+        if debug_ui.ui.draw_button(device, event, position, &self.effects_texture) {
             self.effects_panel_visible = !self.effects_panel_visible;
         }
+        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
         // Draw open button.
-        let lower_button_y = bottom - BUTTON_HEIGHT;
-        let open_button_position = Point2DI32::new(OPEN_BUTTON_X, lower_button_y);
-        if debug_ui.ui.draw_button(device, event, open_button_position, &self.open_texture) {
+        if debug_ui.ui.draw_button(device, event, position, &self.open_texture) {
             if let Ok(Response::Okay(file)) = nfd::open_file_dialog(Some("svg"), None) {
                 *action = UIAction::OpenFile(PathBuf::from(file));
             }
         }
+        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
         // Draw screenshot button.
-        let screenshot_button_position = Point2DI32::new(SCREENSHOT_BUTTON_X, lower_button_y);
-        if debug_ui.ui.draw_button(device,
-                                   event,
-                                   screenshot_button_position,
-                                   &self.screenshot_texture) {
+        if debug_ui.ui.draw_button(device, event, position, &self.screenshot_texture) {
             if let Ok(Response::Okay(file)) = nfd::open_save_dialog(Some("png"), None) {
                 *action = UIAction::TakeScreenshot(PathBuf::from(file));
             }
         }
+        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
         // Draw 3D switch.
-        let three_d_switch_origin = Point2DI32::new(THREE_D_SWITCH_X, lower_button_y);
         self.three_d_enabled = debug_ui.ui.draw_text_switch(device,
                                                             event,
-                                                            three_d_switch_origin,
+                                                            position,
                                                             "2D",
                                                             "3D",
                                                             self.three_d_enabled);
+        position += Point2DI32::new(SWITCH_SIZE + PADDING, 0);
 
         // Draw background switch.
-        let background_switch_origin = Point2DI32::new(BACKGROUND_SWITCH_X, lower_button_y);
         self.dark_background_enabled = debug_ui.ui.draw_image_switch(device,
                                                                      event,
-                                                                     background_switch_origin,
+                                                                     position,
                                                                      &self.bg_light_texture,
                                                                      &self.bg_dark_texture,
                                                                      self.dark_background_enabled);
+        position += Point2DI32::new(SWITCH_SIZE + PADDING, 0);
 
         // Draw rotate and zoom buttons, if applicable.
         if !self.three_d_enabled {
-            let rotate_button_y = bottom - BUTTON_HEIGHT;
-            let rotate_button_position = Point2DI32::new(ROTATE_PANEL_X, rotate_button_y);
-            if debug_ui.ui.draw_button(device,
-                                       event,
-                                       rotate_button_position,
-                                       &self.rotate_texture) {
+            if debug_ui.ui.draw_button(device, event, position, &self.rotate_texture) {
                 self.rotate_panel_visible = !self.rotate_panel_visible;
             }
+            position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
-            let zoom_in_button_x = ROTATE_PANEL_X + BUTTON_WIDTH + PADDING;
-            let zoom_in_button_position = Point2DI32::new(zoom_in_button_x, rotate_button_y);
-            if debug_ui.ui.draw_button(device,
-                                       event,
-                                       zoom_in_button_position,
-                                       &self.zoom_in_texture) {
+            if debug_ui.ui.draw_button(device, event, position, &self.zoom_in_texture) {
                 *action = UIAction::ZoomIn;
             }
+            position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
-            let zoom_out_button_x = ROTATE_PANEL_X + (BUTTON_WIDTH + PADDING) * 2;
-            let zoom_out_button_position = Point2DI32::new(zoom_out_button_x, rotate_button_y);
-            if debug_ui.ui.draw_button(device,
-                                       event,
-                                       zoom_out_button_position,
-                                       &self.zoom_out_texture) {
+            if debug_ui.ui.draw_button(device, event, position, &self.zoom_out_texture) {
                 *action = UIAction::ZoomOut;
             }
+            position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
         }
 
         // Draw effects panel, if necessary.

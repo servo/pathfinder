@@ -229,6 +229,13 @@ impl Add<Point2DI32> for Point2DI32 {
     }
 }
 
+impl AddAssign<Point2DI32> for Point2DI32 {
+    #[inline]
+    fn add_assign(&mut self, other: Point2DI32) {
+        self.0 += other.0
+    }
+}
+
 impl Sub<Point2DI32> for Point2DI32 {
     type Output = Point2DI32;
     #[inline]

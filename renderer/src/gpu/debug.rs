@@ -19,7 +19,7 @@ use crate::gpu_data::Stats;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::{Device, Resources};
-use pathfinder_ui::{PADDING, UI, WINDOW_COLOR};
+use pathfinder_ui::{FONT_ASCENT, LINE_HEIGHT, PADDING, UI, WINDOW_COLOR};
 use std::collections::VecDeque;
 use std::ops::{Add, Div};
 use std::time::Duration;
@@ -28,8 +28,6 @@ const SAMPLE_BUFFER_SIZE: usize = 60;
 
 const PERF_WINDOW_WIDTH: i32 = 375;
 const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 6 + PADDING + 2;
-const FONT_ASCENT: i32 = 28;
-const LINE_HEIGHT: i32 = 42;
 
 pub struct DebugUI<D> where D: Device {
     pub ui: UI<D>,
@@ -93,6 +91,8 @@ impl<D> DebugUI<D> where D: Device {
                           &format!("GPU Time: {:.3} ms", duration_to_ms(mean_gpu_sample.elapsed)),
                           origin + Point2DI32::new(0, LINE_HEIGHT * 5),
                           false);
+
+        self.ui.draw_tooltip(device, "Hello world", Point2DI32::default());
     }
 }
 

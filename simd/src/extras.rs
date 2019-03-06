@@ -8,7 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::default::F32x4;
+use crate::default::{F32x4, I32x4};
+use std::ops::{AddAssign, MulAssign, Neg, SubAssign};
+
+// 32-bit floats
 
 impl F32x4 {
     // Constructors
@@ -70,5 +73,65 @@ impl F32x4 {
             .abs()
             .packed_gt(F32x4::splat(epsilon))
             .is_all_zeroes()
+    }
+}
+
+impl AddAssign for F32x4 {
+    #[inline]
+    fn add_assign(&mut self, other: F32x4) {
+        *self = *self + other
+    }
+}
+
+impl SubAssign for F32x4 {
+    #[inline]
+    fn sub_assign(&mut self, other: F32x4) {
+        *self = *self - other
+    }
+}
+
+impl MulAssign for F32x4 {
+    #[inline]
+    fn mul_assign(&mut self, other: F32x4) {
+        *self = *self * other
+    }
+}
+
+impl Neg for F32x4 {
+    type Output = F32x4;
+    #[inline]
+    fn neg(self) -> F32x4 {
+        F32x4::default() - self
+    }
+}
+
+// 32-bit integers
+
+impl AddAssign for I32x4 {
+    #[inline]
+    fn add_assign(&mut self, other: I32x4) {
+        *self = *self + other
+    }
+}
+
+impl SubAssign for I32x4 {
+    #[inline]
+    fn sub_assign(&mut self, other: I32x4) {
+        *self = *self - other
+    }
+}
+
+impl MulAssign for I32x4 {
+    #[inline]
+    fn mul_assign(&mut self, other: I32x4) {
+        *self = *self * other
+    }
+}
+
+impl Neg for I32x4 {
+    type Output = I32x4;
+    #[inline]
+    fn neg(self) -> I32x4 {
+        I32x4::default() - self
     }
 }

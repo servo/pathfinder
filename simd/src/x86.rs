@@ -12,7 +12,7 @@ use std::arch::x86_64::{self, __m128, __m128i};
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::ops::{Add, AddAssign, BitXor, Index, IndexMut, Mul, MulAssign, Neg, Not, Sub, SubAssign};
+use std::ops::{Add, BitXor, Index, IndexMut, Mul, Not, Sub};
 
 // 32-bit floats
 
@@ -1478,13 +1478,6 @@ impl Add<F32x4> for F32x4 {
     }
 }
 
-impl AddAssign for F32x4 {
-    #[inline]
-    fn add_assign(&mut self, other: F32x4) {
-        unsafe { self.0 = x86_64::_mm_add_ps(self.0, other.0) }
-    }
-}
-
 impl Mul<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
@@ -1493,33 +1486,11 @@ impl Mul<F32x4> for F32x4 {
     }
 }
 
-impl MulAssign for F32x4 {
-    #[inline]
-    fn mul_assign(&mut self, other: F32x4) {
-        unsafe { self.0 = x86_64::_mm_mul_ps(self.0, other.0) }
-    }
-}
-
 impl Sub<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn sub(self, other: F32x4) -> F32x4 {
         unsafe { F32x4(x86_64::_mm_sub_ps(self.0, other.0)) }
-    }
-}
-
-impl SubAssign for F32x4 {
-    #[inline]
-    fn sub_assign(&mut self, other: F32x4) {
-        unsafe { self.0 = x86_64::_mm_sub_ps(self.0, other.0) }
-    }
-}
-
-impl Neg for F32x4 {
-    type Output = F32x4;
-    #[inline]
-    fn neg(self) -> F32x4 {
-        F32x4::default() - self
     }
 }
 
