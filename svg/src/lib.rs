@@ -156,7 +156,9 @@ impl BuiltSVG {
                 self.result_flags.insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_NODE);
             }
             NodeKind::Defs { .. } => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_DEFS_NODE);
+                if node.has_children() {
+                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_DEFS_NODE);
+                }
             }
             NodeKind::Filter(..) => {
                 self.result_flags.insert(BuildResultFlags::UNSUPPORTED_FILTER_NODE);
