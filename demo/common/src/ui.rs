@@ -14,8 +14,8 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::{Device, Resources};
 use pathfinder_renderer::gpu::debug::DebugUI;
-use pathfinder_ui::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, PADDING, SWITCH_SIZE};
-use pathfinder_ui::{TEXT_COLOR, WINDOW_COLOR};
+use pathfinder_ui::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, FONT_ASCENT, PADDING};
+use pathfinder_ui::{SWITCH_SIZE, TEXT_COLOR, TOOLTIP_HEIGHT, WINDOW_COLOR};
 use std::f32::consts::PI;
 use std::path::PathBuf;
 
@@ -54,12 +54,15 @@ pub struct DemoUI<D> where D: Device {
     effects_panel_visible: bool,
     rotate_panel_visible: bool,
 
+    // FIXME(pcwalton): Factor the below out into a model class.
+
     pub three_d_enabled: bool,
     pub dark_background_enabled: bool,
     pub gamma_correction_effect_enabled: bool,
     pub stem_darkening_effect_enabled: bool,
     pub subpixel_aa_effect_enabled: bool,
     pub rotation: i32,
+    pub message: String,
 }
 
 impl<D> DemoUI<D> where D: Device {
@@ -92,6 +95,7 @@ impl<D> DemoUI<D> where D: Device {
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,
             rotation: SLIDER_WIDTH / 2,
+            message: String::new(),
         }
     }
 
@@ -100,6 +104,12 @@ impl<D> DemoUI<D> where D: Device {
     }
 
     pub fn update(&mut self, device: &D, debug_ui: &mut DebugUI<D>, action: &mut UIAction) {
+        // Draw message text.
+
+        self.draw_message_text(device, debug_ui);
+
+        // Draw button strip.
+
         let bottom = debug_ui.ui.framebuffer_size().y() - PADDING;
         let mut position = Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT);
 
@@ -179,6 +189,23 @@ impl<D> DemoUI<D> where D: Device {
 
         // Draw rotate panel, if necessary.
         self.draw_rotate_panel(device, debug_ui, action);
+    }
+
+    fn draw_message_text(&mut self, device: &D, debug_ui: &mut DebugUI<D>) {
+        if self.message.is_empty() {
+            return;
+        }
+
+        let message_size = debug_ui.ui.measure_text(&self.message);
+        let window_origin = Point2DI32::new(PADDING, PADDING);
+        let window_size = Point2DI32::new(PADDING * 2 + message_size, TOOLTIP_HEIGHT);
+        debug_ui.ui.draw_solid_rounded_rect(device,
+                                            RectI32::new(window_origin, window_size),
+                                            WINDOW_COLOR);
+        debug_ui.ui.draw_text(device,
+                              &self.message,
+                              window_origin + Point2DI32::new(PADDING, PADDING + FONT_ASCENT),
+                              false);
     }
 
     fn draw_effects_panel(&mut self, device: &D, debug_ui: &mut DebugUI<D>) {

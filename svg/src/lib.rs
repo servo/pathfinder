@@ -10,6 +10,9 @@
 
 //! Converts a subset of SVG to a Pathfinder scene.
 
+#[macro_use]
+extern crate bitflags;
+
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
@@ -20,29 +23,57 @@ use pathfinder_geometry::segment::{Segment, SegmentFlags};
 use pathfinder_geometry::stroke::OutlineStrokeToFill;
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, PathObjectKind, Scene};
+use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
 use usvg::{Color as SvgColor, Node, NodeExt, NodeKind, Paint as UsvgPaint};
-use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform, Tree};
+use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform};
+use usvg::{Tree, Visibility};
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.1;
 
-pub trait SceneExt {
-    fn from_tree(tree: Tree) -> Self;
+pub struct BuiltSVG {
+    pub scene: Scene,
+    pub result_flags: BuildResultFlags,
 }
 
-impl SceneExt for Scene {
+bitflags! {
+    // NB: If you change this, make sure to update the `Display`
+    // implementation as well.
+    pub struct BuildResultFlags: u16 {
+        const UNSUPPORTED_CLIP_PATH_NODE       = 0x0001;
+        const UNSUPPORTED_DEFS_NODE            = 0x0002;
+        const UNSUPPORTED_FILTER_NODE          = 0x0004;
+        const UNSUPPORTED_IMAGE_NODE           = 0x0008;
+        const UNSUPPORTED_LINEAR_GRADIENT_NODE = 0x0010;
+        const UNSUPPORTED_MASK_NODE            = 0x0020;
+        const UNSUPPORTED_PATTERN_NODE         = 0x0040;
+        const UNSUPPORTED_RADIAL_GRADIENT_NODE = 0x0080;
+        const UNSUPPORTED_NESTED_SVG_NODE      = 0x0100;
+        const UNSUPPORTED_TEXT_NODE            = 0x0200;
+        const UNSUPPORTED_LINK_PAINT           = 0x0400;
+        const UNSUPPORTED_CLIP_PATH_ATTR       = 0x0800;
+        const UNSUPPORTED_FILTER_ATTR          = 0x1000;
+        const UNSUPPORTED_MASK_ATTR            = 0x2000;
+        const UNSUPPORTED_OPACITY_ATTR         = 0x4000;
+    }
+}
+
+impl BuiltSVG {
     // TODO(pcwalton): Allow a global transform to be set.
-    fn from_tree(tree: Tree) -> Scene {
+    pub fn from_tree(tree: Tree) -> BuiltSVG {
         let global_transform = Transform2DF32::default();
 
-        let mut scene = Scene::new();
+        let mut built_svg = BuiltSVG {
+            scene: Scene::new(),
+            result_flags: BuildResultFlags::empty(),
+        };
 
         let root = &tree.root();
         match *root.borrow() {
             NodeKind::Svg(ref svg) => {
-                scene.view_box = usvg_rect_to_euclid_rect(&svg.view_box.rect);
+                built_svg.scene.view_box = usvg_rect_to_euclid_rect(&svg.view_box.rect);
                 for kid in root.children() {
-                    process_node(&mut scene, &kid, &global_transform);
+                    built_svg.process_node(&kid, &global_transform);
                 }
             }
             _ => unreachable!(),
@@ -52,77 +83,165 @@ impl SceneExt for Scene {
         // recursively dropping reference counts on very large SVGs. :(
         mem::forget(tree);
 
-        scene
+        built_svg
+    }
+
+    fn process_node(&mut self, node: &Node, transform: &Transform2DF32) {
+        let node_transform = usvg_transform_to_transform_2d(&node.transform());
+        let transform = transform.pre_mul(&node_transform);
+
+        match *node.borrow() {
+            NodeKind::Group(ref group) => {
+                if group.clip_path.is_some() {
+                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_ATTR);
+                }
+                if group.filter.is_some() {
+                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_FILTER_ATTR);
+                }
+                if group.mask.is_some() {
+                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
+                }
+                if group.opacity.is_some() {
+                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_OPACITY_ATTR);
+                }
+
+                for kid in node.children() {
+                    self.process_node(&kid, &transform)
+                }
+            }
+            NodeKind::Path(ref path) if path.visibility == Visibility::Visible => {
+                if let Some(ref fill) = path.fill {
+                    let style =
+                        self.scene.push_paint(&Paint::from_svg_paint(&fill.paint,
+                                                                     &mut self.result_flags));
+
+                    let path = UsvgPathToSegments::new(path.segments.iter().cloned());
+                    let path = Transform2DF32PathIter::new(path, &transform);
+                    let outline = Outline::from_segments(path);
+
+                    self.scene.bounds = self.scene.bounds.union_rect(outline.bounds());
+                    self.scene.objects.push(PathObject::new(
+                        outline,
+                        style,
+                        node.id().to_string(),
+                        PathObjectKind::Fill,
+                    ));
+                }
+
+                if let Some(ref stroke) = path.stroke {
+                    let style =
+                        self.scene.push_paint(&Paint::from_svg_paint(&stroke.paint,
+                                                                     &mut self.result_flags));
+                    let stroke_width =
+                        f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
+
+                    let path = UsvgPathToSegments::new(path.segments.iter().cloned());
+                    let path = Transform2DF32PathIter::new(path, &transform);
+                    let outline = Outline::from_segments(path);
+
+                    let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_width);
+                    stroke_to_fill.offset();
+                    let outline = stroke_to_fill.outline;
+
+                    self.scene.bounds = self.scene.bounds.union_rect(outline.bounds());
+                    self.scene.objects.push(PathObject::new(
+                        outline,
+                        style,
+                        node.id().to_string(),
+                        PathObjectKind::Stroke,
+                    ));
+                }
+            }
+            NodeKind::Path(..) => {}
+            NodeKind::ClipPath(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_NODE);
+            }
+            NodeKind::Defs { .. } => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_DEFS_NODE);
+            }
+            NodeKind::Filter(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_FILTER_NODE);
+            }
+            NodeKind::Image(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_IMAGE_NODE);
+            }
+            NodeKind::LinearGradient(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_LINEAR_GRADIENT_NODE);
+            }
+            NodeKind::Mask(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_MASK_NODE);
+            }
+            NodeKind::Pattern(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_PATTERN_NODE);
+            }
+            NodeKind::RadialGradient(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_RADIAL_GRADIENT_NODE);
+            }
+            NodeKind::Svg(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_NESTED_SVG_NODE);
+            }
+            NodeKind::Text(..) => {
+                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_TEXT_NODE);
+            }
+        }
     }
 }
 
-fn process_node(scene: &mut Scene, node: &Node, transform: &Transform2DF32) {
-    let node_transform = usvg_transform_to_transform_2d(&node.transform());
-    let transform = transform.pre_mul(&node_transform);
-
-    match *node.borrow() {
-        NodeKind::Group(_) => {
-            for kid in node.children() {
-                process_node(scene, &kid, &transform)
-            }
+impl Display for BuildResultFlags {
+    fn fmt(&self, formatter: &mut Formatter) -> FormatResult {
+        if self.is_empty() {
+            return Ok(())
         }
-        NodeKind::Path(ref path) => {
-            if let Some(ref fill) = path.fill {
-                let style = scene.push_paint(&Paint::from_svg_paint(&fill.paint));
 
-                let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                let path = Transform2DF32PathIter::new(path, &transform);
-                let outline = Outline::from_segments(path);
-
-                scene.bounds = scene.bounds.union_rect(outline.bounds());
-                scene.objects.push(PathObject::new(
-                    outline,
-                    style,
-                    node.id().to_string(),
-                    PathObjectKind::Fill,
-                ));
+        let mut first = true;
+        for (bit, name) in NAMES.iter().enumerate() {
+            if (self.bits() >> bit) & 1 == 0 {
+                continue;
             }
-
-            if let Some(ref stroke) = path.stroke {
-                let style = scene.push_paint(&Paint::from_svg_paint(&stroke.paint));
-                let stroke_width =
-                    f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
-
-                let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                let path = Transform2DF32PathIter::new(path, &transform);
-                let outline = Outline::from_segments(path);
-
-                let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_width);
-                stroke_to_fill.offset();
-                let outline = stroke_to_fill.outline;
-
-                scene.bounds = scene.bounds.union_rect(outline.bounds());
-                scene.objects.push(PathObject::new(
-                    outline,
-                    style,
-                    node.id().to_string(),
-                    PathObjectKind::Stroke,
-                ));
+            if !first {
+                formatter.write_str(", ")?;
+            } else {
+                first = false;
             }
+            formatter.write_str(name)?;
         }
-        _ => {
-            // TODO(pcwalton): Handle these by punting to WebRender.
-        }
+
+        return Ok(());
+
+        // Must match the order in `BuildResultFlags`.
+        static NAMES: &'static [&'static str] = &[
+            "<clipPath>",
+            "<defs>",
+            "<filter>",
+            "<image>",
+            "<linearGradient>",
+            "<mask>",
+            "<pattern>",
+            "<radialGradient>",
+            "nested <svg>",
+            "<text>",
+            "paint server element",
+            "clip-path attribute",
+            "filter attribute",
+            "mask attribute",
+            "opacity attribute",
+        ];
     }
 }
 
 trait PaintExt {
-    fn from_svg_paint(svg_paint: &UsvgPaint) -> Self;
+    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Self;
 }
 
 impl PaintExt for Paint {
     #[inline]
-    fn from_svg_paint(svg_paint: &UsvgPaint) -> Paint {
+    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Paint {
         Paint {
             color: match *svg_paint {
                 UsvgPaint::Color(color) => ColorU::from_svg_color(color),
                 UsvgPaint::Link(_) => {
                     // TODO(pcwalton)
+                    result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
                     ColorU::black()
                 }
             }

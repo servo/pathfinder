@@ -29,18 +29,20 @@ use pathfinder_renderer::gpu_data::BuiltScene;
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
-use pathfinder_svg::SceneExt;
+use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::UIEvent;
 use rayon::ThreadPoolBuilder;
-use sdl2::{EventPump, Sdl, VideoSubsystem};
+use sdl2::EventPump;
 use sdl2::event::{Event, WindowEvent};
 use sdl2::keyboard::Keycode;
 use sdl2::video::{GLContext, GLProfile, Window};
+use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::f32::consts::FRAC_PI_4;
 use std::mem;
 use std::panic;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::ptr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -72,6 +74,8 @@ const GROUND_LINE_COLOR:  ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 
 const APPROX_FONT_SIZE: f32 = 16.0;
 
+const MESSAGE_TIMEOUT_SECS: u64 = 5;
+
 pub const GRIDLINE_COUNT: u8 = 10;
 
 mod device;
@@ -79,10 +83,6 @@ mod ui;
 
 pub struct DemoApp {
     window: Window,
-    #[allow(dead_code)]
-    sdl_context: Sdl,
-    #[allow(dead_code)]
-    sdl_video: VideoSubsystem,
     sdl_event_pump: EventPump,
     #[allow(dead_code)]
     gl_context: GLContext,
@@ -98,6 +98,8 @@ pub struct DemoApp {
     exit: bool,
     mouselook_enabled: bool,
     dirty: bool,
+    expire_message_event_id: u32,
+    message_epoch: u32,
 
     ui: DemoUI<GLDevice>,
     scene_thread_proxy: SceneThreadProxy,
@@ -112,6 +114,7 @@ impl DemoApp {
     pub fn new() -> DemoApp {
         let sdl_context = sdl2::init().unwrap();
         let sdl_video = sdl_context.video().unwrap();
+        let sdl_event = sdl_context.event().unwrap();
 
         let gl_attributes = sdl_video.gl_attr();
         gl_attributes.set_context_profile(GLProfile::Core);
@@ -130,6 +133,8 @@ impl DemoApp {
         let gl_context = window.gl_create_context().unwrap();
         gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
 
+        let expire_message_event_id = unsafe { sdl_event.register_event().unwrap() };
+
         let sdl_event_pump = sdl_context.event_pump().unwrap();
 
         let device = GLDevice::new();
@@ -140,10 +145,12 @@ impl DemoApp {
         let (drawable_width, drawable_height) = window.drawable_size();
         let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
 
-        let base_scene = load_scene(&options.input_path);
-        let scene_view_box = base_scene.view_box;
+        let built_svg = load_scene(&options.input_path);
+        let message = get_svg_building_message(&built_svg);
+
+        let scene_view_box = built_svg.scene.view_box;
         let renderer = Renderer::new(device, &resources, drawable_size);
-        let scene_thread_proxy = SceneThreadProxy::new(base_scene, options.clone());
+        let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
 
         let camera = if options.three_d {
@@ -156,16 +163,23 @@ impl DemoApp {
         let ground_solid_vertex_array =
             GroundSolidVertexArray::new(&renderer.device,
                                         &ground_program,
-                                        &renderer.quad_vertex_positions_buffer());
+                                            &renderer.quad_vertex_positions_buffer());
         let ground_line_vertex_array = GroundLineVertexArray::new(&renderer.device,
                                                                   &ground_program);
 
-        let ui = DemoUI::new(&renderer.device, &resources, options);
+        let mut ui = DemoUI::new(&renderer.device, &resources, options);
+        let mut message_epoch = 0;
+        emit_message(&mut ui, &mut message_epoch, expire_message_event_id, message);
+
+        // Leak our SDL stuff. It'll last the entire duration of the process anyway, and it means
+        // we don't have to deal with any nasty issues regarding synchronizing background threads
+        // during shutdown.
+        mem::forget(sdl_event);
+        mem::forget(sdl_video);
+        mem::forget(sdl_context);
 
         DemoApp {
             window,
-            sdl_context,
-            sdl_video,
             sdl_event_pump,
             gl_context,
 
@@ -180,6 +194,8 @@ impl DemoApp {
             exit: false,
             mouselook_enabled: false,
             dirty: true,
+            expire_message_event_id,
+            message_epoch,
 
             ui,
             scene_thread_proxy,
@@ -332,6 +348,12 @@ impl DemoApp {
                         velocity.set_x(0.0);
                         self.dirty = true;
                     }
+                }
+                Event::User { type_: event_id, code: expected_epoch, .. } if
+                        event_id == self.expire_message_event_id &&
+                        expected_epoch as u32 == self.message_epoch => {
+                    self.ui.message = String::new();
+                    self.dirty = true;
                 }
                 _ => continue,
             }
@@ -497,19 +519,21 @@ impl DemoApp {
             UIAction::None => {}
 
             UIAction::OpenFile(ref path) => {
-                let scene = load_scene(&path);
-                self.scene_view_box = scene.view_box;
+                let built_svg = load_scene(&path);
+                self.ui.message = get_svg_building_message(&built_svg);
+
+                self.scene_view_box = built_svg.scene.view_box;
 
                 update_drawable_size(&self.window, &self.scene_thread_proxy);
                 let drawable_size = current_drawable_size(&self.window);
 
                 self.camera = if self.ui.three_d_enabled {
-                    Camera::new_3d(scene.view_box)
+                    Camera::new_3d(built_svg.scene.view_box)
                 } else {
-                    Camera::new_2d(scene.view_box, drawable_size)
+                    Camera::new_2d(built_svg.scene.view_box, drawable_size)
                 };
 
-                self.scene_thread_proxy.load_scene(scene);
+                self.scene_thread_proxy.load_scene(built_svg.scene);
                 self.dirty = true;
             }
 
@@ -690,8 +714,8 @@ impl Options {
     }
 }
 
-fn load_scene(input_path: &Path) -> Scene {
-    Scene::from_tree(Tree::from_file(input_path, &UsvgOptions::default()).unwrap())
+fn load_scene(input_path: &Path) -> BuiltSVG {
+    BuiltSVG::from_tree(Tree::from_file(input_path, &UsvgOptions::default()).unwrap())
 }
 
 fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) -> BuiltScene {
@@ -834,4 +858,49 @@ fn scale_factor_for_view_box(view_box: RectF32) -> f32 {
 fn get_mouse_position(sdl_event_pump: &EventPump, scale_factor: f32) -> Point2DF32 {
     let mouse_state = sdl_event_pump.mouse_state();
     Point2DI32::new(mouse_state.x(), mouse_state.y()).to_f32().scale(scale_factor)
+}
+
+fn get_svg_building_message(built_svg: &BuiltSVG) -> String {
+    if built_svg.result_flags.is_empty() {
+        return String::new();
+    }
+    format!("Warning: These features in the SVG are unsupported: {}.", built_svg.result_flags)
+}
+
+fn emit_message(ui: &mut DemoUI<GLDevice>,
+                message_epoch: &mut u32,
+                expire_message_event_id: u32,
+                message: String) {
+    if message.is_empty() {
+        return;
+    }
+
+    ui.message = message;
+    let expected_epoch = *message_epoch + 1;
+    *message_epoch = expected_epoch;
+    thread::spawn(move || {
+        thread::sleep(Duration::from_secs(MESSAGE_TIMEOUT_SECS));
+        push_sdl_user_event(SDL_UserEvent {
+            timestamp: 0,
+            windowID: 0,
+            type_: expire_message_event_id,
+            code: expected_epoch as i32,
+            data1: ptr::null_mut(),
+            data2: ptr::null_mut(),
+        }).unwrap();
+    });
+}
+
+// Posts an event from any thread.
+//
+// TODO(pcwalton): The fact that this is necessary is really a `rust-sdl2` bug, filed at
+// https://github.com/Rust-SDL2/rust-sdl2/issues/747.
+fn push_sdl_user_event(mut event: SDL_UserEvent) -> Result<(), String> {
+    unsafe {
+        if sdl2_sys::SDL_PushEvent(&mut event as *mut SDL_UserEvent as *mut SDL_Event) == 1 {
+            Ok(())
+        } else {
+            Err(sdl2::get_error())
+        }
+    }
 }

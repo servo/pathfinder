@@ -5,6 +5,7 @@ edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
+bitflags = "1.0"
 usvg = "0.4"
 
 [dependencies.pathfinder_geometry]
