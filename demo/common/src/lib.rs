@@ -90,6 +90,7 @@ pub struct DemoApp {
     scale_factor: f32,
 
     scene_view_box: RectF32,
+    scene_is_monochrome: bool,
 
     camera: Camera,
     frame_counter: u32,
@@ -147,8 +148,9 @@ impl DemoApp {
 
         let built_svg = load_scene(&options.input_path);
         let message = get_svg_building_message(&built_svg);
-
         let scene_view_box = built_svg.scene.view_box;
+        let scene_is_monochrome = built_svg.scene.is_monochrome();
+
         let renderer = Renderer::new(device, &resources, drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
         update_drawable_size(&window, &scene_thread_proxy);
@@ -186,6 +188,7 @@ impl DemoApp {
             scale_factor: drawable_width as f32 / window_width as f32,
 
             scene_view_box,
+            scene_is_monochrome,
 
             camera,
             frame_counter: 0,
@@ -389,6 +392,7 @@ impl DemoApp {
         self.renderer.debug_ui.ui.event = ui_event;
         self.renderer.debug_ui.ui.mouse_position = get_mouse_position(&self.sdl_event_pump,
                                                                       self.scale_factor);
+        self.ui.show_text_effects = self.scene_is_monochrome;
 
         let mut ui_action = UIAction::None;
         self.ui.update(&self.renderer.device, &mut self.renderer.debug_ui, &mut ui_action);
@@ -523,6 +527,7 @@ impl DemoApp {
                 self.ui.message = get_svg_building_message(&built_svg);
 
                 self.scene_view_box = built_svg.scene.view_box;
+                self.scene_is_monochrome = built_svg.scene.is_monochrome();
 
                 update_drawable_size(&self.window, &self.scene_thread_proxy);
                 let drawable_size = current_drawable_size(&self.window);

@@ -12,11 +12,11 @@
 
 use crate::builder::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::gpu_data::BuiltObject;
-use crate::paint::{ObjectShader, Paint, PaintId, ShaderId};
 use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::fmt::{self, Debug, Formatter};
@@ -139,6 +139,14 @@ impl Scene {
         outline.prepare_for_tiling(self.view_box);
         outline
     }
+
+    pub fn is_monochrome(&self) -> bool {
+        if self.objects.is_empty() {
+            return true;
+        }
+        let first_paint_id = self.objects[0].paint;
+        self.objects.iter().skip(1).all(|object| object.paint == first_paint_id)
+    }
 }
 
 impl Debug for Scene {
@@ -192,6 +200,22 @@ impl PathObject {
     pub fn outline(&self) -> &Outline {
         &self.outline
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Paint {
+    pub color: ColorU,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct PaintId(pub u16);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShaderId(pub u16);
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ObjectShader {
+    pub fill_color: ColorU,
 }
 
 // TODO(pcwalton): Use a `Point2DI32` here?

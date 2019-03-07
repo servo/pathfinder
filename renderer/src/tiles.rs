@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::gpu_data::BuiltObject;
-use crate::paint::ShaderId;
+use crate::scene::ShaderId;
 use crate::sorted_vector::SortedVector;
 use crate::z_buffer::ZBuffer;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;

@@ -28,7 +28,6 @@ const SLIDER_KNOB_HEIGHT: i32 = 48;
 const EFFECTS_PANEL_WIDTH: i32 = 550;
 const EFFECTS_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
 
-const ROTATE_PANEL_X: i32 = PADDING + (BUTTON_WIDTH + PADDING) * 3 + (PADDING + SWITCH_SIZE) * 2;
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
 
@@ -63,6 +62,7 @@ pub struct DemoUI<D> where D: Device {
     pub subpixel_aa_effect_enabled: bool,
     pub rotation: i32,
     pub message: String,
+    pub show_text_effects: bool,
 }
 
 impl<D> DemoUI<D> where D: Device {
@@ -96,6 +96,7 @@ impl<D> DemoUI<D> where D: Device {
             subpixel_aa_effect_enabled: false,
             rotation: SLIDER_WIDTH / 2,
             message: String::new(),
+            show_text_effects: true,
         }
     }
 
@@ -116,14 +117,18 @@ impl<D> DemoUI<D> where D: Device {
         let button_size = Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT);
         let switch_size = Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT);
 
-        // Draw effects button.
-        if debug_ui.ui.draw_button(device, position, &self.effects_texture) {
-            self.effects_panel_visible = !self.effects_panel_visible;
+        // Draw text effects button.
+        if self.show_text_effects {
+            if debug_ui.ui.draw_button(device, position, &self.effects_texture) {
+                self.effects_panel_visible = !self.effects_panel_visible;
+            }
+            if !self.effects_panel_visible {
+                debug_ui.ui.draw_tooltip(device,
+                                         "Text Effects",
+                                         RectI32::new(position, button_size));
+            }
+            position += Point2DI32::new(button_size.x() + PADDING, 0);
         }
-        if !self.effects_panel_visible {
-            debug_ui.ui.draw_tooltip(device, "Text Effects", RectI32::new(position, button_size));
-        }
-        position += Point2DI32::new(button_size.x() + PADDING, 0);
 
         // Draw open button.
         if debug_ui.ui.draw_button(device, position, &self.open_texture) {
@@ -161,34 +166,34 @@ impl<D> DemoUI<D> where D: Device {
         debug_ui.ui.draw_tooltip(device, "Background Color", RectI32::new(position, switch_size));
         position += Point2DI32::new(SWITCH_SIZE + PADDING, 0);
 
-        // Draw rotate and zoom buttons, if applicable.
-        if !self.three_d_enabled {
-            if debug_ui.ui.draw_button(device, position, &self.rotate_texture) {
-                self.rotate_panel_visible = !self.rotate_panel_visible;
-            }
-            if !self.rotate_panel_visible {
-                debug_ui.ui.draw_tooltip(device, "Rotate", RectI32::new(position, button_size));
-            }
-            position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
-
-            if debug_ui.ui.draw_button(device, position, &self.zoom_in_texture) {
-                *action = UIAction::ZoomIn;
-            }
-            debug_ui.ui.draw_tooltip(device, "Zoom In", RectI32::new(position, button_size));
-            position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
-
-            if debug_ui.ui.draw_button(device, position, &self.zoom_out_texture) {
-                *action = UIAction::ZoomOut;
-            }
-            debug_ui.ui.draw_tooltip(device, "Zoom Out", RectI32::new(position, button_size));
-            position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
-        }
-
         // Draw effects panel, if necessary.
         self.draw_effects_panel(device, debug_ui);
 
-        // Draw rotate panel, if necessary.
-        self.draw_rotate_panel(device, debug_ui, action);
+        // Draw rotate and zoom buttons, if applicable.
+        if self.three_d_enabled {
+            return;
+        }
+
+        if debug_ui.ui.draw_button(device, position, &self.rotate_texture) {
+            self.rotate_panel_visible = !self.rotate_panel_visible;
+        }
+        if !self.rotate_panel_visible {
+            debug_ui.ui.draw_tooltip(device, "Rotate", RectI32::new(position, button_size));
+        }
+        self.draw_rotate_panel(device, debug_ui, position.x(), action);
+        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
+
+        if debug_ui.ui.draw_button(device, position, &self.zoom_in_texture) {
+            *action = UIAction::ZoomIn;
+        }
+        debug_ui.ui.draw_tooltip(device, "Zoom In", RectI32::new(position, button_size));
+        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
+
+        if debug_ui.ui.draw_button(device, position, &self.zoom_out_texture) {
+            *action = UIAction::ZoomOut;
+        }
+        debug_ui.ui.draw_tooltip(device, "Zoom Out", RectI32::new(position, button_size));
+        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
     }
 
     fn draw_message_text(&mut self, device: &D, debug_ui: &mut DebugUI<D>) {
@@ -245,20 +250,24 @@ impl<D> DemoUI<D> where D: Device {
 
     }
 
-    fn draw_rotate_panel(&mut self, device: &D, debug_ui: &mut DebugUI<D>, action: &mut UIAction) {
+    fn draw_rotate_panel(&mut self,
+                         device: &D,
+                         debug_ui: &mut DebugUI<D>,
+                         rotate_panel_x: i32,
+                         action: &mut UIAction) {
         if !self.rotate_panel_visible {
             return;
         }
 
         let bottom = debug_ui.ui.framebuffer_size().y() - PADDING;
         let rotate_panel_y = bottom - (BUTTON_HEIGHT + PADDING + ROTATE_PANEL_HEIGHT);
-        let rotate_panel_origin = Point2DI32::new(ROTATE_PANEL_X, rotate_panel_y);
+        let rotate_panel_origin = Point2DI32::new(rotate_panel_x, rotate_panel_y);
         let rotate_panel_size = Point2DI32::new(ROTATE_PANEL_WIDTH, ROTATE_PANEL_HEIGHT);
         debug_ui.ui.draw_solid_rounded_rect(device,
                                             RectI32::new(rotate_panel_origin, rotate_panel_size),
                                             WINDOW_COLOR);
 
-        let (widget_x, widget_y) = (ROTATE_PANEL_X + PADDING, rotate_panel_y + PADDING);
+        let (widget_x, widget_y) = (rotate_panel_x + PADDING, rotate_panel_y + PADDING);
         let widget_rect = RectI32::new(Point2DI32::new(widget_x, widget_y),
                                        Point2DI32::new(SLIDER_WIDTH, SLIDER_KNOB_HEIGHT));
         if let Some(position) = debug_ui.ui

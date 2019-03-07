@@ -10,8 +10,8 @@
 
 use crate::gpu::debug::DebugUI;
 use crate::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
-use crate::paint::ObjectShader;
 use crate::post::DefringingKernel;
+use crate::scene::ObjectShader;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::color::ColorU;

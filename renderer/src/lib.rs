@@ -13,7 +13,6 @@
 pub mod builder;
 pub mod gpu;
 pub mod gpu_data;
-pub mod paint;
 pub mod post;
 pub mod scene;
 pub mod tiles;

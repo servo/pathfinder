@@ -10,7 +10,7 @@
 
 //! Packed data ready to be sent to the GPU.
 
-use crate::paint::{ObjectShader, ShaderId};
+use crate::scene::{ObjectShader, ShaderId};
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
