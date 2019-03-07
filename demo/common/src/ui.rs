@@ -90,7 +90,7 @@ impl<D> DemoUI<D> where D: Device {
             rotate_panel_visible: false,
 
             three_d_enabled: options.three_d,
-            dark_background_enabled: true,
+            dark_background_enabled: false,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,

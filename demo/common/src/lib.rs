@@ -57,7 +57,7 @@ const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
 
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
-const CAMERA_VELOCITY: f32 = 1000.0;
+const CAMERA_VELOCITY: f32 = 0.02;
 
 // How much the scene is scaled when a scale gesture is performed.
 const CAMERA_SCALE_SPEED_2D: f32 = 6.0;
@@ -67,7 +67,7 @@ const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
 const NEAR_CLIP_PLANE: f32 = 0.01;
 const FAR_CLIP_PLANE:  f32 = 10.0;
 
-const LIGHT_BG_COLOR:     ColorU = ColorU { r: 192, g: 192, b: 192, a: 255 };
+const LIGHT_BG_COLOR:     ColorU = ColorU { r: 248, g: 248, b: 248, a: 255 };
 const DARK_BG_COLOR:      ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
 const GROUND_SOLID_COLOR: ColorU = ColorU { r: 80,  g: 80,  b: 80,  a: 255 };
 const GROUND_LINE_COLOR:  ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
@@ -313,28 +313,28 @@ impl DemoApp {
                 Event::KeyDown { keycode: Some(Keycode::W), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
-                        velocity.set_z(-CAMERA_VELOCITY * scale_factor);
+                        velocity.set_z(-CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown { keycode: Some(Keycode::S), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
-                        velocity.set_z(CAMERA_VELOCITY * scale_factor);
+                        velocity.set_z(CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown { keycode: Some(Keycode::A), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
-                        velocity.set_x(-CAMERA_VELOCITY * scale_factor);
+                        velocity.set_x(-CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown { keycode: Some(Keycode::D), .. } => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
-                        velocity.set_x(CAMERA_VELOCITY * scale_factor);
+                        velocity.set_x(CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
