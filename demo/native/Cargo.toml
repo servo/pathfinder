@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
+[features]
+pf-no-simd = ["pathfinder_simd/pf-no-simd"]
+
 [dependencies]
 gl = "0.6"
 sdl2 = "0.32"
@@ -14,3 +17,6 @@ path = "../common"
 
 [dependencies.pathfinder_geometry]
 path = "../../geometry"
+
+[dependencies.pathfinder_simd]
+path = "../../simd"
