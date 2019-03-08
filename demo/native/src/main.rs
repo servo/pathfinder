@@ -8,10 +8,162 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! A demo app for Pathfinder.
+//! A demo app for Pathfinder using SDL 2.
 
 use pathfinder_demo::DemoApp;
+use pathfinder_demo::window::{Event, Keycode, Window};
+use pathfinder_geometry::basic::point::Point2DI32;
+use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
+use sdl2::event::{Event as SDLEvent, WindowEvent};
+use sdl2::keyboard::Keycode as SDLKeycode;
+use sdl2::video::{GLContext, GLProfile, Window as SDLWindow};
+use sdl2_sys::{SDL_Event, SDL_UserEvent};
+use std::ptr;
 
 fn main() {
-    DemoApp::new().run();
+    DemoApp::<WindowImpl>::new().run();
+}
+
+thread_local! {
+    static SDL_CONTEXT: Sdl = sdl2::init().unwrap();
+    static SDL_VIDEO: VideoSubsystem = SDL_CONTEXT.with(|context| context.video().unwrap());
+    static SDL_EVENT: EventSubsystem = SDL_CONTEXT.with(|context| context.event().unwrap());
+}
+
+struct WindowImpl {
+    window: SDLWindow,
+    event_pump: EventPump,
+    #[allow(dead_code)]
+    gl_context: GLContext,
+}
+
+impl Window for WindowImpl {
+    fn new(default_framebuffer_size: Point2DI32) -> WindowImpl {
+        SDL_VIDEO.with(|sdl_video| {
+            let (window, gl_context, event_pump);
+
+            let gl_attributes = sdl_video.gl_attr();
+            gl_attributes.set_context_profile(GLProfile::Core);
+            gl_attributes.set_context_version(3, 3);
+            gl_attributes.set_depth_size(24);
+            gl_attributes.set_stencil_size(8);
+
+            window = sdl_video.window("Pathfinder Demo",
+                                      default_framebuffer_size.x() as u32,
+                                      default_framebuffer_size.y() as u32)
+                              .opengl()
+                              .resizable()
+                              .allow_highdpi()
+                              .build()
+                              .unwrap();
+
+            gl_context = window.gl_create_context().unwrap();
+            gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
+
+            event_pump = SDL_CONTEXT.with(|sdl_context| sdl_context.event_pump().unwrap());
+
+            WindowImpl { window, event_pump, gl_context }
+        })
+    }
+
+    fn size(&self) -> Point2DI32 {
+        let (width, height) = self.window.size();
+        Point2DI32::new(width as i32, height as i32)
+    }
+
+    fn drawable_size(&self) -> Point2DI32 {
+        let (width, height) = self.window.drawable_size();
+        Point2DI32::new(width as i32, height as i32)
+    }
+
+    fn mouse_position(&self) -> Point2DI32 {
+        let mouse_state = self.event_pump.mouse_state();
+        Point2DI32::new(mouse_state.x(), mouse_state.y())
+    }
+
+    fn get_event(&mut self) -> Event {
+        loop {
+            let sdl_event = self.event_pump.wait_event();
+            if let Some(event) = self.convert_sdl_event(sdl_event) {
+                return event;
+            }
+        }
+    }
+
+    fn try_get_event(&mut self) -> Option<Event> {
+        loop {
+            let sdl_event = self.event_pump.poll_event()?;
+            if let Some(event) = self.convert_sdl_event(sdl_event) {
+                return Some(event);
+            }
+        }
+    }
+
+    fn present(&self) {
+        self.window.gl_swap_window();
+    }
+
+    fn create_user_event_id(&self) -> u32 {
+        SDL_EVENT.with(|sdl_event| unsafe { sdl_event.register_event().unwrap() })
+    }
+
+    fn push_user_event(message_type: u32, message_data: u32) {
+        unsafe {
+            let mut user_event = SDL_UserEvent {
+                timestamp: 0,
+                windowID: 0,
+                type_: message_type,
+                code: message_data as i32,
+                data1: ptr::null_mut(),
+                data2: ptr::null_mut(),
+            };
+            sdl2_sys::SDL_PushEvent(&mut user_event as *mut SDL_UserEvent as *mut SDL_Event);
+        }
+    }
+}
+
+impl WindowImpl {
+    fn convert_sdl_event(&self, sdl_event: SDLEvent) -> Option<Event> {
+        match sdl_event {
+            SDLEvent::User { type_, code, .. } => {
+                Some(Event::User { message_type: type_, message_data: code as u32 })
+            }
+            SDLEvent::MouseButtonDown { x, y, .. } => {
+                Some(Event::MouseDown(Point2DI32::new(x, y)))
+            }
+            SDLEvent::MouseMotion { x, y, xrel, yrel, mousestate, .. } => {
+                let position = Point2DI32::new(x, y);
+                let relative_position = Point2DI32::new(xrel, yrel);
+                if mousestate.left() {
+                    Some(Event::MouseDragged { position, relative_position })
+                } else {
+                    Some(Event::MouseMoved { position, relative_position })
+                }
+            }
+            SDLEvent::Quit { .. } => Some(Event::Quit),
+            SDLEvent::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
+                Some(Event::WindowResized)
+            }
+            SDLEvent::KeyDown { keycode: Some(sdl_keycode), .. } => {
+                self.convert_sdl_keycode(sdl_keycode).map(Event::KeyDown)
+            }
+            SDLEvent::KeyUp { keycode: Some(sdl_keycode), .. } => {
+                self.convert_sdl_keycode(sdl_keycode).map(Event::KeyUp)
+            }
+            SDLEvent::MultiGesture { d_dist, .. } => Some(Event::Zoom(d_dist)),
+            _ => None,
+        }
+    }
+
+    fn convert_sdl_keycode(&self, sdl_keycode: SDLKeycode) -> Option<Keycode> {
+        match sdl_keycode {
+            SDLKeycode::Escape => Some(Keycode::Escape),
+            sdl_keycode if sdl_keycode as i32 >= SDLKeycode::A as i32 &&
+                    sdl_keycode as i32 <= SDLKeycode::Z as i32 => {
+                let offset = (sdl_keycode as i32 - SDLKeycode::A as i32) as u8;
+                Some(Keycode::Alphanumeric(offset + b'a'))
+            }
+            _ => None,
+        }
+    }
 }

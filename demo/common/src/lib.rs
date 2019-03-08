@@ -12,6 +12,7 @@
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction};
+use crate::window::{Event, Keycode, Window};
 use clap::{App, Arg};
 use image::ColorType;
 use jemallocator;
@@ -32,17 +33,11 @@ use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::UIEvent;
 use rayon::ThreadPoolBuilder;
-use sdl2::EventPump;
-use sdl2::event::{Event, WindowEvent};
-use sdl2::keyboard::Keycode;
-use sdl2::video::{GLContext, GLProfile, Window};
-use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::f32::consts::FRAC_PI_4;
 use std::mem;
 use std::panic;
 use std::path::{Path, PathBuf};
 use std::process;
-use std::ptr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -78,14 +73,13 @@ const MESSAGE_TIMEOUT_SECS: u64 = 5;
 
 pub const GRIDLINE_COUNT: u8 = 10;
 
+pub mod window;
+
 mod device;
 mod ui;
 
-pub struct DemoApp {
-    window: Window,
-    sdl_event_pump: EventPump,
-    #[allow(dead_code)]
-    gl_context: GLContext,
+pub struct DemoApp<W> where W: Window {
+    window: W,
 
     scale_factor: f32,
 
@@ -111,40 +105,18 @@ pub struct DemoApp {
     ground_line_vertex_array: GroundLineVertexArray<GLDevice>,
 }
 
-impl DemoApp {
-    pub fn new() -> DemoApp {
-        let sdl_context = sdl2::init().unwrap();
-        let sdl_video = sdl_context.video().unwrap();
-        let sdl_event = sdl_context.event().unwrap();
-
-        let gl_attributes = sdl_video.gl_attr();
-        gl_attributes.set_context_profile(GLProfile::Core);
-        gl_attributes.set_context_version(3, 3);
-        gl_attributes.set_depth_size(24);
-        gl_attributes.set_stencil_size(8);
-
-        let window =
-            sdl_video.window("Pathfinder Demo", MAIN_FRAMEBUFFER_WIDTH, MAIN_FRAMEBUFFER_HEIGHT)
-                     .opengl()
-                     .resizable()
-                     .allow_highdpi()
-                     .build()
-                     .unwrap();
-
-        let gl_context = window.gl_create_context().unwrap();
-        gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
-
-        let expire_message_event_id = unsafe { sdl_event.register_event().unwrap() };
-
-        let sdl_event_pump = sdl_context.event_pump().unwrap();
+impl<W> DemoApp<W> where W: Window {
+    pub fn new() -> DemoApp<W> {
+        let default_framebuffer_size = Point2DI32::new(MAIN_FRAMEBUFFER_WIDTH as i32,
+                                                       MAIN_FRAMEBUFFER_HEIGHT as i32);
+        let window = W::new(default_framebuffer_size);
+        let expire_message_event_id = window.create_user_event_id();
 
         let device = GLDevice::new();
         let resources = Resources::locate();
         let options = Options::get(&resources);
 
-        let (window_width, _) = window.size();
-        let (drawable_width, drawable_height) = window.drawable_size();
-        let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
+        let (window_size, drawable_size) = (window.size(), window.drawable_size());
 
         let built_svg = load_scene(&options.input_path);
         let message = get_svg_building_message(&built_svg);
@@ -153,7 +125,7 @@ impl DemoApp {
 
         let renderer = Renderer::new(device, &resources, drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
-        update_drawable_size(&window, &scene_thread_proxy);
+        scene_thread_proxy.set_drawable_size(window.drawable_size());
 
         let camera = if options.three_d {
             Camera::new_3d(scene_view_box)
@@ -171,21 +143,12 @@ impl DemoApp {
 
         let mut ui = DemoUI::new(&renderer.device, &resources, options);
         let mut message_epoch = 0;
-        emit_message(&mut ui, &mut message_epoch, expire_message_event_id, message);
-
-        // Leak our SDL stuff. It'll last the entire duration of the process anyway, and it means
-        // we don't have to deal with any nasty issues regarding synchronizing background threads
-        // during shutdown.
-        mem::forget(sdl_event);
-        mem::forget(sdl_video);
-        mem::forget(sdl_context);
+        emit_message::<W>(&mut ui, &mut message_epoch, expire_message_event_id, message);
 
         DemoApp {
             window,
-            sdl_event_pump,
-            gl_context,
 
-            scale_factor: drawable_width as f32 / window_width as f32,
+            scale_factor: drawable_size.x() as f32 / window_size.x() as f32,
 
             scene_view_box,
             scene_is_monochrome,
@@ -226,8 +189,7 @@ impl DemoApp {
     }
 
     fn build_scene(&mut self) {
-        let (drawable_width, drawable_height) = self.window.drawable_size();
-        let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
+        let drawable_size = self.window.drawable_size();
 
         let render_transform = match self.camera {
             Camera::ThreeD { ref mut transform, ref mut velocity } => {
@@ -261,98 +223,96 @@ impl DemoApp {
         let mut ui_event = UIEvent::None;
 
         if !self.dirty {
-            self.events.push(self.sdl_event_pump.wait_event());
+            self.events.push(self.window.get_event());
         } else {
             self.dirty = false;
         }
 
-        for event in self.sdl_event_pump.poll_iter() {
+        while let Some(event) = self.window.try_get_event() {
             self.events.push(event);
         }
 
         for event in self.events.drain(..) {
             match event {
                 Event::Quit { .. } |
-                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                Event::KeyDown(Keycode::Escape) => {
                     self.exit = true;
                     self.dirty = true;
                 }
-                Event::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
-                    update_drawable_size(&self.window, &self.scene_thread_proxy);
-                    let drawable_size = current_drawable_size(&self.window);
-                    self.renderer.set_main_framebuffer_size(drawable_size);
+                Event::WindowResized => {
+                    self.scene_thread_proxy.set_drawable_size(self.window.drawable_size());
+                    self.renderer.set_main_framebuffer_size(self.window.drawable_size());
                     self.dirty = true;
                 }
-                Event::MouseButtonDown { x, y, .. } => {
-                    let point = Point2DI32::new(x, y).scale(self.scale_factor as i32);
-                    ui_event = UIEvent::MouseDown(point);
+                Event::MouseDown(position) => {
+                    ui_event = UIEvent::MouseDown(position.scale(self.scale_factor as i32));
                 }
-                Event::MouseMotion { xrel, yrel, .. } if self.mouselook_enabled => {
+                Event::MouseMoved { relative_position, .. } if self.mouselook_enabled => {
                     if let Camera::ThreeD { ref mut transform, .. } = self.camera {
-                        transform.yaw += xrel as f32 * MOUSELOOK_ROTATION_SPEED;
-                        transform.pitch += yrel as f32 * MOUSELOOK_ROTATION_SPEED;
+                        let rotation = relative_position.to_f32().scale(MOUSELOOK_ROTATION_SPEED);
+                        transform.yaw += rotation.x();
+                        transform.pitch += rotation.y();
                         self.dirty = true;
                     }
                 }
-                Event::MouseMotion { x, y, xrel, yrel, mousestate, .. } if mousestate.left() => {
-                    let absolute_position = Point2DI32::new(x, y).scale(self.scale_factor as i32);
-                    let relative_position =
-                        Point2DI32::new(xrel, yrel).scale(self.scale_factor as i32);
+                Event::MouseDragged { position, relative_position } => {
+                    let absolute_position = position.scale(self.scale_factor as i32);
+                    let relative_position = relative_position.scale(self.scale_factor as i32);
                     ui_event = UIEvent::MouseDragged { absolute_position, relative_position };
                     self.dirty = true;
                 }
-                Event::MultiGesture { d_dist, .. } => {
+                Event::Zoom(d_dist) => {
                     if let Camera::TwoD(ref mut transform) = self.camera {
-                        let position = get_mouse_position(&self.sdl_event_pump, self.scale_factor);
+                        let position = get_mouse_position(&self.window, self.scale_factor);
                         *transform = transform.post_translate(-position);
                         let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
                         *transform = transform.post_scale(Point2DF32::splat(scale_delta));
                         *transform = transform.post_translate(position);
                     }
                 }
-                Event::KeyDown { keycode: Some(Keycode::W), .. } => {
+                Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
                         velocity.set_z(-CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
-                Event::KeyDown { keycode: Some(Keycode::S), .. } => {
+                Event::KeyDown(Keycode::Alphanumeric(b's')) => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
                         velocity.set_z(CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
-                Event::KeyDown { keycode: Some(Keycode::A), .. } => {
+                Event::KeyDown(Keycode::Alphanumeric(b'a')) => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
                         velocity.set_x(-CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
-                Event::KeyDown { keycode: Some(Keycode::D), .. } => {
+                Event::KeyDown(Keycode::Alphanumeric(b'd')) => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
                         velocity.set_x(CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
-                Event::KeyUp { keycode: Some(Keycode::W), .. } |
-                Event::KeyUp { keycode: Some(Keycode::S), .. } => {
+                Event::KeyUp(Keycode::Alphanumeric(b'w')) |
+                Event::KeyUp(Keycode::Alphanumeric(b's')) => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         velocity.set_z(0.0);
                         self.dirty = true;
                     }
                 }
-                Event::KeyUp { keycode: Some(Keycode::A), .. } |
-                Event::KeyUp { keycode: Some(Keycode::D), .. } => {
+                Event::KeyUp(Keycode::Alphanumeric(b'a')) |
+                Event::KeyUp(Keycode::Alphanumeric(b'd')) => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         velocity.set_x(0.0);
                         self.dirty = true;
                     }
                 }
-                Event::User { type_: event_id, code: expected_epoch, .. } if
+                Event::User { message_type: event_id, message_data: expected_epoch } if
                         event_id == self.expire_message_event_id &&
                         expected_epoch as u32 == self.message_epoch => {
                     self.ui.message = String::new();
@@ -390,7 +350,7 @@ impl DemoApp {
         }
 
         self.renderer.debug_ui.ui.event = ui_event;
-        self.renderer.debug_ui.ui.mouse_position = get_mouse_position(&self.sdl_event_pump,
+        self.renderer.debug_ui.ui.mouse_position = get_mouse_position(&self.window,
                                                                       self.scale_factor);
         self.ui.show_text_effects = self.scene_is_monochrome;
 
@@ -406,7 +366,7 @@ impl DemoApp {
         match (&self.camera, self.ui.three_d_enabled) {
             (&Camera::TwoD { .. }, true) => self.camera = Camera::new_3d(self.scene_view_box),
             (&Camera::ThreeD { .. }, false) => {
-                let drawable_size = current_drawable_size(&self.window);
+                let drawable_size = self.window.drawable_size();
                 self.camera = Camera::new_2d(self.scene_view_box, drawable_size);
             }
             _ => {}
@@ -425,7 +385,7 @@ impl DemoApp {
             _ => {}
         }
 
-        self.window.gl_swap_window();
+        self.window.present();
         self.frame_counter += 1;
     }
 
@@ -529,8 +489,8 @@ impl DemoApp {
                 self.scene_view_box = built_svg.scene.view_box;
                 self.scene_is_monochrome = built_svg.scene.is_monochrome();
 
-                update_drawable_size(&self.window, &self.scene_thread_proxy);
-                let drawable_size = current_drawable_size(&self.window);
+                self.scene_thread_proxy.set_drawable_size(self.window.drawable_size());
+                let drawable_size = self.window.drawable_size();
 
                 self.camera = if self.ui.three_d_enabled {
                     Camera::new_3d(built_svg.scene.view_box)
@@ -581,13 +541,12 @@ impl DemoApp {
 
     fn take_screenshot(&mut self) {
         let screenshot_path = self.pending_screenshot_path.take().unwrap();
-        let (drawable_width, drawable_height) = self.window.drawable_size();
-        let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
+        let drawable_size = self.window.drawable_size();
         let pixels = self.renderer.device.read_pixels_from_default_framebuffer(drawable_size);
         image::save_buffer(screenshot_path,
                            &pixels,
-                           drawable_width,
-                           drawable_height,
+                           drawable_size.x() as u32,
+                           drawable_size.y() as u32,
                            ColorType::RGBA(8)).unwrap();
     }
 
@@ -768,18 +727,8 @@ fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) 
     built_scene
 }
 
-fn current_drawable_size(window: &Window) -> Point2DI32 {
-    let (drawable_width, drawable_height) = window.drawable_size();
-    Point2DI32::new(drawable_width as i32, drawable_height as i32)
-}
-
-fn update_drawable_size(window: &Window, scene_thread_proxy: &SceneThreadProxy) {
-    scene_thread_proxy.set_drawable_size(current_drawable_size(window));
-}
-
-fn center_of_window(window: &Window) -> Point2DF32 {
-    let (drawable_width, drawable_height) = window.drawable_size();
-    Point2DI32::new(drawable_width as i32, drawable_height as i32).to_f32().scale(0.5)
+fn center_of_window<W>(window: &W) -> Point2DF32 where W: Window {
+    window.drawable_size().to_f32().scale(0.5)
 }
 
 enum Camera {
@@ -860,9 +809,8 @@ fn scale_factor_for_view_box(view_box: RectF32) -> f32 {
     1.0 / f32::min(view_box.size().x(), view_box.size().y())
 }
 
-fn get_mouse_position(sdl_event_pump: &EventPump, scale_factor: f32) -> Point2DF32 {
-    let mouse_state = sdl_event_pump.mouse_state();
-    Point2DI32::new(mouse_state.x(), mouse_state.y()).to_f32().scale(scale_factor)
+fn get_mouse_position<W>(window: &W, scale_factor: f32) -> Point2DF32 where W: Window {
+    window.mouse_position().to_f32().scale(scale_factor)
 }
 
 fn get_svg_building_message(built_svg: &BuiltSVG) -> String {
@@ -872,10 +820,11 @@ fn get_svg_building_message(built_svg: &BuiltSVG) -> String {
     format!("Warning: These features in the SVG are unsupported: {}.", built_svg.result_flags)
 }
 
-fn emit_message(ui: &mut DemoUI<GLDevice>,
-                message_epoch: &mut u32,
-                expire_message_event_id: u32,
-                message: String) {
+fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
+                   message_epoch: &mut u32,
+                   expire_message_event_id: u32,
+                   message: String)
+                   where W: Window {
     if message.is_empty() {
         return;
     }
@@ -885,27 +834,6 @@ fn emit_message(ui: &mut DemoUI<GLDevice>,
     *message_epoch = expected_epoch;
     thread::spawn(move || {
         thread::sleep(Duration::from_secs(MESSAGE_TIMEOUT_SECS));
-        push_sdl_user_event(SDL_UserEvent {
-            timestamp: 0,
-            windowID: 0,
-            type_: expire_message_event_id,
-            code: expected_epoch as i32,
-            data1: ptr::null_mut(),
-            data2: ptr::null_mut(),
-        }).unwrap();
+        W::push_user_event(expire_message_event_id, expected_epoch);
     });
-}
-
-// Posts an event from any thread.
-//
-// TODO(pcwalton): The fact that this is necessary is really a `rust-sdl2` bug, filed at
-// https://github.com/Rust-SDL2/rust-sdl2/issues/747.
-fn push_sdl_user_event(mut event: SDL_UserEvent) -> Result<(), String> {
-    unsafe {
-        if sdl2_sys::SDL_PushEvent(&mut event as *mut SDL_UserEvent as *mut SDL_Event) == 1 {
-            Ok(())
-        } else {
-            Err(sdl2::get_error())
-        }
-    }
 }
