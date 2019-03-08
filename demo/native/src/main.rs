@@ -21,7 +21,14 @@ use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::ptr;
 
 fn main() {
-    DemoApp::<WindowImpl>::new().run();
+    let mut app = DemoApp::<WindowImpl>::new();
+    while !app.should_exit {
+        let mut events = vec![app.window.get_event()];
+        while let Some(event) = app.window.try_get_event() {
+            events.push(event);
+        }
+        app.run_once(events);
+    }
 }
 
 thread_local! {
@@ -81,24 +88,6 @@ impl Window for WindowImpl {
         Point2DI32::new(mouse_state.x(), mouse_state.y())
     }
 
-    fn get_event(&mut self) -> Event {
-        loop {
-            let sdl_event = self.event_pump.wait_event();
-            if let Some(event) = self.convert_sdl_event(sdl_event) {
-                return event;
-            }
-        }
-    }
-
-    fn try_get_event(&mut self) -> Option<Event> {
-        loop {
-            let sdl_event = self.event_pump.poll_event()?;
-            if let Some(event) = self.convert_sdl_event(sdl_event) {
-                return Some(event);
-            }
-        }
-    }
-
     fn present(&self) {
         self.window.gl_swap_window();
     }
@@ -123,6 +112,24 @@ impl Window for WindowImpl {
 }
 
 impl WindowImpl {
+    fn get_event(&mut self) -> Event {
+        loop {
+            let sdl_event = self.event_pump.wait_event();
+            if let Some(event) = self.convert_sdl_event(sdl_event) {
+                return event;
+            }
+        }
+    }
+
+    fn try_get_event(&mut self) -> Option<Event> {
+        loop {
+            let sdl_event = self.event_pump.poll_event()?;
+            if let Some(event) = self.convert_sdl_event(sdl_event) {
+                return Some(event);
+            }
+        }
+    }
+
     fn convert_sdl_event(&self, sdl_event: SDLEvent) -> Option<Event> {
         match sdl_event {
             SDLEvent::User { type_, code, .. } => {

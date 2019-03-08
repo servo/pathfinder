@@ -79,7 +79,8 @@ mod device;
 mod ui;
 
 pub struct DemoApp<W> where W: Window {
-    window: W,
+    pub window: W,
+    pub should_exit: bool,
 
     scale_factor: f32,
 
@@ -88,9 +89,7 @@ pub struct DemoApp<W> where W: Window {
 
     camera: Camera,
     frame_counter: u32,
-    events: Vec<Event>,
     pending_screenshot_path: Option<PathBuf>,
-    exit: bool,
     mouselook_enabled: bool,
     dirty: bool,
     expire_message_event_id: u32,
@@ -147,6 +146,7 @@ impl<W> DemoApp<W> where W: Window {
 
         DemoApp {
             window,
+            should_exit: false,
 
             scale_factor: drawable_size.x() as f32 / window_size.x() as f32,
 
@@ -156,8 +156,6 @@ impl<W> DemoApp<W> where W: Window {
             camera,
             frame_counter: 0,
             pending_screenshot_path: None,
-            events: vec![],
-            exit: false,
             mouselook_enabled: false,
             dirty: true,
             expire_message_event_id,
@@ -173,19 +171,16 @@ impl<W> DemoApp<W> where W: Window {
         }
     }
 
-    pub fn run(&mut self) {
-        while !self.exit {
-            // Update the scene.
-            self.build_scene();
+    pub fn run_once(&mut self, events: Vec<Event>) {
+        // Update the scene.
+        self.build_scene();
 
-            // Handle events.
-            // FIXME(pcwalton): This can cause us to miss UI events if things get backed up...
-            let ui_event = self.handle_events();
+        // Handle events.
+        let ui_event = self.handle_events(events);
 
-            // Draw the scene.
-            let render_msg = self.scene_thread_proxy.receiver.recv().unwrap();
-            self.draw_scene(render_msg, ui_event);
-        }
+        // Draw the scene.
+        let render_msg = self.scene_thread_proxy.receiver.recv().unwrap();
+        self.draw_scene(render_msg, ui_event);
     }
 
     fn build_scene(&mut self) {
@@ -219,24 +214,15 @@ impl<W> DemoApp<W> where W: Window {
         }
     }
 
-    fn handle_events(&mut self) -> UIEvent {
+    fn handle_events(&mut self, events: Vec<Event>) -> UIEvent {
         let mut ui_event = UIEvent::None;
+        self.dirty = false;
 
-        if !self.dirty {
-            self.events.push(self.window.get_event());
-        } else {
-            self.dirty = false;
-        }
-
-        while let Some(event) = self.window.try_get_event() {
-            self.events.push(event);
-        }
-
-        for event in self.events.drain(..) {
+        for event in events {
             match event {
                 Event::Quit { .. } |
                 Event::KeyDown(Keycode::Escape) => {
-                    self.exit = true;
+                    self.should_exit = true;
                     self.dirty = true;
                 }
                 Event::WindowResized => {

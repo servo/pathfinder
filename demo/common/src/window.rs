@@ -17,8 +17,6 @@ pub trait Window {
     fn size(&self) -> Point2DI32;
     fn drawable_size(&self) -> Point2DI32;
     fn mouse_position(&self) -> Point2DI32;
-    fn get_event(&mut self) -> Event;
-    fn try_get_event(&mut self) -> Option<Event>;
     fn present(&self);
     fn create_user_event_id(&self) -> u32;
     fn push_user_event(message_type: u32, message_data: u32);
