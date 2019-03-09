@@ -10,14 +10,18 @@
 
 //! A demo app for Pathfinder using SDL 2.
 
+use nfd::Response;
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::window::{Event, Keycode, Window};
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_gl::GLVersion;
+use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
 use sdl2::event::{Event as SDLEvent, WindowEvent};
 use sdl2::keyboard::Keycode as SDLKeycode;
 use sdl2::video::{GLContext, GLProfile, Window as SDLWindow};
 use sdl2_sys::{SDL_Event, SDL_UserEvent};
+use std::path::PathBuf;
 use std::ptr;
 
 fn main() {
@@ -42,6 +46,7 @@ struct WindowImpl {
     event_pump: EventPump,
     #[allow(dead_code)]
     gl_context: GLContext,
+    resource_loader: FilesystemResourceLoader,
 }
 
 impl Window for WindowImpl {
@@ -69,8 +74,14 @@ impl Window for WindowImpl {
 
             event_pump = SDL_CONTEXT.with(|sdl_context| sdl_context.event_pump().unwrap());
 
-            WindowImpl { window, event_pump, gl_context }
+            let resource_loader = FilesystemResourceLoader::locate();
+
+            WindowImpl { window, event_pump, gl_context, resource_loader }
         })
+    }
+
+    fn gl_version(&self) -> GLVersion {
+        GLVersion::GL3
     }
 
     fn size(&self) -> Point2DI32 {
@@ -92,6 +103,10 @@ impl Window for WindowImpl {
         self.window.gl_swap_window();
     }
 
+    fn resource_loader(&self) -> &dyn ResourceLoader {
+        &self.resource_loader
+    }
+
     fn create_user_event_id(&self) -> u32 {
         SDL_EVENT.with(|sdl_event| unsafe { sdl_event.register_event().unwrap() })
     }
@@ -107,6 +122,20 @@ impl Window for WindowImpl {
                 data2: ptr::null_mut(),
             };
             sdl2_sys::SDL_PushEvent(&mut user_event as *mut SDL_UserEvent as *mut SDL_Event);
+        }
+    }
+
+    fn run_open_dialog(&self, extension: &str) -> Result<PathBuf, ()> {
+        match nfd::open_file_dialog(Some(extension), None) {
+            Ok(Response::Okay(file)) => Ok(PathBuf::from(file)),
+            _ => Err(()),
+        }
+    }
+
+    fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()> {
+        match nfd::open_save_dialog(Some(extension), None) {
+            Ok(Response::Okay(file)) => Ok(PathBuf::from(file)),
+            _ => Err(()),
         }
     }
 }

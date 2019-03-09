@@ -1,4 +1,4 @@
-#version 330
+#version {{version}}
 
 // pathfinder/resources/shaders/stencil.vs.glsl
 //

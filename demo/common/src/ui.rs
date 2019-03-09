@@ -9,10 +9,11 @@
 // except according to those terms.
 
 use crate::Options;
-use nfd::Response;
+use crate::window::Window;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_gpu::{Device, Resources};
+use pathfinder_gpu::Device;
+use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_renderer::gpu::debug::DebugUI;
 use pathfinder_ui::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, FONT_ASCENT, PADDING};
 use pathfinder_ui::{SWITCH_SIZE, TEXT_COLOR, TOOLTIP_HEIGHT, WINDOW_COLOR};
@@ -66,7 +67,7 @@ pub struct DemoUI<D> where D: Device {
 }
 
 impl<D> DemoUI<D> where D: Device {
-    pub fn new(device: &D, resources: &Resources, options: Options) -> DemoUI<D> {
+    pub fn new(device: &D, resources: &dyn ResourceLoader, options: Options) -> DemoUI<D> {
         let effects_texture = device.create_texture_from_png(resources, EFFECTS_PNG_NAME);
         let open_texture = device.create_texture_from_png(resources, OPEN_PNG_NAME);
         let rotate_texture = device.create_texture_from_png(resources, ROTATE_PNG_NAME);
@@ -104,7 +105,12 @@ impl<D> DemoUI<D> where D: Device {
         (self.rotation as f32 / SLIDER_WIDTH as f32 * 2.0 - 1.0) * PI
     }
 
-    pub fn update(&mut self, device: &D, debug_ui: &mut DebugUI<D>, action: &mut UIAction) {
+    pub fn update<W>(&mut self,
+                     device: &D,
+                     window: &W,
+                     debug_ui: &mut DebugUI<D>,
+                     action: &mut UIAction)
+                     where W: Window {
         // Draw message text.
 
         self.draw_message_text(device, debug_ui);
@@ -132,8 +138,10 @@ impl<D> DemoUI<D> where D: Device {
 
         // Draw open button.
         if debug_ui.ui.draw_button(device, position, &self.open_texture) {
-            if let Ok(Response::Okay(file)) = nfd::open_file_dialog(Some("svg"), None) {
-                *action = UIAction::OpenFile(PathBuf::from(file));
+            // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
+            // the contents of the file.
+            if let Ok(file) = window.run_open_dialog("svg") {
+                *action = UIAction::OpenFile(file);
             }
         }
         debug_ui.ui.draw_tooltip(device, "Open SVG", RectI32::new(position, button_size));
@@ -141,8 +149,10 @@ impl<D> DemoUI<D> where D: Device {
 
         // Draw screenshot button.
         if debug_ui.ui.draw_button(device, position, &self.screenshot_texture) {
-            if let Ok(Response::Okay(file)) = nfd::open_save_dialog(Some("png"), None) {
-                *action = UIAction::TakeScreenshot(PathBuf::from(file));
+            // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
+            // the contents of the file.
+            if let Ok(file) = window.run_save_dialog("png") {
+                *action = UIAction::TakeScreenshot(file);
             }
         }
         debug_ui.ui.draw_tooltip(device, "Take Screenshot", RectI32::new(position, button_size));

@@ -22,8 +22,9 @@ use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gl::GLDevice;
-use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, Resources};
-use pathfinder_gpu::{StencilFunc, StencilState, UniformData};
+use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
+use pathfinder_gpu::{StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::gpu_data::BuiltScene;
@@ -34,6 +35,9 @@ use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::UIEvent;
 use rayon::ThreadPoolBuilder;
 use std::f32::consts::FRAC_PI_4;
+use std::ffi::CString;
+use std::fs::File;
+use std::io::Read;
 use std::mem;
 use std::panic;
 use std::path::{Path, PathBuf};
@@ -46,7 +50,7 @@ use usvg::{Options as UsvgOptions, Tree};
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
-static DEFAULT_SVG_FILENAME: &'static str = "Ghostscript_Tiger.svg";
+static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
 
 const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
 const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
@@ -111,18 +115,18 @@ impl<W> DemoApp<W> where W: Window {
         let window = W::new(default_framebuffer_size);
         let expire_message_event_id = window.create_user_event_id();
 
-        let device = GLDevice::new();
-        let resources = Resources::locate();
-        let options = Options::get(&resources);
+        let device = GLDevice::new(window.gl_version());
+        let resources = window.resource_loader();
+        let options = Options::get(resources);
 
         let (window_size, drawable_size) = (window.size(), window.drawable_size());
 
-        let built_svg = load_scene(&options.input_path);
+        let built_svg = load_scene(resources, &options.input_path);
         let message = get_svg_building_message(&built_svg);
         let scene_view_box = built_svg.scene.view_box;
         let scene_is_monochrome = built_svg.scene.is_monochrome();
 
-        let renderer = Renderer::new(device, &resources, drawable_size);
+        let renderer = Renderer::new(device, resources, drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
         scene_thread_proxy.set_drawable_size(window.drawable_size());
 
@@ -132,15 +136,15 @@ impl<W> DemoApp<W> where W: Window {
             Camera::new_2d(scene_view_box, drawable_size)
         };
 
-        let ground_program = GroundProgram::new(&renderer.device, &resources);
+        let ground_program = GroundProgram::new(&renderer.device, resources);
         let ground_solid_vertex_array =
             GroundSolidVertexArray::new(&renderer.device,
                                         &ground_program,
-                                            &renderer.quad_vertex_positions_buffer());
+                                        &renderer.quad_vertex_positions_buffer());
         let ground_line_vertex_array = GroundLineVertexArray::new(&renderer.device,
                                                                   &ground_program);
 
-        let mut ui = DemoUI::new(&renderer.device, &resources, options);
+        let mut ui = DemoUI::new(&renderer.device, resources, options);
         let mut message_epoch = 0;
         emit_message::<W>(&mut ui, &mut message_epoch, expire_message_event_id, message);
 
@@ -341,7 +345,10 @@ impl<W> DemoApp<W> where W: Window {
         self.ui.show_text_effects = self.scene_is_monochrome;
 
         let mut ui_action = UIAction::None;
-        self.ui.update(&self.renderer.device, &mut self.renderer.debug_ui, &mut ui_action);
+        self.ui.update(&self.renderer.device,
+                       &self.window,
+                       &mut self.renderer.debug_ui,
+                       &mut ui_action);
 
         ui_event = mem::replace(&mut self.renderer.debug_ui.ui.event, UIEvent::None);
         self.handle_ui_action(&mut ui_action);
@@ -469,7 +476,7 @@ impl<W> DemoApp<W> where W: Window {
             UIAction::None => {}
 
             UIAction::OpenFile(ref path) => {
-                let built_svg = load_scene(&path);
+                let built_svg = load_scene(self.window.resource_loader(), &Some((*path).clone()));
                 self.ui.message = get_svg_building_message(&built_svg);
 
                 self.scene_view_box = built_svg.scene.view_box;
@@ -620,11 +627,11 @@ enum SceneToMainMsg {
 pub struct Options {
     jobs: Option<usize>,
     three_d: bool,
-    input_path: PathBuf,
+    input_path: Option<PathBuf>,
 }
 
 impl Options {
-    fn get(resources: &Resources) -> Options {
+    fn get(resources: &dyn ResourceLoader) -> Options {
         let matches = App::new("tile-svg")
             .arg(
                 Arg::with_name("jobs")
@@ -643,15 +650,7 @@ impl Options {
             .map(|string| string.parse().unwrap());
         let three_d = matches.is_present("3d");
 
-        let input_path = match matches.value_of("INPUT") {
-            Some(path) => PathBuf::from(path),
-            None => {
-                let mut path = resources.resources_directory.clone();
-                path.push("svg");
-                path.push(DEFAULT_SVG_FILENAME);
-                path
-            }
-        };
+        let input_path = matches.value_of("INPUT").map(PathBuf::from);
 
         // Set up Rayon.
         let mut thread_pool_builder = ThreadPoolBuilder::new();
@@ -664,8 +663,21 @@ impl Options {
     }
 }
 
-fn load_scene(input_path: &Path) -> BuiltSVG {
-    BuiltSVG::from_tree(Tree::from_file(input_path, &UsvgOptions::default()).unwrap())
+fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &Option<PathBuf>) -> BuiltSVG {
+    let mut data;
+    match *input_path {
+        Some(ref input_path) => {
+            data = vec![];
+            let mut file = match File::open(input_path) {
+                Ok(file) => file,
+                Err(err) => panic!(),
+            };
+            file.read_to_end(&mut data).unwrap();
+        }
+        None => data = resource_loader.slurp(DEFAULT_SVG_VIRTUAL_PATH).unwrap(),
+    }
+
+    BuiltSVG::from_tree(Tree::from_data(&data, &UsvgOptions::default()).unwrap())
 }
 
 fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) -> BuiltScene {

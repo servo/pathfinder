@@ -18,7 +18,8 @@
 use crate::gpu_data::Stats;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_gpu::{Device, Resources};
+use pathfinder_gpu::Device;
+use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_ui::{FONT_ASCENT, LINE_HEIGHT, PADDING, UI, WINDOW_COLOR};
 use std::collections::VecDeque;
 use std::ops::{Add, Div};
@@ -37,7 +38,8 @@ pub struct DebugUI<D> where D: Device {
 }
 
 impl<D> DebugUI<D> where D: Device {
-    pub fn new(device: &D, resources: &Resources, framebuffer_size: Point2DI32) -> DebugUI<D> {
+    pub fn new(device: &D, resources: &dyn ResourceLoader, framebuffer_size: Point2DI32)
+               -> DebugUI<D> {
         let ui = UI::new(device, resources, framebuffer_size);
         DebugUI { ui, cpu_samples: SampleBuffer::new(), gpu_samples: SampleBuffer::new() }
     }

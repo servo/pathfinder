@@ -16,6 +16,7 @@ pub use crate::scalar as default;
 pub use crate::x86 as default;
 
 pub mod scalar;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
 mod extras;
 

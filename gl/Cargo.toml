@@ -6,6 +6,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
 gl = "0.6"
+rustache = "0.1"
 
 [dependencies.image]
 version = "0.21"

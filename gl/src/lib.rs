@@ -10,23 +10,29 @@
 
 //! An OpenGL implementation of the device abstraction.
 
-use gl::types::{GLboolean, GLchar, GLdouble, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr};
-use gl::types::{GLuint, GLvoid};
+use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, Device, Primitive};
 use pathfinder_gpu::{RenderState, ShaderKind, StencilFunc, TextureFormat};
 use pathfinder_gpu::{UniformData, VertexAttrType};
 use pathfinder_simd::default::F32x4;
+use rustache::{HashBuilder, Render};
 use std::ffi::CString;
+use std::io::Cursor;
 use std::mem;
 use std::ptr;
+use std::str;
 use std::time::Duration;
 
-pub struct GLDevice;
+pub struct GLDevice {
+    version: GLVersion,
+}
 
 impl GLDevice {
     #[inline]
-    pub fn new() -> GLDevice { GLDevice }
+    pub fn new(version: GLVersion) -> GLDevice {
+        GLDevice { version }
+    }
 
     fn set_texture_parameters(&self, texture: &GLTexture) {
         self.bind_texture(texture, 0);
@@ -189,7 +195,7 @@ impl Device for GLDevice {
             self.bind_texture(&texture, 0);
             gl::TexImage2D(gl::TEXTURE_2D,
                            0,
-                           gl::RED as GLint,
+                           gl::R8 as GLint,
                            size.x() as GLsizei,
                            size.y() as GLsizei,
                            0,
@@ -203,6 +209,12 @@ impl Device for GLDevice {
     }
 
     fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind) -> GLShader {
+        let glsl_version_spec = self.version.to_glsl_version_spec();
+        let template_input = HashBuilder::new().insert("version", glsl_version_spec);
+        let mut output = Cursor::new(vec![]);
+        template_input.render(str::from_utf8(source).unwrap(), &mut output).unwrap();
+        let source = output.into_inner();
+
         let gl_shader_kind = match kind {
             ShaderKind::Vertex => gl::VERTEX_SHADER,
             ShaderKind::Fragment => gl::FRAGMENT_SHADER,
@@ -361,7 +373,6 @@ impl Device for GLDevice {
         let mut gl_framebuffer = 0;
         unsafe {
             gl::GenFramebuffers(1, &mut gl_framebuffer); ck();
-            assert_eq!(gl::GetError(), gl::NO_ERROR);
             gl::BindFramebuffer(gl::FRAMEBUFFER, gl_framebuffer); ck();
             self.bind_texture(&texture, 0);
             gl::FramebufferTexture2D(gl::FRAMEBUFFER,
@@ -469,7 +480,7 @@ impl Device for GLDevice {
             }
             if let Some(depth) = depth {
                 gl::DepthMask(gl::TRUE); ck();
-                gl::ClearDepth(depth as GLdouble); ck();
+                gl::ClearDepthf(depth as _); ck(); // FIXME(pcwalton): GLES
                 flags |= gl::DEPTH_BUFFER_BIT;
             }
             if let Some(stencil) = stencil {
@@ -793,6 +804,23 @@ impl VertexAttrTypeExt for VertexAttrType {
             VertexAttrType::I16 => gl::SHORT,
             VertexAttrType::U16 => gl::UNSIGNED_SHORT,
             VertexAttrType::U8  => gl::UNSIGNED_BYTE,
+        }
+    }
+}
+
+/// The version/dialect of OpenGL we should render with.
+pub enum GLVersion {
+    /// OpenGL 3.0+, core profile.
+    GL3,
+    /// OpenGL ES 3.0+.
+    GLES3,
+}
+
+impl GLVersion {
+    fn to_glsl_version_spec(&self) -> &'static str {
+        match *self {
+            GLVersion::GL3 => "330",
+            GLVersion::GLES3 => "300 es",
         }
     }
 }

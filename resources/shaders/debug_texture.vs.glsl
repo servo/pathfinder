@@ -1,4 +1,4 @@
-#version 330
+#version {{version}}
 
 // pathfinder/demo/shaders/debug_texture.vs.glsl
 //

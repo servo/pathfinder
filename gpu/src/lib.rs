@@ -10,6 +10,8 @@
 
 //! Minimal abstractions over GPU device capabilities.
 
+use crate::resources::ResourceLoader;
+use image::ImageFormat;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_simd::default::F32x4;
 use std::env;
@@ -17,6 +19,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
+
+pub mod resources;
 
 pub trait Device {
     type Buffer;
@@ -91,28 +95,22 @@ pub trait Device {
     fn bind_framebuffer(&self, framebuffer: &Self::Framebuffer);
     fn bind_texture(&self, texture: &Self::Texture, unit: u32);
 
-    fn create_texture_from_png(&self, resources: &Resources, name: &str) -> Self::Texture {
-        let mut path = resources.resources_directory.clone();
-        path.push("textures");
-        path.push(format!("{}.png", name));
-
-        let image = image::open(&path).unwrap().to_luma();
+    fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str)
+                               -> Self::Texture {
+        let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
+        let image = image::load_from_memory_with_format(&data, ImageFormat::PNG).unwrap().to_luma();
         let size = Point2DI32::new(image.width() as i32, image.height() as i32);
         self.create_texture_from_data(size, &image)
     }
 
-    fn create_shader(&self, resources: &Resources, name: &str, kind: ShaderKind) -> Self::Shader {
+    fn create_shader(&self, resources: &dyn ResourceLoader, name: &str, kind: ShaderKind)
+                     -> Self::Shader {
         let suffix = match kind { ShaderKind::Vertex => 'v', ShaderKind::Fragment => 'f' };
-        let mut path = resources.resources_directory.clone();
-        path.push("shaders");
-        path.push(format!("{}.{}s.glsl", name, suffix));
-
-        let mut source = vec![];
-        File::open(&path).unwrap().read_to_end(&mut source).unwrap();
+        let source = resources.slurp(&format!("shaders/{}.{}s.glsl", name, suffix)).unwrap();
         self.create_shader_from_source(name, &source, kind)
     }
 
-    fn create_program(&self, resources: &Resources, name: &str) -> Self::Program {
+    fn create_program(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Program {
         let vertex_shader = self.create_shader(resources, name, ShaderKind::Vertex);
         let fragment_shader = self.create_shader(resources, name, ShaderKind::Fragment);
         self.create_program_from_shaders(name, vertex_shader, fragment_shader)
@@ -241,35 +239,5 @@ impl Default for StencilFunc {
     #[inline]
     fn default() -> StencilFunc {
         StencilFunc::Always
-    }
-}
-
-pub struct Resources {
-    pub resources_directory: PathBuf,
-}
-
-impl Resources {
-    pub fn locate() -> Resources {
-        let mut parent_directory = env::current_dir().unwrap();
-        loop {
-            // So ugly :(
-            let mut resources_directory = parent_directory.clone();
-            resources_directory.push("resources");
-            if resources_directory.is_dir() {
-                let mut shaders_directory = resources_directory.clone();
-                let mut textures_directory = resources_directory.clone();
-                shaders_directory.push("shaders");
-                textures_directory.push("textures");
-                if shaders_directory.is_dir() && textures_directory.is_dir() {
-                    return Resources { resources_directory };
-                }
-            }
-
-            if !parent_directory.pop() {
-                break;
-            }
-        }
-
-        panic!("No suitable `resources/` directory found!");
     }
 }

@@ -1,4 +1,4 @@
-#version 330
+#version {{version}}
 
 // pathfinder/demo/resources/shaders/mask_tile.fs.glsl
 //

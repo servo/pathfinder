@@ -15,8 +15,9 @@ use crate::scene::ObjectShader;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::color::ColorU;
+use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, DepthState, Device};
-use pathfinder_gpu::{Primitive, RenderState, Resources, StencilFunc, StencilState, TextureFormat};
+use pathfinder_gpu::{Primitive, RenderState, StencilFunc, StencilState, TextureFormat};
 use pathfinder_gpu::{UniformData, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::collections::VecDeque;
@@ -73,17 +74,17 @@ pub struct Renderer<D> where D: Device {
 }
 
 impl<D> Renderer<D> where D: Device {
-    pub fn new(device: D, resources: &Resources, main_framebuffer_size: Point2DI32)
+    pub fn new(device: D, resources: &dyn ResourceLoader, main_framebuffer_size: Point2DI32)
                -> Renderer<D> {
-        let fill_program = FillProgram::new(&device, &resources);
-        let solid_tile_program = SolidTileProgram::new(&device, &resources);
-        let mask_tile_program = MaskTileProgram::new(&device, &resources);
+        let fill_program = FillProgram::new(&device, resources);
+        let solid_tile_program = SolidTileProgram::new(&device, resources);
+        let mask_tile_program = MaskTileProgram::new(&device, resources);
 
-        let postprocess_program = PostprocessProgram::new(&device, &resources);
-        let stencil_program = StencilProgram::new(&device, &resources);
+        let postprocess_program = PostprocessProgram::new(&device, resources);
+        let stencil_program = StencilProgram::new(&device, resources);
 
-        let area_lut_texture = device.create_texture_from_png(&resources, "area-lut");
-        let gamma_lut_texture = device.create_texture_from_png(&resources, "gamma-lut");
+        let area_lut_texture = device.create_texture_from_png(resources, "area-lut");
+        let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
 
         let quad_vertex_positions_buffer = device.create_buffer();
         device.upload_to_buffer(&quad_vertex_positions_buffer,
@@ -115,7 +116,7 @@ impl<D> Renderer<D> where D: Device {
                                                FILL_COLORS_TEXTURE_HEIGHT);
         let fill_colors_texture = device.create_texture(TextureFormat::RGBA8, fill_colors_size);
 
-        let debug_ui = DebugUI::new(&device, &resources, main_framebuffer_size);
+        let debug_ui = DebugUI::new(&device, resources, main_framebuffer_size);
 
         Renderer {
             device,
@@ -653,7 +654,7 @@ struct FillProgram<D> where D: Device {
 }
 
 impl<D> FillProgram<D> where D: Device {
-    fn new(device: &D, resources: &Resources) -> FillProgram<D> {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> FillProgram<D> {
         let program = device.create_program(resources, "fill");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
@@ -672,7 +673,7 @@ struct SolidTileProgram<D> where D: Device {
 }
 
 impl<D> SolidTileProgram<D> where D: Device {
-    fn new(device: &D, resources: &Resources) -> SolidTileProgram<D> {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileProgram<D> {
         let program = device.create_program(resources, "solid_tile");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
@@ -703,7 +704,7 @@ struct MaskTileProgram<D> where D: Device {
 }
 
 impl<D> MaskTileProgram<D> where D: Device {
-    fn new(device: &D, resources: &Resources) -> MaskTileProgram<D> {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> MaskTileProgram<D> {
         let program = device.create_program(resources, "mask_tile");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
@@ -736,7 +737,7 @@ struct PostprocessProgram<D> where D: Device {
 }
 
 impl<D> PostprocessProgram<D> where D: Device {
-    fn new(device: &D, resources: &Resources) -> PostprocessProgram<D> {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> PostprocessProgram<D> {
         let program = device.create_program(resources, "post");
         let source_uniform = device.get_uniform(&program, "Source");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
@@ -787,7 +788,7 @@ struct StencilProgram<D> where D: Device {
 }
 
 impl<D> StencilProgram<D> where D: Device {
-    fn new(device: &D, resources: &Resources) -> StencilProgram<D> {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> StencilProgram<D> {
         let program = device.create_program(resources, "stencil");
         StencilProgram { program }
     }

@@ -20,8 +20,9 @@ use hashbrown::HashMap;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::color::ColorU;
+use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, Device, Primitive, RenderState};
-use pathfinder_gpu::{Resources, UniformData, VertexAttrType};
+use pathfinder_gpu::{UniformData, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::fs::File;
@@ -55,7 +56,7 @@ static OUTLINE_COLOR:     ColorU = ColorU { r: 255, g: 255, b: 255, a: 192 };
 
 static INVERTED_TEXT_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255      };
 
-static FONT_JSON_FILENAME: &'static str = "debug-font.json";
+static FONT_JSON_VIRTUAL_PATH: &'static str = "debug-fonts/regular.json";
 static FONT_PNG_NAME: &'static str = "debug-font";
 
 static CORNER_FILL_PNG_NAME: &'static str = "debug-corner-fill";
@@ -83,7 +84,7 @@ pub struct UI<D> where D: Device {
 }
 
 impl<D> UI<D> where D: Device {
-    pub fn new(device: &D, resources: &Resources, framebuffer_size: Point2DI32) -> UI<D> {
+    pub fn new(device: &D, resources: &dyn ResourceLoader, framebuffer_size: Point2DI32) -> UI<D> {
         let texture_program = DebugTextureProgram::new(device, resources);
         let texture_vertex_array = DebugTextureVertexArray::new(device, &texture_program);
         let font = DebugFont::load(resources);
@@ -509,7 +510,7 @@ struct DebugTextureProgram<D> where D: Device {
 }
 
 impl<D> DebugTextureProgram<D> where D: Device {
-    fn new(device: &D, resources: &Resources) -> DebugTextureProgram<D> {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> DebugTextureProgram<D> {
         let program = device.create_program(resources, "debug_texture");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let texture_size_uniform = device.get_uniform(&program, "TextureSize");
@@ -598,7 +599,7 @@ struct DebugSolidProgram<D> where D: Device {
 }
 
 impl<D> DebugSolidProgram<D> where D: Device {
-    fn new(device: &D, resources: &Resources) -> DebugSolidProgram<D> {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> DebugSolidProgram<D> {
         let program = device.create_program(resources, "debug_solid");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let color_uniform = device.get_uniform(&program, "Color");
@@ -727,10 +728,8 @@ struct DebugCharacter {
 }
 
 impl DebugFont {
-    fn load(resources: &Resources) -> DebugFont {
-        let mut path = resources.resources_directory.clone();
-        path.push(FONT_JSON_FILENAME);
-
-        serde_json::from_reader(BufReader::new(File::open(path).unwrap())).unwrap()
+    #[inline]
+    fn load(resources: &dyn ResourceLoader) -> DebugFont {
+        serde_json::from_slice(&resources.slurp(FONT_JSON_VIRTUAL_PATH).unwrap()).unwrap()
     }
 }

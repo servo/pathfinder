@@ -11,7 +11,8 @@
 //! GPU rendering code specifically for the demo.
 
 use crate::GRIDLINE_COUNT;
-use pathfinder_gpu::{BufferTarget, BufferUploadMode, Device, Resources, VertexAttrType};
+use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_gpu::{BufferTarget, BufferUploadMode, Device, VertexAttrType};
 
 pub struct GroundProgram<D> where D: Device {
     pub program: D::Program,
@@ -20,7 +21,7 @@ pub struct GroundProgram<D> where D: Device {
 }
 
 impl<D> GroundProgram<D> where D: Device {
-    pub fn new(device: &D, resources: &Resources) -> GroundProgram<D> {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> GroundProgram<D> {
         let program = device.create_program(resources, "demo_ground");
         let transform_uniform = device.get_uniform(&program, "Transform");
         let color_uniform = device.get_uniform(&program, "Color");

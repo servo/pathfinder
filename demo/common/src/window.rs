@@ -11,15 +11,23 @@
 //! A minimal cross-platform windowing layer.
 
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_gl::GLVersion;
+use pathfinder_gpu::resources::ResourceLoader;
+use std::io::Error;
+use std::path::PathBuf;
 
 pub trait Window {
     fn new(initial_size: Point2DI32) -> Self;
+    fn gl_version(&self) -> GLVersion;
     fn size(&self) -> Point2DI32;
     fn drawable_size(&self) -> Point2DI32;
     fn mouse_position(&self) -> Point2DI32;
     fn present(&self);
+    fn resource_loader(&self) -> &dyn ResourceLoader;
     fn create_user_event_id(&self) -> u32;
     fn push_user_event(message_type: u32, message_data: u32);
+    fn run_open_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
+    fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
 }
 
 pub enum Event {
