@@ -1,0 +1,19 @@
+<manifest
+	xmlns:ml="magicleap"
+	ml:package="com.mozilla.pathfinder.demo"
+	ml:version_code="1"
+	ml:version_name="1.0">
+	<application
+		ml:visible_name="Pathfinder Demo"
+                ml:sdk_version="0.19.0"
+                ml:min_api_level="3">
+	        <uses-privilege ml:name="WorldReconstruction"/>
+                <uses-privilege ml:name="LowLatencyLightwear"/>
+		<component
+			ml:name=".fullscreen"
+			ml:visible_name="Pathfinder Demo"
+			ml:binary_name="bin/PathfinderDemo"
+			ml:type="Fullscreen">
+		</component>
+	</application>
+</manifest>

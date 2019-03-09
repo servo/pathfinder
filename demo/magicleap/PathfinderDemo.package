@@ -1,0 +1,2 @@
+REFS = PathfinderDemo
+OPTIONS=package/debuggable/on
