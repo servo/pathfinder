@@ -13,6 +13,7 @@
 use crate::resources::ResourceLoader;
 use image::ImageFormat;
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_simd::default::F32x4;
 use std::env;
 use std::fs::File;
@@ -91,7 +92,7 @@ pub trait Device {
     // TODO(pcwalton): Go bindless...
     fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
     fn bind_buffer(&self, buffer: &Self::Buffer, target: BufferTarget);
-    fn bind_default_framebuffer(&self, size: Point2DI32);
+    fn bind_default_framebuffer(&self, viewport: RectI32);
     fn bind_framebuffer(&self, framebuffer: &Self::Framebuffer);
     fn bind_texture(&self, texture: &Self::Texture, unit: u32);
 

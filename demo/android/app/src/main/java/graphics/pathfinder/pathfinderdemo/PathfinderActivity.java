@@ -10,6 +10,7 @@ import android.support.v7.app.ActionBar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -18,6 +19,8 @@ import android.view.View;
  * status bar and navigation/system bar) with user interaction.
  */
 public class PathfinderActivity extends AppCompatActivity {
+    private PathfinderDemoRenderer mRenderer;
+
     /**
      * Whether or not the system UI should be auto-hidden after
      * {@link #AUTO_HIDE_DELAY_MILLIS} milliseconds.
@@ -111,6 +114,7 @@ public class PathfinderActivity extends AppCompatActivity {
             init();
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void init() {
         setContentView(R.layout.activity_pathfinder);
 
@@ -118,6 +122,7 @@ public class PathfinderActivity extends AppCompatActivity {
         mControlsView = findViewById(R.id.fullscreen_content_controls);
         mContentView = findViewById(R.id.fullscreen_content);
 
+        /*
         // Set up the user interaction to manually show or hide the system UI.
         mContentView.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -125,9 +130,30 @@ public class PathfinderActivity extends AppCompatActivity {
                 toggle();
             }
         });
+        */
 
         mContentView.setEGLContextClientVersion(3);
-        mContentView.setRenderer(new PathfinderDemoRenderer(getAssets()));
+        mRenderer = new PathfinderDemoRenderer(getAssets());
+        mContentView.setRenderer(mRenderer);
+
+        mContentView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View view, MotionEvent event) {
+                int x = Math.round(event.getX());
+                int y = Math.round(event.getY());
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        Log.i("Pathfinder", "DOWN " + x + " " + y);
+                        PathfinderDemoRenderer.pushMouseDownEvent(x, y);
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        Log.i("Pathfinder", "MOVE " + x + " " + y);
+                        PathfinderDemoRenderer.pushMouseDraggedEvent(x, y);
+                        break;
+                }
+                return true;
+            }
+        });
     }
 
     @Override

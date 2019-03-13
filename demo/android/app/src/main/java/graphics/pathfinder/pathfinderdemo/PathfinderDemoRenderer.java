@@ -12,6 +12,9 @@ public class PathfinderDemoRenderer extends Object implements GLSurfaceView.Rend
     private static native void init(PathfinderDemoResourceLoader resourceLoader);
     private static native void runOnce();
 
+    public static native void pushMouseDownEvent(int x, int y);
+    public static native void pushMouseDraggedEvent(int x, int y);
+
     static {
         System.loadLibrary("pathfinder_android_demo");
     }

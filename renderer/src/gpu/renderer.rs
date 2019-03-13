@@ -14,6 +14,7 @@ use crate::post::DefringingKernel;
 use crate::scene::ObjectShader;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
+use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, DepthState, Device};
@@ -68,13 +69,17 @@ pub struct Renderer<D> where D: Device {
     pub debug_ui: DebugUI<D>,
 
     // Extra info
+    viewport: RectI32,
     main_framebuffer_size: Point2DI32,
     postprocess_options: PostprocessOptions,
     use_depth: bool,
 }
 
 impl<D> Renderer<D> where D: Device {
-    pub fn new(device: D, resources: &dyn ResourceLoader, main_framebuffer_size: Point2DI32)
+    pub fn new(device: D,
+               resources: &dyn ResourceLoader,
+               viewport: RectI32,
+               main_framebuffer_size: Point2DI32)
                -> Renderer<D> {
         let fill_program = FillProgram::new(&device, resources);
         let solid_tile_program = SolidTileProgram::new(&device, resources);
@@ -144,6 +149,7 @@ impl<D> Renderer<D> where D: Device {
 
             debug_ui,
 
+            viewport,
             main_framebuffer_size,
             postprocess_options: PostprocessOptions::default(),
             use_depth: false,
@@ -181,6 +187,11 @@ impl<D> Renderer<D> where D: Device {
         self.pending_timer_queries.push_back(timer_query);
     }
 
+    pub fn draw_debug_ui(&self) {
+        self.device.bind_default_framebuffer(self.viewport);
+        self.debug_ui.draw(&self.device);
+    }
+
     pub fn shift_timer_query(&mut self) -> Option<Duration> {
         let query = self.pending_timer_queries.front()?;
         if !self.device.timer_query_is_available(&query) {
@@ -193,8 +204,12 @@ impl<D> Renderer<D> where D: Device {
     }
 
     #[inline]
+    pub fn set_viewport(&mut self, new_viewport: RectI32) {
+        self.viewport = new_viewport;
+    }
+
+    #[inline]
     pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Point2DI32) {
-        self.main_framebuffer_size = new_framebuffer_size;
         self.debug_ui.ui.set_framebuffer_size(new_framebuffer_size);
     }
 
@@ -299,7 +314,7 @@ impl<D> Renderer<D> where D: Device {
         self.device.bind_vertex_array(&self.mask_tile_vertex_array.vertex_array);
         self.device.use_program(&self.mask_tile_program.program);
         self.device.set_uniform(&self.mask_tile_program.framebuffer_size_uniform,
-                                UniformData::Vec2(self.main_framebuffer_size.0.to_f32x4()));
+                                UniformData::Vec2(self.viewport.size().to_f32().0));
         self.device.set_uniform(&self.mask_tile_program.tile_size_uniform,
                                 UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
                                                              TILE_HEIGHT as i32,
@@ -339,7 +354,7 @@ impl<D> Renderer<D> where D: Device {
         self.device.bind_vertex_array(&self.solid_tile_vertex_array.vertex_array);
         self.device.use_program(&self.solid_tile_program.program);
         self.device.set_uniform(&self.solid_tile_program.framebuffer_size_uniform,
-                                UniformData::Vec2(self.main_framebuffer_size.0.to_f32x4()));
+                                UniformData::Vec2(self.viewport.size().0.to_f32x4()));
         self.device.set_uniform(&self.solid_tile_program.tile_size_uniform,
                                 UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
                                                              TILE_HEIGHT as i32,
@@ -365,12 +380,12 @@ impl<D> Renderer<D> where D: Device {
     }
 
     fn postprocess(&mut self) {
-        self.device.bind_default_framebuffer(self.main_framebuffer_size);
+        self.device.bind_default_framebuffer(self.viewport);
 
         self.device.bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
         self.device.use_program(&self.postprocess_program.program);
         self.device.set_uniform(&self.postprocess_program.framebuffer_size_uniform,
-                                UniformData::Vec2(self.main_framebuffer_size.to_f32().0));
+                                UniformData::Vec2(self.viewport.size().to_f32().0));
         match self.postprocess_options.defringing_kernel {
             Some(ref kernel) => {
                 self.device.set_uniform(&self.postprocess_program.kernel_uniform,
@@ -434,7 +449,7 @@ impl<D> Renderer<D> where D: Device {
         if self.postprocessing_needed() {
             self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
         } else {
-            self.device.bind_default_framebuffer(self.main_framebuffer_size);
+            self.device.bind_default_framebuffer(self.viewport);
         }
     }
 
@@ -447,10 +462,10 @@ impl<D> Renderer<D> where D: Device {
         match self.postprocess_source_framebuffer {
             Some(ref framebuffer) if
                     self.device.texture_size(self.device.framebuffer_texture(framebuffer)) ==
-                    self.main_framebuffer_size => {}
+                    self.viewport.size() => {}
             _ => {
                 let texture = self.device.create_texture(TextureFormat::RGBA8,
-                                                         self.main_framebuffer_size);
+                                                         self.viewport.size());
                 self.postprocess_source_framebuffer = Some(self.device.create_framebuffer(texture))
             }
         };

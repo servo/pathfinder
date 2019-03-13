@@ -167,13 +167,12 @@ impl WindowImpl {
             SDLEvent::MouseButtonDown { x, y, .. } => {
                 Some(Event::MouseDown(Point2DI32::new(x, y)))
             }
-            SDLEvent::MouseMotion { x, y, xrel, yrel, mousestate, .. } => {
+            SDLEvent::MouseMotion { x, y, mousestate, .. } => {
                 let position = Point2DI32::new(x, y);
-                let relative_position = Point2DI32::new(xrel, yrel);
                 if mousestate.left() {
-                    Some(Event::MouseDragged { position, relative_position })
+                    Some(Event::MouseDragged(position))
                 } else {
-                    Some(Event::MouseMoved { position, relative_position })
+                    Some(Event::MouseMoved(position))
                 }
             }
             SDLEvent::Quit { .. } => Some(Event::Quit),

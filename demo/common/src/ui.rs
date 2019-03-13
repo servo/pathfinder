@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::Options;
+use crate::{Mode, Options};
 use crate::window::Window;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
@@ -16,7 +16,7 @@ use pathfinder_gpu::Device;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_renderer::gpu::debug::DebugUI;
 use pathfinder_ui::{BUTTON_HEIGHT, BUTTON_TEXT_OFFSET, BUTTON_WIDTH, FONT_ASCENT, PADDING};
-use pathfinder_ui::{SWITCH_SIZE, TEXT_COLOR, TOOLTIP_HEIGHT, WINDOW_COLOR};
+use pathfinder_ui::{TEXT_COLOR, TOOLTIP_HEIGHT, WINDOW_COLOR};
 use std::f32::consts::PI;
 use std::path::PathBuf;
 
@@ -56,7 +56,7 @@ pub struct DemoUI<D> where D: Device {
 
     // FIXME(pcwalton): Factor the below out into a model class.
 
-    pub three_d_enabled: bool,
+    pub mode: Mode,
     pub dark_background_enabled: bool,
     pub gamma_correction_effect_enabled: bool,
     pub stem_darkening_effect_enabled: bool,
@@ -90,7 +90,7 @@ impl<D> DemoUI<D> where D: Device {
             effects_panel_visible: false,
             rotate_panel_visible: false,
 
-            three_d_enabled: options.three_d,
+            mode: options.mode,
             dark_background_enabled: false,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
@@ -121,7 +121,6 @@ impl<D> DemoUI<D> where D: Device {
         let mut position = Point2DI32::new(PADDING, bottom - BUTTON_HEIGHT);
 
         let button_size = Point2DI32::new(BUTTON_WIDTH, BUTTON_HEIGHT);
-        let switch_size = Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT);
 
         // Draw text effects button.
         if self.show_text_effects {
@@ -158,14 +157,24 @@ impl<D> DemoUI<D> where D: Device {
         debug_ui.ui.draw_tooltip(device, "Take Screenshot", RectI32::new(position, button_size));
         position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
-        // Draw 3D switch.
-        self.three_d_enabled = debug_ui.ui.draw_text_switch(device,
-                                                            position,
-                                                            "2D",
-                                                            "3D",
-                                                            self.three_d_enabled);
-        debug_ui.ui.draw_tooltip(device, "2D/3D Mode", RectI32::new(position, switch_size));
-        position += Point2DI32::new(SWITCH_SIZE + PADDING, 0);
+        // Draw mode switch.
+        let new_mode = debug_ui.ui.draw_text_switch(device,
+                                                    position,
+                                                    &["2D", "3D", "VR"],
+                                                    self.mode as u8);
+        if new_mode != self.mode as u8 {
+            self.mode = match new_mode {
+                0 => Mode::TwoD,
+                1 => Mode::ThreeD,
+                _ => Mode::VR,
+            };
+        }
+        let mode_switch_width = debug_ui.ui.measure_switch(3);
+        let mode_switch_size = Point2DI32::new(mode_switch_width, BUTTON_HEIGHT);
+        debug_ui.ui.draw_tooltip(device,
+                                 "2D/3D/VR Mode",
+                                 RectI32::new(position, mode_switch_size));
+        position += Point2DI32::new(mode_switch_width + PADDING, 0);
 
         // Draw background switch.
         self.dark_background_enabled = debug_ui.ui.draw_image_switch(device,
@@ -173,14 +182,18 @@ impl<D> DemoUI<D> where D: Device {
                                                                      &self.bg_light_texture,
                                                                      &self.bg_dark_texture,
                                                                      self.dark_background_enabled);
-        debug_ui.ui.draw_tooltip(device, "Background Color", RectI32::new(position, switch_size));
-        position += Point2DI32::new(SWITCH_SIZE + PADDING, 0);
+        let background_color_switch_width = debug_ui.ui.measure_switch(2);
+        let background_color_switch_size = Point2DI32::new(background_color_switch_width,
+                                                           BUTTON_HEIGHT);
+        let background_color_switch_rect = RectI32::new(position, background_color_switch_size);
+        debug_ui.ui.draw_tooltip(device, "Background Color", background_color_switch_rect);
+        position += Point2DI32::new(background_color_switch_width + PADDING, 0);
 
         // Draw effects panel, if necessary.
         self.draw_effects_panel(device, debug_ui);
 
         // Draw rotate and zoom buttons, if applicable.
-        if self.three_d_enabled {
+        if self.mode != Mode::TwoD {
             return;
         }
 
@@ -281,7 +294,7 @@ impl<D> DemoUI<D> where D: Device {
         let widget_rect = RectI32::new(Point2DI32::new(widget_x, widget_y),
                                        Point2DI32::new(SLIDER_WIDTH, SLIDER_KNOB_HEIGHT));
         if let Some(position) = debug_ui.ui
-                                        .event
+                                        .event_queue
                                         .handle_mouse_down_or_dragged_in_rect(widget_rect) {
             self.rotation = position.x();
             *action = UIAction::Rotate(self.rotation());
@@ -313,10 +326,11 @@ impl<D> DemoUI<D> where D: Device {
         let text_y = window_y + PADDING + BUTTON_TEXT_OFFSET + (BUTTON_HEIGHT + PADDING) * index;
         debug_ui.ui.draw_text(device, text, Point2DI32::new(text_x, text_y), false);
 
-        let switch_x = PADDING + EFFECTS_PANEL_WIDTH - (SWITCH_SIZE + PADDING);
+        let switch_width = debug_ui.ui.measure_switch(2);
+        let switch_x = PADDING + EFFECTS_PANEL_WIDTH - (switch_width + PADDING);
         let switch_y = window_y + PADDING + (BUTTON_HEIGHT + PADDING) * index;
         let switch_position = Point2DI32::new(switch_x, switch_y);
-        debug_ui.ui.draw_text_switch(device, switch_position, "Off", "On", value)
+        debug_ui.ui.draw_text_switch(device, switch_position, &["Off", "On"], value as u8) != 0
     }
 }
 

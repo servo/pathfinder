@@ -12,6 +12,7 @@
 
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, Device, Primitive};
 use pathfinder_gpu::{RenderState, ShaderKind, StencilFunc, TextureFormat};
 use pathfinder_gpu::{UniformData, VertexAttrType};
@@ -584,10 +585,13 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn bind_default_framebuffer(&self, size: Point2DI32) {
+    fn bind_default_framebuffer(&self, viewport: RectI32) {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, 0); ck();
-            gl::Viewport(0, 0, size.x(), size.y()); ck();
+            gl::Viewport(viewport.origin().x(),
+                         viewport.origin().y(),
+                         viewport.size().x(),
+                         viewport.size().y()); ck();
         }
     }
 

@@ -25,8 +25,7 @@ use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, Device, Primiti
 use pathfinder_gpu::{UniformData, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
-use std::fs::File;
-use std::io::BufReader;
+use std::mem;
 
 pub const PADDING: i32 = 12;
 
@@ -37,8 +36,6 @@ pub const BUTTON_WIDTH: i32 = PADDING * 2 + ICON_SIZE;
 pub const BUTTON_HEIGHT: i32 = PADDING * 2 + ICON_SIZE;
 pub const BUTTON_TEXT_OFFSET: i32 = PADDING + 36;
 
-pub const SWITCH_SIZE: i32 = SWITCH_HALF_SIZE * 2 + 1;
-
 pub const TOOLTIP_HEIGHT: i32 = FONT_ASCENT + PADDING * 2;
 
 const DEBUG_TEXTURE_VERTEX_SIZE: usize = 8;
@@ -46,7 +43,7 @@ const DEBUG_SOLID_VERTEX_SIZE:   usize = 4;
 
 const ICON_SIZE: i32 = 48;
 
-const SWITCH_HALF_SIZE: i32 = 96;
+const SWITCH_SEGMENT_SIZE: i32 = 96;
 
 pub static TEXT_COLOR:   ColorU = ColorU { r: 255, g: 255, b: 255, a: 255      };
 pub static WINDOW_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 255 - 90 };
@@ -67,7 +64,7 @@ static RECT_LINE_INDICES:         [u32; 8] = [0, 1, 1, 2, 2, 3, 3, 0];
 static OUTLINE_RECT_LINE_INDICES: [u32; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 
 pub struct UI<D> where D: Device {
-    pub event: UIEvent,
+    pub event_queue: UIEventQueue,
     pub mouse_position: Point2DF32,
 
     framebuffer_size: Point2DI32,
@@ -98,7 +95,7 @@ impl<D> UI<D> where D: Device {
                                                                     CORNER_OUTLINE_PNG_NAME);
 
         UI {
-            event: UIEvent::None,
+            event_queue: UIEventQueue::new(),
             mouse_position: Point2DF32::default(),
 
             framebuffer_size,
@@ -251,6 +248,11 @@ impl<D> UI<D> where D: Device {
         next
     }
 
+    #[inline]
+    pub fn measure_switch(&self, segment_count: u8) -> i32 {
+        SWITCH_SEGMENT_SIZE * segment_count as i32 + (segment_count - 1) as i32
+    }
+
     pub fn draw_solid_rounded_rect(&self, device: &D, rect: RectI32, color: ColorU) {
         let corner_texture = self.corner_texture(true);
         let corner_rects = CornerRects::new(device, rect, corner_texture);
@@ -309,6 +311,13 @@ impl<D> UI<D> where D: Device {
 
         let index_data = &OUTLINE_RECT_LINE_INDICES;
         self.draw_solid_rects_with_vertex_data(device, &vertex_data, index_data, color, false);
+    }
+
+    // TODO(pcwalton): `LineSegmentI32`.
+    fn draw_line(&self, device: &D, from: Point2DI32, to: Point2DI32, color: ColorU) {
+        let vertex_data = vec![DebugSolidVertex::new(from), DebugSolidVertex::new(to)];
+        self.draw_solid_rects_with_vertex_data(device, &vertex_data, &[0, 1], color, false);
+
     }
 
     fn draw_rounded_rect_corners(&self,
@@ -409,30 +418,32 @@ impl<D> UI<D> where D: Device {
                           origin + Point2DI32::new(PADDING, PADDING),
                           texture,
                           BUTTON_ICON_COLOR);
-        self.event.handle_mouse_down_in_rect(button_rect).is_some()
+        self.event_queue.handle_mouse_down_in_rect(button_rect).is_some()
     }
 
     pub fn draw_text_switch(&mut self,
                             device: &D,
-                            origin: Point2DI32,
-                            off_text: &str,
-                            on_text: &str,
-                            mut value: bool)
-                            -> bool {
-        value = self.draw_switch(device, origin, value);
+                            mut origin: Point2DI32,
+                            segment_labels: &[&str],
+                            mut value: u8)
+                            -> u8 {
+        value = self.draw_switch(device, origin, value, segment_labels.len() as u8);
 
-        let off_size = self.measure_text(off_text);
-        let on_size = self.measure_text(on_text);
-        let off_offset = SWITCH_HALF_SIZE / 2 - off_size / 2;
-        let on_offset  = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 - on_size / 2;
-        let text_top = BUTTON_TEXT_OFFSET;
-
-        self.draw_text(device, off_text, origin + Point2DI32::new(off_offset, text_top), !value);
-        self.draw_text(device, on_text, origin + Point2DI32::new(on_offset, text_top), value);
+        origin = origin + Point2DI32::new(0, BUTTON_TEXT_OFFSET);
+        for (segment_index, segment_label) in segment_labels.iter().enumerate() {
+            let label_width = self.measure_text(segment_label);
+            let offset = SWITCH_SEGMENT_SIZE / 2 - label_width / 2;
+            self.draw_text(device,
+                           segment_label,
+                           origin + Point2DI32::new(offset, 0),
+                           segment_index as u8 == value);
+            origin += Point2DI32::new(SWITCH_SEGMENT_SIZE + 1, 0);
+        }
 
         value
     }
 
+    /// TODO(pcwalton): Support switches with more than two segments.
     pub fn draw_image_switch(&mut self,
                              device: &D,
                              origin: Point2DI32,
@@ -440,10 +451,10 @@ impl<D> UI<D> where D: Device {
                              on_texture: &D::Texture,
                              mut value: bool)
                              -> bool {
-        value = self.draw_switch(device, origin, value);
+        value = self.draw_switch(device, origin, value as u8, 2) != 0;
 
-        let off_offset = SWITCH_HALF_SIZE / 2 - device.texture_size(off_texture).x() / 2;
-        let on_offset = SWITCH_HALF_SIZE + SWITCH_HALF_SIZE / 2 -
+        let off_offset = SWITCH_SEGMENT_SIZE / 2 - device.texture_size(off_texture).x() / 2;
+        let on_offset = SWITCH_SEGMENT_SIZE + SWITCH_SEGMENT_SIZE / 2 -
             device.texture_size(on_texture).x() / 2;
 
         let off_color = if !value { WINDOW_COLOR } else { TEXT_COLOR };
@@ -461,24 +472,35 @@ impl<D> UI<D> where D: Device {
         value
     }
 
-    fn draw_switch(&mut self, device: &D, origin: Point2DI32, mut value: bool) -> bool {
-        let widget_rect = RectI32::new(origin, Point2DI32::new(SWITCH_SIZE, BUTTON_HEIGHT));
-        if self.event.handle_mouse_down_in_rect(widget_rect).is_some() {
-            value = !value;
+    fn draw_switch(&mut self, device: &D, origin: Point2DI32, mut value: u8, segment_count: u8)
+                   -> u8 {
+        let widget_width = self.measure_switch(segment_count);
+        let widget_rect = RectI32::new(origin, Point2DI32::new(widget_width, BUTTON_HEIGHT));
+        if let Some(position) = self.event_queue.handle_mouse_down_in_rect(widget_rect) {
+            let segment = (position.x() / (SWITCH_SEGMENT_SIZE + 1)) as u8;
+            value = segment.min(segment_count - 1);
         }
 
         self.draw_solid_rounded_rect(device, widget_rect, WINDOW_COLOR);
         self.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
 
-        let highlight_size = Point2DI32::new(SWITCH_HALF_SIZE, BUTTON_HEIGHT);
-        if !value {
-            self.draw_solid_rounded_rect(device, RectI32::new(origin, highlight_size), TEXT_COLOR);
-        } else {
-            let x_offset = SWITCH_HALF_SIZE + 1;
-            self.draw_solid_rounded_rect(device,
-                                         RectI32::new(origin + Point2DI32::new(x_offset, 0),
-                                                      highlight_size),
-                                         TEXT_COLOR);
+        let highlight_size = Point2DI32::new(SWITCH_SEGMENT_SIZE, BUTTON_HEIGHT);
+        let x_offset = value as i32 * SWITCH_SEGMENT_SIZE + (value as i32 - 1);
+        self.draw_solid_rounded_rect(device,
+                                     RectI32::new(origin + Point2DI32::new(x_offset, 0),
+                                                  highlight_size),
+                                     TEXT_COLOR);
+
+        let mut segment_origin = origin + Point2DI32::new(SWITCH_SEGMENT_SIZE + 1, 0);
+        for next_segment_index in 1..segment_count {
+            let prev_segment_index = next_segment_index - 1;
+            if value != prev_segment_index && value != next_segment_index {
+                self.draw_line(device,
+                               segment_origin,
+                               segment_origin + Point2DI32::new(0, BUTTON_HEIGHT),
+                               TEXT_COLOR);
+            }
+            segment_origin = segment_origin + Point2DI32::new(SWITCH_SEGMENT_SIZE + 1, 0);
         }
 
         value
@@ -666,40 +688,63 @@ fn set_color_uniform<D>(device: &D, uniform: &D::Uniform, color: ColorU) where D
     device.set_uniform(uniform, UniformData::Vec4(color * F32x4::splat(1.0 / 255.0)));
 }
 
+#[derive(Clone, Copy)]
 pub enum UIEvent {
-    None,
-    MouseDown(Point2DI32),
-    MouseDragged {
-        absolute_position: Point2DI32,
-        relative_position: Point2DI32,
-    }
+    MouseDown(MousePosition),
+    MouseDragged(MousePosition),
 }
 
-impl UIEvent {
-    pub fn is_none(&self) -> bool {
-        match *self { UIEvent::None => true, _ => false }
+pub struct UIEventQueue {
+    events: Vec<UIEvent>,
+}
+
+impl UIEventQueue {
+    fn new() -> UIEventQueue {
+        UIEventQueue { events: vec![] }
+    }
+
+    pub fn push(&mut self, event: UIEvent) {
+        self.events.push(event);
+    }
+
+    pub fn drain(&mut self) -> Vec<UIEvent> {
+        mem::replace(&mut self.events, vec![])
     }
 
     fn handle_mouse_down_in_rect(&mut self, rect: RectI32) -> Option<Point2DI32> {
-        if let UIEvent::MouseDown(point) = *self {
-            if rect.contains_point(point) {
-                *self = UIEvent::None;
-                return Some(point - rect.origin());
+        let (mut remaining_events, mut result) = (vec![], None);
+        for event in self.events.drain(..) {
+            match event {
+                UIEvent::MouseDown(position) if rect.contains_point(position.absolute) => {
+                    result = Some(position.absolute - rect.origin());
+                }
+                event => remaining_events.push(event),
             }
         }
-        None
+        self.events = remaining_events;
+        result
     }
 
     pub fn handle_mouse_down_or_dragged_in_rect(&mut self, rect: RectI32) -> Option<Point2DI32> {
-        match *self {
-            UIEvent::MouseDown(point) | UIEvent::MouseDragged { absolute_position: point, .. }
-                    if rect.contains_point(point) => {
-                *self = UIEvent::None;
-                Some(point - rect.origin())
+        let (mut remaining_events, mut result) = (vec![], None);
+        for event in self.events.drain(..) {
+            match event {
+                UIEvent::MouseDown(position) | UIEvent::MouseDragged(position) if
+                        rect.contains_point(position.absolute) => {
+                    result = Some(position.absolute - rect.origin());
+                }
+                event => remaining_events.push(event),
             }
-            _ => None,
         }
+        self.events = remaining_events;
+        result
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct MousePosition {
+    pub absolute: Point2DI32,
+    pub relative: Point2DI32,
 }
 
 #[derive(Deserialize)]

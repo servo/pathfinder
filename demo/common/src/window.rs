@@ -36,8 +36,8 @@ pub enum Event {
     KeyDown(Keycode),
     KeyUp(Keycode),
     MouseDown(Point2DI32),
-    MouseMoved { position: Point2DI32, relative_position: Point2DI32 },
-    MouseDragged { position: Point2DI32, relative_position: Point2DI32 },
+    MouseMoved(Point2DI32),
+    MouseDragged(Point2DI32),
     Zoom(f32),
     User { message_type: u32, message_data: u32 },
 }

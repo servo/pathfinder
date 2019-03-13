@@ -8,6 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+#[macro_use]
+extern crate lazy_static;
+
 use jni::{JNIEnv, JavaVM};
 use jni::objects::{GlobalRef, JByteBuffer, JClass, JObject, JValue};
 use pathfinder_demo::DemoApp;
@@ -16,9 +19,16 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use std::cell::RefCell;
+use std::ffi::CString;
 use std::io::Error as IOError;
+use std::mem;
 use std::os::raw::c_void;
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+lazy_static! {
+    static ref EVENT_QUEUE: Mutex<Vec<Event>> = Mutex::new(vec![]);
+}
 
 thread_local! {
     static DEMO_APP: RefCell<Option<DemoApp<WindowImpl>>> = RefCell::new(None);
@@ -43,18 +53,31 @@ pub unsafe extern "system" fn
         Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_runOnce(env: JNIEnv,
                                                                                class: JClass) {
     DEMO_APP.with(|demo_app| {
+        let mut event_queue = EVENT_QUEUE.lock().unwrap();
         if let Some(ref mut demo_app) = *demo_app.borrow_mut() {
-            demo_app.run_once(vec![]);
+            demo_app.run_once(mem::replace(&mut *event_queue, vec![]));
         }
     });
 }
 
 #[no_mangle]
 pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDown(env: JNIEnv,
-                                                                                     class: JClass,
-                                                                                     x: i32,
-                                                                                     y: i32) {
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDownEvent(
+            env: JNIEnv,
+            class: JClass,
+            x: i32,
+            y: i32) {
+    EVENT_QUEUE.lock().unwrap().push(Event::MouseDown(Point2DI32::new(x, y)))
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDraggedEvent(
+            env: JNIEnv,
+            class: JClass,
+            x: i32,
+            y: i32) {
+    EVENT_QUEUE.lock().unwrap().push(Event::MouseDragged(Point2DI32::new(x, y)))
 }
 
 struct WindowImpl;
@@ -70,11 +93,11 @@ impl Window for WindowImpl {
     }
 
     fn size(&self) -> Point2DI32 {
-        Point2DI32::new(1080, 1920)
+        Point2DI32::new(1920, 1080)
     }
 
     fn drawable_size(&self) -> Point2DI32 {
-        Point2DI32::new(1080, 1920)
+        Point2DI32::new(1920, 1080)
     }
 
     fn mouse_position(&self) -> Point2DI32 {

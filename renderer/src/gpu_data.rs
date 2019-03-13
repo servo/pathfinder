@@ -18,6 +18,7 @@ use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
+use std::ops::Add;
 
 #[derive(Debug)]
 pub struct BuiltObject {
@@ -303,6 +304,18 @@ impl TileObjectPrimitive {
             tile_x,
             tile_y,
             backdrop: 0,
+        }
+    }
+}
+
+impl Add<Stats> for Stats {
+    type Output = Stats;
+    fn add(self, other: Stats) -> Stats {
+        Stats {
+            object_count:     other.object_count,
+            solid_tile_count: other.solid_tile_count,
+            mask_tile_count:  other.mask_tile_count,
+            fill_count:       other.fill_count,
         }
     }
 }

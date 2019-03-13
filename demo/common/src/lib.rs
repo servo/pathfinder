@@ -17,7 +17,7 @@ use clap::{App, Arg};
 use image::ColorType;
 use jemallocator;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_geometry::color::ColorU;
@@ -27,17 +27,18 @@ use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, Sten
 use pathfinder_gpu::{StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu::renderer::Renderer;
-use pathfinder_renderer::gpu_data::BuiltScene;
+use pathfinder_renderer::gpu_data::{BuiltScene, Stats};
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::BuiltSVG;
-use pathfinder_ui::UIEvent;
+use pathfinder_ui::{MousePosition, UIEvent};
 use rayon::ThreadPoolBuilder;
 use std::f32::consts::FRAC_PI_4;
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
+use std::iter;
 use std::mem;
 use std::panic;
 use std::path::{Path, PathBuf};
@@ -98,6 +99,7 @@ pub struct DemoApp<W> where W: Window {
     dirty: bool,
     expire_message_event_id: u32,
     message_epoch: u32,
+    last_mouse_position: Point2DI32,
 
     ui: DemoUI<GLDevice>,
     scene_thread_proxy: SceneThreadProxy,
@@ -120,20 +122,24 @@ impl<W> DemoApp<W> where W: Window {
         let options = Options::get(resources);
 
         let (window_size, drawable_size) = (window.size(), window.drawable_size());
+        let view_box_size = view_box_size(options.mode, &window);
 
         let built_svg = load_scene(resources, &options.input_path);
         let message = get_svg_building_message(&built_svg);
         let scene_view_box = built_svg.scene.view_box;
         let scene_is_monochrome = built_svg.scene.is_monochrome();
 
-        let renderer = Renderer::new(device, resources, drawable_size);
+        let renderer = Renderer::new(device,
+                                     resources,
+                                     RectI32::new(Point2DI32::default(), view_box_size),
+                                     drawable_size);
         let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
-        scene_thread_proxy.set_drawable_size(window.drawable_size());
+        scene_thread_proxy.set_drawable_size(view_box_size);
 
-        let camera = if options.three_d {
-            Camera::new_3d(scene_view_box)
+        let camera = if options.mode == Mode::TwoD {
+            Camera::new_2d(scene_view_box, view_box_size)
         } else {
-            Camera::new_2d(scene_view_box, drawable_size)
+            Camera::new_3d(scene_view_box)
         };
 
         let ground_program = GroundProgram::new(&renderer.device, resources);
@@ -164,6 +170,7 @@ impl<W> DemoApp<W> where W: Window {
             dirty: true,
             expire_message_event_id,
             message_epoch,
+            last_mouse_position: Point2DI32::default(),
 
             ui,
             scene_thread_proxy,
@@ -180,31 +187,35 @@ impl<W> DemoApp<W> where W: Window {
         self.build_scene();
 
         // Handle events.
-        let ui_event = self.handle_events(events);
+        let ui_events = self.handle_events(events);
 
         // Draw the scene.
         let render_msg = self.scene_thread_proxy.receiver.recv().unwrap();
-        self.draw_scene(render_msg, ui_event);
+        self.draw_scene(render_msg, ui_events);
     }
 
     fn build_scene(&mut self) {
-        let drawable_size = self.window.drawable_size();
+        let view_box_size = view_box_size(self.ui.mode, &self.window);
 
         let render_transform = match self.camera {
             Camera::ThreeD { ref mut transform, ref mut velocity } => {
                 if transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                let perspective = transform.to_perspective(drawable_size);
+                let perspective = transform.to_perspective(view_box_size);
                 RenderTransform::Perspective(perspective)
             }
             Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         };
 
-        let count = if self.frame_counter == 0 { 2 } else { 1 };
-        for _ in 0..count {
+        let is_first_frame = self.frame_counter == 0;
+        let frame_count = if is_first_frame { 2 } else { 1 };
+        for _ in 0..frame_count {
+            let viewport_count = self.ui.mode.viewport_count();
+            let render_transforms = iter::repeat(render_transform.clone()).take(viewport_count)
+                                                                          .collect();
             self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
-                render_transform: render_transform.clone(),
+                render_transforms,
                 stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
                     Some(APPROX_FONT_SIZE * self.scale_factor)
                 } else {
@@ -213,13 +224,13 @@ impl<W> DemoApp<W> where W: Window {
             })).unwrap();
         }
 
-        if count == 2 {
+        if is_first_frame {
             self.dirty = true;
         }
     }
 
-    fn handle_events(&mut self, events: Vec<Event>) -> UIEvent {
-        let mut ui_event = UIEvent::None;
+    fn handle_events(&mut self, events: Vec<Event>) -> Vec<UIEvent> {
+        let mut ui_events = vec![];
         self.dirty = false;
 
         for event in events {
@@ -230,25 +241,29 @@ impl<W> DemoApp<W> where W: Window {
                     self.dirty = true;
                 }
                 Event::WindowResized => {
-                    self.scene_thread_proxy.set_drawable_size(self.window.drawable_size());
+                    let view_box_size = view_box_size(self.ui.mode, &self.window);
+                    self.scene_thread_proxy.set_drawable_size(view_box_size);
                     self.renderer.set_main_framebuffer_size(self.window.drawable_size());
                     self.dirty = true;
                 }
-                Event::MouseDown(position) => {
-                    ui_event = UIEvent::MouseDown(position.scale(self.scale_factor as i32));
+                Event::MouseDown(new_position) => {
+                    let mouse_position = self.process_mouse_position(new_position);
+                    ui_events.push(UIEvent::MouseDown(mouse_position));
                 }
-                Event::MouseMoved { relative_position, .. } if self.mouselook_enabled => {
+                Event::MouseMoved(new_position) if self.mouselook_enabled => {
+                    let mouse_position = self.process_mouse_position(new_position);
                     if let Camera::ThreeD { ref mut transform, .. } = self.camera {
-                        let rotation = relative_position.to_f32().scale(MOUSELOOK_ROTATION_SPEED);
+                        let rotation = mouse_position.relative
+                                                     .to_f32()
+                                                     .scale(MOUSELOOK_ROTATION_SPEED);
                         transform.yaw += rotation.x();
                         transform.pitch += rotation.y();
                         self.dirty = true;
                     }
                 }
-                Event::MouseDragged { position, relative_position } => {
-                    let absolute_position = position.scale(self.scale_factor as i32);
-                    let relative_position = relative_position.scale(self.scale_factor as i32);
-                    ui_event = UIEvent::MouseDragged { absolute_position, relative_position };
+                Event::MouseDragged(new_position) => {
+                    let mouse_position = self.process_mouse_position(new_position);
+                    ui_events.push(UIEvent::MouseDragged(mouse_position));
                     self.dirty = true;
                 }
                 Event::Zoom(d_dist) => {
@@ -312,34 +327,58 @@ impl<W> DemoApp<W> where W: Window {
             }
         }
 
-        ui_event
+        ui_events
     }
 
-    fn draw_scene(&mut self, render_msg: SceneToMainMsg, mut ui_event: UIEvent) {
-        let SceneToMainMsg::Render {
-            built_scene,
-            transform: render_transform,
-            tile_time,
-        } = render_msg;
+    fn process_mouse_position(&mut self, new_position: Point2DI32) -> MousePosition {
+        let absolute = new_position.scale(self.scale_factor as i32);
+        let relative = absolute - self.last_mouse_position;
+        self.last_mouse_position = absolute;
+        MousePosition { absolute, relative }
+    }
 
+    fn draw_scene(&mut self, render_msg: SceneToMainMsg, mut ui_events: Vec<UIEvent>) {
         self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
-        self.draw_environment(&render_transform);
-        self.render_vector_scene(&built_scene);
+
+        let SceneToMainMsg::Render { render_scenes, tile_time } = render_msg;
+        let mut render_stats = None;
+
+        for (viewport_index, render_scene) in render_scenes.iter().enumerate() {
+            self.draw_environment(viewport_index, &render_scene.transform);
+            self.render_vector_scene(viewport_index, &render_scene.built_scene);
+
+            match render_stats {
+                None => {
+                    render_stats = Some(RenderStats {
+                        rendering_time: self.renderer.shift_timer_query(),
+                        stats: render_scene.built_scene.stats(),
+                    })
+                }
+                Some(ref mut render_stats) => {
+                    render_stats.stats = render_stats.stats + render_scene.built_scene.stats()
+                }
+            }
+        }
+
+        let drawable_size = self.window.drawable_size();
+        self.renderer.set_viewport(RectI32::new(Point2DI32::default(), drawable_size));
 
         if self.pending_screenshot_path.is_some() {
             self.take_screenshot();
         }
 
-        let rendering_time = self.renderer.shift_timer_query();
-        let stats = built_scene.stats();
-        self.renderer.debug_ui.add_sample(stats, tile_time, rendering_time);
-        self.renderer.debug_ui.draw(&self.renderer.device);
-
-        if !ui_event.is_none() {
-            self.dirty = true;
+        if let Some(render_stats) = render_stats {
+            self.renderer.debug_ui.add_sample(render_stats.stats,
+                                              tile_time,
+                                              render_stats.rendering_time);
+            self.renderer.draw_debug_ui();
         }
 
-        self.renderer.debug_ui.ui.event = ui_event;
+        for ui_event in &ui_events {
+            self.dirty = true;
+            self.renderer.debug_ui.ui.event_queue.push(*ui_event);
+        }
+
         self.renderer.debug_ui.ui.mouse_position = get_mouse_position(&self.window,
                                                                       self.scale_factor);
         self.ui.show_text_effects = self.scene_is_monochrome;
@@ -350,39 +389,43 @@ impl<W> DemoApp<W> where W: Window {
                        &mut self.renderer.debug_ui,
                        &mut ui_action);
 
-        ui_event = mem::replace(&mut self.renderer.debug_ui.ui.event, UIEvent::None);
+        ui_events = self.renderer.debug_ui.ui.event_queue.drain();
         self.handle_ui_action(&mut ui_action);
 
         // Switch camera mode (2D/3D) if requested.
         //
         // FIXME(pcwalton): This mess should really be an MVC setup.
-        match (&self.camera, self.ui.three_d_enabled) {
-            (&Camera::TwoD { .. }, true) => self.camera = Camera::new_3d(self.scene_view_box),
-            (&Camera::ThreeD { .. }, false) => {
+        match (&self.camera, self.ui.mode) {
+            (&Camera::TwoD { .. }, Mode::ThreeD) | (&Camera::TwoD { .. }, Mode::VR) => {
+                self.camera = Camera::new_3d(self.scene_view_box);
+            }
+            (&Camera::ThreeD { .. }, Mode::TwoD) => {
                 let drawable_size = self.window.drawable_size();
                 self.camera = Camera::new_2d(self.scene_view_box, drawable_size);
             }
             _ => {}
         }
 
-        match ui_event {
-            UIEvent::MouseDown(_) if self.camera.is_3d() => {
-                // If nothing handled the mouse-down event, toggle mouselook.
-                self.mouselook_enabled = !self.mouselook_enabled;
-            }
-            UIEvent::MouseDragged { relative_position, .. } => {
-                if let Camera::TwoD(ref mut transform) = self.camera {
-                    *transform = transform.post_translate(relative_position.to_f32());
+        for ui_event in ui_events {
+            match ui_event {
+                UIEvent::MouseDown(_) if self.camera.is_3d() => {
+                    // If nothing handled the mouse-down event, toggle mouselook.
+                    self.mouselook_enabled = !self.mouselook_enabled;
                 }
+                UIEvent::MouseDragged(position) => {
+                    if let Camera::TwoD(ref mut transform) = self.camera {
+                        *transform = transform.post_translate(position.relative.to_f32());
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         }
 
         self.window.present();
         self.frame_counter += 1;
     }
 
-    fn draw_environment(&self, render_transform: &RenderTransform) {
+    fn draw_environment(&self, viewport_index: usize, render_transform: &RenderTransform) {
         let perspective = match *render_transform {
             RenderTransform::Transform2D(..) => return,
             RenderTransform::Perspective(perspective) => perspective,
@@ -449,7 +492,12 @@ impl<W> DemoApp<W> where W: Window {
         });
     }
 
-    fn render_vector_scene(&mut self, built_scene: &BuiltScene) {
+    fn render_vector_scene(&mut self, viewport_index: usize, built_scene: &BuiltScene) {
+        let view_box_size = view_box_size(self.ui.mode, &self.window);
+        let viewport_origin_x = viewport_index as i32 * view_box_size.x();
+        let viewport = RectI32::new(Point2DI32::new(viewport_origin_x, 0), view_box_size);
+        self.renderer.set_viewport(viewport);
+
         if self.ui.gamma_correction_effect_enabled {
             self.renderer.enable_gamma_correction(self.background_color());
         } else {
@@ -462,10 +510,10 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.disable_subpixel_aa();
         }
 
-        if self.ui.three_d_enabled {
-            self.renderer.enable_depth();
-        } else {
+        if self.ui.mode == Mode::TwoD {
             self.renderer.disable_depth();
+        } else {
+            self.renderer.enable_depth();
         }
 
         self.renderer.render_scene(&built_scene);
@@ -485,10 +533,10 @@ impl<W> DemoApp<W> where W: Window {
                 self.scene_thread_proxy.set_drawable_size(self.window.drawable_size());
                 let drawable_size = self.window.drawable_size();
 
-                self.camera = if self.ui.three_d_enabled {
-                    Camera::new_3d(built_svg.scene.view_box)
-                } else {
+                self.camera = if self.ui.mode == Mode::TwoD {
                     Camera::new_2d(built_svg.scene.view_box, drawable_size)
+                } else {
+                    Camera::new_3d(built_svg.scene.view_box)
                 };
 
                 self.scene_thread_proxy.load_scene(built_svg.scene);
@@ -546,6 +594,7 @@ impl<W> DemoApp<W> where W: Window {
     fn background_color(&self) -> ColorU {
         if self.ui.dark_background_enabled { DARK_BG_COLOR } else { LIGHT_BG_COLOR }
     }
+
 }
 
 struct SceneThreadProxy {
@@ -593,15 +642,18 @@ impl SceneThread {
                     self.scene.view_box = RectF32::new(Point2DF32::default(), size.to_f32());
                 }
                 MainToSceneMsg::Build(build_options) => {
-                    let render_transform = build_options.render_transform.clone();
                     let start_time = Instant::now();
-                    let built_scene = build_scene(&self.scene, build_options, self.options.jobs);
+                    let render_scenes = build_options.render_transforms
+                                                     .iter()
+                                                     .map(|render_transform| {
+                        let built_scene = build_scene(&self.scene,
+                                                      &build_options,
+                                                      (*render_transform).clone(),
+                                                      self.options.jobs);
+                        RenderScene { built_scene, transform: (*render_transform).clone() }
+                    }).collect();
                     let tile_time = Instant::now() - start_time;
-                    self.sender.send(SceneToMainMsg::Render {
-                        built_scene,
-                        transform: render_transform,
-                        tile_time,
-                    }).unwrap();
+                    self.sender.send(SceneToMainMsg::Render { render_scenes, tile_time }).unwrap();
                 }
             }
         }
@@ -615,18 +667,23 @@ enum MainToSceneMsg {
 }
 
 struct BuildOptions {
-    render_transform: RenderTransform,
+    render_transforms: Vec<RenderTransform>,
     stem_darkening_font_size: Option<f32>,
 }
 
 enum SceneToMainMsg {
-    Render { built_scene: BuiltScene, transform: RenderTransform, tile_time: Duration }
+    Render { render_scenes: Vec<RenderScene>, tile_time: Duration }
+}
+
+pub struct RenderScene {
+    built_scene: BuiltScene,
+    transform: RenderTransform,
 }
 
 #[derive(Clone)]
 pub struct Options {
     jobs: Option<usize>,
-    three_d: bool,
+    mode: Mode,
     input_path: Option<PathBuf>,
 }
 
@@ -641,14 +698,22 @@ impl Options {
                     .takes_value(true)
                     .help("Number of threads to use"),
             )
-            .arg(Arg::with_name("3d").short("3").long("3d").help("Run in 3D"))
+            .arg(Arg::with_name("3d").short("3").long("3d").help("Run in 3D").conflicts_with("vr"))
+            .arg(Arg::with_name("vr").short("V").long("vr").help("Run in VR").conflicts_with("3d"))
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
 
         let jobs: Option<usize> = matches
             .value_of("jobs")
             .map(|string| string.parse().unwrap());
-        let three_d = matches.is_present("3d");
+
+        let mode = if matches.is_present("3d") {
+            Mode::ThreeD
+        } else if matches.is_present("vr") {
+            Mode::VR
+        } else {
+            Mode::TwoD
+        };
 
         let input_path = matches.value_of("INPUT").map(PathBuf::from);
 
@@ -659,8 +724,27 @@ impl Options {
         }
         thread_pool_builder.build_global().unwrap();
 
-        Options { jobs, three_d, input_path }
+        Options { jobs, mode, input_path }
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum Mode {
+    TwoD   = 0,
+    ThreeD = 1,
+    VR     = 2,
+}
+
+impl Mode {
+    fn viewport_count(self) -> usize {
+        match self { Mode::TwoD | Mode::ThreeD => 1, Mode::VR => 2 }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RenderStats {
+    rendering_time: Option<Duration>,
+    stats: Stats,
 }
 
 fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &Option<PathBuf>) -> BuiltSVG {
@@ -680,11 +764,15 @@ fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &Option<PathBuf>
     BuiltSVG::from_tree(Tree::from_data(&data, &UsvgOptions::default()).unwrap())
 }
 
-fn build_scene(scene: &Scene, build_options: BuildOptions, jobs: Option<usize>) -> BuiltScene {
+fn build_scene(scene: &Scene,
+               build_options: &BuildOptions,
+               render_transform: RenderTransform,
+               jobs: Option<usize>)
+               -> BuiltScene {
     let z_buffer = ZBuffer::new(scene.view_box);
 
     let render_options = RenderOptions {
-        transform: build_options.render_transform,
+        transform: render_transform,
         dilation: match build_options.stem_darkening_font_size {
             None => Point2DF32::default(),
             Some(font_size) => {
@@ -834,4 +922,12 @@ fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
         thread::sleep(Duration::from_secs(MESSAGE_TIMEOUT_SECS));
         W::push_user_event(expire_message_event_id, expected_epoch);
     });
+}
+
+fn view_box_size<W>(mode: Mode, window: &W) -> Point2DI32 where W: Window {
+    let window_drawable_size = window.drawable_size();
+    match mode {
+        Mode::TwoD | Mode::ThreeD => window_drawable_size,
+        Mode::VR => Point2DI32::new(window_drawable_size.x() / 2, window_drawable_size.y()),
+    }
 }
