@@ -275,6 +275,12 @@ impl<W> DemoApp<W> where W: Window {
                         *transform = transform.post_translate(position);
                     }
                 }
+                Event::Look { pitch, yaw } => {
+                    if let Camera::ThreeD { ref mut transform, .. } = self.camera {
+                        transform.pitch += pitch;
+                        transform.yaw += yaw;
+                    }
+                }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);

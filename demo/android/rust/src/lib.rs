@@ -19,7 +19,6 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use std::cell::RefCell;
-use std::ffi::CString;
 use std::io::Error as IOError;
 use std::mem;
 use std::os::raw::c_void;
@@ -63,8 +62,8 @@ pub unsafe extern "system" fn
 #[no_mangle]
 pub unsafe extern "system" fn
         Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDownEvent(
-            env: JNIEnv,
-            class: JClass,
+            _: JNIEnv,
+            _: JClass,
             x: i32,
             y: i32) {
     EVENT_QUEUE.lock().unwrap().push(Event::MouseDown(Point2DI32::new(x, y)))
@@ -73,11 +72,21 @@ pub unsafe extern "system" fn
 #[no_mangle]
 pub unsafe extern "system" fn
         Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDraggedEvent(
-            env: JNIEnv,
-            class: JClass,
+            _: JNIEnv,
+            _: JClass,
             x: i32,
             y: i32) {
     EVENT_QUEUE.lock().unwrap().push(Event::MouseDragged(Point2DI32::new(x, y)))
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushLookEvent(
+            _: JNIEnv,
+            _: JClass,
+            pitch: f32,
+            yaw: f32) {
+    EVENT_QUEUE.lock().unwrap().push(Event::Look { pitch, yaw })
 }
 
 struct WindowImpl;

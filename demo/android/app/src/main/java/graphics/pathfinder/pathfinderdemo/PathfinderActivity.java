@@ -2,7 +2,12 @@ package graphics.pathfinder.pathfinderdemo;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -13,6 +18,9 @@ import android.os.Handler;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
+
+import java.util.ArrayList;
+import java.util.Arrays;
 
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
@@ -154,6 +162,42 @@ public class PathfinderActivity extends AppCompatActivity {
                 return true;
             }
         });
+
+        final SensorManager sensorManager = (SensorManager)
+                getSystemService(Context.SENSOR_SERVICE);
+        final Sensor rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        sensorManager.registerListener(new SensorEventListener() {
+            private boolean mInitialized;
+            private float mPitch;
+            private float mYaw;
+
+            @Override
+            public void onSensorChanged(SensorEvent event) {
+                // https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles#Quaternion_to_Euler_Angles_Conversion
+                float[] q = event.values;
+                float pitch = (float)Math.asin(2.0 * (q[0] * q[2] - q[3] * q[1]));
+                float yaw = (float)Math.atan2(2.0 * (q[0] * q[3] + q[1] * q[2]),
+                                              1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]));
+
+                float deltaPitch = pitch - mPitch;
+                float deltaYaw = yaw - mYaw;
+
+                mPitch = pitch;
+                mYaw = yaw;
+
+                if (!mInitialized) {
+                    mInitialized = true;
+                    return;
+                }
+
+                PathfinderDemoRenderer.pushLookEvent(-deltaPitch, deltaYaw);
+            }
+
+            @Override
+            public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+            }
+        }, rotationSensor, 5000);
     }
 
     @Override

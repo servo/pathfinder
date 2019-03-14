@@ -39,6 +39,7 @@ pub enum Event {
     MouseMoved(Point2DI32),
     MouseDragged(Point2DI32),
     Zoom(f32),
+    Look { pitch: f32, yaw: f32 },
     User { message_type: u32, message_data: u32 },
 }
 
