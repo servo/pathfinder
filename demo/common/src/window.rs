@@ -17,10 +17,7 @@ use std::io::Error;
 use std::path::PathBuf;
 
 pub trait Window {
-    fn new(initial_size: Point2DI32) -> Self;
     fn gl_version(&self) -> GLVersion;
-    fn size(&self) -> Point2DI32;
-    fn drawable_size(&self) -> Point2DI32;
     fn mouse_position(&self) -> Point2DI32;
     fn present(&self);
     fn resource_loader(&self) -> &dyn ResourceLoader;
@@ -32,7 +29,7 @@ pub trait Window {
 
 pub enum Event {
     Quit,
-    WindowResized,
+    WindowResized(WindowSize),
     KeyDown(Keycode),
     KeyUp(Keycode),
     MouseDown(Point2DI32),
@@ -47,4 +44,17 @@ pub enum Event {
 pub enum Keycode {
     Alphanumeric(u8),
     Escape,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct WindowSize {
+    pub logical_size: Point2DI32,
+    pub backing_scale_factor: f32,
+}
+
+impl WindowSize {
+    #[inline]
+    pub fn device_size(&self) -> Point2DI32 {
+        self.logical_size.to_f32().scale(self.backing_scale_factor).to_i32()
+    }
 }

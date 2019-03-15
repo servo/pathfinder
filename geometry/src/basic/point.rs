@@ -133,6 +133,11 @@ impl Point2DF32 {
     pub fn lerp(&self, other: Point2DF32, t: f32) -> Point2DF32 {
         *self + (other - *self).scale(t)
     }
+
+    #[inline]
+    pub fn to_i32(&self) -> Point2DI32 {
+        Point2DI32(self.0.to_i32x4())
+    }
 }
 
 impl PartialEq for Point2DF32 {

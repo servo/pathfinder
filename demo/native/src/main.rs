@@ -12,7 +12,7 @@
 
 use nfd::Response;
 use pathfinder_demo::DemoApp;
-use pathfinder_demo::window::{Event, Keycode, Window};
+use pathfinder_demo::window::{Event, Keycode, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
@@ -24,8 +24,14 @@ use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::path::PathBuf;
 use std::ptr;
 
+const DEFAULT_WINDOW_WIDTH: u32 = 1067;
+const DEFAULT_WINDOW_HEIGHT: u32 = 800;
+
 fn main() {
-    let mut app = DemoApp::<WindowImpl>::new();
+    let window = WindowImpl::new();
+    let window_size = window.size();
+    let mut app = DemoApp::new(window, window_size);
+
     while !app.should_exit {
         let mut events = vec![app.window.get_event()];
         while let Some(event) = app.window.try_get_event() {
@@ -50,48 +56,8 @@ struct WindowImpl {
 }
 
 impl Window for WindowImpl {
-    fn new(default_framebuffer_size: Point2DI32) -> WindowImpl {
-        SDL_VIDEO.with(|sdl_video| {
-            let (window, gl_context, event_pump);
-
-            let gl_attributes = sdl_video.gl_attr();
-            gl_attributes.set_context_profile(GLProfile::Core);
-            gl_attributes.set_context_version(3, 3);
-            gl_attributes.set_depth_size(24);
-            gl_attributes.set_stencil_size(8);
-
-            window = sdl_video.window("Pathfinder Demo",
-                                      default_framebuffer_size.x() as u32,
-                                      default_framebuffer_size.y() as u32)
-                              .opengl()
-                              .resizable()
-                              .allow_highdpi()
-                              .build()
-                              .unwrap();
-
-            gl_context = window.gl_create_context().unwrap();
-            gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
-
-            event_pump = SDL_CONTEXT.with(|sdl_context| sdl_context.event_pump().unwrap());
-
-            let resource_loader = FilesystemResourceLoader::locate();
-
-            WindowImpl { window, event_pump, gl_context, resource_loader }
-        })
-    }
-
     fn gl_version(&self) -> GLVersion {
         GLVersion::GL3
-    }
-
-    fn size(&self) -> Point2DI32 {
-        let (width, height) = self.window.size();
-        Point2DI32::new(width as i32, height as i32)
-    }
-
-    fn drawable_size(&self) -> Point2DI32 {
-        let (width, height) = self.window.drawable_size();
-        Point2DI32::new(width as i32, height as i32)
     }
 
     fn mouse_position(&self) -> Point2DI32 {
@@ -141,6 +107,45 @@ impl Window for WindowImpl {
 }
 
 impl WindowImpl {
+    fn new() -> WindowImpl {
+        SDL_VIDEO.with(|sdl_video| {
+            let (window, gl_context, event_pump);
+
+            let gl_attributes = sdl_video.gl_attr();
+            gl_attributes.set_context_profile(GLProfile::Core);
+            gl_attributes.set_context_version(3, 3);
+            gl_attributes.set_depth_size(24);
+            gl_attributes.set_stencil_size(8);
+
+            window = sdl_video.window("Pathfinder Demo",
+                                      DEFAULT_WINDOW_WIDTH,
+                                      DEFAULT_WINDOW_HEIGHT)
+                              .opengl()
+                              .resizable()
+                              .allow_highdpi()
+                              .build()
+                              .unwrap();
+
+            gl_context = window.gl_create_context().unwrap();
+            gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
+
+            event_pump = SDL_CONTEXT.with(|sdl_context| sdl_context.event_pump().unwrap());
+
+            let resource_loader = FilesystemResourceLoader::locate();
+
+            WindowImpl { window, event_pump, gl_context, resource_loader }
+        })
+    }
+
+    fn size(&self) -> WindowSize {
+        let (logical_width, logical_height) = self.window.size();
+        let (drawable_width, _) = self.window.drawable_size();
+        WindowSize {
+            logical_size: Point2DI32::new(logical_width as i32, logical_height as i32),
+            backing_scale_factor: drawable_width as f32 / logical_width as f32,
+        }
+    }
+
     fn get_event(&mut self) -> Event {
         loop {
             let sdl_event = self.event_pump.wait_event();
@@ -177,7 +182,7 @@ impl WindowImpl {
             }
             SDLEvent::Quit { .. } => Some(Event::Quit),
             SDLEvent::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
-                Some(Event::WindowResized)
+                Some(Event::WindowResized(self.size()))
             }
             SDLEvent::KeyDown { keycode: Some(sdl_keycode), .. } => {
                 self.convert_sdl_keycode(sdl_keycode).map(Event::KeyDown)

@@ -14,7 +14,7 @@ extern crate lazy_static;
 use jni::{JNIEnv, JavaVM};
 use jni::objects::{GlobalRef, JByteBuffer, JClass, JObject, JValue};
 use pathfinder_demo::DemoApp;
-use pathfinder_demo::window::{Event, Keycode, Window};
+use pathfinder_demo::window::{Event, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -40,11 +40,19 @@ static RESOURCE_LOADER: AndroidResourceLoader = AndroidResourceLoader;
 pub unsafe extern "system" fn
         Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_init(env: JNIEnv,
                                                                             class: JClass,
-                                                                            loader: JObject) {
+                                                                            loader: JObject,
+                                                                            width: i32,
+                                                                            height: i32) {
+    let logical_size = Point2DI32::new(width, height);
+    let window_size = WindowSize { logical_size, backing_scale_factor: 1.0 };
+
     JAVA_RESOURCE_LOADER.with(|java_resource_loader| {
-        *java_resource_loader.borrow_mut() = Some(JavaResourceLoader::new(env, loader))
+        *java_resource_loader.borrow_mut() = Some(JavaResourceLoader::new(env, loader));
     });
-    DEMO_APP.with(|demo_app| *demo_app.borrow_mut() = Some(DemoApp::<WindowImpl>::new()));
+    DEMO_APP.with(|demo_app| {
+        gl::load_with(|name| egl::get_proc_address(name) as *const c_void);
+        *demo_app.borrow_mut() = Some(DemoApp::new(WindowImpl, window_size));
+    });
 }
 
 #[no_mangle]
@@ -57,6 +65,19 @@ pub unsafe extern "system" fn
             demo_app.run_once(mem::replace(&mut *event_queue, vec![]));
         }
     });
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushWindowResizedEvent(
+            env: JNIEnv,
+            class: JClass,
+            width: i32,
+            height: i32) {
+    EVENT_QUEUE.lock().unwrap().push(Event::WindowResized(WindowSize {
+        logical_size: Point2DI32::new(width, height),
+        backing_scale_factor: 1.0,
+    }))
 }
 
 #[no_mangle]
@@ -92,21 +113,8 @@ pub unsafe extern "system" fn
 struct WindowImpl;
 
 impl Window for WindowImpl {
-    fn new(default_framebuffer_size: Point2DI32) -> WindowImpl {
-        gl::load_with(|name| egl::get_proc_address(name) as *const c_void);
-        WindowImpl
-    }
-
     fn gl_version(&self) -> GLVersion {
         GLVersion::GLES3
-    }
-
-    fn size(&self) -> Point2DI32 {
-        Point2DI32::new(1920, 1080)
-    }
-
-    fn drawable_size(&self) -> Point2DI32 {
-        Point2DI32::new(1920, 1080)
     }
 
     fn mouse_position(&self) -> Point2DI32 {

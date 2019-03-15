@@ -12,7 +12,7 @@
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction};
-use crate::window::{Event, Keycode, Window};
+use crate::window::{Event, Keycode, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
 use jemallocator;
@@ -53,9 +53,6 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
 
-const MAIN_FRAMEBUFFER_WIDTH: u32 = 1067;
-const MAIN_FRAMEBUFFER_HEIGHT: u32 = 800;
-
 const MOUSELOOK_ROTATION_SPEED: f32 = 0.007;
 const CAMERA_VELOCITY: f32 = 0.02;
 
@@ -87,7 +84,7 @@ pub struct DemoApp<W> where W: Window {
     pub window: W,
     pub should_exit: bool,
 
-    scale_factor: f32,
+    window_size: WindowSize,
 
     scene_view_box: RectF32,
     scene_is_monochrome: bool,
@@ -111,18 +108,14 @@ pub struct DemoApp<W> where W: Window {
 }
 
 impl<W> DemoApp<W> where W: Window {
-    pub fn new() -> DemoApp<W> {
-        let default_framebuffer_size = Point2DI32::new(MAIN_FRAMEBUFFER_WIDTH as i32,
-                                                       MAIN_FRAMEBUFFER_HEIGHT as i32);
-        let window = W::new(default_framebuffer_size);
+    pub fn new(window: W, window_size: WindowSize) -> DemoApp<W> {
         let expire_message_event_id = window.create_user_event_id();
 
         let device = GLDevice::new(window.gl_version());
         let resources = window.resource_loader();
         let options = Options::get(resources);
 
-        let (window_size, drawable_size) = (window.size(), window.drawable_size());
-        let view_box_size = view_box_size(options.mode, &window);
+        let view_box_size = view_box_size(options.mode, &window_size);
 
         let built_svg = load_scene(resources, &options.input_path);
         let message = get_svg_building_message(&built_svg);
@@ -132,7 +125,7 @@ impl<W> DemoApp<W> where W: Window {
         let renderer = Renderer::new(device,
                                      resources,
                                      RectI32::new(Point2DI32::default(), view_box_size),
-                                     drawable_size);
+                                     window_size.device_size());
         let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
         scene_thread_proxy.set_drawable_size(view_box_size);
 
@@ -158,7 +151,7 @@ impl<W> DemoApp<W> where W: Window {
             window,
             should_exit: false,
 
-            scale_factor: drawable_size.x() as f32 / window_size.x() as f32,
+            window_size,
 
             scene_view_box,
             scene_is_monochrome,
@@ -195,7 +188,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn build_scene(&mut self) {
-        let view_box_size = view_box_size(self.ui.mode, &self.window);
+        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
 
         let render_transform = match self.camera {
             Camera::ThreeD { ref mut transform, ref mut velocity } => {
@@ -217,7 +210,7 @@ impl<W> DemoApp<W> where W: Window {
             self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
                 render_transforms,
                 stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
-                    Some(APPROX_FONT_SIZE * self.scale_factor)
+                    Some(APPROX_FONT_SIZE * self.window_size.backing_scale_factor)
                 } else {
                     None
                 },
@@ -240,10 +233,11 @@ impl<W> DemoApp<W> where W: Window {
                     self.should_exit = true;
                     self.dirty = true;
                 }
-                Event::WindowResized => {
-                    let view_box_size = view_box_size(self.ui.mode, &self.window);
+                Event::WindowResized(new_size) => {
+                    self.window_size = new_size;
+                    let view_box_size = view_box_size(self.ui.mode, &self.window_size);
                     self.scene_thread_proxy.set_drawable_size(view_box_size);
-                    self.renderer.set_main_framebuffer_size(self.window.drawable_size());
+                    self.renderer.set_main_framebuffer_size(self.window_size.device_size());
                     self.dirty = true;
                 }
                 Event::MouseDown(new_position) => {
@@ -268,7 +262,8 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::Zoom(d_dist) => {
                     if let Camera::TwoD(ref mut transform) = self.camera {
-                        let position = get_mouse_position(&self.window, self.scale_factor);
+                        let position = get_mouse_position(&self.window,
+                                                          self.window_size.backing_scale_factor);
                         *transform = transform.post_translate(-position);
                         let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
                         *transform = transform.post_scale(Point2DF32::splat(scale_delta));
@@ -337,7 +332,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn process_mouse_position(&mut self, new_position: Point2DI32) -> MousePosition {
-        let absolute = new_position.scale(self.scale_factor as i32);
+        let absolute = new_position.scale(self.window_size.backing_scale_factor as i32);
         let relative = absolute - self.last_mouse_position;
         self.last_mouse_position = absolute;
         MousePosition { absolute, relative }
@@ -366,7 +361,7 @@ impl<W> DemoApp<W> where W: Window {
             }
         }
 
-        let drawable_size = self.window.drawable_size();
+        let drawable_size = self.window_size.device_size();
         self.renderer.set_viewport(RectI32::new(Point2DI32::default(), drawable_size));
 
         if self.pending_screenshot_path.is_some() {
@@ -385,8 +380,8 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.debug_ui.ui.event_queue.push(*ui_event);
         }
 
-        self.renderer.debug_ui.ui.mouse_position = get_mouse_position(&self.window,
-                                                                      self.scale_factor);
+        self.renderer.debug_ui.ui.mouse_position =
+            get_mouse_position(&self.window, self.window_size.backing_scale_factor);
         self.ui.show_text_effects = self.scene_is_monochrome;
 
         let mut ui_action = UIAction::None;
@@ -406,7 +401,7 @@ impl<W> DemoApp<W> where W: Window {
                 self.camera = Camera::new_3d(self.scene_view_box);
             }
             (&Camera::ThreeD { .. }, Mode::TwoD) => {
-                let drawable_size = self.window.drawable_size();
+                let drawable_size = self.window_size.device_size();
                 self.camera = Camera::new_2d(self.scene_view_box, drawable_size);
             }
             _ => {}
@@ -499,7 +494,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn render_vector_scene(&mut self, viewport_index: usize, built_scene: &BuiltScene) {
-        let view_box_size = view_box_size(self.ui.mode, &self.window);
+        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
         let viewport_origin_x = viewport_index as i32 * view_box_size.x();
         let viewport = RectI32::new(Point2DI32::new(viewport_origin_x, 0), view_box_size);
         self.renderer.set_viewport(viewport);
@@ -536,8 +531,8 @@ impl<W> DemoApp<W> where W: Window {
                 self.scene_view_box = built_svg.scene.view_box;
                 self.scene_is_monochrome = built_svg.scene.is_monochrome();
 
-                self.scene_thread_proxy.set_drawable_size(self.window.drawable_size());
-                let drawable_size = self.window.drawable_size();
+                let drawable_size = self.window_size.device_size();
+                self.scene_thread_proxy.set_drawable_size(drawable_size);
 
                 self.camera = if self.ui.mode == Mode::TwoD {
                     Camera::new_2d(built_svg.scene.view_box, drawable_size)
@@ -557,7 +552,7 @@ impl<W> DemoApp<W> where W: Window {
             UIAction::ZoomIn => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
-                    let center = center_of_window(&self.window);
+                    let center = center_of_window(&self.window_size);
                     *transform = transform.post_translate(-center)
                                           .post_scale(scale)
                                           .post_translate(center);
@@ -567,7 +562,7 @@ impl<W> DemoApp<W> where W: Window {
             UIAction::ZoomOut => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Point2DF32::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
-                    let center = center_of_window(&self.window);
+                    let center = center_of_window(&self.window_size);
                     *transform = transform.post_translate(-center)
                                           .post_scale(scale)
                                           .post_translate(center);
@@ -577,7 +572,7 @@ impl<W> DemoApp<W> where W: Window {
             UIAction::Rotate(theta) => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let old_rotation = transform.rotation();
-                    let center = center_of_window(&self.window);
+                    let center = center_of_window(&self.window_size);
                     *transform = transform.post_translate(-center)
                                           .post_rotate(*theta - old_rotation)
                                           .post_translate(center);
@@ -588,7 +583,7 @@ impl<W> DemoApp<W> where W: Window {
 
     fn take_screenshot(&mut self) {
         let screenshot_path = self.pending_screenshot_path.take().unwrap();
-        let drawable_size = self.window.drawable_size();
+        let drawable_size = self.window_size.device_size();
         let pixels = self.renderer.device.read_pixels_from_default_framebuffer(drawable_size);
         image::save_buffer(screenshot_path,
                            &pixels,
@@ -819,8 +814,8 @@ fn build_scene(scene: &Scene,
     built_scene
 }
 
-fn center_of_window<W>(window: &W) -> Point2DF32 where W: Window {
-    window.drawable_size().to_f32().scale(0.5)
+fn center_of_window(window_size: &WindowSize) -> Point2DF32 {
+    window_size.device_size().to_f32().scale(0.5)
 }
 
 enum Camera {
@@ -930,8 +925,8 @@ fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
     });
 }
 
-fn view_box_size<W>(mode: Mode, window: &W) -> Point2DI32 where W: Window {
-    let window_drawable_size = window.drawable_size();
+fn view_box_size(mode: Mode, window_size: &WindowSize) -> Point2DI32 {
+    let window_drawable_size = window_size.device_size();
     match mode {
         Mode::TwoD | Mode::ThreeD => window_drawable_size,
         Mode::VR => Point2DI32::new(window_drawable_size.x() / 2, window_drawable_size.y()),

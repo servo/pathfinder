@@ -7,11 +7,15 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 public class PathfinderDemoRenderer extends Object implements GLSurfaceView.Renderer {
-    private AssetManager m_assetManager;
+    private AssetManager mAssetManager;
+    private boolean mInitialized;
 
-    private static native void init(PathfinderDemoResourceLoader resourceLoader);
+    private static native void init(PathfinderDemoResourceLoader resourceLoader,
+                                    int width,
+                                    int height);
     private static native void runOnce();
 
+    public static native void pushWindowResizedEvent(int width, int height);
     public static native void pushMouseDownEvent(int x, int y);
     public static native void pushMouseDraggedEvent(int x, int y);
     public static native void pushLookEvent(float pitch, float yaw);
@@ -24,17 +28,22 @@ public class PathfinderDemoRenderer extends Object implements GLSurfaceView.Rend
 
     PathfinderDemoRenderer(AssetManager assetManager) {
         super();
-        m_assetManager = assetManager;
+        mAssetManager = assetManager;
+        mInitialized = false;
     }
 
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-        init(new PathfinderDemoResourceLoader(m_assetManager));
     }
 
     @Override
     public void onSurfaceChanged(GL10 gl, int width, int height) {
-
+        if (!mInitialized) {
+            init(new PathfinderDemoResourceLoader(mAssetManager), width, height);
+            mInitialized = true;
+        } else {
+            pushWindowResizedEvent(width, height);
+        }
     }
 
     @Override
