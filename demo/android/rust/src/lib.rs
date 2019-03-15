@@ -57,14 +57,43 @@ pub unsafe extern "system" fn
 
 #[no_mangle]
 pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_runOnce(env: JNIEnv,
-                                                                               class: JClass) {
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_prepareFrame(env: JNIEnv,
+                                                                                    class: JClass)
+                                                                                    -> i32 {
     DEMO_APP.with(|demo_app| {
         let mut event_queue = EVENT_QUEUE.lock().unwrap();
-        if let Some(ref mut demo_app) = *demo_app.borrow_mut() {
-            demo_app.run_once(mem::replace(&mut *event_queue, vec![]));
+        match *demo_app.borrow_mut() {
+            Some(ref mut demo_app) => {
+                demo_app.prepare_frame(mem::replace(&mut *event_queue, vec![])) as i32
+            }
+            None => 0,
         }
-    });
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_drawScene(
+            env: JNIEnv,
+            class: JClass,
+            scene_index: i32) {
+    DEMO_APP.with(|demo_app| {
+        if let Some(ref mut demo_app) = *demo_app.borrow_mut() {
+            demo_app.draw_scene(scene_index as u32)
+        }
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_finishDrawingFrame(
+            env: JNIEnv,
+            class: JClass) {
+    DEMO_APP.with(|demo_app| {
+        if let Some(ref mut demo_app) = *demo_app.borrow_mut() {
+            demo_app.finish_drawing_frame()
+        }
+    })
 }
 
 #[no_mangle]

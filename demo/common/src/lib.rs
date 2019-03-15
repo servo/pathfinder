@@ -35,13 +35,11 @@ use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
 use rayon::ThreadPoolBuilder;
 use std::f32::consts::FRAC_PI_4;
-use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
 use std::iter;
-use std::mem;
 use std::panic;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -98,6 +96,8 @@ pub struct DemoApp<W> where W: Window {
     message_epoch: u32,
     last_mouse_position: Point2DI32,
 
+    current_frame: Option<Frame>,
+
     ui: DemoUI<GLDevice>,
     scene_thread_proxy: SceneThreadProxy,
     renderer: Renderer<GLDevice>,
@@ -113,7 +113,7 @@ impl<W> DemoApp<W> where W: Window {
 
         let device = GLDevice::new(window.gl_version());
         let resources = window.resource_loader();
-        let options = Options::get(resources);
+        let options = Options::get();
 
         let view_box_size = view_box_size(options.mode, &window_size);
 
@@ -165,6 +165,8 @@ impl<W> DemoApp<W> where W: Window {
             message_epoch,
             last_mouse_position: Point2DI32::default(),
 
+            current_frame: None,
+
             ui,
             scene_thread_proxy,
             renderer,
@@ -175,16 +177,24 @@ impl<W> DemoApp<W> where W: Window {
         }
     }
 
-    pub fn run_once(&mut self, events: Vec<Event>) {
+    pub fn prepare_frame(&mut self, events: Vec<Event>) -> u32 {
         // Update the scene.
         self.build_scene();
 
         // Handle events.
         let ui_events = self.handle_events(events);
 
-        // Draw the scene.
+        // Get the render message, and determine how many scenes it contains.
         let render_msg = self.scene_thread_proxy.receiver.recv().unwrap();
-        self.draw_scene(render_msg, ui_events);
+        let render_scene_count = render_msg.render_scenes.len() as u32;
+
+        // Save the frame.
+        self.current_frame = Some(Frame::new(render_msg, ui_events));
+
+        // Begin drawing the scene.
+        self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
+
+        render_scene_count
     }
 
     fn build_scene(&mut self) {
@@ -338,28 +348,27 @@ impl<W> DemoApp<W> where W: Window {
         MousePosition { absolute, relative }
     }
 
-    fn draw_scene(&mut self, render_msg: SceneToMainMsg, mut ui_events: Vec<UIEvent>) {
-        self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
+    pub fn draw_scene(&mut self, render_scene_index: u32) {
+        self.draw_environment(render_scene_index);
+        self.render_vector_scene(render_scene_index);
 
-        let SceneToMainMsg::Render { render_scenes, tile_time } = render_msg;
-        let mut render_stats = None;
-
-        for (viewport_index, render_scene) in render_scenes.iter().enumerate() {
-            self.draw_environment(viewport_index, &render_scene.transform);
-            self.render_vector_scene(viewport_index, &render_scene.built_scene);
-
-            match render_stats {
-                None => {
-                    render_stats = Some(RenderStats {
-                        rendering_time: self.renderer.shift_timer_query(),
-                        stats: render_scene.built_scene.stats(),
-                    })
-                }
-                Some(ref mut render_stats) => {
-                    render_stats.stats = render_stats.stats + render_scene.built_scene.stats()
-                }
+        let frame = self.current_frame.as_mut().unwrap();
+        let render_scene = &frame.render_msg.render_scenes[render_scene_index as usize];
+        match frame.render_stats {
+            None => {
+                frame.render_stats = Some(RenderStats {
+                    rendering_time: self.renderer.shift_timer_query(),
+                    stats: render_scene.built_scene.stats(),
+                })
+            }
+            Some(ref mut render_stats) => {
+                render_stats.stats = render_stats.stats + render_scene.built_scene.stats()
             }
         }
+    }
+
+    pub fn finish_drawing_frame(&mut self) {
+        let mut frame = self.current_frame.take().unwrap();
 
         let drawable_size = self.window_size.device_size();
         self.renderer.set_viewport(RectI32::new(Point2DI32::default(), drawable_size));
@@ -368,14 +377,14 @@ impl<W> DemoApp<W> where W: Window {
             self.take_screenshot();
         }
 
-        if let Some(render_stats) = render_stats {
+        if let Some(render_stats) = frame.render_stats.take() {
             self.renderer.debug_ui.add_sample(render_stats.stats,
-                                              tile_time,
+                                              frame.render_msg.tile_time,
                                               render_stats.rendering_time);
             self.renderer.draw_debug_ui();
         }
 
-        for ui_event in &ui_events {
+        for ui_event in &frame.ui_events {
             self.dirty = true;
             self.renderer.debug_ui.ui.event_queue.push(*ui_event);
         }
@@ -390,7 +399,7 @@ impl<W> DemoApp<W> where W: Window {
                        &mut self.renderer.debug_ui,
                        &mut ui_action);
 
-        ui_events = self.renderer.debug_ui.ui.event_queue.drain();
+        frame.ui_events = self.renderer.debug_ui.ui.event_queue.drain();
         self.handle_ui_action(&mut ui_action);
 
         // Switch camera mode (2D/3D) if requested.
@@ -407,7 +416,7 @@ impl<W> DemoApp<W> where W: Window {
             _ => {}
         }
 
-        for ui_event in ui_events {
+        for ui_event in frame.ui_events {
             match ui_event {
                 UIEvent::MouseDown(_) if self.camera.is_3d() => {
                     // If nothing handled the mouse-down event, toggle mouselook.
@@ -426,7 +435,10 @@ impl<W> DemoApp<W> where W: Window {
         self.frame_counter += 1;
     }
 
-    fn draw_environment(&self, viewport_index: usize, render_transform: &RenderTransform) {
+    fn draw_environment(&self, viewport_index: u32) {
+        let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
+        let render_transform = &render_msg.render_scenes[viewport_index as usize].transform;
+
         let perspective = match *render_transform {
             RenderTransform::Transform2D(..) => return,
             RenderTransform::Perspective(perspective) => perspective,
@@ -493,7 +505,10 @@ impl<W> DemoApp<W> where W: Window {
         });
     }
 
-    fn render_vector_scene(&mut self, viewport_index: usize, built_scene: &BuiltScene) {
+    fn render_vector_scene(&mut self, viewport_index: u32) {
+        let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
+        let built_scene = &render_msg.render_scenes[viewport_index as usize].built_scene;
+
         let view_box_size = view_box_size(self.ui.mode, &self.window_size);
         let viewport_origin_x = viewport_index as i32 * view_box_size.x();
         let viewport = RectI32::new(Point2DI32::new(viewport_origin_x, 0), view_box_size);
@@ -654,7 +669,7 @@ impl SceneThread {
                         RenderScene { built_scene, transform: (*render_transform).clone() }
                     }).collect();
                     let tile_time = Instant::now() - start_time;
-                    self.sender.send(SceneToMainMsg::Render { render_scenes, tile_time }).unwrap();
+                    self.sender.send(SceneToMainMsg { render_scenes, tile_time }).unwrap();
                 }
             }
         }
@@ -672,8 +687,9 @@ struct BuildOptions {
     stem_darkening_font_size: Option<f32>,
 }
 
-enum SceneToMainMsg {
-    Render { render_scenes: Vec<RenderScene>, tile_time: Duration }
+struct SceneToMainMsg {
+    render_scenes: Vec<RenderScene>,
+    tile_time: Duration,
 }
 
 pub struct RenderScene {
@@ -689,7 +705,7 @@ pub struct Options {
 }
 
 impl Options {
-    fn get(resources: &dyn ResourceLoader) -> Options {
+    fn get() -> Options {
         let matches = App::new("tile-svg")
             .arg(
                 Arg::with_name("jobs")
@@ -755,7 +771,7 @@ fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &Option<PathBuf>
             data = vec![];
             let mut file = match File::open(input_path) {
                 Ok(file) => file,
-                Err(err) => panic!(),
+                Err(_) => panic!(),
             };
             file.read_to_end(&mut data).unwrap();
         }
@@ -930,5 +946,17 @@ fn view_box_size(mode: Mode, window_size: &WindowSize) -> Point2DI32 {
     match mode {
         Mode::TwoD | Mode::ThreeD => window_drawable_size,
         Mode::VR => Point2DI32::new(window_drawable_size.x() / 2, window_drawable_size.y()),
+    }
+}
+
+struct Frame {
+    render_msg: SceneToMainMsg,
+    ui_events: Vec<UIEvent>,
+    render_stats: Option<RenderStats>,
+}
+
+impl Frame {
+    fn new(render_msg: SceneToMainMsg, ui_events: Vec<UIEvent>) -> Frame {
+        Frame { render_msg, ui_events, render_stats: None }
     }
 }

@@ -13,7 +13,9 @@ public class PathfinderDemoRenderer extends Object implements GLSurfaceView.Rend
     private static native void init(PathfinderDemoResourceLoader resourceLoader,
                                     int width,
                                     int height);
-    private static native void runOnce();
+    private static native int prepareFrame();
+    private static native void drawScene(int sceneIndex);
+    private static native void finishDrawingFrame();
 
     public static native void pushWindowResizedEvent(int width, int height);
     public static native void pushMouseDownEvent(int x, int y);
@@ -48,6 +50,9 @@ public class PathfinderDemoRenderer extends Object implements GLSurfaceView.Rend
 
     @Override
     public void onDrawFrame(GL10 gl) {
-        runOnce();
+        int sceneCount = prepareFrame();
+        for (int sceneIndex = 0; sceneIndex < sceneCount; sceneIndex++)
+            drawScene(sceneIndex);
+        finishDrawingFrame();
     }
 }

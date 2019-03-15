@@ -37,7 +37,12 @@ fn main() {
         while let Some(event) = app.window.try_get_event() {
             events.push(event);
         }
-        app.run_once(events);
+
+        let scene_count = app.prepare_frame(events);
+        for scene_index in 0..scene_count {
+            app.draw_scene(scene_index);
+        }
+        app.finish_drawing_frame();
     }
 }
 
