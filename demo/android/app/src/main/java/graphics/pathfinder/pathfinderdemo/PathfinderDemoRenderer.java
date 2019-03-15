@@ -1,58 +1,89 @@
 package graphics.pathfinder.pathfinderdemo;
 
-import android.content.res.AssetManager;
-import android.opengl.GLSurfaceView;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.support.annotation.RequiresApi;
 
+import com.google.vr.sdk.base.Eye;
+import com.google.vr.sdk.base.GvrView;
+import com.google.vr.sdk.base.HeadTransform;
+import com.google.vr.sdk.base.Viewport;
 import javax.microedition.khronos.egl.EGLConfig;
-import javax.microedition.khronos.opengles.GL10;
 
-public class PathfinderDemoRenderer extends Object implements GLSurfaceView.Renderer {
-    private AssetManager mAssetManager;
+public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
+    private PathfinderActivity mActivity;
     private boolean mInitialized;
+    private boolean mInVRMode;
 
     private static native void init(PathfinderDemoResourceLoader resourceLoader,
                                     int width,
                                     int height);
+
     private static native int prepareFrame();
+
     private static native void drawScene(int sceneIndex);
+
     private static native void finishDrawingFrame();
 
     public static native void pushWindowResizedEvent(int width, int height);
+
     public static native void pushMouseDownEvent(int x, int y);
+
     public static native void pushMouseDraggedEvent(int x, int y);
+
     public static native void pushLookEvent(float pitch, float yaw);
 
     static {
         System.loadLibrary("pathfinder_android_demo");
     }
 
-    protected PathfinderDemoRenderer() {}
-
-    PathfinderDemoRenderer(AssetManager assetManager) {
+    PathfinderDemoRenderer(PathfinderActivity activity) {
         super();
-        mAssetManager = assetManager;
+        mActivity = activity;
         mInitialized = false;
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
-    public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+    public void onDrawFrame(HeadTransform headTransform, Eye leftEye, Eye rightEye) {
+        boolean inVR = prepareFrame() > 1;
+        if (inVR != mInVRMode) {
+            mInVRMode = inVR;
+            try {
+                mActivity.setVrModeEnabled(mInVRMode, mActivity.mVRListenerComponentName);
+            } catch (PackageManager.NameNotFoundException exception) {
+                throw new RuntimeException(exception);
+            }
+        }
+
+        for (int sceneIndex = 0; sceneIndex < (inVR ? 2 : 1); sceneIndex++)
+            drawScene(sceneIndex);
+        finishDrawingFrame();
     }
 
     @Override
-    public void onSurfaceChanged(GL10 gl, int width, int height) {
+    public void onFinishFrame(Viewport viewport) {
+
+    }
+
+    @Override
+    public void onSurfaceChanged(int width, int height) {
         if (!mInitialized) {
-            init(new PathfinderDemoResourceLoader(mAssetManager), width, height);
+            init(new PathfinderDemoResourceLoader(mActivity.getAssets()), width, height);
             mInitialized = true;
         } else {
             pushWindowResizedEvent(width, height);
         }
+
     }
 
     @Override
-    public void onDrawFrame(GL10 gl) {
-        int sceneCount = prepareFrame();
-        for (int sceneIndex = 0; sceneIndex < sceneCount; sceneIndex++)
-            drawScene(sceneIndex);
-        finishDrawingFrame();
+    public void onSurfaceCreated(EGLConfig config) {
+
+    }
+
+    @Override
+    public void onRendererShutdown() {
+
     }
 }

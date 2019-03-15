@@ -22,6 +22,8 @@ android {
 }
 
 dependencies {
+    compile 'com.google.vr:sdk-base:1.160.0'
+
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'com.android.support:appcompat-v7:27.1.1'
     implementation 'com.android.support:support-v4:27.1.1'
