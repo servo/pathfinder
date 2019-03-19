@@ -12,7 +12,6 @@
 //!
 //! We can't always count on a filesystem being present.
 
-use crate::ShaderKind;
 use std::env;
 use std::fs::File;
 use std::io::{Error as IOError, Read};
@@ -29,7 +28,7 @@ pub struct FilesystemResourceLoader {
 }
 
 impl FilesystemResourceLoader {
-    pub fn new(root: PathBuf) -> FilesystemResourceLoader {
+    pub fn locate() -> FilesystemResourceLoader {
         let mut parent_directory = env::current_dir().unwrap();
         loop {
             // So ugly :(
@@ -51,10 +50,6 @@ impl FilesystemResourceLoader {
         }
 
         panic!("No suitable `resources/` directory found!");
-    }
-
-    pub fn locate() -> FilesystemResourceLoader {
-        FilesystemResourceLoader::new(env::current_dir().unwrap())
     }
 }
 

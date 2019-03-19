@@ -15,10 +15,7 @@ use image::ImageFormat;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_simd::default::F32x4;
-use std::env;
-use std::fs::File;
-use std::io::Read;
-use std::path::PathBuf;
+use rustache::HashBuilder;
 use std::time::Duration;
 
 pub mod resources;
@@ -36,7 +33,11 @@ pub trait Device {
 
     fn create_texture(&self, format: TextureFormat, size: Point2DI32) -> Self::Texture;
     fn create_texture_from_data(&self, size: Point2DI32, data: &[u8]) -> Self::Texture;
-    fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
+    fn create_shader_from_source(&self,
+                                 name: &str,
+                                 source: &[u8],
+                                 kind: ShaderKind,
+                                 template_input: HashBuilder)
                                  -> Self::Shader;
     fn create_vertex_array(&self) -> Self::VertexArray;
     fn create_program_from_shaders(&self,
@@ -108,7 +109,17 @@ pub trait Device {
                      -> Self::Shader {
         let suffix = match kind { ShaderKind::Vertex => 'v', ShaderKind::Fragment => 'f' };
         let source = resources.slurp(&format!("shaders/{}.{}s.glsl", name, suffix)).unwrap();
-        self.create_shader_from_source(name, &source, kind)
+
+        let mut load_include_post_convolve = |_| load_shader_include(resources, "post_convolve");
+        let mut load_include_post_gamma_correct =
+            |_| load_shader_include(resources, "post_gamma_correct");
+        let template_input =
+            HashBuilder::new().insert_lambda("include_post_convolve",
+                                             &mut load_include_post_convolve)
+                              .insert_lambda("include_post_gamma_correct",
+                                             &mut load_include_post_gamma_correct);
+
+        self.create_shader_from_source(name, &source, kind, template_input)
     }
 
     fn create_program(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Program {
@@ -241,4 +252,9 @@ impl Default for StencilFunc {
     fn default() -> StencilFunc {
         StencilFunc::Always
     }
+}
+
+fn load_shader_include(resources: &dyn ResourceLoader, include_name: &str) -> String {
+    let resource = resources.slurp(&format!("shaders/{}.inc.glsl", include_name)).unwrap();
+    String::from_utf8_lossy(&resource).to_string()
 }

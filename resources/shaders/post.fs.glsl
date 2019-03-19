@@ -1,6 +1,6 @@
 #version {{version}}
 
-// pathfinder/demo/shaders/post.fs.glsl
+// pathfinder/resources/shaders/post.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -16,49 +16,18 @@
 precision highp float;
 
 uniform sampler2D uSource;
-uniform sampler2D uGammaLUT;
 uniform vec2 uFramebufferSize;
-// Zero if no subpixel AA is to be performed.
-uniform vec4 uKernel;
-// Zero if no gamma correction is to be performed.
-uniform vec4 uGammaCorrectionBGColor;
 
 in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
-float gammaCorrectChannel(float fgColor) {
-    return texture(uGammaLUT, vec2(fgColor, 1.0 - uGammaCorrectionBGColor)).r;
-}
+{{{include_post_gamma_correct}}}
+{{{include_post_convolve}}}
 
-// `fgColor` is in linear space.
-vec3 gammaCorrect(vec3 fgColor) {
-    return vec3(gammaCorrectChannel(fgColor.r),
-                gammaCorrectChannel(fgColor.g),
-                gammaCorrectChannel(fgColor.b));
-}
-
+// Convolve horizontally in this pass.
 float sample1Tap(float offset) {
     return texture(uSource, vec2(vTexCoord.x + offset, vTexCoord.y)).r;
-}
-
-void sample9Tap(out vec4 outAlphaLeft,
-                out float outAlphaCenter,
-                out vec4 outAlphaRight,
-                float onePixel) {
-    outAlphaLeft   = vec4(uKernel.x > 0.0 ? sample1Tap(-4.0 * onePixel) : 0.0,
-                          sample1Tap(-3.0 * onePixel),
-                          sample1Tap(-2.0 * onePixel),
-                          sample1Tap(-1.0 * onePixel));
-    outAlphaCenter = sample1Tap(0.0);
-    outAlphaRight  = vec4(sample1Tap(1.0 * onePixel),
-                          sample1Tap(2.0 * onePixel),
-                          sample1Tap(3.0 * onePixel),
-                          uKernel.x > 0.0 ? sample1Tap(4.0 * onePixel) : 0.0);
-}
-
-float convolve7Tap(vec4 alpha0, vec3 alpha1) {
-    return dot(alpha0, uKernel) + dot(alpha1, uKernel.zyx);
 }
 
 void main() {

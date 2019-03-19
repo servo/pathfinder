@@ -70,7 +70,6 @@ pub struct Renderer<D> where D: Device {
 
     // Extra info
     viewport: RectI32,
-    main_framebuffer_size: Point2DI32,
     postprocess_options: PostprocessOptions,
     use_depth: bool,
 }
@@ -150,7 +149,6 @@ impl<D> Renderer<D> where D: Device {
             debug_ui,
 
             viewport,
-            main_framebuffer_size,
             postprocess_options: PostprocessOptions::default(),
             use_depth: false,
         }

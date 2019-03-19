@@ -209,9 +209,16 @@ impl Device for GLDevice {
         texture
     }
 
-    fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind) -> GLShader {
+    fn create_shader_from_source(&self,
+                                 name: &str,
+                                 source: &[u8],
+                                 kind: ShaderKind,
+                                 mut template_input: HashBuilder)
+                                 -> GLShader {
+        // FIXME(pcwalton): Do this once and cache it.
         let glsl_version_spec = self.version.to_glsl_version_spec();
-        let template_input = HashBuilder::new().insert("version", glsl_version_spec);
+        template_input = template_input.insert("version", glsl_version_spec);
+
         let mut output = Cursor::new(vec![]);
         template_input.render(str::from_utf8(source).unwrap(), &mut output).unwrap();
         let source = output.into_inner();

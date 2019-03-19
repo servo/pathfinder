@@ -691,6 +691,7 @@ dependencies = [
  "image 0.21.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_geometry 0.3.0",
  "pathfinder_simd 0.3.0",
+ "rustache 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
