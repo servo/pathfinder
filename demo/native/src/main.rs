@@ -12,7 +12,7 @@
 
 use nfd::Response;
 use pathfinder_demo::DemoApp;
-use pathfinder_demo::window::{Event, Keycode, Window, WindowSize};
+use pathfinder_demo::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
@@ -58,6 +58,8 @@ struct WindowImpl {
     #[allow(dead_code)]
     gl_context: GLContext,
     resource_loader: FilesystemResourceLoader,
+    selected_file: Option<PathBuf>,
+    open_svg_message_type: u32,
 }
 
 impl Window for WindowImpl {
@@ -96,10 +98,10 @@ impl Window for WindowImpl {
         }
     }
 
-    fn run_open_dialog(&self, extension: &str) -> Result<PathBuf, ()> {
-        match nfd::open_file_dialog(Some(extension), None) {
-            Ok(Response::Okay(file)) => Ok(PathBuf::from(file)),
-            _ => Err(()),
+    fn present_open_svg_dialog(&mut self) {
+        if let Ok(Response::Okay(path)) = nfd::open_file_dialog(Some("svg"), None) {
+            self.selected_file = Some(PathBuf::from(path));
+            WindowImpl::push_user_event(self.open_svg_message_type, 0);
         }
     }
 
@@ -114,31 +116,44 @@ impl Window for WindowImpl {
 impl WindowImpl {
     fn new() -> WindowImpl {
         SDL_VIDEO.with(|sdl_video| {
-            let (window, gl_context, event_pump);
+            SDL_EVENT.with(|sdl_event| {
+                let (window, gl_context, event_pump);
 
-            let gl_attributes = sdl_video.gl_attr();
-            gl_attributes.set_context_profile(GLProfile::Core);
-            gl_attributes.set_context_version(3, 3);
-            gl_attributes.set_depth_size(24);
-            gl_attributes.set_stencil_size(8);
+                let gl_attributes = sdl_video.gl_attr();
+                gl_attributes.set_context_profile(GLProfile::Core);
+                gl_attributes.set_context_version(3, 3);
+                gl_attributes.set_depth_size(24);
+                gl_attributes.set_stencil_size(8);
 
-            window = sdl_video.window("Pathfinder Demo",
-                                      DEFAULT_WINDOW_WIDTH,
-                                      DEFAULT_WINDOW_HEIGHT)
-                              .opengl()
-                              .resizable()
-                              .allow_highdpi()
-                              .build()
-                              .unwrap();
+                window = sdl_video.window("Pathfinder Demo",
+                                        DEFAULT_WINDOW_WIDTH,
+                                        DEFAULT_WINDOW_HEIGHT)
+                                .opengl()
+                                .resizable()
+                                .allow_highdpi()
+                                .build()
+                                .unwrap();
 
-            gl_context = window.gl_create_context().unwrap();
-            gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
+                gl_context = window.gl_create_context().unwrap();
+                gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
 
-            event_pump = SDL_CONTEXT.with(|sdl_context| sdl_context.event_pump().unwrap());
+                event_pump = SDL_CONTEXT.with(|sdl_context| sdl_context.event_pump().unwrap());
 
-            let resource_loader = FilesystemResourceLoader::locate();
+                let resource_loader = FilesystemResourceLoader::locate();
 
-            WindowImpl { window, event_pump, gl_context, resource_loader }
+                let open_svg_message_type = unsafe {
+                    sdl_event.register_event().unwrap()
+                };
+
+                WindowImpl {
+                    window,
+                    event_pump,
+                    gl_context,
+                    resource_loader,
+                    open_svg_message_type,
+                    selected_file: None,
+                }
+            })
         })
     }
 
@@ -171,6 +186,9 @@ impl WindowImpl {
 
     fn convert_sdl_event(&self, sdl_event: SDLEvent) -> Option<Event> {
         match sdl_event {
+            SDLEvent::User { type_, .. } if type_ == self.open_svg_message_type => {
+                Some(Event::OpenSVG(SVGPath::Path(self.selected_file.clone().unwrap())))
+            }
             SDLEvent::User { type_, code, .. } => {
                 Some(Event::User { message_type: type_, message_data: code as u32 })
             }

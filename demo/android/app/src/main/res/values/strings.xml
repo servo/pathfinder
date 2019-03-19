@@ -4,4 +4,6 @@
     <string name="dummy_button">Dummy Button</string>
     <string name="dummy_content">DUMMY\nCONTENT</string>
     <string name="service_name">PathfinderVRListenerService</string>
+    <string name="title_activity_pathfinder_demo_file_browser">PathfinderDemoFileBrowserActivity
+    </string>
 </resources>

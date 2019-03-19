@@ -12,9 +12,9 @@
 extern crate lazy_static;
 
 use jni::{JNIEnv, JavaVM};
-use jni::objects::{GlobalRef, JByteBuffer, JClass, JObject, JValue};
+use jni::objects::{GlobalRef, JByteBuffer, JClass, JObject, JString, JValue};
 use pathfinder_demo::DemoApp;
-use pathfinder_demo::window::{Event, Window, WindowSize};
+use pathfinder_demo::window::{Event, SVGPath, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -31,6 +31,7 @@ lazy_static! {
 
 thread_local! {
     static DEMO_APP: RefCell<Option<DemoApp<WindowImpl>>> = RefCell::new(None);
+    static JAVA_ACTIVITY: RefCell<Option<JavaActivity>> = RefCell::new(None);
     static JAVA_RESOURCE_LOADER: RefCell<Option<JavaResourceLoader>> = RefCell::new(None);
 }
 
@@ -40,12 +41,16 @@ static RESOURCE_LOADER: AndroidResourceLoader = AndroidResourceLoader;
 pub unsafe extern "system" fn
         Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_init(env: JNIEnv,
                                                                             class: JClass,
+                                                                            activity: JObject,
                                                                             loader: JObject,
                                                                             width: i32,
                                                                             height: i32) {
     let logical_size = Point2DI32::new(width, height);
     let window_size = WindowSize { logical_size, backing_scale_factor: 1.0 };
 
+    JAVA_ACTIVITY.with(|java_activity| {
+        *java_activity.borrow_mut() = Some(JavaActivity::new(env.clone(), activity));
+    });
     JAVA_RESOURCE_LOADER.with(|java_resource_loader| {
         *java_resource_loader.borrow_mut() = Some(JavaResourceLoader::new(env, loader));
     });
@@ -139,6 +144,16 @@ pub unsafe extern "system" fn
     EVENT_QUEUE.lock().unwrap().push(Event::Look { pitch, yaw })
 }
 
+#[no_mangle]
+pub unsafe extern "system" fn
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushOpenSVGEvent(
+            env: JNIEnv,
+            _: JClass,
+            string: JObject) {
+    let string: String = env.get_string(JString::from(string)).unwrap().into();
+    EVENT_QUEUE.lock().unwrap().push(Event::OpenSVG(SVGPath::Resource(string)))
+}
+
 struct WindowImpl;
 
 impl Window for WindowImpl {
@@ -163,9 +178,16 @@ impl Window for WindowImpl {
     fn push_user_event(message_type: u32, message_data: u32) {
     }
 
-    fn run_open_dialog(&self, extension: &str) -> Result<PathBuf, ()> {
-        // TODO(pcwalton)
-        Err(())
+    fn present_open_svg_dialog(&mut self) {
+        JAVA_ACTIVITY.with(|java_activity| {
+            let mut java_activity = java_activity.borrow_mut();
+            let java_activity = java_activity.as_mut().unwrap();
+            let env = java_activity.vm.get_env().unwrap();
+            env.call_method(java_activity.activity.as_obj(),
+                            "presentOpenSVGDialog",
+                            "()V",
+                            &[]).unwrap();
+        });
     }
 
     fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()> {
@@ -194,6 +216,20 @@ impl ResourceLoader for AndroidResourceLoader {
                 _ => panic!("Unexpected return value!"),
             }
         })
+    }
+}
+
+struct JavaActivity {
+    activity: GlobalRef,
+    vm: JavaVM,
+}
+
+impl JavaActivity {
+    fn new(env: JNIEnv, activity: JObject) -> JavaActivity {
+        JavaActivity {
+            activity: env.new_global_ref(activity).unwrap(),
+            vm: env.get_java_vm().unwrap(),
+        }
     }
 }
 

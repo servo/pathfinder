@@ -13,7 +13,6 @@
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
-use std::io::Error;
 use std::path::PathBuf;
 
 pub trait Window {
@@ -23,7 +22,7 @@ pub trait Window {
     fn resource_loader(&self) -> &dyn ResourceLoader;
     fn create_user_event_id(&self) -> u32;
     fn push_user_event(message_type: u32, message_data: u32);
-    fn run_open_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
+    fn present_open_svg_dialog(&mut self);
     fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
 }
 
@@ -37,6 +36,7 @@ pub enum Event {
     MouseDragged(Point2DI32),
     Zoom(f32),
     Look { pitch: f32, yaw: f32 },
+    OpenSVG(SVGPath),
     User { message_type: u32, message_data: u32 },
 }
 
@@ -57,4 +57,11 @@ impl WindowSize {
     pub fn device_size(&self) -> Point2DI32 {
         self.logical_size.to_f32().scale(self.backing_scale_factor).to_i32()
     }
+}
+
+#[derive(Clone)]
+pub enum SVGPath {
+    Default,
+    Resource(String),
+    Path(PathBuf),
 }

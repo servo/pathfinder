@@ -107,7 +107,7 @@ impl<D> DemoUI<D> where D: Device {
 
     pub fn update<W>(&mut self,
                      device: &D,
-                     window: &W,
+                     window: &mut W,
                      debug_ui: &mut DebugUI<D>,
                      action: &mut UIAction)
                      where W: Window {
@@ -139,9 +139,7 @@ impl<D> DemoUI<D> where D: Device {
         if debug_ui.ui.draw_button(device, position, &self.open_texture) {
             // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
             // the contents of the file.
-            if let Ok(file) = window.run_open_dialog("svg") {
-                *action = UIAction::OpenFile(file);
-            }
+            window.present_open_svg_dialog();
         }
         debug_ui.ui.draw_tooltip(device, "Open SVG", RectI32::new(position, button_size));
         position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
@@ -337,7 +335,6 @@ impl<D> DemoUI<D> where D: Device {
 #[derive(Clone, Debug, PartialEq)]
 pub enum UIAction {
     None,
-    OpenFile(PathBuf),
     TakeScreenshot(PathBuf),
     ZoomIn,
     ZoomOut,

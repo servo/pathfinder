@@ -18,17 +18,14 @@ import android.support.annotation.RequiresApi;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
-
-import com.google.vr.cardboard.AndroidNCompat;
 
 /**
  * An example full-screen activity that shows and hides the system UI (i.e.
  * status bar and navigation/system bar) with user interaction.
  */
-public class PathfinderActivity extends Activity {
+public class PathfinderDemoActivity extends Activity {
     private PathfinderDemoRenderer mRenderer;
 
     /**
@@ -83,32 +80,20 @@ public class PathfinderActivity extends Activity {
         mContentView.setStereoModeEnabled(false);
         setVRMode(false);
 
-        /*
-        // Set up the user interaction to manually show or hide the system UI.
-        mContentView.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                toggle();
-            }
-        });
-        */
-
         mContentView.setEGLContextClientVersion(3);
         mRenderer = new PathfinderDemoRenderer(this);
         mContentView.setRenderer(mRenderer);
 
         mContentView.setOnTouchListener(new View.OnTouchListener() {
             @Override
-            public boolean onTouch(View view, MotionEvent event) {
-                int x = Math.round(event.getX());
-                int y = Math.round(event.getY());
+            public boolean onTouch(final View view, final MotionEvent event) {
+                final int x = Math.round(event.getX());
+                final int y = Math.round(event.getY());
                 switch (event.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
-                        Log.i("Pathfinder", "DOWN " + x + " " + y);
                         PathfinderDemoRenderer.pushMouseDownEvent(x, y);
                         break;
                     case MotionEvent.ACTION_MOVE:
-                        Log.i("Pathfinder", "MOVE " + x + " " + y);
                         PathfinderDemoRenderer.pushMouseDraggedEvent(x, y);
                         break;
                 }
@@ -127,13 +112,13 @@ public class PathfinderActivity extends Activity {
             @Override
             public void onSensorChanged(SensorEvent event) {
                 // https://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles#Quaternion_to_Euler_Angles_Conversion
-                float[] q = event.values;
-                float pitch = (float)Math.asin(2.0 * (q[0] * q[2] - q[3] * q[1]));
-                float yaw = (float)Math.atan2(2.0 * (q[0] * q[3] + q[1] * q[2]),
-                                              1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]));
+                final float[] q = event.values;
+                final float pitch = (float)Math.asin(2.0 * (q[0] * q[2] - q[3] * q[1]));
+                final float yaw = (float)Math.atan2(2.0 * (q[0] * q[3] + q[1] * q[2]),
+                                                    1.0 - 2.0 * (q[2] * q[2] + q[3] * q[3]));
 
-                float deltaPitch = pitch - mPitch;
-                float deltaYaw = yaw - mYaw;
+                final float deltaPitch = pitch - mPitch;
+                final float deltaYaw = yaw - mYaw;
 
                 mPitch = pitch;
                 mYaw = yaw;
@@ -156,5 +141,10 @@ public class PathfinderActivity extends Activity {
     @Override
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
+    }
+
+    public void presentOpenSVGDialog() {
+        final Intent intent = new Intent(this, PathfinderDemoFileBrowserActivity.class);
+        startActivity(intent);
     }
 }

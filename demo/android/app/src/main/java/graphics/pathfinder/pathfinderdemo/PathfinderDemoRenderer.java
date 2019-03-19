@@ -1,8 +1,7 @@
 package graphics.pathfinder.pathfinderdemo;
 
+import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.os.Build;
-import android.support.annotation.RequiresApi;
 
 import com.google.vr.sdk.base.Eye;
 import com.google.vr.sdk.base.GvrView;
@@ -11,11 +10,12 @@ import com.google.vr.sdk.base.Viewport;
 import javax.microedition.khronos.egl.EGLConfig;
 
 public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
-    private PathfinderActivity mActivity;
+    private final PathfinderDemoActivity mActivity;
     private boolean mInitialized;
     private boolean mInVRMode;
 
-    private static native void init(PathfinderDemoResourceLoader resourceLoader,
+    private static native void init(PathfinderDemoActivity activity,
+                                    PathfinderDemoResourceLoader resourceLoader,
                                     int width,
                                     int height);
 
@@ -33,20 +33,21 @@ public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
 
     public static native void pushLookEvent(float pitch, float yaw);
 
+    public static native void pushOpenSVGEvent(String path);
+
     static {
         System.loadLibrary("pathfinder_android_demo");
     }
 
-    PathfinderDemoRenderer(PathfinderActivity activity) {
+    PathfinderDemoRenderer(PathfinderDemoActivity activity) {
         super();
         mActivity = activity;
         mInitialized = false;
     }
 
-    @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     public void onDrawFrame(HeadTransform headTransform, Eye leftEye, Eye rightEye) {
-        boolean inVR = prepareFrame() > 1;
+        final boolean inVR = prepareFrame() > 1;
         if (inVR != mInVRMode) {
             mInVRMode = inVR;
             try {
@@ -69,7 +70,10 @@ public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
     @Override
     public void onSurfaceChanged(int width, int height) {
         if (!mInitialized) {
-            init(new PathfinderDemoResourceLoader(mActivity.getAssets()), width, height);
+            init(mActivity,
+                    new PathfinderDemoResourceLoader(mActivity.getAssets()),
+                    width,
+                    height);
             mInitialized = true;
         } else {
             pushWindowResizedEvent(width, height);

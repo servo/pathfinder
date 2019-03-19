@@ -12,7 +12,7 @@
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction};
-use crate::window::{Event, Keycode, Window, WindowSize};
+use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
 use jemallocator;
@@ -328,6 +328,23 @@ impl<W> DemoApp<W> where W: Window {
                         self.dirty = true;
                     }
                 }
+                Event::OpenSVG(ref svg_path) => {
+                    let built_svg = load_scene(self.window.resource_loader(), svg_path);
+                    self.ui.message = get_svg_building_message(&built_svg);
+
+                    let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+                    self.scene_view_box = built_svg.scene.view_box;
+                    self.scene_is_monochrome = built_svg.scene.is_monochrome();
+
+                    self.camera = if self.ui.mode == Mode::TwoD {
+                        Camera::new_2d(self.scene_view_box, view_box_size)
+                    } else {
+                        Camera::new_3d(self.scene_view_box)
+                    };
+
+                    self.scene_thread_proxy.load_scene(built_svg.scene, view_box_size);
+                    self.dirty = true;
+                }
                 Event::User { message_type: event_id, message_data: expected_epoch } if
                         event_id == self.expire_message_event_id &&
                         expected_epoch as u32 == self.message_epoch => {
@@ -395,7 +412,7 @@ impl<W> DemoApp<W> where W: Window {
 
         let mut ui_action = UIAction::None;
         self.ui.update(&self.renderer.device,
-                       &self.window,
+                       &mut self.window,
                        &mut self.renderer.debug_ui,
                        &mut ui_action);
 
@@ -539,26 +556,6 @@ impl<W> DemoApp<W> where W: Window {
         match ui_action {
             UIAction::None => {}
 
-            UIAction::OpenFile(ref path) => {
-                let built_svg = load_scene(self.window.resource_loader(), &Some((*path).clone()));
-                self.ui.message = get_svg_building_message(&built_svg);
-
-                self.scene_view_box = built_svg.scene.view_box;
-                self.scene_is_monochrome = built_svg.scene.is_monochrome();
-
-                let drawable_size = self.window_size.device_size();
-                self.scene_thread_proxy.set_drawable_size(drawable_size);
-
-                self.camera = if self.ui.mode == Mode::TwoD {
-                    Camera::new_2d(built_svg.scene.view_box, drawable_size)
-                } else {
-                    Camera::new_3d(built_svg.scene.view_box)
-                };
-
-                self.scene_thread_proxy.load_scene(built_svg.scene);
-                self.dirty = true;
-            }
-
             UIAction::TakeScreenshot(ref path) => {
                 self.pending_screenshot_path = Some((*path).clone());
                 self.dirty = true;
@@ -626,8 +623,8 @@ impl SceneThreadProxy {
         SceneThreadProxy { sender: main_to_scene_sender, receiver: scene_to_main_receiver }
     }
 
-    fn load_scene(&self, scene: Scene) {
-        self.sender.send(MainToSceneMsg::LoadScene(scene)).unwrap();
+    fn load_scene(&self, scene: Scene, view_box_size: Point2DI32) {
+        self.sender.send(MainToSceneMsg::LoadScene { scene, view_box_size }).unwrap();
     }
 
     fn set_drawable_size(&self, drawable_size: Point2DI32) {
@@ -653,7 +650,11 @@ impl SceneThread {
     fn run(mut self) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                MainToSceneMsg::LoadScene(scene) => self.scene = scene,
+                MainToSceneMsg::LoadScene { scene, view_box_size } => {
+                    self.scene = scene;
+                    self.scene.view_box = RectF32::new(Point2DF32::default(),
+                                                       view_box_size.to_f32());
+                }
                 MainToSceneMsg::SetDrawableSize(size) => {
                     self.scene.view_box = RectF32::new(Point2DF32::default(), size.to_f32());
                 }
@@ -677,7 +678,7 @@ impl SceneThread {
 }
 
 enum MainToSceneMsg {
-    LoadScene(Scene),
+    LoadScene { scene: Scene, view_box_size: Point2DI32 },
     SetDrawableSize(Point2DI32),
     Build(BuildOptions),
 }
@@ -701,7 +702,7 @@ pub struct RenderScene {
 pub struct Options {
     jobs: Option<usize>,
     mode: Mode,
-    input_path: Option<PathBuf>,
+    input_path: SVGPath,
 }
 
 impl Options {
@@ -732,7 +733,10 @@ impl Options {
             Mode::TwoD
         };
 
-        let input_path = matches.value_of("INPUT").map(PathBuf::from);
+        let input_path = match matches.value_of("INPUT") {
+            None => SVGPath::Default,
+            Some(path) => SVGPath::Path(PathBuf::from(path)),
+        };
 
         // Set up Rayon.
         let mut thread_pool_builder = ThreadPoolBuilder::new();
@@ -764,19 +768,16 @@ struct RenderStats {
     stats: Stats,
 }
 
-fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &Option<PathBuf>) -> BuiltSVG {
+fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath) -> BuiltSVG {
     let mut data;
     match *input_path {
-        Some(ref input_path) => {
+        SVGPath::Default => data = resource_loader.slurp(DEFAULT_SVG_VIRTUAL_PATH).unwrap(),
+        SVGPath::Resource(ref name) => data = resource_loader.slurp(name).unwrap(),
+        SVGPath::Path(ref path) => {
             data = vec![];
-            let mut file = match File::open(input_path) {
-                Ok(file) => file,
-                Err(_) => panic!(),
-            };
-            file.read_to_end(&mut data).unwrap();
+            File::open(path).unwrap().read_to_end(&mut data).unwrap();
         }
-        None => data = resource_loader.slurp(DEFAULT_SVG_VIRTUAL_PATH).unwrap(),
-    }
+    };
 
     BuiltSVG::from_tree(Tree::from_data(&data, &UsvgOptions::default()).unwrap())
 }
