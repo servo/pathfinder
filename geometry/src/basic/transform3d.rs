@@ -282,6 +282,14 @@ impl Perspective {
         let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
         RectF32::from_points(min_point, max_point)
     }
+
+    #[inline]
+    pub fn post_mul(&self, other: &Transform3DF32) -> Perspective {
+        Perspective {
+            transform: self.transform.post_mul(other),
+            window_size: self.window_size,
+        }
+    }
 }
 
 /// Transforms a path with a perspective projection.
