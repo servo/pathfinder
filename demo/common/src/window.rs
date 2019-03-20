@@ -12,9 +12,10 @@
 
 use gl::types::GLuint;
 use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
+use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::basic::transform3d::Transform3DF32;
+use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
@@ -24,6 +25,8 @@ pub trait Window {
     fn gl_version(&self) -> GLVersion;
     fn gl_default_framebuffer(&self) -> GLuint { 0 }
     fn mouse_position(&self) -> Point2DI32;
+    fn view_box_size(&self, mode: Mode) -> Point2DI32;
+    fn make_current(&mut self, mode: Mode, index: Option<u32>) -> RectI32;
     fn present(&mut self);
     fn resource_loader(&self) -> &dyn ResourceLoader;
     fn create_user_event_id(&self) -> u32;
@@ -90,4 +93,17 @@ pub enum SVGPath {
     Default,
     Resource(String),
     Path(PathBuf),
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum Mode {
+    TwoD   = 0,
+    ThreeD = 1,
+    VR     = 2,
+}
+
+impl Mode {
+    pub fn viewport_count(self) -> usize {
+        match self { Mode::TwoD | Mode::ThreeD => 1, Mode::VR => 2 }
+    }
 }
