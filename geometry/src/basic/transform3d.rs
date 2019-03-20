@@ -97,6 +97,24 @@ impl Transform3DF32 {
                                   0.0, 0.0, 0.0, 1.0)
     }
 
+    /// Just like `glm::quaternion::mat4_cast()`
+    #[inline]
+    pub fn from_quaternion(x: f32, y: f32, z: f32, w: f32) -> Transform3DF32 {
+        let xx2 = 2.0 * x * x;
+        let yy2 = 2.0 * y * y;
+        let zz2 = 2.0 * z * z;
+        let wx2 = 2.0 * w * x;
+        let wy2 = 2.0 * w * y;
+        let wz2 = 2.0 * w * z;
+        let xy2 = 2.0 * x * y;
+        let xz2 = 2.0 * x * z;
+        let yz2 = 2.0 * y * z;
+        Transform3DF32::row_major(1.0 - (yy2 + zz2) , xy2 - wz2,         xz2 + wy2,         0.0,
+                                  xy2 + wz2,          1.0 - (xx2 + zz2), yz2 - wx2,         0.0,
+                                  xz2 - wy2,          yz2 + wx2,         1.0 - (xx2 + yy2), 0.0,
+                                  0.0,                0.0,               0.0,               1.0)
+    }
+
     /// Just like `glOrtho()`.
     #[inline]
     pub fn from_ortho(left: f32, right: f32, bottom: f32, top: f32, near_val: f32, far_val: f32)
