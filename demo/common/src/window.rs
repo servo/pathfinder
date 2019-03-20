@@ -13,6 +13,8 @@
 use gl::types::GLuint;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
+use pathfinder_geometry::basic::transform3d::Perspective;
+use pathfinder_geometry::basic::transform3d::Transform3DF32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
@@ -49,6 +51,7 @@ pub enum Event {
     MouseDragged(Point2DI32),
     Zoom(f32),
     Look { pitch: f32, yaw: f32 },
+    CameraTransforms(Vec<CameraTransform>),
     OpenSVG(SVGPath),
     User { message_type: u32, message_data: u32 },
 }
@@ -71,6 +74,15 @@ impl WindowSize {
     pub fn device_size(&self) -> Point2DI32 {
         self.logical_size.to_f32().scale(self.backing_scale_factor).to_i32()
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct CameraTransform {
+    // The perspective which converts from camera coordinates to display coordinates
+    pub perspective: Perspective,
+
+    // The view transform which converts from world coordinates to camera coordinates
+    pub view: Transform3DF32,
 }
 
 #[derive(Clone)]
