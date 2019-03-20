@@ -12,7 +12,7 @@
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{BackgroundColor, DemoUI, UIAction};
-use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
+use crate::window::{CameraTransform, Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
@@ -44,7 +44,7 @@ use std::path::PathBuf;
 use std::process;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 use usvg::{Options as UsvgOptions, Tree};
 
 static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
@@ -137,11 +137,7 @@ impl<W> DemoApp<W> where W: Window {
         let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
         scene_thread_proxy.set_drawable_size(view_box_size);
 
-        let camera = if options.mode == Mode::TwoD {
-            Camera::new_2d(scene_view_box, view_box_size)
-        } else {
-            Camera::new_3d(scene_view_box)
-        };
+        let camera = Camera::new(options.mode, scene_view_box, view_box_size);
 
         let ground_program = GroundProgram::new(&renderer.device, resources);
         let ground_solid_vertex_array =
@@ -213,17 +209,20 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn build_scene(&mut self) {
-        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
-
-        let render_transform = match self.camera {
-            Camera::ThreeD { ref mut transform, ref mut velocity } => {
+        let render_transforms = match self.camera {
+            Camera::ThreeD { ref transforms, ref mut transform, ref mut velocity, .. } => {
                 if transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                let perspective = transform.to_perspective(view_box_size);
-                RenderTransform::Perspective(perspective)
+                transforms.iter()
+                    .map(|tr| {
+                         let perspective = tr.perspective
+                             .post_mul(&tr.view)
+                             .post_mul(&transform.to_transform());
+                         RenderTransform::Perspective(perspective)
+                    }).collect()
             }
-            Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
+            Camera::TwoD(transform) => vec![RenderTransform::Transform2D(transform)],
         };
 
         let barrel_distortion = match self.ui.mode {
@@ -231,9 +230,6 @@ impl<W> DemoApp<W> where W: Window {
             _ => None,
         };
 
-        let viewport_count = self.ui.mode.viewport_count();
-        let render_transforms =
-            iter::repeat(render_transform.clone()).take(viewport_count).collect();
         self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
             render_transforms,
             stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
@@ -300,6 +296,11 @@ impl<W> DemoApp<W> where W: Window {
                         transform.yaw += yaw;
                     }
                 }
+                Event::CameraTransforms(new_transforms) => {
+                    if let Camera::ThreeD { ref mut transforms, .. } = self.camera {
+                        *transforms = new_transforms;
+                    }
+                }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
                     if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
@@ -356,13 +357,7 @@ impl<W> DemoApp<W> where W: Window {
                     let view_box_size = view_box_size(self.ui.mode, &self.window_size);
                     self.scene_view_box = built_svg.scene.view_box;
                     self.monochrome_scene_color = built_svg.scene.monochrome_color();
-
-                    self.camera = if self.ui.mode == Mode::TwoD {
-                        Camera::new_2d(self.scene_view_box, view_box_size)
-                    } else {
-                        Camera::new_3d(self.scene_view_box)
-                    };
-
+                    self.camera = Camera::new(self.ui.mode, self.scene_view_box, view_box_size);
                     self.scene_thread_proxy.load_scene(built_svg.scene, view_box_size);
                     self.dirty = true;
                 }
@@ -447,16 +442,10 @@ impl<W> DemoApp<W> where W: Window {
 
         // Switch camera mode (2D/3D) if requested.
         //
-        // FIXME(pcwalton): This mess should really be an MVC setup.
-        match (&self.camera, self.ui.mode) {
-            (&Camera::TwoD { .. }, Mode::ThreeD) | (&Camera::TwoD { .. }, Mode::VR) => {
-                self.camera = Camera::new_3d(self.scene_view_box);
-            }
-            (&Camera::ThreeD { .. }, Mode::TwoD) => {
-                let drawable_size = self.window_size.device_size();
-                self.camera = Camera::new_2d(self.scene_view_box, drawable_size);
-            }
-            _ => {}
+        // FIXME(pcwalton): This should really be an MVC setup.
+        if self.camera.mode() != self.ui.mode {
+            let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+            self.camera = Camera::new(self.ui.mode, self.scene_view_box, view_box_size);
         }
 
         for ui_event in frame.ui_events {
@@ -733,12 +722,14 @@ impl SceneThread {
     }
 }
 
+#[derive(Clone)]
 enum MainToSceneMsg {
     LoadScene { scene: Scene, view_box_size: Point2DI32 },
     SetDrawableSize(Point2DI32),
     Build(BuildOptions),
 }
 
+#[derive(Clone)]
 struct BuildOptions {
     render_transforms: Vec<RenderTransform>,
     stem_darkening_font_size: Option<f32>,
@@ -952,19 +943,48 @@ fn center_of_window(window_size: &WindowSize) -> Point2DF32 {
 
 enum Camera {
     TwoD(Transform2DF32),
-    ThreeD { transform: CameraTransform3D, velocity: Point3DF32 },
+    ThreeD {
+        // The mode will either be 3D or VR
+        mode: Mode,
+        // For each camera, the perspective from camera coordinates to display coordinates,
+        // and the view transform from world coordinates to camera coordinates.
+        transforms: Vec<CameraTransform>,
+        // The model transform from world coordinates to SVG coordinates
+        transform: CameraTransform3D,
+        // The camera's velocity (in world coordinates)
+        velocity: Point3DF32,
+    },
 }
 
 impl Camera {
-    fn new_2d(view_box: RectF32, drawable_size: Point2DI32) -> Camera {
-        let scale = i32::min(drawable_size.x(), drawable_size.y()) as f32 *
+    fn new(mode: Mode, view_box: RectF32, view_box_size: Point2DI32) -> Camera {
+        if mode == Mode::TwoD {
+            Camera::new_2d(view_box, view_box_size)
+        } else {
+            Camera::new_3d(mode, view_box, view_box_size)
+        }
+    }
+
+    fn new_2d(view_box: RectF32, view_box_size: Point2DI32) -> Camera {
+        let scale = i32::min(view_box_size.x(), view_box_size.y()) as f32 *
             scale_factor_for_view_box(view_box);
-        let origin = drawable_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
+        let origin = view_box_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
         Camera::TwoD(Transform2DF32::from_scale(&Point2DF32::splat(scale)).post_translate(origin))
     }
 
-    fn new_3d(view_box: RectF32) -> Camera {
+    fn new_3d(mode: Mode, view_box: RectF32, view_box_size: Point2DI32) -> Camera {
+        let viewport_count = mode.viewport_count();
+        let aspect = view_box_size.x() as f32 / view_box_size.y() as f32;
+        let projection = Transform3DF32::from_perspective(FRAC_PI_4, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
+        let transform = CameraTransform {
+            perspective: Perspective::new(&projection, view_box_size),
+            view: Transform3DF32::default(),
+        };
+        let transforms = iter::repeat(transform).take(viewport_count).collect();
+
         Camera::ThreeD {
+            mode,
+            transforms,
             transform: CameraTransform3D::new(view_box),
             velocity: Point3DF32::default(),
         }
@@ -972,6 +992,10 @@ impl Camera {
 
     fn is_3d(&self) -> bool {
         match *self { Camera::ThreeD { .. } => true, Camera::TwoD { .. } => false }
+    }
+
+    fn mode(&self) -> Mode {
+        match *self { Camera::ThreeD { mode, .. } => mode, Camera::TwoD { .. } => Mode::TwoD }
     }
 }
 
@@ -1006,12 +1030,8 @@ impl CameraTransform3D {
         update
     }
 
-    fn to_perspective(&self, drawable_size: Point2DI32) -> Perspective {
-        let aspect = drawable_size.x() as f32 / drawable_size.y() as f32;
-        let mut transform =
-            Transform3DF32::from_perspective(FRAC_PI_4, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
-
-        transform = transform.post_mul(&Transform3DF32::from_rotation(self.yaw, self.pitch, 0.0));
+    fn to_transform(&self) -> Transform3DF32 {
+        let mut transform = Transform3DF32::from_rotation(self.yaw, self.pitch, 0.0);
         transform = transform.post_mul(&Transform3DF32::from_uniform_scale(2.0 * self.scale));
         transform = transform.post_mul(&Transform3DF32::from_translation(-self.position.x(),
                                                                          -self.position.y(),
@@ -1020,7 +1040,7 @@ impl CameraTransform3D {
         // Flip Y.
         transform = transform.post_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0));
 
-        Perspective::new(&transform, drawable_size)
+        transform
     }
 }
 
