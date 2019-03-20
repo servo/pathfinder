@@ -97,6 +97,23 @@ impl Transform3DF32 {
                                   0.0, 0.0, 0.0, 1.0)
     }
 
+    /// Creates a rotation matrix from the given quaternion.
+    ///
+    /// The quaternion is expected to be packed into a SIMD type (x, y, z, w) corresponding to
+    /// x + yi + zj + wk.
+    pub fn from_rotation_quaternion(q: F32x4) -> Transform3DF32 {
+        // TODO(pcwalton): Optimize better with more shuffles.
+        let (mut sq, mut w, mut xy_xz_yz) = (q * q, q.wwww() * q, q.xxyy() * q.yzzy());
+        sq += sq; w += w; xy_xz_yz += xy_xz_yz;
+        let diag = F32x4::splat(1.0) - (sq.yxxy() + sq.zzyy());
+        let (wx2, wy2, wz2) = (w.x(), w.y(), w.z());
+        let (xy2, xz2, yz2) = (xy_xz_yz.x(), xy_xz_yz.y(), xy_xz_yz.z());
+        Transform3DF32::row_major(diag.x(),     xy2 - wz2,  xz2 + wy2,  0.0,
+                                  xy2 + wz2,    diag.y(),   yz2 - wx2,  0.0,
+                                  xz2 - wy2,    yz2 + wx2,  diag.z(),   0.0,
+                                  0.0,          0.0,        0.0,        1.0)
+    }
+
     /// Just like `glOrtho()`.
     #[inline]
     pub fn from_ortho(left: f32, right: f32, bottom: f32, top: f32, near_val: f32, far_val: f32)
