@@ -11,6 +11,7 @@
 //! A minimal cross-platform windowing layer.
 
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use std::path::PathBuf;
@@ -24,6 +25,11 @@ pub trait Window {
     fn push_user_event(message_type: u32, message_data: u32);
     fn present_open_svg_dialog(&mut self);
     fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
+
+    #[inline]
+    fn barrel_distortion_coefficients(&self) -> BarrelDistortionCoefficients {
+        BarrelDistortionCoefficients::default()
+    }
 }
 
 pub enum Event {

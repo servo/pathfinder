@@ -32,6 +32,11 @@ impl F32x4 {
     // Basic operations
 
     #[inline]
+    pub fn approx_recip(self) -> F32x4 {
+        F32x4([1.0 / self[0], 1.0 / self[1], 1.0 / self[2], 1.0 / self[3]])
+    }
+
+    #[inline]
     pub fn min(self, other: F32x4) -> F32x4 {
         F32x4([
             self[0].min(other[0]),

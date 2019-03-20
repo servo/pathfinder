@@ -21,6 +21,7 @@ use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_geometry::color::ColorU;
+use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
@@ -213,6 +214,11 @@ impl<W> DemoApp<W> where W: Window {
 
         let is_first_frame = self.frame_counter == 0;
         let frame_count = if is_first_frame { 2 } else { 1 };
+        let barrel_distortion = match self.ui.mode {
+            Mode::VR => Some(self.window.barrel_distortion_coefficients()),
+            _ => None,
+        };
+
         for _ in 0..frame_count {
             let viewport_count = self.ui.mode.viewport_count();
             let render_transforms = iter::repeat(render_transform.clone()).take(viewport_count)
@@ -224,6 +230,7 @@ impl<W> DemoApp<W> where W: Window {
                 } else {
                     None
                 },
+                barrel_distortion,
             })).unwrap();
         }
 
@@ -686,6 +693,7 @@ enum MainToSceneMsg {
 struct BuildOptions {
     render_transforms: Vec<RenderTransform>,
     stem_darkening_font_size: Option<f32>,
+    barrel_distortion: Option<BarrelDistortionCoefficients>,
 }
 
 struct SceneToMainMsg {
@@ -798,6 +806,7 @@ fn build_scene(scene: &Scene,
                 Point2DF32::new(x, y).scale(font_size)
             }
         },
+        barrel_distortion: build_options.barrel_distortion,
     };
 
     let built_options = render_options.prepare(scene.bounds);

@@ -38,6 +38,11 @@ impl F32x4 {
     // Basic operations
 
     #[inline]
+    pub fn approx_recip(self) -> F32x4 {
+        unsafe { F32x4(x86_64::_mm_rcp_ps(self.0)) }
+    }
+
+    #[inline]
     pub fn min(self, other: F32x4) -> F32x4 {
         unsafe { F32x4(x86_64::_mm_min_ps(self.0, other.0)) }
     }

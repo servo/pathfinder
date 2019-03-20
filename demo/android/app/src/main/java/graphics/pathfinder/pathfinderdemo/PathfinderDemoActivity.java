@@ -63,6 +63,8 @@ public class PathfinderDemoActivity extends Activity {
     void setVRMode(boolean enabled) {
         try {
             setVrModeEnabled(false, mVRListenerComponentName);
+            mContentView.setStereoModeEnabled(enabled);
+            mContentView.setDistortionCorrectionEnabled(false);
         } catch (PackageManager.NameNotFoundException exception) {
             startActivity(new Intent(Settings.ACTION_VR_LISTENER_SETTINGS));
         }
@@ -77,7 +79,6 @@ public class PathfinderDemoActivity extends Activity {
         setContentView(R.layout.activity_pathfinder);
 
         mContentView = findViewById(R.id.fullscreen_content);
-        mContentView.setStereoModeEnabled(false);
         setVRMode(false);
 
         mContentView.setEGLContextClientVersion(3);

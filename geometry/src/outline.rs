@@ -11,12 +11,13 @@
 //! A compressed in-memory representation of paths.
 
 use crate::basic::line_segment::LineSegmentF32;
-use crate::basic::point::Point2DF32;
+use crate::basic::point::{Point2DF32, Point2DI32};
 use crate::basic::rect::RectF32;
 use crate::basic::transform2d::Transform2DF32;
 use crate::basic::transform3d::Perspective;
 use crate::clip::{self, ContourPolygonClipper, ContourRectClipper};
 use crate::dilation::ContourDilator;
+use crate::distortion::{BarrelDistortionCoefficients, ContourBarrelDistorter};
 use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
 use std::fmt::{self, Debug, Formatter};
@@ -133,6 +134,17 @@ impl Outline {
         let orientation = Orientation::from_outline(self);
         self.contours.iter_mut().for_each(|contour| contour.dilate(amount, orientation));
         self.bounds = self.bounds.dilate(amount);
+    }
+
+    pub fn barrel_distort(&mut self,
+                          coefficients: BarrelDistortionCoefficients,
+                          window_size: Point2DI32) {
+        let mut new_bounds = None;
+        for contour in &mut self.contours {
+            contour.barrel_distort(coefficients, window_size);
+            contour.update_bounds(&mut new_bounds);
+        }
+        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 
     pub fn prepare_for_tiling(&mut self, view_box: RectF32) {
@@ -419,6 +431,12 @@ impl Contour {
         self.bounds = self.bounds.dilate(amount);
     }
 
+    pub fn barrel_distort(&mut self,
+                          coefficients: BarrelDistortionCoefficients,
+                          window_size: Point2DI32) {
+        ContourBarrelDistorter::new(self, coefficients, window_size).distort();
+    }
+
     fn prepare_for_tiling(&mut self, view_box: RectF32) {
         // Snap points to the view box bounds. This mops up floating point error from the clipping
         // process.
@@ -667,7 +685,7 @@ impl<'a> Iterator for ContourIter<'a> {
 }
 
 #[inline]
-fn union_rect(bounds: &mut RectF32, new_point: Point2DF32, first: bool) {
+pub(crate) fn union_rect(bounds: &mut RectF32, new_point: Point2DF32, first: bool) {
     if first {
         *bounds = RectF32::from_points(new_point, new_point);
     } else {

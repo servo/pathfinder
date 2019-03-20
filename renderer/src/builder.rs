@@ -20,6 +20,7 @@ use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
+use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use std::iter;
 use std::u16;
 
@@ -126,6 +127,7 @@ impl SceneBuilder {
 pub struct RenderOptions {
     pub transform: RenderTransform,
     pub dilation: Point2DF32,
+    pub barrel_distortion: Option<BarrelDistortionCoefficients>,
 }
 
 impl RenderOptions {
@@ -133,6 +135,7 @@ impl RenderOptions {
         PreparedRenderOptions {
             transform: self.transform.prepare(bounds),
             dilation: self.dilation,
+            barrel_distortion: self.barrel_distortion,
         }
     }
 }
@@ -201,6 +204,7 @@ impl RenderTransform {
 pub struct PreparedRenderOptions {
     pub transform: PreparedRenderTransform,
     pub dilation: Point2DF32,
+    pub barrel_distortion: Option<BarrelDistortionCoefficients>,
 }
 
 impl PreparedRenderOptions {
@@ -218,4 +222,3 @@ pub enum PreparedRenderTransform {
     Transform2D(Transform2DF32),
     Perspective { perspective: Perspective, clip_polygon: Vec<Point2DF32>, quad: [Point3DF32; 4] }
 }
-
