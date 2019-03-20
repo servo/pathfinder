@@ -14,8 +14,9 @@ use jemallocator;
 use nfd::Response;
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
-use pathfinder_demo::window::{Event, Keycode, SVGPath, Window, WindowSize};
+use pathfinder_demo::window::{Event, Keycode, Mode, SVGPath, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
@@ -79,6 +80,32 @@ impl Window for WindowImpl {
     fn mouse_position(&self) -> Point2DI32 {
         let mouse_state = self.event_pump.mouse_state();
         Point2DI32::new(mouse_state.x(), mouse_state.y())
+    }
+
+    fn view_box_size(&self, mode: Mode) -> Point2DI32 {
+        let (mut width, height) = self.window.drawable_size();
+        if let Mode::VR = mode {
+            width = width / 2;
+        }
+        Point2DI32::new(width as i32, height as i32)
+    }
+
+    fn make_current(&mut self, mode: Mode, index: Option<u32>) -> RectI32 {
+        let (width, height) = self.window.drawable_size();
+        let mut width = width as i32;
+        let height = height as i32;
+        let mut offset_x = 0;
+        if let (Mode::VR, Some(index)) = (mode, index) {
+            width = width / 2;
+            offset_x = (index as i32) * width;
+        }
+        let size = Point2DI32::new(width, height);
+        let offset = Point2DI32::new(offset_x, 0);
+
+        self.window.gl_make_current(&self.gl_context).unwrap();
+        unsafe { gl::Viewport(offset_x, 0, width, height); }
+
+        RectI32::new(offset, size)
     }
 
     fn present(&mut self) {

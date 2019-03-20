@@ -12,7 +12,7 @@
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{BackgroundColor, DemoUI, UIAction};
-use crate::window::{CameraTransform, Event, Keycode, SVGPath, Window, WindowSize};
+use crate::window::{CameraTransform, Event, Mode, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
@@ -117,7 +117,7 @@ impl<W> DemoApp<W> where W: Window {
 
         options.command_line_overrides();
 
-        let view_box_size = view_box_size(options.mode, &window_size);
+        let view_box_size = window.view_box_size(options.mode);
 
         // Set up Rayon.
         let mut thread_pool_builder = ThreadPoolBuilder::new();
@@ -255,7 +255,7 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::WindowResized(new_size) => {
                     self.window_size = new_size;
-                    let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+                    let view_box_size = self.window.view_box_size(self.ui.mode);
                     self.scene_thread_proxy.set_drawable_size(view_box_size);
                     self.renderer.set_main_framebuffer_size(self.window_size.device_size());
                     self.dirty = true;
@@ -354,7 +354,7 @@ impl<W> DemoApp<W> where W: Window {
                     let built_svg = load_scene(self.window.resource_loader(), svg_path);
                     self.ui.message = get_svg_building_message(&built_svg);
 
-                    let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+                    let view_box_size = self.window.view_box_size(self.ui.mode);
                     self.scene_view_box = built_svg.scene.view_box;
                     self.monochrome_scene_color = built_svg.scene.monochrome_color();
                     self.camera = Camera::new(self.ui.mode, self.scene_view_box, view_box_size);
@@ -382,8 +382,10 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     pub fn draw_scene(&mut self, render_scene_index: u32) {
+        let viewport = self.window.make_current(self.ui.mode, Some(render_scene_index));
+        self.renderer.set_viewport(viewport);
         self.draw_environment(render_scene_index);
-        self.render_vector_scene(render_scene_index);
+        self.render_vector_scene();
 
         if let Some(rendering_time) = self.renderer.shift_timer_query() {
             self.current_frame.as_mut().unwrap().scene_rendering_times.push(rendering_time)
@@ -398,8 +400,8 @@ impl<W> DemoApp<W> where W: Window {
 
         let mut frame = self.current_frame.take().unwrap();
 
-        let drawable_size = self.window_size.device_size();
-        self.renderer.set_viewport(RectI32::new(Point2DI32::default(), drawable_size));
+        let viewport = self.window.make_current(self.ui.mode, None);
+        self.renderer.set_viewport(viewport);
 
         if self.pending_screenshot_path.is_some() {
             self.take_screenshot();
@@ -444,7 +446,7 @@ impl<W> DemoApp<W> where W: Window {
         //
         // FIXME(pcwalton): This should really be an MVC setup.
         if self.camera.mode() != self.ui.mode {
-            let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+            let view_box_size = self.window.view_box_size(self.ui.mode);
             self.camera = Camera::new(self.ui.mode, self.scene_view_box, view_box_size);
         }
 
@@ -537,18 +539,13 @@ impl<W> DemoApp<W> where W: Window {
         });
     }
 
-    fn render_vector_scene(&mut self, viewport_index: u32) {
+    fn render_vector_scene(&mut self) {
         let built_scene = match self.scene_thread_proxy.receiver.recv().unwrap() {
             SceneToMainMsg::BeginRenderScene(built_scene) => built_scene,
             _ => panic!("Expected `BeginRenderScene`!"),
         };
 
         self.current_frame.as_mut().unwrap().scene_stats.push(built_scene.stats());
-
-        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
-        let viewport_origin_x = viewport_index as i32 * view_box_size.x();
-        let viewport = RectI32::new(Point2DI32::new(viewport_origin_x, 0), view_box_size);
-        self.renderer.set_viewport(viewport);
 
         match self.monochrome_scene_color {
             None => self.renderer.set_render_mode(RenderMode::Multicolor),
@@ -904,19 +901,6 @@ impl Options {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub enum Mode {
-    TwoD   = 0,
-    ThreeD = 1,
-    VR     = 2,
-}
-
-impl Mode {
-    fn viewport_count(self) -> usize {
-        match self { Mode::TwoD | Mode::ThreeD => 1, Mode::VR => 2 }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
 pub enum UIVisibility {
     None,
     Stats,
@@ -1076,14 +1060,6 @@ fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
         thread::sleep(Duration::from_secs(MESSAGE_TIMEOUT_SECS));
         W::push_user_event(expire_message_event_id, expected_epoch);
     });
-}
-
-fn view_box_size(mode: Mode, window_size: &WindowSize) -> Point2DI32 {
-    let window_drawable_size = window_size.device_size();
-    match mode {
-        Mode::TwoD | Mode::ThreeD => window_drawable_size,
-        Mode::VR => Point2DI32::new(window_drawable_size.x() / 2, window_drawable_size.y()),
-    }
 }
 
 struct Frame {
