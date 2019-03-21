@@ -24,15 +24,18 @@ use std::mem;
 use std::ptr;
 use std::str;
 use std::time::Duration;
-
 pub struct GLDevice {
     version: GLVersion,
+    default_framebuffer: GLuint,
 }
 
 impl GLDevice {
     #[inline]
-    pub fn new(version: GLVersion) -> GLDevice {
-        GLDevice { version }
+    pub fn new(version: GLVersion, default_framebuffer: GLuint) -> GLDevice {
+        GLDevice {
+            version,
+            default_framebuffer,
+        }
     }
 
     fn set_texture_parameters(&self, texture: &GLTexture) {
@@ -455,7 +458,7 @@ impl Device for GLDevice {
     fn read_pixels_from_default_framebuffer(&self, size: Point2DI32) -> Vec<u8> {
         let mut pixels = vec![0; size.x() as usize * size.y() as usize * 4];
         unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0); ck();
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
             gl::ReadPixels(0,
                            0,
                            size.x() as GLsizei,
@@ -594,7 +597,7 @@ impl Device for GLDevice {
     #[inline]
     fn bind_default_framebuffer(&self, viewport: RectI32) {
         unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, 0); ck();
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
             gl::Viewport(viewport.origin().x(),
                          viewport.origin().y(),
                          viewport.size().x(),

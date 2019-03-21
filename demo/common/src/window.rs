@@ -10,6 +10,7 @@
 
 //! A minimal cross-platform windowing layer.
 
+use gl::types::GLuint;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use pathfinder_gl::GLVersion;
@@ -18,6 +19,7 @@ use std::path::PathBuf;
 
 pub trait Window {
     fn gl_version(&self) -> GLVersion;
+    fn gl_default_framebuffer(&self) -> GLuint { 0 }
     fn mouse_position(&self) -> Point2DI32;
     fn present(&self);
     fn resource_loader(&self) -> &dyn ResourceLoader;

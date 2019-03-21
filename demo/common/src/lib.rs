@@ -112,7 +112,7 @@ impl<W> DemoApp<W> where W: Window {
     pub fn new(window: W, window_size: WindowSize) -> DemoApp<W> {
         let expire_message_event_id = window.create_user_event_id();
 
-        let device = GLDevice::new(window.gl_version());
+        let device = GLDevice::new(window.gl_version(), window.gl_default_framebuffer());
         let resources = window.resource_loader();
         let options = Options::get();
 
