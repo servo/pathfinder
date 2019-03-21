@@ -78,6 +78,7 @@ mod ui;
 pub struct DemoApp<W> where W: Window {
     pub window: W,
     pub should_exit: bool,
+    pub options: Options,
 
     window_size: WindowSize,
 
@@ -147,13 +148,14 @@ impl<W> DemoApp<W> where W: Window {
         let ground_line_vertex_array = GroundLineVertexArray::new(&renderer.device,
                                                                   &ground_program);
 
-        let mut ui = DemoUI::new(&renderer.device, resources, options);
+        let mut ui = DemoUI::new(&renderer.device, resources, options.clone());
         let mut message_epoch = 0;
         emit_message::<W>(&mut ui, &mut message_epoch, expire_message_event_id, message);
 
         DemoApp {
             window,
             should_exit: false,
+            options,
 
             window_size,
 
@@ -405,30 +407,32 @@ impl<W> DemoApp<W> where W: Window {
             self.take_screenshot();
         }
 
-        if let Some(render_stats) = frame.render_stats.take() {
-            self.renderer.debug_ui.add_sample(render_stats.stats,
-                                              frame.render_msg.tile_time,
-                                              render_stats.rendering_time);
-            self.renderer.draw_debug_ui();
+        if self.options.ui {
+            if let Some(render_stats) = frame.render_stats.take() {
+                self.renderer.debug_ui.add_sample(render_stats.stats,
+                                                  frame.render_msg.tile_time,
+                                                  render_stats.rendering_time);
+                self.renderer.draw_debug_ui();
+            }
+
+            for ui_event in &frame.ui_events {
+                self.dirty = true;
+                self.renderer.debug_ui.ui.event_queue.push(*ui_event);
+            }
+
+            self.renderer.debug_ui.ui.mouse_position =
+                get_mouse_position(&self.window, self.window_size.backing_scale_factor);
+            self.ui.show_text_effects = self.monochrome_scene_color.is_some();
+
+            let mut ui_action = UIAction::None;
+            self.ui.update(&self.renderer.device,
+                           &mut self.window,
+                           &mut self.renderer.debug_ui,
+                           &mut ui_action);
+
+            frame.ui_events = self.renderer.debug_ui.ui.event_queue.drain();
+            self.handle_ui_action(&mut ui_action);
         }
-
-        for ui_event in &frame.ui_events {
-            self.dirty = true;
-            self.renderer.debug_ui.ui.event_queue.push(*ui_event);
-        }
-
-        self.renderer.debug_ui.ui.mouse_position =
-            get_mouse_position(&self.window, self.window_size.backing_scale_factor);
-        self.ui.show_text_effects = self.monochrome_scene_color.is_some();
-
-        let mut ui_action = UIAction::None;
-        self.ui.update(&self.renderer.device,
-                       &mut self.window,
-                       &mut self.renderer.debug_ui,
-                       &mut ui_action);
-
-        frame.ui_events = self.renderer.debug_ui.ui.event_queue.drain();
-        self.handle_ui_action(&mut ui_action);
 
         // Switch camera mode (2D/3D) if requested.
         //
@@ -721,6 +725,7 @@ pub struct Options {
     pub jobs: Option<usize>,
     pub mode: Mode,
     pub input_path: SVGPath,
+    pub ui: bool,
     hidden_field_for_future_proofing: (),
 }
 
@@ -730,8 +735,9 @@ impl Default for Options {
             jobs: None,
             mode: Mode::TwoD,
             input_path: SVGPath::Default,
+            ui: true,
             hidden_field_for_future_proofing: (),
-	}
+        }
     }
 }
 
@@ -748,17 +754,25 @@ impl Options {
             )
             .arg(Arg::with_name("3d").short("3").long("3d").help("Run in 3D").conflicts_with("vr"))
             .arg(Arg::with_name("vr").short("V").long("vr").help("Run in VR").conflicts_with("3d"))
+            .arg(Arg::with_name("ui").short("U").long("ui").help("Show UI").conflicts_with("no-ui"))
+            .arg(Arg::with_name("no-ui").short("u").long("no-ui").help("Hide UI").conflicts_with("ui"))
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
 
         if let Some(jobs) = matches.value_of("jobs") {
-	    self.jobs = jobs.parse().ok();
+            self.jobs = jobs.parse().ok();
         }
 
         if matches.is_present("3d") {
             self.mode = Mode::ThreeD;
         } else if matches.is_present("vr") {
             self.mode = Mode::VR;
+        }
+
+        if matches.is_present("ui") {
+            self.ui = true;
+        } else if matches.is_present("no-ui") {
+            self.ui = false;
         }
 
         if let Some(path) = matches.value_of("INPUT") {
