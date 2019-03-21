@@ -105,12 +105,13 @@ pub struct DemoApp<W> where W: Window {
 }
 
 impl<W> DemoApp<W> where W: Window {
-    pub fn new(window: W, window_size: WindowSize) -> DemoApp<W> {
+    pub fn new(window: W, window_size: WindowSize, mut options: Options) -> DemoApp<W> {
         let expire_message_event_id = window.create_user_event_id();
 
         let device = GLDevice::new(window.gl_version(), window.gl_default_framebuffer());
         let resources = window.resource_loader();
-        let options = Options::get();
+
+        options.command_line_overrides();
 
         let view_box_size = view_box_size(options.mode, &window_size);
 
@@ -717,13 +718,25 @@ pub struct RenderScene {
 
 #[derive(Clone)]
 pub struct Options {
-    jobs: Option<usize>,
-    mode: Mode,
-    input_path: SVGPath,
+    pub jobs: Option<usize>,
+    pub mode: Mode,
+    pub input_path: SVGPath,
+    hidden_field_for_future_proofing: (),
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            jobs: None,
+            mode: Mode::TwoD,
+            input_path: SVGPath::Default,
+            hidden_field_for_future_proofing: (),
+	}
+    }
 }
 
 impl Options {
-    fn get() -> Options {
+    fn command_line_overrides(&mut self) {
         let matches = App::new("tile-svg")
             .arg(
                 Arg::with_name("jobs")
@@ -738,24 +751,19 @@ impl Options {
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
 
-        let jobs: Option<usize> = matches
-            .value_of("jobs")
-            .map(|string| string.parse().unwrap());
+        if let Some(jobs) = matches.value_of("jobs") {
+	    self.jobs = jobs.parse().ok();
+        }
 
-        let mode = if matches.is_present("3d") {
-            Mode::ThreeD
+        if matches.is_present("3d") {
+            self.mode = Mode::ThreeD;
         } else if matches.is_present("vr") {
-            Mode::VR
-        } else {
-            Mode::TwoD
-        };
+            self.mode = Mode::VR;
+        }
 
-        let input_path = match matches.value_of("INPUT") {
-            None => SVGPath::Default,
-            Some(path) => SVGPath::Path(PathBuf::from(path)),
+        if let Some(path) = matches.value_of("INPUT") {
+            self.input_path = SVGPath::Path(PathBuf::from(path));
         };
-
-        Options { jobs, mode, input_path }
     }
 
     fn adjust_thread_pool_settings(&self, mut thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {

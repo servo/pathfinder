@@ -13,6 +13,7 @@
 use jemallocator;
 use nfd::Response;
 use pathfinder_demo::DemoApp;
+use pathfinder_demo::Options;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
@@ -34,7 +35,8 @@ const DEFAULT_WINDOW_HEIGHT: u32 = 800;
 fn main() {
     let window = WindowImpl::new();
     let window_size = window.size();
-    let mut app = DemoApp::new(window, window_size);
+    let options = Options::default();
+    let mut app = DemoApp::new(window, window_size, options);
 
     while !app.should_exit {
         let mut events = vec![app.window.get_event()];
