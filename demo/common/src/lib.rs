@@ -482,6 +482,10 @@ impl<W> DemoApp<W> where W: Window {
             RenderTransform::Perspective(perspective) => perspective,
         };
 
+        if self.ui.background == Background::None {
+	    return;
+	}
+
         let ground_scale = self.scene_view_box.max_x() * 2.0;
 
         let mut base_transform = perspective.transform;
@@ -925,7 +929,7 @@ pub enum UIVisibility {
     All,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Background {
     None  = 0,
     Dark  = 1,
