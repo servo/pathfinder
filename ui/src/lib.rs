@@ -443,31 +443,24 @@ impl<D> UI<D> where D: Device {
         value
     }
 
-    /// TODO(pcwalton): Support switches with more than two segments.
     pub fn draw_image_switch(&mut self,
                              device: &D,
                              origin: Point2DI32,
-                             off_texture: &D::Texture,
-                             on_texture: &D::Texture,
-                             mut value: bool)
-                             -> bool {
-        value = self.draw_switch(device, origin, value as u8, 2) != 0;
+                             segment_textures: &[&D::Texture],
+                             mut value: u8)
+                             -> u8 {
+        value = self.draw_switch(device, origin, value, segment_textures.len() as u8);
 
-        let off_offset = SWITCH_SEGMENT_SIZE / 2 - device.texture_size(off_texture).x() / 2;
-        let on_offset = SWITCH_SEGMENT_SIZE + SWITCH_SEGMENT_SIZE / 2 -
-            device.texture_size(on_texture).x() / 2;
-
-        let off_color = if !value { WINDOW_COLOR } else { TEXT_COLOR };
-        let on_color  = if  value { WINDOW_COLOR } else { TEXT_COLOR };
-
-        self.draw_texture(device,
-                          origin + Point2DI32::new(off_offset, PADDING),
-                          off_texture,
-                          off_color);
-        self.draw_texture(device,
-                          origin + Point2DI32::new(on_offset,  PADDING),
-                          on_texture,
-                          on_color);
+        for (segment_index, segment_texture) in segment_textures.iter().enumerate() {
+            let offset = (SWITCH_SEGMENT_SIZE * segment_index as i32) +
+                         (SWITCH_SEGMENT_SIZE / 2) -
+                         (device.texture_size(segment_texture).x() / 2);
+            let color = if value == segment_index as u8 { WINDOW_COLOR } else {TEXT_COLOR };
+            self.draw_texture(device,
+                              origin + Point2DI32::new(offset, PADDING),
+                              segment_texture,
+                              color);
+        }
 
         value
     }

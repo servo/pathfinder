@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::{Mode, Options};
+use crate::{Background, Mode, Options};
 use crate::window::Window;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
@@ -37,6 +37,7 @@ static OPEN_PNG_NAME:       &'static str = "demo-open";
 static ROTATE_PNG_NAME:     &'static str = "demo-rotate";
 static ZOOM_IN_PNG_NAME:    &'static str = "demo-zoom-in";
 static ZOOM_OUT_PNG_NAME:   &'static str = "demo-zoom-out";
+static BG_NONE_PNG_NAME:   &'static str = "demo-bg-none";
 static BG_LIGHT_PNG_NAME:   &'static str = "demo-bg-light";
 static BG_DARK_PNG_NAME:    &'static str = "demo-bg-dark";
 static SCREENSHOT_PNG_NAME: &'static str = "demo-screenshot";
@@ -47,6 +48,7 @@ pub struct DemoUI<D> where D: Device {
     rotate_texture: D::Texture,
     zoom_in_texture: D::Texture,
     zoom_out_texture: D::Texture,
+    bg_none_texture: D::Texture,
     bg_light_texture: D::Texture,
     bg_dark_texture: D::Texture,
     screenshot_texture: D::Texture,
@@ -57,7 +59,7 @@ pub struct DemoUI<D> where D: Device {
     // FIXME(pcwalton): Factor the below out into a model class.
 
     pub mode: Mode,
-    pub dark_background_enabled: bool,
+    pub background: Background,
     pub gamma_correction_effect_enabled: bool,
     pub stem_darkening_effect_enabled: bool,
     pub subpixel_aa_effect_enabled: bool,
@@ -73,6 +75,7 @@ impl<D> DemoUI<D> where D: Device {
         let rotate_texture = device.create_texture_from_png(resources, ROTATE_PNG_NAME);
         let zoom_in_texture = device.create_texture_from_png(resources, ZOOM_IN_PNG_NAME);
         let zoom_out_texture = device.create_texture_from_png(resources, ZOOM_OUT_PNG_NAME);
+        let bg_none_texture = device.create_texture_from_png(resources, BG_NONE_PNG_NAME);
         let bg_light_texture = device.create_texture_from_png(resources, BG_LIGHT_PNG_NAME);
         let bg_dark_texture = device.create_texture_from_png(resources, BG_DARK_PNG_NAME);
         let screenshot_texture = device.create_texture_from_png(resources, SCREENSHOT_PNG_NAME);
@@ -83,6 +86,7 @@ impl<D> DemoUI<D> where D: Device {
             rotate_texture,
             zoom_in_texture,
             zoom_out_texture,
+            bg_none_texture,
             bg_light_texture,
             bg_dark_texture,
             screenshot_texture,
@@ -91,7 +95,7 @@ impl<D> DemoUI<D> where D: Device {
             rotate_panel_visible: false,
 
             mode: options.mode,
-            dark_background_enabled: false,
+            background: options.background,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,
@@ -175,12 +179,16 @@ impl<D> DemoUI<D> where D: Device {
         position += Point2DI32::new(mode_switch_width + PADDING, 0);
 
         // Draw background switch.
-        self.dark_background_enabled = debug_ui.ui.draw_image_switch(device,
-                                                                     position,
-                                                                     &self.bg_light_texture,
-                                                                     &self.bg_dark_texture,
-                                                                     self.dark_background_enabled);
-        let background_color_switch_width = debug_ui.ui.measure_switch(2);
+        let new_background = debug_ui.ui.draw_image_switch(device,
+                                                           position,
+                                                           &[
+                                                               &self.bg_none_texture,
+                                                               &self.bg_dark_texture,
+                                                               &self.bg_light_texture
+                                                           ],
+                                                           self.background as u8);
+        self.background = Background::from(new_background);
+        let background_color_switch_width = debug_ui.ui.measure_switch(3);
         let background_color_switch_size = Point2DI32::new(background_color_switch_width,
                                                            BUTTON_HEIGHT);
         let background_color_switch_rect = RectI32::new(position, background_color_switch_size);
