@@ -43,7 +43,7 @@ pub struct BuiltScene {
 #[derive(Debug)]
 pub struct Batch {
     pub fills: Vec<FillBatchPrimitive>,
-    pub mask_tiles: Vec<MaskTileBatchPrimitive>,
+    pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -68,7 +68,7 @@ pub struct TileObjectPrimitive {
 pub struct FillBatchPrimitive {
     pub px: LineSegmentU4,
     pub subpx: LineSegmentU8,
-    pub mask_tile_index: u16,
+    pub alpha_tile_index: u16,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -81,7 +81,7 @@ pub struct SolidTileScenePrimitive {
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
-pub struct MaskTileBatchPrimitive {
+pub struct AlphaTileBatchPrimitive {
     pub tile: TileObjectPrimitive,
     pub shader: ShaderId,
 }
@@ -90,7 +90,7 @@ pub struct MaskTileBatchPrimitive {
 pub struct Stats {
     pub object_count: u32,
     pub solid_tile_count: u32,
-    pub mask_tile_count: u32,
+    pub alpha_tile_count: u32,
     pub fill_count: u32,
 }
 
@@ -276,7 +276,10 @@ impl BuiltScene {
         Stats {
             object_count: self.object_count,
             solid_tile_count: self.solid_tiles.len() as u32,
-            mask_tile_count: self.batches.iter().map(|batch| batch.mask_tiles.len() as u32).sum(),
+            alpha_tile_count: self.batches
+                                  .iter()
+                                  .map(|batch| batch.alpha_tiles.len() as u32)
+                                  .sum(),
             fill_count: self.batches.iter().map(|batch| batch.fills.len() as u32).sum(),
         }
     }
@@ -287,13 +290,13 @@ impl Batch {
     pub fn new() -> Batch {
         Batch {
             fills: vec![],
-            mask_tiles: vec![],
+            alpha_tiles: vec![],
         }
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.mask_tiles.is_empty()
+        self.alpha_tiles.is_empty()
     }
 }
 
@@ -314,7 +317,7 @@ impl Add<Stats> for Stats {
         Stats {
             object_count:     other.object_count,
             solid_tile_count: other.solid_tile_count,
-            mask_tile_count:  other.mask_tile_count,
+            alpha_tile_count: other.alpha_tile_count,
             fill_count:       other.fill_count,
         }
     }

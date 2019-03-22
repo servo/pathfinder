@@ -145,12 +145,15 @@ impl Scene {
         outline
     }
 
-    pub fn is_monochrome(&self) -> bool {
+    pub fn monochrome_color(&self) -> Option<ColorU> {
         if self.objects.is_empty() {
-            return true;
+            return None;
         }
         let first_paint_id = self.objects[0].paint;
-        self.objects.iter().skip(1).all(|object| object.paint == first_paint_id)
+        if self.objects.iter().skip(1).any(|object| object.paint != first_paint_id) {
+            return None;
+        }
+        Some(self.paints[first_paint_id.0 as usize].color)
     }
 }
 

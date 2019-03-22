@@ -221,6 +221,11 @@ impl Point2DI32 {
     }
 
     #[inline]
+    pub fn scale_xy(&self, factors: Point2DI32) -> Point2DI32 {
+        Point2DI32(self.0 * factors.0)
+    }
+
+    #[inline]
     pub fn to_f32(&self) -> Point2DF32 {
         Point2DF32(self.0.to_f32x4())
     }

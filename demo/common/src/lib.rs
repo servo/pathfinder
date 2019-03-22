@@ -27,7 +27,7 @@ use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
 use pathfinder_gpu::{StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
-use pathfinder_renderer::gpu::renderer::Renderer;
+use pathfinder_renderer::gpu::renderer::{RenderMode, Renderer};
 use pathfinder_renderer::gpu_data::{BuiltScene, Stats};
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
 use pathfinder_renderer::scene::Scene;
@@ -86,7 +86,7 @@ pub struct DemoApp<W> where W: Window {
     window_size: WindowSize,
 
     scene_view_box: RectF32,
-    scene_is_monochrome: bool,
+    monochrome_scene_color: Option<ColorU>,
 
     camera: Camera,
     frame_counter: u32,
@@ -116,12 +116,12 @@ impl<W> DemoApp<W> where W: Window {
         let resources = window.resource_loader();
         let options = Options::get();
 
-        let view_box_size = view_box_size(options.mode, &window_size);
+        let view_box_size = view_box_size(options.mode, &window_size, false);
 
         let built_svg = load_scene(resources, &options.input_path);
         let message = get_svg_building_message(&built_svg);
         let scene_view_box = built_svg.scene.view_box;
-        let scene_is_monochrome = built_svg.scene.is_monochrome();
+        let monochrome_scene_color = built_svg.scene.monochrome_color();
 
         let renderer = Renderer::new(device,
                                      resources,
@@ -155,7 +155,7 @@ impl<W> DemoApp<W> where W: Window {
             window_size,
 
             scene_view_box,
-            scene_is_monochrome,
+            monochrome_scene_color,
 
             camera,
             frame_counter: 0,
@@ -199,7 +199,9 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn build_scene(&mut self) {
-        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+        let view_box_size = view_box_size(self.ui.mode,
+                                          &self.window_size,
+                                          self.ui.subpixel_aa_effect_enabled);
 
         let render_transform = match self.camera {
             Camera::ThreeD { ref mut transform, ref mut velocity } => {
@@ -252,7 +254,9 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::WindowResized(new_size) => {
                     self.window_size = new_size;
-                    let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+                    let view_box_size = view_box_size(self.ui.mode,
+                                                      &self.window_size,
+                                                      self.ui.subpixel_aa_effect_enabled);
                     self.scene_thread_proxy.set_drawable_size(view_box_size);
                     self.renderer.set_main_framebuffer_size(self.window_size.device_size());
                     self.dirty = true;
@@ -339,9 +343,11 @@ impl<W> DemoApp<W> where W: Window {
                     let built_svg = load_scene(self.window.resource_loader(), svg_path);
                     self.ui.message = get_svg_building_message(&built_svg);
 
-                    let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+                    let view_box_size = view_box_size(self.ui.mode,
+                                                      &self.window_size,
+                                                      self.ui.subpixel_aa_effect_enabled);
                     self.scene_view_box = built_svg.scene.view_box;
-                    self.scene_is_monochrome = built_svg.scene.is_monochrome();
+                    self.monochrome_scene_color = built_svg.scene.monochrome_color();
 
                     self.camera = if self.ui.mode == Mode::TwoD {
                         Camera::new_2d(self.scene_view_box, view_box_size)
@@ -415,7 +421,7 @@ impl<W> DemoApp<W> where W: Window {
 
         self.renderer.debug_ui.ui.mouse_position =
             get_mouse_position(&self.window, self.window_size.backing_scale_factor);
-        self.ui.show_text_effects = self.scene_is_monochrome;
+        self.ui.show_text_effects = self.monochrome_scene_color.is_some();
 
         let mut ui_action = UIAction::None;
         self.ui.update(&self.renderer.device,
@@ -533,21 +539,30 @@ impl<W> DemoApp<W> where W: Window {
         let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
         let built_scene = &render_msg.render_scenes[viewport_index as usize].built_scene;
 
-        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+        let view_box_size = view_box_size(self.ui.mode,
+                                          &self.window_size,
+                                          self.ui.subpixel_aa_effect_enabled);
         let viewport_origin_x = viewport_index as i32 * view_box_size.x();
         let viewport = RectI32::new(Point2DI32::new(viewport_origin_x, 0), view_box_size);
         self.renderer.set_viewport(viewport);
 
-        if self.ui.gamma_correction_effect_enabled {
-            self.renderer.enable_gamma_correction(self.background_color());
-        } else {
-            self.renderer.disable_gamma_correction();
-        }
-
-        if self.ui.subpixel_aa_effect_enabled {
-            self.renderer.enable_subpixel_aa(&DEFRINGING_KERNEL_CORE_GRAPHICS);
-        } else {
-            self.renderer.disable_subpixel_aa();
+        match self.monochrome_scene_color {
+            None => self.renderer.set_render_mode(RenderMode::Multicolor),
+            Some(fill_color) => {
+                self.renderer.set_render_mode(RenderMode::Monochrome {
+                    fill_color: fill_color.to_f32(),
+                    gamma_correction_bg_color: if self.ui.gamma_correction_effect_enabled {
+                        Some(self.background_color())
+                    } else {
+                        None
+                    },
+                    defringing_kernel: if self.ui.subpixel_aa_effect_enabled {
+                        Some(DEFRINGING_KERNEL_CORE_GRAPHICS)
+                    } else {
+                        None
+                    }
+                })
+            }
         }
 
         if self.ui.mode == Mode::TwoD {
@@ -951,12 +966,13 @@ fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
     });
 }
 
-fn view_box_size(mode: Mode, window_size: &WindowSize) -> Point2DI32 {
+fn view_box_size(mode: Mode, window_size: &WindowSize, use_subpixel_aa: bool) -> Point2DI32 {
     let window_drawable_size = window_size.device_size();
-    match mode {
+    let initial_size = match mode {
         Mode::TwoD | Mode::ThreeD => window_drawable_size,
         Mode::VR => Point2DI32::new(window_drawable_size.x() / 2, window_drawable_size.y()),
-    }
+    };
+    if use_subpixel_aa { initial_size.scale_xy(Point2DI32::new(3, 1)) } else { initial_size }
 }
 
 struct Frame {

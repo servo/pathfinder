@@ -156,6 +156,11 @@ impl Device for GLDevice {
     fn create_texture(&self, format: TextureFormat, size: Point2DI32) -> GLTexture {
         let (gl_internal_format, gl_format, gl_type);
         match format {
+            TextureFormat::R8 => {
+                gl_internal_format = gl::R8 as GLint;
+                gl_format = gl::RED;
+                gl_type = gl::UNSIGNED_BYTE;
+            }
             TextureFormat::R16F => {
                 gl_internal_format = gl::R16F as GLint;
                 gl_format = gl::RED;

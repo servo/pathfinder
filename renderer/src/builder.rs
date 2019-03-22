@@ -11,7 +11,7 @@
 //! Packs data onto the GPU.
 
 use crate::gpu_data::{Batch, BuiltObject, FillBatchPrimitive};
-use crate::gpu_data::{MaskTileBatchPrimitive, SolidTileScenePrimitive};
+use crate::gpu_data::{AlphaTileBatchPrimitive, SolidTileScenePrimitive};
 use crate::scene;
 use crate::tiles;
 use crate::z_buffer::ZBuffer;
@@ -25,7 +25,7 @@ use std::iter;
 use std::u16;
 
 const MAX_FILLS_PER_BATCH: usize = 0x0002_0000;
-const MAX_MASKS_PER_BATCH: u16 = 0xffff;
+const MAX_ALPHA_TILES_PER_BATCH: u16 = 0xffff;
 
 pub struct SceneBuilder {
     objects: Vec<BuiltObject>,
@@ -53,7 +53,7 @@ impl SceneBuilder {
     pub fn build_batch(&mut self) -> Option<Batch> {
         let mut batch = Batch::new();
 
-        let mut object_tile_index_to_batch_mask_tile_index = vec![];
+        let mut object_tile_index_to_batch_alpha_tile_index = vec![];
         while self.current_object_index < self.objects.len() {
             let object = &self.objects[self.current_object_index];
 
@@ -61,11 +61,11 @@ impl SceneBuilder {
                 break;
             }
 
-            object_tile_index_to_batch_mask_tile_index.clear();
-            object_tile_index_to_batch_mask_tile_index
+            object_tile_index_to_batch_alpha_tile_index.clear();
+            object_tile_index_to_batch_alpha_tile_index
                 .extend(iter::repeat(u16::MAX).take(object.tiles.len()));
 
-            // Copy mask tiles.
+            // Copy alpha tiles.
             for (tile_index, tile) in object.tiles.iter().enumerate() {
                 // Skip solid tiles, since we handled them above already.
                 if object.solid_tiles[tile_index] {
@@ -83,15 +83,15 @@ impl SceneBuilder {
                     continue;
                 }
 
-                // Visible mask tile.
-                let batch_mask_tile_index = batch.mask_tiles.len() as u16;
-                if batch_mask_tile_index == MAX_MASKS_PER_BATCH {
+                // Visible alpha tile.
+                let batch_alpha_tile_index = batch.alpha_tiles.len() as u16;
+                if batch_alpha_tile_index == MAX_ALPHA_TILES_PER_BATCH {
                     break;
                 }
 
-                object_tile_index_to_batch_mask_tile_index[tile_index] = batch_mask_tile_index;
+                object_tile_index_to_batch_alpha_tile_index[tile_index] = batch_alpha_tile_index;
 
-                batch.mask_tiles.push(MaskTileBatchPrimitive {
+                batch.alpha_tiles.push(AlphaTileBatchPrimitive {
                     tile: *tile,
                     shader: object.shader,
                 });
@@ -101,13 +101,13 @@ impl SceneBuilder {
             for fill in &object.fills {
                 let object_tile_index =
                     object.tile_coords_to_index(fill.tile_x as i32, fill.tile_y as i32).unwrap();
-                let mask_tile_index =
-                    object_tile_index_to_batch_mask_tile_index[object_tile_index as usize];
-                if mask_tile_index < u16::MAX {
+                let alpha_tile_index =
+                    object_tile_index_to_batch_alpha_tile_index[object_tile_index as usize];
+                if alpha_tile_index < u16::MAX {
                     batch.fills.push(FillBatchPrimitive {
                         px: fill.px,
                         subpx: fill.subpx,
-                        mask_tile_index,
+                        alpha_tile_index,
                     });
                 }
             }

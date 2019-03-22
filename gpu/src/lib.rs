@@ -110,11 +110,27 @@ pub trait Device {
         let suffix = match kind { ShaderKind::Vertex => 'v', ShaderKind::Fragment => 'f' };
         let source = resources.slurp(&format!("shaders/{}.{}s.glsl", name, suffix)).unwrap();
 
+        let mut load_include_tile_alpha_vertex =
+            |_| load_shader_include(resources, "tile_alpha_vertex");
+        let mut load_include_tile_monochrome =
+            |_| load_shader_include(resources, "tile_monochrome");
+        let mut load_include_tile_multicolor =
+            |_| load_shader_include(resources, "tile_multicolor");
+        let mut load_include_tile_solid_vertex =
+            |_| load_shader_include(resources, "tile_solid_vertex");
         let mut load_include_post_convolve = |_| load_shader_include(resources, "post_convolve");
         let mut load_include_post_gamma_correct =
             |_| load_shader_include(resources, "post_gamma_correct");
         let template_input =
-            HashBuilder::new().insert_lambda("include_post_convolve",
+            HashBuilder::new().insert_lambda("include_tile_alpha_vertex",
+                                             &mut load_include_tile_alpha_vertex)
+                              .insert_lambda("include_tile_monochrome",
+                                             &mut load_include_tile_monochrome)
+                              .insert_lambda("include_tile_multicolor",
+                                             &mut load_include_tile_multicolor)
+                              .insert_lambda("include_tile_solid_vertex",
+                                             &mut load_include_tile_solid_vertex)
+                              .insert_lambda("include_post_convolve",
                                              &mut load_include_post_convolve)
                               .insert_lambda("include_post_gamma_correct",
                                              &mut load_include_post_gamma_correct);
@@ -122,15 +138,27 @@ pub trait Device {
         self.create_shader_from_source(name, &source, kind, template_input)
     }
 
+    fn create_program_from_shader_names(&self,
+                                        resources: &dyn ResourceLoader,
+                                        program_name: &str,
+                                        vertex_shader_name: &str,
+                                        fragment_shader_name: &str)
+                                        -> Self::Program {
+        let vertex_shader = self.create_shader(resources, vertex_shader_name, ShaderKind::Vertex);
+        let fragment_shader = self.create_shader(resources,
+                                                 fragment_shader_name,
+                                                 ShaderKind::Fragment);
+        self.create_program_from_shaders(program_name, vertex_shader, fragment_shader)
+    }
+
     fn create_program(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Program {
-        let vertex_shader = self.create_shader(resources, name, ShaderKind::Vertex);
-        let fragment_shader = self.create_shader(resources, name, ShaderKind::Fragment);
-        self.create_program_from_shaders(name, vertex_shader, fragment_shader)
+        self.create_program_from_shader_names(resources, name, name, name)
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum TextureFormat {
+    R8,
     R16F,
     RGBA8,
 }

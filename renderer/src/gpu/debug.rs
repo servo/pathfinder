@@ -75,7 +75,7 @@ impl<D> DebugUI<D> where D: Device {
                        origin + Point2DI32::new(0, LINE_HEIGHT * 1),
                        false);
         self.ui.draw_text(device,
-                          &format!("Mask Tiles: {}", mean_cpu_sample.stats.mask_tile_count),
+                          &format!("Alpha Tiles: {}", mean_cpu_sample.stats.alpha_tile_count),
                           origin + Point2DI32::new(0, LINE_HEIGHT * 2),
                           false);
         self.ui.draw_text(device,
@@ -140,7 +140,7 @@ impl Add<CPUSample> for CPUSample {
             stats: Stats {
                 object_count: self.stats.object_count + other.stats.object_count,
                 solid_tile_count: self.stats.solid_tile_count + other.stats.solid_tile_count,
-                mask_tile_count: self.stats.mask_tile_count + other.stats.mask_tile_count,
+                alpha_tile_count: self.stats.alpha_tile_count + other.stats.alpha_tile_count,
                 fill_count: self.stats.fill_count + other.stats.fill_count,
             },
         }
@@ -155,7 +155,7 @@ impl Div<u32> for CPUSample {
             stats: Stats {
                 object_count: self.stats.object_count / divisor,
                 solid_tile_count: self.stats.solid_tile_count / divisor,
-                mask_tile_count: self.stats.mask_tile_count / divisor,
+                alpha_tile_count: self.stats.alpha_tile_count / divisor,
                 fill_count: self.stats.fill_count / divisor,
             },
         }

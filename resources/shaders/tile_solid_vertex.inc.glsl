@@ -1,6 +1,4 @@
-#version {{version}}
-
-// pathfinder/demo/resources/shaders/solid_tile.vs.glsl
+// pathfinder/resources/shaders/tile_solid_vertex.inc.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -10,12 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-precision highp float;
-
 uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
-uniform sampler2D uFillColorsTexture;
-uniform vec2 uFillColorsTextureSize;
 uniform vec2 uViewBoxOrigin;
 
 in vec2 aTessCoord;
@@ -24,16 +18,12 @@ in uint aObject;
 
 out vec4 vColor;
 
-vec2 computeFillColorTexCoord(uint object, vec2 textureSize) {
-    uint width = uint(textureSize.x);
-    return (vec2(float(object % width), float(object / width)) + vec2(0.5)) / textureSize;
-}
+vec4 getFillColor(uint object);
 
-void main() {
+void computeVaryings() {
     vec2 pixelPosition = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
     vec2 position = (pixelPosition / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0);
-    vec2 colorTexCoord = computeFillColorTexCoord(aObject, uFillColorsTextureSize);
 
-    vColor = texture(uFillColorsTexture, colorTexCoord);
+    vColor = getFillColor(aObject);
     gl_Position = vec4(position, 0.0, 1.0);
 }
