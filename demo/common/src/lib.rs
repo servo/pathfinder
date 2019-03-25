@@ -33,6 +33,8 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
 use rayon::ThreadPoolBuilder;
 use std::f32::consts::FRAC_PI_4;
 use std::fs::File;
@@ -688,15 +690,19 @@ impl SceneThread {
                 }
                 MainToSceneMsg::Build(build_options) => {
                     let start_time = Instant::now();
-                    let render_scenes = build_options.render_transforms
-                                                     .iter()
-                                                     .map(|render_transform| {
-                        let built_scene = build_scene(&self.scene,
+                    let scene = &self.scene;
+                    let jobs = self.options.jobs;
+                    let renderer = |render_transform: &RenderTransform| {
+                        let built_scene = build_scene(scene,
                                                       &build_options,
                                                       (*render_transform).clone(),
-                                                      self.options.jobs);
+                                                      jobs);
                         RenderScene { built_scene, transform: (*render_transform).clone() }
-                    }).collect();
+                    };
+                    let render_scenes = match jobs {
+                        Some(j) if j<2 => build_options.render_transforms.iter()    .map(renderer).collect(),
+                        _              => build_options.render_transforms.par_iter().map(renderer).collect(),
+                    };
                     let tile_time = Instant::now() - start_time;
                     self.sender.send(SceneToMainMsg { render_scenes, tile_time }).unwrap();
                 }
