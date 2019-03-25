@@ -17,6 +17,9 @@ precision highp float;
 
 uniform sampler2D uSource;
 uniform vec2 uSourceSize;
+uniform vec4 uFGColor;
+uniform vec4 uBGColor;
+uniform int uGammaCorrectionEnabled;
 
 in vec2 vTexCoord;
 
@@ -32,9 +35,9 @@ float sample1Tap(float offset) {
 
 void main() {
     // Apply defringing if necessary.
-    vec4 fgColor;
+    vec3 alpha;
     if (uKernel.w == 0.0) {
-        fgColor = texture(uSource, vTexCoord);
+        alpha = texture(uSource, vTexCoord).rrr;
     } else {
         vec4 alphaLeft, alphaRight;
         float alphaCenter;
@@ -44,13 +47,13 @@ void main() {
         float g = convolve7Tap(vec4(alphaLeft.yzw, alphaCenter), alphaRight.xyz);
         float b = convolve7Tap(vec4(alphaLeft.zw, alphaCenter, alphaRight.x), alphaRight.yzw);
 
-        fgColor = vec4(r);
+        alpha = vec3(r, g, b);
     }
 
     // Apply gamma correction if necessary.
-    /*if (uGammaCorrectionBGColor.a > 0.0)
-        fgColor.rgb = gammaCorrect(fgColor.rgb);*/
+    if (uGammaCorrectionEnabled != 0)
+        alpha = gammaCorrect(uBGColor.rgb, alpha);
 
     // Finish.
-    oFragColor = fgColor;
+    oFragColor = vec4(mix(uBGColor.rgb, uFGColor.rgb, alpha), 1.0);
 }

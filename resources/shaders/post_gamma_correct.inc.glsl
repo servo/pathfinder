@@ -12,17 +12,13 @@
 // expects.
 uniform sampler2D uGammaLUT;
 
-// The background color to blend against. Zero if no gamma correction is to be
-// performed.
-uniform vec4 uGammaCorrectionBGColor;
-
-float gammaCorrectChannel(float fgColor) {
-    return texture(uGammaLUT, vec2(fgColor, 1.0 - uGammaCorrectionBGColor)).r;
+float gammaCorrectChannel(float bgColor, float fgColor) {
+    return texture(uGammaLUT, vec2(fgColor, 1.0 - bgColor)).r;
 }
 
 // `fgColor` is in linear space.
-vec3 gammaCorrect(vec3 fgColor) {
-    return vec3(gammaCorrectChannel(fgColor.r),
-                gammaCorrectChannel(fgColor.g),
-                gammaCorrectChannel(fgColor.b));
+vec3 gammaCorrect(vec3 bgColor, vec3 fgColor) {
+    return vec3(gammaCorrectChannel(bgColor.r, fgColor.r),
+                gammaCorrectChannel(bgColor.g, fgColor.g),
+                gammaCorrectChannel(bgColor.b, fgColor.b));
 }

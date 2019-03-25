@@ -15,7 +15,9 @@ use crate::gpu_data::BuiltObject;
 use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
 use hashbrown::HashMap;
+use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -74,7 +76,7 @@ impl Scene {
                 let outline = self.apply_render_options(&object.outline, &built_options);
                 let mut tiler = Tiler::new(
                     &outline,
-                    self.view_box,
+                    self.effective_view_box(&built_options),
                     object_index as u16,
                     ShaderId(object.paint.0),
                     z_buffer,
@@ -94,7 +96,7 @@ impl Scene {
                 let outline = self.apply_render_options(&object.outline, &built_options);
                 let mut tiler = Tiler::new(
                     &outline,
-                    self.view_box,
+                    self.effective_view_box(&built_options),
                     object_index as u16,
                     ShaderId(object.paint.0),
                     z_buffer,
@@ -107,6 +109,8 @@ impl Scene {
 
     fn apply_render_options(&self, original_outline: &Outline, options: &PreparedRenderOptions)
                             -> Outline {
+        let effective_view_box = self.effective_view_box(options);
+
         let mut outline;
         match options.transform {
             PreparedRenderTransform::Perspective { ref perspective, ref clip_polygon, .. } => {
@@ -121,17 +125,26 @@ impl Scene {
                     if let Some(barrel_distortion) = options.barrel_distortion {
                         outline.barrel_distort(barrel_distortion, perspective.window_size);
                     }
+
+                    // TODO(pcwalton): Support subpixel AA in 3D.
                 }
             }
-            PreparedRenderTransform::Transform2D(ref transform) => {
+            _ => {
                 // TODO(pcwalton): Short circuit.
                 outline = (*original_outline).clone();
-                outline.transform(transform);
-                outline.clip_against_rect(self.view_box);
-            }
-            PreparedRenderTransform::None => {
-                outline = (*original_outline).clone();
-                outline.clip_against_rect(self.view_box);
+                if options.transform.is_2d() || options.subpixel_aa_enabled {
+                    let mut transform = match options.transform {
+                        PreparedRenderTransform::Transform2D(transform) => transform,
+                        PreparedRenderTransform::None => Transform2DF32::default(),
+                        PreparedRenderTransform::Perspective { .. } => unreachable!(),
+                    };
+                    if options.subpixel_aa_enabled {
+                        transform = transform.post_mul(&Transform2DF32::from_scale(
+                            &Point2DF32::new(3.0, 1.0)))
+                    }
+                    outline.transform(&transform);
+                }
+                outline.clip_against_rect(effective_view_box);
             }
         }
 
@@ -141,7 +154,7 @@ impl Scene {
 
         // TODO(pcwalton): Fold this into previous passes to avoid unnecessary clones during
         // monotonic conversion.
-        outline.prepare_for_tiling(self.view_box);
+        outline.prepare_for_tiling(self.effective_view_box(options));
         outline
     }
 
@@ -154,6 +167,15 @@ impl Scene {
             return None;
         }
         Some(self.paints[first_paint_id.0 as usize].color)
+    }
+
+    #[inline]
+    pub fn effective_view_box(&self, render_options: &PreparedRenderOptions) -> RectF32 {
+        if render_options.subpixel_aa_enabled {
+            self.view_box.scale_xy(Point2DF32::new(3.0, 1.0))
+        } else {
+            self.view_box
+        }
     }
 }
 

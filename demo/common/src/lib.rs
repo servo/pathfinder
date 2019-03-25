@@ -116,7 +116,7 @@ impl<W> DemoApp<W> where W: Window {
         let resources = window.resource_loader();
         let options = Options::get();
 
-        let view_box_size = view_box_size(options.mode, &window_size, false);
+        let view_box_size = view_box_size(options.mode, &window_size);
 
         let built_svg = load_scene(resources, &options.input_path);
         let message = get_svg_building_message(&built_svg);
@@ -199,9 +199,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn build_scene(&mut self) {
-        let view_box_size = view_box_size(self.ui.mode,
-                                          &self.window_size,
-                                          self.ui.subpixel_aa_effect_enabled);
+        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
 
         let render_transform = match self.camera {
             Camera::ThreeD { ref mut transform, ref mut velocity } => {
@@ -232,6 +230,7 @@ impl<W> DemoApp<W> where W: Window {
                 } else {
                     None
                 },
+                subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
                 barrel_distortion,
             })).unwrap();
         }
@@ -254,9 +253,7 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::WindowResized(new_size) => {
                     self.window_size = new_size;
-                    let view_box_size = view_box_size(self.ui.mode,
-                                                      &self.window_size,
-                                                      self.ui.subpixel_aa_effect_enabled);
+                    let view_box_size = view_box_size(self.ui.mode, &self.window_size);
                     self.scene_thread_proxy.set_drawable_size(view_box_size);
                     self.renderer.set_main_framebuffer_size(self.window_size.device_size());
                     self.dirty = true;
@@ -343,9 +340,7 @@ impl<W> DemoApp<W> where W: Window {
                     let built_svg = load_scene(self.window.resource_loader(), svg_path);
                     self.ui.message = get_svg_building_message(&built_svg);
 
-                    let view_box_size = view_box_size(self.ui.mode,
-                                                      &self.window_size,
-                                                      self.ui.subpixel_aa_effect_enabled);
+                    let view_box_size = view_box_size(self.ui.mode, &self.window_size);
                     self.scene_view_box = built_svg.scene.view_box;
                     self.monochrome_scene_color = built_svg.scene.monochrome_color();
 
@@ -539,24 +534,20 @@ impl<W> DemoApp<W> where W: Window {
         let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
         let built_scene = &render_msg.render_scenes[viewport_index as usize].built_scene;
 
-        let view_box_size = view_box_size(self.ui.mode,
-                                          &self.window_size,
-                                          self.ui.subpixel_aa_effect_enabled);
+        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
         let viewport_origin_x = viewport_index as i32 * view_box_size.x();
         let viewport = RectI32::new(Point2DI32::new(viewport_origin_x, 0), view_box_size);
         self.renderer.set_viewport(viewport);
 
         match self.monochrome_scene_color {
             None => self.renderer.set_render_mode(RenderMode::Multicolor),
-            Some(fill_color) => {
+            Some(fg_color) => {
                 self.renderer.set_render_mode(RenderMode::Monochrome {
-                    fill_color: fill_color.to_f32(),
-                    gamma_correction_bg_color: if self.ui.gamma_correction_effect_enabled {
-                        Some(self.background_color())
-                    } else {
-                        None
-                    },
+                    fg_color: fg_color.to_f32(),
+                    bg_color: self.background_color().to_f32(),
+                    gamma_correction: self.ui.gamma_correction_effect_enabled,
                     defringing_kernel: if self.ui.subpixel_aa_effect_enabled {
+                        // TODO(pcwalton): Select FreeType defringing kernel as necessary.
                         Some(DEFRINGING_KERNEL_CORE_GRAPHICS)
                     } else {
                         None
@@ -709,6 +700,7 @@ struct BuildOptions {
     render_transforms: Vec<RenderTransform>,
     stem_darkening_font_size: Option<f32>,
     barrel_distortion: Option<BarrelDistortionCoefficients>,
+    subpixel_aa_enabled: bool,
 }
 
 struct SceneToMainMsg {
@@ -810,8 +802,6 @@ fn build_scene(scene: &Scene,
                render_transform: RenderTransform,
                jobs: Option<usize>)
                -> BuiltScene {
-    let z_buffer = ZBuffer::new(scene.view_box);
-
     let render_options = RenderOptions {
         transform: render_transform,
         dilation: match build_options.stem_darkening_font_size {
@@ -822,9 +812,13 @@ fn build_scene(scene: &Scene,
             }
         },
         barrel_distortion: build_options.barrel_distortion,
+        subpixel_aa_enabled: build_options.subpixel_aa_enabled,
     };
 
     let built_options = render_options.prepare(scene.bounds);
+    let effective_view_box = scene.effective_view_box(&built_options);
+    let z_buffer = ZBuffer::new(effective_view_box);
+
     let quad = built_options.quad();
 
     let built_objects = panic::catch_unwind(|| {
@@ -846,7 +840,7 @@ fn build_scene(scene: &Scene,
     let mut built_scene = BuiltScene::new(scene.view_box, &quad, scene.objects.len() as u32);
     built_scene.shaders = scene.build_shaders();
 
-    let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, scene.view_box);
+    let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, effective_view_box);
     built_scene.solid_tiles = scene_builder.build_solid_tiles();
     while let Some(batch) = scene_builder.build_batch() {
         built_scene.batches.push(batch);
@@ -966,13 +960,12 @@ fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
     });
 }
 
-fn view_box_size(mode: Mode, window_size: &WindowSize, use_subpixel_aa: bool) -> Point2DI32 {
+fn view_box_size(mode: Mode, window_size: &WindowSize) -> Point2DI32 {
     let window_drawable_size = window_size.device_size();
-    let initial_size = match mode {
+    match mode {
         Mode::TwoD | Mode::ThreeD => window_drawable_size,
         Mode::VR => Point2DI32::new(window_drawable_size.x() / 2, window_drawable_size.y()),
-    };
-    if use_subpixel_aa { initial_size.scale_xy(Point2DI32::new(3, 1)) } else { initial_size }
+    }
 }
 
 struct Frame {

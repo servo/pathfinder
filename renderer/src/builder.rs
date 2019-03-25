@@ -128,6 +128,7 @@ pub struct RenderOptions {
     pub transform: RenderTransform,
     pub dilation: Point2DF32,
     pub barrel_distortion: Option<BarrelDistortionCoefficients>,
+    pub subpixel_aa_enabled: bool,
 }
 
 impl RenderOptions {
@@ -136,6 +137,7 @@ impl RenderOptions {
             transform: self.transform.prepare(bounds),
             dilation: self.dilation,
             barrel_distortion: self.barrel_distortion,
+            subpixel_aa_enabled: self.subpixel_aa_enabled,
         }
     }
 }
@@ -205,6 +207,7 @@ pub struct PreparedRenderOptions {
     pub transform: PreparedRenderTransform,
     pub dilation: Point2DF32,
     pub barrel_distortion: Option<BarrelDistortionCoefficients>,
+    pub subpixel_aa_enabled: bool,
 }
 
 impl PreparedRenderOptions {
@@ -221,4 +224,14 @@ pub enum PreparedRenderTransform {
     None,
     Transform2D(Transform2DF32),
     Perspective { perspective: Perspective, clip_polygon: Vec<Point2DF32>, quad: [Point3DF32; 4] }
+}
+
+impl PreparedRenderTransform {
+    #[inline]
+    pub fn is_2d(&self) -> bool {
+        match *self {
+            PreparedRenderTransform::Transform2D(_) => true,
+            _ => false,
+        }
+    }
 }
