@@ -201,11 +201,15 @@ impl Transform2DF32 {
     #[inline]
     pub fn m11(&self) -> f32 { self.matrix.m11() }
     #[inline]
-    pub fn m21(&self) -> f32 { self.matrix.m21() }
-    #[inline]
     pub fn m12(&self) -> f32 { self.matrix.m12() }
     #[inline]
+    pub fn m13(&self) -> f32 { self.vector.x()   }
+    #[inline]
+    pub fn m21(&self) -> f32 { self.matrix.m21() }
+    #[inline]
     pub fn m22(&self) -> f32 { self.matrix.m22() }
+    #[inline]
+    pub fn m23(&self) -> f32 { self.vector.y()   }
 
     #[inline]
     pub fn post_translate(&self, vector: Point2DF32) -> Transform2DF32 {

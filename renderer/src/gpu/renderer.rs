@@ -8,6 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::builder::RenderTransform;
 use crate::gpu::debug::DebugUI;
 use crate::gpu_data::{Batch, Keyframe, SolidTileScenePrimitive};
 use crate::post::DefringingKernel;
@@ -15,6 +16,7 @@ use crate::scene::ObjectShader;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::transform3d::Transform3DF32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, DepthState, Device};
@@ -175,8 +177,14 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
-    pub fn render_frame(&mut self, keyframe: &Keyframe) {
+    pub fn render_frame(&mut self, keyframe: &Keyframe, raster_transform: &RenderTransform) {
         self.init_postprocessing_framebuffer();
+
+        let framebuffer_size = self.viewport.size();
+        let raster_transform = keyframe.transform
+                                       .as_3d(framebuffer_size)
+                                       .inverse()
+                                       .pre_mul(&raster_transform.as_3d(framebuffer_size));
 
         let timer_query = self.free_timer_queries
                               .pop()
@@ -190,12 +198,12 @@ impl<D> Renderer<D> where D: Device {
         }
 
         self.upload_solid_tiles(&keyframe.solid_tiles);
-        self.draw_solid_tiles(&keyframe);
+        self.draw_solid_tiles(&keyframe, &raster_transform);
 
         for batch in &keyframe.batches {
             self.upload_batch(batch);
             self.draw_batch_fills(batch);
-            self.draw_batch_alpha_tiles(batch);
+            self.draw_batch_alpha_tiles(batch, &raster_transform);
         }
 
         if self.postprocessing_needed() {
@@ -312,7 +320,7 @@ impl<D> Renderer<D> where D: Device {
                                           &render_state);
     }
 
-    fn draw_batch_alpha_tiles(&mut self, batch: &Batch) {
+    fn draw_batch_alpha_tiles(&mut self, batch: &Batch, raster_transform: &Transform3DF32) {
         self.bind_draw_framebuffer();
 
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
@@ -335,6 +343,8 @@ impl<D> Renderer<D> where D: Device {
                                                              MASK_FRAMEBUFFER_HEIGHT,
                                                              0,
                                                              0).to_f32x4()));
+        self.device.set_uniform(&alpha_tile_program.raster_transform_uniform,
+                                UniformData::Mat4(raster_transform.as_array()));
 
         match self.render_mode {
             RenderMode::Multicolor => {
@@ -373,7 +383,7 @@ impl<D> Renderer<D> where D: Device {
                                           &render_state);
     }
 
-    fn draw_solid_tiles(&mut self, keyframe: &Keyframe) {
+    fn draw_solid_tiles(&mut self, keyframe: &Keyframe, raster_transform: &Transform3DF32) {
         self.bind_draw_framebuffer();
 
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
@@ -388,6 +398,8 @@ impl<D> Renderer<D> where D: Device {
                                                              TILE_HEIGHT as i32,
                                                              0,
                                                              0).to_f32x4()));
+        self.device.set_uniform(&solid_tile_program.raster_transform_uniform,
+                                UniformData::Mat4(raster_transform.as_array()));
 
         match self.render_mode {
             RenderMode::Multicolor => {
@@ -779,6 +791,7 @@ struct SolidTileProgram<D> where D: Device {
     framebuffer_size_uniform: D::Uniform,
     tile_size_uniform: D::Uniform,
     view_box_origin_uniform: D::Uniform,
+    raster_transform_uniform: D::Uniform,
 }
 
 impl<D> SolidTileProgram<D> where D: Device {
@@ -790,11 +803,13 @@ impl<D> SolidTileProgram<D> where D: Device {
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
         let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
+        let raster_transform_uniform = device.get_uniform(&program, "RasterTransform");
         SolidTileProgram {
             program,
             framebuffer_size_uniform,
             tile_size_uniform,
             view_box_origin_uniform,
+            raster_transform_uniform,
         }
     }
 }
@@ -840,6 +855,7 @@ struct AlphaTileProgram<D> where D: Device {
     stencil_texture_uniform: D::Uniform,
     stencil_texture_size_uniform: D::Uniform,
     view_box_origin_uniform: D::Uniform,
+    raster_transform_uniform: D::Uniform,
 }
 
 impl<D> AlphaTileProgram<D> where D: Device {
@@ -853,6 +869,7 @@ impl<D> AlphaTileProgram<D> where D: Device {
         let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
         let stencil_texture_size_uniform = device.get_uniform(&program, "StencilTextureSize");
         let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
+        let raster_transform_uniform = device.get_uniform(&program, "RasterTransform");
         AlphaTileProgram {
             program,
             framebuffer_size_uniform,
@@ -860,6 +877,7 @@ impl<D> AlphaTileProgram<D> where D: Device {
             stencil_texture_uniform,
             stencil_texture_size_uniform,
             view_box_origin_uniform,
+            raster_transform_uniform,
         }
     }
 }

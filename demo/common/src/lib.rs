@@ -89,6 +89,7 @@ pub struct DemoApp<W> where W: Window {
     monochrome_scene_color: Option<ColorU>,
 
     camera: Camera,
+    initial_transform: Option<RenderTransform>,
     frame_counter: u32,
     pending_screenshot_path: Option<PathBuf>,
     mouselook_enabled: bool,
@@ -158,6 +159,7 @@ impl<W> DemoApp<W> where W: Window {
             monochrome_scene_color,
 
             camera,
+            initial_transform: None,
             frame_counter: 0,
             pending_screenshot_path: None,
             mouselook_enabled: false,
@@ -199,18 +201,11 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn build_scene(&mut self) {
-        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+        self.update_transform();
 
-        let render_transform = match self.camera {
-            Camera::ThreeD { ref mut transform, ref mut velocity } => {
-                if transform.offset(*velocity) {
-                    self.dirty = true;
-                }
-                let perspective = transform.to_perspective(view_box_size);
-                RenderTransform::Perspective(perspective)
-            }
-            Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
-        };
+        if self.initial_transform.is_none() {
+            self.initial_transform = Some(self.render_transform());
+        }
 
         let is_first_frame = self.frame_counter == 0;
         let frame_count = if is_first_frame { 2 } else { 1 };
@@ -221,8 +216,9 @@ impl<W> DemoApp<W> where W: Window {
 
         for _ in 0..frame_count {
             let viewport_count = self.ui.mode.viewport_count();
-            let render_transforms = iter::repeat(render_transform.clone()).take(viewport_count)
-                                                                          .collect();
+            let render_transforms =
+                iter::repeat(self.initial_transform.clone().unwrap()).take(viewport_count)
+                                                                     .collect();
             self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
                 render_transforms,
                 stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
@@ -237,6 +233,28 @@ impl<W> DemoApp<W> where W: Window {
 
         if is_first_frame {
             self.dirty = true;
+        }
+    }
+
+    fn update_transform(&mut self) {
+        match self.camera {
+            Camera::ThreeD { ref mut transform, ref mut velocity } => {
+                if transform.offset(*velocity) {
+                    self.dirty = true;
+                }
+            }
+            Camera::TwoD(_) => {}
+        }
+    }
+
+    fn render_transform(&self) -> RenderTransform {
+        let view_box_size = view_box_size(self.ui.mode, &self.window_size);
+
+        match self.camera {
+            Camera::ThreeD { ref transform, velocity: _ } => {
+                RenderTransform::Perspective(transform.to_perspective(view_box_size))
+            }
+            Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         }
     }
 
@@ -562,7 +580,7 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.enable_depth();
         }
 
-        self.renderer.render_frame(&keyframe);
+        self.renderer.render_frame(&keyframe, &self.render_transform());
     }
 
     fn handle_ui_action(&mut self, ui_action: &mut UIAction) {

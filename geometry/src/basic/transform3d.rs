@@ -249,6 +249,11 @@ impl Transform3DF32 {
     pub fn as_ptr(&self) -> *const f32 {
         (&self.c0) as *const F32x4 as *const f32
     }
+
+    #[inline]
+    pub fn as_array(&self) -> [F32x4; 4] {
+        [self.c0, self.c1, self.c2, self.c3]
+    }
 }
 
 impl Add<Matrix2x2F32> for Matrix2x2F32 {

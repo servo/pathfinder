@@ -15,10 +15,10 @@ use crate::gpu_data::{AlphaTileBatchPrimitive, SolidTileScenePrimitive};
 use crate::scene;
 use crate::tiles;
 use crate::z_buffer::ZBuffer;
-use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
+use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
-use pathfinder_geometry::basic::transform3d::Perspective;
+use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_geometry::clip::PolygonClipper3D;
 use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use std::iter;
@@ -200,6 +200,25 @@ impl RenderTransform {
             inverse_transform.transform_point(point).perspective_divide().to_2d()
         }).collect();
         return PreparedRenderTransform::Perspective { perspective, clip_polygon, quad };
+    }
+
+    pub fn as_3d(&self, framebuffer_size: Point2DI32) -> Transform3DF32 {
+        match *self {
+            RenderTransform::Transform2D(ref transform) => {
+                let mut transform = Transform3DF32::row_major(
+                    transform.m11(), transform.m12(), 0.0, transform.m13(),
+                    transform.m21(), transform.m22(), 0.0, transform.m23(),
+                    0.0,             0.0,             1.0, 0.0,
+                    0.0,             0.0,             0.0, 1.0);
+                transform = transform.pre_mul(&Transform3DF32::from_scale(
+                    2.0 / framebuffer_size.x() as f32,
+                    2.0 / framebuffer_size.y() as f32,
+                    1.0));
+                transform = transform.pre_mul(&Transform3DF32::from_translation(-1.0, -1.0, 0.0));
+                transform
+            }
+            RenderTransform::Perspective(ref perspective) => perspective.transform,
+        }
     }
 }
 
