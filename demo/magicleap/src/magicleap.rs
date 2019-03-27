@@ -56,6 +56,7 @@ use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::basic::transform3d::Transform3DF32;
 use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
+use pathfinder_geometry::util;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -77,6 +78,7 @@ pub struct MagicLeapWindow {
     size: Point2DI32,
     virtual_camera_array: MLGraphicsVirtualCameraInfoArray,
     initial_camera_transforms: Option<Vec<Transform3DF32>>,
+    previous_camera_transforms: Option<Vec<MLTransform>>,
     frame_handle: MLHandle,
     resource_loader: FilesystemResourceLoader,
     pose_event: Option<Vec<CameraTransform>>,
@@ -187,6 +189,7 @@ impl MagicLeapWindow {
             frame_handle: ML_HANDLE_INVALID,
             virtual_camera_array,
             initial_camera_transforms: None,
+            previous_camera_transforms: None,
             resource_loader,
             pose_event: None,
             running: true,
@@ -232,23 +235,32 @@ impl MagicLeapWindow {
                 result.unwrap();
             }
             let virtual_camera_array = &self.virtual_camera_array;
-	    let initial_offset = Transform3DF32::from_translation(0.0, 0.0, 1.0);
+            let initial_offset = Transform3DF32::from_translation(0.0, 0.0, 1.0);
             let initial_cameras = self.initial_camera_transforms.get_or_insert_with(||
                 (0..virtual_camera_array.num_virtual_cameras)
                     .map(|i| &virtual_camera_array.virtual_cameras[i as usize])
                     .map(|camera| Transform3DF32::from(camera.transform).post_mul(&initial_offset))
                     .collect()
             );
+            let previous_cameras = self.previous_camera_transforms.get_or_insert_with(||
+                (0..virtual_camera_array.num_virtual_cameras)
+                    .map(|i| virtual_camera_array.virtual_cameras[i as usize].transform)
+                    .collect()
+            );
             let camera_transforms = (0..virtual_camera_array.num_virtual_cameras)
                 .map(|i| &virtual_camera_array.virtual_cameras[i as usize])
                 .zip(initial_cameras)
-                .map(|(camera, initial_camera)| CameraTransform {
-                    perspective: Perspective::new(
-                        &Transform3DF32::from(camera.projection),
-                        RectI32::from(virtual_camera_array.viewport).size(),
-                    ),
-                    view: Transform3DF32::from(camera.transform).inverse().post_mul(initial_camera),
-                }).collect();
+                .zip(previous_cameras)
+                .map(|((camera, initial_camera), previous_camera)| {
+                    let predicted_camera = previous_camera.lerp(camera.transform, 1.5);
+                    let projection = Transform3DF32::from(camera.projection);
+                    let size = RectI32::from(virtual_camera_array.viewport).size();
+                    let perspective = Perspective::new(&projection, size);
+                    let view = Transform3DF32::from(predicted_camera).inverse().post_mul(initial_camera);
+                    *previous_camera = camera.transform;
+                    CameraTransform { perspective, view }
+                })
+                .collect();
             self.in_frame = true;
             self.pose_event = Some(camera_transforms);
             debug!("PF begun frame");
@@ -315,6 +327,38 @@ impl log::Log for MagicLeapLogger {
 impl MagicLeapLogger {
     pub fn new(tag: CString, level_filter: log::LevelFilter) -> Self {
         MagicLeapLogger { tag, level_filter }
+    }
+}
+
+// Linear interpolation
+
+impl MLVec3f {
+    fn lerp(&self, other: MLVec3f, t: f32) -> MLVec3f {
+        MLVec3f {
+            x: util::lerp(self.x, other.x, t),
+            y: util::lerp(self.y, other.y, t),
+            z: util::lerp(self.z, other.z, t),
+        }
+    }
+}
+
+impl MLQuaternionf {
+    fn lerp(&self, other: MLQuaternionf, t: f32) -> MLQuaternionf {
+        MLQuaternionf {
+            x: util::lerp(self.x, other.x, t),
+            y: util::lerp(self.y, other.y, t),
+            z: util::lerp(self.z, other.z, t),
+            w: util::lerp(self.w, other.w, t),
+        }
+    }
+}
+
+impl MLTransform {
+    fn lerp(&self, other: MLTransform, t: f32) -> MLTransform {
+        MLTransform {
+            rotation: self.rotation.lerp(other.rotation, t),
+            position: self.position.lerp(other.position, t),
+        }
     }
 }
 
