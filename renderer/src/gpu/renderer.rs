@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::gpu::debug::DebugUI;
-use crate::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
+use crate::gpu_data::{Batch, Keyframe, SolidTileScenePrimitive};
 use crate::post::DefringingKernel;
 use crate::scene::ObjectShader;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
@@ -175,7 +175,7 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
-    pub fn render_scene(&mut self, built_scene: &BuiltScene) {
+    pub fn render_frame(&mut self, keyframe: &Keyframe) {
         self.init_postprocessing_framebuffer();
 
         let timer_query = self.free_timer_queries
@@ -183,16 +183,16 @@ impl<D> Renderer<D> where D: Device {
                               .unwrap_or_else(|| self.device.create_timer_query());
         self.device.begin_timer_query(&timer_query);
 
-        self.upload_shaders(&built_scene.shaders);
+        self.upload_shaders(&keyframe.shaders);
 
         if self.use_depth {
-            self.draw_stencil(&built_scene.quad);
+            self.draw_stencil(&keyframe.quad);
         }
 
-        self.upload_solid_tiles(&built_scene.solid_tiles);
-        self.draw_solid_tiles(&built_scene);
+        self.upload_solid_tiles(&keyframe.solid_tiles);
+        self.draw_solid_tiles(&keyframe);
 
-        for batch in &built_scene.batches {
+        for batch in &keyframe.batches {
             self.upload_batch(batch);
             self.draw_batch_fills(batch);
             self.draw_batch_alpha_tiles(batch);
@@ -373,7 +373,7 @@ impl<D> Renderer<D> where D: Device {
                                           &render_state);
     }
 
-    fn draw_solid_tiles(&mut self, built_scene: &BuiltScene) {
+    fn draw_solid_tiles(&mut self, keyframe: &Keyframe) {
         self.bind_draw_framebuffer();
 
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
@@ -419,7 +419,7 @@ impl<D> Renderer<D> where D: Device {
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        let count = built_scene.solid_tiles.len() as u32;
+        let count = keyframe.solid_tiles.len() as u32;
         self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
     }
 

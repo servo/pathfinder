@@ -142,7 +142,7 @@ impl RenderOptions {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum RenderTransform {
     Transform2D(Transform2DF32),
     Perspective(Perspective),

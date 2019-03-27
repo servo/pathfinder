@@ -10,6 +10,7 @@
 
 //! Packed data ready to be sent to the GPU.
 
+use crate::builder::RenderTransform;
 use crate::scene::{ObjectShader, ShaderId};
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use fixedbitset::FixedBitSet;
@@ -31,10 +32,11 @@ pub struct BuiltObject {
 }
 
 #[derive(Debug)]
-pub struct BuiltScene {
+pub struct Keyframe {
     pub view_box: RectF32,
     pub quad: [Point3DF32; 4],
     pub object_count: u32,
+    pub transform: RenderTransform,
     pub batches: Vec<Batch>,
     pub solid_tiles: Vec<SolidTileScenePrimitive>,
     pub shaders: Vec<ObjectShader>,
@@ -259,16 +261,21 @@ impl BuiltObject {
     }
 }
 
-impl BuiltScene {
+impl Keyframe {
     #[inline]
-    pub fn new(view_box: RectF32, quad: &[Point3DF32; 4], object_count: u32) -> BuiltScene {
-    BuiltScene {
+    pub fn new(view_box: RectF32,
+               quad: &[Point3DF32; 4],
+               object_count: u32,
+               transform: RenderTransform)
+               -> Keyframe {
+        Keyframe {
             view_box,
             quad: *quad,
             object_count,
             batches: vec![],
             solid_tiles: vec![],
             shaders: vec![],
+            transform,
         }
     }
 

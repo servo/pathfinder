@@ -28,7 +28,7 @@ use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, Sten
 use pathfinder_gpu::{StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu::renderer::{RenderMode, Renderer};
-use pathfinder_renderer::gpu_data::{BuiltScene, Stats};
+use pathfinder_renderer::gpu_data::{Keyframe, Stats};
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
@@ -187,7 +187,7 @@ impl<W> DemoApp<W> where W: Window {
 
         // Get the render message, and determine how many scenes it contains.
         let render_msg = self.scene_thread_proxy.receiver.recv().unwrap();
-        let render_scene_count = render_msg.render_scenes.len() as u32;
+        let keyframe_count = render_msg.keyframes.len() as u32;
 
         // Save the frame.
         self.current_frame = Some(Frame::new(render_msg, ui_events));
@@ -195,7 +195,7 @@ impl<W> DemoApp<W> where W: Window {
         // Begin drawing the scene.
         self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
 
-        render_scene_count
+        keyframe_count
     }
 
     fn build_scene(&mut self) {
@@ -373,21 +373,21 @@ impl<W> DemoApp<W> where W: Window {
         MousePosition { absolute, relative }
     }
 
-    pub fn draw_scene(&mut self, render_scene_index: u32) {
-        self.draw_environment(render_scene_index);
-        self.render_vector_scene(render_scene_index);
+    pub fn draw_scene(&mut self, keyframe_index: u32) {
+        self.draw_environment(keyframe_index);
+        self.render_vector_scene(keyframe_index);
 
         let frame = self.current_frame.as_mut().unwrap();
-        let render_scene = &frame.render_msg.render_scenes[render_scene_index as usize];
+        let keyframe = &frame.render_msg.keyframes[keyframe_index as usize];
         match frame.render_stats {
             None => {
                 frame.render_stats = Some(RenderStats {
                     rendering_time: self.renderer.shift_timer_query(),
-                    stats: render_scene.built_scene.stats(),
+                    stats: keyframe.stats(),
                 })
             }
             Some(ref mut render_stats) => {
-                render_stats.stats = render_stats.stats + render_scene.built_scene.stats()
+                render_stats.stats = render_stats.stats + keyframe.stats()
             }
         }
     }
@@ -462,7 +462,7 @@ impl<W> DemoApp<W> where W: Window {
 
     fn draw_environment(&self, viewport_index: u32) {
         let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
-        let render_transform = &render_msg.render_scenes[viewport_index as usize].transform;
+        let render_transform = &render_msg.keyframes[viewport_index as usize].transform;
 
         let perspective = match *render_transform {
             RenderTransform::Transform2D(..) => return,
@@ -532,7 +532,7 @@ impl<W> DemoApp<W> where W: Window {
 
     fn render_vector_scene(&mut self, viewport_index: u32) {
         let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
-        let built_scene = &render_msg.render_scenes[viewport_index as usize].built_scene;
+        let keyframe = &render_msg.keyframes[viewport_index as usize];
 
         let view_box_size = view_box_size(self.ui.mode, &self.window_size);
         let viewport_origin_x = viewport_index as i32 * view_box_size.x();
@@ -562,7 +562,7 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.enable_depth();
         }
 
-        self.renderer.render_scene(&built_scene);
+        self.renderer.render_frame(&keyframe);
     }
 
     fn handle_ui_action(&mut self, ui_action: &mut UIAction) {
@@ -673,17 +673,16 @@ impl SceneThread {
                 }
                 MainToSceneMsg::Build(build_options) => {
                     let start_time = Instant::now();
-                    let render_scenes = build_options.render_transforms
+                    let keyframes = build_options.render_transforms
                                                      .iter()
                                                      .map(|render_transform| {
-                        let built_scene = build_scene(&self.scene,
-                                                      &build_options,
-                                                      (*render_transform).clone(),
-                                                      self.options.jobs);
-                        RenderScene { built_scene, transform: (*render_transform).clone() }
+                        build_keyframe(&self.scene,
+                                       &build_options,
+                                       (*render_transform).clone(),
+                                       self.options.jobs)
                     }).collect();
                     let tile_time = Instant::now() - start_time;
-                    self.sender.send(SceneToMainMsg { render_scenes, tile_time }).unwrap();
+                    self.sender.send(SceneToMainMsg { keyframes, tile_time }).unwrap();
                 }
             }
         }
@@ -704,13 +703,8 @@ struct BuildOptions {
 }
 
 struct SceneToMainMsg {
-    render_scenes: Vec<RenderScene>,
+    keyframes: Vec<Keyframe>,
     tile_time: Duration,
-}
-
-pub struct RenderScene {
-    built_scene: BuiltScene,
-    transform: RenderTransform,
 }
 
 #[derive(Clone)]
@@ -797,13 +791,13 @@ fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath) -> Bui
     BuiltSVG::from_tree(Tree::from_data(&data, &UsvgOptions::default()).unwrap())
 }
 
-fn build_scene(scene: &Scene,
-               build_options: &BuildOptions,
-               render_transform: RenderTransform,
-               jobs: Option<usize>)
-               -> BuiltScene {
+fn build_keyframe(scene: &Scene,
+                  build_options: &BuildOptions,
+                  render_transform: RenderTransform,
+                  jobs: Option<usize>)
+                  -> Keyframe {
     let render_options = RenderOptions {
-        transform: render_transform,
+        transform: render_transform.clone(),
         dilation: match build_options.stem_darkening_font_size {
             None => Point2DF32::default(),
             Some(font_size) => {
@@ -837,7 +831,10 @@ fn build_scene(scene: &Scene,
         }
     };
 
-    let mut built_scene = BuiltScene::new(scene.view_box, &quad, scene.objects.len() as u32);
+    let mut built_scene = Keyframe::new(scene.view_box,
+                                        &quad,
+                                        scene.objects.len() as u32,
+                                        render_transform);
     built_scene.shaders = scene.build_shaders();
 
     let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, effective_view_box);
