@@ -19,6 +19,9 @@ crate-type = ["staticlib"]
 [features]
 mocked = ["glutin"]
 
+[profile.release]
+debug = true
+
 [dependencies.pathfinder_demo]
 path = "../common"
 
