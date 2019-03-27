@@ -28,7 +28,7 @@ use usvg::{Color as SvgColor, Node, NodeExt, NodeKind, Paint as UsvgPaint};
 use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform};
 use usvg::{Tree, Visibility};
 
-const HAIRLINE_STROKE_WIDTH: f32 = 0.1;
+const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 
 pub struct BuiltSVG {
     pub scene: Scene,
@@ -135,12 +135,12 @@ impl BuiltSVG {
                         f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                    let path = Transform2DF32PathIter::new(path, &transform);
                     let outline = Outline::from_segments(path);
 
                     let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_width);
                     stroke_to_fill.offset();
-                    let outline = stroke_to_fill.outline;
+                    let mut outline = stroke_to_fill.outline;
+                    outline.transform(&transform);
 
                     self.scene.bounds = self.scene.bounds.union_rect(outline.bounds());
                     self.scene.objects.push(PathObject::new(
