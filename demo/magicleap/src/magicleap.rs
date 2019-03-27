@@ -115,7 +115,7 @@ impl Window for MagicLeapWindow {
         Err(())
     }
 
-    fn view_box_size(&self, _mode: Mode) -> Point2DI32 {
+    fn view_box_size(&self, _mode: Mode, _subpixel_aa: bool) -> Point2DI32 {
         self.size
     }
 
@@ -123,7 +123,7 @@ impl Window for MagicLeapWindow {
         BarrelDistortionCoefficients { k0: 0.0, k1: 0.0 }
     }
 
-    fn make_current(&mut self, _mode: Mode, eye: Option<u32>) -> RectI32 {
+    fn make_current(&mut self, _mode: Mode, _subpixel_aa: bool, eye: Option<u32>) -> RectI32 {
         self.begin_frame();
         let eye = match eye {
             Some(eye) if (eye as usize) < ML_VIRTUAL_CAMERA_COUNT => eye as usize,
@@ -232,10 +232,11 @@ impl MagicLeapWindow {
                 result.unwrap();
             }
             let virtual_camera_array = &self.virtual_camera_array;
+	    let initial_offset = Transform3DF32::from_translation(0.0, 0.0, 1.0);
             let initial_cameras = self.initial_camera_transforms.get_or_insert_with(||
                 (0..virtual_camera_array.num_virtual_cameras)
                     .map(|i| &virtual_camera_array.virtual_cameras[i as usize])
-                    .map(|camera| Transform3DF32::from(camera.transform).post_mul(&Transform3DF32::from_uniform_scale(0.5)))
+                    .map(|camera| Transform3DF32::from(camera.transform).post_mul(&initial_offset))
                     .collect()
             );
             let camera_transforms = (0..virtual_camera_array.num_virtual_cameras)
