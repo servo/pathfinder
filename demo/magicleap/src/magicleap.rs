@@ -72,6 +72,9 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 
+// How much to predict the next frame based on the current frame and the velocity.
+const PREDICTION_FACTOR: f32 = 0.75;
+
 pub struct MagicLeapWindow {
     framebuffer_id: GLuint,
     graphics_client: MLHandle,
@@ -252,7 +255,7 @@ impl MagicLeapWindow {
                 .zip(initial_cameras)
                 .zip(previous_cameras)
                 .map(|((camera, initial_camera), previous_camera)| {
-                    let predicted_camera = previous_camera.lerp(camera.transform, 1.5);
+                    let predicted_camera = previous_camera.lerp(camera.transform, 1.0 + PREDICTION_FACTOR);
                     let projection = Transform3DF32::from(camera.projection);
                     let size = RectI32::from(virtual_camera_array.viewport).size();
                     let perspective = Perspective::new(&projection, size);
