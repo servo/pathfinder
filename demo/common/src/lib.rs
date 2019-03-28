@@ -118,6 +118,12 @@ impl<W> DemoApp<W> where W: Window {
 
         let view_box_size = view_box_size(options.mode, &window_size);
 
+        // Set up Rayon.
+        let mut thread_pool_builder = ThreadPoolBuilder::new();
+        thread_pool_builder = options.adjust_thread_pool_settings(thread_pool_builder);
+        thread_pool_builder = window.adjust_thread_pool_settings(thread_pool_builder);
+        thread_pool_builder.build_global().unwrap();
+
         let built_svg = load_scene(resources, &options.input_path);
         let message = get_svg_building_message(&built_svg);
         let scene_view_box = built_svg.scene.view_box;
@@ -753,14 +759,14 @@ impl Options {
             Some(path) => SVGPath::Path(PathBuf::from(path)),
         };
 
-        // Set up Rayon.
-        let mut thread_pool_builder = ThreadPoolBuilder::new();
-        if let Some(jobs) = jobs {
+        Options { jobs, mode, input_path }
+    }
+
+    fn adjust_thread_pool_settings(&self, mut thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+        if let Some(jobs) = self.jobs {
             thread_pool_builder = thread_pool_builder.num_threads(jobs);
         }
-        thread_pool_builder.build_global().unwrap();
-
-        Options { jobs, mode, input_path }
+        thread_pool_builder
     }
 }
 
