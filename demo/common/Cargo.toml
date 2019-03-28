@@ -7,7 +7,6 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 [dependencies]
 clap = "2.32"
 gl = "0.6"
-jemallocator = "0.1"
 rayon = "1.0"
 usvg = "0.4"
 

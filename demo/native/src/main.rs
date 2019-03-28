@@ -10,6 +10,7 @@
 
 //! A demo app for Pathfinder using SDL 2.
 
+use jemallocator;
 use nfd::Response;
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, Window, WindowSize};
@@ -23,6 +24,9 @@ use sdl2::video::{GLContext, GLProfile, Window as SDLWindow};
 use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::path::PathBuf;
 use std::ptr;
+
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 const DEFAULT_WINDOW_WIDTH: u32 = 1067;
 const DEFAULT_WINDOW_HEIGHT: u32 = 800;
