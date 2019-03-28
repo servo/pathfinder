@@ -62,6 +62,8 @@ use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_simd::default::F32x4;
 
+use rayon::ThreadPoolBuilder;
+
 use smallvec::SmallVec;
 
 use std::ffi::CString;
@@ -96,6 +98,10 @@ impl Window for MagicLeapWindow {
 
     fn gl_default_framebuffer(&self) -> GLuint {
         self.framebuffer_id
+    }
+
+    fn customize_rayon(&self, thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+        thread_pool_builder.start_handler(|id| unsafe { init_scene_thread(id) })
     }
 
     fn mouse_position(&self) -> Point2DI32 {
@@ -149,6 +155,10 @@ impl Window for MagicLeapWindow {
         self.end_frame();
         self.begin_frame();
     }
+}
+
+extern "C" {
+    fn init_scene_thread(id: usize);
 }
 
 fn get_proc_address(s: &str) -> *const c_void {
