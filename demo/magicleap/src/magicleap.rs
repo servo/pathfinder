@@ -72,16 +72,12 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 
-// How much to predict the next frame based on the current frame and the velocity.
-const PREDICTION_FACTOR: f32 = 0.75;
-
 pub struct MagicLeapWindow {
     framebuffer_id: GLuint,
     graphics_client: MLHandle,
     size: Point2DI32,
     virtual_camera_array: MLGraphicsVirtualCameraInfoArray,
-    initial_camera_transforms: Option<Vec<Transform3DF32>>,
-    previous_camera_transforms: Option<Vec<MLTransform>>,
+    initial_camera_transform: Option<Transform3DF32>,
     frame_handle: MLHandle,
     resource_loader: FilesystemResourceLoader,
     pose_event: Option<Vec<CameraTransform>>,
@@ -191,8 +187,7 @@ impl MagicLeapWindow {
             size: Point2DI32::new(max_width, max_height),
             frame_handle: ML_HANDLE_INVALID,
             virtual_camera_array,
-            initial_camera_transforms: None,
-            previous_camera_transforms: None,
+            initial_camera_transform: None,
             resource_loader,
             pose_event: None,
             running: true,
@@ -217,7 +212,7 @@ impl MagicLeapWindow {
 
     fn begin_frame(&mut self) {
         if !self.in_frame {
-            debug!("PF beginning frame");
+             debug!("PF beginning frame");
             let mut params = unsafe { mem::zeroed() };
             unsafe {
                 gl::BindFramebuffer(gl::FRAMEBUFFER, self.framebuffer_id);
@@ -238,29 +233,22 @@ impl MagicLeapWindow {
                 result.unwrap();
             }
             let virtual_camera_array = &self.virtual_camera_array;
-            let initial_offset = Transform3DF32::from_translation(0.0, 0.0, 1.0);
-            let initial_cameras = self.initial_camera_transforms.get_or_insert_with(||
-                (0..virtual_camera_array.num_virtual_cameras)
-                    .map(|i| &virtual_camera_array.virtual_cameras[i as usize])
-                    .map(|camera| Transform3DF32::from(camera.transform).post_mul(&initial_offset))
-                    .collect()
-            );
-            let previous_cameras = self.previous_camera_transforms.get_or_insert_with(||
-                (0..virtual_camera_array.num_virtual_cameras)
-                    .map(|i| virtual_camera_array.virtual_cameras[i as usize].transform)
-                    .collect()
-            );
+            let initial_camera = self.initial_camera_transform.get_or_insert_with(|| {
+                let initial_offset = Transform3DF32::from_translation(0.0, 0.0, 1.0);
+	        let mut camera = virtual_camera_array.virtual_cameras[0].transform;
+		for i in 1..virtual_camera_array.num_virtual_cameras {
+		    let next = virtual_camera_array.virtual_cameras[i as usize].transform;
+		    camera = camera.lerp(next, 1.0 / (i as f32 + 1.0));
+		}
+		Transform3DF32::from(camera).post_mul(&initial_offset)
+            });
             let camera_transforms = (0..virtual_camera_array.num_virtual_cameras)
-                .map(|i| &virtual_camera_array.virtual_cameras[i as usize])
-                .zip(initial_cameras)
-                .zip(previous_cameras)
-                .map(|((camera, initial_camera), previous_camera)| {
-                    let predicted_camera = previous_camera.lerp(camera.transform, 1.0 + PREDICTION_FACTOR);
+                .map(|i| {
+		    let camera = &virtual_camera_array.virtual_cameras[i as usize];
                     let projection = Transform3DF32::from(camera.projection);
                     let size = RectI32::from(virtual_camera_array.viewport).size();
                     let perspective = Perspective::new(&projection, size);
-                    let view = Transform3DF32::from(predicted_camera).inverse().post_mul(initial_camera);
-                    *previous_camera = camera.transform;
+                    let view = Transform3DF32::from(camera.transform).inverse().post_mul(initial_camera);
                     CameraTransform { perspective, view }
                 })
                 .collect();
