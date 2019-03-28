@@ -120,8 +120,8 @@ impl<W> DemoApp<W> where W: Window {
 
         // Set up Rayon.
         let mut thread_pool_builder = ThreadPoolBuilder::new();
-        thread_pool_builder = options.customize_rayon(thread_pool_builder);
-        thread_pool_builder = window.customize_rayon(thread_pool_builder);
+        thread_pool_builder = options.adjust_thread_pool_settings(thread_pool_builder);
+        thread_pool_builder = window.adjust_thread_pool_settings(thread_pool_builder);
         thread_pool_builder.build_global().unwrap();
 
         let built_svg = load_scene(resources, &options.input_path);
@@ -770,7 +770,7 @@ impl Options {
         Options { jobs, mode, input_path }
     }
 
-    fn customize_rayon(&self, mut thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+    fn adjust_thread_pool_settings(&self, mut thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
         if let Some(jobs) = self.jobs {
             thread_pool_builder = thread_pool_builder.num_threads(jobs);
         }

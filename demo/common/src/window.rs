@@ -27,7 +27,7 @@ pub trait Window {
     fn present_open_svg_dialog(&mut self);
     fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
 
-    fn customize_rayon(&self, thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+    fn adjust_thread_pool_settings(&self, thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
         thread_pool_builder
     }
 
