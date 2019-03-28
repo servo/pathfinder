@@ -14,6 +14,7 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
+use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
 
 pub trait Window {
@@ -25,6 +26,10 @@ pub trait Window {
     fn push_user_event(message_type: u32, message_data: u32);
     fn present_open_svg_dialog(&mut self);
     fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
+
+    fn customize_rayon(&self, thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+        thread_pool_builder
+    }
 
     #[inline]
     fn barrel_distortion_coefficients(&self) -> BarrelDistortionCoefficients {
