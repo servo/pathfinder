@@ -4,6 +4,9 @@
 #include <chrono>
 #include <cmath>
 
+#include <unistd.h>
+#include <sys/syscall.h>
+
 #ifndef EGL_EGLEXT_PROTOTYPES
 #define EGL_EGLEXT_PROTOTYPES
 #endif
@@ -27,6 +30,17 @@
 
 // Entry point to the Rust code
 extern "C" MLResult magicleap_pathfinder_demo(EGLDisplay egl_display, EGLContext egl_context);
+
+// Initialization of the scene thread
+extern "C" void init_scene_thread(uint64_t id) {
+  // https://forum.magicleap.com/hc/en-us/community/posts/360043120832-How-many-CPUs-does-an-immersive-app-have-access-to-?page=1#community_comment_360005035691
+  // We pin scene thread 0 to the Denver core.
+  if (id < 3) {
+    uint32_t DenverCoreAffinityMask = 1 << (2 + id); // Denver core is CPU2, A57s are CPU3 and 4.
+    pid_t ThreadId = gettid();
+    syscall(__NR_sched_setaffinity, ThreadId, sizeof(DenverCoreAffinityMask), &DenverCoreAffinityMask);
+  }
+}
 
 // Constants
 const char application_name[] = "com.mozilla.pathfinder.demo";

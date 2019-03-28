@@ -38,7 +38,7 @@ pub extern "C" fn magicleap_pathfinder_demo(egl_display: EGLDisplay, egl_context
     options.ui = false;
     options.background = Background::None;
     options.mode = Mode::VR;
-    options.jobs = Some(2);
+    options.jobs = Some(3);
     options.pipeline = 0;
 
     let mut app = DemoApp::new(window, window_size, options);
