@@ -214,6 +214,7 @@ name = "demo"
 version = "0.1.0"
 dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jemallocator 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "nfd 0.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_demo 0.1.0",
  "pathfinder_geometry 0.3.0",
@@ -647,7 +648,6 @@ dependencies = [
  "clap 2.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.21.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "jemallocator 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
