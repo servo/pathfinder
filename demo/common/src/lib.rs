@@ -218,7 +218,7 @@ impl<W> DemoApp<W> where W: Window {
         };
 
         let is_first_frame = self.frame_counter == 0;
-        let frame_count = if is_first_frame { 2 } else { 1 };
+        let frame_count = if is_first_frame && self.options.pipeline { 2 } else { 1 };
         let barrel_distortion = match self.ui.mode {
             Mode::VR => Some(self.window.barrel_distortion_coefficients()),
             _ => None,
@@ -734,6 +734,7 @@ pub struct Options {
     pub mode: Mode,
     pub input_path: SVGPath,
     pub ui: UIVisibility,
+    pub pipeline: bool,
     hidden_field_for_future_proofing: (),
 }
 
@@ -744,6 +745,7 @@ impl Default for Options {
             mode: Mode::TwoD,
             input_path: SVGPath::Default,
             ui: UIVisibility::All,
+            pipeline: true,
             hidden_field_for_future_proofing: (),
         }
     }
@@ -770,6 +772,8 @@ impl Options {
                     .possible_values(&["none", "stats", "all"])
                     .help("How much UI to show"),
             )
+            .arg(Arg::with_name("pipeline").short("P").long("pipeline").help("Pipeline scenes").conflicts_with("no-pipeline"))
+            .arg(Arg::with_name("no-pipeline").short("p").long("no-pipeline").help("Don't pipeline scenes").conflicts_with("pipeline"))
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
 
@@ -789,6 +793,12 @@ impl Options {
                 "stats" => UIVisibility::Stats,
                 _ => UIVisibility::All,
             };
+        }
+
+        if matches.is_present("pipeline") {
+            self.pipeline = true;
+        } else if matches.is_present("no-pipeline") {
+            self.pipeline = false;
         }
 
         if let Some(path) = matches.value_of("INPUT") {
