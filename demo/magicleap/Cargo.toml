@@ -1,5 +1,5 @@
 [package]
-name = "pathfinder_immersive_demo"
+name = "pathfinder_magicleap_demo"
 version = "0.1.0"
 edition = "2018"
 authors = ["Alan Jeffrey <ajeffrey@mozilla.com>"]

@@ -1,2 +1,3 @@
-REFS = PathfinderDemo
+USES = "lre/scenes"
+REFS = PathfinderImmersiveDemo PathfinderLandscapeDemo
 OPTIONS=package/debuggable/on

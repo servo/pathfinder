@@ -13,6 +13,7 @@ use pathfinder_demo::Options;
 use pathfinder_demo::window::Mode;
 
 use std::ffi::CString;
+use std::os::raw::c_char;
 
 mod c_api;
 mod magicleap;
@@ -56,4 +57,22 @@ pub extern "C" fn magicleap_pathfinder_demo(egl_display: EGLDisplay, egl_context
         }
         app.finish_drawing_frame();
     }
+}
+
+const SVG_FILENAMES: &[*const c_char] = &[
+    &b"svg/Ghostscript_Tiger.svg\0"[0],
+    &b"svg/paper.svg\0"[0],
+    &b"svg/julius-caesar-with-bg.svg\0"[0],
+    &b"svg/nba-notext.svg\0"[0],
+    &b"svg/pathfinder_logo.svg\0"[0],
+];
+
+#[no_mangle]
+pub extern "C" fn magicleap_pathfinder_svg_filecount() -> usize {
+    SVG_FILENAMES.len()
+}
+
+#[no_mangle]
+pub extern "C" fn magicleap_pathfinder_svg_filenames() -> *const *const c_char {
+    &SVG_FILENAMES[0]
 }

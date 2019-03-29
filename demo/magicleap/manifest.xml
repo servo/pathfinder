@@ -9,10 +9,20 @@
                 ml:min_api_level="3">
 	        <uses-privilege ml:name="WorldReconstruction"/>
                 <uses-privilege ml:name="LowLatencyLightwear"/>
+                <uses-privilege ml:name="ControllerPose"/>
+                <component
+                         ml:name=".universe"
+                         ml:visible_name="Pathfinder Landscape Demo"
+                         ml:binary_name="bin/PathfinderLandscapeDemo"
+                         ml:type="Universe">
+                        <icon
+                                ml:model_folder="assets/icon/model"
+                                ml:portal_folder="assets/icon/portal" />
+                </component>
 		<component
 			ml:name=".fullscreen"
-			ml:visible_name="Pathfinder Demo"
-			ml:binary_name="bin/PathfinderDemo"
+			ml:visible_name="Pathfinder Immersive Demo"
+			ml:binary_name="bin/PathfinderImmersiveDemo"
 			ml:type="Fullscreen">
 		</component>
 	</application>
