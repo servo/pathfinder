@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#![feature(link_llvm_intrinsics, platform_intrinsics, simd_ffi, stdsimd)]
+#![cfg_attr(not(feature = "pf-no-simd"), feature(link_llvm_intrinsics, platform_intrinsics, simd_ffi, stdsimd))]
 
 //! A minimal SIMD abstraction, usable outside of Pathfinder.
 
@@ -22,9 +22,9 @@ pub use crate::arm as default;
 pub use crate::x86 as default;
 
 pub mod scalar;
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(not(feature = "pf-no-simd"), target_arch = "aarch64"))]
 pub mod arm;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(all(not(feature = "pf-no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
 pub mod x86;
 mod extras;
 
