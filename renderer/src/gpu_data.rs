@@ -18,6 +18,7 @@ use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
+use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::ops::Add;
 
 #[derive(Debug)]
@@ -34,15 +35,14 @@ pub struct BuiltScene {
     pub view_box: RectF32,
     pub quad: [Point3DF32; 4],
     pub object_count: u32,
-    pub batches: Vec<Batch>,
-    pub solid_tiles: Vec<SolidTileScenePrimitive>,
     pub shaders: Vec<ObjectShader>,
 }
 
-#[derive(Debug)]
-pub struct Batch {
-    pub fills: Vec<FillBatchPrimitive>,
-    pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
+pub enum RenderCommand {
+    ClearMaskFramebuffer,
+    Fill(Vec<FillBatchPrimitive>),
+    AlphaTile(Vec<AlphaTileBatchPrimitive>),
+    SolidTile(Vec<SolidTileBatchPrimitive>),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -72,7 +72,7 @@ pub struct FillBatchPrimitive {
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
-pub struct SolidTileScenePrimitive {
+pub struct SolidTileBatchPrimitive {
     pub tile_x: i16,
     pub tile_y: i16,
     pub object_index: u16,
@@ -261,52 +261,38 @@ impl BuiltObject {
 impl BuiltScene {
     #[inline]
     pub fn new(view_box: RectF32, quad: &[Point3DF32; 4], object_count: u32) -> BuiltScene {
-    BuiltScene {
-            view_box,
-            quad: *quad,
-            object_count,
-            batches: vec![],
-            solid_tiles: vec![],
-            shaders: vec![],
-        }
+        BuiltScene { view_box, quad: *quad, object_count, shaders: vec![] }
     }
 
     pub fn stats(&self) -> Stats {
         Stats {
             object_count: self.object_count,
-            solid_tile_count: self.solid_tiles.len() as u32,
-            alpha_tile_count: self.batches
-                                  .iter()
-                                  .map(|batch| batch.alpha_tiles.len() as u32)
-                                  .sum(),
-            fill_count: self.batches.iter().map(|batch| batch.fills.len() as u32).sum(),
+            solid_tile_count: 0,
+            alpha_tile_count: 0,
+            fill_count: 0,
         }
     }
 }
 
-impl Batch {
-    #[inline]
-    pub fn new() -> Batch {
-        Batch {
-            fills: vec![],
-            alpha_tiles: vec![],
+impl Debug for RenderCommand {
+    fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
+        match *self {
+            RenderCommand::ClearMaskFramebuffer => write!(formatter, "ClearMaskFramebuffer"),
+            RenderCommand::Fill(ref fills) => write!(formatter, "Fill(x{})", fills.len()),
+            RenderCommand::AlphaTile(ref tiles) => {
+                write!(formatter, "AlphaTile(x{})", tiles.len())
+            }
+            RenderCommand::SolidTile(ref tiles) => {
+                write!(formatter, "SolidTile(x{})", tiles.len())
+            }
         }
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.alpha_tiles.is_empty()
     }
 }
 
 impl TileObjectPrimitive {
     #[inline]
     fn new(tile_x: i16, tile_y: i16) -> TileObjectPrimitive {
-        TileObjectPrimitive {
-            tile_x,
-            tile_y,
-            backdrop: 0,
-        }
+        TileObjectPrimitive { tile_x, tile_y, backdrop: 0 }
     }
 }
 

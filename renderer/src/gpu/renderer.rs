@@ -9,7 +9,8 @@
 // except according to those terms.
 
 use crate::gpu::debug::DebugUI;
-use crate::gpu_data::{Batch, BuiltScene, SolidTileScenePrimitive};
+use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltScene, FillBatchPrimitive};
+use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
 use crate::scene::ObjectShader;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
@@ -26,8 +27,8 @@ use std::time::Duration;
 
 static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 
-const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
-const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
+const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 64;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 64;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
@@ -68,6 +69,7 @@ pub struct Renderer<D> where D: Device {
     stencil_vertex_array: StencilVertexArray<D>,
 
     // Debug
+    current_timer_query: Option<D::TimerQuery>,
     pending_timer_queries: VecDeque<D::TimerQuery>,
     free_timer_queries: Vec<D::TimerQuery>,
     pub debug_ui: DebugUI<D>,
@@ -164,6 +166,7 @@ impl<D> Renderer<D> where D: Device {
             stencil_program,
             stencil_vertex_array,
 
+            current_timer_query: None,
             pending_timer_queries: VecDeque::new(),
             free_timer_queries: vec![],
 
@@ -175,33 +178,49 @@ impl<D> Renderer<D> where D: Device {
         }
     }
 
-    pub fn render_scene(&mut self, built_scene: &BuiltScene) {
+    pub fn begin_scene(&mut self, built_scene: &BuiltScene) {
         self.init_postprocessing_framebuffer();
 
         let timer_query = self.free_timer_queries
                               .pop()
                               .unwrap_or_else(|| self.device.create_timer_query());
         self.device.begin_timer_query(&timer_query);
+        self.current_timer_query = Some(timer_query);
 
         self.upload_shaders(&built_scene.shaders);
 
         if self.use_depth {
             self.draw_stencil(&built_scene.quad);
         }
+    }
 
-        self.upload_solid_tiles(&built_scene.solid_tiles);
-        self.draw_solid_tiles(&built_scene);
-
-        for batch in &built_scene.batches {
-            self.upload_batch(batch);
-            self.draw_batch_fills(batch);
-            self.draw_batch_alpha_tiles(batch);
+    pub fn render_command(&mut self, command: &RenderCommand) {
+        match *command {
+            RenderCommand::ClearMaskFramebuffer => self.clear_mask_framebuffer(),
+            RenderCommand::Fill(ref fills) => {
+                let count = fills.len() as u32;
+                self.upload_fills(fills);
+                self.draw_fills(count);
+            }
+            RenderCommand::SolidTile(ref solid_tiles) => {
+                let count = solid_tiles.len() as u32;
+                self.upload_solid_tiles(solid_tiles);
+                self.draw_solid_tiles(count);
+            }
+            RenderCommand::AlphaTile(ref alpha_tiles) => {
+                let count = alpha_tiles.len() as u32;
+                self.upload_alpha_tiles(alpha_tiles);
+                self.draw_alpha_tiles(count);
+            }
         }
+    }
 
+    pub fn end_scene(&mut self) {
         if self.postprocessing_needed() {
             self.postprocess();
         }
 
+        let timer_query = self.current_timer_query.take().unwrap();
         self.device.end_timer_query(&timer_query);
         self.pending_timer_queries.push_back(timer_query);
     }
@@ -264,28 +283,36 @@ impl<D> Renderer<D> where D: Device {
         self.device.upload_to_texture(&self.fill_colors_texture, size, &fill_colors);
     }
 
-    fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileScenePrimitive]) {
+    fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
         self.device.upload_to_buffer(&self.solid_tile_vertex_array().vertex_buffer,
-                                     solid_tiles,
+                                     &solid_tiles,
                                      BufferTarget::Vertex,
                                      BufferUploadMode::Dynamic);
     }
 
-    fn upload_batch(&mut self, batch: &Batch) {
+    fn upload_fills(&mut self, fills: &[FillBatchPrimitive]) {
         self.device.upload_to_buffer(&self.fill_vertex_array.vertex_buffer,
-                                     &batch.fills,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
-        self.device.upload_to_buffer(&self.alpha_tile_vertex_array().vertex_buffer,
-                                     &batch.alpha_tiles,
+                                     &fills,
                                      BufferTarget::Vertex,
                                      BufferUploadMode::Dynamic);
     }
 
-    fn draw_batch_fills(&mut self, batch: &Batch) {
+    fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
+        self.device.upload_to_buffer(&self.alpha_tile_vertex_array().vertex_buffer,
+                                     &alpha_tiles,
+                                     BufferTarget::Vertex,
+                                     BufferUploadMode::Dynamic);
+    }
+
+    fn clear_mask_framebuffer(&mut self) {
         self.device.bind_framebuffer(&self.mask_framebuffer);
+
         // TODO(pcwalton): Only clear the appropriate portion?
         self.device.clear(Some(F32x4::splat(0.0)), None, None);
+    }
+
+    fn draw_fills(&mut self, count: u32) {
+        self.device.bind_framebuffer(&self.mask_framebuffer);
 
         self.device.bind_vertex_array(&self.fill_vertex_array.vertex_array);
         self.device.use_program(&self.fill_program.program);
@@ -306,13 +333,10 @@ impl<D> Renderer<D> where D: Device {
             blend: BlendState::RGBOneAlphaOne,
             ..RenderState::default()
         };
-        self.device.draw_arrays_instanced(Primitive::TriangleFan,
-                                          4,
-                                          batch.fills.len() as u32,
-                                          &render_state);
+        self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
     }
 
-    fn draw_batch_alpha_tiles(&mut self, batch: &Batch) {
+    fn draw_alpha_tiles(&mut self, count: u32) {
         self.bind_draw_framebuffer();
 
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
@@ -367,13 +391,10 @@ impl<D> Renderer<D> where D: Device {
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device.draw_arrays_instanced(Primitive::TriangleFan,
-                                          4,
-                                          batch.alpha_tiles.len() as u32,
-                                          &render_state);
+        self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
     }
 
-    fn draw_solid_tiles(&mut self, built_scene: &BuiltScene) {
+    fn draw_solid_tiles(&mut self, count: u32) {
         self.bind_draw_framebuffer();
 
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
@@ -419,7 +440,6 @@ impl<D> Renderer<D> where D: Device {
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        let count = built_scene.solid_tiles.len() as u32;
         self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
     }
 

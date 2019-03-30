@@ -16,6 +16,6 @@ pub mod gpu_data;
 pub mod post;
 pub mod scene;
 pub mod tiles;
-pub mod z_buffer;
 
 mod sorted_vector;
+mod z_buffer;

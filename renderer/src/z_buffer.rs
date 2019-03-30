@@ -10,10 +10,11 @@
 
 //! Software occlusion culling.
 
-use crate::gpu_data::{BuiltObject, SolidTileScenePrimitive};
+use crate::gpu_data::SolidTileBatchPrimitive;
 use crate::scene;
 use crate::tiles;
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 pub struct ZBuffer {
@@ -54,11 +55,8 @@ impl ZBuffer {
         }
     }
 
-    pub fn build_solid_tiles(
-        &self,
-        objects: &[BuiltObject],
-        tile_rect: RectI32,
-    ) -> Vec<SolidTileScenePrimitive> {
+    pub fn build_solid_tiles(&self, tile_rect: RectI32, object_range: Range<u32>)
+                             -> Vec<SolidTileBatchPrimitive> {
         let mut solid_tiles = vec![];
         for scene_tile_y in 0..tile_rect.size().y() {
             for scene_tile_x in 0..tile_rect.size().x() {
@@ -68,8 +66,11 @@ impl ZBuffer {
                 if depth == 0 {
                     continue;
                 }
-                let object_index = (depth - 1) as usize;
-                solid_tiles.push(SolidTileScenePrimitive {
+                let object_index = (depth - 1) as u32;
+                if object_index < object_range.start || object_index >= object_range.end {
+                    continue;
+                }
+                solid_tiles.push(SolidTileBatchPrimitive {
                     tile_x: (scene_tile_x + tile_rect.min_x()) as i16,
                     tile_y: (scene_tile_y + tile_rect.min_y()) as i16,
                     object_index: object_index as u16,

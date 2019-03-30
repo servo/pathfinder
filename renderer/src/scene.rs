@@ -11,16 +11,12 @@
 //! A set of paths to be rendered.
 
 use crate::builder::{PreparedRenderOptions, PreparedRenderTransform};
-use crate::gpu_data::BuiltObject;
-use crate::tiles::Tiler;
-use crate::z_buffer::ZBuffer;
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone)]
@@ -63,48 +59,10 @@ impl Scene {
         }).collect()
     }
 
-    pub fn build_objects_sequentially(&self,
-                                      built_options: PreparedRenderOptions,
-                                      z_buffer: &ZBuffer)
-                                      -> Vec<BuiltObject> {
-        self.objects
-            .iter()
-            .enumerate()
-            .map(|(object_index, object)| {
-                let outline = self.apply_render_options(&object.outline, &built_options);
-                let mut tiler = Tiler::new(
-                    &outline,
-                    self.effective_view_box(&built_options),
-                    object_index as u16,
-                    z_buffer,
-                );
-                tiler.generate_tiles();
-                tiler.built_object
-            })
-            .collect()
-    }
-
-    pub fn build_objects(&self, built_options: PreparedRenderOptions, z_buffer: &ZBuffer)
-                         -> Vec<BuiltObject> {
-        self.objects
-            .par_iter()
-            .enumerate()
-            .map(|(object_index, object)| {
-                let outline = self.apply_render_options(&object.outline, &built_options);
-                let mut tiler = Tiler::new(
-                    &outline,
-                    self.effective_view_box(&built_options),
-                    object_index as u16,
-                    z_buffer,
-                );
-                tiler.generate_tiles();
-                tiler.built_object
-            })
-            .collect()
-    }
-
-    fn apply_render_options(&self, original_outline: &Outline, options: &PreparedRenderOptions)
-                            -> Outline {
+    pub(crate) fn apply_render_options(&self,
+                                       original_outline: &Outline,
+                                       options: &PreparedRenderOptions)
+                                       -> Outline {
         let effective_view_box = self.effective_view_box(options);
 
         let mut outline;
@@ -214,12 +172,7 @@ impl PathObject {
     #[inline]
     pub fn new(outline: Outline, paint: PaintId, name: String, kind: PathObjectKind)
                -> PathObject {
-        PathObject {
-            outline,
-            paint,
-            name,
-            kind,
-        }
+        PathObject { outline, paint, name, kind }
     }
 
     #[inline]
