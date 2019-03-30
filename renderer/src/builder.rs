@@ -10,8 +10,8 @@
 
 //! Packs data onto the GPU.
 
-use crate::gpu_data::{Batch, BuiltObject, FillBatchPrimitive};
-use crate::gpu_data::{AlphaTileBatchPrimitive, SolidTileScenePrimitive};
+use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive};
+use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::scene;
 use crate::tiles;
 use crate::z_buffer::ZBuffer;
@@ -22,6 +22,7 @@ use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
 use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use std::iter;
+use std::mem;
 use std::u16;
 
 const MAX_FILLS_PER_BATCH: usize = 0x0002_0000;
@@ -33,6 +34,7 @@ pub struct SceneBuilder {
     tile_rect: RectI32,
 
     current_object_index: usize,
+    current_pass: Pass,
 }
 
 impl SceneBuilder {
@@ -41,23 +43,50 @@ impl SceneBuilder {
             objects,
             z_buffer,
             tile_rect: tiles::round_rect_out_to_tile_bounds(view_box),
+
             current_object_index: 0,
+            current_pass: Pass::new(),
         }
     }
 
-    pub fn build_solid_tiles(&self) -> Vec<SolidTileScenePrimitive> {
-        self.z_buffer
-            .build_solid_tiles(&self.objects, self.tile_rect)
-    }
+    pub fn build_render_command(&mut self) -> Option<RenderCommand> {
+        match self.current_pass.state {
+            PassState::Building => {}
+            PassState::Done => {
+                self.current_pass.state = PassState::Cleared;
+                return Some(RenderCommand::ClearMaskFramebuffer)
+            }
+            PassState::Cleared if !self.current_pass.solid_tiles.is_empty() => {
+                let tiles = mem::replace(&mut self.current_pass.solid_tiles, vec![]);
+                return Some(RenderCommand::SolidTile(tiles));
+            }
+            PassState::Cleared if !self.current_pass.fills.is_empty() => {
+                let fills = mem::replace(&mut self.current_pass.fills, vec![]);
+                return Some(RenderCommand::Fill(fills));
+            }
+            PassState::Cleared if !self.current_pass.alpha_tiles.is_empty() => {
+                let tiles = mem::replace(&mut self.current_pass.alpha_tiles, vec![]);
+                return Some(RenderCommand::AlphaTile(tiles));
+            }
+            PassState::Cleared if self.current_object_index == self.objects.len() => return None,
+            PassState::Cleared => self.current_pass.state = PassState::Building,
+        }
 
-    pub fn build_batch(&mut self) -> Option<Batch> {
-        let mut batch = Batch::new();
+        // FIXME(pcwalton): Figure out what to do here with multiple batches.
+        self.current_pass.solid_tiles = self.z_buffer.build_solid_tiles(&self.objects,
+                                                                        self.tile_rect);
 
         let mut object_tile_index_to_batch_alpha_tile_index = vec![];
-        while self.current_object_index < self.objects.len() {
+        loop {
+            if self.current_object_index == self.objects.len() {
+                self.current_pass.state = PassState::Done;
+                break;
+            }
+
             let object = &self.objects[self.current_object_index];
 
-            if batch.fills.len() + object.fills.len() > MAX_FILLS_PER_BATCH {
+            if self.current_pass.fills.len() + object.fills.len() > MAX_FILLS_PER_BATCH {
+                self.current_pass.state = PassState::Done;
                 break;
             }
 
@@ -67,7 +96,7 @@ impl SceneBuilder {
 
             // Copy alpha tiles.
             for (tile_index, tile) in object.tiles.iter().enumerate() {
-                // Skip solid tiles, since we handled them above already.
+                // Skip solid tiles.
                 if object.solid_tiles[tile_index] {
                     continue;
                 }
@@ -84,14 +113,15 @@ impl SceneBuilder {
                 }
 
                 // Visible alpha tile.
-                let batch_alpha_tile_index = batch.alpha_tiles.len() as u16;
+                let batch_alpha_tile_index = self.current_pass.alpha_tiles.len() as u16;
                 if batch_alpha_tile_index == MAX_ALPHA_TILES_PER_BATCH {
+                    self.current_pass.state = PassState::Done;
                     break;
                 }
 
                 object_tile_index_to_batch_alpha_tile_index[tile_index] = batch_alpha_tile_index;
 
-                batch.alpha_tiles.push(AlphaTileBatchPrimitive {
+                self.current_pass.alpha_tiles.push(AlphaTileBatchPrimitive {
                     tile: *tile,
                     shader: object.shader,
                 });
@@ -101,10 +131,11 @@ impl SceneBuilder {
             for fill in &object.fills {
                 let object_tile_index =
                     object.tile_coords_to_index(fill.tile_x as i32, fill.tile_y as i32).unwrap();
+                let object_tile_index = object_tile_index as usize;
                 let alpha_tile_index =
-                    object_tile_index_to_batch_alpha_tile_index[object_tile_index as usize];
+                    object_tile_index_to_batch_alpha_tile_index[object_tile_index];
                 if alpha_tile_index < u16::MAX {
-                    batch.fills.push(FillBatchPrimitive {
+                    self.current_pass.fills.push(FillBatchPrimitive {
                         px: fill.px,
                         subpx: fill.subpx,
                         alpha_tile_index,
@@ -115,10 +146,31 @@ impl SceneBuilder {
             self.current_object_index += 1;
         }
 
-        if batch.is_empty() {
-            None
-        } else {
-            Some(batch)
+        self.build_render_command()
+    }
+}
+
+struct Pass {
+    solid_tiles: Vec<SolidTileBatchPrimitive>,
+    alpha_tiles: Vec<AlphaTileBatchPrimitive>,
+    fills: Vec<FillBatchPrimitive>,
+    state: PassState,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum PassState {
+    Building,
+    Done,
+    Cleared,
+}
+
+impl Pass {
+    fn new() -> Pass {
+        Pass {
+            solid_tiles: vec![],
+            alpha_tiles: vec![],
+            fills: vec![],
+            state: PassState::Building,
         }
     }
 }

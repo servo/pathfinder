@@ -27,7 +27,7 @@ use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, Sten
 use pathfinder_gpu::{StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu::renderer::{RenderMode, Renderer};
-use pathfinder_renderer::gpu_data::{BuiltScene, Stats};
+use pathfinder_renderer::gpu_data::{BuiltScene, RenderCommand, Stats};
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
 use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
@@ -535,6 +535,7 @@ impl<W> DemoApp<W> where W: Window {
     fn render_vector_scene(&mut self, viewport_index: u32) {
         let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
         let built_scene = &render_msg.render_scenes[viewport_index as usize].built_scene;
+        let commands = &render_msg.render_scenes[viewport_index as usize].commands;
 
         let view_box_size = view_box_size(self.ui.mode, &self.window_size);
         let viewport_origin_x = viewport_index as i32 * view_box_size.x();
@@ -564,7 +565,11 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.enable_depth();
         }
 
-        self.renderer.render_scene(&built_scene);
+        self.renderer.begin_scene(&built_scene);
+        for command in commands {
+            self.renderer.render_command(command);
+        }
+        self.renderer.end_scene();
     }
 
     fn handle_ui_action(&mut self, ui_action: &mut UIAction) {
@@ -678,11 +683,10 @@ impl SceneThread {
                     let render_scenes = build_options.render_transforms
                                                      .iter()
                                                      .map(|render_transform| {
-                        let built_scene = build_scene(&self.scene,
-                                                      &build_options,
-                                                      (*render_transform).clone(),
-                                                      self.options.jobs);
-                        RenderScene { built_scene, transform: (*render_transform).clone() }
+                        RenderScene::build(&self.scene,
+                                           &build_options,
+                                           (*render_transform).clone(),
+                                           self.options.jobs)
                     }).collect();
                     let tile_time = Instant::now() - start_time;
                     self.sender.send(SceneToMainMsg { render_scenes, tile_time }).unwrap();
@@ -712,7 +716,62 @@ struct SceneToMainMsg {
 
 pub struct RenderScene {
     built_scene: BuiltScene,
+    commands: Vec<RenderCommand>,
     transform: RenderTransform,
+}
+
+impl RenderScene {
+    fn build(scene: &Scene,
+             build_options: &BuildOptions,
+             render_transform: RenderTransform,
+             jobs: Option<usize>)
+             -> RenderScene {
+        let render_options = RenderOptions {
+            transform: render_transform.clone(),
+            dilation: match build_options.stem_darkening_font_size {
+                None => Point2DF32::default(),
+                Some(font_size) => {
+                    let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
+                    Point2DF32::new(x, y).scale(font_size)
+                }
+            },
+            barrel_distortion: build_options.barrel_distortion,
+            subpixel_aa_enabled: build_options.subpixel_aa_enabled,
+        };
+
+        let built_options = render_options.prepare(scene.bounds);
+        let effective_view_box = scene.effective_view_box(&built_options);
+        let z_buffer = ZBuffer::new(effective_view_box);
+
+        let quad = built_options.quad();
+
+        let built_objects = panic::catch_unwind(|| {
+            match jobs {
+                Some(1) => scene.build_objects_sequentially(built_options, &z_buffer),
+                _ => scene.build_objects(built_options, &z_buffer),
+            }
+        });
+
+        let built_objects = match built_objects {
+            Ok(built_objects) => built_objects,
+            Err(_) => {
+                eprintln!("Scene building crashed! Dumping scene:");
+                println!("{:?}", scene);
+                process::exit(1);
+            }
+        };
+
+        let mut built_scene = BuiltScene::new(scene.view_box, &quad, scene.objects.len() as u32);
+        built_scene.shaders = scene.build_shaders();
+
+        let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, effective_view_box);
+        let mut commands = vec![];
+        while let Some(command) = scene_builder.build_render_command() {
+            commands.push(command);
+        }
+
+        RenderScene { built_scene, commands, transform: render_transform }
+    }
 }
 
 #[derive(Clone)]
@@ -797,58 +856,6 @@ fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath) -> Bui
     };
 
     BuiltSVG::from_tree(Tree::from_data(&data, &UsvgOptions::default()).unwrap())
-}
-
-fn build_scene(scene: &Scene,
-               build_options: &BuildOptions,
-               render_transform: RenderTransform,
-               jobs: Option<usize>)
-               -> BuiltScene {
-    let render_options = RenderOptions {
-        transform: render_transform,
-        dilation: match build_options.stem_darkening_font_size {
-            None => Point2DF32::default(),
-            Some(font_size) => {
-                let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
-                Point2DF32::new(x, y).scale(font_size)
-            }
-        },
-        barrel_distortion: build_options.barrel_distortion,
-        subpixel_aa_enabled: build_options.subpixel_aa_enabled,
-    };
-
-    let built_options = render_options.prepare(scene.bounds);
-    let effective_view_box = scene.effective_view_box(&built_options);
-    let z_buffer = ZBuffer::new(effective_view_box);
-
-    let quad = built_options.quad();
-
-    let built_objects = panic::catch_unwind(|| {
-         match jobs {
-            Some(1) => scene.build_objects_sequentially(built_options, &z_buffer),
-            _ => scene.build_objects(built_options, &z_buffer),
-        }
-    });
-
-    let built_objects = match built_objects {
-        Ok(built_objects) => built_objects,
-        Err(_) => {
-            eprintln!("Scene building crashed! Dumping scene:");
-            println!("{:?}", scene);
-            process::exit(1);
-        }
-    };
-
-    let mut built_scene = BuiltScene::new(scene.view_box, &quad, scene.objects.len() as u32);
-    built_scene.shaders = scene.build_shaders();
-
-    let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, effective_view_box);
-    built_scene.solid_tiles = scene_builder.build_solid_tiles();
-    while let Some(batch) = scene_builder.build_batch() {
-        built_scene.batches.push(batch);
-    }
-
-    built_scene
 }
 
 fn center_of_window(window_size: &WindowSize) -> Point2DF32 {

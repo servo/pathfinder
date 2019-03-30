@@ -10,7 +10,7 @@
 
 //! Software occlusion culling.
 
-use crate::gpu_data::{BuiltObject, SolidTileScenePrimitive};
+use crate::gpu_data::{BuiltObject, SolidTileBatchPrimitive};
 use crate::scene;
 use crate::tiles;
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
@@ -54,11 +54,8 @@ impl ZBuffer {
         }
     }
 
-    pub fn build_solid_tiles(
-        &self,
-        objects: &[BuiltObject],
-        tile_rect: RectI32,
-    ) -> Vec<SolidTileScenePrimitive> {
+    pub fn build_solid_tiles(&self, objects: &[BuiltObject], tile_rect: RectI32)
+                             -> Vec<SolidTileBatchPrimitive> {
         let mut solid_tiles = vec![];
         for scene_tile_y in 0..tile_rect.size().y() {
             for scene_tile_x in 0..tile_rect.size().x() {
@@ -69,7 +66,7 @@ impl ZBuffer {
                     continue;
                 }
                 let object_index = (depth - 1) as usize;
-                solid_tiles.push(SolidTileScenePrimitive {
+                solid_tiles.push(SolidTileBatchPrimitive {
                     tile_x: (scene_tile_x + tile_rect.min_x()) as i16,
                     tile_y: (scene_tile_y + tile_rect.min_y()) as i16,
                     shader: objects[object_index].shader,
