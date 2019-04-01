@@ -24,6 +24,11 @@
 			ml:visible_name="Pathfinder Immersive Demo"
 			ml:binary_name="bin/PathfinderImmersiveDemo"
 			ml:type="Fullscreen">
+  		        <mime-type ml:name="image/svg"/>
+                        <file-extension ml:name=".svg"/>
+                        <icon
+                                ml:model_folder="assets/icon/model"
+                                ml:portal_folder="assets/icon/portal" />
 		</component>
 	</application>
 </manifest>

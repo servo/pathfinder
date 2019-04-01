@@ -5,7 +5,9 @@
 #include <lumin/ui/node/UiPanel.h>
 #include <lumin/ui/Cursor.h>
 #include <lumin/input/Raycast.h>
+#include <lumin/event/GestureInputEventData.h>
 #include <lumin/event/RayCastEventData.h>
+#include <ml_dispatch.h>
 #include <ml_logging.h>
 #include <scenes.h>
 #include <PrismSceneManager.h>
@@ -17,12 +19,10 @@ int main(int argc, char **argv)
   return myApp.run();
 }
 
-const char* QUAD_NAMES[1] = {
-  "quad1"
-};
+const int NUM_QUADS = 1;
 
-const char* PANEL_NAMES[1] = {
-  "uiPanel1"
+const char* QUAD_NAMES[NUM_QUADS] = {
+  "quad1"
 };
 
 PathfinderDemo::PathfinderDemo() {
@@ -84,6 +84,7 @@ int PathfinderDemo::init() {
     return 1;
   }
 
+  /*
   // Create the EGL surface for it to draw to
   lumin::ResourceIDType plane_id = prism_->createPlanarEGLResourceId();
   if (!plane_id) {
@@ -98,6 +99,7 @@ int PathfinderDemo::init() {
     return 1;
   }
   quad_node->setRenderResource(plane_id);
+  */
 
   return 0;
 }
@@ -141,21 +143,34 @@ bool PathfinderDemo::eventListener(lumin::ServerEvent* event) {
   // Place your event handling here.
   lumin::ServerEventType typ = event->getServerEventType();
   switch (typ) {
-    case lumin::ServerEventType::kControlPose6DofInputEvent:
+    case lumin::ServerEventType::kControlPose6DofInputEvent: {
       requestWorldRayCast(getHeadposeWorldPosition(), getHeadposeWorldForwardVector(), 0);
       return false;
+    }
     case lumin::ServerEventType::kRayCastEvent: {
       lumin::RayCastEventData* raycast_event = static_cast<lumin::RayCastEventData*>(event);
       std::shared_ptr<lumin::RaycastResult> raycast_result = raycast_event->getHitData();
       switch (raycast_result->getType()) {
         case lumin::RaycastResultType::kQuadNode: {
 	  std::shared_ptr<lumin::RaycastQuadNodeResult> quad_result = std::static_pointer_cast<lumin::RaycastQuadNodeResult>(raycast_result);
-          focus_node = quad_result->getNodeId();
+          focus_node_ = quad_result->getNodeId();
           return false;
 	}
-        default:
-          focus_node = lumin::INVALID_NODE_ID;
+        default: {
+          focus_node_ = lumin::INVALID_NODE_ID;
           return false;
+        }
+      }
+    }
+    case lumin::ServerEventType::kGestureInputEvent: {
+      lumin::GestureInputEventData* gesture_event = static_cast<lumin::GestureInputEventData*>(event);
+      switch (gesture_event->getGesture()) {
+	case lumin::input::GestureType::TriggerClick: {
+	  return onClick();
+	}
+        default: {
+          return false;
+        }
       }
     }
     default:
@@ -163,3 +178,67 @@ bool PathfinderDemo::eventListener(lumin::ServerEvent* event) {
   }
 }
 
+bool PathfinderDemo::onClick() {
+  lumin::RootNode* root_node = prism_->getRootNode();
+  for (int i=0; i<NUM_QUADS && i<svg_filecount_; i++) {
+    lumin::Node* node = prism_->findNode(QUAD_NAMES[i], root_node);
+    if (node->getNodeId() == focus_node_) {
+      dispatch(svg_filenames_[i]);
+      return true;
+    }
+  }
+  return false;
+}
+
+void PathfinderDemo::dispatch(char* svg_filename) {
+   ML_LOG(Info, "Dispatching %s", svg_filename);
+
+   MLDispatchPacket* dispatcher;
+   if (MLResult_Ok != MLDispatchAllocateEmptyPacket(&dispatcher)) {
+     ML_LOG(Error, "Failed to allocate dispatcher");
+     return;
+   }
+
+   if (MLResult_Ok != MLDispatchAllocateFileInfoList(dispatcher, 1)) {
+     ML_LOG(Error, "Failed to allocate file info list");
+     return;
+   }
+
+   MLFileInfo* file_info;
+   if (MLResult_Ok != MLDispatchGetFileInfoByIndex(dispatcher, 0, &file_info)) {
+     ML_LOG(Error, "Failed to get file info");
+     return;
+   }
+
+   if (MLResult_Ok != MLFileInfoSetFileName(file_info, svg_filename)) {
+     ML_LOG(Error, "Failed to set filename");
+     return;
+   }
+   
+   if (MLResult_Ok != MLFileInfoSetMimeType(file_info, "image/svg")) {
+     ML_LOG(Error, "Failed to set mime type");
+     return;
+   }
+
+   if (MLResult_Ok != MLDispatchAddFileInfo(dispatcher, file_info)) {
+     ML_LOG(Error, "Failed to add file info");
+     return;
+   }
+
+   MLResult result = MLDispatchTryOpenApplication(dispatcher);
+   if (MLResult_Ok != result) {
+     ML_LOG(Error, "Failed to dispatch: %s", MLDispatchGetResultString(result));
+     return;
+   }
+
+   // https://forum.magicleap.com/hc/en-us/community/posts/360043198492-Calling-MLDispatchReleaseFileInfoList-causes-a-dynamic-link-error
+   // if (MLResult_Ok != MLDispatchReleaseFileInfoList(dispatcher, false)) {
+   //   ML_LOG(Error, "Failed to deallocate file info list");
+   //   return;
+   // }
+   
+   if (MLResult_Ok != MLDispatchReleasePacket(&dispatcher, false, false)) {
+     ML_LOG(Error, "Failed to deallocate dispatcher");
+     return;
+   }
+}

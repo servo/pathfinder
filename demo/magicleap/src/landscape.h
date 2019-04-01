@@ -83,10 +83,15 @@ protected:
   void spawnInitialScenes();
 
   /**
-   * Respond to a cube face being activated
+   * Respond to a click
    */
-  void onActivate(int face);
+  bool onClick();
 
+  /**
+   * Dispatch an SVG file to the immersive app
+   */
+  void dispatch(char* svg_filename);
+  
   /**
    * Run application login
    */
@@ -102,7 +107,7 @@ private:
   PrismSceneManager* prismSceneManager_ = nullptr;
   uint64_t svg_filecount_ = 0;
   char** svg_filenames_ = nullptr;
-  lumin::NodeIDType focus_node = lumin::INVALID_NODE_ID;
+  lumin::NodeIDType focus_node_ = lumin::INVALID_NODE_ID;
 };
 
 extern "C" uint64_t magicleap_pathfinder_svg_filecount();
