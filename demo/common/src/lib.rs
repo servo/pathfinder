@@ -407,7 +407,7 @@ impl<W> DemoApp<W> where W: Window {
             self.take_screenshot();
         }
 
-        if self.options.ui {
+        if self.options.ui != UIVisibility::None {
             if let Some(render_stats) = frame.render_stats.take() {
                 self.renderer.debug_ui.add_sample(render_stats.stats,
                                                   frame.render_msg.tile_time,
@@ -425,11 +425,12 @@ impl<W> DemoApp<W> where W: Window {
             self.ui.show_text_effects = self.monochrome_scene_color.is_some();
 
             let mut ui_action = UIAction::None;
-            self.ui.update(&self.renderer.device,
-                           &mut self.window,
-                           &mut self.renderer.debug_ui,
-                           &mut ui_action);
-
+            if self.options.ui == UIVisibility::All {
+                self.ui.update(&self.renderer.device,
+                               &mut self.window,
+                               &mut self.renderer.debug_ui,
+                               &mut ui_action);
+            }
             frame.ui_events = self.renderer.debug_ui.ui.event_queue.drain();
             self.handle_ui_action(&mut ui_action);
         }
@@ -725,7 +726,7 @@ pub struct Options {
     pub jobs: Option<usize>,
     pub mode: Mode,
     pub input_path: SVGPath,
-    pub ui: bool,
+    pub ui: UIVisibility,
     hidden_field_for_future_proofing: (),
 }
 
@@ -735,7 +736,7 @@ impl Default for Options {
             jobs: None,
             mode: Mode::TwoD,
             input_path: SVGPath::Default,
-            ui: true,
+            ui: UIVisibility::All,
             hidden_field_for_future_proofing: (),
         }
     }
@@ -754,8 +755,14 @@ impl Options {
             )
             .arg(Arg::with_name("3d").short("3").long("3d").help("Run in 3D").conflicts_with("vr"))
             .arg(Arg::with_name("vr").short("V").long("vr").help("Run in VR").conflicts_with("3d"))
-            .arg(Arg::with_name("ui").short("U").long("ui").help("Show UI").conflicts_with("no-ui"))
-            .arg(Arg::with_name("no-ui").short("u").long("no-ui").help("Hide UI").conflicts_with("ui"))
+            .arg(
+                Arg::with_name("ui")
+                    .short("u")
+                    .long("ui")
+                    .takes_value(true)
+                    .possible_values(&["none", "stats", "all"])
+                    .help("How much UI to show"),
+            )
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
 
@@ -769,10 +776,12 @@ impl Options {
             self.mode = Mode::VR;
         }
 
-        if matches.is_present("ui") {
-            self.ui = true;
-        } else if matches.is_present("no-ui") {
-            self.ui = false;
+        if let Some(ui) = matches.value_of("ui") {
+            self.ui = match ui {
+                "none" => UIVisibility::None,
+                "stats" => UIVisibility::Stats,
+                _ => UIVisibility::All,
+            };
         }
 
         if let Some(path) = matches.value_of("INPUT") {
@@ -799,6 +808,13 @@ impl Mode {
     fn viewport_count(self) -> usize {
         match self { Mode::TwoD | Mode::ThreeD => 1, Mode::VR => 2 }
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum UIVisibility {
+    None,
+    Stats,
+    All,
 }
 
 #[derive(Clone, Copy)]
