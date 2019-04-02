@@ -341,6 +341,13 @@ impl<W> DemoApp<W> where W: Window {
                         self.dirty = true;
                     }
                 }
+                Event::KeyDown(Keycode::Tab) => {
+                    self.options.ui = match self.options.ui {
+                        UIVisibility::None => UIVisibility::Stats,
+                        UIVisibility::Stats => UIVisibility::All,
+                        UIVisibility::All => UIVisibility::None,
+                    }
+                }
                 Event::OpenSVG(ref svg_path) => {
                     let built_svg = load_scene(self.window.resource_loader(), svg_path);
                     self.ui.message = get_svg_building_message(&built_svg);

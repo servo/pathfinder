@@ -57,6 +57,7 @@ pub enum Event {
 pub enum Keycode {
     Alphanumeric(u8),
     Escape,
+    Tab,
 }
 
 #[derive(Clone, Copy, Debug)]

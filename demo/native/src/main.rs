@@ -227,6 +227,7 @@ impl WindowImpl {
     fn convert_sdl_keycode(&self, sdl_keycode: SDLKeycode) -> Option<Keycode> {
         match sdl_keycode {
             SDLKeycode::Escape => Some(Keycode::Escape),
+            SDLKeycode::Tab => Some(Keycode::Tab),
             sdl_keycode if sdl_keycode as i32 >= SDLKeycode::A as i32 &&
                     sdl_keycode as i32 <= SDLKeycode::Z as i32 => {
                 let offset = (sdl_keycode as i32 - SDLKeycode::A as i32) as u8;
