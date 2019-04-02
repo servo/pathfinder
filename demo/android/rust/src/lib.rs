@@ -14,6 +14,7 @@ extern crate lazy_static;
 use jni::{JNIEnv, JavaVM};
 use jni::objects::{GlobalRef, JByteBuffer, JClass, JObject, JString, JValue};
 use pathfinder_demo::DemoApp;
+use pathfinder_demo::Options;
 use pathfinder_demo::window::{Event, SVGPath, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_gl::GLVersion;
@@ -56,7 +57,8 @@ pub unsafe extern "system" fn
     });
     DEMO_APP.with(|demo_app| {
         gl::load_with(|name| egl::get_proc_address(name) as *const c_void);
-        *demo_app.borrow_mut() = Some(DemoApp::new(WindowImpl, window_size));
+        let options = Options::default();
+        *demo_app.borrow_mut() = Some(DemoApp::new(WindowImpl, window_size, options));
     });
 }
 

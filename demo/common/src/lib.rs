@@ -78,6 +78,7 @@ mod ui;
 pub struct DemoApp<W> where W: Window {
     pub window: W,
     pub should_exit: bool,
+    pub options: Options,
 
     window_size: WindowSize,
 
@@ -105,12 +106,13 @@ pub struct DemoApp<W> where W: Window {
 }
 
 impl<W> DemoApp<W> where W: Window {
-    pub fn new(window: W, window_size: WindowSize) -> DemoApp<W> {
+    pub fn new(window: W, window_size: WindowSize, mut options: Options) -> DemoApp<W> {
         let expire_message_event_id = window.create_user_event_id();
 
         let device = GLDevice::new(window.gl_version(), window.gl_default_framebuffer());
         let resources = window.resource_loader();
-        let options = Options::get();
+
+        options.command_line_overrides();
 
         let view_box_size = view_box_size(options.mode, &window_size);
 
@@ -146,13 +148,14 @@ impl<W> DemoApp<W> where W: Window {
         let ground_line_vertex_array = GroundLineVertexArray::new(&renderer.device,
                                                                   &ground_program);
 
-        let mut ui = DemoUI::new(&renderer.device, resources, options);
+        let mut ui = DemoUI::new(&renderer.device, resources, options.clone());
         let mut message_epoch = 0;
         emit_message::<W>(&mut ui, &mut message_epoch, expire_message_event_id, message);
 
         DemoApp {
             window,
             should_exit: false,
+            options,
 
             window_size,
 
@@ -338,6 +341,13 @@ impl<W> DemoApp<W> where W: Window {
                         self.dirty = true;
                     }
                 }
+                Event::KeyDown(Keycode::Tab) => {
+                    self.options.ui = match self.options.ui {
+                        UIVisibility::None => UIVisibility::Stats,
+                        UIVisibility::Stats => UIVisibility::All,
+                        UIVisibility::All => UIVisibility::None,
+                    }
+                }
                 Event::OpenSVG(ref svg_path) => {
                     let built_svg = load_scene(self.window.resource_loader(), svg_path);
                     self.ui.message = get_svg_building_message(&built_svg);
@@ -404,30 +414,33 @@ impl<W> DemoApp<W> where W: Window {
             self.take_screenshot();
         }
 
-        if let Some(render_stats) = frame.render_stats.take() {
-            self.renderer.debug_ui.add_sample(render_stats.stats,
-                                              frame.render_msg.tile_time,
-                                              render_stats.rendering_time);
-            self.renderer.draw_debug_ui();
+        if self.options.ui != UIVisibility::None {
+            if let Some(render_stats) = frame.render_stats.take() {
+                self.renderer.debug_ui.add_sample(render_stats.stats,
+                                                  frame.render_msg.tile_time,
+                                                  render_stats.rendering_time);
+                self.renderer.draw_debug_ui();
+            }
+
+            for ui_event in &frame.ui_events {
+                self.dirty = true;
+                self.renderer.debug_ui.ui.event_queue.push(*ui_event);
+            }
+
+            self.renderer.debug_ui.ui.mouse_position =
+                get_mouse_position(&self.window, self.window_size.backing_scale_factor);
+            self.ui.show_text_effects = self.monochrome_scene_color.is_some();
+
+            let mut ui_action = UIAction::None;
+            if self.options.ui == UIVisibility::All {
+                self.ui.update(&self.renderer.device,
+                               &mut self.window,
+                               &mut self.renderer.debug_ui,
+                               &mut ui_action);
+            }
+            frame.ui_events = self.renderer.debug_ui.ui.event_queue.drain();
+            self.handle_ui_action(&mut ui_action);
         }
-
-        for ui_event in &frame.ui_events {
-            self.dirty = true;
-            self.renderer.debug_ui.ui.event_queue.push(*ui_event);
-        }
-
-        self.renderer.debug_ui.ui.mouse_position =
-            get_mouse_position(&self.window, self.window_size.backing_scale_factor);
-        self.ui.show_text_effects = self.monochrome_scene_color.is_some();
-
-        let mut ui_action = UIAction::None;
-        self.ui.update(&self.renderer.device,
-                       &mut self.window,
-                       &mut self.renderer.debug_ui,
-                       &mut ui_action);
-
-        frame.ui_events = self.renderer.debug_ui.ui.event_queue.drain();
-        self.handle_ui_action(&mut ui_action);
 
         // Switch camera mode (2D/3D) if requested.
         //
@@ -717,13 +730,27 @@ pub struct RenderScene {
 
 #[derive(Clone)]
 pub struct Options {
-    jobs: Option<usize>,
-    mode: Mode,
-    input_path: SVGPath,
+    pub jobs: Option<usize>,
+    pub mode: Mode,
+    pub input_path: SVGPath,
+    pub ui: UIVisibility,
+    hidden_field_for_future_proofing: (),
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            jobs: None,
+            mode: Mode::TwoD,
+            input_path: SVGPath::Default,
+            ui: UIVisibility::All,
+            hidden_field_for_future_proofing: (),
+        }
+    }
 }
 
 impl Options {
-    fn get() -> Options {
+    fn command_line_overrides(&mut self) {
         let matches = App::new("tile-svg")
             .arg(
                 Arg::with_name("jobs")
@@ -735,27 +762,38 @@ impl Options {
             )
             .arg(Arg::with_name("3d").short("3").long("3d").help("Run in 3D").conflicts_with("vr"))
             .arg(Arg::with_name("vr").short("V").long("vr").help("Run in VR").conflicts_with("3d"))
+            .arg(
+                Arg::with_name("ui")
+                    .short("u")
+                    .long("ui")
+                    .takes_value(true)
+                    .possible_values(&["none", "stats", "all"])
+                    .help("How much UI to show"),
+            )
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
 
-        let jobs: Option<usize> = matches
-            .value_of("jobs")
-            .map(|string| string.parse().unwrap());
+        if let Some(jobs) = matches.value_of("jobs") {
+            self.jobs = jobs.parse().ok();
+        }
 
-        let mode = if matches.is_present("3d") {
-            Mode::ThreeD
+        if matches.is_present("3d") {
+            self.mode = Mode::ThreeD;
         } else if matches.is_present("vr") {
-            Mode::VR
-        } else {
-            Mode::TwoD
-        };
+            self.mode = Mode::VR;
+        }
 
-        let input_path = match matches.value_of("INPUT") {
-            None => SVGPath::Default,
-            Some(path) => SVGPath::Path(PathBuf::from(path)),
-        };
+        if let Some(ui) = matches.value_of("ui") {
+            self.ui = match ui {
+                "none" => UIVisibility::None,
+                "stats" => UIVisibility::Stats,
+                _ => UIVisibility::All,
+            };
+        }
 
-        Options { jobs, mode, input_path }
+        if let Some(path) = matches.value_of("INPUT") {
+            self.input_path = SVGPath::Path(PathBuf::from(path));
+        };
     }
 
     fn adjust_thread_pool_settings(&self, mut thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
@@ -777,6 +815,13 @@ impl Mode {
     fn viewport_count(self) -> usize {
         match self { Mode::TwoD | Mode::ThreeD => 1, Mode::VR => 2 }
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum UIVisibility {
+    None,
+    Stats,
+    All,
 }
 
 #[derive(Clone, Copy)]
