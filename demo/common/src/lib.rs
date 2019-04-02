@@ -188,11 +188,14 @@ impl<W> DemoApp<W> where W: Window {
         let ui_events = self.handle_events(events);
 
         // Get the render message, and determine how many scenes it contains.
-        let render_msg = self.scene_thread_proxy.receiver.recv().unwrap();
-        let render_scene_count = render_msg.render_scenes.len() as u32;
+        let transforms = match self.scene_thread_proxy.receiver.recv().unwrap() {
+            SceneToMainMsg::BeginFrame { transforms } => transforms,
+            _ => panic!("Expected BeginFrame message!"),
+        };
+        let render_scene_count = transforms.len() as u32;
 
         // Save the frame.
-        self.current_frame = Some(Frame::new(render_msg, ui_events));
+        self.current_frame = Some(Frame::new(transforms, ui_events));
 
         // Begin drawing the scene.
         self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
@@ -379,22 +382,17 @@ impl<W> DemoApp<W> where W: Window {
         self.draw_environment(render_scene_index);
         self.render_vector_scene(render_scene_index);
 
-        let frame = self.current_frame.as_mut().unwrap();
-        let render_scene = &frame.render_msg.render_scenes[render_scene_index as usize];
-        match frame.render_stats {
-            None => {
-                frame.render_stats = Some(RenderStats {
-                    rendering_time: self.renderer.shift_timer_query(),
-                    stats: render_scene.built_scene.stats(),
-                })
-            }
-            Some(ref mut render_stats) => {
-                render_stats.stats = render_stats.stats + render_scene.built_scene.stats()
-            }
+        if let Some(rendering_time) = self.renderer.shift_timer_query() {
+            self.current_frame.as_mut().unwrap().scene_rendering_times.push(rendering_time)
         }
     }
 
     pub fn finish_drawing_frame(&mut self) {
+        let tile_time = match self.scene_thread_proxy.receiver.recv().unwrap() {
+            SceneToMainMsg::EndFrame { tile_time } => tile_time,
+            _ => panic!("Expected `EndFrame`!"),
+        };
+
         let mut frame = self.current_frame.take().unwrap();
 
         let drawable_size = self.window_size.device_size();
@@ -404,10 +402,16 @@ impl<W> DemoApp<W> where W: Window {
             self.take_screenshot();
         }
 
-        if let Some(render_stats) = frame.render_stats.take() {
-            self.renderer.debug_ui.add_sample(render_stats.stats,
-                                              frame.render_msg.tile_time,
-                                              render_stats.rendering_time);
+        if !frame.scene_stats.is_empty() || !frame.scene_rendering_times.is_empty() {
+            let zero = Stats::default();
+            let aggregate_stats = frame.scene_stats.iter().fold(zero, |sum, item| sum + *item);
+            let total_rendering_time = if frame.scene_rendering_times.is_empty() {
+                None
+             } else {
+                let zero = Duration::new(0, 0);
+                Some(frame.scene_rendering_times.iter().fold(zero, |sum, item| sum + *item))
+             };
+            self.renderer.debug_ui.add_sample(aggregate_stats, tile_time, total_rendering_time);
             self.renderer.draw_debug_ui();
         }
 
@@ -463,8 +467,8 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn draw_environment(&self, viewport_index: u32) {
-        let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
-        let render_transform = &render_msg.render_scenes[viewport_index as usize].transform;
+        let frame = &self.current_frame.as_ref().unwrap();
+        let render_transform = &frame.transforms[viewport_index as usize].clone();
 
         let perspective = match *render_transform {
             RenderTransform::Transform2D(..) => return,
@@ -533,9 +537,12 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn render_vector_scene(&mut self, viewport_index: u32) {
-        let render_msg = &self.current_frame.as_ref().unwrap().render_msg;
-        let built_scene = &render_msg.render_scenes[viewport_index as usize].built_scene;
-        let commands = &render_msg.render_scenes[viewport_index as usize].commands;
+        let built_scene = match self.scene_thread_proxy.receiver.recv().unwrap() {
+            SceneToMainMsg::BeginRenderScene(built_scene) => built_scene,
+            _ => panic!("Expected `BeginRenderScene`!"),
+        };
+
+        self.current_frame.as_mut().unwrap().scene_stats.push(built_scene.stats());
 
         let view_box_size = view_box_size(self.ui.mode, &self.window_size);
         let viewport_origin_x = viewport_index as i32 * view_box_size.x();
@@ -566,21 +573,25 @@ impl<W> DemoApp<W> where W: Window {
         }
 
         self.renderer.begin_scene(&built_scene);
-        for command in commands {
-            self.renderer.render_command(command);
+
+        loop {
+            match self.scene_thread_proxy.receiver.recv().unwrap() {
+                SceneToMainMsg::Execute(command) => self.renderer.render_command(&command),
+                SceneToMainMsg::EndRenderScene => break,
+                _ => panic!("Expected `Execute` or `EndRenderScene`!"),
+            }
         }
+
         self.renderer.end_scene();
     }
 
     fn handle_ui_action(&mut self, ui_action: &mut UIAction) {
         match ui_action {
             UIAction::None => {}
-
             UIAction::TakeScreenshot(ref path) => {
                 self.pending_screenshot_path = Some((*path).clone());
                 self.dirty = true;
             }
-
             UIAction::ZoomIn => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
@@ -679,17 +690,19 @@ impl SceneThread {
                     self.scene.view_box = RectF32::new(Point2DF32::default(), size.to_f32());
                 }
                 MainToSceneMsg::Build(build_options) => {
+                    self.sender.send(SceneToMainMsg::BeginFrame {
+                        transforms: build_options.render_transforms.clone(),
+                    }).unwrap();
                     let start_time = Instant::now();
-                    let render_scenes = build_options.render_transforms
-                                                     .iter()
-                                                     .map(|render_transform| {
-                        RenderScene::build(&self.scene,
-                                           &build_options,
-                                           (*render_transform).clone(),
-                                           self.options.jobs)
-                    }).collect();
+                    for render_transform in &build_options.render_transforms {
+                        build_scene(&self.scene,
+                                    &build_options,
+                                    (*render_transform).clone(),
+                                    self.options.jobs,
+                                    &mut self.sender);
+                    }
                     let tile_time = Instant::now() - start_time;
-                    self.sender.send(SceneToMainMsg { render_scenes, tile_time }).unwrap();
+                    self.sender.send(SceneToMainMsg::EndFrame { tile_time }).unwrap();
                 }
             }
         }
@@ -709,69 +722,65 @@ struct BuildOptions {
     subpixel_aa_enabled: bool,
 }
 
-struct SceneToMainMsg {
-    render_scenes: Vec<RenderScene>,
-    tile_time: Duration,
+enum SceneToMainMsg {
+    BeginFrame { transforms: Vec<RenderTransform> },
+    EndFrame { tile_time: Duration },
+    BeginRenderScene(BuiltScene),
+    Execute(RenderCommand),
+    EndRenderScene,
 }
 
-pub struct RenderScene {
-    built_scene: BuiltScene,
-    commands: Vec<RenderCommand>,
-    transform: RenderTransform,
-}
-
-impl RenderScene {
-    fn build(scene: &Scene,
-             build_options: &BuildOptions,
-             render_transform: RenderTransform,
-             jobs: Option<usize>)
-             -> RenderScene {
-        let render_options = RenderOptions {
-            transform: render_transform.clone(),
-            dilation: match build_options.stem_darkening_font_size {
-                None => Point2DF32::default(),
-                Some(font_size) => {
-                    let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
-                    Point2DF32::new(x, y).scale(font_size)
-                }
-            },
-            barrel_distortion: build_options.barrel_distortion,
-            subpixel_aa_enabled: build_options.subpixel_aa_enabled,
-        };
-
-        let built_options = render_options.prepare(scene.bounds);
-        let effective_view_box = scene.effective_view_box(&built_options);
-        let z_buffer = ZBuffer::new(effective_view_box);
-
-        let quad = built_options.quad();
-
-        let built_objects = panic::catch_unwind(|| {
-            match jobs {
-                Some(1) => scene.build_objects_sequentially(built_options, &z_buffer),
-                _ => scene.build_objects(built_options, &z_buffer),
+fn build_scene(scene: &Scene,
+               build_options: &BuildOptions,
+               render_transform: RenderTransform,
+               jobs: Option<usize>,
+               sink: &mut Sender<SceneToMainMsg>) {
+    let render_options = RenderOptions {
+        transform: render_transform.clone(),
+        dilation: match build_options.stem_darkening_font_size {
+            None => Point2DF32::default(),
+            Some(font_size) => {
+                let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
+                Point2DF32::new(x, y).scale(font_size)
             }
-        });
+        },
+        barrel_distortion: build_options.barrel_distortion,
+        subpixel_aa_enabled: build_options.subpixel_aa_enabled,
+    };
 
-        let built_objects = match built_objects {
-            Ok(built_objects) => built_objects,
-            Err(_) => {
-                eprintln!("Scene building crashed! Dumping scene:");
-                println!("{:?}", scene);
-                process::exit(1);
-            }
-        };
+    let built_options = render_options.prepare(scene.bounds);
+    let effective_view_box = scene.effective_view_box(&built_options);
+    let z_buffer = ZBuffer::new(effective_view_box);
 
-        let mut built_scene = BuiltScene::new(scene.view_box, &quad, scene.objects.len() as u32);
-        built_scene.shaders = scene.build_shaders();
+    let quad = built_options.quad();
 
-        let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, effective_view_box);
-        let mut commands = vec![];
-        while let Some(command) = scene_builder.build_render_command() {
-            commands.push(command);
+    let built_objects = panic::catch_unwind(|| {
+        match jobs {
+            Some(1) => scene.build_objects_sequentially(built_options, &z_buffer),
+            _ => scene.build_objects(built_options, &z_buffer),
         }
+    });
 
-        RenderScene { built_scene, commands, transform: render_transform }
+    let built_objects = match built_objects {
+        Ok(built_objects) => built_objects,
+        Err(_) => {
+            eprintln!("Scene building crashed! Dumping scene:");
+            println!("{:?}", scene);
+            process::exit(1);
+        }
+    };
+
+    let mut built_scene = BuiltScene::new(scene.view_box, &quad, scene.objects.len() as u32);
+    built_scene.shaders = scene.build_shaders();
+
+    sink.send(SceneToMainMsg::BeginRenderScene(built_scene)).unwrap();
+
+    let mut scene_builder = SceneBuilder::new(built_objects, z_buffer, effective_view_box);
+    while let Some(command) = scene_builder.build_render_command() {
+        sink.send(SceneToMainMsg::Execute(command)).unwrap();
     }
+
+    sink.send(SceneToMainMsg::EndRenderScene).unwrap();
 }
 
 #[derive(Clone)]
@@ -836,12 +845,6 @@ impl Mode {
     fn viewport_count(self) -> usize {
         match self { Mode::TwoD | Mode::ThreeD => 1, Mode::VR => 2 }
     }
-}
-
-#[derive(Clone, Copy)]
-struct RenderStats {
-    rendering_time: Option<Duration>,
-    stats: Stats,
 }
 
 fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath) -> BuiltSVG {
@@ -978,13 +981,14 @@ fn view_box_size(mode: Mode, window_size: &WindowSize) -> Point2DI32 {
 }
 
 struct Frame {
-    render_msg: SceneToMainMsg,
+    transforms: Vec<RenderTransform>,
     ui_events: Vec<UIEvent>,
-    render_stats: Option<RenderStats>,
+    scene_rendering_times: Vec<Duration>,
+    scene_stats: Vec<Stats>,
 }
 
 impl Frame {
-    fn new(render_msg: SceneToMainMsg, ui_events: Vec<UIEvent>) -> Frame {
-        Frame { render_msg, ui_events, render_stats: None }
+    fn new(transforms: Vec<RenderTransform>, ui_events: Vec<UIEvent>) -> Frame {
+        Frame { transforms, ui_events, scene_rendering_times: vec![], scene_stats: vec![] }
     }
 }
