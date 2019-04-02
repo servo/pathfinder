@@ -16,3 +16,6 @@ node_modules
 # VSCode
 .vscode
 *.code-workspace
+
+# Emacs
+*~
