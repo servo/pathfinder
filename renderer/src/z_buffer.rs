@@ -72,7 +72,7 @@ impl ZBuffer {
                 solid_tiles.push(SolidTileScenePrimitive {
                     tile_x: (scene_tile_x + tile_rect.min_x()) as i16,
                     tile_y: (scene_tile_y + tile_rect.min_y()) as i16,
-                    shader: objects[object_index].shader,
+                    object_index: object_index as u16,
                 });
             }
         }

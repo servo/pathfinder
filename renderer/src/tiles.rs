@@ -9,7 +9,6 @@
 // except according to those terms.
 
 use crate::gpu_data::BuiltObject;
-use crate::scene::ShaderId;
 use crate::sorted_vector::SortedVector;
 use crate::z_buffer::ZBuffer;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
@@ -39,15 +38,10 @@ pub struct Tiler<'o, 'z> {
 
 impl<'o, 'z> Tiler<'o, 'z> {
     #[allow(clippy::or_fun_call)]
-    pub fn new(
-        outline: &'o Outline,
-        view_box: RectF32,
-        object_index: u16,
-        shader: ShaderId,
-        z_buffer: &'z ZBuffer,
-    ) -> Tiler<'o, 'z> {
+    pub fn new(outline: &'o Outline, view_box: RectF32, object_index: u16, z_buffer: &'z ZBuffer)
+               -> Tiler<'o, 'z> {
         let bounds = outline.bounds().intersection(view_box).unwrap_or(RectF32::default());
-        let built_object = BuiltObject::new(bounds, shader);
+        let built_object = BuiltObject::new(bounds);
 
         Tiler {
             outline,

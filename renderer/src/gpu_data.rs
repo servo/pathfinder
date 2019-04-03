@@ -10,7 +10,7 @@
 
 //! Packed data ready to be sent to the GPU.
 
-use crate::scene::{ObjectShader, ShaderId};
+use crate::scene::ObjectShader;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
@@ -27,7 +27,6 @@ pub struct BuiltObject {
     pub tiles: Vec<TileObjectPrimitive>,
     pub fills: Vec<FillObjectPrimitive>,
     pub solid_tiles: FixedBitSet,
-    pub shader: ShaderId,
 }
 
 #[derive(Debug)]
@@ -76,14 +75,14 @@ pub struct FillBatchPrimitive {
 pub struct SolidTileScenePrimitive {
     pub tile_x: i16,
     pub tile_y: i16,
-    pub shader: ShaderId,
+    pub object_index: u16,
 }
 
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct AlphaTileBatchPrimitive {
     pub tile: TileObjectPrimitive,
-    pub shader: ShaderId,
+    pub object_index: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -97,7 +96,7 @@ pub struct Stats {
 // Utilities for built objects
 
 impl BuiltObject {
-    pub fn new(bounds: RectF32, shader: ShaderId) -> BuiltObject {
+    pub fn new(bounds: RectF32) -> BuiltObject {
         // Compute the tile rect.
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
 
@@ -113,7 +112,7 @@ impl BuiltObject {
         let mut solid_tiles = FixedBitSet::with_capacity(tile_count);
         solid_tiles.insert_range(..);
 
-        BuiltObject { bounds, tile_rect, tiles, fills: vec![], solid_tiles, shader }
+        BuiltObject { bounds, tile_rect, tiles, fills: vec![], solid_tiles }
     }
 
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.

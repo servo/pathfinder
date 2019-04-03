@@ -93,7 +93,7 @@ impl SceneBuilder {
 
                 batch.alpha_tiles.push(AlphaTileBatchPrimitive {
                     tile: *tile,
-                    shader: object.shader,
+                    object_index: self.current_object_index as u16,
                 });
             }
 

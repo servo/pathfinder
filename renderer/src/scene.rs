@@ -57,12 +57,10 @@ impl Scene {
     }
 
     pub fn build_shaders(&self) -> Vec<ObjectShader> {
-        self.paints
-            .iter()
-            .map(|paint| ObjectShader {
-                fill_color: paint.color,
-            })
-            .collect()
+        self.objects.iter().map(|object| {
+            let paint = &self.paints[object.paint.0 as usize];
+            ObjectShader { fill_color: paint.color }
+        }).collect()
     }
 
     pub fn build_objects_sequentially(&self,
@@ -78,7 +76,6 @@ impl Scene {
                     &outline,
                     self.effective_view_box(&built_options),
                     object_index as u16,
-                    ShaderId(object.paint.0),
                     z_buffer,
                 );
                 tiler.generate_tiles();
@@ -98,7 +95,6 @@ impl Scene {
                     &outline,
                     self.effective_view_box(&built_options),
                     object_index as u16,
-                    ShaderId(object.paint.0),
                     z_buffer,
                 );
                 tiler.generate_tiles();
@@ -239,9 +235,6 @@ pub struct Paint {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct PaintId(pub u16);
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct ShaderId(pub u16);
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ObjectShader {
