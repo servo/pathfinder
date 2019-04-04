@@ -19,8 +19,6 @@ int main(int argc, char **argv)
   return myApp.run();
 }
 
-const int NUM_QUADS = 6;
-
 const char* QUAD_NAMES[NUM_QUADS] = {
   "quad1",
   "quad2",
@@ -95,6 +93,7 @@ int PathfinderDemo::init() {
     abort();
     return 1;
   }
+  quad_nodes_[i] = quad_node->getNodeId();
 
   // Create the EGL surface for it to draw to
   lumin::ResourceIDType plane_id = prism_->createPlanarEGLResourceId();
@@ -103,19 +102,35 @@ int PathfinderDemo::init() {
     abort();
     return 1;
   }
-  lumin::PlanarResource* plane = static_cast<lumin::PlanarResource*>(prism_->getResource(plane_id));
+  quad_node->setRenderResource(plane_id);
+
+  renderNode(quad_node->getNodeId());
+  }
+
+  return 0;
+}
+
+void PathfinderDemo::renderNode(lumin::NodeIDType node_id) {
+  if (node_id == lumin::INVALID_NODE_ID) { return; }
+
+  lumin::QuadNode* quad_node = static_cast<lumin::QuadNode*>(prism_->getNode(node_id));
+  if (!quad_node) {
+    ML_LOG(Error, "Pathfinder Failed to get quad node");
+    return;
+  }
+
+  lumin::PlanarResource* plane = const_cast<lumin::PlanarResource*>(static_cast<const lumin::PlanarResource*>(quad_node->getRenderResource()));
   if (!plane) {
     ML_LOG(Error, "Pathfinder Failed to get plane");
-    abort();
-    return 1;
+    return;
   }
-  quad_node->setRenderResource(plane_id);
-  
+
   // Get the EGL context, surface and display.
+  uint32_t width = plane->getWidth();
+  uint32_t height = plane->getHeight();
   EGLContext ctx = plane->getEGLContext();
   EGLSurface surf = plane->getEGLSurface();
   EGLDisplay dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-  eglMakeCurrent(dpy, surf, surf, ctx);
 
   // Initialize pathfinder
   if (!pathfinder_) {
@@ -124,23 +139,39 @@ int PathfinderDemo::init() {
     ML_LOG(Info, "Pathfinder initialized");
   }
 
-  uint32_t width = plane->getWidth();
-  uint32_t height = plane->getHeight();
+  // Get the SVG filename
+  const char* svg_filename;
+  for (int i=0; i<NUM_QUADS; i++) {
+    if (quad_nodes_[i] == node_id) {
+      svg_filename = SVG_NAMES[i];
+      break;
+    }
+  }
+  if (!svg_filename) {
+    ML_LOG(Error, "Pathfinder Failed to get SVG filename");
+    return;
+  }
+
+  // Set the brightness
+  float brightness;
+  if (node_id == highlighted_node_) {
+    brightness = 0.6;
+  } else {
+    brightness = 0.4;
+  }
 
   // Render the SVG
   MagicLeapPathfinderRenderOptions options = {
     dpy,
     surf,
-    { 0.5, 0.5, 0.5, 1.0 },
+    { brightness, brightness, brightness, 1.0 },
     { 0, 0, width, height },
-    SVG_NAMES[i],
+    svg_filename,
   };
 
+  eglMakeCurrent(dpy, surf, surf, ctx);
   magicleap_pathfinder_render(pathfinder_, &options);
   eglSwapBuffers(dpy, surf);
-  }
-
-  return 0;
 }
 
 int PathfinderDemo::deInit() {
@@ -174,6 +205,12 @@ void PathfinderDemo::spawnInitialScenes() {
 
 bool PathfinderDemo::updateLoop(float fDelta) {
   // Place your update here.
+  if (focus_node_ != highlighted_node_) {
+    lumin::NodeIDType old_highlight = highlighted_node_;
+    highlighted_node_ = focus_node_;
+    renderNode(old_highlight);
+    renderNode(highlighted_node_);
+  }
 
   // Return true for your app to continue running, false to terminate the app.
   return true;
