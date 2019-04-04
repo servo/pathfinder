@@ -12,7 +12,7 @@
                 <uses-privilege ml:name="ControllerPose"/>
                 <component
                          ml:name=".universe"
-                         ml:visible_name="Pathfinder Landscape Demo"
+                         ml:visible_name="PF Landscape Demo"
                          ml:binary_name="bin/PathfinderLandscapeDemo"
                          ml:type="Universe">
                         <icon
@@ -21,7 +21,7 @@
                 </component>
 		<component
 			ml:name=".fullscreen"
-			ml:visible_name="Pathfinder Immersive Demo"
+			ml:visible_name="PF Immersive Demo"
 			ml:binary_name="bin/PathfinderImmersiveDemo"
 			ml:type="Fullscreen">
   		        <mime-type ml:name="image/svg"/>
