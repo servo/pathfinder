@@ -91,7 +91,7 @@ protected:
   /**
    * Dispatch an SVG file to the immersive app
    */
-  void dispatch(char* svg_filename);
+  void dispatch(const char* svg_filename);
   
   /**
    * Run application login
@@ -107,13 +107,17 @@ private:
   lumin::Prism* prism_ = nullptr;  // represents the bounded space where the App renders.
   PrismSceneManager* prismSceneManager_ = nullptr;
   void* pathfinder_ = nullptr;
-  uint64_t svg_filecount_ = 0;
-  char** svg_filenames_ = nullptr;
   lumin::NodeIDType focus_node_ = lumin::INVALID_NODE_ID;
 };
 
-extern "C" uint64_t magicleap_pathfinder_svg_filecount();
-extern "C" char** magicleap_pathfinder_svg_filenames();
-extern "C" void* magicleap_pathfinder_init(EGLDisplay, EGLSurface);
-extern "C" void magicleap_pathfinder_render(void*, EGLDisplay, EGLSurface, char*);
+typedef struct MagicLeapPathfinderRenderOptions {
+  EGLDisplay display;
+  EGLSurface surface;
+  float bg_color[4];
+  uint32_t viewport[4];
+  const char* svg_filename;
+} MagicLeapPathfinderRenderOptions;
+
+extern "C" void* magicleap_pathfinder_init();
+extern "C" void magicleap_pathfinder_render(void*, MagicLeapPathfinderRenderOptions*);
 extern "C" void magicleap_pathfinder_deinit(void*);

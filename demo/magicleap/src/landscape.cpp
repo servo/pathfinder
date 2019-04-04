@@ -30,12 +30,19 @@ const char* QUAD_NAMES[NUM_QUADS] = {
   "quad6",
 };
 
+const char* SVG_NAMES[NUM_QUADS] = {
+  "svg/nba-notext.svg",
+  "svg/paper.svg",
+  "svg/Ghostscript_Tiger.svg",
+  "svg/julius-caesar-with-bg.svg",
+  "svg/julius-caesar.svg",
+  "svg/pathfinder_logo.svg",
+};
+
 PathfinderDemo::PathfinderDemo() {
   ML_LOG(Debug, "PathfinderDemo Constructor.");
 
   // Place your constructor implementation here.
-  svg_filecount_ = magicleap_pathfinder_svg_filecount();
-  svg_filenames_ = magicleap_pathfinder_svg_filenames();
 }
 
 PathfinderDemo::~PathfinderDemo() {
@@ -113,12 +120,23 @@ int PathfinderDemo::init() {
   // Initialize pathfinder
   if (!pathfinder_) {
     ML_LOG(Info, "Pathfinder initializing");
-    pathfinder_ = magicleap_pathfinder_init(dpy, surf);
+    pathfinder_ = magicleap_pathfinder_init();
     ML_LOG(Info, "Pathfinder initialized");
   }
 
+  uint32_t width = plane->getWidth();
+  uint32_t height = plane->getHeight();
+
   // Render the SVG
-  magicleap_pathfinder_render(pathfinder_, dpy, surf, svg_filenames_[i % svg_filecount_]);
+  MagicLeapPathfinderRenderOptions options = {
+    dpy,
+    surf,
+    { 0.5, 0.5, 0.5, 1.0 },
+    { 0, 0, width, height },
+    SVG_NAMES[i],
+  };
+
+  magicleap_pathfinder_render(pathfinder_, &options);
   eglSwapBuffers(dpy, surf);
   }
 
@@ -202,17 +220,17 @@ bool PathfinderDemo::eventListener(lumin::ServerEvent* event) {
 
 bool PathfinderDemo::onClick() {
   lumin::RootNode* root_node = prism_->getRootNode();
-  for (int i=0; i<NUM_QUADS && i<svg_filecount_; i++) {
+  for (int i=0; i<NUM_QUADS; i++) {
     lumin::Node* node = prism_->findNode(QUAD_NAMES[i], root_node);
     if (node->getNodeId() == focus_node_) {
-      dispatch(svg_filenames_[i]);
+      dispatch(SVG_NAMES[i]);
       return true;
     }
   }
   return false;
 }
 
-void PathfinderDemo::dispatch(char* svg_filename) {
+void PathfinderDemo::dispatch(const char* svg_filename) {
    ML_LOG(Info, "Dispatching %s", svg_filename);
 
    MLDispatchPacket* dispatcher;
