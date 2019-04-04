@@ -24,12 +24,13 @@
 #include <ml_graphics.h>
 #include <ml_head_tracking.h>
 #include <ml_perception.h>
+#include <ml_fileinfo.h>
 #include <ml_lifecycle.h>
 #include <ml_logging.h>
 #include <ml_privileges.h>
 
 // Entry point to the Rust code
-extern "C" MLResult magicleap_pathfinder_demo(EGLDisplay egl_display, EGLContext egl_context);
+extern "C" MLResult magicleap_pathfinder_demo(EGLDisplay egl_display, EGLContext egl_context, const char* file_name);
 
 // Initialization of the scene thread
 extern "C" void init_scene_thread(uint64_t id) {
@@ -181,13 +182,56 @@ int main() {
     return -1;
   }
 
+  // Get the file argument if there is one
+  MLLifecycleInitArgList* arg_list = nullptr;
+  const MLLifecycleInitArg* arg = nullptr;
+  const MLFileInfo* file_info = nullptr;
+  const char* file_name = nullptr;
+  int64_t arg_list_len = 0;
+  int64_t file_list_len = 0;
+    
+  if (MLResult_Ok != MLLifecycleGetInitArgList(&arg_list)) {
+    ML_LOG(Error, "%s: Failed to get init args.", application_name);
+    return -1;
+  }
+
+  if (MLResult_Ok != MLLifecycleGetInitArgListLength(arg_list, &arg_list_len)) {
+    ML_LOG(Error, "%s: Failed to get init arg length.", application_name);
+    return -1;
+  }
+
+  if (arg_list_len) {
+    if (MLResult_Ok != MLLifecycleGetInitArgByIndex(arg_list, 0, &arg)) {
+      ML_LOG(Error, "%s: Failed to get init arg.", application_name);
+      return -1;
+    }
+
+    if (MLResult_Ok != MLLifecycleGetFileInfoListLength(arg, &file_list_len)) {
+      ML_LOG(Error, "%s: Failed to get file list length.", application_name);
+      return -1;
+    }
+  }
+
+  if (file_list_len) {
+    if (MLResult_Ok != MLLifecycleGetFileInfoByIndex(arg, 0, &file_info)) {
+      ML_LOG(Error, "%s: Failed to get file info.", application_name);
+      return -1;
+    }
+
+    if (MLResult_Ok != MLFileInfoGetFileName(file_info, &file_name)) {
+      ML_LOG(Error, "%s: Failed to get file name.", application_name);
+      return -1;
+    }
+  }
+
   // Run the demo!
-  ML_LOG(Info, "%s: Begin demo.", application_name);
-  MLResult status = magicleap_pathfinder_demo(graphics_context.egl_display, graphics_context.egl_context);
+  ML_LOG(Info, "%s: Begin demo (%s).", application_name, file_name);
+  MLResult status = magicleap_pathfinder_demo(graphics_context.egl_display, graphics_context.egl_context, file_name);
   ML_LOG(Info, "%s: End demo (%d).", application_name, status);
 
   // Shut down
   MLPerceptionShutdown();
+  MLLifecycleFreeInitArgList(&arg_list);
 
   return 0;
 }

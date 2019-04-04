@@ -56,7 +56,7 @@ mod magicleap;
 mod mocked_c_api;
 
 #[no_mangle]
-pub extern "C" fn magicleap_pathfinder_demo(egl_display: EGLDisplay, egl_context: EGLContext) {
+pub unsafe extern "C" fn magicleap_pathfinder_demo(egl_display: EGLDisplay, egl_context: EGLContext, file_name: *const c_char) {
     unsafe { c_api::MLLoggingLog(c_api::MLLogLevel::Info, &b"Pathfinder Demo\0"[0], &b"Initializing\0"[0]) };
 
     let tag = CString::new("Pathfinder Demo").unwrap();
@@ -75,7 +75,11 @@ pub extern "C" fn magicleap_pathfinder_demo(egl_display: EGLDisplay, egl_context
     options.mode = Mode::VR;
     options.jobs = Some(3);
     options.pipeline = 0;
-
+    if let Some(file_name) = file_name.as_ref() {
+       let file_name = CStr::from_ptr(file_name).to_string_lossy().into_owned();
+       options.input_path = SVGPath::Resource(file_name);
+    }
+    
     let mut app = DemoApp::new(window, window_size, options);
     debug!("Initialized app");
 
