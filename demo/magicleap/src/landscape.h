@@ -19,6 +19,8 @@
 #include <SceneDescriptor.h>
 #include <PrismSceneManager.h>
 
+const uint32_t NUM_QUADS = 6;
+
 /**
  * PathfinderDemo Landscape Application
  */
@@ -92,7 +94,12 @@ protected:
    * Dispatch an SVG file to the immersive app
    */
   void dispatch(const char* svg_filename);
-  
+
+  /**
+   * Render a node in the scene
+   */
+  void renderNode(lumin::NodeIDType node_id);
+
   /**
    * Run application login
    */
@@ -106,7 +113,9 @@ protected:
 private:
   lumin::Prism* prism_ = nullptr;  // represents the bounded space where the App renders.
   PrismSceneManager* prismSceneManager_ = nullptr;
-  void* pathfinder_ = nullptr;
+  void* pathfinder_ = nullptr;  
+  lumin::NodeIDType quad_nodes_[NUM_QUADS] = {lumin::INVALID_NODE_ID};
+  lumin::NodeIDType highlighted_node_ = lumin::INVALID_NODE_ID;
   lumin::NodeIDType focus_node_ = lumin::INVALID_NODE_ID;
 };
 
