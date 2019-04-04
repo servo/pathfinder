@@ -45,6 +45,7 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
+use std::sync::mpsc;
 
 use usvg::Options as UsvgOptions;
 use usvg::Tree;
@@ -55,8 +56,14 @@ mod magicleap;
 #[cfg(feature = "mocked")]
 mod mocked_c_api;
 
+struct ImmersiveApp {
+    sender: mpsc::Sender<Event>,
+    receiver: mpsc::Receiver<Event>,
+    demo: DemoApp<MagicLeapWindow>,
+}
+
 #[no_mangle]
-pub unsafe extern "C" fn magicleap_pathfinder_demo(egl_display: EGLDisplay, egl_context: EGLContext, file_name: *const c_char) {
+pub unsafe extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_context: EGLContext) -> *mut c_void {
     unsafe { c_api::MLLoggingLog(c_api::MLLogLevel::Info, &b"Pathfinder Demo\0"[0], &b"Initializing\0"[0]) };
 
     let tag = CString::new("Pathfinder Demo").unwrap();
@@ -64,7 +71,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_demo(egl_display: EGLDisplay, egl_
     let logger = MagicLeapLogger::new(tag, level);
     log::set_boxed_logger(Box::new(logger)).unwrap();
     log::set_max_level(level);
-    debug!("Initialized logging");
+    info!("Initialized logging");
 
     let window = MagicLeapWindow::new(egl_display, egl_context);
     let window_size = window.size();
@@ -75,25 +82,42 @@ pub unsafe extern "C" fn magicleap_pathfinder_demo(egl_display: EGLDisplay, egl_
     options.mode = Mode::VR;
     options.jobs = Some(3);
     options.pipeline = 0;
-    if let Some(file_name) = file_name.as_ref() {
-       let file_name = CStr::from_ptr(file_name).to_string_lossy().into_owned();
-       options.input_path = SVGPath::Resource(file_name);
-    }
     
-    let mut app = DemoApp::new(window, window_size, options);
-    debug!("Initialized app");
+    let demo = DemoApp::new(window, window_size, options);
+    info!("Initialized app");
 
-    while app.window.running() {
-        let mut events = Vec::new();
-        while let Some(event) = app.window.try_get_event() {
-            events.push(event);
-        }
+    let (sender, receiver) = mpsc::channel();
+    Box::into_raw(Box::new(ImmersiveApp { sender, receiver, demo })) as *mut c_void
+}
 
-        let scene_count = app.prepare_frame(events);
-        for scene_index in 0..scene_count {
-            app.draw_scene(scene_index);
-        }
-        app.finish_drawing_frame();
+#[no_mangle]
+pub unsafe extern "C" fn magicleap_pathfinder_demo_run(app: *mut c_void) {
+    let app = app as *mut ImmersiveApp;
+    if let Some(app) = app.as_mut() {
+        while app.demo.window.running() {
+            let mut events = Vec::new();
+            while let Some(event) = app.demo.window.try_get_event() {
+                events.push(event);
+            }
+            while let Ok(event) = app.receiver.try_recv() {
+                events.push(event);
+            }
+            let scene_count = app.demo.prepare_frame(events);
+            for scene_index in 0..scene_count {
+                app.demo.draw_scene(scene_index);
+            }
+            app.demo.finish_drawing_frame();
+	}
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn magicleap_pathfinder_demo_load(app: *mut c_void, svg_filename: *const c_char) {
+    let app = app as *mut ImmersiveApp;
+    if let Some(app) = app.as_mut() {
+        let svg_filename = CStr::from_ptr(svg_filename).to_string_lossy().into_owned();
+        info!("Loading {}.", svg_filename);
+        let _ = app.sender.send(Event::OpenSVG(SVGPath::Resource(svg_filename)));
     }
 }
 
