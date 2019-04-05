@@ -30,11 +30,11 @@ const char* QUAD_NAMES[NUM_QUADS] = {
 
 const char* SVG_NAMES[NUM_QUADS] = {
   "svg/nba-notext.svg",
-  "svg/paper.svg",
   "svg/Ghostscript_Tiger.svg",
   "svg/julius-caesar-with-bg.svg",
-  "svg/julius-caesar.svg",
-  "svg/pathfinder_logo.svg",
+  "svg/magicleap-quickstart-p03.svg",
+  "svg/paper.svg",
+  "svg/pathfinder-magicleap-demo.svg",
 };
 
 PathfinderDemo::PathfinderDemo() {
