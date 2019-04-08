@@ -203,7 +203,10 @@ impl<W> DemoApp<W> where W: Window {
         self.current_frame = Some(Frame::new(transforms, ui_events));
 
         // Begin drawing the scene.
-        self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
+        for render_scene_index in 0..render_scene_count {
+            self.window.make_current(self.ui.mode, Some(render_scene_index));
+            self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
+        }
 
         render_scene_count
     }
