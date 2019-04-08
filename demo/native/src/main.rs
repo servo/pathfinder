@@ -78,7 +78,7 @@ impl Window for WindowImpl {
         Point2DI32::new(mouse_state.x(), mouse_state.y())
     }
 
-    fn present(&self) {
+    fn present(&mut self) {
         self.window.gl_swap_window();
     }
 
