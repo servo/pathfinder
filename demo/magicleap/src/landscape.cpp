@@ -19,10 +19,15 @@ int main(int argc, char **argv)
   return myApp.run();
 }
 
-const int NUM_QUADS = 1;
+const int NUM_QUADS = 6;
 
 const char* QUAD_NAMES[NUM_QUADS] = {
-  "quad1"
+  "quad1",
+  "quad2",
+  "quad3",
+  "quad4",
+  "quad5",
+  "quad6",
 };
 
 PathfinderDemo::PathfinderDemo() {
@@ -75,10 +80,11 @@ int PathfinderDemo::init() {
     return 1;
   }
 
+  for (int i=0; i<NUM_QUADS; i++) {
   // Get the quad
-  lumin::QuadNode* quad_node = lumin::QuadNode::CastFrom(prism_->findNode(QUAD_NAMES[0], root_node));
+  lumin::QuadNode* quad_node = lumin::QuadNode::CastFrom(prism_->findNode(QUAD_NAMES[i], root_node));
   if (!quad_node) {
-    ML_LOG(Error, "Pathfinder Failed to get quad node");
+    ML_LOG(Error, "Pathfinder Failed to get quad node %d.", i);
     abort();
     return 1;
   }
@@ -105,13 +111,17 @@ int PathfinderDemo::init() {
   eglMakeCurrent(dpy, surf, surf, ctx);
 
   // Initialize pathfinder
-  ML_LOG(Info, "Pathfinder initializing");
-  pathfinder_ = magicleap_pathfinder_init();
-  ML_LOG(Info, "Pathfinder initialized");
+  if (!pathfinder_) {
+    ML_LOG(Info, "Pathfinder initializing");
+    pathfinder_ = magicleap_pathfinder_init(dpy, surf);
+    ML_LOG(Info, "Pathfinder initialized");
+  }
 
   // Render the SVG
-  magicleap_pathfinder_render(pathfinder_, dpy, surf, svg_filenames_[0]);
+  magicleap_pathfinder_render(pathfinder_, dpy, surf, svg_filenames_[i % svg_filecount_]);
   eglSwapBuffers(dpy, surf);
+  }
+
   return 0;
 }
 

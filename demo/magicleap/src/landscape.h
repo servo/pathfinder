@@ -114,6 +114,6 @@ private:
 
 extern "C" uint64_t magicleap_pathfinder_svg_filecount();
 extern "C" char** magicleap_pathfinder_svg_filenames();
-extern "C" void* magicleap_pathfinder_init();
+extern "C" void* magicleap_pathfinder_init(EGLDisplay, EGLSurface);
 extern "C" void magicleap_pathfinder_render(void*, EGLDisplay, EGLSurface, char*);
 extern "C" void magicleap_pathfinder_deinit(void*);

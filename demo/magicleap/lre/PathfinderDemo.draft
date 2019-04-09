@@ -32,7 +32,6 @@
     </property>
   </node>
   <node name="quad2" nodeTypeId="lumin.quad">
-    <property id="color" value="0.6 0.4 0.6 1"/>
     <property id="name" value="quad2"/>
     <property id="position">
       <property id="x" value="-0.15"/>
@@ -60,7 +59,6 @@
     </property>
   </node>
   <node name="quad3" nodeTypeId="lumin.quad">
-    <property id="color" value="0.6 0 0 1"/>
     <property id="name" value="quad3"/>
     <property id="position">
       <property id="x" value="0.15"/>
@@ -90,7 +88,6 @@
     </property>
   </node>
   <node name="quad4" nodeTypeId="lumin.quad">
-    <property id="color" value="0.6 0.302 0 1"/>
     <property id="name" value="quad4"/>
     <property id="position">
       <property id="x" value="-0.15"/>
@@ -120,7 +117,6 @@
     </property>
   </node>
   <node name="quad5" nodeTypeId="lumin.quad">
-    <property id="color" value="0.6 0.6 0 1"/>
     <property id="name" value="quad5"/>
     <property id="position">
       <property id="x" value="-0.15"/>
@@ -150,7 +146,6 @@
     </property>
   </node>
   <node name="quad6" nodeTypeId="lumin.quad">
-    <property id="color" value="0 0.2 0 1"/>
     <property id="name" value="quad6"/>
     <property id="position">
       <property id="x" value="-0.15"/>
