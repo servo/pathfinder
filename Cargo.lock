@@ -677,6 +677,7 @@ version = "0.1.0"
 dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.21.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gpu 0.1.0",
  "pathfinder_renderer 0.1.0",

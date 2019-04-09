@@ -12,6 +12,7 @@
 
 // %SRC_VERSION%: 1
 
+#include <EGL/egl.h>
 #include <lumin/LandscapeApp.h>
 #include <lumin/Prism.h>
 #include <lumin/event/ServerEvent.h>
@@ -105,6 +106,7 @@ protected:
 private:
   lumin::Prism* prism_ = nullptr;  // represents the bounded space where the App renders.
   PrismSceneManager* prismSceneManager_ = nullptr;
+  void* pathfinder_ = nullptr;
   uint64_t svg_filecount_ = 0;
   char** svg_filenames_ = nullptr;
   lumin::NodeIDType focus_node_ = lumin::INVALID_NODE_ID;
@@ -112,3 +114,6 @@ private:
 
 extern "C" uint64_t magicleap_pathfinder_svg_filecount();
 extern "C" char** magicleap_pathfinder_svg_filenames();
+extern "C" void* magicleap_pathfinder_init();
+extern "C" void magicleap_pathfinder_render(void*, EGLDisplay, EGLSurface, char*);
+extern "C" void magicleap_pathfinder_deinit(void*);
