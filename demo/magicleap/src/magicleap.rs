@@ -295,6 +295,75 @@ impl Drop for MagicLeapWindow {
     }
 }
 
+// Magic Leap landscape app
+
+pub struct MagicLeapLandscape {
+    size: Point2DI32,
+    resource_loader: FilesystemResourceLoader,
+}
+
+impl Window for MagicLeapLandscape {
+    fn resource_loader(&self) -> &dyn ResourceLoader {
+        &self.resource_loader
+    }
+
+    fn gl_version(&self) -> GLVersion {
+        GLVersion::GLES3
+    }
+
+    fn mouse_position(&self) -> Point2DI32 {
+        Point2DI32::new(0, 0)
+    }
+
+    fn create_user_event_id (&self) -> u32 {
+        0
+    }
+
+    fn push_user_event(_: u32, _: u32) {
+    }
+
+    fn present_open_svg_dialog(&mut self) {
+    }
+
+    fn run_save_dialog(&self, _: &str) -> Result<PathBuf, ()> {
+        Err(())
+    }
+
+    fn view_box_size(&self, _mode: Mode, _subpixel_aa: bool) -> Point2DI32 {
+        self.size
+    }
+
+    fn make_current(&mut self, _mode: Mode, _subpixel_aa: bool, _eye: Option<u32>) -> RectI32 {
+        RectI32::new(Point2DI32::new(0, 0), self.size)
+    }
+
+    fn present(&mut self) {
+    }
+}
+
+impl MagicLeapLandscape {
+    pub fn new() -> MagicLeapLandscape {
+        gl::load_with(get_proc_address);
+        let size = Point2DI32::new(512, 512);
+        let resource_loader = FilesystemResourceLoader::locate();
+        MagicLeapLandscape {
+	    size,
+	    resource_loader,
+	}
+    }
+
+    pub fn window_size(&self) -> WindowSize {
+        WindowSize {
+            logical_size: self.size,
+            backing_scale_factor: 1.0,
+        }
+    }
+
+    pub fn set_size(&mut self, width: i32, height: i32) {
+        self.size = Point2DI32::new(width, height);
+    }
+}
+
 // Logging
 
 pub struct MagicLeapLogger {

@@ -28,7 +28,7 @@
       "lap/types/file/wav"
     ]
   },
-  "checkpoint-hash": "0a229200eb36f445371d5eef7cd9afaf76b99c1d2278fbca0497449dfcfd890710c7535ff703844a86fabeb5c268c4f234715814458f635ac70bf3d378499654",
+  "checkpoint-hash": "be7c32a96b1e398705b53fe9c7347469ec0e17c02fae27bd9e0d37a793e00b26292244892a424e35094dbc7348da159a0518e37e24c94eb33188f6756fe25737",
   "templates": [
     "lap/template/converted_texture_from_bmp",
     "lap/template/converted_texture_from_tga",

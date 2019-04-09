@@ -67,7 +67,6 @@ int PathfinderDemo::init() {
     return 1;
   }
 
-  
   // Get the root node of the prism
   lumin::RootNode* root_node = prism_->getRootNode();
   if (!root_node) {
@@ -84,7 +83,6 @@ int PathfinderDemo::init() {
     return 1;
   }
 
-  /*
   // Create the EGL surface for it to draw to
   lumin::ResourceIDType plane_id = prism_->createPlanarEGLResourceId();
   if (!plane_id) {
@@ -99,8 +97,21 @@ int PathfinderDemo::init() {
     return 1;
   }
   quad_node->setRenderResource(plane_id);
-  */
+  
+  // Get the EGL context, surface and display.
+  EGLContext ctx = plane->getEGLContext();
+  EGLSurface surf = plane->getEGLSurface();
+  EGLDisplay dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+  eglMakeCurrent(dpy, surf, surf, ctx);
 
+  // Initialize pathfinder
+  ML_LOG(Info, "Pathfinder initializing");
+  pathfinder_ = magicleap_pathfinder_init();
+  ML_LOG(Info, "Pathfinder initialized");
+
+  // Render the SVG
+  magicleap_pathfinder_render(pathfinder_, dpy, surf, svg_filenames_[0]);
+  eglSwapBuffers(dpy, surf);
   return 0;
 }
 
@@ -108,6 +119,8 @@ int PathfinderDemo::deInit() {
   ML_LOG(Debug, "PathfinderDemo Deinitializing.");
 
   // Place your deinitialization here.
+  magicleap_pathfinder_deinit(pathfinder_);
+  pathfinder_ = nullptr;
 
   return 0;
 }
@@ -132,7 +145,6 @@ void PathfinderDemo::spawnInitialScenes() {
 }
 
 bool PathfinderDemo::updateLoop(float fDelta) {
-
   // Place your update here.
 
   // Return true for your app to continue running, false to terminate the app.
@@ -242,3 +254,6 @@ void PathfinderDemo::dispatch(char* svg_filename) {
      return;
    }
 }
+
+extern "C" void init_scene_thread(uint64_t id) {}
+

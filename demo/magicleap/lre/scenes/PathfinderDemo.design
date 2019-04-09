@@ -3,7 +3,6 @@
   <property id="name" value="root"/>
   <property id="sceneName" value="PathfinderDemo"/>
   <node name="quad1" nodeTypeId="lumin.quad">
-    <property id="color" value="0 0.102 0.502 1"/>
     <property id="name" value="quad1"/>
     <property id="position">
       <property id="x" value="0.15"/>

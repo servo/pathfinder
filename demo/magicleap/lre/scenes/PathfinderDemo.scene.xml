@@ -1,6 +1,6 @@
 <ObjectModel name="PathfinderDemo" version="1">
     <TransformNode/>
-    <QuadNode castShadow="false" color="0,0.01512947,0.2453161,1" name="quad1" pos="0.15,-0.15,-0.15" receiveShadow="false" rot="-0,1,-0,-4.371139e-08" shader="MAX" size="0.300000, 0.300000"/>
+    <QuadNode castShadow="false" name="quad1" pos="0.15,-0.15,-0.15" receiveShadow="false" rot="-0,1,-0,-4.371139e-08" shader="MAX" size="0.300000, 0.300000"/>
     <QuadNode castShadow="false" color="0.3504092,0.1572062,0.3504092,1" name="quad2" pos="-0.15,-0.15,0.15" receiveShadow="false" shader="MAX" size="0.300000, 0.300000"/>
     <QuadNode castShadow="false" color="0.3504092,0,0,1" name="quad3" pos="0.15,-0.15,0.15" receiveShadow="false" rot="0,0.7071068,0,0.7071068" shader="MAX" size="0.300000, 0.300000"/>
     <QuadNode castShadow="false" color="0.3504092,0.09219654,0,1" name="quad4" pos="-0.15,-0.15,-0.15" receiveShadow="false" rot="0,-0.7071068,0,0.7071068" shader="MAX" size="0.300000, 0.300000"/>
