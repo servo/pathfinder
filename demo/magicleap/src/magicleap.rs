@@ -101,7 +101,7 @@ impl Window for MagicLeapWindow {
         self.framebuffer_id
     }
 
-    fn customize_rayon(&self, thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+    fn adjust_thread_pool_settings(&self, thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
         thread_pool_builder.start_handler(|id| unsafe { init_scene_thread(id) })
     }
 
@@ -123,7 +123,7 @@ impl Window for MagicLeapWindow {
         Err(())
     }
 
-    fn view_box_size(&self, _mode: Mode, _subpixel_aa: bool) -> Point2DI32 {
+    fn view_box_size(&self, _mode: Mode) -> Point2DI32 {
         self.size
     }
 
@@ -131,7 +131,7 @@ impl Window for MagicLeapWindow {
         BarrelDistortionCoefficients { k0: 0.0, k1: 0.0 }
     }
 
-    fn make_current(&mut self, _mode: Mode, _subpixel_aa: bool, eye: Option<u32>) -> RectI32 {
+    fn make_current(&mut self, _mode: Mode, eye: Option<u32>) -> RectI32 {
         self.begin_frame();
         let eye = match eye {
             Some(eye) if (eye as usize) < ML_VIRTUAL_CAMERA_COUNT => eye as usize,
@@ -337,11 +337,11 @@ impl Window for MagicLeapLandscape {
         Err(())
     }
 
-    fn view_box_size(&self, _mode: Mode, _subpixel_aa: bool) -> Point2DI32 {
+    fn view_box_size(&self, _mode: Mode) -> Point2DI32 {
         self.size
     }
 
-    fn make_current(&mut self, _mode: Mode, _subpixel_aa: bool, _eye: Option<u32>) -> RectI32 {
+    fn make_current(&mut self, _mode: Mode, _eye: Option<u32>) -> RectI32 {
         RectI32::new(Point2DI32::new(0, 0), self.size)
     }
 
