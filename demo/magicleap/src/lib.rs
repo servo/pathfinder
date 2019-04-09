@@ -1,4 +1,3 @@
-use crate::magicleap::MagicLeapLandscape;
 use crate::magicleap::MagicLeapLogger;
 use crate::magicleap::MagicLeapWindow;
 
@@ -9,7 +8,6 @@ use egl::EGLSurface;
 
 use gl::types::GLuint;
 
-use log::debug;
 use log::info;
 
 use pathfinder_demo::Background;
@@ -19,7 +17,6 @@ use pathfinder_demo::UIVisibility;
 use pathfinder_demo::window::Event;
 use pathfinder_demo::window::Mode;
 use pathfinder_demo::window::SVGPath;
-use pathfinder_demo::window::WindowSize;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectI32;
@@ -30,7 +27,6 @@ use pathfinder_gpu::Device;
 use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_simd::default::F32x4;
-use pathfinder_renderer::scene::Scene;
 use pathfinder_renderer::z_buffer::ZBuffer;
 use pathfinder_renderer::gpu_data::BuiltScene;
 use pathfinder_renderer::builder::SceneBuilder;
@@ -38,8 +34,6 @@ use pathfinder_renderer::builder::RenderOptions;
 use pathfinder_renderer::builder::RenderTransform;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_gpu::resources::ResourceLoader;
-
-use rayon::ThreadPoolBuilder;
 
 use std::collections::HashMap;
 use std::ffi::CStr;
@@ -64,7 +58,7 @@ struct ImmersiveApp {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_context: EGLContext) -> *mut c_void {
+pub extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_context: EGLContext) -> *mut c_void {
     unsafe { c_api::MLLoggingLog(c_api::MLLogLevel::Info, &b"Pathfinder Demo\0"[0], &b"Initializing\0"[0]) };
 
     let tag = CString::new("Pathfinder Demo").unwrap();
@@ -128,15 +122,6 @@ struct MagicLeapPathfinder {
     resources: FilesystemResourceLoader,
 }
 
-struct MagicLeapPathfinderSurface {
-    surf: EGLSurface,
-    size: Point2DI32,
-    viewport: RectI32,
-    bg_color: F32x4,
-    renderer: Renderer<GLDevice>,
-    scene: Scene,
-}
-
 #[repr(C)]
 pub struct MagicLeapPathfinderRenderOptions {
     display: EGLDisplay,
@@ -156,10 +141,6 @@ pub extern "C" fn magicleap_pathfinder_init() -> *mut c_void {
     log::set_boxed_logger(Box::new(logger)).unwrap();
     log::set_max_level(level);
     info!("Initialized logging");
-
-    let mut thread_pool_builder = ThreadPoolBuilder::new()
-        .build_global().unwrap();
-    info!("Initialized rayon");
     
     gl::load_with(|s| egl::get_proc_address(s) as *const c_void);
     info!("Initialized gl");
