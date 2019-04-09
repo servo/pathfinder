@@ -9,10 +9,8 @@ LIBPATHS.release = \
 
 USES = ml_sdk OpenGL stdc++
 
-STLIBS = \
-    pathfinder_magicleap_demo
-
 SHLIBS = \
+    pathfinder_magicleap_demo \
     ml_privileges
 
 DATAS = \

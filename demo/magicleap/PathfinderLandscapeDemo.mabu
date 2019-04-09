@@ -15,5 +15,5 @@ USES = \
     lumin_runtime \
     lre/code/srcs
 
-STLIBS = \
+SHLIBS = \
     pathfinder_magicleap_demo
