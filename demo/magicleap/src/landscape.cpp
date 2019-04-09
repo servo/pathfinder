@@ -5,6 +5,7 @@
 #include <lumin/ui/node/UiPanel.h>
 #include <lumin/ui/Cursor.h>
 #include <lumin/input/Raycast.h>
+#include <lumin/event/ControlPose6DofInputEventData.h>
 #include <lumin/event/GestureInputEventData.h>
 #include <lumin/event/RayCastEventData.h>
 #include <ml_dispatch.h>
@@ -218,40 +219,36 @@ bool PathfinderDemo::updateLoop(float fDelta) {
 
 bool PathfinderDemo::eventListener(lumin::ServerEvent* event) {
   // Place your event handling here.
-  lumin::ServerEventType typ = event->getServerEventType();
-  switch (typ) {
-    case lumin::ServerEventType::kControlPose6DofInputEvent: {
-      requestWorldRayCast(getHeadposeWorldPosition(), getHeadposeWorldForwardVector(), 0);
-      return false;
-    }
-    case lumin::ServerEventType::kRayCastEvent: {
-      lumin::RayCastEventData* raycast_event = static_cast<lumin::RayCastEventData*>(event);
-      std::shared_ptr<lumin::RaycastResult> raycast_result = raycast_event->getHitData();
-      switch (raycast_result->getType()) {
-        case lumin::RaycastResultType::kQuadNode: {
-	  std::shared_ptr<lumin::RaycastQuadNodeResult> quad_result = std::static_pointer_cast<lumin::RaycastQuadNodeResult>(raycast_result);
-          focus_node_ = quad_result->getNodeId();
-          return false;
-	}
-        default: {
-          focus_node_ = lumin::INVALID_NODE_ID;
-          return false;
-        }
+  lumin::ServerEventTypeValue typ = event->getServerEventTypeValue();
+  if (typ == lumin::ControlPose6DofInputEventData::GetServerEventTypeValue()) {
+    requestWorldRayCast(getHeadposeWorldPosition(), getHeadposeWorldForwardVector(), 0);
+    return false;
+  } else if (typ == lumin::RayCastEventData::GetServerEventTypeValue()) {
+    lumin::RayCastEventData* raycast_event = static_cast<lumin::RayCastEventData*>(event);
+    std::shared_ptr<lumin::RaycastResult> raycast_result = raycast_event->getHitData();
+    switch (raycast_result->getType()) {
+      case lumin::RaycastResultType::kQuadNode: {
+        std::shared_ptr<lumin::RaycastQuadNodeResult> quad_result = std::static_pointer_cast<lumin::RaycastQuadNodeResult>(raycast_result);
+        focus_node_ = quad_result->getNodeId();
+        return false;
+      }
+      default: {
+        focus_node_ = lumin::INVALID_NODE_ID;
+        return false;
       }
     }
-    case lumin::ServerEventType::kGestureInputEvent: {
-      lumin::GestureInputEventData* gesture_event = static_cast<lumin::GestureInputEventData*>(event);
-      switch (gesture_event->getGesture()) {
-	case lumin::input::GestureType::TriggerClick: {
-	  return onClick();
-	}
-        default: {
-          return false;
-        }
+  } else if (typ == lumin::GestureInputEventData::GetServerEventTypeValue()) {
+    lumin::GestureInputEventData* gesture_event = static_cast<lumin::GestureInputEventData*>(event);
+    switch (gesture_event->getGesture()) {
+      case lumin::input::GestureType::TriggerClick: {
+        return onClick();
+      }
+      default: {
+        return false;
       }
     }
-    default:
-      return false;
+  } else {
+    return false;
   }
 }
 
