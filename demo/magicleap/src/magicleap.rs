@@ -35,6 +35,7 @@ use egl;
 use egl::EGL_NO_SURFACE;
 use egl::EGLContext;
 use egl::EGLDisplay;
+use egl::EGLSurface;
 
 use gl;
 use gl::types::GLuint;
@@ -298,6 +299,9 @@ impl Drop for MagicLeapWindow {
 // Magic Leap landscape app
 
 pub struct MagicLeapLandscape {
+    pub dpy: EGLDisplay,
+    pub surf: EGLSurface,
+    pub fbo: GLuint,
     size: Point2DI32,
     resource_loader: FilesystemResourceLoader,
 }
@@ -309,6 +313,10 @@ impl Window for MagicLeapLandscape {
 
     fn gl_version(&self) -> GLVersion {
         GLVersion::GLES3
+    }
+
+    fn gl_default_framebuffer(&self) -> GLuint {
+        self.fbo
     }
 
     fn mouse_position(&self) -> Point2DI32 {
@@ -342,11 +350,15 @@ impl Window for MagicLeapLandscape {
 }
 
 impl MagicLeapLandscape {
-    pub fn new() -> MagicLeapLandscape {
+    pub fn new(dpy: EGLDisplay, surf: EGLSurface) -> MagicLeapLandscape {
         gl::load_with(get_proc_address);
         let size = Point2DI32::new(512, 512);
+	let fbo = 0;
         let resource_loader = FilesystemResourceLoader::locate();
         MagicLeapLandscape {
+	    dpy,
+	    surf,
+	    fbo,
 	    size,
 	    resource_loader,
 	}
