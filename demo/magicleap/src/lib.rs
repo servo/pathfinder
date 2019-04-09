@@ -15,6 +15,7 @@ use log::info;
 use pathfinder_demo::Background;
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
+use pathfinder_demo::UIVisibility;
 use pathfinder_demo::window::Event;
 use pathfinder_demo::window::Mode;
 use pathfinder_demo::window::SVGPath;
@@ -77,11 +78,11 @@ pub unsafe extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay,
     let window_size = window.size();
 
     let mut options = Options::default();
-    options.ui = false;
+    options.ui = UIVisibility::None;
     options.background = Background::None;
     options.mode = Mode::VR;
     options.jobs = Some(3);
-    options.pipeline = 0;
+    options.pipeline = false;
     
     let demo = DemoApp::new(window, window_size, options);
     info!("Initialized app");
@@ -225,6 +226,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
             transform: RenderTransform::Transform2D(transform),
             dilation: Point2DF32::default(),
             barrel_distortion: None,
+	    subpixel_aa_enabled: false,
 	};
 
         let built_options = render_options.prepare(svg.scene.bounds);
