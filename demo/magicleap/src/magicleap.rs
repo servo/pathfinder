@@ -35,7 +35,6 @@ use egl;
 use egl::EGL_NO_SURFACE;
 use egl::EGLContext;
 use egl::EGLDisplay;
-use egl::EGLSurface;
 
 use gl;
 use gl::types::GLuint;
@@ -293,86 +292,6 @@ impl Drop for MagicLeapWindow {
             gl::DeleteFramebuffers(1, &self.framebuffer_id);
             MLGraphicsDestroyClient(&mut self.graphics_client);
         }
-    }
-}
-
-// Magic Leap landscape app
-
-pub struct MagicLeapLandscape {
-    pub dpy: EGLDisplay,
-    pub surf: EGLSurface,
-    pub fbo: GLuint,
-    size: Point2DI32,
-    resource_loader: FilesystemResourceLoader,
-}
-
-impl Window for MagicLeapLandscape {
-    fn resource_loader(&self) -> &dyn ResourceLoader {
-        &self.resource_loader
-    }
-
-    fn gl_version(&self) -> GLVersion {
-        GLVersion::GLES3
-    }
-
-    fn gl_default_framebuffer(&self) -> GLuint {
-        self.fbo
-    }
-
-    fn mouse_position(&self) -> Point2DI32 {
-        Point2DI32::new(0, 0)
-    }
-
-    fn create_user_event_id (&self) -> u32 {
-        0
-    }
-
-    fn push_user_event(_: u32, _: u32) {
-    }
-
-    fn present_open_svg_dialog(&mut self) {
-    }
-
-    fn run_save_dialog(&self, _: &str) -> Result<PathBuf, ()> {
-        Err(())
-    }
-
-    fn view_box_size(&self, _mode: Mode) -> Point2DI32 {
-        self.size
-    }
-
-    fn make_current(&mut self, _mode: Mode, _eye: Option<u32>) -> RectI32 {
-        RectI32::new(Point2DI32::new(0, 0), self.size)
-    }
-
-    fn present(&mut self) {
-    }
-}
-
-impl MagicLeapLandscape {
-    pub fn new(dpy: EGLDisplay, surf: EGLSurface) -> MagicLeapLandscape {
-        gl::load_with(get_proc_address);
-        let size = Point2DI32::new(512, 512);
-	let fbo = 0;
-        let resource_loader = FilesystemResourceLoader::locate();
-        MagicLeapLandscape {
-	    dpy,
-	    surf,
-	    fbo,
-	    size,
-	    resource_loader,
-	}
-    }
-
-    pub fn window_size(&self) -> WindowSize {
-        WindowSize {
-            logical_size: self.size,
-            backing_scale_factor: 1.0,
-        }
-    }
-
-    pub fn set_size(&mut self, width: i32, height: i32) {
-        self.size = Point2DI32::new(width, height);
     }
 }
 
