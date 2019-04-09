@@ -42,7 +42,6 @@ use gl::types::GLuint;
 use log;
 use log::debug;
 use log::info;
-use log::warn;
 
 use pathfinder_demo::window::CameraTransform;
 use pathfinder_demo::window::Event;
@@ -134,7 +133,7 @@ impl Window for MagicLeapWindow {
         self.begin_frame();
         let eye = match eye {
             Some(eye) if (eye as usize) < ML_VIRTUAL_CAMERA_COUNT => eye as usize,
-            _ => { warn!("Asked for eye out of range {:?}", eye); 0 }
+            _ => { debug!("Asked for eye out of range {:?}", eye); 0 }
         };
         debug!("Making {} current.", eye);
         let viewport = self.virtual_camera_array.viewport;
