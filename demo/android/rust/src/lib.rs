@@ -167,7 +167,7 @@ impl Window for WindowImpl {
         Point2DI32::new(0, 0)
     }
 
-    fn present(&self) {}
+    fn present(&mut self) {}
 
     fn resource_loader(&self) -> &dyn ResourceLoader {
         &RESOURCE_LOADER

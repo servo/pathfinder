@@ -22,7 +22,7 @@ pub trait Window {
     fn gl_version(&self) -> GLVersion;
     fn gl_default_framebuffer(&self) -> GLuint { 0 }
     fn mouse_position(&self) -> Point2DI32;
-    fn present(&self);
+    fn present(&mut self);
     fn resource_loader(&self) -> &dyn ResourceLoader;
     fn create_user_event_id(&self) -> u32;
     fn push_user_event(message_type: u32, message_data: u32);
