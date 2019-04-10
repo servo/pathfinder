@@ -185,11 +185,11 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     pub fn prepare_frame(&mut self, events: Vec<Event>) -> u32 {
-        // Update the scene.
-        self.build_scene();
-
         // Handle events.
         let ui_events = self.handle_events(events);
+
+        // Update the scene.
+        self.build_scene();
 
         // Get the render message, and determine how many scenes it contains.
         let transforms = match self.scene_thread_proxy.receiver.recv().unwrap() {
