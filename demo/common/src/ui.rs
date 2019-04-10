@@ -29,6 +29,9 @@ const SLIDER_KNOB_HEIGHT: i32 = 48;
 const EFFECTS_PANEL_WIDTH: i32 = 550;
 const EFFECTS_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
 
+const BACKGROUND_PANEL_WIDTH: i32 = 250;
+const BACKGROUND_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 3;
+
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
 
@@ -37,8 +40,7 @@ static OPEN_PNG_NAME:       &'static str = "demo-open";
 static ROTATE_PNG_NAME:     &'static str = "demo-rotate";
 static ZOOM_IN_PNG_NAME:    &'static str = "demo-zoom-in";
 static ZOOM_OUT_PNG_NAME:   &'static str = "demo-zoom-out";
-static BG_LIGHT_PNG_NAME:   &'static str = "demo-bg-light";
-static BG_DARK_PNG_NAME:    &'static str = "demo-bg-dark";
+static BACKGROUND_PNG_NAME: &'static str = "demo-background";
 static SCREENSHOT_PNG_NAME: &'static str = "demo-screenshot";
 
 pub struct DemoUI<D> where D: Device {
@@ -47,17 +49,17 @@ pub struct DemoUI<D> where D: Device {
     rotate_texture: D::Texture,
     zoom_in_texture: D::Texture,
     zoom_out_texture: D::Texture,
-    bg_light_texture: D::Texture,
-    bg_dark_texture: D::Texture,
+    background_texture: D::Texture,
     screenshot_texture: D::Texture,
 
     effects_panel_visible: bool,
+    background_panel_visible: bool,
     rotate_panel_visible: bool,
 
     // FIXME(pcwalton): Factor the below out into a model class.
 
     pub mode: Mode,
-    pub dark_background_enabled: bool,
+    pub background_color: BackgroundColor,
     pub gamma_correction_effect_enabled: bool,
     pub stem_darkening_effect_enabled: bool,
     pub subpixel_aa_effect_enabled: bool,
@@ -73,8 +75,7 @@ impl<D> DemoUI<D> where D: Device {
         let rotate_texture = device.create_texture_from_png(resources, ROTATE_PNG_NAME);
         let zoom_in_texture = device.create_texture_from_png(resources, ZOOM_IN_PNG_NAME);
         let zoom_out_texture = device.create_texture_from_png(resources, ZOOM_OUT_PNG_NAME);
-        let bg_light_texture = device.create_texture_from_png(resources, BG_LIGHT_PNG_NAME);
-        let bg_dark_texture = device.create_texture_from_png(resources, BG_DARK_PNG_NAME);
+        let background_texture = device.create_texture_from_png(resources, BACKGROUND_PNG_NAME);
         let screenshot_texture = device.create_texture_from_png(resources, SCREENSHOT_PNG_NAME);
 
         DemoUI {
@@ -83,15 +84,15 @@ impl<D> DemoUI<D> where D: Device {
             rotate_texture,
             zoom_in_texture,
             zoom_out_texture,
-            bg_light_texture,
-            bg_dark_texture,
+            background_texture,
             screenshot_texture,
 
             effects_panel_visible: false,
+            background_panel_visible: false,
             rotate_panel_visible: false,
 
             mode: options.mode,
-            dark_background_enabled: false,
+            background_color: options.background_color,
             gamma_correction_effect_enabled: false,
             stem_darkening_effect_enabled: false,
             subpixel_aa_effect_enabled: false,
@@ -166,7 +167,9 @@ impl<D> DemoUI<D> where D: Device {
                 1 => Mode::ThreeD,
                 _ => Mode::VR,
             };
+            *action = UIAction::ModelChanged;
         }
+
         let mode_switch_width = debug_ui.ui.measure_switch(3);
         let mode_switch_size = Point2DI32::new(mode_switch_width, BUTTON_HEIGHT);
         debug_ui.ui.draw_tooltip(device,
@@ -175,17 +178,18 @@ impl<D> DemoUI<D> where D: Device {
         position += Point2DI32::new(mode_switch_width + PADDING, 0);
 
         // Draw background switch.
-        self.dark_background_enabled = debug_ui.ui.draw_image_switch(device,
-                                                                     position,
-                                                                     &self.bg_light_texture,
-                                                                     &self.bg_dark_texture,
-                                                                     self.dark_background_enabled);
-        let background_color_switch_width = debug_ui.ui.measure_switch(2);
-        let background_color_switch_size = Point2DI32::new(background_color_switch_width,
-                                                           BUTTON_HEIGHT);
-        let background_color_switch_rect = RectI32::new(position, background_color_switch_size);
-        debug_ui.ui.draw_tooltip(device, "Background Color", background_color_switch_rect);
-        position += Point2DI32::new(background_color_switch_width + PADDING, 0);
+        if debug_ui.ui.draw_button(device, position, &self.background_texture) {
+            self.background_panel_visible = !self.background_panel_visible;
+        }
+        if !self.background_panel_visible {
+            debug_ui.ui.draw_tooltip(device,
+                                     "Background Color",
+                                     RectI32::new(position, button_size));
+        }
+
+        // Draw background panel, if necessary.
+        self.draw_background_panel(device, debug_ui, position.x(), action);
+        position += Point2DI32::new(button_size.x() + PADDING, 0);
 
         // Draw effects panel, if necessary.
         self.draw_effects_panel(device, debug_ui);
@@ -268,7 +272,41 @@ impl<D> DemoUI<D> where D: Device {
                                      2,
                                      effects_panel_y,
                                      self.subpixel_aa_effect_enabled);
+    }
 
+    fn draw_background_panel(&mut self,
+                             device: &D,
+                             debug_ui: &mut DebugUI<D>,
+                             panel_x: i32,
+                             action: &mut UIAction) {
+        if !self.background_panel_visible {
+            return;
+        }
+
+        let bottom = debug_ui.ui.framebuffer_size().y() - PADDING;
+        let panel_y = bottom - (BUTTON_HEIGHT + PADDING + BACKGROUND_PANEL_HEIGHT);
+        let panel_position = Point2DI32::new(panel_x, panel_y);
+        debug_ui.ui.draw_solid_rounded_rect(device,
+                                            RectI32::new(panel_position,
+                                                         Point2DI32::new(BACKGROUND_PANEL_WIDTH,
+                                                                         BACKGROUND_PANEL_HEIGHT)),
+                                            WINDOW_COLOR);
+
+        self.draw_background_menu_item(device,
+                                       debug_ui,
+                                       BackgroundColor::Light,
+                                       panel_position,
+                                       action);
+        self.draw_background_menu_item(device,
+                                       debug_ui,
+                                       BackgroundColor::Dark,
+                                       panel_position,
+                                       action);
+        self.draw_background_menu_item(device,
+                                       debug_ui,
+                                       BackgroundColor::Transparent,
+                                       panel_position,
+                                       action);
     }
 
     fn draw_rotate_panel(&mut self,
@@ -312,6 +350,32 @@ impl<D> DemoUI<D> where D: Device {
         debug_ui.ui.draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
     }
 
+    fn draw_background_menu_item(&mut self,
+                                 device: &D,
+                                 debug_ui: &mut DebugUI<D>,
+                                 color: BackgroundColor,
+                                 panel_position: Point2DI32,
+                                 action: &mut UIAction) {
+        let (text, index) = (color.as_str(), color as i32);
+
+        let widget_size = Point2DI32::new(BACKGROUND_PANEL_WIDTH, BUTTON_HEIGHT);
+        let widget_origin = panel_position + Point2DI32::new(0, widget_size.y() * index);
+        let widget_rect = RectI32::new(widget_origin, widget_size);
+
+        if color == self.background_color {
+            debug_ui.ui.draw_solid_rounded_rect(device, widget_rect, TEXT_COLOR);
+        }
+
+        let (text_x, text_y) = (PADDING * 2, BUTTON_TEXT_OFFSET);
+        let text_position = widget_origin + Point2DI32::new(text_x, text_y);
+        debug_ui.ui.draw_text(device, text, text_position, color == self.background_color);
+
+        if let Some(_) = debug_ui.ui.event_queue.handle_mouse_down_in_rect(widget_rect) {
+            self.background_color = color;
+            *action = UIAction::ModelChanged;
+        }
+    }
+
     fn draw_effects_switch(&self,
                            device: &D,
                            debug_ui: &mut DebugUI<D>,
@@ -335,8 +399,26 @@ impl<D> DemoUI<D> where D: Device {
 #[derive(Clone, Debug, PartialEq)]
 pub enum UIAction {
     None,
+    ModelChanged,
     TakeScreenshot(PathBuf),
     ZoomIn,
     ZoomOut,
     Rotate(f32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BackgroundColor {
+    Light = 0,
+    Dark = 1,
+    Transparent = 2,
+}
+
+impl BackgroundColor {
+    fn as_str(&self) -> &'static str {
+        match *self {
+            BackgroundColor::Light       => "Light",
+            BackgroundColor::Dark        => "Dark",
+            BackgroundColor::Transparent => "Transparent",
+        }
+    }
 }

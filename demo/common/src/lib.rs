@@ -11,7 +11,7 @@
 //! A demo app for Pathfinder.
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
-use crate::ui::{DemoUI, UIAction};
+use crate::ui::{BackgroundColor, DemoUI, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
@@ -60,10 +60,12 @@ const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
 const NEAR_CLIP_PLANE: f32 = 0.01;
 const FAR_CLIP_PLANE:  f32 = 10.0;
 
-const LIGHT_BG_COLOR:     ColorU = ColorU { r: 248, g: 248, b: 248, a: 255 };
-const DARK_BG_COLOR:      ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
-const GROUND_SOLID_COLOR: ColorU = ColorU { r: 80,  g: 80,  b: 80,  a: 255 };
-const GROUND_LINE_COLOR:  ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
+const LIGHT_BG_COLOR:       ColorU = ColorU { r: 248, g: 248, b: 248, a: 255 };
+const DARK_BG_COLOR:        ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
+const TRANSPARENT_BG_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 0   };
+
+const GROUND_SOLID_COLOR:   ColorU = ColorU { r: 80,  g: 80,  b: 80,  a: 255 };
+const GROUND_LINE_COLOR:    ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 
 const APPROX_FONT_SIZE: f32 = 16.0;
 
@@ -90,7 +92,7 @@ pub struct DemoApp<W> where W: Window {
     frame_counter: u32,
     pending_screenshot_path: Option<PathBuf>,
     mouselook_enabled: bool,
-    dirty: bool,
+    pub dirty: bool,
     expire_message_event_id: u32,
     message_epoch: u32,
     last_mouse_position: Point2DI32,
@@ -185,6 +187,9 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     pub fn prepare_frame(&mut self, events: Vec<Event>) -> u32 {
+        // Clear dirty flag.
+        self.dirty = false;
+
         // Handle events.
         let ui_events = self.handle_events(events);
 
@@ -595,6 +600,7 @@ impl<W> DemoApp<W> where W: Window {
     fn handle_ui_action(&mut self, ui_action: &mut UIAction) {
         match ui_action {
             UIAction::None => {}
+            UIAction::ModelChanged => self.dirty = true,
             UIAction::TakeScreenshot(ref path) => {
                 self.pending_screenshot_path = Some((*path).clone());
                 self.dirty = true;
@@ -643,7 +649,11 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn background_color(&self) -> ColorU {
-        if self.ui.dark_background_enabled { DARK_BG_COLOR } else { LIGHT_BG_COLOR }
+        match self.ui.background_color {
+            BackgroundColor::Light       => LIGHT_BG_COLOR,
+            BackgroundColor::Dark        => DARK_BG_COLOR,
+            BackgroundColor::Transparent => TRANSPARENT_BG_COLOR,
+        }
     }
 }
 
@@ -813,6 +823,7 @@ pub struct Options {
     pub mode: Mode,
     pub input_path: SVGPath,
     pub ui: UIVisibility,
+    pub background_color: BackgroundColor,
     hidden_field_for_future_proofing: (),
 }
 
@@ -823,6 +834,7 @@ impl Default for Options {
             mode: Mode::TwoD,
             input_path: SVGPath::Default,
             ui: UIVisibility::All,
+            background_color: BackgroundColor::Light,
             hidden_field_for_future_proofing: (),
         }
     }
@@ -849,6 +861,14 @@ impl Options {
                     .possible_values(&["none", "stats", "all"])
                     .help("How much UI to show"),
             )
+            .arg(
+                Arg::with_name("background")
+                    .short("b")
+                    .long("background")
+                    .takes_value(true)
+                    .possible_values(&["light", "dark", "transparent"])
+                    .help("The background color to use"),
+            )
             .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
             .get_matches();
 
@@ -870,12 +890,21 @@ impl Options {
             };
         }
 
+        if let Some(background_color) = matches.value_of("background") {
+            self.background_color = match background_color {
+                "light" => BackgroundColor::Light,
+                "dark" => BackgroundColor::Dark,
+                _ => BackgroundColor::Transparent,
+            };
+        }
+
         if let Some(path) = matches.value_of("INPUT") {
             self.input_path = SVGPath::Path(PathBuf::from(path));
         };
     }
 
-    fn adjust_thread_pool_settings(&self, mut thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+    fn adjust_thread_pool_settings(&self, mut thread_pool_builder: ThreadPoolBuilder)
+                                   -> ThreadPoolBuilder {
         if let Some(jobs) = self.jobs {
             thread_pool_builder = thread_pool_builder.num_threads(jobs);
         }

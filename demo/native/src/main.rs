@@ -39,7 +39,10 @@ fn main() {
     let mut app = DemoApp::new(window, window_size, options);
 
     while !app.should_exit {
-        let mut events = vec![app.window.get_event()];
+        let mut events = vec![];
+        if !app.dirty {
+            events.push(app.window.get_event());
+        }
         while let Some(event) = app.window.try_get_event() {
             events.push(event);
         }

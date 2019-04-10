@@ -711,7 +711,7 @@ impl UIEventQueue {
         mem::replace(&mut self.events, vec![])
     }
 
-    fn handle_mouse_down_in_rect(&mut self, rect: RectI32) -> Option<Point2DI32> {
+    pub fn handle_mouse_down_in_rect(&mut self, rect: RectI32) -> Option<Point2DI32> {
         let (mut remaining_events, mut result) = (vec![], None);
         for event in self.events.drain(..) {
             match event {
