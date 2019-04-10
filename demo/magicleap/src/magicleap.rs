@@ -45,7 +45,7 @@ use log::info;
 
 use pathfinder_demo::window::CameraTransform;
 use pathfinder_demo::window::Event;
-use pathfinder_demo::window::Mode;
+use pathfinder_demo::window::View;
 use pathfinder_demo::window::Window;
 use pathfinder_demo::window::WindowSize;
 use pathfinder_geometry::basic::point::Point2DI32;
@@ -121,19 +121,19 @@ impl Window for MagicLeapWindow {
         Err(())
     }
 
-    fn view_box_size(&self, _mode: Mode) -> Point2DI32 {
-        self.size
+    fn viewport(&self, _view: View) -> RectI32 {
+        RectI32::new(Point2DI32::default(), self.size)
     }
 
     fn barrel_distortion_coefficients(&self) -> BarrelDistortionCoefficients {
         BarrelDistortionCoefficients { k0: 0.0, k1: 0.0 }
     }
 
-    fn make_current(&mut self, _mode: Mode, eye: Option<u32>) -> RectI32 {
+    fn make_current(&mut self, view: View) {
         self.begin_frame();
-        let eye = match eye {
-            Some(eye) if (eye as usize) < ML_VIRTUAL_CAMERA_COUNT => eye as usize,
-            _ => { debug!("Asked for eye out of range {:?}", eye); 0 }
+        let eye = match view {
+            View::Stereo(eye) if (eye as usize) < ML_VIRTUAL_CAMERA_COUNT => eye as usize,
+            _ => { debug!("Asked for unexpected view: {:?}", view); 0 }
         };
         debug!("Making {} current.", eye);
         let viewport = self.virtual_camera_array.viewport;
@@ -147,7 +147,6 @@ impl Window for MagicLeapWindow {
             gl::Viewport(viewport.x as i32, viewport.y as i32, viewport.w as i32, viewport.h as i32);
         }
         debug!("Made {} current.", eye);
-        RectI32::new(Point2DI32::new(0, 0), self.size)
     }
 
     fn present(&mut self) {
