@@ -158,12 +158,15 @@ impl SceneAssemblyThread {
             match msg {
                 MainToSceneAssemblyMsg::Exit => break,
                 MainToSceneAssemblyMsg::NewScene { listener, effective_view_box, z_buffer } => {
-                    let current_pass = Pass {
+                    let mut current_pass = Pass {
                         alpha_tiles: self.alpha_tile_pool.pop().unwrap_or_else(Vec::new),
                         solid_tiles: self.solid_tile_pool.pop().unwrap_or_else(Vec::new),
                         fills: self.fill_pool.pop().unwrap_or_else(Vec::new),
                         object_range: 0..0,
                     };
+                    current_pass.alpha_tiles.clear();
+                    current_pass.solid_tiles.clear();
+                    current_pass.fills.clear();
                     self.info = Some(SceneAssemblyThreadInfo {
                         listener,
                         built_object_queue: SortedVector::new(),
