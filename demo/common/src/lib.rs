@@ -11,7 +11,7 @@
 //! A demo app for Pathfinder.
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
-use crate::ui::{BackgroundColor, DemoUI, UIAction};
+use crate::ui::{DemoUI, UIAction};
 use crate::window::{CameraTransform, Event, Mode, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
@@ -46,6 +46,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use usvg::{Options as UsvgOptions, Tree};
+
+pub use ui::BackgroundColor;
 
 static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
 
