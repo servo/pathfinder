@@ -1,4 +1,4 @@
-// pathfinder/demo/magicleap/magicleap.rs
+// pathfinder/demo/magicleap/src/magicleap.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
