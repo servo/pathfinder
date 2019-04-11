@@ -22,30 +22,30 @@ use gl::types::GLuint;
 
 use log::info;
 
-use pathfinder_demo::Background;
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
 use pathfinder_demo::UIVisibility;
+use pathfinder_demo::BackgroundColor;
 use pathfinder_demo::window::Event;
 use pathfinder_demo::window::Mode;
 use pathfinder_demo::window::SVGPath;
-use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_gl::GLDevice;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::Device;
 use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_renderer::gpu::renderer::Renderer;
-use pathfinder_simd::default::F32x4;
-use pathfinder_renderer::gpu_data::BuiltScene;
-use pathfinder_renderer::builder::SceneBuilder;
-use pathfinder_renderer::builder::SceneBuilderContext;
+use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_renderer::builder::RenderOptions;
 use pathfinder_renderer::builder::RenderTransform;
+use pathfinder_renderer::builder::SceneBuilder;
+use pathfinder_renderer::builder::SceneBuilderContext;
+use pathfinder_renderer::gpu::renderer::Renderer;
+use pathfinder_renderer::gpu_data::BuiltScene;
+use pathfinder_simd::default::F32x4;
 use pathfinder_svg::BuiltSVG;
-use pathfinder_gpu::resources::ResourceLoader;
 
 use std::collections::HashMap;
 use std::ffi::CStr;
@@ -85,7 +85,7 @@ pub extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_co
 
     let mut options = Options::default();
     options.ui = UIVisibility::Stats;
-    options.background = Background::None;
+    options.background_color = BackgroundColor::Transparent;
     options.mode = Mode::VR;
     options.jobs = Some(3);
     
