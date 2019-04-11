@@ -20,6 +20,7 @@ use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::ops::Add;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct BuiltObject {
@@ -40,9 +41,9 @@ pub struct BuiltScene {
 
 pub enum RenderCommand {
     ClearMaskFramebuffer,
-    Fill(Vec<FillBatchPrimitive>),
-    AlphaTile(Vec<AlphaTileBatchPrimitive>),
-    SolidTile(Vec<SolidTileBatchPrimitive>),
+    Fill(Arc<Vec<FillBatchPrimitive>>),
+    AlphaTile(Arc<Vec<AlphaTileBatchPrimitive>>),
+    SolidTile(Arc<Vec<SolidTileBatchPrimitive>>),
 }
 
 #[derive(Clone, Copy, Debug)]

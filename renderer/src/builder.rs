@@ -44,6 +44,33 @@ struct SceneAssemblyThread {
     receiver: Receiver<MainToSceneAssemblyMsg>,
     sender: SyncSender<SceneAssemblyToMainMsg>,
     info: Option<SceneAssemblyThreadInfo>,
+    object_tile_index_to_batch_alpha_tile_index: Vec<u16>,
+    solid_tile_pool: Pool<Vec<SolidTileBatchPrimitive>>,
+    alpha_tile_pool: Pool<Vec<AlphaTileBatchPrimitive>>,
+    fill_pool: Pool<Vec<FillBatchPrimitive>>,
+}
+
+struct Pool<T> (Vec<Arc<T>>);
+
+impl<T> Pool<T> {
+    fn new() -> Self {
+        Pool(Vec::new())
+    }
+
+    fn pop(&mut self) -> Option<T> {
+        for i in 0..self.0.len() {
+            if Arc::strong_count(&self.0[i]) == 0 {
+                return Arc::try_unwrap(self.0.swap_remove(i)).ok()
+            }
+        }
+        None
+    }
+
+    fn push(&mut self, value: T) -> Arc<T> {
+        let result = Arc::new(value);
+        self.0.push(result.clone());
+        result
+    }
 }
 
 struct SceneAssemblyThreadInfo {
@@ -115,7 +142,15 @@ impl SceneAssemblyThread {
     #[inline]
     fn new(receiver: Receiver<MainToSceneAssemblyMsg>, sender: SyncSender<SceneAssemblyToMainMsg>)
            -> SceneAssemblyThread {
-        SceneAssemblyThread { receiver, sender, info: None }
+        SceneAssemblyThread {
+            receiver,
+            sender,
+            info: None,
+            object_tile_index_to_batch_alpha_tile_index: vec![],
+            solid_tile_pool: Pool::new(),
+            alpha_tile_pool: Pool::new(),
+            fill_pool: Pool::new(),
+        }
     }
 
     fn run(&mut self) {
@@ -123,6 +158,12 @@ impl SceneAssemblyThread {
             match msg {
                 MainToSceneAssemblyMsg::Exit => break,
                 MainToSceneAssemblyMsg::NewScene { listener, effective_view_box, z_buffer } => {
+                    let current_pass = Pass {
+                        alpha_tiles: self.alpha_tile_pool.pop().unwrap_or_else(Vec::new),
+                        solid_tiles: self.solid_tile_pool.pop().unwrap_or_else(Vec::new),
+                        fills: self.fill_pool.pop().unwrap_or_else(Vec::new),
+                        object_range: 0..0,
+                    };
                     self.info = Some(SceneAssemblyThreadInfo {
                         listener,
                         built_object_queue: SortedVector::new(),
@@ -130,7 +171,7 @@ impl SceneAssemblyThread {
 
                         z_buffer,
                         tile_rect: tiles::round_rect_out_to_tile_bounds(effective_view_box),
-                        current_pass: Pass::new(),
+                        current_pass,
                     })
                 }
                 MainToSceneAssemblyMsg::AddObject(indexed_built_object) => {
@@ -177,7 +218,7 @@ impl SceneAssemblyThread {
 
         // Copy alpha tiles.
         let mut current_pass = &mut self.info.as_mut().unwrap().current_pass;
-        let mut object_tile_index_to_batch_alpha_tile_index = vec![u16::MAX; object.tiles.len()];
+        self.object_tile_index_to_batch_alpha_tile_index.resize(object.tiles.len(), u16::MAX);
         for (tile_index, tile) in object.tiles.iter().enumerate() {
             // Skip solid tiles.
             if object.solid_tiles[tile_index] {
@@ -185,7 +226,7 @@ impl SceneAssemblyThread {
             }
 
             let batch_alpha_tile_index = current_pass.alpha_tiles.len() as u16;
-            object_tile_index_to_batch_alpha_tile_index[tile_index] = batch_alpha_tile_index;
+            self.object_tile_index_to_batch_alpha_tile_index[tile_index] = batch_alpha_tile_index;
 
             current_pass.alpha_tiles.push(AlphaTileBatchPrimitive {
                 tile: *tile,
@@ -198,7 +239,7 @@ impl SceneAssemblyThread {
             let object_tile_index = object.tile_coords_to_index(fill.tile_x as i32,
                                                                 fill.tile_y as i32).unwrap();
             let object_tile_index = object_tile_index as usize;
-            let alpha_tile_index = object_tile_index_to_batch_alpha_tile_index[object_tile_index];
+            let alpha_tile_index = self.object_tile_index_to_batch_alpha_tile_index[object_tile_index];
             current_pass.fills.push(FillBatchPrimitive {
                 px: fill.px,
                 subpx: fill.subpx,
@@ -226,15 +267,24 @@ impl SceneAssemblyThread {
 
         info.listener.send(RenderCommand::ClearMaskFramebuffer);
         if have_solid_tiles {
-            let tiles = mem::replace(&mut info.current_pass.solid_tiles, vec![]);
+            let mut replacement = self.solid_tile_pool.pop().unwrap_or_else(Vec::new);
+            replacement.clear();
+            let tiles = mem::replace(&mut info.current_pass.solid_tiles, replacement);
+            let tiles = self.solid_tile_pool.push(tiles);
             info.listener.send(RenderCommand::SolidTile(tiles));
         }
         if have_fills {
-            let fills = mem::replace(&mut info.current_pass.fills, vec![]);
+            let mut replacement = self.fill_pool.pop().unwrap_or_else(Vec::new);
+            replacement.clear();
+            let fills = mem::replace(&mut info.current_pass.fills, replacement);
+            let fills = self.fill_pool.push(fills);
             info.listener.send(RenderCommand::Fill(fills));
         }
         if have_alpha_tiles {
-            let tiles = mem::replace(&mut info.current_pass.alpha_tiles, vec![]);
+            let mut replacement = self.alpha_tile_pool.pop().unwrap_or_else(Vec::new);
+            replacement.clear();
+            let tiles = mem::replace(&mut info.current_pass.alpha_tiles, replacement);
+            let tiles = self.alpha_tile_pool.push(tiles);
             info.listener.send(RenderCommand::AlphaTile(tiles));
         }
 
@@ -339,12 +389,6 @@ struct Pass {
     alpha_tiles: Vec<AlphaTileBatchPrimitive>,
     fills: Vec<FillBatchPrimitive>,
     object_range: Range<u32>,
-}
-
-impl Pass {
-    fn new() -> Pass {
-        Pass { solid_tiles: vec![], alpha_tiles: vec![], fills: vec![], object_range: 0..0 }
-    }
 }
 
 #[derive(Clone, Default)]
