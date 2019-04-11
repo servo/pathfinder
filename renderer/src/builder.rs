@@ -16,7 +16,6 @@ use crate::scene::{self, Scene};
 use crate::sorted_vector::SortedVector;
 use crate::tiles::{self, Tiler};
 use crate::z_buffer::ZBuffer;
-use crossbeam_channel::{self, Receiver, Sender};
 use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
@@ -27,21 +26,23 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::cmp::{Ordering, PartialOrd};
 use std::mem;
 use std::ops::Range;
-use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::u16;
 
 const MAX_FILLS_PER_BATCH: usize = 0x0002_0000;
 const MAX_ALPHA_TILES_PER_BATCH: usize = 0x1000;
+const MAX_CHANNEL_MESSAGES: usize = 16;
 
 pub struct SceneBuilderContext {
-    sender: Sender<MainToSceneAssemblyMsg>,
-    receiver: Receiver<SceneAssemblyToMainMsg>,
+    sender: SyncSender<MainToSceneAssemblyMsg>,
+    receiver: Mutex<Receiver<SceneAssemblyToMainMsg>>,
 }
 
 struct SceneAssemblyThread {
     receiver: Receiver<MainToSceneAssemblyMsg>,
-    sender: Sender<SceneAssemblyToMainMsg>,
+    sender: SyncSender<SceneAssemblyToMainMsg>,
     info: Option<SceneAssemblyThreadInfo>,
 }
 
@@ -96,23 +97,23 @@ impl SceneBuilderContext {
     #[inline]
     pub fn new() -> SceneBuilderContext {
         let (main_to_scene_assembly_sender,
-             main_to_scene_assembly_receiver) = crossbeam_channel::unbounded();
+             main_to_scene_assembly_receiver) = mpsc::sync_channel(MAX_CHANNEL_MESSAGES);
         let (scene_assembly_to_main_sender,
-             scene_assembly_to_main_receiver) = crossbeam_channel::unbounded();
+             scene_assembly_to_main_receiver) = mpsc::sync_channel(MAX_CHANNEL_MESSAGES);
         thread::spawn(move || {
             SceneAssemblyThread::new(main_to_scene_assembly_receiver,
                                      scene_assembly_to_main_sender).run()
         });
         SceneBuilderContext {
             sender: main_to_scene_assembly_sender,
-            receiver: scene_assembly_to_main_receiver,
+            receiver: Mutex::new(scene_assembly_to_main_receiver),
         }
     }
 }
 
 impl SceneAssemblyThread {
     #[inline]
-    fn new(receiver: Receiver<MainToSceneAssemblyMsg>, sender: Sender<SceneAssemblyToMainMsg>)
+    fn new(receiver: Receiver<MainToSceneAssemblyMsg>, sender: SyncSender<SceneAssemblyToMainMsg>)
            -> SceneAssemblyThread {
         SceneAssemblyThread { receiver, sender, info: None }
     }
@@ -311,7 +312,7 @@ impl<'a> SceneBuilder<'a> {
 
     fn finish_and_wait_for_scene_assembly_thread(&mut self) {
         self.context.sender.send(MainToSceneAssemblyMsg::SceneFinished).unwrap();
-        self.context.receiver.recv().unwrap();
+        self.context.receiver.lock().unwrap().recv().unwrap();
     }
 }
 
@@ -320,7 +321,7 @@ fn build_object(object_index: usize,
                 z_buffer: &ZBuffer,
                 built_options: &PreparedRenderOptions,
                 scene: &Scene,
-                sender: &Sender<MainToSceneAssemblyMsg>) {
+                sender: &SyncSender<MainToSceneAssemblyMsg>) {
     let object = &scene.objects[object_index];
     let outline = scene.apply_render_options(object.outline(), built_options);
 
