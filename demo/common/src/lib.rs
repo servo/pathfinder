@@ -483,6 +483,10 @@ impl<W> DemoApp<W> where W: Window {
             RenderTransform::Perspective(perspective) => perspective,
         };
 
+        if self.ui.background_color == BackgroundColor::Transparent {
+            return;
+        }
+
         let ground_scale = self.scene_view_box.max_x() * 2.0;
 
         let mut base_transform = perspective.transform;
