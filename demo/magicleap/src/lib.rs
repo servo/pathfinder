@@ -86,7 +86,7 @@ pub extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_co
     let window_size = window.size();
 
     let mut options = Options::default();
-    options.ui = UIVisibility::Stats;
+    options.ui = UIVisibility::None;
     options.background_color = BackgroundColor::Transparent;
     options.mode = Mode::VR;
     options.jobs = Some(3);
