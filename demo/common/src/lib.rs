@@ -11,7 +11,7 @@
 //! A demo app for Pathfinder.
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
-use crate::ui::{BackgroundColor, DemoUI, UIAction};
+use crate::ui::{DemoUI, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
@@ -1079,5 +1079,22 @@ struct Frame {
 impl Frame {
     fn new(transforms: Vec<RenderTransform>, ui_events: Vec<UIEvent>) -> Frame {
         Frame { transforms, ui_events, scene_rendering_times: vec![], scene_stats: vec![] }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BackgroundColor {
+    Light = 0,
+    Dark = 1,
+    Transparent = 2,
+}
+
+impl BackgroundColor {
+    fn as_str(&self) -> &'static str {
+        match *self {
+            BackgroundColor::Light       => "Light",
+            BackgroundColor::Dark        => "Dark",
+            BackgroundColor::Transparent => "Transparent",
+        }
     }
 }

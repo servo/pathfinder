@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::{Mode, Options};
+use crate::{BackgroundColor, Mode, Options};
 use crate::window::Window;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
@@ -404,21 +404,4 @@ pub enum UIAction {
     ZoomIn,
     ZoomOut,
     Rotate(f32),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum BackgroundColor {
-    Light = 0,
-    Dark = 1,
-    Transparent = 2,
-}
-
-impl BackgroundColor {
-    fn as_str(&self) -> &'static str {
-        match *self {
-            BackgroundColor::Light       => "Light",
-            BackgroundColor::Dark        => "Dark",
-            BackgroundColor::Transparent => "Transparent",
-        }
-    }
 }
