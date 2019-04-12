@@ -13,7 +13,7 @@
 use crate::builder::{PreparedRenderOptions, PreparedRenderTransform};
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::point::Point2DF32;
-use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
@@ -192,12 +192,4 @@ pub struct PaintId(pub u16);
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ObjectShader {
     pub fill_color: ColorU,
-}
-
-// FIXME(pcwalton): This duplicates code in `BuiltObject::tile_coords_to_index`!
-// TODO(pcwalton): Use a `Point2DI32` here?
-#[inline]
-pub fn scene_tile_index(tile_x: i32, tile_y: i32, tile_rect: RectI32) -> u32 {
-    (tile_y - tile_rect.min_y()) as u32 * tile_rect.size().x() as u32
-        + (tile_x - tile_rect.min_x()) as u32
 }

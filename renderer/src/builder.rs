@@ -12,7 +12,7 @@
 
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
-use crate::scene::{self, Scene};
+use crate::scene::Scene;
 use crate::sorted_vector::SortedVector;
 use crate::tiles::{self, Tiler};
 use crate::z_buffer::ZBuffer;
@@ -247,10 +247,9 @@ impl SceneAssemblyThread {
     fn cull_alpha_tiles(&mut self) {
         let info = self.info.as_mut().unwrap();
         for alpha_tile in &mut info.current_pass.alpha_tiles {
-            let scene_tile_index = scene::scene_tile_index(alpha_tile.tile_x as i32,
-                                                           alpha_tile.tile_y as i32,
-                                                           info.tile_rect);
-            if info.z_buffer.test(scene_tile_index, alpha_tile.object_index as u32) {
+            let alpha_tile_coords = Point2DI32::new(alpha_tile.tile_x as i32,
+                                                    alpha_tile.tile_y as i32);
+            if info.z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
                 continue;
             }
 

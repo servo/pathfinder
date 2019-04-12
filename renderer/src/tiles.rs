@@ -97,7 +97,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         for solid_tile_index in self.built_object.solid_tiles.ones() {
             if self.built_object.tile_backdrops.data[solid_tile_index] != 0 {
                 let tile_coords = self.built_object.tile_index_to_coords(solid_tile_index as u32);
-                self.z_buffer.update(tile_coords.x(), tile_coords.y(), self.object_index);
+                self.z_buffer.update(tile_coords, self.object_index);
             }
         }
     }

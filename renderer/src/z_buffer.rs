@@ -11,38 +11,35 @@
 //! Software occlusion culling.
 
 use crate::gpu_data::SolidTileBatchPrimitive;
-use crate::scene;
+use crate::tile_map::DenseTileMap;
 use crate::tiles;
+use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
 pub struct ZBuffer {
-    buffer: Vec<AtomicUsize>,
-    tile_rect: RectI32,
+    buffer: DenseTileMap<AtomicUsize>,
 }
 
 impl ZBuffer {
     pub fn new(view_box: RectF32) -> ZBuffer {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(view_box);
-        let tile_area = tile_rect.size().x() as usize * tile_rect.size().y() as usize;
-        ZBuffer {
-            buffer: (0..tile_area).map(|_| AtomicUsize::new(0)).collect(),
-            tile_rect,
-        }
+        ZBuffer { buffer: DenseTileMap::from_builder(|_| AtomicUsize::new(0), tile_rect) }
     }
 
-    pub fn test(&self, scene_tile_index: u32, object_index: u32) -> bool {
-        let existing_depth = self.buffer[scene_tile_index as usize].load(AtomicOrdering::SeqCst);
+    pub fn test(&self, coords: Point2DI32, object_index: u32) -> bool {
+        let tile_index = self.buffer.coords_to_index_unchecked(coords);
+        let existing_depth = self.buffer.data[tile_index as usize].load(AtomicOrdering::SeqCst);
         existing_depth < object_index as usize + 1
     }
 
-    pub fn update(&self, tile_x: i32, tile_y: i32, object_index: u16) {
-        let scene_tile_index = scene::scene_tile_index(tile_x, tile_y, self.tile_rect) as usize;
-        let mut old_depth = self.buffer[scene_tile_index].load(AtomicOrdering::SeqCst);
+    pub fn update(&self, coords: Point2DI32, object_index: u16) {
+        let tile_index = self.buffer.coords_to_index_unchecked(coords);
+        let mut old_depth = self.buffer.data[tile_index].load(AtomicOrdering::SeqCst);
         let new_depth = (object_index + 1) as usize;
         while old_depth < new_depth {
-            let prev_depth = self.buffer[scene_tile_index].compare_and_swap(
+            let prev_depth = self.buffer.data[tile_index].compare_and_swap(
                 old_depth,
                 new_depth,
                 AtomicOrdering::SeqCst,
@@ -58,24 +55,22 @@ impl ZBuffer {
     pub fn build_solid_tiles(&self, tile_rect: RectI32, object_range: Range<u32>)
                              -> Vec<SolidTileBatchPrimitive> {
         let mut solid_tiles = vec![];
-        for scene_tile_y in 0..tile_rect.size().y() {
-            for scene_tile_x in 0..tile_rect.size().x() {
-                let scene_tile_index =
-                    scene_tile_y as usize * tile_rect.size().x() as usize + scene_tile_x as usize;
-                let depth = self.buffer[scene_tile_index].load(AtomicOrdering::Relaxed);
-                if depth == 0 {
-                    continue;
-                }
-                let object_index = (depth - 1) as u32;
-                if object_index < object_range.start || object_index >= object_range.end {
-                    continue;
-                }
-                solid_tiles.push(SolidTileBatchPrimitive {
-                    tile_x: (scene_tile_x + tile_rect.min_x()) as i16,
-                    tile_y: (scene_tile_y + tile_rect.min_y()) as i16,
-                    object_index: object_index as u16,
-                });
+        for tile_index in 0..self.buffer.data.len() {
+            let depth = self.buffer.data[tile_index].load(AtomicOrdering::Relaxed);
+            if depth == 0 {
+                continue;
             }
+
+            let tile_coords = self.buffer.index_to_coords(tile_index);
+            let object_index = (depth - 1) as u32;
+            if object_index < object_range.start || object_index >= object_range.end {
+                continue;
+            }
+            solid_tiles.push(SolidTileBatchPrimitive {
+                tile_x: (tile_coords.x() + tile_rect.min_x()) as i16,
+                tile_y: (tile_coords.y() + tile_rect.min_y()) as i16,
+                object_index: object_index as u16,
+            });
         }
 
         solid_tiles
