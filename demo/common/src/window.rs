@@ -25,8 +25,8 @@ pub trait Window {
     fn gl_version(&self) -> GLVersion;
     fn gl_default_framebuffer(&self) -> GLuint { 0 }
     fn mouse_position(&self) -> Point2DI32;
-    fn view_box_size(&self, mode: Mode) -> Point2DI32;
-    fn make_current(&mut self, mode: Mode, index: Option<u32>) -> RectI32;
+    fn viewport(&self, view: View) -> RectI32;
+    fn make_current(&mut self, view: View);
     fn present(&mut self);
     fn resource_loader(&self) -> &dyn ResourceLoader;
     fn create_user_event_id(&self) -> u32;
@@ -80,6 +80,12 @@ impl WindowSize {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub enum View {
+    Mono,
+    Stereo(u32),
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct CameraTransform {
     // The perspective which converts from camera coordinates to display coordinates
     pub perspective: Perspective,
@@ -93,17 +99,4 @@ pub enum SVGPath {
     Default,
     Resource(String),
     Path(PathBuf),
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub enum Mode {
-    TwoD   = 0,
-    ThreeD = 1,
-    VR     = 2,
-}
-
-impl Mode {
-    pub fn viewport_count(self) -> usize {
-        match self { Mode::TwoD | Mode::ThreeD => 1, Mode::VR => 2 }
-    }
 }
