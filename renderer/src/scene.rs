@@ -194,6 +194,7 @@ pub struct ObjectShader {
     pub fill_color: ColorU,
 }
 
+// FIXME(pcwalton): This duplicates code in `BuiltObject::tile_coords_to_index`!
 // TODO(pcwalton): Use a `Point2DI32` here?
 #[inline]
 pub fn scene_tile_index(tile_x: i32, tile_y: i32, tile_rect: RectI32) -> u32 {

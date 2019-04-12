@@ -164,8 +164,8 @@ impl SceneAssemblyThread {
         }
 
         // See whether we have room for the alpha tiles. If we don't, then flush.
-        let mut alpha_tile_count = 0;
-        for tile_index in 0..object.tiles.len() {
+        let (tile_count, mut alpha_tile_count) = (object.tile_count() as usize, 0);
+        for tile_index in 0..(object.tile_count() as usize) {
             if !object.solid_tiles[tile_index] {
                 alpha_tile_count += 1;
             }
@@ -177,8 +177,8 @@ impl SceneAssemblyThread {
 
         // Copy alpha tiles.
         let mut current_pass = &mut self.info.as_mut().unwrap().current_pass;
-        let mut object_tile_index_to_batch_alpha_tile_index = vec![u16::MAX; object.tiles.len()];
-        for (tile_index, tile) in object.tiles.iter().enumerate() {
+        let mut object_tile_index_to_batch_alpha_tile_index = vec![u16::MAX; tile_count];
+        for (tile_index, tile_backdrop) in object.tile_backdrops.iter().cloned().enumerate() {
             // Skip solid tiles.
             if object.solid_tiles[tile_index] {
                 continue;
@@ -187,9 +187,12 @@ impl SceneAssemblyThread {
             let batch_alpha_tile_index = current_pass.alpha_tiles.len() as u16;
             object_tile_index_to_batch_alpha_tile_index[tile_index] = batch_alpha_tile_index;
 
+            let tile_coords = object.tile_index_to_coords(tile_index as u32);
             current_pass.alpha_tiles.push(AlphaTileBatchPrimitive {
-                tile: *tile,
+                tile_x: tile_coords.x() as i16,
+                tile_y: tile_coords.y() as i16,
                 object_index: current_pass.object_range.end as u16,
+                backdrop: tile_backdrop,
             });
         }
 
@@ -244,15 +247,16 @@ impl SceneAssemblyThread {
     fn cull_alpha_tiles(&mut self) {
         let info = self.info.as_mut().unwrap();
         for alpha_tile in &mut info.current_pass.alpha_tiles {
-            let scene_tile_index = scene::scene_tile_index(alpha_tile.tile.tile_x as i32,
-                                                           alpha_tile.tile.tile_y as i32,
+            let scene_tile_index = scene::scene_tile_index(alpha_tile.tile_x as i32,
+                                                           alpha_tile.tile_y as i32,
                                                            info.tile_rect);
             if info.z_buffer.test(scene_tile_index, alpha_tile.object_index as u32) {
                 continue;
             }
+
             // FIXME(pcwalton): Hack!
-            alpha_tile.tile.tile_x = -1;
-            alpha_tile.tile.tile_y = -1;
+            alpha_tile.tile_x = -1;
+            alpha_tile.tile_y = -1;
         }
     }
 }

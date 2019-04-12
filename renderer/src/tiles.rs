@@ -95,9 +95,9 @@ impl<'o, 'z> Tiler<'o, 'z> {
 
     fn cull(&self) {
         for solid_tile_index in self.built_object.solid_tiles.ones() {
-            let tile = &self.built_object.tiles[solid_tile_index];
-            if tile.backdrop != 0 {
-                self.z_buffer.update(tile.tile_x as i32, tile.tile_y as i32, self.object_index);
+            if self.built_object.tile_backdrops[solid_tile_index] != 0 {
+                let tile_coords = self.built_object.tile_index_to_coords(solid_tile_index as u32);
+                self.z_buffer.update(tile_coords.x(), tile_coords.y(), self.object_index);
             }
         }
     }
@@ -163,8 +163,9 @@ impl<'o, 'z> Tiler<'o, 'z> {
             // Move over to the correct tile, filling in as we go.
             while current_tile_x < segment_tile_x {
                 //println!("... emitting backdrop {} @ tile {}", current_winding, current_tile_x);
-                if let Some(tile) = self.built_object.get_tile_mut(current_tile_x, tile_y) {
-                    tile.backdrop = current_winding;
+                if let Some(tile_index) =
+                        self.built_object.tile_coords_to_index(current_tile_x, tile_y) {
+                    self.built_object.tile_backdrops[tile_index as usize] = current_winding;
                 }
 
                 current_tile_x += 1;

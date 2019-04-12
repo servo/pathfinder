@@ -14,7 +14,7 @@ use crate::scene::ObjectShader;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
@@ -25,7 +25,7 @@ use std::ops::Add;
 pub struct BuiltObject {
     pub bounds: RectF32,
     pub tile_rect: RectI32,
-    pub tiles: Vec<TileObjectPrimitive>,
+    pub tile_backdrops: Vec<i16>,
     pub fills: Vec<FillObjectPrimitive>,
     pub solid_tiles: FixedBitSet,
 }
@@ -53,14 +53,6 @@ pub struct FillObjectPrimitive {
     pub tile_y: i16,
 }
 
-#[derive(Clone, Copy, Debug)]
-#[repr(C)]
-pub struct TileObjectPrimitive {
-    pub tile_x: i16,
-    pub tile_y: i16,
-    pub backdrop: i16,
-}
-
 // FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
 #[derive(Clone, Copy, Debug)]
 #[repr(packed)]
@@ -81,7 +73,9 @@ pub struct SolidTileBatchPrimitive {
 #[derive(Clone, Copy, Debug)]
 #[repr(C)]
 pub struct AlphaTileBatchPrimitive {
-    pub tile: TileObjectPrimitive,
+    pub tile_x: i16,
+    pub tile_y: i16,
+    pub backdrop: i16,
     pub object_index: u16,
 }
 
@@ -102,17 +96,16 @@ impl BuiltObject {
 
         // Allocate tiles.
         let tile_count = tile_rect.size().x() as usize * tile_rect.size().y() as usize;
-        let mut tiles = Vec::with_capacity(tile_count);
-        for y in tile_rect.min_y()..tile_rect.max_y() {
-            for x in tile_rect.min_x()..tile_rect.max_x() {
-                tiles.push(TileObjectPrimitive::new(x as i16, y as i16));
-            }
-        }
-
+        let tile_backdrops = vec![0; tile_count];
         let mut solid_tiles = FixedBitSet::with_capacity(tile_count);
         solid_tiles.insert_range(..);
 
-        BuiltObject { bounds, tile_rect, tiles, fills: vec![], solid_tiles }
+        BuiltObject { bounds, tile_rect, tile_backdrops, fills: vec![], solid_tiles }
+    }
+
+    #[inline]
+    pub fn tile_count(&self) -> u32 {
+        self.tile_rect.size().x() as u32 * self.tile_rect.size().y() as u32
     }
 
     // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
@@ -249,12 +242,10 @@ impl BuiltObject {
         }
     }
 
-    pub fn get_tile_mut(&mut self, tile_x: i32, tile_y: i32) -> Option<&mut TileObjectPrimitive> {
-        let tile_index = self.tile_coords_to_index(tile_x, tile_y);
-        match tile_index {
-            None => None,
-            Some(tile_index) => Some(&mut self.tiles[tile_index as usize]),
-        }
+    #[inline]
+    pub fn tile_index_to_coords(&self, tile_index: u32) -> Point2DI32 {
+        let (width, tile_index) = (self.tile_rect.size().x(), tile_index as i32);
+        self.tile_rect.origin() + Point2DI32::new(tile_index % width, tile_index / width)
     }
 }
 
@@ -286,13 +277,6 @@ impl Debug for RenderCommand {
                 write!(formatter, "SolidTile(x{})", tiles.len())
             }
         }
-    }
-}
-
-impl TileObjectPrimitive {
-    #[inline]
-    fn new(tile_x: i16, tile_y: i16) -> TileObjectPrimitive {
-        TileObjectPrimitive { tile_x, tile_y, backdrop: 0 }
     }
 }
 
