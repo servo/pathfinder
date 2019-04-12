@@ -11,6 +11,7 @@
 //! Packed data ready to be sent to the GPU.
 
 use crate::scene::ObjectShader;
+use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
@@ -24,8 +25,7 @@ use std::ops::Add;
 #[derive(Debug)]
 pub struct BuiltObject {
     pub bounds: RectF32,
-    pub tile_rect: RectI32,
-    pub tile_backdrops: Vec<i16>,
+    pub tile_backdrops: DenseTileMap<i16>,
     pub fills: Vec<FillObjectPrimitive>,
     pub solid_tiles: FixedBitSet,
 }
@@ -95,23 +95,26 @@ impl BuiltObject {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
 
         // Allocate tiles.
-        let tile_count = tile_rect.size().x() as usize * tile_rect.size().y() as usize;
-        let tile_backdrops = vec![0; tile_count];
-        let mut solid_tiles = FixedBitSet::with_capacity(tile_count);
+        let tile_backdrops = DenseTileMap::new(tile_rect);
+        let mut solid_tiles = FixedBitSet::with_capacity(tile_backdrops.data.len());
         solid_tiles.insert_range(..);
 
-        BuiltObject { bounds, tile_rect, tile_backdrops, fills: vec![], solid_tiles }
+        BuiltObject { bounds, tile_backdrops, fills: vec![], solid_tiles }
+    }
+
+    #[inline]
+    pub fn tile_rect(&self) -> RectI32 {
+        self.tile_backdrops.rect
     }
 
     #[inline]
     pub fn tile_count(&self) -> u32 {
-        self.tile_rect.size().x() as u32 * self.tile_rect.size().y() as u32
+        self.tile_backdrops.data.len() as u32
     }
 
-    // TODO(pcwalton): SIMD-ify `tile_x` and `tile_y`.
-    fn add_fill(&mut self, segment: &LineSegmentF32, tile_x: i32, tile_y: i32) {
+    fn add_fill(&mut self, segment: &LineSegmentF32, tile_coords: Point2DI32) {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
-        let tile_index = match self.tile_coords_to_index(tile_x, tile_y) {
+        let tile_index = match self.tile_coords_to_index(tile_coords) {
             None => return,
             Some(tile_index) => tile_index,
         };
@@ -121,8 +124,8 @@ impl BuiltObject {
         let (min, max) = (F32x4::default(), F32x4::splat((TILE_WIDTH * 256 - 1) as f32));
         let shuffle_mask = I32x4::new(0x0c08_0400, 0x0d05_0901, 0, 0).as_u8x16();
 
-        let tile_upper_left =
-            F32x4::new(tile_x as f32, tile_y as f32, tile_x as f32, tile_y as f32) * tile_size;
+        let tile_upper_left = tile_coords.to_f32().0.xyxy() * tile_size;
+            //F32x4::new(tile_x as f32, tile_y as f32, tile_x as f32, tile_y as f32) * tile_size;
 
         let segment = (segment.0 - tile_upper_left) * F32x4::splat(256.0);
         let segment =
@@ -144,21 +147,18 @@ impl BuiltObject {
         self.fills.push(FillObjectPrimitive {
             px,
             subpx,
-            tile_x: tile_x as i16,
-            tile_y: tile_y as i16,
+            tile_x: tile_coords.x() as i16,
+            tile_y: tile_coords.y() as i16,
         });
         self.solid_tiles.set(tile_index as usize, false);
     }
 
-    pub fn add_active_fill(
-        &mut self,
-        left: f32,
-        right: f32,
-        mut winding: i16,
-        tile_x: i32,
-        tile_y: i32,
-    ) {
-        let tile_origin_y = (i32::from(tile_y) * TILE_HEIGHT as i32) as f32;
+    pub fn add_active_fill(&mut self,
+                           left: f32,
+                           right: f32,
+                           mut winding: i16,
+                           tile_coords: Point2DI32) {
+        let tile_origin_y = (tile_coords.y() * TILE_HEIGHT as i32) as f32;
         let left = Point2DF32::new(left, tile_origin_y);
         let right = Point2DF32::new(right, tile_origin_y);
 
@@ -176,7 +176,7 @@ impl BuiltObject {
                  tile_y);*/
 
         while winding != 0 {
-            self.add_fill(&segment, tile_x, tile_y);
+            self.add_fill(&segment, tile_coords);
             if winding < 0 {
                 winding += 1
             } else {
@@ -223,29 +223,18 @@ impl BuiltObject {
             }
 
             let fill_segment = LineSegmentF32::new(&fill_from, &fill_to);
-            self.add_fill(&fill_segment, subsegment_tile_x, tile_y);
-        }
-    }
-
-    // FIXME(pcwalton): Use a `Point2DI32` instead?
-    pub fn tile_coords_to_index(&self, tile_x: i32, tile_y: i32) -> Option<u32> {
-        /*println!("tile_coords_to_index(x={}, y={}, tile_rect={:?})",
-        tile_x,
-        tile_y,
-        self.tile_rect);*/
-        if tile_x < self.tile_rect.min_x() || tile_x >= self.tile_rect.max_x() ||
-                tile_y < self.tile_rect.min_y() || tile_y >= self.tile_rect.max_y() {
-            None
-        } else {
-            Some((tile_y - self.tile_rect.min_y()) as u32 * self.tile_rect.size().x() as u32
-                + (tile_x - self.tile_rect.min_x()) as u32)
+            self.add_fill(&fill_segment, Point2DI32::new(subsegment_tile_x, tile_y));
         }
     }
 
     #[inline]
+    pub fn tile_coords_to_index(&self, coords: Point2DI32) -> Option<u32> {
+        self.tile_backdrops.coords_to_index(coords).map(|index| index as u32)
+    }
+
+    #[inline]
     pub fn tile_index_to_coords(&self, tile_index: u32) -> Point2DI32 {
-        let (width, tile_index) = (self.tile_rect.size().x(), tile_index as i32);
-        self.tile_rect.origin() + Point2DI32::new(tile_index % width, tile_index / width)
+        self.tile_backdrops.index_to_coords(tile_index as usize)
     }
 }
 

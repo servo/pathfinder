@@ -18,4 +18,5 @@ pub mod scene;
 pub mod tiles;
 
 mod sorted_vector;
+mod tile_map;
 mod z_buffer;

@@ -16,7 +16,7 @@ use crate::scene::{self, Scene};
 use crate::sorted_vector::SortedVector;
 use crate::tiles::{self, Tiler};
 use crate::z_buffer::ZBuffer;
-use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::Perspective;
@@ -178,7 +178,7 @@ impl SceneAssemblyThread {
         // Copy alpha tiles.
         let mut current_pass = &mut self.info.as_mut().unwrap().current_pass;
         let mut object_tile_index_to_batch_alpha_tile_index = vec![u16::MAX; tile_count];
-        for (tile_index, tile_backdrop) in object.tile_backdrops.iter().cloned().enumerate() {
+        for (tile_index, tile_backdrop) in object.tile_backdrops.data.iter().cloned().enumerate() {
             // Skip solid tiles.
             if object.solid_tiles[tile_index] {
                 continue;
@@ -198,8 +198,8 @@ impl SceneAssemblyThread {
 
         // Remap and copy fills, culling as necessary.
         for fill in &object.fills {
-            let object_tile_index = object.tile_coords_to_index(fill.tile_x as i32,
-                                                                fill.tile_y as i32).unwrap();
+            let tile_coords = Point2DI32::new(fill.tile_x as i32, fill.tile_y as i32);
+            let object_tile_index = object.tile_coords_to_index(tile_coords).unwrap();
             let object_tile_index = object_tile_index as usize;
             let alpha_tile_index = object_tile_index_to_batch_alpha_tile_index[object_tile_index];
             current_pass.fills.push(FillBatchPrimitive {

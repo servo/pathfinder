@@ -12,7 +12,7 @@ use crate::gpu_data::BuiltObject;
 use crate::sorted_vector::SortedVector;
 use crate::z_buffer::ZBuffer;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
-use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::segment::Segment;
@@ -64,7 +64,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         self.old_active_edges.clear();
 
         // Generate strips.
-        let tile_rect = self.built_object.tile_rect;
+        let tile_rect = self.built_object.tile_rect();
         for strip_origin_y in tile_rect.min_y()..tile_rect.max_y() {
             self.generate_strip(strip_origin_y);
         }
@@ -95,7 +95,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
 
     fn cull(&self) {
         for solid_tile_index in self.built_object.solid_tiles.ones() {
-            if self.built_object.tile_backdrops[solid_tile_index] != 0 {
+            if self.built_object.tile_backdrops.data[solid_tile_index] != 0 {
                 let tile_coords = self.built_object.tile_index_to_coords(solid_tile_index as u32);
                 self.z_buffer.update(tile_coords.x(), tile_coords.y(), self.object_index);
             }
@@ -103,7 +103,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
     }
 
     fn process_old_active_edges(&mut self, tile_y: i32) {
-        let mut current_tile_x = self.built_object.tile_rect.min_x();
+        let mut current_tile_x = self.built_object.tile_rect().min_x();
         let mut current_subtile_x = 0.0;
         let mut current_winding = 0;
 
@@ -149,13 +149,11 @@ impl<'o, 'z> Tiler<'o, 'z> {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
-                self.built_object.add_active_fill(
-                    current_x,
-                    tile_right_x,
-                    current_winding,
-                    current_tile_x,
-                    tile_y,
-                );
+                let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
+                self.built_object.add_active_fill(current_x,
+                                                  tile_right_x,
+                                                  current_winding,
+                                                  current_tile_coords);
                 current_tile_x += 1;
                 current_subtile_x = 0.0;
             }
@@ -163,9 +161,10 @@ impl<'o, 'z> Tiler<'o, 'z> {
             // Move over to the correct tile, filling in as we go.
             while current_tile_x < segment_tile_x {
                 //println!("... emitting backdrop {} @ tile {}", current_winding, current_tile_x);
-                if let Some(tile_index) =
-                        self.built_object.tile_coords_to_index(current_tile_x, tile_y) {
-                    self.built_object.tile_backdrops[tile_index as usize] = current_winding;
+                let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
+                if let Some(tile_index) = self.built_object
+                                              .tile_coords_to_index(current_tile_coords) {
+                    self.built_object.tile_backdrops.data[tile_index as usize] = current_winding;
                 }
 
                 current_tile_x += 1;
@@ -180,13 +179,11 @@ impl<'o, 'z> Tiler<'o, 'z> {
             if segment_subtile_x > current_subtile_x {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
-                self.built_object.add_active_fill(
-                    current_x,
-                    segment_x,
-                    current_winding,
-                    current_tile_x,
-                    tile_y,
-                );
+                let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
+                self.built_object.add_active_fill(current_x,
+                                                  segment_x,
+                                                  current_winding,
+                                                  current_tile_coords);
                 current_subtile_x = segment_subtile_x;
             }
 
