@@ -14,10 +14,10 @@ use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::scene::Scene;
 use crate::sorted_vector::SortedVector;
-use crate::tiles::{self, Tiler};
+use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
-use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
@@ -52,16 +52,11 @@ struct SceneAssemblyThreadInfo {
     next_object_index: u32,
 
     pub(crate) z_buffer: Arc<ZBuffer>,
-    tile_rect: RectI32,
     current_pass: Pass,
 }
 
 enum MainToSceneAssemblyMsg {
-    NewScene {
-        listener: Box<dyn RenderCommandListener>,
-        effective_view_box: RectF32,
-        z_buffer: Arc<ZBuffer>,
-    },
+    NewScene { listener: Box<dyn RenderCommandListener>, z_buffer: Arc<ZBuffer> },
     AddObject(IndexedBuiltObject),
     SceneFinished,
     Exit,
@@ -122,14 +117,13 @@ impl SceneAssemblyThread {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 MainToSceneAssemblyMsg::Exit => break,
-                MainToSceneAssemblyMsg::NewScene { listener, effective_view_box, z_buffer } => {
+                MainToSceneAssemblyMsg::NewScene { listener, z_buffer } => {
                     self.info = Some(SceneAssemblyThreadInfo {
                         listener,
                         built_object_queue: SortedVector::new(),
                         next_object_index: 0,
 
                         z_buffer,
-                        tile_rect: tiles::round_rect_out_to_tile_bounds(effective_view_box),
                         current_pass: Pass::new(),
                     })
                 }
@@ -217,8 +211,7 @@ impl SceneAssemblyThread {
 
         let mut info = self.info.as_mut().unwrap();
         info.current_pass.solid_tiles =
-            info.z_buffer.build_solid_tiles(info.tile_rect,
-                                            info.current_pass.object_range.clone());
+            info.z_buffer.build_solid_tiles(info.current_pass.object_range.clone());
 
         let have_solid_tiles = !info.current_pass.solid_tiles.is_empty();
         let have_alpha_tiles = !info.current_pass.alpha_tiles.is_empty();
@@ -271,7 +264,7 @@ impl<'a> SceneBuilder<'a> {
     pub fn build_sequentially(&mut self, listener: Box<dyn RenderCommandListener>) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let z_buffer = Arc::new(ZBuffer::new(effective_view_box));
-        self.send_new_scene_message_to_assembly_thread(listener, effective_view_box, &z_buffer);
+        self.send_new_scene_message_to_assembly_thread(listener, &z_buffer);
 
         for object_index in 0..self.scene.objects.len() {
             build_object(object_index,
@@ -288,7 +281,7 @@ impl<'a> SceneBuilder<'a> {
     pub fn build_in_parallel(&mut self, listener: Box<dyn RenderCommandListener>) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let z_buffer = Arc::new(ZBuffer::new(effective_view_box));
-        self.send_new_scene_message_to_assembly_thread(listener, effective_view_box, &z_buffer);
+        self.send_new_scene_message_to_assembly_thread(listener, &z_buffer);
 
         (0..self.scene.objects.len()).into_par_iter().for_each(|object_index| {
             build_object(object_index,
@@ -304,11 +297,9 @@ impl<'a> SceneBuilder<'a> {
 
     fn send_new_scene_message_to_assembly_thread(&mut self,
                                                  listener: Box<dyn RenderCommandListener>,
-                                                 effective_view_box: RectF32,
                                                  z_buffer: &Arc<ZBuffer>) {
         self.context.sender.send(MainToSceneAssemblyMsg::NewScene {
             listener,
-            effective_view_box,
             z_buffer: z_buffer.clone(),
         }).unwrap();
     }

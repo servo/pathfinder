@@ -14,7 +14,7 @@ use crate::gpu_data::SolidTileBatchPrimitive;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
 use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::basic::rect::RectF32;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
@@ -52,8 +52,7 @@ impl ZBuffer {
         }
     }
 
-    pub fn build_solid_tiles(&self, tile_rect: RectI32, object_range: Range<u32>)
-                             -> Vec<SolidTileBatchPrimitive> {
+    pub fn build_solid_tiles(&self, object_range: Range<u32>) -> Vec<SolidTileBatchPrimitive> {
         let mut solid_tiles = vec![];
         for tile_index in 0..self.buffer.data.len() {
             let depth = self.buffer.data[tile_index].load(AtomicOrdering::Relaxed);
@@ -67,8 +66,8 @@ impl ZBuffer {
                 continue;
             }
             solid_tiles.push(SolidTileBatchPrimitive {
-                tile_x: (tile_coords.x() + tile_rect.min_x()) as i16,
-                tile_y: (tile_coords.y() + tile_rect.min_y()) as i16,
+                tile_x: (tile_coords.x() + self.buffer.rect.min_x()) as i16,
+                tile_y: (tile_coords.y() + self.buffer.rect.min_y()) as i16,
                 object_index: object_index as u16,
             });
         }
