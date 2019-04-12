@@ -14,8 +14,9 @@ use jemallocator;
 use nfd::Response;
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
-use pathfinder_demo::window::{Event, Keycode, SVGPath, Window, WindowSize};
+use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
@@ -79,6 +80,25 @@ impl Window for WindowImpl {
     fn mouse_position(&self) -> Point2DI32 {
         let mouse_state = self.event_pump.mouse_state();
         Point2DI32::new(mouse_state.x(), mouse_state.y())
+    }
+
+    fn viewport(&self, view: View) -> RectI32 {
+        let (width, height) = self.window.drawable_size();
+	let mut width = width as i32;
+	let height = height as i32;
+	let mut x_offset = 0;
+        if let View::Stereo(index) = view {
+            width = width / 2;
+	    x_offset = width * (index as i32);
+        }
+        RectI32::new (
+	    Point2DI32::new(x_offset, 0),
+	    Point2DI32::new(width, height),
+	)
+    }
+
+    fn make_current(&mut self, _view: View) {
+        self.window.gl_make_current(&self.gl_context).unwrap();
     }
 
     fn present(&mut self) {

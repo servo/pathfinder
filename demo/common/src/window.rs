@@ -12,9 +12,9 @@
 
 use gl::types::GLuint;
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
-use pathfinder_geometry::basic::transform3d::Perspective;
-use pathfinder_geometry::basic::transform3d::Transform3DF32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
@@ -24,6 +24,8 @@ pub trait Window {
     fn gl_version(&self) -> GLVersion;
     fn gl_default_framebuffer(&self) -> GLuint { 0 }
     fn mouse_position(&self) -> Point2DI32;
+    fn viewport(&self, view: View) -> RectI32;
+    fn make_current(&mut self, view: View);
     fn present(&mut self);
     fn resource_loader(&self) -> &dyn ResourceLoader;
     fn create_user_event_id(&self) -> u32;
@@ -74,6 +76,12 @@ impl WindowSize {
     pub fn device_size(&self) -> Point2DI32 {
         self.logical_size.to_f32().scale(self.backing_scale_factor).to_i32()
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum View {
+    Mono,
+    Stereo(u32),
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -15,8 +15,9 @@ use jni::{JNIEnv, JavaVM};
 use jni::objects::{GlobalRef, JByteBuffer, JClass, JObject, JString, JValue};
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
-use pathfinder_demo::window::{Event, SVGPath, Window, WindowSize};
+use pathfinder_demo::window::{Event, SVGPath, View, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use std::cell::RefCell;
@@ -48,6 +49,8 @@ pub unsafe extern "system" fn
                                                                             height: i32) {
     let logical_size = Point2DI32::new(width, height);
     let window_size = WindowSize { logical_size, backing_scale_factor: 1.0 };
+    let window = WindowImpl { size: logical_size };
+    let options = Options::default();
 
     JAVA_ACTIVITY.with(|java_activity| {
         *java_activity.borrow_mut() = Some(JavaActivity::new(env.clone(), activity));
@@ -57,8 +60,7 @@ pub unsafe extern "system" fn
     });
     DEMO_APP.with(|demo_app| {
         gl::load_with(|name| egl::get_proc_address(name) as *const c_void);
-        let options = Options::default();
-        *demo_app.borrow_mut() = Some(DemoApp::new(WindowImpl, window_size, options));
+        *demo_app.borrow_mut() = Some(DemoApp::new(window, window_size, options));
     });
 }
 
@@ -156,7 +158,9 @@ pub unsafe extern "system" fn
     EVENT_QUEUE.lock().unwrap().push(Event::OpenSVG(SVGPath::Resource(string)))
 }
 
-struct WindowImpl;
+struct WindowImpl {
+    size: Point2DI32,
+}
 
 impl Window for WindowImpl {
     fn gl_version(&self) -> GLVersion {
@@ -166,6 +170,21 @@ impl Window for WindowImpl {
     fn mouse_position(&self) -> Point2DI32 {
         Point2DI32::new(0, 0)
     }
+
+    fn viewport(&self, view: View) -> RectI32 {
+        let mut width = self.size.x();
+        let mut offset_x = 0;
+        let height = self.size.y();
+        if let View::Stereo(index) = view {
+            width = width / 2;
+            offset_x = (index as i32) * width;
+        }
+        let size = Point2DI32::new(width, height);
+        let offset = Point2DI32::new(offset_x, 0);
+        RectI32::new(offset, size)
+    }
+
+    fn make_current(&mut self, _view: View) {}
 
     fn present(&mut self) {}
 
