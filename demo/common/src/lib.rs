@@ -944,8 +944,6 @@ fn center_of_window(window_size: &WindowSize) -> Point2DF32 {
 enum Camera {
     TwoD(Transform2DF32),
     ThreeD {
-        // The mode will either be 3D or VR
-        mode: Mode,
         // For each camera, the perspective from camera coordinates to display coordinates,
         // and the view transform from world coordinates to camera coordinates.
         transforms: Vec<CameraTransform>,
@@ -983,7 +981,6 @@ impl Camera {
         let transforms = iter::repeat(transform).take(viewport_count).collect();
 
         Camera::ThreeD {
-            mode,
             transforms,
             transform: CameraTransform3D::new(view_box),
             velocity: Point3DF32::default(),
@@ -995,7 +992,11 @@ impl Camera {
     }
 
     fn mode(&self) -> Mode {
-        match *self { Camera::ThreeD { mode, .. } => mode, Camera::TwoD { .. } => Mode::TwoD }
+        match *self {
+	    Camera::ThreeD { ref transforms, .. } if 2 <= transforms.len() => Mode::VR,
+	    Camera::ThreeD { .. } => Mode::ThreeD,
+	    Camera::TwoD { .. } => Mode::TwoD,
+	}
     }
 }
 
