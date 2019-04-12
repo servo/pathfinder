@@ -1,8 +1,8 @@
 # Magic Leap demo
 
-First, install the Magic Leap SDK. By default this is installed in `MagicLeap/mlsdk/<version>`, for example:
+First, install v0.20.0 or later of the Magic Leap SDK. By default this is installed in `MagicLeap/mlsdk/<version>`, for example:
 ```
-  export MAGICLEAP_SDK=~/MagicLeap/mlsdk/v0.19.0
+  export MAGICLEAP_SDK=~/MagicLeap/mlsdk/v0.20.0
 ```
   You will also need a signing certificate.
 ```
