@@ -90,7 +90,6 @@ impl SceneBuilderContext {
                 _ => break,
             }
             let indexed_object = self.info.as_mut().unwrap().built_object_queue.pop();
-            self.add_object(indexed_object.unwrap().object);
             self.info.as_mut().unwrap().next_object_index += 1;
         }
     }
@@ -99,17 +98,12 @@ impl SceneBuilderContext {
         self.flush_current_pass();
     }
 
+    /*
     fn add_object(&mut self, object: BuiltObject) {
-        // Flush current pass if necessary.
-        if self.info.as_ref().unwrap().buffers.fills.lock().unwrap().len() + object.fills.len() >
-                MAX_FILLS_PER_BATCH {
-            self.flush_current_pass();
-        }
-
         // See whether we have room for the alpha tiles. If we don't, then flush.
         let (tile_count, mut alpha_tile_count) = (object.tile_count() as usize, 0);
-        for tile_index in 0..(object.tile_count() as usize) {
-            if !object.solid_tiles[tile_index] {
+        for local_tile_index in 0..(object.tile_count() as usize) {
+            if !object.tiles.data[local_tile_index].is_solid() {
                 alpha_tile_count += 1;
             }
         }
@@ -118,29 +112,26 @@ impl SceneBuilderContext {
             self.flush_current_pass();
         }
 
+        /*
         // Unpack.
         let info = &self.info.as_ref().unwrap();
-        let mut fills = info.buffers.fills.lock().unwrap();
-        let mut alpha_tiles = info.buffers.alpha_tiles.lock().unwrap();
-        let object_index = info.next_object_index as u16;
-        let mut object_tile_index_to_batch_alpha_tile_index = vec![u16::MAX; tile_count];
 
         // Copy alpha tiles.
-        for (tile_index, tile_backdrop) in object.tile_backdrops.data.iter().cloned().enumerate() {
+        for (local_tile_index, tile) in object.tiles.data.iter().cloned().enumerate() {
             // Skip solid tiles.
-            if object.solid_tiles[tile_index] {
+            if tile.is_solid() {
                 continue;
             }
 
             let batch_alpha_tile_index = alpha_tiles.len() as u16;
             object_tile_index_to_batch_alpha_tile_index[tile_index] = batch_alpha_tile_index;
 
-            let tile_coords = object.tile_index_to_coords(tile_index as u32);
+            let tile_coords = object.local_tile_index_to_coords(tile_index as u32);
             alpha_tiles.push(AlphaTileBatchPrimitive {
                 tile_x: tile_coords.x() as i16,
                 tile_y: tile_coords.y() as i16,
                 object_index,
-                backdrop: tile_backdrop,
+                backdrop: tile.backdrop,
             });
         }
 
@@ -156,7 +147,9 @@ impl SceneBuilderContext {
                 alpha_tile_index,
             });
         }
+        */
     }
+    */
 
     fn flush_current_pass(&mut self) {
         self.cull_alpha_tiles();
