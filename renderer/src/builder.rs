@@ -39,13 +39,13 @@ pub struct SceneBuilderContext {
 struct SceneAssemblyThreadInfo {
     listener: Box<dyn RenderCommandListener>,
     built_object_queue: SortedVector<IndexedBuiltObject>,
-    next_object_index: u32,
+    object_count: u32,
 
     buffers: Arc<SharedBuffers>,
     solid_tiles: Vec<SolidTileBatchPrimitive>,
 }
 
-pub trait RenderCommandListener: Send {
+pub trait RenderCommandListener: Send + Sync {
     fn send(&mut self, command: RenderCommand);
 }
 
@@ -68,17 +68,19 @@ impl SceneBuilderContext {
 
     fn new_scene(&mut self,
                  listener: Box<dyn RenderCommandListener>,
-                 buffers: Arc<SharedBuffers>) {
+                 buffers: Arc<SharedBuffers>,
+                 object_count: u32) {
         self.info = Some(SceneAssemblyThreadInfo {
             listener,
             built_object_queue: SortedVector::new(),
-            next_object_index: 0,
+            object_count,
 
             buffers,
             solid_tiles: vec![],
         })
     }
 
+    /*
     fn add_indexed_object(&mut self, indexed_built_object: IndexedBuiltObject) {
         self.info.as_mut().unwrap().built_object_queue.push(indexed_built_object);
 
@@ -93,10 +95,7 @@ impl SceneBuilderContext {
             self.info.as_mut().unwrap().next_object_index += 1;
         }
     }
-
-    fn scene_finished(&mut self) {
-        self.flush_current_pass();
-    }
+    */
 
     /*
     fn add_object(&mut self, object: BuiltObject) {
@@ -157,7 +156,7 @@ impl SceneBuilderContext {
         let mut info = self.info.as_mut().unwrap();
         let mut fills = info.buffers.fills.lock().unwrap();
         let mut alpha_tiles = info.buffers.alpha_tiles.lock().unwrap();
-        info.solid_tiles = info.buffers.z_buffer.build_solid_tiles(0..info.next_object_index);
+        info.solid_tiles = info.buffers.z_buffer.build_solid_tiles(0..info.object_count);
 
         let have_solid_tiles = !info.solid_tiles.is_empty();
         let have_alpha_tiles = !alpha_tiles.is_empty();
@@ -208,50 +207,46 @@ impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
     pub fn build_sequentially(&mut self, listener: Box<dyn RenderCommandListener>) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let buffers = Arc::new(SharedBuffers::new(effective_view_box));
-        self.send_new_scene_message_to_assembly_thread(listener, &buffers);
+        let object_count = self.scene.objects.len() as u32;
+        self.send_new_scene_message_to_assembly_thread(listener, &buffers, object_count);
 
         for object_index in 0..self.scene.objects.len() {
-            let built_object = build_object(object_index,
-                                            effective_view_box,
-                                            &buffers,
-                                            &self.built_options,
-                                            &self.scene);
-            self.context.add_indexed_object(IndexedBuiltObject {
-                index: object_index as u32,
-                object: built_object,
-            });
+            build_object(object_index,
+                         effective_view_box,
+                         &buffers,
+                         &self.built_options,
+                         &self.scene);
         }
 
         self.finish_and_wait_for_scene_assembly_thread();
     }
 
-    /*
     pub fn build_in_parallel(&mut self, listener: Box<dyn RenderCommandListener>) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
-        let z_buffer = Arc::new(ZBuffer::new(effective_view_box));
-        self.send_new_scene_message_to_assembly_thread(listener, &z_buffer);
+        let buffers = Arc::new(SharedBuffers::new(effective_view_box));
+        let object_count = self.scene.objects.len() as u32;
+        self.send_new_scene_message_to_assembly_thread(listener, &buffers, object_count);
 
         (0..self.scene.objects.len()).into_par_iter().for_each(|object_index| {
             build_object(object_index,
                          effective_view_box,
-                         &z_buffer,
+                         &buffers,
                          &self.built_options,
-                         &self.scene,
-                         &self.context.sender);
+                         &self.scene);
         });
 
         self.finish_and_wait_for_scene_assembly_thread();
     }
-    */
 
     fn send_new_scene_message_to_assembly_thread(&mut self,
                                                  listener: Box<dyn RenderCommandListener>,
-                                                 buffers: &Arc<SharedBuffers>) {
-        self.context.new_scene(listener, (*buffers).clone())
+                                                 buffers: &Arc<SharedBuffers>,
+                                                 object_count: u32) {
+        self.context.new_scene(listener, (*buffers).clone(), object_count)
     }
 
     fn finish_and_wait_for_scene_assembly_thread(&mut self) {
-        self.context.scene_finished();
+        self.context.flush_current_pass();
     }
 }
 
@@ -396,7 +391,7 @@ impl PartialOrd for IndexedBuiltObject {
     }
 }
 
-impl<F> RenderCommandListener for F where F: FnMut(RenderCommand) + Send {
+impl<F> RenderCommandListener for F where F: FnMut(RenderCommand) + Send + Sync {
     #[inline]
     fn send(&mut self, command: RenderCommand) { (*self)(command) }
 }

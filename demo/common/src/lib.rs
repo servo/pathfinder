@@ -42,7 +42,7 @@ use std::iter;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::process;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use usvg::{Options as UsvgOptions, Tree};
@@ -70,6 +70,8 @@ const GROUND_LINE_COLOR:    ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 const APPROX_FONT_SIZE: f32 = 16.0;
 
 const MESSAGE_TIMEOUT_SECS: u64 = 5;
+
+const MAX_MESSAGES_IN_FLIGHT: usize = 16;
 
 pub const GRIDLINE_COUNT: u8 = 10;
 
@@ -662,7 +664,8 @@ struct SceneThreadProxy {
 impl SceneThreadProxy {
     fn new(scene: Scene, options: Options) -> SceneThreadProxy {
         let (main_to_scene_sender, main_to_scene_receiver) = mpsc::channel();
-        let (scene_to_main_sender, scene_to_main_receiver) = mpsc::channel();
+        let (scene_to_main_sender, scene_to_main_receiver) =
+            mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
         let scene_builder_context = SceneBuilderContext::new();
         SceneThread::new(scene,
                          scene_to_main_sender,
@@ -683,7 +686,7 @@ impl SceneThreadProxy {
 
 struct SceneThread {
     scene: Scene,
-    sender: Sender<SceneToMainMsg>,
+    sender: SyncSender<SceneToMainMsg>,
     receiver: Receiver<MainToSceneMsg>,
     context: SceneBuilderContext,
     options: Options,
@@ -691,7 +694,7 @@ struct SceneThread {
 
 impl SceneThread {
     fn new(scene: Scene,
-           sender: Sender<SceneToMainMsg>,
+           sender: SyncSender<SceneToMainMsg>,
            receiver: Receiver<MainToSceneMsg>,
            context: SceneBuilderContext,
            options: Options) {
@@ -771,7 +774,7 @@ fn build_scene(context: &mut SceneBuilderContext,
                build_options: &BuildOptions,
                render_transform: RenderTransform,
                jobs: Option<usize>,
-               sink: &mut Sender<SceneToMainMsg>) {
+               sink: &mut SyncSender<SceneToMainMsg>) {
     let render_options = RenderOptions {
         transform: render_transform.clone(),
         dilation: match build_options.stem_darkening_font_size {
@@ -801,11 +804,10 @@ fn build_scene(context: &mut SceneBuilderContext,
         });
 
         // FIXME(pcwalton): Actually take the number of jobs into account.
-        scene_builder.build_sequentially(listener);
-        /*match jobs {
+        match jobs {
             Some(1) => scene_builder.build_sequentially(listener),
             _ => scene_builder.build_in_parallel(listener),
-        }*/
+        }
     });
 
     if result.is_err() {
