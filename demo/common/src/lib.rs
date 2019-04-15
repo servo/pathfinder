@@ -715,7 +715,7 @@ impl SceneThread {
                     }).unwrap();
                     let start_time = Instant::now();
                     for render_transform in &build_options.render_transforms {
-                        build_scene(&self.context,
+                        build_scene(&mut self.context,
                                     &self.scene,
                                     &build_options,
                                     (*render_transform).clone(),
@@ -766,7 +766,7 @@ impl Debug for SceneToMainMsg {
     }
 }
 
-fn build_scene(context: &SceneBuilderContext,
+fn build_scene(context: &mut SceneBuilderContext,
                scene: &Scene,
                build_options: &BuildOptions,
                render_transform: RenderTransform,
@@ -792,19 +792,20 @@ fn build_scene(context: &SceneBuilderContext,
     built_scene.shaders = scene.build_shaders();
     sink.send(SceneToMainMsg::BeginRenderScene(built_scene)).unwrap();
 
-    let (context, inner_sink) = (AssertUnwindSafe(context), AssertUnwindSafe(sink.clone()));
+    let (mut context, inner_sink) = (AssertUnwindSafe(context), AssertUnwindSafe(sink.clone()));
     let result = panic::catch_unwind(move || {
-        let mut scene_builder = SceneBuilder::new(&context, scene, &built_options);
+        let mut scene_builder = SceneBuilder::new(&mut context, scene, &built_options);
         let sink = (*inner_sink).clone();
         let listener = Box::new(move |command| {
             sink.send(SceneToMainMsg::Execute(command)).unwrap()
         });
 
         // FIXME(pcwalton): Actually take the number of jobs into account.
-        match jobs {
+        scene_builder.build_sequentially(listener);
+        /*match jobs {
             Some(1) => scene_builder.build_sequentially(listener),
             _ => scene_builder.build_in_parallel(listener),
-        }
+        }*/
     });
 
     if result.is_err() {

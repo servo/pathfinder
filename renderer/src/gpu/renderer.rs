@@ -27,8 +27,8 @@ use std::time::Duration;
 
 static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 
-const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 64;
-const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 64;
+const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;

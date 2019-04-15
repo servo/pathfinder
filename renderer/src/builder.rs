@@ -31,18 +31,11 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::u16;
 
-const MAX_FILLS_PER_BATCH: usize = 0x0002_0000;
-const MAX_ALPHA_TILES_PER_BATCH: usize = 0x1000;
+const MAX_FILLS_PER_BATCH: usize = 0xffffffff;
+const MAX_ALPHA_TILES_PER_BATCH: usize = 0xffff;
 const MAX_CHANNEL_MESSAGES: usize = 16;
 
 pub struct SceneBuilderContext {
-    sender: SyncSender<MainToSceneAssemblyMsg>,
-    receiver: Mutex<Receiver<SceneAssemblyToMainMsg>>,
-}
-
-struct SceneAssemblyThread {
-    receiver: Receiver<MainToSceneAssemblyMsg>,
-    sender: SyncSender<SceneAssemblyToMainMsg>,
     info: Option<SceneAssemblyThreadInfo>,
 }
 
@@ -55,30 +48,12 @@ struct SceneAssemblyThreadInfo {
     current_pass: Pass,
 }
 
-enum MainToSceneAssemblyMsg {
-    NewScene { listener: Box<dyn RenderCommandListener>, z_buffer: Arc<ZBuffer> },
-    AddObject(IndexedBuiltObject),
-    SceneFinished,
-    Exit,
-}
-
-enum SceneAssemblyToMainMsg {
-    FrameFinished,
-}
-
-impl Drop for SceneBuilderContext {
-    #[inline]
-    fn drop(&mut self) {
-        self.sender.send(MainToSceneAssemblyMsg::Exit).unwrap();
-    }
-}
-
 pub trait RenderCommandListener: Send {
     fn send(&mut self, command: RenderCommand);
 }
 
-pub struct SceneBuilder<'a> {
-    context: &'a SceneBuilderContext,
+pub struct SceneBuilder<'ctx, 'a> {
+    context: &'ctx mut SceneBuilderContext,
     scene: &'a Scene,
     built_options: &'a PreparedRenderOptions,
 }
@@ -91,63 +66,38 @@ struct IndexedBuiltObject {
 impl SceneBuilderContext {
     #[inline]
     pub fn new() -> SceneBuilderContext {
-        let (main_to_scene_assembly_sender,
-             main_to_scene_assembly_receiver) = mpsc::sync_channel(MAX_CHANNEL_MESSAGES);
-        let (scene_assembly_to_main_sender,
-             scene_assembly_to_main_receiver) = mpsc::sync_channel(MAX_CHANNEL_MESSAGES);
-        thread::spawn(move || {
-            SceneAssemblyThread::new(main_to_scene_assembly_receiver,
-                                     scene_assembly_to_main_sender).run()
-        });
-        SceneBuilderContext {
-            sender: main_to_scene_assembly_sender,
-            receiver: Mutex::new(scene_assembly_to_main_receiver),
-        }
-    }
-}
-
-impl SceneAssemblyThread {
-    #[inline]
-    fn new(receiver: Receiver<MainToSceneAssemblyMsg>, sender: SyncSender<SceneAssemblyToMainMsg>)
-           -> SceneAssemblyThread {
-        SceneAssemblyThread { receiver, sender, info: None }
+        SceneBuilderContext { info: None }
     }
 
-    fn run(&mut self) {
-        while let Ok(msg) = self.receiver.recv() {
-            match msg {
-                MainToSceneAssemblyMsg::Exit => break,
-                MainToSceneAssemblyMsg::NewScene { listener, z_buffer } => {
-                    self.info = Some(SceneAssemblyThreadInfo {
-                        listener,
-                        built_object_queue: SortedVector::new(),
-                        next_object_index: 0,
+    fn new_scene(&mut self, listener: Box<dyn RenderCommandListener>, z_buffer: Arc<ZBuffer>) {
+        self.info = Some(SceneAssemblyThreadInfo {
+            listener,
+            built_object_queue: SortedVector::new(),
+            next_object_index: 0,
 
-                        z_buffer,
-                        current_pass: Pass::new(),
-                    })
-                }
-                MainToSceneAssemblyMsg::AddObject(indexed_built_object) => {
-                    self.info.as_mut().unwrap().built_object_queue.push(indexed_built_object);
+            z_buffer,
+            current_pass: Pass::new(),
+        })
+    }
 
-                    loop {
-                        let next_object_index = self.info.as_ref().unwrap().next_object_index;
-                        match self.info.as_mut().unwrap().built_object_queue.peek() {
-                            Some(ref indexed_object) if
-                                    next_object_index == indexed_object.index => {}
-                            _ => break,
-                        }
-                        let indexed_object = self.info.as_mut().unwrap().built_object_queue.pop();
-                        self.add_object(indexed_object.unwrap().object);
-                        self.info.as_mut().unwrap().next_object_index += 1;
-                    }
-                }
-                MainToSceneAssemblyMsg::SceneFinished => {
-                    self.flush_current_pass();
-                    self.sender.send(SceneAssemblyToMainMsg::FrameFinished).unwrap();
-                }
+    fn add_indexed_object(&mut self, indexed_built_object: IndexedBuiltObject) {
+        self.info.as_mut().unwrap().built_object_queue.push(indexed_built_object);
+
+        loop {
+            let next_object_index = self.info.as_ref().unwrap().next_object_index;
+            match self.info.as_mut().unwrap().built_object_queue.peek() {
+                Some(ref indexed_object) if
+                        next_object_index == indexed_object.index => {}
+                _ => break,
             }
+            let indexed_object = self.info.as_mut().unwrap().built_object_queue.pop();
+            self.add_object(indexed_object.unwrap().object);
+            self.info.as_mut().unwrap().next_object_index += 1;
         }
+    }
+
+    fn scene_finished(&mut self) {
+        self.flush_current_pass();
     }
 
     fn add_object(&mut self, object: BuiltObject) {
@@ -253,11 +203,11 @@ impl SceneAssemblyThread {
     }
 }
 
-impl<'a> SceneBuilder<'a> {
-    pub fn new(context: &'a SceneBuilderContext,
+impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
+    pub fn new(context: &'ctx mut SceneBuilderContext,
                scene: &'a Scene,
                built_options: &'a PreparedRenderOptions)
-               -> SceneBuilder<'a> {
+               -> SceneBuilder<'ctx, 'a> {
         SceneBuilder { context, scene, built_options }
     }
 
@@ -267,17 +217,21 @@ impl<'a> SceneBuilder<'a> {
         self.send_new_scene_message_to_assembly_thread(listener, &z_buffer);
 
         for object_index in 0..self.scene.objects.len() {
-            build_object(object_index,
-                         effective_view_box,
-                         &z_buffer,
-                         &self.built_options,
-                         &self.scene,
-                         &self.context.sender);
+            let built_object = build_object(object_index,
+                                            effective_view_box,
+                                            &z_buffer,
+                                            &self.built_options,
+                                            &self.scene);
+            self.context.add_indexed_object(IndexedBuiltObject {
+                index: object_index as u32,
+                object: built_object,
+            });
         }
 
         self.finish_and_wait_for_scene_assembly_thread();
     }
 
+    /*
     pub fn build_in_parallel(&mut self, listener: Box<dyn RenderCommandListener>) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let z_buffer = Arc::new(ZBuffer::new(effective_view_box));
@@ -294,19 +248,16 @@ impl<'a> SceneBuilder<'a> {
 
         self.finish_and_wait_for_scene_assembly_thread();
     }
+    */
 
     fn send_new_scene_message_to_assembly_thread(&mut self,
                                                  listener: Box<dyn RenderCommandListener>,
                                                  z_buffer: &Arc<ZBuffer>) {
-        self.context.sender.send(MainToSceneAssemblyMsg::NewScene {
-            listener,
-            z_buffer: z_buffer.clone(),
-        }).unwrap();
+        self.context.new_scene(listener, (*z_buffer).clone())
     }
 
     fn finish_and_wait_for_scene_assembly_thread(&mut self) {
-        self.context.sender.send(MainToSceneAssemblyMsg::SceneFinished).unwrap();
-        self.context.receiver.lock().unwrap().recv().unwrap();
+        self.context.scene_finished();
     }
 }
 
@@ -314,18 +265,14 @@ fn build_object(object_index: usize,
                 effective_view_box: RectF32,
                 z_buffer: &ZBuffer,
                 built_options: &PreparedRenderOptions,
-                scene: &Scene,
-                sender: &SyncSender<MainToSceneAssemblyMsg>) {
+                scene: &Scene)
+                -> BuiltObject {
     let object = &scene.objects[object_index];
     let outline = scene.apply_render_options(object.outline(), built_options);
 
     let mut tiler = Tiler::new(&outline, effective_view_box, object_index as u16, z_buffer);
     tiler.generate_tiles();
-
-    sender.send(MainToSceneAssemblyMsg::AddObject(IndexedBuiltObject {
-        index: object_index as u32,
-        object: tiler.built_object,
-    })).unwrap();
+    tiler.built_object
 }
 
 struct Pass {
