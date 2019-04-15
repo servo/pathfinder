@@ -10,10 +10,10 @@
 
 //! Packed data ready to be sent to the GPU.
 
+use crate::builder::SceneBuilder;
 use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
-use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
@@ -21,13 +21,14 @@ use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::ops::Add;
+use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
-pub struct BuiltObject {
+pub(crate) struct BuiltObject {
     pub bounds: RectF32,
-    pub tile_backdrops: DenseTileMap<i16>,
-    pub fills: Vec<FillObjectPrimitive>,
-    pub solid_tiles: FixedBitSet,
+    pub fills: Vec<FillBatchPrimitive>,
+    pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
+    pub tiles: DenseTileMap<TileObjectPrimitive>,
 }
 
 #[derive(Debug)]
@@ -39,8 +40,8 @@ pub struct BuiltScene {
 }
 
 pub enum RenderCommand {
-    ClearMaskFramebuffer,
-    Fill(Vec<FillBatchPrimitive>),
+    AddFills(Vec<FillBatchPrimitive>),
+    FlushFills,
     AlphaTile(Vec<AlphaTileBatchPrimitive>),
     SolidTile(Vec<SolidTileBatchPrimitive>),
 }
@@ -53,8 +54,16 @@ pub struct FillObjectPrimitive {
     pub tile_y: i16,
 }
 
-// FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
 #[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct TileObjectPrimitive {
+    /// If `u16::MAX`, then this is a solid tile.
+    pub alpha_tile_index: u16,
+    pub backdrop: i8,
+}
+
+// FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(packed)]
 pub struct FillBatchPrimitive {
     pub px: LineSegmentU4,
@@ -70,13 +79,15 @@ pub struct SolidTileBatchPrimitive {
     pub object_index: u16,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct AlphaTileBatchPrimitive {
-    pub tile_x: i16,
-    pub tile_y: i16,
-    pub backdrop: i16,
+    pub tile_x_lo: u8,
+    pub tile_y_lo: u8,
+    pub tile_hi: u8,
+    pub backdrop: i8,
     pub object_index: u16,
+    pub tile_index: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -90,33 +101,26 @@ pub struct Stats {
 // Utilities for built objects
 
 impl BuiltObject {
-    pub fn new(bounds: RectF32) -> BuiltObject {
-        // Compute the tile rect.
+    pub(crate) fn new(bounds: RectF32) -> BuiltObject {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
-
-        // Allocate tiles.
-        let tile_backdrops = DenseTileMap::new(tile_rect);
-        let mut solid_tiles = FixedBitSet::with_capacity(tile_backdrops.data.len());
-        solid_tiles.insert_range(..);
-
-        BuiltObject { bounds, tile_backdrops, fills: vec![], solid_tiles }
+        let tiles = DenseTileMap::new(tile_rect);
+        BuiltObject { bounds, fills: vec![], alpha_tiles: vec![], tiles }
     }
 
     #[inline]
-    pub fn tile_rect(&self) -> RectI32 {
-        self.tile_backdrops.rect
+    pub(crate) fn tile_rect(&self) -> RectI32 {
+        self.tiles.rect
     }
 
-    #[inline]
-    pub fn tile_count(&self) -> u32 {
-        self.tile_backdrops.data.len() as u32
-    }
-
-    fn add_fill(&mut self, segment: &LineSegmentF32, tile_coords: Point2DI32) {
+    fn add_fill(&mut self,
+                builder: &SceneBuilder,
+                segment: &LineSegmentF32,
+                tile_coords: Point2DI32) {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
-        let tile_index = match self.tile_coords_to_index(tile_coords) {
-            None => return,
-            Some(tile_index) => tile_index,
+
+        // Ensure this fill is in bounds. If not, cull it.
+        if self.tile_coords_to_local_index(tile_coords).is_none() {
+            return;
         };
 
         debug_assert_eq!(TILE_WIDTH, TILE_HEIGHT);
@@ -142,22 +146,34 @@ impl BuiltObject {
             return;
         }
 
+        // Allocate global tile if necessary.
+        let alpha_tile_index = self.get_or_allocate_alpha_tile_index(builder, tile_coords);
+
         //println!("... ... OK, pushing");
 
-        self.fills.push(FillObjectPrimitive {
-            px,
-            subpx,
-            tile_x: tile_coords.x() as i16,
-            tile_y: tile_coords.y() as i16,
-        });
-        self.solid_tiles.set(tile_index as usize, false);
+        self.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
     }
 
-    pub fn add_active_fill(&mut self,
-                           left: f32,
-                           right: f32,
-                           mut winding: i16,
-                           tile_coords: Point2DI32) {
+    fn get_or_allocate_alpha_tile_index(&mut self, builder: &SceneBuilder, tile_coords: Point2DI32)
+                                        -> u16 {
+        let local_tile_index = self.tiles.coords_to_index_unchecked(tile_coords);
+        let alpha_tile_index = self.tiles.data[local_tile_index].alpha_tile_index;
+        if alpha_tile_index != !0 {
+            return alpha_tile_index;
+        }
+
+        let alpha_tile_index = builder.next_alpha_tile_index
+                                      .fetch_add(1, Ordering::Relaxed) as u16;
+        self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
+        alpha_tile_index
+    }
+
+    pub(crate) fn add_active_fill(&mut self,
+                                  builder: &SceneBuilder,
+                                  left: f32,
+                                  right: f32,
+                                  mut winding: i32,
+                                  tile_coords: Point2DI32) {
         let tile_origin_y = (tile_coords.y() * TILE_HEIGHT as i32) as f32;
         let left = Point2DF32::new(left, tile_origin_y);
         let right = Point2DF32::new(right, tile_origin_y);
@@ -176,7 +192,7 @@ impl BuiltObject {
                  tile_y);*/
 
         while winding != 0 {
-            self.add_fill(&segment, tile_coords);
+            self.add_fill(builder, &segment, tile_coords);
             if winding < 0 {
                 winding += 1
             } else {
@@ -185,7 +201,10 @@ impl BuiltObject {
         }
     }
 
-    pub fn generate_fill_primitives_for_line(&mut self, mut segment: LineSegmentF32, tile_y: i32) {
+    pub(crate) fn generate_fill_primitives_for_line(&mut self,
+                                                    builder: &SceneBuilder,
+                                                    mut segment: LineSegmentF32,
+                                                    tile_y: i32) {
         /*println!("... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
                     segment,
                     tile_y,
@@ -223,18 +242,19 @@ impl BuiltObject {
             }
 
             let fill_segment = LineSegmentF32::new(&fill_from, &fill_to);
-            self.add_fill(&fill_segment, Point2DI32::new(subsegment_tile_x, tile_y));
+            let fill_tile_coords = Point2DI32::new(subsegment_tile_x, tile_y);
+            self.add_fill(builder, &fill_segment, fill_tile_coords);
         }
     }
 
     #[inline]
-    pub fn tile_coords_to_index(&self, coords: Point2DI32) -> Option<u32> {
-        self.tile_backdrops.coords_to_index(coords).map(|index| index as u32)
+    pub(crate) fn tile_coords_to_local_index(&self, coords: Point2DI32) -> Option<u32> {
+        self.tiles.coords_to_index(coords).map(|index| index as u32)
     }
 
     #[inline]
-    pub fn tile_index_to_coords(&self, tile_index: u32) -> Point2DI32 {
-        self.tile_backdrops.index_to_coords(tile_index as usize)
+    pub(crate) fn local_tile_index_to_coords(&self, tile_index: u32) -> Point2DI32 {
+        self.tiles.index_to_coords(tile_index as usize)
     }
 }
 
@@ -254,11 +274,46 @@ impl BuiltScene {
     }
 }
 
+impl Default for TileObjectPrimitive {
+    #[inline]
+    fn default() -> TileObjectPrimitive {
+        TileObjectPrimitive { backdrop: 0, alpha_tile_index: !0 }
+    }
+}
+
+impl TileObjectPrimitive {
+    #[inline]
+    pub fn is_solid(&self) -> bool {
+        self.alpha_tile_index == !0
+    }
+}
+
+impl AlphaTileBatchPrimitive {
+    #[inline]
+    pub fn new(tile_coords: Point2DI32, backdrop: i8, object_index: u16, tile_index: u16)
+               -> AlphaTileBatchPrimitive {
+        AlphaTileBatchPrimitive {
+            tile_x_lo: (tile_coords.x() & 0xff) as u8,
+            tile_y_lo: (tile_coords.y() & 0xff) as u8,
+            tile_hi: (((tile_coords.x() >> 8) & 0x0f) | ((tile_coords.y() >> 4) & 0xf0)) as u8,
+            backdrop,
+            object_index,
+            tile_index,
+        }
+    }
+
+    #[inline]
+    pub fn tile_coords(&self) -> Point2DI32 {
+        Point2DI32::new((self.tile_x_lo as i32) | (((self.tile_hi & 0xf) as i32) << 8),
+                        (self.tile_y_lo as i32) | (((self.tile_hi & 0xf0) as i32) << 4))
+    }
+}
+
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
-            RenderCommand::ClearMaskFramebuffer => write!(formatter, "ClearMaskFramebuffer"),
-            RenderCommand::Fill(ref fills) => write!(formatter, "Fill(x{})", fills.len()),
+            RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
+            RenderCommand::FlushFills => write!(formatter, "FlushFills"),
             RenderCommand::AlphaTile(ref tiles) => {
                 write!(formatter, "AlphaTile(x{})", tiles.len())
             }

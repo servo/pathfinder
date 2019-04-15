@@ -18,17 +18,20 @@ use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, DepthState, Device};
-use pathfinder_gpu::{Primitive, RenderState, StencilFunc, StencilState, TextureFormat};
-use pathfinder_gpu::{UniformData, VertexAttrType};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
+use pathfinder_gpu::{DepthState, Device, Primitive, RenderState, StencilFunc, StencilState};
+use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
+use std::cmp;
 use std::collections::VecDeque;
 use std::time::Duration;
+use std::u32;
 
 static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 
-const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 64;
-const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 64;
+// FIXME(pcwalton): Shrink this again!
+const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
@@ -37,6 +40,8 @@ const MASK_TILE_INSTANCE_SIZE: usize = 8;
 
 const FILL_COLORS_TEXTURE_WIDTH: i32 = 256;
 const FILL_COLORS_TEXTURE_HEIGHT: i32 = 256;
+
+const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
 pub struct Renderer<D> where D: Device {
     // Device
@@ -78,6 +83,10 @@ pub struct Renderer<D> where D: Device {
     viewport: RectI32,
     render_mode: RenderMode,
     use_depth: bool,
+
+    // Rendering state
+    mask_framebuffer_cleared: bool,
+    buffered_fills: Vec<FillBatchPrimitive>,
 }
 
 impl<D> Renderer<D> where D: Device {
@@ -100,10 +109,10 @@ impl<D> Renderer<D> where D: Device {
         let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
 
         let quad_vertex_positions_buffer = device.create_buffer();
-        device.upload_to_buffer(&quad_vertex_positions_buffer,
-                                &QUAD_VERTEX_POSITIONS,
-                                BufferTarget::Vertex,
-                                BufferUploadMode::Static);
+        device.allocate_buffer(&quad_vertex_positions_buffer,
+                               BufferData::Memory(&QUAD_VERTEX_POSITIONS),
+                               BufferTarget::Vertex,
+                               BufferUploadMode::Static);
 
         let fill_vertex_array = FillVertexArray::new(&device,
                                                      &fill_program,
@@ -175,6 +184,9 @@ impl<D> Renderer<D> where D: Device {
             viewport,
             render_mode: RenderMode::default(),
             use_depth: false,
+
+            mask_framebuffer_cleared: false,
+            buffered_fills: vec![],
         }
     }
 
@@ -192,16 +204,14 @@ impl<D> Renderer<D> where D: Device {
         if self.use_depth {
             self.draw_stencil(&built_scene.quad);
         }
+
+        self.mask_framebuffer_cleared = false;
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
         match *command {
-            RenderCommand::ClearMaskFramebuffer => self.clear_mask_framebuffer(),
-            RenderCommand::Fill(ref fills) => {
-                let count = fills.len() as u32;
-                self.upload_fills(fills);
-                self.draw_fills(count);
-            }
+            RenderCommand::AddFills(ref fills) => self.add_fills(fills),
+            RenderCommand::FlushFills => self.draw_buffered_fills(),
             RenderCommand::SolidTile(ref solid_tiles) => {
                 let count = solid_tiles.len() as u32;
                 self.upload_solid_tiles(solid_tiles);
@@ -284,24 +294,17 @@ impl<D> Renderer<D> where D: Device {
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
-        self.device.upload_to_buffer(&self.solid_tile_vertex_array().vertex_buffer,
-                                     &solid_tiles,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
-    }
-
-    fn upload_fills(&mut self, fills: &[FillBatchPrimitive]) {
-        self.device.upload_to_buffer(&self.fill_vertex_array.vertex_buffer,
-                                     &fills,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(&self.solid_tile_vertex_array().vertex_buffer,
+                                    BufferData::Memory(&solid_tiles),
+                                    BufferTarget::Vertex,
+                                    BufferUploadMode::Dynamic);
     }
 
     fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
-        self.device.upload_to_buffer(&self.alpha_tile_vertex_array().vertex_buffer,
-                                     &alpha_tiles,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(&self.alpha_tile_vertex_array().vertex_buffer,
+                                    BufferData::Memory(&alpha_tiles),
+                                    BufferTarget::Vertex,
+                                    BufferUploadMode::Dynamic);
     }
 
     fn clear_mask_framebuffer(&mut self) {
@@ -311,7 +314,36 @@ impl<D> Renderer<D> where D: Device {
         self.device.clear(Some(F32x4::splat(0.0)), None, None);
     }
 
-    fn draw_fills(&mut self, count: u32) {
+    fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
+        if fills.is_empty() {
+            return;
+        }
+
+        while !fills.is_empty() {
+            let count = cmp::min(fills.len(), MAX_FILLS_PER_BATCH - self.buffered_fills.len());
+            self.buffered_fills.extend_from_slice(&fills[0..count]);
+            fills = &fills[count..];
+            if self.buffered_fills.len() == MAX_FILLS_PER_BATCH {
+                self.draw_buffered_fills();
+            }
+        }
+    }
+
+    fn draw_buffered_fills(&mut self) {
+        if self.buffered_fills.is_empty() {
+            return;
+        }
+
+        self.device.allocate_buffer(&self.fill_vertex_array.vertex_buffer,
+                                    BufferData::Memory(&self.buffered_fills),
+                                    BufferTarget::Vertex,
+                                    BufferUploadMode::Dynamic);
+
+        if !self.mask_framebuffer_cleared {
+            self.clear_mask_framebuffer();
+            self.mask_framebuffer_cleared = true;
+        }
+
         self.device.bind_framebuffer(&self.mask_framebuffer);
 
         self.device.bind_vertex_array(&self.fill_vertex_array.vertex_array);
@@ -333,7 +365,13 @@ impl<D> Renderer<D> where D: Device {
             blend: BlendState::RGBOneAlphaOne,
             ..RenderState::default()
         };
-        self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
+        debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
+        self.device.draw_arrays_instanced(Primitive::TriangleFan,
+                                          4,
+                                          self.buffered_fills.len() as u32,
+                                          &render_state);
+
+        self.buffered_fills.clear()
     }
 
     fn draw_alpha_tiles(&mut self, count: u32) {
@@ -530,10 +568,10 @@ impl<D> Renderer<D> where D: Device {
     }
 
     fn draw_stencil(&self, quad_positions: &[Point3DF32]) {
-        self.device.upload_to_buffer(&self.stencil_vertex_array.vertex_buffer,
-                                     quad_positions,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(&self.stencil_vertex_array.vertex_buffer,
+                                    BufferData::Memory(quad_positions),
+                                    BufferTarget::Vertex,
+                                    BufferUploadMode::Dynamic);
         self.bind_draw_framebuffer();
 
         self.device.bind_vertex_array(&self.stencil_vertex_array.vertex_array);
@@ -619,7 +657,14 @@ impl<D> FillVertexArray<D> where D: Device {
     fn new(device: &D, fill_program: &FillProgram<D>, quad_vertex_positions_buffer: &D::Buffer)
            -> FillVertexArray<D> {
         let vertex_array = device.create_vertex_array();
+
         let vertex_buffer = device.create_buffer();
+        let vertex_buffer_data: BufferData<FillBatchPrimitive> =
+            BufferData::Uninitialized(MAX_FILLS_PER_BATCH);
+        device.allocate_buffer(&vertex_buffer,
+                               vertex_buffer_data,
+                               BufferTarget::Vertex,
+                               BufferUploadMode::Dynamic);
 
         let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord");
         let from_px_attr = device.get_vertex_attr(&fill_program.program, "FromPx");
@@ -692,6 +737,7 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin");
         let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop");
         let object_attr = device.get_vertex_attr(&alpha_tile_program.program, "Object");
+        let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex");
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
@@ -699,32 +745,37 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         device.use_program(&alpha_tile_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_float_vertex_attr(&tess_coord_attr,
-                                            2,
-                                            VertexAttrType::U8,
-                                            false,
-                                            0,
-                                            0,
-                                            0);
+                                           2,
+                                           VertexAttrType::U8,
+                                           false,
+                                           0,
+                                           0,
+                                           0);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tile_origin_attr,
-                                            2,
-                                            VertexAttrType::I16,
-                                            false,
-                                            MASK_TILE_INSTANCE_SIZE,
-                                            0,
-                                            1);
+        device.configure_int_vertex_attr(&tile_origin_attr,
+                                         3,
+                                         VertexAttrType::U8,
+                                         MASK_TILE_INSTANCE_SIZE,
+                                         0,
+                                         1);
         device.configure_int_vertex_attr(&backdrop_attr,
-                                            1,
-                                            VertexAttrType::I16,
-                                            MASK_TILE_INSTANCE_SIZE,
-                                            4,
-                                            1);
+                                         1,
+                                         VertexAttrType::I8,
+                                         MASK_TILE_INSTANCE_SIZE,
+                                         3,
+                                         1);
         device.configure_int_vertex_attr(&object_attr,
-                                            2,
-                                            VertexAttrType::I16,
-                                            MASK_TILE_INSTANCE_SIZE,
-                                            6,
-                                            1);
+                                         2,
+                                         VertexAttrType::I16,
+                                         MASK_TILE_INSTANCE_SIZE,
+                                         4,
+                                         1);
+        device.configure_int_vertex_attr(&tile_index_attr,
+                                         2,
+                                         VertexAttrType::I16,
+                                         MASK_TILE_INSTANCE_SIZE,
+                                         6,
+                                         1);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
     }

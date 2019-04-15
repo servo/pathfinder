@@ -21,8 +21,8 @@ use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, Device, Primitive, RenderState};
-use pathfinder_gpu::{UniformData, VertexAttrType};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
+use pathfinder_gpu::{RenderState, UniformData, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::mem;
@@ -160,14 +160,14 @@ impl<D> UI<D> where D: Device {
                                          filled: bool) {
         device.bind_vertex_array(&self.solid_vertex_array.vertex_array);
 
-        device.upload_to_buffer(&self.solid_vertex_array.vertex_buffer,
-                                vertex_data,
-                                BufferTarget::Vertex,
-                                BufferUploadMode::Dynamic);
-        device.upload_to_buffer(&self.solid_vertex_array.index_buffer,
-                                index_data,
-                                BufferTarget::Index,
-                                BufferUploadMode::Dynamic);
+        device.allocate_buffer(&self.solid_vertex_array.vertex_buffer,
+                               BufferData::Memory(vertex_data),
+                               BufferTarget::Vertex,
+                               BufferUploadMode::Dynamic);
+        device.allocate_buffer(&self.solid_vertex_array.index_buffer,
+                               BufferData::Memory(index_data),
+                               BufferTarget::Index,
+                               BufferUploadMode::Dynamic);
 
         device.use_program(&self.solid_program.program);
         device.set_uniform(&self.solid_program.framebuffer_size_uniform,
@@ -385,14 +385,14 @@ impl<D> UI<D> where D: Device {
                                      index_data: &[u32],
                                      texture: &D::Texture,
                                      color: ColorU) {
-        device.upload_to_buffer(&self.texture_vertex_array.vertex_buffer,
-                                vertex_data,
-                                BufferTarget::Vertex,
-                                BufferUploadMode::Dynamic);
-        device.upload_to_buffer(&self.texture_vertex_array.index_buffer,
-                                index_data,
-                                BufferTarget::Index,
-                                BufferUploadMode::Dynamic);
+        device.allocate_buffer(&self.texture_vertex_array.vertex_buffer,
+                               BufferData::Memory(vertex_data),
+                               BufferTarget::Vertex,
+                               BufferUploadMode::Dynamic);
+        device.allocate_buffer(&self.texture_vertex_array.index_buffer,
+                               BufferData::Memory(index_data),
+                               BufferTarget::Index,
+                               BufferUploadMode::Dynamic);
 
         device.bind_vertex_array(&self.texture_vertex_array.vertex_array);
         device.use_program(&self.texture_program.program);

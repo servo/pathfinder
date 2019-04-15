@@ -274,10 +274,10 @@ impl Sub<Point2DF32> for LineSegmentF32 {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(transparent)]
 pub struct LineSegmentU4(pub u16);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(transparent)]
 pub struct LineSegmentU8(pub u32);

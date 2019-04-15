@@ -25,8 +25,7 @@ use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
 use pathfinder_gpu::{StencilState, UniformData};
-use pathfinder_renderer::builder::{RenderOptions, RenderTransform};
-use pathfinder_renderer::builder::{SceneBuilder, SceneBuilderContext};
+use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu::renderer::{RenderMode, Renderer};
 use pathfinder_renderer::gpu_data::{BuiltScene, RenderCommand, Stats};
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
@@ -42,7 +41,7 @@ use std::iter;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::process;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use usvg::{Options as UsvgOptions, Tree};
@@ -70,6 +69,8 @@ const GROUND_LINE_COLOR:    ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
 const APPROX_FONT_SIZE: f32 = 16.0;
 
 const MESSAGE_TIMEOUT_SECS: u64 = 5;
+
+const MAX_MESSAGES_IN_FLIGHT: usize = 256;
 
 pub const GRIDLINE_COUNT: u8 = 10;
 
@@ -662,13 +663,9 @@ struct SceneThreadProxy {
 impl SceneThreadProxy {
     fn new(scene: Scene, options: Options) -> SceneThreadProxy {
         let (main_to_scene_sender, main_to_scene_receiver) = mpsc::channel();
-        let (scene_to_main_sender, scene_to_main_receiver) = mpsc::channel();
-        let scene_builder_context = SceneBuilderContext::new();
-        SceneThread::new(scene,
-                         scene_to_main_sender,
-                         main_to_scene_receiver,
-                         scene_builder_context,
-                         options);
+        let (scene_to_main_sender, scene_to_main_receiver) =
+            mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
+        SceneThread::new(scene, scene_to_main_sender, main_to_scene_receiver, options);
         SceneThreadProxy { sender: main_to_scene_sender, receiver: scene_to_main_receiver }
     }
 
@@ -683,19 +680,17 @@ impl SceneThreadProxy {
 
 struct SceneThread {
     scene: Scene,
-    sender: Sender<SceneToMainMsg>,
+    sender: SyncSender<SceneToMainMsg>,
     receiver: Receiver<MainToSceneMsg>,
-    context: SceneBuilderContext,
     options: Options,
 }
 
 impl SceneThread {
     fn new(scene: Scene,
-           sender: Sender<SceneToMainMsg>,
+           sender: SyncSender<SceneToMainMsg>,
            receiver: Receiver<MainToSceneMsg>,
-           context: SceneBuilderContext,
            options: Options) {
-        thread::spawn(move || (SceneThread { scene, sender, receiver, context, options }).run());
+        thread::spawn(move || (SceneThread { scene, sender, receiver, options }).run());
     }
 
     fn run(mut self) {
@@ -715,8 +710,7 @@ impl SceneThread {
                     }).unwrap();
                     let start_time = Instant::now();
                     for render_transform in &build_options.render_transforms {
-                        build_scene(&self.context,
-                                    &self.scene,
+                        build_scene(&self.scene,
                                     &build_options,
                                     (*render_transform).clone(),
                                     self.options.jobs,
@@ -766,12 +760,11 @@ impl Debug for SceneToMainMsg {
     }
 }
 
-fn build_scene(context: &SceneBuilderContext,
-               scene: &Scene,
+fn build_scene(scene: &Scene,
                build_options: &BuildOptions,
                render_transform: RenderTransform,
                jobs: Option<usize>,
-               sink: &mut Sender<SceneToMainMsg>) {
+               sink: &mut SyncSender<SceneToMainMsg>) {
     let render_options = RenderOptions {
         transform: render_transform.clone(),
         dilation: match build_options.stem_darkening_font_size {
@@ -792,18 +785,17 @@ fn build_scene(context: &SceneBuilderContext,
     built_scene.shaders = scene.build_shaders();
     sink.send(SceneToMainMsg::BeginRenderScene(built_scene)).unwrap();
 
-    let (context, inner_sink) = (AssertUnwindSafe(context), AssertUnwindSafe(sink.clone()));
+    let inner_sink = AssertUnwindSafe(sink.clone());
     let result = panic::catch_unwind(move || {
-        let mut scene_builder = SceneBuilder::new(&context, scene, &built_options);
         let sink = (*inner_sink).clone();
         let listener = Box::new(move |command| {
             sink.send(SceneToMainMsg::Execute(command)).unwrap()
         });
 
-        // FIXME(pcwalton): Actually take the number of jobs into account.
+        let mut scene_builder = SceneBuilder::new(scene, &built_options, listener);
         match jobs {
-            Some(1) => scene_builder.build_sequentially(listener),
-            _ => scene_builder.build_in_parallel(listener),
+            Some(1) => scene_builder.build_sequentially(),
+            _ => scene_builder.build_in_parallel(),
         }
     });
 
