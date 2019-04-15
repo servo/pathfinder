@@ -10,23 +10,25 @@
 
 //! A demo app for Pathfinder using SDL 2.
 
-use jemallocator;
 use nfd::Response;
+use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
-use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
-use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
 use sdl2::event::{Event as SDLEvent, WindowEvent};
 use sdl2::keyboard::Keycode as SDLKeycode;
 use sdl2::video::{GLContext, GLProfile, Window as SDLWindow};
+use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
 use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::path::PathBuf;
 use std::ptr;
 
+#[cfg(unix)]
+use jemallocator;
+#[cfg(unix)]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
@@ -84,17 +86,14 @@ impl Window for WindowImpl {
 
     fn viewport(&self, view: View) -> RectI32 {
         let (width, height) = self.window.drawable_size();
-	let mut width = width as i32;
-	let height = height as i32;
-	let mut x_offset = 0;
+        let mut width = width as i32;
+        let height = height as i32;
+        let mut x_offset = 0;
         if let View::Stereo(index) = view {
             width = width / 2;
-	    x_offset = width * (index as i32);
+            x_offset = width * (index as i32);
         }
-        RectI32::new (
-	    Point2DI32::new(x_offset, 0),
-	    Point2DI32::new(width, height),
-	)
+        RectI32::new(Point2DI32::new(x_offset, 0), Point2DI32::new(width, height))
     }
 
     fn make_current(&mut self, _view: View) {
@@ -154,14 +153,17 @@ impl WindowImpl {
                 gl_attributes.set_depth_size(24);
                 gl_attributes.set_stencil_size(8);
 
-                window = sdl_video.window("Pathfinder Demo",
-                                        DEFAULT_WINDOW_WIDTH,
-                                        DEFAULT_WINDOW_HEIGHT)
-                                .opengl()
-                                .resizable()
-                                .allow_highdpi()
-                                .build()
-                                .unwrap();
+                window = sdl_video
+                    .window(
+                        "Pathfinder Demo",
+                        DEFAULT_WINDOW_WIDTH,
+                        DEFAULT_WINDOW_HEIGHT,
+                    )
+                    .opengl()
+                    .resizable()
+                    .allow_highdpi()
+                    .build()
+                    .unwrap();
 
                 gl_context = window.gl_create_context().unwrap();
                 gl::load_with(|name| sdl_video.gl_get_proc_address(name) as *const _);
@@ -170,9 +172,7 @@ impl WindowImpl {
 
                 let resource_loader = FilesystemResourceLoader::locate();
 
-                let open_svg_message_type = unsafe {
-                    sdl_event.register_event().unwrap()
-                };
+                let open_svg_message_type = unsafe { sdl_event.register_event().unwrap() };
 
                 WindowImpl {
                     window,
@@ -215,16 +215,17 @@ impl WindowImpl {
 
     fn convert_sdl_event(&self, sdl_event: SDLEvent) -> Option<Event> {
         match sdl_event {
-            SDLEvent::User { type_, .. } if type_ == self.open_svg_message_type => {
-                Some(Event::OpenSVG(SVGPath::Path(self.selected_file.clone().unwrap())))
-            }
-            SDLEvent::User { type_, code, .. } => {
-                Some(Event::User { message_type: type_, message_data: code as u32 })
-            }
-            SDLEvent::MouseButtonDown { x, y, .. } => {
-                Some(Event::MouseDown(Point2DI32::new(x, y)))
-            }
-            SDLEvent::MouseMotion { x, y, mousestate, .. } => {
+            SDLEvent::User { type_, .. } if type_ == self.open_svg_message_type => Some(
+                Event::OpenSVG(SVGPath::Path(self.selected_file.clone().unwrap())),
+            ),
+            SDLEvent::User { type_, code, .. } => Some(Event::User {
+                message_type: type_,
+                message_data: code as u32,
+            }),
+            SDLEvent::MouseButtonDown { x, y, .. } => Some(Event::MouseDown(Point2DI32::new(x, y))),
+            SDLEvent::MouseMotion {
+                x, y, mousestate, ..
+            } => {
                 let position = Point2DI32::new(x, y);
                 if mousestate.left() {
                     Some(Event::MouseDragged(position))
@@ -233,15 +234,18 @@ impl WindowImpl {
                 }
             }
             SDLEvent::Quit { .. } => Some(Event::Quit),
-            SDLEvent::Window { win_event: WindowEvent::SizeChanged(..), .. } => {
-                Some(Event::WindowResized(self.size()))
-            }
-            SDLEvent::KeyDown { keycode: Some(sdl_keycode), .. } => {
-                self.convert_sdl_keycode(sdl_keycode).map(Event::KeyDown)
-            }
-            SDLEvent::KeyUp { keycode: Some(sdl_keycode), .. } => {
-                self.convert_sdl_keycode(sdl_keycode).map(Event::KeyUp)
-            }
+            SDLEvent::Window {
+                win_event: WindowEvent::SizeChanged(..),
+                ..
+            } => Some(Event::WindowResized(self.size())),
+            SDLEvent::KeyDown {
+                keycode: Some(sdl_keycode),
+                ..
+            } => self.convert_sdl_keycode(sdl_keycode).map(Event::KeyDown),
+            SDLEvent::KeyUp {
+                keycode: Some(sdl_keycode),
+                ..
+            } => self.convert_sdl_keycode(sdl_keycode).map(Event::KeyUp),
             SDLEvent::MultiGesture { d_dist, .. } => Some(Event::Zoom(d_dist)),
             _ => None,
         }
@@ -251,8 +255,10 @@ impl WindowImpl {
         match sdl_keycode {
             SDLKeycode::Escape => Some(Keycode::Escape),
             SDLKeycode::Tab => Some(Keycode::Tab),
-            sdl_keycode if sdl_keycode as i32 >= SDLKeycode::A as i32 &&
-                    sdl_keycode as i32 <= SDLKeycode::Z as i32 => {
+            sdl_keycode
+                if sdl_keycode as i32 >= SDLKeycode::A as i32
+                    && sdl_keycode as i32 <= SDLKeycode::Z as i32 =>
+            {
                 let offset = (sdl_keycode as i32 - SDLKeycode::A as i32) as u8;
                 Some(Keycode::Alphanumeric(offset + b'a'))
             }
