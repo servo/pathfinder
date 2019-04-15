@@ -11,7 +11,7 @@
 //! Packs data onto the GPU.
 
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive};
-use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
+use crate::gpu_data::{RenderCommand, SharedBuffers, SolidTileBatchPrimitive};
 use crate::scene::Scene;
 use crate::sorted_vector::SortedVector;
 use crate::tiles::Tiler;
@@ -25,10 +25,7 @@ use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::cmp::{Ordering, PartialOrd};
 use std::mem;
-use std::ops::Range;
-use std::sync::mpsc::{self, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::u16;
 
 const MAX_FILLS_PER_BATCH: usize = 0xffffffff;
@@ -44,8 +41,8 @@ struct SceneAssemblyThreadInfo {
     built_object_queue: SortedVector<IndexedBuiltObject>,
     next_object_index: u32,
 
-    pub(crate) z_buffer: Arc<ZBuffer>,
-    current_pass: Pass,
+    buffers: Arc<SharedBuffers>,
+    solid_tiles: Vec<SolidTileBatchPrimitive>,
 }
 
 pub trait RenderCommandListener: Send {
@@ -69,14 +66,16 @@ impl SceneBuilderContext {
         SceneBuilderContext { info: None }
     }
 
-    fn new_scene(&mut self, listener: Box<dyn RenderCommandListener>, z_buffer: Arc<ZBuffer>) {
+    fn new_scene(&mut self,
+                 listener: Box<dyn RenderCommandListener>,
+                 buffers: Arc<SharedBuffers>) {
         self.info = Some(SceneAssemblyThreadInfo {
             listener,
             built_object_queue: SortedVector::new(),
             next_object_index: 0,
 
-            z_buffer,
-            current_pass: Pass::new(),
+            buffers,
+            solid_tiles: vec![],
         })
     }
 
@@ -102,7 +101,7 @@ impl SceneBuilderContext {
 
     fn add_object(&mut self, object: BuiltObject) {
         // Flush current pass if necessary.
-        if self.info.as_ref().unwrap().current_pass.fills.len() + object.fills.len() >
+        if self.info.as_ref().unwrap().buffers.fills.lock().unwrap().len() + object.fills.len() >
                 MAX_FILLS_PER_BATCH {
             self.flush_current_pass();
         }
@@ -114,28 +113,33 @@ impl SceneBuilderContext {
                 alpha_tile_count += 1;
             }
         }
-        if self.info.as_ref().unwrap().current_pass.alpha_tiles.len() + alpha_tile_count >
-                MAX_ALPHA_TILES_PER_BATCH {
+        if self.info.as_ref().unwrap().buffers.alpha_tiles.lock().unwrap().len() +
+                alpha_tile_count > MAX_ALPHA_TILES_PER_BATCH {
             self.flush_current_pass();
         }
 
-        // Copy alpha tiles.
-        let mut current_pass = &mut self.info.as_mut().unwrap().current_pass;
+        // Unpack.
+        let info = &self.info.as_ref().unwrap();
+        let mut fills = info.buffers.fills.lock().unwrap();
+        let mut alpha_tiles = info.buffers.alpha_tiles.lock().unwrap();
+        let object_index = info.next_object_index as u16;
         let mut object_tile_index_to_batch_alpha_tile_index = vec![u16::MAX; tile_count];
+
+        // Copy alpha tiles.
         for (tile_index, tile_backdrop) in object.tile_backdrops.data.iter().cloned().enumerate() {
             // Skip solid tiles.
             if object.solid_tiles[tile_index] {
                 continue;
             }
 
-            let batch_alpha_tile_index = current_pass.alpha_tiles.len() as u16;
+            let batch_alpha_tile_index = alpha_tiles.len() as u16;
             object_tile_index_to_batch_alpha_tile_index[tile_index] = batch_alpha_tile_index;
 
             let tile_coords = object.tile_index_to_coords(tile_index as u32);
-            current_pass.alpha_tiles.push(AlphaTileBatchPrimitive {
+            alpha_tiles.push(AlphaTileBatchPrimitive {
                 tile_x: tile_coords.x() as i16,
                 tile_y: tile_coords.y() as i16,
-                object_index: current_pass.object_range.end as u16,
+                object_index,
                 backdrop: tile_backdrop,
             });
         }
@@ -146,53 +150,50 @@ impl SceneBuilderContext {
             let object_tile_index = object.tile_coords_to_index(tile_coords).unwrap();
             let object_tile_index = object_tile_index as usize;
             let alpha_tile_index = object_tile_index_to_batch_alpha_tile_index[object_tile_index];
-            current_pass.fills.push(FillBatchPrimitive {
+            fills.push(FillBatchPrimitive {
                 px: fill.px,
                 subpx: fill.subpx,
                 alpha_tile_index,
             });
         }
-
-        current_pass.object_range.end += 1;
     }
 
     fn flush_current_pass(&mut self) {
         self.cull_alpha_tiles();
 
         let mut info = self.info.as_mut().unwrap();
-        info.current_pass.solid_tiles =
-            info.z_buffer.build_solid_tiles(info.current_pass.object_range.clone());
+        let mut fills = info.buffers.fills.lock().unwrap();
+        let mut alpha_tiles = info.buffers.alpha_tiles.lock().unwrap();
+        info.solid_tiles = info.buffers.z_buffer.build_solid_tiles(0..info.next_object_index);
 
-        let have_solid_tiles = !info.current_pass.solid_tiles.is_empty();
-        let have_alpha_tiles = !info.current_pass.alpha_tiles.is_empty();
-        let have_fills = !info.current_pass.fills.is_empty();
+        let have_solid_tiles = !info.solid_tiles.is_empty();
+        let have_alpha_tiles = !alpha_tiles.is_empty();
+        let have_fills = !fills.is_empty();
         if !have_solid_tiles && !have_alpha_tiles && !have_fills {
             return
         }
 
         info.listener.send(RenderCommand::ClearMaskFramebuffer);
         if have_solid_tiles {
-            let tiles = mem::replace(&mut info.current_pass.solid_tiles, vec![]);
+            let tiles = mem::replace(&mut info.solid_tiles, vec![]);
             info.listener.send(RenderCommand::SolidTile(tiles));
         }
         if have_fills {
-            let fills = mem::replace(&mut info.current_pass.fills, vec![]);
+            let fills = mem::replace(&mut *fills, vec![]);
             info.listener.send(RenderCommand::Fill(fills));
         }
         if have_alpha_tiles {
-            let tiles = mem::replace(&mut info.current_pass.alpha_tiles, vec![]);
+            let tiles = mem::replace(&mut *alpha_tiles, vec![]);
             info.listener.send(RenderCommand::AlphaTile(tiles));
         }
-
-        info.current_pass.object_range.start = info.current_pass.object_range.end;
     }
 
     fn cull_alpha_tiles(&mut self) {
         let info = self.info.as_mut().unwrap();
-        for alpha_tile in &mut info.current_pass.alpha_tiles {
+        for alpha_tile in &mut *info.buffers.alpha_tiles.lock().unwrap() {
             let alpha_tile_coords = Point2DI32::new(alpha_tile.tile_x as i32,
                                                     alpha_tile.tile_y as i32);
-            if info.z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
+            if info.buffers.z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
                 continue;
             }
 
@@ -213,13 +214,13 @@ impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
 
     pub fn build_sequentially(&mut self, listener: Box<dyn RenderCommandListener>) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
-        let z_buffer = Arc::new(ZBuffer::new(effective_view_box));
-        self.send_new_scene_message_to_assembly_thread(listener, &z_buffer);
+        let buffers = Arc::new(SharedBuffers::new(effective_view_box));
+        self.send_new_scene_message_to_assembly_thread(listener, &buffers);
 
         for object_index in 0..self.scene.objects.len() {
             let built_object = build_object(object_index,
                                             effective_view_box,
-                                            &z_buffer,
+                                            &buffers,
                                             &self.built_options,
                                             &self.scene);
             self.context.add_indexed_object(IndexedBuiltObject {
@@ -252,8 +253,8 @@ impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
 
     fn send_new_scene_message_to_assembly_thread(&mut self,
                                                  listener: Box<dyn RenderCommandListener>,
-                                                 z_buffer: &Arc<ZBuffer>) {
-        self.context.new_scene(listener, (*z_buffer).clone())
+                                                 buffers: &Arc<SharedBuffers>) {
+        self.context.new_scene(listener, (*buffers).clone())
     }
 
     fn finish_and_wait_for_scene_assembly_thread(&mut self) {
@@ -263,29 +264,16 @@ impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
 
 fn build_object(object_index: usize,
                 effective_view_box: RectF32,
-                z_buffer: &ZBuffer,
+                buffers: &SharedBuffers,
                 built_options: &PreparedRenderOptions,
                 scene: &Scene)
                 -> BuiltObject {
     let object = &scene.objects[object_index];
     let outline = scene.apply_render_options(object.outline(), built_options);
 
-    let mut tiler = Tiler::new(&outline, effective_view_box, object_index as u16, z_buffer);
+    let mut tiler = Tiler::new(&outline, effective_view_box, object_index as u16, buffers);
     tiler.generate_tiles();
     tiler.built_object
-}
-
-struct Pass {
-    solid_tiles: Vec<SolidTileBatchPrimitive>,
-    alpha_tiles: Vec<AlphaTileBatchPrimitive>,
-    fills: Vec<FillBatchPrimitive>,
-    object_range: Range<u32>,
-}
-
-impl Pass {
-    fn new() -> Pass {
-        Pass { solid_tiles: vec![], alpha_tiles: vec![], fills: vec![], object_range: 0..0 }
-    }
 }
 
 #[derive(Clone, Default)]

@@ -8,9 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::gpu_data::BuiltObject;
+use crate::gpu_data::{BuiltObject, SharedBuffers};
 use crate::sorted_vector::SortedVector;
-use crate::z_buffer::ZBuffer;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
@@ -29,7 +28,7 @@ pub struct Tiler<'o, 'z> {
     outline: &'o Outline,
     pub built_object: BuiltObject,
     object_index: u16,
-    z_buffer: &'z ZBuffer,
+    buffers: &'z SharedBuffers,
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
@@ -38,7 +37,10 @@ pub struct Tiler<'o, 'z> {
 
 impl<'o, 'z> Tiler<'o, 'z> {
     #[allow(clippy::or_fun_call)]
-    pub fn new(outline: &'o Outline, view_box: RectF32, object_index: u16, z_buffer: &'z ZBuffer)
+    pub fn new(outline: &'o Outline,
+               view_box: RectF32,
+               object_index: u16,
+               buffers: &'z SharedBuffers)
                -> Tiler<'o, 'z> {
         let bounds = outline.bounds().intersection(view_box).unwrap_or(RectF32::default());
         let built_object = BuiltObject::new(bounds);
@@ -47,7 +49,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
             outline,
             built_object,
             object_index,
-            z_buffer,
+            buffers,
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
@@ -97,7 +99,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
         for solid_tile_index in self.built_object.solid_tiles.ones() {
             if self.built_object.tile_backdrops.data[solid_tile_index] != 0 {
                 let tile_coords = self.built_object.tile_index_to_coords(solid_tile_index as u32);
-                self.z_buffer.update(tile_coords, self.object_index);
+                self.buffers.z_buffer.update(tile_coords, self.object_index);
             }
         }
     }

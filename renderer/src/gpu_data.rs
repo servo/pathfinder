@@ -13,6 +13,7 @@
 use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
+use crate::z_buffer::ZBuffer;
 use fixedbitset::FixedBitSet;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
@@ -21,6 +22,7 @@ use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::ops::Add;
+use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct BuiltObject {
@@ -36,6 +38,12 @@ pub struct BuiltScene {
     pub quad: [Point3DF32; 4],
     pub object_count: u32,
     pub shaders: Vec<ObjectShader>,
+}
+
+pub struct SharedBuffers {
+    pub z_buffer: ZBuffer,
+    pub alpha_tiles: Mutex<Vec<AlphaTileBatchPrimitive>>,
+    pub fills: Mutex<Vec<FillBatchPrimitive>>,
 }
 
 pub enum RenderCommand {
@@ -250,6 +258,16 @@ impl BuiltScene {
             solid_tile_count: 0,
             alpha_tile_count: 0,
             fill_count: 0,
+        }
+    }
+}
+
+impl SharedBuffers {
+    pub fn new(effective_view_box: RectF32) -> SharedBuffers {
+        SharedBuffers {
+            z_buffer: ZBuffer::new(effective_view_box),
+            fills: Mutex::new(vec![]),
+            alpha_tiles: Mutex::new(vec![]),
         }
     }
 }
