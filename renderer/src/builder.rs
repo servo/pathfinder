@@ -16,6 +16,7 @@ use crate::scene::Scene;
 use crate::sorted_vector::SortedVector;
 use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
+use atomic::Ordering as AtomicOrdering;
 use parking_lot::Mutex;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
@@ -183,7 +184,8 @@ impl SceneBuilderContext {
 
     fn cull_alpha_tiles(&mut self) {
         let info = self.info.as_mut().unwrap();
-        for alpha_tile in &mut *info.buffers.alpha_tiles.lock() {
+        for alpha_tile_ref in &mut *info.buffers.alpha_tiles.lock() {
+            let mut alpha_tile = alpha_tile_ref.load(AtomicOrdering::SeqCst);
             let alpha_tile_coords = Point2DI32::new(alpha_tile.tile_x as i32,
                                                     alpha_tile.tile_y as i32);
             if info.buffers.z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
@@ -193,6 +195,7 @@ impl SceneBuilderContext {
             // FIXME(pcwalton): Hack!
             alpha_tile.tile_x = -1;
             alpha_tile.tile_y = -1;
+            alpha_tile_ref.store(alpha_tile, AtomicOrdering::SeqCst);
         }
     }
 }

@@ -10,11 +10,11 @@
 
 //! Packed data ready to be sent to the GPU.
 
+use atomic::Atomic;
 use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use crate::z_buffer::ZBuffer;
-use fixedbitset::FixedBitSet;
 use parking_lot::Mutex;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
@@ -40,14 +40,14 @@ pub struct BuiltScene {
 
 pub struct SharedBuffers {
     pub z_buffer: ZBuffer,
-    pub alpha_tiles: Mutex<Vec<AlphaTileBatchPrimitive>>,
-    pub fills: Mutex<Vec<FillBatchPrimitive>>,
+    pub alpha_tiles: Mutex<Vec<Atomic<AlphaTileBatchPrimitive>>>,
+    pub fills: Mutex<Vec<Atomic<FillBatchPrimitive>>>,
 }
 
 pub enum RenderCommand {
     ClearMaskFramebuffer,
-    Fill(Vec<FillBatchPrimitive>),
-    AlphaTile(Vec<AlphaTileBatchPrimitive>),
+    Fill(Vec<Atomic<FillBatchPrimitive>>),
+    AlphaTile(Vec<Atomic<AlphaTileBatchPrimitive>>),
     SolidTile(Vec<SolidTileBatchPrimitive>),
 }
 
@@ -158,7 +158,7 @@ impl BuiltObject {
 
         //println!("... ... OK, pushing");
 
-        buffers.fills.lock().push(FillBatchPrimitive { px, subpx, alpha_tile_index });
+        buffers.fills.lock().push(Atomic::new(FillBatchPrimitive { px, subpx, alpha_tile_index }));
     }
 
     fn get_or_allocate_alpha_tile_index(&mut self,
@@ -174,7 +174,7 @@ impl BuiltObject {
         let mut alpha_tiles = buffers.alpha_tiles.lock();
         let alpha_tile_index = alpha_tiles.len() as u16;
         self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
-        alpha_tiles.push(AlphaTileBatchPrimitive::default());
+        alpha_tiles.push(Atomic::new(AlphaTileBatchPrimitive::default()));
         alpha_tile_index
     }
 
