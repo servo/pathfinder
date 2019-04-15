@@ -96,7 +96,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
     }
 
     fn pack_and_cull(&self) {
-        let mut alpha_tiles = self.buffers.alpha_tiles.lock().unwrap();
+        let mut alpha_tiles = self.buffers.alpha_tiles.lock();
         for (tile_index, tile) in self.built_object.tiles.data.iter().enumerate() {
             let tile_coords = self.built_object.local_tile_index_to_coords(tile_index as u32);
             if tile.is_solid() {

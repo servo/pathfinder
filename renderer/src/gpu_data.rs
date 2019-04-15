@@ -15,6 +15,7 @@ use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use crate::z_buffer::ZBuffer;
 use fixedbitset::FixedBitSet;
+use parking_lot::Mutex;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
@@ -22,7 +23,6 @@ use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::ops::Add;
-use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct BuiltObject {
@@ -158,7 +158,7 @@ impl BuiltObject {
 
         //println!("... ... OK, pushing");
 
-        buffers.fills.lock().unwrap().push(FillBatchPrimitive { px, subpx, alpha_tile_index });
+        buffers.fills.lock().push(FillBatchPrimitive { px, subpx, alpha_tile_index });
     }
 
     fn get_or_allocate_alpha_tile_index(&mut self,
@@ -171,7 +171,7 @@ impl BuiltObject {
             return alpha_tile_index;
         }
 
-        let mut alpha_tiles = buffers.alpha_tiles.lock().unwrap();
+        let mut alpha_tiles = buffers.alpha_tiles.lock();
         let alpha_tile_index = alpha_tiles.len() as u16;
         self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
         alpha_tiles.push(AlphaTileBatchPrimitive::default());

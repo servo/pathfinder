@@ -16,6 +16,7 @@ use crate::scene::Scene;
 use crate::sorted_vector::SortedVector;
 use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
+use parking_lot::Mutex;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
@@ -25,7 +26,7 @@ use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::cmp::{Ordering, PartialOrd};
 use std::mem;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::u16;
 
 const MAX_FILLS_PER_BATCH: usize = 0xffffffff;
@@ -154,8 +155,8 @@ impl SceneBuilderContext {
         self.cull_alpha_tiles();
 
         let mut info = self.info.as_mut().unwrap();
-        let mut fills = info.buffers.fills.lock().unwrap();
-        let mut alpha_tiles = info.buffers.alpha_tiles.lock().unwrap();
+        let mut fills = info.buffers.fills.lock();
+        let mut alpha_tiles = info.buffers.alpha_tiles.lock();
         info.solid_tiles = info.buffers.z_buffer.build_solid_tiles(0..info.object_count);
 
         let have_solid_tiles = !info.solid_tiles.is_empty();
@@ -182,7 +183,7 @@ impl SceneBuilderContext {
 
     fn cull_alpha_tiles(&mut self) {
         let info = self.info.as_mut().unwrap();
-        for alpha_tile in &mut *info.buffers.alpha_tiles.lock().unwrap() {
+        for alpha_tile in &mut *info.buffers.alpha_tiles.lock() {
             let alpha_tile_coords = Point2DI32::new(alpha_tile.tile_x as i32,
                                                     alpha_tile.tile_y as i32);
             if info.buffers.z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
