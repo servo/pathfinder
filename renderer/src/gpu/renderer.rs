@@ -692,6 +692,7 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin");
         let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop");
         let object_attr = device.get_vertex_attr(&alpha_tile_program.program, "Object");
+        let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex");
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
@@ -699,32 +700,37 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         device.use_program(&alpha_tile_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_float_vertex_attr(&tess_coord_attr,
-                                            2,
-                                            VertexAttrType::U8,
-                                            false,
-                                            0,
-                                            0,
-                                            0);
+                                           2,
+                                           VertexAttrType::U8,
+                                           false,
+                                           0,
+                                           0,
+                                           0);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tile_origin_attr,
-                                            2,
-                                            VertexAttrType::I16,
-                                            false,
-                                            MASK_TILE_INSTANCE_SIZE,
-                                            0,
-                                            1);
+        device.configure_int_vertex_attr(&tile_origin_attr,
+                                         3,
+                                         VertexAttrType::U8,
+                                         MASK_TILE_INSTANCE_SIZE,
+                                         0,
+                                         1);
         device.configure_int_vertex_attr(&backdrop_attr,
-                                            1,
-                                            VertexAttrType::I16,
-                                            MASK_TILE_INSTANCE_SIZE,
-                                            4,
-                                            1);
+                                         1,
+                                         VertexAttrType::I8,
+                                         MASK_TILE_INSTANCE_SIZE,
+                                         3,
+                                         1);
         device.configure_int_vertex_attr(&object_attr,
-                                            2,
-                                            VertexAttrType::I16,
-                                            MASK_TILE_INSTANCE_SIZE,
-                                            6,
-                                            1);
+                                         2,
+                                         VertexAttrType::I16,
+                                         MASK_TILE_INSTANCE_SIZE,
+                                         4,
+                                         1);
+        device.configure_int_vertex_attr(&tile_index_attr,
+                                         2,
+                                         VertexAttrType::I16,
+                                         MASK_TILE_INSTANCE_SIZE,
+                                         6,
+                                         1);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
     }

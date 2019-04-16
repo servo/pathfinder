@@ -824,6 +824,7 @@ impl VertexAttrTypeExt for VertexAttrType {
         match self {
             VertexAttrType::F32 => gl::FLOAT,
             VertexAttrType::I16 => gl::SHORT,
+            VertexAttrType::I8  => gl::BYTE,
             VertexAttrType::U16 => gl::UNSIGNED_SHORT,
             VertexAttrType::U8  => gl::UNSIGNED_BYTE,
         }

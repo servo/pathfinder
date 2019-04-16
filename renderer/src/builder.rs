@@ -186,15 +186,15 @@ impl SceneBuilderContext {
         let info = self.info.as_mut().unwrap();
         for alpha_tile_index in 0..info.buffers.alpha_tiles.len() {
             let mut alpha_tile = info.buffers.alpha_tiles.get(alpha_tile_index);
-            let alpha_tile_coords = Point2DI32::new(alpha_tile.tile_x as i32,
-                                                    alpha_tile.tile_y as i32);
+            let alpha_tile_coords = alpha_tile.tile_coords();
             if info.buffers.z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
                 continue;
             }
 
             // FIXME(pcwalton): Hack!
-            alpha_tile.tile_x = -1;
-            alpha_tile.tile_y = -1;
+            alpha_tile.tile_x_lo = 0xff;
+            alpha_tile.tile_y_lo = 0xff;
+            alpha_tile.tile_hi = 0xff;
             info.buffers.alpha_tiles.set(alpha_tile_index, alpha_tile);
         }
     }

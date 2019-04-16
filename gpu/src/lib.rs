@@ -167,6 +167,7 @@ pub enum TextureFormat {
 pub enum VertexAttrType {
     F32,
     I16,
+    I8,
     U16,
     U8,
 }

@@ -106,12 +106,11 @@ impl<'o, 'z> Tiler<'o, 'z> {
                 continue;
             }
 
-            alpha_tiles.set(tile.alpha_tile_index as u32, AlphaTileBatchPrimitive {
-                tile_x: tile_coords.x() as i16,
-                tile_y: tile_coords.y() as i16,
-                backdrop: tile.backdrop,
-                object_index: self.object_index,
-            });
+            alpha_tiles.set(tile.alpha_tile_index as u32,
+                            AlphaTileBatchPrimitive::new(tile_coords,
+                                                         tile.backdrop,
+                                                         self.object_index,
+                                                         tile.alpha_tile_index as u16));
         }
     }
 
@@ -178,7 +177,9 @@ impl<'o, 'z> Tiler<'o, 'z> {
                 let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
                 if let Some(tile_index) = self.built_object
                                               .tile_coords_to_local_index(current_tile_coords) {
-                    self.built_object.tiles.data[tile_index as usize].backdrop = current_winding;
+                    // FIXME(pcwalton): Handle winding overflow.
+                    self.built_object.tiles.data[tile_index as usize].backdrop =
+                        current_winding as i8;
                 }
 
                 current_tile_x += 1;

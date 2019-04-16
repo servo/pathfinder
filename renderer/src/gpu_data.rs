@@ -69,7 +69,7 @@ pub struct FillObjectPrimitive {
 pub struct TileObjectPrimitive {
     /// If `u16::MAX`, then this is a solid tile.
     pub alpha_tile_index: u16,
-    pub backdrop: i16,
+    pub backdrop: i8,
 }
 
 // FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
@@ -92,10 +92,12 @@ pub struct SolidTileBatchPrimitive {
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct AlphaTileBatchPrimitive {
-    pub tile_x: i16,
-    pub tile_y: i16,
-    pub backdrop: i16,
+    pub tile_x_lo: u8,
+    pub tile_y_lo: u8,
+    pub tile_hi: u8,
+    pub backdrop: i8,
     pub object_index: u16,
+    pub tile_index: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -185,7 +187,7 @@ impl BuiltObject {
                            buffers: &SharedBuffers,
                            left: f32,
                            right: f32,
-                           mut winding: i16,
+                           mut winding: i32,
                            tile_coords: Point2DI32) {
         let tile_origin_y = (tile_coords.y() * TILE_HEIGHT as i32) as f32;
         let left = Point2DF32::new(left, tile_origin_y);
@@ -297,6 +299,27 @@ impl TileObjectPrimitive {
     #[inline]
     pub fn is_solid(&self) -> bool {
         self.alpha_tile_index == !0
+    }
+}
+
+impl AlphaTileBatchPrimitive {
+    #[inline]
+    pub fn new(tile_coords: Point2DI32, backdrop: i8, object_index: u16, tile_index: u16)
+               -> AlphaTileBatchPrimitive {
+        AlphaTileBatchPrimitive {
+            tile_x_lo: (tile_coords.x() & 0xff) as u8,
+            tile_y_lo: (tile_coords.y() & 0xff) as u8,
+            tile_hi: (((tile_coords.x() >> 8) & 0x0f) | ((tile_coords.y() >> 4) & 0xf0)) as u8,
+            backdrop,
+            object_index,
+            tile_index,
+        }
+    }
+
+    #[inline]
+    pub fn tile_coords(&self) -> Point2DI32 {
+        Point2DI32::new((self.tile_x_lo as i32) | (((self.tile_hi & 0xf) as i32) << 8),
+                        (self.tile_y_lo as i32) | (((self.tile_hi & 0xf0) as i32) << 4))
     }
 }
 
