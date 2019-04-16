@@ -177,7 +177,9 @@ impl SceneBuilderContext {
             fills.clear();
         }
         if have_alpha_tiles {
-            info.listener.send(RenderCommand::AlphaTile(alpha_tiles.to_vec()));
+            let mut tiles = alpha_tiles.to_vec();
+            tiles.sort_unstable_by(|tile_a, tile_b| tile_a.object_index.cmp(&tile_b.object_index));
+            info.listener.send(RenderCommand::AlphaTile(tiles));
             alpha_tiles.clear();
         }
     }
