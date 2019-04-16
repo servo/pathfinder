@@ -5,7 +5,6 @@ edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [dependencies]
-atomic = "0.4"
 byteorder = "1.2"
 fixedbitset = "0.1"
 hashbrown = "0.1"

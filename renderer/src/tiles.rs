@@ -8,7 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use atomic::Ordering as AtomicOrdering;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, SharedBuffers};
 use crate::sorted_vector::SortedVector;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
@@ -97,7 +96,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
     }
 
     fn pack_and_cull(&self) {
-        let mut alpha_tiles = self.buffers.alpha_tiles.lock();
+        let alpha_tiles = &self.buffers.alpha_tiles;
         for (tile_index, tile) in self.built_object.tiles.data.iter().enumerate() {
             let tile_coords = self.built_object.local_tile_index_to_coords(tile_index as u32);
             if tile.is_solid() {
@@ -107,12 +106,12 @@ impl<'o, 'z> Tiler<'o, 'z> {
                 continue;
             }
 
-            alpha_tiles[tile.alpha_tile_index as usize].store(AlphaTileBatchPrimitive {
+            alpha_tiles.set(tile.alpha_tile_index as u32, AlphaTileBatchPrimitive {
                 tile_x: tile_coords.x() as i16,
                 tile_y: tile_coords.y() as i16,
                 backdrop: tile.backdrop,
                 object_index: self.object_index,
-            }, AtomicOrdering::SeqCst);
+            });
         }
     }
 

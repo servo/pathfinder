@@ -8,7 +8,6 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use atomic::Atomic;
 use crate::gpu::debug::DebugUI;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltScene, FillBatchPrimitive};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
@@ -291,14 +290,14 @@ impl<D> Renderer<D> where D: Device {
                                      BufferUploadMode::Dynamic);
     }
 
-    fn upload_fills(&mut self, fills: &[Atomic<FillBatchPrimitive>]) {
+    fn upload_fills(&mut self, fills: &[FillBatchPrimitive]) {
         self.device.upload_to_buffer(&self.fill_vertex_array.vertex_buffer,
                                      &fills,
                                      BufferTarget::Vertex,
                                      BufferUploadMode::Dynamic);
     }
 
-    fn upload_alpha_tiles(&mut self, alpha_tiles: &[Atomic<AlphaTileBatchPrimitive>]) {
+    fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
         self.device.upload_to_buffer(&self.alpha_tile_vertex_array().vertex_buffer,
                                      &alpha_tiles,
                                      BufferTarget::Vertex,

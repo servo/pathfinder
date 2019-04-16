@@ -10,7 +10,6 @@
 
 //! Packed data ready to be sent to the GPU.
 
-use atomic::Atomic;
 use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
@@ -21,8 +20,14 @@ use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
+use std::cell::UnsafeCell;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
+use std::mem;
 use std::ops::Add;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+pub const MAX_FILLS:       u32 = 0x20000;
+pub const MAX_ALPHA_TILES: u32 = 0x10000;
 
 #[derive(Debug)]
 pub struct BuiltObject {
@@ -40,14 +45,14 @@ pub struct BuiltScene {
 
 pub struct SharedBuffers {
     pub z_buffer: ZBuffer,
-    pub alpha_tiles: Mutex<Vec<Atomic<AlphaTileBatchPrimitive>>>,
-    pub fills: Mutex<Vec<Atomic<FillBatchPrimitive>>>,
+    pub alpha_tiles: ConcurrentBuffer<AlphaTileBatchPrimitive>,
+    pub fills: ConcurrentBuffer<FillBatchPrimitive>,
 }
 
 pub enum RenderCommand {
     ClearMaskFramebuffer,
-    Fill(Vec<Atomic<FillBatchPrimitive>>),
-    AlphaTile(Vec<Atomic<AlphaTileBatchPrimitive>>),
+    Fill(Vec<FillBatchPrimitive>),
+    AlphaTile(Vec<AlphaTileBatchPrimitive>),
     SolidTile(Vec<SolidTileBatchPrimitive>),
 }
 
@@ -68,7 +73,7 @@ pub struct TileObjectPrimitive {
 }
 
 // FIXME(pcwalton): Move `subpx` before `px` and remove `repr(packed)`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 #[repr(packed)]
 pub struct FillBatchPrimitive {
     pub px: LineSegmentU4,
@@ -158,7 +163,7 @@ impl BuiltObject {
 
         //println!("... ... OK, pushing");
 
-        buffers.fills.lock().push(Atomic::new(FillBatchPrimitive { px, subpx, alpha_tile_index }));
+        buffers.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
     }
 
     fn get_or_allocate_alpha_tile_index(&mut self,
@@ -171,10 +176,8 @@ impl BuiltObject {
             return alpha_tile_index;
         }
 
-        let mut alpha_tiles = buffers.alpha_tiles.lock();
-        let alpha_tile_index = alpha_tiles.len() as u16;
+        let alpha_tile_index = buffers.alpha_tiles.push(AlphaTileBatchPrimitive::default()) as u16;
         self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
-        alpha_tiles.push(Atomic::new(AlphaTileBatchPrimitive::default()));
         alpha_tile_index
     }
 
@@ -301,8 +304,8 @@ impl SharedBuffers {
     pub fn new(effective_view_box: RectF32) -> SharedBuffers {
         SharedBuffers {
             z_buffer: ZBuffer::new(effective_view_box),
-            fills: Mutex::new(vec![]),
-            alpha_tiles: Mutex::new(vec![]),
+            fills: ConcurrentBuffer::new(MAX_FILLS),
+            alpha_tiles: ConcurrentBuffer::new(MAX_ALPHA_TILES),
         }
     }
 }
@@ -333,3 +336,69 @@ impl Add<Stats> for Stats {
         }
     }
 }
+
+pub struct ConcurrentBuffer<T> where T: Copy + Default + Sync {
+    data: Vec<UnsafeCell<T>>,
+    len: AtomicUsize,
+}
+
+impl<T> ConcurrentBuffer<T> where T: Copy + Default + Sync {
+    pub fn new(capacity: u32) -> ConcurrentBuffer<T> {
+        ConcurrentBuffer {
+            data: (0..capacity).map(|_| UnsafeCell::new(T::default())).collect(),
+            len: AtomicUsize::new(0),
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, index: u32) -> T {
+        unsafe {
+            *(self.data[index as usize].get())
+        }
+    }
+
+    #[inline]
+    pub fn set(&self, index: u32, element: T) {
+        unsafe {
+            let ptr = self.data[index as usize].get();
+            *ptr = element;
+        }
+    }
+
+    fn push(&self, element: T) -> u32 {
+        let index = self.len.fetch_add(1, Ordering::SeqCst) as u32;
+        self.set(index, element);
+        index
+    }
+
+    #[inline]
+    pub fn clear(&self) {
+        self.len.store(0, Ordering::SeqCst);
+    }
+
+    #[inline]
+    pub fn len(&self) -> u32 {
+        self.len.load(Ordering::SeqCst) as u32
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline]
+    unsafe fn as_slice(&self) -> &[T] {
+        unsafe {
+            mem::transmute::<&[UnsafeCell<T>], &[T]>(&self.data[0..(self.len() as usize)])
+        }
+    }
+
+    #[inline]
+    pub fn to_vec(&self) -> Vec<T> {
+        unsafe {
+            self.as_slice().to_vec()
+        }
+    }
+}
+
+unsafe impl<T> Sync for ConcurrentBuffer<T> where T: Copy + Default + Sync {}

@@ -10,13 +10,12 @@
 
 //! Packs data onto the GPU.
 
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive};
-use crate::gpu_data::{RenderCommand, SharedBuffers, SolidTileBatchPrimitive};
+use crate::gpu_data::{BuiltObject, ConcurrentBuffer, MAX_ALPHA_TILES};
+use crate::gpu_data::{MAX_FILLS, RenderCommand, SharedBuffers, SolidTileBatchPrimitive};
 use crate::scene::Scene;
 use crate::sorted_vector::SortedVector;
 use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
-use atomic::Ordering as AtomicOrdering;
 use parking_lot::Mutex;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
@@ -28,6 +27,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::cmp::{Ordering, PartialOrd};
 use std::mem;
 use std::sync::Arc;
+use std::sync::atomic::Ordering as AtomicOrdering;
 use std::u16;
 
 const MAX_FILLS_PER_BATCH: usize = 0xffffffff;
@@ -156,8 +156,8 @@ impl SceneBuilderContext {
         self.cull_alpha_tiles();
 
         let mut info = self.info.as_mut().unwrap();
-        let mut fills = info.buffers.fills.lock();
-        let mut alpha_tiles = info.buffers.alpha_tiles.lock();
+        let fills = &info.buffers.fills;
+        let alpha_tiles = &info.buffers.alpha_tiles;
         info.solid_tiles = info.buffers.z_buffer.build_solid_tiles(0..info.object_count);
 
         let have_solid_tiles = !info.solid_tiles.is_empty();
@@ -173,19 +173,19 @@ impl SceneBuilderContext {
             info.listener.send(RenderCommand::SolidTile(tiles));
         }
         if have_fills {
-            let fills = mem::replace(&mut *fills, vec![]);
-            info.listener.send(RenderCommand::Fill(fills));
+            info.listener.send(RenderCommand::Fill(fills.to_vec()));
+            fills.clear();
         }
         if have_alpha_tiles {
-            let tiles = mem::replace(&mut *alpha_tiles, vec![]);
-            info.listener.send(RenderCommand::AlphaTile(tiles));
+            info.listener.send(RenderCommand::AlphaTile(alpha_tiles.to_vec()));
+            alpha_tiles.clear();
         }
     }
 
     fn cull_alpha_tiles(&mut self) {
         let info = self.info.as_mut().unwrap();
-        for alpha_tile_ref in &mut *info.buffers.alpha_tiles.lock() {
-            let mut alpha_tile = alpha_tile_ref.load(AtomicOrdering::SeqCst);
+        for alpha_tile_index in 0..info.buffers.alpha_tiles.len() {
+            let mut alpha_tile = info.buffers.alpha_tiles.get(alpha_tile_index);
             let alpha_tile_coords = Point2DI32::new(alpha_tile.tile_x as i32,
                                                     alpha_tile.tile_y as i32);
             if info.buffers.z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
@@ -195,7 +195,7 @@ impl SceneBuilderContext {
             // FIXME(pcwalton): Hack!
             alpha_tile.tile_x = -1;
             alpha_tile.tile_y = -1;
-            alpha_tile_ref.store(alpha_tile, AtomicOrdering::SeqCst);
+            info.buffers.alpha_tiles.set(alpha_tile_index, alpha_tile);
         }
     }
 }
