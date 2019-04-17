@@ -33,7 +33,6 @@ const MAX_ALPHA_TILES_PER_RUN: u32 = 0x80000;
 
 pub struct SceneBuilderContext {
     pub alpha_tiles: ConcurrentCopyableArrayVec<AlphaTileBatchPrimitive>,
-    pub fills: ConcurrentCopyableArrayVec<FillBatchPrimitive>,
 }
 
 pub trait RenderCommandListener: Send + Sync {
@@ -45,7 +44,6 @@ impl SceneBuilderContext {
     pub fn new() -> SceneBuilderContext {
         SceneBuilderContext {
             alpha_tiles: ConcurrentCopyableArrayVec::new(MAX_ALPHA_TILES_PER_RUN),
-            fills: ConcurrentCopyableArrayVec::new(MAX_FILLS_PER_RUN),
         }
     }
 }
@@ -109,18 +107,10 @@ impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
     fn pack_alpha_tiles(&mut self,
                         z_buffer: &ZBuffer,
                         listener: Box<dyn RenderCommandListener>) {
-        let fills = &self.context.fills;
         let alpha_tiles = &self.context.alpha_tiles;
 
         let object_count = self.scene.objects.len() as u32;
         let solid_tiles = z_buffer.build_solid_tiles(0..object_count);
-
-        let fill_count = fills.committed_len();
-        if fill_count % MAX_FILLS_PER_BATCH != 0 {
-            let fill_start = fill_count & !(MAX_FILLS_PER_BATCH - 1);
-            listener.send(RenderCommand::Fill(fills.range_to_vec(fill_start..fill_count)));
-            fills.clear();
-        }
 
         if !solid_tiles.is_empty() {
             listener.send(RenderCommand::SolidTile(solid_tiles));
@@ -158,8 +148,7 @@ fn build_object(object_index: usize,
                 z_buffer: &ZBuffer,
                 listener: &dyn RenderCommandListener,
                 built_options: &PreparedRenderOptions,
-                scene: &Scene)
-                -> BuiltObject {
+                scene: &Scene) {
     let object = &scene.objects[object_index];
     let outline = scene.apply_render_options(object.outline(), built_options);
 
@@ -170,7 +159,7 @@ fn build_object(object_index: usize,
                                view_box,
                                object_index as u16);
     tiler.generate_tiles();
-    tiler.built_object
+    listener.send(RenderCommand::Fill(tiler.built_object.fills));
 }
 
 #[derive(Clone, Default)]

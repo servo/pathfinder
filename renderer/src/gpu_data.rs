@@ -27,6 +27,7 @@ use std::ops::Add;
 #[derive(Debug)]
 pub struct BuiltObject {
     pub bounds: RectF32,
+    pub fills: Vec<FillBatchPrimitive>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
 }
 
@@ -103,7 +104,7 @@ impl BuiltObject {
     pub fn new(bounds: RectF32) -> BuiltObject {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
         let tiles = DenseTileMap::new(tile_rect);
-        BuiltObject { bounds, tiles }
+        BuiltObject { bounds, fills: vec![], tiles }
     }
 
     #[inline]
@@ -156,8 +157,7 @@ impl BuiltObject {
 
         //println!("... ... OK, pushing");
 
-        let fill_index = context.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
-        self.flush_render_commands_after_fill(context, listener, fill_index);
+        self.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
     }
 
     fn get_or_allocate_alpha_tile_index(&mut self,
@@ -173,19 +173,6 @@ impl BuiltObject {
         let alpha_tile_index = context.alpha_tiles.push(AlphaTileBatchPrimitive::default()) as u16;
         self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
         alpha_tile_index
-    }
-
-    fn flush_render_commands_after_fill(&mut self,
-                                        context: &SceneBuilderContext,
-                                        listener: &dyn RenderCommandListener,
-                                        fill_index: u32) {
-        let fill_count = fill_index + 1;
-        if fill_count % MAX_FILLS_PER_BATCH == 0 {
-            // Note that this doesn't guarantee that the fills arrive in order (though it's likely
-            // that they will), but that doesn't matter because they're order-independent.
-            let fill_range = (fill_count - MAX_FILLS_PER_BATCH)..fill_count;
-            listener.send(RenderCommand::Fill(context.fills.range_to_vec(fill_range)))
-        }
     }
 
     pub fn add_active_fill(&mut self,
