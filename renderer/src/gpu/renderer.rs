@@ -78,6 +78,9 @@ pub struct Renderer<D> where D: Device {
     viewport: RectI32,
     render_mode: RenderMode,
     use_depth: bool,
+
+    // Rendering state
+    mask_framebuffer_cleared: bool,
 }
 
 impl<D> Renderer<D> where D: Device {
@@ -175,6 +178,8 @@ impl<D> Renderer<D> where D: Device {
             viewport,
             render_mode: RenderMode::default(),
             use_depth: false,
+
+            mask_framebuffer_cleared: false,
         }
     }
 
@@ -192,16 +197,13 @@ impl<D> Renderer<D> where D: Device {
         if self.use_depth {
             self.draw_stencil(&built_scene.quad);
         }
+
+        self.mask_framebuffer_cleared = false;
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
         match *command {
-            RenderCommand::ClearMaskFramebuffer => self.clear_mask_framebuffer(),
-            RenderCommand::Fill(ref fills) => {
-                let count = fills.len() as u32;
-                self.upload_fills(fills);
-                self.draw_fills(count);
-            }
+            RenderCommand::Fill(ref fills) => self.handle_fills(fills),
             RenderCommand::SolidTile(ref solid_tiles) => {
                 let count = solid_tiles.len() as u32;
                 self.upload_solid_tiles(solid_tiles);
@@ -309,6 +311,21 @@ impl<D> Renderer<D> where D: Device {
 
         // TODO(pcwalton): Only clear the appropriate portion?
         self.device.clear(Some(F32x4::splat(0.0)), None, None);
+    }
+
+    fn handle_fills(&mut self, fills: &[FillBatchPrimitive]) {
+        if fills.is_empty() {
+            return
+        }
+
+        if !self.mask_framebuffer_cleared {
+            self.clear_mask_framebuffer();
+            self.mask_framebuffer_cleared = true;
+        }
+
+        let count = fills.len() as u32;
+        self.upload_fills(fills);
+        self.draw_fills(count);
     }
 
     fn draw_fills(&mut self, count: u32) {

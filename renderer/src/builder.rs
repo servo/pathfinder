@@ -50,8 +50,6 @@ impl<'a> SceneBuilder<'a> {
         let context = SceneBuildingContext::new();
         let z_buffer = ZBuffer::new(effective_view_box);
 
-        listener.send(RenderCommand::ClearMaskFramebuffer);
-
         let object_count = self.scene.objects.len();
         let mut alpha_tiles: Vec<_> = (0..object_count).into_iter().flat_map(|object_index| {
             build_object(object_index,
@@ -71,8 +69,6 @@ impl<'a> SceneBuilder<'a> {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let context = SceneBuildingContext::new();
         let z_buffer = ZBuffer::new(effective_view_box);
-
-        listener.send(RenderCommand::ClearMaskFramebuffer);
 
         let object_count = self.scene.objects.len();
         let mut alpha_tiles: Vec<_> = (0..object_count).into_par_iter().flat_map(|object_index| {
