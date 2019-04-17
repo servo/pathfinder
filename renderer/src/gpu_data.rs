@@ -11,24 +11,21 @@
 //! Packed data ready to be sent to the GPU.
 
 use crate::builder::{MAX_FILLS_PER_BATCH, RenderCommandListener};
+use crate::cca_vec::ConcurrentCopyableArrayVec;
 use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use crate::z_buffer::ZBuffer;
-use parking_lot::Mutex;
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
-use std::cell::UnsafeCell;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
-use std::mem;
-use std::ops::{Add, Range};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::ops::Add;
 
-pub const MAX_FILLS:       u32 = 0x20000;
-pub const MAX_ALPHA_TILES: u32 = 0x10000;
+const MAX_FILLS: u32 = 0x100000;
+const MAX_ALPHA_TILES: u32 = 0x80000;
 
 #[derive(Debug)]
 pub struct BuiltObject {
@@ -46,8 +43,8 @@ pub struct BuiltScene {
 
 pub struct SharedBuffers {
     pub z_buffer: ZBuffer,
-    pub alpha_tiles: ConcurrentBuffer<AlphaTileBatchPrimitive>,
-    pub fills: ConcurrentBuffer<FillBatchPrimitive>,
+    pub alpha_tiles: ConcurrentCopyableArrayVec<AlphaTileBatchPrimitive>,
+    pub fills: ConcurrentCopyableArrayVec<FillBatchPrimitive>,
 }
 
 pub enum RenderCommand {
@@ -134,9 +131,10 @@ impl BuiltObject {
                 segment: &LineSegmentF32,
                 tile_coords: Point2DI32) {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
-        let local_tile_index = match self.tile_coords_to_local_index(tile_coords) {
-            None => return,
-            Some(tile_index) => tile_index,
+
+        // Ensure this fill is in bounds. If not, cull it.
+        if self.tile_coords_to_local_index(tile_coords).is_none() {
+            return;
         };
 
         debug_assert_eq!(TILE_WIDTH, TILE_HEIGHT);
@@ -346,8 +344,8 @@ impl SharedBuffers {
     pub fn new(effective_view_box: RectF32) -> SharedBuffers {
         SharedBuffers {
             z_buffer: ZBuffer::new(effective_view_box),
-            fills: ConcurrentBuffer::new(MAX_FILLS),
-            alpha_tiles: ConcurrentBuffer::new(MAX_ALPHA_TILES),
+            fills: ConcurrentCopyableArrayVec::new(MAX_FILLS),
+            alpha_tiles: ConcurrentCopyableArrayVec::new(MAX_ALPHA_TILES),
         }
     }
 }
@@ -378,76 +376,3 @@ impl Add<Stats> for Stats {
         }
     }
 }
-
-pub struct ConcurrentBuffer<T> where T: Copy + Default + Sync {
-    data: Vec<UnsafeCell<T>>,
-    len: AtomicUsize,
-}
-
-impl<T> ConcurrentBuffer<T> where T: Copy + Default + Sync {
-    pub fn new(capacity: u32) -> ConcurrentBuffer<T> {
-        unsafe {
-            ConcurrentBuffer {
-                data: (0..capacity).map(|_| UnsafeCell::new(mem::uninitialized())).collect(),
-                len: AtomicUsize::new(0),
-            }
-        }
-    }
-
-    #[inline]
-    pub fn get(&self, index: u32) -> T {
-        unsafe {
-            *(self.data[index as usize].get())
-        }
-    }
-
-    #[inline]
-    pub fn set(&self, index: u32, element: T) {
-        unsafe {
-            let ptr = self.data[index as usize].get();
-            *ptr = element;
-        }
-    }
-
-    fn push(&self, element: T) -> u32 {
-        let index = self.len.fetch_add(1, Ordering::SeqCst) as u32;
-        self.set(index, element);
-        index
-    }
-
-    #[inline]
-    pub fn clear(&self) {
-        self.len.store(0, Ordering::SeqCst);
-    }
-
-    #[inline]
-    pub fn len(&self) -> u32 {
-        self.len.load(Ordering::SeqCst) as u32
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    #[inline]
-    unsafe fn as_slice(&self) -> &[T] {
-        mem::transmute::<&[UnsafeCell<T>], &[T]>(&self.data[0..(self.len() as usize)])
-    }
-
-    #[inline]
-    pub fn to_vec(&self) -> Vec<T> {
-        unsafe {
-            self.as_slice().to_vec()
-        }
-    }
-
-    #[inline]
-    pub fn range_to_vec(&self, range: Range<u32>) -> Vec<T> {
-        unsafe {
-            self.as_slice()[(range.start as usize)..(range.end as usize)].to_vec()
-        }
-    }
-}
-
-unsafe impl<T> Sync for ConcurrentBuffer<T> where T: Copy + Default + Sync {}

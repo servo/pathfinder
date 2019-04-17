@@ -17,6 +17,7 @@ pub mod post;
 pub mod scene;
 pub mod tiles;
 
+mod cca_vec;
 mod sorted_vector;
 mod tile_map;
 mod z_buffer;

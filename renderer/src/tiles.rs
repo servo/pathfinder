@@ -442,7 +442,8 @@ impl ActiveEdge {
             }
 
             /*
-            println!("... tile_y={} winding={} segment={:?} t={} before_segment={:?} after_segment={:?}",
+            println!("... tile_y={} winding={} segment={:?} t={} before_segment={:?}
+                      after_segment={:?}",
                      tile_y,
                      winding,
                      segment,
