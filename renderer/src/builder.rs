@@ -61,6 +61,7 @@ impl<'a> SceneBuilder<'a> {
                          &self.scene)
         }).collect();
 
+        listener.send(RenderCommand::FlushFills);
         self.cull_alpha_tiles(&mut alpha_tiles, &z_buffer);
         self.pack_alpha_tiles(alpha_tiles, &z_buffer, listener);
     }
@@ -81,6 +82,7 @@ impl<'a> SceneBuilder<'a> {
                          &self.scene)
         }).collect();
 
+        listener.send(RenderCommand::FlushFills);
         self.cull_alpha_tiles(&mut alpha_tiles, &z_buffer);
         self.pack_alpha_tiles(alpha_tiles, &z_buffer, listener);
     }
@@ -136,7 +138,7 @@ fn build_object(object_index: usize,
 
     let mut tiler = Tiler::new(context, z_buffer, &outline, view_box, object_index as u16);
     tiler.generate_tiles();
-    listener.send(RenderCommand::Fill(tiler.built_object.fills));
+    listener.send(RenderCommand::AddFills(tiler.built_object.fills));
     tiler.built_object.alpha_tiles
 }
 

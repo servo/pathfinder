@@ -66,11 +66,16 @@ pub trait Device {
     fn set_uniform(&self, uniform: &Self::Uniform, data: UniformData);
     fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
     fn create_buffer(&self) -> Self::Buffer;
+    fn allocate_buffer<T>(&self,
+                          buffer: &Self::Buffer,
+                          data: BufferData<T>,
+                          target: BufferTarget,
+                          mode: BufferUploadMode);
     fn upload_to_buffer<T>(&self,
                            buffer: &Self::Buffer,
                            data: &[T],
-                           target: BufferTarget,
-                           mode: BufferUploadMode);
+                           offset: usize,
+                           target: BufferTarget);
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
     fn texture_size(&self, texture: &Self::Texture) -> Point2DI32;
     fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI32, data: &[u8]);
@@ -170,6 +175,12 @@ pub enum VertexAttrType {
     I8,
     U16,
     U8,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BufferData<'a, T> {
+    Uninitialized(usize),
+    Memory(&'a [T]),
 }
 
 #[derive(Clone, Copy, Debug)]

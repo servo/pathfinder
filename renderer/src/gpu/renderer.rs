@@ -18,12 +18,14 @@ use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, DepthState, Device};
-use pathfinder_gpu::{Primitive, RenderState, StencilFunc, StencilState, TextureFormat};
-use pathfinder_gpu::{UniformData, VertexAttrType};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
+use pathfinder_gpu::{DepthState, Device, Primitive, RenderState, StencilFunc, StencilState};
+use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
+use std::cmp;
 use std::collections::VecDeque;
 use std::time::Duration;
+use std::u32;
 
 static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 
@@ -37,6 +39,8 @@ const MASK_TILE_INSTANCE_SIZE: usize = 8;
 
 const FILL_COLORS_TEXTURE_WIDTH: i32 = 256;
 const FILL_COLORS_TEXTURE_HEIGHT: i32 = 256;
+
+const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
 pub struct Renderer<D> where D: Device {
     // Device
@@ -81,6 +85,7 @@ pub struct Renderer<D> where D: Device {
 
     // Rendering state
     mask_framebuffer_cleared: bool,
+    buffered_fill_count: usize,
 }
 
 impl<D> Renderer<D> where D: Device {
@@ -103,10 +108,10 @@ impl<D> Renderer<D> where D: Device {
         let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
 
         let quad_vertex_positions_buffer = device.create_buffer();
-        device.upload_to_buffer(&quad_vertex_positions_buffer,
-                                &QUAD_VERTEX_POSITIONS,
-                                BufferTarget::Vertex,
-                                BufferUploadMode::Static);
+        device.allocate_buffer(&quad_vertex_positions_buffer,
+                               BufferData::Memory(&QUAD_VERTEX_POSITIONS),
+                               BufferTarget::Vertex,
+                               BufferUploadMode::Static);
 
         let fill_vertex_array = FillVertexArray::new(&device,
                                                      &fill_program,
@@ -180,6 +185,7 @@ impl<D> Renderer<D> where D: Device {
             use_depth: false,
 
             mask_framebuffer_cleared: false,
+            buffered_fill_count: 0,
         }
     }
 
@@ -203,7 +209,8 @@ impl<D> Renderer<D> where D: Device {
 
     pub fn render_command(&mut self, command: &RenderCommand) {
         match *command {
-            RenderCommand::Fill(ref fills) => self.handle_fills(fills),
+            RenderCommand::AddFills(ref fills) => self.add_fills(fills),
+            RenderCommand::FlushFills => self.draw_buffered_fills(),
             RenderCommand::SolidTile(ref solid_tiles) => {
                 let count = solid_tiles.len() as u32;
                 self.upload_solid_tiles(solid_tiles);
@@ -286,24 +293,17 @@ impl<D> Renderer<D> where D: Device {
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
-        self.device.upload_to_buffer(&self.solid_tile_vertex_array().vertex_buffer,
-                                     &solid_tiles,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
-    }
-
-    fn upload_fills(&mut self, fills: &[FillBatchPrimitive]) {
-        self.device.upload_to_buffer(&self.fill_vertex_array.vertex_buffer,
-                                     &fills,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(&self.solid_tile_vertex_array().vertex_buffer,
+                                    BufferData::Memory(&solid_tiles),
+                                    BufferTarget::Vertex,
+                                    BufferUploadMode::Dynamic);
     }
 
     fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
-        self.device.upload_to_buffer(&self.alpha_tile_vertex_array().vertex_buffer,
-                                     &alpha_tiles,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(&self.alpha_tile_vertex_array().vertex_buffer,
+                                    BufferData::Memory(&alpha_tiles),
+                                    BufferTarget::Vertex,
+                                    BufferUploadMode::Dynamic);
     }
 
     fn clear_mask_framebuffer(&mut self) {
@@ -313,9 +313,28 @@ impl<D> Renderer<D> where D: Device {
         self.device.clear(Some(F32x4::splat(0.0)), None, None);
     }
 
-    fn handle_fills(&mut self, fills: &[FillBatchPrimitive]) {
+    fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
         if fills.is_empty() {
-            return
+            return;
+        }
+
+        while !fills.is_empty() {
+            let count = cmp::min(fills.len(), MAX_FILLS_PER_BATCH - self.buffered_fill_count);
+            self.device.upload_to_buffer(&self.fill_vertex_array.vertex_buffer,
+                                         &fills[0..count],
+                                         self.buffered_fill_count,
+                                         BufferTarget::Vertex);
+            self.buffered_fill_count += count;
+            fills = &fills[count..];
+            if self.buffered_fill_count == MAX_FILLS_PER_BATCH {
+                self.draw_buffered_fills();
+            }
+        }
+    }
+
+    fn draw_buffered_fills(&mut self) {
+        if self.buffered_fill_count == 0 {
+            return;
         }
 
         if !self.mask_framebuffer_cleared {
@@ -323,12 +342,6 @@ impl<D> Renderer<D> where D: Device {
             self.mask_framebuffer_cleared = true;
         }
 
-        let count = fills.len() as u32;
-        self.upload_fills(fills);
-        self.draw_fills(count);
-    }
-
-    fn draw_fills(&mut self, count: u32) {
         self.device.bind_framebuffer(&self.mask_framebuffer);
 
         self.device.bind_vertex_array(&self.fill_vertex_array.vertex_array);
@@ -350,7 +363,12 @@ impl<D> Renderer<D> where D: Device {
             blend: BlendState::RGBOneAlphaOne,
             ..RenderState::default()
         };
-        self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
+        debug_assert!(self.buffered_fill_count <= u32::MAX as usize);
+        self.device.draw_arrays_instanced(Primitive::TriangleFan,
+                                          4,
+                                          self.buffered_fill_count as u32,
+                                          &render_state);
+        self.buffered_fill_count = 0;
     }
 
     fn draw_alpha_tiles(&mut self, count: u32) {
@@ -547,10 +565,10 @@ impl<D> Renderer<D> where D: Device {
     }
 
     fn draw_stencil(&self, quad_positions: &[Point3DF32]) {
-        self.device.upload_to_buffer(&self.stencil_vertex_array.vertex_buffer,
-                                     quad_positions,
-                                     BufferTarget::Vertex,
-                                     BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(&self.stencil_vertex_array.vertex_buffer,
+                                    BufferData::Memory(quad_positions),
+                                    BufferTarget::Vertex,
+                                    BufferUploadMode::Dynamic);
         self.bind_draw_framebuffer();
 
         self.device.bind_vertex_array(&self.stencil_vertex_array.vertex_array);
@@ -636,7 +654,14 @@ impl<D> FillVertexArray<D> where D: Device {
     fn new(device: &D, fill_program: &FillProgram<D>, quad_vertex_positions_buffer: &D::Buffer)
            -> FillVertexArray<D> {
         let vertex_array = device.create_vertex_array();
+
         let vertex_buffer = device.create_buffer();
+        let vertex_buffer_data: BufferData<FillBatchPrimitive> =
+            BufferData::Uninitialized(MAX_FILLS_PER_BATCH);
+        device.allocate_buffer(&vertex_buffer,
+                               vertex_buffer_data,
+                               BufferTarget::Vertex,
+                               BufferUploadMode::Dynamic);
 
         let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord");
         let from_px_attr = device.get_vertex_attr(&fill_program.program, "FromPx");

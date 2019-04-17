@@ -40,7 +40,8 @@ pub struct BuiltScene {
 }
 
 pub enum RenderCommand {
-    Fill(Vec<FillBatchPrimitive>),
+    AddFills(Vec<FillBatchPrimitive>),
+    FlushFills,
     AlphaTile(Vec<AlphaTileBatchPrimitive>),
     SolidTile(Vec<SolidTileBatchPrimitive>),
 }
@@ -313,7 +314,8 @@ impl AlphaTileBatchPrimitive {
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
-            RenderCommand::Fill(ref fills) => write!(formatter, "Fill(x{})", fills.len()),
+            RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
+            RenderCommand::FlushFills => write!(formatter, "FlushFills"),
             RenderCommand::AlphaTile(ref tiles) => {
                 write!(formatter, "AlphaTile(x{})", tiles.len())
             }

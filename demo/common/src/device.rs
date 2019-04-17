@@ -12,7 +12,7 @@
 
 use crate::GRIDLINE_COUNT;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BufferTarget, BufferUploadMode, Device, VertexAttrType};
+use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, VertexAttrType};
 
 pub struct GroundProgram<D> where D: Device {
     pub program: D::Program,
@@ -60,10 +60,10 @@ pub struct GroundLineVertexArray<D> where D: Device {
 impl<D> GroundLineVertexArray<D> where D: Device {
     pub fn new(device: &D, ground_program: &GroundProgram<D>) -> GroundLineVertexArray<D> {
         let grid_vertex_positions_buffer = device.create_buffer();
-        device.upload_to_buffer(&grid_vertex_positions_buffer,
-                                &create_grid_vertex_positions(),
-                                BufferTarget::Vertex,
-                                BufferUploadMode::Static);
+        device.allocate_buffer(&grid_vertex_positions_buffer,
+                               BufferData::Memory(&create_grid_vertex_positions()),
+                               BufferTarget::Vertex,
+                               BufferUploadMode::Static);
 
         let vertex_array = device.create_vertex_array();
 

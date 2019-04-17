@@ -10,11 +10,12 @@
 
 //! An OpenGL implementation of the device abstraction.
 
-use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
+use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLintptr, GLsizei, GLsizeiptr};
+use gl::types::{GLuint, GLvoid};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_gpu::{BlendState, BufferTarget, BufferUploadMode, DepthFunc, Device, Primitive};
-use pathfinder_gpu::{RenderState, ShaderKind, StencilFunc, TextureFormat};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc, Device};
+use pathfinder_gpu::{Primitive, RenderState, ShaderKind, StencilFunc, TextureFormat};
 use pathfinder_gpu::{UniformData, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use rustache::{HashBuilder, Render};
@@ -413,25 +414,39 @@ impl Device for GLDevice {
         }
     }
 
-    fn upload_to_buffer<T>(&self,
-                           buffer: &GLBuffer,
-                           data: &[T],
-                           target: BufferTarget,
-                           mode: BufferUploadMode) {
+    fn allocate_buffer<T>(&self,
+                          buffer: &GLBuffer,
+                          data: BufferData<T>,
+                          target: BufferTarget,
+                          mode: BufferUploadMode) {
         let target = match target {
             BufferTarget::Vertex => gl::ARRAY_BUFFER,
             BufferTarget::Index => gl::ELEMENT_ARRAY_BUFFER,
         };
-        let mode = match mode {
-            BufferUploadMode::Static => gl::STATIC_DRAW,
-            BufferUploadMode::Dynamic => gl::DYNAMIC_DRAW,
+        let (ptr, len) = match data {
+            BufferData::Uninitialized(len) => (ptr::null(), len),
+            BufferData::Memory(buffer) => (buffer.as_ptr() as *const GLvoid, buffer.len()),
         };
+        let len = (len * mem::size_of::<T>()) as GLsizeiptr;
+        let usage = mode.to_gl_usage();
         unsafe {
             gl::BindBuffer(target, buffer.gl_buffer); ck();
-            gl::BufferData(target,
-                           (data.len() * mem::size_of::<T>()) as GLsizeiptr,
-                           data.as_ptr() as *const GLvoid,
-                           mode); ck();
+            gl::BufferData(target, len, ptr, usage); ck();
+        }
+    }
+
+    fn upload_to_buffer<T>(&self,
+                           buffer: &GLBuffer,
+                           data: &[T],
+                           offset: usize,
+                           target: BufferTarget) {
+        let target = target.to_gl_target();
+        let ptr = data.as_ptr() as *const GLvoid;
+        let offset = (offset * mem::size_of::<T>()) as GLintptr;
+        let len = (data.len() * mem::size_of::<T>()) as GLsizeiptr;
+        unsafe {
+            gl::BindBuffer(target, buffer.gl_buffer); ck();
+            gl::BufferSubData(target, offset, len, ptr);
         }
     }
 
@@ -770,6 +785,19 @@ impl BufferTargetExt for BufferTarget {
         match self {
             BufferTarget::Vertex => gl::ARRAY_BUFFER,
             BufferTarget::Index => gl::ELEMENT_ARRAY_BUFFER,
+        }
+    }
+}
+
+trait BufferUploadModeExt {
+    fn to_gl_usage(self) -> GLuint;
+}
+
+impl BufferUploadModeExt for BufferUploadMode {
+    fn to_gl_usage(self) -> GLuint {
+        match self {
+            BufferUploadMode::Static => gl::STATIC_DRAW,
+            BufferUploadMode::Dynamic => gl::DYNAMIC_DRAW,
         }
     }
 }
