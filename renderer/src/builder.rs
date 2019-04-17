@@ -10,8 +10,7 @@
 
 //! Packs data onto the GPU.
 
-use crate::cca_vec::ConcurrentCopyableArrayVec;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive, RenderCommand};
+use crate::gpu_data::{AlphaTileBatchPrimitive, RenderCommand};
 use crate::scene::Scene;
 use crate::tiles::Tiler;
 use crate::z_buffer::ZBuffer;
@@ -22,144 +21,127 @@ use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
 use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use std::u16;
 
 // Must be a power of two.
 pub const MAX_FILLS_PER_BATCH: u32 = 0x1000;
 
-const MAX_FILLS_PER_RUN: u32 = 0x100000;
-const MAX_ALPHA_TILES_PER_RUN: u32 = 0x80000;
-
-pub struct SceneBuilderContext {
-    pub alpha_tiles: ConcurrentCopyableArrayVec<AlphaTileBatchPrimitive>,
-}
-
 pub trait RenderCommandListener: Send + Sync {
     fn send(&self, command: RenderCommand);
 }
 
-impl SceneBuilderContext {
-    #[inline]
-    pub fn new() -> SceneBuilderContext {
-        SceneBuilderContext {
-            alpha_tiles: ConcurrentCopyableArrayVec::new(MAX_ALPHA_TILES_PER_RUN),
-        }
-    }
-}
-
-pub struct SceneBuilder<'ctx, 'a> {
-    context: &'ctx mut SceneBuilderContext,
+pub struct SceneBuilder<'a> {
     scene: &'a Scene,
     built_options: &'a PreparedRenderOptions,
 }
 
-impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
-    pub fn new(context: &'ctx mut SceneBuilderContext,
-               scene: &'a Scene,
-               built_options: &'a PreparedRenderOptions)
-               -> SceneBuilder<'ctx, 'a> {
-        SceneBuilder { context, scene, built_options }
+pub(crate) struct SceneBuildingContext {
+    pub(crate) next_alpha_tile_index: AtomicUsize,
+}
+
+impl<'a> SceneBuilder<'a> {
+    pub fn new(scene: &'a Scene, built_options: &'a PreparedRenderOptions) -> SceneBuilder<'a> {
+        SceneBuilder { scene, built_options }
     }
 
     pub fn build_sequentially(&mut self, listener: Box<dyn RenderCommandListener>) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
+        let context = SceneBuildingContext::new();
         let z_buffer = ZBuffer::new(effective_view_box);
 
         listener.send(RenderCommand::ClearMaskFramebuffer);
 
         let object_count = self.scene.objects.len();
-        for object_index in 0..object_count {
+        let mut alpha_tiles: Vec<_> = (0..object_count).into_iter().flat_map(|object_index| {
             build_object(object_index,
                          effective_view_box,
-                         self.context,
+                         &context,
                          &z_buffer,
                          &*listener,
                          &self.built_options,
-                         &self.scene);
-        }
+                         &self.scene)
+        }).collect();
 
-        self.cull_alpha_tiles(&z_buffer);
-        self.pack_alpha_tiles(&z_buffer, listener);
+        self.cull_alpha_tiles(&mut alpha_tiles, &z_buffer);
+        self.pack_alpha_tiles(alpha_tiles, &z_buffer, listener);
     }
 
     pub fn build_in_parallel(&mut self, listener: Box<dyn RenderCommandListener>) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
+        let context = SceneBuildingContext::new();
         let z_buffer = ZBuffer::new(effective_view_box);
 
         listener.send(RenderCommand::ClearMaskFramebuffer);
 
         let object_count = self.scene.objects.len();
-        (0..object_count).into_par_iter().for_each(|object_index| {
+        let mut alpha_tiles: Vec<_> = (0..object_count).into_par_iter().flat_map(|object_index| {
             build_object(object_index,
                          effective_view_box,
-                         self.context,
+                         &context,
                          &z_buffer,
                          &*listener,
                          &self.built_options,
-                         &self.scene);
-        });
+                         &self.scene)
+        }).collect();
 
-        self.cull_alpha_tiles(&z_buffer);
-        self.pack_alpha_tiles(&z_buffer, listener);
+        self.cull_alpha_tiles(&mut alpha_tiles, &z_buffer);
+        self.pack_alpha_tiles(alpha_tiles, &z_buffer, listener);
     }
 
     fn pack_alpha_tiles(&mut self,
+                        alpha_tiles: Vec<AlphaTileBatchPrimitive>,
                         z_buffer: &ZBuffer,
                         listener: Box<dyn RenderCommandListener>) {
-        let alpha_tiles = &self.context.alpha_tiles;
-
         let object_count = self.scene.objects.len() as u32;
         let solid_tiles = z_buffer.build_solid_tiles(0..object_count);
 
         if !solid_tiles.is_empty() {
             listener.send(RenderCommand::SolidTile(solid_tiles));
         }
-
         if !alpha_tiles.is_empty() {
-            let mut tiles = alpha_tiles.to_vec();
-            tiles.sort_unstable_by(|tile_a, tile_b| tile_a.object_index.cmp(&tile_b.object_index));
-
-            listener.send(RenderCommand::AlphaTile(tiles));
-            alpha_tiles.clear();
+            listener.send(RenderCommand::AlphaTile(alpha_tiles));
         }
     }
 
-    fn cull_alpha_tiles(&mut self, z_buffer: &ZBuffer) {
-        for alpha_tile_index in 0..self.context.alpha_tiles.committed_len() {
-            let mut alpha_tile = self.context.alpha_tiles.get(alpha_tile_index);
+    fn cull_alpha_tiles(&mut self,
+                        alpha_tiles: &mut Vec<AlphaTileBatchPrimitive>,
+                        z_buffer: &ZBuffer) {
+        for alpha_tile in alpha_tiles {
             let alpha_tile_coords = alpha_tile.tile_coords();
             if z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
                 continue;
             }
 
-            // FIXME(pcwalton): Hack!
+            // FIXME(pcwalton): Clean this up.
             alpha_tile.tile_x_lo = 0xff;
             alpha_tile.tile_y_lo = 0xff;
             alpha_tile.tile_hi = 0xff;
-            self.context.alpha_tiles.set(alpha_tile_index, alpha_tile);
         }
+    }
+}
+
+impl SceneBuildingContext {
+    fn new() -> SceneBuildingContext {
+        SceneBuildingContext { next_alpha_tile_index: AtomicUsize::new(0) }
     }
 }
 
 fn build_object(object_index: usize,
                 view_box: RectF32,
-                context: &SceneBuilderContext,
+                context: &SceneBuildingContext,
                 z_buffer: &ZBuffer,
                 listener: &dyn RenderCommandListener,
                 built_options: &PreparedRenderOptions,
-                scene: &Scene) {
+                scene: &Scene)
+                -> Vec<AlphaTileBatchPrimitive> {
     let object = &scene.objects[object_index];
     let outline = scene.apply_render_options(object.outline(), built_options);
 
-    let mut tiler = Tiler::new(context,
-                               z_buffer,
-                               listener,
-                               &outline,
-                               view_box,
-                               object_index as u16);
+    let mut tiler = Tiler::new(context, z_buffer, &outline, view_box, object_index as u16);
     tiler.generate_tiles();
     listener.send(RenderCommand::Fill(tiler.built_object.fills));
+    tiler.built_object.alpha_tiles
 }
 
 #[derive(Clone, Default)]

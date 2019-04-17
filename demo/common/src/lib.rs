@@ -25,8 +25,7 @@ use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
 use pathfinder_gpu::{StencilState, UniformData};
-use pathfinder_renderer::builder::{RenderOptions, RenderTransform};
-use pathfinder_renderer::builder::{SceneBuilder, SceneBuilderContext};
+use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu::renderer::{RenderMode, Renderer};
 use pathfinder_renderer::gpu_data::{BuiltScene, RenderCommand, Stats};
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
@@ -666,12 +665,7 @@ impl SceneThreadProxy {
         let (main_to_scene_sender, main_to_scene_receiver) = mpsc::channel();
         let (scene_to_main_sender, scene_to_main_receiver) =
             mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
-        let scene_builder_context = SceneBuilderContext::new();
-        SceneThread::new(scene,
-                         scene_to_main_sender,
-                         main_to_scene_receiver,
-                         scene_builder_context,
-                         options);
+        SceneThread::new(scene, scene_to_main_sender, main_to_scene_receiver, options);
         SceneThreadProxy { sender: main_to_scene_sender, receiver: scene_to_main_receiver }
     }
 
@@ -688,7 +682,6 @@ struct SceneThread {
     scene: Scene,
     sender: SyncSender<SceneToMainMsg>,
     receiver: Receiver<MainToSceneMsg>,
-    context: SceneBuilderContext,
     options: Options,
 }
 
@@ -696,9 +689,8 @@ impl SceneThread {
     fn new(scene: Scene,
            sender: SyncSender<SceneToMainMsg>,
            receiver: Receiver<MainToSceneMsg>,
-           context: SceneBuilderContext,
            options: Options) {
-        thread::spawn(move || (SceneThread { scene, sender, receiver, context, options }).run());
+        thread::spawn(move || (SceneThread { scene, sender, receiver, options }).run());
     }
 
     fn run(mut self) {
@@ -718,8 +710,7 @@ impl SceneThread {
                     }).unwrap();
                     let start_time = Instant::now();
                     for render_transform in &build_options.render_transforms {
-                        build_scene(&mut self.context,
-                                    &self.scene,
+                        build_scene(&self.scene,
                                     &build_options,
                                     (*render_transform).clone(),
                                     self.options.jobs,
@@ -769,8 +760,7 @@ impl Debug for SceneToMainMsg {
     }
 }
 
-fn build_scene(context: &mut SceneBuilderContext,
-               scene: &Scene,
+fn build_scene(scene: &Scene,
                build_options: &BuildOptions,
                render_transform: RenderTransform,
                jobs: Option<usize>,
@@ -795,9 +785,9 @@ fn build_scene(context: &mut SceneBuilderContext,
     built_scene.shaders = scene.build_shaders();
     sink.send(SceneToMainMsg::BeginRenderScene(built_scene)).unwrap();
 
-    let (mut context, inner_sink) = (AssertUnwindSafe(context), AssertUnwindSafe(sink.clone()));
+    let inner_sink = AssertUnwindSafe(sink.clone());
     let result = panic::catch_unwind(move || {
-        let mut scene_builder = SceneBuilder::new(&mut context, scene, &built_options);
+        let mut scene_builder = SceneBuilder::new(scene, &built_options);
         let sink = (*inner_sink).clone();
         let listener = Box::new(move |command| {
             sink.send(SceneToMainMsg::Execute(command)).unwrap()
