@@ -28,9 +28,11 @@ use std::cmp::{Ordering, PartialOrd};
 use std::mem;
 use std::sync::Arc;
 use std::sync::atomic::Ordering as AtomicOrdering;
+use std::time::{Duration, Instant};
 use std::u16;
 
-const MAX_FILLS_PER_BATCH: usize = 0xffffffff;
+// Must be a power of two.
+pub const MAX_FILLS_PER_BATCH: u32 = 0x1000;
 const MAX_ALPHA_TILES_PER_BATCH: usize = 0xffff;
 const MAX_CHANNEL_MESSAGES: usize = 16;
 
@@ -48,7 +50,7 @@ struct SceneAssemblyThreadInfo {
 }
 
 pub trait RenderCommandListener: Send + Sync {
-    fn send(&mut self, command: RenderCommand);
+    fn send(&self, command: RenderCommand);
 }
 
 pub struct SceneBuilder<'ctx, 'a> {
@@ -162,23 +164,24 @@ impl SceneBuilderContext {
 
         let have_solid_tiles = !info.solid_tiles.is_empty();
         let have_alpha_tiles = !alpha_tiles.is_empty();
-        let have_fills = !fills.is_empty();
-        if !have_solid_tiles && !have_alpha_tiles && !have_fills {
-            return
-        }
+        let fill_count = fills.len();
 
-        info.listener.send(RenderCommand::ClearMaskFramebuffer);
+        if fill_count % MAX_FILLS_PER_BATCH != 0 {
+            let fill_start = fill_count & !(MAX_FILLS_PER_BATCH - 1);
+            info.listener.send(RenderCommand::Fill(fills.range_to_vec(fill_start..fill_count)));
+            fills.clear();
+        }
         if have_solid_tiles {
             let tiles = mem::replace(&mut info.solid_tiles, vec![]);
             info.listener.send(RenderCommand::SolidTile(tiles));
         }
-        if have_fills {
-            info.listener.send(RenderCommand::Fill(fills.to_vec()));
-            fills.clear();
-        }
         if have_alpha_tiles {
+            //let start_time = Instant::now();
             let mut tiles = alpha_tiles.to_vec();
             tiles.sort_unstable_by(|tile_a, tile_b| tile_a.object_index.cmp(&tile_b.object_index));
+            /*let elapsed = Instant::now() - start_time;
+            println!("copy/sort time: {:?}us", elapsed.as_nanos() / 1000);*/
+
             info.listener.send(RenderCommand::AlphaTile(tiles));
             alpha_tiles.clear();
         }
@@ -214,16 +217,19 @@ impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let buffers = Arc::new(SharedBuffers::new(effective_view_box));
         let object_count = self.scene.objects.len() as u32;
-        self.send_new_scene_message_to_assembly_thread(listener, &buffers, object_count);
+
+        listener.send(RenderCommand::ClearMaskFramebuffer);
 
         for object_index in 0..self.scene.objects.len() {
             build_object(object_index,
                          effective_view_box,
                          &buffers,
+                         &*listener,
                          &self.built_options,
                          &self.scene);
         }
 
+        self.send_new_scene_message_to_assembly_thread(listener, &buffers, object_count);
         self.finish_and_wait_for_scene_assembly_thread();
     }
 
@@ -231,16 +237,19 @@ impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let buffers = Arc::new(SharedBuffers::new(effective_view_box));
         let object_count = self.scene.objects.len() as u32;
-        self.send_new_scene_message_to_assembly_thread(listener, &buffers, object_count);
+
+        listener.send(RenderCommand::ClearMaskFramebuffer);
 
         (0..self.scene.objects.len()).into_par_iter().for_each(|object_index| {
             build_object(object_index,
                          effective_view_box,
                          &buffers,
+                         &*listener,
                          &self.built_options,
                          &self.scene);
         });
 
+        self.send_new_scene_message_to_assembly_thread(listener, &buffers, object_count);
         self.finish_and_wait_for_scene_assembly_thread();
     }
 
@@ -257,15 +266,16 @@ impl<'ctx, 'a> SceneBuilder<'ctx, 'a> {
 }
 
 fn build_object(object_index: usize,
-                effective_view_box: RectF32,
+                view_box: RectF32,
                 buffers: &SharedBuffers,
+                listener: &dyn RenderCommandListener,
                 built_options: &PreparedRenderOptions,
                 scene: &Scene)
                 -> BuiltObject {
     let object = &scene.objects[object_index];
     let outline = scene.apply_render_options(object.outline(), built_options);
 
-    let mut tiler = Tiler::new(&outline, effective_view_box, object_index as u16, buffers);
+    let mut tiler = Tiler::new(&outline, view_box, object_index as u16, buffers, listener);
     tiler.generate_tiles();
     tiler.built_object
 }
@@ -397,7 +407,7 @@ impl PartialOrd for IndexedBuiltObject {
     }
 }
 
-impl<F> RenderCommandListener for F where F: FnMut(RenderCommand) + Send + Sync {
+impl<F> RenderCommandListener for F where F: Fn(RenderCommand) + Send + Sync {
     #[inline]
-    fn send(&mut self, command: RenderCommand) { (*self)(command) }
+    fn send(&self, command: RenderCommand) { (*self)(command) }
 }

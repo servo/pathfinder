@@ -10,6 +10,7 @@
 
 //! Packed data ready to be sent to the GPU.
 
+use crate::builder::{MAX_FILLS_PER_BATCH, RenderCommandListener};
 use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
@@ -23,7 +24,7 @@ use pathfinder_simd::default::{F32x4, I32x4};
 use std::cell::UnsafeCell;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::mem;
-use std::ops::Add;
+use std::ops::{Add, Range};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub const MAX_FILLS:       u32 = 0x20000;
@@ -129,6 +130,7 @@ impl BuiltObject {
 
     fn add_fill(&mut self,
                 buffers: &SharedBuffers,
+                listener: &dyn RenderCommandListener,
                 segment: &LineSegmentF32,
                 tile_coords: Point2DI32) {
         //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
@@ -165,7 +167,8 @@ impl BuiltObject {
 
         //println!("... ... OK, pushing");
 
-        buffers.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
+        let fill_index = buffers.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
+        self.flush_render_commands_after_fill(buffers, listener, fill_index);
     }
 
     fn get_or_allocate_alpha_tile_index(&mut self,
@@ -183,8 +186,22 @@ impl BuiltObject {
         alpha_tile_index
     }
 
+    fn flush_render_commands_after_fill(&mut self,
+                                        buffers: &SharedBuffers,
+                                        listener: &dyn RenderCommandListener,
+                                        fill_index: u32) {
+        let fill_count = fill_index + 1;
+        if fill_count % MAX_FILLS_PER_BATCH == 0 {
+            // Note that this doesn't guarantee that the fills arrive in order (though it's likely
+            // that they will), but that doesn't matter because they're order-independent.
+            let fill_range = (fill_count - MAX_FILLS_PER_BATCH)..fill_count;
+            listener.send(RenderCommand::Fill(buffers.fills.range_to_vec(fill_range)))
+        }
+    }
+
     pub fn add_active_fill(&mut self,
                            buffers: &SharedBuffers,
+                           listener: &dyn RenderCommandListener,
                            left: f32,
                            right: f32,
                            mut winding: i32,
@@ -207,7 +224,7 @@ impl BuiltObject {
                  tile_y);*/
 
         while winding != 0 {
-            self.add_fill(buffers, &segment, tile_coords);
+            self.add_fill(buffers, listener, &segment, tile_coords);
             if winding < 0 {
                 winding += 1
             } else {
@@ -218,6 +235,7 @@ impl BuiltObject {
 
     pub fn generate_fill_primitives_for_line(&mut self,
                                              buffers: &SharedBuffers,
+                                             listener: &dyn RenderCommandListener,
                                              mut segment: LineSegmentF32,
                                              tile_y: i32) {
         /*println!("... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
@@ -257,7 +275,8 @@ impl BuiltObject {
             }
 
             let fill_segment = LineSegmentF32::new(&fill_from, &fill_to);
-            self.add_fill(buffers, &fill_segment, Point2DI32::new(subsegment_tile_x, tile_y));
+            let fill_tile_coords = Point2DI32::new(subsegment_tile_x, tile_y);
+            self.add_fill(buffers, listener, &fill_segment, fill_tile_coords);
         }
     }
 
@@ -367,9 +386,11 @@ pub struct ConcurrentBuffer<T> where T: Copy + Default + Sync {
 
 impl<T> ConcurrentBuffer<T> where T: Copy + Default + Sync {
     pub fn new(capacity: u32) -> ConcurrentBuffer<T> {
-        ConcurrentBuffer {
-            data: (0..capacity).map(|_| UnsafeCell::new(T::default())).collect(),
-            len: AtomicUsize::new(0),
+        unsafe {
+            ConcurrentBuffer {
+                data: (0..capacity).map(|_| UnsafeCell::new(mem::uninitialized())).collect(),
+                len: AtomicUsize::new(0),
+            }
         }
     }
 
@@ -411,15 +432,20 @@ impl<T> ConcurrentBuffer<T> where T: Copy + Default + Sync {
 
     #[inline]
     unsafe fn as_slice(&self) -> &[T] {
-        unsafe {
-            mem::transmute::<&[UnsafeCell<T>], &[T]>(&self.data[0..(self.len() as usize)])
-        }
+        mem::transmute::<&[UnsafeCell<T>], &[T]>(&self.data[0..(self.len() as usize)])
     }
 
     #[inline]
     pub fn to_vec(&self) -> Vec<T> {
         unsafe {
             self.as_slice().to_vec()
+        }
+    }
+
+    #[inline]
+    pub fn range_to_vec(&self, range: Range<u32>) -> Vec<T> {
+        unsafe {
+            self.as_slice()[(range.start as usize)..(range.end as usize)].to_vec()
         }
     }
 }

@@ -803,7 +803,6 @@ fn build_scene(context: &mut SceneBuilderContext,
             sink.send(SceneToMainMsg::Execute(command)).unwrap()
         });
 
-        // FIXME(pcwalton): Actually take the number of jobs into account.
         match jobs {
             Some(1) => scene_builder.build_sequentially(listener),
             _ => scene_builder.build_in_parallel(listener),
