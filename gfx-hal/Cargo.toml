@@ -1,0 +1,54 @@
+[package]
+name = "pathfinder_gfx_hal"
+version = "0.1.0"
+edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+
+[features]
+default = []
+metal = ["gfx-backend-metal"]
+dx12 = ["gfx-backend-dx12"]
+vulkan = ["gfx-backend-vulkan"]
+
+[dependencies]
+rustache = "0.1"
+gfx-hal = { version = "0.1", git = "https://github.com/gfx-rs/gfx", branch = "master" }
+log = "0.4.0"
+env_logger = "0.5.12"
+shaderc = "0.3.16"
+winit = "0.19.1"
+
+[dependencies.image]
+version = "0.21"
+default-features = false
+features = ["png_codec"]
+
+[dependencies.pathfinder_geometry]
+path = "../geometry"
+
+[dependencies.pathfinder_gpu]
+path = "../gpu"
+
+[dependencies.pathfinder_renderer]
+path = "../renderer"
+
+[dependencies.pathfinder_simd]
+path = "../simd"
+
+[dependencies.gfx-backend-vulkan]
+version = "0.1"
+git = "https://github.com/gfx-rs/gfx"
+branch = "master"
+optional = true
+
+[target.'cfg(target_os = "macos")'.dependencies.gfx-backend-metal]
+version = "0.1"
+git = "https://github.com/gfx-rs/gfx"
+branch = "master"
+optional = true
+
+[target.'cfg(windows)'.dependencies.gfx-backend-dx12]
+version = "0.1"
+git = "https://github.com/gfx-rs/gfx"
+branch = "master"
+optional = true
