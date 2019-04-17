@@ -10,7 +10,7 @@
 
 //! Packed data ready to be sent to the GPU.
 
-use crate::builder::{MAX_FILLS_PER_BATCH, RenderCommandListener};
+use crate::builder::{MAX_FILLS_PER_BATCH, RenderCommandListener, SceneBuilderContext};
 use crate::cca_vec::ConcurrentCopyableArrayVec;
 use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
@@ -24,9 +24,6 @@ use pathfinder_simd::default::{F32x4, I32x4};
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::ops::Add;
 
-const MAX_FILLS: u32 = 0x100000;
-const MAX_ALPHA_TILES: u32 = 0x80000;
-
 #[derive(Debug)]
 pub struct BuiltObject {
     pub bounds: RectF32,
@@ -39,12 +36,6 @@ pub struct BuiltScene {
     pub quad: [Point3DF32; 4],
     pub object_count: u32,
     pub shaders: Vec<ObjectShader>,
-}
-
-pub struct SharedBuffers {
-    pub z_buffer: ZBuffer,
-    pub alpha_tiles: ConcurrentCopyableArrayVec<AlphaTileBatchPrimitive>,
-    pub fills: ConcurrentCopyableArrayVec<FillBatchPrimitive>,
 }
 
 pub enum RenderCommand {
@@ -126,7 +117,7 @@ impl BuiltObject {
     }
 
     fn add_fill(&mut self,
-                buffers: &SharedBuffers,
+                context: &SceneBuilderContext,
                 listener: &dyn RenderCommandListener,
                 segment: &LineSegmentF32,
                 tile_coords: Point2DI32) {
@@ -161,16 +152,16 @@ impl BuiltObject {
         }
 
         // Allocate global tile if necessary.
-        let alpha_tile_index = self.get_or_allocate_alpha_tile_index(buffers, tile_coords);
+        let alpha_tile_index = self.get_or_allocate_alpha_tile_index(context, tile_coords);
 
         //println!("... ... OK, pushing");
 
-        let fill_index = buffers.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
-        self.flush_render_commands_after_fill(buffers, listener, fill_index);
+        let fill_index = context.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
+        self.flush_render_commands_after_fill(context, listener, fill_index);
     }
 
     fn get_or_allocate_alpha_tile_index(&mut self,
-                                        buffers: &SharedBuffers,
+                                        context: &SceneBuilderContext,
                                         tile_coords: Point2DI32)
                                         -> u16 {
         let local_tile_index = self.tiles.coords_to_index_unchecked(tile_coords);
@@ -179,13 +170,13 @@ impl BuiltObject {
             return alpha_tile_index;
         }
 
-        let alpha_tile_index = buffers.alpha_tiles.push(AlphaTileBatchPrimitive::default()) as u16;
+        let alpha_tile_index = context.alpha_tiles.push(AlphaTileBatchPrimitive::default()) as u16;
         self.tiles.data[local_tile_index].alpha_tile_index = alpha_tile_index;
         alpha_tile_index
     }
 
     fn flush_render_commands_after_fill(&mut self,
-                                        buffers: &SharedBuffers,
+                                        context: &SceneBuilderContext,
                                         listener: &dyn RenderCommandListener,
                                         fill_index: u32) {
         let fill_count = fill_index + 1;
@@ -193,12 +184,12 @@ impl BuiltObject {
             // Note that this doesn't guarantee that the fills arrive in order (though it's likely
             // that they will), but that doesn't matter because they're order-independent.
             let fill_range = (fill_count - MAX_FILLS_PER_BATCH)..fill_count;
-            listener.send(RenderCommand::Fill(buffers.fills.range_to_vec(fill_range)))
+            listener.send(RenderCommand::Fill(context.fills.range_to_vec(fill_range)))
         }
     }
 
     pub fn add_active_fill(&mut self,
-                           buffers: &SharedBuffers,
+                           context: &SceneBuilderContext,
                            listener: &dyn RenderCommandListener,
                            left: f32,
                            right: f32,
@@ -222,7 +213,7 @@ impl BuiltObject {
                  tile_y);*/
 
         while winding != 0 {
-            self.add_fill(buffers, listener, &segment, tile_coords);
+            self.add_fill(context, listener, &segment, tile_coords);
             if winding < 0 {
                 winding += 1
             } else {
@@ -232,7 +223,7 @@ impl BuiltObject {
     }
 
     pub fn generate_fill_primitives_for_line(&mut self,
-                                             buffers: &SharedBuffers,
+                                             context: &SceneBuilderContext,
                                              listener: &dyn RenderCommandListener,
                                              mut segment: LineSegmentF32,
                                              tile_y: i32) {
@@ -274,7 +265,7 @@ impl BuiltObject {
 
             let fill_segment = LineSegmentF32::new(&fill_from, &fill_to);
             let fill_tile_coords = Point2DI32::new(subsegment_tile_x, tile_y);
-            self.add_fill(buffers, listener, &fill_segment, fill_tile_coords);
+            self.add_fill(context, listener, &fill_segment, fill_tile_coords);
         }
     }
 
@@ -337,16 +328,6 @@ impl AlphaTileBatchPrimitive {
     pub fn tile_coords(&self) -> Point2DI32 {
         Point2DI32::new((self.tile_x_lo as i32) | (((self.tile_hi & 0xf) as i32) << 8),
                         (self.tile_y_lo as i32) | (((self.tile_hi & 0xf0) as i32) << 4))
-    }
-}
-
-impl SharedBuffers {
-    pub fn new(effective_view_box: RectF32) -> SharedBuffers {
-        SharedBuffers {
-            z_buffer: ZBuffer::new(effective_view_box),
-            fills: ConcurrentCopyableArrayVec::new(MAX_FILLS),
-            alpha_tiles: ConcurrentCopyableArrayVec::new(MAX_ALPHA_TILES),
-        }
     }
 }
 

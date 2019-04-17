@@ -18,11 +18,13 @@
 use std::cell::UnsafeCell;
 use std::mem;
 use std::ops::Range;
+use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub struct ConcurrentCopyableArrayVec<T> where T: Copy + Default + Sync {
     data: Vec<UnsafeCell<T>>,
-    len: AtomicUsize,
+    allocated_len: AtomicUsize,
+    committed_len: AtomicUsize,
 }
 
 impl<T> ConcurrentCopyableArrayVec<T> where T: Copy + Default + Sync {
@@ -30,7 +32,8 @@ impl<T> ConcurrentCopyableArrayVec<T> where T: Copy + Default + Sync {
         unsafe {
             ConcurrentCopyableArrayVec {
                 data: (0..capacity).map(|_| UnsafeCell::new(mem::uninitialized())).collect(),
-                len: AtomicUsize::new(0),
+                allocated_len: AtomicUsize::new(0),
+                committed_len: AtomicUsize::new(0),
             }
         }
     }
@@ -50,45 +53,57 @@ impl<T> ConcurrentCopyableArrayVec<T> where T: Copy + Default + Sync {
         }
     }
 
+    /// Once this method returns, it is guaranteed that all elements prior to
+    /// the pushed element are visible to this thread.
     #[inline]
     pub fn push(&self, element: T) -> u32 {
-        let index = self.len.fetch_add(1, Ordering::SeqCst) as u32;
-        self.set(index, element);
-        index
+        let index = self.allocated_len.fetch_add(1, Ordering::SeqCst);
+        self.set(index as u32, element);
+        while self.committed_len.compare_exchange(index,
+                                                  index + 1,
+                                                  Ordering::Release,
+                                                  Ordering::Relaxed).is_err() {}
+        index as u32
     }
 
     #[inline]
     pub fn clear(&self) {
-        self.len.store(0, Ordering::SeqCst);
+        self.committed_len.store(0, Ordering::Relaxed);
+        self.allocated_len.store(0, Ordering::Relaxed);
     }
 
     #[inline]
-    pub fn len(&self) -> u32 {
-        self.len.load(Ordering::SeqCst) as u32
+    pub fn allocated_len(&self) -> u32 {
+        self.allocated_len.load(Ordering::Relaxed) as u32
+    }
+
+    #[inline]
+    pub fn committed_len(&self) -> u32 {
+        self.committed_len.load(Ordering::Relaxed) as u32
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    #[inline]
-    unsafe fn as_slice(&self) -> &[T] {
-        mem::transmute::<&[UnsafeCell<T>], &[T]>(&self.data[0..(self.len() as usize)])
-    }
-
-    #[inline]
-    pub fn to_vec(&self) -> Vec<T> {
-        unsafe {
-            self.as_slice().to_vec()
-        }
+        self.allocated_len() == 0
     }
 
     #[inline]
     pub fn range_to_vec(&self, range: Range<u32>) -> Vec<T> {
         unsafe {
-            self.as_slice()[(range.start as usize)..(range.end as usize)].to_vec()
+            assert!(range.start <= range.end);
+            assert!((range.end as usize) <= self.data.len());
+            let count = (range.end - range.start) as usize;
+            let mut result: Vec<T> = Vec::with_capacity(count);
+            let src = &self.data[range.start as usize] as *const UnsafeCell<T> as *const T;
+            ptr::copy_nonoverlapping(src, result.as_mut_ptr(), count);
+            result.set_len(count);
+            result
         }
+    }
+
+    #[inline]
+    pub fn to_vec(&self) -> Vec<T> {
+        self.range_to_vec(0..(self.committed_len()))
     }
 }
 

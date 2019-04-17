@@ -8,9 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::builder::RenderCommandListener;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, SharedBuffers};
+use crate::builder::{RenderCommandListener, SceneBuilderContext};
+use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject};
 use crate::sorted_vector::SortedVector;
+use crate::z_buffer::ZBuffer;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
@@ -29,7 +30,9 @@ pub struct Tiler<'o, 'z> {
     outline: &'o Outline,
     pub built_object: BuiltObject,
     object_index: u16,
-    buffers: &'z SharedBuffers,
+
+    context: &'z SceneBuilderContext,
+    z_buffer: &'z ZBuffer,
     listener: &'z dyn RenderCommandListener,
 
     point_queue: SortedVector<QueuedEndpoint>,
@@ -39,11 +42,12 @@ pub struct Tiler<'o, 'z> {
 
 impl<'o, 'z> Tiler<'o, 'z> {
     #[allow(clippy::or_fun_call)]
-    pub fn new(outline: &'o Outline,
+    pub fn new(context: &'z SceneBuilderContext,
+               z_buffer: &'z ZBuffer,
+               listener: &'z dyn RenderCommandListener,
+               outline: &'o Outline,
                view_box: RectF32,
-               object_index: u16,
-               buffers: &'z SharedBuffers,
-               listener: &'z dyn RenderCommandListener)
+               object_index: u16)
                -> Tiler<'o, 'z> {
         let bounds = outline.bounds().intersection(view_box).unwrap_or(RectF32::default());
         let built_object = BuiltObject::new(bounds);
@@ -52,7 +56,9 @@ impl<'o, 'z> Tiler<'o, 'z> {
             outline,
             built_object,
             object_index,
-            buffers,
+
+            context,
+            z_buffer,
             listener,
 
             point_queue: SortedVector::new(),
@@ -100,12 +106,12 @@ impl<'o, 'z> Tiler<'o, 'z> {
     }
 
     fn pack_and_cull(&self) {
-        let alpha_tiles = &self.buffers.alpha_tiles;
+        let alpha_tiles = &self.context.alpha_tiles;
         for (tile_index, tile) in self.built_object.tiles.data.iter().enumerate() {
             let tile_coords = self.built_object.local_tile_index_to_coords(tile_index as u32);
             if tile.is_solid() {
                 if tile.backdrop != 0 {
-                    self.buffers.z_buffer.update(tile_coords, self.object_index);
+                    self.z_buffer.update(tile_coords, self.object_index);
                 }
                 continue;
             }
@@ -166,7 +172,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
                 let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
-                self.built_object.add_active_fill(self.buffers,
+                self.built_object.add_active_fill(self.context,
                                                   self.listener,
                                                   current_x,
                                                   tile_right_x,
@@ -200,7 +206,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
-                self.built_object.add_active_fill(self.buffers,
+                self.built_object.add_active_fill(self.context,
                                                   self.listener,
                                                   current_x,
                                                   segment_x,
@@ -215,7 +221,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
             // Process the edge.
             //println!("about to process existing active edge {:#?}", active_edge);
             debug_assert!(f32::abs(active_edge.crossing.y() - tile_top) < 0.1);
-            active_edge.process(&self.buffers, self.listener, &mut self.built_object, tile_y);
+            active_edge.process(self.context, self.listener, &mut self.built_object, tile_y);
             if !active_edge.segment.is_none() {
                 self.active_edges.push(active_edge);
             }
@@ -251,7 +257,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
                 contour,
                 prev_endpoint_index,
                 &mut self.active_edges,
-                &self.buffers,
+                self.context,
                 self.listener,
                 &mut self.built_object,
                 tile_y,
@@ -274,7 +280,7 @@ impl<'o, 'z> Tiler<'o, 'z> {
                 contour,
                 point_index.point(),
                 &mut self.active_edges,
-                &self.buffers,
+                self.context,
                 self.listener,
                 &mut self.built_object,
                 tile_y,
@@ -328,14 +334,14 @@ fn process_active_segment(
     contour: &Contour,
     from_endpoint_index: u32,
     active_edges: &mut SortedVector<ActiveEdge>,
-    buffers: &SharedBuffers,
+    context: &SceneBuilderContext,
     listener: &dyn RenderCommandListener,
     built_object: &mut BuiltObject,
     tile_y: i32,
 ) {
     let mut active_edge = ActiveEdge::from_segment(&contour.segment_after(from_endpoint_index));
     //println!("... process_active_segment({:#?})", active_edge);
-    active_edge.process(buffers, listener, built_object, tile_y);
+    active_edge.process(context, listener, built_object, tile_y);
     if !active_edge.segment.is_none() {
         //println!("... ... pushing resulting active edge: {:#?}", active_edge);
         active_edges.push(active_edge);
@@ -386,7 +392,7 @@ impl ActiveEdge {
     }
 
     fn process(&mut self,
-               buffers: &SharedBuffers,
+               context: &SceneBuilderContext,
                listener: &dyn RenderCommandListener,
                built_object: &mut BuiltObject,
                tile_y: i32) {
@@ -399,7 +405,7 @@ impl ActiveEdge {
         if segment.is_line() {
             let line_segment = segment.as_line_segment();
             self.segment = match self.process_line_segment(&line_segment,
-                                                           buffers,
+                                                           context,
                                                            listener,
                                                            built_object,
                                                            tile_y) {
@@ -420,7 +426,7 @@ impl ActiveEdge {
                 LineSegmentF32::new(&self.crossing, &segment.baseline.upper_point())
                     .orient(winding);
             if self
-                .process_line_segment(&first_line_segment, buffers, listener, built_object, tile_y)
+                .process_line_segment(&first_line_segment, context, listener, built_object, tile_y)
                 .is_some()
             {
                 return;
@@ -453,7 +459,7 @@ impl ActiveEdge {
                      */
 
             let line = before_segment.baseline.orient(winding);
-            match self.process_line_segment(&line, buffers, listener, built_object, tile_y) {
+            match self.process_line_segment(&line, context, listener, built_object, tile_y) {
                 Some(ref lower_part) if split_t == 1.0 => {
                     self.segment = Segment::line(&lower_part);
                     return;
@@ -474,7 +480,7 @@ impl ActiveEdge {
     fn process_line_segment(
         &mut self,
         line_segment: &LineSegmentF32,
-        buffers: &SharedBuffers,
+        context: &SceneBuilderContext,
         listener: &dyn RenderCommandListener,
         built_object: &mut BuiltObject,
         tile_y: i32,
@@ -483,7 +489,7 @@ impl ActiveEdge {
         /*println!("process_line_segment({:?}, tile_y={}) tile_bottom={}",
                  line_segment, tile_y, tile_bottom);*/
         if line_segment.max_y() <= tile_bottom {
-            built_object.generate_fill_primitives_for_line(buffers,
+            built_object.generate_fill_primitives_for_line(context,
                                                            listener,
                                                            *line_segment,
                                                            tile_y);
@@ -491,7 +497,7 @@ impl ActiveEdge {
         }
 
         let (upper_part, lower_part) = line_segment.split_at_y(tile_bottom);
-        built_object.generate_fill_primitives_for_line(buffers, listener, upper_part, tile_y);
+        built_object.generate_fill_primitives_for_line(context, listener, upper_part, tile_y);
         self.crossing = lower_part.upper_point();
         Some(lower_part)
     }
