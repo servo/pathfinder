@@ -1,0 +1,12 @@
+language: rust
+addons:
+  apt:
+    packages:
+    - libegl1-mesa-dev
+    - libgtk-3-dev
+    - libsdl2-dev
+script:
+  - cd demo/native
+  - cargo build
+  - cd ../magicleap
+  - cargo build

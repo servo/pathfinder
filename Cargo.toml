@@ -2,6 +2,7 @@
 members = [
     "demo/android/rust",
     "demo/common",
+    "demo/magicleap",
     "demo/native",
     "geometry",
     "gl",
