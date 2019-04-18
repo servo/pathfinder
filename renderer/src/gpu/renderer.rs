@@ -9,10 +9,10 @@
 // except according to those terms.
 
 use crate::gpu::debug::DebugUI;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltScene, FillBatchPrimitive};
+use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
-use crate::scene::ObjectShader;
+use crate::scene::{ObjectShader, SceneDescriptor};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
@@ -24,6 +24,7 @@ use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
 use std::collections::VecDeque;
+use std::ops::{Add, Div};
 use std::time::Duration;
 use std::u32;
 
@@ -73,7 +74,12 @@ pub struct Renderer<D> where D: Device {
     stencil_program: StencilProgram<D>,
     stencil_vertex_array: StencilVertexArray<D>,
 
+    // Rendering state
+    mask_framebuffer_cleared: bool,
+    buffered_fills: Vec<FillBatchPrimitive>,
+
     // Debug
+    pub stats: RenderStats,
     current_timer_query: Option<D::TimerQuery>,
     pending_timer_queries: VecDeque<D::TimerQuery>,
     free_timer_queries: Vec<D::TimerQuery>,
@@ -83,10 +89,6 @@ pub struct Renderer<D> where D: Device {
     viewport: RectI32,
     render_mode: RenderMode,
     use_depth: bool,
-
-    // Rendering state
-    mask_framebuffer_cleared: bool,
-    buffered_fills: Vec<FillBatchPrimitive>,
 }
 
 impl<D> Renderer<D> where D: Device {
@@ -175,22 +177,22 @@ impl<D> Renderer<D> where D: Device {
             stencil_program,
             stencil_vertex_array,
 
+            stats: RenderStats::default(),
             current_timer_query: None,
             pending_timer_queries: VecDeque::new(),
             free_timer_queries: vec![],
-
             debug_ui,
+
+            mask_framebuffer_cleared: false,
+            buffered_fills: vec![],
 
             viewport,
             render_mode: RenderMode::default(),
             use_depth: false,
-
-            mask_framebuffer_cleared: false,
-            buffered_fills: vec![],
         }
     }
 
-    pub fn begin_scene(&mut self, built_scene: &BuiltScene) {
+    pub fn begin_scene(&mut self, scene: &SceneDescriptor) {
         self.init_postprocessing_framebuffer();
 
         let timer_query = self.free_timer_queries
@@ -199,13 +201,15 @@ impl<D> Renderer<D> where D: Device {
         self.device.begin_timer_query(&timer_query);
         self.current_timer_query = Some(timer_query);
 
-        self.upload_shaders(&built_scene.shaders);
+        self.upload_shaders(&scene.shaders);
 
         if self.use_depth {
-            self.draw_stencil(&built_scene.quad);
+            self.draw_stencil(&scene.bounding_quad);
         }
 
         self.mask_framebuffer_cleared = false;
+
+        self.stats = RenderStats { object_count: scene.object_count, ..RenderStats::default() };
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
@@ -213,14 +217,16 @@ impl<D> Renderer<D> where D: Device {
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
             RenderCommand::FlushFills => self.draw_buffered_fills(),
             RenderCommand::SolidTile(ref solid_tiles) => {
-                let count = solid_tiles.len() as u32;
+                let count = solid_tiles.len();
+                self.stats.solid_tile_count += count;
                 self.upload_solid_tiles(solid_tiles);
-                self.draw_solid_tiles(count);
+                self.draw_solid_tiles(count as u32);
             }
             RenderCommand::AlphaTile(ref alpha_tiles) => {
-                let count = alpha_tiles.len() as u32;
+                let count = alpha_tiles.len();
+                self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(alpha_tiles);
-                self.draw_alpha_tiles(count);
+                self.draw_alpha_tiles(count as u32);
             }
         }
     }
@@ -318,6 +324,8 @@ impl<D> Renderer<D> where D: Device {
         if fills.is_empty() {
             return;
         }
+
+        self.stats.fill_count += fills.len();
 
         while !fills.is_empty() {
             let count = cmp::min(fills.len(), MAX_FILLS_PER_BATCH - self.buffered_fills.len());
@@ -1086,5 +1094,37 @@ impl Default for RenderMode {
     #[inline]
     fn default() -> RenderMode {
         RenderMode::Multicolor
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RenderStats {
+    pub object_count: usize,
+    pub fill_count: usize,
+    pub alpha_tile_count: usize,
+    pub solid_tile_count: usize,
+}
+
+impl Add<RenderStats> for RenderStats {
+    type Output = RenderStats;
+    fn add(self, other: RenderStats) -> RenderStats {
+        RenderStats {
+            object_count: self.object_count + other.object_count,
+            solid_tile_count: self.solid_tile_count + other.solid_tile_count,
+            alpha_tile_count: self.alpha_tile_count + other.alpha_tile_count,
+            fill_count: self.fill_count + other.fill_count,
+        }
+    }
+}
+
+impl Div<usize> for RenderStats {
+    type Output = RenderStats;
+    fn div(self, divisor: usize) -> RenderStats {
+        RenderStats {
+            object_count: self.object_count / divisor,
+            solid_tile_count: self.solid_tile_count / divisor,
+            alpha_tile_count: self.alpha_tile_count / divisor,
+            fill_count: self.fill_count / divisor,
+        }
     }
 }

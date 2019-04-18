@@ -15,7 +15,7 @@
 //!
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
-use crate::gpu_data::Stats;
+use crate::gpu::renderer::RenderStats;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::Device;
@@ -45,7 +45,7 @@ impl<D> DebugUI<D> where D: Device {
     }
 
     pub fn add_sample(&mut self,
-                      stats: Stats,
+                      stats: RenderStats,
                       tile_time: Duration,
                       rendering_time: Option<Duration>) {
         self.cpu_samples.push(CPUSample { stats, elapsed: tile_time });
@@ -96,11 +96,11 @@ impl<D> DebugUI<D> where D: Device {
     }
 }
 
-struct SampleBuffer<S> where S: Add<S, Output=S> + Div<u32, Output=S> + Clone + Default {
+struct SampleBuffer<S> where S: Add<S, Output=S> + Div<usize, Output=S> + Clone + Default {
     samples: VecDeque<S>,
 }
 
-impl<S> SampleBuffer<S> where S: Add<S, Output=S> + Div<u32, Output=S> + Clone + Default {
+impl<S> SampleBuffer<S> where S: Add<S, Output=S> + Div<usize, Output=S> + Clone + Default {
     fn new() -> SampleBuffer<S> {
         SampleBuffer { samples: VecDeque::with_capacity(SAMPLE_BUFFER_SIZE) }
     }
@@ -122,43 +122,27 @@ impl<S> SampleBuffer<S> where S: Add<S, Output=S> + Div<u32, Output=S> + Clone +
             mean = mean + (*time).clone();
         }
 
-        mean / self.samples.len() as u32
+        mean / self.samples.len()
     }
 }
 
 #[derive(Clone, Default)]
 struct CPUSample {
     elapsed: Duration,
-    stats: Stats,
+    stats: RenderStats,
 }
 
 impl Add<CPUSample> for CPUSample {
     type Output = CPUSample;
     fn add(self, other: CPUSample) -> CPUSample {
-        CPUSample {
-            elapsed: self.elapsed + other.elapsed,
-            stats: Stats {
-                object_count: self.stats.object_count + other.stats.object_count,
-                solid_tile_count: self.stats.solid_tile_count + other.stats.solid_tile_count,
-                alpha_tile_count: self.stats.alpha_tile_count + other.stats.alpha_tile_count,
-                fill_count: self.stats.fill_count + other.stats.fill_count,
-            },
-        }
+        CPUSample { elapsed: self.elapsed + other.elapsed, stats: self.stats + other.stats }
     }
 }
 
-impl Div<u32> for CPUSample {
+impl Div<usize> for CPUSample {
     type Output = CPUSample;
-    fn div(self, divisor: u32) -> CPUSample {
-        CPUSample {
-            elapsed: self.elapsed / divisor,
-            stats: Stats {
-                object_count: self.stats.object_count / divisor,
-                solid_tile_count: self.stats.solid_tile_count / divisor,
-                alpha_tile_count: self.stats.alpha_tile_count / divisor,
-                fill_count: self.stats.fill_count / divisor,
-            },
-        }
+    fn div(self, divisor: usize) -> CPUSample {
+        CPUSample { elapsed: self.elapsed / (divisor as u32), stats: self.stats / divisor }
     }
 }
 
@@ -174,10 +158,10 @@ impl Add<GPUSample> for GPUSample {
     }
 }
 
-impl Div<u32> for GPUSample {
+impl Div<usize> for GPUSample {
     type Output = GPUSample;
-    fn div(self, divisor: u32) -> GPUSample {
-        GPUSample { elapsed: self.elapsed / divisor }
+    fn div(self, divisor: usize) -> GPUSample {
+        GPUSample { elapsed: self.elapsed / (divisor as u32) }
     }
 }
 

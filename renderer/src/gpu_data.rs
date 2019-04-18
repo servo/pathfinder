@@ -11,16 +11,14 @@
 //! Packed data ready to be sent to the GPU.
 
 use crate::builder::SceneBuilder;
-use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::fmt::{Debug, Formatter, Result as DebugResult};
-use std::ops::Add;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
@@ -29,14 +27,6 @@ pub(crate) struct BuiltObject {
     pub fills: Vec<FillBatchPrimitive>,
     pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
-}
-
-#[derive(Debug)]
-pub struct BuiltScene {
-    pub view_box: RectF32,
-    pub quad: [Point3DF32; 4],
-    pub object_count: u32,
-    pub shaders: Vec<ObjectShader>,
 }
 
 pub enum RenderCommand {
@@ -88,14 +78,6 @@ pub struct AlphaTileBatchPrimitive {
     pub backdrop: i8,
     pub object_index: u16,
     pub tile_index: u16,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Stats {
-    pub object_count: u32,
-    pub solid_tile_count: u32,
-    pub alpha_tile_count: u32,
-    pub fill_count: u32,
 }
 
 // Utilities for built objects
@@ -258,22 +240,6 @@ impl BuiltObject {
     }
 }
 
-impl BuiltScene {
-    #[inline]
-    pub fn new(view_box: RectF32, quad: &[Point3DF32; 4], object_count: u32) -> BuiltScene {
-        BuiltScene { view_box, quad: *quad, object_count, shaders: vec![] }
-    }
-
-    pub fn stats(&self) -> Stats {
-        Stats {
-            object_count: self.object_count,
-            solid_tile_count: 0,
-            alpha_tile_count: 0,
-            fill_count: 0,
-        }
-    }
-}
-
 impl Default for TileObjectPrimitive {
     #[inline]
     fn default() -> TileObjectPrimitive {
@@ -320,18 +286,6 @@ impl Debug for RenderCommand {
             RenderCommand::SolidTile(ref tiles) => {
                 write!(formatter, "SolidTile(x{})", tiles.len())
             }
-        }
-    }
-}
-
-impl Add<Stats> for Stats {
-    type Output = Stats;
-    fn add(self, other: Stats) -> Stats {
-        Stats {
-            object_count:     other.object_count,
-            solid_tile_count: other.solid_tile_count,
-            alpha_tile_count: other.alpha_tile_count,
-            fill_count:       other.fill_count,
         }
     }
 }

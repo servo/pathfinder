@@ -66,7 +66,7 @@ impl<'a> SceneBuilder<'a> {
                               &self.scene)
         }).collect();
 
-        self.finish_building(alpha_tiles);
+        self.finish_building(alpha_tiles)
     }
 
     pub fn build_in_parallel(&mut self) {
@@ -79,7 +79,7 @@ impl<'a> SceneBuilder<'a> {
                               &self.scene)
         }).collect();
 
-        self.finish_building(alpha_tiles);
+        self.finish_building(alpha_tiles)
     }
 
     fn build_object(&self,
@@ -219,7 +219,7 @@ pub struct PreparedRenderOptions {
 
 impl PreparedRenderOptions {
     #[inline]
-    pub fn quad(&self) -> [Point3DF32; 4] {
+    pub fn bounding_quad(&self) -> [Point3DF32; 4] {
         match self.transform {
             PreparedRenderTransform::Perspective { quad, .. } => quad,
             _ => [Point3DF32::default(); 4],
@@ -246,4 +246,10 @@ impl PreparedRenderTransform {
 impl<F> RenderCommandListener for F where F: Fn(RenderCommand) + Send + Sync {
     #[inline]
     fn send(&self, command: RenderCommand) { (*self)(command) }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TileStats {
+    pub solid_tile_count: u32,
+    pub alpha_tile_count: u32,
 }

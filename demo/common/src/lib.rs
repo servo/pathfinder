@@ -26,10 +26,10 @@ use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
 use pathfinder_gpu::{StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
-use pathfinder_renderer::gpu::renderer::{RenderMode, Renderer};
-use pathfinder_renderer::gpu_data::{BuiltScene, RenderCommand, Stats};
+use pathfinder_renderer::gpu::renderer::{RenderMode, RenderStats, Renderer};
+use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
-use pathfinder_renderer::scene::Scene;
+use pathfinder_renderer::scene::{Scene, SceneDescriptor};
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
 use rayon::ThreadPoolBuilder;
@@ -413,7 +413,7 @@ impl<W> DemoApp<W> where W: Window {
         }
 
         if !frame.scene_stats.is_empty() || !frame.scene_rendering_times.is_empty() {
-            let zero = Stats::default();
+            let zero = RenderStats::default();
             let aggregate_stats = frame.scene_stats.iter().fold(zero, |sum, item| sum + *item);
             let total_rendering_time = if frame.scene_rendering_times.is_empty() {
                 None
@@ -557,8 +557,6 @@ impl<W> DemoApp<W> where W: Window {
             _ => panic!("Expected `BeginRenderScene`!"),
         };
 
-        self.current_frame.as_mut().unwrap().scene_stats.push(built_scene.stats());
-
         match self.monochrome_scene_color {
             None => self.renderer.set_render_mode(RenderMode::Multicolor),
             Some(fg_color) => {
@@ -592,6 +590,7 @@ impl<W> DemoApp<W> where W: Window {
             }
         }
 
+        self.current_frame.as_mut().unwrap().scene_stats.push(self.renderer.stats);
         self.renderer.end_scene();
     }
 
@@ -742,7 +741,7 @@ struct BuildOptions {
 enum SceneToMainMsg {
     BeginFrame { transforms: Vec<RenderTransform> },
     EndFrame { tile_time: Duration },
-    BeginRenderScene(BuiltScene),
+    BeginRenderScene(SceneDescriptor),
     Execute(RenderCommand),
     EndRenderScene,
 }
@@ -779,11 +778,7 @@ fn build_scene(scene: &Scene,
     };
 
     let built_options = render_options.prepare(scene.bounds);
-    let quad = built_options.quad();
-
-    let mut built_scene = BuiltScene::new(scene.view_box, &quad, scene.objects.len() as u32);
-    built_scene.shaders = scene.build_shaders();
-    sink.send(SceneToMainMsg::BeginRenderScene(built_scene)).unwrap();
+    sink.send(SceneToMainMsg::BeginRenderScene(scene.build_descriptor(&built_options))).unwrap();
 
     let inner_sink = AssertUnwindSafe(sink.clone());
     let result = panic::catch_unwind(move || {
@@ -1086,7 +1081,7 @@ struct Frame {
     transforms: Vec<RenderTransform>,
     ui_events: Vec<UIEvent>,
     scene_rendering_times: Vec<Duration>,
-    scene_stats: Vec<Stats>,
+    scene_stats: Vec<RenderStats>,
 }
 
 impl Frame {

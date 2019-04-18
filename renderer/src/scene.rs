@@ -12,7 +12,7 @@
 
 use crate::builder::{PreparedRenderOptions, PreparedRenderTransform};
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
@@ -52,7 +52,15 @@ impl Scene {
         paint_id
     }
 
-    pub fn build_shaders(&self) -> Vec<ObjectShader> {
+    pub fn build_descriptor(&self, built_options: &PreparedRenderOptions) -> SceneDescriptor {
+        SceneDescriptor {
+            shaders: self.build_shaders(),
+            bounding_quad: built_options.bounding_quad(),
+            object_count: self.objects.len(),
+        }
+    }
+
+    fn build_shaders(&self) -> Vec<ObjectShader> {
         self.objects.iter().map(|object| {
             let paint = &self.paints[object.paint.0 as usize];
             ObjectShader { fill_color: paint.color }
@@ -152,6 +160,13 @@ impl Debug for Scene {
         writeln!(formatter, "</svg>")?;
         Ok(())
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct SceneDescriptor {
+    pub shaders: Vec<ObjectShader>,
+    pub bounding_quad: [Point3DF32; 4],
+    pub object_count: usize,
 }
 
 #[derive(Clone, Debug)]
