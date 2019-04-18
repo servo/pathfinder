@@ -139,6 +139,7 @@ impl Index<usize> for F32x4 {
     #[inline]
     fn index(&self, index: usize) -> &f32 {
         unsafe {
+            assert!(index < 4);
             let ptr = &self.0 as *const float32x4_t as *const f32;
             mem::transmute::<*const f32, &f32>(ptr.offset(index as isize))
         }
@@ -149,6 +150,7 @@ impl IndexMut<usize> for F32x4 {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut f32 {
         unsafe {
+            assert!(index < 4);
             let ptr = &mut self.0 as *mut float32x4_t as *mut f32;
             mem::transmute::<*mut f32, &mut f32>(ptr.offset(index as isize))
         }
@@ -265,6 +267,7 @@ impl Index<usize> for I32x4 {
     #[inline]
     fn index(&self, index: usize) -> &i32 {
         unsafe {
+            assert!(index < 4);
             let ptr = &self.0 as *const int32x4_t as *const i32;
             mem::transmute::<*const i32, &i32>(ptr.offset(index as isize))
         }
@@ -275,6 +278,7 @@ impl IndexMut<usize> for I32x4 {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut i32 {
         unsafe {
+            assert!(index < 4);
             let ptr = &mut self.0 as *mut int32x4_t as *mut i32;
             mem::transmute::<*mut i32, &mut i32>(ptr.offset(index as isize))
         }
@@ -335,6 +339,7 @@ impl Index<usize> for U32x4 {
     #[inline]
     fn index(&self, index: usize) -> &u32 {
         unsafe {
+            assert!(index < 4);
             let ptr = &self.0 as *const uint32x4_t as *const u32;
             mem::transmute::<*const u32, &u32>(ptr.offset(index as isize))
         }
