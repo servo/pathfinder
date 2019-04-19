@@ -26,7 +26,7 @@ use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
 use pathfinder_gpu::{StencilState, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
-use pathfinder_renderer::gpu::renderer::{RenderMode, RenderStats, Renderer};
+use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode, RenderStats, Renderer};
 use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
 use pathfinder_renderer::scene::{Scene, SceneDescriptor};
@@ -130,10 +130,12 @@ impl<W> DemoApp<W> where W: Window {
         let monochrome_scene_color = built_svg.scene.monochrome_color();
 
         let viewport = window.viewport(options.mode.view(0));
-        let renderer = Renderer::new(device,
-                                     resources,
-                                     viewport,
-                                     window_size.device_size());
+        let dest_framebuffer = DestFramebuffer::Default {
+            viewport,
+            window_size: window_size.device_size(),
+        };
+
+        let renderer = Renderer::new(device, resources, dest_framebuffer);
         let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
         scene_thread_proxy.set_drawable_size(viewport.size());
 
@@ -207,7 +209,10 @@ impl<W> DemoApp<W> where W: Window {
             let view = self.ui.mode.view(render_scene_index);
             let viewport = self.window.viewport(view);
             self.window.make_current(view);
-            self.renderer.set_viewport(viewport);
+            self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
+                viewport,
+                window_size: self.window_size.device_size(),
+            });
             self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
         }
 
@@ -391,7 +396,10 @@ impl<W> DemoApp<W> where W: Window {
         let view = self.ui.mode.view(render_scene_index);
         let viewport = self.window.viewport(view);
         self.window.make_current(view);
-        self.renderer.set_viewport(viewport);
+        self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
+            viewport,
+            window_size: self.window_size.device_size(),
+        });
         self.draw_environment(render_scene_index);
         self.render_vector_scene();
 
@@ -427,7 +435,10 @@ impl<W> DemoApp<W> where W: Window {
         if self.options.ui != UIVisibility::None {
             let viewport = self.window.viewport(View::Mono);
             self.window.make_current(View::Mono);
-            self.renderer.set_viewport(viewport);
+            self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
+                viewport,
+                window_size: self.window_size.device_size(),
+            });
             self.renderer.draw_debug_ui();
         }
 

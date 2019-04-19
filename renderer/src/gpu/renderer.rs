@@ -49,6 +49,7 @@ pub struct Renderer<D> where D: Device {
     pub device: D,
 
     // Core data
+    dest_framebuffer: DestFramebuffer<D>,
     fill_program: FillProgram<D>,
     solid_multicolor_tile_program: SolidTileMulticolorProgram<D>,
     alpha_multicolor_tile_program: AlphaTileMulticolorProgram<D>,
@@ -86,16 +87,12 @@ pub struct Renderer<D> where D: Device {
     pub debug_ui: DebugUI<D>,
 
     // Extra info
-    viewport: RectI32,
     render_mode: RenderMode,
     use_depth: bool,
 }
 
 impl<D> Renderer<D> where D: Device {
-    pub fn new(device: D,
-               resources: &dyn ResourceLoader,
-               viewport: RectI32,
-               main_framebuffer_size: Point2DI32)
+    pub fn new(device: D, resources: &dyn ResourceLoader, dest_framebuffer: DestFramebuffer<D>)
                -> Renderer<D> {
         let fill_program = FillProgram::new(&device, resources);
 
@@ -150,10 +147,12 @@ impl<D> Renderer<D> where D: Device {
                                                FILL_COLORS_TEXTURE_HEIGHT);
         let fill_colors_texture = device.create_texture(TextureFormat::RGBA8, fill_colors_size);
 
-        let debug_ui = DebugUI::new(&device, resources, main_framebuffer_size);
+        let debug_ui = DebugUI::new(&device, resources, dest_framebuffer.window_size(&device));
 
         Renderer {
             device,
+
+            dest_framebuffer,
             fill_program,
             solid_monochrome_tile_program,
             alpha_monochrome_tile_program,
@@ -186,7 +185,6 @@ impl<D> Renderer<D> where D: Device {
             mask_framebuffer_cleared: false,
             buffered_fills: vec![],
 
-            viewport,
             render_mode: RenderMode::default(),
             use_depth: false,
         }
@@ -242,7 +240,7 @@ impl<D> Renderer<D> where D: Device {
     }
 
     pub fn draw_debug_ui(&self) {
-        self.device.bind_default_framebuffer(self.viewport);
+        self.bind_main_framebuffer();
         self.debug_ui.draw(&self.device);
     }
 
@@ -258,8 +256,8 @@ impl<D> Renderer<D> where D: Device {
     }
 
     #[inline]
-    pub fn set_viewport(&mut self, new_viewport: RectI32) {
-        self.viewport = new_viewport;
+    pub fn set_dest_framebuffer(&mut self, new_dest_framebuffer: DestFramebuffer<D>) {
+        self.dest_framebuffer = new_dest_framebuffer;
     }
 
     #[inline]
@@ -506,12 +504,12 @@ impl<D> Renderer<D> where D: Device {
             }
         }
 
-        self.device.bind_default_framebuffer(self.viewport);
+        self.bind_main_framebuffer();
 
         self.device.bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
         self.device.use_program(&self.postprocess_program.program);
         self.device.set_uniform(&self.postprocess_program.framebuffer_size_uniform,
-                                UniformData::Vec2(self.viewport.size().to_f32().0));
+                                UniformData::Vec2(self.main_viewport().size().to_f32().0));
         match defringing_kernel {
             Some(ref kernel) => {
                 self.device.set_uniform(&self.postprocess_program.kernel_uniform,
@@ -602,7 +600,18 @@ impl<D> Renderer<D> where D: Device {
         if self.postprocessing_needed() {
             self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
         } else {
-            self.device.bind_default_framebuffer(self.viewport);
+            self.bind_main_framebuffer();
+        }
+    }
+
+    fn bind_main_framebuffer(&self) {
+        match self.dest_framebuffer {
+            DestFramebuffer::Default { viewport, .. } => {
+                self.device.bind_default_framebuffer(viewport)
+            }
+            DestFramebuffer::Other(ref framebuffer) => {
+                self.device.bind_framebuffer(framebuffer)
+            }
         }
     }
 
@@ -646,12 +655,23 @@ impl<D> Renderer<D> where D: Device {
     }
 
     fn draw_viewport(&self) -> RectI32 {
+        let main_viewport = self.main_viewport();
         match self.render_mode {
             RenderMode::Monochrome { defringing_kernel: Some(..), .. } => {
-                RectI32::new(Point2DI32::default(),
-                             self.viewport.size().scale_xy(Point2DI32::new(3, 1)))
+                let scale = Point2DI32::new(3, 1);
+                RectI32::new(Point2DI32::default(), main_viewport.size().scale_xy(scale))
             }
-            _ => self.viewport
+            _ => main_viewport
+        }
+    }
+
+    fn main_viewport(&self) -> RectI32 {
+        match self.dest_framebuffer {
+            DestFramebuffer::Default { viewport, .. } => viewport,
+            DestFramebuffer::Other(ref framebuffer) => {
+                let size = self.device.texture_size(self.device.framebuffer_texture(framebuffer));
+                RectI32::new(Point2DI32::default(), size)
+            }
         }
     }
 }
@@ -1076,6 +1096,23 @@ impl<D> StencilVertexArray<D> where D: Device {
                                            0);
 
         StencilVertexArray { vertex_array, vertex_buffer }
+    }
+}
+
+#[derive(Clone)]
+pub enum DestFramebuffer<D> where D: Device {
+    Default { viewport: RectI32, window_size: Point2DI32 },
+    Other(D::Framebuffer),
+}
+
+impl<D> DestFramebuffer<D> where D: Device {
+    fn window_size(&self, device: &D) -> Point2DI32 {
+        match *self {
+            DestFramebuffer::Default { window_size, .. } => window_size,
+            DestFramebuffer::Other(ref framebuffer) => {
+                device.texture_size(device.framebuffer_texture(framebuffer))
+            }
+        }
     }
 }
 
