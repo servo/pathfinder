@@ -41,9 +41,8 @@ use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_renderer::builder::RenderOptions;
 use pathfinder_renderer::builder::RenderTransform;
 use pathfinder_renderer::builder::SceneBuilder;
-use pathfinder_renderer::builder::SceneBuilderContext;
 use pathfinder_renderer::gpu::renderer::Renderer;
-use pathfinder_renderer::gpu_data::BuiltScene;
+use pathfinder_renderer::gpu::renderer::DestFramebuffer;
 use pathfinder_simd::default::F32x4;
 use pathfinder_svg::BuiltSVG;
 
@@ -52,7 +51,6 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
-use std::sync::mpsc;
 
 use usvg::Options as UsvgOptions;
 use usvg::Tree;
@@ -64,8 +62,8 @@ mod magicleap;
 mod mocked_c_api;
 
 struct ImmersiveApp {
-    sender: mpsc::Sender<Event>,
-    receiver: mpsc::Receiver<Event>,
+    sender: crossbeam_channel::Sender<Event>,
+    receiver: crossbeam_channel::Receiver<Event>,
     demo: DemoApp<MagicLeapWindow>,
 }
 
@@ -94,7 +92,7 @@ pub extern "C" fn magicleap_pathfinder_demo_init(egl_display: EGLDisplay, egl_co
     let demo = DemoApp::new(window, window_size, options);
     info!("Initialized app");
 
-    let (sender, receiver) = mpsc::channel();
+    let (sender, receiver) = crossbeam_channel::unbounded();
     Box::into_raw(Box::new(ImmersiveApp { sender, receiver, demo })) as *mut c_void
 }
 
@@ -133,7 +131,6 @@ struct MagicLeapPathfinder {
     renderers: HashMap<(EGLSurface, EGLDisplay), Renderer<GLDevice>>,
     svgs: HashMap<String, BuiltSVG>,
     resources: FilesystemResourceLoader,
-    scene_builder_context: SceneBuilderContext,
 }
 
 #[repr(C)]
@@ -165,7 +162,6 @@ pub extern "C" fn magicleap_pathfinder_init() -> *mut c_void {
         renderers: HashMap::new(),
         svgs: HashMap::new(),
         resources: FilesystemResourceLoader::locate(),
-        scene_builder_context: SceneBuilderContext::new(),
     };
     info!("Initialized pf");
 
@@ -187,7 +183,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
         });
 
         let mut width = 0;
-            let mut height = 0;
+        let mut height = 0;
         egl::query_surface(options.display, options.surface, egl::EGL_WIDTH, &mut width);
         egl::query_surface(options.display, options.surface, egl::EGL_HEIGHT, &mut height);
         let size = Point2DI32::new(width, height);
@@ -195,18 +191,20 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
         let viewport_origin = Point2DI32::new(options.viewport[0] as i32, options.viewport[1] as i32);
         let viewport_size = Point2DI32::new(options.viewport[2] as i32, options.viewport[3] as i32);
         let viewport = RectI32::new(viewport_origin, viewport_size);
+        let dest_framebuffer = DestFramebuffer::Default { viewport, window_size: size };
 
         let bg_color = F32x4::new(options.bg_color[0], options.bg_color[1], options.bg_color[2], options.bg_color[3]);
 
         let renderer = pf.renderers.entry((options.display, options.surface)).or_insert_with(|| {
-               let mut fbo = 0;
-              gl::GetIntegerv(gl::DRAW_FRAMEBUFFER_BINDING, &mut fbo);
+            let mut fbo = 0;
+            gl::GetIntegerv(gl::DRAW_FRAMEBUFFER_BINDING, &mut fbo);
             let device = GLDevice::new(GLVersion::GLES3, fbo as GLuint);
-            Renderer::new(device, resources, viewport, size)
+            let dest_framebuffer = DestFramebuffer::Default { viewport, window_size: size };
+            Renderer::new(device, resources, dest_framebuffer)
         });
 
         renderer.set_main_framebuffer_size(size);
-        renderer.set_viewport(viewport);
+        renderer.set_dest_framebuffer(dest_framebuffer);
         renderer.device.bind_default_framebuffer(viewport);
         renderer.device.clear(Some(bg_color), Some(1.0), Some(0));
         renderer.disable_depth();
@@ -227,20 +225,16 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
         };
 
         let built_options = render_options.prepare(svg.scene.bounds);
-        let quad = built_options.quad();
 
-        let mut built_scene = BuiltScene::new(svg.scene.view_box, &quad, svg.scene.objects.len() as u32);
-        built_scene.shaders = svg.scene.build_shaders();
-
-        let (command_sender, command_receiver) = mpsc::channel();
+        let (command_sender, command_receiver) = crossbeam_channel::unbounded();
         let command_sender_clone = command_sender.clone();
 
-        SceneBuilder::new(&pf.scene_builder_context, &svg.scene, &built_options)
-            .build_sequentially(Box::new(move |command| { let _ = command_sender.send(Some(command)); }));
+        SceneBuilder::new(&svg.scene, &built_options, Box::new(move |command| { let _ = command_sender.send(Some(command)); }))
+            .build_sequentially();
 
         let _ = command_sender_clone.send(None);
         
-        renderer.begin_scene(&built_scene);
+        renderer.begin_scene(&svg.scene.build_descriptor(&built_options));
         while let Ok(Some(command)) = command_receiver.recv() {
             renderer.render_command(&command);
         }
