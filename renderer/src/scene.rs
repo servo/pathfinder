@@ -83,11 +83,6 @@ impl Scene {
                     outline.clip_against_polygon(clip_polygon);
                     outline.apply_perspective(perspective);
 
-                    // TODO(pcwalton): Support this in 2D too.
-                    if let Some(barrel_distortion) = options.barrel_distortion {
-                        outline.barrel_distort(barrel_distortion, perspective.window_size);
-                    }
-
                     // TODO(pcwalton): Support subpixel AA in 3D.
                 }
             }

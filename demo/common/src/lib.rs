@@ -20,7 +20,6 @@ use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
 use pathfinder_geometry::color::ColorU;
-use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
@@ -236,11 +235,6 @@ impl<W> DemoApp<W> where W: Window {
             Camera::TwoD(transform) => vec![RenderTransform::Transform2D(transform)],
         };
 
-        let barrel_distortion = match self.ui.mode {
-            Mode::VR => Some(self.window.barrel_distortion_coefficients()),
-            _ => None,
-        };
-
         self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
             render_transforms,
             stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
@@ -249,7 +243,6 @@ impl<W> DemoApp<W> where W: Window {
                 None
             },
             subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
-            barrel_distortion,
         })).unwrap();
     }
 
@@ -741,7 +734,6 @@ enum MainToSceneMsg {
 struct BuildOptions {
     render_transforms: Vec<RenderTransform>,
     stem_darkening_font_size: Option<f32>,
-    barrel_distortion: Option<BarrelDistortionCoefficients>,
     subpixel_aa_enabled: bool,
 }
 
@@ -780,7 +772,6 @@ fn build_scene(scene: &Scene,
                 Point2DF32::new(x, y).scale(font_size)
             }
         },
-        barrel_distortion: build_options.barrel_distortion,
         subpixel_aa_enabled: build_options.subpixel_aa_enabled,
     };
 
