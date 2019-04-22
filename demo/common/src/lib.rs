@@ -542,12 +542,8 @@ impl<W> DemoApp<W> where W: Window {
             transform.post_mul(&Transform3DF32::from_scale(ground_scale, 1.0, ground_scale));
         device.bind_vertex_array(&self.ground_solid_vertex_array.vertex_array);
         device.use_program(&self.ground_program.program);
-        device.set_uniform(&self.ground_program.transform_uniform, UniformData::Mat4([
-            transform.c0,
-            transform.c1,
-            transform.c2,
-            transform.c3,
-        ]));
+        device.set_uniform(&self.ground_program.transform_uniform,
+                           UniformData::from_transform_3d(&transform));
         device.set_uniform(&self.ground_program.color_uniform,
                            UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0));
         device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {

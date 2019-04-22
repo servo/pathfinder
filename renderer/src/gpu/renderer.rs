@@ -16,6 +16,8 @@ use crate::scene::{ObjectShader, SceneDescriptor};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::transform2d::Matrix2x2F32;
+use pathfinder_geometry::basic::transform3d::Transform3DF32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
@@ -75,6 +77,10 @@ pub struct Renderer<D> where D: Device {
     stencil_program: StencilProgram<D>,
     stencil_vertex_array: StencilVertexArray<D>,
 
+    // Reprojection shader
+    reprojection_program: ReprojectionProgram<D>,
+    reprojection_vertex_array: ReprojectionVertexArray<D>,
+
     // Rendering state
     mask_framebuffer_cleared: bool,
     buffered_fills: Vec<FillBatchPrimitive>,
@@ -103,6 +109,7 @@ impl<D> Renderer<D> where D: Device {
 
         let postprocess_program = PostprocessProgram::new(&device, resources);
         let stencil_program = StencilProgram::new(&device, resources);
+        let reprojection_program = ReprojectionProgram::new(&device, resources);
 
         let area_lut_texture = device.create_texture_from_png(resources, "area-lut");
         let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
@@ -136,6 +143,10 @@ impl<D> Renderer<D> where D: Device {
                                                                    &postprocess_program,
                                                                    &quad_vertex_positions_buffer);
         let stencil_vertex_array = StencilVertexArray::new(&device, &stencil_program);
+        let reprojection_vertex_array =
+            ReprojectionVertexArray::new(&device,
+                                         &reprojection_program,
+                                         &quad_vertex_positions_buffer);
 
         let mask_framebuffer_size = Point2DI32::new(MASK_FRAMEBUFFER_WIDTH,
                                                     MASK_FRAMEBUFFER_HEIGHT);
@@ -175,6 +186,9 @@ impl<D> Renderer<D> where D: Device {
 
             stencil_program,
             stencil_vertex_array,
+
+            reprojection_program,
+            reprojection_vertex_array,
 
             stats: RenderStats::default(),
             current_timer_query: None,
@@ -594,6 +608,23 @@ impl<D> Renderer<D> where D: Device {
             color_mask: false,
             ..RenderState::default()
         })
+    }
+
+    pub fn draw_reprojected_texture(&self, texture: &D::Texture) {
+        self.bind_draw_framebuffer();
+
+        self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
+        self.device.use_program(&self.reprojection_program.program);
+        self.device.set_uniform(&self.reprojection_program.transform_uniform,
+                                UniformData::Mat2(Matrix2x2F32::default().0));
+        self.device.set_uniform(&self.reprojection_program.translation_uniform,
+                                UniformData::Vec2(F32x4::default()));
+        self.device.bind_texture(texture, 0);
+        self.device.set_uniform(&self.reprojection_program.tex_transform_uniform,
+                                UniformData::from_transform_3d(&Transform3DF32::default()));
+        self.device.set_uniform(&self.reprojection_program.texture_uniform,
+                                UniformData::TextureUnit(0));
+        self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState::default());
     }
 
     fn bind_draw_framebuffer(&self) {
@@ -1096,6 +1127,54 @@ impl<D> StencilVertexArray<D> where D: Device {
                                            0);
 
         StencilVertexArray { vertex_array, vertex_buffer }
+    }
+}
+
+struct ReprojectionProgram<D> where D: Device {
+    program: D::Program,
+    transform_uniform: D::Uniform,
+    translation_uniform: D::Uniform,
+    tex_transform_uniform: D::Uniform,
+    texture_uniform: D::Uniform,
+}
+
+impl<D> ReprojectionProgram<D> where D: Device {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> ReprojectionProgram<D> {
+        let program = device.create_program(resources, "reproject");
+        let transform_uniform = device.get_uniform(&program, "Transform");
+        let translation_uniform = device.get_uniform(&program, "Translation");
+        let tex_transform_uniform = device.get_uniform(&program, "TexTransform");
+        let texture_uniform = device.get_uniform(&program, "Texture");
+
+        ReprojectionProgram {
+            program,
+            texture_uniform,
+            transform_uniform,
+            translation_uniform,
+            tex_transform_uniform,
+        }
+    }
+}
+
+struct ReprojectionVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
+}
+
+impl<D> ReprojectionVertexArray<D> where D: Device {
+    fn new(device: &D,
+           reprojection_program: &ReprojectionProgram<D>,
+           quad_vertex_positions_buffer: &D::Buffer)
+           -> ReprojectionVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+
+        let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position");
+
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&reprojection_program.program);
+        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
+
+        ReprojectionVertexArray { vertex_array }
     }
 }
 
