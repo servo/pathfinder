@@ -194,49 +194,47 @@ impl<W> DemoApp<W> where W: Window {
         self.build_scene();
 
         // Get the render message, and determine how many scenes it contains.
-        let transforms = match self.scene_thread_proxy.receiver.recv().unwrap() {
-            SceneToMainMsg::BeginFrame { transforms } => transforms,
+        let transform = match self.scene_thread_proxy.receiver.recv().unwrap() {
+            SceneToMainMsg::BeginFrame { transform } => transform,
             msg => panic!("Expected BeginFrame message, found {:?}!", msg),
         };
-        let render_scene_count = transforms.len() as u32;
 
         // Save the frame.
-        self.current_frame = Some(Frame::new(transforms, ui_events));
+        self.current_frame = Some(Frame::new(transform, ui_events));
 
         // Begin drawing the scene.
-        for render_scene_index in 0..render_scene_count {
-            let view = self.ui.mode.view(render_scene_index);
-            let viewport = self.window.viewport(view);
-            self.window.make_current(view);
-            self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
-                viewport,
-                window_size: self.window_size.device_size(),
-            });
-            self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
-        }
+        let view = self.ui.mode.view(0);
+        let viewport = self.window.viewport(view);
+        self.window.make_current(view);
+        self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
+            viewport,
+            window_size: self.window_size.device_size(),
+        });
+        self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
 
-        render_scene_count
+        match self.camera.mode() {
+            Mode::VR => 2,
+            _ => 1,
+        }
     }
 
     fn build_scene(&mut self) {
-        let render_transforms = match self.camera {
+        let render_transform = match self.camera {
             Camera::ThreeD { ref transforms, ref mut transform, ref mut velocity, .. } => {
                 if transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                transforms.iter()
-                    .map(|tr| {
-                         let perspective = tr.perspective
-                             .post_mul(&tr.view)
-                             .post_mul(&transform.to_transform());
-                         RenderTransform::Perspective(perspective)
-                    }).collect()
+                let first_transform = &transforms[0];
+                let perspective = first_transform.perspective
+                                                 .post_mul(&first_transform.view)
+                                                 .post_mul(&transform.to_transform());
+                RenderTransform::Perspective(perspective)
             }
-            Camera::TwoD(transform) => vec![RenderTransform::Transform2D(transform)],
+            Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         };
 
         self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
-            render_transforms,
+            render_transform,
             stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
                 Some(APPROX_FONT_SIZE * self.window_size.backing_scale_factor)
             } else {
@@ -385,23 +383,27 @@ impl<W> DemoApp<W> where W: Window {
         MousePosition { absolute, relative }
     }
 
-    pub fn draw_scene(&mut self, render_scene_index: u32) {
-        let view = self.ui.mode.view(render_scene_index);
+    pub fn draw_scene(&mut self) {
+        let view = self.ui.mode.view(0);
         let viewport = self.window.viewport(view);
         self.window.make_current(view);
         self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
             viewport,
             window_size: self.window_size.device_size(),
         });
-        self.draw_environment(render_scene_index);
+        self.draw_environment(0);
         self.render_vector_scene();
+    }
 
-        if let Some(rendering_time) = self.renderer.shift_timer_query() {
-            self.current_frame.as_mut().unwrap().scene_rendering_times.push(rendering_time)
-        }
+    pub fn composite_scene(&mut self, render_scene_index: u32) {
+        // TODO(pcwalton)
     }
 
     pub fn finish_drawing_frame(&mut self) {
+        if let Some(rendering_time) = self.renderer.shift_timer_query() {
+            self.current_frame.as_mut().unwrap().scene_rendering_times.push(rendering_time);
+        }
+
         let tile_time = match self.scene_thread_proxy.receiver.recv().unwrap() {
             SceneToMainMsg::EndFrame { tile_time } => tile_time,
             _ => panic!("Expected `EndFrame`!"),
@@ -482,10 +484,11 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn draw_environment(&self, viewport_index: u32) {
-        let frame = &self.current_frame.as_ref().unwrap();
-        let render_transform = &frame.transforms[viewport_index as usize].clone();
+        // TODO(pcwalton): Use the viewport index!
 
-        let perspective = match *render_transform {
+        let frame = &self.current_frame.as_ref().unwrap();
+
+        let perspective = match frame.transform {
             RenderTransform::Transform2D(..) => return,
             RenderTransform::Perspective(perspective) => perspective,
         };
@@ -705,16 +708,10 @@ impl SceneThread {
                 }
                 MainToSceneMsg::Build(build_options) => {
                     self.sender.send(SceneToMainMsg::BeginFrame {
-                        transforms: build_options.render_transforms.clone(),
+                        transform: build_options.render_transform.clone(),
                     }).unwrap();
                     let start_time = Instant::now();
-                    for render_transform in &build_options.render_transforms {
-                        build_scene(&self.scene,
-                                    &build_options,
-                                    (*render_transform).clone(),
-                                    self.options.jobs,
-                                    &mut self.sender);
-                    }
+                    build_scene(&self.scene, &build_options, self.options.jobs, &mut self.sender);
                     let tile_time = Instant::now() - start_time;
                     self.sender.send(SceneToMainMsg::EndFrame { tile_time }).unwrap();
                 }
@@ -732,13 +729,13 @@ enum MainToSceneMsg {
 
 #[derive(Clone)]
 struct BuildOptions {
-    render_transforms: Vec<RenderTransform>,
+    render_transform: RenderTransform,
     stem_darkening_font_size: Option<f32>,
     subpixel_aa_enabled: bool,
 }
 
 enum SceneToMainMsg {
-    BeginFrame { transforms: Vec<RenderTransform> },
+    BeginFrame { transform: RenderTransform },
     EndFrame { tile_time: Duration },
     BeginRenderScene(SceneDescriptor),
     Execute(RenderCommand),
@@ -760,11 +757,10 @@ impl Debug for SceneToMainMsg {
 
 fn build_scene(scene: &Scene,
                build_options: &BuildOptions,
-               render_transform: RenderTransform,
                jobs: Option<usize>,
                sink: &mut SyncSender<SceneToMainMsg>) {
     let render_options = RenderOptions {
-        transform: render_transform.clone(),
+        transform: build_options.render_transform.clone(),
         dilation: match build_options.stem_darkening_font_size {
             None => Point2DF32::default(),
             Some(font_size) => {
@@ -1076,15 +1072,15 @@ fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
 }
 
 struct Frame {
-    transforms: Vec<RenderTransform>,
+    transform: RenderTransform,
     ui_events: Vec<UIEvent>,
     scene_rendering_times: Vec<Duration>,
     scene_stats: Vec<RenderStats>,
 }
 
 impl Frame {
-    fn new(transforms: Vec<RenderTransform>, ui_events: Vec<UIEvent>) -> Frame {
-        Frame { transforms, ui_events, scene_rendering_times: vec![], scene_stats: vec![] }
+    fn new(transform: RenderTransform, ui_events: Vec<UIEvent>) -> Frame {
+        Frame { transform, ui_events, scene_rendering_times: vec![], scene_stats: vec![] }
     }
 }
 

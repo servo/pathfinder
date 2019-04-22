@@ -49,8 +49,9 @@ fn main() {
         }
 
         let scene_count = app.prepare_frame(events);
+        app.draw_scene();
         for scene_index in 0..scene_count {
-            app.draw_scene(scene_index);
+            app.composite_scene(scene_index);
         }
         app.finish_drawing_frame();
     }
