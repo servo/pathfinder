@@ -23,7 +23,7 @@ use pathfinder_geometry::color::ColorU;
 use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
-use pathfinder_gpu::{StencilState, UniformData};
+use pathfinder_gpu::{StencilState, TextureFormat, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode, RenderStats, Renderer};
 use pathfinder_renderer::gpu_data::RenderCommand;
@@ -103,6 +103,8 @@ pub struct DemoApp<W> where W: Window {
     scene_thread_proxy: SceneThreadProxy,
     renderer: Renderer<GLDevice>,
 
+    scene_framebuffer: Option<<GLDevice as Device>::Framebuffer>,
+
     ground_program: GroundProgram<GLDevice>,
     ground_solid_vertex_array: GroundSolidVertexArray<GLDevice>,
     ground_line_vertex_array: GroundLineVertexArray<GLDevice>,
@@ -177,6 +179,8 @@ impl<W> DemoApp<W> where W: Window {
             scene_thread_proxy,
             renderer,
 
+            scene_framebuffer: None,
+
             ground_program,
             ground_solid_vertex_array,
             ground_line_vertex_array,
@@ -202,20 +206,47 @@ impl<W> DemoApp<W> where W: Window {
         // Save the frame.
         self.current_frame = Some(Frame::new(transform, ui_events));
 
-        // Begin drawing the scene.
+        // Initialize and set the appropriate framebuffer.
         let view = self.ui.mode.view(0);
-        let viewport = self.window.viewport(view);
         self.window.make_current(view);
-        self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
-            viewport,
-            window_size: self.window_size.device_size(),
-        });
+        let window_size = self.window_size.device_size();
+        let scene_count = match self.camera.mode() {
+            Mode::VR => {
+                let viewport = self.window.viewport(View::Stereo(0));
+                if self.scene_framebuffer.is_none() ||
+                    self.renderer
+                        .device
+                        .texture_size(&self.renderer
+                                           .device
+                                           .framebuffer_texture(self.scene_framebuffer
+                                                                    .as_ref()
+                                                                    .unwrap())) !=
+                        viewport.size() {
+                    let scene_texture = self.renderer.device.create_texture(TextureFormat::RGBA8,
+                                                                            viewport.size());
+                    self.scene_framebuffer =
+                        Some(self.renderer.device.create_framebuffer(scene_texture));
+                }
+                self.renderer
+                    .replace_dest_framebuffer(DestFramebuffer::Other(self.scene_framebuffer
+                                                                         .take()
+                                                                         .unwrap()));
+                2
+            }
+            _ => {
+                self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+                    viewport: self.window.viewport(View::Mono),
+                    window_size,
+                });
+                1
+            }
+        };
+
+        // Begin drawing the scene.
+        self.renderer.bind_dest_framebuffer();
         self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
 
-        match self.camera.mode() {
-            Mode::VR => 2,
-            _ => 1,
-        }
+        scene_count
     }
 
     fn build_scene(&mut self) {
@@ -385,18 +416,37 @@ impl<W> DemoApp<W> where W: Window {
 
     pub fn draw_scene(&mut self) {
         let view = self.ui.mode.view(0);
-        let viewport = self.window.viewport(view);
         self.window.make_current(view);
-        self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
-            viewport,
-            window_size: self.window_size.device_size(),
-        });
         self.draw_environment(0);
         self.render_vector_scene();
+
+        // Reattach default framebuffer.
+        if self.camera.mode() != Mode::VR {
+            return;
+        }
+
+        if let DestFramebuffer::Other(scene_framebuffer) =
+                self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+                    viewport: self.window.viewport(View::Mono),
+                    window_size: self.window_size.device_size(),
+                }) {
+            self.scene_framebuffer = Some(scene_framebuffer);
+        }
     }
 
     pub fn composite_scene(&mut self, render_scene_index: u32) {
-        // TODO(pcwalton)
+        if self.camera.mode() != Mode::VR {
+            return;
+        }
+
+        self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+            viewport: self.window.viewport(View::Stereo(render_scene_index)),
+            window_size: self.window_size.device_size(),
+        });
+
+        let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
+        let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
+        self.renderer.reproject_texture(scene_texture);
     }
 
     pub fn finish_drawing_frame(&mut self) {
@@ -430,7 +480,7 @@ impl<W> DemoApp<W> where W: Window {
         if self.options.ui != UIVisibility::None {
             let viewport = self.window.viewport(View::Mono);
             self.window.make_current(View::Mono);
-            self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
+            self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
                 viewport,
                 window_size: self.window_size.device_size(),
             });

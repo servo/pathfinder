@@ -26,6 +26,7 @@ use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
 use std::collections::VecDeque;
+use std::mem;
 use std::ops::{Add, Div};
 use std::time::Duration;
 use std::u32;
@@ -254,7 +255,7 @@ impl<D> Renderer<D> where D: Device {
     }
 
     pub fn draw_debug_ui(&self) {
-        self.bind_main_framebuffer();
+        self.bind_dest_framebuffer();
         self.debug_ui.draw(&self.device);
     }
 
@@ -270,8 +271,14 @@ impl<D> Renderer<D> where D: Device {
     }
 
     #[inline]
-    pub fn set_dest_framebuffer(&mut self, new_dest_framebuffer: DestFramebuffer<D>) {
-        self.dest_framebuffer = new_dest_framebuffer;
+    pub fn dest_framebuffer(&self) -> &DestFramebuffer<D> {
+        &self.dest_framebuffer
+    }
+
+    #[inline]
+    pub fn replace_dest_framebuffer(&mut self, new_dest_framebuffer: DestFramebuffer<D>)
+                                    -> DestFramebuffer<D> {
+        mem::replace(&mut self.dest_framebuffer, new_dest_framebuffer)
     }
 
     #[inline]
@@ -518,7 +525,7 @@ impl<D> Renderer<D> where D: Device {
             }
         }
 
-        self.bind_main_framebuffer();
+        self.bind_dest_framebuffer();
 
         self.device.bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
         self.device.use_program(&self.postprocess_program.program);
@@ -610,7 +617,7 @@ impl<D> Renderer<D> where D: Device {
         })
     }
 
-    pub fn draw_reprojected_texture(&self, texture: &D::Texture) {
+    pub fn reproject_texture(&self, texture: &D::Texture) {
         self.bind_draw_framebuffer();
 
         self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
@@ -631,11 +638,11 @@ impl<D> Renderer<D> where D: Device {
         if self.postprocessing_needed() {
             self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
         } else {
-            self.bind_main_framebuffer();
+            self.bind_dest_framebuffer();
         }
     }
 
-    fn bind_main_framebuffer(&self) {
+    pub fn bind_dest_framebuffer(&self) {
         match self.dest_framebuffer {
             DestFramebuffer::Default { viewport, .. } => {
                 self.device.bind_default_framebuffer(viewport)
