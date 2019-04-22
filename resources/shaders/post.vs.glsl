@@ -1,6 +1,6 @@
 #version {{version}}
 
-// pathfinder/demo/shaders/post.vs.glsl
+// pathfinder/resources/shaders/post.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

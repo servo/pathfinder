@@ -1,6 +1,6 @@
 #version {{version}}
 
-// pathfinder/resources/shaders/debug_texture.fs.glsl
+// pathfinder/resources/shaders/reproject.fs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -12,14 +12,15 @@
 
 precision highp float;
 
+uniform mat4 uOldTransform;
 uniform sampler2D uTexture;
-uniform vec4 uColor;
 
 in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
 void main() {
-    float alpha = texture(uTexture, vTexCoord).r * uColor.a;
-    oFragColor = alpha * vec4(uColor.rgb, 1.0);
+    vec4 normTexCoord = uOldTransform * vec4(vTexCoord, 0.0, 1.0);
+    vec2 texCoord = ((normTexCoord.xy / normTexCoord.w) + 1.0) * 0.5;
+    oFragColor = texture(uTexture, texCoord);
 }

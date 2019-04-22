@@ -34,6 +34,8 @@ const DEFAULT_WINDOW_WIDTH: u32 = 1067;
 const DEFAULT_WINDOW_HEIGHT: u32 = 800;
 
 fn main() {
+    color_backtrace::install();
+
     let window = WindowImpl::new();
     let window_size = window.size();
     let options = Options::default();
@@ -49,8 +51,9 @@ fn main() {
         }
 
         let scene_count = app.prepare_frame(events);
+        app.draw_scene();
         for scene_index in 0..scene_count {
-            app.draw_scene(scene_index);
+            app.composite_scene(scene_index);
         }
         app.finish_drawing_frame();
     }
@@ -84,17 +87,14 @@ impl Window for WindowImpl {
 
     fn viewport(&self, view: View) -> RectI32 {
         let (width, height) = self.window.drawable_size();
-	let mut width = width as i32;
-	let height = height as i32;
-	let mut x_offset = 0;
+        let mut width = width as i32;
+        let height = height as i32;
+        let mut x_offset = 0;
         if let View::Stereo(index) = view {
             width = width / 2;
-	    x_offset = width * (index as i32);
+            x_offset = width * (index as i32);
         }
-        RectI32::new (
-	    Point2DI32::new(x_offset, 0),
-	    Point2DI32::new(width, height),
-	)
+        RectI32::new(Point2DI32::new(x_offset, 0), Point2DI32::new(width, height))
     }
 
     fn make_current(&mut self, _view: View) {

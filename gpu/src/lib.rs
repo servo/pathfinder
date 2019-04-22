@@ -14,6 +14,8 @@ use crate::resources::ResourceLoader;
 use image::ImageFormat;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::transform3d::Transform3DF32;
+use pathfinder_geometry::color::ColorF;
 use pathfinder_simd::default::F32x4;
 use rustache::HashBuilder;
 use std::time::Duration;
@@ -75,8 +77,7 @@ pub trait Device {
     fn texture_size(&self, texture: &Self::Texture) -> Point2DI32;
     fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI32, data: &[u8]);
     fn read_pixels_from_default_framebuffer(&self, size: Point2DI32) -> Vec<u8>;
-    // TODO(pcwalton): Switch to `ColorF`!
-    fn clear(&self, color: Option<F32x4>, depth: Option<f32>, stencil: Option<u8>);
+    fn clear(&self, params: &ClearParams);
     fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
     fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
     fn draw_arrays_instanced(&self,
@@ -199,6 +200,7 @@ pub enum ShaderKind {
 #[derive(Clone, Copy)]
 pub enum UniformData {
     Int(i32),
+    Mat2(F32x4),
     Mat4([F32x4; 4]),
     Vec2(F32x4),
     Vec4(F32x4),
@@ -210,6 +212,14 @@ pub enum Primitive {
     Triangles,
     TriangleFan,
     Lines,
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct ClearParams {
+    pub color: Option<ColorF>,
+    pub rect: Option<RectI32>,
+    pub depth: Option<f32>,
+    pub stencil: Option<u8>,
 }
 
 #[derive(Clone, Debug)]
@@ -287,6 +297,13 @@ impl Default for StencilFunc {
     #[inline]
     fn default() -> StencilFunc {
         StencilFunc::Always
+    }
+}
+
+impl UniformData {
+    #[inline]
+    pub fn from_transform_3d(transform: &Transform3DF32) -> UniformData {
+        UniformData::Mat4([transform.c0, transform.c1, transform.c2, transform.c3])
     }
 }
 

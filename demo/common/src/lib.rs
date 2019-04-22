@@ -12,19 +12,18 @@
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction};
-use crate::window::{CameraTransform, Event, Keycode, SVGPath, View, Window, WindowSize};
+use crate::window::{Event, Keycode, OcularTransform, SVGPath, View, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
-use pathfinder_geometry::color::ColorU;
-use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
+use pathfinder_geometry::color::{ColorF, ColorU};
 use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
-use pathfinder_gpu::{StencilState, UniformData};
+use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderState};
+use pathfinder_gpu::{StencilFunc, StencilState, TextureFormat, UniformData};
 use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
 use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode, RenderStats, Renderer};
 use pathfinder_renderer::gpu_data::RenderCommand;
@@ -37,7 +36,6 @@ use std::f32::consts::FRAC_PI_4;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::fs::File;
 use std::io::Read;
-use std::iter;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::process;
@@ -72,6 +70,9 @@ const MESSAGE_TIMEOUT_SECS: u64 = 5;
 
 const MAX_MESSAGES_IN_FLIGHT: usize = 256;
 
+// Half of the eye separation distance.
+const DEFAULT_EYE_OFFSET: f32 = 0.025;
+
 pub const GRIDLINE_COUNT: u8 = 10;
 
 pub mod window;
@@ -103,6 +104,8 @@ pub struct DemoApp<W> where W: Window {
     ui: DemoUI<GLDevice>,
     scene_thread_proxy: SceneThreadProxy,
     renderer: Renderer<GLDevice>,
+
+    scene_framebuffer: Option<<GLDevice as Device>::Framebuffer>,
 
     ground_program: GroundProgram<GLDevice>,
     ground_solid_vertex_array: GroundSolidVertexArray<GLDevice>,
@@ -178,6 +181,8 @@ impl<W> DemoApp<W> where W: Window {
             scene_thread_proxy,
             renderer,
 
+            scene_framebuffer: None,
+
             ground_program,
             ground_solid_vertex_array,
             ground_line_vertex_array,
@@ -195,61 +200,96 @@ impl<W> DemoApp<W> where W: Window {
         self.build_scene();
 
         // Get the render message, and determine how many scenes it contains.
-        let transforms = match self.scene_thread_proxy.receiver.recv().unwrap() {
-            SceneToMainMsg::BeginFrame { transforms } => transforms,
+        let transform = match self.scene_thread_proxy.receiver.recv().unwrap() {
+            SceneToMainMsg::BeginFrame { transform } => transform,
             msg => panic!("Expected BeginFrame message, found {:?}!", msg),
         };
-        let render_scene_count = transforms.len() as u32;
 
         // Save the frame.
-        self.current_frame = Some(Frame::new(transforms, ui_events));
+        self.current_frame = Some(Frame::new(transform, ui_events));
+
+        // Initialize and set the appropriate framebuffer.
+        let view = self.ui.mode.view(0);
+        self.window.make_current(view);
+        let window_size = self.window_size.device_size();
+        let scene_count = match self.camera.mode() {
+            Mode::VR => {
+                let viewport = self.window.viewport(View::Stereo(0));
+                if self.scene_framebuffer.is_none() ||
+                    self.renderer
+                        .device
+                        .texture_size(&self.renderer
+                                           .device
+                                           .framebuffer_texture(self.scene_framebuffer
+                                                                    .as_ref()
+                                                                    .unwrap())) !=
+                        viewport.size() {
+                    let scene_texture = self.renderer.device.create_texture(TextureFormat::RGBA8,
+                                                                            viewport.size());
+                    self.scene_framebuffer =
+                        Some(self.renderer.device.create_framebuffer(scene_texture));
+                }
+                self.renderer
+                    .replace_dest_framebuffer(DestFramebuffer::Other(self.scene_framebuffer
+                                                                         .take()
+                                                                         .unwrap()));
+                2
+            }
+            _ => {
+                self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+                    viewport: self.window.viewport(View::Mono),
+                    window_size,
+                });
+                1
+            }
+        };
 
         // Begin drawing the scene.
-        for render_scene_index in 0..render_scene_count {
-            let view = self.ui.mode.view(render_scene_index);
-            let viewport = self.window.viewport(view);
-            self.window.make_current(view);
-            self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
-                viewport,
-                window_size: self.window_size.device_size(),
-            });
-            self.renderer.device.clear(Some(self.background_color().to_f32().0), Some(1.0), Some(0));
-        }
+        self.renderer.bind_dest_framebuffer();
 
-        render_scene_count
+        // Clear to the appropriate color.
+        let clear_color = if scene_count == 2 {
+            ColorF::transparent_black()
+        } else {
+            self.background_color().to_f32()
+        };
+        self.renderer.device.clear(&ClearParams {
+            color: Some(clear_color),
+            depth: Some(1.0),
+            stencil: Some(0),
+            ..ClearParams::default()
+        });
+
+        scene_count
     }
 
     fn build_scene(&mut self) {
-        let render_transforms = match self.camera {
-            Camera::ThreeD { ref transforms, ref mut transform, ref mut velocity, .. } => {
-                if transform.offset(*velocity) {
+        let render_transform = match self.camera {
+            Camera::ThreeD {
+                ref scene_transform,
+                ref mut modelview_transform,
+                ref mut velocity,
+                ..
+            } => {
+                if modelview_transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                transforms.iter()
-                    .map(|tr| {
-                         let perspective = tr.perspective
-                             .post_mul(&tr.view)
-                             .post_mul(&transform.to_transform());
-                         RenderTransform::Perspective(perspective)
-                    }).collect()
+                let perspective = scene_transform.perspective
+                                                 .post_mul(&scene_transform.modelview_to_eye)
+                                                 .post_mul(&modelview_transform.to_transform());
+                RenderTransform::Perspective(perspective)
             }
-            Camera::TwoD(transform) => vec![RenderTransform::Transform2D(transform)],
-        };
-
-        let barrel_distortion = match self.ui.mode {
-            Mode::VR => Some(self.window.barrel_distortion_coefficients()),
-            _ => None,
+            Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         };
 
         self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
-            render_transforms,
+            render_transform,
             stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
                 Some(APPROX_FONT_SIZE * self.window_size.backing_scale_factor)
             } else {
                 None
             },
             subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
-            barrel_distortion,
         })).unwrap();
     }
 
@@ -277,12 +317,12 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::MouseMoved(new_position) if self.mouselook_enabled => {
                     let mouse_position = self.process_mouse_position(new_position);
-                    if let Camera::ThreeD { ref mut transform, .. } = self.camera {
+                    if let Camera::ThreeD { ref mut modelview_transform, .. } = self.camera {
                         let rotation = mouse_position.relative
                                                      .to_f32()
                                                      .scale(MOUSELOOK_ROTATION_SPEED);
-                        transform.yaw += rotation.x();
-                        transform.pitch += rotation.y();
+                        modelview_transform.yaw += rotation.x();
+                        modelview_transform.pitch += rotation.y();
                         self.dirty = true;
                     }
                 }
@@ -302,14 +342,14 @@ impl<W> DemoApp<W> where W: Window {
                     }
                 }
                 Event::Look { pitch, yaw } => {
-                    if let Camera::ThreeD { ref mut transform, .. } = self.camera {
-                        transform.pitch += pitch;
-                        transform.yaw += yaw;
+                    if let Camera::ThreeD { ref mut modelview_transform, .. } = self.camera {
+                        modelview_transform.pitch += pitch;
+                        modelview_transform.yaw += yaw;
                     }
                 }
-                Event::CameraTransforms(new_transforms) => {
-                    if let Camera::ThreeD { ref mut transforms, .. } = self.camera {
-                        *transforms = new_transforms;
+                Event::SetEyeTransforms(new_eye_transforms) => {
+                    if let Camera::ThreeD { ref mut eye_transforms, .. } = self.camera {
+                        *eye_transforms = new_eye_transforms;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
@@ -392,23 +432,101 @@ impl<W> DemoApp<W> where W: Window {
         MousePosition { absolute, relative }
     }
 
-    pub fn draw_scene(&mut self, render_scene_index: u32) {
-        let view = self.ui.mode.view(render_scene_index);
-        let viewport = self.window.viewport(view);
+    pub fn draw_scene(&mut self) {
+        let view = self.ui.mode.view(0);
         self.window.make_current(view);
-        self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
-            viewport,
-            window_size: self.window_size.device_size(),
-        });
-        self.draw_environment(render_scene_index);
+
+        if self.camera.mode() != Mode::VR {
+            self.draw_environment(0);
+        }
+
         self.render_vector_scene();
 
-        if let Some(rendering_time) = self.renderer.shift_timer_query() {
-            self.current_frame.as_mut().unwrap().scene_rendering_times.push(rendering_time)
+        // Reattach default framebuffer.
+        if self.camera.mode() != Mode::VR {
+            return;
+        }
+
+        if let DestFramebuffer::Other(scene_framebuffer) =
+                self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+                    viewport: self.window.viewport(View::Mono),
+                    window_size: self.window_size.device_size(),
+                }) {
+            self.scene_framebuffer = Some(scene_framebuffer);
         }
     }
 
+    pub fn composite_scene(&mut self, render_scene_index: u32) {
+        let (eye_transforms, scene_transform, modelview_transform) = match self.camera {
+            Camera::ThreeD {
+                    ref eye_transforms,
+                    ref scene_transform,
+                    ref modelview_transform,
+                    ..
+            } if eye_transforms.len() > 1 => {
+                (eye_transforms, scene_transform, modelview_transform)
+            }
+            _ => return,
+        };
+
+        /*
+        println!("scene_transform.perspective={:?}", scene_transform.perspective);
+        println!("scene_transform.modelview_to_eye={:?}", scene_transform.modelview_to_eye);
+        println!("modelview transform={:?}", modelview_transform);
+        */
+
+        let viewport = self.window.viewport(View::Stereo(render_scene_index));
+        self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+            viewport,
+            window_size: self.window_size.device_size(),
+        });
+
+        self.renderer.bind_draw_framebuffer();
+        self.renderer.device.clear(&ClearParams {
+            color: Some(self.background_color().to_f32()),
+            depth: Some(1.0),
+            stencil: Some(0),
+            rect: Some(viewport),
+        });
+
+        self.draw_environment(render_scene_index);
+
+        let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
+        let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
+
+        let quad_scale_transform = Transform3DF32::from_scale(self.scene_view_box.size().x(),
+                                                              self.scene_view_box.size().y(),
+                                                              1.0);
+
+        let scene_transform_matrix = scene_transform.perspective
+                                                    .post_mul(&scene_transform.modelview_to_eye)
+                                                    .post_mul(&modelview_transform.to_transform())
+                                                    .post_mul(&quad_scale_transform);
+
+        let eye_transform = &eye_transforms[render_scene_index as usize];
+        let eye_transform_matrix = eye_transform.perspective
+                                                .post_mul(&eye_transform.modelview_to_eye)
+                                                .post_mul(&modelview_transform.to_transform())
+                                                .post_mul(&quad_scale_transform);
+
+        /*
+        println!("eye transform({}).modelview_to_eye={:?}",
+                 render_scene_index,
+                 eye_transform.modelview_to_eye);
+        println!("eye transform_matrix({})={:?}", render_scene_index, eye_transform_matrix);
+        println!("---");
+        */
+
+        self.renderer.reproject_texture(scene_texture,
+                                        &scene_transform_matrix.transform,
+                                        &eye_transform_matrix.transform);
+    }
+
     pub fn finish_drawing_frame(&mut self) {
+        if let Some(rendering_time) = self.renderer.shift_timer_query() {
+            self.current_frame.as_mut().unwrap().scene_rendering_times.push(rendering_time);
+        }
+
         let tile_time = match self.scene_thread_proxy.receiver.recv().unwrap() {
             SceneToMainMsg::EndFrame { tile_time } => tile_time,
             _ => panic!("Expected `EndFrame`!"),
@@ -435,7 +553,7 @@ impl<W> DemoApp<W> where W: Window {
         if self.options.ui != UIVisibility::None {
             let viewport = self.window.viewport(View::Mono);
             self.window.make_current(View::Mono);
-            self.renderer.set_dest_framebuffer(DestFramebuffer::Default {
+            self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
                 viewport,
                 window_size: self.window_size.device_size(),
             });
@@ -489,10 +607,11 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn draw_environment(&self, viewport_index: u32) {
-        let frame = &self.current_frame.as_ref().unwrap();
-        let render_transform = &frame.transforms[viewport_index as usize].clone();
+        // TODO(pcwalton): Use the viewport index!
 
-        let perspective = match *render_transform {
+        let frame = &self.current_frame.as_ref().unwrap();
+
+        let perspective = match frame.transform {
             RenderTransform::Transform2D(..) => return,
             RenderTransform::Perspective(perspective) => perspective,
         };
@@ -542,12 +661,8 @@ impl<W> DemoApp<W> where W: Window {
             transform.post_mul(&Transform3DF32::from_scale(ground_scale, 1.0, ground_scale));
         device.bind_vertex_array(&self.ground_solid_vertex_array.vertex_array);
         device.use_program(&self.ground_program.program);
-        device.set_uniform(&self.ground_program.transform_uniform, UniformData::Mat4([
-            transform.c0,
-            transform.c1,
-            transform.c2,
-            transform.c3,
-        ]));
+        device.set_uniform(&self.ground_program.transform_uniform,
+                           UniformData::from_transform_3d(&transform));
         device.set_uniform(&self.ground_program.color_uniform,
                            UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0));
         device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
@@ -716,16 +831,10 @@ impl SceneThread {
                 }
                 MainToSceneMsg::Build(build_options) => {
                     self.sender.send(SceneToMainMsg::BeginFrame {
-                        transforms: build_options.render_transforms.clone(),
+                        transform: build_options.render_transform.clone(),
                     }).unwrap();
                     let start_time = Instant::now();
-                    for render_transform in &build_options.render_transforms {
-                        build_scene(&self.scene,
-                                    &build_options,
-                                    (*render_transform).clone(),
-                                    self.options.jobs,
-                                    &mut self.sender);
-                    }
+                    build_scene(&self.scene, &build_options, self.options.jobs, &mut self.sender);
                     let tile_time = Instant::now() - start_time;
                     self.sender.send(SceneToMainMsg::EndFrame { tile_time }).unwrap();
                 }
@@ -743,14 +852,13 @@ enum MainToSceneMsg {
 
 #[derive(Clone)]
 struct BuildOptions {
-    render_transforms: Vec<RenderTransform>,
+    render_transform: RenderTransform,
     stem_darkening_font_size: Option<f32>,
-    barrel_distortion: Option<BarrelDistortionCoefficients>,
     subpixel_aa_enabled: bool,
 }
 
 enum SceneToMainMsg {
-    BeginFrame { transforms: Vec<RenderTransform> },
+    BeginFrame { transform: RenderTransform },
     EndFrame { tile_time: Duration },
     BeginRenderScene(SceneDescriptor),
     Execute(RenderCommand),
@@ -772,11 +880,10 @@ impl Debug for SceneToMainMsg {
 
 fn build_scene(scene: &Scene,
                build_options: &BuildOptions,
-               render_transform: RenderTransform,
                jobs: Option<usize>,
                sink: &mut SyncSender<SceneToMainMsg>) {
     let render_options = RenderOptions {
-        transform: render_transform.clone(),
+        transform: build_options.render_transform.clone(),
         dilation: match build_options.stem_darkening_font_size {
             None => Point2DF32::default(),
             Some(font_size) => {
@@ -784,7 +891,6 @@ fn build_scene(scene: &Scene,
                 Point2DF32::new(x, y).scale(font_size)
             }
         },
-        barrel_distortion: build_options.barrel_distortion,
         subpixel_aa_enabled: build_options.subpixel_aa_enabled,
     };
 
@@ -954,11 +1060,15 @@ fn center_of_window(window_size: &WindowSize) -> Point2DF32 {
 enum Camera {
     TwoD(Transform2DF32),
     ThreeD {
-        // For each camera, the perspective from camera coordinates to display coordinates,
+        // The ocular transform used for rendering of the scene to the scene framebuffer. If we are
+        // performing stereoscopic rendering, this is then reprojected according to the eye
+        // transforms below.
+        scene_transform: OcularTransform,
+        // For each eye, the perspective from camera coordinates to display coordinates,
         // and the view transform from world coordinates to camera coordinates.
-        transforms: Vec<CameraTransform>,
-        // The model transform from world coordinates to SVG coordinates
-        transform: CameraTransform3D,
+        eye_transforms: Vec<OcularTransform>,
+        // The modelview transform from world coordinates to SVG coordinates
+        modelview_transform: CameraTransform3D,
         // The camera's velocity (in world coordinates)
         velocity: Point3DF32,
     },
@@ -982,17 +1092,37 @@ impl Camera {
 
     fn new_3d(mode: Mode, view_box: RectF32, viewport_size: Point2DI32) -> Camera {
         let viewport_count = mode.viewport_count();
+
+        let fov_y = FRAC_PI_4;
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
-        let projection = Transform3DF32::from_perspective(FRAC_PI_4, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
-        let transform = CameraTransform {
-            perspective: Perspective::new(&projection, viewport_size),
-            view: Transform3DF32::default(),
+        let projection = Transform3DF32::from_perspective(fov_y,
+                                                          aspect,
+                                                          NEAR_CLIP_PLANE,
+                                                          FAR_CLIP_PLANE);
+        let perspective = Perspective::new(&projection, viewport_size);
+
+        // Create a scene transform by moving the camera back from the center of the eyes so that
+        // its field of view encompasses the field of view of both eyes.
+        let z_offset = -DEFAULT_EYE_OFFSET * projection.c0.x();
+        let scene_transform = OcularTransform {
+            perspective,
+            modelview_to_eye: Transform3DF32::from_translation(0.0, 0.0, z_offset),
         };
-        let transforms = iter::repeat(transform).take(viewport_count).collect();
+
+        // For now, initialize the eye transforms as copies of the scene transform.
+        let eye_offset = DEFAULT_EYE_OFFSET;
+        let eye_transforms = (0..viewport_count).map(|viewport_index| {
+            let this_eye_offset = if viewport_index == 0 { eye_offset } else { -eye_offset };
+            OcularTransform {
+                perspective,
+                modelview_to_eye: Transform3DF32::from_translation(this_eye_offset, 0.0, 0.0),
+            }
+        }).collect();
 
         Camera::ThreeD {
-            transforms,
-            transform: CameraTransform3D::new(view_box),
+            scene_transform,
+            eye_transforms,
+            modelview_transform: CameraTransform3D::new(view_box),
             velocity: Point3DF32::default(),
         }
     }
@@ -1003,14 +1133,14 @@ impl Camera {
 
     fn mode(&self) -> Mode {
         match *self {
-            Camera::ThreeD { ref transforms, .. } if 2 <= transforms.len() => Mode::VR,
+            Camera::ThreeD { ref eye_transforms, .. } if eye_transforms.len() >= 2 => Mode::VR,
             Camera::ThreeD { .. } => Mode::ThreeD,
             Camera::TwoD { .. } => Mode::TwoD,
         }
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct CameraTransform3D {
     position: Point3DF32,
     yaw: f32,
@@ -1089,15 +1219,15 @@ fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
 }
 
 struct Frame {
-    transforms: Vec<RenderTransform>,
+    transform: RenderTransform,
     ui_events: Vec<UIEvent>,
     scene_rendering_times: Vec<Duration>,
     scene_stats: Vec<RenderStats>,
 }
 
 impl Frame {
-    fn new(transforms: Vec<RenderTransform>, ui_events: Vec<UIEvent>) -> Frame {
-        Frame { transforms, ui_events, scene_rendering_times: vec![], scene_stats: vec![] }
+    fn new(transform: RenderTransform, ui_events: Vec<UIEvent>) -> Frame {
+        Frame { transform, ui_events, scene_rendering_times: vec![], scene_stats: vec![] }
     }
 }
 

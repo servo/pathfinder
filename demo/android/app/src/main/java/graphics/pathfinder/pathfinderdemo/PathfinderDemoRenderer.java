@@ -2,6 +2,7 @@ package graphics.pathfinder.pathfinderdemo;
 
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.util.Log;
 
 import com.google.vr.sdk.base.Eye;
 import com.google.vr.sdk.base.GvrView;
@@ -52,6 +53,7 @@ public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
             mInVRMode = inVR;
             try {
                 mActivity.setVrModeEnabled(mInVRMode, mActivity.mVRListenerComponentName);
+                mActivity.setVRMode(inVR);
             } catch (PackageManager.NameNotFoundException exception) {
                 throw new RuntimeException(exception);
             }

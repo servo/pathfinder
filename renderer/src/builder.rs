@@ -19,13 +19,9 @@ use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
-use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::sync::atomic::AtomicUsize;
 use std::u16;
-
-// Must be a power of two.
-pub const MAX_FILLS_PER_BATCH: u32 = 0x1000;
 
 pub trait RenderCommandListener: Send + Sync {
     fn send(&self, command: RenderCommand);
@@ -134,7 +130,6 @@ impl<'a> SceneBuilder<'a> {
 pub struct RenderOptions {
     pub transform: RenderTransform,
     pub dilation: Point2DF32,
-    pub barrel_distortion: Option<BarrelDistortionCoefficients>,
     pub subpixel_aa_enabled: bool,
 }
 
@@ -143,7 +138,6 @@ impl RenderOptions {
         PreparedRenderOptions {
             transform: self.transform.prepare(bounds),
             dilation: self.dilation,
-            barrel_distortion: self.barrel_distortion,
             subpixel_aa_enabled: self.subpixel_aa_enabled,
         }
     }
@@ -213,7 +207,6 @@ impl RenderTransform {
 pub struct PreparedRenderOptions {
     pub transform: PreparedRenderTransform,
     pub dilation: Point2DF32,
-    pub barrel_distortion: Option<BarrelDistortionCoefficients>,
     pub subpixel_aa_enabled: bool,
 }
 

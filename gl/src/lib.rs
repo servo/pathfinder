@@ -13,9 +13,9 @@
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc, Device};
-use pathfinder_gpu::{Primitive, RenderState, ShaderKind, StencilFunc, TextureFormat};
-use pathfinder_gpu::{UniformData, VertexAttrType};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
+use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderState, ShaderKind, StencilFunc};
+use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use rustache::{HashBuilder, Render};
 use std::ffi::CString;
@@ -367,6 +367,14 @@ impl Device for GLDevice {
                 UniformData::Int(value) => {
                     gl::Uniform1i(uniform.location, value); ck();
                 }
+                UniformData::Mat2(data) => {
+                    assert_eq!(mem::size_of::<F32x4>(), 4 * 4);
+                    let data_ptr: *const F32x4 = &data;
+                    gl::UniformMatrix2fv(uniform.location,
+                                         1,
+                                         gl::FALSE,
+                                         data_ptr as *const GLfloat);
+                }
                 UniformData::Mat4(data) => {
                     assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
                     let data_ptr: *const F32x4 = data.as_ptr();
@@ -487,27 +495,36 @@ impl Device for GLDevice {
         pixels
     }
 
-    // TODO(pcwalton): Switch to `ColorF`!
-    fn clear(&self, color: Option<F32x4>, depth: Option<f32>, stencil: Option<u8>) {
+    fn clear(&self, params: &ClearParams) {
         unsafe {
+            if let Some(rect) = params.rect {
+                let (origin, size) = (rect.origin(), rect.size());
+                gl::Scissor(origin.x(), origin.y(), size.x(), size.y()); ck();
+                gl::Enable(gl::SCISSOR_TEST); ck();
+            }
+
             let mut flags = 0;
-            if let Some(color) = color {
+            if let Some(color) = params.color {
                 gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
-                gl::ClearColor(color.x(), color.y(), color.z(), color.w()); ck();
+                gl::ClearColor(color.r(), color.g(), color.b(), color.a()); ck();
                 flags |= gl::COLOR_BUFFER_BIT;
             }
-            if let Some(depth) = depth {
+            if let Some(depth) = params.depth {
                 gl::DepthMask(gl::TRUE); ck();
                 gl::ClearDepthf(depth as _); ck(); // FIXME(pcwalton): GLES
                 flags |= gl::DEPTH_BUFFER_BIT;
             }
-            if let Some(stencil) = stencil {
+            if let Some(stencil) = params.stencil {
                 gl::StencilMask(!0); ck();
                 gl::ClearStencil(stencil as GLint); ck();
                 flags |= gl::STENCIL_BUFFER_BIT;
             }
             if flags != 0 {
                 gl::Clear(flags); ck();
+            }
+
+            if params.rect.is_some() {
+                gl::Disable(gl::SCISSOR_TEST); ck();
             }
         }
     }

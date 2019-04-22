@@ -16,14 +16,16 @@ use crate::scene::{ObjectShader, SceneDescriptor};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::transform3d::Transform3DF32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc};
-use pathfinder_gpu::{DepthState, Device, Primitive, RenderState, StencilFunc, StencilState};
-use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrType};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
+use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
+use pathfinder_gpu::{StencilState, TextureFormat, UniformData, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
 use std::collections::VecDeque;
+use std::mem;
 use std::ops::{Add, Div};
 use std::time::Duration;
 use std::u32;
@@ -75,6 +77,10 @@ pub struct Renderer<D> where D: Device {
     stencil_program: StencilProgram<D>,
     stencil_vertex_array: StencilVertexArray<D>,
 
+    // Reprojection shader
+    reprojection_program: ReprojectionProgram<D>,
+    reprojection_vertex_array: ReprojectionVertexArray<D>,
+
     // Rendering state
     mask_framebuffer_cleared: bool,
     buffered_fills: Vec<FillBatchPrimitive>,
@@ -103,6 +109,7 @@ impl<D> Renderer<D> where D: Device {
 
         let postprocess_program = PostprocessProgram::new(&device, resources);
         let stencil_program = StencilProgram::new(&device, resources);
+        let reprojection_program = ReprojectionProgram::new(&device, resources);
 
         let area_lut_texture = device.create_texture_from_png(resources, "area-lut");
         let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
@@ -136,6 +143,10 @@ impl<D> Renderer<D> where D: Device {
                                                                    &postprocess_program,
                                                                    &quad_vertex_positions_buffer);
         let stencil_vertex_array = StencilVertexArray::new(&device, &stencil_program);
+        let reprojection_vertex_array =
+            ReprojectionVertexArray::new(&device,
+                                         &reprojection_program,
+                                         &quad_vertex_positions_buffer);
 
         let mask_framebuffer_size = Point2DI32::new(MASK_FRAMEBUFFER_WIDTH,
                                                     MASK_FRAMEBUFFER_HEIGHT);
@@ -175,6 +186,9 @@ impl<D> Renderer<D> where D: Device {
 
             stencil_program,
             stencil_vertex_array,
+
+            reprojection_program,
+            reprojection_vertex_array,
 
             stats: RenderStats::default(),
             current_timer_query: None,
@@ -240,7 +254,7 @@ impl<D> Renderer<D> where D: Device {
     }
 
     pub fn draw_debug_ui(&self) {
-        self.bind_main_framebuffer();
+        self.bind_dest_framebuffer();
         self.debug_ui.draw(&self.device);
     }
 
@@ -256,8 +270,14 @@ impl<D> Renderer<D> where D: Device {
     }
 
     #[inline]
-    pub fn set_dest_framebuffer(&mut self, new_dest_framebuffer: DestFramebuffer<D>) {
-        self.dest_framebuffer = new_dest_framebuffer;
+    pub fn dest_framebuffer(&self) -> &DestFramebuffer<D> {
+        &self.dest_framebuffer
+    }
+
+    #[inline]
+    pub fn replace_dest_framebuffer(&mut self, new_dest_framebuffer: DestFramebuffer<D>)
+                                    -> DestFramebuffer<D> {
+        mem::replace(&mut self.dest_framebuffer, new_dest_framebuffer)
     }
 
     #[inline]
@@ -315,7 +335,10 @@ impl<D> Renderer<D> where D: Device {
         self.device.bind_framebuffer(&self.mask_framebuffer);
 
         // TODO(pcwalton): Only clear the appropriate portion?
-        self.device.clear(Some(F32x4::splat(0.0)), None, None);
+        self.device.clear(&ClearParams {
+            color: Some(ColorF::transparent_black()),
+            ..ClearParams::default()
+        });
     }
 
     fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
@@ -504,7 +527,7 @@ impl<D> Renderer<D> where D: Device {
             }
         }
 
-        self.bind_main_framebuffer();
+        self.bind_dest_framebuffer();
 
         self.device.bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
         self.device.use_program(&self.postprocess_program.program);
@@ -596,15 +619,37 @@ impl<D> Renderer<D> where D: Device {
         })
     }
 
-    fn bind_draw_framebuffer(&self) {
+    pub fn reproject_texture(&self,
+                             texture: &D::Texture,
+                             old_transform: &Transform3DF32,
+                             new_transform: &Transform3DF32) {
+        self.bind_draw_framebuffer();
+
+        self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
+        self.device.use_program(&self.reprojection_program.program);
+        self.device.set_uniform(&self.reprojection_program.old_transform_uniform,
+                                UniformData::from_transform_3d(old_transform));
+        self.device.set_uniform(&self.reprojection_program.new_transform_uniform,
+                                UniformData::from_transform_3d(new_transform));
+        self.device.bind_texture(texture, 0);
+        self.device.set_uniform(&self.reprojection_program.texture_uniform,
+                                UniformData::TextureUnit(0));
+        self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
+            blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
+            depth: Some(DepthState { func: DepthFunc::Less, write: false }),
+            ..RenderState::default()
+        });
+    }
+
+    pub fn bind_draw_framebuffer(&self) {
         if self.postprocessing_needed() {
             self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
         } else {
-            self.bind_main_framebuffer();
+            self.bind_dest_framebuffer();
         }
     }
 
-    fn bind_main_framebuffer(&self) {
+    pub fn bind_dest_framebuffer(&self) {
         match self.dest_framebuffer {
             DestFramebuffer::Default { viewport, .. } => {
                 self.device.bind_default_framebuffer(viewport)
@@ -634,7 +679,10 @@ impl<D> Renderer<D> where D: Device {
         };
 
         self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
-        self.device.clear(Some(F32x4::default()), None, None);
+        self.device.clear(&ClearParams {
+            color: Some(ColorF::transparent_black()),
+            ..ClearParams::default()
+        });
     }
 
     fn postprocessing_needed(&self) -> bool {
@@ -1096,6 +1144,51 @@ impl<D> StencilVertexArray<D> where D: Device {
                                            0);
 
         StencilVertexArray { vertex_array, vertex_buffer }
+    }
+}
+
+struct ReprojectionProgram<D> where D: Device {
+    program: D::Program,
+    old_transform_uniform: D::Uniform,
+    new_transform_uniform: D::Uniform,
+    texture_uniform: D::Uniform,
+}
+
+impl<D> ReprojectionProgram<D> where D: Device {
+    fn new(device: &D, resources: &dyn ResourceLoader) -> ReprojectionProgram<D> {
+        let program = device.create_program(resources, "reproject");
+        let old_transform_uniform = device.get_uniform(&program, "OldTransform");
+        let new_transform_uniform = device.get_uniform(&program, "NewTransform");
+        let texture_uniform = device.get_uniform(&program, "Texture");
+
+        ReprojectionProgram {
+            program,
+            old_transform_uniform,
+            new_transform_uniform,
+            texture_uniform,
+        }
+    }
+}
+
+struct ReprojectionVertexArray<D> where D: Device {
+    vertex_array: D::VertexArray,
+}
+
+impl<D> ReprojectionVertexArray<D> where D: Device {
+    fn new(device: &D,
+           reprojection_program: &ReprojectionProgram<D>,
+           quad_vertex_positions_buffer: &D::Buffer)
+           -> ReprojectionVertexArray<D> {
+        let vertex_array = device.create_vertex_array();
+
+        let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position");
+
+        device.bind_vertex_array(&vertex_array);
+        device.use_program(&reprojection_program.program);
+        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
+        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
+
+        ReprojectionVertexArray { vertex_array }
     }
 }
 
