@@ -53,7 +53,7 @@ pub enum Event {
     MouseDragged(Point2DI32),
     Zoom(f32),
     Look { pitch: f32, yaw: f32 },
-    SetCameraTransforms(Vec<CameraTransform>),
+    SetEyeTransforms(Vec<OcularTransform>),
     OpenSVG(SVGPath),
     User { message_type: u32, message_data: u32 },
 }
@@ -85,12 +85,12 @@ pub enum View {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct CameraTransform {
+pub struct OcularTransform {
     // The perspective which converts from camera coordinates to display coordinates
     pub perspective: Perspective,
 
     // The view transform which converts from world coordinates to camera coordinates
-    pub view: Transform3DF32,
+    pub modelview_to_eye: Transform3DF32,
 }
 
 #[derive(Clone)]

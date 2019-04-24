@@ -12,7 +12,7 @@
 
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction};
-use crate::window::{CameraTransform, Event, Keycode, SVGPath, View, Window, WindowSize};
+use crate::window::{Event, Keycode, OcularTransform, SVGPath, View, Window, WindowSize};
 use clap::{App, Arg};
 use image::ColorType;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
@@ -261,7 +261,7 @@ impl<W> DemoApp<W> where W: Window {
                     self.dirty = true;
                 }
                 let perspective = scene_transform.perspective
-                                                 .post_mul(&scene_transform.view)
+                                                 .post_mul(&scene_transform.modelview_to_eye)
                                                  .post_mul(&modelview_transform.to_transform());
                 RenderTransform::Perspective(perspective)
             }
@@ -333,9 +333,9 @@ impl<W> DemoApp<W> where W: Window {
                         modelview_transform.yaw += yaw;
                     }
                 }
-                Event::SetCameraTransforms(new_projection_transforms) => {
-                    if let Camera::ThreeD { ref mut projection_transforms, .. } = self.camera {
-                        *projection_transforms = new_projection_transforms;
+                Event::SetEyeTransforms(new_eye_transforms) => {
+                    if let Camera::ThreeD { ref mut eye_transforms, .. } = self.camera {
+                        *eye_transforms = new_eye_transforms;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
@@ -439,17 +439,22 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     pub fn composite_scene(&mut self, render_scene_index: u32) {
-        let (projection_transforms, scene_transform, modelview_transform) = match self.camera {
+        let (eye_transforms, scene_transform, modelview_transform) = match self.camera {
             Camera::ThreeD {
-                    ref projection_transforms,
+                    ref eye_transforms,
                     ref scene_transform,
                     ref modelview_transform,
                     ..
-            } if projection_transforms.len() > 1 => {
-                (projection_transforms, scene_transform, modelview_transform)
+            } if eye_transforms.len() > 1 => {
+                (eye_transforms, scene_transform, modelview_transform)
             }
             _ => return,
         };
+
+        println!("scene_transform.perspective={:?}", scene_transform.perspective);
+        println!("scene_transform.modelview_to_eye={:?}", scene_transform.modelview_to_eye);
+        println!("modelview transform={:?}", modelview_transform);
+        println!("---");
 
         self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
             viewport: self.window.viewport(View::Stereo(render_scene_index)),
@@ -460,18 +465,17 @@ impl<W> DemoApp<W> where W: Window {
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
 
         let scene_transform_matrix = scene_transform.perspective
-                                                    .post_mul(&scene_transform.view)
+                                                    .post_mul(&scene_transform.modelview_to_eye)
                                                     .post_mul(&modelview_transform.to_transform());
 
-        let projection_transform = &projection_transforms[render_scene_index as usize];
-        let projection_transform_matrix =
-            projection_transform.perspective
-                                .post_mul(&scene_transform.view)
-                                .post_mul(&modelview_transform.to_transform());
+        let eye_transform = &eye_transforms[render_scene_index as usize];
+        let eye_transform_matrix = eye_transform.perspective
+                                                .post_mul(&scene_transform.modelview_to_eye)
+                                                .post_mul(&modelview_transform.to_transform());
 
         self.renderer.reproject_texture(scene_texture,
                                         &scene_transform_matrix.transform,
-                                        &projection_transform_matrix.transform);
+                                        &eye_transform_matrix.transform);
     }
 
     pub fn finish_drawing_frame(&mut self) {
@@ -1012,10 +1016,13 @@ fn center_of_window(window_size: &WindowSize) -> Point2DF32 {
 enum Camera {
     TwoD(Transform2DF32),
     ThreeD {
-        scene_transform: CameraTransform,
-        // For each camera, the perspective from camera coordinates to display coordinates,
+        // The ocular transform used for rendering of the scene to the scene framebuffer. If we are
+        // performing stereoscopic rendering, this is then reprojected according to the eye
+        // transforms below.
+        scene_transform: OcularTransform,
+        // For each eye, the perspective from camera coordinates to display coordinates,
         // and the view transform from world coordinates to camera coordinates.
-        projection_transforms: Vec<CameraTransform>,
+        eye_transforms: Vec<OcularTransform>,
         // The modelview transform from world coordinates to SVG coordinates
         modelview_transform: CameraTransform3D,
         // The camera's velocity (in world coordinates)
@@ -1042,17 +1049,21 @@ impl Camera {
     fn new_3d(mode: Mode, view_box: RectF32, viewport_size: Point2DI32) -> Camera {
         let viewport_count = mode.viewport_count();
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
-        let projection = Transform3DF32::from_perspective(FRAC_PI_4, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
-        let projection_transform = CameraTransform {
+        let projection = Transform3DF32::from_perspective(FRAC_PI_4,
+                                                          aspect,
+                                                          NEAR_CLIP_PLANE,
+                                                          FAR_CLIP_PLANE);
+        let scene_transform = OcularTransform {
             perspective: Perspective::new(&projection, viewport_size),
-            view: Transform3DF32::default(),
+            modelview_to_eye: Transform3DF32::default(),
         };
-        let projection_transforms =
-            iter::repeat(projection_transform).take(viewport_count).collect();
+
+        // For now, initialize the eye transforms as copies of the scene transform.
+        let eye_transforms = iter::repeat(scene_transform).take(viewport_count).collect();
 
         Camera::ThreeD {
-            projection_transforms,
-            scene_transform: projection_transform,
+            scene_transform,
+            eye_transforms,
             modelview_transform: CameraTransform3D::new(view_box),
             velocity: Point3DF32::default(),
         }
@@ -1064,17 +1075,14 @@ impl Camera {
 
     fn mode(&self) -> Mode {
         match *self {
-            Camera::ThreeD { ref projection_transforms, .. } if
-                    2 <= projection_transforms.len() => {
-                Mode::VR
-            }
+            Camera::ThreeD { ref eye_transforms, .. } if eye_transforms.len() >= 2 => Mode::VR,
             Camera::ThreeD { .. } => Mode::ThreeD,
             Camera::TwoD { .. } => Mode::TwoD,
         }
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct CameraTransform3D {
     position: Point3DF32,
     yaw: f32,
