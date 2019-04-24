@@ -454,7 +454,6 @@ impl<W> DemoApp<W> where W: Window {
         println!("scene_transform.perspective={:?}", scene_transform.perspective);
         println!("scene_transform.modelview_to_eye={:?}", scene_transform.modelview_to_eye);
         println!("modelview transform={:?}", modelview_transform);
-        println!("---");
 
         self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
             viewport: self.window.viewport(View::Stereo(render_scene_index)),
@@ -470,8 +469,13 @@ impl<W> DemoApp<W> where W: Window {
 
         let eye_transform = &eye_transforms[render_scene_index as usize];
         let eye_transform_matrix = eye_transform.perspective
-                                                .post_mul(&scene_transform.modelview_to_eye)
+                                                .post_mul(&eye_transform.modelview_to_eye)
                                                 .post_mul(&modelview_transform.to_transform());
+        println!("eye transform({}).modelview_to_eye={:?}",
+                 render_scene_index,
+                 eye_transform.modelview_to_eye);
+        println!("eye transform_matrix({})={:?}", render_scene_index, eye_transform_matrix);
+        println!("---");
 
         self.renderer.reproject_texture(scene_texture,
                                         &scene_transform_matrix.transform,
@@ -1059,7 +1063,13 @@ impl Camera {
         };
 
         // For now, initialize the eye transforms as copies of the scene transform.
-        let eye_transforms = iter::repeat(scene_transform).take(viewport_count).collect();
+        let eye_transforms = (0..viewport_count).map(|viewport_index| {
+            let x = if viewport_index == 0 { 0.0025 } else { -0.0025 };
+            OcularTransform {
+                perspective: scene_transform.perspective,
+                modelview_to_eye: Transform3DF32::from_translation(x, 0.0, 0.0),
+            }
+        }).collect();
 
         Camera::ThreeD {
             scene_transform,

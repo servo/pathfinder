@@ -2,6 +2,7 @@ package graphics.pathfinder.pathfinderdemo;
 
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.util.Log;
 
 import com.google.vr.sdk.base.Eye;
 import com.google.vr.sdk.base.GvrView;
@@ -52,10 +53,14 @@ public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
             mInVRMode = inVR;
             try {
                 mActivity.setVrModeEnabled(mInVRMode, mActivity.mVRListenerComponentName);
+                mActivity.setVRMode(inVR);
             } catch (PackageManager.NameNotFoundException exception) {
                 throw new RuntimeException(exception);
             }
         }
+
+        dumpEye(leftEye, "Left eye");
+        dumpEye(rightEye, "Right eye");
 
         for (int sceneIndex = 0; sceneIndex < (inVR ? 2 : 1); sceneIndex++)
             drawScene(sceneIndex);
@@ -89,5 +94,24 @@ public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
     @Override
     public void onRendererShutdown() {
 
+    }
+
+    private void dumpEye(Eye eye, String label) {
+        if (eye == null)
+            return;
+
+        StringBuilder builder = new StringBuilder();
+        builder.append(label);
+        float[] matrix = eye.getEyeView();
+        for (int y = 0; y < 4; y++) {
+            builder.append(" <");
+            for (int x = 0; x < 4; x++) {
+                if (x != 0)
+                    builder.append(' ');
+                builder.append(matrix[y * 4 + x]);
+            }
+            builder.append('>');
+        }
+        Log.i("PathfinderDemo", builder.toString());
     }
 }
