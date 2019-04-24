@@ -617,8 +617,14 @@ impl<D> Renderer<D> where D: Device {
         })
     }
 
-    pub fn reproject_texture(&self, texture: &D::Texture) {
+    pub fn reproject_texture(&self,
+                             texture: &D::Texture,
+                             old_transform: &Transform3DF32,
+                             new_transform: &Transform3DF32) {
         self.bind_draw_framebuffer();
+
+        let reprojection_transform = old_transform.pre_mul(&new_transform.inverse());
+        println!("{:?}", reprojection_transform);
 
         self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
         self.device.use_program(&self.reprojection_program.program);
@@ -628,7 +634,7 @@ impl<D> Renderer<D> where D: Device {
                                 UniformData::Vec2(F32x4::default()));
         self.device.bind_texture(texture, 0);
         self.device.set_uniform(&self.reprojection_program.tex_transform_uniform,
-                                UniformData::from_transform_3d(&Transform3DF32::default()));
+                                UniformData::from_transform_3d(&reprojection_transform));
         self.device.set_uniform(&self.reprojection_program.texture_uniform,
                                 UniformData::TextureUnit(0));
         self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState::default());

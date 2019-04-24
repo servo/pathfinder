@@ -53,7 +53,7 @@ pub enum Event {
     MouseDragged(Point2DI32),
     Zoom(f32),
     Look { pitch: f32, yaw: f32 },
-    CameraTransforms(Vec<CameraTransform>),
+    SetCameraTransforms(Vec<CameraTransform>),
     OpenSVG(SVGPath),
     User { message_type: u32, message_data: u32 },
 }

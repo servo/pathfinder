@@ -251,14 +251,18 @@ impl<W> DemoApp<W> where W: Window {
 
     fn build_scene(&mut self) {
         let render_transform = match self.camera {
-            Camera::ThreeD { ref transforms, ref mut transform, ref mut velocity, .. } => {
-                if transform.offset(*velocity) {
+            Camera::ThreeD {
+                ref scene_transform,
+                ref mut modelview_transform,
+                ref mut velocity,
+                ..
+            } => {
+                if modelview_transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                let first_transform = &transforms[0];
-                let perspective = first_transform.perspective
-                                                 .post_mul(&first_transform.view)
-                                                 .post_mul(&transform.to_transform());
+                let perspective = scene_transform.perspective
+                                                 .post_mul(&scene_transform.view)
+                                                 .post_mul(&modelview_transform.to_transform());
                 RenderTransform::Perspective(perspective)
             }
             Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
@@ -299,12 +303,12 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::MouseMoved(new_position) if self.mouselook_enabled => {
                     let mouse_position = self.process_mouse_position(new_position);
-                    if let Camera::ThreeD { ref mut transform, .. } = self.camera {
+                    if let Camera::ThreeD { ref mut modelview_transform, .. } = self.camera {
                         let rotation = mouse_position.relative
                                                      .to_f32()
                                                      .scale(MOUSELOOK_ROTATION_SPEED);
-                        transform.yaw += rotation.x();
-                        transform.pitch += rotation.y();
+                        modelview_transform.yaw += rotation.x();
+                        modelview_transform.pitch += rotation.y();
                         self.dirty = true;
                     }
                 }
@@ -324,14 +328,14 @@ impl<W> DemoApp<W> where W: Window {
                     }
                 }
                 Event::Look { pitch, yaw } => {
-                    if let Camera::ThreeD { ref mut transform, .. } = self.camera {
-                        transform.pitch += pitch;
-                        transform.yaw += yaw;
+                    if let Camera::ThreeD { ref mut modelview_transform, .. } = self.camera {
+                        modelview_transform.pitch += pitch;
+                        modelview_transform.yaw += yaw;
                     }
                 }
-                Event::CameraTransforms(new_transforms) => {
-                    if let Camera::ThreeD { ref mut transforms, .. } = self.camera {
-                        *transforms = new_transforms;
+                Event::SetCameraTransforms(new_projection_transforms) => {
+                    if let Camera::ThreeD { ref mut projection_transforms, .. } = self.camera {
+                        *projection_transforms = new_projection_transforms;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
@@ -435,9 +439,17 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     pub fn composite_scene(&mut self, render_scene_index: u32) {
-        if self.camera.mode() != Mode::VR {
-            return;
-        }
+        let (projection_transforms, scene_transform, modelview_transform) = match self.camera {
+            Camera::ThreeD {
+                    ref projection_transforms,
+                    ref scene_transform,
+                    ref modelview_transform,
+                    ..
+            } if projection_transforms.len() > 1 => {
+                (projection_transforms, scene_transform, modelview_transform)
+            }
+            _ => return,
+        };
 
         self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
             viewport: self.window.viewport(View::Stereo(render_scene_index)),
@@ -446,7 +458,20 @@ impl<W> DemoApp<W> where W: Window {
 
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
-        self.renderer.reproject_texture(scene_texture);
+
+        let scene_transform_matrix = scene_transform.perspective
+                                                    .post_mul(&scene_transform.view)
+                                                    .post_mul(&modelview_transform.to_transform());
+
+        let projection_transform = &projection_transforms[render_scene_index as usize];
+        let projection_transform_matrix =
+            projection_transform.perspective
+                                .post_mul(&scene_transform.view)
+                                .post_mul(&modelview_transform.to_transform());
+
+        self.renderer.reproject_texture(scene_texture,
+                                        &scene_transform_matrix.transform,
+                                        &projection_transform_matrix.transform);
     }
 
     pub fn finish_drawing_frame(&mut self) {
@@ -987,11 +1012,12 @@ fn center_of_window(window_size: &WindowSize) -> Point2DF32 {
 enum Camera {
     TwoD(Transform2DF32),
     ThreeD {
+        scene_transform: CameraTransform,
         // For each camera, the perspective from camera coordinates to display coordinates,
         // and the view transform from world coordinates to camera coordinates.
-        transforms: Vec<CameraTransform>,
-        // The model transform from world coordinates to SVG coordinates
-        transform: CameraTransform3D,
+        projection_transforms: Vec<CameraTransform>,
+        // The modelview transform from world coordinates to SVG coordinates
+        modelview_transform: CameraTransform3D,
         // The camera's velocity (in world coordinates)
         velocity: Point3DF32,
     },
@@ -1017,15 +1043,17 @@ impl Camera {
         let viewport_count = mode.viewport_count();
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
         let projection = Transform3DF32::from_perspective(FRAC_PI_4, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
-        let transform = CameraTransform {
+        let projection_transform = CameraTransform {
             perspective: Perspective::new(&projection, viewport_size),
             view: Transform3DF32::default(),
         };
-        let transforms = iter::repeat(transform).take(viewport_count).collect();
+        let projection_transforms =
+            iter::repeat(projection_transform).take(viewport_count).collect();
 
         Camera::ThreeD {
-            transforms,
-            transform: CameraTransform3D::new(view_box),
+            projection_transforms,
+            scene_transform: projection_transform,
+            modelview_transform: CameraTransform3D::new(view_box),
             velocity: Point3DF32::default(),
         }
     }
@@ -1036,7 +1064,10 @@ impl Camera {
 
     fn mode(&self) -> Mode {
         match *self {
-            Camera::ThreeD { ref transforms, .. } if 2 <= transforms.len() => Mode::VR,
+            Camera::ThreeD { ref projection_transforms, .. } if
+                    2 <= projection_transforms.len() => {
+                Mode::VR
+            }
             Camera::ThreeD { .. } => Mode::ThreeD,
             Camera::TwoD { .. } => Mode::TwoD,
         }

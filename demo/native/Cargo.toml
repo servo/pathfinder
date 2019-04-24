@@ -8,6 +8,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 pf-no-simd = ["pathfinder_simd/pf-no-simd"]
 
 [dependencies]
+color-backtrace = "0.1"
 gl = "0.6"
 jemallocator = "0.1"
 nfd = "0.0.4"

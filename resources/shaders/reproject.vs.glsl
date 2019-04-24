@@ -14,15 +14,14 @@ precision highp float;
 
 uniform mat2 uTransform;
 uniform vec2 uTranslation;
-uniform mat4 uTexTransform;
 
 in vec2 aPosition;
 
 out vec2 vTexCoord;
 
 void main() {
-    vec2 position = uTransform * (aPosition * 2.0 - 1.0) + uTranslation;
-    vec4 texCoord = uTexTransform * vec4(aPosition, 0.0, 1.0);
-    vTexCoord = texCoord.xy / texCoord.w;
+    vec2 normPosition = aPosition * 2.0 - 1.0;
+    vec2 position = uTransform * normPosition + uTranslation;
+    vTexCoord = normPosition;
     gl_Position = vec4(position, 0.0, 1.0);
 }

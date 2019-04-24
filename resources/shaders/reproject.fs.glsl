@@ -12,6 +12,7 @@
 
 precision highp float;
 
+uniform mat4 uTexTransform;
 uniform sampler2D uTexture;
 
 in vec2 vTexCoord;
@@ -19,5 +20,6 @@ in vec2 vTexCoord;
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = texture(uTexture, vTexCoord);
+    vec4 normTexCoord = uTexTransform * vec4(vTexCoord, 0.0, 1.0);
+    oFragColor = texture(uTexture, (normTexCoord.xy / normTexCoord.w + 1.0) * 0.5);
 }
