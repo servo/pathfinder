@@ -471,6 +471,7 @@ impl<W> DemoApp<W> where W: Window {
         let eye_transform_matrix = eye_transform.perspective
                                                 .post_mul(&eye_transform.modelview_to_eye)
                                                 .post_mul(&modelview_transform.to_transform());
+
         println!("eye transform({}).modelview_to_eye={:?}",
                  render_scene_index,
                  eye_transform.modelview_to_eye);
