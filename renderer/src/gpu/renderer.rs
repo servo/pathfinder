@@ -623,7 +623,7 @@ impl<D> Renderer<D> where D: Device {
                              new_transform: &Transform3DF32) {
         self.bind_draw_framebuffer();
 
-        let reprojection_transform = old_transform.pre_mul(&new_transform.inverse());
+        let reprojection_transform = old_transform.post_mul(&new_transform.inverse());
 
         self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
         self.device.use_program(&self.reprojection_program.program);

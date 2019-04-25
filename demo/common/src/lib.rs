@@ -1053,21 +1053,36 @@ impl Camera {
 
     fn new_3d(mode: Mode, view_box: RectF32, viewport_size: Point2DI32) -> Camera {
         let viewport_count = mode.viewport_count();
+        let fov_y = FRAC_PI_4;
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
-        let projection = Transform3DF32::from_perspective(FRAC_PI_4,
-                                                          aspect,
-                                                          NEAR_CLIP_PLANE,
-                                                          FAR_CLIP_PLANE);
+
+        let scene_projection = Transform3DF32::from_perspective(fov_y * 2.0,
+                                                                aspect,
+                                                                NEAR_CLIP_PLANE,
+                                                                FAR_CLIP_PLANE);
+        let eye_projection = Transform3DF32::from_perspective(fov_y,
+                                                              aspect,
+                                                              NEAR_CLIP_PLANE,
+                                                              FAR_CLIP_PLANE);
+
+        // Create a scene transform.
+        // FIXME(pcwalton): Optimize!
+        let x_dist = 0.0025;
+        /*let fov_x = 2.0 / f32::atan(1.0 / (aspect * f32::tan(fov_y * 0.5)));
+        println!("fov_x={} fov_y={}", fov_x, fov_y);
+        //let z_dist = x_dist / f32::tan(fov_x);
+        let z_dist = -0.1;
+        println!("z_dist={}", z_dist);*/
         let scene_transform = OcularTransform {
-            perspective: Perspective::new(&projection, viewport_size),
+            perspective: Perspective::new(&scene_projection, viewport_size),
             modelview_to_eye: Transform3DF32::default(),
         };
 
         // For now, initialize the eye transforms as copies of the scene transform.
         let eye_transforms = (0..viewport_count).map(|viewport_index| {
-            let x = if viewport_index == 0 { 0.0025 } else { -0.0025 };
+            let x = if viewport_index == 0 { x_dist } else { -x_dist };
             OcularTransform {
-                perspective: scene_transform.perspective,
+                perspective: Perspective::new(&eye_projection, viewport_size),
                 modelview_to_eye: Transform3DF32::from_translation(x, 0.0, 0.0),
             }
         }).collect();
