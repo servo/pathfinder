@@ -23,9 +23,6 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::sync::atomic::AtomicUsize;
 use std::u16;
 
-// Must be a power of two.
-pub const MAX_FILLS_PER_BATCH: u32 = 0x1000;
-
 pub trait RenderCommandListener: Send + Sync {
     fn send(&self, command: RenderCommand);
 }
