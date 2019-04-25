@@ -16,7 +16,6 @@ use crate::scene::{ObjectShader, SceneDescriptor};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_geometry::basic::transform2d::Matrix2x2F32;
 use pathfinder_geometry::basic::transform3d::Transform3DF32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
