@@ -1056,8 +1056,8 @@ impl Camera {
         let fov_y = FRAC_PI_4;
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
 
-        let scene_projection = Transform3DF32::from_perspective(fov_y * 2.0,
-                                                                aspect,
+        let scene_projection = Transform3DF32::from_perspective(fov_y,
+                                                                aspect * 1.445,
                                                                 NEAR_CLIP_PLANE,
                                                                 FAR_CLIP_PLANE);
         let eye_projection = Transform3DF32::from_perspective(fov_y,
