@@ -623,23 +623,19 @@ impl<D> Renderer<D> where D: Device {
                              new_transform: &Transform3DF32) {
         self.bind_draw_framebuffer();
 
-        let reprojection_transform = old_transform.post_mul(&new_transform.inverse());
-
         self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
         self.device.use_program(&self.reprojection_program.program);
-        self.device.set_uniform(&self.reprojection_program.transform_uniform,
-                                UniformData::Mat2(Matrix2x2F32::default().0));
-        self.device.set_uniform(&self.reprojection_program.translation_uniform,
-                                UniformData::Vec2(F32x4::default()));
+        self.device.set_uniform(&self.reprojection_program.old_transform_uniform,
+                                UniformData::from_transform_3d(old_transform));
+        self.device.set_uniform(&self.reprojection_program.new_transform_uniform,
+                                UniformData::from_transform_3d(new_transform));
         self.device.bind_texture(texture, 0);
-        self.device.set_uniform(&self.reprojection_program.tex_transform_uniform,
-                                UniformData::from_transform_3d(&reprojection_transform));
         self.device.set_uniform(&self.reprojection_program.texture_uniform,
                                 UniformData::TextureUnit(0));
         self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState::default());
     }
 
-    fn bind_draw_framebuffer(&self) {
+    pub fn bind_draw_framebuffer(&self) {
         if self.postprocessing_needed() {
             self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
         } else {
@@ -1144,26 +1140,23 @@ impl<D> StencilVertexArray<D> where D: Device {
 
 struct ReprojectionProgram<D> where D: Device {
     program: D::Program,
-    transform_uniform: D::Uniform,
-    translation_uniform: D::Uniform,
-    tex_transform_uniform: D::Uniform,
+    old_transform_uniform: D::Uniform,
+    new_transform_uniform: D::Uniform,
     texture_uniform: D::Uniform,
 }
 
 impl<D> ReprojectionProgram<D> where D: Device {
     fn new(device: &D, resources: &dyn ResourceLoader) -> ReprojectionProgram<D> {
         let program = device.create_program(resources, "reproject");
-        let transform_uniform = device.get_uniform(&program, "Transform");
-        let translation_uniform = device.get_uniform(&program, "Translation");
-        let tex_transform_uniform = device.get_uniform(&program, "TexTransform");
+        let old_transform_uniform = device.get_uniform(&program, "OldTransform");
+        let new_transform_uniform = device.get_uniform(&program, "NewTransform");
         let texture_uniform = device.get_uniform(&program, "Texture");
 
         ReprojectionProgram {
             program,
+            old_transform_uniform,
+            new_transform_uniform,
             texture_uniform,
-            transform_uniform,
-            translation_uniform,
-            tex_transform_uniform,
         }
     }
 }

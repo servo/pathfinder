@@ -12,7 +12,7 @@
 
 precision highp float;
 
-uniform mat4 uTexTransform;
+uniform mat4 uOldTransform;
 uniform sampler2D uTexture;
 
 in vec2 vTexCoord;
@@ -20,10 +20,7 @@ in vec2 vTexCoord;
 out vec4 oFragColor;
 
 void main() {
-    vec4 normTexCoord = uTexTransform * vec4(vTexCoord, 0.0, 1.0);
-    vec2 texCoord = (normTexCoord.xy / normTexCoord.w + 1.0) * 0.5;
-    vec4 fragColor = vec4(0.0);
-    if (all(greaterThanEqual(texCoord, vec2(0.0))) && all(lessThanEqual(texCoord, vec2(1.0))))
-        fragColor = texture(uTexture, texCoord);
-    oFragColor = fragColor;
+    vec4 normTexCoord = uOldTransform * vec4(vTexCoord, 0.0, 1.0);
+    vec2 texCoord = ((normTexCoord.xy / normTexCoord.w) + 1.0) * 0.5;
+    oFragColor = texture(uTexture, texCoord);
 }

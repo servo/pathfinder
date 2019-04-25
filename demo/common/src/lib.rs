@@ -451,6 +451,13 @@ impl<W> DemoApp<W> where W: Window {
             _ => return,
         };
 
+        if render_scene_index == 0 {
+            self.renderer.bind_draw_framebuffer();
+            self.renderer.device.clear(Some(self.background_color().to_f32().0),
+                                       Some(1.0),
+                                       Some(0));
+        }
+
         println!("scene_transform.perspective={:?}", scene_transform.perspective);
         println!("scene_transform.modelview_to_eye={:?}", scene_transform.modelview_to_eye);
         println!("modelview transform={:?}", modelview_transform);
@@ -463,14 +470,20 @@ impl<W> DemoApp<W> where W: Window {
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
 
+        let quad_scale_transform = Transform3DF32::from_scale(self.scene_view_box.size().x(),
+                                                              self.scene_view_box.size().y(),
+                                                              1.0);
+
         let scene_transform_matrix = scene_transform.perspective
                                                     .post_mul(&scene_transform.modelview_to_eye)
-                                                    .post_mul(&modelview_transform.to_transform());
+                                                    .post_mul(&modelview_transform.to_transform())
+                                                    .post_mul(&quad_scale_transform);
 
         let eye_transform = &eye_transforms[render_scene_index as usize];
         let eye_transform_matrix = eye_transform.perspective
                                                 .post_mul(&eye_transform.modelview_to_eye)
-                                                .post_mul(&modelview_transform.to_transform());
+                                                .post_mul(&modelview_transform.to_transform())
+                                                .post_mul(&quad_scale_transform);
 
         println!("eye transform({}).modelview_to_eye={:?}",
                  render_scene_index,
@@ -1057,7 +1070,7 @@ impl Camera {
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
 
         let scene_projection = Transform3DF32::from_perspective(fov_y,
-                                                                aspect * 1.445,
+                                                                aspect/* * 1.445*/,
                                                                 NEAR_CLIP_PLANE,
                                                                 FAR_CLIP_PLANE);
         let eye_projection = Transform3DF32::from_perspective(fov_y,
@@ -1067,15 +1080,15 @@ impl Camera {
 
         // Create a scene transform.
         // FIXME(pcwalton): Optimize!
-        let x_dist = 0.0025;
-        /*let fov_x = 2.0 / f32::atan(1.0 / (aspect * f32::tan(fov_y * 0.5)));
+        let x_dist = 0.025;
+        let fov_x = 2.0 * f32::atan(aspect * f32::tan(fov_y * 0.5));
         println!("fov_x={} fov_y={}", fov_x, fov_y);
-        //let z_dist = x_dist / f32::tan(fov_x);
-        let z_dist = -0.1;
-        println!("z_dist={}", z_dist);*/
+        let z_dist = -x_dist / f32::tan(fov_x * 0.5);
+        //let z_dist = -0.1;
+        println!("z_dist={}", z_dist);
         let scene_transform = OcularTransform {
             perspective: Perspective::new(&scene_projection, viewport_size),
-            modelview_to_eye: Transform3DF32::default(),
+            modelview_to_eye: Transform3DF32::from_translation(0.0, 0.0, z_dist),
         };
 
         // For now, initialize the eye transforms as copies of the scene transform.
