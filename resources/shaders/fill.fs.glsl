@@ -23,19 +23,15 @@ void main() {
     // Unpack.
     vec2 from = vFrom, to = vTo;
 
-    // Determine winding, and sort into a consistent order so we only need to find one root below.
-    vec2 left = from.x < to.x ? from : to, right = from.x < to.x ? to : from;
-
-    // Shoot a vertical ray toward the curve.
     vec2 window = clamp(vec2(from.x, to.x), -0.5, 0.5);
-    float offset = mix(window.x, window.y, 0.5) - left.x;
-    float t = offset / (right.x - left.x);
-
-    // Compute position and derivative to form a line approximation.
-    float y = mix(left.y, right.y, t);
-    float d = (right.y - left.y) / (right.x - left.x);
-
-    // Look up area under that line, and scale horizontally to the window size.
+    vec2 a = from.y + (window - from.x) * (to.y - from.y) / (to.x - from.x) + 0.5;
+    float ymin = min(min(a.x, a.y), 1) - 1e-6;
+    float ymax = max(a.x, a.y);
+    float b = min(ymax, 1);
+    float c = max(b, 0);
+    float d = max(ymin, 0);
+    float tex = (b - 0.5 * c * c - ymin + 0.5 * d * d) / (ymax - ymin);
     float dX = window.x - window.y;
-    oFragColor = vec4(texture(uAreaLUT, vec2(y + 8.0, abs(d * dX)) / 16.0).r * dX);
+
+    oFragColor = vec4(tex * dX);
 }
