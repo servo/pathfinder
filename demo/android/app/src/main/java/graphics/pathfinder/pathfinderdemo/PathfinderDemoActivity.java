@@ -12,14 +12,15 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Build;
-import android.provider.Settings;
 import android.support.annotation.NonNull;
 import android.support.annotation.RequiresApi;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
 
 /**
@@ -34,6 +35,9 @@ public class PathfinderDemoActivity extends Activity {
      * and a change of the status and navigation bar.
      */
     private PathfinderDemoSurfaceView mContentView;
+
+    private GestureDetector mGestureDetector;
+    private ScaleGestureDetector mScaleGestureDetector;
 
     ComponentName mVRListenerComponentName;
 
@@ -81,20 +85,47 @@ public class PathfinderDemoActivity extends Activity {
         mRenderer = new PathfinderDemoRenderer(this);
         mContentView.setRenderer(mRenderer);
 
+        GestureDetector.SimpleOnGestureListener gestureListener =
+                new GestureDetector.SimpleOnGestureListener() {
+            public boolean onScroll(final MotionEvent from,
+                                    final MotionEvent to,
+                                    final float deltaX,
+                                    final float deltaY) {
+                final int x = Math.round(to.getX());
+                final int y = Math.round(to.getY());
+                PathfinderDemoRenderer.pushMouseDraggedEvent(x, y);
+                return true;
+            }
+
+            public boolean onDown(final MotionEvent event) {
+                final int x = Math.round(event.getX());
+                final int y = Math.round(event.getY());
+                PathfinderDemoRenderer.pushMouseDownEvent(x, y);
+                return true;
+            }
+        };
+        mGestureDetector = new GestureDetector(getApplicationContext(), gestureListener);
+
+        ScaleGestureDetector.SimpleOnScaleGestureListener scaleGestureListener =
+                new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            public boolean onScale(final ScaleGestureDetector detector) {
+                int focusX = Math.round(detector.getFocusX());
+                int focusY = Math.round(detector.getFocusY());
+                float factor = (detector.getScaleFactor() - 1.0f) * 0.5f;
+                PathfinderDemoRenderer.pushZoomEvent(factor, focusX, focusY);
+                return true;
+            }
+        };
+        mScaleGestureDetector = new ScaleGestureDetector(getApplicationContext(),
+                scaleGestureListener);
+
         mContentView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(final View view, final MotionEvent event) {
-                final int x = Math.round(event.getX());
-                final int y = Math.round(event.getY());
-                switch (event.getActionMasked()) {
-                    case MotionEvent.ACTION_DOWN:
-                        PathfinderDemoRenderer.pushMouseDownEvent(x, y);
-                        break;
-                    case MotionEvent.ACTION_MOVE:
-                        PathfinderDemoRenderer.pushMouseDraggedEvent(x, y);
-                        break;
-                }
-                return true;
+                boolean result = mScaleGestureDetector.onTouchEvent(event);
+                if (!mScaleGestureDetector.isInProgress())
+                    result = mGestureDetector.onTouchEvent(event) || result;
+                return result;
             }
         });
 

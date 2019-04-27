@@ -331,10 +331,10 @@ impl<W> DemoApp<W> where W: Window {
                     ui_events.push(UIEvent::MouseDragged(mouse_position));
                     self.dirty = true;
                 }
-                Event::Zoom(d_dist) => {
+                Event::Zoom(d_dist, position) => {
                     if let Camera::TwoD(ref mut transform) = self.camera {
-                        let position = get_mouse_position(&self.window,
-                                                          self.window_size.backing_scale_factor);
+                        let backing_scale_factor = self.window_size.backing_scale_factor;
+                        let position = position.to_f32().scale(backing_scale_factor);
                         *transform = transform.post_translate(-position);
                         let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
                         *transform = transform.post_scale(Point2DF32::splat(scale_delta));
@@ -566,7 +566,7 @@ impl<W> DemoApp<W> where W: Window {
         }
 
         self.renderer.debug_ui.ui.mouse_position =
-            get_mouse_position(&self.window, self.window_size.backing_scale_factor);
+            self.last_mouse_position.to_f32().scale(self.window_size.backing_scale_factor);
         self.ui.show_text_effects = self.monochrome_scene_color.is_some();
 
         let mut ui_action = UIAction::None;
@@ -1187,10 +1187,6 @@ impl CameraTransform3D {
 
 fn scale_factor_for_view_box(view_box: RectF32) -> f32 {
     1.0 / f32::min(view_box.size().x(), view_box.size().y())
-}
-
-fn get_mouse_position<W>(window: &W, scale_factor: f32) -> Point2DF32 where W: Window {
-    window.mouse_position().to_f32().scale(scale_factor)
 }
 
 fn get_svg_building_message(built_svg: &BuiltSVG) -> String {

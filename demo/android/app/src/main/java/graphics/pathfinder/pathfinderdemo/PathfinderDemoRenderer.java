@@ -22,7 +22,7 @@ public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
 
     private static native int prepareFrame();
 
-    private static native void drawScene(int sceneIndex);
+    private static native void drawScene();
 
     private static native void finishDrawingFrame();
 
@@ -31,6 +31,8 @@ public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
     public static native void pushMouseDownEvent(int x, int y);
 
     public static native void pushMouseDraggedEvent(int x, int y);
+
+    public static native void pushZoomEvent(float scale, int centerX, int centerY);
 
     public static native void pushLookEvent(float pitch, float yaw);
 
@@ -59,8 +61,7 @@ public class PathfinderDemoRenderer extends Object implements GvrView.Renderer {
             }
         }
 
-        for (int sceneIndex = 0; sceneIndex < (inVR ? 2 : 1); sceneIndex++)
-            drawScene(sceneIndex);
+        drawScene();
         finishDrawingFrame();
     }
 

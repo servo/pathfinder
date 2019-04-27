@@ -84,11 +84,10 @@ pub unsafe extern "system" fn
 pub unsafe extern "system" fn
         Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_drawScene(
             env: JNIEnv,
-            class: JClass,
-            scene_index: i32) {
+            class: JClass) {
     DEMO_APP.with(|demo_app| {
         if let Some(ref mut demo_app) = *demo_app.borrow_mut() {
-            demo_app.draw_scene(scene_index as u32)
+            demo_app.draw_scene()
         }
     })
 }
@@ -140,6 +139,17 @@ pub unsafe extern "system" fn
 
 #[no_mangle]
 pub unsafe extern "system" fn
+        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushZoomEvent(
+            _: JNIEnv,
+            _: JClass,
+            factor: f32,
+            center_x: i32,
+            center_y: i32) {
+    EVENT_QUEUE.lock().unwrap().push(Event::Zoom(factor, Point2DI32::new(center_x, center_y)))
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn
         Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushLookEvent(
             _: JNIEnv,
             _: JClass,
@@ -165,10 +175,6 @@ struct WindowImpl {
 impl Window for WindowImpl {
     fn gl_version(&self) -> GLVersion {
         GLVersion::GLES3
-    }
-
-    fn mouse_position(&self) -> Point2DI32 {
-        Point2DI32::new(0, 0)
     }
 
     fn viewport(&self, view: View) -> RectI32 {

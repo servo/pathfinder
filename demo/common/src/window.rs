@@ -23,7 +23,6 @@ use std::path::PathBuf;
 pub trait Window {
     fn gl_version(&self) -> GLVersion;
     fn gl_default_framebuffer(&self) -> GLuint { 0 }
-    fn mouse_position(&self) -> Point2DI32;
     fn viewport(&self, view: View) -> RectI32;
     fn make_current(&mut self, view: View);
     fn present(&mut self);
@@ -51,7 +50,7 @@ pub enum Event {
     MouseDown(Point2DI32),
     MouseMoved(Point2DI32),
     MouseDragged(Point2DI32),
-    Zoom(f32),
+    Zoom(f32, Point2DI32),
     Look { pitch: f32, yaw: f32 },
     SetEyeTransforms(Vec<OcularTransform>),
     OpenSVG(SVGPath),

@@ -80,11 +80,6 @@ impl Window for WindowImpl {
         GLVersion::GL3
     }
 
-    fn mouse_position(&self) -> Point2DI32 {
-        let mouse_state = self.event_pump.mouse_state();
-        Point2DI32::new(mouse_state.x(), mouse_state.y())
-    }
-
     fn viewport(&self, view: View) -> RectI32 {
         let (width, height) = self.window.drawable_size();
         let mut width = width as i32;
@@ -242,7 +237,11 @@ impl WindowImpl {
             SDLEvent::KeyUp { keycode: Some(sdl_keycode), .. } => {
                 self.convert_sdl_keycode(sdl_keycode).map(Event::KeyUp)
             }
-            SDLEvent::MultiGesture { d_dist, .. } => Some(Event::Zoom(d_dist)),
+            SDLEvent::MultiGesture { d_dist, .. } => {
+                let mouse_state = self.event_pump.mouse_state();
+                let center = Point2DI32::new(mouse_state.x(), mouse_state.y());
+                Some(Event::Zoom(d_dist, center))
+            }
             _ => None,
         }
     }
