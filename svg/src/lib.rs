@@ -92,16 +92,20 @@ impl BuiltSVG {
         match *node.borrow() {
             NodeKind::Group(ref group) => {
                 if group.clip_path.is_some() {
-                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_ATTR);
+                    self.result_flags
+                        .insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_ATTR);
                 }
                 if group.filter.is_some() {
-                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_FILTER_ATTR);
+                    self.result_flags
+                        .insert(BuildResultFlags::UNSUPPORTED_FILTER_ATTR);
                 }
                 if group.mask.is_some() {
-                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
+                    self.result_flags
+                        .insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
                 }
                 if group.opacity.is_some() {
-                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_OPACITY_ATTR);
+                    self.result_flags
+                        .insert(BuildResultFlags::UNSUPPORTED_OPACITY_ATTR);
                 }
 
                 for kid in node.children() {
@@ -110,9 +114,9 @@ impl BuiltSVG {
             }
             NodeKind::Path(ref path) if path.visibility == Visibility::Visible => {
                 if let Some(ref fill) = path.fill {
-                    let style =
-                        self.scene.push_paint(&Paint::from_svg_paint(&fill.paint,
-                                                                     &mut self.result_flags));
+                    let style = self
+                        .scene
+                        .push_paint(&Paint::from_svg_paint(&fill.paint, &mut self.result_flags));
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                     let path = Transform2DF32PathIter::new(path, &transform);
@@ -128,11 +132,11 @@ impl BuiltSVG {
                 }
 
                 if let Some(ref stroke) = path.stroke {
-                    let style =
-                        self.scene.push_paint(&Paint::from_svg_paint(&stroke.paint,
-                                                                     &mut self.result_flags));
-                    let stroke_width =
-                        f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
+                    let style = self.scene.push_paint(&Paint::from_svg_paint(
+                        &stroke.paint,
+                        &mut self.result_flags,
+                    ));
+                    let stroke_width = f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                     let outline = Outline::from_segments(path);
@@ -153,36 +157,46 @@ impl BuiltSVG {
             }
             NodeKind::Path(..) => {}
             NodeKind::ClipPath(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_CLIP_PATH_NODE);
             }
             NodeKind::Defs { .. } => {
                 if node.has_children() {
-                    self.result_flags.insert(BuildResultFlags::UNSUPPORTED_DEFS_NODE);
+                    self.result_flags
+                        .insert(BuildResultFlags::UNSUPPORTED_DEFS_NODE);
                 }
             }
             NodeKind::Filter(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_FILTER_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_FILTER_NODE);
             }
             NodeKind::Image(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_IMAGE_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_IMAGE_NODE);
             }
             NodeKind::LinearGradient(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_LINEAR_GRADIENT_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_LINEAR_GRADIENT_NODE);
             }
             NodeKind::Mask(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_MASK_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_MASK_NODE);
             }
             NodeKind::Pattern(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_PATTERN_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_PATTERN_NODE);
             }
             NodeKind::RadialGradient(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_RADIAL_GRADIENT_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_RADIAL_GRADIENT_NODE);
             }
             NodeKind::Svg(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_NESTED_SVG_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_NESTED_SVG_NODE);
             }
             NodeKind::Text(..) => {
-                self.result_flags.insert(BuildResultFlags::UNSUPPORTED_TEXT_NODE);
+                self.result_flags
+                    .insert(BuildResultFlags::UNSUPPORTED_TEXT_NODE);
             }
         }
     }
@@ -191,7 +205,7 @@ impl BuiltSVG {
 impl Display for BuildResultFlags {
     fn fmt(&self, formatter: &mut Formatter) -> FormatResult {
         if self.is_empty() {
-            return Ok(())
+            return Ok(());
         }
 
         let mut first = true;
@@ -245,7 +259,7 @@ impl PaintExt for Paint {
                     result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
                     ColorU::black()
                 }
-            }
+            },
         }
     }
 }
