@@ -11,5 +11,9 @@ serde = "1.0"
 serde_derive = "1.0"
 smallvec = "0.6"
 
+[dependencies.log]
+version = "0.4"
+features = ["release_max_level_warn"]
+
 [dependencies.pathfinder_simd]
 path = "../simd"

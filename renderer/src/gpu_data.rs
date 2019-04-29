@@ -98,7 +98,7 @@ impl BuiltObject {
                 builder: &SceneBuilder,
                 segment: &LineSegmentF32,
                 tile_coords: Point2DI32) {
-        //println!("add_fill({:?} ({}, {}))", segment, tile_x, tile_y);
+        debug!("add_fill({:?} ({:?}))", segment, tile_coords);
 
         // Ensure this fill is in bounds. If not, cull it.
         if self.tile_coords_to_local_index(tile_coords).is_none() {
@@ -111,7 +111,6 @@ impl BuiltObject {
         let shuffle_mask = I32x4::new(0x0c08_0400, 0x0d05_0901, 0, 0).as_u8x16();
 
         let tile_upper_left = tile_coords.to_f32().0.xyxy() * tile_size;
-            //F32x4::new(tile_x as f32, tile_y as f32, tile_x as f32, tile_y as f32) * tile_size;
 
         let segment = (segment.0 - tile_upper_left) * F32x4::splat(256.0);
         let segment =
@@ -124,15 +123,14 @@ impl BuiltObject {
         // Cull degenerate fills.
         if (px.0 & 0xf) as u8 == ((px.0 >> 8) & 0xf) as u8 &&
                 (subpx.0 & 0xff) as u8 == ((subpx.0 >> 16) & 0xff) as u8 {
-            //println!("... ... culling!");
+            debug!("... culling!");
             return;
         }
 
         // Allocate global tile if necessary.
         let alpha_tile_index = self.get_or_allocate_alpha_tile_index(builder, tile_coords);
 
-        //println!("... ... OK, pushing");
-
+        debug!("... OK, pushing");
         self.fills.push(FillBatchPrimitive { px, subpx, alpha_tile_index });
     }
 
@@ -166,12 +164,11 @@ impl BuiltObject {
             LineSegmentF32::new(&right, &left)
         };
 
-        /*println!("... emitting active fill {} -> {} winding {} @ tile {},{}",
-                 left.x(),
-                 right.x(),
-                 winding,
-                 tile_x,
-                 tile_y);*/
+        debug!("... emitting active fill {} -> {} winding {} @ tile {:?}",
+               left.x(),
+               right.x(),
+               winding,
+               tile_coords);
 
         while winding != 0 {
             self.add_fill(builder, &segment, tile_coords);
@@ -187,11 +184,11 @@ impl BuiltObject {
                                                     builder: &SceneBuilder,
                                                     mut segment: LineSegmentF32,
                                                     tile_y: i32) {
-        /*println!("... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
-                    segment,
-                    tile_y,
-                    tile_y as f32 * TILE_HEIGHT as f32,
-                    (tile_y + 1) as f32 * TILE_HEIGHT as f32);*/
+        debug!("... generate_fill_primitives_for_line(): segment={:?} tile_y={} ({}-{})",
+               segment,
+               tile_y,
+               tile_y as f32 * TILE_HEIGHT as f32,
+               (tile_y + 1) as f32 * TILE_HEIGHT as f32);
 
         let winding = segment.from_x() > segment.to_x();
         let (segment_left, segment_right) = if !winding {
@@ -204,8 +201,10 @@ impl BuiltObject {
         let segment_tile_left = f32::floor(segment_left) as i32 / TILE_WIDTH as i32;
         let segment_tile_right =
             util::alignup_i32(f32::ceil(segment_right) as i32, TILE_WIDTH as i32);
-        /*println!("segment_tile_left={} segment_tile_right={} tile_rect={:?}",
-                 segment_tile_left, segment_tile_right, self.tile_rect);*/
+        debug!("segment_tile_left={} segment_tile_right={} tile_rect={:?}",
+               segment_tile_left,
+               segment_tile_right,
+               self.tile_rect());
 
         for subsegment_tile_x in segment_tile_left..segment_tile_right {
             let (mut fill_from, mut fill_to) = (segment.from(), segment.to());

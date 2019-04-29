@@ -14,6 +14,8 @@
 
 #[macro_use]
 extern crate bitflags;
+#[macro_use]
+extern crate log;
 
 pub mod basic;
 pub mod clip;

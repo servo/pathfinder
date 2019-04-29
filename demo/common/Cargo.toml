@@ -15,6 +15,10 @@ version = "0.21"
 default-features = false
 features = ["png_codec"]
 
+[dependencies.log]
+version = "0.4"
+features = ["release_max_level_warn"]
+
 [dependencies.pathfinder_geometry]
 path = "../../geometry"
 

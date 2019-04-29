@@ -174,12 +174,12 @@ impl RenderTransform {
             bounds.lower_right().to_3d(),
             bounds.lower_left().to_3d(),
         ];
-        //println!("-----");
-        //println!("bounds={:?} ORIGINAL quad={:?}", self.bounds, points);
+        debug!("-----");
+        debug!("bounds={:?} ORIGINAL quad={:?}", bounds, points);
         for point in &mut points {
             *point = perspective.transform.transform_point(*point);
         }
-        //println!("... PERSPECTIVE quad={:?}", points);
+        debug!("... PERSPECTIVE quad={:?}", points);
 
         // Compute depth.
         let quad = [
@@ -188,10 +188,10 @@ impl RenderTransform {
             points[2].perspective_divide(),
             points[3].perspective_divide(),
         ];
-        //println!("... PERSPECTIVE-DIVIDED points = {:?}", quad);
+        debug!("... PERSPECTIVE-DIVIDED points = {:?}", quad);
 
         points = PolygonClipper3D::new(points).clip();
-        //println!("... CLIPPED quad={:?}", points);
+        debug!("... CLIPPED quad={:?}", points);
         for point in &mut points {
             *point = point.perspective_divide()
         }

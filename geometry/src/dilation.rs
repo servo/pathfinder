@@ -68,12 +68,10 @@ impl<'a> ContourDilator<'a> {
             }
             let next_vector = (next_position - position).normalize();
 
-            /*
-            println!("prev={} cur={} next={}",
-                     prev_point_index,
-                     current_point_index,
-                     next_point_index);
-            */
+            debug!("prev={} cur={} next={}",
+                   prev_point_index,
+                   current_point_index,
+                   next_point_index);
 
             // Calculate new position by moving the point by the bisector.
             let bisector = prev_vector.yx() + next_vector.yx();
@@ -85,33 +83,22 @@ impl<'a> ContourDilator<'a> {
             };
             let new_position = position - scaled_bisector;
 
-            /*
-            println!("dilate(): prev={}({:?}) cur={}({:?}) next={}({:?}) bisector={:?}({:?}, {:?})",
-                     prev_point_index,
-                     prev_position,
-                     current_point_index,
-                     position,
-                     next_point_index,
-                     next_position,
-                     bisector,
-                     bisector_length,
-                     scaled_bisector);
-            */
-
-            /*if bisector_length == 0.0 {
-                println!("dilate({:?}): {:?} -> {:?} (bisector {:?}, length {:?})",
-                        self.amount,
-                        position,
-                        new_position,
-                        bisector,
-                        bisector_length);
-            }*/
+            debug!("dilate(): prev={}({:?}) cur={}({:?}) next={}({:?}) bisector={:?}({:?}, {:?})",
+                   prev_point_index,
+                   prev_position,
+                   current_point_index,
+                   position,
+                   next_point_index,
+                   next_position,
+                   bisector,
+                   bisector_length,
+                   scaled_bisector);
 
             // Update all points.
             let mut point_index = current_point_index;
             while point_index != next_point_index {
                 self.contour.points[point_index as usize] = new_position;
-                //println!("... updating {:?}", point_index);
+                debug!("... updating {:?}", point_index);
                 point_index = self.contour.next_point_index_of(point_index);
             }
 

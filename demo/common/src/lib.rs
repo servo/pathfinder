@@ -10,6 +10,9 @@
 
 //! A demo app for Pathfinder.
 
+#[macro_use]
+extern crate log;
+
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction};
 use crate::window::{Event, Keycode, OcularTransform, SVGPath, View, Window, WindowSize};
@@ -437,7 +440,7 @@ impl<W> DemoApp<W> where W: Window {
         self.window.make_current(view);
 
         if self.camera.mode() != Mode::VR {
-            self.draw_environment(0);
+            self.draw_environment();
         }
 
         self.render_vector_scene();
@@ -469,11 +472,9 @@ impl<W> DemoApp<W> where W: Window {
             _ => return,
         };
 
-        /*
-        println!("scene_transform.perspective={:?}", scene_transform.perspective);
-        println!("scene_transform.modelview_to_eye={:?}", scene_transform.modelview_to_eye);
-        println!("modelview transform={:?}", modelview_transform);
-        */
+        debug!("scene_transform.perspective={:?}", scene_transform.perspective);
+        debug!("scene_transform.modelview_to_eye={:?}", scene_transform.modelview_to_eye);
+        debug!("modelview transform={:?}", modelview_transform);
 
         let viewport = self.window.viewport(View::Stereo(render_scene_index));
         self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
@@ -489,7 +490,7 @@ impl<W> DemoApp<W> where W: Window {
             rect: Some(viewport),
         });
 
-        self.draw_environment(render_scene_index);
+        self.draw_environment();
 
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
@@ -509,13 +510,11 @@ impl<W> DemoApp<W> where W: Window {
                                                 .post_mul(&modelview_transform.to_transform())
                                                 .post_mul(&quad_scale_transform);
 
-        /*
-        println!("eye transform({}).modelview_to_eye={:?}",
-                 render_scene_index,
-                 eye_transform.modelview_to_eye);
-        println!("eye transform_matrix({})={:?}", render_scene_index, eye_transform_matrix);
-        println!("---");
-        */
+        debug!("eye transform({}).modelview_to_eye={:?}",
+              render_scene_index,
+              eye_transform.modelview_to_eye);
+        debug!("eye transform_matrix({})={:?}", render_scene_index, eye_transform_matrix);
+        debug!("---");
 
         self.renderer.reproject_texture(scene_texture,
                                         &scene_transform_matrix.transform,
@@ -606,7 +605,7 @@ impl<W> DemoApp<W> where W: Window {
         self.frame_counter += 1;
     }
 
-    fn draw_environment(&self, viewport_index: u32) {
+    fn draw_environment(&self) {
         // TODO(pcwalton): Use the viewport index!
 
         let frame = &self.current_frame.as_ref().unwrap();
@@ -912,7 +911,7 @@ fn build_scene(scene: &Scene,
     });
 
     if result.is_err() {
-        eprintln!("Scene building crashed! Dumping scene:");
+        error!("Scene building crashed! Dumping scene:");
         println!("{:?}", scene);
         process::exit(1);
     }

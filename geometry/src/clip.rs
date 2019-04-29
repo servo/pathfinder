@@ -16,6 +16,7 @@ use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
 use arrayvec::ArrayVec;
 use smallvec::SmallVec;
+use std::fmt::Debug;
 use std::mem;
 
 #[derive(Clone, Copy, Debug)]
@@ -25,7 +26,7 @@ impl TEdge for Edge {
     #[inline]
     fn point_is_inside(&self, point: &Point2DF32) -> bool {
         let area = (self.0.to() - self.0.from()).det(*point - self.0.from());
-        //println!("point_is_inside({:?}, {:?}), area={}", self, point, area);
+        debug!("point_is_inside({:?}, {:?}), area={}", self, point, area);
         area >= 0.0
     }
 
@@ -72,13 +73,13 @@ impl TEdge for AxisAlignedEdge {
     }
 }
 
-trait TEdge {
+trait TEdge: Debug {
     fn point_is_inside(&self, point: &Point2DF32) -> bool;
     fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]>;
 
     fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
         let from_inside = self.point_is_inside(&segment.baseline.from());
-        //println!("point {:?} inside {:?}: {:?}", segment.baseline.from(), self, from_inside);
+        debug!("point {:?} inside {:?}: {:?}", segment.baseline.from(), self, from_inside);
         if from_inside != self.point_is_inside(&segment.baseline.to()) {
             return EdgeRelativeLocation::Intersecting;
         }
@@ -125,8 +126,8 @@ trait TEdge {
 
     fn intersect_cubic_segment(&self, segment: &Segment, mut t_min: f32, mut t_max: f32)
                                -> Option<f32> {
-        /*println!("... intersect_cubic_segment({:?}, {:?}, t=({}, {}))",
-                 self, segment, t_min, t_max);*/
+        debug!("... intersect_cubic_segment({:?}, {:?}, t=({}, {}))", self, segment, t_min, t_max);
+
         let mut segment = segment.as_cubic_segment().split_after(t_min);
         segment = segment.as_cubic_segment().split_before(t_max / (1.0 - t_min));
 
@@ -161,7 +162,7 @@ trait TEdge {
     }
 }
 
-trait ContourClipper where Self::Edge: TEdge {
+trait ContourClipper where Self::Edge: TEdge + Debug {
     type Edge;
 
     fn contour_mut(&mut self) -> &mut Contour;
@@ -191,7 +192,7 @@ trait ContourClipper where Self::Edge: TEdge {
         match edge.trivially_test_segment(&segment) {
             EdgeRelativeLocation::Outside => return,
             EdgeRelativeLocation::Inside => {
-                //println!("trivial test inside, pushing segment");
+                debug!("trivial test inside, pushing segment");
                 self.push_segment(&segment);
                 return;
             }
@@ -199,22 +200,22 @@ trait ContourClipper where Self::Edge: TEdge {
         }
 
         // We have a potential intersection.
-        //println!("potential intersection: {:?} edge: {:?}", segment, edge);
+        debug!("potential intersection: {:?} edge: {:?}", segment, edge);
         let mut starts_inside = edge.point_is_inside(&segment.baseline.from());
         let intersection_ts = edge.intersect_segment(&segment);
         let mut last_t = 0.0;
-        //println!("... intersections: {:?}", intersection_ts);
+        debug!("... intersections: {:?}", intersection_ts);
         for t in intersection_ts {
             let (before_split, after_split) = segment.split((t - last_t) / (1.0 - last_t));
 
             // Push the split segment if appropriate.
-            /*println!("... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
-                        edge.0,
-                        before_split,
-                        t,
-                        starts_inside);*/
+            debug!("... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
+                   edge,
+                   before_split,
+                   t,
+                   starts_inside);
             if starts_inside {
-                //println!("... split segment case, pushing segment");
+                debug!("... split segment case, pushing segment");
                 self.push_segment(&before_split);
             }
 
@@ -226,13 +227,12 @@ trait ContourClipper where Self::Edge: TEdge {
 
         // No more intersections. Push the last segment if applicable.
         if starts_inside {
-            //println!("... last segment case, pushing segment");
+            debug!("... last segment case, pushing segment");
             self.push_segment(&segment);
         }
     }
 
     fn push_segment(&mut self, segment: &Segment) {
-        //println!("... push_segment({:?}, edge={:?}", segment, edge);
         let contour = self.contour_mut();
         if let Some(last_position) = contour.last_position() {
             if last_position != segment.baseline.from() {
@@ -368,19 +368,19 @@ impl PolygonClipper3D {
     pub fn clip(mut self) -> Vec<Point3DF32> {
         // TODO(pcwalton): Fast path for completely contained polygon?
 
-        //println!("before clipping against bottom: {:?}", self.subject);
+        debug!("before clipping against bottom: {:?}", self.subject);
         self.clip_against(Edge3D::Bottom);
-        //println!("before clipping against top: {:?}", self.subject);
+        debug!("before clipping against top: {:?}", self.subject);
         self.clip_against(Edge3D::Top);
-        //println!("before clipping against left: {:?}", self.subject);
+        debug!("before clipping against left: {:?}", self.subject);
         self.clip_against(Edge3D::Left);
-        //println!("before clipping against right: {:?}", self.subject);
+        debug!("before clipping against right: {:?}", self.subject);
         self.clip_against(Edge3D::Right);
-        //println!("before clipping against far: {:?}", self.subject);
+        debug!("before clipping against far: {:?}", self.subject);
         self.clip_against(Edge3D::Far);
-        //println!("before clipping against near: {:?}", self.subject);
+        debug!("before clipping against near: {:?}", self.subject);
         self.clip_against(Edge3D::Near);
-        //println!("after clipping: {:?}", self.subject);
+        debug!("after clipping: {:?}", self.subject);
 
         self.subject
     }

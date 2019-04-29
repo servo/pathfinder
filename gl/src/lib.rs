@@ -10,6 +10,9 @@
 
 //! An OpenGL implementation of the device abstraction.
 
+#[macro_use]
+extern crate log;
+
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
@@ -24,6 +27,7 @@ use std::mem;
 use std::ptr;
 use std::str;
 use std::time::Duration;
+
 pub struct GLDevice {
     version: GLVersion,
     default_framebuffer: GLuint,
@@ -254,7 +258,7 @@ impl Device for GLDevice {
                                      info_log.len() as GLint,
                                      ptr::null_mut(),
                                      info_log.as_mut_ptr() as *mut GLchar); ck();
-                eprintln!("Shader info log:\n{}", String::from_utf8_lossy(&info_log));
+                error!("Shader info log:\n{}", String::from_utf8_lossy(&info_log));
                 panic!("{:?} shader '{}' compilation failed", kind, name);
             }
 

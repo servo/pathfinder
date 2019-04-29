@@ -93,10 +93,10 @@ impl Offset for SegmentPF3 {
             return;
         }
 
-        //println!("--- SPLITTING ---");
-        //println!("... PRE-SPLIT: {:?}", self);
+        debug!("--- SPLITTING ---");
+        debug!("... PRE-SPLIT: {:?}", self);
         let (before, after) = self.split(0.5);
-        //println!("... AFTER-SPLIT: {:?} {:?}", before, after);
+        debug!("... AFTER-SPLIT: {:?} {:?}", before, after);
         before.offset(distance, contour);
         after.offset(distance, contour);
     }
@@ -179,8 +179,8 @@ impl Offset for SegmentPF3 {
             let (this_p, other_p) = (self.sample(t), other.sample(t));
             let vector = this_p - other_p;
             let square_distance = vector.square_length();
-            /*println!("this_p={:?} other_p={:?} vector={:?} sqdist={:?} min={:?} max={:?}",
-                     this_p, other_p, vector, square_distance, min, max);*/
+            debug!("this_p={:?} other_p={:?} vector={:?} sqdist={:?} min={:?} max={:?}",
+                   this_p, other_p, vector, square_distance, min, max);
             if square_distance < min || square_distance > max {
                 return false;
             }

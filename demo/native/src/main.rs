@@ -35,6 +35,7 @@ const DEFAULT_WINDOW_HEIGHT: u32 = 800;
 
 fn main() {
     color_backtrace::install();
+    pretty_env_logger::init();
 
     let window = WindowImpl::new();
     let window_size = window.size();
