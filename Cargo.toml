@@ -1,13 +1,17 @@
 [workspace]
 members = [
-    "gfx-utils",
-    "partitioner",
-    "path-utils",
-    "demo/server",
+    "demo/android/rust",
+    "demo/common",
+    "demo/magicleap",
+    "demo/native",
+    "geometry",
+    "gl",
+    "gpu",
+    "renderer",
+    "simd",
+    "svg",
+    "ui",
     "utils/area-lut",
-    "utils/frontend",
     "utils/gamma-lut",
+    "utils/svg-to-skia"
 ]
-
-[patch.crates-io]
-ring = { git = "https://github.com/SergioBenitez/ring", branch = "v0.12" }

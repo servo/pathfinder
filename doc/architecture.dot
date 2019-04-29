@@ -1,0 +1,18 @@
+digraph G {
+    graph[rankdir=LR,fontname="Source Sans Pro"];
+    node[shape=box,fontname="Source Sans Pro"];
+    edge[arrowhead=vee];
+    subgraph cluster_CPU {
+        Simplify -> Tile -> Cull -> Pack;
+        label="CPU";
+    }
+    subgraph clusterGPU {
+        Fill -> Shade;
+        label="GPU";
+    }
+    Pack -> Fill;
+    Paths[shape=none];
+    Image[shape=none];
+    Paths -> Simplify;
+    Shade -> Image;
+}

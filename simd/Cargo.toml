@@ -1,0 +1,14 @@
+[package]
+name = "pathfinder_simd"
+version = "0.3.0"
+edition = "2018"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+build = "build.rs"
+
+[features]
+pf-no-simd = []
+
+[dependencies]
+
+[build-dependencies]
+rustc_version = "0.2"

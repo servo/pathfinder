@@ -1,19 +1,10 @@
-/font-renderer/target
-/partitioner/target
-/path-utils/target
-/utils/frontend/target
 /utils/gamma-lut/target
-/demo/client/target
-/demo/client/*.html
-/demo/client/*.js
-/demo/client/src/*.js
-/demo/client/src/*.js.map
-/demo/client/node_modules
-/demo/client/package-lock.json
-/demo/server/target
-/demo/server/Rocket.toml
 .DS_Store
 target
+.cache
+/site/package-lock.json
+/site/dist
+node_modules
 
 # Editors
 *.swp
@@ -25,3 +16,6 @@ target
 # VSCode
 .vscode
 *.code-workspace
+
+# Emacs
+*~
