@@ -58,14 +58,39 @@ const CAMERA_SCALE_SPEED_2D: f32 = 6.0;
 const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
 
 const NEAR_CLIP_PLANE: f32 = 0.01;
-const FAR_CLIP_PLANE:  f32 = 10.0;
+const FAR_CLIP_PLANE: f32 = 10.0;
 
-const LIGHT_BG_COLOR:       ColorU = ColorU { r: 248, g: 248, b: 248, a: 255 };
-const DARK_BG_COLOR:        ColorU = ColorU { r: 32,  g: 32,  b: 32,  a: 255 };
-const TRANSPARENT_BG_COLOR: ColorU = ColorU { r: 0,   g: 0,   b: 0,   a: 0   };
+const LIGHT_BG_COLOR: ColorU = ColorU {
+    r: 248,
+    g: 248,
+    b: 248,
+    a: 255,
+};
+const DARK_BG_COLOR: ColorU = ColorU {
+    r: 32,
+    g: 32,
+    b: 32,
+    a: 255,
+};
+const TRANSPARENT_BG_COLOR: ColorU = ColorU {
+    r: 0,
+    g: 0,
+    b: 0,
+    a: 0,
+};
 
-const GROUND_SOLID_COLOR:   ColorU = ColorU { r: 80,  g: 80,  b: 80,  a: 255 };
-const GROUND_LINE_COLOR:    ColorU = ColorU { r: 127, g: 127, b: 127, a: 255 };
+const GROUND_SOLID_COLOR: ColorU = ColorU {
+    r: 80,
+    g: 80,
+    b: 80,
+    a: 255,
+};
+const GROUND_LINE_COLOR: ColorU = ColorU {
+    r: 127,
+    g: 127,
+    b: 127,
+    a: 255,
+};
 
 const APPROX_FONT_SIZE: f32 = 16.0;
 
@@ -83,7 +108,10 @@ pub mod window;
 mod device;
 mod ui;
 
-pub struct DemoApp<W> where W: Window {
+pub struct DemoApp<W>
+where
+    W: Window,
+{
     pub window: W,
     pub should_exit: bool,
     pub options: Options,
@@ -115,7 +143,10 @@ pub struct DemoApp<W> where W: Window {
     ground_line_vertex_array: GroundLineVertexArray<GLDevice>,
 }
 
-impl<W> DemoApp<W> where W: Window {
+impl<W> DemoApp<W>
+where
+    W: Window,
+{
     pub fn new(window: W, window_size: WindowSize, mut options: Options) -> DemoApp<W> {
         let expire_message_event_id = window.create_user_event_id();
 
@@ -148,16 +179,22 @@ impl<W> DemoApp<W> where W: Window {
         let camera = Camera::new(options.mode, scene_view_box, viewport.size());
 
         let ground_program = GroundProgram::new(&renderer.device, resources);
-        let ground_solid_vertex_array =
-            GroundSolidVertexArray::new(&renderer.device,
-                                        &ground_program,
-                                        &renderer.quad_vertex_positions_buffer());
-        let ground_line_vertex_array = GroundLineVertexArray::new(&renderer.device,
-                                                                  &ground_program);
+        let ground_solid_vertex_array = GroundSolidVertexArray::new(
+            &renderer.device,
+            &ground_program,
+            &renderer.quad_vertex_positions_buffer(),
+        );
+        let ground_line_vertex_array =
+            GroundLineVertexArray::new(&renderer.device, &ground_program);
 
         let mut ui = DemoUI::new(&renderer.device, resources, options.clone());
         let mut message_epoch = 0;
-        emit_message::<W>(&mut ui, &mut message_epoch, expire_message_event_id, message);
+        emit_message::<W>(
+            &mut ui,
+            &mut message_epoch,
+            expire_message_event_id,
+            message,
+        );
 
         DemoApp {
             window,
@@ -218,31 +255,33 @@ impl<W> DemoApp<W> where W: Window {
         let scene_count = match self.camera.mode() {
             Mode::VR => {
                 let viewport = self.window.viewport(View::Stereo(0));
-                if self.scene_framebuffer.is_none() ||
-                    self.renderer
+                if self.scene_framebuffer.is_none()
+                    || self.renderer.device.texture_size(
+                        &self
+                            .renderer
+                            .device
+                            .framebuffer_texture(self.scene_framebuffer.as_ref().unwrap()),
+                    ) != viewport.size()
+                {
+                    let scene_texture = self
+                        .renderer
                         .device
-                        .texture_size(&self.renderer
-                                           .device
-                                           .framebuffer_texture(self.scene_framebuffer
-                                                                    .as_ref()
-                                                                    .unwrap())) !=
-                        viewport.size() {
-                    let scene_texture = self.renderer.device.create_texture(TextureFormat::RGBA8,
-                                                                            viewport.size());
+                        .create_texture(TextureFormat::RGBA8, viewport.size());
                     self.scene_framebuffer =
                         Some(self.renderer.device.create_framebuffer(scene_texture));
                 }
                 self.renderer
-                    .replace_dest_framebuffer(DestFramebuffer::Other(self.scene_framebuffer
-                                                                         .take()
-                                                                         .unwrap()));
+                    .replace_dest_framebuffer(DestFramebuffer::Other(
+                        self.scene_framebuffer.take().unwrap(),
+                    ));
                 2
             }
             _ => {
-                self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
-                    viewport: self.window.viewport(View::Mono),
-                    window_size,
-                });
+                self.renderer
+                    .replace_dest_framebuffer(DestFramebuffer::Default {
+                        viewport: self.window.viewport(View::Mono),
+                        window_size,
+                    });
                 1
             }
         };
@@ -277,23 +316,27 @@ impl<W> DemoApp<W> where W: Window {
                 if modelview_transform.offset(*velocity) {
                     self.dirty = true;
                 }
-                let perspective = scene_transform.perspective
-                                                 .post_mul(&scene_transform.modelview_to_eye)
-                                                 .post_mul(&modelview_transform.to_transform());
+                let perspective = scene_transform
+                    .perspective
+                    .post_mul(&scene_transform.modelview_to_eye)
+                    .post_mul(&modelview_transform.to_transform());
                 RenderTransform::Perspective(perspective)
             }
             Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
         };
 
-        self.scene_thread_proxy.sender.send(MainToSceneMsg::Build(BuildOptions {
-            render_transform,
-            stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
-                Some(APPROX_FONT_SIZE * self.window_size.backing_scale_factor)
-            } else {
-                None
-            },
-            subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
-        })).unwrap();
+        self.scene_thread_proxy
+            .sender
+            .send(MainToSceneMsg::Build(BuildOptions {
+                render_transform,
+                stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
+                    Some(APPROX_FONT_SIZE * self.window_size.backing_scale_factor)
+                } else {
+                    None
+                },
+                subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
+            }))
+            .unwrap();
     }
 
     fn handle_events(&mut self, events: Vec<Event>) -> Vec<UIEvent> {
@@ -302,8 +345,7 @@ impl<W> DemoApp<W> where W: Window {
 
         for event in events {
             match event {
-                Event::Quit { .. } |
-                Event::KeyDown(Keycode::Escape) => {
+                Event::Quit { .. } | Event::KeyDown(Keycode::Escape) => {
                     self.should_exit = true;
                     self.dirty = true;
                 }
@@ -311,7 +353,8 @@ impl<W> DemoApp<W> where W: Window {
                     self.window_size = new_size;
                     let viewport = self.window.viewport(self.ui.mode.view(0));
                     self.scene_thread_proxy.set_drawable_size(viewport.size());
-                    self.renderer.set_main_framebuffer_size(self.window_size.device_size());
+                    self.renderer
+                        .set_main_framebuffer_size(self.window_size.device_size());
                     self.dirty = true;
                 }
                 Event::MouseDown(new_position) => {
@@ -320,10 +363,15 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::MouseMoved(new_position) if self.mouselook_enabled => {
                     let mouse_position = self.process_mouse_position(new_position);
-                    if let Camera::ThreeD { ref mut modelview_transform, .. } = self.camera {
-                        let rotation = mouse_position.relative
-                                                     .to_f32()
-                                                     .scale(MOUSELOOK_ROTATION_SPEED);
+                    if let Camera::ThreeD {
+                        ref mut modelview_transform,
+                        ..
+                    } = self.camera
+                    {
+                        let rotation = mouse_position
+                            .relative
+                            .to_f32()
+                            .scale(MOUSELOOK_ROTATION_SPEED);
                         modelview_transform.yaw += rotation.x();
                         modelview_transform.pitch += rotation.y();
                         self.dirty = true;
@@ -345,54 +393,80 @@ impl<W> DemoApp<W> where W: Window {
                     }
                 }
                 Event::Look { pitch, yaw } => {
-                    if let Camera::ThreeD { ref mut modelview_transform, .. } = self.camera {
+                    if let Camera::ThreeD {
+                        ref mut modelview_transform,
+                        ..
+                    } = self.camera
+                    {
                         modelview_transform.pitch += pitch;
                         modelview_transform.yaw += yaw;
                     }
                 }
                 Event::SetEyeTransforms(new_eye_transforms) => {
-                    if let Camera::ThreeD { ref mut eye_transforms, .. } = self.camera {
+                    if let Camera::ThreeD {
+                        ref mut eye_transforms,
+                        ..
+                    } = self.camera
+                    {
                         *eye_transforms = new_eye_transforms;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
-                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                    if let Camera::ThreeD {
+                        ref mut velocity, ..
+                    } = self.camera
+                    {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
                         velocity.set_z(-CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b's')) => {
-                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                    if let Camera::ThreeD {
+                        ref mut velocity, ..
+                    } = self.camera
+                    {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
                         velocity.set_z(CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'a')) => {
-                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                    if let Camera::ThreeD {
+                        ref mut velocity, ..
+                    } = self.camera
+                    {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
                         velocity.set_x(-CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'd')) => {
-                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                    if let Camera::ThreeD {
+                        ref mut velocity, ..
+                    } = self.camera
+                    {
                         let scale_factor = scale_factor_for_view_box(self.scene_view_box);
                         velocity.set_x(CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
                 }
-                Event::KeyUp(Keycode::Alphanumeric(b'w')) |
-                Event::KeyUp(Keycode::Alphanumeric(b's')) => {
-                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                Event::KeyUp(Keycode::Alphanumeric(b'w'))
+                | Event::KeyUp(Keycode::Alphanumeric(b's')) => {
+                    if let Camera::ThreeD {
+                        ref mut velocity, ..
+                    } = self.camera
+                    {
                         velocity.set_z(0.0);
                         self.dirty = true;
                     }
                 }
-                Event::KeyUp(Keycode::Alphanumeric(b'a')) |
-                Event::KeyUp(Keycode::Alphanumeric(b'd')) => {
-                    if let Camera::ThreeD { ref mut velocity, .. } = self.camera {
+                Event::KeyUp(Keycode::Alphanumeric(b'a'))
+                | Event::KeyUp(Keycode::Alphanumeric(b'd')) => {
+                    if let Camera::ThreeD {
+                        ref mut velocity, ..
+                    } = self.camera
+                    {
                         velocity.set_x(0.0);
                         self.dirty = true;
                     }
@@ -412,12 +486,16 @@ impl<W> DemoApp<W> where W: Window {
                     self.scene_view_box = built_svg.scene.view_box;
                     self.monochrome_scene_color = built_svg.scene.monochrome_color();
                     self.camera = Camera::new(self.ui.mode, self.scene_view_box, viewport_size);
-                    self.scene_thread_proxy.load_scene(built_svg.scene, viewport_size);
+                    self.scene_thread_proxy
+                        .load_scene(built_svg.scene, viewport_size);
                     self.dirty = true;
                 }
-                Event::User { message_type: event_id, message_data: expected_epoch } if
-                        event_id == self.expire_message_event_id &&
-                        expected_epoch as u32 == self.message_epoch => {
+                Event::User {
+                    message_type: event_id,
+                    message_data: expected_epoch,
+                } if event_id == self.expire_message_event_id
+                    && expected_epoch as u32 == self.message_epoch =>
+                {
                     self.ui.message = String::new();
                     self.dirty = true;
                 }
@@ -451,10 +529,12 @@ impl<W> DemoApp<W> where W: Window {
         }
 
         if let DestFramebuffer::Other(scene_framebuffer) =
-                self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+            self.renderer
+                .replace_dest_framebuffer(DestFramebuffer::Default {
                     viewport: self.window.viewport(View::Mono),
                     window_size: self.window_size.device_size(),
-                }) {
+                })
+        {
             self.scene_framebuffer = Some(scene_framebuffer);
         }
     }
@@ -462,25 +542,30 @@ impl<W> DemoApp<W> where W: Window {
     pub fn composite_scene(&mut self, render_scene_index: u32) {
         let (eye_transforms, scene_transform, modelview_transform) = match self.camera {
             Camera::ThreeD {
-                    ref eye_transforms,
-                    ref scene_transform,
-                    ref modelview_transform,
-                    ..
-            } if eye_transforms.len() > 1 => {
-                (eye_transforms, scene_transform, modelview_transform)
-            }
+                ref eye_transforms,
+                ref scene_transform,
+                ref modelview_transform,
+                ..
+            } if eye_transforms.len() > 1 => (eye_transforms, scene_transform, modelview_transform),
             _ => return,
         };
 
-        debug!("scene_transform.perspective={:?}", scene_transform.perspective);
-        debug!("scene_transform.modelview_to_eye={:?}", scene_transform.modelview_to_eye);
+        debug!(
+            "scene_transform.perspective={:?}",
+            scene_transform.perspective
+        );
+        debug!(
+            "scene_transform.modelview_to_eye={:?}",
+            scene_transform.modelview_to_eye
+        );
         debug!("modelview transform={:?}", modelview_transform);
 
         let viewport = self.window.viewport(View::Stereo(render_scene_index));
-        self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
-            viewport,
-            window_size: self.window_size.device_size(),
-        });
+        self.renderer
+            .replace_dest_framebuffer(DestFramebuffer::Default {
+                viewport,
+                window_size: self.window_size.device_size(),
+            });
 
         self.renderer.bind_draw_framebuffer();
         self.renderer.device.clear(&ClearParams {
@@ -495,35 +580,49 @@ impl<W> DemoApp<W> where W: Window {
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
 
-        let quad_scale_transform = Transform3DF32::from_scale(self.scene_view_box.size().x(),
-                                                              self.scene_view_box.size().y(),
-                                                              1.0);
+        let quad_scale_transform = Transform3DF32::from_scale(
+            self.scene_view_box.size().x(),
+            self.scene_view_box.size().y(),
+            1.0,
+        );
 
-        let scene_transform_matrix = scene_transform.perspective
-                                                    .post_mul(&scene_transform.modelview_to_eye)
-                                                    .post_mul(&modelview_transform.to_transform())
-                                                    .post_mul(&quad_scale_transform);
+        let scene_transform_matrix = scene_transform
+            .perspective
+            .post_mul(&scene_transform.modelview_to_eye)
+            .post_mul(&modelview_transform.to_transform())
+            .post_mul(&quad_scale_transform);
 
         let eye_transform = &eye_transforms[render_scene_index as usize];
-        let eye_transform_matrix = eye_transform.perspective
-                                                .post_mul(&eye_transform.modelview_to_eye)
-                                                .post_mul(&modelview_transform.to_transform())
-                                                .post_mul(&quad_scale_transform);
+        let eye_transform_matrix = eye_transform
+            .perspective
+            .post_mul(&eye_transform.modelview_to_eye)
+            .post_mul(&modelview_transform.to_transform())
+            .post_mul(&quad_scale_transform);
 
-        debug!("eye transform({}).modelview_to_eye={:?}",
-              render_scene_index,
-              eye_transform.modelview_to_eye);
-        debug!("eye transform_matrix({})={:?}", render_scene_index, eye_transform_matrix);
+        debug!(
+            "eye transform({}).modelview_to_eye={:?}",
+            render_scene_index, eye_transform.modelview_to_eye
+        );
+        debug!(
+            "eye transform_matrix({})={:?}",
+            render_scene_index, eye_transform_matrix
+        );
         debug!("---");
 
-        self.renderer.reproject_texture(scene_texture,
-                                        &scene_transform_matrix.transform,
-                                        &eye_transform_matrix.transform);
+        self.renderer.reproject_texture(
+            scene_texture,
+            &scene_transform_matrix.transform,
+            &eye_transform_matrix.transform,
+        );
     }
 
     pub fn finish_drawing_frame(&mut self) {
         if let Some(rendering_time) = self.renderer.shift_timer_query() {
-            self.current_frame.as_mut().unwrap().scene_rendering_times.push(rendering_time);
+            self.current_frame
+                .as_mut()
+                .unwrap()
+                .scene_rendering_times
+                .push(rendering_time);
         }
 
         let tile_time = match self.scene_thread_proxy.receiver.recv().unwrap() {
@@ -542,20 +641,28 @@ impl<W> DemoApp<W> where W: Window {
             let aggregate_stats = frame.scene_stats.iter().fold(zero, |sum, item| sum + *item);
             let total_rendering_time = if frame.scene_rendering_times.is_empty() {
                 None
-             } else {
+            } else {
                 let zero = Duration::new(0, 0);
-                Some(frame.scene_rendering_times.iter().fold(zero, |sum, item| sum + *item))
-             };
-            self.renderer.debug_ui.add_sample(aggregate_stats, tile_time, total_rendering_time);
+                Some(
+                    frame
+                        .scene_rendering_times
+                        .iter()
+                        .fold(zero, |sum, item| sum + *item),
+                )
+            };
+            self.renderer
+                .debug_ui
+                .add_sample(aggregate_stats, tile_time, total_rendering_time);
         }
 
         if self.options.ui != UIVisibility::None {
             let viewport = self.window.viewport(View::Mono);
             self.window.make_current(View::Mono);
-            self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
-                viewport,
-                window_size: self.window_size.device_size(),
-            });
+            self.renderer
+                .replace_dest_framebuffer(DestFramebuffer::Default {
+                    viewport,
+                    window_size: self.window_size.device_size(),
+                });
             self.renderer.draw_debug_ui();
         }
 
@@ -564,16 +671,20 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.debug_ui.ui.event_queue.push(*ui_event);
         }
 
-        self.renderer.debug_ui.ui.mouse_position =
-            self.last_mouse_position.to_f32().scale(self.window_size.backing_scale_factor);
+        self.renderer.debug_ui.ui.mouse_position = self
+            .last_mouse_position
+            .to_f32()
+            .scale(self.window_size.backing_scale_factor);
         self.ui.show_text_effects = self.monochrome_scene_color.is_some();
 
         let mut ui_action = UIAction::None;
         if self.options.ui == UIVisibility::All {
-            self.ui.update(&self.renderer.device,
-                           &mut self.window,
-                           &mut self.renderer.debug_ui,
-                           &mut ui_action);
+            self.ui.update(
+                &self.renderer.device,
+                &mut self.window,
+                &mut self.renderer.debug_ui,
+                &mut ui_action,
+            );
         }
         frame.ui_events = self.renderer.debug_ui.ui.event_queue.drain();
         self.handle_ui_action(&mut ui_action);
@@ -625,34 +736,45 @@ impl<W> DemoApp<W> where W: Window {
         base_transform = base_transform.post_mul(&Transform3DF32::from_translation(
             -0.5 * self.scene_view_box.max_x(),
             self.scene_view_box.max_y(),
-            -0.5 * ground_scale));
+            -0.5 * ground_scale,
+        ));
 
         // Draw gridlines. Use the stencil buffer to avoid Z-fighting.
         let mut transform = base_transform;
         let gridline_scale = ground_scale / GRIDLINE_COUNT as f32;
-        transform =
-            transform.post_mul(&Transform3DF32::from_scale(gridline_scale, 1.0, gridline_scale));
+        transform = transform.post_mul(&Transform3DF32::from_scale(
+            gridline_scale,
+            1.0,
+            gridline_scale,
+        ));
         let device = &self.renderer.device;
         device.bind_vertex_array(&self.ground_line_vertex_array.vertex_array);
         device.use_program(&self.ground_program.program);
-        device.set_uniform(&self.ground_program.transform_uniform, UniformData::Mat4([
-            transform.c0,
-            transform.c1,
-            transform.c2,
-            transform.c3,
-        ]));
-        device.set_uniform(&self.ground_program.color_uniform,
-                           UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0));
-        device.draw_arrays(Primitive::Lines, (GRIDLINE_COUNT as u32 + 1) * 4, &RenderState {
-            depth: Some(DepthState { func: DepthFunc::Always, write: true }),
-            stencil: Some(StencilState {
-                func: StencilFunc::Always,
-                reference: 2,
-                mask: 2,
-                write: true,
-            }),
-            ..RenderState::default()
-        });
+        device.set_uniform(
+            &self.ground_program.transform_uniform,
+            UniformData::Mat4([transform.c0, transform.c1, transform.c2, transform.c3]),
+        );
+        device.set_uniform(
+            &self.ground_program.color_uniform,
+            UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0),
+        );
+        device.draw_arrays(
+            Primitive::Lines,
+            (GRIDLINE_COUNT as u32 + 1) * 4,
+            &RenderState {
+                depth: Some(DepthState {
+                    func: DepthFunc::Always,
+                    write: true,
+                }),
+                stencil: Some(StencilState {
+                    func: StencilFunc::Always,
+                    reference: 2,
+                    mask: 2,
+                    write: true,
+                }),
+                ..RenderState::default()
+            },
+        );
 
         // Fill ground.
         let mut transform = base_transform;
@@ -660,20 +782,31 @@ impl<W> DemoApp<W> where W: Window {
             transform.post_mul(&Transform3DF32::from_scale(ground_scale, 1.0, ground_scale));
         device.bind_vertex_array(&self.ground_solid_vertex_array.vertex_array);
         device.use_program(&self.ground_program.program);
-        device.set_uniform(&self.ground_program.transform_uniform,
-                           UniformData::from_transform_3d(&transform));
-        device.set_uniform(&self.ground_program.color_uniform,
-                           UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0));
-        device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
-            depth: Some(DepthState { func: DepthFunc::Less, write: true }),
-            stencil: Some(StencilState {
-                func: StencilFunc::NotEqual,
-                reference: 2,
-                mask: 2,
-                write: false,
-            }),
-            ..RenderState::default()
-        });
+        device.set_uniform(
+            &self.ground_program.transform_uniform,
+            UniformData::from_transform_3d(&transform),
+        );
+        device.set_uniform(
+            &self.ground_program.color_uniform,
+            UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0),
+        );
+        device.draw_arrays(
+            Primitive::TriangleFan,
+            4,
+            &RenderState {
+                depth: Some(DepthState {
+                    func: DepthFunc::Less,
+                    write: true,
+                }),
+                stencil: Some(StencilState {
+                    func: StencilFunc::NotEqual,
+                    reference: 2,
+                    mask: 2,
+                    write: false,
+                }),
+                ..RenderState::default()
+            },
+        );
     }
 
     fn render_vector_scene(&mut self) {
@@ -694,7 +827,7 @@ impl<W> DemoApp<W> where W: Window {
                         Some(DEFRINGING_KERNEL_CORE_GRAPHICS)
                     } else {
                         None
-                    }
+                    },
                 })
             }
         }
@@ -715,7 +848,11 @@ impl<W> DemoApp<W> where W: Window {
             }
         }
 
-        self.current_frame.as_mut().unwrap().scene_stats.push(self.renderer.stats);
+        self.current_frame
+            .as_mut()
+            .unwrap()
+            .scene_stats
+            .push(self.renderer.stats);
         self.renderer.end_scene();
     }
 
@@ -731,9 +868,10 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
                     let center = center_of_window(&self.window_size);
-                    *transform = transform.post_translate(-center)
-                                          .post_scale(scale)
-                                          .post_translate(center);
+                    *transform = transform
+                        .post_translate(-center)
+                        .post_scale(scale)
+                        .post_translate(center);
                     self.dirty = true;
                 }
             }
@@ -741,9 +879,10 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let scale = Point2DF32::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
                     let center = center_of_window(&self.window_size);
-                    *transform = transform.post_translate(-center)
-                                          .post_scale(scale)
-                                          .post_translate(center);
+                    *transform = transform
+                        .post_translate(-center)
+                        .post_scale(scale)
+                        .post_translate(center);
                     self.dirty = true;
                 }
             }
@@ -751,9 +890,10 @@ impl<W> DemoApp<W> where W: Window {
                 if let Camera::TwoD(ref mut transform) = self.camera {
                     let old_rotation = transform.rotation();
                     let center = center_of_window(&self.window_size);
-                    *transform = transform.post_translate(-center)
-                                          .post_rotate(*theta - old_rotation)
-                                          .post_translate(center);
+                    *transform = transform
+                        .post_translate(-center)
+                        .post_rotate(*theta - old_rotation)
+                        .post_translate(center);
                 }
             }
         }
@@ -762,18 +902,24 @@ impl<W> DemoApp<W> where W: Window {
     fn take_screenshot(&mut self) {
         let screenshot_path = self.pending_screenshot_path.take().unwrap();
         let drawable_size = self.window_size.device_size();
-        let pixels = self.renderer.device.read_pixels_from_default_framebuffer(drawable_size);
-        image::save_buffer(screenshot_path,
-                           &pixels,
-                           drawable_size.x() as u32,
-                           drawable_size.y() as u32,
-                           ColorType::RGBA(8)).unwrap();
+        let pixels = self
+            .renderer
+            .device
+            .read_pixels_from_default_framebuffer(drawable_size);
+        image::save_buffer(
+            screenshot_path,
+            &pixels,
+            drawable_size.x() as u32,
+            drawable_size.y() as u32,
+            ColorType::RGBA(8),
+        )
+        .unwrap();
     }
 
     fn background_color(&self) -> ColorU {
         match self.ui.background_color {
-            BackgroundColor::Light       => LIGHT_BG_COLOR,
-            BackgroundColor::Dark        => DARK_BG_COLOR,
+            BackgroundColor::Light => LIGHT_BG_COLOR,
+            BackgroundColor::Dark => DARK_BG_COLOR,
             BackgroundColor::Transparent => TRANSPARENT_BG_COLOR,
         }
     }
@@ -790,15 +936,25 @@ impl SceneThreadProxy {
         let (scene_to_main_sender, scene_to_main_receiver) =
             mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
         SceneThread::new(scene, scene_to_main_sender, main_to_scene_receiver, options);
-        SceneThreadProxy { sender: main_to_scene_sender, receiver: scene_to_main_receiver }
+        SceneThreadProxy {
+            sender: main_to_scene_sender,
+            receiver: scene_to_main_receiver,
+        }
     }
 
     fn load_scene(&self, scene: Scene, view_box_size: Point2DI32) {
-        self.sender.send(MainToSceneMsg::LoadScene { scene, view_box_size }).unwrap();
+        self.sender
+            .send(MainToSceneMsg::LoadScene {
+                scene,
+                view_box_size,
+            })
+            .unwrap();
     }
 
     fn set_drawable_size(&self, drawable_size: Point2DI32) {
-        self.sender.send(MainToSceneMsg::SetDrawableSize(drawable_size)).unwrap();
+        self.sender
+            .send(MainToSceneMsg::SetDrawableSize(drawable_size))
+            .unwrap();
     }
 }
 
@@ -810,32 +966,54 @@ struct SceneThread {
 }
 
 impl SceneThread {
-    fn new(scene: Scene,
-           sender: SyncSender<SceneToMainMsg>,
-           receiver: Receiver<MainToSceneMsg>,
-           options: Options) {
-        thread::spawn(move || (SceneThread { scene, sender, receiver, options }).run());
+    fn new(
+        scene: Scene,
+        sender: SyncSender<SceneToMainMsg>,
+        receiver: Receiver<MainToSceneMsg>,
+        options: Options,
+    ) {
+        thread::spawn(move || {
+            (SceneThread {
+                scene,
+                sender,
+                receiver,
+                options,
+            })
+            .run()
+        });
     }
 
     fn run(mut self) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                MainToSceneMsg::LoadScene { scene, view_box_size } => {
+                MainToSceneMsg::LoadScene {
+                    scene,
+                    view_box_size,
+                } => {
                     self.scene = scene;
-                    self.scene.view_box = RectF32::new(Point2DF32::default(),
-                                                       view_box_size.to_f32());
+                    self.scene.view_box =
+                        RectF32::new(Point2DF32::default(), view_box_size.to_f32());
                 }
                 MainToSceneMsg::SetDrawableSize(size) => {
                     self.scene.view_box = RectF32::new(Point2DF32::default(), size.to_f32());
                 }
                 MainToSceneMsg::Build(build_options) => {
-                    self.sender.send(SceneToMainMsg::BeginFrame {
-                        transform: build_options.render_transform.clone(),
-                    }).unwrap();
+                    self.sender
+                        .send(SceneToMainMsg::BeginFrame {
+                            transform: build_options.render_transform.clone(),
+                        })
+                        .unwrap();
                     let start_time = Instant::now();
-                    build_scene(&self.scene, &build_options, self.options.jobs, &mut self.sender);
+                    build_scene(
+                        &self.scene,
+                        &build_options,
+                        self.options.jobs,
+                        &mut self.sender,
+                    );
                     let tile_time = Instant::now() - start_time;
-                    self.sender.send(SceneToMainMsg::EndFrame { tile_time }).unwrap();
+                    self.sender
+                        .send(SceneToMainMsg::EndFrame { tile_time })
+                        .unwrap();
                 }
             }
         }
@@ -844,7 +1022,10 @@ impl SceneThread {
 
 #[derive(Clone)]
 enum MainToSceneMsg {
-    LoadScene { scene: Scene, view_box_size: Point2DI32 },
+    LoadScene {
+        scene: Scene,
+        view_box_size: Point2DI32,
+    },
     SetDrawableSize(Point2DI32),
     Build(BuildOptions),
 }
@@ -867,20 +1048,22 @@ enum SceneToMainMsg {
 impl Debug for SceneToMainMsg {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         let ident = match *self {
-            SceneToMainMsg::BeginFrame { .. }    => "BeginFrame",
-            SceneToMainMsg::EndFrame { .. }      => "EndFrame",
+            SceneToMainMsg::BeginFrame { .. } => "BeginFrame",
+            SceneToMainMsg::EndFrame { .. } => "EndFrame",
             SceneToMainMsg::BeginRenderScene(..) => "BeginRenderScene",
-            SceneToMainMsg::Execute(..)          => "Execute",
-            SceneToMainMsg::EndRenderScene       => "EndRenderScene",
+            SceneToMainMsg::Execute(..) => "Execute",
+            SceneToMainMsg::EndRenderScene => "EndRenderScene",
         };
         ident.fmt(formatter)
     }
 }
 
-fn build_scene(scene: &Scene,
-               build_options: &BuildOptions,
-               jobs: Option<usize>,
-               sink: &mut SyncSender<SceneToMainMsg>) {
+fn build_scene(
+    scene: &Scene,
+    build_options: &BuildOptions,
+    jobs: Option<usize>,
+    sink: &mut SyncSender<SceneToMainMsg>,
+) {
     let render_options = RenderOptions {
         transform: build_options.render_transform.clone(),
         dilation: match build_options.stem_darkening_font_size {
@@ -894,14 +1077,16 @@ fn build_scene(scene: &Scene,
     };
 
     let built_options = render_options.prepare(scene.bounds);
-    sink.send(SceneToMainMsg::BeginRenderScene(scene.build_descriptor(&built_options))).unwrap();
+    sink.send(SceneToMainMsg::BeginRenderScene(
+        scene.build_descriptor(&built_options),
+    ))
+    .unwrap();
 
     let inner_sink = AssertUnwindSafe(sink.clone());
     let result = panic::catch_unwind(move || {
         let sink = (*inner_sink).clone();
-        let listener = Box::new(move |command| {
-            sink.send(SceneToMainMsg::Execute(command)).unwrap()
-        });
+        let listener =
+            Box::new(move |command| sink.send(SceneToMainMsg::Execute(command)).unwrap());
 
         let mut scene_builder = SceneBuilder::new(scene, &built_options, listener);
         match jobs {
@@ -953,8 +1138,20 @@ impl Options {
                     .takes_value(true)
                     .help("Number of threads to use"),
             )
-            .arg(Arg::with_name("3d").short("3").long("3d").help("Run in 3D").conflicts_with("vr"))
-            .arg(Arg::with_name("vr").short("V").long("vr").help("Run in VR").conflicts_with("3d"))
+            .arg(
+                Arg::with_name("3d")
+                    .short("3")
+                    .long("3d")
+                    .help("Run in 3D")
+                    .conflicts_with("vr"),
+            )
+            .arg(
+                Arg::with_name("vr")
+                    .short("V")
+                    .long("vr")
+                    .help("Run in VR")
+                    .conflicts_with("3d"),
+            )
             .arg(
                 Arg::with_name("ui")
                     .short("u")
@@ -971,7 +1168,11 @@ impl Options {
                     .possible_values(&["light", "dark", "transparent"])
                     .help("The background color to use"),
             )
-            .arg(Arg::with_name("INPUT").help("Path to the SVG file to render").index(1))
+            .arg(
+                Arg::with_name("INPUT")
+                    .help("Path to the SVG file to render")
+                    .index(1),
+            )
             .get_matches();
 
         if let Some(jobs) = matches.value_of("jobs") {
@@ -1005,8 +1206,10 @@ impl Options {
         };
     }
 
-    fn adjust_thread_pool_settings(&self, mut thread_pool_builder: ThreadPoolBuilder)
-                                   -> ThreadPoolBuilder {
+    fn adjust_thread_pool_settings(
+        &self,
+        mut thread_pool_builder: ThreadPoolBuilder,
+    ) -> ThreadPoolBuilder {
         if let Some(jobs) = self.jobs {
             thread_pool_builder = thread_pool_builder.num_threads(jobs);
         }
@@ -1016,18 +1219,24 @@ impl Options {
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Mode {
-    TwoD   = 0,
+    TwoD = 0,
     ThreeD = 1,
-    VR     = 2,
+    VR = 2,
 }
 
 impl Mode {
     pub fn viewport_count(self) -> usize {
-        match self { Mode::TwoD | Mode::ThreeD => 1, Mode::VR => 2 }
+        match self {
+            Mode::TwoD | Mode::ThreeD => 1,
+            Mode::VR => 2,
+        }
     }
 
     pub fn view(self, viewport: u32) -> View {
-        match self { Mode::TwoD | Mode::ThreeD => View::Mono, Mode::VR => View::Stereo(viewport) }
+        match self {
+            Mode::TwoD | Mode::ThreeD => View::Mono,
+            Mode::VR => View::Stereo(viewport),
+        }
     }
 }
 
@@ -1083,8 +1292,8 @@ impl Camera {
     }
 
     fn new_2d(view_box: RectF32, viewport_size: Point2DI32) -> Camera {
-        let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32 *
-            scale_factor_for_view_box(view_box);
+        let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32
+            * scale_factor_for_view_box(view_box);
         let origin = viewport_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
         Camera::TwoD(Transform2DF32::from_scale(&Point2DF32::splat(scale)).post_translate(origin))
     }
@@ -1094,10 +1303,8 @@ impl Camera {
 
         let fov_y = FRAC_PI_4;
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
-        let projection = Transform3DF32::from_perspective(fov_y,
-                                                          aspect,
-                                                          NEAR_CLIP_PLANE,
-                                                          FAR_CLIP_PLANE);
+        let projection =
+            Transform3DF32::from_perspective(fov_y, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
         let perspective = Perspective::new(&projection, viewport_size);
 
         // Create a scene transform by moving the camera back from the center of the eyes so that
@@ -1110,13 +1317,19 @@ impl Camera {
 
         // For now, initialize the eye transforms as copies of the scene transform.
         let eye_offset = DEFAULT_EYE_OFFSET;
-        let eye_transforms = (0..viewport_count).map(|viewport_index| {
-            let this_eye_offset = if viewport_index == 0 { eye_offset } else { -eye_offset };
-            OcularTransform {
-                perspective,
-                modelview_to_eye: Transform3DF32::from_translation(this_eye_offset, 0.0, 0.0),
-            }
-        }).collect();
+        let eye_transforms = (0..viewport_count)
+            .map(|viewport_index| {
+                let this_eye_offset = if viewport_index == 0 {
+                    eye_offset
+                } else {
+                    -eye_offset
+                };
+                OcularTransform {
+                    perspective,
+                    modelview_to_eye: Transform3DF32::from_translation(this_eye_offset, 0.0, 0.0),
+                }
+            })
+            .collect();
 
         Camera::ThreeD {
             scene_transform,
@@ -1127,12 +1340,17 @@ impl Camera {
     }
 
     fn is_3d(&self) -> bool {
-        match *self { Camera::ThreeD { .. } => true, Camera::TwoD { .. } => false }
+        match *self {
+            Camera::ThreeD { .. } => true,
+            Camera::TwoD { .. } => false,
+        }
     }
 
     fn mode(&self) -> Mode {
         match *self {
-            Camera::ThreeD { ref eye_transforms, .. } if eye_transforms.len() >= 2 => Mode::VR,
+            Camera::ThreeD {
+                ref eye_transforms, ..
+            } if eye_transforms.len() >= 2 => Mode::VR,
             Camera::ThreeD { .. } => Mode::ThreeD,
             Camera::TwoD { .. } => Mode::TwoD,
         }
@@ -1151,10 +1369,12 @@ impl CameraTransform3D {
     fn new(view_box: RectF32) -> CameraTransform3D {
         let scale = scale_factor_for_view_box(view_box);
         CameraTransform3D {
-            position: Point3DF32::new(0.5 * view_box.max_x(),
-                                      -0.5 * view_box.max_y(),
-                                      1.5 / scale,
-                                      1.0),
+            position: Point3DF32::new(
+                0.5 * view_box.max_x(),
+                -0.5 * view_box.max_y(),
+                1.5 / scale,
+                1.0,
+            ),
             yaw: 0.0,
             pitch: 0.0,
             scale,
@@ -1173,9 +1393,11 @@ impl CameraTransform3D {
     fn to_transform(&self) -> Transform3DF32 {
         let mut transform = Transform3DF32::from_rotation(self.yaw, self.pitch, 0.0);
         transform = transform.post_mul(&Transform3DF32::from_uniform_scale(2.0 * self.scale));
-        transform = transform.post_mul(&Transform3DF32::from_translation(-self.position.x(),
-                                                                         -self.position.y(),
-                                                                         -self.position.z()));
+        transform = transform.post_mul(&Transform3DF32::from_translation(
+            -self.position.x(),
+            -self.position.y(),
+            -self.position.z(),
+        ));
 
         // Flip Y.
         transform = transform.post_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0));
@@ -1192,14 +1414,20 @@ fn get_svg_building_message(built_svg: &BuiltSVG) -> String {
     if built_svg.result_flags.is_empty() {
         return String::new();
     }
-    format!("Warning: These features in the SVG are unsupported: {}.", built_svg.result_flags)
+    format!(
+        "Warning: These features in the SVG are unsupported: {}.",
+        built_svg.result_flags
+    )
 }
 
-fn emit_message<W>(ui: &mut DemoUI<GLDevice>,
-                   message_epoch: &mut u32,
-                   expire_message_event_id: u32,
-                   message: String)
-                   where W: Window {
+fn emit_message<W>(
+    ui: &mut DemoUI<GLDevice>,
+    message_epoch: &mut u32,
+    expire_message_event_id: u32,
+    message: String,
+) where
+    W: Window,
+{
     if message.is_empty() {
         return;
     }
@@ -1222,7 +1450,12 @@ struct Frame {
 
 impl Frame {
     fn new(transform: RenderTransform, ui_events: Vec<UIEvent>) -> Frame {
-        Frame { transform, ui_events, scene_rendering_times: vec![], scene_stats: vec![] }
+        Frame {
+            transform,
+            ui_events,
+            scene_rendering_times: vec![],
+            scene_stats: vec![],
+        }
     }
 }
 
@@ -1236,8 +1469,8 @@ pub enum BackgroundColor {
 impl BackgroundColor {
     fn as_str(&self) -> &'static str {
         match *self {
-            BackgroundColor::Light       => "Light",
-            BackgroundColor::Dark        => "Dark",
+            BackgroundColor::Light => "Light",
+            BackgroundColor::Dark => "Dark",
             BackgroundColor::Transparent => "Transparent",
         }
     }

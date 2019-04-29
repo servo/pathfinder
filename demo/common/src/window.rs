@@ -21,7 +21,9 @@ use std::path::PathBuf;
 
 pub trait Window {
     fn gl_version(&self) -> GLVersion;
-    fn gl_default_framebuffer(&self) -> GLuint { 0 }
+    fn gl_default_framebuffer(&self) -> GLuint {
+        0
+    }
     fn viewport(&self, view: View) -> RectI32;
     fn make_current(&mut self, view: View);
     fn present(&mut self);
@@ -31,7 +33,10 @@ pub trait Window {
     fn present_open_svg_dialog(&mut self);
     fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
 
-    fn adjust_thread_pool_settings(&self, thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+    fn adjust_thread_pool_settings(
+        &self,
+        thread_pool_builder: ThreadPoolBuilder,
+    ) -> ThreadPoolBuilder {
         thread_pool_builder
     }
 }
@@ -45,10 +50,16 @@ pub enum Event {
     MouseMoved(Point2DI32),
     MouseDragged(Point2DI32),
     Zoom(f32, Point2DI32),
-    Look { pitch: f32, yaw: f32 },
+    Look {
+        pitch: f32,
+        yaw: f32,
+    },
     SetEyeTransforms(Vec<OcularTransform>),
     OpenSVG(SVGPath),
-    User { message_type: u32, message_data: u32 },
+    User {
+        message_type: u32,
+        message_data: u32,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -67,7 +78,10 @@ pub struct WindowSize {
 impl WindowSize {
     #[inline]
     pub fn device_size(&self) -> Point2DI32 {
-        self.logical_size.to_f32().scale(self.backing_scale_factor).to_i32()
+        self.logical_size
+            .to_f32()
+            .scale(self.backing_scale_factor)
+            .to_i32()
     }
 }
 

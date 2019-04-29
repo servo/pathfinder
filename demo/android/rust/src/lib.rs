@@ -11,11 +11,11 @@
 #[macro_use]
 extern crate lazy_static;
 
-use jni::{JNIEnv, JavaVM};
 use jni::objects::{GlobalRef, JByteBuffer, JClass, JObject, JString, JValue};
+use jni::{JNIEnv, JavaVM};
+use pathfinder_demo::window::{Event, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
-use pathfinder_demo::window::{Event, SVGPath, View, Window, WindowSize};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::GLVersion;
@@ -40,15 +40,19 @@ thread_local! {
 static RESOURCE_LOADER: AndroidResourceLoader = AndroidResourceLoader;
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_init(env: JNIEnv,
-                                                                            class: JClass,
-                                                                            activity: JObject,
-                                                                            loader: JObject,
-                                                                            width: i32,
-                                                                            height: i32) {
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_init(
+    env: JNIEnv,
+    class: JClass,
+    activity: JObject,
+    loader: JObject,
+    width: i32,
+    height: i32,
+) {
     let logical_size = Point2DI32::new(width, height);
-    let window_size = WindowSize { logical_size, backing_scale_factor: 1.0 };
+    let window_size = WindowSize {
+        logical_size,
+        backing_scale_factor: 1.0,
+    };
     let window = WindowImpl { size: logical_size };
     let options = Options::default();
 
@@ -65,10 +69,10 @@ pub unsafe extern "system" fn
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_prepareFrame(env: JNIEnv,
-                                                                                    class: JClass)
-                                                                                    -> i32 {
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_prepareFrame(
+    env: JNIEnv,
+    class: JClass,
+) -> i32 {
     DEMO_APP.with(|demo_app| {
         let mut event_queue = EVENT_QUEUE.lock().unwrap();
         match *demo_app.borrow_mut() {
@@ -81,10 +85,10 @@ pub unsafe extern "system" fn
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_drawScene(
-            env: JNIEnv,
-            class: JClass) {
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_drawScene(
+    env: JNIEnv,
+    class: JClass,
+) {
     DEMO_APP.with(|demo_app| {
         if let Some(ref mut demo_app) = *demo_app.borrow_mut() {
             demo_app.draw_scene()
@@ -93,10 +97,10 @@ pub unsafe extern "system" fn
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_finishDrawingFrame(
-            env: JNIEnv,
-            class: JClass) {
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_finishDrawingFrame(
+    env: JNIEnv,
+    class: JClass,
+) {
     DEMO_APP.with(|demo_app| {
         if let Some(ref mut demo_app) = *demo_app.borrow_mut() {
             demo_app.finish_drawing_frame()
@@ -105,67 +109,82 @@ pub unsafe extern "system" fn
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushWindowResizedEvent(
-            env: JNIEnv,
-            class: JClass,
-            width: i32,
-            height: i32) {
-    EVENT_QUEUE.lock().unwrap().push(Event::WindowResized(WindowSize {
-        logical_size: Point2DI32::new(width, height),
-        backing_scale_factor: 1.0,
-    }))
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushWindowResizedEvent(
+    env: JNIEnv,
+    class: JClass,
+    width: i32,
+    height: i32,
+) {
+    EVENT_QUEUE
+        .lock()
+        .unwrap()
+        .push(Event::WindowResized(WindowSize {
+            logical_size: Point2DI32::new(width, height),
+            backing_scale_factor: 1.0,
+        }))
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDownEvent(
-            _: JNIEnv,
-            _: JClass,
-            x: i32,
-            y: i32) {
-    EVENT_QUEUE.lock().unwrap().push(Event::MouseDown(Point2DI32::new(x, y)))
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDownEvent(
+    _: JNIEnv,
+    _: JClass,
+    x: i32,
+    y: i32,
+) {
+    EVENT_QUEUE
+        .lock()
+        .unwrap()
+        .push(Event::MouseDown(Point2DI32::new(x, y)))
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDraggedEvent(
-            _: JNIEnv,
-            _: JClass,
-            x: i32,
-            y: i32) {
-    EVENT_QUEUE.lock().unwrap().push(Event::MouseDragged(Point2DI32::new(x, y)))
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushMouseDraggedEvent(
+    _: JNIEnv,
+    _: JClass,
+    x: i32,
+    y: i32,
+) {
+    EVENT_QUEUE
+        .lock()
+        .unwrap()
+        .push(Event::MouseDragged(Point2DI32::new(x, y)))
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushZoomEvent(
-            _: JNIEnv,
-            _: JClass,
-            factor: f32,
-            center_x: i32,
-            center_y: i32) {
-    EVENT_QUEUE.lock().unwrap().push(Event::Zoom(factor, Point2DI32::new(center_x, center_y)))
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushZoomEvent(
+    _: JNIEnv,
+    _: JClass,
+    factor: f32,
+    center_x: i32,
+    center_y: i32,
+) {
+    EVENT_QUEUE
+        .lock()
+        .unwrap()
+        .push(Event::Zoom(factor, Point2DI32::new(center_x, center_y)))
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushLookEvent(
-            _: JNIEnv,
-            _: JClass,
-            pitch: f32,
-            yaw: f32) {
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushLookEvent(
+    _: JNIEnv,
+    _: JClass,
+    pitch: f32,
+    yaw: f32,
+) {
     EVENT_QUEUE.lock().unwrap().push(Event::Look { pitch, yaw })
 }
 
 #[no_mangle]
-pub unsafe extern "system" fn
-        Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushOpenSVGEvent(
-            env: JNIEnv,
-            _: JClass,
-            string: JObject) {
+pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_PathfinderDemoRenderer_pushOpenSVGEvent(
+    env: JNIEnv,
+    _: JClass,
+    string: JObject,
+) {
     let string: String = env.get_string(JString::from(string)).unwrap().into();
-    EVENT_QUEUE.lock().unwrap().push(Event::OpenSVG(SVGPath::Resource(string)))
+    EVENT_QUEUE
+        .lock()
+        .unwrap()
+        .push(Event::OpenSVG(SVGPath::Resource(string)))
 }
 
 struct WindowImpl {
@@ -202,18 +221,20 @@ impl Window for WindowImpl {
         0
     }
 
-    fn push_user_event(message_type: u32, message_data: u32) {
-    }
+    fn push_user_event(message_type: u32, message_data: u32) {}
 
     fn present_open_svg_dialog(&mut self) {
         JAVA_ACTIVITY.with(|java_activity| {
             let mut java_activity = java_activity.borrow_mut();
             let java_activity = java_activity.as_mut().unwrap();
             let env = java_activity.vm.get_env().unwrap();
-            env.call_method(java_activity.activity.as_obj(),
-                            "presentOpenSVGDialog",
-                            "()V",
-                            &[]).unwrap();
+            env.call_method(
+                java_activity.activity.as_obj(),
+                "presentOpenSVGDialog",
+                "()V",
+                &[],
+            )
+            .unwrap();
         });
     }
 
@@ -232,13 +253,20 @@ impl ResourceLoader for AndroidResourceLoader {
             let java_resource_loader = java_resource_loader.as_ref().unwrap();
             let loader = java_resource_loader.loader.as_obj();
             let env = java_resource_loader.vm.get_env().unwrap();
-            match env.call_method(loader,
-                                  "slurp",
-                                  "(Ljava/lang/String;)Ljava/nio/ByteBuffer;",
-                                  &[JValue::Object(*env.new_string(path).unwrap())]).unwrap() {
+            match env
+                .call_method(
+                    loader,
+                    "slurp",
+                    "(Ljava/lang/String;)Ljava/nio/ByteBuffer;",
+                    &[JValue::Object(*env.new_string(path).unwrap())],
+                )
+                .unwrap()
+            {
                 JValue::Object(object) => {
                     let byte_buffer = JByteBuffer::from(object);
-                    Ok(Vec::from(env.get_direct_buffer_address(byte_buffer).unwrap()))
+                    Ok(Vec::from(
+                        env.get_direct_buffer_address(byte_buffer).unwrap(),
+                    ))
                 }
                 _ => panic!("Unexpected return value!"),
             }
