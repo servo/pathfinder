@@ -71,12 +71,22 @@ impl F32x4 {
 
     #[inline]
     pub fn floor(self) -> F32x4 {
-        F32x4([self[0].floor(), self[1].floor(), self[2].floor(), self[3].floor()])
+        F32x4([
+            self[0].floor(),
+            self[1].floor(),
+            self[2].floor(),
+            self[3].floor(),
+        ])
     }
 
     #[inline]
     pub fn ceil(self) -> F32x4 {
-        F32x4([self[0].ceil(), self[1].ceil(), self[2].ceil(), self[3].ceil()])
+        F32x4([
+            self[0].ceil(),
+            self[1].ceil(),
+            self[2].ceil(),
+            self[3].ceil(),
+        ])
     }
 
     // Packed comparisons
@@ -124,7 +134,12 @@ impl F32x4 {
     // Converts these packed floats to integers.
     #[inline]
     pub fn to_i32x4(self) -> I32x4 {
-        I32x4([self[0] as i32, self[1] as i32, self[2] as i32, self[3] as i32])
+        I32x4([
+            self[0] as i32,
+            self[1] as i32,
+            self[2] as i32,
+            self[3] as i32,
+        ])
     }
 
     // Concatenations
@@ -181,7 +196,12 @@ impl Add<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn add(self, other: F32x4) -> F32x4 {
-        F32x4([self[0] + other[0], self[1] + other[1], self[2] + other[2], self[3] + other[3]])
+        F32x4([
+            self[0] + other[0],
+            self[1] + other[1],
+            self[2] + other[2],
+            self[3] + other[3],
+        ])
     }
 }
 
@@ -189,7 +209,12 @@ impl Mul<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn mul(self, other: F32x4) -> F32x4 {
-        F32x4([self[0] * other[0], self[1] * other[1], self[2] * other[2], self[3] * other[3]])
+        F32x4([
+            self[0] * other[0],
+            self[1] * other[1],
+            self[2] * other[2],
+            self[3] * other[3],
+        ])
     }
 }
 
@@ -197,7 +222,12 @@ impl Sub<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn sub(self, other: F32x4) -> F32x4 {
-        F32x4([self[0] - other[0], self[1] - other[1], self[2] - other[2], self[3] - other[3]])
+        F32x4([
+            self[0] - other[0],
+            self[1] - other[1],
+            self[2] - other[2],
+            self[3] - other[3],
+        ])
     }
 }
 
@@ -219,9 +249,7 @@ impl I32x4 {
 
     #[inline]
     pub fn as_u8x16(self) -> U8x16 {
-        unsafe {
-            U8x16(*mem::transmute::<&[i32; 4], &[u8; 16]>(&self.0))
-        }
+        unsafe { U8x16(*mem::transmute::<&[i32; 4], &[u8; 16]>(&self.0)) }
     }
 
     #[inline]
@@ -268,7 +296,12 @@ impl I32x4 {
     /// Converts these packed integers to floats.
     #[inline]
     pub fn to_f32x4(self) -> F32x4 {
-        F32x4([self[0] as f32, self[1] as f32, self[2] as f32, self[3] as f32])
+        F32x4([
+            self[0] as f32,
+            self[1] as f32,
+            self[2] as f32,
+            self[3] as f32,
+        ])
     }
 }
 
@@ -291,7 +324,12 @@ impl Add<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn add(self, other: I32x4) -> I32x4 {
-        I32x4([self[0] + other[0], self[1] + other[1], self[2] + other[2], self[3] + other[3]])
+        I32x4([
+            self[0] + other[0],
+            self[1] + other[1],
+            self[2] + other[2],
+            self[3] + other[3],
+        ])
     }
 }
 
@@ -299,7 +337,12 @@ impl Sub<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn sub(self, other: I32x4) -> I32x4 {
-        I32x4([self[0] - other[0], self[1] - other[1], self[2] - other[2], self[3] - other[3]])
+        I32x4([
+            self[0] - other[0],
+            self[1] - other[1],
+            self[2] - other[2],
+            self[3] - other[3],
+        ])
     }
 }
 
@@ -307,7 +350,12 @@ impl Mul<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
     fn mul(self, other: I32x4) -> I32x4 {
-        I32x4([self[0] * other[0], self[1] * other[1], self[2] * other[2], self[3] * other[3]])
+        I32x4([
+            self[0] * other[0],
+            self[1] * other[1],
+            self[2] * other[2],
+            self[3] * other[3],
+        ])
     }
 }
 
@@ -324,7 +372,7 @@ impl U32x4 {
 
     #[inline]
     pub fn is_all_zeroes(&self) -> bool {
-        self[0] ==  0 && self[1] ==  0 && self[2] ==  0 && self[3] ==  0
+        self[0] == 0 && self[1] == 0 && self[2] == 0 && self[3] == 0
     }
 }
 
@@ -344,9 +392,7 @@ pub struct U8x16([u8; 16]);
 impl U8x16 {
     #[inline]
     pub fn as_i32x4(self) -> I32x4 {
-        unsafe {
-            I32x4(*mem::transmute::<&[u8; 16], &[i32; 4]>(&self.0))
-        }
+        unsafe { I32x4(*mem::transmute::<&[u8; 16], &[i32; 4]>(&self.0)) }
     }
 
     #[inline]

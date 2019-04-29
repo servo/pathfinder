@@ -44,7 +44,7 @@ fn test_f32x4_basic_ops() {
 
 #[test]
 fn test_f32x4_packed_comparisons() {
-    let a = F32x4::new(7.0,  3.0, 6.0, -2.0);
+    let a = F32x4::new(7.0, 3.0, 6.0, -2.0);
     let b = F32x4::new(10.0, 3.0, 5.0, -2.0);
     assert_eq!(a.packed_eq(b), U32x4::new(0, !0, 0, !0));
 }
@@ -66,19 +66,19 @@ fn test_f32x4_swizzles() {
 
 #[test]
 fn test_f32x4_concatenations() {
-    let a = F32x4::new(4.0,   2.0,  6.0, -1.0);
+    let a = F32x4::new(4.0, 2.0, 6.0, -1.0);
     let b = F32x4::new(10.0, -3.0, 15.0, 41.0);
-    assert_eq!(a.concat_xy_xy(b), F32x4::new( 4.0,  2.0, 10.0, -3.0));
-    assert_eq!(a.concat_xy_zw(b), F32x4::new( 4.0,  2.0, 15.0, 41.0));
-    assert_eq!(a.concat_zw_zw(b), F32x4::new( 6.0, -1.0, 15.0, 41.0));
-    assert_eq!(a.concat_wz_yx(b), F32x4::new(-1.0,  6.0, -3.0, 10.0));
+    assert_eq!(a.concat_xy_xy(b), F32x4::new(4.0, 2.0, 10.0, -3.0));
+    assert_eq!(a.concat_xy_zw(b), F32x4::new(4.0, 2.0, 15.0, 41.0));
+    assert_eq!(a.concat_zw_zw(b), F32x4::new(6.0, -1.0, 15.0, 41.0));
+    assert_eq!(a.concat_wz_yx(b), F32x4::new(-1.0, 6.0, -3.0, 10.0));
 }
 
 #[test]
 fn test_f32x4_arithmetic_overloads() {
-    let a         = F32x4::new(4.0, -1.0,  6.0, -32.0);
-    let b         = F32x4::new(0.5,  0.5, 10.0,   3.0);
-    let a_plus_b  = F32x4::new(4.5, -0.5, 16.0, -29.0);
+    let a = F32x4::new(4.0, -1.0, 6.0, -32.0);
+    let b = F32x4::new(0.5, 0.5, 10.0, 3.0);
+    let a_plus_b = F32x4::new(4.5, -0.5, 16.0, -29.0);
     let a_minus_b = F32x4::new(3.5, -1.5, -4.0, -35.0);
     let a_times_b = F32x4::new(2.0, -0.5, 60.0, -96.0);
     assert_eq!(a + b, a_plus_b);
@@ -124,14 +124,14 @@ fn test_i32x4_constructors() {
 
 #[test]
 fn test_i32x4_basic_ops() {
-    let a = I32x4::new(6,  29, -40, 2 );
-    let b = I32x4::new(10, -5,  10, 46);
+    let a = I32x4::new(6, 29, -40, 2);
+    let b = I32x4::new(10, -5, 10, 46);
     assert_eq!(a.min(b), I32x4::new(6, -5, -40, 2));
 }
 
 #[test]
 fn test_i32x4_packed_comparisons() {
-    let a = I32x4::new( 59, 1, 5, 63 );
+    let a = I32x4::new(59, 1, 5, 63);
     let b = I32x4::new(-59, 1, 5, 104);
     assert_eq!(a.packed_eq(b), U32x4::new(0, !0, !0, 0));
 }

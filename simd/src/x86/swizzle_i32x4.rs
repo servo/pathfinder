@@ -17,7 +17,9 @@ impl I32x4 {
     pub fn xyxy(self) -> I32x4 {
         unsafe {
             let this = x86_64::_mm_castsi128_ps(self.0);
-            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 68)))
+            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(
+                this, this, 68,
+            )))
         }
     }
 
@@ -25,7 +27,9 @@ impl I32x4 {
     pub fn xwzy(self) -> I32x4 {
         unsafe {
             let this = x86_64::_mm_castsi128_ps(self.0);
-            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 108)))
+            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(
+                this, this, 108,
+            )))
         }
     }
 
@@ -33,7 +37,9 @@ impl I32x4 {
     pub fn zyxw(self) -> I32x4 {
         unsafe {
             let this = x86_64::_mm_castsi128_ps(self.0);
-            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 198)))
+            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(
+                this, this, 198,
+            )))
         }
     }
 
@@ -41,7 +47,9 @@ impl I32x4 {
     pub fn zwxy(self) -> I32x4 {
         unsafe {
             let this = x86_64::_mm_castsi128_ps(self.0);
-            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(this, this, 78)))
+            I32x4(x86_64::_mm_castps_si128(x86_64::_mm_shuffle_ps(
+                this, this, 78,
+            )))
         }
     }
 }

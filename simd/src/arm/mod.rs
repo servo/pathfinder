@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use std::arch::aarch64::{self, float32x4_t, int32x4_t, uint32x4_t, uint64x2_t, uint8x16_t};
-use std::arch::aarch64::{uint8x8x2_t, uint8x8_t};
+use std::arch::aarch64::{uint8x8_t, uint8x8x2_t};
 use std::f32;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -175,9 +175,7 @@ impl Add<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn add(self, other: F32x4) -> F32x4 {
-        unsafe {
-            F32x4(simd_add(self.0, other.0))
-        }
+        unsafe { F32x4(simd_add(self.0, other.0)) }
     }
 }
 
@@ -185,9 +183,7 @@ impl Mul<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn mul(self, other: F32x4) -> F32x4 {
-        unsafe {
-            F32x4(simd_mul(self.0, other.0))
-        }
+        unsafe { F32x4(simd_mul(self.0, other.0)) }
     }
 }
 
@@ -195,9 +191,7 @@ impl Sub<F32x4> for F32x4 {
     type Output = F32x4;
     #[inline]
     fn sub(self, other: F32x4) -> F32x4 {
-        unsafe {
-            F32x4(simd_sub(self.0, other.0))
-        }
+        unsafe { F32x4(simd_sub(self.0, other.0)) }
     }
 }
 
@@ -285,7 +279,6 @@ impl IndexMut<usize> for I32x4 {
     }
 }
 
-
 impl Add<I32x4> for I32x4 {
     type Output = I32x4;
     #[inline]
@@ -354,16 +347,14 @@ pub struct U8x16(pub uint8x16_t);
 impl U8x16 {
     #[inline]
     pub fn as_i32x4(self) -> I32x4 {
-        unsafe {
-            I32x4(*mem::transmute::<&uint8x16_t, &int32x4_t>(&self.0))
-        }
+        unsafe { I32x4(*mem::transmute::<&uint8x16_t, &int32x4_t>(&self.0)) }
     }
 
     #[inline]
     pub fn shuffle(self, indices: U8x16) -> U8x16 {
         unsafe {
             let table = mem::transmute::<uint8x16_t, uint8x8x2_t>(self.0);
-            let low  = aarch64::vtbl2_u8(table, indices.extract_low());
+            let low = aarch64::vtbl2_u8(table, indices.extract_low());
             let high = aarch64::vtbl2_u8(table, indices.extract_high());
             U8x16(aarch64::vcombine_u8(low, high))
         }

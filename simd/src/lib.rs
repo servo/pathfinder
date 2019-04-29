@@ -13,22 +13,29 @@
 
 //! A minimal SIMD abstraction, usable outside of Pathfinder.
 
-#[cfg(any(feature = "pf-no-simd",
-          not(any(target_arch = "x86",
-                  target_arch = "x86_64",
-                  all(pf_rustc_nightly, target_arch = "aarch64")))))]
-pub use crate::scalar as default;
 #[cfg(all(not(feature = "pf-no-simd"), pf_rustc_nightly, target_arch = "aarch64"))]
 pub use crate::arm as default;
-#[cfg(all(not(feature = "pf-no-simd"), any(target_arch = "x86", target_arch = "x86_64")))]
+#[cfg(any(
+    feature = "pf-no-simd",
+    not(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        all(pf_rustc_nightly, target_arch = "aarch64")
+    ))
+))]
+pub use crate::scalar as default;
+#[cfg(all(
+    not(feature = "pf-no-simd"),
+    any(target_arch = "x86", target_arch = "x86_64")
+))]
 pub use crate::x86 as default;
 
-pub mod scalar;
 #[cfg(all(pf_rustc_nightly, target_arch = "aarch64"))]
 pub mod arm;
+mod extras;
+pub mod scalar;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 pub mod x86;
-mod extras;
 
 #[cfg(test)]
 mod test;

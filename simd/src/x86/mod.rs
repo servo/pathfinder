@@ -284,9 +284,7 @@ impl I32x4 {
 
     #[inline]
     pub fn packed_gt(self, other: I32x4) -> U32x4 {
-        unsafe {
-            U32x4(x86_64::_mm_cmpgt_epi32(self.0, other.0))
-        }
+        unsafe { U32x4(x86_64::_mm_cmpgt_epi32(self.0, other.0)) }
     }
 
     #[inline]
@@ -430,9 +428,7 @@ impl BitXor<U32x4> for U32x4 {
     type Output = U32x4;
     #[inline]
     fn bitxor(self, other: U32x4) -> U32x4 {
-        unsafe {
-            U32x4(x86_64::_mm_xor_si128(self.0, other.0))
-        }
+        unsafe { U32x4(x86_64::_mm_xor_si128(self.0, other.0)) }
     }
 }
 
