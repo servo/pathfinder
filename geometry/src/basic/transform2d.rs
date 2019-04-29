@@ -82,13 +82,21 @@ impl Matrix2x2F32 {
     }
 
     #[inline]
-    pub fn m11(&self) -> f32 { self.0[0] }
+    pub fn m11(&self) -> f32 {
+        self.0[0]
+    }
     #[inline]
-    pub fn m21(&self) -> f32 { self.0[1] }
+    pub fn m21(&self) -> f32 {
+        self.0[1]
+    }
     #[inline]
-    pub fn m12(&self) -> f32 { self.0[2] }
+    pub fn m12(&self) -> f32 {
+        self.0[2]
+    }
     #[inline]
-    pub fn m22(&self) -> f32 { self.0[3] }
+    pub fn m22(&self) -> f32 {
+        self.0[3]
+    }
 }
 
 impl Sub<Matrix2x2F32> for Matrix2x2F32 {
@@ -140,16 +148,20 @@ impl Transform2DF32 {
     }
 
     #[inline]
-    pub fn from_scale_rotation_translation(scale: Point2DF32, theta: f32, translation: Point2DF32)
-                                           -> Transform2DF32 {
+    pub fn from_scale_rotation_translation(
+        scale: Point2DF32,
+        theta: f32,
+        translation: Point2DF32,
+    ) -> Transform2DF32 {
         let rotation = Transform2DF32::from_rotation(theta);
         let translation = Transform2DF32::from_translation(&translation);
-        Transform2DF32::from_scale(&scale).post_mul(&rotation).post_mul(&translation)
+        Transform2DF32::from_scale(&scale)
+            .post_mul(&rotation)
+            .post_mul(&translation)
     }
 
     #[inline]
-    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32)
-                     -> Transform2DF32 {
+    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2DF32 {
         Transform2DF32 {
             matrix: Matrix2x2F32::row_major(m11, m12, m21, m22),
             vector: Point2DF32::new(m31, m32),
@@ -187,10 +199,24 @@ impl Transform2DF32 {
     // TODO(pcwalton): Optimize better with SIMD.
     #[inline]
     pub fn to_3d(&self) -> Transform3DF32 {
-        Transform3DF32::row_major(self.matrix.0[0], self.matrix.0[1], 0.0, self.vector.x(),
-                                  self.matrix.0[2], self.matrix.0[3], 0.0, self.vector.y(),
-                                  0.0,              0.0,              0.0, 0.0,
-                                  0.0,              0.0,              0.0, 1.0)
+        Transform3DF32::row_major(
+            self.matrix.0[0],
+            self.matrix.0[1],
+            0.0,
+            self.vector.x(),
+            self.matrix.0[2],
+            self.matrix.0[3],
+            0.0,
+            self.vector.y(),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
     }
 
     #[inline]
@@ -199,13 +225,21 @@ impl Transform2DF32 {
     }
 
     #[inline]
-    pub fn m11(&self) -> f32 { self.matrix.m11() }
+    pub fn m11(&self) -> f32 {
+        self.matrix.m11()
+    }
     #[inline]
-    pub fn m21(&self) -> f32 { self.matrix.m21() }
+    pub fn m21(&self) -> f32 {
+        self.matrix.m21()
+    }
     #[inline]
-    pub fn m12(&self) -> f32 { self.matrix.m12() }
+    pub fn m12(&self) -> f32 {
+        self.matrix.m12()
+    }
     #[inline]
-    pub fn m22(&self) -> f32 { self.matrix.m22() }
+    pub fn m22(&self) -> f32 {
+        self.matrix.m22()
+    }
 
     #[inline]
     pub fn post_translate(&self, vector: Point2DF32) -> Transform2DF32 {

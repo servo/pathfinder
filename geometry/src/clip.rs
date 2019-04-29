@@ -53,9 +53,9 @@ impl TEdge for AxisAlignedEdge {
     #[inline]
     fn point_is_inside(&self, point: &Point2DF32) -> bool {
         match *self {
-            AxisAlignedEdge::Left(x)   => point.x() >= x,
-            AxisAlignedEdge::Top(y)    => point.y() >= y,
-            AxisAlignedEdge::Right(x)  => point.x() <= x,
+            AxisAlignedEdge::Left(x) => point.x() >= x,
+            AxisAlignedEdge::Top(y) => point.y() >= y,
+            AxisAlignedEdge::Right(x) => point.x() <= x,
             AxisAlignedEdge::Bottom(y) => point.y() <= y,
         }
     }
@@ -63,8 +63,8 @@ impl TEdge for AxisAlignedEdge {
     fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
         let t = match *self {
-            AxisAlignedEdge::Left(x) | AxisAlignedEdge::Right(x)  => segment.solve_t_for_x(x),
-            AxisAlignedEdge::Top(y)  | AxisAlignedEdge::Bottom(y) => segment.solve_t_for_y(y),
+            AxisAlignedEdge::Left(x) | AxisAlignedEdge::Right(x) => segment.solve_t_for_x(x),
+            AxisAlignedEdge::Top(y) | AxisAlignedEdge::Bottom(y) => segment.solve_t_for_y(y),
         };
         if t >= 0.0 && t <= 1.0 {
             results.push(t);
@@ -79,7 +79,12 @@ trait TEdge: Debug {
 
     fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
         let from_inside = self.point_is_inside(&segment.baseline.from());
-        debug!("point {:?} inside {:?}: {:?}", segment.baseline.from(), self, from_inside);
+        debug!(
+            "point {:?} inside {:?}: {:?}",
+            segment.baseline.from(),
+            self,
+            from_inside
+        );
         if from_inside != self.point_is_inside(&segment.baseline.to()) {
             return EdgeRelativeLocation::Intersecting;
         }
@@ -93,7 +98,11 @@ trait TEdge: Debug {
                 }
             }
         }
-        if from_inside { EdgeRelativeLocation::Inside } else { EdgeRelativeLocation::Outside }
+        if from_inside {
+            EdgeRelativeLocation::Inside
+        } else {
+            EdgeRelativeLocation::Outside
+        }
     }
 
     fn intersect_segment(&self, segment: &Segment) -> ArrayVec<[f32; 3]> {
@@ -110,7 +119,7 @@ trait TEdge: Debug {
         let mut prev_t = 0.0;
         while !results.is_full() {
             if prev_t >= 1.0 {
-                break
+                break;
             }
             let next_t = match self.intersect_cubic_segment(&segment, prev_t, 1.0) {
                 None => break,
@@ -124,15 +133,24 @@ trait TEdge: Debug {
         const EPSILON: f32 = 0.0001;
     }
 
-    fn intersect_cubic_segment(&self, segment: &Segment, mut t_min: f32, mut t_max: f32)
-                               -> Option<f32> {
-        debug!("... intersect_cubic_segment({:?}, {:?}, t=({}, {}))", self, segment, t_min, t_max);
+    fn intersect_cubic_segment(
+        &self,
+        segment: &Segment,
+        mut t_min: f32,
+        mut t_max: f32,
+    ) -> Option<f32> {
+        debug!(
+            "... intersect_cubic_segment({:?}, {:?}, t=({}, {}))",
+            self, segment, t_min, t_max
+        );
 
         let mut segment = segment.as_cubic_segment().split_after(t_min);
-        segment = segment.as_cubic_segment().split_before(t_max / (1.0 - t_min));
+        segment = segment
+            .as_cubic_segment()
+            .split_before(t_max / (1.0 - t_min));
 
         if !self.intersects_cubic_segment_hull(segment.as_cubic_segment()) {
-            return None
+            return None;
         }
 
         loop {
@@ -156,13 +174,16 @@ trait TEdge: Debug {
 
     fn intersects_cubic_segment_hull(&self, cubic_segment: CubicSegment) -> bool {
         let inside = self.point_is_inside(&cubic_segment.0.baseline.from());
-        inside != self.point_is_inside(&cubic_segment.0.ctrl.from()) ||
-            inside != self.point_is_inside(&cubic_segment.0.ctrl.to()) ||
-            inside != self.point_is_inside(&cubic_segment.0.baseline.to())
+        inside != self.point_is_inside(&cubic_segment.0.ctrl.from())
+            || inside != self.point_is_inside(&cubic_segment.0.ctrl.to())
+            || inside != self.point_is_inside(&cubic_segment.0.baseline.to())
     }
 }
 
-trait ContourClipper where Self::Edge: TEdge + Debug {
+trait ContourClipper
+where
+    Self::Edge: TEdge + Debug,
+{
     type Edge;
 
     fn contour_mut(&mut self) -> &mut Contour;
@@ -209,11 +230,10 @@ trait ContourClipper where Self::Edge: TEdge + Debug {
             let (before_split, after_split) = segment.split((t - last_t) / (1.0 - last_t));
 
             // Push the split segment if appropriate.
-            debug!("... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
-                   edge,
-                   before_split,
-                   t,
-                   starts_inside);
+            debug!(
+                "... ... edge={:?} before_split={:?} t={:?} starts_inside={:?}",
+                edge, before_split, t, starts_inside
+            );
             if starts_inside {
                 debug!("... split segment case, pushing segment");
                 self.push_segment(&before_split);
@@ -255,8 +275,8 @@ trait ContourClipper where Self::Edge: TEdge + Debug {
                 (None, EdgeRelativeLocation::Inside) => {
                     result = Some(FastClipResult::AllInside);
                 }
-                (Some(FastClipResult::AllInside), EdgeRelativeLocation::Inside) |
-                (Some(FastClipResult::AllOutside), EdgeRelativeLocation::Outside) => {}
+                (Some(FastClipResult::AllInside), EdgeRelativeLocation::Inside)
+                | (Some(FastClipResult::AllOutside), EdgeRelativeLocation::Outside) => {}
                 (_, _) => return FastClipResult::SlowPath,
             }
         }
@@ -290,7 +310,10 @@ impl ContourClipper for ContourPolygonClipper {
 impl ContourPolygonClipper {
     #[inline]
     pub(crate) fn new(clip_polygon: &[Point2DF32], contour: Contour) -> ContourPolygonClipper {
-        ContourPolygonClipper { clip_polygon: SmallVec::from_slice(clip_polygon), contour }
+        ContourPolygonClipper {
+            clip_polygon: SmallVec::from_slice(clip_polygon),
+            contour,
+        }
     }
 
     pub(crate) fn clip(mut self) -> Contour {
@@ -341,7 +364,7 @@ impl ContourRectClipper {
 
     pub(crate) fn clip(mut self) -> Contour {
         if self.clip_rect.contains_rect(self.contour.bounds()) {
-            return self.contour
+            return self.contour;
         }
 
         self.clip_against(AxisAlignedEdge::Left(self.clip_rect.min_x()));
@@ -412,7 +435,7 @@ enum Edge3D {
     Bottom,
     Top,
     Near,
-    Far
+    Far,
 }
 
 impl Edge3D {
@@ -420,23 +443,26 @@ impl Edge3D {
     fn point_is_inside(self, point: Point3DF32) -> bool {
         let w = point.w();
         match self {
-            Edge3D::Left   => point.x() >= -w, Edge3D::Right => point.x() <= w,
-            Edge3D::Bottom => point.y() >= -w, Edge3D::Top   => point.y() <= w,
-            Edge3D::Near   => point.z() >= -w, Edge3D::Far   => point.z() <= w,
+            Edge3D::Left => point.x() >= -w,
+            Edge3D::Right => point.x() <= w,
+            Edge3D::Bottom => point.y() >= -w,
+            Edge3D::Top => point.y() <= w,
+            Edge3D::Near => point.z() >= -w,
+            Edge3D::Far => point.z() <= w,
         }
     }
 
     // Blinn & Newell, "Clipping using homogeneous coordinates", SIGGRAPH 1978.
     fn line_intersection(self, prev: Point3DF32, next: Point3DF32) -> Point3DF32 {
         let (x0, x1) = match self {
-            Edge3D::Left   | Edge3D::Right => (prev.x(), next.x()),
-            Edge3D::Bottom | Edge3D::Top   => (prev.y(), next.y()),
-            Edge3D::Near   | Edge3D::Far   => (prev.z(), next.z()),
+            Edge3D::Left | Edge3D::Right => (prev.x(), next.x()),
+            Edge3D::Bottom | Edge3D::Top => (prev.y(), next.y()),
+            Edge3D::Near | Edge3D::Far => (prev.z(), next.z()),
         };
         let (w0, w1) = (prev.w(), next.w());
         let sign = match self {
-            Edge3D::Left  | Edge3D::Bottom | Edge3D::Near => -1.0,
-            Edge3D::Right | Edge3D::Top    | Edge3D::Far  =>  1.0,
+            Edge3D::Left | Edge3D::Bottom | Edge3D::Near => -1.0,
+            Edge3D::Right | Edge3D::Top | Edge3D::Far => 1.0,
         };
         let alpha = ((x0 - sign * w0) as f64) / ((sign * (w1 - w0) - (x1 - x0)) as f64);
         prev.lerp(next, alpha as f32)
@@ -449,17 +475,30 @@ impl Edge3D {
 pub(crate) fn rect_is_outside_polygon(rect: RectF32, polygon_points: &[Point2DF32]) -> bool {
     let mut outcode = Outcode::all();
     for point in polygon_points {
-        if point.x() > rect.min_x() { outcode.remove(Outcode::LEFT);   }
-        if point.x() < rect.max_x() { outcode.remove(Outcode::RIGHT);  }
-        if point.y() > rect.min_y() { outcode.remove(Outcode::TOP);    }
-        if point.y() < rect.max_y() { outcode.remove(Outcode::BOTTOM); }
+        if point.x() > rect.min_x() {
+            outcode.remove(Outcode::LEFT);
+        }
+        if point.x() < rect.max_x() {
+            outcode.remove(Outcode::RIGHT);
+        }
+        if point.y() > rect.min_y() {
+            outcode.remove(Outcode::TOP);
+        }
+        if point.y() < rect.max_y() {
+            outcode.remove(Outcode::BOTTOM);
+        }
     }
     if !outcode.is_empty() {
-        return true
+        return true;
     }
 
     // FIXME(pcwalton): Check winding!
-    let rect_points = [rect.origin(), rect.upper_right(), rect.lower_left(), rect.lower_right()];
+    let rect_points = [
+        rect.origin(),
+        rect.upper_right(),
+        rect.lower_left(),
+        rect.lower_right(),
+    ];
     for (next_point_index, &next) in polygon_points.iter().enumerate() {
         let prev_point_index = if next_point_index == 0 {
             polygon_points.len() - 1
@@ -468,8 +507,11 @@ pub(crate) fn rect_is_outside_polygon(rect: RectF32, polygon_points: &[Point2DF3
         };
         let prev = polygon_points[prev_point_index];
         let polygon_edge_vector = next - prev;
-        if rect_points.iter().all(|&rect_point| polygon_edge_vector.det(rect_point - prev) < 0.0) {
-            return true
+        if rect_points
+            .iter()
+            .all(|&rect_point| polygon_edge_vector.det(rect_point - prev) < 0.0)
+        {
+            return true;
         }
     }
 
@@ -479,7 +521,12 @@ pub(crate) fn rect_is_outside_polygon(rect: RectF32, polygon_points: &[Point2DF3
 // Edge equation method. Requires that the polygon be convex.
 pub(crate) fn rect_is_inside_polygon(rect: RectF32, polygon_points: &[Point2DF32]) -> bool {
     // FIXME(pcwalton): Check winding!
-    let rect_points = [rect.origin(), rect.upper_right(), rect.lower_left(), rect.lower_right()];
+    let rect_points = [
+        rect.origin(),
+        rect.upper_right(),
+        rect.lower_left(),
+        rect.lower_right(),
+    ];
     for (next_point_index, &next) in polygon_points.iter().enumerate() {
         let prev_point_index = if next_point_index == 0 {
             polygon_points.len() - 1

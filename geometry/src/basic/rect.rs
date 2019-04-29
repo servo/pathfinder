@@ -55,13 +55,19 @@ impl RectF32 {
     #[inline]
     pub fn contains_point(&self, point: Point2DF32) -> bool {
         // self.origin <= point && point <= self.lower_right
-        self.0.concat_xy_xy(point.0).packed_le(point.0.concat_xy_zw(self.0)).is_all_ones()
+        self.0
+            .concat_xy_xy(point.0)
+            .packed_le(point.0.concat_xy_zw(self.0))
+            .is_all_ones()
     }
 
     #[inline]
     pub fn contains_rect(&self, other: RectF32) -> bool {
         // self.origin <= other.origin && other.lower_right <= self.lower_right
-        self.0.concat_xy_zw(other.0).packed_le(other.0.concat_xy_zw(self.0)).is_all_ones()
+        self.0
+            .concat_xy_zw(other.0)
+            .packed_le(other.0.concat_xy_zw(self.0))
+            .is_all_ones()
     }
 
     #[inline]
@@ -76,14 +82,19 @@ impl RectF32 {
 
     #[inline]
     pub fn union_rect(&self, other: RectF32) -> RectF32 {
-        RectF32::from_points(self.origin().min(other.origin()),
-                             self.lower_right().max(other.lower_right()))
+        RectF32::from_points(
+            self.origin().min(other.origin()),
+            self.lower_right().max(other.lower_right()),
+        )
     }
 
     #[inline]
     pub fn intersects(&self, other: RectF32) -> bool {
         // self.origin < other.lower_right && other.origin < self.lower_right
-        self.0.concat_xy_xy(other.0).packed_lt(other.0.concat_zw_zw(self.0)).is_all_ones()
+        self.0
+            .concat_xy_xy(other.0)
+            .packed_lt(other.0.concat_zw_zw(self.0))
+            .is_all_ones()
     }
 
     #[inline]
@@ -91,8 +102,10 @@ impl RectF32 {
         if !self.intersects(other) {
             None
         } else {
-            Some(RectF32::from_points(self.origin().max(other.origin()),
-                                      self.lower_right().min(other.lower_right())))
+            Some(RectF32::from_points(
+                self.origin().max(other.origin()),
+                self.lower_right().min(other.lower_right()),
+            ))
         }
     }
 
@@ -200,7 +213,10 @@ impl RectI32 {
     pub fn contains_point(&self, point: Point2DI32) -> bool {
         // self.origin <= point && point <= self.lower_right - 1
         let lower_right = self.lower_right() - Point2DI32::splat(1);
-        self.0.concat_xy_xy(point.0).packed_le(point.0.concat_xy_xy(lower_right.0)).is_all_ones()
+        self.0
+            .concat_xy_xy(point.0)
+            .packed_le(point.0.concat_xy_xy(lower_right.0))
+            .is_all_ones()
     }
 
     #[inline]

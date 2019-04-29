@@ -43,11 +43,24 @@ impl Default for Transform3DF32 {
 
 impl Transform3DF32 {
     #[inline]
-    pub fn row_major(m00: f32, m01: f32, m02: f32, m03: f32,
-                     m10: f32, m11: f32, m12: f32, m13: f32,
-                     m20: f32, m21: f32, m22: f32, m23: f32,
-                     m30: f32, m31: f32, m32: f32, m33: f32)
-                     -> Transform3DF32 {
+    pub fn row_major(
+        m00: f32,
+        m01: f32,
+        m02: f32,
+        m03: f32,
+        m10: f32,
+        m11: f32,
+        m12: f32,
+        m13: f32,
+        m20: f32,
+        m21: f32,
+        m22: f32,
+        m23: f32,
+        m30: f32,
+        m31: f32,
+        m32: f32,
+        m33: f32,
+    ) -> Transform3DF32 {
         Transform3DF32 {
             c0: F32x4::new(m00, m10, m20, m30),
             c1: F32x4::new(m01, m11, m21, m31),
@@ -58,10 +71,9 @@ impl Transform3DF32 {
 
     #[inline]
     pub fn from_scale(x: f32, y: f32, z: f32) -> Transform3DF32 {
-        Transform3DF32::row_major(  x, 0.0, 0.0, 0.0,
-                                  0.0,   y, 0.0, 0.0,
-                                  0.0, 0.0,   z, 0.0,
-                                  0.0, 0.0, 0.0, 1.0)
+        Transform3DF32::row_major(
+            x, 0.0, 0.0, 0.0, 0.0, y, 0.0, 0.0, 0.0, 0.0, z, 0.0, 0.0, 0.0, 0.0, 1.0,
+        )
     }
 
     #[inline]
@@ -71,17 +83,16 @@ impl Transform3DF32 {
 
     #[inline]
     pub fn from_translation(x: f32, y: f32, z: f32) -> Transform3DF32 {
-        Transform3DF32::row_major(1.0, 0.0, 0.0, x,
-                                  0.0, 1.0, 0.0, y,
-                                  0.0, 0.0, 1.0, z,
-                                  0.0, 0.0, 0.0, 1.0)
+        Transform3DF32::row_major(
+            1.0, 0.0, 0.0, x, 0.0, 1.0, 0.0, y, 0.0, 0.0, 1.0, z, 0.0, 0.0, 0.0, 1.0,
+        )
     }
 
     // TODO(pcwalton): Optimize.
     pub fn from_rotation(yaw: f32, pitch: f32, roll: f32) -> Transform3DF32 {
-        let (cos_b, sin_b) = (yaw.cos(),   yaw.sin());
+        let (cos_b, sin_b) = (yaw.cos(), yaw.sin());
         let (cos_c, sin_c) = (pitch.cos(), pitch.sin());
-        let (cos_a, sin_a) = (roll.cos(),  roll.sin());
+        let (cos_a, sin_a) = (roll.cos(), roll.sin());
         let m00 = cos_a * cos_b;
         let m01 = cos_a * sin_b * sin_c - sin_a * cos_c;
         let m02 = cos_a * sin_b * cos_c + sin_a * sin_c;
@@ -91,10 +102,9 @@ impl Transform3DF32 {
         let m20 = -sin_b;
         let m21 = cos_b * sin_c;
         let m22 = cos_b * cos_c;
-        Transform3DF32::row_major(m00, m01, m02, 0.0,
-                                  m10, m11, m12, 0.0,
-                                  m20, m21, m22, 0.0,
-                                  0.0, 0.0, 0.0, 1.0)
+        Transform3DF32::row_major(
+            m00, m01, m02, 0.0, m10, m11, m12, 0.0, m20, m21, m22, 0.0, 0.0, 0.0, 0.0, 1.0,
+        )
     }
 
     /// Creates a rotation matrix from the given quaternion.
@@ -104,30 +114,66 @@ impl Transform3DF32 {
     pub fn from_rotation_quaternion(q: F32x4) -> Transform3DF32 {
         // TODO(pcwalton): Optimize better with more shuffles.
         let (mut sq, mut w, mut xy_xz_yz) = (q * q, q.wwww() * q, q.xxyy() * q.yzzy());
-        sq += sq; w += w; xy_xz_yz += xy_xz_yz;
+        sq += sq;
+        w += w;
+        xy_xz_yz += xy_xz_yz;
         let diag = F32x4::splat(1.0) - (sq.yxxy() + sq.zzyy());
         let (wx2, wy2, wz2) = (w.x(), w.y(), w.z());
         let (xy2, xz2, yz2) = (xy_xz_yz.x(), xy_xz_yz.y(), xy_xz_yz.z());
-        Transform3DF32::row_major(diag.x(),     xy2 - wz2,  xz2 + wy2,  0.0,
-                                  xy2 + wz2,    diag.y(),   yz2 - wx2,  0.0,
-                                  xz2 - wy2,    yz2 + wx2,  diag.z(),   0.0,
-                                  0.0,          0.0,        0.0,        1.0)
+        Transform3DF32::row_major(
+            diag.x(),
+            xy2 - wz2,
+            xz2 + wy2,
+            0.0,
+            xy2 + wz2,
+            diag.y(),
+            yz2 - wx2,
+            0.0,
+            xz2 - wy2,
+            yz2 + wx2,
+            diag.z(),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
     }
 
     /// Just like `glOrtho()`.
     #[inline]
-    pub fn from_ortho(left: f32, right: f32, bottom: f32, top: f32, near_val: f32, far_val: f32)
-                      -> Transform3DF32 {
+    pub fn from_ortho(
+        left: f32,
+        right: f32,
+        bottom: f32,
+        top: f32,
+        near_val: f32,
+        far_val: f32,
+    ) -> Transform3DF32 {
         let x_inv = 1.0 / (right - left);
         let y_inv = 1.0 / (top - bottom);
         let z_inv = 1.0 / (far_val - near_val);
         let tx = -(right + left) * x_inv;
         let ty = -(top + bottom) * y_inv;
         let tz = -(far_val + near_val) * z_inv;
-        Transform3DF32::row_major(2.0 * x_inv, 0.0,         0.0,          tx,
-                                  0.0,         2.0 * y_inv, 0.0,          ty,
-                                  0.0,         0.0,         -2.0 * z_inv, tz,
-                                  0.0,         0.0,         0.0,          1.0)
+        Transform3DF32::row_major(
+            2.0 * x_inv,
+            0.0,
+            0.0,
+            tx,
+            0.0,
+            2.0 * y_inv,
+            0.0,
+            ty,
+            0.0,
+            0.0,
+            -2.0 * z_inv,
+            tz,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
     }
 
     /// Just like `gluPerspective()`.
@@ -140,10 +186,9 @@ impl Transform3DF32 {
         let m22 = (z_far + z_near) * z_denom;
         let m23 = 2.0 * z_far * z_near * z_denom;
         let m32 = -1.0;
-        Transform3DF32::row_major(m00, 0.0, 0.0, 0.0,
-                                  0.0, m11, 0.0, 0.0,
-                                  0.0, 0.0, m22, m23,
-                                  0.0, 0.0, m32, 0.0)
+        Transform3DF32::row_major(
+            m00, 0.0, 0.0, 0.0, 0.0, m11, 0.0, 0.0, 0.0, 0.0, m22, m23, 0.0, 0.0, m32, 0.0,
+        )
     }
 
     //     +-     -+
@@ -151,8 +196,12 @@ impl Transform3DF32 {
     //     |  C D  |
     //     +-     -+
     #[inline]
-    pub fn from_submatrices(a: Matrix2x2F32, b: Matrix2x2F32, c: Matrix2x2F32, d: Matrix2x2F32)
-                            -> Transform3DF32 {
+    pub fn from_submatrices(
+        a: Matrix2x2F32,
+        b: Matrix2x2F32,
+        c: Matrix2x2F32,
+        d: Matrix2x2F32,
+    ) -> Transform3DF32 {
         Transform3DF32 {
             c0: a.0.concat_xy_xy(c.0),
             c1: a.0.concat_zw_zw(c.0),
@@ -232,17 +281,17 @@ impl Transform3DF32 {
 
         // Compute new submatrices.
         let (a_new, b_new) = (a_inv + z.post_mul(&y).post_mul(&x), (-z).post_mul(&y));
-        let (c_new, d_new) = ((-y).post_mul(&x),                   y);
+        let (c_new, d_new) = ((-y).post_mul(&x), y);
 
         // Construct inverse.
         Transform3DF32::from_submatrices(a_new, b_new, c_new, d_new)
     }
 
     pub fn approx_eq(&self, other: &Transform3DF32, epsilon: f32) -> bool {
-        self.c0.approx_eq(other.c0, epsilon) &&
-            self.c1.approx_eq(other.c1, epsilon) &&
-            self.c2.approx_eq(other.c2, epsilon) &&
-            self.c3.approx_eq(other.c3, epsilon)
+        self.c0.approx_eq(other.c0, epsilon)
+            && self.c1.approx_eq(other.c1, epsilon)
+            && self.c2.approx_eq(other.c2, epsilon)
+            && self.c3.approx_eq(other.c3, epsilon)
     }
 
     #[inline]
@@ -276,15 +325,20 @@ pub struct Perspective {
 impl Perspective {
     #[inline]
     pub fn new(transform: &Transform3DF32, window_size: Point2DI32) -> Perspective {
-        Perspective { transform: *transform, window_size }
+        Perspective {
+            transform: *transform,
+            window_size,
+        }
     }
 
     #[inline]
     pub fn transform_point_2d(&self, point: &Point2DF32) -> Point2DF32 {
-        let point = self.transform
-                        .transform_point(point.to_3d())
-                        .perspective_divide()
-                        .to_2d() * Point2DF32::new(1.0, -1.0);
+        let point = self
+            .transform
+            .transform_point(point.to_3d())
+            .perspective_divide()
+            .to_2d()
+            * Point2DF32::new(1.0, -1.0);
         (point + Point2DF32::splat(1.0)) * self.window_size.to_f32().scale(0.5)
     }
 
@@ -328,13 +382,22 @@ where
     fn next(&mut self) -> Option<Segment> {
         let mut segment = self.iter.next()?;
         if !segment.is_none() {
-            segment.baseline.set_from(&self.perspective
-                                           .transform_point_2d(&segment.baseline.from()));
-            segment.baseline.set_to(&self.perspective.transform_point_2d(&segment.baseline.to()));
+            segment.baseline.set_from(
+                &self
+                    .perspective
+                    .transform_point_2d(&segment.baseline.from()),
+            );
+            segment
+                .baseline
+                .set_to(&self.perspective.transform_point_2d(&segment.baseline.to()));
             if !segment.is_line() {
-                segment.ctrl.set_from(&self.perspective.transform_point_2d(&segment.ctrl.from()));
+                segment
+                    .ctrl
+                    .set_from(&self.perspective.transform_point_2d(&segment.ctrl.from()));
                 if !segment.is_quadratic() {
-                    segment.ctrl.set_to(&self.perspective.transform_point_2d(&segment.ctrl.to()));
+                    segment
+                        .ctrl
+                        .set_to(&self.perspective.transform_point_2d(&segment.ctrl.to()));
                 }
             }
         }
@@ -348,7 +411,10 @@ where
 {
     #[inline]
     pub fn new(iter: I, perspective: &Perspective) -> PerspectivePathIter<I> {
-        PerspectivePathIter { iter, perspective: *perspective }
+        PerspectivePathIter {
+            iter,
+            perspective: *perspective,
+        }
     }
 }
 
@@ -359,44 +425,39 @@ mod test {
 
     #[test]
     fn test_post_mul() {
-        let a = Transform3DF32::row_major(3.0, 1.0, 4.0, 5.0,
-                                          9.0, 2.0, 6.0, 5.0,
-                                          3.0, 5.0, 8.0, 9.0,
-                                          7.0, 9.0, 3.0, 2.0);
-        let b = Transform3DF32::row_major(3.0, 8.0, 4.0, 6.0,
-                                          2.0, 6.0, 4.0, 3.0,
-                                          3.0, 8.0, 3.0, 2.0,
-                                          7.0, 9.0, 5.0, 0.0);
-        let c = Transform3DF32::row_major(58.0,  107.0, 53.0,  29.0,
-                                          84.0,  177.0, 87.0,  72.0,
-                                          106.0, 199.0, 101.0, 49.0,
-                                          62.0,  152.0, 83.0,  75.0);
+        let a = Transform3DF32::row_major(
+            3.0, 1.0, 4.0, 5.0, 9.0, 2.0, 6.0, 5.0, 3.0, 5.0, 8.0, 9.0, 7.0, 9.0, 3.0, 2.0,
+        );
+        let b = Transform3DF32::row_major(
+            3.0, 8.0, 4.0, 6.0, 2.0, 6.0, 4.0, 3.0, 3.0, 8.0, 3.0, 2.0, 7.0, 9.0, 5.0, 0.0,
+        );
+        let c = Transform3DF32::row_major(
+            58.0, 107.0, 53.0, 29.0, 84.0, 177.0, 87.0, 72.0, 106.0, 199.0, 101.0, 49.0, 62.0,
+            152.0, 83.0, 75.0,
+        );
         assert_eq!(a.post_mul(&b), c);
     }
 
     #[test]
     fn test_pre_mul() {
-        let a = Transform3DF32::row_major(3.0, 1.0, 4.0, 5.0,
-                                          9.0, 2.0, 6.0, 5.0,
-                                          3.0, 5.0, 8.0, 9.0,
-                                          7.0, 9.0, 3.0, 2.0);
-        let b = Transform3DF32::row_major(3.0, 8.0, 4.0, 6.0,
-                                          2.0, 6.0, 4.0, 3.0,
-                                          3.0, 8.0, 3.0, 2.0,
-                                          7.0, 9.0, 5.0, 0.0);
-        let c = Transform3DF32::row_major(135.0, 93.0, 110.0, 103.0,
-                                           93.0, 61.0,  85.0,  82.0,
-                                          104.0, 52.0,  90.0,  86.0,
-                                          117.0, 50.0, 122.0, 125.0);
+        let a = Transform3DF32::row_major(
+            3.0, 1.0, 4.0, 5.0, 9.0, 2.0, 6.0, 5.0, 3.0, 5.0, 8.0, 9.0, 7.0, 9.0, 3.0, 2.0,
+        );
+        let b = Transform3DF32::row_major(
+            3.0, 8.0, 4.0, 6.0, 2.0, 6.0, 4.0, 3.0, 3.0, 8.0, 3.0, 2.0, 7.0, 9.0, 5.0, 0.0,
+        );
+        let c = Transform3DF32::row_major(
+            135.0, 93.0, 110.0, 103.0, 93.0, 61.0, 85.0, 82.0, 104.0, 52.0, 90.0, 86.0, 117.0,
+            50.0, 122.0, 125.0,
+        );
         assert_eq!(a.pre_mul(&b), c);
     }
 
     #[test]
     fn test_transform_point() {
-        let a = Transform3DF32::row_major(3.0, 1.0, 4.0, 5.0,
-                                          9.0, 2.0, 6.0, 5.0,
-                                          3.0, 5.0, 8.0, 9.0,
-                                          7.0, 9.0, 3.0, 2.0);
+        let a = Transform3DF32::row_major(
+            3.0, 1.0, 4.0, 5.0, 9.0, 2.0, 6.0, 5.0, 3.0, 5.0, 8.0, 9.0, 7.0, 9.0, 3.0, 2.0,
+        );
         let p = Point3DF32::new(3.0, 8.0, 4.0, 6.0);
         let q = Point3DF32::new(63.0, 97.0, 135.0, 117.0);
         assert_eq!(a.transform_point(p), q);
@@ -405,18 +466,32 @@ mod test {
     #[test]
     fn test_inverse() {
         // Random matrix.
-        let m = Transform3DF32::row_major(0.86277982, 0.15986552, 0.90739898, 0.60066808,
-                                          0.17386167, 0.016353  , 0.8535783 , 0.12969608,
-                                          0.0946466 , 0.43248631, 0.63480505, 0.08154603,
-                                          0.50305436, 0.48359687, 0.51057162, 0.24812012);
+        let m = Transform3DF32::row_major(
+            0.86277982, 0.15986552, 0.90739898, 0.60066808, 0.17386167, 0.016353, 0.8535783,
+            0.12969608, 0.0946466, 0.43248631, 0.63480505, 0.08154603, 0.50305436, 0.48359687,
+            0.51057162, 0.24812012,
+        );
         let p0 = Point3DF32::new(0.95536648, 0.80633691, 0.16357357, 0.5477598);
         let p1 = m.transform_point(p0);
         let m_inv = m.inverse();
-        let m_inv_exp =
-            Transform3DF32::row_major(-2.47290136   ,  3.48865688, -6.12298336  ,  6.17536696 ,
-                                       0.00124033357, -1.72561993,  2.16876606  ,  0.186227748,
-                                      -0.375021729  ,  1.53883017, -0.0558194403,  0.121857058,
-                                       5.78300323   , -6.87635769,  8.30196620  , -9.10374060);
+        let m_inv_exp = Transform3DF32::row_major(
+            -2.47290136,
+            3.48865688,
+            -6.12298336,
+            6.17536696,
+            0.00124033357,
+            -1.72561993,
+            2.16876606,
+            0.186227748,
+            -0.375021729,
+            1.53883017,
+            -0.0558194403,
+            0.121857058,
+            5.78300323,
+            -6.87635769,
+            8.30196620,
+            -9.10374060,
+        );
         assert!(m_inv.approx_eq(&m_inv_exp, 0.0001));
         let p2 = m_inv.transform_point(p1);
         assert!(p0.approx_eq(&p2, 0.0001));

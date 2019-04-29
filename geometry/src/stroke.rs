@@ -26,7 +26,10 @@ pub struct OutlineStrokeToFill {
 impl OutlineStrokeToFill {
     #[inline]
     pub fn new(outline: Outline, stroke_width: f32) -> OutlineStrokeToFill {
-        OutlineStrokeToFill { outline, stroke_width }
+        OutlineStrokeToFill {
+            outline,
+            stroke_width,
+        }
     }
 
     #[inline]
@@ -55,7 +58,11 @@ struct ContourStrokeToFill {
 impl ContourStrokeToFill {
     #[inline]
     fn new(input: Contour, output: Contour, radius: f32) -> ContourStrokeToFill {
-        ContourStrokeToFill { input, output, radius }
+        ContourStrokeToFill {
+            input,
+            output,
+            radius,
+        }
     }
 
     fn offset_forward(&mut self) {
@@ -66,7 +73,11 @@ impl ContourStrokeToFill {
 
     fn offset_backward(&mut self) {
         // FIXME(pcwalton)
-        let mut segments: Vec<_> = self.input.iter().map(|segment| segment.reversed()).collect();
+        let mut segments: Vec<_> = self
+            .input
+            .iter()
+            .map(|segment| segment.reversed())
+            .collect();
         segments.reverse();
         for segment in &segments {
             segment.offset(self.radius, &mut self.output);
@@ -108,7 +119,7 @@ impl Offset for SegmentPF3 {
 
         if self.is_quadratic() {
             let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
-            let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(),     &self.baseline.to());
+            let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(), &self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
@@ -123,7 +134,7 @@ impl Offset for SegmentPF3 {
 
         if self.baseline.from() == self.ctrl.from() {
             let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.to());
-            let mut segment_1 = LineSegmentF32::new(&self.ctrl.to(),     &self.baseline.to());
+            let mut segment_1 = LineSegmentF32::new(&self.ctrl.to(), &self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
@@ -137,7 +148,7 @@ impl Offset for SegmentPF3 {
 
         if self.ctrl.to() == self.baseline.to() {
             let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
-            let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(),     &self.baseline.to());
+            let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(), &self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
@@ -150,18 +161,20 @@ impl Offset for SegmentPF3 {
         }
 
         let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
-        let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(),     &self.ctrl.to());
-        let mut segment_2 = LineSegmentF32::new(&self.ctrl.to(),       &self.baseline.to());
+        let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(), &self.ctrl.to());
+        let mut segment_2 = LineSegmentF32::new(&self.ctrl.to(), &self.baseline.to());
         segment_0 = segment_0.offset(distance);
         segment_1 = segment_1.offset(distance);
         segment_2 = segment_2.offset(distance);
-        let (ctrl_0, ctrl_1) = match (segment_0.intersection_t(&segment_1),
-                                      segment_1.intersection_t(&segment_2)) {
+        let (ctrl_0, ctrl_1) = match (
+            segment_0.intersection_t(&segment_1),
+            segment_1.intersection_t(&segment_2),
+        ) {
             (Some(t0), Some(t1)) => (segment_0.sample(t0), segment_1.sample(t1)),
-            _ => {
-                (segment_0.to().lerp(segment_1.from(), 0.5),
-                 segment_1.to().lerp(segment_2.from(), 0.5))
-            }
+            _ => (
+                segment_0.to().lerp(segment_1.from(), 0.5),
+                segment_1.to().lerp(segment_2.from(), 0.5),
+            ),
         };
         let baseline = LineSegmentF32::new(&segment_0.from(), &segment_2.to());
         let ctrl = LineSegmentF32::new(&ctrl_0, &ctrl_1);
@@ -169,7 +182,10 @@ impl Offset for SegmentPF3 {
     }
 
     fn error_is_within_tolerance(&self, other: &SegmentPF3, distance: f32) -> bool {
-        let (mut min, mut max) = (f32::abs(distance) - TOLERANCE, f32::abs(distance) + TOLERANCE);
+        let (mut min, mut max) = (
+            f32::abs(distance) - TOLERANCE,
+            f32::abs(distance) + TOLERANCE,
+        );
         min = if min <= 0.0 { 0.0 } else { min * min };
         max = if max <= 0.0 { 0.0 } else { max * max };
 
@@ -179,8 +195,10 @@ impl Offset for SegmentPF3 {
             let (this_p, other_p) = (self.sample(t), other.sample(t));
             let vector = this_p - other_p;
             let square_distance = vector.square_length();
-            debug!("this_p={:?} other_p={:?} vector={:?} sqdist={:?} min={:?} max={:?}",
-                   this_p, other_p, vector, square_distance, min, max);
+            debug!(
+                "this_p={:?} other_p={:?} vector={:?} sqdist={:?} min={:?} max={:?}",
+                this_p, other_p, vector, square_distance, min, max
+            );
             if square_distance < min || square_distance > max {
                 return false;
             }

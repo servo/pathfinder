@@ -42,12 +42,14 @@ impl Debug for ColorU {
         if self.a == 255 {
             write!(formatter, "#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
         } else {
-            write!(formatter,
-                   "rgba({}, {}, {}, {})",
-                   self.r,
-                   self.g,
-                   self.b,
-                   self.a as f32 / 255.0)
+            write!(
+                formatter,
+                "rgba({}, {}, {}, {})",
+                self.r,
+                self.g,
+                self.b,
+                self.a as f32 / 255.0
+            )
         }
     }
 }

@@ -46,7 +46,10 @@ bitflags! {
 impl Outline {
     #[inline]
     pub fn new() -> Outline {
-        Outline { contours: vec![], bounds: RectF32::default() }
+        Outline {
+            contours: vec![],
+            bounds: RectF32::default(),
+        }
     }
 
     #[inline]
@@ -85,9 +88,11 @@ impl Outline {
             if !segment.is_line() {
                 current_contour.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0, true);
                 if !segment.is_quadratic() {
-                    current_contour.push_point(segment.ctrl.to(),
-                                               PointFlags::CONTROL_POINT_1,
-                                               true);
+                    current_contour.push_point(
+                        segment.ctrl.to(),
+                        PointFlags::CONTROL_POINT_1,
+                        true,
+                    );
                 }
             }
 
@@ -131,13 +136,20 @@ impl Outline {
 
     pub fn dilate(&mut self, amount: Point2DF32) {
         let orientation = Orientation::from_outline(self);
-        self.contours.iter_mut().for_each(|contour| contour.dilate(amount, orientation));
+        self.contours
+            .iter_mut()
+            .for_each(|contour| contour.dilate(amount, orientation));
         self.bounds = self.bounds.dilate(amount);
     }
 
     pub fn prepare_for_tiling(&mut self, view_box: RectF32) {
-        self.contours.iter_mut().for_each(|contour| contour.prepare_for_tiling(view_box));
-        self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| RectF32::default());
+        self.contours
+            .iter_mut()
+            .for_each(|contour| contour.prepare_for_tiling(view_box));
+        self.bounds = self
+            .bounds
+            .intersection(view_box)
+            .unwrap_or_else(|| RectF32::default());
     }
 
     pub fn is_outside_polygon(&self, clip_polygon: &[Point2DF32]) -> bool {
@@ -197,24 +209,35 @@ impl Debug for Outline {
 impl Contour {
     #[inline]
     pub fn new() -> Contour {
-        Contour { points: vec![], flags: vec![], bounds: RectF32::default(), closed: false }
+        Contour {
+            points: vec![],
+            flags: vec![],
+            bounds: RectF32::default(),
+            closed: false,
+        }
     }
 
     // Replaces this contour with a new one, with arrays preallocated to match `self`.
     #[inline]
     pub(crate) fn take(&mut self) -> Contour {
         let length = self.len() as usize;
-        mem::replace(self, Contour {
-            points: Vec::with_capacity(length),
-            flags: Vec::with_capacity(length),
-            bounds: RectF32::default(),
-            closed: false,
-        })
+        mem::replace(
+            self,
+            Contour {
+                points: Vec::with_capacity(length),
+                flags: Vec::with_capacity(length),
+                bounds: RectF32::default(),
+                closed: false,
+            },
+        )
     }
 
     #[inline]
     pub fn iter(&self) -> ContourIter {
-        ContourIter { contour: self, index: 1 }
+        ContourIter {
+            contour: self,
+            index: 1,
+        }
     }
 
     #[inline]
@@ -254,10 +277,7 @@ impl Contour {
 
     // TODO(pcwalton): SIMD.
     #[inline]
-    pub(crate) fn push_point(&mut self,
-                             point: Point2DF32,
-                             flags: PointFlags,
-                             update_bounds: bool) {
+    pub(crate) fn push_point(&mut self, point: Point2DF32, flags: PointFlags, update_bounds: bool) {
         debug_assert!(!point.x().is_nan() && !point.y().is_nan());
 
         if update_bounds {
@@ -272,7 +292,7 @@ impl Contour {
     #[inline]
     pub(crate) fn push_segment(&mut self, segment: Segment, update_bounds: bool) {
         if segment.is_none() {
-            return
+            return;
         }
 
         if self.is_empty() {
@@ -280,9 +300,17 @@ impl Contour {
         }
 
         if !segment.is_line() {
-            self.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0, update_bounds);
+            self.push_point(
+                segment.ctrl.from(),
+                PointFlags::CONTROL_POINT_0,
+                update_bounds,
+            );
             if !segment.is_quadratic() {
-                self.push_point(segment.ctrl.to(), PointFlags::CONTROL_POINT_1, update_bounds);
+                self.push_point(
+                    segment.ctrl.to(),
+                    PointFlags::CONTROL_POINT_1,
+                    update_bounds,
+                );
             }
         }
 
@@ -294,9 +322,17 @@ impl Contour {
         self.push_point(segment.baseline.from(), PointFlags::empty(), update_bounds);
 
         if !segment.is_line() {
-            self.push_point(segment.ctrl.from(), PointFlags::CONTROL_POINT_0, update_bounds);
+            self.push_point(
+                segment.ctrl.from(),
+                PointFlags::CONTROL_POINT_0,
+                update_bounds,
+            );
             if !segment.is_quadratic() {
-                self.push_point(segment.ctrl.to(), PointFlags::CONTROL_POINT_1, update_bounds);
+                self.push_point(
+                    segment.ctrl.to(),
+                    PointFlags::CONTROL_POINT_1,
+                    update_bounds,
+                );
             }
         }
 
@@ -336,14 +372,16 @@ impl Contour {
     #[inline]
     pub fn hull_segment_after(&self, prev_point_index: u32) -> LineSegmentF32 {
         let next_point_index = self.next_point_index_of(prev_point_index);
-        LineSegmentF32::new(&self.points[prev_point_index as usize],
-                            &self.points[next_point_index as usize])
+        LineSegmentF32::new(
+            &self.points[prev_point_index as usize],
+            &self.points[next_point_index as usize],
+        )
     }
 
     #[inline]
     pub fn point_is_endpoint(&self, point_index: u32) -> bool {
         !self.flags[point_index as usize]
-             .intersects(PointFlags::CONTROL_POINT_0 | PointFlags::CONTROL_POINT_1)
+            .intersects(PointFlags::CONTROL_POINT_0 | PointFlags::CONTROL_POINT_1)
     }
 
     #[inline]
@@ -427,8 +465,8 @@ impl Contour {
             if contour_is_monotonic {
                 if self.point_is_endpoint(point_index) {
                     if let Some(last_endpoint_index) = last_endpoint_index {
-                        if !self.curve_with_endpoints_is_monotonic(last_endpoint_index,
-                                                                   point_index) {
+                        if !self.curve_with_endpoints_is_monotonic(last_endpoint_index, point_index)
+                        {
                             contour_is_monotonic = false;
                         }
                     }
@@ -443,7 +481,10 @@ impl Contour {
         }
 
         // Update bounds.
-        self.bounds = self.bounds.intersection(view_box).unwrap_or_else(|| RectF32::default());
+        self.bounds = self
+            .bounds
+            .intersection(view_box)
+            .unwrap_or_else(|| RectF32::default());
     }
 
     fn make_monotonic(&mut self) {
@@ -458,15 +499,23 @@ impl Contour {
             }
 
             if let Some(last_endpoint_index) = last_endpoint_index {
-                let position_index =
-                    if point_index == input_point_count { 0 } else { point_index };
-                let baseline = LineSegmentF32::new(&contour.points[last_endpoint_index as usize],
-                                                   &contour.points[position_index as usize]);
+                let position_index = if point_index == input_point_count {
+                    0
+                } else {
+                    point_index
+                };
+                let baseline = LineSegmentF32::new(
+                    &contour.points[last_endpoint_index as usize],
+                    &contour.points[position_index as usize],
+                );
                 let point_count = point_index - last_endpoint_index + 1;
                 if point_count == 3 {
                     let ctrl_point_index = last_endpoint_index as usize + 1;
                     let ctrl_position = &contour.points[ctrl_point_index];
-                    handle_cubic(self, Segment::quadratic(&baseline, &ctrl_position).to_cubic());
+                    handle_cubic(
+                        self,
+                        Segment::quadratic(&baseline, &ctrl_position).to_cubic(),
+                    );
                 } else if point_count == 4 {
                     let first_ctrl_point_index = last_endpoint_index as usize + 1;
                     let ctrl_position_0 = &contour.points[first_ctrl_point_index + 0];
@@ -475,9 +524,11 @@ impl Contour {
                     handle_cubic(self, Segment::cubic(&baseline, &ctrl));
                 }
 
-                self.push_point(contour.points[position_index as usize],
-                                PointFlags::empty(),
-                                false);
+                self.push_point(
+                    contour.points[position_index as usize],
+                    PointFlags::empty(),
+                    false,
+                );
             }
 
             last_endpoint_index = Some(point_index);
@@ -502,22 +553,25 @@ impl Contour {
         }
     }
 
-    fn curve_with_endpoints_is_monotonic(&self, start_endpoint_index: u32, end_endpoint_index: u32)
-                                         -> bool {
+    fn curve_with_endpoints_is_monotonic(
+        &self,
+        start_endpoint_index: u32,
+        end_endpoint_index: u32,
+    ) -> bool {
         let start_position = self.points[start_endpoint_index as usize];
         let end_position = self.points[end_endpoint_index as usize];
 
         if start_position.x() <= end_position.x() {
             for point_index in start_endpoint_index..end_endpoint_index {
-                if self.points[point_index as usize].x() >
-                        self.points[point_index as usize + 1].x() {
+                if self.points[point_index as usize].x() > self.points[point_index as usize + 1].x()
+                {
                     return false;
                 }
             }
         } else {
             for point_index in start_endpoint_index..end_endpoint_index {
-                if self.points[point_index as usize].x() <
-                        self.points[point_index as usize + 1].x() {
+                if self.points[point_index as usize].x() < self.points[point_index as usize + 1].x()
+                {
                     return false;
                 }
             }
@@ -525,15 +579,15 @@ impl Contour {
 
         if start_position.y() <= end_position.y() {
             for point_index in start_endpoint_index..end_endpoint_index {
-                if self.points[point_index as usize].y() >
-                        self.points[point_index as usize + 1].y() {
+                if self.points[point_index as usize].y() > self.points[point_index as usize + 1].y()
+                {
                     return false;
                 }
             }
         } else {
             for point_index in start_endpoint_index..end_endpoint_index {
-                if self.points[point_index as usize].y() <
-                        self.points[point_index as usize + 1].y() {
+                if self.points[point_index as usize].y() < self.points[point_index as usize + 1].y()
+                {
                     return false;
                 }
             }
@@ -554,37 +608,45 @@ impl Debug for Contour {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         for (segment_index, segment) in self.iter().enumerate() {
             if segment_index == 0 {
-                write!(formatter,
-                       "M {} {}",
-                       segment.baseline.from_x(),
-                       segment.baseline.from_y())?;
+                write!(
+                    formatter,
+                    "M {} {}",
+                    segment.baseline.from_x(),
+                    segment.baseline.from_y()
+                )?;
             }
 
             match segment.kind {
                 SegmentKind::None => {}
                 SegmentKind::Line => {
-                    write!(formatter,
-                           " L {} {}",
-                           segment.baseline.to_x(),
-                           segment.baseline.to_y())?;
+                    write!(
+                        formatter,
+                        " L {} {}",
+                        segment.baseline.to_x(),
+                        segment.baseline.to_y()
+                    )?;
                 }
                 SegmentKind::Quadratic => {
-                    write!(formatter,
-                           " Q {} {} {} {}",
-                           segment.ctrl.from_x(),
-                           segment.ctrl.from_y(),
-                           segment.baseline.to_x(),
-                           segment.baseline.to_y())?;
+                    write!(
+                        formatter,
+                        " Q {} {} {} {}",
+                        segment.ctrl.from_x(),
+                        segment.ctrl.from_y(),
+                        segment.baseline.to_x(),
+                        segment.baseline.to_y()
+                    )?;
                 }
                 SegmentKind::Cubic => {
-                    write!(formatter,
-                           " C {} {} {} {} {} {}",
-                           segment.ctrl.from_x(),
-                           segment.ctrl.from_y(),
-                           segment.ctrl.to_x(),
-                           segment.ctrl.to_y(),
-                           segment.baseline.to_x(),
-                           segment.baseline.to_y())?;
+                    write!(
+                        formatter,
+                        " C {} {} {} {} {} {}",
+                        segment.ctrl.from_x(),
+                        segment.ctrl.from_y(),
+                        segment.ctrl.to_x(),
+                        segment.ctrl.to_y(),
+                        segment.baseline.to_x(),
+                        segment.baseline.to_y()
+                    )?;
                 }
             }
         }
@@ -630,8 +692,8 @@ impl<'a> Iterator for ContourIter<'a> {
     #[inline]
     fn next(&mut self) -> Option<Segment> {
         let contour = self.contour;
-        if (self.index == contour.len() && !self.contour.closed) ||
-                self.index == contour.len() + 1 {
+        if (self.index == contour.len() && !self.contour.closed) || self.index == contour.len() + 1
+        {
             return None;
         }
 
@@ -654,15 +716,20 @@ impl<'a> Iterator for ContourIter<'a> {
         let point2 = contour.position_of(point2_index);
         self.index += 1;
         if contour.point_is_endpoint(point2_index) {
-            return Some(Segment::quadratic(&LineSegmentF32::new(&point0, &point2), &point1));
+            return Some(Segment::quadratic(
+                &LineSegmentF32::new(&point0, &point2),
+                &point1,
+            ));
         }
 
         let point3_index = self.index;
         let point3 = contour.position_of(point3_index);
         self.index += 1;
         debug_assert!(contour.point_is_endpoint(point3_index));
-        return Some(Segment::cubic(&LineSegmentF32::new(&point0, &point3),
-                                   &LineSegmentF32::new(&point1, &point2)));
+        return Some(Segment::cubic(
+            &LineSegmentF32::new(&point0, &point3),
+            &LineSegmentF32::new(&point1, &point2),
+        ));
     }
 }
 

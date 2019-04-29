@@ -97,8 +97,10 @@ impl LineSegmentF32 {
         let (from_from, to_to) = (self.0.xyxy(), self.0.zwzw());
         let d_d = to_to - from_from;
         let mid_mid = from_from + d_d * F32x4::splat(t);
-        (LineSegmentF32(from_from.concat_xy_xy(mid_mid)),
-         LineSegmentF32(mid_mid.concat_xy_xy(to_to)))
+        (
+            LineSegmentF32(from_from.concat_xy_xy(mid_mid)),
+            LineSegmentF32(mid_mid.concat_xy_xy(to_to)),
+        )
     }
 
     // Returns the left segment first, followed by the right segment.
@@ -248,7 +250,12 @@ impl LineSegmentF32 {
         if self.is_zero_length() {
             *self
         } else {
-            *self + self.vector().yx().normalize().scale_xy(Point2DF32::new(-distance, distance))
+            *self
+                + self
+                    .vector()
+                    .yx()
+                    .normalize()
+                    .scale_xy(Point2DF32::new(-distance, distance))
         }
     }
 

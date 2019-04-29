@@ -197,9 +197,10 @@ impl<'s> CubicSegment<'s> {
     // See Kaspar Fischer, "Piecewise Linear Approximation of Bézier Curves", 2000.
     #[inline]
     pub fn is_flat(self, tolerance: f32) -> bool {
-        let mut uv = F32x4::splat(3.0) * self.0.ctrl.0 -
-            self.0.baseline.0 - self.0.baseline.0 -
-            self.0.baseline.reversed().0;
+        let mut uv = F32x4::splat(3.0) * self.0.ctrl.0
+            - self.0.baseline.0
+            - self.0.baseline.0
+            - self.0.baseline.reversed().0;
         uv = uv * uv;
         uv = uv.max(uv.zwxy());
         uv[0] + uv[1] <= 16.0 * tolerance * tolerance
@@ -244,17 +245,20 @@ impl<'s> CubicSegment<'s> {
             ctrl1 = LineSegmentF32(p012p123.concat_zw_zw(p12p23));
         }
 
-        (Segment {
-            baseline: baseline0,
-            ctrl: ctrl0,
-            kind: SegmentKind::Cubic,
-            flags: self.0.flags & SegmentFlags::FIRST_IN_SUBPATH,
-        }, Segment {
-            baseline: baseline1,
-            ctrl: ctrl1,
-            kind: SegmentKind::Cubic,
-            flags: self.0.flags & SegmentFlags::CLOSES_SUBPATH,
-        })
+        (
+            Segment {
+                baseline: baseline0,
+                ctrl: ctrl0,
+                kind: SegmentKind::Cubic,
+                flags: self.0.flags & SegmentFlags::FIRST_IN_SUBPATH,
+            },
+            Segment {
+                baseline: baseline1,
+                ctrl: ctrl1,
+                kind: SegmentKind::Cubic,
+                flags: self.0.flags & SegmentFlags::CLOSES_SUBPATH,
+            },
+        )
     }
 
     #[inline]
@@ -284,13 +288,15 @@ impl<'s> CubicSegment<'s> {
     #[inline]
     pub fn y_extrema(self) -> (Option<f32>, Option<f32>) {
         if self.is_monotonic() {
-            return (None, None)
+            return (None, None);
         }
 
-        let p0p1p2p3 = F32x4::new(self.0.baseline.from_y(),
-                                  self.0.ctrl.from_y(),
-                                  self.0.ctrl.to_y(),
-                                  self.0.baseline.to_y());
+        let p0p1p2p3 = F32x4::new(
+            self.0.baseline.from_y(),
+            self.0.ctrl.from_y(),
+            self.0.ctrl.to_y(),
+            self.0.baseline.to_y(),
+        );
 
         let pxp0p1p2 = p0p1p2p3.wxyz();
         let pxv0v1v2 = p0p1p2p3 - pxp0p1p2;
@@ -317,11 +323,19 @@ impl<'s> CubicSegment<'s> {
     }
 
     #[inline]
-    pub fn min_x(&self) -> f32 { f32::min(self.0.baseline.min_x(), self.0.ctrl.min_x()) }
+    pub fn min_x(&self) -> f32 {
+        f32::min(self.0.baseline.min_x(), self.0.ctrl.min_x())
+    }
     #[inline]
-    pub fn min_y(&self) -> f32 { f32::min(self.0.baseline.min_y(), self.0.ctrl.min_y()) }
+    pub fn min_y(&self) -> f32 {
+        f32::min(self.0.baseline.min_y(), self.0.ctrl.min_y())
+    }
     #[inline]
-    pub fn max_x(&self) -> f32 { f32::max(self.0.baseline.max_x(), self.0.ctrl.max_x()) }
+    pub fn max_x(&self) -> f32 {
+        f32::max(self.0.baseline.max_x(), self.0.ctrl.max_x())
+    }
     #[inline]
-    pub fn max_y(&self) -> f32 { f32::max(self.0.baseline.max_y(), self.0.ctrl.max_y()) }
+    pub fn max_y(&self) -> f32 {
+        f32::max(self.0.baseline.max_y(), self.0.ctrl.max_y())
+    }
 }

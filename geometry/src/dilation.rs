@@ -19,16 +19,23 @@ pub struct ContourDilator<'a> {
 }
 
 impl<'a> ContourDilator<'a> {
-    pub fn new(contour: &'a mut Contour, amount: Point2DF32, orientation: Orientation)
-               -> ContourDilator<'a> {
-        ContourDilator { contour, amount, orientation }
+    pub fn new(
+        contour: &'a mut Contour,
+        amount: Point2DF32,
+        orientation: Orientation,
+    ) -> ContourDilator<'a> {
+        ContourDilator {
+            contour,
+            amount,
+            orientation,
+        }
     }
 
     pub fn dilate(&mut self) {
         // Determine orientation.
         let scale = self.amount.scale_xy(match self.orientation {
-            Orientation::Ccw => Point2DF32::new( 1.0, -1.0),
-            Orientation::Cw  => Point2DF32::new(-1.0,  1.0),
+            Orientation::Ccw => Point2DF32::new(1.0, -1.0),
+            Orientation::Cw => Point2DF32::new(-1.0, 1.0),
         });
 
         // Find the starting and previous positions.
@@ -68,10 +75,10 @@ impl<'a> ContourDilator<'a> {
             }
             let next_vector = (next_position - position).normalize();
 
-            debug!("prev={} cur={} next={}",
-                   prev_point_index,
-                   current_point_index,
-                   next_point_index);
+            debug!(
+                "prev={} cur={} next={}",
+                prev_point_index, current_point_index, next_point_index
+            );
 
             // Calculate new position by moving the point by the bisector.
             let bisector = prev_vector.yx() + next_vector.yx();
@@ -83,16 +90,18 @@ impl<'a> ContourDilator<'a> {
             };
             let new_position = position - scaled_bisector;
 
-            debug!("dilate(): prev={}({:?}) cur={}({:?}) next={}({:?}) bisector={:?}({:?}, {:?})",
-                   prev_point_index,
-                   prev_position,
-                   current_point_index,
-                   position,
-                   next_point_index,
-                   next_position,
-                   bisector,
-                   bisector_length,
-                   scaled_bisector);
+            debug!(
+                "dilate(): prev={}({:?}) cur={}({:?}) next={}({:?}) bisector={:?}({:?}, {:?})",
+                prev_point_index,
+                prev_position,
+                current_point_index,
+                position,
+                next_point_index,
+                next_position,
+                bisector,
+                bisector_length,
+                scaled_bisector
+            );
 
             // Update all points.
             let mut point_index = current_point_index;
