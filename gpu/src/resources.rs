@@ -40,7 +40,9 @@ impl FilesystemResourceLoader {
                 shaders_directory.push("shaders");
                 textures_directory.push("textures");
                 if shaders_directory.is_dir() && textures_directory.is_dir() {
-                    return FilesystemResourceLoader { directory: resources_directory };
+                    return FilesystemResourceLoader {
+                        directory: resources_directory,
+                    };
                 }
             }
 
@@ -56,7 +58,9 @@ impl FilesystemResourceLoader {
 impl ResourceLoader for FilesystemResourceLoader {
     fn slurp(&self, virtual_path: &str) -> Result<Vec<u8>, IOError> {
         let mut path = self.directory.clone();
-        virtual_path.split('/').for_each(|segment| path.push(segment));
+        virtual_path
+            .split('/')
+            .for_each(|segment| path.push(segment));
 
         let mut data = vec![];
         File::open(&path)?.read_to_end(&mut data)?;
