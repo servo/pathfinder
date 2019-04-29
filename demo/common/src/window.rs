@@ -14,7 +14,6 @@ use gl::types::GLuint;
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
-use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use rayon::ThreadPoolBuilder;
@@ -34,11 +33,6 @@ pub trait Window {
 
     fn adjust_thread_pool_settings(&self, thread_pool_builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
         thread_pool_builder
-    }
-
-    #[inline]
-    fn barrel_distortion_coefficients(&self) -> BarrelDistortionCoefficients {
-        BarrelDistortionCoefficients::default()
     }
 }
 
