@@ -37,10 +37,11 @@ pub struct SceneBuilder<'a> {
 }
 
 impl<'a> SceneBuilder<'a> {
-    pub fn new(scene: &'a Scene,
-               built_options: &'a PreparedRenderOptions,
-               listener: Box<dyn RenderCommandListener>)
-               -> SceneBuilder<'a> {
+    pub fn new(
+        scene: &'a Scene,
+        built_options: &'a PreparedRenderOptions,
+        listener: Box<dyn RenderCommandListener>,
+    ) -> SceneBuilder<'a> {
         let effective_view_box = scene.effective_view_box(built_options);
         SceneBuilder {
             scene,
@@ -55,12 +56,17 @@ impl<'a> SceneBuilder<'a> {
     pub fn build_sequentially(&mut self) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let object_count = self.scene.objects.len();
-        let alpha_tiles: Vec<_> = (0..object_count).into_iter().flat_map(|object_index| {
-            self.build_object(object_index,
-                              effective_view_box,
-                              &self.built_options,
-                              &self.scene)
-        }).collect();
+        let alpha_tiles: Vec<_> = (0..object_count)
+            .into_iter()
+            .flat_map(|object_index| {
+                self.build_object(
+                    object_index,
+                    effective_view_box,
+                    &self.built_options,
+                    &self.scene,
+                )
+            })
+            .collect();
 
         self.finish_building(alpha_tiles)
     }
@@ -68,36 +74,46 @@ impl<'a> SceneBuilder<'a> {
     pub fn build_in_parallel(&mut self) {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let object_count = self.scene.objects.len();
-        let alpha_tiles: Vec<_> = (0..object_count).into_par_iter().flat_map(|object_index| {
-            self.build_object(object_index,
-                              effective_view_box,
-                              &self.built_options,
-                              &self.scene)
-        }).collect();
+        let alpha_tiles: Vec<_> = (0..object_count)
+            .into_par_iter()
+            .flat_map(|object_index| {
+                self.build_object(
+                    object_index,
+                    effective_view_box,
+                    &self.built_options,
+                    &self.scene,
+                )
+            })
+            .collect();
 
         self.finish_building(alpha_tiles)
     }
 
-    fn build_object(&self,
-                    object_index: usize,
-                    view_box: RectF32,
-                    built_options: &PreparedRenderOptions,
-                    scene: &Scene)
-                    -> Vec<AlphaTileBatchPrimitive> {
+    fn build_object(
+        &self,
+        object_index: usize,
+        view_box: RectF32,
+        built_options: &PreparedRenderOptions,
+        scene: &Scene,
+    ) -> Vec<AlphaTileBatchPrimitive> {
         let object = &scene.objects[object_index];
         let outline = scene.apply_render_options(object.outline(), built_options);
 
         let mut tiler = Tiler::new(self, &outline, view_box, object_index as u16);
         tiler.generate_tiles();
 
-        self.listener.send(RenderCommand::AddFills(tiler.built_object.fills));
+        self.listener
+            .send(RenderCommand::AddFills(tiler.built_object.fills));
         tiler.built_object.alpha_tiles
     }
 
     fn cull_alpha_tiles(&self, alpha_tiles: &mut Vec<AlphaTileBatchPrimitive>) {
         for alpha_tile in alpha_tiles {
             let alpha_tile_coords = alpha_tile.tile_coords();
-            if self.z_buffer.test(alpha_tile_coords, alpha_tile.object_index as u32) {
+            if self
+                .z_buffer
+                .test(alpha_tile_coords, alpha_tile.object_index as u32)
+            {
                 continue;
             }
 
@@ -197,10 +213,20 @@ impl RenderTransform {
         }
 
         let inverse_transform = perspective.transform.inverse();
-        let clip_polygon = points.into_iter().map(|point| {
-            inverse_transform.transform_point(point).perspective_divide().to_2d()
-        }).collect();
-        return PreparedRenderTransform::Perspective { perspective, clip_polygon, quad };
+        let clip_polygon = points
+            .into_iter()
+            .map(|point| {
+                inverse_transform
+                    .transform_point(point)
+                    .perspective_divide()
+                    .to_2d()
+            })
+            .collect();
+        return PreparedRenderTransform::Perspective {
+            perspective,
+            clip_polygon,
+            quad,
+        };
     }
 }
 
@@ -223,7 +249,11 @@ impl PreparedRenderOptions {
 pub enum PreparedRenderTransform {
     None,
     Transform2D(Transform2DF32),
-    Perspective { perspective: Perspective, clip_polygon: Vec<Point2DF32>, quad: [Point3DF32; 4] }
+    Perspective {
+        perspective: Perspective,
+        clip_polygon: Vec<Point2DF32>,
+        quad: [Point3DF32; 4],
+    },
 }
 
 impl PreparedRenderTransform {
@@ -236,9 +266,14 @@ impl PreparedRenderTransform {
     }
 }
 
-impl<F> RenderCommandListener for F where F: Fn(RenderCommand) + Send + Sync {
+impl<F> RenderCommandListener for F
+where
+    F: Fn(RenderCommand) + Send + Sync,
+{
     #[inline]
-    fn send(&self, command: RenderCommand) { (*self)(command) }
+    fn send(&self, command: RenderCommand) {
+        (*self)(command)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]

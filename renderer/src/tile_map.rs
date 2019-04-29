@@ -19,31 +19,46 @@ pub struct DenseTileMap<T> {
 
 impl<T> DenseTileMap<T> {
     #[inline]
-    pub fn new(rect: RectI32) -> DenseTileMap<T> where T: Copy + Clone + Default {
+    pub fn new(rect: RectI32) -> DenseTileMap<T>
+    where
+        T: Copy + Clone + Default,
+    {
         let length = rect.size().x() as usize * rect.size().y() as usize;
-        DenseTileMap { data: vec![T::default(); length], rect }
+        DenseTileMap {
+            data: vec![T::default(); length],
+            rect,
+        }
     }
 
     #[inline]
-    pub fn from_builder<F>(build: F, rect: RectI32) -> DenseTileMap<T> where F: FnMut(usize) -> T {
+    pub fn from_builder<F>(build: F, rect: RectI32) -> DenseTileMap<T>
+    where
+        F: FnMut(usize) -> T,
+    {
         let length = rect.size().x() as usize * rect.size().y() as usize;
-        DenseTileMap { data: (0..length).map(build).collect(), rect }
+        DenseTileMap {
+            data: (0..length).map(build).collect(),
+            rect,
+        }
     }
 
     #[inline]
     pub fn coords_to_index(&self, coords: Point2DI32) -> Option<usize> {
         // TODO(pcwalton): SIMD?
-        if coords.x() < self.rect.min_x() || coords.x() >= self.rect.max_x() ||
-                coords.y() < self.rect.min_y() || coords.y() >= self.rect.max_y() {
-            return None
+        if coords.x() < self.rect.min_x()
+            || coords.x() >= self.rect.max_x()
+            || coords.y() < self.rect.min_y()
+            || coords.y() >= self.rect.max_y()
+        {
+            return None;
         }
         Some(self.coords_to_index_unchecked(coords))
     }
 
     #[inline]
     pub fn coords_to_index_unchecked(&self, coords: Point2DI32) -> usize {
-        (coords.y() - self.rect.min_y()) as usize * self.rect.size().x() as usize +
-            (coords.x() - self.rect.min_x()) as usize
+        (coords.y() - self.rect.min_y()) as usize * self.rect.size().x() as usize
+            + (coords.x() - self.rect.min_x()) as usize
     }
 
     #[inline]

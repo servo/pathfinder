@@ -25,7 +25,9 @@ pub struct ZBuffer {
 impl ZBuffer {
     pub fn new(view_box: RectF32) -> ZBuffer {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(view_box);
-        ZBuffer { buffer: DenseTileMap::from_builder(|_| AtomicUsize::new(0), tile_rect) }
+        ZBuffer {
+            buffer: DenseTileMap::from_builder(|_| AtomicUsize::new(0), tile_rect),
+        }
     }
 
     pub fn test(&self, coords: Point2DI32, object_index: u32) -> bool {

@@ -46,7 +46,10 @@ const FILL_COLORS_TEXTURE_HEIGHT: i32 = 256;
 
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
-pub struct Renderer<D> where D: Device {
+pub struct Renderer<D>
+where
+    D: Device,
+{
     // Device
     pub device: D,
 
@@ -97,9 +100,15 @@ pub struct Renderer<D> where D: Device {
     use_depth: bool,
 }
 
-impl<D> Renderer<D> where D: Device {
-    pub fn new(device: D, resources: &dyn ResourceLoader, dest_framebuffer: DestFramebuffer<D>)
-               -> Renderer<D> {
+impl<D> Renderer<D>
+where
+    D: Device,
+{
+    pub fn new(
+        device: D,
+        resources: &dyn ResourceLoader,
+        dest_framebuffer: DestFramebuffer<D>,
+    ) -> Renderer<D> {
         let fill_program = FillProgram::new(&device, resources);
 
         let solid_multicolor_tile_program = SolidTileMulticolorProgram::new(&device, resources);
@@ -115,47 +124,55 @@ impl<D> Renderer<D> where D: Device {
         let gamma_lut_texture = device.create_texture_from_png(resources, "gamma-lut");
 
         let quad_vertex_positions_buffer = device.create_buffer();
-        device.allocate_buffer(&quad_vertex_positions_buffer,
-                               BufferData::Memory(&QUAD_VERTEX_POSITIONS),
-                               BufferTarget::Vertex,
-                               BufferUploadMode::Static);
+        device.allocate_buffer(
+            &quad_vertex_positions_buffer,
+            BufferData::Memory(&QUAD_VERTEX_POSITIONS),
+            BufferTarget::Vertex,
+            BufferUploadMode::Static,
+        );
 
-        let fill_vertex_array = FillVertexArray::new(&device,
-                                                     &fill_program,
-                                                     &quad_vertex_positions_buffer);
-        let alpha_multicolor_tile_vertex_array =
-            AlphaTileVertexArray::new(&device,
-                                      &alpha_multicolor_tile_program.alpha_tile_program,
-                                      &quad_vertex_positions_buffer);
-        let solid_multicolor_tile_vertex_array =
-            SolidTileVertexArray::new(&device,
-                                      &solid_multicolor_tile_program.solid_tile_program,
-                                      &quad_vertex_positions_buffer);
-        let alpha_monochrome_tile_vertex_array =
-            AlphaTileVertexArray::new(&device,
-                                      &alpha_monochrome_tile_program.alpha_tile_program,
-                                      &quad_vertex_positions_buffer);
-        let solid_monochrome_tile_vertex_array =
-            SolidTileVertexArray::new(&device,
-                                      &solid_monochrome_tile_program.solid_tile_program,
-                                      &quad_vertex_positions_buffer);
-        let postprocess_vertex_array = PostprocessVertexArray::new(&device,
-                                                                   &postprocess_program,
-                                                                   &quad_vertex_positions_buffer);
+        let fill_vertex_array =
+            FillVertexArray::new(&device, &fill_program, &quad_vertex_positions_buffer);
+        let alpha_multicolor_tile_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_multicolor_tile_program.alpha_tile_program,
+            &quad_vertex_positions_buffer,
+        );
+        let solid_multicolor_tile_vertex_array = SolidTileVertexArray::new(
+            &device,
+            &solid_multicolor_tile_program.solid_tile_program,
+            &quad_vertex_positions_buffer,
+        );
+        let alpha_monochrome_tile_vertex_array = AlphaTileVertexArray::new(
+            &device,
+            &alpha_monochrome_tile_program.alpha_tile_program,
+            &quad_vertex_positions_buffer,
+        );
+        let solid_monochrome_tile_vertex_array = SolidTileVertexArray::new(
+            &device,
+            &solid_monochrome_tile_program.solid_tile_program,
+            &quad_vertex_positions_buffer,
+        );
+        let postprocess_vertex_array = PostprocessVertexArray::new(
+            &device,
+            &postprocess_program,
+            &quad_vertex_positions_buffer,
+        );
         let stencil_vertex_array = StencilVertexArray::new(&device, &stencil_program);
-        let reprojection_vertex_array =
-            ReprojectionVertexArray::new(&device,
-                                         &reprojection_program,
-                                         &quad_vertex_positions_buffer);
+        let reprojection_vertex_array = ReprojectionVertexArray::new(
+            &device,
+            &reprojection_program,
+            &quad_vertex_positions_buffer,
+        );
 
-        let mask_framebuffer_size = Point2DI32::new(MASK_FRAMEBUFFER_WIDTH,
-                                                    MASK_FRAMEBUFFER_HEIGHT);
-        let mask_framebuffer_texture = device.create_texture(TextureFormat::R16F,
-                                                             mask_framebuffer_size);
+        let mask_framebuffer_size =
+            Point2DI32::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
+        let mask_framebuffer_texture =
+            device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
 
-        let fill_colors_size = Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH,
-                                               FILL_COLORS_TEXTURE_HEIGHT);
+        let fill_colors_size =
+            Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
         let fill_colors_texture = device.create_texture(TextureFormat::RGBA8, fill_colors_size);
 
         let debug_ui = DebugUI::new(&device, resources, dest_framebuffer.window_size(&device));
@@ -207,9 +224,10 @@ impl<D> Renderer<D> where D: Device {
     pub fn begin_scene(&mut self, scene: &SceneDescriptor) {
         self.init_postprocessing_framebuffer();
 
-        let timer_query = self.free_timer_queries
-                              .pop()
-                              .unwrap_or_else(|| self.device.create_timer_query());
+        let timer_query = self
+            .free_timer_queries
+            .pop()
+            .unwrap_or_else(|| self.device.create_timer_query());
         self.device.begin_timer_query(&timer_query);
         self.current_timer_query = Some(timer_query);
 
@@ -221,7 +239,10 @@ impl<D> Renderer<D> where D: Device {
 
         self.mask_framebuffer_cleared = false;
 
-        self.stats = RenderStats { object_count: scene.object_count, ..RenderStats::default() };
+        self.stats = RenderStats {
+            object_count: scene.object_count,
+            ..RenderStats::default()
+        };
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
@@ -261,7 +282,7 @@ impl<D> Renderer<D> where D: Device {
     pub fn shift_timer_query(&mut self) -> Option<Duration> {
         let query = self.pending_timer_queries.front()?;
         if !self.device.timer_query_is_available(&query) {
-            return None
+            return None;
         }
         let query = self.pending_timer_queries.pop_front().unwrap();
         let result = self.device.get_timer_query(&query);
@@ -275,8 +296,10 @@ impl<D> Renderer<D> where D: Device {
     }
 
     #[inline]
-    pub fn replace_dest_framebuffer(&mut self, new_dest_framebuffer: DestFramebuffer<D>)
-                                    -> DestFramebuffer<D> {
+    pub fn replace_dest_framebuffer(
+        &mut self,
+        new_dest_framebuffer: DestFramebuffer<D>,
+    ) -> DestFramebuffer<D> {
         mem::replace(&mut self.dest_framebuffer, new_dest_framebuffer)
     }
 
@@ -314,21 +337,26 @@ impl<D> Renderer<D> where D: Device {
             fill_colors[shader_index * 4 + 2] = shader.fill_color.b;
             fill_colors[shader_index * 4 + 3] = shader.fill_color.a;
         }
-        self.device.upload_to_texture(&self.fill_colors_texture, size, &fill_colors);
+        self.device
+            .upload_to_texture(&self.fill_colors_texture, size, &fill_colors);
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
-        self.device.allocate_buffer(&self.solid_tile_vertex_array().vertex_buffer,
-                                    BufferData::Memory(&solid_tiles),
-                                    BufferTarget::Vertex,
-                                    BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(
+            &self.solid_tile_vertex_array().vertex_buffer,
+            BufferData::Memory(&solid_tiles),
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
     }
 
     fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
-        self.device.allocate_buffer(&self.alpha_tile_vertex_array().vertex_buffer,
-                                    BufferData::Memory(&alpha_tiles),
-                                    BufferTarget::Vertex,
-                                    BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(
+            &self.alpha_tile_vertex_array().vertex_buffer,
+            BufferData::Memory(&alpha_tiles),
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
     }
 
     fn clear_mask_framebuffer(&mut self) {
@@ -363,10 +391,12 @@ impl<D> Renderer<D> where D: Device {
             return;
         }
 
-        self.device.allocate_buffer(&self.fill_vertex_array.vertex_buffer,
-                                    BufferData::Memory(&self.buffered_fills),
-                                    BufferTarget::Vertex,
-                                    BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(
+            &self.fill_vertex_array.vertex_buffer,
+            BufferData::Memory(&self.buffered_fills),
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
 
         if !self.mask_framebuffer_cleared {
             self.clear_mask_framebuffer();
@@ -375,30 +405,35 @@ impl<D> Renderer<D> where D: Device {
 
         self.device.bind_framebuffer(&self.mask_framebuffer);
 
-        self.device.bind_vertex_array(&self.fill_vertex_array.vertex_array);
+        self.device
+            .bind_vertex_array(&self.fill_vertex_array.vertex_array);
         self.device.use_program(&self.fill_program.program);
-        self.device.set_uniform(&self.fill_program.framebuffer_size_uniform,
-                                UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
-                                                             MASK_FRAMEBUFFER_HEIGHT,
-                                                             0,
-                                                             0).to_f32x4()));
-        self.device.set_uniform(&self.fill_program.tile_size_uniform,
-                                UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
-                                                             TILE_HEIGHT as i32,
-                                                             0,
-                                                             0).to_f32x4()));
+        self.device.set_uniform(
+            &self.fill_program.framebuffer_size_uniform,
+            UniformData::Vec2(
+                I32x4::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT, 0, 0).to_f32x4(),
+            ),
+        );
+        self.device.set_uniform(
+            &self.fill_program.tile_size_uniform,
+            UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
+        );
         self.device.bind_texture(&self.area_lut_texture, 0);
-        self.device.set_uniform(&self.fill_program.area_lut_uniform,
-                                UniformData::TextureUnit(0));
+        self.device.set_uniform(
+            &self.fill_program.area_lut_uniform,
+            UniformData::TextureUnit(0),
+        );
         let render_state = RenderState {
             blend: BlendState::RGBOneAlphaOne,
             ..RenderState::default()
         };
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
-        self.device.draw_arrays_instanced(Primitive::TriangleFan,
-                                          4,
-                                          self.buffered_fills.len() as u32,
-                                          &render_state);
+        self.device.draw_arrays_instanced(
+            Primitive::TriangleFan,
+            4,
+            self.buffered_fills.len() as u32,
+            &render_state,
+        );
 
         self.buffered_fills.clear()
     }
@@ -409,56 +444,75 @@ impl<D> Renderer<D> where D: Device {
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
         let alpha_tile_program = self.alpha_tile_program();
 
-        self.device.bind_vertex_array(&alpha_tile_vertex_array.vertex_array);
+        self.device
+            .bind_vertex_array(&alpha_tile_vertex_array.vertex_array);
         self.device.use_program(&alpha_tile_program.program);
-        self.device.set_uniform(&alpha_tile_program.framebuffer_size_uniform,
-                                UniformData::Vec2(self.draw_viewport().size().to_f32().0));
-        self.device.set_uniform(&alpha_tile_program.tile_size_uniform,
-                                UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
-                                                             TILE_HEIGHT as i32,
-                                                             0,
-                                                             0).to_f32x4()));
-        self.device.bind_texture(self.device.framebuffer_texture(&self.mask_framebuffer), 0);
-        self.device.set_uniform(&alpha_tile_program.stencil_texture_uniform,
-                                UniformData::TextureUnit(0));
-        self.device.set_uniform(&alpha_tile_program.stencil_texture_size_uniform,
-                                UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
-                                                             MASK_FRAMEBUFFER_HEIGHT,
-                                                             0,
-                                                             0).to_f32x4()));
+        self.device.set_uniform(
+            &alpha_tile_program.framebuffer_size_uniform,
+            UniformData::Vec2(self.draw_viewport().size().to_f32().0),
+        );
+        self.device.set_uniform(
+            &alpha_tile_program.tile_size_uniform,
+            UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
+        );
+        self.device
+            .bind_texture(self.device.framebuffer_texture(&self.mask_framebuffer), 0);
+        self.device.set_uniform(
+            &alpha_tile_program.stencil_texture_uniform,
+            UniformData::TextureUnit(0),
+        );
+        self.device.set_uniform(
+            &alpha_tile_program.stencil_texture_size_uniform,
+            UniformData::Vec2(
+                I32x4::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT, 0, 0).to_f32x4(),
+            ),
+        );
 
         match self.render_mode {
             RenderMode::Multicolor => {
                 self.device.bind_texture(&self.fill_colors_texture, 1);
-                self.device.set_uniform(&self.alpha_multicolor_tile_program
-                                             .fill_colors_texture_uniform,
-                                        UniformData::TextureUnit(1));
-                self.device.set_uniform(&self.alpha_multicolor_tile_program
-                                             .fill_colors_texture_size_uniform,
-                                        UniformData::Vec2(I32x4::new(FILL_COLORS_TEXTURE_WIDTH,
-                                                                     FILL_COLORS_TEXTURE_HEIGHT,
-                                                                     0,
-                                                                     0).to_f32x4()));
+                self.device.set_uniform(
+                    &self
+                        .alpha_multicolor_tile_program
+                        .fill_colors_texture_uniform,
+                    UniformData::TextureUnit(1),
+                );
+                self.device.set_uniform(
+                    &self
+                        .alpha_multicolor_tile_program
+                        .fill_colors_texture_size_uniform,
+                    UniformData::Vec2(
+                        I32x4::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT, 0, 0)
+                            .to_f32x4(),
+                    ),
+                );
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
-                self.device.set_uniform(&self.alpha_monochrome_tile_program.fill_color_uniform,
-                                        UniformData::Vec4(F32x4::splat(1.0)));
+                self.device.set_uniform(
+                    &self.alpha_monochrome_tile_program.fill_color_uniform,
+                    UniformData::Vec4(F32x4::splat(1.0)),
+                );
             }
             RenderMode::Monochrome { fg_color, .. } => {
-                self.device.set_uniform(&self.alpha_monochrome_tile_program.fill_color_uniform,
-                                        UniformData::Vec4(fg_color.0));
+                self.device.set_uniform(
+                    &self.alpha_monochrome_tile_program.fill_color_uniform,
+                    UniformData::Vec4(fg_color.0),
+                );
             }
         }
 
         // FIXME(pcwalton): Fill this in properly!
-        self.device.set_uniform(&alpha_tile_program.view_box_origin_uniform,
-                                UniformData::Vec2(F32x4::default()));
+        self.device.set_uniform(
+            &alpha_tile_program.view_box_origin_uniform,
+            UniformData::Vec2(F32x4::default()),
+        );
         let render_state = RenderState {
             blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
+        self.device
+            .draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
     }
 
     fn draw_solid_tiles(&mut self, count: u32) {
@@ -467,47 +521,62 @@ impl<D> Renderer<D> where D: Device {
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
         let solid_tile_program = self.solid_tile_program();
 
-        self.device.bind_vertex_array(&solid_tile_vertex_array.vertex_array);
+        self.device
+            .bind_vertex_array(&solid_tile_vertex_array.vertex_array);
         self.device.use_program(&solid_tile_program.program);
-        self.device.set_uniform(&solid_tile_program.framebuffer_size_uniform,
-                                UniformData::Vec2(self.draw_viewport().size().0.to_f32x4()));
-        self.device.set_uniform(&solid_tile_program.tile_size_uniform,
-                                UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
-                                                             TILE_HEIGHT as i32,
-                                                             0,
-                                                             0).to_f32x4()));
+        self.device.set_uniform(
+            &solid_tile_program.framebuffer_size_uniform,
+            UniformData::Vec2(self.draw_viewport().size().0.to_f32x4()),
+        );
+        self.device.set_uniform(
+            &solid_tile_program.tile_size_uniform,
+            UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
+        );
 
         match self.render_mode {
             RenderMode::Multicolor => {
                 self.device.bind_texture(&self.fill_colors_texture, 0);
-                self.device.set_uniform(&self.solid_multicolor_tile_program
-                                             .fill_colors_texture_uniform,
-                                        UniformData::TextureUnit(0));
-                self.device.set_uniform(&self.solid_multicolor_tile_program
-                                             .fill_colors_texture_size_uniform,
-                                        UniformData::Vec2(I32x4::new(FILL_COLORS_TEXTURE_WIDTH,
-                                                                     FILL_COLORS_TEXTURE_HEIGHT,
-                                                                     0,
-                                                                     0).to_f32x4()));
+                self.device.set_uniform(
+                    &self
+                        .solid_multicolor_tile_program
+                        .fill_colors_texture_uniform,
+                    UniformData::TextureUnit(0),
+                );
+                self.device.set_uniform(
+                    &self
+                        .solid_multicolor_tile_program
+                        .fill_colors_texture_size_uniform,
+                    UniformData::Vec2(
+                        I32x4::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT, 0, 0)
+                            .to_f32x4(),
+                    ),
+                );
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
-                self.device.set_uniform(&self.solid_monochrome_tile_program.fill_color_uniform,
-                                        UniformData::Vec4(F32x4::splat(1.0)));
+                self.device.set_uniform(
+                    &self.solid_monochrome_tile_program.fill_color_uniform,
+                    UniformData::Vec4(F32x4::splat(1.0)),
+                );
             }
             RenderMode::Monochrome { fg_color, .. } => {
-                self.device.set_uniform(&self.solid_monochrome_tile_program.fill_color_uniform,
-                                        UniformData::Vec4(fg_color.0));
+                self.device.set_uniform(
+                    &self.solid_monochrome_tile_program.fill_color_uniform,
+                    UniformData::Vec4(fg_color.0),
+                );
             }
         }
 
         // FIXME(pcwalton): Fill this in properly!
-        self.device.set_uniform(&solid_tile_program.view_box_origin_uniform,
-                                UniformData::Vec2(F32x4::default()));
+        self.device.set_uniform(
+            &solid_tile_program.view_box_origin_uniform,
+            UniformData::Vec2(F32x4::default()),
+        );
         let render_state = RenderState {
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device.draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
+        self.device
+            .draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
     }
 
     fn postprocess(&mut self) {
@@ -529,55 +598,73 @@ impl<D> Renderer<D> where D: Device {
 
         self.bind_dest_framebuffer();
 
-        self.device.bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
+        self.device
+            .bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
         self.device.use_program(&self.postprocess_program.program);
-        self.device.set_uniform(&self.postprocess_program.framebuffer_size_uniform,
-                                UniformData::Vec2(self.main_viewport().size().to_f32().0));
+        self.device.set_uniform(
+            &self.postprocess_program.framebuffer_size_uniform,
+            UniformData::Vec2(self.main_viewport().size().to_f32().0),
+        );
         match defringing_kernel {
             Some(ref kernel) => {
-                self.device.set_uniform(&self.postprocess_program.kernel_uniform,
-                                        UniformData::Vec4(F32x4::from_slice(&kernel.0)));
+                self.device.set_uniform(
+                    &self.postprocess_program.kernel_uniform,
+                    UniformData::Vec4(F32x4::from_slice(&kernel.0)),
+                );
             }
             None => {
-                self.device.set_uniform(&self.postprocess_program.kernel_uniform,
-                                        UniformData::Vec4(F32x4::default()));
+                self.device.set_uniform(
+                    &self.postprocess_program.kernel_uniform,
+                    UniformData::Vec4(F32x4::default()),
+                );
             }
         }
 
         let postprocess_source_framebuffer = self.postprocess_source_framebuffer.as_ref().unwrap();
-        let source_texture = self.device.framebuffer_texture(postprocess_source_framebuffer);
+        let source_texture = self
+            .device
+            .framebuffer_texture(postprocess_source_framebuffer);
         let source_texture_size = self.device.texture_size(source_texture);
         self.device.bind_texture(&source_texture, 0);
-        self.device.set_uniform(&self.postprocess_program.source_uniform,
-                                UniformData::TextureUnit(0));
-        self.device.set_uniform(&self.postprocess_program.source_size_uniform,
-                                UniformData::Vec2(source_texture_size.0.to_f32x4()));
+        self.device.set_uniform(
+            &self.postprocess_program.source_uniform,
+            UniformData::TextureUnit(0),
+        );
+        self.device.set_uniform(
+            &self.postprocess_program.source_size_uniform,
+            UniformData::Vec2(source_texture_size.0.to_f32x4()),
+        );
         self.device.bind_texture(&self.gamma_lut_texture, 1);
-        self.device.set_uniform(&self.postprocess_program.gamma_lut_uniform,
-                                UniformData::TextureUnit(1));
-        self.device.set_uniform(&self.postprocess_program.fg_color_uniform,
-                                UniformData::Vec4(fg_color.0));
-        self.device.set_uniform(&self.postprocess_program.bg_color_uniform,
-                                UniformData::Vec4(bg_color.0));
-        self.device.set_uniform(&self.postprocess_program.gamma_correction_enabled_uniform,
-                                UniformData::Int(gamma_correction_enabled as i32));
-        self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState::default());
+        self.device.set_uniform(
+            &self.postprocess_program.gamma_lut_uniform,
+            UniformData::TextureUnit(1),
+        );
+        self.device.set_uniform(
+            &self.postprocess_program.fg_color_uniform,
+            UniformData::Vec4(fg_color.0),
+        );
+        self.device.set_uniform(
+            &self.postprocess_program.bg_color_uniform,
+            UniformData::Vec4(bg_color.0),
+        );
+        self.device.set_uniform(
+            &self.postprocess_program.gamma_correction_enabled_uniform,
+            UniformData::Int(gamma_correction_enabled as i32),
+        );
+        self.device
+            .draw_arrays(Primitive::TriangleFan, 4, &RenderState::default());
     }
 
     fn solid_tile_program(&self) -> &SolidTileProgram<D> {
         match self.render_mode {
-            RenderMode::Monochrome { .. } => {
-                &self.solid_monochrome_tile_program.solid_tile_program
-            }
+            RenderMode::Monochrome { .. } => &self.solid_monochrome_tile_program.solid_tile_program,
             RenderMode::Multicolor => &self.solid_multicolor_tile_program.solid_tile_program,
         }
     }
 
     fn alpha_tile_program(&self) -> &AlphaTileProgram<D> {
         match self.render_mode {
-            RenderMode::Monochrome { .. } => {
-                &self.alpha_monochrome_tile_program.alpha_tile_program
-            }
+            RenderMode::Monochrome { .. } => &self.alpha_monochrome_tile_program.alpha_tile_program,
             RenderMode::Multicolor => &self.alpha_multicolor_tile_program.alpha_tile_program,
         }
     }
@@ -597,53 +684,80 @@ impl<D> Renderer<D> where D: Device {
     }
 
     fn draw_stencil(&self, quad_positions: &[Point3DF32]) {
-        self.device.allocate_buffer(&self.stencil_vertex_array.vertex_buffer,
-                                    BufferData::Memory(quad_positions),
-                                    BufferTarget::Vertex,
-                                    BufferUploadMode::Dynamic);
+        self.device.allocate_buffer(
+            &self.stencil_vertex_array.vertex_buffer,
+            BufferData::Memory(quad_positions),
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
         self.bind_draw_framebuffer();
 
-        self.device.bind_vertex_array(&self.stencil_vertex_array.vertex_array);
+        self.device
+            .bind_vertex_array(&self.stencil_vertex_array.vertex_array);
         self.device.use_program(&self.stencil_program.program);
-        self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
-            // FIXME(pcwalton): Should we really write to the depth buffer?
-            depth: Some(DepthState { func: DepthFunc::Less, write: true }),
-            stencil: Some(StencilState {
-                func: StencilFunc::Always,
-                reference: 1,
-                mask: 1,
-                write: true,
-            }),
-            color_mask: false,
-            ..RenderState::default()
-        })
+        self.device.draw_arrays(
+            Primitive::TriangleFan,
+            4,
+            &RenderState {
+                // FIXME(pcwalton): Should we really write to the depth buffer?
+                depth: Some(DepthState {
+                    func: DepthFunc::Less,
+                    write: true,
+                }),
+                stencil: Some(StencilState {
+                    func: StencilFunc::Always,
+                    reference: 1,
+                    mask: 1,
+                    write: true,
+                }),
+                color_mask: false,
+                ..RenderState::default()
+            },
+        )
     }
 
-    pub fn reproject_texture(&self,
-                             texture: &D::Texture,
-                             old_transform: &Transform3DF32,
-                             new_transform: &Transform3DF32) {
+    pub fn reproject_texture(
+        &self,
+        texture: &D::Texture,
+        old_transform: &Transform3DF32,
+        new_transform: &Transform3DF32,
+    ) {
         self.bind_draw_framebuffer();
 
-        self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
+        self.device
+            .bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
         self.device.use_program(&self.reprojection_program.program);
-        self.device.set_uniform(&self.reprojection_program.old_transform_uniform,
-                                UniformData::from_transform_3d(old_transform));
-        self.device.set_uniform(&self.reprojection_program.new_transform_uniform,
-                                UniformData::from_transform_3d(new_transform));
+        self.device.set_uniform(
+            &self.reprojection_program.old_transform_uniform,
+            UniformData::from_transform_3d(old_transform),
+        );
+        self.device.set_uniform(
+            &self.reprojection_program.new_transform_uniform,
+            UniformData::from_transform_3d(new_transform),
+        );
         self.device.bind_texture(texture, 0);
-        self.device.set_uniform(&self.reprojection_program.texture_uniform,
-                                UniformData::TextureUnit(0));
-        self.device.draw_arrays(Primitive::TriangleFan, 4, &RenderState {
-            blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
-            depth: Some(DepthState { func: DepthFunc::Less, write: false }),
-            ..RenderState::default()
-        });
+        self.device.set_uniform(
+            &self.reprojection_program.texture_uniform,
+            UniformData::TextureUnit(0),
+        );
+        self.device.draw_arrays(
+            Primitive::TriangleFan,
+            4,
+            &RenderState {
+                blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
+                depth: Some(DepthState {
+                    func: DepthFunc::Less,
+                    write: false,
+                }),
+                ..RenderState::default()
+            },
+        );
     }
 
     pub fn bind_draw_framebuffer(&self) {
         if self.postprocessing_needed() {
-            self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
+            self.device
+                .bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
         } else {
             self.bind_dest_framebuffer();
         }
@@ -654,9 +768,7 @@ impl<D> Renderer<D> where D: Device {
             DestFramebuffer::Default { viewport, .. } => {
                 self.device.bind_default_framebuffer(viewport)
             }
-            DestFramebuffer::Other(ref framebuffer) => {
-                self.device.bind_framebuffer(framebuffer)
-            }
+            DestFramebuffer::Other(ref framebuffer) => self.device.bind_framebuffer(framebuffer),
         }
     }
 
@@ -668,17 +780,21 @@ impl<D> Renderer<D> where D: Device {
 
         let source_framebuffer_size = self.draw_viewport().size();
         match self.postprocess_source_framebuffer {
-            Some(ref framebuffer) if
-                    self.device.texture_size(self.device.framebuffer_texture(framebuffer)) ==
-                    source_framebuffer_size => {}
+            Some(ref framebuffer)
+                if self
+                    .device
+                    .texture_size(self.device.framebuffer_texture(framebuffer))
+                    == source_framebuffer_size => {}
             _ => {
-                let texture = self.device.create_texture(TextureFormat::R8,
-                                                         source_framebuffer_size);
+                let texture = self
+                    .device
+                    .create_texture(TextureFormat::R8, source_framebuffer_size);
                 self.postprocess_source_framebuffer = Some(self.device.create_framebuffer(texture))
             }
         };
 
-        self.device.bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
+        self.device
+            .bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
         self.device.clear(&ClearParams {
             color: Some(ColorF::transparent_black()),
             ..ClearParams::default()
@@ -687,9 +803,11 @@ impl<D> Renderer<D> where D: Device {
 
     fn postprocessing_needed(&self) -> bool {
         match self.render_mode {
-            RenderMode::Monochrome { ref defringing_kernel, gamma_correction, .. } => {
-                defringing_kernel.is_some() || gamma_correction
-            }
+            RenderMode::Monochrome {
+                ref defringing_kernel,
+                gamma_correction,
+                ..
+            } => defringing_kernel.is_some() || gamma_correction,
             _ => false,
         }
     }
@@ -699,17 +817,25 @@ impl<D> Renderer<D> where D: Device {
             return None;
         }
 
-        Some(StencilState { func: StencilFunc::Equal, reference: 1, mask: 1, write: false })
+        Some(StencilState {
+            func: StencilFunc::Equal,
+            reference: 1,
+            mask: 1,
+            write: false,
+        })
     }
 
     fn draw_viewport(&self) -> RectI32 {
         let main_viewport = self.main_viewport();
         match self.render_mode {
-            RenderMode::Monochrome { defringing_kernel: Some(..), .. } => {
+            RenderMode::Monochrome {
+                defringing_kernel: Some(..),
+                ..
+            } => {
                 let scale = Point2DI32::new(3, 1);
                 RectI32::new(Point2DI32::default(), main_viewport.size().scale_xy(scale))
             }
-            _ => main_viewport
+            _ => main_viewport,
         }
     }
 
@@ -717,30 +843,43 @@ impl<D> Renderer<D> where D: Device {
         match self.dest_framebuffer {
             DestFramebuffer::Default { viewport, .. } => viewport,
             DestFramebuffer::Other(ref framebuffer) => {
-                let size = self.device.texture_size(self.device.framebuffer_texture(framebuffer));
+                let size = self
+                    .device
+                    .texture_size(self.device.framebuffer_texture(framebuffer));
                 RectI32::new(Point2DI32::default(), size)
             }
         }
     }
 }
 
-struct FillVertexArray<D> where D: Device {
+struct FillVertexArray<D>
+where
+    D: Device,
+{
     vertex_array: D::VertexArray,
     vertex_buffer: D::Buffer,
 }
 
-impl<D> FillVertexArray<D> where D: Device {
-    fn new(device: &D, fill_program: &FillProgram<D>, quad_vertex_positions_buffer: &D::Buffer)
-           -> FillVertexArray<D> {
+impl<D> FillVertexArray<D>
+where
+    D: Device,
+{
+    fn new(
+        device: &D,
+        fill_program: &FillProgram<D>,
+        quad_vertex_positions_buffer: &D::Buffer,
+    ) -> FillVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
         let vertex_buffer = device.create_buffer();
         let vertex_buffer_data: BufferData<FillBatchPrimitive> =
             BufferData::Uninitialized(MAX_FILLS_PER_BATCH);
-        device.allocate_buffer(&vertex_buffer,
-                               vertex_buffer_data,
-                               BufferTarget::Vertex,
-                               BufferUploadMode::Dynamic);
+        device.allocate_buffer(
+            &vertex_buffer,
+            vertex_buffer_data,
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
 
         let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord");
         let from_px_attr = device.get_vertex_attr(&fill_program.program, "FromPx");
@@ -752,61 +891,75 @@ impl<D> FillVertexArray<D> where D: Device {
         device.bind_vertex_array(&vertex_array);
         device.use_program(&fill_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tess_coord_attr,
-                                           2,
-                                           VertexAttrType::U8,
-                                           false,
-                                           0,
-                                           0,
-                                           0);
+        device.configure_float_vertex_attr(&tess_coord_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_int_vertex_attr(&from_px_attr,
-                                         1,
-                                         VertexAttrType::U8,
-                                         FILL_INSTANCE_SIZE,
-                                         0,
-                                         1);
-        device.configure_int_vertex_attr(&to_px_attr,
-                                         1,
-                                         VertexAttrType::U8,
-                                         FILL_INSTANCE_SIZE,
-                                         1,
-                                         1);
-        device.configure_float_vertex_attr(&from_subpx_attr,
-                                           2,
-                                           VertexAttrType::U8,
-                                           true,
-                                           FILL_INSTANCE_SIZE,
-                                           2,
-                                           1);
-        device.configure_float_vertex_attr(&to_subpx_attr,
-                                           2,
-                                           VertexAttrType::U8,
-                                           true,
-                                           FILL_INSTANCE_SIZE,
-                                           4,
-                                           1);
-        device.configure_int_vertex_attr(&tile_index_attr,
-                                         1,
-                                         VertexAttrType::U16,
-                                         FILL_INSTANCE_SIZE,
-                                         6,
-                                         1);
+        device.configure_int_vertex_attr(
+            &from_px_attr,
+            1,
+            VertexAttrType::U8,
+            FILL_INSTANCE_SIZE,
+            0,
+            1,
+        );
+        device.configure_int_vertex_attr(
+            &to_px_attr,
+            1,
+            VertexAttrType::U8,
+            FILL_INSTANCE_SIZE,
+            1,
+            1,
+        );
+        device.configure_float_vertex_attr(
+            &from_subpx_attr,
+            2,
+            VertexAttrType::U8,
+            true,
+            FILL_INSTANCE_SIZE,
+            2,
+            1,
+        );
+        device.configure_float_vertex_attr(
+            &to_subpx_attr,
+            2,
+            VertexAttrType::U8,
+            true,
+            FILL_INSTANCE_SIZE,
+            4,
+            1,
+        );
+        device.configure_int_vertex_attr(
+            &tile_index_attr,
+            1,
+            VertexAttrType::U16,
+            FILL_INSTANCE_SIZE,
+            6,
+            1,
+        );
 
-        FillVertexArray { vertex_array, vertex_buffer }
+        FillVertexArray {
+            vertex_array,
+            vertex_buffer,
+        }
     }
 }
 
-struct AlphaTileVertexArray<D> where D: Device {
+struct AlphaTileVertexArray<D>
+where
+    D: Device,
+{
     vertex_array: D::VertexArray,
     vertex_buffer: D::Buffer,
 }
 
-impl<D> AlphaTileVertexArray<D> where D: Device {
-    fn new(device: &D,
-           alpha_tile_program: &AlphaTileProgram<D>,
-           quad_vertex_positions_buffer: &D::Buffer)
-           -> AlphaTileVertexArray<D> {
+impl<D> AlphaTileVertexArray<D>
+where
+    D: Device,
+{
+    fn new(
+        device: &D,
+        alpha_tile_program: &AlphaTileProgram<D>,
+        quad_vertex_positions_buffer: &D::Buffer,
+    ) -> AlphaTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
         let tess_coord_attr = device.get_vertex_attr(&alpha_tile_program.program, "TessCoord");
@@ -820,53 +973,65 @@ impl<D> AlphaTileVertexArray<D> where D: Device {
         device.bind_vertex_array(&vertex_array);
         device.use_program(&alpha_tile_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tess_coord_attr,
-                                           2,
-                                           VertexAttrType::U8,
-                                           false,
-                                           0,
-                                           0,
-                                           0);
+        device.configure_float_vertex_attr(&tess_coord_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_int_vertex_attr(&tile_origin_attr,
-                                         3,
-                                         VertexAttrType::U8,
-                                         MASK_TILE_INSTANCE_SIZE,
-                                         0,
-                                         1);
-        device.configure_int_vertex_attr(&backdrop_attr,
-                                         1,
-                                         VertexAttrType::I8,
-                                         MASK_TILE_INSTANCE_SIZE,
-                                         3,
-                                         1);
-        device.configure_int_vertex_attr(&object_attr,
-                                         2,
-                                         VertexAttrType::I16,
-                                         MASK_TILE_INSTANCE_SIZE,
-                                         4,
-                                         1);
-        device.configure_int_vertex_attr(&tile_index_attr,
-                                         2,
-                                         VertexAttrType::I16,
-                                         MASK_TILE_INSTANCE_SIZE,
-                                         6,
-                                         1);
+        device.configure_int_vertex_attr(
+            &tile_origin_attr,
+            3,
+            VertexAttrType::U8,
+            MASK_TILE_INSTANCE_SIZE,
+            0,
+            1,
+        );
+        device.configure_int_vertex_attr(
+            &backdrop_attr,
+            1,
+            VertexAttrType::I8,
+            MASK_TILE_INSTANCE_SIZE,
+            3,
+            1,
+        );
+        device.configure_int_vertex_attr(
+            &object_attr,
+            2,
+            VertexAttrType::I16,
+            MASK_TILE_INSTANCE_SIZE,
+            4,
+            1,
+        );
+        device.configure_int_vertex_attr(
+            &tile_index_attr,
+            2,
+            VertexAttrType::I16,
+            MASK_TILE_INSTANCE_SIZE,
+            6,
+            1,
+        );
 
-        AlphaTileVertexArray { vertex_array, vertex_buffer }
+        AlphaTileVertexArray {
+            vertex_array,
+            vertex_buffer,
+        }
     }
 }
 
-struct SolidTileVertexArray<D> where D: Device {
+struct SolidTileVertexArray<D>
+where
+    D: Device,
+{
     vertex_array: D::VertexArray,
     vertex_buffer: D::Buffer,
 }
 
-impl<D> SolidTileVertexArray<D> where D: Device {
-    fn new(device: &D,
-           solid_tile_program: &SolidTileProgram<D>,
-           quad_vertex_positions_buffer: &D::Buffer)
-           -> SolidTileVertexArray<D> {
+impl<D> SolidTileVertexArray<D>
+where
+    D: Device,
+{
+    fn new(
+        device: &D,
+        solid_tile_program: &SolidTileProgram<D>,
+        quad_vertex_positions_buffer: &D::Buffer,
+    ) -> SolidTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
         let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord");
@@ -878,62 +1043,82 @@ impl<D> SolidTileVertexArray<D> where D: Device {
         device.bind_vertex_array(&vertex_array);
         device.use_program(&solid_tile_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tess_coord_attr,
-                                           2,
-                                           VertexAttrType::U8,
-                                           false,
-                                           0,
-                                           0,
-                                           0);
+        device.configure_float_vertex_attr(&tess_coord_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tile_origin_attr,
-                                           2,
-                                           VertexAttrType::I16,
-                                           false,
-                                           SOLID_TILE_INSTANCE_SIZE,
-                                           0,
-                                           1);
-        device.configure_int_vertex_attr(&object_attr,
-                                         1,
-                                         VertexAttrType::I16,
-                                         SOLID_TILE_INSTANCE_SIZE,
-                                         4,
-                                         1);
+        device.configure_float_vertex_attr(
+            &tile_origin_attr,
+            2,
+            VertexAttrType::I16,
+            false,
+            SOLID_TILE_INSTANCE_SIZE,
+            0,
+            1,
+        );
+        device.configure_int_vertex_attr(
+            &object_attr,
+            1,
+            VertexAttrType::I16,
+            SOLID_TILE_INSTANCE_SIZE,
+            4,
+            1,
+        );
 
-        SolidTileVertexArray { vertex_array, vertex_buffer }
+        SolidTileVertexArray {
+            vertex_array,
+            vertex_buffer,
+        }
     }
 }
 
-struct FillProgram<D> where D: Device {
+struct FillProgram<D>
+where
+    D: Device,
+{
     program: D::Program,
     framebuffer_size_uniform: D::Uniform,
     tile_size_uniform: D::Uniform,
     area_lut_uniform: D::Uniform,
 }
 
-impl<D> FillProgram<D> where D: Device {
+impl<D> FillProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, resources: &dyn ResourceLoader) -> FillProgram<D> {
         let program = device.create_program(resources, "fill");
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
         let area_lut_uniform = device.get_uniform(&program, "AreaLUT");
-        FillProgram { program, framebuffer_size_uniform, tile_size_uniform, area_lut_uniform }
+        FillProgram {
+            program,
+            framebuffer_size_uniform,
+            tile_size_uniform,
+            area_lut_uniform,
+        }
     }
 }
 
-struct SolidTileProgram<D> where D: Device {
+struct SolidTileProgram<D>
+where
+    D: Device,
+{
     program: D::Program,
     framebuffer_size_uniform: D::Uniform,
     tile_size_uniform: D::Uniform,
     view_box_origin_uniform: D::Uniform,
 }
 
-impl<D> SolidTileProgram<D> where D: Device {
+impl<D> SolidTileProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, program_name: &str, resources: &dyn ResourceLoader) -> SolidTileProgram<D> {
-        let program = device.create_program_from_shader_names(resources,
-                                                              program_name,
-                                                              program_name,
-                                                              "tile_solid");
+        let program = device.create_program_from_shader_names(
+            resources,
+            program_name,
+            program_name,
+            "tile_solid",
+        );
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
         let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
@@ -946,19 +1131,25 @@ impl<D> SolidTileProgram<D> where D: Device {
     }
 }
 
-struct SolidTileMulticolorProgram<D> where D: Device {
+struct SolidTileMulticolorProgram<D>
+where
+    D: Device,
+{
     solid_tile_program: SolidTileProgram<D>,
     fill_colors_texture_uniform: D::Uniform,
     fill_colors_texture_size_uniform: D::Uniform,
 }
 
-impl<D> SolidTileMulticolorProgram<D> where D: Device {
+impl<D> SolidTileMulticolorProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMulticolorProgram<D> {
         let solid_tile_program = SolidTileProgram::new(device, "tile_solid_multicolor", resources);
-        let fill_colors_texture_uniform = device.get_uniform(&solid_tile_program.program,
-                                                             "FillColorsTexture");
-        let fill_colors_texture_size_uniform = device.get_uniform(&solid_tile_program.program,
-                                                                  "FillColorsTextureSize");
+        let fill_colors_texture_uniform =
+            device.get_uniform(&solid_tile_program.program, "FillColorsTexture");
+        let fill_colors_texture_size_uniform =
+            device.get_uniform(&solid_tile_program.program, "FillColorsTextureSize");
         SolidTileMulticolorProgram {
             solid_tile_program,
             fill_colors_texture_uniform,
@@ -967,20 +1158,32 @@ impl<D> SolidTileMulticolorProgram<D> where D: Device {
     }
 }
 
-struct SolidTileMonochromeProgram<D> where D: Device {
+struct SolidTileMonochromeProgram<D>
+where
+    D: Device,
+{
     solid_tile_program: SolidTileProgram<D>,
     fill_color_uniform: D::Uniform,
 }
 
-impl<D> SolidTileMonochromeProgram<D> where D: Device {
+impl<D> SolidTileMonochromeProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMonochromeProgram<D> {
         let solid_tile_program = SolidTileProgram::new(device, "tile_solid_monochrome", resources);
         let fill_color_uniform = device.get_uniform(&solid_tile_program.program, "FillColor");
-        SolidTileMonochromeProgram { solid_tile_program, fill_color_uniform }
+        SolidTileMonochromeProgram {
+            solid_tile_program,
+            fill_color_uniform,
+        }
     }
 }
 
-struct AlphaTileProgram<D> where D: Device {
+struct AlphaTileProgram<D>
+where
+    D: Device,
+{
     program: D::Program,
     framebuffer_size_uniform: D::Uniform,
     tile_size_uniform: D::Uniform,
@@ -989,12 +1192,17 @@ struct AlphaTileProgram<D> where D: Device {
     view_box_origin_uniform: D::Uniform,
 }
 
-impl<D> AlphaTileProgram<D> where D: Device {
+impl<D> AlphaTileProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, program_name: &str, resources: &dyn ResourceLoader) -> AlphaTileProgram<D> {
-        let program = device.create_program_from_shader_names(resources,
-                                                              program_name,
-                                                              program_name,
-                                                              "tile_alpha");
+        let program = device.create_program_from_shader_names(
+            resources,
+            program_name,
+            program_name,
+            "tile_alpha",
+        );
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let tile_size_uniform = device.get_uniform(&program, "TileSize");
         let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
@@ -1011,19 +1219,25 @@ impl<D> AlphaTileProgram<D> where D: Device {
     }
 }
 
-struct AlphaTileMulticolorProgram<D> where D: Device {
+struct AlphaTileMulticolorProgram<D>
+where
+    D: Device,
+{
     alpha_tile_program: AlphaTileProgram<D>,
     fill_colors_texture_uniform: D::Uniform,
     fill_colors_texture_size_uniform: D::Uniform,
 }
 
-impl<D> AlphaTileMulticolorProgram<D> where D: Device {
+impl<D> AlphaTileMulticolorProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMulticolorProgram<D> {
         let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_multicolor", resources);
-        let fill_colors_texture_uniform = device.get_uniform(&alpha_tile_program.program,
-                                                             "FillColorsTexture");
-        let fill_colors_texture_size_uniform = device.get_uniform(&alpha_tile_program.program,
-                                                                  "FillColorsTextureSize");
+        let fill_colors_texture_uniform =
+            device.get_uniform(&alpha_tile_program.program, "FillColorsTexture");
+        let fill_colors_texture_size_uniform =
+            device.get_uniform(&alpha_tile_program.program, "FillColorsTextureSize");
         AlphaTileMulticolorProgram {
             alpha_tile_program,
             fill_colors_texture_uniform,
@@ -1032,20 +1246,32 @@ impl<D> AlphaTileMulticolorProgram<D> where D: Device {
     }
 }
 
-struct AlphaTileMonochromeProgram<D> where D: Device {
+struct AlphaTileMonochromeProgram<D>
+where
+    D: Device,
+{
     alpha_tile_program: AlphaTileProgram<D>,
     fill_color_uniform: D::Uniform,
 }
 
-impl<D> AlphaTileMonochromeProgram<D> where D: Device {
+impl<D> AlphaTileMonochromeProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMonochromeProgram<D> {
         let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_monochrome", resources);
         let fill_color_uniform = device.get_uniform(&alpha_tile_program.program, "FillColor");
-        AlphaTileMonochromeProgram { alpha_tile_program, fill_color_uniform }
+        AlphaTileMonochromeProgram {
+            alpha_tile_program,
+            fill_color_uniform,
+        }
     }
 }
 
-struct PostprocessProgram<D> where D: Device {
+struct PostprocessProgram<D>
+where
+    D: Device,
+{
     program: D::Program,
     source_uniform: D::Uniform,
     source_size_uniform: D::Uniform,
@@ -1057,7 +1283,10 @@ struct PostprocessProgram<D> where D: Device {
     bg_color_uniform: D::Uniform,
 }
 
-impl<D> PostprocessProgram<D> where D: Device {
+impl<D> PostprocessProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, resources: &dyn ResourceLoader) -> PostprocessProgram<D> {
         let program = device.create_program(resources, "post");
         let source_uniform = device.get_uniform(&program, "Source");
@@ -1065,8 +1294,8 @@ impl<D> PostprocessProgram<D> where D: Device {
         let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
         let kernel_uniform = device.get_uniform(&program, "Kernel");
         let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
-        let gamma_correction_enabled_uniform = device.get_uniform(&program,
-                                                                  "GammaCorrectionEnabled");
+        let gamma_correction_enabled_uniform =
+            device.get_uniform(&program, "GammaCorrectionEnabled");
         let fg_color_uniform = device.get_uniform(&program, "FGColor");
         let bg_color_uniform = device.get_uniform(&program, "BGColor");
         PostprocessProgram {
@@ -1083,50 +1312,63 @@ impl<D> PostprocessProgram<D> where D: Device {
     }
 }
 
-struct PostprocessVertexArray<D> where D: Device {
+struct PostprocessVertexArray<D>
+where
+    D: Device,
+{
     vertex_array: D::VertexArray,
 }
 
-impl<D> PostprocessVertexArray<D> where D: Device {
-    fn new(device: &D,
-           postprocess_program: &PostprocessProgram<D>,
-           quad_vertex_positions_buffer: &D::Buffer)
-           -> PostprocessVertexArray<D> {
+impl<D> PostprocessVertexArray<D>
+where
+    D: Device,
+{
+    fn new(
+        device: &D,
+        postprocess_program: &PostprocessProgram<D>,
+        quad_vertex_positions_buffer: &D::Buffer,
+    ) -> PostprocessVertexArray<D> {
         let vertex_array = device.create_vertex_array();
         let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position");
 
         device.bind_vertex_array(&vertex_array);
         device.use_program(&postprocess_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&position_attr,
-                                            2,
-                                            VertexAttrType::U8,
-                                            false,
-                                            0,
-                                            0,
-                                            0);
+        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
 
         PostprocessVertexArray { vertex_array }
     }
 }
 
-struct StencilProgram<D> where D: Device {
+struct StencilProgram<D>
+where
+    D: Device,
+{
     program: D::Program,
 }
 
-impl<D> StencilProgram<D> where D: Device {
+impl<D> StencilProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, resources: &dyn ResourceLoader) -> StencilProgram<D> {
         let program = device.create_program(resources, "stencil");
         StencilProgram { program }
     }
 }
 
-struct StencilVertexArray<D> where D: Device {
+struct StencilVertexArray<D>
+where
+    D: Device,
+{
     vertex_array: D::VertexArray,
     vertex_buffer: D::Buffer,
 }
 
-impl<D> StencilVertexArray<D> where D: Device {
+impl<D> StencilVertexArray<D>
+where
+    D: Device,
+{
     fn new(device: &D, stencil_program: &StencilProgram<D>) -> StencilVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
@@ -1135,26 +1377,37 @@ impl<D> StencilVertexArray<D> where D: Device {
         device.bind_vertex_array(&vertex_array);
         device.use_program(&stencil_program.program);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&position_attr,
-                                           3,
-                                           VertexAttrType::F32,
-                                           false,
-                                           4 * 4,
-                                           0,
-                                           0);
+        device.configure_float_vertex_attr(
+            &position_attr,
+            3,
+            VertexAttrType::F32,
+            false,
+            4 * 4,
+            0,
+            0,
+        );
 
-        StencilVertexArray { vertex_array, vertex_buffer }
+        StencilVertexArray {
+            vertex_array,
+            vertex_buffer,
+        }
     }
 }
 
-struct ReprojectionProgram<D> where D: Device {
+struct ReprojectionProgram<D>
+where
+    D: Device,
+{
     program: D::Program,
     old_transform_uniform: D::Uniform,
     new_transform_uniform: D::Uniform,
     texture_uniform: D::Uniform,
 }
 
-impl<D> ReprojectionProgram<D> where D: Device {
+impl<D> ReprojectionProgram<D>
+where
+    D: Device,
+{
     fn new(device: &D, resources: &dyn ResourceLoader) -> ReprojectionProgram<D> {
         let program = device.create_program(resources, "reproject");
         let old_transform_uniform = device.get_uniform(&program, "OldTransform");
@@ -1170,15 +1423,22 @@ impl<D> ReprojectionProgram<D> where D: Device {
     }
 }
 
-struct ReprojectionVertexArray<D> where D: Device {
+struct ReprojectionVertexArray<D>
+where
+    D: Device,
+{
     vertex_array: D::VertexArray,
 }
 
-impl<D> ReprojectionVertexArray<D> where D: Device {
-    fn new(device: &D,
-           reprojection_program: &ReprojectionProgram<D>,
-           quad_vertex_positions_buffer: &D::Buffer)
-           -> ReprojectionVertexArray<D> {
+impl<D> ReprojectionVertexArray<D>
+where
+    D: Device,
+{
+    fn new(
+        device: &D,
+        reprojection_program: &ReprojectionProgram<D>,
+        quad_vertex_positions_buffer: &D::Buffer,
+    ) -> ReprojectionVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
         let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position");
@@ -1193,12 +1453,21 @@ impl<D> ReprojectionVertexArray<D> where D: Device {
 }
 
 #[derive(Clone)]
-pub enum DestFramebuffer<D> where D: Device {
-    Default { viewport: RectI32, window_size: Point2DI32 },
+pub enum DestFramebuffer<D>
+where
+    D: Device,
+{
+    Default {
+        viewport: RectI32,
+        window_size: Point2DI32,
+    },
     Other(D::Framebuffer),
 }
 
-impl<D> DestFramebuffer<D> where D: Device {
+impl<D> DestFramebuffer<D>
+where
+    D: Device,
+{
     fn window_size(&self, device: &D) -> Point2DI32 {
         match *self {
             DestFramebuffer::Default { window_size, .. } => window_size,

@@ -38,12 +38,16 @@ pub(crate) struct Tiler<'a> {
 
 impl<'a> Tiler<'a> {
     #[allow(clippy::or_fun_call)]
-    pub(crate) fn new(builder: &'a SceneBuilder<'a>,
-                      outline: &'a Outline,
-                      view_box: RectF32,
-                      object_index: u16)
-                      -> Tiler<'a> {
-        let bounds = outline.bounds().intersection(view_box).unwrap_or(RectF32::default());
+    pub(crate) fn new(
+        builder: &'a SceneBuilder<'a>,
+        outline: &'a Outline,
+        view_box: RectF32,
+        object_index: u16,
+    ) -> Tiler<'a> {
+        let bounds = outline
+            .bounds()
+            .intersection(view_box)
+            .unwrap_or(RectF32::default());
         let built_object = BuiltObject::new(bounds);
 
         Tiler {
@@ -100,7 +104,9 @@ impl<'a> Tiler<'a> {
 
     fn pack_and_cull(&mut self) {
         for (tile_index, tile) in self.built_object.tiles.data.iter().enumerate() {
-            let tile_coords = self.built_object.local_tile_index_to_coords(tile_index as u32);
+            let tile_coords = self
+                .built_object
+                .local_tile_index_to_coords(tile_index as u32);
             if tile.is_solid() {
                 if tile.backdrop != 0 {
                     self.builder.z_buffer.update(tile_coords, self.object_index);
@@ -108,10 +114,12 @@ impl<'a> Tiler<'a> {
                 continue;
             }
 
-            let alpha_tile = AlphaTileBatchPrimitive::new(tile_coords,
-                                                          tile.backdrop,
-                                                          self.object_index,
-                                                          tile.alpha_tile_index as u16);
+            let alpha_tile = AlphaTileBatchPrimitive::new(
+                tile_coords,
+                tile.backdrop,
+                self.object_index,
+                tile.alpha_tile_index as u16,
+            );
             self.built_object.alpha_tiles.push(alpha_tile);
         }
     }
@@ -142,16 +150,21 @@ impl<'a> Tiler<'a> {
                     -1
                 };
 
-            debug!("tile Y {}({}): segment_x={} edge_winding={} current_tile_x={} \
-                    current_subtile_x={} current_winding={}",
-                   tile_y,
-                   tile_top,
-                   segment_x,
-                   edge_winding,
-                   current_tile_x,
-                   current_subtile_x,
-                   current_winding);
-            debug!("... segment={:#?} crossing={:?}", active_edge.segment, active_edge.crossing);
+            debug!(
+                "tile Y {}({}): segment_x={} edge_winding={} current_tile_x={} \
+                 current_subtile_x={} current_winding={}",
+                tile_y,
+                tile_top,
+                segment_x,
+                edge_winding,
+                current_tile_x,
+                current_subtile_x,
+                current_winding
+            );
+            debug!(
+                "... segment={:#?} crossing={:?}",
+                active_edge.segment, active_edge.crossing
+            );
 
             // FIXME(pcwalton): Remove this debug code!
             debug_assert!(segment_x >= last_segment_x);
@@ -164,21 +177,28 @@ impl<'a> Tiler<'a> {
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
                 let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
-                self.built_object.add_active_fill(self.builder,
-                                                  current_x,
-                                                  tile_right_x,
-                                                  current_winding,
-                                                  current_tile_coords);
+                self.built_object.add_active_fill(
+                    self.builder,
+                    current_x,
+                    tile_right_x,
+                    current_winding,
+                    current_tile_coords,
+                );
                 current_tile_x += 1;
                 current_subtile_x = 0.0;
             }
 
             // Move over to the correct tile, filling in as we go.
             while current_tile_x < segment_tile_x {
-                debug!("... emitting backdrop {} @ tile {}", current_winding, current_tile_x);
+                debug!(
+                    "... emitting backdrop {} @ tile {}",
+                    current_winding, current_tile_x
+                );
                 let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
-                if let Some(tile_index) = self.built_object
-                                              .tile_coords_to_local_index(current_tile_coords) {
+                if let Some(tile_index) = self
+                    .built_object
+                    .tile_coords_to_local_index(current_tile_coords)
+                {
                     // FIXME(pcwalton): Handle winding overflow.
                     self.built_object.tiles.data[tile_index as usize].backdrop =
                         current_winding as i8;
@@ -196,11 +216,13 @@ impl<'a> Tiler<'a> {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
-                self.built_object.add_active_fill(self.builder,
-                                                  current_x,
-                                                  segment_x,
-                                                  current_winding,
-                                                  current_tile_coords);
+                self.built_object.add_active_fill(
+                    self.builder,
+                    current_x,
+                    segment_x,
+                    current_winding,
+                    current_tile_coords,
+                );
                 current_subtile_x = segment_subtile_x;
             }
 
@@ -229,15 +251,17 @@ impl<'a> Tiler<'a> {
         let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point());
         let next_endpoint_index = contour.next_endpoint_index_of(point_index.point());
 
-        debug!("adding new active edge, tile_y={} point_index={} prev={} next={} pos={:?} \
-                prevpos={:?} nextpos={:?}",
-               tile_y,
-               point_index.point(),
-               prev_endpoint_index,
-               next_endpoint_index,
-               contour.position_of(point_index.point()),
-               contour.position_of(prev_endpoint_index),
-               contour.position_of(next_endpoint_index));
+        debug!(
+            "adding new active edge, tile_y={} point_index={} prev={} next={} pos={:?} \
+             prevpos={:?} nextpos={:?}",
+            tile_y,
+            point_index.point(),
+            prev_endpoint_index,
+            next_endpoint_index,
+            contour.position_of(point_index.point()),
+            contour.position_of(prev_endpoint_index),
+            contour.position_of(next_endpoint_index)
+        );
 
         if contour.point_is_logically_above(point_index.point(), prev_endpoint_index) {
             debug!("... adding prev endpoint");
@@ -260,7 +284,11 @@ impl<'a> Tiler<'a> {
         }
 
         if contour.point_is_logically_above(point_index.point(), next_endpoint_index) {
-            debug!("... adding next endpoint {} -> {}", point_index.point(), next_endpoint_index);
+            debug!(
+                "... adding next endpoint {} -> {}",
+                point_index.point(),
+                next_endpoint_index
+            );
 
             process_active_segment(
                 contour,
@@ -311,9 +339,12 @@ impl<'a> Tiler<'a> {
 }
 
 pub fn round_rect_out_to_tile_bounds(rect: RectF32) -> RectI32 {
-    rect.scale_xy(Point2DF32::new(1.0 / TILE_WIDTH as f32, 1.0 / TILE_HEIGHT as f32))
-        .round_out()
-        .to_i32()
+    rect.scale_xy(Point2DF32::new(
+        1.0 / TILE_WIDTH as f32,
+        1.0 / TILE_HEIGHT as f32,
+    ))
+    .round_out()
+    .to_i32()
 }
 
 fn process_active_segment(
@@ -378,20 +409,21 @@ impl ActiveEdge {
 
     fn process(&mut self, builder: &SceneBuilder, built_object: &mut BuiltObject, tile_y: i32) {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
-        debug!("process_active_edge({:#?}, tile_y={}({}))", self, tile_y, tile_bottom);
+        debug!(
+            "process_active_edge({:#?}, tile_y={}({}))",
+            self, tile_y, tile_bottom
+        );
 
         let mut segment = self.segment;
         let winding = segment.baseline.y_winding();
 
         if segment.is_line() {
             let line_segment = segment.as_line_segment();
-            self.segment = match self.process_line_segment(&line_segment,
-                                                           builder,
-                                                           built_object,
-                                                           tile_y) {
-                Some(lower_part) => Segment::line(&lower_part),
-                None => Segment::none(),
-            };
+            self.segment =
+                match self.process_line_segment(&line_segment, builder, built_object, tile_y) {
+                    Some(lower_part) => Segment::line(&lower_part),
+                    None => Segment::none(),
+                };
             return;
         }
 
@@ -405,8 +437,10 @@ impl ActiveEdge {
             let first_line_segment =
                 LineSegmentF32::new(&self.crossing, &segment.baseline.upper_point())
                     .orient(winding);
-            if self.process_line_segment(&first_line_segment, builder, built_object, tile_y)
-                   .is_some() {
+            if self
+                .process_line_segment(&first_line_segment, builder, built_object, tile_y)
+                .is_some()
+            {
                 return;
             }
         }
@@ -417,7 +451,10 @@ impl ActiveEdge {
             let mut before_segment = oriented_segment;
             let mut after_segment = None;
 
-            while !before_segment.as_cubic_segment().is_flat(FLATTENING_TOLERANCE) {
+            while !before_segment
+                .as_cubic_segment()
+                .is_flat(FLATTENING_TOLERANCE)
+            {
                 let next_t = 0.5 * split_t;
                 let (before, after) = oriented_segment.as_cubic_segment().split(next_t);
                 before_segment = before;
@@ -425,14 +462,11 @@ impl ActiveEdge {
                 split_t = next_t;
             }
 
-            debug!("... tile_y={} winding={} segment={:?} t={} before_segment={:?}
+            debug!(
+                "... tile_y={} winding={} segment={:?} t={} before_segment={:?}
                     after_segment={:?}",
-                   tile_y,
-                   winding,
-                   segment,
-                   split_t,
-                   before_segment,
-                   after_segment);
+                tile_y, winding, segment, split_t, before_segment, after_segment
+            );
 
             let line = before_segment.baseline.orient(winding);
             match self.process_line_segment(&line, builder, built_object, tile_y) {
@@ -461,10 +495,10 @@ impl ActiveEdge {
         tile_y: i32,
     ) -> Option<LineSegmentF32> {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
-        debug!("process_line_segment({:?}, tile_y={}) tile_bottom={}",
-               line_segment,
-               tile_y,
-               tile_bottom);
+        debug!(
+            "process_line_segment({:?}, tile_y={}) tile_bottom={}",
+            line_segment, tile_y, tile_bottom
+        );
 
         if line_segment.max_y() <= tile_bottom {
             built_object.generate_fill_primitives_for_line(builder, *line_segment, tile_y);
