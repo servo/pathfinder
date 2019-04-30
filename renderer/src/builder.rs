@@ -10,6 +10,7 @@
 
 //! Packs data onto the GPU.
 
+use crate::concurrent::executor::Executor;
 use crate::gpu_data::{AlphaTileBatchPrimitive, RenderCommand};
 use crate::scene::Scene;
 use crate::tiles::Tiler;
@@ -19,7 +20,6 @@ use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::sync::atomic::AtomicUsize;
 use std::u16;
 
@@ -53,39 +53,12 @@ impl<'a> SceneBuilder<'a> {
         }
     }
 
-    pub fn build_sequentially(&mut self) {
+    pub fn build<E>(&mut self, executor: &E) where E: Executor {
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let object_count = self.scene.objects.len();
-        let alpha_tiles: Vec<_> = (0..object_count)
-            .into_iter()
-            .flat_map(|object_index| {
-                self.build_object(
-                    object_index,
-                    effective_view_box,
-                    &self.built_options,
-                    &self.scene,
-                )
-            })
-            .collect();
-
-        self.finish_building(alpha_tiles)
-    }
-
-    pub fn build_in_parallel(&mut self) {
-        let effective_view_box = self.scene.effective_view_box(self.built_options);
-        let object_count = self.scene.objects.len();
-        let alpha_tiles: Vec<_> = (0..object_count)
-            .into_par_iter()
-            .flat_map(|object_index| {
-                self.build_object(
-                    object_index,
-                    effective_view_box,
-                    &self.built_options,
-                    &self.scene,
-                )
-            })
-            .collect();
-
+        let alpha_tiles = executor.flatten_into_vector(object_count, |object_index| {
+            self.build_object(object_index, effective_view_box, &self.built_options, &self.scene)
+        });
         self.finish_building(alpha_tiles)
     }
 

@@ -13,6 +13,7 @@
 #[macro_use]
 extern crate log;
 
+use crate::concurrent::DemoExecutor;
 use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
 use crate::ui::{DemoUI, UIAction};
 use crate::window::{Event, Keycode, OcularTransform, SVGPath, View, Window, WindowSize};
@@ -34,7 +35,6 @@ use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_
 use pathfinder_renderer::scene::{Scene, SceneDescriptor};
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
-use rayon::ThreadPoolBuilder;
 use std::f32::consts::FRAC_PI_4;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::fs::File;
@@ -105,13 +105,11 @@ pub const GRIDLINE_COUNT: u8 = 10;
 
 pub mod window;
 
+mod concurrent;
 mod device;
 mod ui;
 
-pub struct DemoApp<W>
-where
-    W: Window,
-{
+pub struct DemoApp<W> where W: Window {
     pub window: W,
     pub should_exit: bool,
     pub options: Options,
@@ -143,23 +141,18 @@ where
     ground_line_vertex_array: GroundLineVertexArray<GLDevice>,
 }
 
-impl<W> DemoApp<W>
-where
-    W: Window,
-{
+impl<W> DemoApp<W> where W: Window {
     pub fn new(window: W, window_size: WindowSize, mut options: Options) -> DemoApp<W> {
         let expire_message_event_id = window.create_user_event_id();
 
         let device = GLDevice::new(window.gl_version(), window.gl_default_framebuffer());
         let resources = window.resource_loader();
 
+        // Read command line options.
         options.command_line_overrides();
 
-        // Set up Rayon.
-        let mut thread_pool_builder = ThreadPoolBuilder::new();
-        thread_pool_builder = options.adjust_thread_pool_settings(thread_pool_builder);
-        thread_pool_builder = window.adjust_thread_pool_settings(thread_pool_builder);
-        thread_pool_builder.build_global().unwrap();
+        // Set up the executor.
+        let executor = DemoExecutor::new(options.jobs);
 
         let built_svg = load_scene(resources, &options.input_path);
         let message = get_svg_building_message(&built_svg);
@@ -173,7 +166,7 @@ where
         };
 
         let renderer = Renderer::new(device, resources, dest_framebuffer);
-        let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, options.clone());
+        let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, executor);
         scene_thread_proxy.set_drawable_size(viewport.size());
 
         let camera = Camera::new(options.mode, scene_view_box, viewport.size());
@@ -931,11 +924,11 @@ struct SceneThreadProxy {
 }
 
 impl SceneThreadProxy {
-    fn new(scene: Scene, options: Options) -> SceneThreadProxy {
+    fn new(scene: Scene, executor: DemoExecutor) -> SceneThreadProxy {
         let (main_to_scene_sender, main_to_scene_receiver) = mpsc::channel();
         let (scene_to_main_sender, scene_to_main_receiver) =
             mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
-        SceneThread::new(scene, scene_to_main_sender, main_to_scene_receiver, options);
+        SceneThread::new(executor, scene, scene_to_main_sender, main_to_scene_receiver);
         SceneThreadProxy {
             sender: main_to_scene_sender,
             receiver: scene_to_main_receiver,
@@ -959,28 +952,20 @@ impl SceneThreadProxy {
 }
 
 struct SceneThread {
+    executor: DemoExecutor,
     scene: Scene,
     sender: SyncSender<SceneToMainMsg>,
     receiver: Receiver<MainToSceneMsg>,
-    options: Options,
 }
 
 impl SceneThread {
     fn new(
+        executor: DemoExecutor,
         scene: Scene,
         sender: SyncSender<SceneToMainMsg>,
         receiver: Receiver<MainToSceneMsg>,
-        options: Options,
     ) {
-        thread::spawn(move || {
-            (SceneThread {
-                scene,
-                sender,
-                receiver,
-                options,
-            })
-            .run()
-        });
+        thread::spawn(move || (SceneThread { executor, scene, sender, receiver }).run());
     }
 
     fn run(mut self) {
@@ -994,29 +979,64 @@ impl SceneThread {
                     self.scene.view_box =
                         RectF32::new(Point2DF32::default(), view_box_size.to_f32());
                 }
+
                 MainToSceneMsg::SetDrawableSize(size) => {
                     self.scene.view_box = RectF32::new(Point2DF32::default(), size.to_f32());
                 }
+
                 MainToSceneMsg::Build(build_options) => {
                     self.sender
                         .send(SceneToMainMsg::BeginFrame {
                             transform: build_options.render_transform.clone(),
                         })
                         .unwrap();
+
                     let start_time = Instant::now();
-                    build_scene(
-                        &self.scene,
-                        &build_options,
-                        self.options.jobs,
-                        &mut self.sender,
-                    );
+                    self.build_scene(build_options);
                     let tile_time = Instant::now() - start_time;
-                    self.sender
-                        .send(SceneToMainMsg::EndFrame { tile_time })
-                        .unwrap();
+
+                    self.sender.send(SceneToMainMsg::EndFrame { tile_time }).unwrap();
                 }
             }
         }
+    }
+
+    fn build_scene(&mut self, build_options: BuildOptions) {
+        let render_options = RenderOptions {
+            transform: build_options.render_transform.clone(),
+            dilation: match build_options.stem_darkening_font_size {
+                None => Point2DF32::default(),
+                Some(font_size) => {
+                    let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
+                    Point2DF32::new(x, y).scale(font_size)
+                }
+            },
+            subpixel_aa_enabled: build_options.subpixel_aa_enabled,
+        };
+
+        let built_options = render_options.prepare(self.scene.bounds);
+        self.sender.send(SceneToMainMsg::BeginRenderScene(
+            self.scene.build_descriptor(&built_options),
+        ))
+        .unwrap();
+
+        let inner_sink = AssertUnwindSafe(self.sender.clone());
+        let inner_scene = AssertUnwindSafe(&self.scene);
+        let inner_executor = AssertUnwindSafe(&self.executor);
+        let result = panic::catch_unwind(move || {
+            let sink = (*inner_sink).clone();
+            let listener =
+                Box::new(move |command| sink.send(SceneToMainMsg::Execute(command)).unwrap());
+            SceneBuilder::new(*inner_scene, &built_options, listener).build(*inner_executor)
+        });
+
+        if result.is_err() {
+            error!("Scene building crashed! Dumping scene:");
+            println!("{:?}", self.scene);
+            process::exit(1);
+        }
+
+        self.sender.send(SceneToMainMsg::EndRenderScene).unwrap();
     }
 }
 
@@ -1056,52 +1076,6 @@ impl Debug for SceneToMainMsg {
         };
         ident.fmt(formatter)
     }
-}
-
-fn build_scene(
-    scene: &Scene,
-    build_options: &BuildOptions,
-    jobs: Option<usize>,
-    sink: &mut SyncSender<SceneToMainMsg>,
-) {
-    let render_options = RenderOptions {
-        transform: build_options.render_transform.clone(),
-        dilation: match build_options.stem_darkening_font_size {
-            None => Point2DF32::default(),
-            Some(font_size) => {
-                let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
-                Point2DF32::new(x, y).scale(font_size)
-            }
-        },
-        subpixel_aa_enabled: build_options.subpixel_aa_enabled,
-    };
-
-    let built_options = render_options.prepare(scene.bounds);
-    sink.send(SceneToMainMsg::BeginRenderScene(
-        scene.build_descriptor(&built_options),
-    ))
-    .unwrap();
-
-    let inner_sink = AssertUnwindSafe(sink.clone());
-    let result = panic::catch_unwind(move || {
-        let sink = (*inner_sink).clone();
-        let listener =
-            Box::new(move |command| sink.send(SceneToMainMsg::Execute(command)).unwrap());
-
-        let mut scene_builder = SceneBuilder::new(scene, &built_options, listener);
-        match jobs {
-            Some(1) => scene_builder.build_sequentially(),
-            _ => scene_builder.build_in_parallel(),
-        }
-    });
-
-    if result.is_err() {
-        error!("Scene building crashed! Dumping scene:");
-        println!("{:?}", scene);
-        process::exit(1);
-    }
-
-    sink.send(SceneToMainMsg::EndRenderScene).unwrap();
 }
 
 #[derive(Clone)]
@@ -1204,16 +1178,6 @@ impl Options {
         if let Some(path) = matches.value_of("INPUT") {
             self.input_path = SVGPath::Path(PathBuf::from(path));
         };
-    }
-
-    fn adjust_thread_pool_settings(
-        &self,
-        mut thread_pool_builder: ThreadPoolBuilder,
-    ) -> ThreadPoolBuilder {
-        if let Some(jobs) = self.jobs {
-            thread_pool_builder = thread_pool_builder.num_threads(jobs);
-        }
-        thread_pool_builder
     }
 }
 

@@ -13,8 +13,7 @@
 use jemallocator;
 use nfd::Response;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
-use pathfinder_demo::DemoApp;
-use pathfinder_demo::Options;
+use pathfinder_demo::{DemoApp, Options};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gl::GLVersion;

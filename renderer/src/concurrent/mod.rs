@@ -1,4 +1,4 @@
-// pathfinder/renderer/src/lib.rs
+// pathfinder/renderer/src/concurrent/mod.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,19 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-//! The CPU portion of Pathfinder's renderer.
+//! Threading and concurrency support.
 
-#[macro_use]
-extern crate log;
-
-pub mod builder;
-pub mod concurrent;
-pub mod gpu;
-pub mod gpu_data;
-pub mod post;
-pub mod scene;
-pub mod tiles;
-
-mod sorted_vector;
-mod tile_map;
-mod z_buffer;
+pub mod executor;
+pub mod rayon;

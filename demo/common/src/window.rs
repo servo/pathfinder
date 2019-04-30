@@ -24,6 +24,7 @@ pub trait Window {
     fn gl_default_framebuffer(&self) -> GLuint {
         0
     }
+
     fn viewport(&self, view: View) -> RectI32;
     fn make_current(&mut self, view: View);
     fn present(&mut self);
@@ -33,12 +34,7 @@ pub trait Window {
     fn present_open_svg_dialog(&mut self);
     fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
 
-    fn adjust_thread_pool_settings(
-        &self,
-        thread_pool_builder: ThreadPoolBuilder,
-    ) -> ThreadPoolBuilder {
-        thread_pool_builder
-    }
+    fn adjust_thread_pool_settings(&self, _: &mut ThreadPoolBuilder) {}
 }
 
 pub enum Event {
