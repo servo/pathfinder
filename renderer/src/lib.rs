@@ -13,14 +13,15 @@
 #[macro_use]
 extern crate log;
 
-pub mod builder;
 pub mod concurrent;
 pub mod gpu;
 pub mod gpu_data;
+pub mod options;
 pub mod post;
 pub mod scene;
-pub mod tiles;
 
+mod builder;
 mod sorted_vector;
 mod tile_map;
+mod tiles;
 mod z_buffer;

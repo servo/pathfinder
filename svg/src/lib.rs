@@ -70,7 +70,7 @@ impl BuiltSVG {
         let root = &tree.root();
         match *root.borrow() {
             NodeKind::Svg(ref svg) => {
-                built_svg.scene.view_box = usvg_rect_to_euclid_rect(&svg.view_box.rect);
+                built_svg.scene.set_view_box(usvg_rect_to_euclid_rect(&svg.view_box.rect));
                 for kid in root.children() {
                     built_svg.process_node(&kid, &global_transform);
                 }
@@ -122,8 +122,8 @@ impl BuiltSVG {
                     let path = Transform2DF32PathIter::new(path, &transform);
                     let outline = Outline::from_segments(path);
 
-                    self.scene.bounds = self.scene.bounds.union_rect(outline.bounds());
-                    self.scene.objects.push(PathObject::new(
+                    self.scene.set_bounds(self.scene.bounds().union_rect(outline.bounds()));
+                    self.scene.push_object(PathObject::new(
                         outline,
                         style,
                         node.id().to_string(),
@@ -146,8 +146,8 @@ impl BuiltSVG {
                     let mut outline = stroke_to_fill.outline;
                     outline.transform(&transform);
 
-                    self.scene.bounds = self.scene.bounds.union_rect(outline.bounds());
-                    self.scene.objects.push(PathObject::new(
+                    self.scene.set_bounds(self.scene.bounds().union_rect(outline.bounds()));
+                    self.scene.push_object(PathObject::new(
                         outline,
                         style,
                         node.id().to_string(),

@@ -12,3 +12,4 @@
 
 pub mod executor;
 pub mod rayon;
+pub mod scene_proxy;

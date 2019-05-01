@@ -10,9 +10,11 @@
 
 //! A set of paths to be rendered.
 
-use crate::builder::{PreparedRenderOptions, PreparedRenderTransform};
+use crate::builder::SceneBuilder;
+use crate::concurrent::executor::Executor;
+use crate::options::{PreparedRenderOptions, PreparedRenderTransform, RenderCommandListener};
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
+use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
@@ -21,11 +23,11 @@ use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone)]
 pub struct Scene {
-    pub objects: Vec<PathObject>,
-    pub paints: Vec<Paint>,
-    pub paint_cache: HashMap<Paint, PaintId>,
-    pub bounds: RectF32,
-    pub view_box: RectF32,
+    pub(crate) objects: Vec<PathObject>,
+    paints: Vec<Paint>,
+    paint_cache: HashMap<Paint, PaintId>,
+    bounds: RectF32,
+    view_box: RectF32,
 }
 
 impl Scene {
@@ -40,6 +42,10 @@ impl Scene {
         }
     }
 
+    pub fn push_object(&mut self, object: PathObject) {
+        self.objects.push(object);
+    }
+
     #[allow(clippy::trivially_copy_pass_by_ref)]
     pub fn push_paint(&mut self, paint: &Paint) -> PaintId {
         if let Some(paint_id) = self.paint_cache.get(paint) {
@@ -52,15 +58,32 @@ impl Scene {
         paint_id
     }
 
-    pub fn build_descriptor(&self, built_options: &PreparedRenderOptions) -> SceneDescriptor {
-        SceneDescriptor {
-            shaders: self.build_shaders(),
-            bounding_quad: built_options.bounding_quad(),
-            object_count: self.objects.len(),
-        }
+    #[inline]
+    pub fn object_count(&self) -> usize {
+        self.objects.len()
     }
 
-    fn build_shaders(&self) -> Vec<ObjectShader> {
+    #[inline]
+    pub fn bounds(&self) -> RectF32 {
+        self.bounds
+    }
+
+    #[inline]
+    pub fn set_bounds(&mut self, new_bounds: RectF32) {
+        self.bounds = new_bounds;
+    }
+
+    #[inline]
+    pub fn view_box(&self) -> RectF32 {
+        self.view_box
+    }
+
+    #[inline]
+    pub fn set_view_box(&mut self, new_view_box: RectF32) {
+        self.view_box = new_view_box;
+    }
+
+    pub fn build_shaders(&self) -> Vec<ObjectShader> {
         self.objects
             .iter()
             .map(|object| {
@@ -149,6 +172,15 @@ impl Scene {
             self.view_box
         }
     }
+
+    #[inline]
+    pub fn build<E>(&self,
+                    built_options: &PreparedRenderOptions,
+                    listener: Box<dyn RenderCommandListener>,
+                    executor: &E)
+                    where E: Executor {
+        SceneBuilder::new(self, built_options, listener).build(executor)
+    }
 }
 
 impl Debug for Scene {
@@ -179,13 +211,6 @@ impl Debug for Scene {
 }
 
 #[derive(Clone, Debug)]
-pub struct SceneDescriptor {
-    pub shaders: Vec<ObjectShader>,
-    pub bounding_quad: [Point3DF32; 4],
-    pub object_count: usize,
-}
-
-#[derive(Clone, Debug)]
 pub struct PathObject {
     outline: Outline,
     paint: PaintId,
@@ -201,7 +226,8 @@ pub enum PathObjectKind {
 
 impl PathObject {
     #[inline]
-    pub fn new(outline: Outline, paint: PaintId, name: String, kind: PathObjectKind) -> PathObject {
+    pub fn new(outline: Outline, paint: PaintId, name: String, kind: PathObjectKind)
+               -> PathObject {
         PathObject {
             outline,
             paint,

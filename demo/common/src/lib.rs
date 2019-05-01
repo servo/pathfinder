@@ -28,23 +28,20 @@ use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderState};
 use pathfinder_gpu::{StencilFunc, StencilState, TextureFormat, UniformData};
-use pathfinder_renderer::builder::{RenderOptions, RenderTransform, SceneBuilder};
+use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
 use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode, RenderStats, Renderer};
 use pathfinder_renderer::gpu_data::RenderCommand;
+use pathfinder_renderer::options::{RenderOptions, RenderTransform};
 use pathfinder_renderer::post::{DEFRINGING_KERNEL_CORE_GRAPHICS, STEM_DARKENING_FACTORS};
-use pathfinder_renderer::scene::{Scene, SceneDescriptor};
+use pathfinder_renderer::scene::Scene;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
 use std::f32::consts::FRAC_PI_4;
-use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::fs::File;
 use std::io::Read;
-use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
-use std::process;
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use usvg::{Options as UsvgOptions, Tree};
 
 static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
@@ -96,8 +93,6 @@ const APPROX_FONT_SIZE: f32 = 16.0;
 
 const MESSAGE_TIMEOUT_SECS: u64 = 5;
 
-const MAX_MESSAGES_IN_FLIGHT: usize = 256;
-
 // Half of the eye separation distance.
 const DEFAULT_EYE_OFFSET: f32 = 0.025;
 
@@ -116,8 +111,9 @@ pub struct DemoApp<W> where W: Window {
 
     window_size: WindowSize,
 
-    scene_view_box: RectF32,
-    monochrome_scene_color: Option<ColorU>,
+    scene_metadata: SceneMetadata,
+    render_transform: Option<RenderTransform>,
+    render_command_stream: Option<RenderCommandStream>,
 
     camera: Camera,
     frame_counter: u32,
@@ -129,9 +125,10 @@ pub struct DemoApp<W> where W: Window {
     last_mouse_position: Point2DI32,
 
     current_frame: Option<Frame>,
+    build_time: Option<Duration>,
 
     ui: DemoUI<GLDevice>,
-    scene_thread_proxy: SceneThreadProxy,
+    scene_proxy: SceneProxy,
     renderer: Renderer<GLDevice>,
 
     scene_framebuffer: Option<<GLDevice as Device>::Framebuffer>,
@@ -154,10 +151,8 @@ impl<W> DemoApp<W> where W: Window {
         // Set up the executor.
         let executor = DemoExecutor::new(options.jobs);
 
-        let built_svg = load_scene(resources, &options.input_path);
+        let mut built_svg = load_scene(resources, &options.input_path);
         let message = get_svg_building_message(&built_svg);
-        let scene_view_box = built_svg.scene.view_box;
-        let monochrome_scene_color = built_svg.scene.monochrome_color();
 
         let viewport = window.viewport(options.mode.view(0));
         let dest_framebuffer = DestFramebuffer::Default {
@@ -166,10 +161,11 @@ impl<W> DemoApp<W> where W: Window {
         };
 
         let renderer = Renderer::new(device, resources, dest_framebuffer);
-        let scene_thread_proxy = SceneThreadProxy::new(built_svg.scene, executor);
-        scene_thread_proxy.set_drawable_size(viewport.size());
+        let scene_metadata = SceneMetadata::new_clipping_view_box(&mut built_svg.scene,
+                                                                  viewport.size());
+        let camera = Camera::new(options.mode, scene_metadata.view_box, viewport.size());
 
-        let camera = Camera::new(options.mode, scene_view_box, viewport.size());
+        let scene_proxy = SceneProxy::new(built_svg.scene, executor);
 
         let ground_program = GroundProgram::new(&renderer.device, resources);
         let ground_solid_vertex_array = GroundSolidVertexArray::new(
@@ -196,8 +192,9 @@ impl<W> DemoApp<W> where W: Window {
 
             window_size,
 
-            scene_view_box,
-            monochrome_scene_color,
+            scene_metadata,
+            render_transform: None,
+            render_command_stream: None,
 
             camera,
             frame_counter: 0,
@@ -209,9 +206,10 @@ impl<W> DemoApp<W> where W: Window {
             last_mouse_position: Point2DI32::default(),
 
             current_frame: None,
+            build_time: None,
 
             ui,
-            scene_thread_proxy,
+            scene_proxy,
             renderer,
 
             scene_framebuffer: None,
@@ -232,13 +230,10 @@ impl<W> DemoApp<W> where W: Window {
         // Update the scene.
         self.build_scene();
 
-        // Get the render message, and determine how many scenes it contains.
-        let transform = match self.scene_thread_proxy.receiver.recv().unwrap() {
-            SceneToMainMsg::BeginFrame { transform } => transform,
-            msg => panic!("Expected BeginFrame message, found {:?}!", msg),
-        };
-
         // Save the frame.
+        //
+        // FIXME(pcwalton): This is super ugly.
+        let transform = self.render_transform.clone().unwrap();
         self.current_frame = Some(Frame::new(transform, ui_events));
 
         // Initialize and set the appropriate framebuffer.
@@ -299,7 +294,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn build_scene(&mut self) {
-        let render_transform = match self.camera {
+        self.render_transform = match self.camera {
             Camera::ThreeD {
                 ref scene_transform,
                 ref mut modelview_transform,
@@ -313,23 +308,25 @@ impl<W> DemoApp<W> where W: Window {
                     .perspective
                     .post_mul(&scene_transform.modelview_to_eye)
                     .post_mul(&modelview_transform.to_transform());
-                RenderTransform::Perspective(perspective)
+                Some(RenderTransform::Perspective(perspective))
             }
-            Camera::TwoD(transform) => RenderTransform::Transform2D(transform),
+            Camera::TwoD(transform) => Some(RenderTransform::Transform2D(transform)),
         };
 
-        self.scene_thread_proxy
-            .sender
-            .send(MainToSceneMsg::Build(BuildOptions {
-                render_transform,
-                stem_darkening_font_size: if self.ui.stem_darkening_effect_enabled {
-                    Some(APPROX_FONT_SIZE * self.window_size.backing_scale_factor)
-                } else {
-                    None
-                },
-                subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
-            }))
-            .unwrap();
+        let render_options = RenderOptions {
+            transform: self.render_transform.clone().unwrap(),
+            dilation: if self.ui.stem_darkening_effect_enabled {
+                let font_size = APPROX_FONT_SIZE * self.window_size.backing_scale_factor;
+                let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
+                Point2DF32::new(x, y).scale(font_size)
+            } else {
+                Point2DF32::default()
+            },
+            subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
+        };
+
+        let built_options = render_options.prepare(self.scene_metadata.bounds);
+        self.render_command_stream = Some(self.scene_proxy.build_with_stream(built_options));
     }
 
     fn handle_events(&mut self, events: Vec<Event>) -> Vec<UIEvent> {
@@ -345,7 +342,8 @@ impl<W> DemoApp<W> where W: Window {
                 Event::WindowResized(new_size) => {
                     self.window_size = new_size;
                     let viewport = self.window.viewport(self.ui.mode.view(0));
-                    self.scene_thread_proxy.set_drawable_size(viewport.size());
+                    self.scene_proxy.set_view_box(RectF32::new(Point2DF32::default(),
+                                                               viewport.size().to_f32()));
                     self.renderer
                         .set_main_framebuffer_size(self.window_size.device_size());
                     self.dirty = true;
@@ -409,7 +407,7 @@ impl<W> DemoApp<W> where W: Window {
                         ref mut velocity, ..
                     } = self.camera
                     {
-                        let scale_factor = scale_factor_for_view_box(self.scene_view_box);
+                        let scale_factor = scale_factor_for_view_box(self.scene_metadata.view_box);
                         velocity.set_z(-CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
@@ -419,7 +417,7 @@ impl<W> DemoApp<W> where W: Window {
                         ref mut velocity, ..
                     } = self.camera
                     {
-                        let scale_factor = scale_factor_for_view_box(self.scene_view_box);
+                        let scale_factor = scale_factor_for_view_box(self.scene_metadata.view_box);
                         velocity.set_z(CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
@@ -429,7 +427,7 @@ impl<W> DemoApp<W> where W: Window {
                         ref mut velocity, ..
                     } = self.camera
                     {
-                        let scale_factor = scale_factor_for_view_box(self.scene_view_box);
+                        let scale_factor = scale_factor_for_view_box(self.scene_metadata.view_box);
                         velocity.set_x(-CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
@@ -439,7 +437,7 @@ impl<W> DemoApp<W> where W: Window {
                         ref mut velocity, ..
                     } = self.camera
                     {
-                        let scale_factor = scale_factor_for_view_box(self.scene_view_box);
+                        let scale_factor = scale_factor_for_view_box(self.scene_metadata.view_box);
                         velocity.set_x(CAMERA_VELOCITY / scale_factor);
                         self.dirty = true;
                     }
@@ -471,18 +469,23 @@ impl<W> DemoApp<W> where W: Window {
                         UIVisibility::All => UIVisibility::None,
                     }
                 }
+
                 Event::OpenSVG(ref svg_path) => {
-                    let built_svg = load_scene(self.window.resource_loader(), svg_path);
+                    let mut built_svg = load_scene(self.window.resource_loader(), svg_path);
                     self.ui.message = get_svg_building_message(&built_svg);
 
                     let viewport_size = self.window.viewport(self.ui.mode.view(0)).size();
-                    self.scene_view_box = built_svg.scene.view_box;
-                    self.monochrome_scene_color = built_svg.scene.monochrome_color();
-                    self.camera = Camera::new(self.ui.mode, self.scene_view_box, viewport_size);
-                    self.scene_thread_proxy
-                        .load_scene(built_svg.scene, viewport_size);
+                    self.scene_metadata =
+                        SceneMetadata::new_clipping_view_box(&mut built_svg.scene, viewport_size);
+                    self.camera = Camera::new(self.ui.mode,
+                                              self.scene_metadata.view_box,
+                                              viewport_size);
+
+                    self.scene_proxy.replace_scene(built_svg.scene);
+
                     self.dirty = true;
                 }
+
                 Event::User {
                     message_type: event_id,
                     message_data: expected_epoch,
@@ -574,8 +577,8 @@ impl<W> DemoApp<W> where W: Window {
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
 
         let quad_scale_transform = Transform3DF32::from_scale(
-            self.scene_view_box.size().x(),
-            self.scene_view_box.size().y(),
+            self.scene_metadata.view_box.size().x(),
+            self.scene_metadata.view_box.size().y(),
             1.0,
         );
 
@@ -618,11 +621,7 @@ impl<W> DemoApp<W> where W: Window {
                 .push(rendering_time);
         }
 
-        let tile_time = match self.scene_thread_proxy.receiver.recv().unwrap() {
-            SceneToMainMsg::EndFrame { tile_time } => tile_time,
-            _ => panic!("Expected `EndFrame`!"),
-        };
-
+        let build_time = self.build_time.unwrap();
         let mut frame = self.current_frame.take().unwrap();
 
         if self.pending_screenshot_path.is_some() {
@@ -645,7 +644,7 @@ impl<W> DemoApp<W> where W: Window {
             };
             self.renderer
                 .debug_ui
-                .add_sample(aggregate_stats, tile_time, total_rendering_time);
+                .add_sample(aggregate_stats, build_time, total_rendering_time);
         }
 
         if self.options.ui != UIVisibility::None {
@@ -668,7 +667,7 @@ impl<W> DemoApp<W> where W: Window {
             .last_mouse_position
             .to_f32()
             .scale(self.window_size.backing_scale_factor);
-        self.ui.show_text_effects = self.monochrome_scene_color.is_some();
+        self.ui.show_text_effects = self.scene_metadata.monochrome_color.is_some();
 
         let mut ui_action = UIAction::None;
         if self.options.ui == UIVisibility::All {
@@ -687,7 +686,7 @@ impl<W> DemoApp<W> where W: Window {
         // FIXME(pcwalton): This should really be an MVC setup.
         if self.camera.mode() != self.ui.mode {
             let viewport_size = self.window.viewport(self.ui.mode.view(0)).size();
-            self.camera = Camera::new(self.ui.mode, self.scene_view_box, viewport_size);
+            self.camera = Camera::new(self.ui.mode, self.scene_metadata.view_box, viewport_size);
         }
 
         for ui_event in frame.ui_events {
@@ -723,12 +722,12 @@ impl<W> DemoApp<W> where W: Window {
             return;
         }
 
-        let ground_scale = self.scene_view_box.max_x() * 2.0;
+        let ground_scale = self.scene_metadata.view_box.max_x() * 2.0;
 
         let mut base_transform = perspective.transform;
         base_transform = base_transform.post_mul(&Transform3DF32::from_translation(
-            -0.5 * self.scene_view_box.max_x(),
-            self.scene_view_box.max_y(),
+            -0.5 * self.scene_metadata.view_box.max_x(),
+            self.scene_metadata.view_box.max_y(),
             -0.5 * ground_scale,
         ));
 
@@ -803,12 +802,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn render_vector_scene(&mut self) {
-        let built_scene = match self.scene_thread_proxy.receiver.recv().unwrap() {
-            SceneToMainMsg::BeginRenderScene(built_scene) => built_scene,
-            _ => panic!("Expected `BeginRenderScene`!"),
-        };
-
-        match self.monochrome_scene_color {
+        match self.scene_metadata.monochrome_color {
             None => self.renderer.set_render_mode(RenderMode::Multicolor),
             Some(fg_color) => {
                 self.renderer.set_render_mode(RenderMode::Monochrome {
@@ -831,13 +825,14 @@ impl<W> DemoApp<W> where W: Window {
             self.renderer.enable_depth();
         }
 
-        self.renderer.begin_scene(&built_scene);
+        self.renderer.begin_scene();
 
-        loop {
-            match self.scene_thread_proxy.receiver.recv().unwrap() {
-                SceneToMainMsg::Execute(command) => self.renderer.render_command(&command),
-                SceneToMainMsg::EndRenderScene => break,
-                _ => panic!("Expected `Execute` or `EndRenderScene`!"),
+        // Issue render commands!
+        for command in self.render_command_stream.as_mut().unwrap() {
+            self.renderer.render_command(&command);
+
+            if let RenderCommand::Finish { build_time } = command {
+                self.build_time = Some(build_time);
             }
         }
 
@@ -915,166 +910,6 @@ impl<W> DemoApp<W> where W: Window {
             BackgroundColor::Dark => DARK_BG_COLOR,
             BackgroundColor::Transparent => TRANSPARENT_BG_COLOR,
         }
-    }
-}
-
-struct SceneThreadProxy {
-    sender: Sender<MainToSceneMsg>,
-    receiver: Receiver<SceneToMainMsg>,
-}
-
-impl SceneThreadProxy {
-    fn new(scene: Scene, executor: DemoExecutor) -> SceneThreadProxy {
-        let (main_to_scene_sender, main_to_scene_receiver) = mpsc::channel();
-        let (scene_to_main_sender, scene_to_main_receiver) =
-            mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
-        SceneThread::new(executor, scene, scene_to_main_sender, main_to_scene_receiver);
-        SceneThreadProxy {
-            sender: main_to_scene_sender,
-            receiver: scene_to_main_receiver,
-        }
-    }
-
-    fn load_scene(&self, scene: Scene, view_box_size: Point2DI32) {
-        self.sender
-            .send(MainToSceneMsg::LoadScene {
-                scene,
-                view_box_size,
-            })
-            .unwrap();
-    }
-
-    fn set_drawable_size(&self, drawable_size: Point2DI32) {
-        self.sender
-            .send(MainToSceneMsg::SetDrawableSize(drawable_size))
-            .unwrap();
-    }
-}
-
-struct SceneThread {
-    executor: DemoExecutor,
-    scene: Scene,
-    sender: SyncSender<SceneToMainMsg>,
-    receiver: Receiver<MainToSceneMsg>,
-}
-
-impl SceneThread {
-    fn new(
-        executor: DemoExecutor,
-        scene: Scene,
-        sender: SyncSender<SceneToMainMsg>,
-        receiver: Receiver<MainToSceneMsg>,
-    ) {
-        thread::spawn(move || (SceneThread { executor, scene, sender, receiver }).run());
-    }
-
-    fn run(mut self) {
-        while let Ok(msg) = self.receiver.recv() {
-            match msg {
-                MainToSceneMsg::LoadScene {
-                    scene,
-                    view_box_size,
-                } => {
-                    self.scene = scene;
-                    self.scene.view_box =
-                        RectF32::new(Point2DF32::default(), view_box_size.to_f32());
-                }
-
-                MainToSceneMsg::SetDrawableSize(size) => {
-                    self.scene.view_box = RectF32::new(Point2DF32::default(), size.to_f32());
-                }
-
-                MainToSceneMsg::Build(build_options) => {
-                    self.sender
-                        .send(SceneToMainMsg::BeginFrame {
-                            transform: build_options.render_transform.clone(),
-                        })
-                        .unwrap();
-
-                    let start_time = Instant::now();
-                    self.build_scene(build_options);
-                    let tile_time = Instant::now() - start_time;
-
-                    self.sender.send(SceneToMainMsg::EndFrame { tile_time }).unwrap();
-                }
-            }
-        }
-    }
-
-    fn build_scene(&mut self, build_options: BuildOptions) {
-        let render_options = RenderOptions {
-            transform: build_options.render_transform.clone(),
-            dilation: match build_options.stem_darkening_font_size {
-                None => Point2DF32::default(),
-                Some(font_size) => {
-                    let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
-                    Point2DF32::new(x, y).scale(font_size)
-                }
-            },
-            subpixel_aa_enabled: build_options.subpixel_aa_enabled,
-        };
-
-        let built_options = render_options.prepare(self.scene.bounds);
-        self.sender.send(SceneToMainMsg::BeginRenderScene(
-            self.scene.build_descriptor(&built_options),
-        ))
-        .unwrap();
-
-        let inner_sink = AssertUnwindSafe(self.sender.clone());
-        let inner_scene = AssertUnwindSafe(&self.scene);
-        let inner_executor = AssertUnwindSafe(&self.executor);
-        let result = panic::catch_unwind(move || {
-            let sink = (*inner_sink).clone();
-            let listener =
-                Box::new(move |command| sink.send(SceneToMainMsg::Execute(command)).unwrap());
-            SceneBuilder::new(*inner_scene, &built_options, listener).build(*inner_executor)
-        });
-
-        if result.is_err() {
-            error!("Scene building crashed! Dumping scene:");
-            println!("{:?}", self.scene);
-            process::exit(1);
-        }
-
-        self.sender.send(SceneToMainMsg::EndRenderScene).unwrap();
-    }
-}
-
-#[derive(Clone)]
-enum MainToSceneMsg {
-    LoadScene {
-        scene: Scene,
-        view_box_size: Point2DI32,
-    },
-    SetDrawableSize(Point2DI32),
-    Build(BuildOptions),
-}
-
-#[derive(Clone)]
-struct BuildOptions {
-    render_transform: RenderTransform,
-    stem_darkening_font_size: Option<f32>,
-    subpixel_aa_enabled: bool,
-}
-
-enum SceneToMainMsg {
-    BeginFrame { transform: RenderTransform },
-    EndFrame { tile_time: Duration },
-    BeginRenderScene(SceneDescriptor),
-    Execute(RenderCommand),
-    EndRenderScene,
-}
-
-impl Debug for SceneToMainMsg {
-    fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
-        let ident = match *self {
-            SceneToMainMsg::BeginFrame { .. } => "BeginFrame",
-            SceneToMainMsg::EndFrame { .. } => "EndFrame",
-            SceneToMainMsg::BeginRenderScene(..) => "BeginRenderScene",
-            SceneToMainMsg::Execute(..) => "Execute",
-            SceneToMainMsg::EndRenderScene => "EndRenderScene",
-        };
-        ident.fmt(formatter)
     }
 }
 
@@ -1437,5 +1272,22 @@ impl BackgroundColor {
             BackgroundColor::Dark => "Dark",
             BackgroundColor::Transparent => "Transparent",
         }
+    }
+}
+
+struct SceneMetadata {
+    view_box: RectF32,
+    bounds: RectF32,
+    monochrome_color: Option<ColorU>,
+}
+
+impl SceneMetadata {
+    // FIXME(pcwalton): The fact that this mutates the scene is really ugly!
+    // Can we simplify this?
+    fn new_clipping_view_box(scene: &mut Scene, viewport_size: Point2DI32) -> SceneMetadata {
+        let view_box = scene.view_box();
+        let monochrome_color = scene.monochrome_color();
+        scene.set_view_box(RectF32::new(Point2DF32::default(), viewport_size.to_f32()));
+        SceneMetadata { view_box, monochrome_color, bounds: scene.bounds() }
     }
 }

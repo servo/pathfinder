@@ -11,6 +11,8 @@
 //! Packed data ready to be sent to the GPU.
 
 use crate::builder::SceneBuilder;
+use crate::options::BoundingQuad;
+use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
@@ -20,6 +22,7 @@ use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 #[derive(Debug)]
 pub(crate) struct BuiltObject {
@@ -30,10 +33,13 @@ pub(crate) struct BuiltObject {
 }
 
 pub enum RenderCommand {
+    Start { object_count: usize, bounding_quad: BoundingQuad },
+    AddShaders(Vec<ObjectShader>),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
     AlphaTile(Vec<AlphaTileBatchPrimitive>),
     SolidTile(Vec<SolidTileBatchPrimitive>),
+    Finish { build_time: Duration },
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -319,10 +325,15 @@ impl AlphaTileBatchPrimitive {
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
+            RenderCommand::Start { .. } => write!(formatter, "Start"),
+            RenderCommand::AddShaders(ref shaders) => {
+                write!(formatter, "AddShaders(x{})", shaders.len())
+            }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),
             RenderCommand::AlphaTile(ref tiles) => write!(formatter, "AlphaTile(x{})", tiles.len()),
             RenderCommand::SolidTile(ref tiles) => write!(formatter, "SolidTile(x{})", tiles.len()),
+            RenderCommand::Finish { .. } => write!(formatter, "Finish"),
         }
     }
 }

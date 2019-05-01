@@ -12,7 +12,7 @@ use crate::gpu::debug::DebugUI;
 use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
-use crate::scene::{ObjectShader, SceneDescriptor};
+use crate::scene::ObjectShader;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
@@ -221,7 +221,7 @@ where
         }
     }
 
-    pub fn begin_scene(&mut self, scene: &SceneDescriptor) {
+    pub fn begin_scene(&mut self) {
         self.init_postprocessing_framebuffer();
 
         let timer_query = self
@@ -231,22 +231,19 @@ where
         self.device.begin_timer_query(&timer_query);
         self.current_timer_query = Some(timer_query);
 
-        self.upload_shaders(&scene.shaders);
-
-        if self.use_depth {
-            self.draw_stencil(&scene.bounding_quad);
-        }
-
         self.mask_framebuffer_cleared = false;
-
-        self.stats = RenderStats {
-            object_count: scene.object_count,
-            ..RenderStats::default()
-        };
+        self.stats = RenderStats::default();
     }
 
     pub fn render_command(&mut self, command: &RenderCommand) {
         match *command {
+            RenderCommand::Start { bounding_quad, object_count } => {
+                if self.use_depth {
+                    self.draw_stencil(&bounding_quad);
+                }
+                self.stats.object_count = object_count;
+            }
+            RenderCommand::AddShaders(ref shaders) => self.upload_shaders(shaders),
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
             RenderCommand::FlushFills => self.draw_buffered_fills(),
             RenderCommand::SolidTile(ref solid_tiles) => {
@@ -261,6 +258,7 @@ where
                 self.upload_alpha_tiles(alpha_tiles);
                 self.draw_alpha_tiles(count as u32);
             }
+            RenderCommand::Finish { .. } => {}
         }
     }
 
