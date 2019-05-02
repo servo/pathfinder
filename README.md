@@ -53,6 +53,9 @@ Running the demo is as simple as:
     $ cd demo/native
     $ RUSTFLAGS="-C target-cpu=native" cargo run --release
 
+The SDL 2 library requires some additional manual installation steps. Follow the
+[`rust-sdl2` installation instructions](https://github.com/Rust-SDL2/rust-sdl2#sdl20-development-libraries) to make sure the libraries are installed.
+
 On macOS, it is recommended that you force the use of the integrated GPU, as issues with Apple's
 OpenGL drivers may limit performance on discrete GPUs. You can use
 [gfxCardStatus.app](https://gfx.io/) for this.
