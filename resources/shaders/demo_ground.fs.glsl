@@ -12,10 +12,14 @@
 
 precision highp float;
 
-uniform vec4 uColor;
+uniform vec4 uGroundColor;
+uniform vec4 uGridlineColor;
+
+in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = uColor;
+    vec2 texCoordPx = fract(vTexCoord) / fwidth(vTexCoord);
+    oFragColor = any(lessThanEqual(texCoordPx, vec2(1.0))) ? uGridlineColor : uGroundColor;
 }

@@ -10,9 +10,8 @@
 
 //! GPU rendering code specifically for the demo.
 
-use crate::GRIDLINE_COUNT;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, VertexAttrType};
+use pathfinder_gpu::{BufferTarget, Device, VertexAttrType};
 
 pub struct GroundProgram<D>
 where
@@ -20,7 +19,9 @@ where
 {
     pub program: D::Program,
     pub transform_uniform: D::Uniform,
-    pub color_uniform: D::Uniform,
+    pub gridline_count_uniform: D::Uniform,
+    pub ground_color_uniform: D::Uniform,
+    pub gridline_color_uniform: D::Uniform,
 }
 
 impl<D> GroundProgram<D>
@@ -30,23 +31,27 @@ where
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> GroundProgram<D> {
         let program = device.create_program(resources, "demo_ground");
         let transform_uniform = device.get_uniform(&program, "Transform");
-        let color_uniform = device.get_uniform(&program, "Color");
+        let gridline_count_uniform = device.get_uniform(&program, "GridlineCount");
+        let ground_color_uniform = device.get_uniform(&program, "GroundColor");
+        let gridline_color_uniform = device.get_uniform(&program, "GridlineColor");
         GroundProgram {
             program,
             transform_uniform,
-            color_uniform,
+            gridline_count_uniform,
+            ground_color_uniform,
+            gridline_color_uniform,
         }
     }
 }
 
-pub struct GroundSolidVertexArray<D>
+pub struct GroundVertexArray<D>
 where
     D: Device,
 {
     pub vertex_array: D::VertexArray,
 }
 
-impl<D> GroundSolidVertexArray<D>
+impl<D> GroundVertexArray<D>
 where
     D: Device,
 {
@@ -54,7 +59,7 @@ where
         device: &D,
         ground_program: &GroundProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
-    ) -> GroundSolidVertexArray<D> {
+    ) -> GroundVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
         let position_attr = device.get_vertex_attr(&ground_program.program, "Position");
@@ -64,57 +69,6 @@ where
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
 
-        GroundSolidVertexArray { vertex_array }
+        GroundVertexArray { vertex_array }
     }
-}
-
-pub struct GroundLineVertexArray<D>
-where
-    D: Device,
-{
-    pub vertex_array: D::VertexArray,
-    #[allow(dead_code)]
-    grid_vertex_positions_buffer: D::Buffer,
-}
-
-impl<D> GroundLineVertexArray<D>
-where
-    D: Device,
-{
-    pub fn new(device: &D, ground_program: &GroundProgram<D>) -> GroundLineVertexArray<D> {
-        let grid_vertex_positions_buffer = device.create_buffer();
-        device.allocate_buffer(
-            &grid_vertex_positions_buffer,
-            BufferData::Memory(&create_grid_vertex_positions()),
-            BufferTarget::Vertex,
-            BufferUploadMode::Static,
-        );
-
-        let vertex_array = device.create_vertex_array();
-
-        let position_attr = device.get_vertex_attr(&ground_program.program, "Position");
-
-        device.bind_vertex_array(&vertex_array);
-        device.use_program(&ground_program.program);
-        device.bind_buffer(&grid_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
-
-        GroundLineVertexArray {
-            vertex_array,
-            grid_vertex_positions_buffer,
-        }
-    }
-}
-
-fn create_grid_vertex_positions() -> Vec<(u8, u8)> {
-    let mut positions = vec![];
-    for index in 0..(GRIDLINE_COUNT + 1) {
-        positions.extend_from_slice(&[
-            (0, index),
-            (GRIDLINE_COUNT, index),
-            (index, 0),
-            (index, GRIDLINE_COUNT),
-        ]);
-    }
-    positions
 }

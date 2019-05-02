@@ -14,7 +14,7 @@
 extern crate log;
 
 use crate::concurrent::DemoExecutor;
-use crate::device::{GroundLineVertexArray, GroundProgram, GroundSolidVertexArray};
+use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUI, UIAction};
 use crate::window::{Event, Keycode, OcularTransform, SVGPath, View, Window, WindowSize};
 use clap::{App, Arg};
@@ -27,7 +27,7 @@ use pathfinder_geometry::color::{ColorF, ColorU};
 use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderState};
-use pathfinder_gpu::{StencilFunc, StencilState, TextureFormat, UniformData};
+use pathfinder_gpu::{TextureFormat, UniformData};
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
 use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode, RenderStats, Renderer};
 use pathfinder_renderer::gpu_data::RenderCommand;
@@ -96,7 +96,7 @@ const MESSAGE_TIMEOUT_SECS: u64 = 5;
 // Half of the eye separation distance.
 const DEFAULT_EYE_OFFSET: f32 = 0.025;
 
-pub const GRIDLINE_COUNT: u8 = 10;
+pub const GRIDLINE_COUNT: i32 = 10;
 
 pub mod window;
 
@@ -134,8 +134,7 @@ pub struct DemoApp<W> where W: Window {
     scene_framebuffer: Option<<GLDevice as Device>::Framebuffer>,
 
     ground_program: GroundProgram<GLDevice>,
-    ground_solid_vertex_array: GroundSolidVertexArray<GLDevice>,
-    ground_line_vertex_array: GroundLineVertexArray<GLDevice>,
+    ground_vertex_array: GroundVertexArray<GLDevice>,
 }
 
 impl<W> DemoApp<W> where W: Window {
@@ -168,13 +167,9 @@ impl<W> DemoApp<W> where W: Window {
         let scene_proxy = SceneProxy::new(built_svg.scene, executor);
 
         let ground_program = GroundProgram::new(&renderer.device, resources);
-        let ground_solid_vertex_array = GroundSolidVertexArray::new(
-            &renderer.device,
-            &ground_program,
-            &renderer.quad_vertex_positions_buffer(),
-        );
-        let ground_line_vertex_array =
-            GroundLineVertexArray::new(&renderer.device, &ground_program);
+        let ground_vertex_array = GroundVertexArray::new(&renderer.device,
+                                                         &ground_program,
+                                                         &renderer.quad_vertex_positions_buffer());
 
         let mut ui = DemoUI::new(&renderer.device, resources, options.clone());
         let mut message_epoch = 0;
@@ -215,8 +210,7 @@ impl<W> DemoApp<W> where W: Window {
             scene_framebuffer: None,
 
             ground_program,
-            ground_solid_vertex_array,
-            ground_line_vertex_array,
+            ground_vertex_array,
         }
     }
 
@@ -731,57 +725,28 @@ impl<W> DemoApp<W> where W: Window {
             -0.5 * ground_scale,
         ));
 
-        // Draw gridlines. Use the stencil buffer to avoid Z-fighting.
-        let mut transform = base_transform;
-        let gridline_scale = ground_scale / GRIDLINE_COUNT as f32;
-        transform = transform.post_mul(&Transform3DF32::from_scale(
-            gridline_scale,
-            1.0,
-            gridline_scale,
-        ));
-        let device = &self.renderer.device;
-        device.bind_vertex_array(&self.ground_line_vertex_array.vertex_array);
-        device.use_program(&self.ground_program.program);
-        device.set_uniform(
-            &self.ground_program.transform_uniform,
-            UniformData::Mat4([transform.c0, transform.c1, transform.c2, transform.c3]),
-        );
-        device.set_uniform(
-            &self.ground_program.color_uniform,
-            UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0),
-        );
-        device.draw_arrays(
-            Primitive::Lines,
-            (GRIDLINE_COUNT as u32 + 1) * 4,
-            &RenderState {
-                depth: Some(DepthState {
-                    func: DepthFunc::Always,
-                    write: true,
-                }),
-                stencil: Some(StencilState {
-                    func: StencilFunc::Always,
-                    reference: 2,
-                    mask: 2,
-                    write: true,
-                }),
-                ..RenderState::default()
-            },
-        );
-
         // Fill ground.
         let mut transform = base_transform;
         transform =
             transform.post_mul(&Transform3DF32::from_scale(ground_scale, 1.0, ground_scale));
-        device.bind_vertex_array(&self.ground_solid_vertex_array.vertex_array);
+
+        let device = &self.renderer.device;
+        device.bind_vertex_array(&self.ground_vertex_array.vertex_array);
         device.use_program(&self.ground_program.program);
         device.set_uniform(
             &self.ground_program.transform_uniform,
             UniformData::from_transform_3d(&transform),
         );
         device.set_uniform(
-            &self.ground_program.color_uniform,
+            &self.ground_program.ground_color_uniform,
             UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0),
         );
+        device.set_uniform(
+            &self.ground_program.gridline_color_uniform,
+            UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0),
+        );
+        device.set_uniform(&self.ground_program.gridline_count_uniform,
+                           UniformData::Int(GRIDLINE_COUNT));
         device.draw_arrays(
             Primitive::TriangleFan,
             4,
@@ -790,12 +755,7 @@ impl<W> DemoApp<W> where W: Window {
                     func: DepthFunc::Less,
                     write: true,
                 }),
-                stencil: Some(StencilState {
-                    func: StencilFunc::NotEqual,
-                    reference: 2,
-                    mask: 2,
-                    write: false,
-                }),
+                stencil: None,
                 ..RenderState::default()
             },
         );
