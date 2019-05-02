@@ -10,7 +10,6 @@ pf-no-simd = ["pathfinder_simd/pf-no-simd"]
 [dependencies]
 color-backtrace = "0.1"
 gl = "0.6"
-jemallocator = "0.1"
 nfd = "0.0.4"
 pretty_env_logger = "0.3"
 sdl2 = "0.32"
@@ -30,3 +29,6 @@ path = "../../gpu"
 
 [dependencies.pathfinder_simd]
 path = "../../simd"
+
+[target.'cfg(not(windows))'.dependencies]
+jemallocator = "0.1"

@@ -10,7 +10,6 @@
 
 //! A demo app for Pathfinder using SDL 2.
 
-use jemallocator;
 use nfd::Response;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::{DemoApp, Options};
@@ -26,6 +25,10 @@ use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::path::PathBuf;
 use std::ptr;
 
+#[cfg(not(windows))]
+use jemallocator;
+
+#[cfg(not(windows))]
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
