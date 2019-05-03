@@ -8,8 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use crate::camera::Mode;
 use crate::window::Window;
-use crate::{BackgroundColor, Mode, Options};
+use crate::{BackgroundColor, Options};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::resources::ResourceLoader;
