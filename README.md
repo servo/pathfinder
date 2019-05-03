@@ -5,6 +5,18 @@ and OpenGL ES 3.0+.
 
 Please note that Pathfinder is under heavy development and is incomplete in various areas.
 
+## Quick start
+
+Pathfinder contains a library that implements a subset of the
+[HTML canvas API](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API). You can quickly add
+vector rendering to any Rust app with it. See the `examples/canvas_minimal` for a small example of
+usage.
+
+This example app requires SDL 2; see the "Building" section below for information on getting it up
+and running.
+
+## Features
+
 The project features:
 
 * High quality antialiasing. Pathfinder can compute exact fractional trapezoidal area coverage on a
