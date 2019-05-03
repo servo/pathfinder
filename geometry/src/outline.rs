@@ -24,7 +24,7 @@ use std::mem;
 
 #[derive(Clone)]
 pub struct Outline {
-    pub contours: Vec<Contour>,
+    pub(crate) contours: Vec<Contour>,
     pub(crate) bounds: RectF32,
 }
 
@@ -59,7 +59,6 @@ impl Outline {
     {
         let mut outline = Outline::new();
         let mut current_contour = Contour::new();
-        let mut bounds = None;
 
         for segment in segments {
             if segment.flags.contains(SegmentFlags::FIRST_IN_SUBPATH) {
@@ -75,8 +74,7 @@ impl Outline {
                 if !current_contour.is_empty() {
                     current_contour.close();
                     let contour = mem::replace(&mut current_contour, Contour::new());
-                    contour.update_bounds(&mut bounds);
-                    outline.contours.push(contour);
+                    outline.push_contour(contour);
                 }
                 continue;
             }
@@ -99,21 +97,32 @@ impl Outline {
             current_contour.push_point(segment.baseline.to(), PointFlags::empty(), true);
         }
 
-        if !current_contour.is_empty() {
-            current_contour.update_bounds(&mut bounds);
-            outline.contours.push(current_contour);
-        }
-
-        if let Some(bounds) = bounds {
-            outline.bounds = bounds;
-        }
-
+        outline.push_contour(current_contour);
         outline
     }
 
     #[inline]
     pub fn bounds(&self) -> RectF32 {
         self.bounds
+    }
+
+    #[inline]
+    pub fn contours(&self) -> &[Contour] {
+        &self.contours
+    }
+
+    pub fn push_contour(&mut self, contour: Contour) {
+        if contour.is_empty() {
+            return;
+        }
+
+        if self.contours.is_empty() {
+            self.bounds = contour.bounds;
+        } else {
+            self.bounds = self.bounds.union_rect(contour.bounds);
+        }
+
+        self.contours.push(contour);
     }
 
     pub fn transform(&mut self, transform: &Transform2DF32) {
@@ -166,15 +175,9 @@ impl Outline {
             return;
         }
 
-        let mut new_bounds = None;
         for contour in mem::replace(&mut self.contours, vec![]) {
-            let contour = ContourPolygonClipper::new(clip_polygon, contour).clip();
-            if !contour.is_empty() {
-                contour.update_bounds(&mut new_bounds);
-                self.contours.push(contour);
-            }
+            self.push_contour(ContourPolygonClipper::new(clip_polygon, contour).clip());
         }
-        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 
     pub fn clip_against_rect(&mut self, clip_rect: RectF32) {
@@ -182,15 +185,9 @@ impl Outline {
             return;
         }
 
-        let mut new_bounds = None;
         for contour in mem::replace(&mut self.contours, vec![]) {
-            let contour = ContourRectClipper::new(clip_rect, contour).clip();
-            if !contour.is_empty() {
-                contour.update_bounds(&mut new_bounds);
-                self.contours.push(contour);
-            }
+            self.push_contour(ContourRectClipper::new(clip_rect, contour).clip());
         }
-        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 }
 
@@ -271,7 +268,25 @@ impl Contour {
     }
 
     #[inline]
-    pub(crate) fn close(&mut self) {
+    pub fn push_endpoint(&mut self, point: Point2DF32) {
+        self.push_point(point, PointFlags::empty(), true);
+    }
+
+    #[inline]
+    pub fn push_quadratic(&mut self, ctrl: Point2DF32, point: Point2DF32) {
+        self.push_point(ctrl, PointFlags::CONTROL_POINT_0, true);
+        self.push_point(point, PointFlags::empty(), true);
+    }
+
+    #[inline]
+    pub fn push_cubic(&mut self, ctrl0: Point2DF32, ctrl1: Point2DF32, point: Point2DF32) {
+        self.push_point(ctrl0, PointFlags::CONTROL_POINT_0, true);
+        self.push_point(ctrl1, PointFlags::CONTROL_POINT_1, true);
+        self.push_point(point, PointFlags::empty(), true);
+    }
+
+    #[inline]
+    pub fn close(&mut self) {
         self.closed = true;
     }
 
@@ -596,6 +611,8 @@ impl Contour {
         true
     }
 
+    // Use this function to keep bounds up to date when mutating paths. See `Outline::transform()`
+    // for an example of use.
     pub(crate) fn update_bounds(&self, bounds: &mut Option<RectF32>) {
         *bounds = Some(match *bounds {
             None => self.bounds,

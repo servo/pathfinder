@@ -21,7 +21,7 @@ use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::segment::{Segment, SegmentFlags};
 use pathfinder_geometry::stroke::OutlineStrokeToFill;
-use pathfinder_renderer::scene::{Paint, PathObject, PathObjectKind, Scene};
+use pathfinder_renderer::scene::{Paint, PathObject, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
 use usvg::{Color as SvgColor, Node, NodeExt, NodeKind, Paint as UsvgPaint};
@@ -122,12 +122,10 @@ impl BuiltSVG {
                     let path = Transform2DF32PathIter::new(path, &transform);
                     let outline = Outline::from_segments(path);
 
-                    self.scene.set_bounds(self.scene.bounds().union_rect(outline.bounds()));
                     self.scene.push_object(PathObject::new(
                         outline,
                         style,
-                        node.id().to_string(),
-                        PathObjectKind::Fill,
+                        format!("Fill({})", node.id()),
                     ));
                 }
 
@@ -146,12 +144,10 @@ impl BuiltSVG {
                     let mut outline = stroke_to_fill.outline;
                     outline.transform(&transform);
 
-                    self.scene.set_bounds(self.scene.bounds().union_rect(outline.bounds()));
                     self.scene.push_object(PathObject::new(
                         outline,
                         style,
-                        node.id().to_string(),
-                        PathObjectKind::Stroke,
+                        format!("Stroke({})", node.id()),
                     ));
                 }
             }

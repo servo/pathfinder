@@ -1,9 +1,11 @@
 [workspace]
 members = [
+    "canvas",
     "demo/android/rust",
     "demo/common",
     "demo/magicleap",
     "demo/native",
+    "examples/canvas_minimal",
     "geometry",
     "gl",
     "gpu",

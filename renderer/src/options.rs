@@ -39,7 +39,7 @@ pub struct RenderOptions {
 }
 
 impl RenderOptions {
-    pub fn prepare(self, bounds: RectF32) -> PreparedRenderOptions {
+    pub(crate) fn prepare(self, bounds: RectF32) -> PreparedRenderOptions {
         PreparedRenderOptions {
             transform: self.transform.prepare(bounds),
             dilation: self.dilation,
@@ -119,15 +119,15 @@ impl RenderTransform {
     }
 }
 
-pub struct PreparedRenderOptions {
-    pub transform: PreparedRenderTransform,
-    pub dilation: Point2DF32,
-    pub subpixel_aa_enabled: bool,
+pub(crate) struct PreparedRenderOptions {
+    pub(crate) transform: PreparedRenderTransform,
+    pub(crate) dilation: Point2DF32,
+    pub(crate) subpixel_aa_enabled: bool,
 }
 
 impl PreparedRenderOptions {
     #[inline]
-    pub fn bounding_quad(&self) -> BoundingQuad {
+    pub(crate) fn bounding_quad(&self) -> BoundingQuad {
         match self.transform {
             PreparedRenderTransform::Perspective { quad, .. } => quad,
             _ => [Point3DF32::default(); 4],
@@ -135,9 +135,9 @@ impl PreparedRenderOptions {
     }
 }
 
-pub type BoundingQuad = [Point3DF32; 4];
+pub(crate) type BoundingQuad = [Point3DF32; 4];
 
-pub enum PreparedRenderTransform {
+pub(crate) enum PreparedRenderTransform {
     None,
     Transform2D(Transform2DF32),
     Perspective {
@@ -149,7 +149,7 @@ pub enum PreparedRenderTransform {
 
 impl PreparedRenderTransform {
     #[inline]
-    pub fn is_2d(&self) -> bool {
+    pub(crate) fn is_2d(&self) -> bool {
         match *self {
             PreparedRenderTransform::Transform2D(_) => true,
             _ => false,

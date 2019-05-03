@@ -21,7 +21,7 @@ use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
 use std::u16;
 
-pub struct SceneBuilder<'a> {
+pub(crate) struct SceneBuilder<'a> {
     scene: &'a Scene,
     built_options: &'a PreparedRenderOptions,
 
@@ -31,7 +31,7 @@ pub struct SceneBuilder<'a> {
 }
 
 impl<'a> SceneBuilder<'a> {
-    pub fn new(
+    pub(crate) fn new(
         scene: &'a Scene,
         built_options: &'a PreparedRenderOptions,
         listener: Box<dyn RenderCommandListener>,

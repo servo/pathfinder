@@ -64,6 +64,11 @@ impl ColorF {
     }
 
     #[inline]
+    pub fn white() -> ColorF {
+        ColorF(F32x4::splat(1.0))
+    }
+
+    #[inline]
     pub fn r(&self) -> f32 {
         self.0[0]
     }

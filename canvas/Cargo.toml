@@ -1,0 +1,13 @@
+[package]
+name = "pathfinder_canvas"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+edition = "2018"
+
+[dependencies]
+
+[dependencies.pathfinder_geometry]
+path = "../geometry"
+
+[dependencies.pathfinder_renderer]
+path = "../renderer"

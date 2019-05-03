@@ -12,7 +12,8 @@
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
-use crate::options::{PreparedRenderOptions, PreparedRenderTransform, RenderCommandListener};
+use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
+use crate::options::{RenderCommandListener, RenderOptions};
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
@@ -43,6 +44,7 @@ impl Scene {
     }
 
     pub fn push_object(&mut self, object: PathObject) {
+        self.bounds = self.bounds.union_rect(object.outline.bounds());
         self.objects.push(object);
     }
 
@@ -165,7 +167,7 @@ impl Scene {
     }
 
     #[inline]
-    pub fn effective_view_box(&self, render_options: &PreparedRenderOptions) -> RectF32 {
+    pub(crate) fn effective_view_box(&self, render_options: &PreparedRenderOptions) -> RectF32 {
         if render_options.subpixel_aa_enabled {
             self.view_box.scale_xy(Point2DF32::new(3.0, 1.0))
         } else {
@@ -175,11 +177,12 @@ impl Scene {
 
     #[inline]
     pub fn build<E>(&self,
-                    built_options: &PreparedRenderOptions,
+                    options: RenderOptions,
                     listener: Box<dyn RenderCommandListener>,
                     executor: &E)
                     where E: Executor {
-        SceneBuilder::new(self, built_options, listener).build(executor)
+        let prepared_options = options.prepare(self.bounds);
+        SceneBuilder::new(self, &prepared_options, listener).build(executor)
     }
 }
 
@@ -215,25 +218,12 @@ pub struct PathObject {
     outline: Outline,
     paint: PaintId,
     name: String,
-    kind: PathObjectKind,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum PathObjectKind {
-    Fill,
-    Stroke,
 }
 
 impl PathObject {
     #[inline]
-    pub fn new(outline: Outline, paint: PaintId, name: String, kind: PathObjectKind)
-               -> PathObject {
-        PathObject {
-            outline,
-            paint,
-            name,
-            kind,
-        }
+    pub fn new(outline: Outline, paint: PaintId, name: String) -> PathObject {
+        PathObject { outline, paint, name }
     }
 
     #[inline]

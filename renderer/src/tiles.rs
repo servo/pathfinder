@@ -245,7 +245,7 @@ impl<'a> Tiler<'a> {
         let outline = &self.outline;
         let point_index = self.point_queue.pop().unwrap().point_index;
 
-        let contour = &outline.contours[point_index.contour() as usize];
+        let contour = &outline.contours()[point_index.contour() as usize];
 
         // TODO(pcwalton): Could use a bitset of processed edges…
         let prev_endpoint_index = contour.prev_endpoint_index_of(point_index.point());
@@ -311,7 +311,7 @@ impl<'a> Tiler<'a> {
     fn init_point_queue(&mut self) {
         // Find MIN points.
         self.point_queue.clear();
-        for (contour_index, contour) in self.outline.contours.iter().enumerate() {
+        for (contour_index, contour) in self.outline.contours().iter().enumerate() {
             let contour_index = contour_index as u32;
             let mut cur_endpoint_index = 0;
             let mut prev_endpoint_index = contour.prev_endpoint_index_of(cur_endpoint_index);

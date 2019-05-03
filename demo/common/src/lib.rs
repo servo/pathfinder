@@ -242,8 +242,7 @@ impl<W> DemoApp<W> where W: Window {
             subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
         };
 
-        let built_options = render_options.prepare(self.scene_metadata.bounds);
-        self.render_command_stream = Some(self.scene_proxy.build_with_stream(built_options));
+        self.render_command_stream = Some(self.scene_proxy.build_with_stream(render_options));
     }
 
     fn handle_events(&mut self, events: Vec<Event>) -> Vec<UIEvent> {
@@ -769,7 +768,6 @@ impl BackgroundColor {
 
 struct SceneMetadata {
     view_box: RectF32,
-    bounds: RectF32,
     monochrome_color: Option<ColorU>,
 }
 
@@ -780,6 +778,6 @@ impl SceneMetadata {
         let view_box = scene.view_box();
         let monochrome_color = scene.monochrome_color();
         scene.set_view_box(RectF32::new(Point2DF32::default(), viewport_size.to_f32()));
-        SceneMetadata { view_box, monochrome_color, bounds: scene.bounds() }
+        SceneMetadata { view_box, monochrome_color }
     }
 }

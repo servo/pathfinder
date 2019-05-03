@@ -177,7 +177,7 @@ where
 
         let debug_ui = DebugUI::new(&device, resources, dest_framebuffer.window_size(&device));
 
-        Renderer {
+        let renderer = Renderer {
             device,
 
             dest_framebuffer,
@@ -218,7 +218,12 @@ where
 
             render_mode: RenderMode::default(),
             use_depth: false,
-        }
+        };
+
+        // As a convenience, bind the destination framebuffer.
+        renderer.bind_dest_framebuffer();
+
+        renderer
     }
 
     pub fn begin_scene(&mut self) {
@@ -1466,6 +1471,12 @@ impl<D> DestFramebuffer<D>
 where
     D: Device,
 {
+    #[inline]
+    pub fn full_window(window_size: Point2DI32) -> DestFramebuffer<D> {
+        let viewport = RectI32::new(Point2DI32::default(), window_size);
+        DestFramebuffer::Default { viewport, window_size }
+    }
+
     fn window_size(&self, device: &D) -> Point2DI32 {
         match *self {
             DestFramebuffer::Default { window_size, .. } => window_size,

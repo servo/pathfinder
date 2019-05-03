@@ -20,10 +20,12 @@
 //! You don't need to use this API to use Pathfinder; it's only a convenience.
 
 use crate::concurrent::executor::Executor;
+use crate::gpu::renderer::Renderer;
 use crate::gpu_data::RenderCommand;
-use crate::options::{PreparedRenderOptions, RenderCommandListener};
+use crate::options::{RenderCommandListener, RenderOptions};
 use crate::scene::Scene;
 use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_gpu::Device;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
@@ -52,17 +54,33 @@ impl SceneProxy {
 
     #[inline]
     pub fn build_with_listener(&self,
-                               built_options: PreparedRenderOptions,
+                               options: RenderOptions,
                                listener: Box<dyn RenderCommandListener>) {
-        self.sender.send(MainToWorkerMsg::Build(built_options, listener)).unwrap();
+        self.sender.send(MainToWorkerMsg::Build(options, listener)).unwrap();
     }
 
     #[inline]
-    pub fn build_with_stream(&self, built_options: PreparedRenderOptions) -> RenderCommandStream {
+    pub fn build_with_stream(&self, options: RenderOptions) -> RenderCommandStream {
         let (sender, receiver) = mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
         let listener = Box::new(move |command| sender.send(command).unwrap());
-        self.build_with_listener(built_options, listener);
+        self.build_with_listener(options, listener);
         RenderCommandStream::new(receiver)
+    }
+
+    /// A convenience method to build a scene and send the resulting commands
+    /// to the given renderer.
+    ///
+    /// Exactly equivalent to:
+    ///
+    ///     for command in scene_proxy.build_with_stream(options) {
+    ///         renderer.render_command(&command)
+    ///     }
+    #[inline]
+    pub fn build_and_render<D>(&self, renderer: &mut Renderer<D>, options: RenderOptions)
+                               where D: Device {
+        for command in self.build_with_stream(options) {
+            renderer.render_command(&command)
+        }
     }
 }
 
@@ -74,9 +92,7 @@ fn scene_thread<E>(mut scene: Scene,
         match msg {
             MainToWorkerMsg::ReplaceScene(new_scene) => scene = new_scene,
             MainToWorkerMsg::SetViewBox(new_view_box) => scene.set_view_box(new_view_box),
-            MainToWorkerMsg::Build(options, listener) => {
-                scene.build(&options, listener, &executor);
-            }
+            MainToWorkerMsg::Build(options, listener) => scene.build(options, listener, &executor),
         }
     }
 }
@@ -84,7 +100,7 @@ fn scene_thread<E>(mut scene: Scene,
 enum MainToWorkerMsg {
     ReplaceScene(Scene),
     SetViewBox(RectF32),
-    Build(PreparedRenderOptions, Box<dyn RenderCommandListener>),
+    Build(RenderOptions, Box<dyn RenderCommandListener>),
 }
 
 pub struct RenderCommandStream {
