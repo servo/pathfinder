@@ -16,15 +16,15 @@ use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::OutlineStrokeToFill;
 use pathfinder_renderer::scene::{Paint, PathObject, Scene};
+use std::default::Default;
 use std::mem;
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 
 pub struct CanvasRenderingContext2D {
     scene: Scene,
-    current_fill_paint: Paint,
-    current_stroke_paint: Paint,
-    current_line_width: f32,
+    current_state: State,
+    saved_states: Vec<State>,
 }
 
 impl CanvasRenderingContext2D {
@@ -37,12 +37,7 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn from_scene(scene: Scene) -> CanvasRenderingContext2D {
-        CanvasRenderingContext2D {
-            scene,
-            current_fill_paint: Paint { color: ColorU::black() },
-            current_stroke_paint: Paint { color: ColorU::black() },
-            current_line_width: 1.0,
-        }
+        CanvasRenderingContext2D { scene, current_state: State::default(), saved_states: vec![] }
     }
 
     #[inline]
@@ -66,32 +61,62 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn set_line_width(&mut self, new_line_width: f32) {
-        self.current_line_width = new_line_width
+        self.current_state.line_width = new_line_width
     }
 
     #[inline]
     pub fn set_fill_style(&mut self, new_fill_style: FillStyle) {
-        self.current_fill_paint = new_fill_style.to_paint();
+        self.current_state.fill_paint = new_fill_style.to_paint();
     }
 
     #[inline]
     pub fn set_stroke_style(&mut self, new_stroke_style: FillStyle) {
-        self.current_stroke_paint = new_stroke_style.to_paint();
+        self.current_state.stroke_paint = new_stroke_style.to_paint();
     }
 
     #[inline]
     pub fn fill_path(&mut self, path: Path2D) {
-        let paint_id = self.scene.push_paint(&self.current_fill_paint);
+        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
         self.scene.push_object(PathObject::new(path.into_outline(), paint_id, String::new()))
     }
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
-        let paint_id = self.scene.push_paint(&self.current_stroke_paint);
-        let stroke_width = f32::max(self.current_line_width, HAIRLINE_STROKE_WIDTH);
+        let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
+        let stroke_width = f32::max(self.current_state.line_width, HAIRLINE_STROKE_WIDTH);
         let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_width);
         stroke_to_fill.offset();
         self.scene.push_object(PathObject::new(stroke_to_fill.outline, paint_id, String::new()))
+    }
+
+    #[inline]
+    pub fn save(&mut self) {
+        self.saved_states.push(self.current_state);
+    }
+
+    #[inline]
+    pub fn restore(&mut self) {
+        if let Some(state) = self.saved_states.pop() {
+            self.current_state = state;
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct State {
+    fill_paint: Paint,
+    stroke_paint: Paint,
+    line_width: f32,
+}
+
+impl Default for State {
+    #[inline]
+    fn default() -> State {
+        State {
+            fill_paint: Paint { color: ColorU::black() },
+            stroke_paint: Paint { color: ColorU::black() },
+            line_width: 1.0,
+        }
     }
 }
 
@@ -165,8 +190,6 @@ pub enum FillStyle {
 impl FillStyle {
     #[inline]
     fn to_paint(&self) -> Paint {
-        match *self {
-            FillStyle::Color(color) => Paint { color },
-        }
+        match *self { FillStyle::Color(color) => Paint { color } }
     }
 }
