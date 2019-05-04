@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::builder::SceneBuilder;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject};
+use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
 use crate::sorted_vector::SortedVector;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
@@ -120,6 +120,7 @@ impl<'a> Tiler<'a> {
                 self.object_index,
                 tile.alpha_tile_index as u16,
             );
+
             self.built_object.alpha_tiles.push(alpha_tile);
         }
     }
@@ -237,8 +238,6 @@ impl<'a> Tiler<'a> {
                 self.active_edges.push(active_edge);
             }
         }
-
-        //debug_assert_eq!(current_winding, 0);
     }
 
     fn add_new_active_edge(&mut self, tile_y: i32) {
@@ -516,4 +515,42 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
     fn partial_cmp(&self, other: &ActiveEdge) -> Option<Ordering> {
         self.crossing.x().partial_cmp(&other.crossing.x())
     }
+}
+
+impl AlphaTileBatchPrimitive {
+    #[inline]
+    fn new(tile_coords: Point2DI32,
+           backdrop: i8,
+           object_index: u16,
+           tile_index: u16)
+           -> AlphaTileBatchPrimitive {
+        AlphaTileBatchPrimitive {
+            tile_x_lo: (tile_coords.x() & 0xff) as u8,
+            tile_y_lo: (tile_coords.y() & 0xff) as u8,
+            tile_hi: (((tile_coords.x() >> 8) & 0x0f) | ((tile_coords.y() >> 4) & 0xf0)) as u8,
+            backdrop,
+            object_index,
+            tile_index,
+        }
+    }
+
+    #[inline]
+    pub fn tile_coords(&self) -> Point2DI32 {
+        Point2DI32::new(
+            (self.tile_x_lo as i32) | (((self.tile_hi & 0xf) as i32) << 8),
+            (self.tile_y_lo as i32) | (((self.tile_hi & 0xf0) as i32) << 4),
+        )
+    }
+}
+
+impl Default for TileObjectPrimitive {
+    #[inline]
+    fn default() -> TileObjectPrimitive {
+        TileObjectPrimitive { backdrop: 0, alpha_tile_index: !0 }
+    }
+}
+
+impl TileObjectPrimitive {
+    #[inline]
+    pub fn is_solid(&self) -> bool { self.alpha_tile_index == !0 }
 }
