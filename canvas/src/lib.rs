@@ -22,7 +22,8 @@ const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 
 pub struct CanvasRenderingContext2D {
     scene: Scene,
-    current_paint: Paint,
+    current_fill_paint: Paint,
+    current_stroke_paint: Paint,
     current_line_width: f32,
 }
 
@@ -38,7 +39,8 @@ impl CanvasRenderingContext2D {
     pub fn from_scene(scene: Scene) -> CanvasRenderingContext2D {
         CanvasRenderingContext2D {
             scene,
-            current_paint: Paint { color: ColorU::black() },
+            current_fill_paint: Paint { color: ColorU::black() },
+            current_stroke_paint: Paint { color: ColorU::black() },
             current_line_width: 1.0,
         }
     }
@@ -68,14 +70,24 @@ impl CanvasRenderingContext2D {
     }
 
     #[inline]
+    pub fn set_fill_style(&mut self, new_fill_style: FillStyle) {
+        self.current_fill_paint = new_fill_style.to_paint();
+    }
+
+    #[inline]
+    pub fn set_stroke_style(&mut self, new_stroke_style: FillStyle) {
+        self.current_stroke_paint = new_stroke_style.to_paint();
+    }
+
+    #[inline]
     pub fn fill_path(&mut self, path: Path2D) {
-        let paint_id = self.scene.push_paint(&self.current_paint);
+        let paint_id = self.scene.push_paint(&self.current_fill_paint);
         self.scene.push_object(PathObject::new(path.into_outline(), paint_id, String::new()))
     }
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
-        let paint_id = self.scene.push_paint(&self.current_paint);
+        let paint_id = self.scene.push_paint(&self.current_stroke_paint);
         let stroke_width = f32::max(self.current_line_width, HAIRLINE_STROKE_WIDTH);
         let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_width);
         stroke_to_fill.offset();
@@ -140,6 +152,21 @@ impl Path2D {
     fn flush_current_contour(&mut self) {
         if !self.current_contour.is_empty() {
             self.outline.push_contour(mem::replace(&mut self.current_contour, Contour::new()));
+        }
+    }
+}
+
+// TODO(pcwalton): Gradients.
+#[derive(Clone, Copy)]
+pub enum FillStyle {
+    Color(ColorU),
+}
+
+impl FillStyle {
+    #[inline]
+    fn to_paint(&self) -> Paint {
+        match *self {
+            FillStyle::Color(color) => Paint { color },
         }
     }
 }
