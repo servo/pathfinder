@@ -44,7 +44,35 @@ static ZOOM_OUT_PNG_NAME: &'static str = "demo-zoom-out";
 static BACKGROUND_PNG_NAME: &'static str = "demo-background";
 static SCREENSHOT_PNG_NAME: &'static str = "demo-screenshot";
 
-pub struct DemoUI<D>
+pub struct DemoUIModel {
+    pub mode: Mode,
+    pub background_color: BackgroundColor,
+    pub gamma_correction_effect_enabled: bool,
+    pub stem_darkening_effect_enabled: bool,
+    pub subpixel_aa_effect_enabled: bool,
+    pub rotation: i32,
+    pub message: String,
+}
+
+impl DemoUIModel {
+    pub fn new(options: &Options) -> DemoUIModel {
+        DemoUIModel {
+            mode: options.mode,
+            background_color: options.background_color,
+            gamma_correction_effect_enabled: false,
+            stem_darkening_effect_enabled: false,
+            subpixel_aa_effect_enabled: false,
+            rotation: SLIDER_WIDTH / 2,
+            message: String::new(),
+        }
+    }
+
+    fn rotation(&self) -> f32 {
+        (self.rotation as f32 / SLIDER_WIDTH as f32 * 2.0 - 1.0) * PI
+    }
+}
+
+pub struct DemoUIPresenter<D>
 where
     D: Device,
 {
@@ -60,22 +88,14 @@ where
     background_panel_visible: bool,
     rotate_panel_visible: bool,
 
-    // FIXME(pcwalton): Factor the below out into a model class.
-    pub mode: Mode,
-    pub background_color: BackgroundColor,
-    pub gamma_correction_effect_enabled: bool,
-    pub stem_darkening_effect_enabled: bool,
-    pub subpixel_aa_effect_enabled: bool,
-    pub rotation: i32,
-    pub message: String,
-    pub show_text_effects: bool,
+    show_text_effects: bool,
 }
 
-impl<D> DemoUI<D>
+impl<D> DemoUIPresenter<D>
 where
     D: Device,
 {
-    pub fn new(device: &D, resources: &dyn ResourceLoader, options: Options) -> DemoUI<D> {
+    pub fn new(device: &D, resources: &dyn ResourceLoader) -> DemoUIPresenter<D> {
         let effects_texture = device.create_texture_from_png(resources, EFFECTS_PNG_NAME);
         let open_texture = device.create_texture_from_png(resources, OPEN_PNG_NAME);
         let rotate_texture = device.create_texture_from_png(resources, ROTATE_PNG_NAME);
@@ -84,7 +104,7 @@ where
         let background_texture = device.create_texture_from_png(resources, BACKGROUND_PNG_NAME);
         let screenshot_texture = device.create_texture_from_png(resources, SCREENSHOT_PNG_NAME);
 
-        DemoUI {
+        DemoUIPresenter {
             effects_texture,
             open_texture,
             rotate_texture,
@@ -97,19 +117,12 @@ where
             background_panel_visible: false,
             rotate_panel_visible: false,
 
-            mode: options.mode,
-            background_color: options.background_color,
-            gamma_correction_effect_enabled: false,
-            stem_darkening_effect_enabled: false,
-            subpixel_aa_effect_enabled: false,
-            rotation: SLIDER_WIDTH / 2,
-            message: String::new(),
             show_text_effects: true,
         }
     }
 
-    fn rotation(&self) -> f32 {
-        (self.rotation as f32 / SLIDER_WIDTH as f32 * 2.0 - 1.0) * PI
+    pub fn set_show_text_effects(&mut self, show_text_effects: bool) {
+        self.show_text_effects = show_text_effects;
     }
 
     pub fn update<W>(
@@ -118,12 +131,13 @@ where
         window: &mut W,
         debug_ui: &mut DebugUI<D>,
         action: &mut UIAction,
+        model: &mut DemoUIModel
     ) where
         W: Window,
     {
         // Draw message text.
 
-        self.draw_message_text(device, debug_ui);
+        self.draw_message_text(device, debug_ui, model);
 
         // Draw button strip.
 
@@ -134,10 +148,7 @@ where
 
         // Draw text effects button.
         if self.show_text_effects {
-            if debug_ui
-                .ui
-                .draw_button(device, position, &self.effects_texture)
-            {
+            if debug_ui.ui.draw_button(device, position, &self.effects_texture) {
                 self.effects_panel_visible = !self.effects_panel_visible;
             }
             if !self.effects_panel_visible {
@@ -151,24 +162,16 @@ where
         }
 
         // Draw open button.
-        if debug_ui
-            .ui
-            .draw_button(device, position, &self.open_texture)
-        {
+        if debug_ui.ui.draw_button(device, position, &self.open_texture) {
             // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
             // the contents of the file.
             window.present_open_svg_dialog();
         }
-        debug_ui
-            .ui
-            .draw_tooltip(device, "Open SVG", RectI32::new(position, button_size));
+        debug_ui.ui.draw_tooltip(device, "Open SVG", RectI32::new(position, button_size));
         position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
         // Draw screenshot button.
-        if debug_ui
-            .ui
-            .draw_button(device, position, &self.screenshot_texture)
-        {
+        if debug_ui.ui.draw_button(device, position, &self.screenshot_texture) {
             // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
             // the contents of the file.
             if let Ok(file) = window.run_save_dialog("png") {
@@ -184,11 +187,9 @@ where
 
         // Draw mode switch.
         let new_mode =
-            debug_ui
-                .ui
-                .draw_text_switch(device, position, &["2D", "3D", "VR"], self.mode as u8);
-        if new_mode != self.mode as u8 {
-            self.mode = match new_mode {
+            debug_ui.ui.draw_text_switch(device, position, &["2D", "3D", "VR"], model.mode as u8);
+        if new_mode != model.mode as u8 {
+            model.mode = match new_mode {
                 0 => Mode::TwoD,
                 1 => Mode::ThreeD,
                 _ => Mode::VR,
@@ -206,10 +207,7 @@ where
         position += Point2DI32::new(mode_switch_width + PADDING, 0);
 
         // Draw background switch.
-        if debug_ui
-            .ui
-            .draw_button(device, position, &self.background_texture)
-        {
+        if debug_ui.ui.draw_button(device, position, &self.background_texture) {
             self.background_panel_visible = !self.background_panel_visible;
         }
         if !self.background_panel_visible {
@@ -221,60 +219,48 @@ where
         }
 
         // Draw background panel, if necessary.
-        self.draw_background_panel(device, debug_ui, position.x(), action);
+        self.draw_background_panel(device, debug_ui, position.x(), action, model);
         position += Point2DI32::new(button_size.x() + PADDING, 0);
 
         // Draw effects panel, if necessary.
-        self.draw_effects_panel(device, debug_ui);
+        self.draw_effects_panel(device, debug_ui, model);
 
         // Draw rotate and zoom buttons, if applicable.
-        if self.mode != Mode::TwoD {
+        if model.mode != Mode::TwoD {
             return;
         }
 
-        if debug_ui
-            .ui
-            .draw_button(device, position, &self.rotate_texture)
-        {
+        if debug_ui.ui.draw_button(device, position, &self.rotate_texture) {
             self.rotate_panel_visible = !self.rotate_panel_visible;
         }
         if !self.rotate_panel_visible {
-            debug_ui
-                .ui
-                .draw_tooltip(device, "Rotate", RectI32::new(position, button_size));
+            debug_ui.ui.draw_tooltip(device, "Rotate", RectI32::new(position, button_size));
         }
-        self.draw_rotate_panel(device, debug_ui, position.x(), action);
+        self.draw_rotate_panel(device, debug_ui, position.x(), action, model);
         position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
-        if debug_ui
-            .ui
-            .draw_button(device, position, &self.zoom_in_texture)
-        {
+        if debug_ui.ui.draw_button(device, position, &self.zoom_in_texture) {
             *action = UIAction::ZoomIn;
         }
-        debug_ui
-            .ui
-            .draw_tooltip(device, "Zoom In", RectI32::new(position, button_size));
+        debug_ui.ui.draw_tooltip(device, "Zoom In", RectI32::new(position, button_size));
         position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
-        if debug_ui
-            .ui
-            .draw_button(device, position, &self.zoom_out_texture)
-        {
+        if debug_ui.ui.draw_button(device, position, &self.zoom_out_texture) {
             *action = UIAction::ZoomOut;
         }
-        debug_ui
-            .ui
-            .draw_tooltip(device, "Zoom Out", RectI32::new(position, button_size));
+        debug_ui.ui.draw_tooltip(device, "Zoom Out", RectI32::new(position, button_size));
         position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
     }
 
-    fn draw_message_text(&mut self, device: &D, debug_ui: &mut DebugUI<D>) {
-        if self.message.is_empty() {
+    fn draw_message_text(&mut self,
+                         device: &D,
+                         debug_ui: &mut DebugUI<D>,
+                         model: &mut DemoUIModel) {
+        if model.message.is_empty() {
             return;
         }
 
-        let message_size = debug_ui.ui.measure_text(&self.message);
+        let message_size = debug_ui.ui.measure_text(&model.message);
         let window_origin = Point2DI32::new(PADDING, PADDING);
         let window_size = Point2DI32::new(PADDING * 2 + message_size, TOOLTIP_HEIGHT);
         debug_ui.ui.draw_solid_rounded_rect(
@@ -284,13 +270,16 @@ where
         );
         debug_ui.ui.draw_text(
             device,
-            &self.message,
+            &model.message,
             window_origin + Point2DI32::new(PADDING, PADDING + FONT_ASCENT),
             false,
         );
     }
 
-    fn draw_effects_panel(&mut self, device: &D, debug_ui: &mut DebugUI<D>) {
+    fn draw_effects_panel(&mut self,
+                          device: &D,
+                          debug_ui: &mut DebugUI<D>,
+                          model: &mut DemoUIModel) {
         if !self.effects_panel_visible {
             return;
         }
@@ -306,29 +295,29 @@ where
             WINDOW_COLOR,
         );
 
-        self.gamma_correction_effect_enabled = self.draw_effects_switch(
+        model.gamma_correction_effect_enabled = self.draw_effects_switch(
             device,
             debug_ui,
             "Gamma Correction",
             0,
             effects_panel_y,
-            self.gamma_correction_effect_enabled,
+            model.gamma_correction_effect_enabled,
         );
-        self.stem_darkening_effect_enabled = self.draw_effects_switch(
+        model.stem_darkening_effect_enabled = self.draw_effects_switch(
             device,
             debug_ui,
             "Stem Darkening",
             1,
             effects_panel_y,
-            self.stem_darkening_effect_enabled,
+            model.stem_darkening_effect_enabled,
         );
-        self.subpixel_aa_effect_enabled = self.draw_effects_switch(
+        model.subpixel_aa_effect_enabled = self.draw_effects_switch(
             device,
             debug_ui,
             "Subpixel AA",
             2,
             effects_panel_y,
-            self.subpixel_aa_effect_enabled,
+            model.subpixel_aa_effect_enabled,
         );
     }
 
@@ -338,6 +327,7 @@ where
         debug_ui: &mut DebugUI<D>,
         panel_x: i32,
         action: &mut UIAction,
+        model: &mut DemoUIModel,
     ) {
         if !self.background_panel_visible {
             return;
@@ -361,6 +351,7 @@ where
             BackgroundColor::Light,
             panel_position,
             action,
+            model,
         );
         self.draw_background_menu_item(
             device,
@@ -368,6 +359,7 @@ where
             BackgroundColor::Dark,
             panel_position,
             action,
+            model,
         );
         self.draw_background_menu_item(
             device,
@@ -375,6 +367,7 @@ where
             BackgroundColor::Transparent,
             panel_position,
             action,
+            model,
         );
     }
 
@@ -384,6 +377,7 @@ where
         debug_ui: &mut DebugUI<D>,
         rotate_panel_x: i32,
         action: &mut UIAction,
+        model: &mut DemoUIModel
     ) {
         if !self.rotate_panel_visible {
             return;
@@ -409,8 +403,8 @@ where
             .event_queue
             .handle_mouse_down_or_dragged_in_rect(widget_rect)
         {
-            self.rotation = position.x();
-            *action = UIAction::Rotate(self.rotation());
+            model.rotation = position.x();
+            *action = UIAction::Rotate(model.rotation());
         }
 
         let slider_track_y =
@@ -423,14 +417,12 @@ where
             .ui
             .draw_rect_outline(device, slider_track_rect, TEXT_COLOR);
 
-        let slider_knob_x = widget_x + self.rotation - SLIDER_KNOB_WIDTH / 2;
+        let slider_knob_x = widget_x + model.rotation - SLIDER_KNOB_WIDTH / 2;
         let slider_knob_rect = RectI32::new(
             Point2DI32::new(slider_knob_x, widget_y),
             Point2DI32::new(SLIDER_KNOB_WIDTH, SLIDER_KNOB_HEIGHT),
         );
-        debug_ui
-            .ui
-            .draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
+        debug_ui.ui.draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
     }
 
     fn draw_background_menu_item(
@@ -440,6 +432,7 @@ where
         color: BackgroundColor,
         panel_position: Point2DI32,
         action: &mut UIAction,
+        model: &mut DemoUIModel,
     ) {
         let (text, index) = (color.as_str(), color as i32);
 
@@ -447,24 +440,16 @@ where
         let widget_origin = panel_position + Point2DI32::new(0, widget_size.y() * index);
         let widget_rect = RectI32::new(widget_origin, widget_size);
 
-        if color == self.background_color {
-            debug_ui
-                .ui
-                .draw_solid_rounded_rect(device, widget_rect, TEXT_COLOR);
+        if color == model.background_color {
+            debug_ui.ui.draw_solid_rounded_rect(device, widget_rect, TEXT_COLOR);
         }
 
         let (text_x, text_y) = (PADDING * 2, BUTTON_TEXT_OFFSET);
         let text_position = widget_origin + Point2DI32::new(text_x, text_y);
-        debug_ui
-            .ui
-            .draw_text(device, text, text_position, color == self.background_color);
+        debug_ui.ui.draw_text(device, text, text_position, color == model.background_color);
 
-        if let Some(_) = debug_ui
-            .ui
-            .event_queue
-            .handle_mouse_down_in_rect(widget_rect)
-        {
-            self.background_color = color;
+        if debug_ui.ui.event_queue.handle_mouse_down_in_rect(widget_rect).is_some() {
+            model.background_color = color;
             *action = UIAction::ModelChanged;
         }
     }

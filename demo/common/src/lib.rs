@@ -16,7 +16,7 @@ extern crate log;
 use crate::camera::{Camera, Mode};
 use crate::concurrent::DemoExecutor;
 use crate::device::{GroundProgram, GroundVertexArray};
-use crate::ui::{DemoUI, UIAction};
+use crate::ui::{DemoUIModel, DemoUIPresenter, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
@@ -103,7 +103,9 @@ pub struct DemoApp<W> where W: Window {
     current_frame: Option<Frame>,
     build_time: Option<Duration>,
 
-    ui: DemoUI<GLDevice>,
+    ui_model: DemoUIModel,
+    ui_presenter: DemoUIPresenter<GLDevice>,
+
     scene_proxy: SceneProxy,
     renderer: Renderer<GLDevice>,
 
@@ -147,14 +149,17 @@ impl<W> DemoApp<W> where W: Window {
                                                          &ground_program,
                                                          &renderer.quad_vertex_positions_buffer());
 
-        let mut ui = DemoUI::new(&renderer.device, resources, options.clone());
+        let mut ui_model = DemoUIModel::new(&options);
+
         let mut message_epoch = 0;
         emit_message::<W>(
-            &mut ui,
+            &mut ui_model,
             &mut message_epoch,
             expire_message_event_id,
             message,
         );
+
+        let ui_presenter = DemoUIPresenter::new(&renderer.device, resources);
 
         DemoApp {
             window,
@@ -179,7 +184,9 @@ impl<W> DemoApp<W> where W: Window {
             current_frame: None,
             build_time: None,
 
-            ui,
+            ui_presenter,
+            ui_model,
+
             scene_proxy,
             renderer,
 
@@ -232,14 +239,14 @@ impl<W> DemoApp<W> where W: Window {
 
         let render_options = RenderOptions {
             transform: self.render_transform.clone().unwrap(),
-            dilation: if self.ui.stem_darkening_effect_enabled {
+            dilation: if self.ui_model.stem_darkening_effect_enabled {
                 let font_size = APPROX_FONT_SIZE * self.window_size.backing_scale_factor;
                 let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
                 Point2DF32::new(x, y).scale(font_size)
             } else {
                 Point2DF32::default()
             },
-            subpixel_aa_enabled: self.ui.subpixel_aa_effect_enabled,
+            subpixel_aa_enabled: self.ui_model.subpixel_aa_effect_enabled,
         };
 
         self.render_command_stream = Some(self.scene_proxy.build_with_stream(render_options));
@@ -257,7 +264,7 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::WindowResized(new_size) => {
                     self.window_size = new_size;
-                    let viewport = self.window.viewport(self.ui.mode.view(0));
+                    let viewport = self.window.viewport(self.ui_model.mode.view(0));
                     self.scene_proxy.set_view_box(RectF32::new(Point2DF32::default(),
                                                                viewport.size().to_f32()));
                     self.renderer
@@ -392,12 +399,12 @@ impl<W> DemoApp<W> where W: Window {
 
                 Event::OpenSVG(ref svg_path) => {
                     let mut built_svg = load_scene(self.window.resource_loader(), svg_path);
-                    self.ui.message = get_svg_building_message(&built_svg);
+                    self.ui_model.message = get_svg_building_message(&built_svg);
 
-                    let viewport_size = self.window.viewport(self.ui.mode.view(0)).size();
+                    let viewport_size = self.window.viewport(self.ui_model.mode.view(0)).size();
                     self.scene_metadata =
                         SceneMetadata::new_clipping_view_box(&mut built_svg.scene, viewport_size);
-                    self.camera = Camera::new(self.ui.mode,
+                    self.camera = Camera::new(self.ui_model.mode,
                                               self.scene_metadata.view_box,
                                               viewport_size);
 
@@ -412,7 +419,7 @@ impl<W> DemoApp<W> where W: Window {
                 } if event_id == self.expire_message_event_id
                     && expected_epoch as u32 == self.message_epoch =>
                 {
-                    self.ui.message = String::new();
+                    self.ui_model.message = String::new();
                     self.dirty = true;
                 }
                 _ => continue,
@@ -444,15 +451,17 @@ impl<W> DemoApp<W> where W: Window {
             .last_mouse_position
             .to_f32()
             .scale(self.window_size.backing_scale_factor);
-        self.ui.show_text_effects = self.scene_metadata.monochrome_color.is_some();
+
+        self.ui_presenter.set_show_text_effects(self.scene_metadata.monochrome_color.is_some());
 
         let mut ui_action = UIAction::None;
         if self.options.ui == UIVisibility::All {
-            self.ui.update(
+            self.ui_presenter.update(
                 &self.renderer.device,
                 &mut self.window,
                 &mut self.renderer.debug_ui,
                 &mut ui_action,
+                &mut self.ui_model,
             );
         }
 
@@ -499,9 +508,11 @@ impl<W> DemoApp<W> where W: Window {
         // Switch camera mode (2D/3D) if requested.
         //
         // FIXME(pcwalton): This should really be an MVC setup.
-        if self.camera.mode() != self.ui.mode {
-            let viewport_size = self.window.viewport(self.ui.mode.view(0)).size();
-            self.camera = Camera::new(self.ui.mode, self.scene_metadata.view_box, viewport_size);
+        if self.camera.mode() != self.ui_model.mode {
+            let viewport_size = self.window.viewport(self.ui_model.mode.view(0)).size();
+            self.camera = Camera::new(self.ui_model.mode,
+                                      self.scene_metadata.view_box,
+                                      viewport_size);
         }
 
         for ui_event in frame.ui_events {
@@ -564,7 +575,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     fn background_color(&self) -> ColorU {
-        match self.ui.background_color {
+        match self.ui_model.background_color {
             BackgroundColor::Light => LIGHT_BG_COLOR,
             BackgroundColor::Dark => DARK_BG_COLOR,
             BackgroundColor::Transparent => TRANSPARENT_BG_COLOR,
@@ -711,7 +722,7 @@ fn get_svg_building_message(built_svg: &BuiltSVG) -> String {
 }
 
 fn emit_message<W>(
-    ui: &mut DemoUI<GLDevice>,
+    ui_model: &mut DemoUIModel,
     message_epoch: &mut u32,
     expire_message_event_id: u32,
     message: String,
@@ -722,7 +733,7 @@ fn emit_message<W>(
         return;
     }
 
-    ui.message = message;
+    ui_model.message = message;
     let expected_epoch = *message_epoch + 1;
     *message_epoch = expected_epoch;
     thread::spawn(move || {
