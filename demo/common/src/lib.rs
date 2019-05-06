@@ -444,10 +444,10 @@ impl<W> DemoApp<W> where W: Window {
         let frame = self.current_frame.take().unwrap();
         for ui_event in &frame.ui_events {
             self.dirty = true;
-            self.renderer.debug_ui.ui.event_queue.push(*ui_event);
+            self.renderer.debug_ui_presenter.ui_presenter.event_queue.push(*ui_event);
         }
 
-        self.renderer.debug_ui.ui.mouse_position = self
+        self.renderer.debug_ui_presenter.ui_presenter.mouse_position = self
             .last_mouse_position
             .to_f32()
             .scale(self.window_size.backing_scale_factor);
@@ -459,7 +459,7 @@ impl<W> DemoApp<W> where W: Window {
             self.ui_presenter.update(
                 &self.renderer.device,
                 &mut self.window,
-                &mut self.renderer.debug_ui,
+                &mut self.renderer.debug_ui_presenter,
                 &mut ui_action,
                 &mut self.ui_model,
             );
@@ -497,11 +497,13 @@ impl<W> DemoApp<W> where W: Window {
             )
         };
 
-        self.renderer.debug_ui.add_sample(aggregate_stats, build_time, total_rendering_time);
+        self.renderer.debug_ui_presenter.add_sample(aggregate_stats,
+                                                    build_time,
+                                                    total_rendering_time);
     }
 
     fn handle_ui_events(&mut self, mut frame: Frame, ui_action: &mut UIAction) {
-        frame.ui_events = self.renderer.debug_ui.ui.event_queue.drain();
+        frame.ui_events = self.renderer.debug_ui_presenter.ui_presenter.event_queue.drain();
 
         self.handle_ui_action(ui_action);
 

@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::gpu::debug::DebugUI;
+use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
@@ -93,7 +93,7 @@ where
     current_timer_query: Option<D::TimerQuery>,
     pending_timer_queries: VecDeque<D::TimerQuery>,
     free_timer_queries: Vec<D::TimerQuery>,
-    pub debug_ui: DebugUI<D>,
+    pub debug_ui_presenter: DebugUIPresenter<D>,
 
     // Extra info
     render_mode: RenderMode,
@@ -175,7 +175,8 @@ where
             Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
         let fill_colors_texture = device.create_texture(TextureFormat::RGBA8, fill_colors_size);
 
-        let debug_ui = DebugUI::new(&device, resources, dest_framebuffer.window_size(&device));
+        let window_size = dest_framebuffer.window_size(&device);
+        let debug_ui_presenter = DebugUIPresenter::new(&device, resources, window_size);
 
         let renderer = Renderer {
             device,
@@ -211,7 +212,7 @@ where
             current_timer_query: None,
             pending_timer_queries: VecDeque::new(),
             free_timer_queries: vec![],
-            debug_ui,
+            debug_ui_presenter,
 
             mask_framebuffer_cleared: false,
             buffered_fills: vec![],
@@ -279,7 +280,7 @@ where
 
     pub fn draw_debug_ui(&self) {
         self.bind_dest_framebuffer();
-        self.debug_ui.draw(&self.device);
+        self.debug_ui_presenter.draw(&self.device);
     }
 
     pub fn shift_timer_query(&mut self) -> Option<Duration> {
@@ -308,7 +309,7 @@ where
 
     #[inline]
     pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Point2DI32) {
-        self.debug_ui.ui.set_framebuffer_size(new_framebuffer_size);
+        self.debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
     }
 
     #[inline]

@@ -20,7 +20,7 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
-use pathfinder_ui::{FONT_ASCENT, LINE_HEIGHT, PADDING, UI, WINDOW_COLOR};
+use pathfinder_ui::{FONT_ASCENT, LINE_HEIGHT, PADDING, UIPresenter, WINDOW_COLOR};
 use std::collections::VecDeque;
 use std::ops::{Add, Div};
 use std::time::Duration;
@@ -30,17 +30,17 @@ const SAMPLE_BUFFER_SIZE: usize = 60;
 const PERF_WINDOW_WIDTH: i32 = 375;
 const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 6 + PADDING + 2;
 
-pub struct DebugUI<D>
+pub struct DebugUIPresenter<D>
 where
     D: Device,
 {
-    pub ui: UI<D>,
+    pub ui_presenter: UIPresenter<D>,
 
     cpu_samples: SampleBuffer<CPUSample>,
     gpu_samples: SampleBuffer<GPUSample>,
 }
 
-impl<D> DebugUI<D>
+impl<D> DebugUIPresenter<D>
 where
     D: Device,
 {
@@ -48,10 +48,10 @@ where
         device: &D,
         resources: &dyn ResourceLoader,
         framebuffer_size: Point2DI32,
-    ) -> DebugUI<D> {
-        let ui = UI::new(device, resources, framebuffer_size);
-        DebugUI {
-            ui,
+    ) -> DebugUIPresenter<D> {
+        let ui_presenter = UIPresenter::new(device, resources, framebuffer_size);
+        DebugUIPresenter {
+            ui_presenter,
             cpu_samples: SampleBuffer::new(),
             gpu_samples: SampleBuffer::new(),
         }
@@ -76,7 +76,7 @@ where
 
     pub fn draw(&self, device: &D) {
         // Draw performance window.
-        let framebuffer_size = self.ui.framebuffer_size();
+        let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
         let window_rect = RectI32::new(
             Point2DI32::new(
@@ -85,37 +85,36 @@ where
             ),
             Point2DI32::new(PERF_WINDOW_WIDTH, PERF_WINDOW_HEIGHT),
         );
-        self.ui
-            .draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
+        self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
         let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
 
         let mean_cpu_sample = self.cpu_samples.mean();
-        self.ui.draw_text(
+        self.ui_presenter.draw_text(
             device,
             &format!("Objects: {}", mean_cpu_sample.stats.object_count),
             origin,
             false,
         );
-        self.ui.draw_text(
+        self.ui_presenter.draw_text(
             device,
             &format!("Solid Tiles: {}", mean_cpu_sample.stats.solid_tile_count),
             origin + Point2DI32::new(0, LINE_HEIGHT * 1),
             false,
         );
-        self.ui.draw_text(
+        self.ui_presenter.draw_text(
             device,
             &format!("Alpha Tiles: {}", mean_cpu_sample.stats.alpha_tile_count),
             origin + Point2DI32::new(0, LINE_HEIGHT * 2),
             false,
         );
-        self.ui.draw_text(
+        self.ui_presenter.draw_text(
             device,
             &format!("Fills: {}", mean_cpu_sample.stats.fill_count),
             origin + Point2DI32::new(0, LINE_HEIGHT * 3),
             false,
         );
 
-        self.ui.draw_text(
+        self.ui_presenter.draw_text(
             device,
             &format!(
                 "CPU Time: {:.3} ms",
@@ -126,7 +125,7 @@ where
         );
 
         let mean_gpu_sample = self.gpu_samples.mean();
-        self.ui.draw_text(
+        self.ui_presenter.draw_text(
             device,
             &format!(
                 "GPU Time: {:.3} ms",

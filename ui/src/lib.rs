@@ -63,7 +63,7 @@ static QUAD_INDICES:              [u32; 6] = [0, 1, 3, 1, 2, 3];
 static RECT_LINE_INDICES:         [u32; 8] = [0, 1, 1, 2, 2, 3, 3, 0];
 static OUTLINE_RECT_LINE_INDICES: [u32; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 
-pub struct UI<D> where D: Device {
+pub struct UIPresenter<D> where D: Device {
     pub event_queue: UIEventQueue,
     pub mouse_position: Point2DF32,
 
@@ -80,8 +80,9 @@ pub struct UI<D> where D: Device {
     corner_outline_texture: D::Texture,
 }
 
-impl<D> UI<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader, framebuffer_size: Point2DI32) -> UI<D> {
+impl<D> UIPresenter<D> where D: Device {
+    pub fn new(device: &D, resources: &dyn ResourceLoader, framebuffer_size: Point2DI32)
+               -> UIPresenter<D> {
         let texture_program = DebugTextureProgram::new(device, resources);
         let texture_vertex_array = DebugTextureVertexArray::new(device, &texture_program);
         let font = DebugFont::load(resources);
@@ -94,7 +95,7 @@ impl<D> UI<D> where D: Device {
         let corner_outline_texture = device.create_texture_from_png(resources,
                                                                     CORNER_OUTLINE_PNG_NAME);
 
-        UI {
+        UIPresenter {
             event_queue: UIEventQueue::new(),
             mouse_position: Point2DF32::default(),
 
