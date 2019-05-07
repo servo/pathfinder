@@ -15,7 +15,7 @@
 //!
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
-use crate::gpu::renderer::RenderStats;
+use crate::gpu::renderer::{RenderStats, RenderTime};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -27,8 +27,11 @@ use std::time::Duration;
 
 const SAMPLE_BUFFER_SIZE: usize = 60;
 
-const PERF_WINDOW_WIDTH: i32 = 375;
-const PERF_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 6 + PADDING + 2;
+const STATS_WINDOW_WIDTH: i32 = 325;
+const STATS_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 4 + PADDING + 2;
+
+const PERFORMANCE_WINDOW_WIDTH: i32 = 400;
+const PERFORMANCE_WINDOW_HEIGHT: i32 = LINE_HEIGHT * 4 + PADDING + 2;
 
 pub struct DebugUIPresenter<D>
 where
@@ -61,34 +64,37 @@ where
         &mut self,
         stats: RenderStats,
         tile_time: Duration,
-        rendering_time: Option<Duration>,
+        rendering_time: Option<RenderTime>,
     ) {
         self.cpu_samples.push(CPUSample {
             stats,
             elapsed: tile_time,
         });
-        if let Some(rendering_time) = rendering_time {
-            self.gpu_samples.push(GPUSample {
-                elapsed: rendering_time,
-            });
+        if let Some(time) = rendering_time {
+            self.gpu_samples.push(GPUSample { time })
         }
     }
 
     pub fn draw(&self, device: &D) {
-        // Draw performance window.
+        let mean_cpu_sample = self.cpu_samples.mean();
+        self.draw_stats_window(device, &mean_cpu_sample);
+        self.draw_performance_window(device, &mean_cpu_sample);
+    }
+
+    fn draw_stats_window(&self, device: &D, mean_cpu_sample: &CPUSample) {
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
         let window_rect = RectI32::new(
             Point2DI32::new(
-                framebuffer_size.x() - PADDING - PERF_WINDOW_WIDTH,
-                bottom - PERF_WINDOW_HEIGHT,
+                framebuffer_size.x() - PADDING - STATS_WINDOW_WIDTH,
+                bottom - PERFORMANCE_WINDOW_HEIGHT - PADDING - STATS_WINDOW_HEIGHT,
             ),
-            Point2DI32::new(PERF_WINDOW_WIDTH, PERF_WINDOW_HEIGHT),
+            Point2DI32::new(STATS_WINDOW_WIDTH, STATS_WINDOW_HEIGHT),
         );
-        self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
-        let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
 
-        let mean_cpu_sample = self.cpu_samples.mean();
+        self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
+
+        let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
             &format!("Objects: {}", mean_cpu_sample.stats.object_count),
@@ -113,14 +119,29 @@ where
             origin + Point2DI32::new(0, LINE_HEIGHT * 3),
             false,
         );
+    }
 
+    fn draw_performance_window(&self, device: &D, mean_cpu_sample: &CPUSample) {
+        let framebuffer_size = self.ui_presenter.framebuffer_size();
+        let bottom = framebuffer_size.y() - PADDING;
+        let window_rect = RectI32::new(
+            Point2DI32::new(
+                framebuffer_size.x() - PADDING - PERFORMANCE_WINDOW_WIDTH,
+                bottom - PERFORMANCE_WINDOW_HEIGHT,
+            ),
+            Point2DI32::new(PERFORMANCE_WINDOW_WIDTH, PERFORMANCE_WINDOW_HEIGHT),
+        );
+
+        self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
+
+        let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
             &format!(
-                "CPU Time: {:.3} ms",
+                "Stage 0 CPU: {:.3} ms",
                 duration_to_ms(mean_cpu_sample.elapsed)
             ),
-            origin + Point2DI32::new(0, LINE_HEIGHT * 4),
+            origin,
             false,
         );
 
@@ -128,13 +149,33 @@ where
         self.ui_presenter.draw_text(
             device,
             &format!(
-                "GPU Time: {:.3} ms",
-                duration_to_ms(mean_gpu_sample.elapsed)
+                "Stage 0 GPU: {:.3} ms",
+                duration_to_ms(mean_gpu_sample.time.stage_0)
             ),
-            origin + Point2DI32::new(0, LINE_HEIGHT * 5),
+            origin + Point2DI32::new(0, LINE_HEIGHT * 1),
+            false,
+        );
+        self.ui_presenter.draw_text(
+            device,
+            &format!(
+                "Stage 1 GPU: {:.3} ms",
+                duration_to_ms(mean_gpu_sample.time.stage_1)
+            ),
+            origin + Point2DI32::new(0, LINE_HEIGHT * 2),
+            false,
+        );
+
+        let wallclock_time = f64::max(duration_to_ms(mean_gpu_sample.time.stage_0),
+                                      duration_to_ms(mean_cpu_sample.elapsed)) +
+            duration_to_ms(mean_gpu_sample.time.stage_1);
+        self.ui_presenter.draw_text(
+            device,
+            &format!("Wallclock: {:.3} ms", wallclock_time),
+            origin + Point2DI32::new(0, LINE_HEIGHT * 3),
             false,
         );
     }
+
 }
 
 struct SampleBuffer<S>
@@ -203,14 +244,14 @@ impl Div<usize> for CPUSample {
 
 #[derive(Clone, Default)]
 struct GPUSample {
-    elapsed: Duration,
+    time: RenderTime,
 }
 
 impl Add<GPUSample> for GPUSample {
     type Output = GPUSample;
     fn add(self, other: GPUSample) -> GPUSample {
         GPUSample {
-            elapsed: self.elapsed + other.elapsed,
+            time: self.time + other.time,
         }
     }
 }
@@ -219,7 +260,10 @@ impl Div<usize> for GPUSample {
     type Output = GPUSample;
     fn div(self, divisor: usize) -> GPUSample {
         GPUSample {
-            elapsed: self.elapsed / (divisor as u32),
+            time: RenderTime {
+                stage_0: self.time.stage_0 / (divisor as u32),
+                stage_1: self.time.stage_1 / (divisor as u32),
+            }
         }
     }
 }

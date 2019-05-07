@@ -90,8 +90,8 @@ where
 
     // Debug
     pub stats: RenderStats,
-    current_timer_query: Option<D::TimerQuery>,
-    pending_timer_queries: VecDeque<D::TimerQuery>,
+    current_timers: RenderTimers<D>,
+    pending_timers: VecDeque<RenderTimers<D>>,
     free_timer_queries: Vec<D::TimerQuery>,
     pub debug_ui_presenter: DebugUIPresenter<D>,
 
@@ -209,8 +209,8 @@ where
             reprojection_vertex_array,
 
             stats: RenderStats::default(),
-            current_timer_query: None,
-            pending_timer_queries: VecDeque::new(),
+            current_timers: RenderTimers::new(),
+            pending_timers: VecDeque::new(),
             free_timer_queries: vec![],
             debug_ui_presenter,
 
@@ -230,13 +230,6 @@ where
     pub fn begin_scene(&mut self) {
         self.init_postprocessing_framebuffer();
 
-        let timer_query = self
-            .free_timer_queries
-            .pop()
-            .unwrap_or_else(|| self.device.create_timer_query());
-        self.device.begin_timer_query(&timer_query);
-        self.current_timer_query = Some(timer_query);
-
         self.mask_framebuffer_cleared = false;
         self.stats = RenderStats::default();
     }
@@ -251,7 +244,10 @@ where
             }
             RenderCommand::AddShaders(ref shaders) => self.upload_shaders(shaders),
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
-            RenderCommand::FlushFills => self.draw_buffered_fills(),
+            RenderCommand::FlushFills => {
+                self.begin_composite_timer_query();
+                self.draw_buffered_fills();
+            }
             RenderCommand::SolidTile(ref solid_tiles) => {
                 let count = solid_tiles.len();
                 self.stats.solid_tile_count += count;
@@ -273,9 +269,8 @@ where
             self.postprocess();
         }
 
-        let timer_query = self.current_timer_query.take().unwrap();
-        self.device.end_timer_query(&timer_query);
-        self.pending_timer_queries.push_back(timer_query);
+        self.end_composite_timer_query();
+        self.pending_timers.push_back(mem::replace(&mut self.current_timers, RenderTimers::new()));
     }
 
     pub fn draw_debug_ui(&self) {
@@ -283,15 +278,33 @@ where
         self.debug_ui_presenter.draw(&self.device);
     }
 
-    pub fn shift_timer_query(&mut self) -> Option<Duration> {
-        let query = self.pending_timer_queries.front()?;
-        if !self.device.timer_query_is_available(&query) {
-            return None;
+    pub fn shift_rendering_time(&mut self) -> Option<RenderTime> {
+        let timers = self.pending_timers.front()?;
+
+        // Accumulate stage-0 time.
+        let mut total_stage_0_time = Duration::new(0, 0);
+        for timer_query in &timers.stage_0 {
+            if !self.device.timer_query_is_available(timer_query) {
+                return None;
+            }
+            total_stage_0_time += self.device.get_timer_query(timer_query);
         }
-        let query = self.pending_timer_queries.pop_front().unwrap();
-        let result = self.device.get_timer_query(&query);
-        self.free_timer_queries.push(query);
-        Some(result)
+
+        // Get stage-1 time.
+        let stage_1_time = {
+            let stage_1_timer_query = timers.stage_1.as_ref().unwrap();
+            if !self.device.timer_query_is_available(&stage_1_timer_query) {
+                return None;
+            }
+            self.device.get_timer_query(stage_1_timer_query)
+        };
+
+        // Recycle all timer queries.
+        let timers = self.pending_timers.pop_front().unwrap();
+        self.free_timer_queries.extend(timers.stage_0.into_iter());
+        self.free_timer_queries.push(timers.stage_1.unwrap());
+
+        Some(RenderTime { stage_0: total_stage_0_time, stage_1: stage_1_time })
     }
 
     #[inline]
@@ -378,6 +391,9 @@ where
             return;
         }
 
+        let timer_query = self.allocate_timer_query();
+        self.device.begin_timer_query(&timer_query);
+
         self.stats.fill_count += fills.len();
 
         while !fills.is_empty() {
@@ -388,6 +404,9 @@ where
                 self.draw_buffered_fills();
             }
         }
+
+        self.device.end_timer_query(&timer_query);
+        self.current_timers.stage_0.push(timer_query);
     }
 
     fn draw_buffered_fills(&mut self) {
@@ -853,6 +872,24 @@ where
                 RectI32::new(Point2DI32::default(), size)
             }
         }
+    }
+
+    fn allocate_timer_query(&mut self) -> D::TimerQuery {
+        match self.free_timer_queries.pop() {
+            Some(query) => query,
+            None => self.device.create_timer_query(),
+        }
+    }
+
+    fn begin_composite_timer_query(&mut self) {
+        let timer_query = self.allocate_timer_query();
+        self.device.begin_timer_query(&timer_query);
+        self.current_timers.stage_1 = Some(timer_query);
+    }
+
+    fn end_composite_timer_query(&mut self) {
+        let query = self.current_timers.stage_1.as_ref().expect("No stage 1 timer query yet?!");
+        self.device.end_timer_query(&query);
     }
 }
 
@@ -1534,6 +1571,42 @@ impl Div<usize> for RenderStats {
             solid_tile_count: self.solid_tile_count / divisor,
             alpha_tile_count: self.alpha_tile_count / divisor,
             fill_count: self.fill_count / divisor,
+        }
+    }
+}
+
+struct RenderTimers<D> where D: Device {
+    stage_0: Vec<D::TimerQuery>,
+    stage_1: Option<D::TimerQuery>,
+}
+
+impl<D> RenderTimers<D> where D: Device {
+    fn new() -> RenderTimers<D> {
+        RenderTimers { stage_0: vec![], stage_1: None }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RenderTime {
+    pub stage_0: Duration,
+    pub stage_1: Duration,
+}
+
+impl Default for RenderTime {
+    #[inline]
+    fn default() -> RenderTime {
+        RenderTime { stage_0: Duration::new(0, 0), stage_1: Duration::new(0, 0) }
+    }
+}
+
+impl Add<RenderTime> for RenderTime {
+    type Output = RenderTime;
+
+    #[inline]
+    fn add(self, other: RenderTime) -> RenderTime {
+        RenderTime {
+            stage_0: self.stage_0 + other.stage_0,
+            stage_1: self.stage_1 + other.stage_1,
         }
     }
 }

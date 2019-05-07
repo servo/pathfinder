@@ -26,7 +26,7 @@ use pathfinder_gl::GLDevice;
 use pathfinder_gpu::Device;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderStats, Renderer};
+use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderStats, RenderTime, Renderer};
 use pathfinder_renderer::options::{RenderOptions, RenderTransform};
 use pathfinder_renderer::post::STEM_DARKENING_FACTORS;
 use pathfinder_renderer::scene::Scene;
@@ -473,7 +473,7 @@ impl<W> DemoApp<W> where W: Window {
 
     fn update_stats(&mut self) {
         let frame = self.current_frame.as_mut().unwrap();
-        if let Some(rendering_time) = self.renderer.shift_timer_query() {
+        if let Some(rendering_time) = self.renderer.shift_rendering_time() {
             frame.scene_rendering_times.push(rendering_time);
         }
 
@@ -488,12 +488,11 @@ impl<W> DemoApp<W> where W: Window {
         let total_rendering_time = if frame.scene_rendering_times.is_empty() {
             None
         } else {
-            let zero = Duration::new(0, 0);
             Some(
                 frame
                     .scene_rendering_times
                     .iter()
-                    .fold(zero, |sum, item| sum + *item),
+                    .fold(RenderTime::default(), |sum, item| sum + *item),
             )
         };
 
@@ -747,7 +746,7 @@ fn emit_message<W>(
 struct Frame {
     transform: RenderTransform,
     ui_events: Vec<UIEvent>,
-    scene_rendering_times: Vec<Duration>,
+    scene_rendering_times: Vec<RenderTime>,
     scene_stats: Vec<RenderStats>,
 }
 
