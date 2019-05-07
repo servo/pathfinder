@@ -33,6 +33,9 @@ const EFFECTS_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 3 + PADDING * 4;
 const BACKGROUND_PANEL_WIDTH: i32 = 250;
 const BACKGROUND_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 3;
 
+const SCREENSHOT_PANEL_WIDTH: i32 = 275;
+const SCREENSHOT_PANEL_HEIGHT: i32 = BUTTON_HEIGHT * 2;
+
 const ROTATE_PANEL_WIDTH: i32 = SLIDER_WIDTH + PADDING * 2;
 const ROTATE_PANEL_HEIGHT: i32 = PADDING * 2 + SLIDER_HEIGHT;
 
@@ -86,6 +89,7 @@ where
 
     effects_panel_visible: bool,
     background_panel_visible: bool,
+    screenshot_panel_visible: bool,
     rotate_panel_visible: bool,
 
     show_text_effects: bool,
@@ -115,6 +119,7 @@ where
 
             effects_panel_visible: false,
             background_panel_visible: false,
+            screenshot_panel_visible: false,
             rotate_panel_visible: false,
 
             show_text_effects: true,
@@ -178,18 +183,19 @@ where
         if debug_ui_presenter.ui_presenter.draw_button(device,
                                                        position,
                                                        &self.screenshot_texture) {
-            // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
-            // the contents of the file.
-            if let Ok(file) = window.run_save_dialog("png") {
-                *action = UIAction::TakeScreenshot(file);
-            }
+            self.screenshot_panel_visible = !self.screenshot_panel_visible;
         }
-        debug_ui_presenter.ui_presenter.draw_tooltip(
-            device,
-            "Take Screenshot",
-            RectI32::new(position, button_size),
-        );
-        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
+        if !self.screenshot_panel_visible {
+            debug_ui_presenter.ui_presenter.draw_tooltip(
+                device,
+                "Take Screenshot",
+                RectI32::new(position, button_size),
+            );
+        }
+
+        // Draw screenshot panel, if necessary.
+        self.draw_screenshot_panel(device, window, debug_ui_presenter, position.x(), action);
+        position += Point2DI32::new(button_size.x() + PADDING, 0);
 
         // Draw mode switch.
         let new_mode = debug_ui_presenter.ui_presenter.draw_text_switch(
@@ -338,6 +344,48 @@ where
         );
     }
 
+    fn draw_screenshot_panel<W>(
+        &mut self,
+        device: &D,
+        window: &mut W,
+        debug_ui_presenter: &mut DebugUIPresenter<D>,
+        panel_x: i32,
+        action: &mut UIAction,
+    ) where W: Window {
+        if !self.screenshot_panel_visible {
+            return;
+        }
+
+        let bottom = debug_ui_presenter.ui_presenter.framebuffer_size().y() - PADDING;
+        let panel_y = bottom - (BUTTON_HEIGHT + PADDING + SCREENSHOT_PANEL_HEIGHT);
+        let panel_position = Point2DI32::new(panel_x, panel_y);
+        debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
+            device,
+            RectI32::new(
+                panel_position,
+                Point2DI32::new(SCREENSHOT_PANEL_WIDTH, SCREENSHOT_PANEL_HEIGHT),
+            ),
+            WINDOW_COLOR,
+        );
+
+        self.draw_screenshot_menu_item(
+            device,
+            window,
+            debug_ui_presenter,
+            ScreenshotType::PNG,
+            panel_position,
+            action,
+        );
+        self.draw_screenshot_menu_item(
+            device,
+            window,
+            debug_ui_presenter,
+            ScreenshotType::SVG,
+            panel_position,
+            action,
+        );
+    }
+
     fn draw_background_panel(
         &mut self,
         device: &D,
@@ -442,6 +490,33 @@ where
         debug_ui_presenter.ui_presenter.draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
     }
 
+
+    fn draw_screenshot_menu_item<W>(
+        &mut self,
+        device: &D,
+        window: &mut W,
+        debug_ui_presenter: &mut DebugUIPresenter<D>,
+        screenshot_type: ScreenshotType,
+        panel_position: Point2DI32,
+        action: &mut UIAction,
+    ) where W: Window {
+        let index = screenshot_type as i32;
+        let text = format!("Save as {}...", screenshot_type.as_str());
+
+        let widget_size = Point2DI32::new(BACKGROUND_PANEL_WIDTH, BUTTON_HEIGHT);
+        let widget_origin = panel_position + Point2DI32::new(0, widget_size.y() * index);
+        let widget_rect = RectI32::new(widget_origin, widget_size);
+
+        if self.draw_menu_item(device, debug_ui_presenter, &text, widget_rect, false) {
+            // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
+            // the contents of the file.
+            if let Ok(path) = window.run_save_dialog(screenshot_type.extension()) {
+                self.screenshot_panel_visible = false;
+                *action = UIAction::TakeScreenshot(ScreenshotInfo { kind: screenshot_type, path });
+            }
+        }
+    }
+
     fn draw_background_menu_item(
         &mut self,
         device: &D,
@@ -457,25 +532,34 @@ where
         let widget_origin = panel_position + Point2DI32::new(0, widget_size.y() * index);
         let widget_rect = RectI32::new(widget_origin, widget_size);
 
-        if color == model.background_color {
+        let selected = color == model.background_color;
+        if self.draw_menu_item(device, debug_ui_presenter, text, widget_rect, selected) {
+            model.background_color = color;
+            *action = UIAction::ModelChanged;
+        }
+    }
+
+    fn draw_menu_item(&self,
+                      device: &D,
+                      debug_ui_presenter: &mut DebugUIPresenter<D>,
+                      text: &str,
+                      widget_rect: RectI32,
+                      selected: bool)
+                      -> bool {
+        if selected {
             debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(device,
                                                                     widget_rect,
                                                                     TEXT_COLOR);
         }
 
         let (text_x, text_y) = (PADDING * 2, BUTTON_TEXT_OFFSET);
-        let text_position = widget_origin + Point2DI32::new(text_x, text_y);
-        debug_ui_presenter.ui_presenter.draw_text(device,
-                                                  text,
-                                                  text_position, color == model.background_color);
+        let text_position = widget_rect.origin() + Point2DI32::new(text_x, text_y);
+        debug_ui_presenter.ui_presenter.draw_text(device, text, text_position, selected);
 
-        if debug_ui_presenter.ui_presenter
-                             .event_queue
-                             .handle_mouse_down_in_rect(widget_rect)
-                             .is_some() {
-            model.background_color = color;
-            *action = UIAction::ModelChanged;
-        }
+        debug_ui_presenter.ui_presenter
+                          .event_queue
+                          .handle_mouse_down_in_rect(widget_rect)
+                          .is_some()
     }
 
     fn draw_effects_switch(
@@ -508,8 +592,36 @@ where
 pub enum UIAction {
     None,
     ModelChanged,
-    TakeScreenshot(PathBuf),
+    TakeScreenshot(ScreenshotInfo),
     ZoomIn,
     ZoomOut,
     Rotate(f32),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScreenshotInfo {
+    pub kind: ScreenshotType,
+    pub path: PathBuf,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScreenshotType {
+    PNG = 0,
+    SVG = 1,
+}
+
+impl ScreenshotType {
+    fn extension(&self) -> &'static str {
+        match *self {
+            ScreenshotType::PNG => "png",
+            ScreenshotType::SVG => "svg",
+        }
+    }
+
+    fn as_str(&self) -> &'static str {
+        match *self {
+            ScreenshotType::PNG => "PNG",
+            ScreenshotType::SVG => "SVG",
+        }
+    }
 }

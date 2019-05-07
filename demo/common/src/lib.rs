@@ -16,7 +16,7 @@ extern crate log;
 use crate::camera::{Camera, Mode};
 use crate::concurrent::DemoExecutor;
 use crate::device::{GroundProgram, GroundVertexArray};
-use crate::ui::{DemoUIModel, DemoUIPresenter, UIAction};
+use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
@@ -33,7 +33,7 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_svg::BuiltSVG;
 use pathfinder_ui::{MousePosition, UIEvent};
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
@@ -93,7 +93,7 @@ pub struct DemoApp<W> where W: Window {
 
     camera: Camera,
     frame_counter: u32,
-    pending_screenshot_path: Option<PathBuf>,
+    pending_screenshot_info: Option<ScreenshotInfo>,
     mouselook_enabled: bool,
     pub dirty: bool,
     expire_message_event_id: u32,
@@ -174,7 +174,7 @@ impl<W> DemoApp<W> where W: Window {
 
             camera,
             frame_counter: 0,
-            pending_screenshot_path: None,
+            pending_screenshot_info: None,
             mouselook_enabled: false,
             dirty: true,
             expire_message_event_id,
@@ -501,6 +501,19 @@ impl<W> DemoApp<W> where W: Window {
                                                     total_rendering_time);
     }
 
+    fn maybe_take_screenshot(&mut self) {
+        match self.pending_screenshot_info.take() {
+            None => {}
+            Some(ScreenshotInfo { kind: ScreenshotType::PNG, path }) => {
+                self.take_raster_screenshot(path)
+            }
+            Some(ScreenshotInfo { kind: ScreenshotType::SVG, path }) => {
+                // FIXME(pcwalton): This won't work on Android.
+                File::create(path).unwrap().write_all(&mut self.scene_proxy.as_svg()).unwrap();
+            }
+        }
+    }
+
     fn handle_ui_events(&mut self, mut frame: Frame, ui_action: &mut UIAction) {
         frame.ui_events = self.renderer.debug_ui_presenter.ui_presenter.event_queue.drain();
 
@@ -536,8 +549,8 @@ impl<W> DemoApp<W> where W: Window {
         match ui_action {
             UIAction::None => {}
             UIAction::ModelChanged => self.dirty = true,
-            UIAction::TakeScreenshot(ref path) => {
-                self.pending_screenshot_path = Some((*path).clone());
+            UIAction::TakeScreenshot(ref info) => {
+                self.pending_screenshot_info = Some((*info).clone());
                 self.dirty = true;
             }
             UIAction::ZoomIn => {

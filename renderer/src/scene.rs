@@ -20,7 +20,7 @@ use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
-use std::fmt::{self, Debug, Formatter};
+use std::io::{self, Write};
 
 #[derive(Clone)]
 pub struct Scene {
@@ -184,12 +184,10 @@ impl Scene {
         let prepared_options = options.prepare(self.bounds);
         SceneBuilder::new(self, &prepared_options, listener).build(executor)
     }
-}
 
-impl Debug for Scene {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+    pub fn write_svg<W>(&self, writer: &mut W) -> io::Result<()> where W: Write {
         writeln!(
-            formatter,
+            writer,
             "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"{} {} {} {}\">",
             self.view_box.origin().x(),
             self.view_box.origin().y(),
@@ -198,17 +196,17 @@ impl Debug for Scene {
         )?;
         for object in &self.objects {
             let paint = &self.paints[object.paint.0 as usize];
-            write!(formatter, "    <path")?;
+            write!(writer, "    <path")?;
             if !object.name.is_empty() {
-                write!(formatter, " id=\"{}\"", object.name)?;
+                write!(writer, " id=\"{}\"", object.name)?;
             }
             writeln!(
-                formatter,
+                writer,
                 " fill=\"{:?}\" d=\"{:?}\" />",
                 paint.color, object.outline
             )?;
         }
-        writeln!(formatter, "</svg>")?;
+        writeln!(writer, "</svg>")?;
         Ok(())
     }
 }

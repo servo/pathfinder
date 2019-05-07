@@ -22,6 +22,7 @@ use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode};
 use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::options::RenderTransform;
 use pathfinder_renderer::post::DEFRINGING_KERNEL_CORE_GRAPHICS;
+use std::path::PathBuf;
 
 const GROUND_SOLID_COLOR: ColorU = ColorU {
     r: 80,
@@ -300,19 +301,14 @@ impl<W> DemoApp<W> where W: Window {
         self.renderer.end_scene();
     }
 
-    pub fn maybe_take_screenshot(&mut self) {
-        let screenshot_path = match self.pending_screenshot_path.take() {
-            None => return,
-            Some(screenshot_path) => screenshot_path,
-        };
-
+    pub fn take_raster_screenshot(&mut self, path: PathBuf) {
         let drawable_size = self.window_size.device_size();
         let pixels = self
             .renderer
             .device
             .read_pixels_from_default_framebuffer(drawable_size);
         image::save_buffer(
-            screenshot_path,
+            path,
             &pixels,
             drawable_size.x() as u32,
             drawable_size.y() as u32,
