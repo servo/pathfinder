@@ -212,7 +212,7 @@ where
             *action = UIAction::ModelChanged;
         }
 
-        let mode_switch_width = debug_ui_presenter.ui_presenter.measure_switch(3);
+        let mode_switch_width = debug_ui_presenter.ui_presenter.measure_segmented_control(3);
         let mode_switch_size = Point2DI32::new(mode_switch_width, BUTTON_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_tooltip(
             device,
@@ -577,7 +577,7 @@ where
             .ui_presenter
             .draw_text(device, text, Point2DI32::new(text_x, text_y), false);
 
-        let switch_width = debug_ui_presenter.ui_presenter.measure_switch(2);
+        let switch_width = debug_ui_presenter.ui_presenter.measure_segmented_control(2);
         let switch_x = PADDING + EFFECTS_PANEL_WIDTH - (switch_width + PADDING);
         let switch_y = window_y + PADDING + (BUTTON_HEIGHT + PADDING) * index;
         let switch_position = Point2DI32::new(switch_x, switch_y);
