@@ -43,6 +43,7 @@ static EFFECTS_PNG_NAME: &'static str = "demo-effects";
 static OPEN_PNG_NAME: &'static str = "demo-open";
 static ROTATE_PNG_NAME: &'static str = "demo-rotate";
 static ZOOM_IN_PNG_NAME: &'static str = "demo-zoom-in";
+static ZOOM_ACTUAL_SIZE_PNG_NAME: &'static str = "demo-zoom-actual-size";
 static ZOOM_OUT_PNG_NAME: &'static str = "demo-zoom-out";
 static BACKGROUND_PNG_NAME: &'static str = "demo-background";
 static SCREENSHOT_PNG_NAME: &'static str = "demo-screenshot";
@@ -83,6 +84,7 @@ where
     open_texture: D::Texture,
     rotate_texture: D::Texture,
     zoom_in_texture: D::Texture,
+    zoom_actual_size_texture: D::Texture,
     zoom_out_texture: D::Texture,
     background_texture: D::Texture,
     screenshot_texture: D::Texture,
@@ -104,6 +106,8 @@ where
         let open_texture = device.create_texture_from_png(resources, OPEN_PNG_NAME);
         let rotate_texture = device.create_texture_from_png(resources, ROTATE_PNG_NAME);
         let zoom_in_texture = device.create_texture_from_png(resources, ZOOM_IN_PNG_NAME);
+        let zoom_actual_size_texture = device.create_texture_from_png(resources,
+                                                                      ZOOM_ACTUAL_SIZE_PNG_NAME);
         let zoom_out_texture = device.create_texture_from_png(resources, ZOOM_OUT_PNG_NAME);
         let background_texture = device.create_texture_from_png(resources, BACKGROUND_PNG_NAME);
         let screenshot_texture = device.create_texture_from_png(resources, SCREENSHOT_PNG_NAME);
@@ -113,6 +117,7 @@ where
             open_texture,
             rotate_texture,
             zoom_in_texture,
+            zoom_actual_size_texture,
             zoom_out_texture,
             background_texture,
             screenshot_texture,
@@ -258,22 +263,38 @@ where
         self.draw_rotate_panel(device, debug_ui_presenter, position.x(), action, model);
         position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
+        // Draw zoom control.
+        self.draw_zoom_control(device, debug_ui_presenter, position, action);
+    }
+
+    fn draw_zoom_control(
+        &mut self,
+        device: &D,
+        debug_ui_presenter: &mut DebugUIPresenter<D>,
+        position: Point2DI32,
+        action: &mut UIAction,
+    ) {
         let zoom_segmented_control_width =
-            debug_ui_presenter.ui_presenter.measure_segmented_control(2);
+            debug_ui_presenter.ui_presenter.measure_segmented_control(3);
         let zoom_segmented_control_rect =
             RectI32::new(position, Point2DI32::new(zoom_segmented_control_width, BUTTON_HEIGHT));
         debug_ui_presenter.ui_presenter.draw_tooltip(device, "Zoom", zoom_segmented_control_rect);
 
-        let zoom_textures = &[&self.zoom_in_texture, &self.zoom_out_texture];
+        let zoom_textures = &[
+            &self.zoom_in_texture,
+            &self.zoom_actual_size_texture,
+            &self.zoom_out_texture
+        ];
+
         match debug_ui_presenter.ui_presenter.draw_image_segmented_control(device,
                                                                            position,
                                                                            zoom_textures,
                                                                            None) {
             Some(0) => *action = UIAction::ZoomIn,
-            Some(1) => *action = UIAction::ZoomOut,
+            Some(1) => *action = UIAction::ZoomActualSize,
+            Some(2) => *action = UIAction::ZoomOut,
             _ => {}
         }
-        position += Point2DI32::new(zoom_segmented_control_width + PADDING, 0);
     }
 
     fn draw_message_text(&mut self,
@@ -594,6 +615,7 @@ pub enum UIAction {
     ModelChanged,
     TakeScreenshot(ScreenshotInfo),
     ZoomIn,
+    ZoomActualSize,
     ZoomOut,
     Rotate(f32),
 }

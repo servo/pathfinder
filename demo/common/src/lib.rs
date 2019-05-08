@@ -21,6 +21,7 @@ use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gl::GLDevice;
 use pathfinder_gpu::Device;
@@ -572,6 +573,12 @@ impl<W> DemoApp<W> where W: Window {
                         .post_translate(-center)
                         .post_scale(scale)
                         .post_translate(center);
+                    self.dirty = true;
+                }
+            }
+            UIAction::ZoomActualSize => {
+                if let Camera::TwoD(ref mut transform) = self.camera {
+                    *transform = Transform2DF32::default();
                     self.dirty = true;
                 }
             }
