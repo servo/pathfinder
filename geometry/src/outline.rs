@@ -480,8 +480,8 @@ impl Contour {
             if contour_is_monotonic {
                 if self.point_is_endpoint(point_index) {
                     if let Some(last_endpoint_index) = last_endpoint_index {
-                        if !self.curve_with_endpoints_is_monotonic(last_endpoint_index, point_index)
-                        {
+                        if !self.curve_with_endpoints_is_monotonic(last_endpoint_index,
+                                                                   point_index) {
                             contour_is_monotonic = false;
                         }
                     }
