@@ -490,7 +490,6 @@ where
         debug_ui_presenter.ui_presenter.draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
     }
 
-
     fn draw_screenshot_menu_item<W>(
         &mut self,
         device: &D,

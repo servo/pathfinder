@@ -449,35 +449,26 @@ impl<D> UIPresenter<D> where D: Device {
         value
     }
 
-    /// TODO(pcwalton): Support switches with more than two segments.
     pub fn draw_image_switch(&mut self,
                              device: &D,
-                             origin: Point2DI32,
-                             off_texture: &D::Texture,
-                             on_texture: &D::Texture,
-                             mut value: bool)
-                             -> bool {
+                             mut origin: Point2DI32,
+                             segment_textures: &[&D::Texture],
+                             mut value: u8)
+                             -> u8 {
         if let Some(new_value) = self.draw_segmented_control(device,
                                                              origin,
-                                                             Some(value as u8),
-                                                             2) {
-            value = new_value != 0;
+                                                             Some(value),
+                                                             segment_textures.len() as u8) {
+            value = new_value;
         }
 
-        let off_offset = SEGMENT_SIZE / 2 - device.texture_size(off_texture).x() / 2;
-        let on_offset = SEGMENT_SIZE + SEGMENT_SIZE / 2 - device.texture_size(on_texture).x() / 2;
-
-        let off_color = if !value { WINDOW_COLOR } else { TEXT_COLOR };
-        let on_color  = if  value { WINDOW_COLOR } else { TEXT_COLOR };
-
-        self.draw_texture(device,
-                          origin + Point2DI32::new(off_offset, PADDING),
-                          off_texture,
-                          off_color);
-        self.draw_texture(device,
-                          origin + Point2DI32::new(on_offset,  PADDING),
-                          on_texture,
-                          on_color);
+        for (segment_index, segment_texture) in segment_textures.iter().enumerate() {
+            let texture_width = device.texture_size(segment_texture).x();
+            let offset = SEGMENT_SIZE / 2 - texture_width / 2;
+            let color = if segment_index as u8 == value { TEXT_COLOR } else { WINDOW_COLOR };
+            self.draw_texture(device, origin + Point2DI32::new(offset, 0), segment_texture, color);
+            origin += Point2DI32::new(SEGMENT_SIZE + 1, 0);
+        }
 
         value
     }
