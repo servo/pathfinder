@@ -449,28 +449,37 @@ impl<D> UIPresenter<D> where D: Device {
         value
     }
 
-    pub fn draw_image_switch(&mut self,
-                             device: &D,
-                             mut origin: Point2DI32,
-                             segment_textures: &[&D::Texture],
-                             mut value: u8)
-                             -> u8 {
-        if let Some(new_value) = self.draw_segmented_control(device,
-                                                             origin,
-                                                             Some(value),
-                                                             segment_textures.len() as u8) {
-            value = new_value;
+    pub fn draw_image_segmented_control(&mut self,
+                                        device: &D,
+                                        mut origin: Point2DI32,
+                                        segment_textures: &[&D::Texture],
+                                        mut value: Option<u8>)
+                                        -> Option<u8> {
+        let mut clicked_segment = None;
+        if let Some(segment_index) = self.draw_segmented_control(device,
+                                                                 origin,
+                                                                 value,
+                                                                 segment_textures.len() as u8) {
+            if let Some(ref mut value) = value {
+                *value = segment_index;
+            }
+            clicked_segment = Some(segment_index);
         }
 
         for (segment_index, segment_texture) in segment_textures.iter().enumerate() {
             let texture_width = device.texture_size(segment_texture).x();
-            let offset = SEGMENT_SIZE / 2 - texture_width / 2;
-            let color = if segment_index as u8 == value { TEXT_COLOR } else { WINDOW_COLOR };
-            self.draw_texture(device, origin + Point2DI32::new(offset, 0), segment_texture, color);
+            let offset = Point2DI32::new(SEGMENT_SIZE / 2 - texture_width / 2, PADDING);
+            let color = if Some(segment_index as u8) == value {
+                WINDOW_COLOR
+            } else {
+                TEXT_COLOR
+            };
+
+            self.draw_texture(device, origin + offset, segment_texture, color);
             origin += Point2DI32::new(SEGMENT_SIZE + 1, 0);
         }
 
-        value
+        clicked_segment
     }
 
     fn draw_segmented_control(&mut self,
