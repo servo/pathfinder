@@ -258,21 +258,22 @@ where
         self.draw_rotate_panel(device, debug_ui_presenter, position.x(), action, model);
         position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
 
-        if debug_ui_presenter.ui_presenter.draw_button(device, position, &self.zoom_in_texture) {
-            *action = UIAction::ZoomIn;
-        }
-        debug_ui_presenter.ui_presenter.draw_tooltip(device,
-                                                     "Zoom In",
-                                                     RectI32::new(position, button_size));
-        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
+        let zoom_segmented_control_width =
+            debug_ui_presenter.ui_presenter.measure_segmented_control(2);
+        let zoom_segmented_control_rect =
+            RectI32::new(position, Point2DI32::new(zoom_segmented_control_width, BUTTON_HEIGHT));
+        debug_ui_presenter.ui_presenter.draw_tooltip(device, "Zoom", zoom_segmented_control_rect);
 
-        if debug_ui_presenter.ui_presenter.draw_button(device, position, &self.zoom_out_texture) {
-            *action = UIAction::ZoomOut;
+        let zoom_textures = &[&self.zoom_in_texture, &self.zoom_out_texture];
+        match debug_ui_presenter.ui_presenter.draw_image_segmented_control(device,
+                                                                           position,
+                                                                           zoom_textures,
+                                                                           None) {
+            Some(0) => *action = UIAction::ZoomIn,
+            Some(1) => *action = UIAction::ZoomOut,
+            _ => {}
         }
-        debug_ui_presenter.ui_presenter.draw_tooltip(device,
-                                                     "Zoom Out",
-                                                     RectI32::new(position, button_size));
-        position += Point2DI32::new(BUTTON_WIDTH + PADDING, 0);
+        position += Point2DI32::new(zoom_segmented_control_width + PADDING, 0);
     }
 
     fn draw_message_text(&mut self,
