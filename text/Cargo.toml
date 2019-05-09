@@ -1,20 +1,19 @@
 [package]
-name = "pathfinder_canvas"
+name = "pathfinder_text"
 version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
+euclid = "0.19"
 font-kit = "0.1"
+lyon_path = "0.12"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 
 [dependencies.pathfinder_renderer]
 path = "../renderer"
-
-[dependencies.pathfinder_text]
-path = "../text"
 
 [dependencies.skribo]
 git = "https://github.com/linebender/skribo.git"

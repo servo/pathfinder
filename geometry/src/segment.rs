@@ -51,7 +51,7 @@ impl Segment {
         Segment {
             baseline: *baseline,
             ctrl: LineSegmentF32::new(ctrl, &Point2DF32::default()),
-            kind: SegmentKind::Cubic,
+            kind: SegmentKind::Quadratic,
             flags: SegmentFlags::empty(),
         }
     }
@@ -111,6 +111,7 @@ impl Segment {
         new_segment.ctrl =
             LineSegmentF32::new(&(self.baseline.from() + p1_2), &(p1_2 + self.baseline.to()))
                 .scale(1.0 / 3.0);
+        new_segment.kind = SegmentKind::Cubic;
         new_segment
     }
 

@@ -13,7 +13,7 @@
 use crate::basic::line_segment::LineSegmentF32;
 use crate::basic::rect::RectF32;
 use crate::outline::{Contour, Outline};
-use crate::segment::Segment as SegmentPF3;
+use crate::segment::Segment;
 use std::mem;
 
 const TOLERANCE: f32 = 0.01;
@@ -88,10 +88,10 @@ impl ContourStrokeToFill {
 trait Offset {
     fn offset(&self, distance: f32, contour: &mut Contour);
     fn offset_once(&self, distance: f32) -> Self;
-    fn error_is_within_tolerance(&self, other: &SegmentPF3, distance: f32) -> bool;
+    fn error_is_within_tolerance(&self, other: &Segment, distance: f32) -> bool;
 }
 
-impl Offset for SegmentPF3 {
+impl Offset for Segment {
     fn offset(&self, distance: f32, contour: &mut Contour) {
         if self.baseline.square_length() < TOLERANCE * TOLERANCE {
             contour.push_full_segment(self, true);
@@ -112,9 +112,9 @@ impl Offset for SegmentPF3 {
         after.offset(distance, contour);
     }
 
-    fn offset_once(&self, distance: f32) -> SegmentPF3 {
+    fn offset_once(&self, distance: f32) -> Segment {
         if self.is_line() {
-            return SegmentPF3::line(&self.baseline.offset(distance));
+            return Segment::line(&self.baseline.offset(distance));
         }
 
         if self.is_quadratic() {
@@ -127,7 +127,7 @@ impl Offset for SegmentPF3 {
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
             let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
-            return SegmentPF3::quadratic(&baseline, &ctrl);
+            return Segment::quadratic(&baseline, &ctrl);
         }
 
         debug_assert!(self.is_cubic());
@@ -143,7 +143,7 @@ impl Offset for SegmentPF3 {
             };
             let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
             let ctrl = LineSegmentF32::new(&segment_0.from(), &ctrl);
-            return SegmentPF3::cubic(&baseline, &ctrl);
+            return Segment::cubic(&baseline, &ctrl);
         }
 
         if self.ctrl.to() == self.baseline.to() {
@@ -157,7 +157,7 @@ impl Offset for SegmentPF3 {
             };
             let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
             let ctrl = LineSegmentF32::new(&ctrl, &segment_1.to());
-            return SegmentPF3::cubic(&baseline, &ctrl);
+            return Segment::cubic(&baseline, &ctrl);
         }
 
         let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
@@ -178,10 +178,10 @@ impl Offset for SegmentPF3 {
         };
         let baseline = LineSegmentF32::new(&segment_0.from(), &segment_2.to());
         let ctrl = LineSegmentF32::new(&ctrl_0, &ctrl_1);
-        SegmentPF3::cubic(&baseline, &ctrl)
+        Segment::cubic(&baseline, &ctrl)
     }
 
-    fn error_is_within_tolerance(&self, other: &SegmentPF3, distance: f32) -> bool {
+    fn error_is_within_tolerance(&self, other: &Segment, distance: f32) -> bool {
         let (mut min, mut max) = (
             f32::abs(distance) - TOLERANCE,
             f32::abs(distance) + TOLERANCE,

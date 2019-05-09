@@ -10,21 +10,35 @@
 
 //! A simple API for Pathfinder that mirrors a subset of HTML canvas.
 
+use font_kit::family_name::FamilyName;
+use font_kit::hinting::HintingOptions;
+use font_kit::properties::Properties;
+use font_kit::source::SystemSource;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::OutlineStrokeToFill;
 use pathfinder_renderer::scene::{Paint, PathObject, Scene};
+use pathfinder_text::{SceneExt, TextRenderMode};
+use skribo::{FontCollection, FontFamily, TextStyle};
 use std::default::Default;
 use std::mem;
+use std::sync::Arc;
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
+const DEFAULT_FONT_SIZE: f32 = 10.0;
 
 pub struct CanvasRenderingContext2D {
     scene: Scene,
     current_state: State,
     saved_states: Vec<State>,
+
+    #[allow(dead_code)]
+    font_source: SystemSource,
+    #[allow(dead_code)]
+    default_font_collection: Arc<FontCollection>,
 }
 
 impl CanvasRenderingContext2D {
@@ -35,9 +49,27 @@ impl CanvasRenderingContext2D {
         CanvasRenderingContext2D::from_scene(scene)
     }
 
-    #[inline]
     pub fn from_scene(scene: Scene) -> CanvasRenderingContext2D {
-        CanvasRenderingContext2D { scene, current_state: State::default(), saved_states: vec![] }
+        // TODO(pcwalton): Allow the user to cache this?
+        let font_source = SystemSource::new();
+
+        let mut default_font_collection = FontCollection::new();
+        let default_font =
+            font_source.select_best_match(&[FamilyName::SansSerif], &Properties::new())
+                       .expect("Failed to select the default font!")
+                       .load()
+                       .expect("Failed to load the default font!");
+        default_font_collection.add_family(FontFamily::new_from_font(default_font));
+        let default_font_collection = Arc::new(default_font_collection);
+
+        CanvasRenderingContext2D {
+            scene,
+            current_state: State::default(default_font_collection.clone()),
+            saved_states: vec![],
+
+            font_source,
+            default_font_collection,
+        }
     }
 
     #[inline]
@@ -59,6 +91,32 @@ impl CanvasRenderingContext2D {
         self.stroke_path(path);
     }
 
+    pub fn fill_text(&mut self, string: &str, position: Point2DF32) {
+        // TODO(pcwalton): Report errors.
+        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
+        drop(self.scene.push_text(string,
+                                  &TextStyle { size: self.current_state.font_size },
+                                  &self.current_state.font_collection,
+                                  &Transform2DF32::from_translation(&position),
+                                  TextRenderMode::Fill,
+                                  HintingOptions::None,
+                                  paint_id));
+    }
+
+    pub fn stroke_text(&mut self, string: &str, position: Point2DF32) {
+        // TODO(pcwalton): Report errors.
+        let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
+        drop(self.scene.push_text(string,
+                                  &TextStyle { size: self.current_state.font_size },
+                                  &self.current_state.font_collection,
+                                  &Transform2DF32::from_translation(&position),
+                                  TextRenderMode::Stroke(self.current_state.line_width),
+                                  HintingOptions::None,
+                                  paint_id));
+    }
+
+    // Line styles
+
     #[inline]
     pub fn set_line_width(&mut self, new_line_width: f32) {
         self.current_state.line_width = new_line_width
@@ -73,6 +131,15 @@ impl CanvasRenderingContext2D {
     pub fn set_stroke_style(&mut self, new_stroke_style: FillStyle) {
         self.current_state.stroke_paint = new_stroke_style.to_paint();
     }
+
+    // Text styles
+
+    #[inline]
+    pub fn set_font_size(&mut self, new_font_size: f32) {
+        self.current_state.font_size = new_font_size;
+    }
+
+    // Paths
 
     #[inline]
     pub fn fill_path(&mut self, path: Path2D) {
@@ -91,7 +158,7 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn save(&mut self) {
-        self.saved_states.push(self.current_state);
+        self.saved_states.push(self.current_state.clone());
     }
 
     #[inline]
@@ -102,17 +169,20 @@ impl CanvasRenderingContext2D {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct State {
+    font_collection: Arc<FontCollection>,
+    font_size: f32,
     fill_paint: Paint,
     stroke_paint: Paint,
     line_width: f32,
 }
 
-impl Default for State {
-    #[inline]
-    fn default() -> State {
+impl State {
+    fn default(default_font_collection: Arc<FontCollection>) -> State {
         State {
+            font_collection: default_font_collection,
+            font_size: DEFAULT_FONT_SIZE,
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
             line_width: 1.0,
