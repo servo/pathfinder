@@ -12,6 +12,14 @@
 
 use std::f32;
 
+pub const EPSILON: f32 = 0.001;
+
+/// Approximate equality.
+#[inline]
+pub fn approx_eq(a: f32, b: f32) -> bool {
+    f32::abs(a - b) <= EPSILON
+}
+
 /// Linear interpolation.
 #[inline]
 pub fn lerp(a: f32, b: f32, t: f32) -> f32 {

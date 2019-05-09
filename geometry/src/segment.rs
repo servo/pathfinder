@@ -12,7 +12,10 @@
 
 use crate::basic::line_segment::LineSegmentF32;
 use crate::basic::point::Point2DF32;
+use crate::util::{self, EPSILON};
 use pathfinder_simd::default::F32x4;
+
+const MAX_NEWTON_ITERATIONS: u32 = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Segment {
@@ -302,12 +305,35 @@ impl<'s> CubicSegment<'s> {
         let pxv0v1v2 = p0p1p2p3 - pxp0p1p2;
         let (v0, v1, v2) = (pxv0v1v2[1], pxv0v1v2[2], pxv0v1v2[3]);
 
+        let (t0, t1);
         let (v0_to_v1, v2_to_v1) = (v0 - v1, v2 - v1);
-        let discrim = f32::sqrt(v1 * v1 - v0 * v2);
-        let denom = 1.0 / (v0_to_v1 + v2_to_v1);
+        let denom = v0_to_v1 + v2_to_v1;
 
-        let t0 = (v0_to_v1 + discrim) * denom;
-        let t1 = (v0_to_v1 - discrim) * denom;
+        if util::approx_eq(denom, 0.0) {
+            // Let's not divide by zero (issue #146). Fall back to Newton's method.
+            // FIXME(pcwalton): Can we have two roots here?
+            let mut t = 0.5;
+            for _ in 0..MAX_NEWTON_ITERATIONS {
+                let dydt = 3.0 * ((denom * t - v0_to_v1 - v0_to_v1) * t + v0);
+                if f32::abs(dydt) <= EPSILON {
+                    break
+                }
+                let d2ydt2 = 6.0 * (denom * t - v0_to_v1);
+                t -= dydt / d2ydt2;
+            }
+            t0 = t;
+            t1 = 0.0;
+            debug!("...  t=(newton) {}", t);
+        } else {
+            // Algebraically compute the values for t.
+            let discrim = f32::sqrt(v1 * v1 - v0 * v2);
+            let denom_recip = 1.0 / denom;
+
+            t0 = (v0_to_v1 + discrim) * denom_recip;
+            t1 = (v0_to_v1 - discrim) * denom_recip;
+
+            debug!("... t=({} +/- {})/{} t0={} t1={}", v0_to_v1, discrim, denom, t0, t1);
+        }
 
         return match (
             t0 > EPSILON && t0 < 1.0 - EPSILON,
@@ -318,8 +344,6 @@ impl<'s> CubicSegment<'s> {
             (false, true) => (Some(t1), None),
             (true, true) => (Some(f32::min(t0, t1)), Some(f32::max(t0, t1))),
         };
-
-        const EPSILON: f32 = 0.001;
     }
 
     #[inline]

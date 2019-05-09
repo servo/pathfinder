@@ -503,6 +503,8 @@ impl Contour {
     }
 
     fn make_monotonic(&mut self) {
+        debug!("--- make_monotonic() ---");
+
         let contour = self.take();
         self.bounds = contour.bounds;
 
@@ -550,6 +552,8 @@ impl Contour {
         }
 
         fn handle_cubic(contour: &mut Contour, segment: Segment) {
+            debug!("handle_cubic({:?})", segment);
+
             match segment.as_cubic_segment().y_extrema() {
                 (Some(t0), Some(t1)) => {
                     let (segments_01, segment_2) = segment.as_cubic_segment().split(t1);
