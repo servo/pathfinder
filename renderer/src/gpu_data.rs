@@ -27,7 +27,7 @@ pub(crate) struct BuiltObject {
 }
 
 pub enum RenderCommand {
-    Start { object_count: usize, bounding_quad: BoundingQuad },
+    Start { path_count: usize, bounding_quad: BoundingQuad },
     AddShaders(Vec<ObjectShader>),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,

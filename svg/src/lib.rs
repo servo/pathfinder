@@ -122,11 +122,8 @@ impl BuiltSVG {
                     let path = Transform2DF32PathIter::new(path, &transform);
                     let outline = Outline::from_segments(path);
 
-                    self.scene.push_object(PathObject::new(
-                        outline,
-                        style,
-                        format!("Fill({})", node.id()),
-                    ));
+                    let name = format!("Fill({})", node.id());
+                    self.scene.push_path(PathObject::new(outline, style, name));
                 }
 
                 if let Some(ref stroke) = path.stroke {
@@ -144,11 +141,8 @@ impl BuiltSVG {
                     let mut outline = stroke_to_fill.outline;
                     outline.transform(&transform);
 
-                    self.scene.push_object(PathObject::new(
-                        outline,
-                        style,
-                        format!("Stroke({})", node.id()),
-                    ));
+                    let name = format!("Stroke({})", node.id());
+                    self.scene.push_path(PathObject::new(outline, style, name));
                 }
             }
             NodeKind::Path(..) => {}

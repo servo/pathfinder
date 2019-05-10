@@ -56,14 +56,14 @@ impl<'a> SceneBuilder<'a> {
         let start_time = Instant::now();
 
         let bounding_quad = self.built_options.bounding_quad();
-        let object_count = self.scene.objects.len();
-        self.listener.send(RenderCommand::Start { bounding_quad, object_count });
+        let path_count = self.scene.paths.len();
+        self.listener.send(RenderCommand::Start { bounding_quad, path_count });
 
         self.listener.send(RenderCommand::AddShaders(self.scene.build_shaders()));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
-        let alpha_tiles = executor.flatten_into_vector(object_count, |object_index| {
-            self.build_object(object_index, effective_view_box, &self.built_options, &self.scene)
+        let alpha_tiles = executor.flatten_into_vector(path_count, |path_index| {
+            self.build_path(path_index, effective_view_box, &self.built_options, &self.scene)
         });
 
         self.finish_building(alpha_tiles);
@@ -72,17 +72,17 @@ impl<'a> SceneBuilder<'a> {
         self.listener.send(RenderCommand::Finish { build_time });
     }
 
-    fn build_object(
+    fn build_path(
         &self,
-        object_index: usize,
+        path_index: usize,
         view_box: RectF32,
         built_options: &PreparedRenderOptions,
         scene: &Scene,
     ) -> Vec<AlphaTileBatchPrimitive> {
-        let object = &scene.objects[object_index];
-        let outline = scene.apply_render_options(object.outline(), built_options);
+        let path_object = &scene.paths[path_index];
+        let outline = scene.apply_render_options(path_object.outline(), built_options);
 
-        let mut tiler = Tiler::new(self, &outline, view_box, object_index as u16);
+        let mut tiler = Tiler::new(self, &outline, view_box, path_index as u16);
         tiler.generate_tiles();
 
         self.listener.send(RenderCommand::AddFills(tiler.built_object.fills));
@@ -107,8 +107,8 @@ impl<'a> SceneBuilder<'a> {
     }
 
     fn pack_alpha_tiles(&mut self, alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
-        let object_count = self.scene.objects.len() as u32;
-        let solid_tiles = self.z_buffer.build_solid_tiles(0..object_count);
+        let path_count = self.scene.paths.len() as u32;
+        let solid_tiles = self.z_buffer.build_solid_tiles(0..path_count);
         if !solid_tiles.is_empty() {
             self.listener.send(RenderCommand::SolidTile(solid_tiles));
         }

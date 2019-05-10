@@ -24,7 +24,7 @@ use std::io::{self, Write};
 
 #[derive(Clone)]
 pub struct Scene {
-    pub(crate) objects: Vec<PathObject>,
+    pub(crate) paths: Vec<PathObject>,
     paints: Vec<Paint>,
     paint_cache: HashMap<Paint, PaintId>,
     bounds: RectF32,
@@ -35,7 +35,7 @@ impl Scene {
     #[inline]
     pub fn new() -> Scene {
         Scene {
-            objects: vec![],
+            paths: vec![],
             paints: vec![],
             paint_cache: HashMap::new(),
             bounds: RectF32::default(),
@@ -43,9 +43,9 @@ impl Scene {
         }
     }
 
-    pub fn push_object(&mut self, object: PathObject) {
-        self.bounds = self.bounds.union_rect(object.outline.bounds());
-        self.objects.push(object);
+    pub fn push_path(&mut self, path: PathObject) {
+        self.bounds = self.bounds.union_rect(path.outline.bounds());
+        self.paths.push(path);
     }
 
     #[allow(clippy::trivially_copy_pass_by_ref)]
@@ -61,8 +61,8 @@ impl Scene {
     }
 
     #[inline]
-    pub fn object_count(&self) -> usize {
-        self.objects.len()
+    pub fn path_count(&self) -> usize {
+        self.paths.len()
     }
 
     #[inline]
@@ -86,13 +86,10 @@ impl Scene {
     }
 
     pub fn build_shaders(&self) -> Vec<ObjectShader> {
-        self.objects
+        self.paths
             .iter()
-            .map(|object| {
-                let paint = &self.paints[object.paint.0 as usize];
-                ObjectShader {
-                    fill_color: paint.color,
-                }
+            .map(|path_object| {
+                ObjectShader { fill_color: self.paints[path_object.paint.0 as usize].color }
             })
             .collect()
     }
@@ -151,16 +148,16 @@ impl Scene {
     }
 
     pub fn monochrome_color(&self) -> Option<ColorU> {
-        if self.objects.is_empty() {
+        if self.paths.is_empty() {
             return None;
         }
-        let first_paint_id = self.objects[0].paint;
+
+        let first_paint_id = self.paths[0].paint;
         if self
-            .objects
+            .paths
             .iter()
             .skip(1)
-            .any(|object| object.paint != first_paint_id)
-        {
+            .any(|path_object| path_object.paint != first_paint_id) {
             return None;
         }
         Some(self.paints[first_paint_id.0 as usize].color)
@@ -194,16 +191,16 @@ impl Scene {
             self.view_box.size().x(),
             self.view_box.size().y()
         )?;
-        for object in &self.objects {
-            let paint = &self.paints[object.paint.0 as usize];
+        for path_object in &self.paths {
+            let paint = &self.paints[path_object.paint.0 as usize];
             write!(writer, "    <path")?;
-            if !object.name.is_empty() {
-                write!(writer, " id=\"{}\"", object.name)?;
+            if !path_object.name.is_empty() {
+                write!(writer, " id=\"{}\"", path_object.name)?;
             }
             writeln!(
                 writer,
                 " fill=\"{:?}\" d=\"{:?}\" />",
-                paint.color, object.outline
+                paint.color, path_object.outline
             )?;
         }
         writeln!(writer, "</svg>")?;

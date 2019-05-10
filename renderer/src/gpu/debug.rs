@@ -97,7 +97,7 @@ where
         let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
-            &format!("Objects: {}", mean_cpu_sample.stats.object_count),
+            &format!("Paths: {}", mean_cpu_sample.stats.path_count),
             origin,
             false,
         );

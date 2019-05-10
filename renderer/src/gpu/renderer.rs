@@ -236,11 +236,11 @@ where
 
     pub fn render_command(&mut self, command: &RenderCommand) {
         match *command {
-            RenderCommand::Start { bounding_quad, object_count } => {
+            RenderCommand::Start { bounding_quad, path_count } => {
                 if self.use_depth {
                     self.draw_stencil(&bounding_quad);
                 }
-                self.stats.object_count = object_count;
+                self.stats.path_count = path_count;
             }
             RenderCommand::AddShaders(ref shaders) => self.upload_shaders(shaders),
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
@@ -1545,7 +1545,7 @@ impl Default for RenderMode {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RenderStats {
-    pub object_count: usize,
+    pub path_count: usize,
     pub fill_count: usize,
     pub alpha_tile_count: usize,
     pub solid_tile_count: usize,
@@ -1555,7 +1555,7 @@ impl Add<RenderStats> for RenderStats {
     type Output = RenderStats;
     fn add(self, other: RenderStats) -> RenderStats {
         RenderStats {
-            object_count: self.object_count + other.object_count,
+            path_count: self.path_count + other.path_count,
             solid_tile_count: self.solid_tile_count + other.solid_tile_count,
             alpha_tile_count: self.alpha_tile_count + other.alpha_tile_count,
             fill_count: self.fill_count + other.fill_count,
@@ -1567,7 +1567,7 @@ impl Div<usize> for RenderStats {
     type Output = RenderStats;
     fn div(self, divisor: usize) -> RenderStats {
         RenderStats {
-            object_count: self.object_count / divisor,
+            path_count: self.path_count / divisor,
             solid_tile_count: self.solid_tile_count / divisor,
             alpha_tile_count: self.alpha_tile_count / divisor,
             fill_count: self.fill_count / divisor,

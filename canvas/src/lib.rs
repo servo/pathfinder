@@ -144,7 +144,7 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn fill_path(&mut self, path: Path2D) {
         let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
-        self.scene.push_object(PathObject::new(path.into_outline(), paint_id, String::new()))
+        self.scene.push_path(PathObject::new(path.into_outline(), paint_id, String::new()))
     }
 
     #[inline]
@@ -153,7 +153,7 @@ impl CanvasRenderingContext2D {
         let stroke_width = f32::max(self.current_state.line_width, HAIRLINE_STROKE_WIDTH);
         let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_width);
         stroke_to_fill.offset();
-        self.scene.push_object(PathObject::new(stroke_to_fill.outline, paint_id, String::new()))
+        self.scene.push_path(PathObject::new(stroke_to_fill.outline, paint_id, String::new()))
     }
 
     #[inline]
