@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use std::arch::x86_64::{self, __m128, __m128i};
+use std::arch::x86_64::{self, __m128, __m128i, _MM_FROUND_TO_NEAREST_INT};
 use std::cmp::PartialEq;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
@@ -76,6 +76,11 @@ impl F32x4 {
     #[inline]
     pub fn ceil(self) -> F32x4 {
         unsafe { F32x4(x86_64::_mm_ceil_ps(self.0)) }
+    }
+
+    #[inline]
+    pub fn round(self) -> F32x4 {
+        unsafe { F32x4(x86_64::_mm_round_ps(self.0, _MM_FROUND_TO_NEAREST_INT)) }
     }
 
     // Packed comparisons

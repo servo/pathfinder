@@ -1,0 +1,196 @@
+// pathfinder/examples/canvas_moire/src/main.rs
+//
+// Copyright © 2019 The Pathfinder Project Developers.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use pathfinder_canvas::{CanvasRenderingContext2D, FillStyle, Path2D};
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
+use pathfinder_geometry::color::{ColorF, ColorU};
+use pathfinder_gl::{GLDevice, GLVersion};
+use pathfinder_gpu::resources::FilesystemResourceLoader;
+use pathfinder_gpu::{ClearParams, Device};
+use pathfinder_renderer::concurrent::rayon::RayonExecutor;
+use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
+use pathfinder_renderer::gpu::renderer::{DestFramebuffer, Renderer};
+use pathfinder_renderer::options::RenderOptions;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::video::GLProfile;
+use std::f32;
+
+const VELOCITY: f32 = 0.02;
+const OUTER_RADIUS: f32 = 64.0;
+const INNER_RADIUS: f32 = 48.0;
+
+// FIXME(pcwalton): Adding more circles causes clipping problems. Fix them!
+const CIRCLE_COUNT: u32 = 12;
+
+const CIRCLE_SPACING: f32 = 48.0;
+const CIRCLE_THICKNESS: f32 = 16.0;
+
+const COLOR_CYCLE_SPEED: f32 = 0.0025;
+
+fn main() {
+    // Set up SDL2.
+    let sdl_context = sdl2::init().unwrap();
+    let video = sdl_context.video().unwrap();
+
+    // Make sure we have at least a GL 3.0 context. Pathfinder requires this.
+    let gl_attributes = video.gl_attr();
+    gl_attributes.set_context_profile(GLProfile::Core);
+    gl_attributes.set_context_version(3, 3);
+
+    // Open a window.
+    let window_size = Point2DI32::new(1067, 800);
+    let window = video.window("Moire example", window_size.x() as u32, window_size.y() as u32)
+                      .opengl()
+                      .allow_highdpi()
+                      .build()
+                      .unwrap();
+    let mut event_pump = sdl_context.event_pump().unwrap();
+
+    // Get the real window size (for HiDPI).
+    let (drawable_width, drawable_height) = window.drawable_size();
+    let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
+
+    // Create the GL context, and make it current.
+    let gl_context = window.gl_create_context().unwrap();
+    gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
+    window.gl_make_current(&gl_context).unwrap();
+
+    // Create our renderers.
+    let renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
+                                 &FilesystemResourceLoader::locate(),
+                                 DestFramebuffer::full_window(drawable_size));
+    let mut moire_renderer = MoireRenderer::new(renderer, window_size, drawable_size);
+
+    // Enter main render loop.
+    loop {
+        moire_renderer.render();
+        window.gl_swap_window();
+
+        match event_pump.poll_event() {
+            Some(Event::Quit {..}) |
+            Some(Event::KeyDown { keycode: Some(Keycode::Escape), .. }) => return,
+            _ => {}
+        }
+    }
+}
+
+struct MoireRenderer {
+    renderer: Renderer<GLDevice>,
+    scene: Option<SceneProxy>,
+    frame: i32,
+    window_size: Point2DI32,
+    drawable_size: Point2DI32,
+    device_pixel_ratio: f32,
+    colors: ColorGradient,
+}
+
+impl MoireRenderer {
+    fn new(renderer: Renderer<GLDevice>, window_size: Point2DI32, drawable_size: Point2DI32)
+           -> MoireRenderer {
+        MoireRenderer {
+            renderer,
+            scene: None,
+            frame: 0,
+            window_size,
+            drawable_size,
+            device_pixel_ratio: drawable_size.x() as f32 / window_size.x() as f32,
+            colors: ColorGradient::new(),
+        }
+    }
+
+    fn render(&mut self) {
+        // Calculate animation values.
+        let time = self.frame as f32;
+        let (sin_time, cos_time) = (f32::sin(time * VELOCITY), f32::cos(time * VELOCITY));
+        let color_time = time * COLOR_CYCLE_SPEED;
+        let background_color = self.colors.sample(color_time);
+        let foreground_color = self.colors.sample(color_time + 0.5);
+
+        // Calculate outer and inner circle centers (circle and Leminscate of Gerono respectively).
+        let window_center = self.window_size.to_f32().scale(0.5);
+        let outer_center = window_center + Point2DF32::new(sin_time, cos_time).scale(OUTER_RADIUS);
+        let inner_center = window_center +
+            Point2DF32::new(1.0, sin_time).scale(cos_time * INNER_RADIUS);
+
+        // Clear to background color.
+        self.renderer.device.clear(&ClearParams {
+            color: Some(background_color),
+            ..ClearParams::default()
+        });
+
+        // Make a canvas.
+        let mut canvas = CanvasRenderingContext2D::new(self.drawable_size.to_f32());
+        canvas.set_line_width(CIRCLE_THICKNESS * self.device_pixel_ratio);
+        canvas.set_stroke_style(FillStyle::Color(foreground_color.to_u8()));
+
+        // Draw circles.
+        self.draw_circles(&mut canvas, outer_center);
+        self.draw_circles(&mut canvas, inner_center);
+
+        // Build scene if necessary.
+        // TODO(pcwalton): Allow the user to build an empty scene proxy so they don't have to do this.
+        match self.scene {
+            None => self.scene = Some(SceneProxy::new(canvas.into_scene(), RayonExecutor)),
+            Some(ref mut scene) => scene.replace_scene(canvas.into_scene()),
+        }
+
+        // Render the scene.
+        self.scene.as_mut().unwrap().build_and_render(&mut self.renderer,   
+                                                      RenderOptions::default());
+
+        self.frame += 1;
+    }
+
+    fn draw_circles(&self, canvas: &mut CanvasRenderingContext2D, center: Point2DF32) {
+        for index in 0..CIRCLE_COUNT {
+            let mut path = Path2D::new();
+            self.add_circle_subpath(&mut path,
+                                    center.scale(self.device_pixel_ratio),
+                                    index as f32 * CIRCLE_SPACING * self.device_pixel_ratio);
+            canvas.stroke_path(path);
+        }
+    }
+
+    fn add_circle_subpath(&self, path: &mut Path2D, center: Point2DF32, radius: f32) {
+        path.move_to(center + Point2DF32::new(0.0, -radius));
+        path.quadratic_curve_to(center + Point2DF32::new(radius, -radius),
+                                center + Point2DF32::new(radius, 0.0));
+        path.quadratic_curve_to(center + Point2DF32::new(radius, radius),
+                                center + Point2DF32::new(0.0, radius));
+        path.quadratic_curve_to(center + Point2DF32::new(-radius, radius),
+                                center + Point2DF32::new(-radius, 0.0));
+        path.quadratic_curve_to(center + Point2DF32::new(-radius, -radius),
+                                center + Point2DF32::new(0.0, -radius));
+        path.close_path();
+    }
+}
+
+struct ColorGradient([ColorF; 5]);
+
+impl ColorGradient {
+    fn new() -> ColorGradient {
+        // Extracted from https://stock.adobe.com/69426938/
+        ColorGradient([
+            ColorU::from_u32(0x024873ff).to_f32(),
+            ColorU::from_u32(0x03658cff).to_f32(),
+            ColorU::from_u32(0x0388a6ff).to_f32(),
+            ColorU::from_u32(0xf28e6bff).to_f32(),
+            ColorU::from_u32(0xd95a4eff).to_f32(),
+        ])
+    }
+
+    fn sample(&self, mut t: f32) -> ColorF {
+        let count = self.0.len();
+        t *= count as f32;
+        let (lo, hi) = (t.floor() as usize % count, t.ceil() as usize % count);
+        self.0[lo].lerp(self.0[hi], f32::fract(t))
+    }
+}

@@ -78,9 +78,11 @@ impl SceneProxy {
     #[inline]
     pub fn build_and_render<D>(&self, renderer: &mut Renderer<D>, options: RenderOptions)
                                where D: Device {
+        renderer.begin_scene();
         for command in self.build_with_stream(options) {
             renderer.render_command(&command)
         }
+        renderer.end_scene();
     }
 
     pub fn as_svg(&self) -> Vec<u8> {

@@ -1,4 +1,4 @@
-// pathfinder/canvas_minimal/src/main.rs
+// pathfinder/examples/canvas_minimal/src/main.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

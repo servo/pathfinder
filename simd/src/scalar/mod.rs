@@ -89,6 +89,16 @@ impl F32x4 {
         ])
     }
 
+    #[inline]
+    pub fn round(self) -> F32x4 {
+        F32x4([
+            self[0].round(),
+            self[1].round(),
+            self[2].round(),
+            self[3].round(),
+        ])
+    }
+
     // Packed comparisons
 
     #[inline]
