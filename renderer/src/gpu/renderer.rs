@@ -1135,7 +1135,7 @@ where
         );
         device.configure_int_vertex_attr(
             &object_attr,
-            2,
+            1,
             VertexAttrType::I16,
             MASK_TILE_INSTANCE_SIZE,
             4,
@@ -1143,7 +1143,7 @@ where
         );
         device.configure_int_vertex_attr(
             &tile_index_attr,
-            2,
+            1,
             VertexAttrType::I16,
             MASK_TILE_INSTANCE_SIZE,
             6,
