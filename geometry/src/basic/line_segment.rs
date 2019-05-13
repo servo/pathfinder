@@ -20,7 +20,7 @@ pub struct LineSegmentF32(pub F32x4);
 
 impl LineSegmentF32 {
     #[inline]
-    pub fn new(from: &Point2DF32, to: &Point2DF32) -> LineSegmentF32 {
+    pub fn new(from: Point2DF32, to: Point2DF32) -> LineSegmentF32 {
         LineSegmentF32(from.0.concat_xy_xy(to.0))
     }
 

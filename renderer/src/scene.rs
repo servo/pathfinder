@@ -129,7 +129,7 @@ impl Scene {
                     };
                     if options.subpixel_aa_enabled {
                         transform = transform
-                            .post_mul(&Transform2DF32::from_scale(&Point2DF32::new(3.0, 1.0)))
+                            .post_mul(&Transform2DF32::from_scale(Point2DF32::new(3.0, 1.0)))
                     }
                     outline.transform(&transform);
                 }

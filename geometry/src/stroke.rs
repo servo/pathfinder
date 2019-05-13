@@ -118,51 +118,51 @@ impl Offset for Segment {
         }
 
         if self.is_quadratic() {
-            let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
-            let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(), &self.baseline.to());
+            let mut segment_0 = LineSegmentF32::new(self.baseline.from(), self.ctrl.from());
+            let mut segment_1 = LineSegmentF32::new(self.ctrl.from(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
-            return Segment::quadratic(&baseline, &ctrl);
+            let baseline = LineSegmentF32::new(segment_0.from(), segment_1.to());
+            return Segment::quadratic(&baseline, ctrl);
         }
 
         debug_assert!(self.is_cubic());
 
         if self.baseline.from() == self.ctrl.from() {
-            let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.to());
-            let mut segment_1 = LineSegmentF32::new(&self.ctrl.to(), &self.baseline.to());
+            let mut segment_0 = LineSegmentF32::new(self.baseline.from(), self.ctrl.to());
+            let mut segment_1 = LineSegmentF32::new(self.ctrl.to(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
-            let ctrl = LineSegmentF32::new(&segment_0.from(), &ctrl);
+            let baseline = LineSegmentF32::new(segment_0.from(), segment_1.to());
+            let ctrl = LineSegmentF32::new(segment_0.from(), ctrl);
             return Segment::cubic(&baseline, &ctrl);
         }
 
         if self.ctrl.to() == self.baseline.to() {
-            let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
-            let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(), &self.baseline.to());
+            let mut segment_0 = LineSegmentF32::new(self.baseline.from(), self.ctrl.from());
+            let mut segment_1 = LineSegmentF32::new(self.ctrl.from(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF32::new(&segment_0.from(), &segment_1.to());
-            let ctrl = LineSegmentF32::new(&ctrl, &segment_1.to());
+            let baseline = LineSegmentF32::new(segment_0.from(), segment_1.to());
+            let ctrl = LineSegmentF32::new(ctrl, segment_1.to());
             return Segment::cubic(&baseline, &ctrl);
         }
 
-        let mut segment_0 = LineSegmentF32::new(&self.baseline.from(), &self.ctrl.from());
-        let mut segment_1 = LineSegmentF32::new(&self.ctrl.from(), &self.ctrl.to());
-        let mut segment_2 = LineSegmentF32::new(&self.ctrl.to(), &self.baseline.to());
+        let mut segment_0 = LineSegmentF32::new(self.baseline.from(), self.ctrl.from());
+        let mut segment_1 = LineSegmentF32::new(self.ctrl.from(), self.ctrl.to());
+        let mut segment_2 = LineSegmentF32::new(self.ctrl.to(), self.baseline.to());
         segment_0 = segment_0.offset(distance);
         segment_1 = segment_1.offset(distance);
         segment_2 = segment_2.offset(distance);
@@ -176,8 +176,8 @@ impl Offset for Segment {
                 segment_1.to().lerp(segment_2.from(), 0.5),
             ),
         };
-        let baseline = LineSegmentF32::new(&segment_0.from(), &segment_2.to());
-        let ctrl = LineSegmentF32::new(&ctrl_0, &ctrl_1);
+        let baseline = LineSegmentF32::new(segment_0.from(), segment_2.to());
+        let ctrl = LineSegmentF32::new(ctrl_0, ctrl_1);
         Segment::cubic(&baseline, &ctrl)
     }
 

@@ -19,6 +19,7 @@ use crate::clip::{self, ContourPolygonClipper, ContourRectClipper};
 use crate::dilation::ContourDilator;
 use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
+use std::f32::consts::FRAC_PI_2;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 
@@ -292,7 +293,10 @@ impl Contour {
 
     // TODO(pcwalton): SIMD.
     #[inline]
-    pub(crate) fn push_point(&mut self, point: Point2DF32, flags: PointFlags, update_bounds: bool) {
+    pub(crate) fn push_point(&mut self,
+                             point: Point2DF32,
+                             flags: PointFlags,
+                             update_bounds: bool) {
         debug_assert!(!point.x().is_nan() && !point.y().is_nan());
 
         if update_bounds {
@@ -354,6 +358,37 @@ impl Contour {
         self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
     }
 
+    pub fn push_arc(&mut self, center: Point2DF32, radius: f32, start_angle: f32, end_angle: f32) {
+        let scale = Transform2DF32::from_scale(Point2DF32::splat(radius));
+        let translation = Transform2DF32::from_translation(center);
+
+        let (mut angle, mut first_segment) = (start_angle, true);
+        while angle < end_angle {
+            let sweep_angle = f32::min(FRAC_PI_2, end_angle - angle);
+            let mut segment = Segment::arc(sweep_angle);
+            let rotation = Transform2DF32::from_rotation(angle);
+            segment = segment.transform(&scale.post_mul(&rotation).post_mul(&translation));
+
+            /*
+            println!("angle={} start_angle={} end_angle={} sweep_angle={} segment={:?}",
+                     angle,
+                     start_angle,
+                     end_angle,
+                     sweep_angle,
+                     segment);
+            */
+
+            if first_segment {
+                self.push_full_segment(&segment, true);
+                first_segment = false;
+            } else {
+                self.push_segment(segment, true);
+            }
+
+            angle += sweep_angle;
+        }
+    }
+
     #[inline]
     pub fn segment_after(&self, point_index: u32) -> Segment {
         debug_assert!(self.point_is_endpoint(point_index));
@@ -388,8 +423,8 @@ impl Contour {
     pub fn hull_segment_after(&self, prev_point_index: u32) -> LineSegmentF32 {
         let next_point_index = self.next_point_index_of(prev_point_index);
         LineSegmentF32::new(
-            &self.points[prev_point_index as usize],
-            &self.points[next_point_index as usize],
+            self.points[prev_point_index as usize],
+            self.points[next_point_index as usize],
         )
     }
 
@@ -455,7 +490,7 @@ impl Contour {
 
     pub fn transform(&mut self, transform: &Transform2DF32) {
         for (point_index, point) in self.points.iter_mut().enumerate() {
-            *point = transform.transform_point(point);
+            *point = transform.transform_point(*point);
             union_rect(&mut self.bounds, *point, point_index == 0);
         }
     }
@@ -522,8 +557,8 @@ impl Contour {
                     point_index
                 };
                 let baseline = LineSegmentF32::new(
-                    &contour.points[last_endpoint_index as usize],
-                    &contour.points[position_index as usize],
+                    contour.points[last_endpoint_index as usize],
+                    contour.points[position_index as usize],
                 );
                 let point_count = point_index - last_endpoint_index + 1;
                 if point_count == 3 {
@@ -531,13 +566,13 @@ impl Contour {
                     let ctrl_position = &contour.points[ctrl_point_index];
                     handle_cubic(
                         self,
-                        Segment::quadratic(&baseline, &ctrl_position).to_cubic(),
+                        Segment::quadratic(&baseline, *ctrl_position).to_cubic(),
                     );
                 } else if point_count == 4 {
                     let first_ctrl_point_index = last_endpoint_index as usize + 1;
                     let ctrl_position_0 = &contour.points[first_ctrl_point_index + 0];
                     let ctrl_position_1 = &contour.points[first_ctrl_point_index + 1];
-                    let ctrl = LineSegmentF32::new(&ctrl_position_0, &ctrl_position_1);
+                    let ctrl = LineSegmentF32::new(*ctrl_position_0, *ctrl_position_1);
                     handle_cubic(self, Segment::cubic(&baseline, &ctrl));
                 }
 
@@ -723,24 +758,21 @@ impl<'a> Iterator for ContourIter<'a> {
         if self.index == contour.len() {
             let point1 = contour.position_of(0);
             self.index += 1;
-            return Some(Segment::line(&LineSegmentF32::new(&point0, &point1)));
+            return Some(Segment::line(&LineSegmentF32::new(point0, point1)));
         }
 
         let point1_index = self.index;
         self.index += 1;
         let point1 = contour.position_of(point1_index);
         if contour.point_is_endpoint(point1_index) {
-            return Some(Segment::line(&LineSegmentF32::new(&point0, &point1)));
+            return Some(Segment::line(&LineSegmentF32::new(point0, point1)));
         }
 
         let point2_index = self.index;
         let point2 = contour.position_of(point2_index);
         self.index += 1;
         if contour.point_is_endpoint(point2_index) {
-            return Some(Segment::quadratic(
-                &LineSegmentF32::new(&point0, &point2),
-                &point1,
-            ));
+            return Some(Segment::quadratic(&LineSegmentF32::new(point0, point2), point1));
         }
 
         let point3_index = self.index;
@@ -748,8 +780,8 @@ impl<'a> Iterator for ContourIter<'a> {
         self.index += 1;
         debug_assert!(contour.point_is_endpoint(point3_index));
         return Some(Segment::cubic(
-            &LineSegmentF32::new(&point0, &point3),
-            &LineSegmentF32::new(&point1, &point2),
+            &LineSegmentF32::new(point0, point3),
+            &LineSegmentF32::new(point1, point2),
         ));
     }
 }

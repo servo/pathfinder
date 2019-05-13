@@ -97,7 +97,7 @@ impl CanvasRenderingContext2D {
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
                                   &self.current_state.font_collection,
-                                  &Transform2DF32::from_translation(&position),
+                                  &Transform2DF32::from_translation(position),
                                   TextRenderMode::Fill,
                                   HintingOptions::None,
                                   paint_id));
@@ -109,7 +109,7 @@ impl CanvasRenderingContext2D {
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
                                   &self.current_state.font_collection,
-                                  &Transform2DF32::from_translation(&position),
+                                  &Transform2DF32::from_translation(position),
                                   TextRenderMode::Stroke(self.current_state.line_width),
                                   HintingOptions::None,
                                   paint_id));
@@ -196,7 +196,7 @@ pub struct Path2D {
     current_contour: Contour,
 }
 
-// TODO(pcwalton): `arc`, `ellipse`
+// TODO(pcwalton): `ellipse`
 impl Path2D {
     #[inline]
     pub fn new() -> Path2D {
@@ -228,6 +228,11 @@ impl Path2D {
     #[inline]
     pub fn bezier_curve_to(&mut self, ctrl0: Point2DF32, ctrl1: Point2DF32, to: Point2DF32) {
         self.current_contour.push_cubic(ctrl0, ctrl1, to);
+    }
+
+    #[inline]
+    pub fn arc(&mut self, center: Point2DF32, radius: f32, start_angle: f32, end_angle: f32) {
+        self.current_contour.push_arc(center, radius, start_angle, end_angle);
     }
 
     pub fn rect(&mut self, rect: RectF32) {

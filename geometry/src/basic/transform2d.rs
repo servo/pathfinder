@@ -10,6 +10,7 @@
 
 //! 2D affine transforms.
 
+use crate::basic::line_segment::LineSegmentF32;
 use crate::basic::point::Point2DF32;
 use crate::basic::rect::RectF32;
 use crate::basic::transform3d::Transform3DF32;
@@ -24,13 +25,13 @@ pub struct Matrix2x2F32(pub F32x4);
 impl Default for Matrix2x2F32 {
     #[inline]
     fn default() -> Matrix2x2F32 {
-        Self::from_scale(&Point2DF32::splat(1.0))
+        Self::from_scale(Point2DF32::splat(1.0))
     }
 }
 
 impl Matrix2x2F32 {
     #[inline]
-    pub fn from_scale(scale: &Point2DF32) -> Matrix2x2F32 {
+    pub fn from_scale(scale: Point2DF32) -> Matrix2x2F32 {
         Matrix2x2F32(F32x4::new(scale.x(), 0.0, 0.0, scale.y()))
     }
 
@@ -66,7 +67,7 @@ impl Matrix2x2F32 {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
+    pub fn transform_point(&self, point: Point2DF32) -> Point2DF32 {
         let halves = self.0 * point.0.xxyy();
         Point2DF32(halves + halves.zwzw())
     }
@@ -118,13 +119,13 @@ pub struct Transform2DF32 {
 impl Default for Transform2DF32 {
     #[inline]
     fn default() -> Transform2DF32 {
-        Self::from_scale(&Point2DF32::splat(1.0))
+        Self::from_scale(Point2DF32::splat(1.0))
     }
 }
 
 impl Transform2DF32 {
     #[inline]
-    pub fn from_scale(scale: &Point2DF32) -> Transform2DF32 {
+    pub fn from_scale(scale: Point2DF32) -> Transform2DF32 {
         Transform2DF32 {
             matrix: Matrix2x2F32::from_scale(scale),
             vector: Point2DF32::default(),
@@ -140,11 +141,8 @@ impl Transform2DF32 {
     }
 
     #[inline]
-    pub fn from_translation(vector: &Point2DF32) -> Transform2DF32 {
-        Transform2DF32 {
-            matrix: Matrix2x2F32::default(),
-            vector: *vector,
-        }
+    pub fn from_translation(vector: Point2DF32) -> Transform2DF32 {
+        Transform2DF32 { matrix: Matrix2x2F32::default(), vector }
     }
 
     #[inline]
@@ -154,10 +152,8 @@ impl Transform2DF32 {
         translation: Point2DF32,
     ) -> Transform2DF32 {
         let rotation = Transform2DF32::from_rotation(theta);
-        let translation = Transform2DF32::from_translation(&translation);
-        Transform2DF32::from_scale(&scale)
-            .post_mul(&rotation)
-            .post_mul(&translation)
+        let translation = Transform2DF32::from_translation(translation);
+        Transform2DF32::from_scale(scale).post_mul(&rotation).post_mul(&translation)
     }
 
     #[inline]
@@ -169,16 +165,22 @@ impl Transform2DF32 {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: &Point2DF32) -> Point2DF32 {
+    pub fn transform_point(&self, point: Point2DF32) -> Point2DF32 {
         self.matrix.transform_point(point) + self.vector
     }
 
     #[inline]
+    pub fn transform_line_segment(&self, line_segment: &LineSegmentF32) -> LineSegmentF32 {
+        LineSegmentF32::new(self.transform_point(line_segment.from()),
+                            self.transform_point(line_segment.to()))
+    }
+
+    #[inline]
     pub fn transform_rect(&self, rect: &RectF32) -> RectF32 {
-        let upper_left = self.transform_point(&rect.origin());
-        let upper_right = self.transform_point(&rect.upper_right());
-        let lower_left = self.transform_point(&rect.lower_left());
-        let lower_right = self.transform_point(&rect.lower_right());
+        let upper_left = self.transform_point(rect.origin());
+        let upper_right = self.transform_point(rect.upper_right());
+        let lower_left = self.transform_point(rect.lower_left());
+        let lower_right = self.transform_point(rect.lower_right());
         let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
         let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
         RectF32::from_points(min_point, max_point)
@@ -187,7 +189,7 @@ impl Transform2DF32 {
     #[inline]
     pub fn post_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
         let matrix = self.matrix.post_mul(&other.matrix);
-        let vector = other.transform_point(&self.vector);
+        let vector = other.transform_point(self.vector);
         Transform2DF32 { matrix, vector }
     }
 
@@ -243,7 +245,7 @@ impl Transform2DF32 {
 
     #[inline]
     pub fn post_translate(&self, vector: Point2DF32) -> Transform2DF32 {
-        self.post_mul(&Transform2DF32::from_translation(&vector))
+        self.post_mul(&Transform2DF32::from_translation(vector))
     }
 
     #[inline]
@@ -253,7 +255,7 @@ impl Transform2DF32 {
 
     #[inline]
     pub fn post_scale(&self, scale: Point2DF32) -> Transform2DF32 {
-        self.post_mul(&Transform2DF32::from_scale(&scale))
+        self.post_mul(&Transform2DF32::from_scale(scale))
     }
 
     /// Returns the translation part of this matrix.
@@ -303,18 +305,18 @@ where
         if !segment.is_none() {
             segment
                 .baseline
-                .set_from(&self.transform.transform_point(&segment.baseline.from()));
+                .set_from(&self.transform.transform_point(segment.baseline.from()));
             segment
                 .baseline
-                .set_to(&self.transform.transform_point(&segment.baseline.to()));
+                .set_to(&self.transform.transform_point(segment.baseline.to()));
             if !segment.is_line() {
                 segment
                     .ctrl
-                    .set_from(&self.transform.transform_point(&segment.ctrl.from()));
+                    .set_from(&self.transform.transform_point(segment.ctrl.from()));
                 if !segment.is_quadratic() {
                     segment
                         .ctrl
-                        .set_to(&self.transform.transform_point(&segment.ctrl.to()));
+                        .set_to(&self.transform.transform_point(segment.ctrl.to()));
                 }
             }
         }

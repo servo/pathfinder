@@ -236,9 +236,9 @@ impl BuiltObject {
         let right = Point2DF32::new(right, tile_origin_y);
 
         let segment = if winding < 0 {
-            LineSegmentF32::new(&left, &right)
+            LineSegmentF32::new(left, right)
         } else {
-            LineSegmentF32::new(&right, &left)
+            LineSegmentF32::new(right, left)
         };
 
         debug!(
@@ -300,14 +300,14 @@ impl BuiltObject {
                 let point = Point2DF32::new(x, segment.solve_y_for_x(x));
                 if !winding {
                     fill_to = point;
-                    segment = LineSegmentF32::new(&point, &segment.to());
+                    segment = LineSegmentF32::new(point, segment.to());
                 } else {
                     fill_from = point;
-                    segment = LineSegmentF32::new(&segment.from(), &point);
+                    segment = LineSegmentF32::new(segment.from(), point);
                 }
             }
 
-            let fill_segment = LineSegmentF32::new(&fill_from, &fill_to);
+            let fill_segment = LineSegmentF32::new(fill_from, fill_to);
             let fill_tile_coords = Point2DI32::new(subsegment_tile_x, tile_y);
             self.add_fill(builder, &fill_segment, fill_tile_coords);
         }

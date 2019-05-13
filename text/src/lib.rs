@@ -93,7 +93,7 @@ impl SceneExt for Scene {
             let scale = style.size / (font.metrics().units_per_em as f32);
             let scale = Point2DF32::new(scale, -scale);
             let transform =
-                Transform2DF32::from_scale(&scale).post_mul(transform).post_translate(offset);
+                Transform2DF32::from_scale(scale).post_mul(transform).post_translate(offset);
             self.push_glyph(font,
                             glyph.glyph_id,
                             &transform,
@@ -147,7 +147,7 @@ impl OutlinePathBuilder {
     }
 
     fn convert_point(&self, point: Point2D<f32>) -> Point2DF32 {
-        self.transform.transform_point(&Point2DF32::new(point.x, point.y))
+        self.transform.transform_point(Point2DF32::new(point.x, point.y))
     }
 }
 

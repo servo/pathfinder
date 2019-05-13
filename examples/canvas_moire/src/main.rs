@@ -21,6 +21,7 @@ use pathfinder_renderer::options::RenderOptions;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
+use std::f32::consts::PI;
 use std::f32;
 
 const VELOCITY: f32 = 0.02;
@@ -36,6 +37,8 @@ const CIRCLE_THICKNESS: f32 = 16.0;
 const COLOR_CYCLE_SPEED: f32 = 0.0025;
 
 fn main() {
+    pretty_env_logger::init();
+
     // Set up SDL2.
     let sdl_context = sdl2::init().unwrap();
     let video = sdl_context.video().unwrap();
@@ -150,26 +153,13 @@ impl MoireRenderer {
     }
 
     fn draw_circles(&self, canvas: &mut CanvasRenderingContext2D, center: Point2DF32) {
+        let center = center.scale(self.device_pixel_ratio);
         for index in 0..CIRCLE_COUNT {
+            let radius = (index + 1) as f32 * CIRCLE_SPACING * self.device_pixel_ratio;
             let mut path = Path2D::new();
-            self.add_circle_subpath(&mut path,
-                                    center.scale(self.device_pixel_ratio),
-                                    index as f32 * CIRCLE_SPACING * self.device_pixel_ratio);
+            path.arc(center, radius, 0.0, PI * 2.0);
             canvas.stroke_path(path);
         }
-    }
-
-    fn add_circle_subpath(&self, path: &mut Path2D, center: Point2DF32, radius: f32) {
-        path.move_to(center + Point2DF32::new(0.0, -radius));
-        path.quadratic_curve_to(center + Point2DF32::new(radius, -radius),
-                                center + Point2DF32::new(radius, 0.0));
-        path.quadratic_curve_to(center + Point2DF32::new(radius, radius),
-                                center + Point2DF32::new(0.0, radius));
-        path.quadratic_curve_to(center + Point2DF32::new(-radius, radius),
-                                center + Point2DF32::new(-radius, 0.0));
-        path.quadratic_curve_to(center + Point2DF32::new(-radius, -radius),
-                                center + Point2DF32::new(0.0, -radius));
-        path.close_path();
     }
 }
 

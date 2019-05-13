@@ -434,8 +434,7 @@ impl ActiveEdge {
         // If necessary, draw initial line.
         if self.crossing.y() < segment.baseline.min_y() {
             let first_line_segment =
-                LineSegmentF32::new(&self.crossing, &segment.baseline.upper_point())
-                    .orient(winding);
+                LineSegmentF32::new(self.crossing, segment.baseline.upper_point()).orient(winding);
             if self
                 .process_line_segment(&first_line_segment, builder, built_object, tile_y)
                 .is_some()
