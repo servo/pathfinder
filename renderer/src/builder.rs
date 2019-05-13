@@ -110,10 +110,10 @@ impl<'a> SceneBuilder<'a> {
         let path_count = self.scene.paths.len() as u32;
         let solid_tiles = self.z_buffer.build_solid_tiles(0..path_count);
         if !solid_tiles.is_empty() {
-            self.listener.send(RenderCommand::SolidTile(solid_tiles));
+            self.listener.send(RenderCommand::AddSolidTiles(solid_tiles));
         }
         if !alpha_tiles.is_empty() {
-            self.listener.send(RenderCommand::AlphaTile(alpha_tiles));
+            self.listener.send(RenderCommand::AddAlphaTiles(alpha_tiles));
         }
     }
 
@@ -121,6 +121,8 @@ impl<'a> SceneBuilder<'a> {
         self.listener.send(RenderCommand::FlushFills);
         self.cull_alpha_tiles(&mut alpha_tiles);
         self.pack_alpha_tiles(alpha_tiles);
+        self.listener.send(RenderCommand::FlushSolidTiles);
+        self.listener.send(RenderCommand::FlushAlphaTiles);
     }
 }
 

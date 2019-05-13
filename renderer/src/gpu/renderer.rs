@@ -45,6 +45,8 @@ const FILL_COLORS_TEXTURE_WIDTH: i32 = 256;
 const FILL_COLORS_TEXTURE_HEIGHT: i32 = 256;
 
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
+const MAX_ALPHA_TILES_PER_BATCH: usize = 0x4000;
+const MAX_SOLID_TILES_PER_BATCH: usize = 0x4000;
 
 pub struct Renderer<D>
 where
@@ -87,6 +89,8 @@ where
     // Rendering state
     mask_framebuffer_cleared: bool,
     buffered_fills: Vec<FillBatchPrimitive>,
+    buffered_alpha_tiles: Vec<AlphaTileBatchPrimitive>,
+    buffered_solid_tiles: Vec<SolidTileBatchPrimitive>,
 
     // Debug
     pub stats: RenderStats,
@@ -216,6 +220,8 @@ where
 
             mask_framebuffer_cleared: false,
             buffered_fills: vec![],
+            buffered_alpha_tiles: vec![],
+            buffered_solid_tiles: vec![],
 
             render_mode: RenderMode::default(),
             use_depth: false,
@@ -236,7 +242,10 @@ where
 
     pub fn render_command(&mut self, command: &RenderCommand) {
         match *command {
-            RenderCommand::Start { bounding_quad, path_count } => {
+            RenderCommand::Start {
+                bounding_quad,
+                path_count,
+            } => {
                 if self.use_depth {
                     self.draw_stencil(&bounding_quad);
                 }
@@ -248,17 +257,15 @@ where
                 self.begin_composite_timer_query();
                 self.draw_buffered_fills();
             }
-            RenderCommand::SolidTile(ref solid_tiles) => {
-                let count = solid_tiles.len();
-                self.stats.solid_tile_count += count;
-                self.upload_solid_tiles(solid_tiles);
-                self.draw_solid_tiles(count as u32);
+            RenderCommand::AddSolidTiles(ref solid_tiles) => self.add_solid_tiles(solid_tiles),
+            RenderCommand::FlushSolidTiles => {
+                self.begin_composite_timer_query();
+                self.draw_buffered_solid_tiles();
             }
-            RenderCommand::AlphaTile(ref alpha_tiles) => {
-                let count = alpha_tiles.len();
-                self.stats.alpha_tile_count += count;
-                self.upload_alpha_tiles(alpha_tiles);
-                self.draw_alpha_tiles(count as u32);
+            RenderCommand::AddAlphaTiles(ref alpha_tiles) => self.add_alpha_tiles(alpha_tiles),
+            RenderCommand::FlushAlphaTiles => {
+                self.begin_composite_timer_query();
+                self.draw_buffered_alpha_tiles();
             }
             RenderCommand::Finish { .. } => {}
         }
@@ -270,7 +277,8 @@ where
         }
 
         self.end_composite_timer_query();
-        self.pending_timers.push_back(mem::replace(&mut self.current_timers, RenderTimers::new()));
+        self.pending_timers
+            .push_back(mem::replace(&mut self.current_timers, RenderTimers::new()));
     }
 
     pub fn draw_debug_ui(&self) {
@@ -304,7 +312,10 @@ where
         self.free_timer_queries.extend(timers.stage_0.into_iter());
         self.free_timer_queries.push(timers.stage_1.unwrap());
 
-        Some(RenderTime { stage_0: total_stage_0_time, stage_1: stage_1_time })
+        Some(RenderTime {
+            stage_0: total_stage_0_time,
+            stage_1: stage_1_time,
+        })
     }
 
     #[inline]
@@ -322,7 +333,9 @@ where
 
     #[inline]
     pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Point2DI32) {
-        self.debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
+        self.debug_ui_presenter
+            .ui_presenter
+            .set_framebuffer_size(new_framebuffer_size);
     }
 
     #[inline]
@@ -358,24 +371,6 @@ where
             .upload_to_texture(&self.fill_colors_texture, size, &fill_colors);
     }
 
-    fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
-        self.device.allocate_buffer(
-            &self.solid_tile_vertex_array().vertex_buffer,
-            BufferData::Memory(&solid_tiles),
-            BufferTarget::Vertex,
-            BufferUploadMode::Dynamic,
-        );
-    }
-
-    fn upload_alpha_tiles(&mut self, alpha_tiles: &[AlphaTileBatchPrimitive]) {
-        self.device.allocate_buffer(
-            &self.alpha_tile_vertex_array().vertex_buffer,
-            BufferData::Memory(&alpha_tiles),
-            BufferTarget::Vertex,
-            BufferUploadMode::Dynamic,
-        );
-    }
-
     fn clear_mask_framebuffer(&mut self) {
         self.device.bind_framebuffer(&self.mask_framebuffer);
 
@@ -402,6 +397,60 @@ where
             fills = &fills[count..];
             if self.buffered_fills.len() == MAX_FILLS_PER_BATCH {
                 self.draw_buffered_fills();
+            }
+        }
+
+        self.device.end_timer_query(&timer_query);
+        self.current_timers.stage_0.push(timer_query);
+    }
+
+    fn add_solid_tiles(&mut self, mut solid_tiles: &[SolidTileBatchPrimitive]) {
+        if solid_tiles.is_empty() {
+            return;
+        }
+
+        let timer_query = self.allocate_timer_query();
+        self.device.begin_timer_query(&timer_query);
+
+        self.stats.solid_tile_count += solid_tiles.len();
+
+        while !solid_tiles.is_empty() {
+            let count = cmp::min(
+                solid_tiles.len(),
+                MAX_SOLID_TILES_PER_BATCH - self.buffered_solid_tiles.len(),
+            );
+            self.buffered_solid_tiles
+                .extend_from_slice(&solid_tiles[0..count]);
+            solid_tiles = &solid_tiles[count..];
+            if self.buffered_solid_tiles.len() == MAX_SOLID_TILES_PER_BATCH {
+                self.draw_buffered_solid_tiles();
+            }
+        }
+
+        self.device.end_timer_query(&timer_query);
+        self.current_timers.stage_0.push(timer_query);
+    }
+
+    fn add_alpha_tiles(&mut self, mut alpha_tiles: &[AlphaTileBatchPrimitive]) {
+        if alpha_tiles.is_empty() {
+            return;
+        }
+
+        let timer_query = self.allocate_timer_query();
+        self.device.begin_timer_query(&timer_query);
+
+        self.stats.alpha_tile_count += alpha_tiles.len();
+
+        while !alpha_tiles.is_empty() {
+            let count = cmp::min(
+                alpha_tiles.len(),
+                MAX_ALPHA_TILES_PER_BATCH - self.buffered_alpha_tiles.len(),
+            );
+            self.buffered_alpha_tiles
+                .extend_from_slice(&alpha_tiles[0..count]);
+            alpha_tiles = &alpha_tiles[count..];
+            if self.buffered_alpha_tiles.len() == MAX_ALPHA_TILES_PER_BATCH {
+                self.draw_buffered_alpha_tiles();
             }
         }
 
@@ -461,11 +510,23 @@ where
         self.buffered_fills.clear()
     }
 
-    fn draw_alpha_tiles(&mut self, count: u32) {
-        self.bind_draw_framebuffer();
+    fn draw_buffered_alpha_tiles(&mut self) {
+        if self.buffered_alpha_tiles.is_empty() {
+            return;
+        }
 
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
+
+        self.device.allocate_buffer(
+            &alpha_tile_vertex_array.vertex_buffer,
+            BufferData::Memory(&self.buffered_alpha_tiles),
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
+
         let alpha_tile_program = self.alpha_tile_program();
+
+        self.bind_draw_framebuffer();
 
         self.device
             .bind_vertex_array(&alpha_tile_vertex_array.vertex_array);
@@ -534,15 +595,34 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device
-            .draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
+        debug_assert!(self.buffered_alpha_tiles.len() <= u32::MAX as usize);
+        self.device.draw_arrays_instanced(
+            Primitive::TriangleFan,
+            4,
+            self.buffered_alpha_tiles.len() as u32,
+            &render_state,
+        );
+
+        self.buffered_alpha_tiles.clear();
     }
 
-    fn draw_solid_tiles(&mut self, count: u32) {
-        self.bind_draw_framebuffer();
+    fn draw_buffered_solid_tiles(&mut self) {
+        if self.buffered_solid_tiles.is_empty() {
+            return;
+        }
 
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
+
+        self.device.allocate_buffer(
+            &solid_tile_vertex_array.vertex_buffer,
+            BufferData::Memory(&self.buffered_solid_tiles),
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
+
         let solid_tile_program = self.solid_tile_program();
+
+        self.bind_draw_framebuffer();
 
         self.device
             .bind_vertex_array(&solid_tile_vertex_array.vertex_array);
@@ -598,8 +678,15 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device
-            .draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
+        debug_assert!(self.buffered_solid_tiles.len() <= u32::MAX as usize);
+        self.device.draw_arrays_instanced(
+            Primitive::TriangleFan,
+            4,
+            self.buffered_solid_tiles.len() as u32,
+            &render_state,
+        );
+
+        self.buffered_solid_tiles.clear();
     }
 
     fn postprocess(&mut self) {
@@ -888,7 +975,11 @@ where
     }
 
     fn end_composite_timer_query(&mut self) {
-        let query = self.current_timers.stage_1.as_ref().expect("No stage 1 timer query yet?!");
+        let query = self
+            .current_timers
+            .stage_1
+            .as_ref()
+            .expect("No stage 1 timer query yet?!");
         self.device.end_timer_query(&query);
     }
 }
@@ -1001,7 +1092,17 @@ where
         alpha_tile_program: &AlphaTileProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
     ) -> AlphaTileVertexArray<D> {
-        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
+        let vertex_array = device.create_vertex_array();
+
+        let vertex_buffer = device.create_buffer();
+        let vertex_buffer_data: BufferData<AlphaTileBatchPrimitive> =
+            BufferData::Uninitialized(MAX_ALPHA_TILES_PER_BATCH);
+        device.allocate_buffer(
+            &vertex_buffer,
+            vertex_buffer_data,
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
 
         let tess_coord_attr = device.get_vertex_attr(&alpha_tile_program.program, "TessCoord");
         let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin");
@@ -1073,7 +1174,17 @@ where
         solid_tile_program: &SolidTileProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
     ) -> SolidTileVertexArray<D> {
-        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
+        let vertex_array = device.create_vertex_array();
+
+        let vertex_buffer = device.create_buffer();
+        let vertex_buffer_data: BufferData<AlphaTileBatchPrimitive> =
+            BufferData::Uninitialized(MAX_SOLID_TILES_PER_BATCH);
+        device.allocate_buffer(
+            &vertex_buffer,
+            vertex_buffer_data,
+            BufferTarget::Vertex,
+            BufferUploadMode::Dynamic,
+        );
 
         let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord");
         let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin");
@@ -1512,7 +1623,10 @@ where
     #[inline]
     pub fn full_window(window_size: Point2DI32) -> DestFramebuffer<D> {
         let viewport = RectI32::new(Point2DI32::default(), window_size);
-        DestFramebuffer::Default { viewport, window_size }
+        DestFramebuffer::Default {
+            viewport,
+            window_size,
+        }
     }
 
     fn window_size(&self, device: &D) -> Point2DI32 {
@@ -1575,14 +1689,23 @@ impl Div<usize> for RenderStats {
     }
 }
 
-struct RenderTimers<D> where D: Device {
+struct RenderTimers<D>
+where
+    D: Device,
+{
     stage_0: Vec<D::TimerQuery>,
     stage_1: Option<D::TimerQuery>,
 }
 
-impl<D> RenderTimers<D> where D: Device {
+impl<D> RenderTimers<D>
+where
+    D: Device,
+{
     fn new() -> RenderTimers<D> {
-        RenderTimers { stage_0: vec![], stage_1: None }
+        RenderTimers {
+            stage_0: vec![],
+            stage_1: None,
+        }
     }
 }
 
@@ -1595,7 +1718,10 @@ pub struct RenderTime {
 impl Default for RenderTime {
     #[inline]
     fn default() -> RenderTime {
-        RenderTime { stage_0: Duration::new(0, 0), stage_1: Duration::new(0, 0) }
+        RenderTime {
+            stage_0: Duration::new(0, 0),
+            stage_1: Duration::new(0, 0),
+        }
     }
 }
 
