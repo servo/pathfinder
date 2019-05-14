@@ -52,25 +52,7 @@ pub trait Device {
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Self::VertexAttr;
     fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
     fn use_program(&self, program: &Self::Program);
-    fn configure_float_vertex_attr(
-        &self,
-        attr: &Self::VertexAttr,
-        size: usize,
-        attr_type: VertexAttrType,
-        normalized: bool,
-        stride: usize,
-        offset: usize,
-        divisor: u32,
-    );
-    fn configure_int_vertex_attr(
-        &self,
-        attr: &Self::VertexAttr,
-        size: usize,
-        attr_type: VertexAttrType,
-        stride: usize,
-        offset: usize,
-        divisor: u32,
-    );
+    fn configure_vertex_attr(&self, attr: &Self::VertexAttr, descriptor: &VertexAttrDescriptor);
     fn set_uniform(&self, uniform: &Self::Uniform, data: UniformData);
     fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
     fn create_buffer(&self) -> Self::Buffer;
@@ -338,6 +320,23 @@ impl UniformData {
     pub fn from_transform_3d(transform: &Transform3DF32) -> UniformData {
         UniformData::Mat4([transform.c0, transform.c1, transform.c2, transform.c3])
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct VertexAttrDescriptor {
+    pub size: usize,
+    pub class: VertexAttrClass,
+    pub attr_type: VertexAttrType,
+    pub stride: usize,
+    pub offset: usize,
+    pub divisor: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VertexAttrClass {
+    Float,
+    FloatNorm,
+    Int,
 }
 
 fn load_shader_include(resources: &dyn ResourceLoader, include_name: &str) -> String {

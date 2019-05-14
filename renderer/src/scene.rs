@@ -12,24 +12,20 @@
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
-use crate::gpu_data::PaintData;
 use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::options::{RenderCommandListener, RenderOptions};
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
+use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use std::io::{self, Write};
 
-const PAINT_TEXTURE_WIDTH: i32 = 256;
-const PAINT_TEXTURE_HEIGHT: i32 = 256;
-
 #[derive(Clone)]
 pub struct Scene {
     pub(crate) paths: Vec<PathObject>,
-    paints: Vec<Paint>,
+    pub(crate) paints: Vec<Paint>,
     paint_cache: HashMap<Paint, PaintId>,
     bounds: RectF32,
     view_box: RectF32,
@@ -87,19 +83,6 @@ impl Scene {
     #[inline]
     pub fn set_view_box(&mut self, new_view_box: RectF32) {
         self.view_box = new_view_box;
-    }
-
-    pub fn build_paint_data(&self) -> PaintData {
-        let size = Point2DI32::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT);
-        let mut texels = vec![0; size.x() as usize * size.y() as usize * 4];
-        for (path_object_index, path_object) in self.paths.iter().enumerate() {
-            let paint = &self.paints[path_object.paint.0 as usize];
-            texels[path_object_index * 4 + 0] = paint.color.r;
-            texels[path_object_index * 4 + 1] = paint.color.g;
-            texels[path_object_index * 4 + 2] = paint.color.b;
-            texels[path_object_index * 4 + 3] = paint.color.a;
-        }
-        PaintData { size, texels }
     }
 
     pub(crate) fn apply_render_options(
@@ -232,6 +215,11 @@ impl PathObject {
     #[inline]
     pub fn outline(&self) -> &Outline {
         &self.outline
+    }
+
+    #[inline]
+    pub(crate) fn paint(&self) -> PaintId {
+        self.paint
     }
 }
 

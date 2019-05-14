@@ -72,6 +72,8 @@ pub struct FillBatchPrimitive {
 pub struct SolidTileBatchPrimitive {
     pub tile_x: i16,
     pub tile_y: i16,
+    pub origin_u: u16,
+    pub origin_v: u16,
     pub object_index: u16,
 }
 
@@ -84,6 +86,8 @@ pub struct AlphaTileBatchPrimitive {
     pub backdrop: i8,
     pub object_index: u16,
     pub tile_index: u16,
+    pub origin_u: u16,
+    pub origin_v: u16,
 }
 
 impl Debug for RenderCommand {

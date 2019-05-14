@@ -20,7 +20,8 @@ use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
-use pathfinder_gpu::{StencilState, TextureFormat, UniformData, VertexAttrType};
+use pathfinder_gpu::{StencilState, TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
 use std::collections::VecDeque;
@@ -37,8 +38,8 @@ const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_INSTANCE_SIZE: usize = 6;
-const MASK_TILE_INSTANCE_SIZE: usize = 8;
+const SOLID_TILE_INSTANCE_SIZE: usize = 10;
+const MASK_TILE_INSTANCE_SIZE: usize = 12;
 
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -918,55 +919,57 @@ where
         device.bind_vertex_array(&vertex_array);
         device.use_program(&fill_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tess_coord_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
+        device.configure_vertex_attr(&tess_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U8,
+            stride: 0,
+            offset: 0,
+            divisor: 0,
+        });
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_int_vertex_attr(
-            &from_px_attr,
-            1,
-            VertexAttrType::U8,
-            FILL_INSTANCE_SIZE,
-            0,
-            1,
-        );
-        device.configure_int_vertex_attr(
-            &to_px_attr,
-            1,
-            VertexAttrType::U8,
-            FILL_INSTANCE_SIZE,
-            1,
-            1,
-        );
-        device.configure_float_vertex_attr(
-            &from_subpx_attr,
-            2,
-            VertexAttrType::U8,
-            true,
-            FILL_INSTANCE_SIZE,
-            2,
-            1,
-        );
-        device.configure_float_vertex_attr(
-            &to_subpx_attr,
-            2,
-            VertexAttrType::U8,
-            true,
-            FILL_INSTANCE_SIZE,
-            4,
-            1,
-        );
-        device.configure_int_vertex_attr(
-            &tile_index_attr,
-            1,
-            VertexAttrType::U16,
-            FILL_INSTANCE_SIZE,
-            6,
-            1,
-        );
+        device.configure_vertex_attr(&from_px_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::U8,
+            stride: FILL_INSTANCE_SIZE,
+            offset: 0,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&to_px_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::U8,
+            stride: FILL_INSTANCE_SIZE,
+            offset: 1,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&from_subpx_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U8,
+            stride: FILL_INSTANCE_SIZE,
+            offset: 2,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&to_subpx_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U8,
+            stride: FILL_INSTANCE_SIZE,
+            offset: 4,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&tile_index_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::U16,
+            stride: FILL_INSTANCE_SIZE,
+            offset: 6,
+            divisor: 1,
+        });
 
-        FillVertexArray {
-            vertex_array,
-            vertex_buffer,
-        }
+        FillVertexArray { vertex_array, vertex_buffer }
     }
 }
 
@@ -994,51 +997,65 @@ where
         let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop");
         let object_attr = device.get_vertex_attr(&alpha_tile_program.program, "Object");
         let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex");
+        let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                          "ColorTexCoord");
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
         device.bind_vertex_array(&vertex_array);
         device.use_program(&alpha_tile_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tess_coord_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
+        device.configure_vertex_attr(&tess_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U8,
+            stride: 0,
+            offset: 0,
+            divisor: 0,
+        });
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_int_vertex_attr(
-            &tile_origin_attr,
-            3,
-            VertexAttrType::U8,
-            MASK_TILE_INSTANCE_SIZE,
-            0,
-            1,
-        );
-        device.configure_int_vertex_attr(
-            &backdrop_attr,
-            1,
-            VertexAttrType::I8,
-            MASK_TILE_INSTANCE_SIZE,
-            3,
-            1,
-        );
-        device.configure_int_vertex_attr(
-            &object_attr,
-            1,
-            VertexAttrType::I16,
-            MASK_TILE_INSTANCE_SIZE,
-            4,
-            1,
-        );
-        device.configure_int_vertex_attr(
-            &tile_index_attr,
-            1,
-            VertexAttrType::I16,
-            MASK_TILE_INSTANCE_SIZE,
-            6,
-            1,
-        );
+        device.configure_vertex_attr(&tile_origin_attr, &VertexAttrDescriptor {
+            size: 3,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::U8,
+            stride: MASK_TILE_INSTANCE_SIZE,
+            offset: 0,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&backdrop_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I8,
+            stride: MASK_TILE_INSTANCE_SIZE,
+            offset: 3,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&object_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: MASK_TILE_INSTANCE_SIZE,
+            offset: 4,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&tile_index_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: MASK_TILE_INSTANCE_SIZE,
+            offset: 6,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&color_tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U16,
+            stride: MASK_TILE_INSTANCE_SIZE,
+            offset: 8,
+            divisor: 1,
+        });
 
-        AlphaTileVertexArray {
-            vertex_array,
-            vertex_buffer,
-        }
+        AlphaTileVertexArray { vertex_array, vertex_buffer }
     }
 }
 
@@ -1064,36 +1081,49 @@ where
         let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord");
         let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin");
         let object_attr = device.get_vertex_attr(&solid_tile_program.program, "Object");
+        let color_tex_coord_attr = device.get_vertex_attr(&solid_tile_program.program,
+                                                          "ColorTexCoord");
 
         // NB: The object must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
         device.bind_vertex_array(&vertex_array);
         device.use_program(&solid_tile_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&tess_coord_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
+        device.configure_vertex_attr(&tess_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U8,
+            stride: 0,
+            offset: 0,
+            divisor: 0,
+        });
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(
-            &tile_origin_attr,
-            2,
-            VertexAttrType::I16,
-            false,
-            SOLID_TILE_INSTANCE_SIZE,
-            0,
-            1,
-        );
-        device.configure_int_vertex_attr(
-            &object_attr,
-            1,
-            VertexAttrType::I16,
-            SOLID_TILE_INSTANCE_SIZE,
-            4,
-            1,
-        );
+        device.configure_vertex_attr(&tile_origin_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::I16,
+            stride: SOLID_TILE_INSTANCE_SIZE,
+            offset: 0,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&color_tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::FloatNorm,
+            attr_type: VertexAttrType::U16,
+            stride: SOLID_TILE_INSTANCE_SIZE,
+            offset: 4,
+            divisor: 1,
+        });
+        device.configure_vertex_attr(&object_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
+            stride: SOLID_TILE_INSTANCE_SIZE,
+            offset: 8,
+            divisor: 1,
+        });
 
-        SolidTileVertexArray {
-            vertex_array,
-            vertex_buffer,
-        }
+        SolidTileVertexArray { vertex_array, vertex_buffer }
     }
 }
 
@@ -1361,7 +1391,14 @@ where
         device.bind_vertex_array(&vertex_array);
         device.use_program(&postprocess_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
+        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U8,
+            stride: 0,
+            offset: 0,
+            divisor: 0,
+        });
 
         PostprocessVertexArray { vertex_array }
     }
@@ -1404,20 +1441,16 @@ where
         device.bind_vertex_array(&vertex_array);
         device.use_program(&stencil_program.program);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(
-            &position_attr,
-            3,
-            VertexAttrType::F32,
-            false,
-            4 * 4,
-            0,
-            0,
-        );
+        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+            size: 3,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::F32,
+            stride: 4 * 4,
+            offset: 0,
+            divisor: 0,
+        });
 
-        StencilVertexArray {
-            vertex_array,
-            vertex_buffer,
-        }
+        StencilVertexArray { vertex_array, vertex_buffer }
     }
 }
 
@@ -1473,7 +1506,14 @@ where
         device.bind_vertex_array(&vertex_array);
         device.use_program(&reprojection_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
+        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U8,
+            stride: 0,
+            offset: 0,
+            divisor: 0,
+        });
 
         ReprojectionVertexArray { vertex_array }
     }

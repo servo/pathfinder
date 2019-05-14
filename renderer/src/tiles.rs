@@ -10,6 +10,7 @@
 
 use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
+use crate::paint;
 use crate::sorted_vector::SortedVector;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
@@ -114,11 +115,14 @@ impl<'a> Tiler<'a> {
                 continue;
             }
 
+            let origin_uv = paint::object_index_to_paint_coords(self.object_index);
+
             let alpha_tile = AlphaTileBatchPrimitive::new(
                 tile_coords,
                 tile.backdrop,
                 self.object_index,
                 tile.alpha_tile_index as u16,
+                origin_uv,
             );
 
             self.built_object.alpha_tiles.push(alpha_tile);
@@ -521,7 +525,8 @@ impl AlphaTileBatchPrimitive {
     fn new(tile_coords: Point2DI32,
            backdrop: i8,
            object_index: u16,
-           tile_index: u16)
+           tile_index: u16,
+           origin_uv: Point2DI32)
            -> AlphaTileBatchPrimitive {
         AlphaTileBatchPrimitive {
             tile_x_lo: (tile_coords.x() & 0xff) as u8,
@@ -530,6 +535,8 @@ impl AlphaTileBatchPrimitive {
             backdrop,
             object_index,
             tile_index,
+            origin_u: origin_uv.x() as u16,
+            origin_v: origin_uv.y() as u16,
         }
     }
 

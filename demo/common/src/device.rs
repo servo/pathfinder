@@ -11,7 +11,7 @@
 //! GPU rendering code specifically for the demo.
 
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BufferTarget, Device, VertexAttrType};
+use pathfinder_gpu::{BufferTarget, Device, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 
 pub struct GroundProgram<D>
 where
@@ -67,7 +67,14 @@ where
         device.bind_vertex_array(&vertex_array);
         device.use_program(&ground_program.program);
         device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_float_vertex_attr(&position_attr, 2, VertexAttrType::U8, false, 0, 0, 0);
+        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U8,
+            stride: 0,
+            offset: 0,
+            divisor: 0,
+        });
 
         GroundVertexArray { vertex_array }
     }

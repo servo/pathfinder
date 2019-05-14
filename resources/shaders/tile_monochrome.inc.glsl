@@ -10,6 +10,6 @@
 
 uniform vec4 uColor;
 
-vec4 getColor(uint object) {
+vec4 getColor() {
     return uColor;
 }

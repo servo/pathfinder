@@ -22,7 +22,8 @@ use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
-use pathfinder_gpu::{RenderState, UniformData, VertexAttrType};
+use pathfinder_gpu::{RenderState, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::mem;
@@ -591,20 +592,22 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         device.use_program(&debug_texture_program.program);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
         device.bind_buffer(&index_buffer, BufferTarget::Index);
-        device.configure_float_vertex_attr(&position_attr,
-                                           2,
-                                           VertexAttrType::U16,
-                                           false,
-                                           DEBUG_TEXTURE_VERTEX_SIZE,
-                                           0,
-                                           0);
-        device.configure_float_vertex_attr(&tex_coord_attr,
-                                           2,
-                                           VertexAttrType::U16,
-                                           false,
-                                           DEBUG_TEXTURE_VERTEX_SIZE,
-                                           4,
-                                           0);
+        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U16,
+            stride: DEBUG_TEXTURE_VERTEX_SIZE,
+            offset: 0,
+            divisor: 0,
+        });
+        device.configure_vertex_attr(&tex_coord_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U16,
+            stride: DEBUG_TEXTURE_VERTEX_SIZE,
+            offset: 4,
+            divisor: 0,
+        });
 
         DebugTextureVertexArray { vertex_array, vertex_buffer, index_buffer }
     }
@@ -626,13 +629,14 @@ impl<D> DebugSolidVertexArray<D> where D: Device {
         device.use_program(&debug_solid_program.program);
         device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
         device.bind_buffer(&index_buffer, BufferTarget::Index);
-        device.configure_float_vertex_attr(&position_attr,
-                                           2,
-                                           VertexAttrType::U16,
-                                           false,
-                                           DEBUG_SOLID_VERTEX_SIZE,
-                                           0,
-                                           0);
+        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+            size: 2,
+            class: VertexAttrClass::Float,
+            attr_type: VertexAttrType::U16,
+            stride: DEBUG_SOLID_VERTEX_SIZE,
+            offset: 0,
+            divisor: 0,
+        });
 
         DebugSolidVertexArray { vertex_array, vertex_buffer, index_buffer }
     }

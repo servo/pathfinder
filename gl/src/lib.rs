@@ -18,7 +18,8 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
 use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderState, ShaderKind, StencilFunc};
-use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrType};
+use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use rustache::{HashBuilder, Render};
 use std::ffi::CString;
@@ -327,40 +328,33 @@ impl Device for GLDevice {
         }
     }
 
-    fn configure_float_vertex_attr(&self,
-                                   attr: &GLVertexAttr,
-                                   size: usize,
-                                   attr_type: VertexAttrType,
-                                   normalized: bool,
-                                   stride: usize,
-                                   offset: usize,
-                                   divisor: u32) {
+    fn configure_vertex_attr(&self, attr: &GLVertexAttr, descriptor: &VertexAttrDescriptor) {
         unsafe {
-            gl::VertexAttribPointer(attr.attr,
-                                    size as GLint,
-                                    attr_type.to_gl_type(),
-                                    if normalized { gl::TRUE } else { gl::FALSE },
-                                    stride as GLint,
-                                    offset as *const GLvoid); ck();
-            gl::VertexAttribDivisor(attr.attr, divisor); ck();
-            gl::EnableVertexAttribArray(attr.attr); ck();
-        }
-    }
+            let attr_type = descriptor.attr_type.to_gl_type();
+            match descriptor.class {
+                VertexAttrClass::Float | VertexAttrClass::FloatNorm => {
+                    let normalized = if descriptor.class == VertexAttrClass::FloatNorm {
+                        gl::TRUE
+                    } else {
+                        gl::FALSE
+                    };
+                    gl::VertexAttribPointer(attr.attr,
+                                            descriptor.size as GLint,
+                                            attr_type,
+                                            normalized,
+                                            descriptor.stride as GLint,
+                                            descriptor.offset as *const GLvoid); ck();
+                }
+                VertexAttrClass::Int => {
+                    gl::VertexAttribIPointer(attr.attr,
+                                             descriptor.size as GLint,
+                                             attr_type,
+                                             descriptor.stride as GLint,
+                                             descriptor.offset as *const GLvoid); ck();
+                }
+            }
 
-    fn configure_int_vertex_attr(&self,
-                                 attr: &GLVertexAttr,
-                                 size: usize,
-                                 attr_type: VertexAttrType,
-                                 stride: usize,
-                                 offset: usize,
-                                 divisor: u32) {
-        unsafe {
-            gl::VertexAttribIPointer(attr.attr,
-                                    size as GLint,
-                                    attr_type.to_gl_type(),
-                                    stride as GLint,
-                                    offset as *const GLvoid); ck();
-            gl::VertexAttribDivisor(attr.attr, divisor); ck();
+            gl::VertexAttribDivisor(attr.attr, descriptor.divisor); ck();
             gl::EnableVertexAttribArray(attr.attr); ck();
         }
     }
