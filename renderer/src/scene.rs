@@ -23,8 +23,8 @@ use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use std::io::{self, Write};
 
-pub const PAINT_TEXTURE_WIDTH: i32 = 256;
-pub const PAINT_TEXTURE_HEIGHT: i32 = 256;
+const PAINT_TEXTURE_WIDTH: i32 = 256;
+const PAINT_TEXTURE_HEIGHT: i32 = 256;
 
 #[derive(Clone)]
 pub struct Scene {

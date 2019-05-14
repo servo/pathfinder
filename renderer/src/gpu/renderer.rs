@@ -12,7 +12,6 @@ use crate::gpu::debug::DebugUIPresenter;
 use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
-use crate::scene::{PAINT_TEXTURE_HEIGHT, PAINT_TEXTURE_WIDTH};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
@@ -65,7 +64,7 @@ where
     quad_vertex_positions_buffer: D::Buffer,
     fill_vertex_array: FillVertexArray<D>,
     mask_framebuffer: D::Framebuffer,
-    paint_texture: D::Texture,
+    paint_texture: Option<D::Texture>,
 
     // Postprocessing shader
     postprocess_source_framebuffer: Option<D::Framebuffer>,
@@ -168,9 +167,6 @@ where
             device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
 
-        let paint_size = Point2DI32::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT);
-        let paint_texture = device.create_texture(TextureFormat::RGBA8, paint_size);
-
         let window_size = dest_framebuffer.window_size(&device);
         let debug_ui_presenter = DebugUIPresenter::new(&device, resources, window_size);
 
@@ -191,7 +187,7 @@ where
             quad_vertex_positions_buffer,
             fill_vertex_array,
             mask_framebuffer,
-            paint_texture,
+            paint_texture: None,
 
             postprocess_source_framebuffer: None,
             postprocess_program,
@@ -342,7 +338,18 @@ where
     }
 
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
-        self.device.upload_to_texture(&self.paint_texture, paint_data.size, &paint_data.texels);
+        match self.paint_texture {
+            Some(ref paint_texture) if
+                self.device.texture_size(paint_texture) == paint_data.size => {}
+            _ => {
+                let texture = self.device.create_texture(TextureFormat::RGBA8, paint_data.size);
+                self.paint_texture = Some(texture)
+            }
+        }
+
+        self.device.upload_to_texture(self.paint_texture.as_ref().unwrap(),
+                                      paint_data.size,
+                                      &paint_data.texels);
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
@@ -480,16 +487,15 @@ where
 
         match self.render_mode {
             RenderMode::Multicolor => {
-                self.device.bind_texture(&self.paint_texture, 1);
+                let paint_texture = self.paint_texture.as_ref().unwrap();
+                self.device.bind_texture(paint_texture, 1);
                 self.device.set_uniform(
                     &self.alpha_multicolor_tile_program.paint_texture_uniform,
                     UniformData::TextureUnit(1),
                 );
                 self.device.set_uniform(
                     &self.alpha_multicolor_tile_program.paint_texture_size_uniform,
-                    UniformData::Vec2(
-                        I32x4::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT, 0, 0).to_f32x4()
-                    ),
+                    UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x4())
                 );
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
@@ -540,7 +546,8 @@ where
 
         match self.render_mode {
             RenderMode::Multicolor => {
-                self.device.bind_texture(&self.paint_texture, 0);
+                let paint_texture = self.paint_texture.as_ref().unwrap();
+                self.device.bind_texture(paint_texture, 0);
                 self.device.set_uniform(
                     &self
                         .solid_multicolor_tile_program
@@ -551,10 +558,7 @@ where
                     &self
                         .solid_multicolor_tile_program
                         .paint_texture_size_uniform,
-                    UniformData::Vec2(
-                        I32x4::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT, 0, 0)
-                            .to_f32x4(),
-                    ),
+                    UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x4())
                 );
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
