@@ -127,6 +127,10 @@ impl Outline {
     }
 
     pub fn transform(&mut self, transform: &Transform2DF32) {
+        if transform.is_identity() {
+            return;
+        }
+
         let mut new_bounds = None;
         for contour in &mut self.contours {
             contour.transform(transform);
@@ -487,6 +491,10 @@ impl Contour {
     }
 
     pub fn transform(&mut self, transform: &Transform2DF32) {
+        if transform.is_identity() {
+            return;
+        }
+
         for (point_index, point) in self.points.iter_mut().enumerate() {
             *point = transform.transform_point(*point);
             union_rect(&mut self.bounds, *point, point_index == 0);

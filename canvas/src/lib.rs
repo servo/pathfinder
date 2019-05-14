@@ -94,10 +94,12 @@ impl CanvasRenderingContext2D {
     pub fn fill_text(&mut self, string: &str, position: Point2DF32) {
         // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
+        let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
+                                                                                 .transform);
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
                                   &self.current_state.font_collection,
-                                  &Transform2DF32::from_translation(position),
+                                  &transform,
                                   TextRenderMode::Fill,
                                   HintingOptions::None,
                                   paint_id));
@@ -106,10 +108,12 @@ impl CanvasRenderingContext2D {
     pub fn stroke_text(&mut self, string: &str, position: Point2DF32) {
         // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
+        let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
+                                                                                 .transform);
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
                                   &self.current_state.font_collection,
-                                  &Transform2DF32::from_translation(position),
+                                  &transform,
                                   TextRenderMode::Stroke(self.current_state.line_width),
                                   HintingOptions::None,
                                   paint_id));
@@ -139,12 +143,14 @@ impl CanvasRenderingContext2D {
         self.current_state.font_size = new_font_size;
     }
 
-    // Paths
+    // Drawing paths
 
     #[inline]
     pub fn fill_path(&mut self, path: Path2D) {
+        let mut outline = path.into_outline();
+        outline.transform(&self.current_state.transform);
         let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
-        self.scene.push_path(PathObject::new(path.into_outline(), paint_id, String::new()))
+        self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
     }
 
     #[inline]
@@ -153,8 +159,28 @@ impl CanvasRenderingContext2D {
         let stroke_width = f32::max(self.current_state.line_width, HAIRLINE_STROKE_WIDTH);
         let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_width);
         stroke_to_fill.offset();
+        stroke_to_fill.outline.transform(&self.current_state.transform);
         self.scene.push_path(PathObject::new(stroke_to_fill.outline, paint_id, String::new()))
     }
+
+    // Transformations
+
+    #[inline]
+    pub fn current_transform(&self) -> Transform2DF32 {
+        self.current_state.transform
+    }
+
+    #[inline]
+    pub fn set_current_transform(&mut self, new_transform: &Transform2DF32) {
+        self.current_state.transform = *new_transform;
+    }
+
+    #[inline]
+    pub fn reset_transform(&mut self) {
+        self.current_state.transform = Transform2DF32::default();
+    }
+
+    // The canvas state
 
     #[inline]
     pub fn save(&mut self) {
@@ -171,6 +197,7 @@ impl CanvasRenderingContext2D {
 
 #[derive(Clone)]
 pub struct State {
+    transform: Transform2DF32,
     font_collection: Arc<FontCollection>,
     font_size: f32,
     fill_paint: Paint,
@@ -181,6 +208,7 @@ pub struct State {
 impl State {
     fn default(default_font_collection: Arc<FontCollection>) -> State {
         State {
+            transform: Transform2DF32::default(),
             font_collection: default_font_collection,
             font_size: DEFAULT_FONT_SIZE,
             fill_paint: Paint { color: ColorU::black() },
