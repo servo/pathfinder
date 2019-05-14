@@ -995,7 +995,6 @@ where
         let tess_coord_attr = device.get_vertex_attr(&alpha_tile_program.program, "TessCoord");
         let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin");
         let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop");
-        let object_attr = device.get_vertex_attr(&alpha_tile_program.program, "Object");
         let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex");
         let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
                                                           "ColorTexCoord");
@@ -1028,14 +1027,6 @@ where
             attr_type: VertexAttrType::I8,
             stride: MASK_TILE_INSTANCE_SIZE,
             offset: 3,
-            divisor: 1,
-        });
-        device.configure_vertex_attr(&object_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 4,
             divisor: 1,
         });
         device.configure_vertex_attr(&tile_index_attr, &VertexAttrDescriptor {
@@ -1080,7 +1071,6 @@ where
 
         let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord");
         let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin");
-        let object_attr = device.get_vertex_attr(&solid_tile_program.program, "Object");
         let color_tex_coord_attr = device.get_vertex_attr(&solid_tile_program.program,
                                                           "ColorTexCoord");
 
@@ -1112,14 +1102,6 @@ where
             attr_type: VertexAttrType::U16,
             stride: SOLID_TILE_INSTANCE_SIZE,
             offset: 4,
-            divisor: 1,
-        });
-        device.configure_vertex_attr(&object_attr, &VertexAttrDescriptor {
-            size: 1,
-            class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::I16,
-            stride: SOLID_TILE_INSTANCE_SIZE,
-            offset: 8,
             divisor: 1,
         });
 
