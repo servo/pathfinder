@@ -12,15 +12,19 @@
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
+use crate::gpu_data::PaintData;
 use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::options::{RenderCommandListener, RenderOptions};
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::Point2DF32;
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use std::io::{self, Write};
+
+pub const PAINT_TEXTURE_WIDTH: i32 = 256;
+pub const PAINT_TEXTURE_HEIGHT: i32 = 256;
 
 #[derive(Clone)]
 pub struct Scene {
@@ -85,13 +89,17 @@ impl Scene {
         self.view_box = new_view_box;
     }
 
-    pub fn build_shaders(&self) -> Vec<ObjectShader> {
-        self.paths
-            .iter()
-            .map(|path_object| {
-                ObjectShader { fill_color: self.paints[path_object.paint.0 as usize].color }
-            })
-            .collect()
+    pub fn build_paint_data(&self) -> PaintData {
+        let size = Point2DI32::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT);
+        let mut texels = vec![0; size.x() as usize * size.y() as usize * 4];
+        for (path_object_index, path_object) in self.paths.iter().enumerate() {
+            let paint = &self.paints[path_object.paint.0 as usize];
+            texels[path_object_index * 4 + 0] = paint.color.r;
+            texels[path_object_index * 4 + 1] = paint.color.g;
+            texels[path_object_index * 4 + 2] = paint.color.b;
+            texels[path_object_index * 4 + 3] = paint.color.a;
+        }
+        PaintData { size, texels }
     }
 
     pub(crate) fn apply_render_options(
@@ -234,8 +242,3 @@ pub struct Paint {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct PaintId(pub u16);
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ObjectShader {
-    pub fill_color: ColorU,
-}

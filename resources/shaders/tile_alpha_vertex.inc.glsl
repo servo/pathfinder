@@ -23,7 +23,7 @@ out vec2 vTexCoord;
 out float vBackdrop;
 out vec4 vColor;
 
-vec4 getFillColor(uint object);
+vec4 getColor(uint object);
 
 vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
     uint tilesPerRow = uint(stencilTextureWidth / uTileSize.x);
@@ -39,7 +39,7 @@ void computeVaryings() {
 
     vTexCoord = texCoord / uStencilTextureSize;
     vBackdrop = float(aBackdrop);
-    vColor = getFillColor(aObject);
+    vColor = getColor(aObject);
     gl_Position = vec4(position, 0.0, 1.0);
 }
 

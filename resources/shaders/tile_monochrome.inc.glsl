@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-uniform vec4 uFillColor;
+uniform vec4 uColor;
 
-vec4 getFillColor(uint object) {
-    return uFillColor;
+vec4 getColor(uint object) {
+    return uColor;
 }

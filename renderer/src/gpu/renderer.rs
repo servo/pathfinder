@@ -9,10 +9,10 @@
 // except according to those terms.
 
 use crate::gpu::debug::DebugUIPresenter;
-use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive};
+use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
-use crate::scene::ObjectShader;
+use crate::scene::{PAINT_TEXTURE_HEIGHT, PAINT_TEXTURE_WIDTH};
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
 use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
 use pathfinder_geometry::basic::rect::RectI32;
@@ -41,9 +41,6 @@ const FILL_INSTANCE_SIZE: usize = 8;
 const SOLID_TILE_INSTANCE_SIZE: usize = 6;
 const MASK_TILE_INSTANCE_SIZE: usize = 8;
 
-const FILL_COLORS_TEXTURE_WIDTH: i32 = 256;
-const FILL_COLORS_TEXTURE_HEIGHT: i32 = 256;
-
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
 pub struct Renderer<D>
@@ -68,7 +65,7 @@ where
     quad_vertex_positions_buffer: D::Buffer,
     fill_vertex_array: FillVertexArray<D>,
     mask_framebuffer: D::Framebuffer,
-    fill_colors_texture: D::Texture,
+    paint_texture: D::Texture,
 
     // Postprocessing shader
     postprocess_source_framebuffer: Option<D::Framebuffer>,
@@ -171,9 +168,8 @@ where
             device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
 
-        let fill_colors_size =
-            Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
-        let fill_colors_texture = device.create_texture(TextureFormat::RGBA8, fill_colors_size);
+        let paint_size = Point2DI32::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT);
+        let paint_texture = device.create_texture(TextureFormat::RGBA8, paint_size);
 
         let window_size = dest_framebuffer.window_size(&device);
         let debug_ui_presenter = DebugUIPresenter::new(&device, resources, window_size);
@@ -195,7 +191,7 @@ where
             quad_vertex_positions_buffer,
             fill_vertex_array,
             mask_framebuffer,
-            fill_colors_texture,
+            paint_texture,
 
             postprocess_source_framebuffer: None,
             postprocess_program,
@@ -242,7 +238,7 @@ where
                 }
                 self.stats.path_count = path_count;
             }
-            RenderCommand::AddShaders(ref shaders) => self.upload_shaders(shaders),
+            RenderCommand::AddPaintData(ref paint_data) => self.upload_paint_data(paint_data),
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
             RenderCommand::FlushFills => {
                 self.begin_composite_timer_query();
@@ -345,17 +341,8 @@ where
         &self.quad_vertex_positions_buffer
     }
 
-    fn upload_shaders(&mut self, shaders: &[ObjectShader]) {
-        let size = Point2DI32::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT);
-        let mut fill_colors = vec![0; size.x() as usize * size.y() as usize * 4];
-        for (shader_index, shader) in shaders.iter().enumerate() {
-            fill_colors[shader_index * 4 + 0] = shader.fill_color.r;
-            fill_colors[shader_index * 4 + 1] = shader.fill_color.g;
-            fill_colors[shader_index * 4 + 2] = shader.fill_color.b;
-            fill_colors[shader_index * 4 + 3] = shader.fill_color.a;
-        }
-        self.device
-            .upload_to_texture(&self.fill_colors_texture, size, &fill_colors);
+    fn upload_paint_data(&mut self, paint_data: &PaintData) {
+        self.device.upload_to_texture(&self.paint_texture, paint_data.size, &paint_data.texels);
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
@@ -493,32 +480,27 @@ where
 
         match self.render_mode {
             RenderMode::Multicolor => {
-                self.device.bind_texture(&self.fill_colors_texture, 1);
+                self.device.bind_texture(&self.paint_texture, 1);
                 self.device.set_uniform(
-                    &self
-                        .alpha_multicolor_tile_program
-                        .fill_colors_texture_uniform,
+                    &self.alpha_multicolor_tile_program.paint_texture_uniform,
                     UniformData::TextureUnit(1),
                 );
                 self.device.set_uniform(
-                    &self
-                        .alpha_multicolor_tile_program
-                        .fill_colors_texture_size_uniform,
+                    &self.alpha_multicolor_tile_program.paint_texture_size_uniform,
                     UniformData::Vec2(
-                        I32x4::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT, 0, 0)
-                            .to_f32x4(),
+                        I32x4::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT, 0, 0).to_f32x4()
                     ),
                 );
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
                 self.device.set_uniform(
-                    &self.alpha_monochrome_tile_program.fill_color_uniform,
+                    &self.alpha_monochrome_tile_program.color_uniform,
                     UniformData::Vec4(F32x4::splat(1.0)),
                 );
             }
             RenderMode::Monochrome { fg_color, .. } => {
                 self.device.set_uniform(
-                    &self.alpha_monochrome_tile_program.fill_color_uniform,
+                    &self.alpha_monochrome_tile_program.color_uniform,
                     UniformData::Vec4(fg_color.0),
                 );
             }
@@ -558,32 +540,32 @@ where
 
         match self.render_mode {
             RenderMode::Multicolor => {
-                self.device.bind_texture(&self.fill_colors_texture, 0);
+                self.device.bind_texture(&self.paint_texture, 0);
                 self.device.set_uniform(
                     &self
                         .solid_multicolor_tile_program
-                        .fill_colors_texture_uniform,
+                        .paint_texture_uniform,
                     UniformData::TextureUnit(0),
                 );
                 self.device.set_uniform(
                     &self
                         .solid_multicolor_tile_program
-                        .fill_colors_texture_size_uniform,
+                        .paint_texture_size_uniform,
                     UniformData::Vec2(
-                        I32x4::new(FILL_COLORS_TEXTURE_WIDTH, FILL_COLORS_TEXTURE_HEIGHT, 0, 0)
+                        I32x4::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT, 0, 0)
                             .to_f32x4(),
                     ),
                 );
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
                 self.device.set_uniform(
-                    &self.solid_monochrome_tile_program.fill_color_uniform,
+                    &self.solid_monochrome_tile_program.color_uniform,
                     UniformData::Vec4(F32x4::splat(1.0)),
                 );
             }
             RenderMode::Monochrome { fg_color, .. } => {
                 self.device.set_uniform(
-                    &self.solid_monochrome_tile_program.fill_color_uniform,
+                    &self.solid_monochrome_tile_program.color_uniform,
                     UniformData::Vec4(fg_color.0),
                 );
             }
@@ -1177,8 +1159,8 @@ where
     D: Device,
 {
     solid_tile_program: SolidTileProgram<D>,
-    fill_colors_texture_uniform: D::Uniform,
-    fill_colors_texture_size_uniform: D::Uniform,
+    paint_texture_uniform: D::Uniform,
+    paint_texture_size_uniform: D::Uniform,
 }
 
 impl<D> SolidTileMulticolorProgram<D>
@@ -1187,14 +1169,14 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMulticolorProgram<D> {
         let solid_tile_program = SolidTileProgram::new(device, "tile_solid_multicolor", resources);
-        let fill_colors_texture_uniform =
-            device.get_uniform(&solid_tile_program.program, "FillColorsTexture");
-        let fill_colors_texture_size_uniform =
-            device.get_uniform(&solid_tile_program.program, "FillColorsTextureSize");
+        let paint_texture_uniform =
+            device.get_uniform(&solid_tile_program.program, "PaintTexture");
+        let paint_texture_size_uniform =
+            device.get_uniform(&solid_tile_program.program, "PaintTextureSize");
         SolidTileMulticolorProgram {
             solid_tile_program,
-            fill_colors_texture_uniform,
-            fill_colors_texture_size_uniform,
+            paint_texture_uniform,
+            paint_texture_size_uniform,
         }
     }
 }
@@ -1204,7 +1186,7 @@ where
     D: Device,
 {
     solid_tile_program: SolidTileProgram<D>,
-    fill_color_uniform: D::Uniform,
+    color_uniform: D::Uniform,
 }
 
 impl<D> SolidTileMonochromeProgram<D>
@@ -1213,10 +1195,10 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMonochromeProgram<D> {
         let solid_tile_program = SolidTileProgram::new(device, "tile_solid_monochrome", resources);
-        let fill_color_uniform = device.get_uniform(&solid_tile_program.program, "FillColor");
+        let color_uniform = device.get_uniform(&solid_tile_program.program, "Color");
         SolidTileMonochromeProgram {
             solid_tile_program,
-            fill_color_uniform,
+            color_uniform,
         }
     }
 }
@@ -1265,8 +1247,8 @@ where
     D: Device,
 {
     alpha_tile_program: AlphaTileProgram<D>,
-    fill_colors_texture_uniform: D::Uniform,
-    fill_colors_texture_size_uniform: D::Uniform,
+    paint_texture_uniform: D::Uniform,
+    paint_texture_size_uniform: D::Uniform,
 }
 
 impl<D> AlphaTileMulticolorProgram<D>
@@ -1275,14 +1257,14 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMulticolorProgram<D> {
         let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_multicolor", resources);
-        let fill_colors_texture_uniform =
-            device.get_uniform(&alpha_tile_program.program, "FillColorsTexture");
-        let fill_colors_texture_size_uniform =
-            device.get_uniform(&alpha_tile_program.program, "FillColorsTextureSize");
+        let paint_texture_uniform =
+            device.get_uniform(&alpha_tile_program.program, "PaintTexture");
+        let paint_texture_size_uniform =
+            device.get_uniform(&alpha_tile_program.program, "PaintTextureSize");
         AlphaTileMulticolorProgram {
             alpha_tile_program,
-            fill_colors_texture_uniform,
-            fill_colors_texture_size_uniform,
+            paint_texture_uniform,
+            paint_texture_size_uniform,
         }
     }
 }
@@ -1292,7 +1274,7 @@ where
     D: Device,
 {
     alpha_tile_program: AlphaTileProgram<D>,
-    fill_color_uniform: D::Uniform,
+    color_uniform: D::Uniform,
 }
 
 impl<D> AlphaTileMonochromeProgram<D>
@@ -1301,10 +1283,10 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMonochromeProgram<D> {
         let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_monochrome", resources);
-        let fill_color_uniform = device.get_uniform(&alpha_tile_program.program, "FillColor");
+        let color_uniform = device.get_uniform(&alpha_tile_program.program, "Color");
         AlphaTileMonochromeProgram {
             alpha_tile_program,
-            fill_color_uniform,
+            color_uniform,
         }
     }
 }

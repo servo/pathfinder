@@ -59,7 +59,7 @@ impl<'a> SceneBuilder<'a> {
         let path_count = self.scene.paths.len();
         self.listener.send(RenderCommand::Start { bounding_quad, path_count });
 
-        self.listener.send(RenderCommand::AddShaders(self.scene.build_shaders()));
+        self.listener.send(RenderCommand::AddPaintData(self.scene.build_paint_data()));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let alpha_tiles = executor.flatten_into_vector(path_count, |path_index| {
