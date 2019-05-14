@@ -11,6 +11,7 @@
 use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
 use crate::paint;
+use crate::scene::PaintId;
 use crate::sorted_vector::SortedVector;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
@@ -30,6 +31,7 @@ pub(crate) struct Tiler<'a> {
     builder: &'a SceneBuilder<'a>,
     outline: &'a Outline,
     pub built_object: BuiltObject,
+    paint_id: PaintId,
     object_index: u16,
 
     point_queue: SortedVector<QueuedEndpoint>,
@@ -43,6 +45,7 @@ impl<'a> Tiler<'a> {
         builder: &'a SceneBuilder<'a>,
         outline: &'a Outline,
         view_box: RectF32,
+        paint_id: PaintId,
         object_index: u16,
     ) -> Tiler<'a> {
         let bounds = outline
@@ -55,6 +58,7 @@ impl<'a> Tiler<'a> {
             builder,
             outline,
             built_object,
+            paint_id,
             object_index,
 
             point_queue: SortedVector::new(),
@@ -115,7 +119,7 @@ impl<'a> Tiler<'a> {
                 continue;
             }
 
-            let origin_uv = paint::object_index_to_paint_coords(self.object_index);
+            let origin_uv = paint::paint_id_to_tex_coords(self.paint_id);
 
             let alpha_tile = AlphaTileBatchPrimitive::new(
                 tile_coords,

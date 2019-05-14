@@ -81,8 +81,9 @@ impl<'a> SceneBuilder<'a> {
     ) -> Vec<AlphaTileBatchPrimitive> {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
+        let paint_id = path_object.paint();
 
-        let mut tiler = Tiler::new(self, &outline, view_box, path_index as u16);
+        let mut tiler = Tiler::new(self, &outline, view_box, paint_id, path_index as u16);
         tiler.generate_tiles();
 
         self.listener.send(RenderCommand::AddFills(tiler.built_object.fills));
@@ -108,7 +109,7 @@ impl<'a> SceneBuilder<'a> {
 
     fn pack_alpha_tiles(&mut self, alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
         let path_count = self.scene.paths.len() as u32;
-        let solid_tiles = self.z_buffer.build_solid_tiles(0..path_count);
+        let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths, 0..path_count);
         if !solid_tiles.is_empty() {
             self.listener.send(RenderCommand::SolidTile(solid_tiles));
         }
