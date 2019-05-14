@@ -36,7 +36,12 @@ pub struct SceneProxy {
 }
 
 impl SceneProxy {
-    pub fn new<E>(scene: Scene, executor: E) -> SceneProxy where E: Executor + Send + 'static {
+    pub fn new<E>(executor: E) -> SceneProxy where E: Executor + Send + 'static {
+        SceneProxy::from_scene(Scene::new(), executor)
+    }
+
+    pub fn from_scene<E>(scene: Scene, executor: E) -> SceneProxy
+                         where E: Executor + Send + 'static {
         let (main_to_worker_sender, main_to_worker_receiver) = mpsc::channel();
         thread::spawn(move || scene_thread(scene, executor, main_to_worker_receiver));
         SceneProxy { sender: main_to_worker_sender }

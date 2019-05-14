@@ -369,14 +369,12 @@ impl Contour {
             let rotation = Transform2DF32::from_rotation(angle);
             segment = segment.transform(&scale.post_mul(&rotation).post_mul(&translation));
 
-            /*
-            println!("angle={} start_angle={} end_angle={} sweep_angle={} segment={:?}",
-                     angle,
-                     start_angle,
-                     end_angle,
-                     sweep_angle,
-                     segment);
-            */
+            debug!("angle={} start_angle={} end_angle={} sweep_angle={} segment={:?}",
+                   angle,
+                   start_angle,
+                   end_angle,
+                   sweep_angle,
+                   segment);
 
             if first_segment {
                 self.push_full_segment(&segment, true);

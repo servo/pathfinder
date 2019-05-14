@@ -37,8 +37,6 @@ const CIRCLE_THICKNESS: f32 = 16.0;
 const COLOR_CYCLE_SPEED: f32 = 0.0025;
 
 fn main() {
-    pretty_env_logger::init();
-
     // Set up SDL2.
     let sdl_context = sdl2::init().unwrap();
     let video = sdl_context.video().unwrap();
@@ -87,7 +85,7 @@ fn main() {
 
 struct MoireRenderer {
     renderer: Renderer<GLDevice>,
-    scene: Option<SceneProxy>,
+    scene: SceneProxy,
     frame: i32,
     window_size: Point2DI32,
     drawable_size: Point2DI32,
@@ -100,7 +98,7 @@ impl MoireRenderer {
            -> MoireRenderer {
         MoireRenderer {
             renderer,
-            scene: None,
+            scene: SceneProxy::new(RayonExecutor),
             frame: 0,
             window_size,
             drawable_size,
@@ -138,16 +136,9 @@ impl MoireRenderer {
         self.draw_circles(&mut canvas, outer_center);
         self.draw_circles(&mut canvas, inner_center);
 
-        // Build scene if necessary.
-        // TODO(pcwalton): Allow the user to build an empty scene proxy so they don't have to do this.
-        match self.scene {
-            None => self.scene = Some(SceneProxy::new(canvas.into_scene(), RayonExecutor)),
-            Some(ref mut scene) => scene.replace_scene(canvas.into_scene()),
-        }
-
-        // Render the scene.
-        self.scene.as_mut().unwrap().build_and_render(&mut self.renderer,   
-                                                      RenderOptions::default());
+        // Build and render scene.
+        self.scene.replace_scene(canvas.into_scene());
+        self.scene.build_and_render(&mut self.renderer, RenderOptions::default());
 
         self.frame += 1;
     }

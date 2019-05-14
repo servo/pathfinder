@@ -143,7 +143,7 @@ impl<W> DemoApp<W> where W: Window {
                                                                   viewport.size());
         let camera = Camera::new(options.mode, scene_metadata.view_box, viewport.size());
 
-        let scene_proxy = SceneProxy::new(built_svg.scene, executor);
+        let scene_proxy = SceneProxy::from_scene(built_svg.scene, executor);
 
         let ground_program = GroundProgram::new(&renderer.device, resources);
         let ground_vertex_array = GroundVertexArray::new(&renderer.device,
