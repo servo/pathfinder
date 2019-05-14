@@ -18,4 +18,4 @@ path = "../text"
 
 [dependencies.skribo]
 git = "https://github.com/linebender/skribo.git"
-rev = "f759c2d2c188b668bce998179f03b6319835353e"
+rev = "a89e9ca99e0d6736ea1b7754517f4df14fd96a2b"

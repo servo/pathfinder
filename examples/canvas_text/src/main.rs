@@ -8,9 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::{CanvasRenderingContext2D, Path2D};
+use pathfinder_canvas::CanvasRenderingContext2D;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
-use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
