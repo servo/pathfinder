@@ -56,7 +56,7 @@ impl Camera {
         let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32
             * scale_factor_for_view_box(view_box);
         let origin = viewport_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
-        Camera::TwoD(Transform2DF32::from_scale(&Point2DF32::splat(scale)).post_translate(origin))
+        Camera::TwoD(Transform2DF32::from_scale(Point2DF32::splat(scale)).post_translate(origin))
     }
 
     fn new_3d(mode: Mode, view_box: RectF32, viewport_size: Point2DI32) -> Camera {
