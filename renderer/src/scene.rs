@@ -12,22 +12,23 @@
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
+use crate::gpu_data::PaintData;
 use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::options::{RenderCommandListener, RenderOptions};
-use crate::paint::{Paint, PaintId};
+use crate::paint::{Paint, PaintId, Palette};
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
+use std::fmt::Debug;
 use std::io::{self, Write};
 
 #[derive(Clone)]
 pub struct Scene {
     pub(crate) paths: Vec<PathObject>,
-    pub(crate) paints: Vec<Paint>,
-    paint_cache: HashMap<Paint, PaintId>,
+    pub(crate) palette: Palette,
     bounds: RectF32,
     view_box: RectF32,
 }
@@ -37,8 +38,7 @@ impl Scene {
     pub fn new() -> Scene {
         Scene {
             paths: vec![],
-            paints: vec![],
-            paint_cache: HashMap::new(),
+            palette: Palette::new(),
             bounds: RectF32::default(),
             view_box: RectF32::default(),
         }
@@ -49,16 +49,14 @@ impl Scene {
         self.paths.push(path);
     }
 
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub fn push_paint(&mut self, paint: &Paint) -> PaintId {
-        if let Some(paint_id) = self.paint_cache.get(paint) {
-            return *paint_id;
-        }
+    #[inline]
+    pub fn add_color(&mut self, color: ColorU) -> ColorId {
+        self.palette.add_color(color)
+    }
 
-        let paint_id = PaintId(self.paints.len() as u16);
-        self.paint_cache.insert(*paint, paint_id);
-        self.paints.push(*paint);
-        paint_id
+    #[inline]
+    pub fn add_linear_gradient(&mut self, gradient: &LinearGradient) -> LinearGradientId {
+        self.palette.add_linear_gradient(gradient)
     }
 
     #[inline]
@@ -152,7 +150,11 @@ impl Scene {
             .any(|path_object| path_object.paint != first_paint_id) {
             return None;
         }
-        Some(self.paints[first_paint_id.0 as usize].color)
+
+        match self.palette.get(first_paint_id) {
+            Some(&Paint::Color(color)) => Some(color),
+            _ => None,
+        }
     }
 
     #[inline]
@@ -184,16 +186,19 @@ impl Scene {
             self.view_box.size().y()
         )?;
         for path_object in &self.paths {
-            let paint = &self.paints[path_object.paint.0 as usize];
+            let paint = self.palette.get(path_object.paint).unwrap();
             write!(writer, "    <path")?;
             if !path_object.name.is_empty() {
                 write!(writer, " id=\"{}\"", path_object.name)?;
             }
-            writeln!(
-                writer,
-                " fill=\"{:?}\" d=\"{:?}\" />",
-                paint.color, path_object.outline
-            )?;
+            write!(writer, " fill=\"")?;
+            match paint {
+                Paint::Color(color) => write!(writer, "{:?}", color)?,
+                Paint::LinearGradient(_) => {
+                    // TODO(pcwalton)
+                }
+            }
+            writeln!(writer, "\" d=\"{:?}\" />", path_object.outline)?;
         }
         writeln!(writer, "</svg>")?;
         Ok(())

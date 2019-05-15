@@ -24,6 +24,7 @@ use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
 use skribo::{FontCollection, FontFamily, TextStyle};
+use std::borrow::Cow;
 use std::default::Default;
 use std::mem;
 use std::sync::Arc;
@@ -138,13 +139,13 @@ impl CanvasRenderingContext2D {
     }
 
     #[inline]
-    pub fn set_fill_style(&mut self, new_fill_style: FillStyle) {
-        self.current_state.fill_paint = new_fill_style.to_paint();
+    pub fn set_fill_style(&mut self, new_fill_style: Paint) {
+        self.current_state.fill_paint = new_fill_style;
     }
 
     #[inline]
-    pub fn set_stroke_style(&mut self, new_stroke_style: FillStyle) {
-        self.current_state.stroke_paint = new_stroke_style.to_paint();
+    pub fn set_stroke_style(&mut self, new_stroke_style: Paint) {
+        self.current_state.stroke_paint = new_stroke_style;
     }
 
     // Text styles
@@ -161,7 +162,7 @@ impl CanvasRenderingContext2D {
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
-        let paint = self.current_state.resolve_paint(self.current_state.fill_paint);
+        let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
         let paint_id = self.scene.push_paint(&paint);
 
         self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
@@ -169,7 +170,7 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
-        let paint = self.current_state.resolve_paint(self.current_state.stroke_paint);
+        let paint = self.current_state.resolve_paint(&self.current_state.stroke_paint);
         let paint_id = self.scene.push_paint(&paint);
 
         let mut stroke_style = self.current_state.stroke_style;
@@ -249,9 +250,21 @@ impl State {
         }
     }
 
-    fn resolve_paint(&self, mut paint: Paint) -> Paint {
-        paint.color.a = (paint.color.a as f32 * self.global_alpha).round() as u8;
-        paint
+    fn resolve_paint<'p>(&self, paint: &'p Paint) -> Cow<'p, Paint> {
+        if self.global_alpha == 1.0 {
+            return Cow::Borrowed(paint);
+        }
+
+        let mut paint = (*paint).clone();
+        match paint {
+            Paint::Color(ref mut color) => {
+                color.a = (color.a as f32 * self.global_alpha).round() as u8;
+            }
+            Paint::LinearGradient(ref mut gradient) => {
+                // TODO(pcwalton)
+            }
+        }
+        Cow::Owned(paint)
     }
 }
 
@@ -318,18 +331,5 @@ impl Path2D {
         if !self.current_contour.is_empty() {
             self.outline.push_contour(mem::replace(&mut self.current_contour, Contour::new()));
         }
-    }
-}
-
-// TODO(pcwalton): Gradients.
-#[derive(Clone, Copy)]
-pub enum FillStyle {
-    Color(ColorU),
-}
-
-impl FillStyle {
-    #[inline]
-    fn to_paint(&self) -> Paint {
-        match *self { FillStyle::Color(color) => Paint { color } }
     }
 }

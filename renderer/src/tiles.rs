@@ -10,7 +10,7 @@
 
 use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
-use crate::paint::{self, PaintId};
+use crate::paint::{self, BuiltPalette, PaintId};
 use crate::sorted_vector::SortedVector;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
@@ -128,7 +128,8 @@ impl<'a> Tiler<'a> {
                 }
             }
 
-            let origin_uv = paint::paint_id_to_tex_coords(self.paint_id);
+            let origin_uv = self.builder.built_palette.norm_tex_coords(self.paint_id) +
+                BuiltPalette::half_texel();
 
             let alpha_tile = AlphaTileBatchPrimitive::new(
                 tile_coords,

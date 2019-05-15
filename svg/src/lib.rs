@@ -252,16 +252,15 @@ impl PaintExt for Paint {
     #[inline]
     fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
                       -> Paint {
-        Paint {
-            color: match *svg_paint {
-                UsvgPaint::Color(color) => ColorU::from_svg_color(color, opacity),
-                UsvgPaint::Link(_) => {
-                    // TODO(pcwalton)
-                    result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
-                    ColorU::black()
-                }
-            },
-        }
+        let color = match *svg_paint {
+            UsvgPaint::Color(color) => ColorU::from_svg_color(color, opacity),
+            UsvgPaint::Link(_) => {
+                // TODO(pcwalton)
+                result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
+                ColorU::black()
+            }
+        };
+        Paint::Color(color)
     }
 }
 

@@ -10,7 +10,7 @@
 
 //! A vector that maintains sorted order with insertion sort.
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Hash)]
 pub struct SortedVector<T>
 where
     T: PartialOrd,
@@ -59,6 +59,11 @@ where
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.array.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.array.len()
     }
 }
 

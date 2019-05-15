@@ -12,7 +12,7 @@ use pathfinder_simd::default::F32x4;
 use std::fmt::{self, Debug, Formatter};
 
 // TODO(pcwalton): Maybe this should be a u32?
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct ColorU {
     pub r: u8,
     pub g: u8,
@@ -45,6 +45,11 @@ impl ColorU {
     pub fn to_f32(&self) -> ColorF {
         let color = F32x4::new(self.r as f32, self.g as f32, self.b as f32, self.a as f32);
         ColorF(color * F32x4::splat(1.0 / 255.0))
+    }
+
+    #[inline]
+    pub fn is_opaque(&self) -> bool {
+        self.a == 255
     }
 }
 

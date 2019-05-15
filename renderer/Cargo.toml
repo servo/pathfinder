@@ -8,6 +8,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 byteorder = "1.2"
 fixedbitset = "0.1"
 hashbrown = "0.1"
+indexmap = "1.0"
 rayon = "1.0"
 serde = "1.0"
 serde_json = "1.0"
