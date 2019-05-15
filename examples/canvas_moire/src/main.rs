@@ -131,6 +131,7 @@ impl MoireRenderer {
         let mut canvas = CanvasRenderingContext2D::new(self.drawable_size.to_f32());
         canvas.set_line_width(CIRCLE_THICKNESS * self.device_pixel_ratio);
         canvas.set_stroke_style(FillStyle::Color(foreground_color.to_u8()));
+        canvas.set_global_alpha(0.75);
 
         // Draw circles.
         self.draw_circles(&mut canvas, outer_center);

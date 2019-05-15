@@ -17,7 +17,8 @@ use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::OutlineStrokeToFill;
-use pathfinder_renderer::scene::{PaintId, PathObject, Scene};
+use pathfinder_renderer::paint::PaintId;
+use pathfinder_renderer::scene::{PathObject, Scene};
 use skribo::{FontCollection, Layout, TextStyle};
 use std::mem;
 

@@ -20,7 +20,8 @@ use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::OutlineStrokeToFill;
-use pathfinder_renderer::scene::{Paint, PathObject, Scene};
+use pathfinder_renderer::paint::Paint;
+use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
 use skribo::{FontCollection, FontFamily, TextStyle};
 use std::default::Default;
@@ -149,13 +150,18 @@ impl CanvasRenderingContext2D {
     pub fn fill_path(&mut self, path: Path2D) {
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
-        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
+
+        let paint = self.current_state.resolve_paint(self.current_state.fill_paint);
+        let paint_id = self.scene.push_paint(&paint);
+
         self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
     }
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
-        let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
+        let paint = self.current_state.resolve_paint(self.current_state.stroke_paint);
+        let paint_id = self.scene.push_paint(&paint);
+
         let stroke_width = f32::max(self.current_state.line_width, HAIRLINE_STROKE_WIDTH);
         let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_width);
         stroke_to_fill.offset();
@@ -178,6 +184,18 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn reset_transform(&mut self) {
         self.current_state.transform = Transform2DF32::default();
+    }
+
+    // Compositing
+
+    #[inline]
+    pub fn global_alpha(&self) -> f32 {
+        self.current_state.global_alpha
+    }
+
+    #[inline]
+    pub fn set_global_alpha(&mut self, new_global_alpha: f32) {
+        self.current_state.global_alpha = new_global_alpha;
     }
 
     // The canvas state
@@ -203,6 +221,7 @@ pub struct State {
     fill_paint: Paint,
     stroke_paint: Paint,
     line_width: f32,
+    global_alpha: f32,
 }
 
 impl State {
@@ -214,7 +233,13 @@ impl State {
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
             line_width: 1.0,
+            global_alpha: 1.0,
         }
+    }
+
+    fn resolve_paint(&self, mut paint: Paint) -> Paint {
+        paint.color.a = (paint.color.a as f32 * self.global_alpha).round() as u8;
+        paint
     }
 }
 
