@@ -9,11 +9,26 @@
 // except according to those terms.
 
 use crate::gpu_data::PaintData;
-use crate::scene::{PaintId, Scene};
+use crate::scene::Scene;
 use pathfinder_geometry::basic::point::Point2DI32;
+use pathfinder_geometry::color::ColorU;
 
 const PAINT_TEXTURE_WIDTH: i32 = 256;
 const PAINT_TEXTURE_HEIGHT: i32 = 256;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Paint {
+    pub color: ColorU,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct PaintId(pub u16);
+
+impl Paint {
+    pub(crate) fn is_opaque(&self) -> bool {
+        self.color.a == 255
+    }
+}
 
 impl Scene {
     pub fn build_paint_data(&self) -> PaintData {

@@ -21,10 +21,11 @@ use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::segment::{Segment, SegmentFlags};
 use pathfinder_geometry::stroke::OutlineStrokeToFill;
-use pathfinder_renderer::scene::{Paint, PathObject, Scene};
+use pathfinder_renderer::paint::Paint;
+use pathfinder_renderer::scene::{PathObject, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
-use usvg::{Color as SvgColor, Node, NodeExt, NodeKind, Paint as UsvgPaint};
+use usvg::{Color as SvgColor, Node, NodeExt, NodeKind, Opacity, Paint as UsvgPaint};
 use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform};
 use usvg::{Tree, Visibility};
 
@@ -114,9 +115,11 @@ impl BuiltSVG {
             }
             NodeKind::Path(ref path) if path.visibility == Visibility::Visible => {
                 if let Some(ref fill) = path.fill {
-                    let style = self
-                        .scene
-                        .push_paint(&Paint::from_svg_paint(&fill.paint, &mut self.result_flags));
+                    let style = self.scene.push_paint(&Paint::from_svg_paint(
+                        &fill.paint,
+                        fill.opacity,
+                        &mut self.result_flags,
+                    ));
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                     let path = Transform2DF32PathIter::new(path, &transform);
@@ -129,6 +132,7 @@ impl BuiltSVG {
                 if let Some(ref stroke) = path.stroke {
                     let style = self.scene.push_paint(&Paint::from_svg_paint(
                         &stroke.paint,
+                        stroke.opacity,
                         &mut self.result_flags,
                     ));
                     let stroke_width = f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
@@ -235,15 +239,17 @@ impl Display for BuildResultFlags {
 }
 
 trait PaintExt {
-    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Self;
+    fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
+                      -> Self;
 }
 
 impl PaintExt for Paint {
     #[inline]
-    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Paint {
+    fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
+                      -> Paint {
         Paint {
             color: match *svg_paint {
-                UsvgPaint::Color(color) => ColorU::from_svg_color(color),
+                UsvgPaint::Color(color) => ColorU::from_svg_color(color, opacity),
                 UsvgPaint::Link(_) => {
                     // TODO(pcwalton)
                     result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
@@ -358,17 +364,17 @@ where
 }
 
 trait ColorUExt {
-    fn from_svg_color(svg_color: SvgColor) -> Self;
+    fn from_svg_color(svg_color: SvgColor, opacity: Opacity) -> Self;
 }
 
 impl ColorUExt for ColorU {
     #[inline]
-    fn from_svg_color(svg_color: SvgColor) -> ColorU {
+    fn from_svg_color(svg_color: SvgColor, opacity: Opacity) -> ColorU {
         ColorU {
             r: svg_color.red,
             g: svg_color.green,
             b: svg_color.blue,
-            a: 255,
+            a: (opacity.value() * 255.0).round() as u8,
         }
     }
 }

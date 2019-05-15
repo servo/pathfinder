@@ -82,8 +82,15 @@ impl<'a> SceneBuilder<'a> {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
         let paint_id = path_object.paint();
+        let object_is_opaque = scene.paints[paint_id.0 as usize].is_opaque();
 
-        let mut tiler = Tiler::new(self, &outline, view_box, paint_id, path_index as u16);
+        let mut tiler = Tiler::new(self,
+                                   &outline,
+                                   view_box,
+                                   path_index as u16,
+                                   paint_id,
+                                   object_is_opaque);
+
         tiler.generate_tiles();
 
         self.listener.send(RenderCommand::AddFills(tiler.built_object.fills));

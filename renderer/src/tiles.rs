@@ -10,8 +10,7 @@
 
 use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
-use crate::paint;
-use crate::scene::PaintId;
+use crate::paint::{self, PaintId};
 use crate::sorted_vector::SortedVector;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
@@ -33,6 +32,7 @@ pub(crate) struct Tiler<'a> {
     pub built_object: BuiltObject,
     paint_id: PaintId,
     object_index: u16,
+    object_is_opaque: bool,
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
@@ -45,8 +45,9 @@ impl<'a> Tiler<'a> {
         builder: &'a SceneBuilder<'a>,
         outline: &'a Outline,
         view_box: RectF32,
-        paint_id: PaintId,
         object_index: u16,
+        paint_id: PaintId,
+        object_is_opaque: bool,
     ) -> Tiler<'a> {
         let bounds = outline
             .bounds()
@@ -58,8 +59,9 @@ impl<'a> Tiler<'a> {
             builder,
             outline,
             built_object,
-            paint_id,
             object_index,
+            paint_id,
+            object_is_opaque,
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
@@ -112,11 +114,18 @@ impl<'a> Tiler<'a> {
             let tile_coords = self
                 .built_object
                 .local_tile_index_to_coords(tile_index as u32);
+
             if tile.is_solid() {
-                if tile.backdrop != 0 {
-                    self.builder.z_buffer.update(tile_coords, self.object_index);
+                // Blank tiles are always skipped.
+                if tile.backdrop == 0 {
+                    continue;
                 }
-                continue;
+
+                // If this is a solid tile, poke it into the Z-buffer and stop here.
+                if self.object_is_opaque {
+                    self.builder.z_buffer.update(tile_coords, self.object_index);
+                    continue;
+                }
             }
 
             let origin_uv = paint::paint_id_to_tex_coords(self.paint_id);

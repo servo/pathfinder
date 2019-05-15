@@ -14,6 +14,7 @@ use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
 use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::options::{RenderCommandListener, RenderOptions};
+use crate::paint::{Paint, PaintId};
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
@@ -222,11 +223,3 @@ impl PathObject {
         self.paint
     }
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Paint {
-    pub color: ColorU,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct PaintId(pub u16);
