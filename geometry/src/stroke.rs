@@ -60,9 +60,7 @@ impl OutlineStrokeToFill {
 
             stroker.offset_forward();
             if closed {
-                // TODO(pcwalton): Line join.
-                stroker.output.closed = true;
-                new_contours.push(stroker.output);
+                self.push_stroked_contour(&mut new_contours, stroker.output, true);
                 stroker = ContourStrokeToFill::new(stroker.input,
                                                    Contour::new(),
                                                    self.style.line_width * 0.5,
@@ -78,8 +76,7 @@ impl OutlineStrokeToFill {
                 self.add_cap(&mut stroker.output);
             }
 
-            stroker.output.closed = true;
-            new_contours.push(stroker.output);
+            self.push_stroked_contour(&mut new_contours, stroker.output, closed);
         }
 
         let mut new_bounds = None;
@@ -89,7 +86,21 @@ impl OutlineStrokeToFill {
         self.outline.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 
-    pub fn add_cap(&mut self, contour: &mut Contour) {
+    fn push_stroked_contour(&mut self,
+                            new_contours: &mut Vec<Contour>,
+                            mut contour: Contour,
+                            closed: bool) {
+        // Add join if necessary.
+        if closed && contour.needs_join(self.style.line_join) {
+            let (p1, p0) = (contour.position_of(1), contour.position_of(0));
+            contour.add_join(self.style.line_join, &LineSegmentF32::new(p0, p1));
+        }
+
+        contour.closed = true;
+        new_contours.push(contour);
+    }
+
+    fn add_cap(&mut self, contour: &mut Contour) {
         if self.style.line_cap == LineCap::Butt || contour.len() < 2 {
             return
         }
@@ -170,10 +181,8 @@ impl Offset for Segment {
     }
 
     fn add_to_contour(&self, join: LineJoin, contour: &mut Contour) {
-        // Add join.
-        // TODO(pcwalton): Miter limit.
-        if join == LineJoin::Miter && contour.len() >= 2 {
-            let (p0, p1) = (contour.position_of_last(2), contour.position_of_last(1));
+        // Add join if necessary.
+        if contour.needs_join(join) {
             let p3 = self.baseline.from();
             let p4 = if self.is_line() {
                 self.baseline.to()
@@ -183,11 +192,7 @@ impl Offset for Segment {
                 self.ctrl.from()
             };
 
-            let prev_tangent = LineSegmentF32::new(p0, p1);
-            let next_tangent = LineSegmentF32::new(p4, p3);
-            if let Some(prev_tangent_t) = prev_tangent.intersection_t(&next_tangent) {
-                contour.push_endpoint(prev_tangent.sample(prev_tangent_t));
-            }
+            contour.add_join(join, &LineSegmentF32::new(p4, p3));
         }
 
         // Push segment.
@@ -289,6 +294,22 @@ impl Offset for Segment {
         return true;
 
         const SAMPLE_COUNT: u32 = 16;
+    }
+}
+
+impl Contour {
+    fn needs_join(&self, join: LineJoin) -> bool {
+        // TODO(pcwalton): Miter limit.
+        join == LineJoin::Miter && self.len() >= 2
+    }
+
+    fn add_join(&mut self, _: LineJoin, next_tangent: &LineSegmentF32) {
+        // TODO(pcwalton): Round joins.
+        let (p0, p1) = (self.position_of_last(2), self.position_of_last(1));
+        let prev_tangent = LineSegmentF32::new(p0, p1);
+        if let Some(prev_tangent_t) = prev_tangent.intersection_t(&next_tangent) {
+            self.push_endpoint(prev_tangent.sample(prev_tangent_t));
+        }
     }
 }
 
