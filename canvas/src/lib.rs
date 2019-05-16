@@ -19,7 +19,7 @@ use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
-use pathfinder_geometry::stroke::{LineCap, OutlineStrokeToFill, StrokeStyle};
+use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
@@ -130,6 +130,11 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn set_line_cap(&mut self, new_line_cap: LineCap) {
         self.current_state.stroke_style.line_cap = new_line_cap
+    }
+
+    #[inline]
+    pub fn set_line_join(&mut self, new_line_join: LineJoin) {
+        self.current_state.stroke_style.line_join = new_line_join
     }
 
     #[inline]

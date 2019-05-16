@@ -28,12 +28,19 @@ pub struct OutlineStrokeToFill {
 pub struct StrokeStyle {
     pub line_width: f32,
     pub line_cap: LineCap,
+    pub line_join: LineJoin,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineCap {
     Butt,
     Square,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LineJoin {
+    Miter,
+    Bevel,
 }
 
 impl OutlineStrokeToFill {
@@ -48,21 +55,26 @@ impl OutlineStrokeToFill {
             let closed = input.closed;
             let mut stroker = ContourStrokeToFill::new(input,
                                                        Contour::new(),
-                                                       self.style.line_width * 0.5);
+                                                       self.style.line_width * 0.5,
+                                                       self.style.line_join);
 
             stroker.offset_forward();
             if closed {
+                // TODO(pcwalton): Line join.
                 stroker.output.closed = true;
                 new_contours.push(stroker.output);
                 stroker = ContourStrokeToFill::new(stroker.input,
                                                    Contour::new(),
-                                                   self.style.line_width * 0.5);
+                                                   self.style.line_width * 0.5,
+                                                   self.style.line_join);
             } else {
                 self.add_cap(&mut stroker.output);
             }
 
             stroker.offset_backward();
-            if !closed {
+            if closed {
+                // TODO(pcwalton): Line join.
+            } else {
                 self.add_cap(&mut stroker.output);
             }
 
@@ -101,21 +113,18 @@ struct ContourStrokeToFill {
     input: Contour,
     output: Contour,
     radius: f32,
+    join: LineJoin,
 }
 
 impl ContourStrokeToFill {
     #[inline]
-    fn new(input: Contour, output: Contour, radius: f32) -> ContourStrokeToFill {
-        ContourStrokeToFill {
-            input,
-            output,
-            radius,
-        }
+    fn new(input: Contour, output: Contour, radius: f32, join: LineJoin) -> ContourStrokeToFill {
+        ContourStrokeToFill { input, output, radius, join }
     }
 
     fn offset_forward(&mut self) {
         for segment in self.input.iter() {
-            segment.offset(self.radius, &mut self.output);
+            segment.offset(self.radius, self.join, &mut self.output);
         }
     }
 
@@ -127,27 +136,28 @@ impl ContourStrokeToFill {
             .collect();
         segments.reverse();
         for segment in &segments {
-            segment.offset(self.radius, &mut self.output);
+            segment.offset(self.radius, self.join, &mut self.output);
         }
     }
 }
 
 trait Offset {
-    fn offset(&self, distance: f32, contour: &mut Contour);
+    fn offset(&self, distance: f32, join: LineJoin, contour: &mut Contour);
+    fn add_to_contour(&self, join: LineJoin, contour: &mut Contour);
     fn offset_once(&self, distance: f32) -> Self;
     fn error_is_within_tolerance(&self, other: &Segment, distance: f32) -> bool;
 }
 
 impl Offset for Segment {
-    fn offset(&self, distance: f32, contour: &mut Contour) {
+    fn offset(&self, distance: f32, join: LineJoin, contour: &mut Contour) {
         if self.baseline.square_length() < TOLERANCE * TOLERANCE {
-            contour.push_full_segment(self, true);
+            self.add_to_contour(join, contour);
             return;
         }
 
         let candidate = self.offset_once(distance);
         if self.error_is_within_tolerance(&candidate, distance) {
-            contour.push_full_segment(&candidate, true);
+            candidate.add_to_contour(join, contour);
             return;
         }
 
@@ -155,8 +165,33 @@ impl Offset for Segment {
         debug!("... PRE-SPLIT: {:?}", self);
         let (before, after) = self.split(0.5);
         debug!("... AFTER-SPLIT: {:?} {:?}", before, after);
-        before.offset(distance, contour);
-        after.offset(distance, contour);
+        before.offset(distance, join, contour);
+        after.offset(distance, join, contour);
+    }
+
+    fn add_to_contour(&self, join: LineJoin, contour: &mut Contour) {
+        // Add join.
+        // TODO(pcwalton): Miter limit.
+        if join == LineJoin::Miter && contour.len() >= 2 {
+            let (p0, p1) = (contour.position_of_last(2), contour.position_of_last(1));
+            let p3 = self.baseline.from();
+            let p4 = if self.is_line() {
+                self.baseline.to()
+            } else {
+                // NB: If you change the representation of quadratic curves, you will need to
+                // change this.
+                self.ctrl.from()
+            };
+
+            let prev_tangent = LineSegmentF32::new(p0, p1);
+            let next_tangent = LineSegmentF32::new(p4, p3);
+            if let Some(prev_tangent_t) = prev_tangent.intersection_t(&next_tangent) {
+                contour.push_endpoint(prev_tangent.sample(prev_tangent_t));
+            }
+        }
+
+        // Push segment.
+        contour.push_full_segment(self, true);
     }
 
     fn offset_once(&self, distance: f32) -> Segment {
@@ -260,11 +295,20 @@ impl Offset for Segment {
 impl Default for StrokeStyle {
     #[inline]
     fn default() -> StrokeStyle {
-        StrokeStyle { line_width: 1.0, line_cap: LineCap::default() }
+        StrokeStyle {
+            line_width: 1.0,
+            line_cap: LineCap::default(),
+            line_join: LineJoin::default(),
+        }
     }
 }
 
 impl Default for LineCap {
     #[inline]
     fn default() -> LineCap { LineCap::Butt }
+}
+
+impl Default for LineJoin {
+    #[inline]
+    fn default() -> LineJoin { LineJoin::Miter }
 }

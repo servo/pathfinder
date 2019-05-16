@@ -20,14 +20,14 @@ use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32Path
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::segment::{Segment, SegmentFlags};
-use pathfinder_geometry::stroke::{LineCap, OutlineStrokeToFill, StrokeStyle};
+use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
-use usvg::{Color as SvgColor, LineCap as UsvgLineCap, Node, NodeExt, NodeKind, Opacity};
-use usvg::{Paint as UsvgPaint, PathSegment as UsvgPathSegment, Rect as UsvgRect};
-use usvg::{Transform as UsvgTransform, Tree, Visibility};
+use usvg::{Color as SvgColor, LineCap as UsvgLineCap, LineJoin as UsvgLineJoin, Node, NodeExt};
+use usvg::{NodeKind, Opacity, Paint as UsvgPaint, PathSegment as UsvgPathSegment};
+use usvg::{Rect as UsvgRect, Transform as UsvgTransform, Tree, Visibility};
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 
@@ -139,6 +139,7 @@ impl BuiltSVG {
                     let stroke_style = StrokeStyle {
                         line_width: f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH),
                         line_cap: LineCap::from_usvg_line_cap(stroke.linecap),
+                        line_join: LineJoin::from_usvg_line_join(stroke.linejoin),
                     };
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
@@ -397,6 +398,24 @@ impl LineCapExt for LineCap {
                 LineCap::Square
             }
             UsvgLineCap::Square => LineCap::Square,
+        }
+    }
+}
+
+trait LineJoinExt {
+    fn from_usvg_line_join(usvg_line_join: UsvgLineJoin) -> Self;
+}
+
+impl LineJoinExt for LineJoin {
+    #[inline]
+    fn from_usvg_line_join(usvg_line_join: UsvgLineJoin) -> LineJoin {
+        match usvg_line_join {
+            UsvgLineJoin::Miter => LineJoin::Miter,
+            UsvgLineJoin::Round => {
+                // TODO(pcwalton)
+                LineJoin::Miter
+            }
+            UsvgLineJoin::Bevel => LineJoin::Bevel,
         }
     }
 }
