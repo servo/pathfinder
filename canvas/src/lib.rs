@@ -19,7 +19,7 @@ use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
-use pathfinder_geometry::stroke::OutlineStrokeToFill;
+use pathfinder_geometry::stroke::{LineCap, OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
@@ -115,7 +115,7 @@ impl CanvasRenderingContext2D {
                                   &TextStyle { size: self.current_state.font_size },
                                   &self.current_state.font_collection,
                                   &transform,
-                                  TextRenderMode::Stroke(self.current_state.line_width),
+                                  TextRenderMode::Stroke(self.current_state.stroke_style),
                                   HintingOptions::None,
                                   paint_id));
     }
@@ -124,7 +124,12 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn set_line_width(&mut self, new_line_width: f32) {
-        self.current_state.line_width = new_line_width
+        self.current_state.stroke_style.line_width = new_line_width
+    }
+
+    #[inline]
+    pub fn set_line_cap(&mut self, new_line_cap: LineCap) {
+        self.current_state.stroke_style.line_cap = new_line_cap
     }
 
     #[inline]
@@ -162,8 +167,10 @@ impl CanvasRenderingContext2D {
         let paint = self.current_state.resolve_paint(self.current_state.stroke_paint);
         let paint_id = self.scene.push_paint(&paint);
 
-        let stroke_width = f32::max(self.current_state.line_width, HAIRLINE_STROKE_WIDTH);
-        let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_width);
+        let mut stroke_style = self.current_state.stroke_style;
+        stroke_style.line_width = f32::max(stroke_style.line_width, HAIRLINE_STROKE_WIDTH);
+
+        let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_style);
         stroke_to_fill.offset();
         stroke_to_fill.outline.transform(&self.current_state.transform);
         self.scene.push_path(PathObject::new(stroke_to_fill.outline, paint_id, String::new()))
@@ -220,7 +227,7 @@ pub struct State {
     font_size: f32,
     fill_paint: Paint,
     stroke_paint: Paint,
-    line_width: f32,
+    stroke_style: StrokeStyle,
     global_alpha: f32,
 }
 
@@ -232,7 +239,7 @@ impl State {
             font_size: DEFAULT_FONT_SIZE,
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
-            line_width: 1.0,
+            stroke_style: StrokeStyle::default(),
             global_alpha: 1.0,
         }
     }

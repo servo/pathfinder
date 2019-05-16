@@ -16,7 +16,7 @@ use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::outline::{Contour, Outline};
-use pathfinder_geometry::stroke::OutlineStrokeToFill;
+use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::PaintId;
 use pathfinder_renderer::scene::{PathObject, Scene};
 use skribo::{FontCollection, Layout, TextStyle};
@@ -69,8 +69,8 @@ impl SceneExt for Scene {
         font.outline(glyph_id, hinting_options, &mut outline_builder)?;
         let mut outline = outline_builder.build();
 
-        if let TextRenderMode::Stroke(stroke_width) = render_mode {
-            let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_width);
+        if let TextRenderMode::Stroke(stroke_style) = render_mode {
+            let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_style);
             stroke_to_fill.offset();
             outline = stroke_to_fill.outline;
         }
@@ -123,7 +123,7 @@ impl SceneExt for Scene {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TextRenderMode {
     Fill,
-    Stroke(f32),
+    Stroke(StrokeStyle),
 }
 
 struct OutlinePathBuilder {

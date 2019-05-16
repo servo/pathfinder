@@ -11,6 +11,7 @@
 //! Utilities for converting path strokes to fills.
 
 use crate::basic::line_segment::LineSegmentF32;
+use crate::basic::point::Point2DF32;
 use crate::basic::rect::RectF32;
 use crate::outline::{Contour, Outline};
 use crate::segment::Segment;
@@ -20,35 +21,52 @@ const TOLERANCE: f32 = 0.01;
 
 pub struct OutlineStrokeToFill {
     pub outline: Outline,
-    pub stroke_width: f32,
+    pub style: StrokeStyle,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StrokeStyle {
+    pub line_width: f32,
+    pub line_cap: LineCap,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LineCap {
+    Butt,
+    Square,
 }
 
 impl OutlineStrokeToFill {
     #[inline]
-    pub fn new(outline: Outline, stroke_width: f32) -> OutlineStrokeToFill {
-        OutlineStrokeToFill {
-            outline,
-            stroke_width,
-        }
+    pub fn new(outline: Outline, style: StrokeStyle) -> OutlineStrokeToFill {
+        OutlineStrokeToFill { outline, style }
     }
 
-    #[inline]
     pub fn offset(&mut self) {
         let mut new_contours = vec![];
         for input in mem::replace(&mut self.outline.contours, vec![]) {
+            let closed = input.closed;
             let mut stroker = ContourStrokeToFill::new(input,
                                                        Contour::new(),
-                                                       self.stroke_width * 0.5);
+                                                       self.style.line_width * 0.5);
+
             stroker.offset_forward();
-            stroker.output.closed = stroker.input.closed;
-            if stroker.input.closed {
+            if closed {
+                stroker.output.closed = true;
                 new_contours.push(stroker.output);
                 stroker = ContourStrokeToFill::new(stroker.input,
                                                    Contour::new(),
-                                                   self.stroke_width * 0.5);
+                                                   self.style.line_width * 0.5);
+            } else {
+                self.add_cap(&mut stroker.output);
             }
+
             stroker.offset_backward();
-            stroker.output.closed = stroker.input.closed;
+            if !closed {
+                self.add_cap(&mut stroker.output);
+            }
+
+            stroker.output.closed = true;
             new_contours.push(stroker.output);
         }
 
@@ -57,6 +75,25 @@ impl OutlineStrokeToFill {
 
         self.outline.contours = new_contours;
         self.outline.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
+    }
+
+    pub fn add_cap(&mut self, contour: &mut Contour) {
+        if self.style.line_cap == LineCap::Butt || contour.len() < 2 {
+            return
+        }
+
+        let width = self.style.line_width;
+        let (p0, p1) = (contour.position_of_last(2), contour.position_of_last(1));
+        let gradient = (p1 - p0).normalize();
+        let offset = gradient.scale(width * 0.5);
+
+        let p2 = p1 + offset;
+        let p3 = p2 + gradient.yx().scale_xy(Point2DF32::new(width, -width));
+        let p4 = p3 - offset;
+
+        contour.push_endpoint(p2);
+        contour.push_endpoint(p3);
+        contour.push_endpoint(p4);
     }
 }
 
@@ -218,4 +255,16 @@ impl Offset for Segment {
 
         const SAMPLE_COUNT: u32 = 16;
     }
+}
+
+impl Default for StrokeStyle {
+    #[inline]
+    fn default() -> StrokeStyle {
+        StrokeStyle { line_width: 1.0, line_cap: LineCap::default() }
+    }
+}
+
+impl Default for LineCap {
+    #[inline]
+    fn default() -> LineCap { LineCap::Butt }
 }

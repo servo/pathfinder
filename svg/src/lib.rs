@@ -20,14 +20,14 @@ use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32Path
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::segment::{Segment, SegmentFlags};
-use pathfinder_geometry::stroke::OutlineStrokeToFill;
+use pathfinder_geometry::stroke::{LineCap, OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
-use usvg::{Color as SvgColor, Node, NodeExt, NodeKind, Opacity, Paint as UsvgPaint};
-use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform};
-use usvg::{Tree, Visibility};
+use usvg::{Color as SvgColor, LineCap as UsvgLineCap, Node, NodeExt, NodeKind, Opacity};
+use usvg::{Paint as UsvgPaint, PathSegment as UsvgPathSegment, Rect as UsvgRect};
+use usvg::{Transform as UsvgTransform, Tree, Visibility};
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 
@@ -135,12 +135,16 @@ impl BuiltSVG {
                         stroke.opacity,
                         &mut self.result_flags,
                     ));
-                    let stroke_width = f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
+
+                    let stroke_style = StrokeStyle {
+                        line_width: f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH),
+                        line_cap: LineCap::from_usvg_line_cap(stroke.linecap),
+                    };
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                     let outline = Outline::from_segments(path);
 
-                    let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_width);
+                    let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_style);
                     stroke_to_fill.offset();
                     let mut outline = stroke_to_fill.outline;
                     outline.transform(&transform);
@@ -375,6 +379,24 @@ impl ColorUExt for ColorU {
             g: svg_color.green,
             b: svg_color.blue,
             a: (opacity.value() * 255.0).round() as u8,
+        }
+    }
+}
+
+trait LineCapExt {
+    fn from_usvg_line_cap(usvg_line_cap: UsvgLineCap) -> Self;
+}
+
+impl LineCapExt for LineCap {
+    #[inline]
+    fn from_usvg_line_cap(usvg_line_cap: UsvgLineCap) -> LineCap {
+        match usvg_line_cap {
+            UsvgLineCap::Butt => LineCap::Butt,
+            UsvgLineCap::Round => {
+                // TODO(pcwalton)
+                LineCap::Square
+            }
+            UsvgLineCap::Square => LineCap::Square,
         }
     }
 }

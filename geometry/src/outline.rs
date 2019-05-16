@@ -268,6 +268,11 @@ impl Contour {
     }
 
     #[inline]
+    pub(crate) fn position_of_last(&self, index: u32) -> Point2DF32 {
+        self.points[self.points.len() - index as usize]
+    }
+
+    #[inline]
     pub(crate) fn last_position(&self) -> Option<Point2DF32> {
         self.points.last().cloned()
     }
