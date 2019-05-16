@@ -34,17 +34,28 @@ impl OutlineStrokeToFill {
 
     #[inline]
     pub fn offset(&mut self) {
-        let mut new_bounds = None;
-        for contour in &mut self.outline.contours {
-            let input = mem::replace(contour, Contour::new());
-            let mut contour_stroke_to_fill =
-                ContourStrokeToFill::new(input, Contour::new(), self.stroke_width * 0.5);
-            contour_stroke_to_fill.offset_forward();
-            contour_stroke_to_fill.offset_backward();
-            *contour = contour_stroke_to_fill.output;
-            contour.update_bounds(&mut new_bounds);
+        let mut new_contours = vec![];
+        for input in mem::replace(&mut self.outline.contours, vec![]) {
+            let mut stroker = ContourStrokeToFill::new(input,
+                                                       Contour::new(),
+                                                       self.stroke_width * 0.5);
+            stroker.offset_forward();
+            stroker.output.closed = stroker.input.closed;
+            if stroker.input.closed {
+                new_contours.push(stroker.output);
+                stroker = ContourStrokeToFill::new(stroker.input,
+                                                   Contour::new(),
+                                                   self.stroke_width * 0.5);
+            }
+            stroker.offset_backward();
+            stroker.output.closed = stroker.input.closed;
+            new_contours.push(stroker.output);
         }
 
+        let mut new_bounds = None;
+        new_contours.iter().for_each(|contour| contour.update_bounds(&mut new_bounds));
+
+        self.outline.contours = new_contours;
         self.outline.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
     }
 }
@@ -72,7 +83,6 @@ impl ContourStrokeToFill {
     }
 
     fn offset_backward(&mut self) {
-        // FIXME(pcwalton)
         let mut segments: Vec<_> = self
             .input
             .iter()
