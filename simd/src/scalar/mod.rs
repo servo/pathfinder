@@ -175,7 +175,7 @@ impl F32x4 {
     }
 
     #[inline]
-    pub fn cross(&self, other: F32x4) -> F32x4 {
+    pub fn cross(&self, _other: F32x4) -> F32x4 {
         unimplemented!()
     }
 }
