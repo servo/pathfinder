@@ -134,8 +134,9 @@ impl ContourStrokeToFill {
     }
 
     fn offset_forward(&mut self) {
-        for segment in self.input.iter() {
-            segment.offset(self.radius, self.join, &mut self.output);
+        for (segment_index, segment) in self.input.iter().enumerate() {
+            let join = if segment_index == 0 { LineJoin::Bevel } else { self.join };
+            segment.offset(self.radius, join, &mut self.output);
         }
     }
 
@@ -146,8 +147,9 @@ impl ContourStrokeToFill {
             .map(|segment| segment.reversed())
             .collect();
         segments.reverse();
-        for segment in &segments {
-            segment.offset(self.radius, self.join, &mut self.output);
+        for (segment_index, segment) in segments.iter().enumerate() {
+            let join = if segment_index == 0 { LineJoin::Bevel } else { self.join };
+            segment.offset(self.radius, join, &mut self.output);
         }
     }
 }
