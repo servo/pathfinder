@@ -10,6 +10,7 @@
 
 uniform vec4 uColor;
 
-vec4 getColor() {
-    return uColor;
+// TODO(pcwalton): Fix this!
+vec2 getPaintTexCoord() {
+    return vec2(0.0);
 }

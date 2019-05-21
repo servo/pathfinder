@@ -8,11 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-uniform sampler2D uPaintTexture;
-uniform vec2 uPaintTextureSize;
-
 in vec2 aColorTexCoord;
 
-vec4 getColor() {
-    return texture(uPaintTexture, aColorTexCoord);
+vec2 getPaintTexCoord() {
+    return aColorTexCoord;
 }

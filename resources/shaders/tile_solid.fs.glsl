@@ -1,8 +1,8 @@
 #version {{version}}
 
-// pathfinder/demo2/opaque.fs.glsl
+// pathfinder/resources/shaders/tile_solid.fs.glsl
 //
-// Copyright © 2018 The Pathfinder Project Developers.
+// Copyright © 2019 The Pathfinder Project Developers.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
@@ -12,10 +12,12 @@
 
 precision highp float;
 
-in vec4 vColor;
+uniform sampler2D uPaintTexture;
+
+in vec2 vPaintTexCoord;
 
 out vec4 oFragColor;
 
 void main() {
-    oFragColor = vColor;
+    oFragColor = texture(uPaintTexture, vPaintTexCoord);
 }
