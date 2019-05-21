@@ -11,7 +11,7 @@
 //! Software occlusion culling.
 
 use crate::gpu_data::SolidTileBatchPrimitive;
-use crate::paint::{self, BuiltPalette};
+use crate::paint::{self, PaletteTexCoords};
 use crate::scene::PathObject;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
@@ -58,7 +58,7 @@ impl ZBuffer {
 
     pub(crate) fn build_solid_tiles(&self,
                                     paths: &[PathObject],
-                                    built_palette: &BuiltPalette,
+                                    palette_tex_coords: &PaletteTexCoords,
                                     object_range: Range<u32>)
                                     -> Vec<SolidTileBatchPrimitive> {
         let mut solid_tiles = vec![];
@@ -74,12 +74,13 @@ impl ZBuffer {
                 continue;
             }
 
-            let paint_id = paths[object_index as usize].paint();
-            let origin_uv = built_palette.norm_tex_coords(paint_id) + BuiltPalette::half_texel();
+            let paint = paths[object_index as usize].paint();
+            let origin_uv = palette_tex_coords.tex_coords(&paint);
 
+            // TODO(pcwalton): Support gradients too.
             solid_tiles.push(SolidTileBatchPrimitive::new(tile_coords + self.buffer.rect.origin(),
                                                           object_index as u16,
-                                                          origin_uv));
+                                                          origin_uv.origin));
         }
 
         solid_tiles

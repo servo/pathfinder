@@ -15,7 +15,7 @@ use crate::concurrent::executor::Executor;
 use crate::gpu_data::PaintData;
 use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::options::{RenderCommandListener, RenderOptions};
-use crate::paint::{Paint, PaintId, Palette};
+use crate::paint::{ColorId, LinearGradient, LinearGradientId, Paint, Palette};
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
@@ -142,17 +142,13 @@ impl Scene {
             return None;
         }
 
-        let first_paint_id = self.paths[0].paint;
-        if self
-            .paths
-            .iter()
-            .skip(1)
-            .any(|path_object| path_object.paint != first_paint_id) {
+        let first_paint = self.paths[0].paint;
+        if self.paths.iter().skip(1).any(|path_object| path_object.paint != first_paint) {
             return None;
         }
 
-        match self.palette.get(first_paint_id) {
-            Some(&Paint::Color(color)) => Some(color),
+        match first_paint {
+            Paint::Color(color_id) => self.palette.get_color(color_id),
             _ => None,
         }
     }
@@ -186,15 +182,18 @@ impl Scene {
             self.view_box.size().y()
         )?;
         for path_object in &self.paths {
-            let paint = self.palette.get(path_object.paint).unwrap();
             write!(writer, "    <path")?;
             if !path_object.name.is_empty() {
                 write!(writer, " id=\"{}\"", path_object.name)?;
             }
             write!(writer, " fill=\"")?;
-            match paint {
-                Paint::Color(color) => write!(writer, "{:?}", color)?,
-                Paint::LinearGradient(_) => {
+            match path_object.paint {
+                Paint::Color(color) => {
+                    if let Some(color) = self.palette.get_color(color) {
+                        write!(writer, "{:?}", color)?;
+                    }
+                }
+                Paint::LinearGradient { .. } => {
                     // TODO(pcwalton)
                 }
             }
@@ -208,13 +207,13 @@ impl Scene {
 #[derive(Clone, Debug)]
 pub struct PathObject {
     outline: Outline,
-    paint: PaintId,
+    paint: Paint,
     name: String,
 }
 
 impl PathObject {
     #[inline]
-    pub fn new(outline: Outline, paint: PaintId, name: String) -> PathObject {
+    pub fn new(outline: Outline, paint: Paint, name: String) -> PathObject {
         PathObject { outline, paint, name }
     }
 
@@ -224,7 +223,7 @@ impl PathObject {
     }
 
     #[inline]
-    pub(crate) fn paint(&self) -> PaintId {
+    pub(crate) fn paint(&self) -> Paint {
         self.paint
     }
 }

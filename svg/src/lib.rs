@@ -115,11 +115,9 @@ impl BuiltSVG {
             }
             NodeKind::Path(ref path) if path.visibility == Visibility::Visible => {
                 if let Some(ref fill) = path.fill {
-                    let style = self.scene.push_paint(&Paint::from_svg_paint(
-                        &fill.paint,
-                        fill.opacity,
-                        &mut self.result_flags,
-                    ));
+                    let style = self.scene.add_svg_paint(&fill.paint,
+                                                         fill.opacity,
+                                                         &mut self.result_flags);
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                     let path = Transform2DF32PathIter::new(path, &transform);
@@ -130,11 +128,9 @@ impl BuiltSVG {
                 }
 
                 if let Some(ref stroke) = path.stroke {
-                    let style = self.scene.push_paint(&Paint::from_svg_paint(
-                        &stroke.paint,
-                        stroke.opacity,
-                        &mut self.result_flags,
-                    ));
+                    let style = self.scene.add_svg_paint(&stroke.paint,
+                                                         stroke.opacity,
+                                                         &mut self.result_flags);
 
                     let stroke_style = StrokeStyle {
                         line_width: f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH),
@@ -243,24 +239,30 @@ impl Display for BuildResultFlags {
     }
 }
 
-trait PaintExt {
-    fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
-                      -> Self;
+trait SceneExt {
+    fn add_svg_paint(&mut self,
+                     svg_paint: &UsvgPaint,
+                     opacity: Opacity,
+                     result_flags: &mut BuildResultFlags)
+                     -> Paint;
 }
 
-impl PaintExt for Paint {
-    #[inline]
-    fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
-                      -> Paint {
-        let color = match *svg_paint {
-            UsvgPaint::Color(color) => ColorU::from_svg_color(color, opacity),
+impl SceneExt for Scene {
+    fn add_svg_paint(&mut self,
+                     svg_paint: &UsvgPaint,
+                     opacity: Opacity,
+                     result_flags: &mut BuildResultFlags)
+                     -> Paint {
+        match *svg_paint {
+            UsvgPaint::Color(color) => {
+                Paint::Color(self.add_color(ColorU::from_svg_color(color, opacity)))
+            }
             UsvgPaint::Link(_) => {
                 // TODO(pcwalton)
                 result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
-                ColorU::black()
+                Paint::Color(self.add_color(ColorU::black()))
             }
-        };
-        Paint::Color(color)
+        }
     }
 }
 

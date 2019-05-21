@@ -10,7 +10,7 @@
 
 use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
-use crate::paint::{self, BuiltPalette, PaintId};
+use crate::paint::{self, Paint};
 use crate::sorted_vector::SortedVector;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
@@ -30,9 +30,8 @@ pub(crate) struct Tiler<'a> {
     builder: &'a SceneBuilder<'a>,
     outline: &'a Outline,
     pub built_object: BuiltObject,
-    paint_id: PaintId,
+    paint: Paint,
     object_index: u16,
-    object_is_opaque: bool,
 
     point_queue: SortedVector<QueuedEndpoint>,
     active_edges: SortedVector<ActiveEdge>,
@@ -46,8 +45,7 @@ impl<'a> Tiler<'a> {
         outline: &'a Outline,
         view_box: RectF32,
         object_index: u16,
-        paint_id: PaintId,
-        object_is_opaque: bool,
+        paint: Paint,
     ) -> Tiler<'a> {
         let bounds = outline
             .bounds()
@@ -60,8 +58,7 @@ impl<'a> Tiler<'a> {
             outline,
             built_object,
             object_index,
-            paint_id,
-            object_is_opaque,
+            paint,
 
             point_queue: SortedVector::new(),
             active_edges: SortedVector::new(),
@@ -110,6 +107,7 @@ impl<'a> Tiler<'a> {
     }
 
     fn pack_and_cull(&mut self) {
+        let object_is_opaque = self.builder.palette().paint_is_opaque(&self.paint);
         for (tile_index, tile) in self.built_object.tiles.data.iter().enumerate() {
             let tile_coords = self
                 .built_object
@@ -122,21 +120,21 @@ impl<'a> Tiler<'a> {
                 }
 
                 // If this is a solid tile, poke it into the Z-buffer and stop here.
-                if self.object_is_opaque {
+                if object_is_opaque {
                     self.builder.z_buffer.update(tile_coords, self.object_index);
                     continue;
                 }
             }
 
-            let origin_uv = self.builder.built_palette.norm_tex_coords(self.paint_id) +
-                BuiltPalette::half_texel();
+            let origin_uv = self.builder.palette_tex_coords.tex_coords(&self.paint);
 
+            // TODO(pcwalton): Support gradients.
             let alpha_tile = AlphaTileBatchPrimitive::new(
                 tile_coords,
                 tile.backdrop,
                 self.object_index,
                 tile.alpha_tile_index as u16,
-                origin_uv,
+                origin_uv.origin,
             );
 
             self.built_object.alpha_tiles.push(alpha_tile);

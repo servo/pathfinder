@@ -13,7 +13,7 @@
 use crate::concurrent::executor::Executor;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive, RenderCommand};
 use crate::options::{PreparedRenderOptions, RenderCommandListener};
-use crate::paint::BuiltPalette;
+use crate::paint::{Palette, PaletteTexCoords};
 use crate::scene::Scene;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler};
@@ -33,7 +33,7 @@ pub(crate) struct SceneBuilder<'a> {
 
     pub(crate) next_alpha_tile_index: AtomicUsize,
     pub(crate) z_buffer: ZBuffer,
-    pub(crate) built_palette: BuiltPalette,
+    pub(crate) palette_tex_coords: PaletteTexCoords,
     pub(crate) listener: Box<dyn RenderCommandListener>,
 }
 
@@ -50,7 +50,7 @@ impl<'a> SceneBuilder<'a> {
 
             next_alpha_tile_index: AtomicUsize::new(0),
             z_buffer: ZBuffer::new(effective_view_box),
-            built_palette: BuiltPalette::new(),
+            palette_tex_coords: PaletteTexCoords::new(),
             listener,
         }
     }
@@ -62,9 +62,8 @@ impl<'a> SceneBuilder<'a> {
         let path_count = self.scene.paths.len();
         self.listener.send(RenderCommand::Start { bounding_quad, path_count });
 
-        // TODO(pcwalton): Move this after tile building.
-        self.built_palette = self.scene.palette.build();
-        let paint_data = self.built_palette.build_paint_data(&self.scene.palette);
+        self.palette_tex_coords = self.scene.palette.build_tex_coords();
+        let paint_data = self.palette_tex_coords.build_paint_data(&self.scene.palette);
         self.listener.send(RenderCommand::AddPaintData(paint_data));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
@@ -73,7 +72,6 @@ impl<'a> SceneBuilder<'a> {
         });
 
         self.finish_building(alpha_tiles);
-
 
         let build_time = Instant::now() - start_time;
         self.listener.send(RenderCommand::Finish { build_time });
@@ -88,16 +86,9 @@ impl<'a> SceneBuilder<'a> {
     ) -> Vec<AlphaTileBatchPrimitive> {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
-        let paint_id = path_object.paint();
-        let object_is_opaque = scene.palette.get(paint_id).unwrap().is_opaque();
+        let paint = path_object.paint();
 
-        let mut tiler = Tiler::new(self,
-                                   &outline,
-                                   view_box,
-                                   path_index as u16,
-                                   paint_id,
-                                   object_is_opaque);
-
+        let mut tiler = Tiler::new(self, &outline, view_box, path_index as u16, paint);
         tiler.generate_tiles();
 
         self.listener.send(RenderCommand::AddFills(tiler.built_object.fills));
@@ -124,7 +115,7 @@ impl<'a> SceneBuilder<'a> {
     fn pack_alpha_tiles(&mut self, alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
         let path_count = self.scene.paths.len() as u32;
         let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths,
-                                                          &self.built_palette,
+                                                          &self.palette_tex_coords,
                                                           0..path_count);
         if !solid_tiles.is_empty() {
             self.listener.send(RenderCommand::SolidTile(solid_tiles));
@@ -138,6 +129,11 @@ impl<'a> SceneBuilder<'a> {
         self.listener.send(RenderCommand::FlushFills);
         self.cull_alpha_tiles(&mut alpha_tiles);
         self.pack_alpha_tiles(alpha_tiles);
+    }
+
+    #[inline]
+    pub(crate) fn palette(&self) -> &Palette {
+        &self.scene.palette
     }
 }
 

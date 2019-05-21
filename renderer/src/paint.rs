@@ -30,7 +30,7 @@ pub(crate) struct Palette {
 }
 
 pub(crate) struct PaletteTexCoords {
-    pub(crate) colors: Vec<PointI32>,
+    pub(crate) colors: Vec<Point2DI32>,
     pub(crate) linear_gradients: Vec<i32>,
 }
 
@@ -74,7 +74,7 @@ pub struct GradientStop {
 impl Palette {
     #[inline]
     pub(crate) fn new() -> Palette {
-        Palette { paints: IndexSet::new() }
+        Palette { colors: IndexSet::new(), linear_gradients: IndexSet::new() }
     }
 
     #[inline]
@@ -84,7 +84,7 @@ impl Palette {
 
     #[inline]
     pub(crate) fn add_linear_gradient(&mut self, gradient: &LinearGradient) -> LinearGradientId {
-        if let Some((gradient_id, _)) = self.linear_gradients.get_full(paint) {
+        if let Some((gradient_id, _)) = self.linear_gradients.get_full(gradient) {
             return LinearGradientId(gradient_id as u32);
         }
 
@@ -97,14 +97,15 @@ impl Palette {
     }
 
     #[inline]
-    pub(crate) fn get_linear_gradient(&self, gradient_id: ColorId) -> Option<&LinearGradient> {
+    pub(crate) fn get_linear_gradient(&self, gradient_id: LinearGradientId)
+                                      -> Option<&LinearGradient> {
         self.linear_gradients.get_index(gradient_id.0 as usize)
     }
 
     #[inline]
     pub(crate) fn paint_is_opaque(&self, paint: &Paint) -> bool {
         match *paint {
-            Paint::Color(color_id) => self.get_color(color).unwrap().is_opaque(),
+            Paint::Color(color_id) => self.get_color(color_id).unwrap().is_opaque(),
             Paint::LinearGradient { id: gradient_id, .. } => {
                 let gradient = self.get_linear_gradient(gradient_id).unwrap();
                 gradient.stops.array.iter().all(|stop| stop.color.is_opaque())
@@ -142,7 +143,7 @@ impl Palette {
         let mut color_tex_coords = vec![];
         let mut next_tex_coord = Point2DI32::new(0, next_y);
         for &color in &self.colors {
-            color_tex_coords[paint_index] = Point2DI32::new(next_tex_coord);
+            color_tex_coords.push(next_tex_coord);
             next_tex_coord.set_x(next_tex_coord.x() + 1);
             if next_tex_coord.x() >= PAINT_TEXTURE_WIDTH {
                 next_tex_coord.set_x(0);
@@ -150,14 +151,14 @@ impl Palette {
             }
         }
 
-        PaletteTexCoords { color_tex_coords, linear_gradient_tex_coords }
+        PaletteTexCoords { colors: color_tex_coords, linear_gradients: linear_gradient_tex_coords }
     }
 }
 
 impl PaletteTexCoords {
     #[inline]
     pub(crate) fn new() -> PaletteTexCoords {
-        PaletteTexCoords { color_tex_coords: vec![], linear_gradient_tex_coords: vec![] }
+        PaletteTexCoords { colors: vec![], linear_gradients: vec![] }
     }
 
     pub(crate) fn build_paint_data(&self, palette: &Palette) -> PaintData {
@@ -168,15 +169,15 @@ impl PaletteTexCoords {
         };
         for (color_index, color) in palette.colors.iter().enumerate() {
             let tex_coords = &self.colors[color_index];
-            paint_data.put_pixel(tex_coords.origin(), color);
+            paint_data.put_pixel(*tex_coords, *color);
         }
         for (gradient_index, gradient) in palette.linear_gradients.iter().enumerate() {
             // FIXME(pcwalton)
-            let tex_coords = &self.gradients[gradient_index];
+            let y = self.linear_gradients[gradient_index];
             let stop_count = gradient.stops.len();
             for x in 0..PAINT_TEXTURE_WIDTH {
-                paint_data.put_pixel(tex_coords.origin() + Point2DI32::new(x, 0),
-                                     gradient.stops.array[x as usize % stop_count].color);
+                let color = gradient.stops.array[x as usize % stop_count].color;
+                paint_data.put_pixel(Point2DI32::new(x, y), color);
             }
         }
         paint_data
@@ -196,8 +197,9 @@ impl PaletteTexCoords {
             }
             Paint::LinearGradient { id: gradient_id, .. } => {
                 // FIXME(pcwalton): Take the line into account!
+                let y = self.linear_gradients[gradient_id.0 as usize] * scale.y();
                 PaintTexCoords {
-                    origin: self.linear_gradients[gradient_id.0 as usize].scale_xy(scale),
+                    origin: Point2DI32::new(0, y),
                     gradient: Point2DI32::new(PAINT_TEXTURE_U_PER_TEXEL, 0),
                 }
             }
