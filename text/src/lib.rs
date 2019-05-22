@@ -17,7 +17,7 @@ use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
-use pathfinder_renderer::paint::PaintId;
+use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, Scene};
 use skribo::{FontCollection, Layout, TextStyle};
 use std::mem;
@@ -30,7 +30,7 @@ pub trait SceneExt {
                      transform: &Transform2DF32,
                      render_mode: TextRenderMode,
                      hinting_options: HintingOptions,
-                     paint_id: PaintId)
+                     paint: &Paint)
                      -> Result<(), GlyphLoadingError>
                      where F: Loader;
 
@@ -40,7 +40,7 @@ pub trait SceneExt {
                    transform: &Transform2DF32,
                    render_mode: TextRenderMode,
                    hinting_options: HintingOptions,
-                   paint_id: PaintId)
+                   paint: &Paint)
                    -> Result<(), GlyphLoadingError>;
 
     fn push_text(&mut self,
@@ -50,7 +50,7 @@ pub trait SceneExt {
                  transform: &Transform2DF32,
                  render_mode: TextRenderMode,
                  hinting_options: HintingOptions,
-                 paint_id: PaintId)
+                 paint: &Paint)
                  -> Result<(), GlyphLoadingError>;
 }
 
@@ -62,7 +62,7 @@ impl SceneExt for Scene {
                      transform: &Transform2DF32,
                      render_mode: TextRenderMode,
                      hinting_options: HintingOptions,
-                     paint_id: PaintId)
+                     paint: &Paint)
                      -> Result<(), GlyphLoadingError>
                      where F: Loader {
         let mut outline_builder = OutlinePathBuilder::new(transform);
@@ -75,7 +75,7 @@ impl SceneExt for Scene {
             outline = stroke_to_fill.outline;
         }
 
-        self.push_path(PathObject::new(outline, paint_id, String::new()));
+        self.push_path(PathObject::new(outline, *paint, String::new()));
         Ok(())
     }
 
@@ -84,8 +84,8 @@ impl SceneExt for Scene {
                    style: &TextStyle,
                    transform: &Transform2DF32,
                    render_mode: TextRenderMode,
-                   hinting_options: HintingOptions,
-                   paint_id: PaintId)
+                   hinting: HintingOptions,
+                   paint: &Paint)
                    -> Result<(), GlyphLoadingError> {
         for glyph in &layout.glyphs {
             let offset = Point2DF32::new(glyph.offset.x, glyph.offset.y);
@@ -95,12 +95,7 @@ impl SceneExt for Scene {
             let scale = Point2DF32::new(scale, -scale);
             let transform =
                 Transform2DF32::from_scale(scale).post_mul(transform).post_translate(offset);
-            self.push_glyph(font,
-                            glyph.glyph_id,
-                            &transform,
-                            render_mode,
-                            hinting_options,
-                            paint_id)?;
+            self.push_glyph(font, glyph.glyph_id, &transform, render_mode, hinting, paint)?;
         }
         Ok(())
     }
@@ -113,10 +108,10 @@ impl SceneExt for Scene {
                  transform: &Transform2DF32,
                  render_mode: TextRenderMode,
                  hinting_options: HintingOptions,
-                 paint_id: PaintId)
+                 paint: &Paint)
                  -> Result<(), GlyphLoadingError> {
         let layout = skribo::layout(style, collection, text);
-        self.push_layout(&layout, style, &transform, render_mode, hinting_options, paint_id)
+        self.push_layout(&layout, style, &transform, render_mode, hinting_options, paint)
     }
 }
 

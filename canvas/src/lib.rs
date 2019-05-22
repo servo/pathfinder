@@ -14,13 +14,14 @@ use font_kit::family_name::FamilyName;
 use font_kit::hinting::HintingOptions;
 use font_kit::properties::Properties;
 use font_kit::source::SystemSource;
+use pathfinder_geometry::basic::line_segment::LineSegmentF32;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
-use pathfinder_renderer::paint::Paint;
+use pathfinder_renderer::paint::{LinearGradient, Paint};
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
 use skribo::{FontCollection, FontFamily, TextStyle};
@@ -94,8 +95,10 @@ impl CanvasRenderingContext2D {
     }
 
     pub fn fill_text(&mut self, string: &str, position: Point2DF32) {
+        let style = self.current_state.resolve_style(&self.current_state.fill_style);
+        let paint = self.scene.add_style(&style);
+
         // TODO(pcwalton): Report errors.
-        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
         let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
                                                                                  .transform);
         drop(self.scene.push_text(string,
@@ -104,48 +107,50 @@ impl CanvasRenderingContext2D {
                                   &transform,
                                   TextRenderMode::Fill,
                                   HintingOptions::None,
-                                  paint_id));
+                                  &paint));
     }
 
     pub fn stroke_text(&mut self, string: &str, position: Point2DF32) {
+        let style = self.current_state.resolve_style(&self.current_state.stroke_style);
+        let paint = self.scene.add_style(&style);
+
         // TODO(pcwalton): Report errors.
-        let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
         let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
                                                                                  .transform);
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
                                   &self.current_state.font_collection,
                                   &transform,
-                                  TextRenderMode::Stroke(self.current_state.stroke_style),
+                                  TextRenderMode::Stroke(self.current_state.stroke_line_style),
                                   HintingOptions::None,
-                                  paint_id));
+                                  &paint));
     }
 
     // Line styles
 
     #[inline]
     pub fn set_line_width(&mut self, new_line_width: f32) {
-        self.current_state.stroke_style.line_width = new_line_width
+        self.current_state.stroke_line_style.line_width = new_line_width
     }
 
     #[inline]
     pub fn set_line_cap(&mut self, new_line_cap: LineCap) {
-        self.current_state.stroke_style.line_cap = new_line_cap
+        self.current_state.stroke_line_style.line_cap = new_line_cap
     }
 
     #[inline]
     pub fn set_line_join(&mut self, new_line_join: LineJoin) {
-        self.current_state.stroke_style.line_join = new_line_join
+        self.current_state.stroke_line_style.line_join = new_line_join
     }
 
     #[inline]
-    pub fn set_fill_style(&mut self, new_fill_style: Paint) {
-        self.current_state.fill_paint = new_fill_style;
+    pub fn set_fill_style(&mut self, new_fill_style: Style) {
+        self.current_state.fill_style = new_fill_style;
     }
 
     #[inline]
-    pub fn set_stroke_style(&mut self, new_stroke_style: Paint) {
-        self.current_state.stroke_paint = new_stroke_style;
+    pub fn set_stroke_style(&mut self, new_stroke_style: Style) {
+        self.current_state.stroke_style = new_stroke_style;
     }
 
     // Text styles
@@ -159,27 +164,28 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn fill_path(&mut self, path: Path2D) {
+        let style = self.current_state.resolve_style(&self.current_state.fill_style);
+        let paint = self.scene.add_style(&style);
+
         let mut outline = path.into_outline();
         outline.transform(&self.current_state.transform);
 
-        let paint = self.current_state.resolve_paint(&self.current_state.fill_paint);
-        let paint_id = self.scene.push_paint(&paint);
-
-        self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
+        self.scene.push_path(PathObject::new(outline, paint, String::new()))
     }
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
-        let paint = self.current_state.resolve_paint(&self.current_state.stroke_paint);
-        let paint_id = self.scene.push_paint(&paint);
+        let style = self.current_state.resolve_style(&self.current_state.stroke_style);
+        let paint = self.scene.add_style(&style);
 
-        let mut stroke_style = self.current_state.stroke_style;
-        stroke_style.line_width = f32::max(stroke_style.line_width, HAIRLINE_STROKE_WIDTH);
+        let mut stroke_line_style = self.current_state.stroke_line_style;
+        stroke_line_style.line_width = f32::max(stroke_line_style.line_width,
+                                                HAIRLINE_STROKE_WIDTH);
 
-        let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_style);
+        let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_line_style);
         stroke_to_fill.offset();
         stroke_to_fill.outline.transform(&self.current_state.transform);
-        self.scene.push_path(PathObject::new(stroke_to_fill.outline, paint_id, String::new()))
+        self.scene.push_path(PathObject::new(stroke_to_fill.outline, paint, String::new()))
     }
 
     // Transformations
@@ -231,9 +237,9 @@ pub struct State {
     transform: Transform2DF32,
     font_collection: Arc<FontCollection>,
     font_size: f32,
-    fill_paint: Paint,
-    stroke_paint: Paint,
-    stroke_style: StrokeStyle,
+    fill_style: Style,
+    stroke_style: Style,
+    stroke_line_style: StrokeStyle,
     global_alpha: f32,
 }
 
@@ -243,28 +249,42 @@ impl State {
             transform: Transform2DF32::default(),
             font_collection: default_font_collection,
             font_size: DEFAULT_FONT_SIZE,
-            fill_paint: Paint { color: ColorU::black() },
-            stroke_paint: Paint { color: ColorU::black() },
-            stroke_style: StrokeStyle::default(),
+            fill_style: Style::default(),
+            stroke_style: Style::default(),
+            stroke_line_style: StrokeStyle::default(),
             global_alpha: 1.0,
         }
     }
 
-    fn resolve_paint<'p>(&self, paint: &'p Paint) -> Cow<'p, Paint> {
+    fn resolve_style<'s>(&self, style: &'s Style) -> Cow<'s, Style> {
         if self.global_alpha == 1.0 {
-            return Cow::Borrowed(paint);
+            return Cow::Borrowed(style);
         }
 
-        let mut paint = (*paint).clone();
-        match paint {
-            Paint::Color(ref mut color) => {
+        let mut style = (*style).clone();
+        match style {
+            Style::Color(ref mut color) => {
                 color.a = (color.a as f32 * self.global_alpha).round() as u8;
             }
-            Paint::LinearGradient(ref mut gradient) => {
+            Style::LinearGradient(ref mut gradient) => {
                 // TODO(pcwalton)
             }
         }
-        Cow::Owned(paint)
+        Cow::Owned(style)
+    }
+}
+
+// TODO(pcwalton): Patterns.
+#[derive(Clone)]
+pub enum Style {
+    Color(ColorU),
+    LinearGradient(LinearGradient),
+}
+
+impl Default for Style {
+    #[inline]
+    fn default() -> Style {
+        Style::Color(ColorU::black())
     }
 }
 
@@ -330,6 +350,24 @@ impl Path2D {
     fn flush_current_contour(&mut self) {
         if !self.current_contour.is_empty() {
             self.outline.push_contour(mem::replace(&mut self.current_contour, Contour::new()));
+        }
+    }
+}
+
+trait SceneCanvasExt {
+    fn add_style(&mut self, style: &Style) -> Paint;
+}
+
+impl SceneCanvasExt for Scene {
+    fn add_style(&mut self, style: &Style) -> Paint {
+        match *style {
+            Style::Color(color) => Paint::Color(self.add_color(color)),
+            Style::LinearGradient(ref gradient) => {
+                Paint::LinearGradient {
+                    id: self.add_linear_gradient(gradient),
+                    line: LineSegmentF32::default(),
+                }
+            }
         }
     }
 }

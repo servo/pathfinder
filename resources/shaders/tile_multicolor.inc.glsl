@@ -12,5 +12,5 @@ uniform sampler2D uPaintMetadataTexture;
 
 vec2 getPaintTexCoord(vec2 tessCoord, uint objectIndex) {
     vec4 texRect = texelFetch(uPaintMetadataTexture, ivec2(0, int(objectIndex)), 0);
-    return texRect.xy + vec2(0.5 / 256.0);
+    return mix(texRect.xy, texRect.zw, tessCoord);
 }

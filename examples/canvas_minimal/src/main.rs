@@ -8,10 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::{CanvasRenderingContext2D, Path2D};
+use pathfinder_canvas::{CanvasRenderingContext2D, Path2D, Style};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::RectF32;
-use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::color::{ColorF, ColorU};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_gpu::{ClearParams, Device};
@@ -19,6 +19,7 @@ use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::renderer::{DestFramebuffer, Renderer};
 use pathfinder_renderer::options::RenderOptions;
+use pathfinder_renderer::paint::LinearGradient;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
@@ -58,6 +59,13 @@ fn main() {
 
     // Set line width.
     canvas.set_line_width(10.0);
+
+    // Create gradient.
+    let mut gradient = LinearGradient::new();
+    gradient.add_color_stop(0.0, ColorU { r: 255, g: 0, b: 0, a: 255 });
+    gradient.add_color_stop(1.0, ColorU { r: 0, g: 255, b: 0, a: 255 });
+    canvas.set_fill_style(Style::LinearGradient(gradient.clone()));
+    canvas.set_stroke_style(Style::LinearGradient(gradient));
 
     // Draw walls.
     canvas.stroke_rect(RectF32::new(Point2DF32::new(75.0, 140.0), Point2DF32::new(150.0, 110.0)));

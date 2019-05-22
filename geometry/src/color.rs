@@ -33,12 +33,12 @@ impl ColorU {
 
     #[inline]
     pub fn black() -> ColorU {
-        ColorU {
-            r: 0,
-            g: 0,
-            b: 0,
-            a: 255,
-        }
+        ColorU { r: 0, g: 0, b: 0, a: 255 }
+    }
+
+    #[inline]
+    pub fn white() -> ColorU {
+        ColorU { r: 255, g: 255, b: 255, a: 255 }
     }
 
     #[inline]
