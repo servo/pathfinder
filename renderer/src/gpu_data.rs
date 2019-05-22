@@ -28,12 +28,18 @@ pub(crate) struct BuiltObject {
 
 pub enum RenderCommand {
     Start { path_count: usize, bounding_quad: BoundingQuad },
-    AddPaintData(PaintData),
+    AddPaintData(PaintMetadata, PaintData),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
     AlphaTile(Vec<AlphaTileBatchPrimitive>),
     SolidTile(Vec<SolidTileBatchPrimitive>),
     Finish { build_time: Duration },
+}
+
+#[derive(Clone, Debug)]
+pub struct PaintMetadata {
+    pub size: Point2DI32,
+    pub texels: Vec<f32>,
 }
 
 #[derive(Clone, Debug)]
@@ -72,8 +78,6 @@ pub struct FillBatchPrimitive {
 pub struct SolidTileBatchPrimitive {
     pub tile_x: i16,
     pub tile_y: i16,
-    pub origin_u: u16,
-    pub origin_v: u16,
     pub object_index: u16,
 }
 
@@ -85,20 +89,19 @@ pub struct AlphaTileBatchPrimitive {
     pub tile_y_lo: u8,
     pub tile_hi: u8,
     pub backdrop: i8,
-    pub object_index: u16,
     pub tile_index: u16,
-    pub paint_u: u16,
-    pub paint_v: u16,
-    pub paint_dudx: u16,
-    pub paint_dvdy: u16,
+    pub object_index: u16,
 }
 
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
             RenderCommand::Start { .. } => write!(formatter, "Start"),
-            RenderCommand::AddPaintData(ref paint_data) => {
-                write!(formatter, "AddPaintData({}x{})", paint_data.size.x(), paint_data.size.y())
+            RenderCommand::AddPaintData(ref paint_metadata, ref paint_data) => {
+                write!(formatter,
+                       "AddPaintData({}x{}, {}x{})",
+                       paint_metadata.size.x(), paint_metadata.size.y(),
+                       paint_data.size.x(), paint_data.size.y())
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),

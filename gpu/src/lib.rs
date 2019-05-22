@@ -65,7 +65,7 @@ pub trait Device {
     );
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
     fn texture_size(&self, texture: &Self::Texture) -> Point2DI32;
-    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI32, data: &[u8]);
+    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI32, data: TextureData);
     fn read_pixels_from_default_framebuffer(&self, size: Point2DI32) -> Vec<u8>;
     fn clear(&self, params: &ClearParams);
     fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
@@ -167,6 +167,7 @@ pub enum TextureFormat {
     R8,
     R16F,
     RGBA8,
+    RGBA32F,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -210,6 +211,12 @@ pub enum UniformData {
     Vec2(F32x4),
     Vec4(F32x4),
     TextureUnit(u32),
+}
+
+#[derive(Clone, Copy)]
+pub enum TextureData<'a> {
+    RGBA8(&'a [u8]),
+    RGBA32F(&'a [f32]),
 }
 
 #[derive(Clone, Copy)]

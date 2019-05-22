@@ -8,8 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-in vec2 aPaintTexCoord;
+uniform sampler2D uPaintMetadataTexture;
 
-vec2 getPaintTexCoord(vec2 vector) {
-    return aPaintTexCoord + vector;
+vec2 getPaintTexCoord(vec2 tessCoord, uint objectIndex) {
+    vec4 texRect = texelFetch(uPaintMetadataTexture, ivec2(0, int(objectIndex)), 0);
+    return texRect.xy + vec2(0.5 / 256.0);
 }

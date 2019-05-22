@@ -18,7 +18,7 @@ use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
 use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderState, ShaderKind, StencilFunc};
-use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{TextureData, TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use rustache::{HashBuilder, Render};
@@ -173,6 +173,12 @@ impl Device for GLDevice {
                 gl_internal_format = gl::R16F as GLint;
                 gl_format = gl::RED;
                 gl_type = gl::HALF_FLOAT;
+            }
+            TextureFormat::RGBA32F => {
+                // FIXME(pcwalton): This is not compatible with iOS.
+                gl_internal_format = gl::RGBA32F as GLint;
+                gl_format = gl::RGBA;
+                gl_type = gl::FLOAT;
             }
             TextureFormat::RGBA8 => {
                 gl_internal_format = gl::RGBA as GLint;
@@ -450,19 +456,36 @@ impl Device for GLDevice {
         texture.size
     }
 
-    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI32, data: &[u8]) {
-        assert!(data.len() >= size.x() as usize * size.y() as usize * 4);
+    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI32, data: TextureData) {
         unsafe {
             self.bind_texture(texture, 0);
-            gl::TexImage2D(gl::TEXTURE_2D,
-                           0,
-                           gl::RGBA as GLint,
-                           size.x() as GLsizei,
-                           size.y() as GLsizei,
-                           0,
-                           gl::RGBA,
-                           gl::UNSIGNED_BYTE,
-                           data.as_ptr() as *const GLvoid); ck();
+
+            match data {
+                TextureData::RGBA8(data) => {
+                    assert!(data.len() >= size.x() as usize * size.y() as usize * 4);
+                    gl::TexImage2D(gl::TEXTURE_2D,
+                                   0,
+                                   gl::RGBA as GLint,
+                                   size.x() as GLsizei,
+                                   size.y() as GLsizei,
+                                   0,
+                                   gl::RGBA,
+                                   gl::UNSIGNED_BYTE,
+                                   data.as_ptr() as *const GLvoid); ck();
+                }
+                TextureData::RGBA32F(data) => {
+                    assert!(data.len() >= size.x() as usize * size.y() as usize * 4);
+                    gl::TexImage2D(gl::TEXTURE_2D,
+                                   0,
+                                   gl::RGBA32F as GLint,
+                                   size.x() as GLsizei,
+                                   size.y() as GLsizei,
+                                   0,
+                                   gl::RGBA,
+                                   gl::FLOAT,
+                                   data.as_ptr() as *const GLvoid); ck();
+                }
+            }
         }
 
         self.set_texture_parameters(texture);

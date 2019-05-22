@@ -126,15 +126,12 @@ impl<'a> Tiler<'a> {
                 }
             }
 
-            let origin_uv = self.builder.palette_tex_coords.tex_coords(&self.paint);
-
             // TODO(pcwalton): Support gradients.
             let alpha_tile = AlphaTileBatchPrimitive::new(
                 tile_coords,
                 tile.backdrop,
                 self.object_index,
                 tile.alpha_tile_index as u16,
-                origin_uv.origin,
             );
 
             self.built_object.alpha_tiles.push(alpha_tile);
@@ -534,11 +531,7 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
 
 impl AlphaTileBatchPrimitive {
     #[inline]
-    fn new(tile_coords: Point2DI32,
-           backdrop: i8,
-           object_index: u16,
-           tile_index: u16,
-           origin_uv: Point2DI32)
+    fn new(tile_coords: Point2DI32, backdrop: i8, object_index: u16, tile_index: u16)
            -> AlphaTileBatchPrimitive {
         AlphaTileBatchPrimitive {
             tile_x_lo: (tile_coords.x() & 0xff) as u8,
@@ -547,8 +540,6 @@ impl AlphaTileBatchPrimitive {
             backdrop,
             object_index,
             tile_index,
-            origin_u: origin_uv.x() as u16,
-            origin_v: origin_uv.y() as u16,
         }
     }
 

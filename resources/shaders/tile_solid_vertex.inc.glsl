@@ -14,15 +14,16 @@ uniform vec2 uViewBoxOrigin;
 
 in vec2 aTessCoord;
 in vec2 aTileOrigin;
+in uint aObjectIndex;
 
 out vec2 vPaintTexCoord;
 
-vec2 getPaintTexCoord();
+vec2 getPaintTexCoord(vec2 tessCoord, uint objectIndex);
 
 void computeVaryings() {
     vec2 pixelPosition = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
     vec2 position = (pixelPosition / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0);
 
-    vPaintTexCoord = getPaintTexCoord(aTessCoord * uTileSize);
+    vPaintTexCoord = getPaintTexCoord(aTessCoord, aObjectIndex);
     gl_Position = vec4(position, 0.0, 1.0);
 }

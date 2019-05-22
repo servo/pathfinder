@@ -11,8 +11,10 @@
 //! Packs data onto the GPU.
 
 use crate::concurrent::executor::Executor;
-use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive, RenderCommand};
+use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, FillBatchPrimitive};
+use crate::gpu_data::{PaintMetadata, RenderCommand};
 use crate::options::{PreparedRenderOptions, RenderCommandListener};
+use crate::paint::{PAINT_METADATA_TEXTURE_HEIGHT, PAINT_METADATA_TEXTURE_WIDTH};
 use crate::paint::{Palette, PaletteTexCoords};
 use crate::scene::Scene;
 use crate::tile_map::DenseTileMap;
@@ -63,8 +65,9 @@ impl<'a> SceneBuilder<'a> {
         self.listener.send(RenderCommand::Start { bounding_quad, path_count });
 
         self.palette_tex_coords = self.scene.palette.build_tex_coords();
+        let paint_metadata = self.build_paint_metadata();
         let paint_data = self.palette_tex_coords.build_paint_data(&self.scene.palette);
-        self.listener.send(RenderCommand::AddPaintData(paint_data));
+        self.listener.send(RenderCommand::AddPaintData(paint_metadata, paint_data));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let alpha_tiles = executor.flatten_into_vector(path_count, |path_index| {
@@ -75,6 +78,23 @@ impl<'a> SceneBuilder<'a> {
 
         let build_time = Instant::now() - start_time;
         self.listener.send(RenderCommand::Finish { build_time });
+    }
+
+    fn build_paint_metadata(&self) -> PaintMetadata {
+        let size = Point2DI32::new(PAINT_METADATA_TEXTURE_WIDTH, PAINT_METADATA_TEXTURE_HEIGHT);
+        let mut paint_metadata = PaintMetadata {
+            size,
+            texels: vec![0.0; size.x() as usize * size.y() as usize * 4],
+        };
+        for (path_index, path) in self.scene.paths.iter().enumerate() {
+            let offset = path_index * size.x() as usize * 4;
+            let tex_coords = self.palette_tex_coords.tex_coords(&path.paint());
+            paint_metadata.texels[offset + 0] = tex_coords.rect.origin().x();
+            paint_metadata.texels[offset + 1] = tex_coords.rect.origin().y();
+            paint_metadata.texels[offset + 2] = tex_coords.rect.lower_right().x();
+            paint_metadata.texels[offset + 3] = tex_coords.rect.lower_right().y();
+        }
+        paint_metadata
     }
 
     fn build_path(

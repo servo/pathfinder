@@ -17,12 +17,13 @@ in vec2 aTessCoord;
 in uvec3 aTileOrigin;
 in int aBackdrop;
 in uint aTileIndex;
+in uint aObjectIndex;
 
 out vec2 vTexCoord;
 out vec2 vPaintTexCoord;
 out float vBackdrop;
 
-vec2 getPaintTexCoord();
+vec2 getPaintTexCoord(vec2 tessCoord, uint objectIndex);
 
 vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
     uint tilesPerRow = uint(stencilTextureWidth / uTileSize.x);
@@ -39,6 +40,6 @@ void computeVaryings() {
 
     vTexCoord = maskTexCoord / uStencilTextureSize;
     vBackdrop = float(aBackdrop);
-    vPaintTexCoord = getPaintTexCoord(aTessCoord * uTileSize);
+    vPaintTexCoord = getPaintTexCoord(aTessCoord, aObjectIndex);
     gl_Position = vec4(position, 0.0, 1.0);
 }

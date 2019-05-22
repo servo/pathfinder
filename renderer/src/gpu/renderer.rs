@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use crate::gpu::debug::DebugUIPresenter;
-use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
+use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData, PaintMetadata};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
@@ -20,7 +20,7 @@ use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
-use pathfinder_gpu::{StencilState, TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{StencilState, TextureData, TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
@@ -38,8 +38,8 @@ const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_INSTANCE_SIZE: usize = 10;
-const MASK_TILE_INSTANCE_SIZE: usize = 12;
+const SOLID_TILE_INSTANCE_SIZE: usize = 6;
+const MASK_TILE_INSTANCE_SIZE: usize = 8;
 
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
 
@@ -65,6 +65,7 @@ where
     quad_vertex_positions_buffer: D::Buffer,
     fill_vertex_array: FillVertexArray<D>,
     mask_framebuffer: D::Framebuffer,
+    paint_metadata_texture: Option<D::Texture>,
     paint_texture: Option<D::Texture>,
 
     // Postprocessing shader
@@ -188,6 +189,7 @@ where
             quad_vertex_positions_buffer,
             fill_vertex_array,
             mask_framebuffer,
+            paint_metadata_texture: None,
             paint_texture: None,
 
             postprocess_source_framebuffer: None,
@@ -235,7 +237,10 @@ where
                 }
                 self.stats.path_count = path_count;
             }
-            RenderCommand::AddPaintData(ref paint_data) => self.upload_paint_data(paint_data),
+            RenderCommand::AddPaintData(ref paint_metadata, ref paint_data) => {
+                self.upload_paint_metadata(paint_metadata);
+                self.upload_paint_data(paint_data);
+            }
             RenderCommand::AddFills(ref fills) => self.add_fills(fills),
             RenderCommand::FlushFills => {
                 self.begin_composite_timer_query();
@@ -338,6 +343,22 @@ where
         &self.quad_vertex_positions_buffer
     }
 
+    fn upload_paint_metadata(&mut self, paint_metadata: &PaintMetadata) {
+        match self.paint_metadata_texture {
+            Some(ref paint_metadata_texture) if
+                self.device.texture_size(paint_metadata_texture) == paint_metadata.size => {}
+            _ => {
+                let texture = self.device.create_texture(TextureFormat::RGBA32F,
+                                                         paint_metadata.size);
+                self.paint_metadata_texture = Some(texture)
+            }
+        }
+
+        self.device.upload_to_texture(self.paint_metadata_texture.as_ref().unwrap(),
+                                      paint_metadata.size,
+                                      TextureData::RGBA32F(&paint_metadata.texels));
+    }
+
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
         match self.paint_texture {
             Some(ref paint_texture) if
@@ -350,7 +371,7 @@ where
 
         self.device.upload_to_texture(self.paint_texture.as_ref().unwrap(),
                                       paint_data.size,
-                                      &paint_data.texels);
+                                      TextureData::RGBA8(&paint_data.texels));
     }
 
     fn upload_solid_tiles(&mut self, solid_tiles: &[SolidTileBatchPrimitive]) {
@@ -488,16 +509,11 @@ where
 
         match self.render_mode {
             RenderMode::Multicolor => {
-                let paint_texture = self.paint_texture.as_ref().unwrap();
-                self.device.bind_texture(paint_texture, 1);
-                self.device.set_uniform(
-                    &self.alpha_multicolor_tile_program.paint_texture_uniform,
-                    UniformData::TextureUnit(1),
-                );
-                self.device.set_uniform(
-                    &self.alpha_multicolor_tile_program.paint_texture_size_uniform,
-                    UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x4())
-                );
+                let paint_metadata_texture = self.paint_metadata_texture.as_ref().unwrap();
+                let paint_data_texture = self.paint_texture.as_ref().unwrap();
+                self.alpha_multicolor_tile_program
+                    .paint_texture_uniforms
+                    .bind(&self.device, paint_metadata_texture, 1, paint_data_texture, 2);
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
                 self.device.set_uniform(
@@ -547,20 +563,11 @@ where
 
         match self.render_mode {
             RenderMode::Multicolor => {
-                let paint_texture = self.paint_texture.as_ref().unwrap();
-                self.device.bind_texture(paint_texture, 0);
-                self.device.set_uniform(
-                    &self
-                        .solid_multicolor_tile_program
-                        .paint_texture_uniform,
-                    UniformData::TextureUnit(0),
-                );
-                self.device.set_uniform(
-                    &self
-                        .solid_multicolor_tile_program
-                        .paint_texture_size_uniform,
-                    UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x4())
-                );
+                let paint_metadata_texture = self.paint_metadata_texture.as_ref().unwrap();
+                let paint_data_texture = self.paint_texture.as_ref().unwrap();
+                self.solid_multicolor_tile_program
+                    .paint_texture_uniforms
+                    .bind(&self.device, paint_metadata_texture, 0, paint_data_texture, 1);
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
                 self.device.set_uniform(
@@ -996,8 +1003,7 @@ where
         let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin");
         let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop");
         let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex");
-        let paint_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                          "PaintTexCoord");
+        let object_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "ObjectIndex");
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
@@ -1034,15 +1040,15 @@ where
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
             stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 6,
+            offset: 4,
             divisor: 1,
         });
-        device.configure_vertex_attr(&paint_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
+        device.configure_vertex_attr(&object_index_attr, &VertexAttrDescriptor {
+            size: 1,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U16,
             stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 8,
+            offset: 6,
             divisor: 1,
         });
 
@@ -1071,8 +1077,7 @@ where
 
         let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord");
         let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin");
-        let paint_tex_coord_attr = device.get_vertex_attr(&solid_tile_program.program,
-                                                          "PaintTexCoord");
+        let object_index_attr = device.get_vertex_attr(&solid_tile_program.program, "ObjectIndex");
 
         // NB: The object must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
@@ -1096,9 +1101,9 @@ where
             offset: 0,
             divisor: 1,
         });
-        device.configure_vertex_attr(&paint_tex_coord_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&object_index_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::FloatNorm,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U16,
             stride: SOLID_TILE_INSTANCE_SIZE,
             offset: 4,
@@ -1175,8 +1180,7 @@ where
     D: Device,
 {
     solid_tile_program: SolidTileProgram<D>,
-    paint_texture_uniform: D::Uniform,
-    paint_texture_size_uniform: D::Uniform,
+    paint_texture_uniforms: PaintTextureUniforms<D>,
 }
 
 impl<D> SolidTileMulticolorProgram<D>
@@ -1185,15 +1189,9 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMulticolorProgram<D> {
         let solid_tile_program = SolidTileProgram::new(device, "tile_solid_multicolor", resources);
-        let paint_texture_uniform =
-            device.get_uniform(&solid_tile_program.program, "PaintTexture");
-        let paint_texture_size_uniform =
-            device.get_uniform(&solid_tile_program.program, "PaintTextureSize");
-        SolidTileMulticolorProgram {
-            solid_tile_program,
-            paint_texture_uniform,
-            paint_texture_size_uniform,
-        }
+        let paint_texture_uniforms = PaintTextureUniforms::new(device,
+                                                               &solid_tile_program.program);
+        SolidTileMulticolorProgram { solid_tile_program, paint_texture_uniforms }
     }
 }
 
@@ -1263,8 +1261,7 @@ where
     D: Device,
 {
     alpha_tile_program: AlphaTileProgram<D>,
-    paint_texture_uniform: D::Uniform,
-    paint_texture_size_uniform: D::Uniform,
+    paint_texture_uniforms: PaintTextureUniforms<D>,
 }
 
 impl<D> AlphaTileMulticolorProgram<D>
@@ -1273,15 +1270,9 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMulticolorProgram<D> {
         let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_multicolor", resources);
-        let paint_texture_uniform =
-            device.get_uniform(&alpha_tile_program.program, "PaintTexture");
-        let paint_texture_size_uniform =
-            device.get_uniform(&alpha_tile_program.program, "PaintTextureSize");
-        AlphaTileMulticolorProgram {
-            alpha_tile_program,
-            paint_texture_uniform,
-            paint_texture_size_uniform,
-        }
+        let paint_texture_uniforms = PaintTextureUniforms::new(device,
+                                                               &alpha_tile_program.program);
+        AlphaTileMulticolorProgram { alpha_tile_program, paint_texture_uniforms }
     }
 }
 
@@ -1498,6 +1489,47 @@ where
         });
 
         ReprojectionVertexArray { vertex_array }
+    }
+}
+
+struct PaintTextureUniforms<D> where D: Device {
+    metadata_texture: D::Uniform,
+    metadata_texture_size: D::Uniform,
+    data_texture: D::Uniform,
+    data_texture_size: D::Uniform,
+}
+
+impl<D> PaintTextureUniforms<D> where D: Device {
+    fn new(device: &D, program: &D::Program) -> PaintTextureUniforms<D> {
+        let metadata_texture = device.get_uniform(program, "PaintMetadataTexture");
+        let metadata_texture_size = device.get_uniform(program, "PaintMetadataTextureSize");
+        let data_texture = device.get_uniform(program, "PaintTexture");
+        let data_texture_size = device.get_uniform(program, "PaintTextureSize");
+        PaintTextureUniforms {
+            metadata_texture,
+            metadata_texture_size,
+            data_texture,
+            data_texture_size,
+        }
+    }
+
+    fn bind(&self,
+            device: &D,
+            metadata_texture: &D::Texture,
+            metadata_texture_unit: u32,
+            data_texture: &D::Texture,
+            data_texture_unit: u32) {
+        device.bind_texture(metadata_texture, metadata_texture_unit);
+        device.set_uniform(&self.metadata_texture,
+                           UniformData::TextureUnit(metadata_texture_unit));
+        device.set_uniform(&self.metadata_texture_size,
+                           UniformData::Vec2(device.texture_size(metadata_texture).0.to_f32x4()));
+
+        device.bind_texture(data_texture, data_texture_unit);
+        device.set_uniform(&self.data_texture,
+                           UniformData::TextureUnit(data_texture_unit));
+        device.set_uniform(&self.data_texture_size,
+                           UniformData::Vec2(device.texture_size(data_texture).0.to_f32x4()));
     }
 }
 

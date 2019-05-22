@@ -77,10 +77,8 @@ impl ZBuffer {
             let paint = paths[object_index as usize].paint();
             let origin_uv = palette_tex_coords.tex_coords(&paint);
 
-            // TODO(pcwalton): Support gradients too.
             solid_tiles.push(SolidTileBatchPrimitive::new(tile_coords + self.buffer.rect.origin(),
-                                                          object_index as u16,
-                                                          origin_uv.origin));
+                                                          object_index as u16));
         }
 
         solid_tiles
@@ -88,14 +86,11 @@ impl ZBuffer {
 }
 
 impl SolidTileBatchPrimitive {
-    fn new(tile_coords: Point2DI32, object_index: u16, origin_uv: Point2DI32)
-           -> SolidTileBatchPrimitive {
+    fn new(tile_coords: Point2DI32, object_index: u16) -> SolidTileBatchPrimitive {
         SolidTileBatchPrimitive {
             tile_x: tile_coords.x() as i16,
             tile_y: tile_coords.y() as i16,
             object_index: object_index,
-            origin_u: origin_uv.x() as u16,
-            origin_v: origin_uv.y() as u16,
         }
     }
 }

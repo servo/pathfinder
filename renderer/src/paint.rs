@@ -13,15 +13,15 @@ use crate::scene::Scene;
 use crate::sorted_vector::SortedVector;
 use indexmap::IndexSet;
 use pathfinder_geometry::basic::line_segment::LineSegmentF32;
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
+use pathfinder_geometry::basic::rect::{RectF32, RectI32};
 use pathfinder_geometry::color::ColorU;
+
+pub(crate) const PAINT_METADATA_TEXTURE_WIDTH: i32 = 1;
+pub(crate) const PAINT_METADATA_TEXTURE_HEIGHT: i32 = 256;
 
 const PAINT_TEXTURE_WIDTH: i32 = 256;
 const PAINT_TEXTURE_HEIGHT: i32 = 256;
-
-const PAINT_TEXTURE_U_PER_TEXEL: i32 = 65536 / PAINT_TEXTURE_WIDTH;
-const PAINT_TEXTURE_V_PER_TEXEL: i32 = 65536 / PAINT_TEXTURE_HEIGHT;
 
 #[derive(Clone)]
 pub(crate) struct Palette {
@@ -49,11 +49,9 @@ pub enum Paint {
     },
 }
 
-// In 0.16-bit fixed point.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct PaintTexCoords {
-    pub origin: Point2DI32,
-    pub gradient: Point2DI32,
+    pub rect: RectF32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -183,32 +181,22 @@ impl PaletteTexCoords {
         paint_data
     }
 
-    #[inline]
     pub(crate) fn tex_coords(&self, paint: &Paint) -> PaintTexCoords {
-        let scale = Point2DI32::new(PAINT_TEXTURE_U_PER_TEXEL, PAINT_TEXTURE_V_PER_TEXEL);
-        let half_texel = Point2DI32::new(PAINT_TEXTURE_U_PER_TEXEL / 2,
-                                         PAINT_TEXTURE_V_PER_TEXEL / 2);
+        let scale = Point2DF32::new(1.0 / PAINT_TEXTURE_WIDTH as f32,
+                                    1.0 / PAINT_TEXTURE_HEIGHT as f32);
         match *paint {
             Paint::Color(color_id) => {
-                PaintTexCoords {
-                    origin: self.colors[color_id.0 as usize].scale_xy(scale) + half_texel,
-                    gradient: Point2DI32::default(),
-                }
+                let origin = self.colors[color_id.0 as usize].to_f32();
+                let size = Point2DF32::new(1.0, 1.0);
+                PaintTexCoords { rect: RectF32::new(origin, size).scale_xy(scale) }
             }
             Paint::LinearGradient { id: gradient_id, .. } => {
-                // FIXME(pcwalton): Take the line into account!
-                let y = self.linear_gradients[gradient_id.0 as usize] * scale.y();
-                PaintTexCoords {
-                    origin: Point2DI32::new(0, y),
-                    gradient: Point2DI32::new(PAINT_TEXTURE_U_PER_TEXEL, 0),
-                }
+                let y = self.linear_gradients[gradient_id.0 as usize] as f32;
+                let origin = Point2DF32::new(0.0, y);
+                let size = Point2DF32::new(PAINT_TEXTURE_WIDTH as f32, 1.0);
+                PaintTexCoords { rect: RectF32::new(origin, size).scale_xy(scale) }
             }
         }
-    }
-
-    #[inline]
-    pub(crate) fn half_texel() -> Point2DI32 {
-        Point2DI32::new(PAINT_TEXTURE_U_PER_TEXEL / 2, PAINT_TEXTURE_V_PER_TEXEL / 2)
     }
 }
 

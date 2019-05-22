@@ -11,6 +11,6 @@
 uniform vec4 uColor;
 
 // TODO(pcwalton): Fix this!
-vec2 getPaintTexCoord() {
+vec2 getPaintTexCoord(vec2 tessCoord, uint objectIndex) {
     return vec2(0.0);
 }
