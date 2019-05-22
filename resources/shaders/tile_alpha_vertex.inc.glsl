@@ -39,6 +39,6 @@ void computeVaryings() {
 
     vTexCoord = maskTexCoord / uStencilTextureSize;
     vBackdrop = float(aBackdrop);
-    vPaintTexCoord = getPaintTexCoord();
+    vPaintTexCoord = getPaintTexCoord(aTessCoord * uTileSize);
     gl_Position = vec4(position, 0.0, 1.0);
 }

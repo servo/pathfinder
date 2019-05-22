@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-in vec2 aColorTexCoord;
+in vec2 aPaintTexCoord;
 
-vec2 getPaintTexCoord() {
-    return aColorTexCoord;
+vec2 getPaintTexCoord(vec2 vector) {
+    return aPaintTexCoord + vector;
 }

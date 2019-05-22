@@ -77,6 +77,7 @@ pub struct SolidTileBatchPrimitive {
     pub object_index: u16,
 }
 
+// FIXME(pcwalton): Maybe move the gradient to be a LUT texture keyed from object ID?
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct AlphaTileBatchPrimitive {
@@ -86,8 +87,10 @@ pub struct AlphaTileBatchPrimitive {
     pub backdrop: i8,
     pub object_index: u16,
     pub tile_index: u16,
-    pub origin_u: u16,
-    pub origin_v: u16,
+    pub paint_u: u16,
+    pub paint_v: u16,
+    pub paint_dudx: u16,
+    pub paint_dvdy: u16,
 }
 
 impl Debug for RenderCommand {

@@ -996,8 +996,8 @@ where
         let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin");
         let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop");
         let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex");
-        let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
-                                                          "ColorTexCoord");
+        let paint_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
+                                                          "PaintTexCoord");
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
@@ -1037,7 +1037,7 @@ where
             offset: 6,
             divisor: 1,
         });
-        device.configure_vertex_attr(&color_tex_coord_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&paint_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::FloatNorm,
             attr_type: VertexAttrType::U16,
@@ -1071,8 +1071,8 @@ where
 
         let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord");
         let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin");
-        let color_tex_coord_attr = device.get_vertex_attr(&solid_tile_program.program,
-                                                          "ColorTexCoord");
+        let paint_tex_coord_attr = device.get_vertex_attr(&solid_tile_program.program,
+                                                          "PaintTexCoord");
 
         // NB: The object must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
@@ -1096,7 +1096,7 @@ where
             offset: 0,
             divisor: 1,
         });
-        device.configure_vertex_attr(&color_tex_coord_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&paint_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::FloatNorm,
             attr_type: VertexAttrType::U16,

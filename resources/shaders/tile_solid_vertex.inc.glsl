@@ -23,6 +23,6 @@ void computeVaryings() {
     vec2 pixelPosition = (aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
     vec2 position = (pixelPosition / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0);
 
-    vPaintTexCoord = getPaintTexCoord();
+    vPaintTexCoord = getPaintTexCoord(aTessCoord * uTileSize);
     gl_Position = vec4(position, 0.0, 1.0);
 }
