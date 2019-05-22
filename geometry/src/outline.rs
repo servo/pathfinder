@@ -19,9 +19,11 @@ use crate::clip::{self, ContourPolygonClipper, ContourRectClipper};
 use crate::dilation::ContourDilator;
 use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::{FRAC_PI_2, PI};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
+
+const TWO_PI: f32 = PI * 2.0;
 
 #[derive(Clone)]
 pub struct Outline {
@@ -367,7 +369,17 @@ impl Contour {
         self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
     }
 
-    pub fn push_arc(&mut self, center: Point2DF32, radius: f32, start_angle: f32, end_angle: f32) {
+    pub fn push_arc(&mut self,
+                    center: Point2DF32,
+                    radius: f32,
+                    mut start_angle: f32,
+                    mut end_angle: f32) {
+        start_angle %= TWO_PI;
+        end_angle %= TWO_PI;
+        if end_angle < start_angle {
+            end_angle += TWO_PI;
+        }
+
         let scale = Transform2DF32::from_scale(Point2DF32::splat(radius));
         let translation = Transform2DF32::from_translation(center);
 
@@ -375,7 +387,7 @@ impl Contour {
         while angle < end_angle {
             let sweep_angle = f32::min(FRAC_PI_2, end_angle - angle);
             let mut segment = Segment::arc(sweep_angle);
-            let rotation = Transform2DF32::from_rotation(angle);
+            let rotation = Transform2DF32::from_rotation(sweep_angle * 0.5 + angle);
             segment = segment.transform(&scale.post_mul(&rotation).post_mul(&translation));
 
             debug!("angle={} start_angle={} end_angle={} sweep_angle={} segment={:?}",

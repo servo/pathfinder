@@ -15,6 +15,8 @@ use crate::basic::point::Point2DF32;
 use crate::basic::rect::RectF32;
 use crate::outline::{Contour, Outline};
 use crate::segment::Segment;
+use std::f32::consts::FRAC_PI_2;
+use std::f32;
 use std::mem;
 
 const TOLERANCE: f32 = 0.01;
@@ -35,6 +37,7 @@ pub struct StrokeStyle {
 pub enum LineCap {
     Butt,
     Square,
+    Round,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -70,9 +73,7 @@ impl OutlineStrokeToFill {
             }
 
             stroker.offset_backward();
-            if closed {
-                // TODO(pcwalton): Line join.
-            } else {
+            if !closed {
                 self.add_cap(&mut stroker.output);
             }
 
@@ -108,15 +109,27 @@ impl OutlineStrokeToFill {
         let width = self.style.line_width;
         let (p0, p1) = (contour.position_of_last(2), contour.position_of_last(1));
         let gradient = (p1 - p0).normalize();
-        let offset = gradient.scale(width * 0.5);
 
-        let p2 = p1 + offset;
-        let p3 = p2 + gradient.yx().scale_xy(Point2DF32::new(width, -width));
-        let p4 = p3 - offset;
+        match self.style.line_cap {
+            LineCap::Butt => unreachable!(),
+            LineCap::Square => {
+                let offset = gradient.scale(width * 0.5);
 
-        contour.push_endpoint(p2);
-        contour.push_endpoint(p3);
-        contour.push_endpoint(p4);
+                let p2 = p1 + offset;
+                let p3 = p2 + gradient.yx().scale_xy(Point2DF32::new(-width, width));
+                let p4 = p3 - offset;
+
+                contour.push_endpoint(p2);
+                contour.push_endpoint(p3);
+                contour.push_endpoint(p4);
+            }
+            LineCap::Round => {
+                // FIXME(pcwalton): Should we really be using angles here at all?
+                let offset = gradient.yx().scale_xy(Point2DF32::new(-width * 0.5, width * 0.5));
+                let angle = f32::atan2(gradient.y(), gradient.x());
+                contour.push_arc(p1 + offset, width * 0.5, angle - FRAC_PI_2, angle + FRAC_PI_2);
+            }
+        }
     }
 }
 
@@ -135,8 +148,10 @@ impl ContourStrokeToFill {
 
     fn offset_forward(&mut self) {
         for (segment_index, segment) in self.input.iter().enumerate() {
+            // FIXME(pcwalton): We negate the radius here so that round end caps can be drawn
+            // clockwise. Of course, we should just implement anticlockwise arcs to begin with...
             let join = if segment_index == 0 { LineJoin::Bevel } else { self.join };
-            segment.offset(self.radius, join, &mut self.output);
+            segment.offset(-self.radius, join, &mut self.output);
         }
     }
 
@@ -148,8 +163,10 @@ impl ContourStrokeToFill {
             .collect();
         segments.reverse();
         for (segment_index, segment) in segments.iter().enumerate() {
+            // FIXME(pcwalton): We negate the radius here so that round end caps can be drawn
+            // clockwise. Of course, we should just implement anticlockwise arcs to begin with...
             let join = if segment_index == 0 { LineJoin::Bevel } else { self.join };
-            segment.offset(self.radius, join, &mut self.output);
+            segment.offset(-self.radius, join, &mut self.output);
         }
     }
 }
