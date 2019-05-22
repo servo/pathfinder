@@ -376,7 +376,7 @@ impl Contour {
                     mut end_angle: f32) {
         start_angle %= TWO_PI;
         end_angle %= TWO_PI;
-        if end_angle < start_angle {
+        if end_angle <= start_angle {
             end_angle += TWO_PI;
         }
 
