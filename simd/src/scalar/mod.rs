@@ -173,11 +173,6 @@ impl F32x4 {
     pub fn concat_wz_yx(self, other: F32x4) -> F32x4 {
         F32x4([self[3], self[2], other[1], other[0]])
     }
-
-    #[inline]
-    pub fn cross(&self, other: F32x4) -> F32x4 {
-        unimplemented!()
-    }
 }
 
 impl Index<usize> for F32x4 {
