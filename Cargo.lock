@@ -958,6 +958,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "lottie_basic"
+version = "0.1.0"
+dependencies = [
+ "pathfinder_lottie 0.1.0",
+]
+
+[[package]]
 name = "lyon_geom"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1254,6 +1261,14 @@ dependencies = [
  "pathfinder_geometry 0.3.0",
  "pathfinder_simd 0.3.0",
  "rustache 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pathfinder_lottie"
+version = "0.1.0"
+dependencies = [
+ "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_json 1.0.39 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1753,6 +1768,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "serde"
 version = "1.0.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = [
+ "serde_derive 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
 [[package]]
 name = "serde_derive"
