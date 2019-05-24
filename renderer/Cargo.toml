@@ -30,4 +30,4 @@ path = "../simd"
 path = "../ui"
 
 [dev-dependencies]
-quickcheck = "0.7"
+quickcheck = "0.8"
