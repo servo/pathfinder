@@ -1185,6 +1185,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pathfinder_c"
+version = "0.1.0"
+dependencies = [
+ "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_canvas 0.1.0",
+ "pathfinder_geometry 0.3.0",
+ "pathfinder_gl 0.1.0",
+ "pathfinder_gpu 0.1.0",
+ "pathfinder_renderer 0.1.0",
+ "pathfinder_simd 0.3.0",
+]
+
+[[package]]
 name = "pathfinder_canvas"
 version = "0.1.0"
 dependencies = [

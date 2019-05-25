@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
+[lib]
+crate-type = ["rlib", "staticlib"]
+
 [dependencies]
 font-kit = "0.1"
 

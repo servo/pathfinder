@@ -859,11 +859,13 @@ impl VertexAttrTypeExt for VertexAttrType {
 }
 
 /// The version/dialect of OpenGL we should render with.
+#[derive(Clone, Copy)]
+#[repr(u32)]
 pub enum GLVersion {
     /// OpenGL 3.0+, core profile.
-    GL3,
+    GL3 = 0,
     /// OpenGL ES 3.0+.
-    GLES3,
+    GLES3 = 1,
 }
 
 impl GLVersion {

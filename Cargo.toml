@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "c",
     "canvas",
     "demo/android/rust",
     "demo/common",

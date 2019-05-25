@@ -5,6 +5,7 @@ target
 /site/package-lock.json
 /site/dist
 node_modules
+/examples/c_canvas_minimal/build
 
 # Editors
 *.swp
