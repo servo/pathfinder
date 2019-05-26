@@ -16,14 +16,13 @@ extern crate log;
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
 use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderState, ShaderKind, StencilFunc};
 use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
-use rustache::{HashBuilder, Render};
 use std::ffi::CString;
-use std::io::Cursor;
 use std::mem;
 use std::ptr;
 use std::str;
@@ -223,18 +222,18 @@ impl Device for GLDevice {
     }
 
     fn create_shader_from_source(&self,
+                                 resources: &dyn ResourceLoader,
                                  name: &str,
                                  source: &[u8],
                                  kind: ShaderKind,
-                                 mut template_input: HashBuilder)
+                                 includes: &[&str])
                                  -> GLShader {
         // FIXME(pcwalton): Do this once and cache it.
         let glsl_version_spec = self.version.to_glsl_version_spec();
-        template_input = template_input.insert("version", glsl_version_spec);
 
-        let mut output = Cursor::new(vec![]);
-        template_input.render(str::from_utf8(source).unwrap(), &mut output).unwrap();
-        let source = output.into_inner();
+        let mut output = vec![];
+        self.preprocess(&mut output, resources, source, includes, glsl_version_spec);
+        let source = output;
 
         let gl_shader_kind = match kind {
             ShaderKind::Vertex => gl::VERTEX_SHADER,
@@ -268,6 +267,7 @@ impl Device for GLDevice {
     }
 
     fn create_program_from_shaders(&self,
+                                   resources: &dyn ResourceLoader,
                                    name: &str,
                                    vertex_shader: GLShader,
                                    fragment_shader: GLShader)
@@ -644,6 +644,41 @@ impl Device for GLDevice {
     }
 }
 
+impl GLDevice {
+    fn preprocess(&self,
+                  output: &mut Vec<u8>,
+                  resources: &dyn ResourceLoader,
+                  source: &[u8],
+                  includes: &[&str],
+                  version: &str) {
+        let mut index = 0;
+        while index < source.len() {
+            if source[index..].starts_with(b"{{") {
+                let end_index = source[index..].iter()
+                                               .position(|character| *character == b'}')
+                                               .expect("Expected `}`!") + index;
+                assert_eq!(source[end_index + 1], b'}');
+                let ident = String::from_utf8_lossy(&source[(index + 2)..end_index]);
+                if ident == "version" {
+                    output.extend_from_slice(version.as_bytes());
+                } else if ident.starts_with("include_") {
+                    let include_name = &ident["include_".len()..];
+                    if includes.iter().any(|include| *include == include_name) {
+                        let include_source = self.load_shader_include(resources, include_name);
+                        self.preprocess(output, resources, &include_source, includes, version);
+                    }
+                } else {
+                    panic!("unknown template variable: `{}`", ident);
+                }
+                index = end_index + 2;
+            } else {
+                output.push(source[index]);
+                index += 1;
+            }
+        }
+    }
+}
+
 pub struct GLVertexArray {
     pub gl_vertex_array: GLuint,
 }
@@ -891,3 +926,5 @@ fn ck() {
 
 #[cfg(not(debug))]
 fn ck() {}
+
+// Shader preprocessing

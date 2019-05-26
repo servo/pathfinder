@@ -5,7 +5,6 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
-rustache = "0.1"
 
 [dependencies.image]
 version = "0.21"

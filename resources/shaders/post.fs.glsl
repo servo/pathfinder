@@ -25,8 +25,8 @@ in vec2 vTexCoord;
 
 out vec4 oFragColor;
 
-{{{include_post_gamma_correct}}}
-{{{include_post_convolve}}}
+{{include_post_gamma_correct}}
+{{include_post_convolve}}
 
 // Convolve horizontally in this pass.
 float sample1Tap(float offset) {
