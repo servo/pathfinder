@@ -19,8 +19,10 @@ use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::PaintId;
 use pathfinder_renderer::scene::{PathObject, Scene};
-use skribo::{FontCollection, Layout, TextStyle};
 use std::mem;
+
+#[cfg(feature = "pf-shape")]
+use skribo::{FontCollection, Layout, TextStyle};
 
 pub trait SceneExt {
     // TODO(pcwalton): Support stroked glyphs.
@@ -34,6 +36,23 @@ pub trait SceneExt {
                      -> Result<(), GlyphLoadingError>
                      where F: Loader;
 
+    /// Adds text to the scene, without doing proper shaping.
+    /// 
+    /// Because this method does not do proper typographical shaping, this is intended only for
+    /// debug messages. It does not support anything but Latin text, and it does so poorly: for
+    /// example, no kerning is performed.
+    fn push_simple_text<F>(&mut self,
+                           text: &str,
+                           font: &F,
+                           size: f32,
+                           transform: &Transform2DF32,
+                           render_mode: TextRenderMode,
+                           hinting_options: HintingOptions,
+                           paint_id: PaintId)
+                           -> Result<(), GlyphLoadingError>
+                           where F: Loader;
+
+    #[cfg(feature = "pf-shape")]
     fn push_layout(&mut self,
                    layout: &Layout,
                    style: &TextStyle,
@@ -43,6 +62,7 @@ pub trait SceneExt {
                    paint_id: PaintId)
                    -> Result<(), GlyphLoadingError>;
 
+    #[cfg(feature = "pf-shape")]
     fn push_text(&mut self,
                  text: &str,
                  style: &TextStyle,
@@ -79,6 +99,39 @@ impl SceneExt for Scene {
         Ok(())
     }
 
+    fn push_simple_text<F>(&mut self,
+                           text: &str,
+                           font: &F,
+                           size: f32,
+                           transform: &Transform2DF32,
+                           render_mode: TextRenderMode,
+                           hinting_options: HintingOptions,
+                           paint_id: PaintId)
+                           -> Result<(), GlyphLoadingError>
+                           where F: Loader {
+        let scale = size / (font.metrics().units_per_em as f32);
+        let scale = Point2DF32::new(scale, -scale);
+
+        let mut origin = Point2DF32::default();
+        for character in text.chars() {
+            let glyph_id = match font.glyph_for_char(character) {
+                None => continue,
+                Some(glyph_id) => glyph_id,
+            };
+            let offset = font.origin(glyph_id).unwrap();
+            let offset = Point2DF32::new(offset.x, offset.y);
+            let transform = Transform2DF32::from_scale(scale).post_mul(transform)
+                                                             .post_translate(origin + offset);
+            self.push_glyph(font, glyph_id, &transform, render_mode, hinting_options, paint_id)?;
+
+            let advance = font.advance(glyph_id).unwrap();
+            origin = origin + Point2DF32::new(advance.x, advance.y);
+        }
+
+        Ok(())
+    }
+
+    #[cfg(feature = "pf-shape")]
     fn push_layout(&mut self,
                    layout: &Layout,
                    style: &TextStyle,
@@ -105,6 +158,7 @@ impl SceneExt for Scene {
         Ok(())
     }
 
+    #[cfg(feature = "pf-shape")]
     #[inline]
     fn push_text(&mut self,
                  text: &str,

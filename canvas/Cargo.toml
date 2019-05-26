@@ -7,6 +7,9 @@ edition = "2018"
 [lib]
 crate-type = ["rlib", "staticlib"]
 
+[features]
+pf-shape = ["pathfinder_text/pf-shape"]
+
 [dependencies]
 font-kit = "0.1"
 
@@ -22,3 +25,4 @@ path = "../text"
 [dependencies.skribo]
 git = "https://github.com/linebender/skribo.git"
 rev = "a89e9ca99e0d6736ea1b7754517f4df14fd96a2b"
+optional = true

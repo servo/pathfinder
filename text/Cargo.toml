@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
+[features]
+# default = ["pf-shape"]
+pf-shape = ["skribo"]
+
 [dependencies]
 euclid = "0.19"
 font-kit = "0.1"
@@ -18,3 +22,4 @@ path = "../renderer"
 [dependencies.skribo]
 git = "https://github.com/linebender/skribo.git"
 rev = "a89e9ca99e0d6736ea1b7754517f4df14fd96a2b"
+optional = true

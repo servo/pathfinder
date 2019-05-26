@@ -11,6 +11,7 @@
 //! A simple API for Pathfinder that mirrors a subset of HTML canvas.
 
 use font_kit::family_name::FamilyName;
+use font_kit::font::Font;
 use font_kit::hinting::HintingOptions;
 use font_kit::properties::Properties;
 use font_kit::source::SystemSource;
@@ -20,13 +21,15 @@ use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
-use pathfinder_renderer::paint::Paint;
+use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
-use skribo::{FontCollection, FontFamily, TextStyle};
 use std::default::Default;
 use std::mem;
 use std::sync::Arc;
+
+#[cfg(feature = "pf-shape")]
+use skribo::{FontCollection, FontFamily, TextStyle};
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 const DEFAULT_FONT_SIZE: f32 = 10.0;
@@ -39,7 +42,7 @@ pub struct CanvasRenderingContext2D {
     #[allow(dead_code)]
     font_source: SystemSource,
     #[allow(dead_code)]
-    default_font_collection: Arc<FontCollection>,
+    default_font_state: FontState,
 }
 
 impl CanvasRenderingContext2D {
@@ -54,22 +57,27 @@ impl CanvasRenderingContext2D {
         // TODO(pcwalton): Allow the user to cache this?
         let font_source = SystemSource::new();
 
-        let mut default_font_collection = FontCollection::new();
-        let default_font =
-            font_source.select_best_match(&[FamilyName::SansSerif], &Properties::new())
-                       .expect("Failed to select the default font!")
-                       .load()
-                       .expect("Failed to load the default font!");
-        default_font_collection.add_family(FontFamily::new_from_font(default_font));
-        let default_font_collection = Arc::new(default_font_collection);
+        let default_font = Arc::new(get_default_font(&font_source));
+        let default_font_state;
+        #[cfg(feature = "pf-shape")]
+        {
+            let mut default_font_collection = FontCollection::new();
+            default_font_collection.add_family(FontFamily::new_from_font(&*default_font));
+            let default_font_collection = Arc::new(default_font_collection);
+            default_font_state = default_font_collection.clone();
+        }
+        #[cfg(not(feature = "pf-shape"))]
+        {
+            default_font_state = default_font.clone();
+        }
 
         CanvasRenderingContext2D {
             scene,
-            current_state: State::default(default_font_collection.clone()),
+            current_state: State::default(default_font_state.clone()),
             saved_states: vec![],
 
             font_source,
-            default_font_collection,
+            default_font_state,
         }
     }
 
@@ -93,31 +101,52 @@ impl CanvasRenderingContext2D {
     }
 
     pub fn fill_text(&mut self, string: &str, position: Point2DF32) {
-        // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
+        self.fill_or_stroke_text(string, position, TextRenderMode::Fill, paint_id);
+    }
+
+    pub fn stroke_text(&mut self, string: &str, position: Point2DF32) {
+        let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
+        self.fill_or_stroke_text(string,
+                                 position,
+                                 TextRenderMode::Stroke(self.current_state.stroke_style),
+                                 paint_id);
+    }
+
+    #[cfg(feature = "pf-shape")]
+    fn fill_or_stroke_text(&mut self,
+                           string: &str,
+                           position: Point2DF32,
+                           render_mode: TextRenderMode,
+                           paint_id: PaintId) {
         let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
                                                                                  .transform);
+        // TODO(pcwalton): Report errors.
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
-                                  &self.current_state.font_collection,
+                                  &self.current_state.font,
                                   &transform,
-                                  TextRenderMode::Fill,
+                                  render_mode,
                                   HintingOptions::None,
                                   paint_id));
     }
 
-    pub fn stroke_text(&mut self, string: &str, position: Point2DF32) {
-        // TODO(pcwalton): Report errors.
-        let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
+    #[cfg(not(feature = "pf-shape"))]
+    fn fill_or_stroke_text(&mut self,
+                           string: &str,
+                           position: Point2DF32,
+                           render_mode: TextRenderMode,
+                           paint_id: PaintId) {
         let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
                                                                                  .transform);
-        drop(self.scene.push_text(string,
-                                  &TextStyle { size: self.current_state.font_size },
-                                  &self.current_state.font_collection,
-                                  &transform,
-                                  TextRenderMode::Stroke(self.current_state.stroke_style),
-                                  HintingOptions::None,
-                                  paint_id));
+        // TODO(pcwalton): Report errors.
+        drop(self.scene.push_simple_text(string,
+                                         &*self.current_state.font,
+                                         self.current_state.font_size,
+                                         &transform,
+                                         render_mode,
+                                         HintingOptions::None,
+                                         paint_id));
     }
 
     // Line styles
@@ -225,10 +254,15 @@ impl CanvasRenderingContext2D {
     }
 }
 
+#[cfg(feature = "pf-shape")]
+type FontState = Arc<FontCollection>;
+#[cfg(not(feature = "pf-shape"))]
+type FontState = Arc<Font>;
+
 #[derive(Clone)]
 pub struct State {
     transform: Transform2DF32,
-    font_collection: Arc<FontCollection>,
+    font: FontState,
     font_size: f32,
     fill_paint: Paint,
     stroke_paint: Paint,
@@ -237,10 +271,10 @@ pub struct State {
 }
 
 impl State {
-    fn default(default_font_collection: Arc<FontCollection>) -> State {
+    fn default(default_font: FontState) -> State {
         State {
             transform: Transform2DF32::default(),
-            font_collection: default_font_collection,
+            font: default_font,
             font_size: DEFAULT_FONT_SIZE,
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
@@ -332,4 +366,11 @@ impl FillStyle {
     fn to_paint(&self) -> Paint {
         match *self { FillStyle::Color(color) => Paint { color } }
     }
+}
+
+fn get_default_font(source: &SystemSource) -> Font {
+    source.select_best_match(&[FamilyName::SansSerif], &Properties::new())
+          .expect("Failed to select the default font!")
+          .load()
+          .expect("Failed to load the default font!")
 }
