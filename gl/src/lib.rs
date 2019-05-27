@@ -42,6 +42,10 @@ impl GLDevice {
         }
     }
 
+    pub fn set_default_framebuffer(&mut self, framebuffer: GLuint) {
+        self.default_framebuffer = framebuffer;
+    }
+
     fn set_texture_parameters(&self, texture: &GLTexture) {
         self.bind_texture(texture, 0);
         unsafe {
