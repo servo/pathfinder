@@ -271,7 +271,7 @@ impl Device for GLDevice {
     }
 
     fn create_program_from_shaders(&self,
-                                   resources: &dyn ResourceLoader,
+                                   _resources: &dyn ResourceLoader,
                                    name: &str,
                                    vertex_shader: GLShader,
                                    fragment_shader: GLShader)
