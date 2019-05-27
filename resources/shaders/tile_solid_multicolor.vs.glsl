@@ -12,8 +12,8 @@
 
 precision highp float;
 
-{{{include_tile_solid_vertex}}}
-{{{include_tile_multicolor}}}
+{{include_tile_solid_vertex}}
+{{include_tile_multicolor}}
 
 void main() {
     computeVaryings();

@@ -8,9 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::{CanvasRenderingContext2D, Path2D};
+use pathfinder_canvas::CanvasRenderingContext2D;
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
-use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
@@ -62,7 +61,7 @@ fn main() {
     canvas.stroke_text("Goodbye Pathfinder!", Point2DF32::new(32.0, 96.0));
 
     // Render the canvas to screen.
-    let scene = SceneProxy::new(canvas.into_scene(), RayonExecutor);
+    let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
     scene.build_and_render(&mut renderer, RenderOptions::default());
     window.gl_swap_window();
 

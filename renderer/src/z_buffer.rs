@@ -11,6 +11,8 @@
 //! Software occlusion culling.
 
 use crate::gpu_data::SolidTileBatchPrimitive;
+use crate::paint;
+use crate::scene::PathObject;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
 use pathfinder_geometry::basic::point::Point2DI32;
@@ -54,7 +56,8 @@ impl ZBuffer {
         }
     }
 
-    pub fn build_solid_tiles(&self, object_range: Range<u32>) -> Vec<SolidTileBatchPrimitive> {
+    pub fn build_solid_tiles(&self, paths: &[PathObject], object_range: Range<u32>)
+                             -> Vec<SolidTileBatchPrimitive> {
         let mut solid_tiles = vec![];
         for tile_index in 0..self.buffer.data.len() {
             let depth = self.buffer.data[tile_index].load(AtomicOrdering::Relaxed);
@@ -67,13 +70,27 @@ impl ZBuffer {
             if object_index < object_range.start || object_index >= object_range.end {
                 continue;
             }
-            solid_tiles.push(SolidTileBatchPrimitive {
-                tile_x: (tile_coords.x() + self.buffer.rect.min_x()) as i16,
-                tile_y: (tile_coords.y() + self.buffer.rect.min_y()) as i16,
-                object_index: object_index as u16,
-            });
+
+            let origin_uv = paint::paint_id_to_tex_coords(paths[object_index as usize].paint());
+
+            solid_tiles.push(SolidTileBatchPrimitive::new(tile_coords + self.buffer.rect.origin(),
+                                                          object_index as u16,
+                                                          origin_uv));
         }
 
         solid_tiles
+    }
+}
+
+impl SolidTileBatchPrimitive {
+    fn new(tile_coords: Point2DI32, object_index: u16, origin_uv: Point2DI32)
+           -> SolidTileBatchPrimitive {
+        SolidTileBatchPrimitive {
+            tile_x: tile_coords.x() as i16,
+            tile_y: tile_coords.y() as i16,
+            object_index: object_index,
+            origin_u: origin_uv.x() as u16,
+            origin_v: origin_uv.y() as u16,
+        }
     }
 }

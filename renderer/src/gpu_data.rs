@@ -11,9 +11,9 @@
 //! Packed data ready to be sent to the GPU.
 
 use crate::options::BoundingQuad;
-use crate::scene::ObjectShader;
 use crate::tile_map::DenseTileMap;
 use pathfinder_geometry::basic::line_segment::{LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::basic::point::Point2DI32;
 use pathfinder_geometry::basic::rect::RectF32;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
@@ -28,12 +28,18 @@ pub(crate) struct BuiltObject {
 
 pub enum RenderCommand {
     Start { path_count: usize, bounding_quad: BoundingQuad },
-    AddShaders(Vec<ObjectShader>),
+    AddPaintData(PaintData),
     AddFills(Vec<FillBatchPrimitive>),
     FlushFills,
     AlphaTile(Vec<AlphaTileBatchPrimitive>),
     SolidTile(Vec<SolidTileBatchPrimitive>),
     Finish { build_time: Duration },
+}
+
+#[derive(Clone, Debug)]
+pub struct PaintData {
+    pub size: Point2DI32,
+    pub texels: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -66,6 +72,8 @@ pub struct FillBatchPrimitive {
 pub struct SolidTileBatchPrimitive {
     pub tile_x: i16,
     pub tile_y: i16,
+    pub origin_u: u16,
+    pub origin_v: u16,
     pub object_index: u16,
 }
 
@@ -78,14 +86,16 @@ pub struct AlphaTileBatchPrimitive {
     pub backdrop: i8,
     pub object_index: u16,
     pub tile_index: u16,
+    pub origin_u: u16,
+    pub origin_v: u16,
 }
 
 impl Debug for RenderCommand {
     fn fmt(&self, formatter: &mut Formatter) -> DebugResult {
         match *self {
             RenderCommand::Start { .. } => write!(formatter, "Start"),
-            RenderCommand::AddShaders(ref shaders) => {
-                write!(formatter, "AddShaders(x{})", shaders.len())
+            RenderCommand::AddPaintData(ref paint_data) => {
+                write!(formatter, "AddPaintData({}x{})", paint_data.size.x(), paint_data.size.y())
             }
             RenderCommand::AddFills(ref fills) => write!(formatter, "AddFills(x{})", fills.len()),
             RenderCommand::FlushFills => write!(formatter, "FlushFills"),

@@ -325,7 +325,7 @@ impl ContourPolygonClipper {
             Some(prev) => *prev,
         };
         for &next in &clip_polygon {
-            self.clip_against(Edge(LineSegmentF32::new(&prev, &next)));
+            self.clip_against(Edge(LineSegmentF32::new(prev, next)));
             prev = next;
         }
 

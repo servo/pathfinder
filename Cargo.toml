@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "c",
     "canvas",
     "demo/android/rust",
     "demo/common",
@@ -8,9 +9,11 @@ members = [
     "examples/canvas_minimal",
     "examples/canvas_moire",
     "examples/canvas_text",
+    "examples/lottie_basic",
     "geometry",
     "gl",
     "gpu",
+    "lottie",
     "renderer",
     "simd",
     "svg",

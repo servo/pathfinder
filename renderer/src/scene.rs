@@ -14,6 +14,7 @@ use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
 use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::options::{RenderCommandListener, RenderOptions};
+use crate::paint::{Paint, PaintId};
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::rect::RectF32;
@@ -25,7 +26,7 @@ use std::io::{self, Write};
 #[derive(Clone)]
 pub struct Scene {
     pub(crate) paths: Vec<PathObject>,
-    paints: Vec<Paint>,
+    pub(crate) paints: Vec<Paint>,
     paint_cache: HashMap<Paint, PaintId>,
     bounds: RectF32,
     view_box: RectF32,
@@ -85,15 +86,6 @@ impl Scene {
         self.view_box = new_view_box;
     }
 
-    pub fn build_shaders(&self) -> Vec<ObjectShader> {
-        self.paths
-            .iter()
-            .map(|path_object| {
-                ObjectShader { fill_color: self.paints[path_object.paint.0 as usize].color }
-            })
-            .collect()
-    }
-
     pub(crate) fn apply_render_options(
         &self,
         original_outline: &Outline,
@@ -129,7 +121,7 @@ impl Scene {
                     };
                     if options.subpixel_aa_enabled {
                         transform = transform
-                            .post_mul(&Transform2DF32::from_scale(&Point2DF32::new(3.0, 1.0)))
+                            .post_mul(&Transform2DF32::from_scale(Point2DF32::new(3.0, 1.0)))
                     }
                     outline.transform(&transform);
                 }
@@ -225,17 +217,9 @@ impl PathObject {
     pub fn outline(&self) -> &Outline {
         &self.outline
     }
-}
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Paint {
-    pub color: ColorU,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub struct PaintId(pub u16);
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ObjectShader {
-    pub fill_color: ColorU,
+    #[inline]
+    pub(crate) fn paint(&self) -> PaintId {
+        self.paint
+    }
 }

@@ -11,6 +11,7 @@
 //! Line segment types, optimized with SIMD.
 
 use crate::basic::point::Point2DF32;
+use crate::basic::transform2d::Matrix2x2F32;
 use crate::util;
 use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Sub};
@@ -20,7 +21,7 @@ pub struct LineSegmentF32(pub F32x4);
 
 impl LineSegmentF32 {
     #[inline]
-    pub fn new(from: &Point2DF32, to: &Point2DF32) -> LineSegmentF32 {
+    pub fn new(from: Point2DF32, to: Point2DF32) -> LineSegmentF32 {
         LineSegmentF32(from.0.concat_xy_xy(to.0))
     }
 
@@ -227,15 +228,12 @@ impl LineSegmentF32 {
 
     // http://www.cs.swan.ac.uk/~cssimon/line_intersection.html
     pub fn intersection_t(&self, other: &LineSegmentF32) -> Option<f32> {
-        let d0d1 = self.vector().0.concat_xy_xy(other.vector().0);
-        let offset = other.from() - self.from();
-        let factors = d0d1.concat_wz_yx(offset.0);
-        let terms = d0d1 * factors;
-        let denom = terms[0] - terms[1];
-        if f32::abs(denom) < EPSILON {
+        let p0p1 = self.vector();
+        let matrix = Matrix2x2F32(other.vector().0.concat_xy_xy((-p0p1).0));
+        if f32::abs(matrix.det()) < EPSILON {
             return None;
         }
-        return Some((terms[3] - terms[2]) / denom);
+        return Some(matrix.inverse().transform_point(self.from() - other.from()).y());
 
         const EPSILON: f32 = 0.0001;
     }

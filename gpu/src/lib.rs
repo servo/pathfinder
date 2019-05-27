@@ -17,10 +17,18 @@ use pathfinder_geometry::basic::rect::RectI32;
 use pathfinder_geometry::basic::transform3d::Transform3DF32;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_simd::default::F32x4;
-use rustache::HashBuilder;
 use std::time::Duration;
 
 pub mod resources;
+
+static INCLUDES: [&str; 6] = [
+    "tile_alpha_vertex",
+    "tile_monochrome",
+    "tile_multicolor",
+    "tile_solid_vertex",
+    "post_convolve",
+    "post_gamma_correct",
+];
 
 pub trait Device {
     type Buffer;
@@ -37,14 +45,16 @@ pub trait Device {
     fn create_texture_from_data(&self, size: Point2DI32, data: &[u8]) -> Self::Texture;
     fn create_shader_from_source(
         &self,
+        resources: &dyn ResourceLoader,
         name: &str,
         source: &[u8],
         kind: ShaderKind,
-        template_input: HashBuilder,
+        includes: &[&str],
     ) -> Self::Shader;
     fn create_vertex_array(&self) -> Self::VertexArray;
     fn create_program_from_shaders(
         &self,
+        resources: &dyn ResourceLoader,
         name: &str,
         vertex_shader: Self::Shader,
         fragment_shader: Self::Shader,
@@ -52,25 +62,7 @@ pub trait Device {
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Self::VertexAttr;
     fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
     fn use_program(&self, program: &Self::Program);
-    fn configure_float_vertex_attr(
-        &self,
-        attr: &Self::VertexAttr,
-        size: usize,
-        attr_type: VertexAttrType,
-        normalized: bool,
-        stride: usize,
-        offset: usize,
-        divisor: u32,
-    );
-    fn configure_int_vertex_attr(
-        &self,
-        attr: &Self::VertexAttr,
-        size: usize,
-        attr_type: VertexAttrType,
-        stride: usize,
-        offset: usize,
-        divisor: u32,
-    );
+    fn configure_vertex_attr(&self, attr: &Self::VertexAttr, descriptor: &VertexAttrDescriptor);
     fn set_uniform(&self, uniform: &Self::Uniform, data: UniformData);
     fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
     fn create_buffer(&self) -> Self::Buffer;
@@ -127,39 +119,8 @@ pub trait Device {
             ShaderKind::Vertex => 'v',
             ShaderKind::Fragment => 'f',
         };
-        let source = resources
-            .slurp(&format!("shaders/{}.{}s.glsl", name, suffix))
-            .unwrap();
-
-        let mut load_include_tile_alpha_vertex =
-            |_| load_shader_include(resources, "tile_alpha_vertex");
-        let mut load_include_tile_monochrome =
-            |_| load_shader_include(resources, "tile_monochrome");
-        let mut load_include_tile_multicolor =
-            |_| load_shader_include(resources, "tile_multicolor");
-        let mut load_include_tile_solid_vertex =
-            |_| load_shader_include(resources, "tile_solid_vertex");
-        let mut load_include_post_convolve = |_| load_shader_include(resources, "post_convolve");
-        let mut load_include_post_gamma_correct =
-            |_| load_shader_include(resources, "post_gamma_correct");
-        let template_input = HashBuilder::new()
-            .insert_lambda(
-                "include_tile_alpha_vertex",
-                &mut load_include_tile_alpha_vertex,
-            )
-            .insert_lambda("include_tile_monochrome", &mut load_include_tile_monochrome)
-            .insert_lambda("include_tile_multicolor", &mut load_include_tile_multicolor)
-            .insert_lambda(
-                "include_tile_solid_vertex",
-                &mut load_include_tile_solid_vertex,
-            )
-            .insert_lambda("include_post_convolve", &mut load_include_post_convolve)
-            .insert_lambda(
-                "include_post_gamma_correct",
-                &mut load_include_post_gamma_correct,
-            );
-
-        self.create_shader_from_source(name, &source, kind, template_input)
+        let source = resources.slurp(&format!("shaders/{}.{}s.glsl", name, suffix)).unwrap();
+        self.create_shader_from_source(resources, name, &source, kind, &INCLUDES)
     }
 
     fn create_program_from_shader_names(
@@ -172,11 +133,15 @@ pub trait Device {
         let vertex_shader = self.create_shader(resources, vertex_shader_name, ShaderKind::Vertex);
         let fragment_shader =
             self.create_shader(resources, fragment_shader_name, ShaderKind::Fragment);
-        self.create_program_from_shaders(program_name, vertex_shader, fragment_shader)
+        self.create_program_from_shaders(resources, program_name, vertex_shader, fragment_shader)
     }
 
     fn create_program(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Program {
         self.create_program_from_shader_names(resources, name, name, name)
+    }
+
+    fn load_shader_include(&self, resources: &dyn ResourceLoader, include_name: &str) -> Vec<u8> {
+        resources.slurp(&format!("shaders/{}.inc.glsl", include_name)).unwrap()
     }
 }
 
@@ -340,9 +305,19 @@ impl UniformData {
     }
 }
 
-fn load_shader_include(resources: &dyn ResourceLoader, include_name: &str) -> String {
-    let resource = resources
-        .slurp(&format!("shaders/{}.inc.glsl", include_name))
-        .unwrap();
-    String::from_utf8_lossy(&resource).to_string()
+#[derive(Clone, Copy, Debug)]
+pub struct VertexAttrDescriptor {
+    pub size: usize,
+    pub class: VertexAttrClass,
+    pub attr_type: VertexAttrType,
+    pub stride: usize,
+    pub offset: usize,
+    pub divisor: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum VertexAttrClass {
+    Float,
+    FloatNorm,
+    Int,
 }

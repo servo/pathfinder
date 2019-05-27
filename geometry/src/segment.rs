@@ -12,8 +12,10 @@
 
 use crate::basic::line_segment::LineSegmentF32;
 use crate::basic::point::Point2DF32;
+use crate::basic::transform2d::Transform2DF32;
 use crate::util::{self, EPSILON};
 use pathfinder_simd::default::F32x4;
+use std::f32::consts::SQRT_2;
 
 const MAX_NEWTON_ITERATIONS: u32 = 32;
 
@@ -47,10 +49,10 @@ impl Segment {
     }
 
     #[inline]
-    pub fn quadratic(baseline: &LineSegmentF32, ctrl: &Point2DF32) -> Segment {
+    pub fn quadratic(baseline: &LineSegmentF32, ctrl: Point2DF32) -> Segment {
         Segment {
             baseline: *baseline,
-            ctrl: LineSegmentF32::new(ctrl, &Point2DF32::default()),
+            ctrl: LineSegmentF32::new(ctrl, Point2DF32::default()),
             kind: SegmentKind::Quadratic,
             flags: SegmentFlags::empty(),
         }
@@ -64,6 +66,24 @@ impl Segment {
             kind: SegmentKind::Cubic,
             flags: SegmentFlags::empty(),
         }
+    }
+
+    /// Approximates an unit-length arc with a cubic Bézier curve.
+    /// 
+    /// The maximum supported `sweep_angle` is π/2 (i.e. 90°).
+    pub fn arc(sweep_angle: f32) -> Segment {
+        // Aleksas Riškus, "Approximation of a Cubic Bézier Curve by Circular Arcs and Vice Versa"
+        // 2006.
+        //
+        // https://pdfs.semanticscholar.org/1639/0db1a470bd13fe428e0896671a9a5745070a.pdf
+        let phi = 0.5 * sweep_angle;
+        let p0 = Point2DF32::new(f32::cos(phi), f32::sin(phi));
+        let p3 = p0.scale_xy(Point2DF32::new(1.0, -1.0));
+        let p1 = p0 - p3.yx().scale(K);
+        let p2 = p3 + p0.yx().scale(K);
+        return Segment::cubic(&LineSegmentF32::new(p3, p0), &LineSegmentF32::new(p2, p1));
+
+        const K: f32 = 4.0 / 3.0 * (SQRT_2 - 1.0);
     }
 
     #[inline]
@@ -109,7 +129,7 @@ impl Segment {
         let mut new_segment = *self;
         let p1_2 = self.ctrl.from() + self.ctrl.from();
         new_segment.ctrl =
-            LineSegmentF32::new(&(self.baseline.from() + p1_2), &(p1_2 + self.baseline.to()))
+            LineSegmentF32::new(self.baseline.from() + p1_2, p1_2 + self.baseline.to())
                 .scale(1.0 / 3.0);
         new_segment.kind = SegmentKind::Cubic;
         new_segment
@@ -176,6 +196,16 @@ impl Segment {
             self.to_cubic().as_cubic_segment().sample(t)
         }
     }
+
+    #[inline]
+    pub fn transform(self, transform: &Transform2DF32) -> Segment {
+        Segment {
+            baseline: transform.transform_line_segment(&self.baseline),
+            ctrl: transform.transform_line_segment(&self.ctrl),
+            kind: self.kind,
+            flags: self.flags,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -215,16 +245,16 @@ impl<'s> CubicSegment<'s> {
         let (baseline0, ctrl0, baseline1, ctrl1);
         if t <= 0.0 {
             let from = &self.0.baseline.from();
-            baseline0 = LineSegmentF32::new(from, from);
-            ctrl0 = LineSegmentF32::new(from, from);
+            baseline0 = LineSegmentF32::new(*from, *from);
+            ctrl0 = LineSegmentF32::new(*from, *from);
             baseline1 = self.0.baseline;
             ctrl1 = self.0.ctrl;
         } else if t >= 1.0 {
             let to = &self.0.baseline.to();
             baseline0 = self.0.baseline;
             ctrl0 = self.0.ctrl;
-            baseline1 = LineSegmentF32::new(to, to);
-            ctrl1 = LineSegmentF32::new(to, to);
+            baseline1 = LineSegmentF32::new(*to, *to);
+            ctrl1 = LineSegmentF32::new(*to, *to);
         } else {
             let tttt = F32x4::splat(t);
 

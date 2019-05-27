@@ -20,13 +20,14 @@ use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32Path
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::segment::{Segment, SegmentFlags};
-use pathfinder_geometry::stroke::OutlineStrokeToFill;
-use pathfinder_renderer::scene::{Paint, PathObject, Scene};
+use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
+use pathfinder_renderer::paint::Paint;
+use pathfinder_renderer::scene::{PathObject, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};
 use std::mem;
-use usvg::{Color as SvgColor, Node, NodeExt, NodeKind, Paint as UsvgPaint};
-use usvg::{PathSegment as UsvgPathSegment, Rect as UsvgRect, Transform as UsvgTransform};
-use usvg::{Tree, Visibility};
+use usvg::{Color as SvgColor, LineCap as UsvgLineCap, LineJoin as UsvgLineJoin, Node, NodeExt};
+use usvg::{NodeKind, Opacity, Paint as UsvgPaint, PathSegment as UsvgPathSegment};
+use usvg::{Rect as UsvgRect, Transform as UsvgTransform, Tree, Visibility};
 
 const HAIRLINE_STROKE_WIDTH: f32 = 0.0333;
 
@@ -114,9 +115,11 @@ impl BuiltSVG {
             }
             NodeKind::Path(ref path) if path.visibility == Visibility::Visible => {
                 if let Some(ref fill) = path.fill {
-                    let style = self
-                        .scene
-                        .push_paint(&Paint::from_svg_paint(&fill.paint, &mut self.result_flags));
+                    let style = self.scene.push_paint(&Paint::from_svg_paint(
+                        &fill.paint,
+                        fill.opacity,
+                        &mut self.result_flags,
+                    ));
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                     let path = Transform2DF32PathIter::new(path, &transform);
@@ -129,14 +132,20 @@ impl BuiltSVG {
                 if let Some(ref stroke) = path.stroke {
                     let style = self.scene.push_paint(&Paint::from_svg_paint(
                         &stroke.paint,
+                        stroke.opacity,
                         &mut self.result_flags,
                     ));
-                    let stroke_width = f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH);
+
+                    let stroke_style = StrokeStyle {
+                        line_width: f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH),
+                        line_cap: LineCap::from_usvg_line_cap(stroke.linecap),
+                        line_join: LineJoin::from_usvg_line_join(stroke.linejoin),
+                    };
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                     let outline = Outline::from_segments(path);
 
-                    let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_width);
+                    let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_style);
                     stroke_to_fill.offset();
                     let mut outline = stroke_to_fill.outline;
                     outline.transform(&transform);
@@ -235,15 +244,17 @@ impl Display for BuildResultFlags {
 }
 
 trait PaintExt {
-    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Self;
+    fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
+                      -> Self;
 }
 
 impl PaintExt for Paint {
     #[inline]
-    fn from_svg_paint(svg_paint: &UsvgPaint, result_flags: &mut BuildResultFlags) -> Paint {
+    fn from_svg_paint(svg_paint: &UsvgPaint, opacity: Opacity, result_flags: &mut BuildResultFlags)
+                      -> Paint {
         Paint {
             color: match *svg_paint {
-                UsvgPaint::Color(color) => ColorU::from_svg_color(color),
+                UsvgPaint::Color(color) => ColorU::from_svg_color(color, opacity),
                 UsvgPaint::Link(_) => {
                     // TODO(pcwalton)
                     result_flags.insert(BuildResultFlags::UNSUPPORTED_LINK_PAINT);
@@ -313,8 +324,7 @@ where
             }
             UsvgPathSegment::LineTo { x, y } => {
                 let to = Point2DF32::new(x as f32, y as f32);
-                let mut segment =
-                    Segment::line(&LineSegmentF32::new(&self.last_subpath_point, &to));
+                let mut segment = Segment::line(&LineSegmentF32::new(self.last_subpath_point, to));
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
                 }
@@ -334,8 +344,8 @@ where
                 let ctrl1 = Point2DF32::new(x2 as f32, y2 as f32);
                 let to = Point2DF32::new(x as f32, y as f32);
                 let mut segment = Segment::cubic(
-                    &LineSegmentF32::new(&self.last_subpath_point, &to),
-                    &LineSegmentF32::new(&ctrl0, &ctrl1),
+                    &LineSegmentF32::new(self.last_subpath_point, to),
+                    &LineSegmentF32::new(ctrl0, ctrl1),
                 );
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
@@ -346,8 +356,8 @@ where
             }
             UsvgPathSegment::ClosePath => {
                 let mut segment = Segment::line(&LineSegmentF32::new(
-                    &self.last_subpath_point,
-                    &self.first_subpath_point,
+                    self.last_subpath_point,
+                    self.first_subpath_point,
                 ));
                 segment.flags.insert(SegmentFlags::CLOSES_SUBPATH);
                 self.just_moved = false;
@@ -359,17 +369,53 @@ where
 }
 
 trait ColorUExt {
-    fn from_svg_color(svg_color: SvgColor) -> Self;
+    fn from_svg_color(svg_color: SvgColor, opacity: Opacity) -> Self;
 }
 
 impl ColorUExt for ColorU {
     #[inline]
-    fn from_svg_color(svg_color: SvgColor) -> ColorU {
+    fn from_svg_color(svg_color: SvgColor, opacity: Opacity) -> ColorU {
         ColorU {
             r: svg_color.red,
             g: svg_color.green,
             b: svg_color.blue,
-            a: 255,
+            a: (opacity.value() * 255.0).round() as u8,
+        }
+    }
+}
+
+trait LineCapExt {
+    fn from_usvg_line_cap(usvg_line_cap: UsvgLineCap) -> Self;
+}
+
+impl LineCapExt for LineCap {
+    #[inline]
+    fn from_usvg_line_cap(usvg_line_cap: UsvgLineCap) -> LineCap {
+        match usvg_line_cap {
+            UsvgLineCap::Butt => LineCap::Butt,
+            UsvgLineCap::Round => {
+                // TODO(pcwalton)
+                LineCap::Square
+            }
+            UsvgLineCap::Square => LineCap::Square,
+        }
+    }
+}
+
+trait LineJoinExt {
+    fn from_usvg_line_join(usvg_line_join: UsvgLineJoin) -> Self;
+}
+
+impl LineJoinExt for LineJoin {
+    #[inline]
+    fn from_usvg_line_join(usvg_line_join: UsvgLineJoin) -> LineJoin {
+        match usvg_line_join {
+            UsvgLineJoin::Miter => LineJoin::Miter,
+            UsvgLineJoin::Round => {
+                // TODO(pcwalton)
+                LineJoin::Miter
+            }
+            UsvgLineJoin::Bevel => LineJoin::Bevel,
         }
     }
 }

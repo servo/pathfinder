@@ -16,8 +16,9 @@ use lyon_path::builder::{FlatPathBuilder, PathBuilder};
 use pathfinder_geometry::basic::point::Point2DF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::outline::{Contour, Outline};
-use pathfinder_geometry::stroke::OutlineStrokeToFill;
-use pathfinder_renderer::scene::{PaintId, PathObject, Scene};
+use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
+use pathfinder_renderer::paint::PaintId;
+use pathfinder_renderer::scene::{PathObject, Scene};
 use skribo::{FontCollection, Layout, TextStyle};
 use std::mem;
 
@@ -68,8 +69,8 @@ impl SceneExt for Scene {
         font.outline(glyph_id, hinting_options, &mut outline_builder)?;
         let mut outline = outline_builder.build();
 
-        if let TextRenderMode::Stroke(stroke_width) = render_mode {
-            let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_width);
+        if let TextRenderMode::Stroke(stroke_style) = render_mode {
+            let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_style);
             stroke_to_fill.offset();
             outline = stroke_to_fill.outline;
         }
@@ -93,7 +94,7 @@ impl SceneExt for Scene {
             let scale = style.size / (font.metrics().units_per_em as f32);
             let scale = Point2DF32::new(scale, -scale);
             let transform =
-                Transform2DF32::from_scale(&scale).post_mul(transform).post_translate(offset);
+                Transform2DF32::from_scale(scale).post_mul(transform).post_translate(offset);
             self.push_glyph(font,
                             glyph.glyph_id,
                             &transform,
@@ -122,7 +123,7 @@ impl SceneExt for Scene {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum TextRenderMode {
     Fill,
-    Stroke(f32),
+    Stroke(StrokeStyle),
 }
 
 struct OutlinePathBuilder {
@@ -147,7 +148,7 @@ impl OutlinePathBuilder {
     }
 
     fn convert_point(&self, point: Point2D<f32>) -> Point2DF32 {
-        self.transform.transform_point(&Point2DF32::new(point.x, point.y))
+        self.transform.transform_point(Point2DF32::new(point.x, point.y))
     }
 }
 

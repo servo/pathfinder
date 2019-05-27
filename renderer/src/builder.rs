@@ -59,7 +59,7 @@ impl<'a> SceneBuilder<'a> {
         let path_count = self.scene.paths.len();
         self.listener.send(RenderCommand::Start { bounding_quad, path_count });
 
-        self.listener.send(RenderCommand::AddShaders(self.scene.build_shaders()));
+        self.listener.send(RenderCommand::AddPaintData(self.scene.build_paint_data()));
 
         let effective_view_box = self.scene.effective_view_box(self.built_options);
         let alpha_tiles = executor.flatten_into_vector(path_count, |path_index| {
@@ -81,8 +81,16 @@ impl<'a> SceneBuilder<'a> {
     ) -> Vec<AlphaTileBatchPrimitive> {
         let path_object = &scene.paths[path_index];
         let outline = scene.apply_render_options(path_object.outline(), built_options);
+        let paint_id = path_object.paint();
+        let object_is_opaque = scene.paints[paint_id.0 as usize].is_opaque();
 
-        let mut tiler = Tiler::new(self, &outline, view_box, path_index as u16);
+        let mut tiler = Tiler::new(self,
+                                   &outline,
+                                   view_box,
+                                   path_index as u16,
+                                   paint_id,
+                                   object_is_opaque);
+
         tiler.generate_tiles();
 
         self.listener.send(RenderCommand::AddFills(tiler.built_object.fills));
@@ -108,7 +116,7 @@ impl<'a> SceneBuilder<'a> {
 
     fn pack_alpha_tiles(&mut self, alpha_tiles: Vec<AlphaTileBatchPrimitive>) {
         let path_count = self.scene.paths.len() as u32;
-        let solid_tiles = self.z_buffer.build_solid_tiles(0..path_count);
+        let solid_tiles = self.z_buffer.build_solid_tiles(&self.scene.paths, 0..path_count);
         if !solid_tiles.is_empty() {
             self.listener.send(RenderCommand::SolidTile(solid_tiles));
         }
@@ -234,9 +242,9 @@ impl BuiltObject {
         let right = Point2DF32::new(right, tile_origin_y);
 
         let segment = if winding < 0 {
-            LineSegmentF32::new(&left, &right)
+            LineSegmentF32::new(left, right)
         } else {
-            LineSegmentF32::new(&right, &left)
+            LineSegmentF32::new(right, left)
         };
 
         debug!(
@@ -298,14 +306,14 @@ impl BuiltObject {
                 let point = Point2DF32::new(x, segment.solve_y_for_x(x));
                 if !winding {
                     fill_to = point;
-                    segment = LineSegmentF32::new(&point, &segment.to());
+                    segment = LineSegmentF32::new(point, segment.to());
                 } else {
                     fill_from = point;
-                    segment = LineSegmentF32::new(&segment.from(), &point);
+                    segment = LineSegmentF32::new(segment.from(), point);
                 }
             }
 
-            let fill_segment = LineSegmentF32::new(&fill_from, &fill_to);
+            let fill_segment = LineSegmentF32::new(fill_from, fill_to);
             let fill_tile_coords = Point2DI32::new(subsegment_tile_x, tile_y);
             self.add_fill(builder, &fill_segment, fill_tile_coords);
         }

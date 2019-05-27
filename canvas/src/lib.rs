@@ -19,8 +19,9 @@ use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::basic::transform2d::Transform2DF32;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
-use pathfinder_geometry::stroke::OutlineStrokeToFill;
-use pathfinder_renderer::scene::{Paint, PathObject, Scene};
+use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
+use pathfinder_renderer::paint::Paint;
+use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
 use skribo::{FontCollection, FontFamily, TextStyle};
 use std::default::Default;
@@ -94,10 +95,12 @@ impl CanvasRenderingContext2D {
     pub fn fill_text(&mut self, string: &str, position: Point2DF32) {
         // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
+        let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
+                                                                                 .transform);
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
                                   &self.current_state.font_collection,
-                                  &Transform2DF32::from_translation(&position),
+                                  &transform,
                                   TextRenderMode::Fill,
                                   HintingOptions::None,
                                   paint_id));
@@ -106,11 +109,13 @@ impl CanvasRenderingContext2D {
     pub fn stroke_text(&mut self, string: &str, position: Point2DF32) {
         // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
+        let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
+                                                                                 .transform);
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
                                   &self.current_state.font_collection,
-                                  &Transform2DF32::from_translation(&position),
-                                  TextRenderMode::Stroke(self.current_state.line_width),
+                                  &transform,
+                                  TextRenderMode::Stroke(self.current_state.stroke_style),
                                   HintingOptions::None,
                                   paint_id));
     }
@@ -119,7 +124,17 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn set_line_width(&mut self, new_line_width: f32) {
-        self.current_state.line_width = new_line_width
+        self.current_state.stroke_style.line_width = new_line_width
+    }
+
+    #[inline]
+    pub fn set_line_cap(&mut self, new_line_cap: LineCap) {
+        self.current_state.stroke_style.line_cap = new_line_cap
+    }
+
+    #[inline]
+    pub fn set_line_join(&mut self, new_line_join: LineJoin) {
+        self.current_state.stroke_style.line_join = new_line_join
     }
 
     #[inline]
@@ -139,22 +154,63 @@ impl CanvasRenderingContext2D {
         self.current_state.font_size = new_font_size;
     }
 
-    // Paths
+    // Drawing paths
 
     #[inline]
     pub fn fill_path(&mut self, path: Path2D) {
-        let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
-        self.scene.push_path(PathObject::new(path.into_outline(), paint_id, String::new()))
+        let mut outline = path.into_outline();
+        outline.transform(&self.current_state.transform);
+
+        let paint = self.current_state.resolve_paint(self.current_state.fill_paint);
+        let paint_id = self.scene.push_paint(&paint);
+
+        self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
     }
 
     #[inline]
     pub fn stroke_path(&mut self, path: Path2D) {
-        let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
-        let stroke_width = f32::max(self.current_state.line_width, HAIRLINE_STROKE_WIDTH);
-        let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_width);
+        let paint = self.current_state.resolve_paint(self.current_state.stroke_paint);
+        let paint_id = self.scene.push_paint(&paint);
+
+        let mut stroke_style = self.current_state.stroke_style;
+        stroke_style.line_width = f32::max(stroke_style.line_width, HAIRLINE_STROKE_WIDTH);
+
+        let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_style);
         stroke_to_fill.offset();
+        stroke_to_fill.outline.transform(&self.current_state.transform);
         self.scene.push_path(PathObject::new(stroke_to_fill.outline, paint_id, String::new()))
     }
+
+    // Transformations
+
+    #[inline]
+    pub fn current_transform(&self) -> Transform2DF32 {
+        self.current_state.transform
+    }
+
+    #[inline]
+    pub fn set_current_transform(&mut self, new_transform: &Transform2DF32) {
+        self.current_state.transform = *new_transform;
+    }
+
+    #[inline]
+    pub fn reset_transform(&mut self) {
+        self.current_state.transform = Transform2DF32::default();
+    }
+
+    // Compositing
+
+    #[inline]
+    pub fn global_alpha(&self) -> f32 {
+        self.current_state.global_alpha
+    }
+
+    #[inline]
+    pub fn set_global_alpha(&mut self, new_global_alpha: f32) {
+        self.current_state.global_alpha = new_global_alpha;
+    }
+
+    // The canvas state
 
     #[inline]
     pub fn save(&mut self) {
@@ -171,22 +227,31 @@ impl CanvasRenderingContext2D {
 
 #[derive(Clone)]
 pub struct State {
+    transform: Transform2DF32,
     font_collection: Arc<FontCollection>,
     font_size: f32,
     fill_paint: Paint,
     stroke_paint: Paint,
-    line_width: f32,
+    stroke_style: StrokeStyle,
+    global_alpha: f32,
 }
 
 impl State {
     fn default(default_font_collection: Arc<FontCollection>) -> State {
         State {
+            transform: Transform2DF32::default(),
             font_collection: default_font_collection,
             font_size: DEFAULT_FONT_SIZE,
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
-            line_width: 1.0,
+            stroke_style: StrokeStyle::default(),
+            global_alpha: 1.0,
         }
+    }
+
+    fn resolve_paint(&self, mut paint: Paint) -> Paint {
+        paint.color.a = (paint.color.a as f32 * self.global_alpha).round() as u8;
+        paint
     }
 }
 
@@ -196,7 +261,7 @@ pub struct Path2D {
     current_contour: Contour,
 }
 
-// TODO(pcwalton): `arc`, `ellipse`
+// TODO(pcwalton): `ellipse`
 impl Path2D {
     #[inline]
     pub fn new() -> Path2D {
@@ -228,6 +293,11 @@ impl Path2D {
     #[inline]
     pub fn bezier_curve_to(&mut self, ctrl0: Point2DF32, ctrl1: Point2DF32, to: Point2DF32) {
         self.current_contour.push_cubic(ctrl0, ctrl1, to);
+    }
+
+    #[inline]
+    pub fn arc(&mut self, center: Point2DF32, radius: f32, start_angle: f32, end_angle: f32) {
+        self.current_contour.push_arc(center, radius, start_angle, end_angle);
     }
 
     pub fn rect(&mut self, rect: RectF32) {

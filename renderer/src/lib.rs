@@ -17,6 +17,7 @@ pub mod concurrent;
 pub mod gpu;
 pub mod gpu_data;
 pub mod options;
+pub mod paint;
 pub mod post;
 pub mod scene;
 

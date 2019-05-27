@@ -21,6 +21,7 @@ use pathfinder_renderer::options::RenderOptions;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
+use std::f32::consts::PI;
 use std::f32;
 
 const VELOCITY: f32 = 0.02;
@@ -84,7 +85,7 @@ fn main() {
 
 struct MoireRenderer {
     renderer: Renderer<GLDevice>,
-    scene: Option<SceneProxy>,
+    scene: SceneProxy,
     frame: i32,
     window_size: Point2DI32,
     drawable_size: Point2DI32,
@@ -97,7 +98,7 @@ impl MoireRenderer {
            -> MoireRenderer {
         MoireRenderer {
             renderer,
-            scene: None,
+            scene: SceneProxy::new(RayonExecutor),
             frame: 0,
             window_size,
             drawable_size,
@@ -130,46 +131,27 @@ impl MoireRenderer {
         let mut canvas = CanvasRenderingContext2D::new(self.drawable_size.to_f32());
         canvas.set_line_width(CIRCLE_THICKNESS * self.device_pixel_ratio);
         canvas.set_stroke_style(FillStyle::Color(foreground_color.to_u8()));
+        canvas.set_global_alpha(0.75);
 
         // Draw circles.
         self.draw_circles(&mut canvas, outer_center);
         self.draw_circles(&mut canvas, inner_center);
 
-        // Build scene if necessary.
-        // TODO(pcwalton): Allow the user to build an empty scene proxy so they don't have to do this.
-        match self.scene {
-            None => self.scene = Some(SceneProxy::new(canvas.into_scene(), RayonExecutor)),
-            Some(ref mut scene) => scene.replace_scene(canvas.into_scene()),
-        }
-
-        // Render the scene.
-        self.scene.as_mut().unwrap().build_and_render(&mut self.renderer,   
-                                                      RenderOptions::default());
+        // Build and render scene.
+        self.scene.replace_scene(canvas.into_scene());
+        self.scene.build_and_render(&mut self.renderer, RenderOptions::default());
 
         self.frame += 1;
     }
 
     fn draw_circles(&self, canvas: &mut CanvasRenderingContext2D, center: Point2DF32) {
+        let center = center.scale(self.device_pixel_ratio);
         for index in 0..CIRCLE_COUNT {
+            let radius = (index + 1) as f32 * CIRCLE_SPACING * self.device_pixel_ratio;
             let mut path = Path2D::new();
-            self.add_circle_subpath(&mut path,
-                                    center.scale(self.device_pixel_ratio),
-                                    index as f32 * CIRCLE_SPACING * self.device_pixel_ratio);
+            path.arc(center, radius, 0.0, PI * 2.0);
             canvas.stroke_path(path);
         }
-    }
-
-    fn add_circle_subpath(&self, path: &mut Path2D, center: Point2DF32, radius: f32) {
-        path.move_to(center + Point2DF32::new(0.0, -radius));
-        path.quadratic_curve_to(center + Point2DF32::new(radius, -radius),
-                                center + Point2DF32::new(radius, 0.0));
-        path.quadratic_curve_to(center + Point2DF32::new(radius, radius),
-                                center + Point2DF32::new(0.0, radius));
-        path.quadratic_curve_to(center + Point2DF32::new(-radius, radius),
-                                center + Point2DF32::new(-radius, 0.0));
-        path.quadratic_curve_to(center + Point2DF32::new(-radius, -radius),
-                                center + Point2DF32::new(0.0, -radius));
-        path.close_path();
     }
 }
 
