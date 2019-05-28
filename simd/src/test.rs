@@ -385,3 +385,12 @@ fn test_i32x4_packed_comparisons() {
     let b = I32x4::new(-59, 1, 5, 104);
     assert_eq!(a.packed_eq(b), U32x4::new(0, !0, !0, 0));
 }
+
+#[test]
+fn test_i32x4_swizzles() {
+    let a = I32x4::new(1, 2, 3, 4);
+    assert_eq!(a.xyxy(), I32x4::new(1, 2, 1, 2));
+    assert_eq!(a.xwzy(), I32x4::new(1, 4, 3, 2));
+    assert_eq!(a.zyxw(), I32x4::new(3, 2, 1, 4));
+    assert_eq!(a.zwxy(), I32x4::new(3, 4, 1, 2));
+}
