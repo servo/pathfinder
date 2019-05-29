@@ -51,7 +51,7 @@ impl<'a> OutlineStrokeToFill<'a> {
         OutlineStrokeToFill { input, output: Outline::new(), style }
     }
 
-    pub fn offset(&mut self) -> &mut OutlineStrokeToFill<'a> {
+    pub fn offset(&mut self) {
         let mut new_contours = vec![];
         for input in &self.input.contours {
             let closed = input.closed;
@@ -84,8 +84,6 @@ impl<'a> OutlineStrokeToFill<'a> {
 
         self.output.contours = new_contours;
         self.output.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
-
-        self
     }
 
     #[inline]
