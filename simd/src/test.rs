@@ -9,6 +9,7 @@
 // except according to those terms.
 
 use crate::default::{F32x4, I32x4, U32x4};
+use crate::scalar::F32x4 as F32x4S;
 
 // F32x4
 
@@ -649,4 +650,27 @@ fn test_i32x4_swizzles() {
     assert_eq!(a.xwww(), I32x4::new(1, 4, 4, 4));
     assert_eq!(a.ywww(), I32x4::new(2, 4, 4, 4));
     assert_eq!(a.zwww(), I32x4::new(3, 4, 4, 4));
+}
+
+// Scalar F32x4
+
+#[test]
+fn test_f32x4s_constructors() {
+    let a = F32x4S::new(1.0, 2.0, 3.0, 4.0);
+    assert_eq!((a[0], a[1], a[2], a[3]), (1.0, 2.0, 3.0, 4.0));
+    let b = F32x4S::splat(10.0);
+    assert_eq!(b, F32x4S::new(10.0, 10.0, 10.0, 10.0));
+}
+
+#[test]
+fn test_f32x4s_basic_ops() {
+    let a = F32x4S::new(1.0, 3.0, 5.0, 7.0);
+    let b = F32x4S::new(2.0, 2.0, 6.0, 6.0);
+    assert_eq!(a.min(b), F32x4S::new(1.0, 2.0, 5.0, 6.0));
+    assert_eq!(a.max(b), F32x4S::new(2.0, 3.0, 6.0, 7.0));
+    let c = F32x4S::new(-1.0, 1.3, -20.0, 3.6);
+    assert_eq!(c.abs(), F32x4S::new(1.0, 1.3, 20.0, 3.6));
+    assert_eq!(c.floor(), F32x4S::new(-1.0, 1.0, -20.0, 3.0));
+    assert_eq!(c.ceil(), F32x4S::new(-1.0, 2.0, -20.0, 4.0));
+    assert_eq!(c.round(), F32x4S::new(-1.0, 1.0, -20.0, 4.0));
 }
