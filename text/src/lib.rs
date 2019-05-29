@@ -70,9 +70,9 @@ impl SceneExt for Scene {
         let mut outline = outline_builder.build();
 
         if let TextRenderMode::Stroke(stroke_style) = render_mode {
-            let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_style);
+            let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);
             stroke_to_fill.offset();
-            outline = stroke_to_fill.outline;
+            outline = stroke_to_fill.into_outline();
         }
 
         self.push_path(PathObject::new(outline, paint_id, String::new()));

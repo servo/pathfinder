@@ -16,13 +16,13 @@ use crate::basic::rect::RectF32;
 use crate::outline::{Contour, Outline};
 use crate::segment::Segment;
 use std::f32;
-use std::mem;
 
 const TOLERANCE: f32 = 0.01;
 
-pub struct OutlineStrokeToFill {
-    pub outline: Outline,
-    pub style: StrokeStyle,
+pub struct OutlineStrokeToFill<'a> {
+    input: &'a Outline,
+    output: Outline,
+    style: StrokeStyle,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -45,15 +45,15 @@ pub enum LineJoin {
     Bevel,
 }
 
-impl OutlineStrokeToFill {
+impl<'a> OutlineStrokeToFill<'a> {
     #[inline]
-    pub fn new(outline: Outline, style: StrokeStyle) -> OutlineStrokeToFill {
-        OutlineStrokeToFill { outline, style }
+    pub fn new(input: &Outline, style: StrokeStyle) -> OutlineStrokeToFill {
+        OutlineStrokeToFill { input, output: Outline::new(), style }
     }
 
-    pub fn offset(&mut self) {
+    pub fn offset(&mut self) -> &mut OutlineStrokeToFill<'a> {
         let mut new_contours = vec![];
-        for input in mem::replace(&mut self.outline.contours, vec![]) {
+        for input in &self.input.contours {
             let closed = input.closed;
             let mut stroker = ContourStrokeToFill::new(input,
                                                        Contour::new(),
@@ -82,8 +82,15 @@ impl OutlineStrokeToFill {
         let mut new_bounds = None;
         new_contours.iter().for_each(|contour| contour.update_bounds(&mut new_bounds));
 
-        self.outline.contours = new_contours;
-        self.outline.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
+        self.output.contours = new_contours;
+        self.output.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
+
+        self
+    }
+
+    #[inline]
+    pub fn into_outline(self) -> Outline {
+        self.output
     }
 
     fn push_stroked_contour(&mut self,
@@ -131,16 +138,16 @@ impl OutlineStrokeToFill {
     }
 }
 
-struct ContourStrokeToFill {
-    input: Contour,
+struct ContourStrokeToFill<'a> {
+    input: &'a Contour,
     output: Contour,
     radius: f32,
     join: LineJoin,
 }
 
-impl ContourStrokeToFill {
+impl<'a> ContourStrokeToFill<'a> {
     #[inline]
-    fn new(input: Contour, output: Contour, radius: f32, join: LineJoin) -> ContourStrokeToFill {
+    fn new(input: &Contour, output: Contour, radius: f32, join: LineJoin) -> ContourStrokeToFill {
         ContourStrokeToFill { input, output, radius, join }
     }
 

@@ -145,9 +145,9 @@ impl BuiltSVG {
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
                     let outline = Outline::from_segments(path);
 
-                    let mut stroke_to_fill = OutlineStrokeToFill::new(outline, stroke_style);
+                    let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);
                     stroke_to_fill.offset();
-                    let mut outline = stroke_to_fill.outline;
+                    let mut outline = stroke_to_fill.into_outline();
                     outline.transform(&transform);
 
                     let name = format!("Stroke({})", node.id());

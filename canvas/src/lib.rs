@@ -175,10 +175,12 @@ impl CanvasRenderingContext2D {
         let mut stroke_style = self.current_state.stroke_style;
         stroke_style.line_width = f32::max(stroke_style.line_width, HAIRLINE_STROKE_WIDTH);
 
-        let mut stroke_to_fill = OutlineStrokeToFill::new(path.into_outline(), stroke_style);
+        let outline = path.into_outline();
+        let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);
         stroke_to_fill.offset();
-        stroke_to_fill.outline.transform(&self.current_state.transform);
-        self.scene.push_path(PathObject::new(stroke_to_fill.outline, paint_id, String::new()))
+        let mut outline = stroke_to_fill.into_outline();
+        outline.transform(&self.current_state.transform);
+        self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
     }
 
     // Transformations
