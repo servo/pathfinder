@@ -80,13 +80,11 @@ pub trait Device {
     fn clear(&self, params: &ClearParams);
     fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
     fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
-    fn draw_arrays_instanced(
-        &self,
-        primitive: Primitive,
-        index_count: u32,
-        instance_count: u32,
-        render_state: &RenderState,
-    );
+    fn draw_elements_instanced(&self,
+                               primitive: Primitive,
+                               index_count: u32,
+                               instance_count: u32,
+                               render_state: &RenderState);
     fn create_timer_query(&self) -> Self::TimerQuery;
     fn begin_timer_query(&self, query: &Self::TimerQuery);
     fn end_timer_query(&self, query: &Self::TimerQuery);
@@ -198,7 +196,6 @@ pub enum UniformData {
 #[derive(Clone, Copy)]
 pub enum Primitive {
     Triangles,
-    TriangleFan,
     Lines,
 }
 

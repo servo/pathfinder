@@ -148,7 +148,8 @@ impl<W> DemoApp<W> where W: Window {
         let ground_program = GroundProgram::new(&renderer.device, resources);
         let ground_vertex_array = GroundVertexArray::new(&renderer.device,
                                                          &ground_program,
-                                                         &renderer.quad_vertex_positions_buffer());
+                                                         &renderer.quad_vertex_positions_buffer(),
+                                                         &renderer.quad_vertex_indices_buffer());
 
         let mut ui_model = DemoUIModel::new(&options);
 

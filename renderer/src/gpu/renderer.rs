@@ -31,6 +31,7 @@ use std::time::Duration;
 use std::u32;
 
 static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
+static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
 // FIXME(pcwalton): Shrink this again!
 const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
@@ -63,6 +64,7 @@ where
     alpha_monochrome_tile_vertex_array: AlphaTileVertexArray<D>,
     area_lut_texture: D::Texture,
     quad_vertex_positions_buffer: D::Buffer,
+    quad_vertex_indices_buffer: D::Buffer,
     fill_vertex_array: FillVertexArray<D>,
     mask_framebuffer: D::Framebuffer,
     paint_texture: Option<D::Texture>,
@@ -127,39 +129,56 @@ where
             BufferTarget::Vertex,
             BufferUploadMode::Static,
         );
+        let quad_vertex_indices_buffer = device.create_buffer();
+        device.allocate_buffer(
+            &quad_vertex_indices_buffer,
+            BufferData::Memory(&QUAD_VERTEX_INDICES),
+            BufferTarget::Index,
+            BufferUploadMode::Static,
+        );
 
-        let fill_vertex_array =
-            FillVertexArray::new(&device, &fill_program, &quad_vertex_positions_buffer);
+        let fill_vertex_array = FillVertexArray::new(
+            &device,
+            &fill_program,
+            &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
+        );
         let alpha_multicolor_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_multicolor_tile_program.alpha_tile_program,
             &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
         );
         let solid_multicolor_tile_vertex_array = SolidTileVertexArray::new(
             &device,
             &solid_multicolor_tile_program.solid_tile_program,
             &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
         );
         let alpha_monochrome_tile_vertex_array = AlphaTileVertexArray::new(
             &device,
             &alpha_monochrome_tile_program.alpha_tile_program,
             &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
         );
         let solid_monochrome_tile_vertex_array = SolidTileVertexArray::new(
             &device,
             &solid_monochrome_tile_program.solid_tile_program,
             &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
         );
         let postprocess_vertex_array = PostprocessVertexArray::new(
             &device,
             &postprocess_program,
             &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
         );
         let stencil_vertex_array = StencilVertexArray::new(&device, &stencil_program);
         let reprojection_vertex_array = ReprojectionVertexArray::new(
             &device,
             &reprojection_program,
             &quad_vertex_positions_buffer,
+            &quad_vertex_indices_buffer,
         );
 
         let mask_framebuffer_size =
@@ -186,6 +205,7 @@ where
             alpha_multicolor_tile_vertex_array,
             area_lut_texture,
             quad_vertex_positions_buffer,
+            quad_vertex_indices_buffer,
             fill_vertex_array,
             mask_framebuffer,
             paint_texture: None,
@@ -338,6 +358,11 @@ where
         &self.quad_vertex_positions_buffer
     }
 
+    #[inline]
+    pub fn quad_vertex_indices_buffer(&self) -> &D::Buffer {
+        &self.quad_vertex_indices_buffer
+    }
+
     fn upload_paint_data(&mut self, paint_data: &PaintData) {
         match self.paint_texture {
             Some(ref paint_texture) if
@@ -446,9 +471,9 @@ where
             ..RenderState::default()
         };
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
-        self.device.draw_arrays_instanced(
-            Primitive::TriangleFan,
-            4,
+        self.device.draw_elements_instanced(
+            Primitive::Triangles,
+            6,
             self.buffered_fills.len() as u32,
             &render_state,
         );
@@ -523,8 +548,7 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device
-            .draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
+        self.device.draw_elements_instanced(Primitive::Triangles, 6, count, &render_state);
     }
 
     fn draw_solid_tiles(&mut self, count: u32) {
@@ -585,8 +609,7 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device
-            .draw_arrays_instanced(Primitive::TriangleFan, 4, count, &render_state);
+        self.device.draw_elements_instanced(Primitive::Triangles, 6, count, &render_state);
     }
 
     fn postprocess(&mut self) {
@@ -661,8 +684,7 @@ where
             &self.postprocess_program.gamma_correction_enabled_uniform,
             UniformData::Int(gamma_correction_enabled as i32),
         );
-        self.device
-            .draw_arrays(Primitive::TriangleFan, 4, &RenderState::default());
+        self.device.draw_arrays(Primitive::Triangles, 4, &RenderState::default());
     }
 
     fn solid_tile_program(&self) -> &SolidTileProgram<D> {
@@ -700,14 +722,27 @@ where
             BufferTarget::Vertex,
             BufferUploadMode::Dynamic,
         );
+
+        // Create indices for a triangle fan. (This is OK because the clipped quad should always be
+        // convex.)
+        let mut indices: Vec<u32> = vec![];
+        for index in 1..(quad_positions.len() as u32 - 1) {
+            indices.extend_from_slice(&[0, index as u32, index + 1]);
+        }
+        self.device.allocate_buffer(
+            &self.stencil_vertex_array.index_buffer,
+            BufferData::Memory(&indices),
+            BufferTarget::Index,
+            BufferUploadMode::Dynamic,
+        );
+
         self.bind_draw_framebuffer();
 
-        self.device
-            .bind_vertex_array(&self.stencil_vertex_array.vertex_array);
+        self.device.bind_vertex_array(&self.stencil_vertex_array.vertex_array);
         self.device.use_program(&self.stencil_program.program);
-        self.device.draw_arrays(
-            Primitive::TriangleFan,
-            4,
+        self.device.draw_elements(
+            Primitive::Triangles,
+            indices.len() as u32,
             &RenderState {
                 // FIXME(pcwalton): Should we really write to the depth buffer?
                 depth: Some(DepthState {
@@ -734,8 +769,7 @@ where
     ) {
         self.bind_draw_framebuffer();
 
-        self.device
-            .bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
+        self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
         self.device.use_program(&self.reprojection_program.program);
         self.device.set_uniform(
             &self.reprojection_program.old_transform_uniform,
@@ -750,9 +784,9 @@ where
             &self.reprojection_program.texture_uniform,
             UniformData::TextureUnit(0),
         );
-        self.device.draw_arrays(
-            Primitive::TriangleFan,
-            4,
+        self.device.draw_elements(
+            Primitive::Triangles,
+            6,
             &RenderState {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 depth: Some(DepthState {
@@ -896,6 +930,7 @@ where
         device: &D,
         fill_program: &FillProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
     ) -> FillVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
@@ -968,6 +1003,7 @@ where
             offset: 6,
             divisor: 1,
         });
+        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
 
         FillVertexArray { vertex_array, vertex_buffer }
     }
@@ -989,6 +1025,7 @@ where
         device: &D,
         alpha_tile_program: &AlphaTileProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
     ) -> AlphaTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
@@ -1045,6 +1082,7 @@ where
             offset: 8,
             divisor: 1,
         });
+        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
     }
@@ -1066,6 +1104,7 @@ where
         device: &D,
         solid_tile_program: &SolidTileProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
     ) -> SolidTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
@@ -1104,6 +1143,7 @@ where
             offset: 4,
             divisor: 1,
         });
+        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }
     }
@@ -1366,6 +1406,7 @@ where
         device: &D,
         postprocess_program: &PostprocessProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
     ) -> PostprocessVertexArray<D> {
         let vertex_array = device.create_vertex_array();
         let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position");
@@ -1381,6 +1422,7 @@ where
             offset: 0,
             divisor: 0,
         });
+        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
 
         PostprocessVertexArray { vertex_array }
     }
@@ -1409,6 +1451,7 @@ where
 {
     vertex_array: D::VertexArray,
     vertex_buffer: D::Buffer,
+    index_buffer: D::Buffer,
 }
 
 impl<D> StencilVertexArray<D>
@@ -1416,7 +1459,8 @@ where
     D: Device,
 {
     fn new(device: &D, stencil_program: &StencilProgram<D>) -> StencilVertexArray<D> {
-        let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
+        let vertex_array = device.create_vertex_array();
+        let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
 
         let position_attr = device.get_vertex_attr(&stencil_program.program, "Position");
 
@@ -1431,8 +1475,9 @@ where
             offset: 0,
             divisor: 0,
         });
+        device.bind_buffer(&index_buffer, BufferTarget::Index);
 
-        StencilVertexArray { vertex_array, vertex_buffer }
+        StencilVertexArray { vertex_array, vertex_buffer, index_buffer }
     }
 }
 
@@ -1480,6 +1525,7 @@ where
         device: &D,
         reprojection_program: &ReprojectionProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
     ) -> ReprojectionVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
@@ -1496,6 +1542,7 @@ where
             offset: 0,
             divisor: 0,
         });
+        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
 
         ReprojectionVertexArray { vertex_array }
     }

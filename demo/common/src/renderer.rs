@@ -248,9 +248,9 @@ impl<W> DemoApp<W> where W: Window {
         );
         device.set_uniform(&self.ground_program.gridline_count_uniform,
                            UniformData::Int(GRIDLINE_COUNT));
-        device.draw_arrays(
-            Primitive::TriangleFan,
-            4,
+        device.draw_elements(
+            Primitive::Triangles,
+            6,
             &RenderState {
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
                 ..RenderState::default()

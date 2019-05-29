@@ -550,17 +550,18 @@ impl Device for GLDevice {
         self.reset_render_state(render_state);
     }
 
-    fn draw_arrays_instanced(&self,
-                             primitive: Primitive,
-                             index_count: u32,
-                             instance_count: u32,
-                             render_state: &RenderState) {
+    fn draw_elements_instanced(&self,
+                               primitive: Primitive,
+                               index_count: u32,
+                               instance_count: u32,
+                               render_state: &RenderState) {
         self.set_render_state(render_state);
         unsafe {
-            gl::DrawArraysInstanced(primitive.to_gl_primitive(),
-                                    0,
-                                    index_count as GLsizei,
-                                    instance_count as GLsizei); ck();
+            gl::DrawElementsInstanced(primitive.to_gl_primitive(),
+                                      index_count as GLsizei,
+                                      gl::UNSIGNED_INT,
+                                      ptr::null(),
+                                      instance_count as GLsizei); ck();
         }
         self.reset_render_state(render_state);
     }
@@ -861,7 +862,6 @@ impl PrimitiveExt for Primitive {
     fn to_gl_primitive(self) -> GLuint {
         match self {
             Primitive::Triangles => gl::TRIANGLES,
-            Primitive::TriangleFan => gl::TRIANGLE_FAN,
             Primitive::Lines => gl::LINES,
         }
     }

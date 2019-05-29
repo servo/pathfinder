@@ -59,6 +59,7 @@ where
         device: &D,
         ground_program: &GroundProgram<D>,
         quad_vertex_positions_buffer: &D::Buffer,
+        quad_vertex_indices_buffer: &D::Buffer,
     ) -> GroundVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
@@ -75,6 +76,7 @@ where
             offset: 0,
             divisor: 0,
         });
+        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
 
         GroundVertexArray { vertex_array }
     }
