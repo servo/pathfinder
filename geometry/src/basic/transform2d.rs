@@ -15,6 +15,7 @@ use crate::basic::point::Point2DF32;
 use crate::basic::rect::RectF32;
 use crate::basic::transform3d::Transform3DF32;
 use crate::segment::Segment;
+use crate::unit_vector::UnitVector;
 use pathfinder_simd::default::F32x4;
 use std::ops::Sub;
 
@@ -37,8 +38,12 @@ impl Matrix2x2F32 {
 
     #[inline]
     pub fn from_rotation(theta: f32) -> Matrix2x2F32 {
-        let (sin_theta, cos_theta) = (theta.sin(), theta.cos());
-        Matrix2x2F32(F32x4::new(cos_theta, sin_theta, -sin_theta, cos_theta))
+        Matrix2x2F32::from_rotation_vector(UnitVector::from_angle(theta))
+    }
+
+    #[inline]
+    pub fn from_rotation_vector(vector: UnitVector) -> Matrix2x2F32 {
+        Matrix2x2F32((vector.0).0.xyyx() * F32x4::new(1.0, 1.0, -1.0, 1.0))
     }
 
     #[inline]
@@ -136,6 +141,14 @@ impl Transform2DF32 {
     pub fn from_rotation(theta: f32) -> Transform2DF32 {
         Transform2DF32 {
             matrix: Matrix2x2F32::from_rotation(theta),
+            vector: Point2DF32::default(),
+        }
+    }
+
+    #[inline]
+    pub fn from_rotation_vector(vector: UnitVector) -> Transform2DF32 {
+        Transform2DF32 {
+            matrix: Matrix2x2F32::from_rotation_vector(vector),
             vector: Point2DF32::default(),
         }
     }

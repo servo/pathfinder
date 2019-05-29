@@ -88,6 +88,11 @@ impl LineSegmentF32 {
     }
 
     #[inline]
+    pub fn translate(&self, offset: Point2DF32) -> LineSegmentF32 {
+        LineSegmentF32(self.0 + offset.0.xyxy())
+    }
+
+    #[inline]
     pub fn scale(&self, factor: f32) -> LineSegmentF32 {
         LineSegmentF32(self.0 * F32x4::splat(factor))
     }

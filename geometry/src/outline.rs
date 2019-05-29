@@ -19,11 +19,10 @@ use crate::clip::{self, ContourPolygonClipper, ContourRectClipper};
 use crate::dilation::ContourDilator;
 use crate::orientation::Orientation;
 use crate::segment::{Segment, SegmentFlags, SegmentKind};
-use std::f32::consts::{FRAC_PI_2, PI};
+use crate::unit_vector::UnitVector;
+use std::f32::consts::PI;
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-
-const TWO_PI: f32 = PI * 2.0;
 
 #[derive(Clone)]
 pub struct Outline {
@@ -369,33 +368,44 @@ impl Contour {
         self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
     }
 
-    pub fn push_arc(&mut self,
-                    center: Point2DF32,
-                    radius: f32,
-                    mut start_angle: f32,
-                    mut end_angle: f32) {
-        start_angle %= TWO_PI;
-        end_angle %= TWO_PI;
-        if end_angle <= start_angle {
-            end_angle += TWO_PI;
-        }
+    pub fn push_arc(&mut self, center: Point2DF32, radius: f32, start_angle: f32, end_angle: f32) {
+        let start = Point2DF32::new(f32::cos(start_angle), f32::sin(start_angle)).scale(radius);
+        let end = Point2DF32::new(f32::cos(end_angle), f32::sin(end_angle)).scale(radius);
+        let chord = LineSegmentF32::new(start, end).translate(center);
+        let full_circle = end_angle - start_angle >= PI * 2.0;
+        self.push_arc_from_chord_full(center, chord, full_circle);
+    }
+
+    #[inline]
+    pub fn push_arc_from_chord(&mut self, center: Point2DF32, chord: LineSegmentF32) {
+        self.push_arc_from_chord_full(center, chord, false);
+    }
+
+    fn push_arc_from_chord_full(&mut self,
+                                center: Point2DF32,
+                                mut chord: LineSegmentF32,
+                                full_circle: bool) {
+        chord = chord.translate(-center);
+        let radius = chord.from().length();
+        chord = chord.scale(radius.recip());
+        let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
 
         let scale = Transform2DF32::from_scale(Point2DF32::splat(radius));
         let translation = Transform2DF32::from_translation(center);
 
-        let (mut angle, mut first_segment) = (start_angle, true);
-        while angle < end_angle {
-            let sweep_angle = f32::min(FRAC_PI_2, end_angle - angle);
-            let mut segment = Segment::arc(sweep_angle);
-            let rotation = Transform2DF32::from_rotation(sweep_angle * 0.5 + angle);
-            segment = segment.transform(&scale.post_mul(&rotation).post_mul(&translation));
+        let mut first_segment = true;
+        loop {
+            let mut sweep_vector = end_vector.rev_rotate_by(vector);
+            let last = !(full_circle && first_segment) &&
+                sweep_vector.0.x() >= -EPSILON && sweep_vector.0.y() >= -EPSILON;
+            if !last {
+                sweep_vector = UnitVector(Point2DF32::new(0.0, 1.0));
+            }
 
-            debug!("angle={} start_angle={} end_angle={} sweep_angle={} segment={:?}",
-                   angle,
-                   start_angle,
-                   end_angle,
-                   sweep_angle,
-                   segment);
+            let mut segment = Segment::arc_from_cos(sweep_vector.0.x());
+            let rotation =
+                Transform2DF32::from_rotation_vector(sweep_vector.halve_angle().rotate_by(vector));
+            segment = segment.transform(&scale.post_mul(&rotation).post_mul(&translation));
 
             if first_segment {
                 self.push_full_segment(&segment, true);
@@ -404,8 +414,14 @@ impl Contour {
                 self.push_segment(segment, true);
             }
 
-            angle += sweep_angle;
+            if last {
+                break;
+            }
+
+            vector = sweep_vector.rotate_by(vector);
         }
+
+        const EPSILON: f32 = 0.001;
     }
 
     #[inline]

@@ -15,7 +15,6 @@ use crate::basic::point::Point2DF32;
 use crate::basic::rect::RectF32;
 use crate::outline::{Contour, Outline};
 use crate::segment::Segment;
-use std::f32::consts::FRAC_PI_2;
 use std::f32;
 use std::mem;
 
@@ -124,10 +123,9 @@ impl OutlineStrokeToFill {
                 contour.push_endpoint(p4);
             }
             LineCap::Round => {
-                // FIXME(pcwalton): Should we really be using angles here at all?
-                let offset = gradient.yx().scale_xy(Point2DF32::new(-width * 0.5, width * 0.5));
-                let angle = f32::atan2(gradient.y(), gradient.x());
-                contour.push_arc(p1 + offset, width * 0.5, angle - FRAC_PI_2, angle + FRAC_PI_2);
+                let offset = gradient.yx().scale_xy(Point2DF32::new(-width, width));
+                let chord = LineSegmentF32::new(p1, p1 + offset);
+                contour.push_arc_from_chord(p1 + offset.scale(0.5), chord);
             }
         }
     }

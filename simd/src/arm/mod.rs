@@ -76,6 +76,11 @@ impl F32x4 {
         unsafe { F32x4(round_v4f32(self.0)) }
     }
 
+    #[inline]
+    pub fn sqrt(self) -> F32x4 {
+        unsafe { F32x4(sqrt_v4f32(self.0)) }
+    }
+
     // Packed comparisons
 
     #[inline]
@@ -414,6 +419,8 @@ extern "C" {
     fn ceil_v4f32(a: float32x4_t) -> float32x4_t;
     #[link_name = "llvm.round.v4f32"]
     fn round_v4f32(a: float32x4_t) -> float32x4_t;
+    #[link_name = "llvm.sqrt.v4f32"]
+    fn sqrt_v4f32(a: float32x4_t) -> float32x4_t;
 
     #[link_name = "llvm.aarch64.neon.frecpe.v4f32"]
     fn vrecpe_v4f32(a: float32x4_t) -> float32x4_t;

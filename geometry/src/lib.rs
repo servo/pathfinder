@@ -27,3 +27,4 @@ pub mod stroke;
 pub mod util;
 
 mod dilation;
+mod unit_vector;

@@ -99,6 +99,16 @@ impl F32x4 {
         ])
     }
 
+    #[inline]
+    pub fn sqrt(self) -> F32x4 {
+        F32x4([
+            self[0].sqrt(),
+            self[1].sqrt(),
+            self[2].sqrt(),
+            self[3].sqrt(),
+        ])
+    }
+
     // Packed comparisons
 
     #[inline]

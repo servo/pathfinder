@@ -70,14 +70,22 @@ impl Segment {
 
     /// Approximates an unit-length arc with a cubic Bézier curve.
     /// 
-    /// The maximum supported `sweep_angle` is π/2 (i.e. 90°).
+    /// The maximum supported sweep angle is π/2 (i.e. 90°).
     pub fn arc(sweep_angle: f32) -> Segment {
+        Segment::arc_from_cos(f32::cos(sweep_angle))
+    }
+
+    /// Approximates an unit-length arc with a cubic Bézier curve, given the cosine of the sweep
+    /// angle.
+    ///
+    /// The maximum supported sweep angle is π/2 (i.e. 90°).
+    pub fn arc_from_cos(cos_sweep_angle: f32) -> Segment {
         // Aleksas Riškus, "Approximation of a Cubic Bézier Curve by Circular Arcs and Vice Versa"
         // 2006.
         //
         // https://pdfs.semanticscholar.org/1639/0db1a470bd13fe428e0896671a9a5745070a.pdf
-        let phi = 0.5 * sweep_angle;
-        let p0 = Point2DF32::new(f32::cos(phi), f32::sin(phi));
+        let term = F32x4::new(cos_sweep_angle, -cos_sweep_angle, 0.0, 0.0);
+        let p0 = Point2DF32((F32x4::splat(0.5) * (F32x4::splat(1.0) + term)).sqrt());
         let p3 = p0.scale_xy(Point2DF32::new(1.0, -1.0));
         let p1 = p0 - p3.yx().scale(K);
         let p2 = p3 + p0.yx().scale(K);

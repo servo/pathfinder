@@ -83,6 +83,11 @@ impl F32x4 {
         unsafe { F32x4(x86_64::_mm_round_ps(self.0, _MM_FROUND_TO_NEAREST_INT)) }
     }
 
+    #[inline]
+    pub fn sqrt(self) -> F32x4 {
+        unsafe { F32x4(x86_64::_mm_sqrt_ps(self.0)) }
+    }
+
     // Packed comparisons
 
     #[inline]
