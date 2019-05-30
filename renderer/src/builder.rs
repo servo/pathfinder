@@ -17,9 +17,9 @@ use crate::scene::Scene;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler};
 use crate::z_buffer::ZBuffer;
-use pathfinder_geometry::basic::line_segment::{LineSegmentF32, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
-use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::basic::line_segment::{LineSegmentF, LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
+use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -75,7 +75,7 @@ impl<'a> SceneBuilder<'a> {
     fn build_path(
         &self,
         path_index: usize,
-        view_box: RectF32,
+        view_box: RectF,
         built_options: &PreparedRenderOptions,
         scene: &Scene,
     ) -> Vec<AlphaTileBatchPrimitive> {
@@ -141,7 +141,7 @@ pub struct TileStats {
 // Utilities for built objects
 
 impl BuiltObject {
-    pub(crate) fn new(bounds: RectF32) -> BuiltObject {
+    pub(crate) fn new(bounds: RectF) -> BuiltObject {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(bounds);
         let tiles = DenseTileMap::new(tile_rect);
         BuiltObject {
@@ -153,15 +153,15 @@ impl BuiltObject {
     }
 
     #[inline]
-    pub(crate) fn tile_rect(&self) -> RectI32 {
+    pub(crate) fn tile_rect(&self) -> RectI {
         self.tiles.rect
     }
 
     fn add_fill(
         &mut self,
         builder: &SceneBuilder,
-        segment: &LineSegmentF32,
-        tile_coords: Point2DI32,
+        segment: &LineSegmentF,
+        tile_coords: Point2DI,
     ) {
         debug!("add_fill({:?} ({:?}))", segment, tile_coords);
 
@@ -214,7 +214,7 @@ impl BuiltObject {
     fn get_or_allocate_alpha_tile_index(
         &mut self,
         builder: &SceneBuilder,
-        tile_coords: Point2DI32,
+        tile_coords: Point2DI,
     ) -> u16 {
         let local_tile_index = self.tiles.coords_to_index_unchecked(tile_coords);
         let alpha_tile_index = self.tiles.data[local_tile_index].alpha_tile_index;
@@ -235,16 +235,16 @@ impl BuiltObject {
         left: f32,
         right: f32,
         mut winding: i32,
-        tile_coords: Point2DI32,
+        tile_coords: Point2DI,
     ) {
         let tile_origin_y = (tile_coords.y() * TILE_HEIGHT as i32) as f32;
-        let left = Point2DF32::new(left, tile_origin_y);
-        let right = Point2DF32::new(right, tile_origin_y);
+        let left = Point2DF::new(left, tile_origin_y);
+        let right = Point2DF::new(right, tile_origin_y);
 
         let segment = if winding < 0 {
-            LineSegmentF32::new(left, right)
+            LineSegmentF::new(left, right)
         } else {
-            LineSegmentF32::new(right, left)
+            LineSegmentF::new(right, left)
         };
 
         debug!(
@@ -268,7 +268,7 @@ impl BuiltObject {
     pub(crate) fn generate_fill_primitives_for_line(
         &mut self,
         builder: &SceneBuilder,
-        mut segment: LineSegmentF32,
+        mut segment: LineSegmentF,
         tile_y: i32,
     ) {
         debug!(
@@ -303,29 +303,29 @@ impl BuiltObject {
                 ((i32::from(subsegment_tile_x) + 1) * TILE_HEIGHT as i32) as f32;
             if subsegment_tile_right < segment_right {
                 let x = subsegment_tile_right;
-                let point = Point2DF32::new(x, segment.solve_y_for_x(x));
+                let point = Point2DF::new(x, segment.solve_y_for_x(x));
                 if !winding {
                     fill_to = point;
-                    segment = LineSegmentF32::new(point, segment.to());
+                    segment = LineSegmentF::new(point, segment.to());
                 } else {
                     fill_from = point;
-                    segment = LineSegmentF32::new(segment.from(), point);
+                    segment = LineSegmentF::new(segment.from(), point);
                 }
             }
 
-            let fill_segment = LineSegmentF32::new(fill_from, fill_to);
-            let fill_tile_coords = Point2DI32::new(subsegment_tile_x, tile_y);
+            let fill_segment = LineSegmentF::new(fill_from, fill_to);
+            let fill_tile_coords = Point2DI::new(subsegment_tile_x, tile_y);
             self.add_fill(builder, &fill_segment, fill_tile_coords);
         }
     }
 
     #[inline]
-    pub(crate) fn tile_coords_to_local_index(&self, coords: Point2DI32) -> Option<u32> {
+    pub(crate) fn tile_coords_to_local_index(&self, coords: Point2DI) -> Option<u32> {
         self.tiles.coords_to_index(coords).map(|index| index as u32)
     }
 
     #[inline]
-    pub(crate) fn local_tile_index_to_coords(&self, tile_index: u32) -> Point2DI32 {
+    pub(crate) fn local_tile_index_to_coords(&self, tile_index: u32) -> Point2DI {
         self.tiles.index_to_coords(tile_index as usize)
     }
 }

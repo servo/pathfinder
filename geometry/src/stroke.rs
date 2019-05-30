@@ -10,9 +10,9 @@
 
 //! Utilities for converting path strokes to fills.
 
-use crate::basic::line_segment::LineSegmentF32;
-use crate::basic::point::Point2DF32;
-use crate::basic::rect::RectF32;
+use crate::basic::line_segment::LineSegmentF;
+use crate::basic::point::Point2DF;
+use crate::basic::rect::RectF;
 use crate::outline::{Contour, Outline};
 use crate::segment::Segment;
 use std::f32;
@@ -84,7 +84,7 @@ impl<'a> OutlineStrokeToFill<'a> {
         new_contours.iter().for_each(|contour| contour.update_bounds(&mut new_bounds));
 
         self.output.contours = new_contours;
-        self.output.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
+        self.output.bounds = new_bounds.unwrap_or_else(|| RectF::default());
     }
 
     #[inline]
@@ -99,7 +99,7 @@ impl<'a> OutlineStrokeToFill<'a> {
         // Add join if necessary.
         if closed && stroker.output.needs_join(self.style.line_join) {
             let (p1, p0) = (stroker.output.position_of(1), stroker.output.position_of(0));
-            let final_segment = LineSegmentF32::new(p1, p0);
+            let final_segment = LineSegmentF::new(p1, p0);
             let join_point = stroker.input.position_of(0);
             stroker.output.add_join(self.style.line_join, join_point, &final_segment);
         }
@@ -123,7 +123,7 @@ impl<'a> OutlineStrokeToFill<'a> {
                 let offset = gradient.scale(width * 0.5);
 
                 let p2 = p1 + offset;
-                let p3 = p2 + gradient.yx().scale_xy(Point2DF32::new(-width, width));
+                let p3 = p2 + gradient.yx().scale_xy(Point2DF::new(-width, width));
                 let p4 = p3 - offset;
 
                 contour.push_endpoint(p2);
@@ -131,8 +131,8 @@ impl<'a> OutlineStrokeToFill<'a> {
                 contour.push_endpoint(p4);
             }
             LineCap::Round => {
-                let offset = gradient.yx().scale_xy(Point2DF32::new(-width, width));
-                let chord = LineSegmentF32::new(p1, p1 + offset);
+                let offset = gradient.yx().scale_xy(Point2DF::new(-width, width));
+                let chord = LineSegmentF::new(p1, p1 + offset);
                 contour.push_arc_from_chord(p1 + offset.scale(0.5), chord);
             }
         }
@@ -179,7 +179,7 @@ impl<'a> ContourStrokeToFill<'a> {
 
 trait Offset {
     fn offset(&self, distance: f32, join: LineJoin, contour: &mut Contour);
-    fn add_to_contour(&self, join: LineJoin, join_point: Point2DF32, contour: &mut Contour);
+    fn add_to_contour(&self, join: LineJoin, join_point: Point2DF, contour: &mut Contour);
     fn offset_once(&self, distance: f32) -> Self;
     fn error_is_within_tolerance(&self, other: &Segment, distance: f32) -> bool;
 }
@@ -207,7 +207,7 @@ impl Offset for Segment {
         after.offset(distance, join, contour);
     }
 
-    fn add_to_contour(&self, join: LineJoin, join_point: Point2DF32, contour: &mut Contour) {
+    fn add_to_contour(&self, join: LineJoin, join_point: Point2DF, contour: &mut Contour) {
         // Add join if necessary.
         if contour.needs_join(join) {
             let p3 = self.baseline.from();
@@ -219,7 +219,7 @@ impl Offset for Segment {
                 self.ctrl.from()
             };
 
-            contour.add_join(join, join_point, &LineSegmentF32::new(p4, p3));
+            contour.add_join(join, join_point, &LineSegmentF::new(p4, p3));
         }
 
         // Push segment.
@@ -232,51 +232,51 @@ impl Offset for Segment {
         }
 
         if self.is_quadratic() {
-            let mut segment_0 = LineSegmentF32::new(self.baseline.from(), self.ctrl.from());
-            let mut segment_1 = LineSegmentF32::new(self.ctrl.from(), self.baseline.to());
+            let mut segment_0 = LineSegmentF::new(self.baseline.from(), self.ctrl.from());
+            let mut segment_1 = LineSegmentF::new(self.ctrl.from(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF32::new(segment_0.from(), segment_1.to());
+            let baseline = LineSegmentF::new(segment_0.from(), segment_1.to());
             return Segment::quadratic(&baseline, ctrl);
         }
 
         debug_assert!(self.is_cubic());
 
         if self.baseline.from() == self.ctrl.from() {
-            let mut segment_0 = LineSegmentF32::new(self.baseline.from(), self.ctrl.to());
-            let mut segment_1 = LineSegmentF32::new(self.ctrl.to(), self.baseline.to());
+            let mut segment_0 = LineSegmentF::new(self.baseline.from(), self.ctrl.to());
+            let mut segment_1 = LineSegmentF::new(self.ctrl.to(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF32::new(segment_0.from(), segment_1.to());
-            let ctrl = LineSegmentF32::new(segment_0.from(), ctrl);
+            let baseline = LineSegmentF::new(segment_0.from(), segment_1.to());
+            let ctrl = LineSegmentF::new(segment_0.from(), ctrl);
             return Segment::cubic(&baseline, &ctrl);
         }
 
         if self.ctrl.to() == self.baseline.to() {
-            let mut segment_0 = LineSegmentF32::new(self.baseline.from(), self.ctrl.from());
-            let mut segment_1 = LineSegmentF32::new(self.ctrl.from(), self.baseline.to());
+            let mut segment_0 = LineSegmentF::new(self.baseline.from(), self.ctrl.from());
+            let mut segment_1 = LineSegmentF::new(self.ctrl.from(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF32::new(segment_0.from(), segment_1.to());
-            let ctrl = LineSegmentF32::new(ctrl, segment_1.to());
+            let baseline = LineSegmentF::new(segment_0.from(), segment_1.to());
+            let ctrl = LineSegmentF::new(ctrl, segment_1.to());
             return Segment::cubic(&baseline, &ctrl);
         }
 
-        let mut segment_0 = LineSegmentF32::new(self.baseline.from(), self.ctrl.from());
-        let mut segment_1 = LineSegmentF32::new(self.ctrl.from(), self.ctrl.to());
-        let mut segment_2 = LineSegmentF32::new(self.ctrl.to(), self.baseline.to());
+        let mut segment_0 = LineSegmentF::new(self.baseline.from(), self.ctrl.from());
+        let mut segment_1 = LineSegmentF::new(self.ctrl.from(), self.ctrl.to());
+        let mut segment_2 = LineSegmentF::new(self.ctrl.to(), self.baseline.to());
         segment_0 = segment_0.offset(distance);
         segment_1 = segment_1.offset(distance);
         segment_2 = segment_2.offset(distance);
@@ -290,8 +290,8 @@ impl Offset for Segment {
                 segment_1.to().lerp(segment_2.from(), 0.5),
             ),
         };
-        let baseline = LineSegmentF32::new(segment_0.from(), segment_2.to());
-        let ctrl = LineSegmentF32::new(ctrl_0, ctrl_1);
+        let baseline = LineSegmentF::new(segment_0.from(), segment_2.to());
+        let ctrl = LineSegmentF::new(ctrl_0, ctrl_1);
         Segment::cubic(&baseline, &ctrl)
     }
 
@@ -330,9 +330,9 @@ impl Contour {
         (join == LineJoin::Miter || join == LineJoin::Round) && self.len() >= 2
     }
 
-    fn add_join(&mut self, join: LineJoin, join_point: Point2DF32, next_tangent: &LineSegmentF32) {
+    fn add_join(&mut self, join: LineJoin, join_point: Point2DF, next_tangent: &LineSegmentF) {
         let (p0, p1) = (self.position_of_last(2), self.position_of_last(1));
-        let prev_tangent = LineSegmentF32::new(p0, p1);
+        let prev_tangent = LineSegmentF::new(p0, p1);
 
         match join {
             LineJoin::Bevel => {}
@@ -342,7 +342,7 @@ impl Contour {
                 }
             }
             LineJoin::Round => {
-                self.push_arc_from_chord(join_point, LineSegmentF32::new(prev_tangent.to(),
+                self.push_arc_from_chord(join_point, LineSegmentF::new(prev_tangent.to(),
                                                                          next_tangent.to()));
             }
         }

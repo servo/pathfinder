@@ -13,14 +13,14 @@
 use crate::options::BoundingQuad;
 use crate::tile_map::DenseTileMap;
 use pathfinder_geometry::basic::line_segment::{LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::rect::RectF;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
 
 #[derive(Debug)]
 pub(crate) struct BuiltObject {
-    pub bounds: RectF32,
+    pub bounds: RectF,
     pub fills: Vec<FillBatchPrimitive>,
     pub alpha_tiles: Vec<AlphaTileBatchPrimitive>,
     pub tiles: DenseTileMap<TileObjectPrimitive>,
@@ -38,7 +38,7 @@ pub enum RenderCommand {
 
 #[derive(Clone, Debug)]
 pub struct PaintData {
-    pub size: Point2DI32,
+    pub size: Point2DI,
     pub texels: Vec<u8>,
 }
 

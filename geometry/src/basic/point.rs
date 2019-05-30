@@ -15,22 +15,22 @@ use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 /// 2D points with 32-bit floating point coordinates.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Point2DF32(pub F32x4);
+pub struct Point2DF(pub F32x4);
 
-impl Point2DF32 {
+impl Point2DF {
     #[inline]
-    pub fn new(x: f32, y: f32) -> Point2DF32 {
-        Point2DF32(F32x4::new(x, y, 0.0, 0.0))
+    pub fn new(x: f32, y: f32) -> Point2DF {
+        Point2DF(F32x4::new(x, y, 0.0, 0.0))
     }
 
     #[inline]
-    pub fn splat(value: f32) -> Point2DF32 {
-        Point2DF32(F32x4::splat(value))
+    pub fn splat(value: f32) -> Point2DF {
+        Point2DF(F32x4::splat(value))
     }
 
     #[inline]
-    pub fn to_3d(self) -> Point3DF32 {
-        Point3DF32(self.0.concat_xy_xy(F32x4::new(0.0, 1.0, 0.0, 0.0)))
+    pub fn to_3d(self) -> Point3DF {
+        Point3DF(self.0.concat_xy_xy(F32x4::new(0.0, 1.0, 0.0, 0.0)))
     }
 
     #[inline]
@@ -54,49 +54,49 @@ impl Point2DF32 {
     }
 
     #[inline]
-    pub fn min(&self, other: Point2DF32) -> Point2DF32 {
-        Point2DF32(self.0.min(other.0))
+    pub fn min(&self, other: Point2DF) -> Point2DF {
+        Point2DF(self.0.min(other.0))
     }
 
     #[inline]
-    pub fn max(&self, other: Point2DF32) -> Point2DF32 {
-        Point2DF32(self.0.max(other.0))
+    pub fn max(&self, other: Point2DF) -> Point2DF {
+        Point2DF(self.0.max(other.0))
     }
 
     #[inline]
-    pub fn clamp(&self, min_val: Point2DF32, max_val: Point2DF32) -> Point2DF32 {
+    pub fn clamp(&self, min_val: Point2DF, max_val: Point2DF) -> Point2DF {
         self.max(min_val).min(max_val)
     }
 
     #[inline]
-    pub fn det(&self, other: Point2DF32) -> f32 {
+    pub fn det(&self, other: Point2DF) -> f32 {
         self.x() * other.y() - self.y() * other.x()
     }
 
     #[inline]
-    pub fn dot(&self, other: Point2DF32) -> f32 {
+    pub fn dot(&self, other: Point2DF) -> f32 {
         let xy = self.0 * other.0;
         xy.x() + xy.y()
     }
 
     #[inline]
-    pub fn scale(&self, x: f32) -> Point2DF32 {
-        Point2DF32(self.0 * F32x4::splat(x))
+    pub fn scale(&self, x: f32) -> Point2DF {
+        Point2DF(self.0 * F32x4::splat(x))
     }
 
     #[inline]
-    pub fn scale_xy(&self, factors: Point2DF32) -> Point2DF32 {
-        Point2DF32(self.0 * factors.0)
+    pub fn scale_xy(&self, factors: Point2DF) -> Point2DF {
+        Point2DF(self.0 * factors.0)
     }
 
     #[inline]
-    pub fn floor(&self) -> Point2DF32 {
-        Point2DF32(self.0.floor())
+    pub fn floor(&self) -> Point2DF {
+        Point2DF(self.0.floor())
     }
 
     #[inline]
-    pub fn ceil(&self) -> Point2DF32 {
-        Point2DF32(self.0.ceil())
+    pub fn ceil(&self) -> Point2DF {
+        Point2DF(self.0.ceil())
     }
 
     /// Treats this point as a vector and calculates its squared length.
@@ -114,85 +114,85 @@ impl Point2DF32 {
 
     /// Treats this point as a vector and normalizes it.
     #[inline]
-    pub fn normalize(&self) -> Point2DF32 {
+    pub fn normalize(&self) -> Point2DF {
         self.scale(1.0 / self.length())
     }
 
     /// Swaps y and x.
     #[inline]
-    pub fn yx(&self) -> Point2DF32 {
-        Point2DF32(self.0.yxwz())
+    pub fn yx(&self) -> Point2DF {
+        Point2DF(self.0.yxwz())
     }
 
     #[inline]
     pub fn is_zero(&self) -> bool {
-        *self == Point2DF32::default()
+        *self == Point2DF::default()
     }
 
     #[inline]
-    pub fn lerp(&self, other: Point2DF32, t: f32) -> Point2DF32 {
+    pub fn lerp(&self, other: Point2DF, t: f32) -> Point2DF {
         *self + (other - *self).scale(t)
     }
 
     #[inline]
-    pub fn to_i32(&self) -> Point2DI32 {
-        Point2DI32(self.0.to_i32x4())
+    pub fn to_i32(&self) -> Point2DI {
+        Point2DI(self.0.to_i32x4())
     }
 }
 
-impl PartialEq for Point2DF32 {
+impl PartialEq for Point2DF {
     #[inline]
-    fn eq(&self, other: &Point2DF32) -> bool {
+    fn eq(&self, other: &Point2DF) -> bool {
         let results = self.0.packed_eq(other.0);
         results[0] != 0 && results[1] != 0
     }
 }
 
-impl Add<Point2DF32> for Point2DF32 {
-    type Output = Point2DF32;
+impl Add<Point2DF> for Point2DF {
+    type Output = Point2DF;
     #[inline]
-    fn add(self, other: Point2DF32) -> Point2DF32 {
-        Point2DF32(self.0 + other.0)
+    fn add(self, other: Point2DF) -> Point2DF {
+        Point2DF(self.0 + other.0)
     }
 }
 
-impl Sub<Point2DF32> for Point2DF32 {
-    type Output = Point2DF32;
+impl Sub<Point2DF> for Point2DF {
+    type Output = Point2DF;
     #[inline]
-    fn sub(self, other: Point2DF32) -> Point2DF32 {
-        Point2DF32(self.0 - other.0)
+    fn sub(self, other: Point2DF) -> Point2DF {
+        Point2DF(self.0 - other.0)
     }
 }
 
-impl Mul<Point2DF32> for Point2DF32 {
-    type Output = Point2DF32;
+impl Mul<Point2DF> for Point2DF {
+    type Output = Point2DF;
     #[inline]
-    fn mul(self, other: Point2DF32) -> Point2DF32 {
-        Point2DF32(self.0 * other.0)
+    fn mul(self, other: Point2DF) -> Point2DF {
+        Point2DF(self.0 * other.0)
     }
 }
 
-impl Neg for Point2DF32 {
-    type Output = Point2DF32;
+impl Neg for Point2DF {
+    type Output = Point2DF;
     #[inline]
-    fn neg(self) -> Point2DF32 {
-        Point2DF32(-self.0)
+    fn neg(self) -> Point2DF {
+        Point2DF(-self.0)
     }
 }
 
 /// 2D points with 32-bit signed integer coordinates.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Point2DI32(pub I32x4);
+pub struct Point2DI(pub I32x4);
 
-impl Point2DI32 {
+impl Point2DI {
     #[inline]
-    pub fn new(x: i32, y: i32) -> Point2DI32 {
-        Point2DI32(I32x4::new(x, y, 0, 0))
+    pub fn new(x: i32, y: i32) -> Point2DI {
+        Point2DI(I32x4::new(x, y, 0, 0))
     }
 
     #[inline]
-    pub fn splat(value: i32) -> Point2DI32 {
-        Point2DI32(I32x4::splat(value))
+    pub fn splat(value: i32) -> Point2DI {
+        Point2DI(I32x4::splat(value))
     }
 
     #[inline]
@@ -216,47 +216,47 @@ impl Point2DI32 {
     }
 
     #[inline]
-    pub fn scale(&self, factor: i32) -> Point2DI32 {
-        Point2DI32(self.0 * I32x4::splat(factor))
+    pub fn scale(&self, factor: i32) -> Point2DI {
+        Point2DI(self.0 * I32x4::splat(factor))
     }
 
     #[inline]
-    pub fn scale_xy(&self, factors: Point2DI32) -> Point2DI32 {
-        Point2DI32(self.0 * factors.0)
+    pub fn scale_xy(&self, factors: Point2DI) -> Point2DI {
+        Point2DI(self.0 * factors.0)
     }
 
     #[inline]
-    pub fn to_f32(&self) -> Point2DF32 {
-        Point2DF32(self.0.to_f32x4())
-    }
-}
-
-impl Add<Point2DI32> for Point2DI32 {
-    type Output = Point2DI32;
-    #[inline]
-    fn add(self, other: Point2DI32) -> Point2DI32 {
-        Point2DI32(self.0 + other.0)
+    pub fn to_f32(&self) -> Point2DF {
+        Point2DF(self.0.to_f32x4())
     }
 }
 
-impl AddAssign<Point2DI32> for Point2DI32 {
+impl Add<Point2DI> for Point2DI {
+    type Output = Point2DI;
     #[inline]
-    fn add_assign(&mut self, other: Point2DI32) {
+    fn add(self, other: Point2DI) -> Point2DI {
+        Point2DI(self.0 + other.0)
+    }
+}
+
+impl AddAssign<Point2DI> for Point2DI {
+    #[inline]
+    fn add_assign(&mut self, other: Point2DI) {
         self.0 += other.0
     }
 }
 
-impl Sub<Point2DI32> for Point2DI32 {
-    type Output = Point2DI32;
+impl Sub<Point2DI> for Point2DI {
+    type Output = Point2DI;
     #[inline]
-    fn sub(self, other: Point2DI32) -> Point2DI32 {
-        Point2DI32(self.0 - other.0)
+    fn sub(self, other: Point2DI) -> Point2DI {
+        Point2DI(self.0 - other.0)
     }
 }
 
-impl PartialEq for Point2DI32 {
+impl PartialEq for Point2DI {
     #[inline]
-    fn eq(&self, other: &Point2DI32) -> bool {
+    fn eq(&self, other: &Point2DI) -> bool {
         let results = self.0.packed_eq(other.0);
         results[0] != 0 && results[1] != 0
     }
@@ -264,22 +264,22 @@ impl PartialEq for Point2DI32 {
 
 /// 3D homogeneous points.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Point3DF32(pub F32x4);
+pub struct Point3DF(pub F32x4);
 
-impl Point3DF32 {
+impl Point3DF {
     #[inline]
-    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Point3DF32 {
-        Point3DF32(F32x4::new(x, y, z, w))
+    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Point3DF {
+        Point3DF(F32x4::new(x, y, z, w))
     }
 
     #[inline]
-    pub fn splat(value: f32) -> Point3DF32 {
-        Point3DF32(F32x4::splat(value))
+    pub fn splat(value: f32) -> Point3DF {
+        Point3DF(F32x4::splat(value))
     }
 
     #[inline]
-    pub fn to_2d(self) -> Point2DF32 {
-        Point2DF32(self.0)
+    pub fn to_2d(self) -> Point2DF {
+        Point2DF(self.0)
     }
 
     #[inline]
@@ -303,10 +303,10 @@ impl Point3DF32 {
     }
 
     #[inline]
-    pub fn scale(&self, x: f32) -> Point3DF32 {
+    pub fn scale(&self, x: f32) -> Point3DF {
         let mut factors = F32x4::splat(x);
         factors[3] = 1.0;
-        Point3DF32(self.0 * factors)
+        Point3DF(self.0 * factors)
     }
 
     #[inline]
@@ -330,12 +330,12 @@ impl Point3DF32 {
     }
 
     #[inline]
-    pub fn perspective_divide(self) -> Point3DF32 {
-        Point3DF32(self.0 * F32x4::splat(1.0 / self.w()))
+    pub fn perspective_divide(self) -> Point3DF {
+        Point3DF(self.0 * F32x4::splat(1.0 / self.w()))
     }
 
     #[inline]
-    pub fn approx_eq(&self, other: &Point3DF32, epsilon: f32) -> bool {
+    pub fn approx_eq(&self, other: &Point3DF, epsilon: f32) -> bool {
         self.0.approx_eq(other.0, epsilon)
     }
 
@@ -349,39 +349,39 @@ impl Point3DF32 {
     }
 
     #[inline]
-    pub fn lerp(self, other: Point3DF32, t: f32) -> Point3DF32 {
-        Point3DF32(self.0 + (other.0 - self.0) * F32x4::splat(t))
+    pub fn lerp(self, other: Point3DF, t: f32) -> Point3DF {
+        Point3DF(self.0 + (other.0 - self.0) * F32x4::splat(t))
     }
 }
 
-impl Add<Point3DF32> for Point3DF32 {
-    type Output = Point3DF32;
+impl Add<Point3DF> for Point3DF {
+    type Output = Point3DF;
     #[inline]
-    fn add(self, other: Point3DF32) -> Point3DF32 {
-        Point3DF32(self.0 + other.0)
+    fn add(self, other: Point3DF) -> Point3DF {
+        Point3DF(self.0 + other.0)
     }
 }
 
-impl AddAssign for Point3DF32 {
+impl AddAssign for Point3DF {
     #[inline]
-    fn add_assign(&mut self, other: Point3DF32) {
+    fn add_assign(&mut self, other: Point3DF) {
         self.0 += other.0
     }
 }
 
-impl Mul<Point3DF32> for Point3DF32 {
-    type Output = Point3DF32;
+impl Mul<Point3DF> for Point3DF {
+    type Output = Point3DF;
     #[inline]
-    fn mul(self, other: Point3DF32) -> Point3DF32 {
-        Point3DF32(self.0 * other.0)
+    fn mul(self, other: Point3DF) -> Point3DF {
+        Point3DF(self.0 * other.0)
     }
 }
 
-impl Default for Point3DF32 {
+impl Default for Point3DF {
     #[inline]
-    fn default() -> Point3DF32 {
+    fn default() -> Point3DF {
         let mut point = F32x4::default();
         point.set_w(1.0);
-        Point3DF32(point)
+        Point3DF(point)
     }
 }

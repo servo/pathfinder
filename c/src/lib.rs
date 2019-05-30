@@ -12,8 +12,8 @@
 
 use gl;
 use pathfinder_canvas::{CanvasRenderingContext2D, Path2D};
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
-use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
+use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
@@ -296,29 +296,29 @@ impl PFColorF {
 
 impl PFRectF {
     #[inline]
-    pub fn to_rust(&self) -> RectF32 {
-        RectF32::from_points(self.origin.to_rust(), self.lower_right.to_rust())
+    pub fn to_rust(&self) -> RectF {
+        RectF::from_points(self.origin.to_rust(), self.lower_right.to_rust())
     }
 }
 
 impl PFRectI {
     #[inline]
-    pub fn to_rust(&self) -> RectI32 {
-        RectI32::from_points(self.origin.to_rust(), self.lower_right.to_rust())
+    pub fn to_rust(&self) -> RectI {
+        RectI::from_points(self.origin.to_rust(), self.lower_right.to_rust())
     }
 }
 
 impl PFPoint2DF {
     #[inline]
-    pub fn to_rust(&self) -> Point2DF32 {
-        Point2DF32::new(self.x, self.y)
+    pub fn to_rust(&self) -> Point2DF {
+        Point2DF::new(self.x, self.y)
     }
 }
 
 impl PFPoint2DI {
     #[inline]
-    pub fn to_rust(&self) -> Point2DI32 {
-        Point2DI32::new(self.x, self.y)
+    pub fn to_rust(&self) -> Point2DI {
+        Point2DI::new(self.x, self.y)
     }
 }
 

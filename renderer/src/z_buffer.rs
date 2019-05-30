@@ -15,8 +15,8 @@ use crate::paint;
 use crate::scene::PathObject;
 use crate::tile_map::DenseTileMap;
 use crate::tiles;
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::rect::RectF;
 use std::ops::Range;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
@@ -25,20 +25,20 @@ pub struct ZBuffer {
 }
 
 impl ZBuffer {
-    pub fn new(view_box: RectF32) -> ZBuffer {
+    pub fn new(view_box: RectF) -> ZBuffer {
         let tile_rect = tiles::round_rect_out_to_tile_bounds(view_box);
         ZBuffer {
             buffer: DenseTileMap::from_builder(|_| AtomicUsize::new(0), tile_rect),
         }
     }
 
-    pub fn test(&self, coords: Point2DI32, object_index: u32) -> bool {
+    pub fn test(&self, coords: Point2DI, object_index: u32) -> bool {
         let tile_index = self.buffer.coords_to_index_unchecked(coords);
         let existing_depth = self.buffer.data[tile_index as usize].load(AtomicOrdering::SeqCst);
         existing_depth < object_index as usize + 1
     }
 
-    pub fn update(&self, coords: Point2DI32, object_index: u16) {
+    pub fn update(&self, coords: Point2DI, object_index: u16) {
         let tile_index = self.buffer.coords_to_index_unchecked(coords);
         let mut old_depth = self.buffer.data[tile_index].load(AtomicOrdering::SeqCst);
         let new_depth = (object_index + 1) as usize;
@@ -83,7 +83,7 @@ impl ZBuffer {
 }
 
 impl SolidTileBatchPrimitive {
-    fn new(tile_coords: Point2DI32, object_index: u16, origin_uv: Point2DI32)
+    fn new(tile_coords: Point2DI, object_index: u16, origin_uv: Point2DI)
            -> SolidTileBatchPrimitive {
         SolidTileBatchPrimitive {
             tile_x: tile_coords.x() as i16,

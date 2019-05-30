@@ -12,9 +12,9 @@ use crate::builder::SceneBuilder;
 use crate::gpu_data::{AlphaTileBatchPrimitive, BuiltObject, TileObjectPrimitive};
 use crate::paint::{self, PaintId};
 use crate::sorted_vector::SortedVector;
-use pathfinder_geometry::basic::line_segment::LineSegmentF32;
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
-use pathfinder_geometry::basic::rect::{RectF32, RectI32};
+use pathfinder_geometry::basic::line_segment::LineSegmentF;
+use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
+use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::outline::{Contour, Outline, PointIndex};
 use pathfinder_geometry::segment::Segment;
 use std::cmp::Ordering;
@@ -44,7 +44,7 @@ impl<'a> Tiler<'a> {
     pub(crate) fn new(
         builder: &'a SceneBuilder<'a>,
         outline: &'a Outline,
-        view_box: RectF32,
+        view_box: RectF,
         object_index: u16,
         paint_id: PaintId,
         object_is_opaque: bool,
@@ -52,7 +52,7 @@ impl<'a> Tiler<'a> {
         let bounds = outline
             .bounds()
             .intersection(view_box)
-            .unwrap_or(RectF32::default());
+            .unwrap_or(RectF::default());
         let built_object = BuiltObject::new(bounds);
 
         Tiler {
@@ -194,7 +194,7 @@ impl<'a> Tiler<'a> {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
                 let tile_right_x = ((i32::from(current_tile_x) + 1) * TILE_WIDTH as i32) as f32;
-                let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
+                let current_tile_coords = Point2DI::new(current_tile_x, tile_y);
                 self.built_object.add_active_fill(
                     self.builder,
                     current_x,
@@ -212,7 +212,7 @@ impl<'a> Tiler<'a> {
                     "... emitting backdrop {} @ tile {}",
                     current_winding, current_tile_x
                 );
-                let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
+                let current_tile_coords = Point2DI::new(current_tile_x, tile_y);
                 if let Some(tile_index) = self
                     .built_object
                     .tile_coords_to_local_index(current_tile_coords)
@@ -233,7 +233,7 @@ impl<'a> Tiler<'a> {
             if segment_subtile_x > current_subtile_x {
                 let current_x =
                     (i32::from(current_tile_x) * TILE_WIDTH as i32) as f32 + current_subtile_x;
-                let current_tile_coords = Point2DI32::new(current_tile_x, tile_y);
+                let current_tile_coords = Point2DI::new(current_tile_x, tile_y);
                 self.built_object.add_active_fill(
                     self.builder,
                     current_x,
@@ -354,8 +354,8 @@ impl<'a> Tiler<'a> {
     }
 }
 
-pub fn round_rect_out_to_tile_bounds(rect: RectF32) -> RectI32 {
-    rect.scale_xy(Point2DF32::new(
+pub fn round_rect_out_to_tile_bounds(rect: RectF) -> RectI {
+    rect.scale_xy(Point2DF::new(
         1.0 / TILE_WIDTH as f32,
         1.0 / TILE_HEIGHT as f32,
     ))
@@ -403,7 +403,7 @@ impl PartialOrd<QueuedEndpoint> for QueuedEndpoint {
 struct ActiveEdge {
     segment: Segment,
     // TODO(pcwalton): Shrink `crossing` down to just one f32?
-    crossing: Point2DF32,
+    crossing: Point2DF,
 }
 
 impl ActiveEdge {
@@ -416,7 +416,7 @@ impl ActiveEdge {
         ActiveEdge::from_segment_and_crossing(segment, &crossing)
     }
 
-    fn from_segment_and_crossing(segment: &Segment, crossing: &Point2DF32) -> ActiveEdge {
+    fn from_segment_and_crossing(segment: &Segment, crossing: &Point2DF) -> ActiveEdge {
         ActiveEdge {
             segment: *segment,
             crossing: *crossing,
@@ -451,7 +451,7 @@ impl ActiveEdge {
         // If necessary, draw initial line.
         if self.crossing.y() < segment.baseline.min_y() {
             let first_line_segment =
-                LineSegmentF32::new(self.crossing, segment.baseline.upper_point()).orient(winding);
+                LineSegmentF::new(self.crossing, segment.baseline.upper_point()).orient(winding);
             if self
                 .process_line_segment(&first_line_segment, builder, built_object, tile_y)
                 .is_some()
@@ -504,11 +504,11 @@ impl ActiveEdge {
 
     fn process_line_segment(
         &mut self,
-        line_segment: &LineSegmentF32,
+        line_segment: &LineSegmentF,
         builder: &SceneBuilder,
         built_object: &mut BuiltObject,
         tile_y: i32,
-    ) -> Option<LineSegmentF32> {
+    ) -> Option<LineSegmentF> {
         let tile_bottom = ((i32::from(tile_y) + 1) * TILE_HEIGHT as i32) as f32;
         debug!(
             "process_line_segment({:?}, tile_y={}) tile_bottom={}",
@@ -535,11 +535,11 @@ impl PartialOrd<ActiveEdge> for ActiveEdge {
 
 impl AlphaTileBatchPrimitive {
     #[inline]
-    fn new(tile_coords: Point2DI32,
+    fn new(tile_coords: Point2DI,
            backdrop: i8,
            object_index: u16,
            tile_index: u16,
-           origin_uv: Point2DI32)
+           origin_uv: Point2DI)
            -> AlphaTileBatchPrimitive {
         AlphaTileBatchPrimitive {
             tile_x_lo: (tile_coords.x() & 0xff) as u8,
@@ -554,8 +554,8 @@ impl AlphaTileBatchPrimitive {
     }
 
     #[inline]
-    pub fn tile_coords(&self) -> Point2DI32 {
-        Point2DI32::new(
+    pub fn tile_coords(&self) -> Point2DI {
+        Point2DI::new(
             (self.tile_x_lo as i32) | (((self.tile_hi & 0xf) as i32) << 8),
             (self.tile_y_lo as i32) | (((self.tile_hi & 0xf0) as i32) << 4),
         )

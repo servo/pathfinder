@@ -12,9 +12,9 @@
 
 use crate::resources::ResourceLoader;
 use image::ImageFormat;
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_geometry::basic::transform3d::Transform3DF32;
+use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::rect::RectI;
+use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_simd::default::F32x4;
 use std::time::Duration;
@@ -41,8 +41,8 @@ pub trait Device {
     type VertexArray;
     type VertexAttr;
 
-    fn create_texture(&self, format: TextureFormat, size: Point2DI32) -> Self::Texture;
-    fn create_texture_from_data(&self, size: Point2DI32, data: &[u8]) -> Self::Texture;
+    fn create_texture(&self, format: TextureFormat, size: Point2DI) -> Self::Texture;
+    fn create_texture_from_data(&self, size: Point2DI, data: &[u8]) -> Self::Texture;
     fn create_shader_from_source(
         &self,
         resources: &dyn ResourceLoader,
@@ -74,9 +74,9 @@ pub trait Device {
         mode: BufferUploadMode,
     );
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
-    fn texture_size(&self, texture: &Self::Texture) -> Point2DI32;
-    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI32, data: &[u8]);
-    fn read_pixels_from_default_framebuffer(&self, size: Point2DI32) -> Vec<u8>;
+    fn texture_size(&self, texture: &Self::Texture) -> Point2DI;
+    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI, data: &[u8]);
+    fn read_pixels_from_default_framebuffer(&self, size: Point2DI) -> Vec<u8>;
     fn clear(&self, params: &ClearParams);
     fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
     fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
@@ -94,7 +94,7 @@ pub trait Device {
     // TODO(pcwalton): Go bindless...
     fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
     fn bind_buffer(&self, buffer: &Self::Buffer, target: BufferTarget);
-    fn bind_default_framebuffer(&self, viewport: RectI32);
+    fn bind_default_framebuffer(&self, viewport: RectI);
     fn bind_framebuffer(&self, framebuffer: &Self::Framebuffer);
     fn bind_texture(&self, texture: &Self::Texture, unit: u32);
 
@@ -103,7 +103,7 @@ pub trait Device {
         let image = image::load_from_memory_with_format(&data, ImageFormat::PNG)
             .unwrap()
             .to_luma();
-        let size = Point2DI32::new(image.width() as i32, image.height() as i32);
+        let size = Point2DI::new(image.width() as i32, image.height() as i32);
         self.create_texture_from_data(size, &image)
     }
 
@@ -202,7 +202,7 @@ pub enum Primitive {
 #[derive(Clone, Copy, Default)]
 pub struct ClearParams {
     pub color: Option<ColorF>,
-    pub rect: Option<RectI32>,
+    pub rect: Option<RectI>,
     pub depth: Option<f32>,
     pub stencil: Option<u8>,
 }
@@ -297,7 +297,7 @@ impl Default for StencilFunc {
 
 impl UniformData {
     #[inline]
-    pub fn from_transform_3d(transform: &Transform3DF32) -> UniformData {
+    pub fn from_transform_3d(transform: &Transform3DF) -> UniformData {
         UniformData::Mat4([transform.c0, transform.c1, transform.c2, transform.c3])
     }
 }

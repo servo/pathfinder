@@ -14,8 +14,8 @@
 extern crate log;
 
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
 use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderState, ShaderKind, StencilFunc};
@@ -164,7 +164,7 @@ impl Device for GLDevice {
     type VertexArray = GLVertexArray;
     type VertexAttr = GLVertexAttr;
 
-    fn create_texture(&self, format: TextureFormat, size: Point2DI32) -> GLTexture {
+    fn create_texture(&self, format: TextureFormat, size: Point2DI) -> GLTexture {
         let (gl_internal_format, gl_format, gl_type);
         match format {
             TextureFormat::R8 => {
@@ -203,7 +203,7 @@ impl Device for GLDevice {
         texture
     }
 
-    fn create_texture_from_data(&self, size: Point2DI32, data: &[u8]) -> GLTexture {
+    fn create_texture_from_data(&self, size: Point2DI, data: &[u8]) -> GLTexture {
         assert!(data.len() >= size.x() as usize * size.y() as usize);
 
         let mut texture = GLTexture { gl_texture: 0, size };
@@ -450,11 +450,11 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn texture_size(&self, texture: &Self::Texture) -> Point2DI32 {
+    fn texture_size(&self, texture: &Self::Texture) -> Point2DI {
         texture.size
     }
 
-    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI32, data: &[u8]) {
+    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI, data: &[u8]) {
         assert!(data.len() >= size.x() as usize * size.y() as usize * 4);
         unsafe {
             self.bind_texture(texture, 0);
@@ -472,7 +472,7 @@ impl Device for GLDevice {
         self.set_texture_parameters(texture);
     }
 
-    fn read_pixels_from_default_framebuffer(&self, size: Point2DI32) -> Vec<u8> {
+    fn read_pixels_from_default_framebuffer(&self, size: Point2DI) -> Vec<u8> {
         let mut pixels = vec![0; size.x() as usize * size.y() as usize * 4];
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
@@ -622,7 +622,7 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn bind_default_framebuffer(&self, viewport: RectI32) {
+    fn bind_default_framebuffer(&self, viewport: RectI) {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
             gl::Viewport(viewport.origin().x(),
@@ -799,7 +799,7 @@ impl Drop for GLShader {
 
 pub struct GLTexture {
     gl_texture: GLuint,
-    pub size: Point2DI32,
+    pub size: Point2DI,
 }
 
 pub struct GLTimerQuery {

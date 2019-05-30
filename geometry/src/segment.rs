@@ -10,9 +10,9 @@
 
 //! Line or curve segments, optimized with SIMD.
 
-use crate::basic::line_segment::LineSegmentF32;
-use crate::basic::point::Point2DF32;
-use crate::basic::transform2d::Transform2DF32;
+use crate::basic::line_segment::LineSegmentF;
+use crate::basic::point::Point2DF;
+use crate::basic::transform2d::Transform2DF;
 use crate::util::{self, EPSILON};
 use pathfinder_simd::default::F32x4;
 use std::f32::consts::SQRT_2;
@@ -21,8 +21,8 @@ const MAX_NEWTON_ITERATIONS: u32 = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Segment {
-    pub baseline: LineSegmentF32,
-    pub ctrl: LineSegmentF32,
+    pub baseline: LineSegmentF,
+    pub ctrl: LineSegmentF,
     pub kind: SegmentKind,
     pub flags: SegmentFlags,
 }
@@ -31,35 +31,35 @@ impl Segment {
     #[inline]
     pub fn none() -> Segment {
         Segment {
-            baseline: LineSegmentF32::default(),
-            ctrl: LineSegmentF32::default(),
+            baseline: LineSegmentF::default(),
+            ctrl: LineSegmentF::default(),
             kind: SegmentKind::None,
             flags: SegmentFlags::empty(),
         }
     }
 
     #[inline]
-    pub fn line(line: &LineSegmentF32) -> Segment {
+    pub fn line(line: &LineSegmentF) -> Segment {
         Segment {
             baseline: *line,
-            ctrl: LineSegmentF32::default(),
+            ctrl: LineSegmentF::default(),
             kind: SegmentKind::Line,
             flags: SegmentFlags::empty(),
         }
     }
 
     #[inline]
-    pub fn quadratic(baseline: &LineSegmentF32, ctrl: Point2DF32) -> Segment {
+    pub fn quadratic(baseline: &LineSegmentF, ctrl: Point2DF) -> Segment {
         Segment {
             baseline: *baseline,
-            ctrl: LineSegmentF32::new(ctrl, Point2DF32::default()),
+            ctrl: LineSegmentF::new(ctrl, Point2DF::default()),
             kind: SegmentKind::Quadratic,
             flags: SegmentFlags::empty(),
         }
     }
 
     #[inline]
-    pub fn cubic(baseline: &LineSegmentF32, ctrl: &LineSegmentF32) -> Segment {
+    pub fn cubic(baseline: &LineSegmentF, ctrl: &LineSegmentF) -> Segment {
         Segment {
             baseline: *baseline,
             ctrl: *ctrl,
@@ -85,17 +85,17 @@ impl Segment {
         //
         // https://pdfs.semanticscholar.org/1639/0db1a470bd13fe428e0896671a9a5745070a.pdf
         let term = F32x4::new(cos_sweep_angle, -cos_sweep_angle, 0.0, 0.0);
-        let p0 = Point2DF32((F32x4::splat(0.5) * (F32x4::splat(1.0) + term)).sqrt());
-        let p3 = p0.scale_xy(Point2DF32::new(1.0, -1.0));
+        let p0 = Point2DF((F32x4::splat(0.5) * (F32x4::splat(1.0) + term)).sqrt());
+        let p3 = p0.scale_xy(Point2DF::new(1.0, -1.0));
         let p1 = p0 - p3.yx().scale(K);
         let p2 = p3 + p0.yx().scale(K);
-        return Segment::cubic(&LineSegmentF32::new(p3, p0), &LineSegmentF32::new(p2, p1));
+        return Segment::cubic(&LineSegmentF::new(p3, p0), &LineSegmentF::new(p2, p1));
 
         const K: f32 = 4.0 / 3.0 * (SQRT_2 - 1.0);
     }
 
     #[inline]
-    pub fn as_line_segment(&self) -> LineSegmentF32 {
+    pub fn as_line_segment(&self) -> LineSegmentF {
         debug_assert!(self.is_line());
         self.baseline
     }
@@ -137,7 +137,7 @@ impl Segment {
         let mut new_segment = *self;
         let p1_2 = self.ctrl.from() + self.ctrl.from();
         new_segment.ctrl =
-            LineSegmentF32::new(self.baseline.from() + p1_2, p1_2 + self.baseline.to())
+            LineSegmentF::new(self.baseline.from() + p1_2, p1_2 + self.baseline.to())
                 .scale(1.0 / 3.0);
         new_segment.kind = SegmentKind::Cubic;
         new_segment
@@ -196,7 +196,7 @@ impl Segment {
     }
 
     #[inline]
-    pub fn sample(self, t: f32) -> Point2DF32 {
+    pub fn sample(self, t: f32) -> Point2DF {
         // FIXME(pcwalton): Don't degree elevate!
         if self.is_line() {
             self.as_line_segment().sample(t)
@@ -206,7 +206,7 @@ impl Segment {
     }
 
     #[inline]
-    pub fn transform(self, transform: &Transform2DF32) -> Segment {
+    pub fn transform(self, transform: &Transform2DF) -> Segment {
         Segment {
             baseline: transform.transform_line_segment(&self.baseline),
             ctrl: transform.transform_line_segment(&self.ctrl),
@@ -253,16 +253,16 @@ impl<'s> CubicSegment<'s> {
         let (baseline0, ctrl0, baseline1, ctrl1);
         if t <= 0.0 {
             let from = &self.0.baseline.from();
-            baseline0 = LineSegmentF32::new(*from, *from);
-            ctrl0 = LineSegmentF32::new(*from, *from);
+            baseline0 = LineSegmentF::new(*from, *from);
+            ctrl0 = LineSegmentF::new(*from, *from);
             baseline1 = self.0.baseline;
             ctrl1 = self.0.ctrl;
         } else if t >= 1.0 {
             let to = &self.0.baseline.to();
             baseline0 = self.0.baseline;
             ctrl0 = self.0.ctrl;
-            baseline1 = LineSegmentF32::new(*to, *to);
-            ctrl1 = LineSegmentF32::new(*to, *to);
+            baseline1 = LineSegmentF::new(*to, *to);
+            ctrl1 = LineSegmentF::new(*to, *to);
         } else {
             let tttt = F32x4::splat(t);
 
@@ -281,10 +281,10 @@ impl<'s> CubicSegment<'s> {
             // p0123 = lerp(p012, p123, t)
             let p0123 = p012p123 + tttt * (p123 - p012p123);
 
-            baseline0 = LineSegmentF32(p0p3.concat_xy_xy(p0123));
-            ctrl0 = LineSegmentF32(p01p12.concat_xy_xy(p012p123));
-            baseline1 = LineSegmentF32(p0123.concat_xy_zw(p0p3));
-            ctrl1 = LineSegmentF32(p012p123.concat_zw_zw(p12p23));
+            baseline0 = LineSegmentF(p0p3.concat_xy_xy(p0123));
+            ctrl0 = LineSegmentF(p01p12.concat_xy_xy(p012p123));
+            baseline1 = LineSegmentF(p0123.concat_xy_zw(p0p3));
+            ctrl1 = LineSegmentF(p012p123.concat_zw_zw(p12p23));
         }
 
         (
@@ -315,7 +315,7 @@ impl<'s> CubicSegment<'s> {
 
     // FIXME(pcwalton): Use Horner's method!
     #[inline]
-    pub fn sample(self, t: f32) -> Point2DF32 {
+    pub fn sample(self, t: f32) -> Point2DF {
         self.split(t).0.baseline.to()
     }
 

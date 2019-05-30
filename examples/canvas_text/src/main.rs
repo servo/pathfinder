@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use pathfinder_canvas::CanvasRenderingContext2D;
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
+use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
@@ -33,7 +33,7 @@ fn main() {
     gl_attributes.set_context_version(3, 3);
 
     // Open a window.
-    let window_size = Point2DI32::new(640, 480);
+    let window_size = Point2DI::new(640, 480);
     let window = video.window("Text example", window_size.x() as u32, window_size.y() as u32)
                       .opengl()
                       .build()
@@ -57,8 +57,8 @@ fn main() {
 
     // Draw the text.
     canvas.set_font_size(32.0);
-    canvas.fill_text("Hello Pathfinder!", Point2DF32::new(32.0, 48.0));
-    canvas.stroke_text("Goodbye Pathfinder!", Point2DF32::new(32.0, 96.0));
+    canvas.fill_text("Hello Pathfinder!", Point2DF::new(32.0, 48.0));
+    canvas.stroke_text("Goodbye Pathfinder!", Point2DF::new(32.0, 96.0));
 
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);

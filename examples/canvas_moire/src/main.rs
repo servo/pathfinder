@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use pathfinder_canvas::{CanvasRenderingContext2D, FillStyle, Path2D};
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
+use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
 use pathfinder_geometry::color::{ColorF, ColorU};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
@@ -47,7 +47,7 @@ fn main() {
     gl_attributes.set_context_version(3, 3);
 
     // Open a window.
-    let window_size = Point2DI32::new(1067, 800);
+    let window_size = Point2DI::new(1067, 800);
     let window = video.window("Moire example", window_size.x() as u32, window_size.y() as u32)
                       .opengl()
                       .allow_highdpi()
@@ -57,7 +57,7 @@ fn main() {
 
     // Get the real window size (for HiDPI).
     let (drawable_width, drawable_height) = window.drawable_size();
-    let drawable_size = Point2DI32::new(drawable_width as i32, drawable_height as i32);
+    let drawable_size = Point2DI::new(drawable_width as i32, drawable_height as i32);
 
     // Create the GL context, and make it current.
     let gl_context = window.gl_create_context().unwrap();
@@ -87,14 +87,14 @@ struct MoireRenderer {
     renderer: Renderer<GLDevice>,
     scene: SceneProxy,
     frame: i32,
-    window_size: Point2DI32,
-    drawable_size: Point2DI32,
+    window_size: Point2DI,
+    drawable_size: Point2DI,
     device_pixel_ratio: f32,
     colors: ColorGradient,
 }
 
 impl MoireRenderer {
-    fn new(renderer: Renderer<GLDevice>, window_size: Point2DI32, drawable_size: Point2DI32)
+    fn new(renderer: Renderer<GLDevice>, window_size: Point2DI, drawable_size: Point2DI)
            -> MoireRenderer {
         MoireRenderer {
             renderer,
@@ -117,9 +117,9 @@ impl MoireRenderer {
 
         // Calculate outer and inner circle centers (circle and Leminscate of Gerono respectively).
         let window_center = self.window_size.to_f32().scale(0.5);
-        let outer_center = window_center + Point2DF32::new(sin_time, cos_time).scale(OUTER_RADIUS);
+        let outer_center = window_center + Point2DF::new(sin_time, cos_time).scale(OUTER_RADIUS);
         let inner_center = window_center +
-            Point2DF32::new(1.0, sin_time).scale(cos_time * INNER_RADIUS);
+            Point2DF::new(1.0, sin_time).scale(cos_time * INNER_RADIUS);
 
         // Clear to background color.
         self.renderer.device.clear(&ClearParams {
@@ -144,7 +144,7 @@ impl MoireRenderer {
         self.frame += 1;
     }
 
-    fn draw_circles(&self, canvas: &mut CanvasRenderingContext2D, center: Point2DF32) {
+    fn draw_circles(&self, canvas: &mut CanvasRenderingContext2D, center: Point2DF) {
         let center = center.scale(self.device_pixel_ratio);
         for index in 0..CIRCLE_COUNT {
             let radius = (index + 1) as f32 * CIRCLE_SPACING * self.device_pixel_ratio;

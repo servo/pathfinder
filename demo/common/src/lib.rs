@@ -19,9 +19,9 @@ use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
 use crate::window::{Event, Keycode, SVGPath, Window, WindowSize};
 use clap::{App, Arg};
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
-use pathfinder_geometry::basic::rect::RectF32;
-use pathfinder_geometry::basic::transform2d::Transform2DF32;
+use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
+use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gl::GLDevice;
 use pathfinder_gpu::Device;
@@ -99,7 +99,7 @@ pub struct DemoApp<W> where W: Window {
     pub dirty: bool,
     expire_message_event_id: u32,
     message_epoch: u32,
-    last_mouse_position: Point2DI32,
+    last_mouse_position: Point2DI,
 
     current_frame: Option<Frame>,
     build_time: Option<Duration>,
@@ -181,7 +181,7 @@ impl<W> DemoApp<W> where W: Window {
             dirty: true,
             expire_message_event_id,
             message_epoch,
-            last_mouse_position: Point2DI32::default(),
+            last_mouse_position: Point2DI::default(),
 
             current_frame: None,
             build_time: None,
@@ -244,9 +244,9 @@ impl<W> DemoApp<W> where W: Window {
             dilation: if self.ui_model.stem_darkening_effect_enabled {
                 let font_size = APPROX_FONT_SIZE * self.window_size.backing_scale_factor;
                 let (x, y) = (STEM_DARKENING_FACTORS[0], STEM_DARKENING_FACTORS[1]);
-                Point2DF32::new(x, y).scale(font_size)
+                Point2DF::new(x, y).scale(font_size)
             } else {
-                Point2DF32::default()
+                Point2DF::default()
             },
             subpixel_aa_enabled: self.ui_model.subpixel_aa_effect_enabled,
         };
@@ -267,7 +267,7 @@ impl<W> DemoApp<W> where W: Window {
                 Event::WindowResized(new_size) => {
                     self.window_size = new_size;
                     let viewport = self.window.viewport(self.ui_model.mode.view(0));
-                    self.scene_proxy.set_view_box(RectF32::new(Point2DF32::default(),
+                    self.scene_proxy.set_view_box(RectF::new(Point2DF::default(),
                                                                viewport.size().to_f32()));
                     self.renderer
                         .set_main_framebuffer_size(self.window_size.device_size());
@@ -304,7 +304,7 @@ impl<W> DemoApp<W> where W: Window {
                         let position = position.to_f32().scale(backing_scale_factor);
                         *transform = transform.post_translate(-position);
                         let scale_delta = 1.0 + d_dist * CAMERA_SCALE_SPEED_2D;
-                        *transform = transform.post_scale(Point2DF32::splat(scale_delta));
+                        *transform = transform.post_scale(Point2DF::splat(scale_delta));
                         *transform = transform.post_translate(position);
                     }
                 }
@@ -431,7 +431,7 @@ impl<W> DemoApp<W> where W: Window {
         ui_events
     }
 
-    fn process_mouse_position(&mut self, new_position: Point2DI32) -> MousePosition {
+    fn process_mouse_position(&mut self, new_position: Point2DI) -> MousePosition {
         let absolute = new_position.scale(self.window_size.backing_scale_factor as i32);
         let relative = absolute - self.last_mouse_position;
         self.last_mouse_position = absolute;
@@ -557,7 +557,7 @@ impl<W> DemoApp<W> where W: Window {
             }
             UIAction::ZoomIn => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
-                    let scale = Point2DF32::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
+                    let scale = Point2DF::splat(1.0 + CAMERA_ZOOM_AMOUNT_2D);
                     let center = center_of_window(&self.window_size);
                     *transform = transform
                         .post_translate(-center)
@@ -568,7 +568,7 @@ impl<W> DemoApp<W> where W: Window {
             }
             UIAction::ZoomOut => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
-                    let scale = Point2DF32::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
+                    let scale = Point2DF::splat(1.0 - CAMERA_ZOOM_AMOUNT_2D);
                     let center = center_of_window(&self.window_size);
                     *transform = transform
                         .post_translate(-center)
@@ -579,7 +579,7 @@ impl<W> DemoApp<W> where W: Window {
             }
             UIAction::ZoomActualSize => {
                 if let Camera::TwoD(ref mut transform) = self.camera {
-                    *transform = Transform2DF32::default();
+                    *transform = Transform2DF::default();
                     self.dirty = true;
                 }
             }
@@ -729,7 +729,7 @@ fn load_scene(resource_loader: &dyn ResourceLoader, input_path: &SVGPath) -> Bui
     BuiltSVG::from_tree(Tree::from_data(&data, &UsvgOptions::default()).unwrap())
 }
 
-fn center_of_window(window_size: &WindowSize) -> Point2DF32 {
+fn center_of_window(window_size: &WindowSize) -> Point2DF {
     window_size.device_size().to_f32().scale(0.5)
 }
 
@@ -800,17 +800,17 @@ impl BackgroundColor {
 }
 
 struct SceneMetadata {
-    view_box: RectF32,
+    view_box: RectF,
     monochrome_color: Option<ColorU>,
 }
 
 impl SceneMetadata {
     // FIXME(pcwalton): The fact that this mutates the scene is really ugly!
     // Can we simplify this?
-    fn new_clipping_view_box(scene: &mut Scene, viewport_size: Point2DI32) -> SceneMetadata {
+    fn new_clipping_view_box(scene: &mut Scene, viewport_size: Point2DI) -> SceneMetadata {
         let view_box = scene.view_box();
         let monochrome_color = scene.monochrome_color();
-        scene.set_view_box(RectF32::new(Point2DF32::default(), viewport_size.to_f32()));
+        scene.set_view_box(RectF::new(Point2DF::default(), viewport_size.to_f32()));
         SceneMetadata { view_box, monochrome_color }
     }
 }

@@ -11,9 +11,9 @@
 //! Options that control how rendering is to be performed.
 
 use crate::gpu_data::RenderCommand;
-use pathfinder_geometry::basic::point::{Point2DF32, Point3DF32};
-use pathfinder_geometry::basic::rect::RectF32;
-use pathfinder_geometry::basic::transform2d::Transform2DF32;
+use pathfinder_geometry::basic::point::{Point2DF, Point3DF};
+use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::clip::PolygonClipper3D;
 
@@ -34,12 +34,12 @@ where
 #[derive(Clone, Default)]
 pub struct RenderOptions {
     pub transform: RenderTransform,
-    pub dilation: Point2DF32,
+    pub dilation: Point2DF,
     pub subpixel_aa_enabled: bool,
 }
 
 impl RenderOptions {
-    pub(crate) fn prepare(self, bounds: RectF32) -> PreparedRenderOptions {
+    pub(crate) fn prepare(self, bounds: RectF) -> PreparedRenderOptions {
         PreparedRenderOptions {
             transform: self.transform.prepare(bounds),
             dilation: self.dilation,
@@ -50,19 +50,19 @@ impl RenderOptions {
 
 #[derive(Clone)]
 pub enum RenderTransform {
-    Transform2D(Transform2DF32),
+    Transform2D(Transform2DF),
     Perspective(Perspective),
 }
 
 impl Default for RenderTransform {
     #[inline]
     fn default() -> RenderTransform {
-        RenderTransform::Transform2D(Transform2DF32::default())
+        RenderTransform::Transform2D(Transform2DF::default())
     }
 }
 
 impl RenderTransform {
-    fn prepare(&self, bounds: RectF32) -> PreparedRenderTransform {
+    fn prepare(&self, bounds: RectF) -> PreparedRenderTransform {
         let perspective = match self {
             RenderTransform::Transform2D(ref transform) => {
                 if transform.is_identity() {
@@ -121,7 +121,7 @@ impl RenderTransform {
 
 pub(crate) struct PreparedRenderOptions {
     pub(crate) transform: PreparedRenderTransform,
-    pub(crate) dilation: Point2DF32,
+    pub(crate) dilation: Point2DF,
     pub(crate) subpixel_aa_enabled: bool,
 }
 
@@ -130,20 +130,20 @@ impl PreparedRenderOptions {
     pub(crate) fn bounding_quad(&self) -> BoundingQuad {
         match self.transform {
             PreparedRenderTransform::Perspective { quad, .. } => quad,
-            _ => [Point3DF32::default(); 4],
+            _ => [Point3DF::default(); 4],
         }
     }
 }
 
-pub(crate) type BoundingQuad = [Point3DF32; 4];
+pub(crate) type BoundingQuad = [Point3DF; 4];
 
 pub(crate) enum PreparedRenderTransform {
     None,
-    Transform2D(Transform2DF32),
+    Transform2D(Transform2DF),
     Perspective {
         perspective: Perspective,
-        clip_polygon: Vec<Point2DF32>,
-        quad: [Point3DF32; 4],
+        clip_polygon: Vec<Point2DF>,
+        quad: [Point3DF; 4],
     },
 }
 

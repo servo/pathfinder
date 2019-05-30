@@ -13,10 +13,10 @@
 #[macro_use]
 extern crate bitflags;
 
-use pathfinder_geometry::basic::line_segment::LineSegmentF32;
-use pathfinder_geometry::basic::point::Point2DF32;
-use pathfinder_geometry::basic::rect::RectF32;
-use pathfinder_geometry::basic::transform2d::{Transform2DF32, Transform2DF32PathIter};
+use pathfinder_geometry::basic::line_segment::LineSegmentF;
+use pathfinder_geometry::basic::point::Point2DF;
+use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::basic::transform2d::{Transform2DF, Transform2DFPathIter};
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::Outline;
 use pathfinder_geometry::segment::{Segment, SegmentFlags};
@@ -61,7 +61,7 @@ bitflags! {
 impl BuiltSVG {
     // TODO(pcwalton): Allow a global transform to be set.
     pub fn from_tree(tree: Tree) -> BuiltSVG {
-        let global_transform = Transform2DF32::default();
+        let global_transform = Transform2DF::default();
 
         let mut built_svg = BuiltSVG {
             scene: Scene::new(),
@@ -86,7 +86,7 @@ impl BuiltSVG {
         built_svg
     }
 
-    fn process_node(&mut self, node: &Node, transform: &Transform2DF32) {
+    fn process_node(&mut self, node: &Node, transform: &Transform2DF) {
         let node_transform = usvg_transform_to_transform_2d(&node.transform());
         let transform = transform.pre_mul(&node_transform);
 
@@ -122,7 +122,7 @@ impl BuiltSVG {
                     ));
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
-                    let path = Transform2DF32PathIter::new(path, &transform);
+                    let path = Transform2DFPathIter::new(path, &transform);
                     let outline = Outline::from_segments(path);
 
                     let name = format!("Fill({})", node.id());
@@ -265,15 +265,15 @@ impl PaintExt for Paint {
     }
 }
 
-fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> RectF32 {
-    RectF32::new(
-        Point2DF32::new(rect.x as f32, rect.y as f32),
-        Point2DF32::new(rect.width as f32, rect.height as f32),
+fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> RectF {
+    RectF::new(
+        Point2DF::new(rect.x as f32, rect.y as f32),
+        Point2DF::new(rect.width as f32, rect.height as f32),
     )
 }
 
-fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2DF32 {
-    Transform2DF32::row_major(
+fn usvg_transform_to_transform_2d(transform: &UsvgTransform) -> Transform2DF {
+    Transform2DF::row_major(
         transform.a as f32,
         transform.b as f32,
         transform.c as f32,
@@ -288,8 +288,8 @@ where
     I: Iterator<Item = UsvgPathSegment>,
 {
     iter: I,
-    first_subpath_point: Point2DF32,
-    last_subpath_point: Point2DF32,
+    first_subpath_point: Point2DF,
+    last_subpath_point: Point2DF,
     just_moved: bool,
 }
 
@@ -300,8 +300,8 @@ where
     fn new(iter: I) -> UsvgPathToSegments<I> {
         UsvgPathToSegments {
             iter,
-            first_subpath_point: Point2DF32::default(),
-            last_subpath_point: Point2DF32::default(),
+            first_subpath_point: Point2DF::default(),
+            last_subpath_point: Point2DF::default(),
             just_moved: false,
         }
     }
@@ -316,15 +316,15 @@ where
     fn next(&mut self) -> Option<Segment> {
         match self.iter.next()? {
             UsvgPathSegment::MoveTo { x, y } => {
-                let to = Point2DF32::new(x as f32, y as f32);
+                let to = Point2DF::new(x as f32, y as f32);
                 self.first_subpath_point = to;
                 self.last_subpath_point = to;
                 self.just_moved = true;
                 self.next()
             }
             UsvgPathSegment::LineTo { x, y } => {
-                let to = Point2DF32::new(x as f32, y as f32);
-                let mut segment = Segment::line(&LineSegmentF32::new(self.last_subpath_point, to));
+                let to = Point2DF::new(x as f32, y as f32);
+                let mut segment = Segment::line(&LineSegmentF::new(self.last_subpath_point, to));
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
                 }
@@ -340,12 +340,12 @@ where
                 x,
                 y,
             } => {
-                let ctrl0 = Point2DF32::new(x1 as f32, y1 as f32);
-                let ctrl1 = Point2DF32::new(x2 as f32, y2 as f32);
-                let to = Point2DF32::new(x as f32, y as f32);
+                let ctrl0 = Point2DF::new(x1 as f32, y1 as f32);
+                let ctrl1 = Point2DF::new(x2 as f32, y2 as f32);
+                let to = Point2DF::new(x as f32, y as f32);
                 let mut segment = Segment::cubic(
-                    &LineSegmentF32::new(self.last_subpath_point, to),
-                    &LineSegmentF32::new(ctrl0, ctrl1),
+                    &LineSegmentF::new(self.last_subpath_point, to),
+                    &LineSegmentF::new(ctrl0, ctrl1),
                 );
                 if self.just_moved {
                     segment.flags.insert(SegmentFlags::FIRST_IN_SUBPATH);
@@ -355,7 +355,7 @@ where
                 Some(segment)
             }
             UsvgPathSegment::ClosePath => {
-                let mut segment = Segment::line(&LineSegmentF32::new(
+                let mut segment = Segment::line(&LineSegmentF::new(
                     self.last_subpath_point,
                     self.first_subpath_point,
                 ));

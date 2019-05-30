@@ -8,18 +8,18 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::rect::RectI;
 
 #[derive(Debug)]
 pub struct DenseTileMap<T> {
     pub data: Vec<T>,
-    pub rect: RectI32,
+    pub rect: RectI,
 }
 
 impl<T> DenseTileMap<T> {
     #[inline]
-    pub fn new(rect: RectI32) -> DenseTileMap<T>
+    pub fn new(rect: RectI) -> DenseTileMap<T>
     where
         T: Copy + Clone + Default,
     {
@@ -31,7 +31,7 @@ impl<T> DenseTileMap<T> {
     }
 
     #[inline]
-    pub fn from_builder<F>(build: F, rect: RectI32) -> DenseTileMap<T>
+    pub fn from_builder<F>(build: F, rect: RectI) -> DenseTileMap<T>
     where
         F: FnMut(usize) -> T,
     {
@@ -43,7 +43,7 @@ impl<T> DenseTileMap<T> {
     }
 
     #[inline]
-    pub fn coords_to_index(&self, coords: Point2DI32) -> Option<usize> {
+    pub fn coords_to_index(&self, coords: Point2DI) -> Option<usize> {
         // TODO(pcwalton): SIMD?
         if coords.x() < self.rect.min_x()
             || coords.x() >= self.rect.max_x()
@@ -56,14 +56,14 @@ impl<T> DenseTileMap<T> {
     }
 
     #[inline]
-    pub fn coords_to_index_unchecked(&self, coords: Point2DI32) -> usize {
+    pub fn coords_to_index_unchecked(&self, coords: Point2DI) -> usize {
         (coords.y() - self.rect.min_y()) as usize * self.rect.size().x() as usize
             + (coords.x() - self.rect.min_x()) as usize
     }
 
     #[inline]
-    pub fn index_to_coords(&self, index: usize) -> Point2DI32 {
+    pub fn index_to_coords(&self, index: usize) -> Point2DI {
         let (width, index) = (self.rect.size().x(), index as i32);
-        self.rect.origin() + Point2DI32::new(index % width, index / width)
+        self.rect.origin() + Point2DI::new(index % width, index / width)
     }
 }

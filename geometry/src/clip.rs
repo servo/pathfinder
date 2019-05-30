@@ -8,9 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::basic::line_segment::LineSegmentF32;
-use crate::basic::point::{Point2DF32, Point3DF32};
-use crate::basic::rect::RectF32;
+use crate::basic::line_segment::LineSegmentF;
+use crate::basic::point::{Point2DF, Point3DF};
+use crate::basic::rect::RectF;
 use crate::outline::{Contour, PointFlags};
 use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
@@ -20,17 +20,17 @@ use std::fmt::Debug;
 use std::mem;
 
 #[derive(Clone, Copy, Debug)]
-struct Edge(LineSegmentF32);
+struct Edge(LineSegmentF);
 
 impl TEdge for Edge {
     #[inline]
-    fn point_is_inside(&self, point: &Point2DF32) -> bool {
+    fn point_is_inside(&self, point: &Point2DF) -> bool {
         let area = (self.0.to() - self.0.from()).det(*point - self.0.from());
         debug!("point_is_inside({:?}, {:?}), area={}", self, point, area);
         area >= 0.0
     }
 
-    fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]> {
+    fn intersect_line_segment(&self, segment: &LineSegmentF) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
         if let Some(t) = segment.intersection_t(&self.0) {
             if t >= 0.0 && t <= 1.0 {
@@ -51,7 +51,7 @@ enum AxisAlignedEdge {
 
 impl TEdge for AxisAlignedEdge {
     #[inline]
-    fn point_is_inside(&self, point: &Point2DF32) -> bool {
+    fn point_is_inside(&self, point: &Point2DF) -> bool {
         match *self {
             AxisAlignedEdge::Left(x) => point.x() >= x,
             AxisAlignedEdge::Top(y) => point.y() >= y,
@@ -60,7 +60,7 @@ impl TEdge for AxisAlignedEdge {
         }
     }
 
-    fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]> {
+    fn intersect_line_segment(&self, segment: &LineSegmentF) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
         let t = match *self {
             AxisAlignedEdge::Left(x) | AxisAlignedEdge::Right(x) => segment.solve_t_for_x(x),
@@ -74,8 +74,8 @@ impl TEdge for AxisAlignedEdge {
 }
 
 trait TEdge: Debug {
-    fn point_is_inside(&self, point: &Point2DF32) -> bool;
-    fn intersect_line_segment(&self, segment: &LineSegmentF32) -> ArrayVec<[f32; 3]>;
+    fn point_is_inside(&self, point: &Point2DF) -> bool;
+    fn intersect_line_segment(&self, segment: &LineSegmentF) -> ArrayVec<[f32; 3]>;
 
     fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
         let from_inside = self.point_is_inside(&segment.baseline.from());
@@ -294,7 +294,7 @@ enum FastClipResult {
 // General convex polygon clipping in 2D
 
 pub(crate) struct ContourPolygonClipper {
-    clip_polygon: SmallVec<[Point2DF32; 4]>,
+    clip_polygon: SmallVec<[Point2DF; 4]>,
     contour: Contour,
 }
 
@@ -309,7 +309,7 @@ impl ContourClipper for ContourPolygonClipper {
 
 impl ContourPolygonClipper {
     #[inline]
-    pub(crate) fn new(clip_polygon: &[Point2DF32], contour: Contour) -> ContourPolygonClipper {
+    pub(crate) fn new(clip_polygon: &[Point2DF], contour: Contour) -> ContourPolygonClipper {
         ContourPolygonClipper {
             clip_polygon: SmallVec::from_slice(clip_polygon),
             contour,
@@ -325,7 +325,7 @@ impl ContourPolygonClipper {
             Some(prev) => *prev,
         };
         for &next in &clip_polygon {
-            self.clip_against(Edge(LineSegmentF32::new(prev, next)));
+            self.clip_against(Edge(LineSegmentF::new(prev, next)));
             prev = next;
         }
 
@@ -343,7 +343,7 @@ enum EdgeRelativeLocation {
 // Fast axis-aligned box 2D clipping
 
 pub(crate) struct ContourRectClipper {
-    clip_rect: RectF32,
+    clip_rect: RectF,
     contour: Contour,
 }
 
@@ -358,7 +358,7 @@ impl ContourClipper for ContourRectClipper {
 
 impl ContourRectClipper {
     #[inline]
-    pub(crate) fn new(clip_rect: RectF32, contour: Contour) -> ContourRectClipper {
+    pub(crate) fn new(clip_rect: RectF, contour: Contour) -> ContourRectClipper {
         ContourRectClipper { clip_rect, contour }
     }
 
@@ -379,16 +379,16 @@ impl ContourRectClipper {
 // 3D quad clipping
 
 pub struct PolygonClipper3D {
-    subject: Vec<Point3DF32>,
+    subject: Vec<Point3DF>,
 }
 
 impl PolygonClipper3D {
     #[inline]
-    pub fn new(subject: Vec<Point3DF32>) -> PolygonClipper3D {
+    pub fn new(subject: Vec<Point3DF>) -> PolygonClipper3D {
         PolygonClipper3D { subject }
     }
 
-    pub fn clip(mut self) -> Vec<Point3DF32> {
+    pub fn clip(mut self) -> Vec<Point3DF> {
         // TODO(pcwalton): Fast path for completely contained polygon?
 
         debug!("before clipping against bottom: {:?}", self.subject);
@@ -440,7 +440,7 @@ enum Edge3D {
 
 impl Edge3D {
     #[inline]
-    fn point_is_inside(self, point: Point3DF32) -> bool {
+    fn point_is_inside(self, point: Point3DF) -> bool {
         let w = point.w();
         match self {
             Edge3D::Left => point.x() >= -w,
@@ -453,7 +453,7 @@ impl Edge3D {
     }
 
     // Blinn & Newell, "Clipping using homogeneous coordinates", SIGGRAPH 1978.
-    fn line_intersection(self, prev: Point3DF32, next: Point3DF32) -> Point3DF32 {
+    fn line_intersection(self, prev: Point3DF, next: Point3DF) -> Point3DF {
         let (x0, x1) = match self {
             Edge3D::Left | Edge3D::Right => (prev.x(), next.x()),
             Edge3D::Bottom | Edge3D::Top => (prev.y(), next.y()),
@@ -472,7 +472,7 @@ impl Edge3D {
 /// Coarse collision detection
 
 // Separating axis theorem. Requires that the polygon be convex.
-pub(crate) fn rect_is_outside_polygon(rect: RectF32, polygon_points: &[Point2DF32]) -> bool {
+pub(crate) fn rect_is_outside_polygon(rect: RectF, polygon_points: &[Point2DF]) -> bool {
     let mut outcode = Outcode::all();
     for point in polygon_points {
         if point.x() > rect.min_x() {
@@ -519,7 +519,7 @@ pub(crate) fn rect_is_outside_polygon(rect: RectF32, polygon_points: &[Point2DF3
 }
 
 // Edge equation method. Requires that the polygon be convex.
-pub(crate) fn rect_is_inside_polygon(rect: RectF32, polygon_points: &[Point2DF32]) -> bool {
+pub(crate) fn rect_is_inside_polygon(rect: RectF, polygon_points: &[Point2DF]) -> bool {
     // FIXME(pcwalton): Check winding!
     let rect_points = [
         rect.origin(),

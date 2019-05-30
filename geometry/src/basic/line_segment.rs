@@ -10,38 +10,38 @@
 
 //! Line segment types, optimized with SIMD.
 
-use crate::basic::point::Point2DF32;
-use crate::basic::transform2d::Matrix2x2F32;
+use crate::basic::point::Point2DF;
+use crate::basic::transform2d::Matrix2x2F;
 use crate::util;
 use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Sub};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct LineSegmentF32(pub F32x4);
+pub struct LineSegmentF(pub F32x4);
 
-impl LineSegmentF32 {
+impl LineSegmentF {
     #[inline]
-    pub fn new(from: Point2DF32, to: Point2DF32) -> LineSegmentF32 {
-        LineSegmentF32(from.0.concat_xy_xy(to.0))
+    pub fn new(from: Point2DF, to: Point2DF) -> LineSegmentF {
+        LineSegmentF(from.0.concat_xy_xy(to.0))
     }
 
     #[inline]
-    pub fn from(&self) -> Point2DF32 {
-        Point2DF32(self.0)
+    pub fn from(&self) -> Point2DF {
+        Point2DF(self.0)
     }
 
     #[inline]
-    pub fn to(&self) -> Point2DF32 {
-        Point2DF32(self.0.zwxy())
+    pub fn to(&self) -> Point2DF {
+        Point2DF(self.0.zwxy())
     }
 
     #[inline]
-    pub fn set_from(&mut self, point: &Point2DF32) {
+    pub fn set_from(&mut self, point: &Point2DF) {
         self.0 = point.0.concat_xy_zw(self.0)
     }
 
     #[inline]
-    pub fn set_to(&mut self, point: &Point2DF32) {
+    pub fn set_to(&mut self, point: &Point2DF) {
         self.0 = self.0.concat_xy_xy(point.0)
     }
 
@@ -88,30 +88,30 @@ impl LineSegmentF32 {
     }
 
     #[inline]
-    pub fn translate(&self, offset: Point2DF32) -> LineSegmentF32 {
-        LineSegmentF32(self.0 + offset.0.xyxy())
+    pub fn translate(&self, offset: Point2DF) -> LineSegmentF {
+        LineSegmentF(self.0 + offset.0.xyxy())
     }
 
     #[inline]
-    pub fn scale(&self, factor: f32) -> LineSegmentF32 {
-        LineSegmentF32(self.0 * F32x4::splat(factor))
+    pub fn scale(&self, factor: f32) -> LineSegmentF {
+        LineSegmentF(self.0 * F32x4::splat(factor))
     }
 
     #[inline]
-    pub fn split(&self, t: f32) -> (LineSegmentF32, LineSegmentF32) {
+    pub fn split(&self, t: f32) -> (LineSegmentF, LineSegmentF) {
         debug_assert!(t >= 0.0 && t <= 1.0);
         let (from_from, to_to) = (self.0.xyxy(), self.0.zwzw());
         let d_d = to_to - from_from;
         let mid_mid = from_from + d_d * F32x4::splat(t);
         (
-            LineSegmentF32(from_from.concat_xy_xy(mid_mid)),
-            LineSegmentF32(mid_mid.concat_xy_xy(to_to)),
+            LineSegmentF(from_from.concat_xy_xy(mid_mid)),
+            LineSegmentF(mid_mid.concat_xy_xy(to_to)),
         )
     }
 
     // Returns the left segment first, followed by the right segment.
     #[inline]
-    pub fn split_at_x(&self, x: f32) -> (LineSegmentF32, LineSegmentF32) {
+    pub fn split_at_x(&self, x: f32) -> (LineSegmentF, LineSegmentF) {
         let (min_part, max_part) = self.split(self.solve_t_for_x(x));
         if min_part.from_x() < max_part.from_x() {
             (min_part, max_part)
@@ -122,7 +122,7 @@ impl LineSegmentF32 {
 
     // Returns the upper segment first, followed by the lower segment.
     #[inline]
-    pub fn split_at_y(&self, y: f32) -> (LineSegmentF32, LineSegmentF32) {
+    pub fn split_at_y(&self, y: f32) -> (LineSegmentF, LineSegmentF) {
         let (min_part, max_part) = self.split(self.solve_t_for_y(y));
 
         // Make sure we compare `from_y` and `to_y` to properly handle the case in which one of the
@@ -155,12 +155,12 @@ impl LineSegmentF32 {
     }
 
     #[inline]
-    pub fn reversed(&self) -> LineSegmentF32 {
-        LineSegmentF32(self.0.zwxy())
+    pub fn reversed(&self) -> LineSegmentF {
+        LineSegmentF(self.0.zwxy())
     }
 
     #[inline]
-    pub fn upper_point(&self) -> Point2DF32 {
+    pub fn upper_point(&self) -> Point2DF {
         if self.from_y() < self.to_y() {
             self.from()
         } else {
@@ -200,7 +200,7 @@ impl LineSegmentF32 {
     // Reverses if necessary so that the from point is above the to point. Calling this method
     // again will undo the transformation.
     #[inline]
-    pub fn orient(&self, y_winding: i32) -> LineSegmentF32 {
+    pub fn orient(&self, y_winding: i32) -> LineSegmentF {
         if y_winding >= 0 {
             *self
         } else {
@@ -227,14 +227,14 @@ impl LineSegmentF32 {
     }
 
     #[inline]
-    pub fn vector(&self) -> Point2DF32 {
+    pub fn vector(&self) -> Point2DF {
         self.to() - self.from()
     }
 
     // http://www.cs.swan.ac.uk/~cssimon/line_intersection.html
-    pub fn intersection_t(&self, other: &LineSegmentF32) -> Option<f32> {
+    pub fn intersection_t(&self, other: &LineSegmentF) -> Option<f32> {
         let p0p1 = self.vector();
-        let matrix = Matrix2x2F32(other.vector().0.concat_xy_xy((-p0p1).0));
+        let matrix = Matrix2x2F(other.vector().0.concat_xy_xy((-p0p1).0));
         if f32::abs(matrix.det()) < EPSILON {
             return None;
         }
@@ -244,12 +244,12 @@ impl LineSegmentF32 {
     }
 
     #[inline]
-    pub fn sample(&self, t: f32) -> Point2DF32 {
+    pub fn sample(&self, t: f32) -> Point2DF {
         self.from() + self.vector().scale(t)
     }
 
     #[inline]
-    pub fn offset(&self, distance: f32) -> LineSegmentF32 {
+    pub fn offset(&self, distance: f32) -> LineSegmentF {
         if self.is_zero_length() {
             *self
         } else {
@@ -258,7 +258,7 @@ impl LineSegmentF32 {
                     .vector()
                     .yx()
                     .normalize()
-                    .scale_xy(Point2DF32::new(-distance, distance))
+                    .scale_xy(Point2DF::new(-distance, distance))
         }
     }
 
@@ -268,19 +268,19 @@ impl LineSegmentF32 {
     }
 }
 
-impl Add<Point2DF32> for LineSegmentF32 {
-    type Output = LineSegmentF32;
+impl Add<Point2DF> for LineSegmentF {
+    type Output = LineSegmentF;
     #[inline]
-    fn add(self, point: Point2DF32) -> LineSegmentF32 {
-        LineSegmentF32(self.0 + point.0.xyxy())
+    fn add(self, point: Point2DF) -> LineSegmentF {
+        LineSegmentF(self.0 + point.0.xyxy())
     }
 }
 
-impl Sub<Point2DF32> for LineSegmentF32 {
-    type Output = LineSegmentF32;
+impl Sub<Point2DF> for LineSegmentF {
+    type Output = LineSegmentF;
     #[inline]
-    fn sub(self, point: Point2DF32) -> LineSegmentF32 {
-        LineSegmentF32(self.0 - point.0.xyxy())
+    fn sub(self, point: Point2DF) -> LineSegmentF {
+        LineSegmentF(self.0 - point.0.xyxy())
     }
 }
 

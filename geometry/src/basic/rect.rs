@@ -10,50 +10,50 @@
 
 //! 2D axis-aligned rectangles, optimized with SIMD.
 
-use crate::basic::point::{Point2DF32, Point2DI32};
+use crate::basic::point::{Point2DF, Point2DI};
 use pathfinder_simd::default::{F32x4, I32x4};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct RectF32(pub F32x4);
+pub struct RectF(pub F32x4);
 
-impl RectF32 {
+impl RectF {
     #[inline]
-    pub fn new(origin: Point2DF32, size: Point2DF32) -> RectF32 {
-        RectF32(origin.0.concat_xy_xy(origin.0 + size.0))
+    pub fn new(origin: Point2DF, size: Point2DF) -> RectF {
+        RectF(origin.0.concat_xy_xy(origin.0 + size.0))
     }
 
     #[inline]
-    pub fn from_points(origin: Point2DF32, lower_right: Point2DF32) -> RectF32 {
-        RectF32(origin.0.concat_xy_xy(lower_right.0))
+    pub fn from_points(origin: Point2DF, lower_right: Point2DF) -> RectF {
+        RectF(origin.0.concat_xy_xy(lower_right.0))
     }
 
     #[inline]
-    pub fn origin(&self) -> Point2DF32 {
-        Point2DF32(self.0)
+    pub fn origin(&self) -> Point2DF {
+        Point2DF(self.0)
     }
 
     #[inline]
-    pub fn size(&self) -> Point2DF32 {
-        Point2DF32(self.0.zwxy() - self.0.xyxy())
+    pub fn size(&self) -> Point2DF {
+        Point2DF(self.0.zwxy() - self.0.xyxy())
     }
 
     #[inline]
-    pub fn upper_right(&self) -> Point2DF32 {
-        Point2DF32(self.0.zyxw())
+    pub fn upper_right(&self) -> Point2DF {
+        Point2DF(self.0.zyxw())
     }
 
     #[inline]
-    pub fn lower_left(&self) -> Point2DF32 {
-        Point2DF32(self.0.xwzy())
+    pub fn lower_left(&self) -> Point2DF {
+        Point2DF(self.0.xwzy())
     }
 
     #[inline]
-    pub fn lower_right(&self) -> Point2DF32 {
-        Point2DF32(self.0.zwxy())
+    pub fn lower_right(&self) -> Point2DF {
+        Point2DF(self.0.zwxy())
     }
 
     #[inline]
-    pub fn contains_point(&self, point: Point2DF32) -> bool {
+    pub fn contains_point(&self, point: Point2DF) -> bool {
         // self.origin <= point && point <= self.lower_right
         self.0
             .concat_xy_xy(point.0)
@@ -62,7 +62,7 @@ impl RectF32 {
     }
 
     #[inline]
-    pub fn contains_rect(&self, other: RectF32) -> bool {
+    pub fn contains_rect(&self, other: RectF) -> bool {
         // self.origin <= other.origin && other.lower_right <= self.lower_right
         self.0
             .concat_xy_zw(other.0)
@@ -76,20 +76,20 @@ impl RectF32 {
     }
 
     #[inline]
-    pub fn union_point(&self, point: Point2DF32) -> RectF32 {
-        RectF32::from_points(self.origin().min(point), self.lower_right().max(point))
+    pub fn union_point(&self, point: Point2DF) -> RectF {
+        RectF::from_points(self.origin().min(point), self.lower_right().max(point))
     }
 
     #[inline]
-    pub fn union_rect(&self, other: RectF32) -> RectF32 {
-        RectF32::from_points(
+    pub fn union_rect(&self, other: RectF) -> RectF {
+        RectF::from_points(
             self.origin().min(other.origin()),
             self.lower_right().max(other.lower_right()),
         )
     }
 
     #[inline]
-    pub fn intersects(&self, other: RectF32) -> bool {
+    pub fn intersects(&self, other: RectF) -> bool {
         // self.origin < other.lower_right && other.origin < self.lower_right
         self.0
             .concat_xy_xy(other.0)
@@ -98,11 +98,11 @@ impl RectF32 {
     }
 
     #[inline]
-    pub fn intersection(&self, other: RectF32) -> Option<RectF32> {
+    pub fn intersection(&self, other: RectF) -> Option<RectF> {
         if !self.intersects(other) {
             None
         } else {
-            Some(RectF32::from_points(
+            Some(RectF::from_points(
                 self.origin().max(other.origin()),
                 self.lower_right().min(other.lower_right()),
             ))
@@ -130,63 +130,63 @@ impl RectF32 {
     }
 
     #[inline]
-    pub fn scale_xy(self, factors: Point2DF32) -> RectF32 {
-        RectF32(self.0 * factors.0.concat_xy_xy(factors.0))
+    pub fn scale_xy(self, factors: Point2DF) -> RectF {
+        RectF(self.0 * factors.0.concat_xy_xy(factors.0))
     }
 
     #[inline]
-    pub fn round_out(self) -> RectF32 {
-        RectF32::from_points(self.origin().floor(), self.lower_right().ceil())
+    pub fn round_out(self) -> RectF {
+        RectF::from_points(self.origin().floor(), self.lower_right().ceil())
     }
 
     #[inline]
-    pub fn dilate(self, amount: Point2DF32) -> RectF32 {
-        RectF32::from_points(self.origin() - amount, self.lower_right() + amount)
+    pub fn dilate(self, amount: Point2DF) -> RectF {
+        RectF::from_points(self.origin() - amount, self.lower_right() + amount)
     }
 
     #[inline]
-    pub fn to_i32(&self) -> RectI32 {
-        RectI32(self.0.to_i32x4())
+    pub fn to_i32(&self) -> RectI {
+        RectI(self.0.to_i32x4())
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct RectI32(pub I32x4);
+pub struct RectI(pub I32x4);
 
-impl RectI32 {
+impl RectI {
     #[inline]
-    pub fn new(origin: Point2DI32, size: Point2DI32) -> RectI32 {
-        RectI32(origin.0.concat_xy_xy(origin.0 + size.0))
+    pub fn new(origin: Point2DI, size: Point2DI) -> RectI {
+        RectI(origin.0.concat_xy_xy(origin.0 + size.0))
     }
 
     #[inline]
-    pub fn from_points(origin: Point2DI32, lower_right: Point2DI32) -> RectI32 {
-        RectI32(origin.0.concat_xy_xy(lower_right.0))
+    pub fn from_points(origin: Point2DI, lower_right: Point2DI) -> RectI {
+        RectI(origin.0.concat_xy_xy(lower_right.0))
     }
 
     #[inline]
-    pub fn origin(&self) -> Point2DI32 {
-        Point2DI32(self.0)
+    pub fn origin(&self) -> Point2DI {
+        Point2DI(self.0)
     }
 
     #[inline]
-    pub fn size(&self) -> Point2DI32 {
-        Point2DI32(self.0.zwxy() - self.0.xyxy())
+    pub fn size(&self) -> Point2DI {
+        Point2DI(self.0.zwxy() - self.0.xyxy())
     }
 
     #[inline]
-    pub fn upper_right(&self) -> Point2DI32 {
-        Point2DI32(self.0.zyxw())
+    pub fn upper_right(&self) -> Point2DI {
+        Point2DI(self.0.zyxw())
     }
 
     #[inline]
-    pub fn lower_left(&self) -> Point2DI32 {
-        Point2DI32(self.0.xwzy())
+    pub fn lower_left(&self) -> Point2DI {
+        Point2DI(self.0.xwzy())
     }
 
     #[inline]
-    pub fn lower_right(&self) -> Point2DI32 {
-        Point2DI32(self.0.zwxy())
+    pub fn lower_right(&self) -> Point2DI {
+        Point2DI(self.0.zwxy())
     }
 
     #[inline]
@@ -210,9 +210,9 @@ impl RectI32 {
     }
 
     #[inline]
-    pub fn contains_point(&self, point: Point2DI32) -> bool {
+    pub fn contains_point(&self, point: Point2DI) -> bool {
         // self.origin <= point && point <= self.lower_right - 1
-        let lower_right = self.lower_right() - Point2DI32::splat(1);
+        let lower_right = self.lower_right() - Point2DI::splat(1);
         self.0
             .concat_xy_xy(point.0)
             .packed_le(point.0.concat_xy_xy(lower_right.0))
@@ -220,7 +220,7 @@ impl RectI32 {
     }
 
     #[inline]
-    pub fn to_f32(&self) -> RectF32 {
-        RectF32(self.0.to_f32x4())
+    pub fn to_f32(&self) -> RectF {
+        RectF(self.0.to_f32x4())
     }
 }

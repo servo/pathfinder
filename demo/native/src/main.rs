@@ -13,8 +13,8 @@
 use nfd::Response;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::{DemoApp, Options};
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use sdl2::event::{Event as SDLEvent, WindowEvent};
@@ -83,7 +83,7 @@ impl Window for WindowImpl {
         GLVersion::GL3
     }
 
-    fn viewport(&self, view: View) -> RectI32 {
+    fn viewport(&self, view: View) -> RectI {
         let (width, height) = self.window.drawable_size();
         let mut width = width as i32;
         let height = height as i32;
@@ -92,7 +92,7 @@ impl Window for WindowImpl {
             width = width / 2;
             x_offset = width * (index as i32);
         }
-        RectI32::new(Point2DI32::new(x_offset, 0), Point2DI32::new(width, height))
+        RectI::new(Point2DI::new(x_offset, 0), Point2DI::new(width, height))
     }
 
     fn make_current(&mut self, _view: View) {
@@ -189,7 +189,7 @@ impl WindowImpl {
         let (logical_width, logical_height) = self.window.size();
         let (drawable_width, _) = self.window.drawable_size();
         WindowSize {
-            logical_size: Point2DI32::new(logical_width as i32, logical_height as i32),
+            logical_size: Point2DI::new(logical_width as i32, logical_height as i32),
             backing_scale_factor: drawable_width as f32 / logical_width as f32,
         }
     }
@@ -221,11 +221,11 @@ impl WindowImpl {
                 message_type: type_,
                 message_data: code as u32,
             }),
-            SDLEvent::MouseButtonDown { x, y, .. } => Some(Event::MouseDown(Point2DI32::new(x, y))),
+            SDLEvent::MouseButtonDown { x, y, .. } => Some(Event::MouseDown(Point2DI::new(x, y))),
             SDLEvent::MouseMotion {
                 x, y, mousestate, ..
             } => {
-                let position = Point2DI32::new(x, y);
+                let position = Point2DI::new(x, y);
                 if mousestate.left() {
                     Some(Event::MouseDragged(position))
                 } else {
@@ -247,7 +247,7 @@ impl WindowImpl {
             } => self.convert_sdl_keycode(sdl_keycode).map(Event::KeyUp),
             SDLEvent::MultiGesture { d_dist, .. } => {
                 let mouse_state = self.event_pump.mouse_state();
-                let center = Point2DI32::new(mouse_state.x(), mouse_state.y());
+                let center = Point2DI::new(mouse_state.x(), mouse_state.y());
                 Some(Event::Zoom(d_dist, center))
             }
             _ => None,

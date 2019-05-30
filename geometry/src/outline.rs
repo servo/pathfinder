@@ -10,10 +10,10 @@
 
 //! A compressed in-memory representation of paths.
 
-use crate::basic::line_segment::LineSegmentF32;
-use crate::basic::point::Point2DF32;
-use crate::basic::rect::RectF32;
-use crate::basic::transform2d::Transform2DF32;
+use crate::basic::line_segment::LineSegmentF;
+use crate::basic::point::Point2DF;
+use crate::basic::rect::RectF;
+use crate::basic::transform2d::Transform2DF;
 use crate::basic::transform3d::Perspective;
 use crate::clip::{self, ContourPolygonClipper, ContourRectClipper};
 use crate::dilation::ContourDilator;
@@ -27,14 +27,14 @@ use std::mem;
 #[derive(Clone)]
 pub struct Outline {
     pub(crate) contours: Vec<Contour>,
-    pub(crate) bounds: RectF32,
+    pub(crate) bounds: RectF,
 }
 
 #[derive(Clone)]
 pub struct Contour {
-    pub(crate) points: Vec<Point2DF32>,
+    pub(crate) points: Vec<Point2DF>,
     pub(crate) flags: Vec<PointFlags>,
-    pub(crate) bounds: RectF32,
+    pub(crate) bounds: RectF,
     pub(crate) closed: bool,
 }
 
@@ -50,7 +50,7 @@ impl Outline {
     pub fn new() -> Outline {
         Outline {
             contours: vec![],
-            bounds: RectF32::default(),
+            bounds: RectF::default(),
         }
     }
 
@@ -104,7 +104,7 @@ impl Outline {
     }
 
     #[inline]
-    pub fn bounds(&self) -> RectF32 {
+    pub fn bounds(&self) -> RectF {
         self.bounds
     }
 
@@ -127,7 +127,7 @@ impl Outline {
         self.contours.push(contour);
     }
 
-    pub fn transform(&mut self, transform: &Transform2DF32) {
+    pub fn transform(&mut self, transform: &Transform2DF) {
         if transform.is_identity() {
             return;
         }
@@ -137,7 +137,7 @@ impl Outline {
             contour.transform(transform);
             contour.update_bounds(&mut new_bounds);
         }
-        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
+        self.bounds = new_bounds.unwrap_or_else(|| RectF::default());
     }
 
     pub fn apply_perspective(&mut self, perspective: &Perspective) {
@@ -146,10 +146,10 @@ impl Outline {
             contour.apply_perspective(perspective);
             contour.update_bounds(&mut new_bounds);
         }
-        self.bounds = new_bounds.unwrap_or_else(|| RectF32::default());
+        self.bounds = new_bounds.unwrap_or_else(|| RectF::default());
     }
 
-    pub fn dilate(&mut self, amount: Point2DF32) {
+    pub fn dilate(&mut self, amount: Point2DF) {
         let orientation = Orientation::from_outline(self);
         self.contours
             .iter_mut()
@@ -157,25 +157,25 @@ impl Outline {
         self.bounds = self.bounds.dilate(amount);
     }
 
-    pub fn prepare_for_tiling(&mut self, view_box: RectF32) {
+    pub fn prepare_for_tiling(&mut self, view_box: RectF) {
         self.contours
             .iter_mut()
             .for_each(|contour| contour.prepare_for_tiling(view_box));
         self.bounds = self
             .bounds
             .intersection(view_box)
-            .unwrap_or_else(|| RectF32::default());
+            .unwrap_or_else(|| RectF::default());
     }
 
-    pub fn is_outside_polygon(&self, clip_polygon: &[Point2DF32]) -> bool {
+    pub fn is_outside_polygon(&self, clip_polygon: &[Point2DF]) -> bool {
         clip::rect_is_outside_polygon(self.bounds, clip_polygon)
     }
 
-    fn is_inside_polygon(&self, clip_polygon: &[Point2DF32]) -> bool {
+    fn is_inside_polygon(&self, clip_polygon: &[Point2DF]) -> bool {
         clip::rect_is_inside_polygon(self.bounds, clip_polygon)
     }
 
-    pub fn clip_against_polygon(&mut self, clip_polygon: &[Point2DF32]) {
+    pub fn clip_against_polygon(&mut self, clip_polygon: &[Point2DF]) {
         // Quick check.
         if self.is_inside_polygon(clip_polygon) {
             return;
@@ -186,7 +186,7 @@ impl Outline {
         }
     }
 
-    pub fn clip_against_rect(&mut self, clip_rect: RectF32) {
+    pub fn clip_against_rect(&mut self, clip_rect: RectF) {
         if clip_rect.contains_rect(self.bounds) {
             return;
         }
@@ -215,7 +215,7 @@ impl Contour {
         Contour {
             points: vec![],
             flags: vec![],
-            bounds: RectF32::default(),
+            bounds: RectF::default(),
             closed: false,
         }
     }
@@ -229,7 +229,7 @@ impl Contour {
             Contour {
                 points: Vec::with_capacity(length),
                 flags: Vec::with_capacity(length),
-                bounds: RectF32::default(),
+                bounds: RectF::default(),
                 closed: false,
             },
         )
@@ -254,7 +254,7 @@ impl Contour {
     }
 
     #[inline]
-    pub fn bounds(&self) -> RectF32 {
+    pub fn bounds(&self) -> RectF {
         self.bounds
     }
 
@@ -264,33 +264,33 @@ impl Contour {
     }
 
     #[inline]
-    pub fn position_of(&self, index: u32) -> Point2DF32 {
+    pub fn position_of(&self, index: u32) -> Point2DF {
         self.points[index as usize]
     }
 
     #[inline]
-    pub(crate) fn position_of_last(&self, index: u32) -> Point2DF32 {
+    pub(crate) fn position_of_last(&self, index: u32) -> Point2DF {
         self.points[self.points.len() - index as usize]
     }
 
     #[inline]
-    pub(crate) fn last_position(&self) -> Option<Point2DF32> {
+    pub(crate) fn last_position(&self) -> Option<Point2DF> {
         self.points.last().cloned()
     }
 
     #[inline]
-    pub fn push_endpoint(&mut self, point: Point2DF32) {
+    pub fn push_endpoint(&mut self, point: Point2DF) {
         self.push_point(point, PointFlags::empty(), true);
     }
 
     #[inline]
-    pub fn push_quadratic(&mut self, ctrl: Point2DF32, point: Point2DF32) {
+    pub fn push_quadratic(&mut self, ctrl: Point2DF, point: Point2DF) {
         self.push_point(ctrl, PointFlags::CONTROL_POINT_0, true);
         self.push_point(point, PointFlags::empty(), true);
     }
 
     #[inline]
-    pub fn push_cubic(&mut self, ctrl0: Point2DF32, ctrl1: Point2DF32, point: Point2DF32) {
+    pub fn push_cubic(&mut self, ctrl0: Point2DF, ctrl1: Point2DF, point: Point2DF) {
         self.push_point(ctrl0, PointFlags::CONTROL_POINT_0, true);
         self.push_point(ctrl1, PointFlags::CONTROL_POINT_1, true);
         self.push_point(point, PointFlags::empty(), true);
@@ -304,7 +304,7 @@ impl Contour {
     // TODO(pcwalton): SIMD.
     #[inline]
     pub(crate) fn push_point(&mut self,
-                             point: Point2DF32,
+                             point: Point2DF,
                              flags: PointFlags,
                              update_bounds: bool) {
         debug_assert!(!point.x().is_nan() && !point.y().is_nan());
@@ -368,22 +368,22 @@ impl Contour {
         self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
     }
 
-    pub fn push_arc(&mut self, center: Point2DF32, radius: f32, start_angle: f32, end_angle: f32) {
-        let start = Point2DF32::new(f32::cos(start_angle), f32::sin(start_angle)).scale(radius);
-        let end = Point2DF32::new(f32::cos(end_angle), f32::sin(end_angle)).scale(radius);
-        let chord = LineSegmentF32::new(start, end).translate(center);
+    pub fn push_arc(&mut self, center: Point2DF, radius: f32, start_angle: f32, end_angle: f32) {
+        let start = Point2DF::new(f32::cos(start_angle), f32::sin(start_angle)).scale(radius);
+        let end = Point2DF::new(f32::cos(end_angle), f32::sin(end_angle)).scale(radius);
+        let chord = LineSegmentF::new(start, end).translate(center);
         let full_circle = end_angle - start_angle >= PI * 2.0;
         self.push_arc_from_chord_full(center, chord, full_circle);
     }
 
     #[inline]
-    pub fn push_arc_from_chord(&mut self, center: Point2DF32, chord: LineSegmentF32) {
+    pub fn push_arc_from_chord(&mut self, center: Point2DF, chord: LineSegmentF) {
         self.push_arc_from_chord_full(center, chord, false);
     }
 
     fn push_arc_from_chord_full(&mut self,
-                                center: Point2DF32,
-                                mut chord: LineSegmentF32,
+                                center: Point2DF,
+                                mut chord: LineSegmentF,
                                 full_circle: bool) {
         chord = chord.translate(-center);
         let radius = chord.from().length();
@@ -393,8 +393,8 @@ impl Contour {
         debug_assert!(f32::abs(vector.0.length() - 1.0) < EPSILON);
         debug_assert!(f32::abs(end_vector.0.length() - 1.0) < EPSILON);
 
-        let scale = Transform2DF32::from_scale(Point2DF32::splat(radius));
-        let translation = Transform2DF32::from_translation(center);
+        let scale = Transform2DF::from_scale(Point2DF::splat(radius));
+        let translation = Transform2DF::from_translation(center);
 
         let mut first_segment = true;
         loop {
@@ -402,12 +402,12 @@ impl Contour {
             let last = !(full_circle && first_segment) &&
                 sweep_vector.0.x() >= -EPSILON && sweep_vector.0.y() >= -EPSILON;
             if !last {
-                sweep_vector = UnitVector(Point2DF32::new(0.0, 1.0));
+                sweep_vector = UnitVector(Point2DF::new(0.0, 1.0));
             }
 
             let mut segment = Segment::arc_from_cos(sweep_vector.0.x());
             let rotation =
-                Transform2DF32::from_rotation_vector(sweep_vector.halve_angle().rotate_by(vector));
+                Transform2DF::from_rotation_vector(sweep_vector.halve_angle().rotate_by(vector));
             segment = segment.transform(&scale.post_mul(&rotation).post_mul(&translation));
 
             if first_segment {
@@ -458,9 +458,9 @@ impl Contour {
     }
 
     #[inline]
-    pub fn hull_segment_after(&self, prev_point_index: u32) -> LineSegmentF32 {
+    pub fn hull_segment_after(&self, prev_point_index: u32) -> LineSegmentF {
         let next_point_index = self.next_point_index_of(prev_point_index);
-        LineSegmentF32::new(
+        LineSegmentF::new(
             self.points[prev_point_index as usize],
             self.points[next_point_index as usize],
         )
@@ -526,7 +526,7 @@ impl Contour {
         }
     }
 
-    pub fn transform(&mut self, transform: &Transform2DF32) {
+    pub fn transform(&mut self, transform: &Transform2DF) {
         if transform.is_identity() {
             return;
         }
@@ -544,12 +544,12 @@ impl Contour {
         }
     }
 
-    pub fn dilate(&mut self, amount: Point2DF32, orientation: Orientation) {
+    pub fn dilate(&mut self, amount: Point2DF, orientation: Orientation) {
         ContourDilator::new(self, amount, orientation).dilate();
         self.bounds = self.bounds.dilate(amount);
     }
 
-    fn prepare_for_tiling(&mut self, view_box: RectF32) {
+    fn prepare_for_tiling(&mut self, view_box: RectF) {
         // Snap points to the view box bounds. This mops up floating point error from the clipping
         // process.
         let (mut last_endpoint_index, mut contour_is_monotonic) = (None, true);
@@ -576,7 +576,7 @@ impl Contour {
         self.bounds = self
             .bounds
             .intersection(view_box)
-            .unwrap_or_else(|| RectF32::default());
+            .unwrap_or_else(|| RectF::default());
     }
 
     fn make_monotonic(&mut self) {
@@ -598,7 +598,7 @@ impl Contour {
                 } else {
                     point_index
                 };
-                let baseline = LineSegmentF32::new(
+                let baseline = LineSegmentF::new(
                     contour.points[last_endpoint_index as usize],
                     contour.points[position_index as usize],
                 );
@@ -614,7 +614,7 @@ impl Contour {
                     let first_ctrl_point_index = last_endpoint_index as usize + 1;
                     let ctrl_position_0 = &contour.points[first_ctrl_point_index + 0];
                     let ctrl_position_1 = &contour.points[first_ctrl_point_index + 1];
-                    let ctrl = LineSegmentF32::new(*ctrl_position_0, *ctrl_position_1);
+                    let ctrl = LineSegmentF::new(*ctrl_position_0, *ctrl_position_1);
                     handle_cubic(self, Segment::cubic(&baseline, &ctrl));
                 }
 
@@ -694,7 +694,7 @@ impl Contour {
 
     // Use this function to keep bounds up to date when mutating paths. See `Outline::transform()`
     // for an example of use.
-    pub(crate) fn update_bounds(&self, bounds: &mut Option<RectF32>) {
+    pub(crate) fn update_bounds(&self, bounds: &mut Option<RectF>) {
         *bounds = Some(match *bounds {
             None => self.bounds,
             Some(bounds) => bounds.union_rect(self.bounds),
@@ -800,21 +800,21 @@ impl<'a> Iterator for ContourIter<'a> {
         if self.index == contour.len() {
             let point1 = contour.position_of(0);
             self.index += 1;
-            return Some(Segment::line(&LineSegmentF32::new(point0, point1)));
+            return Some(Segment::line(&LineSegmentF::new(point0, point1)));
         }
 
         let point1_index = self.index;
         self.index += 1;
         let point1 = contour.position_of(point1_index);
         if contour.point_is_endpoint(point1_index) {
-            return Some(Segment::line(&LineSegmentF32::new(point0, point1)));
+            return Some(Segment::line(&LineSegmentF::new(point0, point1)));
         }
 
         let point2_index = self.index;
         let point2 = contour.position_of(point2_index);
         self.index += 1;
         if contour.point_is_endpoint(point2_index) {
-            return Some(Segment::quadratic(&LineSegmentF32::new(point0, point2), point1));
+            return Some(Segment::quadratic(&LineSegmentF::new(point0, point2), point1));
         }
 
         let point3_index = self.index;
@@ -822,16 +822,16 @@ impl<'a> Iterator for ContourIter<'a> {
         self.index += 1;
         debug_assert!(contour.point_is_endpoint(point3_index));
         return Some(Segment::cubic(
-            &LineSegmentF32::new(point0, point3),
-            &LineSegmentF32::new(point1, point2),
+            &LineSegmentF::new(point0, point3),
+            &LineSegmentF::new(point1, point2),
         ));
     }
 }
 
 #[inline]
-pub(crate) fn union_rect(bounds: &mut RectF32, new_point: Point2DF32, first: bool) {
+pub(crate) fn union_rect(bounds: &mut RectF, new_point: Point2DF, first: bool) {
     if first {
-        *bounds = RectF32::from_points(new_point, new_point);
+        *bounds = RectF::from_points(new_point, new_point);
     } else {
         *bounds = bounds.union_point(new_point)
     }

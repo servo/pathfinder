@@ -13,8 +13,8 @@ use font_kit::error::GlyphLoadingError;
 use font_kit::hinting::HintingOptions;
 use font_kit::loader::Loader;
 use lyon_path::builder::{FlatPathBuilder, PathBuilder};
-use pathfinder_geometry::basic::point::Point2DF32;
-use pathfinder_geometry::basic::transform2d::Transform2DF32;
+use pathfinder_geometry::basic::point::Point2DF;
+use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::PaintId;
@@ -27,7 +27,7 @@ pub trait SceneExt {
     fn push_glyph<F>(&mut self,
                      font: &F,
                      glyph_id: u32,
-                     transform: &Transform2DF32,
+                     transform: &Transform2DF,
                      render_mode: TextRenderMode,
                      hinting_options: HintingOptions,
                      paint_id: PaintId)
@@ -37,7 +37,7 @@ pub trait SceneExt {
     fn push_layout(&mut self,
                    layout: &Layout,
                    style: &TextStyle,
-                   transform: &Transform2DF32,
+                   transform: &Transform2DF,
                    render_mode: TextRenderMode,
                    hinting_options: HintingOptions,
                    paint_id: PaintId)
@@ -47,7 +47,7 @@ pub trait SceneExt {
                  text: &str,
                  style: &TextStyle,
                  collection: &FontCollection,
-                 transform: &Transform2DF32,
+                 transform: &Transform2DF,
                  render_mode: TextRenderMode,
                  hinting_options: HintingOptions,
                  paint_id: PaintId)
@@ -59,7 +59,7 @@ impl SceneExt for Scene {
     fn push_glyph<F>(&mut self,
                      font: &F,
                      glyph_id: u32,
-                     transform: &Transform2DF32,
+                     transform: &Transform2DF,
                      render_mode: TextRenderMode,
                      hinting_options: HintingOptions,
                      paint_id: PaintId)
@@ -82,19 +82,19 @@ impl SceneExt for Scene {
     fn push_layout(&mut self,
                    layout: &Layout,
                    style: &TextStyle,
-                   transform: &Transform2DF32,
+                   transform: &Transform2DF,
                    render_mode: TextRenderMode,
                    hinting_options: HintingOptions,
                    paint_id: PaintId)
                    -> Result<(), GlyphLoadingError> {
         for glyph in &layout.glyphs {
-            let offset = Point2DF32::new(glyph.offset.x, glyph.offset.y);
+            let offset = Point2DF::new(glyph.offset.x, glyph.offset.y);
             let font = &*glyph.font.font;
             // FIXME(pcwalton): Cache this!
             let scale = style.size / (font.metrics().units_per_em as f32);
-            let scale = Point2DF32::new(scale, -scale);
+            let scale = Point2DF::new(scale, -scale);
             let transform =
-                Transform2DF32::from_scale(scale).post_mul(transform).post_translate(offset);
+                Transform2DF::from_scale(scale).post_mul(transform).post_translate(offset);
             self.push_glyph(font,
                             glyph.glyph_id,
                             &transform,
@@ -110,7 +110,7 @@ impl SceneExt for Scene {
                  text: &str,
                  style: &TextStyle,
                  collection: &FontCollection,
-                 transform: &Transform2DF32,
+                 transform: &Transform2DF,
                  render_mode: TextRenderMode,
                  hinting_options: HintingOptions,
                  paint_id: PaintId)
@@ -129,11 +129,11 @@ pub enum TextRenderMode {
 struct OutlinePathBuilder {
     outline: Outline,
     current_contour: Contour,
-    transform: Transform2DF32,
+    transform: Transform2DF,
 }
 
 impl OutlinePathBuilder {
-    fn new(transform: &Transform2DF32) -> OutlinePathBuilder {
+    fn new(transform: &Transform2DF) -> OutlinePathBuilder {
         OutlinePathBuilder {
             outline: Outline::new(),
             current_contour: Contour::new(),
@@ -147,8 +147,8 @@ impl OutlinePathBuilder {
         }
     }
 
-    fn convert_point(&self, point: Point2D<f32>) -> Point2DF32 {
-        self.transform.transform_point(Point2DF32::new(point.x, point.y))
+    fn convert_point(&self, point: Point2D<f32>) -> Point2DF {
+        self.transform.transform_point(Point2DF::new(point.x, point.y))
     }
 }
 

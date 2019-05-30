@@ -9,8 +9,8 @@
 // except according to those terms.
 
 use pathfinder_canvas::{CanvasRenderingContext2D, Path2D};
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
+use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_geometry::stroke::LineJoin;
 use pathfinder_gl::{GLDevice, GLVersion};
@@ -35,7 +35,7 @@ fn main() {
     gl_attributes.set_context_version(3, 3);
 
     // Open a window.
-    let window_size = Point2DI32::new(640, 480);
+    let window_size = Point2DI::new(640, 480);
     let window = video.window("Minimal example", window_size.x() as u32, window_size.y() as u32)
                       .opengl()
                       .build()
@@ -61,16 +61,16 @@ fn main() {
     canvas.set_line_width(10.0);
 
     // Draw walls.
-    canvas.stroke_rect(RectF32::new(Point2DF32::new(75.0, 140.0), Point2DF32::new(150.0, 110.0)));
+    canvas.stroke_rect(RectF::new(Point2DF::new(75.0, 140.0), Point2DF::new(150.0, 110.0)));
 
     // Draw door.
-    canvas.fill_rect(RectF32::new(Point2DF32::new(130.0, 190.0), Point2DF32::new(40.0, 60.0)));
+    canvas.fill_rect(RectF::new(Point2DF::new(130.0, 190.0), Point2DF::new(40.0, 60.0)));
 
     // Draw roof.
     let mut path = Path2D::new();
-    path.move_to(Point2DF32::new(50.0, 140.0));
-    path.line_to(Point2DF32::new(150.0, 60.0));
-    path.line_to(Point2DF32::new(250.0, 140.0));
+    path.move_to(Point2DF::new(50.0, 140.0));
+    path.line_to(Point2DF::new(150.0, 60.0));
+    path.line_to(Point2DF::new(250.0, 140.0));
     path.close_path();
     canvas.stroke_path(path);
 

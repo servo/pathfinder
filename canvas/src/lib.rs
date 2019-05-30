@@ -14,9 +14,9 @@ use font_kit::family_name::FamilyName;
 use font_kit::hinting::HintingOptions;
 use font_kit::properties::Properties;
 use font_kit::source::SystemSource;
-use pathfinder_geometry::basic::point::Point2DF32;
-use pathfinder_geometry::basic::rect::RectF32;
-use pathfinder_geometry::basic::transform2d::Transform2DF32;
+use pathfinder_geometry::basic::point::Point2DF;
+use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
@@ -44,9 +44,9 @@ pub struct CanvasRenderingContext2D {
 
 impl CanvasRenderingContext2D {
     #[inline]
-    pub fn new(size: Point2DF32) -> CanvasRenderingContext2D {
+    pub fn new(size: Point2DF) -> CanvasRenderingContext2D {
         let mut scene = Scene::new();
-        scene.set_view_box(RectF32::new(Point2DF32::default(), size));
+        scene.set_view_box(RectF::new(Point2DF::default(), size));
         CanvasRenderingContext2D::from_scene(scene)
     }
 
@@ -79,23 +79,23 @@ impl CanvasRenderingContext2D {
     }
 
     #[inline]
-    pub fn fill_rect(&mut self, rect: RectF32) {
+    pub fn fill_rect(&mut self, rect: RectF) {
         let mut path = Path2D::new();
         path.rect(rect);
         self.fill_path(path);
     }
 
     #[inline]
-    pub fn stroke_rect(&mut self, rect: RectF32) {
+    pub fn stroke_rect(&mut self, rect: RectF) {
         let mut path = Path2D::new();
         path.rect(rect);
         self.stroke_path(path);
     }
 
-    pub fn fill_text(&mut self, string: &str, position: Point2DF32) {
+    pub fn fill_text(&mut self, string: &str, position: Point2DF) {
         // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
-        let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
+        let transform = Transform2DF::from_translation(position).post_mul(&self.current_state
                                                                                  .transform);
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
@@ -106,10 +106,10 @@ impl CanvasRenderingContext2D {
                                   paint_id));
     }
 
-    pub fn stroke_text(&mut self, string: &str, position: Point2DF32) {
+    pub fn stroke_text(&mut self, string: &str, position: Point2DF) {
         // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
-        let transform = Transform2DF32::from_translation(position).post_mul(&self.current_state
+        let transform = Transform2DF::from_translation(position).post_mul(&self.current_state
                                                                                  .transform);
         drop(self.scene.push_text(string,
                                   &TextStyle { size: self.current_state.font_size },
@@ -186,18 +186,18 @@ impl CanvasRenderingContext2D {
     // Transformations
 
     #[inline]
-    pub fn current_transform(&self) -> Transform2DF32 {
+    pub fn current_transform(&self) -> Transform2DF {
         self.current_state.transform
     }
 
     #[inline]
-    pub fn set_current_transform(&mut self, new_transform: &Transform2DF32) {
+    pub fn set_current_transform(&mut self, new_transform: &Transform2DF) {
         self.current_state.transform = *new_transform;
     }
 
     #[inline]
     pub fn reset_transform(&mut self) {
-        self.current_state.transform = Transform2DF32::default();
+        self.current_state.transform = Transform2DF::default();
     }
 
     // Compositing
@@ -229,7 +229,7 @@ impl CanvasRenderingContext2D {
 
 #[derive(Clone)]
 pub struct State {
-    transform: Transform2DF32,
+    transform: Transform2DF,
     font_collection: Arc<FontCollection>,
     font_size: f32,
     fill_paint: Paint,
@@ -241,7 +241,7 @@ pub struct State {
 impl State {
     fn default(default_font_collection: Arc<FontCollection>) -> State {
         State {
-            transform: Transform2DF32::default(),
+            transform: Transform2DF::default(),
             font_collection: default_font_collection,
             font_size: DEFAULT_FONT_SIZE,
             fill_paint: Paint { color: ColorU::black() },
@@ -276,33 +276,33 @@ impl Path2D {
     }
 
     #[inline]
-    pub fn move_to(&mut self, to: Point2DF32) {
+    pub fn move_to(&mut self, to: Point2DF) {
         // TODO(pcwalton): Cull degenerate contours.
         self.flush_current_contour();
         self.current_contour.push_endpoint(to);
     }
 
     #[inline]
-    pub fn line_to(&mut self, to: Point2DF32) {
+    pub fn line_to(&mut self, to: Point2DF) {
         self.current_contour.push_endpoint(to);
     }
 
     #[inline]
-    pub fn quadratic_curve_to(&mut self, ctrl: Point2DF32, to: Point2DF32) {
+    pub fn quadratic_curve_to(&mut self, ctrl: Point2DF, to: Point2DF) {
         self.current_contour.push_quadratic(ctrl, to);
     }
 
     #[inline]
-    pub fn bezier_curve_to(&mut self, ctrl0: Point2DF32, ctrl1: Point2DF32, to: Point2DF32) {
+    pub fn bezier_curve_to(&mut self, ctrl0: Point2DF, ctrl1: Point2DF, to: Point2DF) {
         self.current_contour.push_cubic(ctrl0, ctrl1, to);
     }
 
     #[inline]
-    pub fn arc(&mut self, center: Point2DF32, radius: f32, start_angle: f32, end_angle: f32) {
+    pub fn arc(&mut self, center: Point2DF, radius: f32, start_angle: f32, end_angle: f32) {
         self.current_contour.push_arc(center, radius, start_angle, end_angle);
     }
 
-    pub fn rect(&mut self, rect: RectF32) {
+    pub fn rect(&mut self, rect: RectF) {
         self.flush_current_contour();
         self.current_contour.push_endpoint(rect.origin());
         self.current_contour.push_endpoint(rect.upper_right());

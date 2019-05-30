@@ -16,8 +16,8 @@
 //! The debug font atlas was generated using: https://evanw.github.io/font-texture-generator/
 
 use crate::gpu::renderer::{RenderStats, RenderTime};
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_ui::{FONT_ASCENT, LINE_HEIGHT, PADDING, UIPresenter, WINDOW_COLOR};
@@ -50,7 +50,7 @@ where
     pub fn new(
         device: &D,
         resources: &dyn ResourceLoader,
-        framebuffer_size: Point2DI32,
+        framebuffer_size: Point2DI,
     ) -> DebugUIPresenter<D> {
         let ui_presenter = UIPresenter::new(device, resources, framebuffer_size);
         DebugUIPresenter {
@@ -84,17 +84,17 @@ where
     fn draw_stats_window(&self, device: &D, mean_cpu_sample: &CPUSample) {
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
-        let window_rect = RectI32::new(
-            Point2DI32::new(
+        let window_rect = RectI::new(
+            Point2DI::new(
                 framebuffer_size.x() - PADDING - STATS_WINDOW_WIDTH,
                 bottom - PERFORMANCE_WINDOW_HEIGHT - PADDING - STATS_WINDOW_HEIGHT,
             ),
-            Point2DI32::new(STATS_WINDOW_WIDTH, STATS_WINDOW_HEIGHT),
+            Point2DI::new(STATS_WINDOW_WIDTH, STATS_WINDOW_HEIGHT),
         );
 
         self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
 
-        let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
+        let origin = window_rect.origin() + Point2DI::new(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
             &format!("Paths: {}", mean_cpu_sample.stats.path_count),
@@ -104,19 +104,19 @@ where
         self.ui_presenter.draw_text(
             device,
             &format!("Solid Tiles: {}", mean_cpu_sample.stats.solid_tile_count),
-            origin + Point2DI32::new(0, LINE_HEIGHT * 1),
+            origin + Point2DI::new(0, LINE_HEIGHT * 1),
             false,
         );
         self.ui_presenter.draw_text(
             device,
             &format!("Alpha Tiles: {}", mean_cpu_sample.stats.alpha_tile_count),
-            origin + Point2DI32::new(0, LINE_HEIGHT * 2),
+            origin + Point2DI::new(0, LINE_HEIGHT * 2),
             false,
         );
         self.ui_presenter.draw_text(
             device,
             &format!("Fills: {}", mean_cpu_sample.stats.fill_count),
-            origin + Point2DI32::new(0, LINE_HEIGHT * 3),
+            origin + Point2DI::new(0, LINE_HEIGHT * 3),
             false,
         );
     }
@@ -124,17 +124,17 @@ where
     fn draw_performance_window(&self, device: &D, mean_cpu_sample: &CPUSample) {
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
-        let window_rect = RectI32::new(
-            Point2DI32::new(
+        let window_rect = RectI::new(
+            Point2DI::new(
                 framebuffer_size.x() - PADDING - PERFORMANCE_WINDOW_WIDTH,
                 bottom - PERFORMANCE_WINDOW_HEIGHT,
             ),
-            Point2DI32::new(PERFORMANCE_WINDOW_WIDTH, PERFORMANCE_WINDOW_HEIGHT),
+            Point2DI::new(PERFORMANCE_WINDOW_WIDTH, PERFORMANCE_WINDOW_HEIGHT),
         );
 
         self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
 
-        let origin = window_rect.origin() + Point2DI32::new(PADDING, PADDING + FONT_ASCENT);
+        let origin = window_rect.origin() + Point2DI::new(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
             &format!(
@@ -152,7 +152,7 @@ where
                 "Stage 0 GPU: {:.3} ms",
                 duration_to_ms(mean_gpu_sample.time.stage_0)
             ),
-            origin + Point2DI32::new(0, LINE_HEIGHT * 1),
+            origin + Point2DI::new(0, LINE_HEIGHT * 1),
             false,
         );
         self.ui_presenter.draw_text(
@@ -161,7 +161,7 @@ where
                 "Stage 1 GPU: {:.3} ms",
                 duration_to_ms(mean_gpu_sample.time.stage_1)
             ),
-            origin + Point2DI32::new(0, LINE_HEIGHT * 2),
+            origin + Point2DI::new(0, LINE_HEIGHT * 2),
             false,
         );
 
@@ -171,7 +171,7 @@ where
         self.ui_presenter.draw_text(
             device,
             &format!("Wallclock: {:.3} ms", wallclock_time),
-            origin + Point2DI32::new(0, LINE_HEIGHT * 3),
+            origin + Point2DI::new(0, LINE_HEIGHT * 3),
             false,
         );
     }

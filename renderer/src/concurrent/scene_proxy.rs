@@ -24,7 +24,7 @@ use crate::gpu::renderer::Renderer;
 use crate::gpu_data::RenderCommand;
 use crate::options::{RenderCommandListener, RenderOptions};
 use crate::scene::Scene;
-use pathfinder_geometry::basic::rect::RectF32;
+use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_gpu::Device;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -53,7 +53,7 @@ impl SceneProxy {
     }
 
     #[inline]
-    pub fn set_view_box(&self, new_view_box: RectF32) {
+    pub fn set_view_box(&self, new_view_box: RectF) {
         self.sender.send(MainToWorkerMsg::SetViewBox(new_view_box)).unwrap();
     }
 
@@ -117,7 +117,7 @@ fn scene_thread<E>(mut scene: Scene,
 
 enum MainToWorkerMsg {
     ReplaceScene(Scene),
-    SetViewBox(RectF32),
+    SetViewBox(RectF),
     Build(RenderOptions, Box<dyn RenderCommandListener>),
     GetSVG(Sender<Vec<u8>>),
 }

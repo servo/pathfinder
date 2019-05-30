@@ -16,8 +16,8 @@ use jni::{JNIEnv, JavaVM};
 use pathfinder_demo::window::{Event, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
 use std::cell::RefCell;
@@ -48,7 +48,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     width: i32,
     height: i32,
 ) {
-    let logical_size = Point2DI32::new(width, height);
+    let logical_size = Point2DI::new(width, height);
     let window_size = WindowSize {
         logical_size,
         backing_scale_factor: 1.0,
@@ -119,7 +119,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
         .lock()
         .unwrap()
         .push(Event::WindowResized(WindowSize {
-            logical_size: Point2DI32::new(width, height),
+            logical_size: Point2DI::new(width, height),
             backing_scale_factor: 1.0,
         }))
 }
@@ -134,7 +134,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     EVENT_QUEUE
         .lock()
         .unwrap()
-        .push(Event::MouseDown(Point2DI32::new(x, y)))
+        .push(Event::MouseDown(Point2DI::new(x, y)))
 }
 
 #[no_mangle]
@@ -147,7 +147,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     EVENT_QUEUE
         .lock()
         .unwrap()
-        .push(Event::MouseDragged(Point2DI32::new(x, y)))
+        .push(Event::MouseDragged(Point2DI::new(x, y)))
 }
 
 #[no_mangle]
@@ -161,7 +161,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     EVENT_QUEUE
         .lock()
         .unwrap()
-        .push(Event::Zoom(factor, Point2DI32::new(center_x, center_y)))
+        .push(Event::Zoom(factor, Point2DI::new(center_x, center_y)))
 }
 
 #[no_mangle]
@@ -188,7 +188,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
 }
 
 struct WindowImpl {
-    size: Point2DI32,
+    size: Point2DI,
 }
 
 impl Window for WindowImpl {
@@ -196,7 +196,7 @@ impl Window for WindowImpl {
         GLVersion::GLES3
     }
 
-    fn viewport(&self, view: View) -> RectI32 {
+    fn viewport(&self, view: View) -> RectI {
         let mut width = self.size.x();
         let mut offset_x = 0;
         let height = self.size.y();
@@ -204,9 +204,9 @@ impl Window for WindowImpl {
             width = width / 2;
             offset_x = (index as i32) * width;
         }
-        let size = Point2DI32::new(width, height);
-        let offset = Point2DI32::new(offset_x, 0);
-        RectI32::new(offset, size)
+        let size = Point2DI::new(width, height);
+        let offset = Point2DI::new(offset_x, 0);
+        RectI::new(offset, size)
     }
 
     fn make_current(&mut self, _view: View) {}

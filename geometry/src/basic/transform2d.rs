@@ -10,10 +10,10 @@
 
 //! 2D affine transforms.
 
-use crate::basic::line_segment::LineSegmentF32;
-use crate::basic::point::Point2DF32;
-use crate::basic::rect::RectF32;
-use crate::basic::transform3d::Transform3DF32;
+use crate::basic::line_segment::LineSegmentF;
+use crate::basic::point::Point2DF;
+use crate::basic::rect::RectF;
+use crate::basic::transform3d::Transform3DF;
 use crate::segment::Segment;
 use crate::unit_vector::UnitVector;
 use pathfinder_simd::default::F32x4;
@@ -21,60 +21,60 @@ use std::ops::Sub;
 
 /// A 2x2 matrix, optimized with SIMD, in column-major order.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Matrix2x2F32(pub F32x4);
+pub struct Matrix2x2F(pub F32x4);
 
-impl Default for Matrix2x2F32 {
+impl Default for Matrix2x2F {
     #[inline]
-    fn default() -> Matrix2x2F32 {
-        Self::from_scale(Point2DF32::splat(1.0))
+    fn default() -> Matrix2x2F {
+        Self::from_scale(Point2DF::splat(1.0))
     }
 }
 
-impl Matrix2x2F32 {
+impl Matrix2x2F {
     #[inline]
-    pub fn from_scale(scale: Point2DF32) -> Matrix2x2F32 {
-        Matrix2x2F32(F32x4::new(scale.x(), 0.0, 0.0, scale.y()))
+    pub fn from_scale(scale: Point2DF) -> Matrix2x2F {
+        Matrix2x2F(F32x4::new(scale.x(), 0.0, 0.0, scale.y()))
     }
 
     #[inline]
-    pub fn from_rotation(theta: f32) -> Matrix2x2F32 {
-        Matrix2x2F32::from_rotation_vector(UnitVector::from_angle(theta))
+    pub fn from_rotation(theta: f32) -> Matrix2x2F {
+        Matrix2x2F::from_rotation_vector(UnitVector::from_angle(theta))
     }
 
     #[inline]
-    pub fn from_rotation_vector(vector: UnitVector) -> Matrix2x2F32 {
-        Matrix2x2F32((vector.0).0.xyyx() * F32x4::new(1.0, 1.0, -1.0, 1.0))
+    pub fn from_rotation_vector(vector: UnitVector) -> Matrix2x2F {
+        Matrix2x2F((vector.0).0.xyyx() * F32x4::new(1.0, 1.0, -1.0, 1.0))
     }
 
     #[inline]
-    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32) -> Matrix2x2F32 {
-        Matrix2x2F32(F32x4::new(m11, m21, m12, m22))
+    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32) -> Matrix2x2F {
+        Matrix2x2F(F32x4::new(m11, m21, m12, m22))
     }
 
     #[inline]
-    pub fn post_mul(&self, other: &Matrix2x2F32) -> Matrix2x2F32 {
-        Matrix2x2F32(self.0.xyxy() * other.0.xxzz() + self.0.zwzw() * other.0.yyww())
+    pub fn post_mul(&self, other: &Matrix2x2F) -> Matrix2x2F {
+        Matrix2x2F(self.0.xyxy() * other.0.xxzz() + self.0.zwzw() * other.0.yyww())
     }
 
     #[inline]
-    pub fn pre_mul(&self, other: &Matrix2x2F32) -> Matrix2x2F32 {
+    pub fn pre_mul(&self, other: &Matrix2x2F) -> Matrix2x2F {
         other.post_mul(self)
     }
 
     #[inline]
-    pub fn entrywise_mul(&self, other: &Matrix2x2F32) -> Matrix2x2F32 {
-        Matrix2x2F32(self.0 * other.0)
+    pub fn entrywise_mul(&self, other: &Matrix2x2F) -> Matrix2x2F {
+        Matrix2x2F(self.0 * other.0)
     }
 
     #[inline]
-    pub fn adjugate(&self) -> Matrix2x2F32 {
-        Matrix2x2F32(self.0.wyzx() * F32x4::new(1.0, -1.0, -1.0, 1.0))
+    pub fn adjugate(&self) -> Matrix2x2F {
+        Matrix2x2F(self.0.wyzx() * F32x4::new(1.0, -1.0, -1.0, 1.0))
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Point2DF32) -> Point2DF32 {
+    pub fn transform_point(&self, point: Point2DF) -> Point2DF {
         let halves = self.0 * point.0.xxyy();
-        Point2DF32(halves + halves.zwzw())
+        Point2DF(halves + halves.zwzw())
     }
 
     #[inline]
@@ -83,8 +83,8 @@ impl Matrix2x2F32 {
     }
 
     #[inline]
-    pub fn inverse(&self) -> Matrix2x2F32 {
-        Matrix2x2F32(F32x4::splat(1.0 / self.det()) * self.adjugate().0)
+    pub fn inverse(&self) -> Matrix2x2F {
+        Matrix2x2F(F32x4::splat(1.0 / self.det()) * self.adjugate().0)
     }
 
     #[inline]
@@ -105,116 +105,116 @@ impl Matrix2x2F32 {
     }
 }
 
-impl Sub<Matrix2x2F32> for Matrix2x2F32 {
-    type Output = Matrix2x2F32;
+impl Sub<Matrix2x2F> for Matrix2x2F {
+    type Output = Matrix2x2F;
     #[inline]
-    fn sub(self, other: Matrix2x2F32) -> Matrix2x2F32 {
-        Matrix2x2F32(self.0 - other.0)
+    fn sub(self, other: Matrix2x2F) -> Matrix2x2F {
+        Matrix2x2F(self.0 - other.0)
     }
 }
 
 /// An affine transform, optimized with SIMD.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Transform2DF32 {
+pub struct Transform2DF {
     // Row-major order.
-    matrix: Matrix2x2F32,
-    vector: Point2DF32,
+    matrix: Matrix2x2F,
+    vector: Point2DF,
 }
 
-impl Default for Transform2DF32 {
+impl Default for Transform2DF {
     #[inline]
-    fn default() -> Transform2DF32 {
-        Self::from_scale(Point2DF32::splat(1.0))
+    fn default() -> Transform2DF {
+        Self::from_scale(Point2DF::splat(1.0))
     }
 }
 
-impl Transform2DF32 {
+impl Transform2DF {
     #[inline]
-    pub fn from_scale(scale: Point2DF32) -> Transform2DF32 {
-        Transform2DF32 {
-            matrix: Matrix2x2F32::from_scale(scale),
-            vector: Point2DF32::default(),
+    pub fn from_scale(scale: Point2DF) -> Transform2DF {
+        Transform2DF {
+            matrix: Matrix2x2F::from_scale(scale),
+            vector: Point2DF::default(),
         }
     }
 
     #[inline]
-    pub fn from_rotation(theta: f32) -> Transform2DF32 {
-        Transform2DF32 {
-            matrix: Matrix2x2F32::from_rotation(theta),
-            vector: Point2DF32::default(),
+    pub fn from_rotation(theta: f32) -> Transform2DF {
+        Transform2DF {
+            matrix: Matrix2x2F::from_rotation(theta),
+            vector: Point2DF::default(),
         }
     }
 
     #[inline]
-    pub fn from_rotation_vector(vector: UnitVector) -> Transform2DF32 {
-        Transform2DF32 {
-            matrix: Matrix2x2F32::from_rotation_vector(vector),
-            vector: Point2DF32::default(),
+    pub fn from_rotation_vector(vector: UnitVector) -> Transform2DF {
+        Transform2DF {
+            matrix: Matrix2x2F::from_rotation_vector(vector),
+            vector: Point2DF::default(),
         }
     }
 
     #[inline]
-    pub fn from_translation(vector: Point2DF32) -> Transform2DF32 {
-        Transform2DF32 { matrix: Matrix2x2F32::default(), vector }
+    pub fn from_translation(vector: Point2DF) -> Transform2DF {
+        Transform2DF { matrix: Matrix2x2F::default(), vector }
     }
 
     #[inline]
     pub fn from_scale_rotation_translation(
-        scale: Point2DF32,
+        scale: Point2DF,
         theta: f32,
-        translation: Point2DF32,
-    ) -> Transform2DF32 {
-        let rotation = Transform2DF32::from_rotation(theta);
-        let translation = Transform2DF32::from_translation(translation);
-        Transform2DF32::from_scale(scale).post_mul(&rotation).post_mul(&translation)
+        translation: Point2DF,
+    ) -> Transform2DF {
+        let rotation = Transform2DF::from_rotation(theta);
+        let translation = Transform2DF::from_translation(translation);
+        Transform2DF::from_scale(scale).post_mul(&rotation).post_mul(&translation)
     }
 
     #[inline]
-    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2DF32 {
-        Transform2DF32 {
-            matrix: Matrix2x2F32::row_major(m11, m12, m21, m22),
-            vector: Point2DF32::new(m31, m32),
+    pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2DF {
+        Transform2DF {
+            matrix: Matrix2x2F::row_major(m11, m12, m21, m22),
+            vector: Point2DF::new(m31, m32),
         }
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Point2DF32) -> Point2DF32 {
+    pub fn transform_point(&self, point: Point2DF) -> Point2DF {
         self.matrix.transform_point(point) + self.vector
     }
 
     #[inline]
-    pub fn transform_line_segment(&self, line_segment: &LineSegmentF32) -> LineSegmentF32 {
-        LineSegmentF32::new(self.transform_point(line_segment.from()),
+    pub fn transform_line_segment(&self, line_segment: &LineSegmentF) -> LineSegmentF {
+        LineSegmentF::new(self.transform_point(line_segment.from()),
                             self.transform_point(line_segment.to()))
     }
 
     #[inline]
-    pub fn transform_rect(&self, rect: &RectF32) -> RectF32 {
+    pub fn transform_rect(&self, rect: &RectF) -> RectF {
         let upper_left = self.transform_point(rect.origin());
         let upper_right = self.transform_point(rect.upper_right());
         let lower_left = self.transform_point(rect.lower_left());
         let lower_right = self.transform_point(rect.lower_right());
         let min_point = upper_left.min(upper_right).min(lower_left).min(lower_right);
         let max_point = upper_left.max(upper_right).max(lower_left).max(lower_right);
-        RectF32::from_points(min_point, max_point)
+        RectF::from_points(min_point, max_point)
     }
 
     #[inline]
-    pub fn post_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
+    pub fn post_mul(&self, other: &Transform2DF) -> Transform2DF {
         let matrix = self.matrix.post_mul(&other.matrix);
         let vector = other.transform_point(self.vector);
-        Transform2DF32 { matrix, vector }
+        Transform2DF { matrix, vector }
     }
 
     #[inline]
-    pub fn pre_mul(&self, other: &Transform2DF32) -> Transform2DF32 {
+    pub fn pre_mul(&self, other: &Transform2DF) -> Transform2DF {
         other.post_mul(self)
     }
 
     // TODO(pcwalton): Optimize better with SIMD.
     #[inline]
-    pub fn to_3d(&self) -> Transform3DF32 {
-        Transform3DF32::row_major(
+    pub fn to_3d(&self) -> Transform3DF {
+        Transform3DF::row_major(
             self.matrix.0[0],
             self.matrix.0[1],
             0.0,
@@ -236,7 +236,7 @@ impl Transform2DF32 {
 
     #[inline]
     pub fn is_identity(&self) -> bool {
-        *self == Transform2DF32::default()
+        *self == Transform2DF::default()
     }
 
     #[inline]
@@ -257,25 +257,25 @@ impl Transform2DF32 {
     }
 
     #[inline]
-    pub fn post_translate(&self, vector: Point2DF32) -> Transform2DF32 {
-        self.post_mul(&Transform2DF32::from_translation(vector))
+    pub fn post_translate(&self, vector: Point2DF) -> Transform2DF {
+        self.post_mul(&Transform2DF::from_translation(vector))
     }
 
     #[inline]
-    pub fn post_rotate(&self, theta: f32) -> Transform2DF32 {
-        self.post_mul(&Transform2DF32::from_rotation(theta))
+    pub fn post_rotate(&self, theta: f32) -> Transform2DF {
+        self.post_mul(&Transform2DF::from_rotation(theta))
     }
 
     #[inline]
-    pub fn post_scale(&self, scale: Point2DF32) -> Transform2DF32 {
-        self.post_mul(&Transform2DF32::from_scale(scale))
+    pub fn post_scale(&self, scale: Point2DF) -> Transform2DF {
+        self.post_mul(&Transform2DF::from_scale(scale))
     }
 
     /// Returns the translation part of this matrix.
     ///
     /// This decomposition assumes that scale, rotation, and translation are applied in that order.
     #[inline]
-    pub fn translation(&self) -> Point2DF32 {
+    pub fn translation(&self) -> Point2DF {
         self.vector
     }
 
@@ -292,20 +292,20 @@ impl Transform2DF32 {
     /// This decomposition assumes that scale, rotation, and translation are applied in that order.
     #[inline]
     pub fn scale_factor(&self) -> f32 {
-        Point2DF32(self.matrix.0.zwxy()).length()
+        Point2DF(self.matrix.0.zwxy()).length()
     }
 }
 
 /// Transforms a path with a SIMD 2D transform.
-pub struct Transform2DF32PathIter<I>
+pub struct Transform2DFPathIter<I>
 where
     I: Iterator<Item = Segment>,
 {
     iter: I,
-    transform: Transform2DF32,
+    transform: Transform2DF,
 }
 
-impl<I> Iterator for Transform2DF32PathIter<I>
+impl<I> Iterator for Transform2DFPathIter<I>
 where
     I: Iterator<Item = Segment>,
 {
@@ -337,13 +337,13 @@ where
     }
 }
 
-impl<I> Transform2DF32PathIter<I>
+impl<I> Transform2DFPathIter<I>
 where
     I: Iterator<Item = Segment>,
 {
     #[inline]
-    pub fn new(iter: I, transform: &Transform2DF32) -> Transform2DF32PathIter<I> {
-        Transform2DF32PathIter {
+    pub fn new(iter: I, transform: &Transform2DF) -> Transform2DFPathIter<I> {
+        Transform2DFPathIter {
             iter,
             transform: *transform,
         }

@@ -13,9 +13,9 @@ use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_geometry::basic::point::{Point2DI32, Point3DF32};
-use pathfinder_geometry::basic::rect::RectI32;
-use pathfinder_geometry::basic::transform3d::Transform3DF32;
+use pathfinder_geometry::basic::point::{Point2DI, Point3DF};
+use pathfinder_geometry::basic::rect::RectI;
+use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
@@ -182,7 +182,7 @@ where
         );
 
         let mask_framebuffer_size =
-            Point2DI32::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
+            Point2DI::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
         let mask_framebuffer_texture =
             device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
@@ -334,7 +334,7 @@ where
     }
 
     #[inline]
-    pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Point2DI32) {
+    pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Point2DI) {
         self.debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
     }
 
@@ -715,7 +715,7 @@ where
         }
     }
 
-    fn draw_stencil(&self, quad_positions: &[Point3DF32]) {
+    fn draw_stencil(&self, quad_positions: &[Point3DF]) {
         self.device.allocate_buffer(
             &self.stencil_vertex_array.vertex_buffer,
             BufferData::Memory(quad_positions),
@@ -764,8 +764,8 @@ where
     pub fn reproject_texture(
         &self,
         texture: &D::Texture,
-        old_transform: &Transform3DF32,
-        new_transform: &Transform3DF32,
+        old_transform: &Transform3DF,
+        new_transform: &Transform3DF,
     ) {
         self.bind_draw_framebuffer();
 
@@ -869,28 +869,28 @@ where
         })
     }
 
-    fn draw_viewport(&self) -> RectI32 {
+    fn draw_viewport(&self) -> RectI {
         let main_viewport = self.main_viewport();
         match self.render_mode {
             RenderMode::Monochrome {
                 defringing_kernel: Some(..),
                 ..
             } => {
-                let scale = Point2DI32::new(3, 1);
-                RectI32::new(Point2DI32::default(), main_viewport.size().scale_xy(scale))
+                let scale = Point2DI::new(3, 1);
+                RectI::new(Point2DI::default(), main_viewport.size().scale_xy(scale))
             }
             _ => main_viewport,
         }
     }
 
-    fn main_viewport(&self) -> RectI32 {
+    fn main_viewport(&self) -> RectI {
         match self.dest_framebuffer {
             DestFramebuffer::Default { viewport, .. } => viewport,
             DestFramebuffer::Other(ref framebuffer) => {
                 let size = self
                     .device
                     .texture_size(self.device.framebuffer_texture(framebuffer));
-                RectI32::new(Point2DI32::default(), size)
+                RectI::new(Point2DI::default(), size)
             }
         }
     }
@@ -1554,8 +1554,8 @@ where
     D: Device,
 {
     Default {
-        viewport: RectI32,
-        window_size: Point2DI32,
+        viewport: RectI,
+        window_size: Point2DI,
     },
     Other(D::Framebuffer),
 }
@@ -1565,12 +1565,12 @@ where
     D: Device,
 {
     #[inline]
-    pub fn full_window(window_size: Point2DI32) -> DestFramebuffer<D> {
-        let viewport = RectI32::new(Point2DI32::default(), window_size);
+    pub fn full_window(window_size: Point2DI) -> DestFramebuffer<D> {
+        let viewport = RectI::new(Point2DI::default(), window_size);
         DestFramebuffer::Default { viewport, window_size }
     }
 
-    fn window_size(&self, device: &D) -> Point2DI32 {
+    fn window_size(&self, device: &D) -> Point2DI {
         match *self {
             DestFramebuffer::Default { window_size, .. } => window_size,
             DestFramebuffer::Other(ref framebuffer) => {

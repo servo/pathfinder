@@ -14,10 +14,10 @@
 // proper.
 
 use crate::window::{OcularTransform, View};
-use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32, Point3DF32};
-use pathfinder_geometry::basic::rect::RectF32;
-use pathfinder_geometry::basic::transform2d::Transform2DF32;
-use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF32};
+use pathfinder_geometry::basic::point::{Point2DF, Point2DI, Point3DF};
+use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::basic::transform2d::Transform2DF;
+use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
 use std::f32::consts::FRAC_PI_4;
 
 const NEAR_CLIP_PLANE: f32 = 0.01;
@@ -27,7 +27,7 @@ const FAR_CLIP_PLANE: f32 = 10.0;
 const DEFAULT_EYE_OFFSET: f32 = 0.025;
 
 pub enum Camera {
-    TwoD(Transform2DF32),
+    TwoD(Transform2DF),
     ThreeD {
         // The ocular transform used for rendering of the scene to the scene framebuffer. If we are
         // performing stereoscopic rendering, this is then reprojected according to the eye
@@ -39,12 +39,12 @@ pub enum Camera {
         // The modelview transform from world coordinates to SVG coordinates
         modelview_transform: CameraTransform3D,
         // The camera's velocity (in world coordinates)
-        velocity: Point3DF32,
+        velocity: Point3DF,
     },
 }
 
 impl Camera {
-    pub fn new(mode: Mode, view_box: RectF32, viewport_size: Point2DI32) -> Camera {
+    pub fn new(mode: Mode, view_box: RectF, viewport_size: Point2DI) -> Camera {
         if mode == Mode::TwoD {
             Camera::new_2d(view_box, viewport_size)
         } else {
@@ -52,20 +52,20 @@ impl Camera {
         }
     }
 
-    fn new_2d(view_box: RectF32, viewport_size: Point2DI32) -> Camera {
+    fn new_2d(view_box: RectF, viewport_size: Point2DI) -> Camera {
         let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32
             * scale_factor_for_view_box(view_box);
         let origin = viewport_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
-        Camera::TwoD(Transform2DF32::from_scale(Point2DF32::splat(scale)).post_translate(origin))
+        Camera::TwoD(Transform2DF::from_scale(Point2DF::splat(scale)).post_translate(origin))
     }
 
-    fn new_3d(mode: Mode, view_box: RectF32, viewport_size: Point2DI32) -> Camera {
+    fn new_3d(mode: Mode, view_box: RectF, viewport_size: Point2DI) -> Camera {
         let viewport_count = mode.viewport_count();
 
         let fov_y = FRAC_PI_4;
         let aspect = viewport_size.x() as f32 / viewport_size.y() as f32;
         let projection =
-            Transform3DF32::from_perspective(fov_y, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
+            Transform3DF::from_perspective(fov_y, aspect, NEAR_CLIP_PLANE, FAR_CLIP_PLANE);
         let perspective = Perspective::new(&projection, viewport_size);
 
         // Create a scene transform by moving the camera back from the center of the eyes so that
@@ -73,7 +73,7 @@ impl Camera {
         let z_offset = -DEFAULT_EYE_OFFSET * projection.c0.x();
         let scene_transform = OcularTransform {
             perspective,
-            modelview_to_eye: Transform3DF32::from_translation(0.0, 0.0, z_offset),
+            modelview_to_eye: Transform3DF::from_translation(0.0, 0.0, z_offset),
         };
 
         // For now, initialize the eye transforms as copies of the scene transform.
@@ -87,7 +87,7 @@ impl Camera {
                 };
                 OcularTransform {
                     perspective,
-                    modelview_to_eye: Transform3DF32::from_translation(this_eye_offset, 0.0, 0.0),
+                    modelview_to_eye: Transform3DF::from_translation(this_eye_offset, 0.0, 0.0),
                 }
             })
             .collect();
@@ -96,7 +96,7 @@ impl Camera {
             scene_transform,
             eye_transforms,
             modelview_transform: CameraTransform3D::new(view_box),
-            velocity: Point3DF32::default(),
+            velocity: Point3DF::default(),
         }
     }
 
@@ -120,17 +120,17 @@ impl Camera {
 
 #[derive(Clone, Copy, Debug)]
 pub struct CameraTransform3D {
-    position: Point3DF32,
+    position: Point3DF,
     pub yaw: f32,
     pub pitch: f32,
     scale: f32,
 }
 
 impl CameraTransform3D {
-    fn new(view_box: RectF32) -> CameraTransform3D {
+    fn new(view_box: RectF) -> CameraTransform3D {
         let scale = scale_factor_for_view_box(view_box);
         CameraTransform3D {
-            position: Point3DF32::new(
+            position: Point3DF::new(
                 0.5 * view_box.max_x(),
                 -0.5 * view_box.max_y(),
                 1.5 / scale,
@@ -142,26 +142,26 @@ impl CameraTransform3D {
         }
     }
 
-    pub fn offset(&mut self, vector: Point3DF32) -> bool {
+    pub fn offset(&mut self, vector: Point3DF) -> bool {
         let update = !vector.is_zero();
         if update {
-            let rotation = Transform3DF32::from_rotation(-self.yaw, -self.pitch, 0.0);
+            let rotation = Transform3DF::from_rotation(-self.yaw, -self.pitch, 0.0);
             self.position = self.position + rotation.transform_point(vector);
         }
         update
     }
 
-    pub fn to_transform(&self) -> Transform3DF32 {
-        let mut transform = Transform3DF32::from_rotation(self.yaw, self.pitch, 0.0);
-        transform = transform.post_mul(&Transform3DF32::from_uniform_scale(2.0 * self.scale));
-        transform = transform.post_mul(&Transform3DF32::from_translation(
+    pub fn to_transform(&self) -> Transform3DF {
+        let mut transform = Transform3DF::from_rotation(self.yaw, self.pitch, 0.0);
+        transform = transform.post_mul(&Transform3DF::from_uniform_scale(2.0 * self.scale));
+        transform = transform.post_mul(&Transform3DF::from_translation(
             -self.position.x(),
             -self.position.y(),
             -self.position.z(),
         ));
 
         // Flip Y.
-        transform = transform.post_mul(&Transform3DF32::from_scale(1.0, -1.0, 1.0));
+        transform = transform.post_mul(&Transform3DF::from_scale(1.0, -1.0, 1.0));
 
         transform
     }
@@ -190,6 +190,6 @@ impl Mode {
     }
 }
 
-pub fn scale_factor_for_view_box(view_box: RectF32) -> f32 {
+pub fn scale_factor_for_view_box(view_box: RectF) -> f32 {
     1.0 / f32::min(view_box.size().x(), view_box.size().y())
 }
