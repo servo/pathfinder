@@ -249,6 +249,12 @@ impl LineSegmentF {
     }
 
     #[inline]
+    pub fn midpoint(&self) -> Point2DF {
+        self.sample(0.5)
+    }
+
+
+    #[inline]
     pub fn offset(&self, distance: f32) -> LineSegmentF {
         if self.is_zero_length() {
             *self

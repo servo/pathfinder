@@ -100,8 +100,9 @@ impl<'a> OutlineStrokeToFill<'a> {
         if closed && stroker.output.needs_join(self.style.line_join) {
             let (p1, p0) = (stroker.output.position_of(1), stroker.output.position_of(0));
             let final_segment = LineSegmentF::new(p1, p0);
-            let join_point = stroker.input.position_of(0);
-            stroker.output.add_join(self.style.line_join, join_point, &final_segment);
+            stroker.output.add_join(self.style.line_width * 0.5,
+                                    self.style.line_join,
+                                    &final_segment);
         }
 
         stroker.output.closed = true;
@@ -133,7 +134,7 @@ impl<'a> OutlineStrokeToFill<'a> {
             LineCap::Round => {
                 let offset = gradient.yx().scale_xy(Point2DF::new(-width, width));
                 let chord = LineSegmentF::new(p1, p1 + offset);
-                contour.push_arc_from_chord(p1 + offset.scale(0.5), chord);
+                contour.push_arc_from_chord(width * 0.5, chord);
             }
         }
     }
@@ -179,23 +180,21 @@ impl<'a> ContourStrokeToFill<'a> {
 
 trait Offset {
     fn offset(&self, distance: f32, join: LineJoin, contour: &mut Contour);
-    fn add_to_contour(&self, join: LineJoin, join_point: Point2DF, contour: &mut Contour);
+    fn add_to_contour(&self, distance: f32, join: LineJoin, contour: &mut Contour);
     fn offset_once(&self, distance: f32) -> Self;
     fn error_is_within_tolerance(&self, other: &Segment, distance: f32) -> bool;
 }
 
 impl Offset for Segment {
     fn offset(&self, distance: f32, join: LineJoin, contour: &mut Contour) {
-        let join_point = self.baseline.from();
-
         if self.baseline.square_length() < TOLERANCE * TOLERANCE {
-            self.add_to_contour(join, join_point, contour);
+            self.add_to_contour(distance, join, contour);
             return;
         }
 
         let candidate = self.offset_once(distance);
         if self.error_is_within_tolerance(&candidate, distance) {
-            candidate.add_to_contour(join, join_point, contour);
+            candidate.add_to_contour(distance, join, contour);
             return;
         }
 
@@ -207,7 +206,7 @@ impl Offset for Segment {
         after.offset(distance, join, contour);
     }
 
-    fn add_to_contour(&self, join: LineJoin, join_point: Point2DF, contour: &mut Contour) {
+    fn add_to_contour(&self, distance: f32, join: LineJoin, contour: &mut Contour) {
         // Add join if necessary.
         if contour.needs_join(join) {
             let p3 = self.baseline.from();
@@ -219,7 +218,7 @@ impl Offset for Segment {
                 self.ctrl.from()
             };
 
-            contour.add_join(join, join_point, &LineSegmentF::new(p4, p3));
+            contour.add_join(distance, join, &LineSegmentF::new(p4, p3));
         }
 
         // Push segment.
@@ -330,7 +329,7 @@ impl Contour {
         (join == LineJoin::Miter || join == LineJoin::Round) && self.len() >= 2
     }
 
-    fn add_join(&mut self, join: LineJoin, join_point: Point2DF, next_tangent: &LineSegmentF) {
+    fn add_join(&mut self, distance: f32, join: LineJoin, next_tangent: &LineSegmentF) {
         let (p0, p1) = (self.position_of_last(2), self.position_of_last(1));
         let prev_tangent = LineSegmentF::new(p0, p1);
 
@@ -342,8 +341,8 @@ impl Contour {
                 }
             }
             LineJoin::Round => {
-                self.push_arc_from_chord(join_point, LineSegmentF::new(prev_tangent.to(),
-                                                                         next_tangent.to()));
+                self.push_arc_from_chord(distance.abs(),
+                                         LineSegmentF::new(prev_tangent.to(), next_tangent.to()));
             }
         }
     }

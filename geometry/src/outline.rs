@@ -369,29 +369,31 @@ impl Contour {
     }
 
     pub fn push_arc(&mut self, center: Point2DF, radius: f32, start_angle: f32, end_angle: f32) {
-        let start = Point2DF::new(f32::cos(start_angle), f32::sin(start_angle)).scale(radius);
-        let end = Point2DF::new(f32::cos(end_angle), f32::sin(end_angle)).scale(radius);
-        let chord = LineSegmentF::new(start, end).translate(center);
+        let start = Point2DF::new(f32::cos(start_angle), f32::sin(start_angle));
+        let end = Point2DF::new(f32::cos(end_angle), f32::sin(end_angle));
+        let chord = LineSegmentF::new(start, end).scale(radius).translate(center);
         let full_circle = end_angle - start_angle >= PI * 2.0;
-        self.push_arc_from_chord_full(center, chord, full_circle);
+        self.push_arc_from_chord_full(radius, chord, full_circle);
     }
 
     #[inline]
-    pub fn push_arc_from_chord(&mut self, center: Point2DF, chord: LineSegmentF) {
-        self.push_arc_from_chord_full(center, chord, false);
+    pub fn push_arc_from_chord(&mut self, radius: f32, chord: LineSegmentF) {
+        self.push_arc_from_chord_full(radius, chord, false);
     }
 
     fn push_arc_from_chord_full(&mut self,
-                                center: Point2DF,
+                                radius: f32,
                                 mut chord: LineSegmentF,
                                 full_circle: bool) {
-        chord = chord.translate(-center);
-        let radius = chord.from().length();
-        chord = chord.scale(radius.recip());
-        let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
+        let chord_length = chord.vector().length();
+        let radius_minus_sagitta_sq = radius * radius - 0.25 * chord_length * chord_length;
+        let radius_minus_sagitta = f32::sqrt(f32::max(0.0, radius_minus_sagitta_sq));
+        let scale_factor = radius_minus_sagitta / chord_length;
+        let center = chord.midpoint() + chord.vector().yx().scale_xy(Point2DF::new(-scale_factor,
+                                                                                   scale_factor));
 
-        debug_assert!(f32::abs(vector.0.length() - 1.0) < EPSILON);
-        debug_assert!(f32::abs(end_vector.0.length() - 1.0) < EPSILON);
+        chord = chord.translate(-center).scale(radius.recip());
+        let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
 
         let scale = Transform2DF::from_scale(Point2DF::splat(radius));
         let translation = Transform2DF::from_translation(center);
