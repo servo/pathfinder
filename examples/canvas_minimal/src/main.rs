@@ -12,6 +12,7 @@ use pathfinder_canvas::{CanvasRenderingContext2D, Path2D};
 use pathfinder_geometry::basic::point::{Point2DF32, Point2DI32};
 use pathfinder_geometry::basic::rect::RectF32;
 use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::stroke::LineJoin;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_gpu::{ClearParams, Device};

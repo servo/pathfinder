@@ -390,6 +390,9 @@ impl Contour {
         chord = chord.scale(radius.recip());
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
 
+        debug_assert!(f32::abs(vector.0.length() - 1.0) < EPSILON);
+        debug_assert!(f32::abs(end_vector.0.length() - 1.0) < EPSILON);
+
         let scale = Transform2DF32::from_scale(Point2DF32::splat(radius));
         let translation = Transform2DF32::from_translation(center);
 
