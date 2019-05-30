@@ -61,6 +61,8 @@ impl CanvasRenderingContext2D {
         self.scene
     }
 
+    // Drawing rectangles
+
     #[inline]
     pub fn fill_rect(&mut self, rect: RectF) {
         let mut path = Path2D::new();
@@ -74,6 +76,8 @@ impl CanvasRenderingContext2D {
         path.rect(rect);
         self.stroke_path(path);
     }
+
+    // Drawing text
 
     pub fn fill_text(&mut self, string: &str, position: Point2DF) {
         // TODO(pcwalton): Report errors.
@@ -101,6 +105,23 @@ impl CanvasRenderingContext2D {
                                   TextRenderMode::Stroke(self.current_state.stroke_style),
                                   HintingOptions::None,
                                   paint_id));
+    }
+
+    pub fn measure_text(&self, string: &str) -> TextMetrics {
+        let layout = skribo::layout(&TextStyle { size: self.current_state.font_size },
+                                    &self.current_state.font_collection,
+                                    string);
+        let width = match layout.glyphs.last() {
+            None => 0.0,
+            Some(last_glyph) => {
+                let glyph_id = last_glyph.glyph_id;
+                let font_metrics = last_glyph.font.font.metrics();
+                let glyph_rect = last_glyph.font.font.typographic_bounds(glyph_id).unwrap();
+                let scale_factor = layout.size / font_metrics.units_per_em as f32;
+                last_glyph.offset.x + glyph_rect.max_x() * scale_factor
+            }
+        };
+        TextMetrics { width }
     }
 
     // Line styles
@@ -317,6 +338,12 @@ impl FillStyle {
     fn to_paint(&self) -> Paint {
         match *self { FillStyle::Color(color) => Paint { color } }
     }
+}
+
+// TODO(pcwalton): Support other fields.
+#[derive(Clone, Copy, Debug)]
+pub struct TextMetrics {
+    pub width: f32,
 }
 
 #[derive(Clone)]
