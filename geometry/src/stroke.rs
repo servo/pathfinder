@@ -41,7 +41,7 @@ pub enum LineCap {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineJoin {
-    Miter,
+    Miter(f32),
     Bevel,
     Round,
 }
@@ -97,11 +97,12 @@ impl<'a> OutlineStrokeToFill<'a> {
                             mut stroker: ContourStrokeToFill,
                             closed: bool) {
         // Add join if necessary.
-        if closed && stroker.output.needs_join(self.style.line_join) {
+        if closed && stroker.output.might_need_join(self.style.line_join) {
             let (p1, p0) = (stroker.output.position_of(1), stroker.output.position_of(0));
             let final_segment = LineSegmentF::new(p1, p0);
             stroker.output.add_join(self.style.line_width * 0.5,
                                     self.style.line_join,
+                                    stroker.input.position_of(0),
                                     &final_segment);
         }
 
@@ -180,21 +181,26 @@ impl<'a> ContourStrokeToFill<'a> {
 
 trait Offset {
     fn offset(&self, distance: f32, join: LineJoin, contour: &mut Contour);
-    fn add_to_contour(&self, distance: f32, join: LineJoin, contour: &mut Contour);
+    fn add_to_contour(&self,
+                      distance: f32,
+                      join: LineJoin,
+                      join_point: Point2DF,
+                      contour: &mut Contour);
     fn offset_once(&self, distance: f32) -> Self;
     fn error_is_within_tolerance(&self, other: &Segment, distance: f32) -> bool;
 }
 
 impl Offset for Segment {
     fn offset(&self, distance: f32, join: LineJoin, contour: &mut Contour) {
+        let join_point = self.baseline.from();
         if self.baseline.square_length() < TOLERANCE * TOLERANCE {
-            self.add_to_contour(distance, join, contour);
+            self.add_to_contour(distance, join, join_point, contour);
             return;
         }
 
         let candidate = self.offset_once(distance);
         if self.error_is_within_tolerance(&candidate, distance) {
-            candidate.add_to_contour(distance, join, contour);
+            candidate.add_to_contour(distance, join, join_point, contour);
             return;
         }
 
@@ -206,9 +212,13 @@ impl Offset for Segment {
         after.offset(distance, join, contour);
     }
 
-    fn add_to_contour(&self, distance: f32, join: LineJoin, contour: &mut Contour) {
+    fn add_to_contour(&self,
+                      distance: f32,
+                      join: LineJoin,
+                      join_point: Point2DF,
+                      contour: &mut Contour) {
         // Add join if necessary.
-        if contour.needs_join(join) {
+        if contour.might_need_join(join) {
             let p3 = self.baseline.from();
             let p4 = if self.is_line() {
                 self.baseline.to()
@@ -218,7 +228,7 @@ impl Offset for Segment {
                 self.ctrl.from()
             };
 
-            contour.add_join(distance, join, &LineSegmentF::new(p4, p3));
+            contour.add_join(distance, join, join_point, &LineSegmentF::new(p4, p3));
         }
 
         // Push segment.
@@ -324,20 +334,34 @@ impl Offset for Segment {
 }
 
 impl Contour {
-    fn needs_join(&self, join: LineJoin) -> bool {
-        // TODO(pcwalton): Miter limit.
-        (join == LineJoin::Miter || join == LineJoin::Round) && self.len() >= 2
+    fn might_need_join(&self, join: LineJoin) -> bool {
+        if self.len() < 2 {
+            false
+        } else {
+            match join {
+                LineJoin::Miter(_) | LineJoin::Round => true,
+                LineJoin::Bevel => false,
+            }
+        }
     }
 
-    fn add_join(&mut self, distance: f32, join: LineJoin, next_tangent: &LineSegmentF) {
+    fn add_join(&mut self,
+                distance: f32,
+                join: LineJoin,
+                join_point: Point2DF,
+                next_tangent: &LineSegmentF) {
         let (p0, p1) = (self.position_of_last(2), self.position_of_last(1));
         let prev_tangent = LineSegmentF::new(p0, p1);
 
         match join {
             LineJoin::Bevel => {}
-            LineJoin::Miter => {
+            LineJoin::Miter(miter_limit) => {
                 if let Some(prev_tangent_t) = prev_tangent.intersection_t(&next_tangent) {
-                    self.push_endpoint(prev_tangent.sample(prev_tangent_t));
+                    let miter_endpoint = prev_tangent.sample(prev_tangent_t);
+                    let threshold = miter_limit * distance;
+                    if (miter_endpoint - join_point).square_length() <= threshold * threshold {
+                        self.push_endpoint(miter_endpoint);
+                    }
                 }
             }
             LineJoin::Round => {
@@ -366,5 +390,5 @@ impl Default for LineCap {
 
 impl Default for LineJoin {
     #[inline]
-    fn default() -> LineJoin { LineJoin::Miter }
+    fn default() -> LineJoin { LineJoin::Miter(10.0) }
 }
