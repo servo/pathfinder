@@ -20,10 +20,10 @@ use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
 use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
-use pathfinder_renderer::paint::Paint;
+use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
-use skribo::{FontCollection, FontFamily, TextStyle};
+use skribo::{FontCollection, FontFamily, Layout, TextStyle};
 use std::default::Default;
 use std::mem;
 use std::sync::Arc;
@@ -80,48 +80,49 @@ impl CanvasRenderingContext2D {
     // Drawing text
 
     pub fn fill_text(&mut self, string: &str, position: Point2DF) {
-        // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
-        let transform = Transform2DF::from_translation(position).post_mul(&self.current_state
-                                                                                 .transform);
-        drop(self.scene.push_text(string,
-                                  &TextStyle { size: self.current_state.font_size },
-                                  &self.current_state.font_collection,
-                                  &transform,
-                                  TextRenderMode::Fill,
-                                  HintingOptions::None,
-                                  paint_id));
+        self.fill_or_stroke_text(string, position, paint_id, TextRenderMode::Fill);
     }
 
     pub fn stroke_text(&mut self, string: &str, position: Point2DF) {
-        // TODO(pcwalton): Report errors.
         let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
-        let transform = Transform2DF::from_translation(position).post_mul(&self.current_state
-                                                                                 .transform);
-        drop(self.scene.push_text(string,
-                                  &TextStyle { size: self.current_state.font_size },
-                                  &self.current_state.font_collection,
-                                  &transform,
-                                  TextRenderMode::Stroke(self.current_state.stroke_style),
-                                  HintingOptions::None,
-                                  paint_id));
+        let render_mode = TextRenderMode::Stroke(self.current_state.stroke_style);
+        self.fill_or_stroke_text(string, position, paint_id, render_mode);
     }
 
     pub fn measure_text(&self, string: &str) -> TextMetrics {
-        let layout = skribo::layout(&TextStyle { size: self.current_state.font_size },
-                                    &self.current_state.font_collection,
-                                    string);
-        let width = match layout.glyphs.last() {
-            None => 0.0,
-            Some(last_glyph) => {
-                let glyph_id = last_glyph.glyph_id;
-                let font_metrics = last_glyph.font.font.metrics();
-                let glyph_rect = last_glyph.font.font.typographic_bounds(glyph_id).unwrap();
-                let scale_factor = layout.size / font_metrics.units_per_em as f32;
-                last_glyph.offset.x + glyph_rect.max_x() * scale_factor
-            }
-        };
-        TextMetrics { width }
+        TextMetrics { width: self.layout_text(string).width() }
+    }
+
+    fn fill_or_stroke_text(&mut self,
+                           string: &str,
+                           mut position: Point2DF,
+                           paint_id: PaintId,
+                           render_mode: TextRenderMode) {
+        let layout = self.layout_text(string);
+
+        match self.current_state.text_align {
+            TextAlign::Left => {},
+            TextAlign::Right => position.set_x(position.x() - layout.width()),
+            TextAlign::Center => position.set_x(position.x() - layout.width() * 0.5),
+        }
+
+        let transform = Transform2DF::from_translation(position).post_mul(&self.current_state
+                                                                               .transform);
+
+        // TODO(pcwalton): Report errors.
+        drop(self.scene.push_layout(&layout,
+                                    &TextStyle { size: self.current_state.font_size },
+                                    &transform,
+                                    render_mode,
+                                    HintingOptions::None,
+                                    paint_id));
+    }
+
+    fn layout_text(&self, string: &str) -> Layout {
+        skribo::layout(&TextStyle { size: self.current_state.font_size },
+                       &self.current_state.font_collection,
+                       string)
     }
 
     // Line styles
@@ -156,6 +157,11 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn set_font_size(&mut self, new_font_size: f32) {
         self.current_state.font_size = new_font_size;
+    }
+
+    #[inline]
+    pub fn set_text_align(&mut self, new_text_align: TextAlign) {
+        self.current_state.text_align = new_text_align;
     }
 
     // Drawing paths
@@ -236,6 +242,7 @@ pub struct State {
     transform: Transform2DF,
     font_collection: Arc<FontCollection>,
     font_size: f32,
+    text_align: TextAlign,
     fill_paint: Paint,
     stroke_paint: Paint,
     stroke_style: StrokeStyle,
@@ -248,6 +255,7 @@ impl State {
             transform: Transform2DF::default(),
             font_collection: default_font_collection,
             font_size: DEFAULT_FONT_SIZE,
+            text_align: TextAlign::Left,
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
             stroke_style: StrokeStyle::default(),
@@ -340,6 +348,13 @@ impl FillStyle {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TextAlign {
+    Left,
+    Right,
+    Center,
+}
+
 // TODO(pcwalton): Support other fields.
 #[derive(Clone, Copy, Debug)]
 pub struct TextMetrics {
@@ -371,5 +386,26 @@ impl CanvasFontContext {
             font_source,
             default_font_collection,
         }
+    }
+}
+
+// Text layout utilities
+
+trait LayoutExt {
+    fn width(&self) -> f32;
+}
+
+impl LayoutExt for Layout {
+    fn width(&self) -> f32 {
+        let last_glyph = match self.glyphs.last() {
+            None => return 0.0,
+            Some(last_glyph) => last_glyph,
+        };
+
+        let glyph_id = last_glyph.glyph_id;
+        let font_metrics = last_glyph.font.font.metrics();
+        let glyph_rect = last_glyph.font.font.typographic_bounds(glyph_id).unwrap();
+        let scale_factor = self.size / font_metrics.units_per_em as f32;
+        last_glyph.offset.x + glyph_rect.max_x() * scale_factor
     }
 }

@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, TextAlign};
 use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gl::{GLDevice, GLVersion};
@@ -58,7 +58,8 @@ fn main() {
     // Draw the text.
     canvas.set_font_size(32.0);
     canvas.fill_text("Hello Pathfinder!", Point2DF::new(32.0, 48.0));
-    canvas.stroke_text("Goodbye Pathfinder!", Point2DF::new(32.0, 96.0));
+    canvas.set_text_align(TextAlign::Right);
+    canvas.stroke_text("Goodbye Pathfinder!", Point2DF::new(608.0, 464.0));
 
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
