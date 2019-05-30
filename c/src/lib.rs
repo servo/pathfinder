@@ -11,7 +11,7 @@
 //! C bindings to Pathfinder.
 
 use gl;
-use pathfinder_canvas::{CanvasRenderingContext2D, Path2D};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
 use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
 use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::color::ColorF;
@@ -39,6 +39,7 @@ pub const PF_CLEAR_FLAGS_HAS_RECT:    u8 = 0x8;
 // `canvas`
 pub type PFCanvasRef = *mut CanvasRenderingContext2D;
 pub type PFPathRef = *mut Path2D;
+pub type PFCanvasFontContextRef = *mut CanvasFontContext;
 
 // `geometry`
 #[repr(C)]
@@ -102,13 +103,26 @@ pub struct PFRenderOptions {
 // `canvas`
 
 #[no_mangle]
-pub unsafe extern "C" fn PFCanvasCreate(size: *const PFPoint2DF) -> PFCanvasRef {
-    Box::into_raw(Box::new(CanvasRenderingContext2D::new((*size).to_rust())))
+pub unsafe extern "C" fn PFCanvasCreate(font_context: PFCanvasFontContextRef,
+                                        size: *const PFPoint2DF)
+                                        -> PFCanvasRef {
+    Box::into_raw(Box::new(CanvasRenderingContext2D::new(*Box::from_raw(font_context),
+                                                         (*size).to_rust())))
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasDestroy(canvas: PFCanvasRef) {
     drop(Box::from_raw(canvas))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasFontContextCreate() -> PFCanvasFontContextRef {
+    Box::into_raw(Box::new(CanvasFontContext::new()))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasFontContextDestroy(font_context: PFCanvasFontContextRef) {
+    drop(Box::from_raw(font_context))
 }
 
 /// Consumes the canvas.

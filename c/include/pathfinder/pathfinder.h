@@ -39,6 +39,8 @@ struct PFCanvas;
 typedef struct PFCanvas *PFCanvasRef;
 struct PFPath;
 typedef struct PFPath *PFPathRef;
+struct PFCanvasFontContext;
+typedef struct PFCanvasFontContext *PFCanvasFontContextRef;
 
 // `geometry`
 
@@ -103,8 +105,10 @@ typedef struct PFSceneProxy *PFSceneProxyRef;
 
 // `canvas`
 
-PFCanvasRef PFCanvasCreate(const PFPoint2DF *size);
+PFCanvasRef PFCanvasCreate(PFCanvasFontContextRef font_context, const PFPoint2DF *size);
 void PFCanvasDestroy(PFCanvasRef canvas);
+PFCanvasFontContextRef PFCanvasFontContextCreate();
+void PFCanvasFontContextDestroy(PFCanvasFontContextRef font_context);
 PFSceneRef PFCanvasCreateScene(PFCanvasRef canvas);
 void PFCanvasFillRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasStrokeRect(PFCanvasRef canvas, const PFRectF *rect);

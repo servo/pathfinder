@@ -35,41 +35,24 @@ pub struct CanvasRenderingContext2D {
     scene: Scene,
     current_state: State,
     saved_states: Vec<State>,
-
     #[allow(dead_code)]
-    font_source: SystemSource,
-    #[allow(dead_code)]
-    default_font_collection: Arc<FontCollection>,
+    font_context: CanvasFontContext,
 }
 
 impl CanvasRenderingContext2D {
     #[inline]
-    pub fn new(size: Point2DF) -> CanvasRenderingContext2D {
+    pub fn new(font_context: CanvasFontContext, size: Point2DF) -> CanvasRenderingContext2D {
         let mut scene = Scene::new();
         scene.set_view_box(RectF::new(Point2DF::default(), size));
-        CanvasRenderingContext2D::from_scene(scene)
+        CanvasRenderingContext2D::from_scene(font_context, scene)
     }
 
-    pub fn from_scene(scene: Scene) -> CanvasRenderingContext2D {
-        // TODO(pcwalton): Allow the user to cache this?
-        let font_source = SystemSource::new();
-
-        let mut default_font_collection = FontCollection::new();
-        let default_font =
-            font_source.select_best_match(&[FamilyName::SansSerif], &Properties::new())
-                       .expect("Failed to select the default font!")
-                       .load()
-                       .expect("Failed to load the default font!");
-        default_font_collection.add_family(FontFamily::new_from_font(default_font));
-        let default_font_collection = Arc::new(default_font_collection);
-
+    pub fn from_scene(font_context: CanvasFontContext, scene: Scene) -> CanvasRenderingContext2D {
         CanvasRenderingContext2D {
             scene,
-            current_state: State::default(default_font_collection.clone()),
+            current_state: State::default(font_context.default_font_collection.clone()),
             saved_states: vec![],
-
-            font_source,
-            default_font_collection,
+            font_context,
         }
     }
 
@@ -333,5 +316,33 @@ impl FillStyle {
     #[inline]
     fn to_paint(&self) -> Paint {
         match *self { FillStyle::Color(color) => Paint { color } }
+    }
+}
+
+#[derive(Clone)]
+pub struct CanvasFontContext {
+    #[allow(dead_code)]
+    font_source: Arc<SystemSource>,
+    #[allow(dead_code)]
+    default_font_collection: Arc<FontCollection>,
+}
+
+impl CanvasFontContext {
+    pub fn new() -> CanvasFontContext {
+        let font_source = Arc::new(SystemSource::new());
+
+        let mut default_font_collection = FontCollection::new();
+        let default_font =
+            font_source.select_best_match(&[FamilyName::SansSerif], &Properties::new())
+                       .expect("Failed to select the default font!")
+                       .load()
+                       .expect("Failed to load the default font!");
+        default_font_collection.add_family(FontFamily::new_from_font(default_font));
+        let default_font_collection = Arc::new(default_font_collection);
+
+        CanvasFontContext {
+            font_source,
+            default_font_collection,
+        }
     }
 }

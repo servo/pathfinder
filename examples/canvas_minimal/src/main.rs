@@ -8,11 +8,10 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::{CanvasRenderingContext2D, Path2D};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
 use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::color::ColorF;
-use pathfinder_geometry::stroke::LineJoin;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_gpu::{ClearParams, Device};
@@ -55,7 +54,7 @@ fn main() {
     renderer.device.clear(&ClearParams { color: Some(ColorF::white()), ..ClearParams::default() });
 
     // Make a canvas. We're going to draw a house.
-    let mut canvas = CanvasRenderingContext2D::new(window_size.to_f32());
+    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());
 
     // Set line width.
     canvas.set_line_width(10.0);

@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::CanvasRenderingContext2D;
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D};
 use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gl::{GLDevice, GLVersion};
@@ -53,7 +53,7 @@ fn main() {
     renderer.device.clear(&ClearParams { color: Some(ColorF::white()), ..ClearParams::default() });
 
     // Make a canvas. We're going to draw some text.
-    let mut canvas = CanvasRenderingContext2D::new(window_size.to_f32());
+    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());
 
     // Draw the text.
     canvas.set_font_size(32.0);

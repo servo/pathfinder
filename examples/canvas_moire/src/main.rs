@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_canvas::{CanvasRenderingContext2D, FillStyle, Path2D};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, Path2D};
 use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
 use pathfinder_geometry::color::{ColorF, ColorU};
 use pathfinder_gl::{GLDevice, GLVersion};
@@ -85,6 +85,7 @@ fn main() {
 
 struct MoireRenderer {
     renderer: Renderer<GLDevice>,
+    font_context: CanvasFontContext,
     scene: SceneProxy,
     frame: i32,
     window_size: Point2DI,
@@ -98,6 +99,7 @@ impl MoireRenderer {
            -> MoireRenderer {
         MoireRenderer {
             renderer,
+            font_context: CanvasFontContext::new(),
             scene: SceneProxy::new(RayonExecutor),
             frame: 0,
             window_size,
@@ -128,7 +130,8 @@ impl MoireRenderer {
         });
 
         // Make a canvas.
-        let mut canvas = CanvasRenderingContext2D::new(self.drawable_size.to_f32());
+        let mut canvas = CanvasRenderingContext2D::new(self.font_context.clone(),
+                                                       self.drawable_size.to_f32());
         canvas.set_line_width(CIRCLE_THICKNESS * self.device_pixel_ratio);
         canvas.set_stroke_style(FillStyle::Color(foreground_color.to_u8()));
         canvas.set_global_alpha(0.75);

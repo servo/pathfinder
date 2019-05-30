@@ -66,7 +66,8 @@ int main(int argc, const char **argv) {
     });
 
     // Make a canvas. We're going to draw a house.
-    PFCanvasRef canvas = PFCanvasCreate(&(PFPoint2DF){640.0f, 480.0f});
+    PFCanvasRef canvas = PFCanvasCreate(PFCanvasFontContextCreate(),
+                                        &(PFPoint2DF){640.0f, 480.0f});
 
     // Set line width.
     PFCanvasSetLineWidth(canvas, 10.0f);
