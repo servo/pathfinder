@@ -139,7 +139,8 @@ impl BuiltSVG {
                     let stroke_style = StrokeStyle {
                         line_width: f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH),
                         line_cap: LineCap::from_usvg_line_cap(stroke.linecap),
-                        line_join: LineJoin::from_usvg_line_join(stroke.linejoin),
+                        line_join: LineJoin::from_usvg_line_join(stroke.linejoin,
+                                                                 stroke.miterlimit as f32),
                     };
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
@@ -393,28 +394,22 @@ impl LineCapExt for LineCap {
     fn from_usvg_line_cap(usvg_line_cap: UsvgLineCap) -> LineCap {
         match usvg_line_cap {
             UsvgLineCap::Butt => LineCap::Butt,
-            UsvgLineCap::Round => {
-                // TODO(pcwalton)
-                LineCap::Square
-            }
+            UsvgLineCap::Round => LineCap::Round,
             UsvgLineCap::Square => LineCap::Square,
         }
     }
 }
 
 trait LineJoinExt {
-    fn from_usvg_line_join(usvg_line_join: UsvgLineJoin) -> Self;
+    fn from_usvg_line_join(usvg_line_join: UsvgLineJoin, miter_limit: f32) -> Self;
 }
 
 impl LineJoinExt for LineJoin {
     #[inline]
-    fn from_usvg_line_join(usvg_line_join: UsvgLineJoin) -> LineJoin {
+    fn from_usvg_line_join(usvg_line_join: UsvgLineJoin, miter_limit: f32) -> LineJoin {
         match usvg_line_join {
-            UsvgLineJoin::Miter => LineJoin::Miter,
-            UsvgLineJoin::Round => {
-                // TODO(pcwalton)
-                LineJoin::Miter
-            }
+            UsvgLineJoin::Miter => LineJoin::Miter(miter_limit),
+            UsvgLineJoin::Round => LineJoin::Round,
             UsvgLineJoin::Bevel => LineJoin::Bevel,
         }
     }
