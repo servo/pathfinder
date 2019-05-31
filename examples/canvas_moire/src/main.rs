@@ -152,7 +152,7 @@ impl MoireRenderer {
         for index in 0..CIRCLE_COUNT {
             let radius = (index + 1) as f32 * CIRCLE_SPACING * self.device_pixel_ratio;
             let mut path = Path2D::new();
-            path.arc(center, radius, 0.0, PI * 2.0);
+            path.ellipse(center, Point2DF::splat(radius), 0.0, 0.0, PI * 2.0);
             canvas.stroke_path(path);
         }
     }

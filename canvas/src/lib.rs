@@ -25,6 +25,7 @@ use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
 use skribo::{FontCollection, FontFamily, Layout, TextStyle};
 use std::default::Default;
+use std::f32::consts::PI;
 use std::mem;
 use std::sync::Arc;
 
@@ -323,6 +324,24 @@ impl Path2D {
         self.current_contour.push_endpoint(rect.lower_right());
         self.current_contour.push_endpoint(rect.lower_left());
         self.current_contour.close();
+    }
+
+    pub fn ellipse(&mut self,
+                   center: Point2DF,
+                   axes: Point2DF,
+                   rotation: f32,
+                   start_angle: f32,
+                   end_angle: f32) {
+        self.flush_current_contour();
+
+        let mut transform = Transform2DF::from_rotation(rotation);
+        transform = transform.post_mul(&Transform2DF::from_scale(axes));
+        transform = transform.post_mul(&Transform2DF::from_translation(center));
+        self.current_contour.push_arc(&transform, start_angle, end_angle);
+
+        if end_angle - start_angle >= 2.0 * PI {
+            self.current_contour.close();
+        }
     }
 
     fn into_outline(mut self) -> Outline {
