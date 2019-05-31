@@ -269,13 +269,13 @@ impl Contour {
     }
 
     #[inline]
-    pub(crate) fn position_of_last(&self, index: u32) -> Point2DF {
-        self.points[self.points.len() - index as usize]
+    pub fn last_position(&self) -> Option<Point2DF> {
+        self.points.last().cloned()
     }
 
     #[inline]
-    pub(crate) fn last_position(&self) -> Option<Point2DF> {
-        self.points.last().cloned()
+    pub(crate) fn position_of_last(&self, index: u32) -> Point2DF {
+        self.points[self.points.len() - index as usize]
     }
 
     #[inline]
@@ -409,7 +409,7 @@ impl Contour {
                 break;
             }
 
-            vector = sweep_vector.rotate_by(vector);
+            vector = vector.rotate_by(sweep_vector);
         }
 
         const EPSILON: f32 = 0.001;

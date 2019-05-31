@@ -14,6 +14,7 @@ use font_kit::family_name::FamilyName;
 use font_kit::hinting::HintingOptions;
 use font_kit::properties::Properties;
 use font_kit::source::SystemSource;
+use pathfinder_geometry::basic::line_segment::LineSegmentF;
 use pathfinder_geometry::basic::point::Point2DF;
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
@@ -339,6 +340,24 @@ impl Path2D {
         let mut transform = Transform2DF::from_scale(Point2DF::splat(radius));
         transform = transform.post_mul(&Transform2DF::from_translation(center));
         self.current_contour.push_arc(&transform, start_angle, end_angle);
+    }
+
+    #[inline]
+    pub fn arc_to(&mut self, ctrl: Point2DF, to: Point2DF, radius: f32) {
+        // FIXME(pcwalton): What should we do if there's no initial point?
+        let from = self.current_contour.last_position().unwrap_or_default();
+        let (v0, v1) = (from - ctrl, to - ctrl);
+        let (vu0, vu1) = (v0.normalize(), v1.normalize());
+        let hypot = radius / f32::sqrt(0.5 * (1.0 - vu0.dot(vu1)));
+        let bisector = vu0 + vu1;
+        let center = ctrl + bisector.scale(hypot / bisector.length());
+
+        let mut transform = Transform2DF::from_scale(Point2DF::splat(radius));
+        transform = transform.post_mul(&Transform2DF::from_translation(center));
+
+        let chord = LineSegmentF::new(vu0.yx().scale_xy(Point2DF::new(-1.0, 1.0)),
+                                      vu1.yx().scale_xy(Point2DF::new(1.0, -1.0)));
+        self.current_contour.push_arc_from_unit_chord(&transform, chord);
     }
 
     pub fn rect(&mut self, rect: RectF) {
