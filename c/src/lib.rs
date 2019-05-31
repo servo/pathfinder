@@ -15,6 +15,7 @@ use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
 use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
 use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::stroke::LineCap;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use pathfinder_gpu::{ClearParams, Device};
@@ -29,6 +30,10 @@ use std::os::raw::{c_char, c_void};
 
 // Constants
 
+pub const PF_LINE_CAP_BUTT:   u8 = 0;
+pub const PF_LINE_CAP_SQUARE: u8 = 1;
+pub const PF_LINE_CAP_ROUND:  u8 = 2;
+
 pub const PF_CLEAR_FLAGS_HAS_COLOR:   u8 = 0x1;
 pub const PF_CLEAR_FLAGS_HAS_DEPTH:   u8 = 0x2;
 pub const PF_CLEAR_FLAGS_HAS_STENCIL: u8 = 0x4;
@@ -40,6 +45,7 @@ pub const PF_CLEAR_FLAGS_HAS_RECT:    u8 = 0x8;
 pub type PFCanvasRef = *mut CanvasRenderingContext2D;
 pub type PFPathRef = *mut Path2D;
 pub type PFCanvasFontContextRef = *mut CanvasFontContext;
+pub type PFLineCap = u8;
 
 // `geometry`
 #[repr(C)]
@@ -144,6 +150,15 @@ pub unsafe extern "C" fn PFCanvasStrokeRect(canvas: PFCanvasRef, rect: *const PF
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineWidth(canvas: PFCanvasRef, new_line_width: f32) {
     (*canvas).set_line_width(new_line_width)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetLineCap(canvas: PFCanvasRef, new_line_cap: PFLineCap) {
+    (*canvas).set_line_cap(match new_line_cap {
+        PF_LINE_CAP_SQUARE => LineCap::Square,
+        PF_LINE_CAP_ROUND  => LineCap::Round,
+        _                  => LineCap::Butt,
+    });
 }
 
 /// Consumes the path.

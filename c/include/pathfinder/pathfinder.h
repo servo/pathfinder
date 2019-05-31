@@ -19,6 +19,12 @@ extern "C" {
 
 // Macros
 
+// `canvas`
+
+#define PF_LINE_CAP_BUTT    0
+#define PF_LINE_CAP_SQUARE  1
+#define PF_LINE_CAP_ROUND   2
+
 // `gl`
 
 #define PF_GL_VERSION_GL3   0
@@ -41,6 +47,7 @@ struct PFPath;
 typedef struct PFPath *PFPathRef;
 struct PFCanvasFontContext;
 typedef struct PFCanvasFontContext *PFCanvasFontContextRef;
+typedef uint8_t PFLineCap;
 
 // `geometry`
 
@@ -113,6 +120,7 @@ PFSceneRef PFCanvasCreateScene(PFCanvasRef canvas);
 void PFCanvasFillRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasStrokeRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasSetLineWidth(PFCanvasRef canvas, float new_line_width);
+void PFCanvasSetLineCap(PFCanvasRef canvas, PFLineCap new_line_cap);
 void PFCanvasFillPath(PFCanvasRef canvas, PFPathRef path);
 void PFCanvasStrokePath(PFCanvasRef canvas, PFPathRef path);
 PFPathRef PFPathCreate();
