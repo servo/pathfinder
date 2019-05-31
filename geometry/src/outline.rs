@@ -368,34 +368,20 @@ impl Contour {
         self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
     }
 
-    pub fn push_arc(&mut self, center: Point2DF, radius: f32, start_angle: f32, end_angle: f32) {
+    pub fn push_arc(&mut self, transform: &Transform2DF, start_angle: f32, end_angle: f32) {
         if end_angle - start_angle >= PI * 2.0 {
-            return self.push_circle(center, radius);
+            self.push_ellipse(transform);
+        } else {
+            let start = Point2DF::new(f32::cos(start_angle), f32::sin(start_angle));
+            let end = Point2DF::new(f32::cos(end_angle), f32::sin(end_angle));
+            self.push_arc_from_unit_chord(transform, LineSegmentF::new(start, end));
         }
-
-        let start = Point2DF::new(f32::cos(start_angle), f32::sin(start_angle));
-        let end = Point2DF::new(f32::cos(end_angle), f32::sin(end_angle));
-        let chord = LineSegmentF::new(start, end).scale(radius).translate(center);
-        self.push_arc_from_chord(radius, chord);
     }
 
-    #[inline]
-    pub fn push_arc_from_chord(&mut self, radius: f32, mut chord: LineSegmentF) {
-        let chord_length = chord.vector().length();
-        let radius_minus_sagitta_sq = radius * radius - 0.25 * chord_length * chord_length;
-        let radius_minus_sagitta = f32::sqrt(f32::max(0.0, radius_minus_sagitta_sq));
-
-        let scale_factor = radius_minus_sagitta / chord_length;
-        let center = chord.midpoint() + chord.vector().yx().scale_xy(Point2DF::new(-scale_factor,
-                                                                                    scale_factor));
-
-        chord = chord.translate(-center).scale(radius.recip());
+    pub fn push_arc_from_unit_chord(&mut self, transform: &Transform2DF, chord: LineSegmentF) {
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
-
-        let scale = Transform2DF::from_scale(Point2DF::splat(radius));
-        let translation = Transform2DF::from_translation(center);
-
         let mut first_segment = true;
+
         loop {
             let mut sweep_vector = end_vector.rev_rotate_by(vector);
             let last = sweep_vector.0.x() >= -EPSILON && sweep_vector.0.y() >= -EPSILON;
@@ -407,7 +393,7 @@ impl Contour {
             let mut segment = Segment::arc_from_cos(sweep_vector.0.x());
             let rotation =
                 Transform2DF::from_rotation_vector(sweep_vector.halve_angle().rotate_by(vector));
-            segment = segment.transform(&scale.post_mul(&rotation).post_mul(&translation));
+            segment = segment.transform(&rotation.post_mul(&transform));
 
             if first_segment {
                 self.push_full_segment(&segment, true);
@@ -426,10 +412,7 @@ impl Contour {
         const EPSILON: f32 = 0.001;
     }
 
-    fn push_circle(&mut self, center: Point2DF, radius: f32) {
-        let scale = Transform2DF::from_scale(Point2DF::splat(radius));
-        let translation = Transform2DF::from_translation(center);
-
+    pub fn push_ellipse(&mut self, transform: &Transform2DF) {
         let rotations = [
             Transform2DF::default(),
             Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0,  1.0))),
@@ -440,7 +423,7 @@ impl Contour {
         let base_segment = Segment::arc_from_cos(0.0);
 
         for (rotation_index, rotation) in rotations.iter().enumerate() {
-            let segment = base_segment.transform(&scale.post_mul(rotation).post_mul(&translation));
+            let segment = base_segment.transform(&rotation.post_mul(&transform));
             if rotation_index == 0 {
                 self.push_full_segment(&segment, true);
             } else {

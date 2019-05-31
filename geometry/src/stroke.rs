@@ -13,6 +13,7 @@
 use crate::basic::line_segment::LineSegmentF;
 use crate::basic::point::Point2DF;
 use crate::basic::rect::RectF;
+use crate::basic::transform2d::Transform2DF;
 use crate::outline::{Contour, Outline};
 use crate::segment::Segment;
 use std::f32;
@@ -133,9 +134,12 @@ impl<'a> OutlineStrokeToFill<'a> {
                 contour.push_endpoint(p4);
             }
             LineCap::Round => {
-                let offset = gradient.yx().scale_xy(Point2DF::new(-width, width));
-                let chord = LineSegmentF::new(p1, p1 + offset);
-                contour.push_arc_from_chord(width * 0.5, chord);
+                let scale = Point2DF::splat(width * 0.5);
+                let offset = gradient.yx().scale_xy(Point2DF::new(-1.0, 1.0));
+                let mut transform = Transform2DF::from_scale(scale);
+                let translation = p1 + offset.scale(width * 0.5);
+                transform = transform.post_mul(&Transform2DF::from_translation(translation));
+                contour.push_arc_from_unit_chord(&transform, LineSegmentF::new(-offset, offset));
             }
         }
     }
@@ -365,8 +369,12 @@ impl Contour {
                 }
             }
             LineJoin::Round => {
-                self.push_arc_from_chord(distance.abs(),
-                                         LineSegmentF::new(prev_tangent.to(), next_tangent.to()));
+                let scale = Point2DF::splat(distance.abs());
+                let mut transform = Transform2DF::from_scale(scale);
+                transform = transform.post_mul(&Transform2DF::from_translation(join_point));
+                let chord_from = (prev_tangent.to() - join_point).normalize();
+                let chord_to = (next_tangent.to() - join_point).normalize();
+                self.push_arc_from_unit_chord(&transform, LineSegmentF::new(chord_from, chord_to));
             }
         }
     }

@@ -311,7 +311,9 @@ impl Path2D {
 
     #[inline]
     pub fn arc(&mut self, center: Point2DF, radius: f32, start_angle: f32, end_angle: f32) {
-        self.current_contour.push_arc(center, radius, start_angle, end_angle);
+        let mut transform = Transform2DF::from_scale(Point2DF::splat(radius));
+        transform = transform.post_mul(&Transform2DF::from_translation(center));
+        self.current_contour.push_arc(&transform, start_angle, end_angle);
     }
 
     pub fn rect(&mut self, rect: RectF) {
