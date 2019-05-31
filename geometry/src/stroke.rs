@@ -122,6 +122,7 @@ impl<'a> OutlineStrokeToFill<'a> {
 
         match self.style.line_cap {
             LineCap::Butt => unreachable!(),
+
             LineCap::Square => {
                 let offset = gradient.scale(width * 0.5);
 
@@ -133,6 +134,7 @@ impl<'a> OutlineStrokeToFill<'a> {
                 contour.push_endpoint(p3);
                 contour.push_endpoint(p4);
             }
+
             LineCap::Round => {
                 let scale = Point2DF::splat(width * 0.5);
                 let offset = gradient.yx().scale_xy(Point2DF::new(-1.0, 1.0));

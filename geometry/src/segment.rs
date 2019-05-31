@@ -95,6 +95,15 @@ impl Segment {
     }
 
     #[inline]
+    pub fn quarter_circle_arc() -> Segment {
+        let p0 = Point2DF::splat(SQRT_2 * 0.5);
+        let p1 = Point2DF::new(-SQRT_2 / 6.0 + 4.0 / 3.0, 7.0 * SQRT_2 / 6.0 - 4.0 / 3.0);
+        let flip = Point2DF::new(1.0, -1.0);
+        let (p2, p3) = (p1.scale_xy(flip), p0.scale_xy(flip));
+        Segment::cubic(&LineSegmentF::new(p3, p0), &LineSegmentF::new(p2, p1))
+    }
+
+    #[inline]
     pub fn as_line_segment(&self) -> LineSegmentF {
         debug_assert!(self.is_line());
         self.baseline

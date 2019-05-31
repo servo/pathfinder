@@ -385,12 +385,15 @@ impl Contour {
         loop {
             let mut sweep_vector = end_vector.rev_rotate_by(vector);
             let last = sweep_vector.0.x() >= -EPSILON && sweep_vector.0.y() >= -EPSILON;
+
+            let mut segment;
             if !last {
                 sweep_vector = UnitVector(Point2DF::new(0.0, 1.0));
+                segment = Segment::quarter_circle_arc();
+            } else {
+                segment = Segment::arc_from_cos(sweep_vector.0.x());
             }
 
-            // TODO(pcwalton): Cache 90 degree arc segments so we aren't calling this all the time.
-            let mut segment = Segment::arc_from_cos(sweep_vector.0.x());
             let rotation =
                 Transform2DF::from_rotation_vector(sweep_vector.halve_angle().rotate_by(vector));
             segment = segment.transform(&rotation.post_mul(&transform));
@@ -413,23 +416,15 @@ impl Contour {
     }
 
     pub fn push_ellipse(&mut self, transform: &Transform2DF) {
-        let rotations = [
-            Transform2DF::default(),
-            Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0,  1.0))),
-            Transform2DF::from_rotation_vector(UnitVector(Point2DF::new(-1.0,  0.0))),
-            Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0, -1.0))),
-        ];
-
-        let base_segment = Segment::arc_from_cos(0.0);
-
-        for (rotation_index, rotation) in rotations.iter().enumerate() {
-            let segment = base_segment.transform(&rotation.post_mul(&transform));
-            if rotation_index == 0 {
-                self.push_full_segment(&segment, true);
-            } else {
-                self.push_segment(segment, true);
-            }
-        }
+        let segment = Segment::quarter_circle_arc();
+        let mut rotation;
+        self.push_full_segment(&segment.transform(transform), true);
+        rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0,  1.0)));
+        self.push_segment(segment.transform(&rotation.post_mul(&transform)), true);
+        rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new(-1.0,  0.0)));
+        self.push_segment(segment.transform(&rotation.post_mul(&transform)), true);
+        rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0, -1.0)));
+        self.push_segment(segment.transform(&rotation.post_mul(&transform)), true);
     }
 
     #[inline]
