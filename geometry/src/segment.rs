@@ -80,18 +80,18 @@ impl Segment {
     ///
     /// The maximum supported sweep angle is π/2 (i.e. 90°).
     pub fn arc_from_cos(cos_sweep_angle: f32) -> Segment {
-        // Aleksas Riškus, "Approximation of a Cubic Bézier Curve by Circular Arcs and Vice Versa"
-        // 2006.
+        // Richard A. DeVeneza, "How to determine the control points of a Bézier curve that
+        // approximates a small arc", 2004.
         //
-        // https://pdfs.semanticscholar.org/1639/0db1a470bd13fe428e0896671a9a5745070a.pdf
-        let term = F32x4::new(cos_sweep_angle, -cos_sweep_angle, 0.0, 0.0);
-        let p0 = Point2DF((F32x4::splat(0.5) * (F32x4::splat(1.0) + term)).sqrt());
-        let p3 = p0.scale_xy(Point2DF::new(1.0, -1.0));
-        let p1 = p0 - p3.yx().scale(K);
-        let p2 = p3 + p0.yx().scale(K);
-        return Segment::cubic(&LineSegmentF::new(p3, p0), &LineSegmentF::new(p2, p1));
-
-        const K: f32 = 4.0 / 3.0 * (SQRT_2 - 1.0);
+        // https://www.tinaja.com/glib/bezcirc2.pdf
+        let term = F32x4::new(cos_sweep_angle, -cos_sweep_angle,
+                              cos_sweep_angle, -cos_sweep_angle);
+        let signs = F32x4::new(1.0, -1.0, 1.0, 1.0);
+        let p3p0 = ((F32x4::splat(1.0) + term) * F32x4::splat(0.5)).sqrt() * signs;
+        let (p0x, p0y) = (p3p0.z(), p3p0.w());
+        let (p1x, p1y) = (4.0 - p0x, (1.0 - p0x) * (3.0 - p0x) / p0y);
+        let p2p1 = F32x4::new(p1x, -p1y, p1x, p1y) * F32x4::splat(1.0 / 3.0);
+        return Segment::cubic(&LineSegmentF(p3p0), &LineSegmentF(p2p1));
     }
 
     #[inline]
