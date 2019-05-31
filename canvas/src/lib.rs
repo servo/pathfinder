@@ -19,7 +19,8 @@ use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_geometry::outline::{Contour, Outline};
-use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
+use pathfinder_geometry::stroke::{LineCap, LineJoin as StrokeLineJoin};
+use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::{Paint, PaintId};
 use pathfinder_renderer::scene::{PathObject, Scene};
 use pathfinder_text::{SceneExt, TextRenderMode};
@@ -87,7 +88,7 @@ impl CanvasRenderingContext2D {
 
     pub fn stroke_text(&mut self, string: &str, position: Point2DF) {
         let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
-        let render_mode = TextRenderMode::Stroke(self.current_state.stroke_style);
+        let render_mode = TextRenderMode::Stroke(self.current_state.resolve_stroke_style());
         self.fill_or_stroke_text(string, position, paint_id, render_mode);
     }
 
@@ -130,17 +131,22 @@ impl CanvasRenderingContext2D {
 
     #[inline]
     pub fn set_line_width(&mut self, new_line_width: f32) {
-        self.current_state.stroke_style.line_width = new_line_width
+        self.current_state.line_width = new_line_width
     }
 
     #[inline]
     pub fn set_line_cap(&mut self, new_line_cap: LineCap) {
-        self.current_state.stroke_style.line_cap = new_line_cap
+        self.current_state.line_cap = new_line_cap
     }
 
     #[inline]
     pub fn set_line_join(&mut self, new_line_join: LineJoin) {
-        self.current_state.stroke_style.line_join = new_line_join
+        self.current_state.line_join = new_line_join
+    }
+
+    #[inline]
+    pub fn set_miter_limit(&mut self, new_miter_limit: f32) {
+        self.current_state.miter_limit = new_miter_limit
     }
 
     #[inline]
@@ -183,7 +189,7 @@ impl CanvasRenderingContext2D {
         let paint = self.current_state.resolve_paint(self.current_state.stroke_paint);
         let paint_id = self.scene.push_paint(&paint);
 
-        let mut stroke_style = self.current_state.stroke_style;
+        let mut stroke_style = self.current_state.resolve_stroke_style();
         stroke_style.line_width = f32::max(stroke_style.line_width, HAIRLINE_STROKE_WIDTH);
 
         let outline = path.into_outline();
@@ -246,7 +252,10 @@ pub struct State {
     text_align: TextAlign,
     fill_paint: Paint,
     stroke_paint: Paint,
-    stroke_style: StrokeStyle,
+    line_width: f32,
+    line_cap: LineCap,
+    line_join: LineJoin,
+    miter_limit: f32,
     global_alpha: f32,
 }
 
@@ -259,7 +268,10 @@ impl State {
             text_align: TextAlign::Left,
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
-            stroke_style: StrokeStyle::default(),
+            line_width: 1.0,
+            line_cap: LineCap::Butt,
+            line_join: LineJoin::Miter,
+            miter_limit: 10.0,
             global_alpha: 1.0,
         }
     }
@@ -267,6 +279,18 @@ impl State {
     fn resolve_paint(&self, mut paint: Paint) -> Paint {
         paint.color.a = (paint.color.a as f32 * self.global_alpha).round() as u8;
         paint
+    }
+
+    fn resolve_stroke_style(&self) -> StrokeStyle {
+        StrokeStyle {
+            line_width: self.line_width,
+            line_cap: self.line_cap,
+            line_join: match self.line_join {
+                LineJoin::Miter => StrokeLineJoin::Miter(self.miter_limit),
+                LineJoin::Bevel => StrokeLineJoin::Bevel,
+                LineJoin::Round => StrokeLineJoin::Round,
+            },
+        }
     }
 }
 
@@ -374,6 +398,18 @@ pub enum TextAlign {
     Left,
     Right,
     Center,
+}
+
+// We duplicate `pathfinder_geometry::stroke::LineJoin` here because the HTML canvas API treats the
+// miter limit as part of the canvas state, while the native Pathfinder API treats the miter limit
+// as part of the line join. Pathfinder's choice is more logical, because the miter limit is
+// specific to miter joins. In this API, however, for compatibility we go with the HTML canvas
+// semantics.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LineJoin {
+    Miter,
+    Bevel,
+    Round,
 }
 
 // TODO(pcwalton): Support other fields.
