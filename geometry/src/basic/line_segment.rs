@@ -98,6 +98,11 @@ impl LineSegmentF {
     }
 
     #[inline]
+    pub fn scale_xy(&self, factors: Point2DF) -> LineSegmentF {
+        LineSegmentF(self.0 * factors.0.xyxy())
+    }
+
+    #[inline]
     pub fn split(&self, t: f32) -> (LineSegmentF, LineSegmentF) {
         debug_assert!(t >= 0.0 && t <= 1.0);
         let (from_from, to_to) = (self.0.xyxy(), self.0.zwzw());

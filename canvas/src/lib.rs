@@ -19,7 +19,7 @@ use pathfinder_geometry::basic::point::Point2DF;
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
-use pathfinder_geometry::outline::{Contour, Outline};
+use pathfinder_geometry::outline::{ArcDirection, Contour, Outline};
 use pathfinder_geometry::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
 use pathfinder_renderer::paint::{Paint, PaintId};
@@ -246,7 +246,7 @@ impl CanvasRenderingContext2D {
 }
 
 #[derive(Clone)]
-pub struct State {
+struct State {
     transform: Transform2DF,
     font_collection: Arc<FontCollection>,
     font_size: f32,
@@ -336,10 +336,15 @@ impl Path2D {
     }
 
     #[inline]
-    pub fn arc(&mut self, center: Point2DF, radius: f32, start_angle: f32, end_angle: f32) {
+    pub fn arc(&mut self,
+               center: Point2DF,
+               radius: f32,
+               start_angle: f32,
+               end_angle: f32,
+               direction: ArcDirection) {
         let mut transform = Transform2DF::from_scale(Point2DF::splat(radius));
         transform = transform.post_mul(&Transform2DF::from_translation(center));
-        self.current_contour.push_arc(&transform, start_angle, end_angle);
+        self.current_contour.push_arc(&transform, start_angle, end_angle, direction);
     }
 
     #[inline]
@@ -357,7 +362,9 @@ impl Path2D {
 
         let chord = LineSegmentF::new(vu0.yx().scale_xy(Point2DF::new(-1.0, 1.0)),
                                       vu1.yx().scale_xy(Point2DF::new(1.0, -1.0)));
-        self.current_contour.push_arc_from_unit_chord(&transform, chord);
+
+        // FIXME(pcwalton): Is clockwise direction correct?
+        self.current_contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
     }
 
     pub fn rect(&mut self, rect: RectF) {
@@ -380,7 +387,7 @@ impl Path2D {
         let mut transform = Transform2DF::from_rotation(rotation);
         transform = transform.post_mul(&Transform2DF::from_scale(axes));
         transform = transform.post_mul(&Transform2DF::from_translation(center));
-        self.current_contour.push_arc(&transform, start_angle, end_angle);
+        self.current_contour.push_arc(&transform, start_angle, end_angle, ArcDirection::CW);
 
         if end_angle - start_angle >= 2.0 * PI {
             self.current_contour.close();

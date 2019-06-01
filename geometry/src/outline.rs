@@ -352,17 +352,30 @@ impl Contour {
         self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
     }
 
-    pub fn push_arc(&mut self, transform: &Transform2DF, start_angle: f32, end_angle: f32) {
+    pub fn push_arc(&mut self,
+                    transform: &Transform2DF,
+                    start_angle: f32,
+                    end_angle: f32,
+                    direction: ArcDirection) {
         if end_angle - start_angle >= PI * 2.0 {
             self.push_ellipse(transform);
         } else {
             let start = Point2DF::new(f32::cos(start_angle), f32::sin(start_angle));
             let end = Point2DF::new(f32::cos(end_angle), f32::sin(end_angle));
-            self.push_arc_from_unit_chord(transform, LineSegmentF::new(start, end));
+            self.push_arc_from_unit_chord(transform, LineSegmentF::new(start, end), direction);
         }
     }
 
-    pub fn push_arc_from_unit_chord(&mut self, transform: &Transform2DF, chord: LineSegmentF) {
+    pub fn push_arc_from_unit_chord(&mut self,
+                                    transform: &Transform2DF,
+                                    mut chord: LineSegmentF,
+                                    direction: ArcDirection) {
+        let mut direction_transform = Transform2DF::default();
+        if direction == ArcDirection::CCW {
+            chord = chord.scale_xy(Point2DF::new(-1.0, 1.0));
+            direction_transform = Transform2DF::from_scale(Point2DF::new(-1.0, 1.0));
+        }
+
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
         let mut first_segment = true;
 
@@ -378,9 +391,10 @@ impl Contour {
                 segment = Segment::arc_from_cos(sweep_vector.0.x());
             }
 
-            let rotation =
-                Transform2DF::from_rotation_vector(sweep_vector.halve_angle().rotate_by(vector));
-            segment = segment.transform(&rotation.post_mul(&transform));
+            let half_sweep_vector = sweep_vector.halve_angle();
+            let rotation = Transform2DF::from_rotation_vector(half_sweep_vector.rotate_by(vector));
+            segment = segment.transform(&direction_transform.post_mul(&rotation)
+                                                            .post_mul(&transform));
 
             let mut push_segment_flags = PushSegmentFlags::UPDATE_BOUNDS;
             if first_segment {
@@ -814,6 +828,12 @@ impl<'a> Iterator for ContourIter<'a> {
             &LineSegmentF::new(point1, point2),
         ));
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ArcDirection {
+    CW,
+    CCW,
 }
 
 #[inline]

@@ -14,7 +14,7 @@ use crate::basic::line_segment::LineSegmentF;
 use crate::basic::point::Point2DF;
 use crate::basic::rect::RectF;
 use crate::basic::transform2d::Transform2DF;
-use crate::outline::{Contour, Outline, PushSegmentFlags};
+use crate::outline::{ArcDirection, Contour, Outline, PushSegmentFlags};
 use crate::segment::Segment;
 use std::f32;
 
@@ -141,7 +141,8 @@ impl<'a> OutlineStrokeToFill<'a> {
                 let mut transform = Transform2DF::from_scale(scale);
                 let translation = p1 + offset.scale(width * 0.5);
                 transform = transform.post_mul(&Transform2DF::from_translation(translation));
-                contour.push_arc_from_unit_chord(&transform, LineSegmentF::new(-offset, offset));
+                let chord = LineSegmentF::new(-offset, offset);
+                contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
             }
         }
     }
@@ -377,7 +378,8 @@ impl Contour {
                 transform = transform.post_mul(&Transform2DF::from_translation(join_point));
                 let chord_from = (prev_tangent.to() - join_point).normalize();
                 let chord_to = (next_tangent.to() - join_point).normalize();
-                self.push_arc_from_unit_chord(&transform, LineSegmentF::new(chord_from, chord_to));
+                let chord = LineSegmentF::new(chord_from, chord_to);
+                self.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
             }
         }
     }
