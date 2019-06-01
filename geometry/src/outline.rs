@@ -45,6 +45,13 @@ bitflags! {
     }
 }
 
+bitflags! {
+    pub struct PushSegmentFlags: u8 {
+        const UPDATE_BOUNDS = 0x01;
+        const INCLUDE_FROM_POINT = 0x02;
+    }
+}
+
 impl Outline {
     #[inline]
     pub fn new() -> Outline {
@@ -319,35 +326,12 @@ impl Contour {
     }
 
     #[inline]
-    pub(crate) fn push_segment(&mut self, segment: Segment, update_bounds: bool) {
+    pub(crate) fn push_segment(&mut self, segment: &Segment, flags: PushSegmentFlags) {
         if segment.is_none() {
             return;
         }
 
-        if self.is_empty() {
-            self.push_point(segment.baseline.from(), PointFlags::empty(), update_bounds);
-        }
-
-        if !segment.is_line() {
-            self.push_point(
-                segment.ctrl.from(),
-                PointFlags::CONTROL_POINT_0,
-                update_bounds,
-            );
-            if !segment.is_quadratic() {
-                self.push_point(
-                    segment.ctrl.to(),
-                    PointFlags::CONTROL_POINT_1,
-                    update_bounds,
-                );
-            }
-        }
-
-        self.push_point(segment.baseline.to(), PointFlags::empty(), update_bounds);
-    }
-
-    #[inline]
-    pub(crate) fn push_full_segment(&mut self, segment: &Segment, update_bounds: bool) {
+        let update_bounds = flags.contains(PushSegmentFlags::UPDATE_BOUNDS);
         self.push_point(segment.baseline.from(), PointFlags::empty(), update_bounds);
 
         if !segment.is_line() {
@@ -398,12 +382,12 @@ impl Contour {
                 Transform2DF::from_rotation_vector(sweep_vector.halve_angle().rotate_by(vector));
             segment = segment.transform(&rotation.post_mul(&transform));
 
+            let mut push_segment_flags = PushSegmentFlags::UPDATE_BOUNDS;
             if first_segment {
-                self.push_full_segment(&segment, true);
+                push_segment_flags.insert(PushSegmentFlags::INCLUDE_FROM_POINT);
                 first_segment = false;
-            } else {
-                self.push_segment(segment, true);
             }
+            self.push_segment(&segment, push_segment_flags);
 
             if last {
                 break;
@@ -418,13 +402,17 @@ impl Contour {
     pub fn push_ellipse(&mut self, transform: &Transform2DF) {
         let segment = Segment::quarter_circle_arc();
         let mut rotation;
-        self.push_full_segment(&segment.transform(transform), true);
+        self.push_segment(&segment.transform(transform),
+                          PushSegmentFlags::UPDATE_BOUNDS | PushSegmentFlags::INCLUDE_FROM_POINT);
         rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0,  1.0)));
-        self.push_segment(segment.transform(&rotation.post_mul(&transform)), true);
+        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+                          PushSegmentFlags::UPDATE_BOUNDS);
         rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new(-1.0,  0.0)));
-        self.push_segment(segment.transform(&rotation.post_mul(&transform)), true);
+        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+                          PushSegmentFlags::UPDATE_BOUNDS);
         rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0, -1.0)));
-        self.push_segment(segment.transform(&rotation.post_mul(&transform)), true);
+        self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
+                          PushSegmentFlags::UPDATE_BOUNDS);
     }
 
     #[inline]
@@ -608,14 +596,14 @@ impl Contour {
                     let ctrl_position = &contour.points[ctrl_point_index];
                     handle_cubic(
                         self,
-                        Segment::quadratic(&baseline, *ctrl_position).to_cubic(),
+                        &Segment::quadratic(&baseline, *ctrl_position).to_cubic(),
                     );
                 } else if point_count == 4 {
                     let first_ctrl_point_index = last_endpoint_index as usize + 1;
                     let ctrl_position_0 = &contour.points[first_ctrl_point_index + 0];
                     let ctrl_position_1 = &contour.points[first_ctrl_point_index + 1];
                     let ctrl = LineSegmentF::new(*ctrl_position_0, *ctrl_position_1);
-                    handle_cubic(self, Segment::cubic(&baseline, &ctrl));
+                    handle_cubic(self, &Segment::cubic(&baseline, &ctrl));
                 }
 
                 self.push_point(
@@ -628,23 +616,23 @@ impl Contour {
             last_endpoint_index = Some(point_index);
         }
 
-        fn handle_cubic(contour: &mut Contour, segment: Segment) {
+        fn handle_cubic(contour: &mut Contour, segment: &Segment) {
             debug!("handle_cubic({:?})", segment);
 
             match segment.as_cubic_segment().y_extrema() {
                 (Some(t0), Some(t1)) => {
                     let (segments_01, segment_2) = segment.as_cubic_segment().split(t1);
                     let (segment_0, segment_1) = segments_01.as_cubic_segment().split(t0 / t1);
-                    contour.push_segment(segment_0, false);
-                    contour.push_segment(segment_1, false);
-                    contour.push_segment(segment_2, false);
+                    contour.push_segment(&segment_0, PushSegmentFlags::empty());
+                    contour.push_segment(&segment_1, PushSegmentFlags::empty());
+                    contour.push_segment(&segment_2, PushSegmentFlags::empty());
                 }
                 (Some(t0), None) | (None, Some(t0)) => {
                     let (segment_0, segment_1) = segment.as_cubic_segment().split(t0);
-                    contour.push_segment(segment_0, false);
-                    contour.push_segment(segment_1, false);
+                    contour.push_segment(&segment_0, PushSegmentFlags::empty());
+                    contour.push_segment(&segment_1, PushSegmentFlags::empty());
                 }
-                (None, None) => contour.push_segment(segment, false),
+                (None, None) => contour.push_segment(segment, PushSegmentFlags::empty()),
             }
         }
     }

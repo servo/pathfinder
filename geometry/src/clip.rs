@@ -11,7 +11,7 @@
 use crate::basic::line_segment::LineSegmentF;
 use crate::basic::point::{Point2DF, Point3DF};
 use crate::basic::rect::RectF;
-use crate::outline::{Contour, PointFlags};
+use crate::outline::{Contour, PointFlags, PushSegmentFlags};
 use crate::segment::{CubicSegment, Segment};
 use crate::util::lerp;
 use arrayvec::ArrayVec;
@@ -261,7 +261,7 @@ where
             }
         }
 
-        contour.push_segment(*segment, true);
+        contour.push_segment(segment, PushSegmentFlags::UPDATE_BOUNDS);
     }
 
     fn check_for_fast_clip(&mut self, edge: &Self::Edge) -> FastClipResult {

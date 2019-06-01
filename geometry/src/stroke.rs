@@ -14,7 +14,7 @@ use crate::basic::line_segment::LineSegmentF;
 use crate::basic::point::Point2DF;
 use crate::basic::rect::RectF;
 use crate::basic::transform2d::Transform2DF;
-use crate::outline::{Contour, Outline};
+use crate::outline::{Contour, Outline, PushSegmentFlags};
 use crate::segment::Segment;
 use std::f32;
 
@@ -238,7 +238,8 @@ impl Offset for Segment {
         }
 
         // Push segment.
-        contour.push_full_segment(self, true);
+        let flags = PushSegmentFlags::UPDATE_BOUNDS | PushSegmentFlags::INCLUDE_FROM_POINT;
+        contour.push_segment(self, flags);
     }
 
     fn offset_once(&self, distance: f32) -> Segment {
