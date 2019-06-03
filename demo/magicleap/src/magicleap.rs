@@ -42,7 +42,6 @@ use gl::types::GLuint;
 use log;
 use log::debug;
 use log::info;
-use log::warn;
 
 use pathfinder_demo::window::Event;
 use pathfinder_demo::window::OcularTransform;

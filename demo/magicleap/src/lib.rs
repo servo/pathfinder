@@ -20,7 +20,6 @@ use egl::EGLSurface;
 
 use gl::types::GLuint;
 
-use log::debug;
 use log::info;
 
 use pathfinder_demo::DemoApp;
