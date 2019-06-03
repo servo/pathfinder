@@ -10,7 +10,7 @@
 
 //! 3D transforms that can be applied to paths.
 
-use crate::basic::point::{Point2DF, Point2DI, Point3DF};
+use crate::basic::vector::{Vector2F, Vector2I, Vector4F};
 use crate::basic::rect::RectF;
 use crate::basic::transform2d::Matrix2x2F;
 use crate::segment::Segment;
@@ -236,12 +236,12 @@ impl Transform3DF {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Point3DF) -> Point3DF {
+    pub fn transform_point(&self, point: Vector4F) -> Vector4F {
         let term0 = self.c0 * F32x4::splat(point.x());
         let term1 = self.c1 * F32x4::splat(point.y());
         let term2 = self.c2 * F32x4::splat(point.z());
         let term3 = self.c3 * F32x4::splat(point.w());
-        Point3DF(term0 + term1 + term2 + term3)
+        Vector4F(term0 + term1 + term2 + term3)
     }
 
     #[inline]
@@ -319,12 +319,12 @@ impl Neg for Matrix2x2F {
 #[derive(Clone, Copy, Debug)]
 pub struct Perspective {
     pub transform: Transform3DF,
-    pub window_size: Point2DI,
+    pub window_size: Vector2I,
 }
 
 impl Perspective {
     #[inline]
-    pub fn new(transform: &Transform3DF, window_size: Point2DI) -> Perspective {
+    pub fn new(transform: &Transform3DF, window_size: Vector2I) -> Perspective {
         Perspective {
             transform: *transform,
             window_size,
@@ -332,14 +332,14 @@ impl Perspective {
     }
 
     #[inline]
-    pub fn transform_point_2d(&self, point: &Point2DF) -> Point2DF {
+    pub fn transform_point_2d(&self, point: &Vector2F) -> Vector2F {
         let point = self
             .transform
             .transform_point(point.to_3d())
             .perspective_divide()
             .to_2d()
-            * Point2DF::new(1.0, -1.0);
-        (point + Point2DF::splat(1.0)) * self.window_size.to_f32().scale(0.5)
+            * Vector2F::new(1.0, -1.0);
+        (point + Vector2F::splat(1.0)) * self.window_size.to_f32().scale(0.5)
     }
 
     // TODO(pcwalton): SIMD?
@@ -420,7 +420,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::basic::point::Point3DF;
+    use crate::basic::vector::Vector4F;
     use crate::basic::transform3d::Transform3DF;
 
     #[test]
@@ -458,8 +458,8 @@ mod test {
         let a = Transform3DF::row_major(
             3.0, 1.0, 4.0, 5.0, 9.0, 2.0, 6.0, 5.0, 3.0, 5.0, 8.0, 9.0, 7.0, 9.0, 3.0, 2.0,
         );
-        let p = Point3DF::new(3.0, 8.0, 4.0, 6.0);
-        let q = Point3DF::new(63.0, 97.0, 135.0, 117.0);
+        let p = Vector4F::new(3.0, 8.0, 4.0, 6.0);
+        let q = Vector4F::new(63.0, 97.0, 135.0, 117.0);
         assert_eq!(a.transform_point(p), q);
     }
 
@@ -471,7 +471,7 @@ mod test {
             0.12969608, 0.0946466, 0.43248631, 0.63480505, 0.08154603, 0.50305436, 0.48359687,
             0.51057162, 0.24812012,
         );
-        let p0 = Point3DF::new(0.95536648, 0.80633691, 0.16357357, 0.5477598);
+        let p0 = Vector4F::new(0.95536648, 0.80633691, 0.16357357, 0.5477598);
         let p1 = m.transform_point(p0);
         let m_inv = m.inverse();
         let m_inv_exp = Transform3DF::row_major(

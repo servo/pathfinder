@@ -55,20 +55,20 @@ struct PFColorF {
     float r, g, b, a;
 };
 typedef struct PFColorF PFColorF;
-struct PFPoint2DF {
+struct PFVector2F {
     float x, y;
 };
-typedef struct PFPoint2DF PFPoint2DF;
-struct PFPoint2DI {
+typedef struct PFVector2F PFVector2F;
+struct PFVector2I {
     int32_t x, y;
 };
-typedef struct PFPoint2DI PFPoint2DI;
+typedef struct PFVector2I PFVector2I;
 struct PFRectF {
-    PFPoint2DF origin, lower_right;
+    PFVector2F origin, lower_right;
 };
 typedef struct PFRectF PFRectF;
 struct PFRectI {
-    PFPoint2DI origin, lower_right;
+    PFVector2I origin, lower_right;
 };
 typedef struct PFRectI PFRectI;
 
@@ -112,7 +112,7 @@ typedef struct PFSceneProxy *PFSceneProxyRef;
 
 // `canvas`
 
-PFCanvasRef PFCanvasCreate(PFCanvasFontContextRef font_context, const PFPoint2DF *size);
+PFCanvasRef PFCanvasCreate(PFCanvasFontContextRef font_context, const PFVector2F *size);
 void PFCanvasDestroy(PFCanvasRef canvas);
 PFCanvasFontContextRef PFCanvasFontContextCreate();
 void PFCanvasFontContextDestroy(PFCanvasFontContextRef font_context);
@@ -126,18 +126,18 @@ void PFCanvasStrokePath(PFCanvasRef canvas, PFPathRef path);
 PFPathRef PFPathCreate();
 void PFPathDestroy(PFPathRef path);
 PFPathRef PFPathClone(PFPathRef path);
-void PFPathMoveTo(PFPathRef path, const PFPoint2DF *to);
-void PFPathLineTo(PFPathRef path, const PFPoint2DF *to);
-void PFPathQuadraticCurveTo(PFPathRef path, const PFPoint2DF *ctrl, const PFPoint2DF *to);
+void PFPathMoveTo(PFPathRef path, const PFVector2F *to);
+void PFPathLineTo(PFPathRef path, const PFVector2F *to);
+void PFPathQuadraticCurveTo(PFPathRef path, const PFVector2F *ctrl, const PFVector2F *to);
 void PFPathBezierCurveTo(PFPathRef path,
-                         const PFPoint2DF *ctrl0,
-                         const PFPoint2DF *ctrl1,
-                         const PFPoint2DF *to);
+                         const PFVector2F *ctrl0,
+                         const PFVector2F *ctrl1,
+                         const PFVector2F *to);
 void PFPathClosePath(PFPathRef path);
 
 // `gl`
 
-PFGLDestFramebufferRef PFGLDestFramebufferCreateFullWindow(const PFPoint2DI *window_size);
+PFGLDestFramebufferRef PFGLDestFramebufferCreateFullWindow(const PFVector2I *window_size);
 void PFGLDestFramebufferDestroy(PFGLDestFramebufferRef dest_framebuffer);
 PFGLDeviceRef PFGLDeviceCreate(PFGLVersion version, uint32_t default_framebuffer);
 void PFGLDeviceDestroy(PFGLDeviceRef device);

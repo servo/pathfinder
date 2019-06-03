@@ -17,8 +17,8 @@ use crate::scene::Scene;
 use crate::tile_map::DenseTileMap;
 use crate::tiles::{self, TILE_HEIGHT, TILE_WIDTH, Tiler};
 use crate::z_buffer::ZBuffer;
-use pathfinder_geometry::basic::line_segment::{LineSegmentF, LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
+use pathfinder_geometry::basic::line_segment::{LineSegment2F, LineSegmentU4, LineSegmentU8};
+use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::util;
 use pathfinder_simd::default::{F32x4, I32x4};
@@ -160,8 +160,8 @@ impl BuiltObject {
     fn add_fill(
         &mut self,
         builder: &SceneBuilder,
-        segment: &LineSegmentF,
-        tile_coords: Point2DI,
+        segment: &LineSegment2F,
+        tile_coords: Vector2I,
     ) {
         debug!("add_fill({:?} ({:?}))", segment, tile_coords);
 
@@ -214,7 +214,7 @@ impl BuiltObject {
     fn get_or_allocate_alpha_tile_index(
         &mut self,
         builder: &SceneBuilder,
-        tile_coords: Point2DI,
+        tile_coords: Vector2I,
     ) -> u16 {
         let local_tile_index = self.tiles.coords_to_index_unchecked(tile_coords);
         let alpha_tile_index = self.tiles.data[local_tile_index].alpha_tile_index;
@@ -235,16 +235,16 @@ impl BuiltObject {
         left: f32,
         right: f32,
         mut winding: i32,
-        tile_coords: Point2DI,
+        tile_coords: Vector2I,
     ) {
         let tile_origin_y = (tile_coords.y() * TILE_HEIGHT as i32) as f32;
-        let left = Point2DF::new(left, tile_origin_y);
-        let right = Point2DF::new(right, tile_origin_y);
+        let left = Vector2F::new(left, tile_origin_y);
+        let right = Vector2F::new(right, tile_origin_y);
 
         let segment = if winding < 0 {
-            LineSegmentF::new(left, right)
+            LineSegment2F::new(left, right)
         } else {
-            LineSegmentF::new(right, left)
+            LineSegment2F::new(right, left)
         };
 
         debug!(
@@ -268,7 +268,7 @@ impl BuiltObject {
     pub(crate) fn generate_fill_primitives_for_line(
         &mut self,
         builder: &SceneBuilder,
-        mut segment: LineSegmentF,
+        mut segment: LineSegment2F,
         tile_y: i32,
     ) {
         debug!(
@@ -303,29 +303,29 @@ impl BuiltObject {
                 ((i32::from(subsegment_tile_x) + 1) * TILE_HEIGHT as i32) as f32;
             if subsegment_tile_right < segment_right {
                 let x = subsegment_tile_right;
-                let point = Point2DF::new(x, segment.solve_y_for_x(x));
+                let point = Vector2F::new(x, segment.solve_y_for_x(x));
                 if !winding {
                     fill_to = point;
-                    segment = LineSegmentF::new(point, segment.to());
+                    segment = LineSegment2F::new(point, segment.to());
                 } else {
                     fill_from = point;
-                    segment = LineSegmentF::new(segment.from(), point);
+                    segment = LineSegment2F::new(segment.from(), point);
                 }
             }
 
-            let fill_segment = LineSegmentF::new(fill_from, fill_to);
-            let fill_tile_coords = Point2DI::new(subsegment_tile_x, tile_y);
+            let fill_segment = LineSegment2F::new(fill_from, fill_to);
+            let fill_tile_coords = Vector2I::new(subsegment_tile_x, tile_y);
             self.add_fill(builder, &fill_segment, fill_tile_coords);
         }
     }
 
     #[inline]
-    pub(crate) fn tile_coords_to_local_index(&self, coords: Point2DI) -> Option<u32> {
+    pub(crate) fn tile_coords_to_local_index(&self, coords: Vector2I) -> Option<u32> {
         self.tiles.coords_to_index(coords).map(|index| index as u32)
     }
 
     #[inline]
-    pub(crate) fn local_tile_index_to_coords(&self, tile_index: u32) -> Point2DI {
+    pub(crate) fn local_tile_index_to_coords(&self, tile_index: u32) -> Vector2I {
         self.tiles.index_to_coords(tile_index as usize)
     }
 }

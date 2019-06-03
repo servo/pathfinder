@@ -14,8 +14,8 @@ use font_kit::family_name::FamilyName;
 use font_kit::hinting::HintingOptions;
 use font_kit::properties::Properties;
 use font_kit::source::SystemSource;
-use pathfinder_geometry::basic::line_segment::LineSegmentF;
-use pathfinder_geometry::basic::point::Point2DF;
+use pathfinder_geometry::basic::line_segment::LineSegment2F;
+use pathfinder_geometry::basic::vector::Vector2F;
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
@@ -44,9 +44,9 @@ pub struct CanvasRenderingContext2D {
 
 impl CanvasRenderingContext2D {
     #[inline]
-    pub fn new(font_context: CanvasFontContext, size: Point2DF) -> CanvasRenderingContext2D {
+    pub fn new(font_context: CanvasFontContext, size: Vector2F) -> CanvasRenderingContext2D {
         let mut scene = Scene::new();
-        scene.set_view_box(RectF::new(Point2DF::default(), size));
+        scene.set_view_box(RectF::new(Vector2F::default(), size));
         CanvasRenderingContext2D::from_scene(font_context, scene)
     }
 
@@ -82,12 +82,12 @@ impl CanvasRenderingContext2D {
 
     // Drawing text
 
-    pub fn fill_text(&mut self, string: &str, position: Point2DF) {
+    pub fn fill_text(&mut self, string: &str, position: Vector2F) {
         let paint_id = self.scene.push_paint(&self.current_state.fill_paint);
         self.fill_or_stroke_text(string, position, paint_id, TextRenderMode::Fill);
     }
 
-    pub fn stroke_text(&mut self, string: &str, position: Point2DF) {
+    pub fn stroke_text(&mut self, string: &str, position: Vector2F) {
         let paint_id = self.scene.push_paint(&self.current_state.stroke_paint);
         let render_mode = TextRenderMode::Stroke(self.current_state.resolve_stroke_style());
         self.fill_or_stroke_text(string, position, paint_id, render_mode);
@@ -99,7 +99,7 @@ impl CanvasRenderingContext2D {
 
     fn fill_or_stroke_text(&mut self,
                            string: &str,
-                           mut position: Point2DF,
+                           mut position: Vector2F,
                            paint_id: PaintId,
                            render_mode: TextRenderMode) {
         let layout = self.layout_text(string);
@@ -314,41 +314,41 @@ impl Path2D {
     }
 
     #[inline]
-    pub fn move_to(&mut self, to: Point2DF) {
+    pub fn move_to(&mut self, to: Vector2F) {
         // TODO(pcwalton): Cull degenerate contours.
         self.flush_current_contour();
         self.current_contour.push_endpoint(to);
     }
 
     #[inline]
-    pub fn line_to(&mut self, to: Point2DF) {
+    pub fn line_to(&mut self, to: Vector2F) {
         self.current_contour.push_endpoint(to);
     }
 
     #[inline]
-    pub fn quadratic_curve_to(&mut self, ctrl: Point2DF, to: Point2DF) {
+    pub fn quadratic_curve_to(&mut self, ctrl: Vector2F, to: Vector2F) {
         self.current_contour.push_quadratic(ctrl, to);
     }
 
     #[inline]
-    pub fn bezier_curve_to(&mut self, ctrl0: Point2DF, ctrl1: Point2DF, to: Point2DF) {
+    pub fn bezier_curve_to(&mut self, ctrl0: Vector2F, ctrl1: Vector2F, to: Vector2F) {
         self.current_contour.push_cubic(ctrl0, ctrl1, to);
     }
 
     #[inline]
     pub fn arc(&mut self,
-               center: Point2DF,
+               center: Vector2F,
                radius: f32,
                start_angle: f32,
                end_angle: f32,
                direction: ArcDirection) {
-        let mut transform = Transform2DF::from_scale(Point2DF::splat(radius));
+        let mut transform = Transform2DF::from_scale(Vector2F::splat(radius));
         transform = transform.post_mul(&Transform2DF::from_translation(center));
         self.current_contour.push_arc(&transform, start_angle, end_angle, direction);
     }
 
     #[inline]
-    pub fn arc_to(&mut self, ctrl: Point2DF, to: Point2DF, radius: f32) {
+    pub fn arc_to(&mut self, ctrl: Vector2F, to: Vector2F, radius: f32) {
         // FIXME(pcwalton): What should we do if there's no initial point?
         let from = self.current_contour.last_position().unwrap_or_default();
         let (v0, v1) = (from - ctrl, to - ctrl);
@@ -357,11 +357,11 @@ impl Path2D {
         let bisector = vu0 + vu1;
         let center = ctrl + bisector.scale(hypot / bisector.length());
 
-        let mut transform = Transform2DF::from_scale(Point2DF::splat(radius));
+        let mut transform = Transform2DF::from_scale(Vector2F::splat(radius));
         transform = transform.post_mul(&Transform2DF::from_translation(center));
 
-        let chord = LineSegmentF::new(vu0.yx().scale_xy(Point2DF::new(-1.0, 1.0)),
-                                      vu1.yx().scale_xy(Point2DF::new(1.0, -1.0)));
+        let chord = LineSegment2F::new(vu0.yx().scale_xy(Vector2F::new(-1.0, 1.0)),
+                                      vu1.yx().scale_xy(Vector2F::new(1.0, -1.0)));
 
         // FIXME(pcwalton): Is clockwise direction correct?
         self.current_contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
@@ -377,8 +377,8 @@ impl Path2D {
     }
 
     pub fn ellipse(&mut self,
-                   center: Point2DF,
-                   axes: Point2DF,
+                   center: Vector2F,
+                   axes: Vector2F,
                    rotation: f32,
                    start_angle: f32,
                    end_angle: f32) {

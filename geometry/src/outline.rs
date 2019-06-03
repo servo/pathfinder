@@ -10,8 +10,8 @@
 
 //! A compressed in-memory representation of paths.
 
-use crate::basic::line_segment::LineSegmentF;
-use crate::basic::point::Point2DF;
+use crate::basic::line_segment::LineSegment2F;
+use crate::basic::vector::Vector2F;
 use crate::basic::rect::RectF;
 use crate::basic::transform2d::Transform2DF;
 use crate::basic::transform3d::Perspective;
@@ -32,7 +32,7 @@ pub struct Outline {
 
 #[derive(Clone)]
 pub struct Contour {
-    pub(crate) points: Vec<Point2DF>,
+    pub(crate) points: Vec<Vector2F>,
     pub(crate) flags: Vec<PointFlags>,
     pub(crate) bounds: RectF,
     pub(crate) closed: bool,
@@ -156,7 +156,7 @@ impl Outline {
         self.bounds = new_bounds.unwrap_or_else(|| RectF::default());
     }
 
-    pub fn dilate(&mut self, amount: Point2DF) {
+    pub fn dilate(&mut self, amount: Vector2F) {
         let orientation = Orientation::from_outline(self);
         self.contours
             .iter_mut()
@@ -174,15 +174,15 @@ impl Outline {
             .unwrap_or_else(|| RectF::default());
     }
 
-    pub fn is_outside_polygon(&self, clip_polygon: &[Point2DF]) -> bool {
+    pub fn is_outside_polygon(&self, clip_polygon: &[Vector2F]) -> bool {
         clip::rect_is_outside_polygon(self.bounds, clip_polygon)
     }
 
-    fn is_inside_polygon(&self, clip_polygon: &[Point2DF]) -> bool {
+    fn is_inside_polygon(&self, clip_polygon: &[Vector2F]) -> bool {
         clip::rect_is_inside_polygon(self.bounds, clip_polygon)
     }
 
-    pub fn clip_against_polygon(&mut self, clip_polygon: &[Point2DF]) {
+    pub fn clip_against_polygon(&mut self, clip_polygon: &[Vector2F]) {
         // Quick check.
         if self.is_inside_polygon(clip_polygon) {
             return;
@@ -271,33 +271,33 @@ impl Contour {
     }
 
     #[inline]
-    pub fn position_of(&self, index: u32) -> Point2DF {
+    pub fn position_of(&self, index: u32) -> Vector2F {
         self.points[index as usize]
     }
 
     #[inline]
-    pub fn last_position(&self) -> Option<Point2DF> {
+    pub fn last_position(&self) -> Option<Vector2F> {
         self.points.last().cloned()
     }
 
     #[inline]
-    pub(crate) fn position_of_last(&self, index: u32) -> Point2DF {
+    pub(crate) fn position_of_last(&self, index: u32) -> Vector2F {
         self.points[self.points.len() - index as usize]
     }
 
     #[inline]
-    pub fn push_endpoint(&mut self, point: Point2DF) {
+    pub fn push_endpoint(&mut self, point: Vector2F) {
         self.push_point(point, PointFlags::empty(), true);
     }
 
     #[inline]
-    pub fn push_quadratic(&mut self, ctrl: Point2DF, point: Point2DF) {
+    pub fn push_quadratic(&mut self, ctrl: Vector2F, point: Vector2F) {
         self.push_point(ctrl, PointFlags::CONTROL_POINT_0, true);
         self.push_point(point, PointFlags::empty(), true);
     }
 
     #[inline]
-    pub fn push_cubic(&mut self, ctrl0: Point2DF, ctrl1: Point2DF, point: Point2DF) {
+    pub fn push_cubic(&mut self, ctrl0: Vector2F, ctrl1: Vector2F, point: Vector2F) {
         self.push_point(ctrl0, PointFlags::CONTROL_POINT_0, true);
         self.push_point(ctrl1, PointFlags::CONTROL_POINT_1, true);
         self.push_point(point, PointFlags::empty(), true);
@@ -311,7 +311,7 @@ impl Contour {
     // TODO(pcwalton): SIMD.
     #[inline]
     pub(crate) fn push_point(&mut self,
-                             point: Point2DF,
+                             point: Vector2F,
                              flags: PointFlags,
                              update_bounds: bool) {
         debug_assert!(!point.x().is_nan() && !point.y().is_nan());
@@ -360,20 +360,20 @@ impl Contour {
         if end_angle - start_angle >= PI * 2.0 {
             self.push_ellipse(transform);
         } else {
-            let start = Point2DF::new(f32::cos(start_angle), f32::sin(start_angle));
-            let end = Point2DF::new(f32::cos(end_angle), f32::sin(end_angle));
-            self.push_arc_from_unit_chord(transform, LineSegmentF::new(start, end), direction);
+            let start = Vector2F::new(f32::cos(start_angle), f32::sin(start_angle));
+            let end = Vector2F::new(f32::cos(end_angle), f32::sin(end_angle));
+            self.push_arc_from_unit_chord(transform, LineSegment2F::new(start, end), direction);
         }
     }
 
     pub fn push_arc_from_unit_chord(&mut self,
                                     transform: &Transform2DF,
-                                    mut chord: LineSegmentF,
+                                    mut chord: LineSegment2F,
                                     direction: ArcDirection) {
         let mut direction_transform = Transform2DF::default();
         if direction == ArcDirection::CCW {
-            chord = chord.scale_xy(Point2DF::new(-1.0, 1.0));
-            direction_transform = Transform2DF::from_scale(Point2DF::new(-1.0, 1.0));
+            chord = chord.scale_xy(Vector2F::new(-1.0, 1.0));
+            direction_transform = Transform2DF::from_scale(Vector2F::new(-1.0, 1.0));
         }
 
         let (mut vector, end_vector) = (UnitVector(chord.from()), UnitVector(chord.to()));
@@ -385,7 +385,7 @@ impl Contour {
 
             let mut segment;
             if !last {
-                sweep_vector = UnitVector(Point2DF::new(0.0, 1.0));
+                sweep_vector = UnitVector(Vector2F::new(0.0, 1.0));
                 segment = Segment::quarter_circle_arc();
             } else {
                 segment = Segment::arc_from_cos(sweep_vector.0.x());
@@ -418,13 +418,13 @@ impl Contour {
         let mut rotation;
         self.push_segment(&segment.transform(transform),
                           PushSegmentFlags::UPDATE_BOUNDS | PushSegmentFlags::INCLUDE_FROM_POINT);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0,  1.0)));
+        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new( 0.0,  1.0)));
         self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
                           PushSegmentFlags::UPDATE_BOUNDS);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new(-1.0,  0.0)));
+        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new(-1.0,  0.0)));
         self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
                           PushSegmentFlags::UPDATE_BOUNDS);
-        rotation = Transform2DF::from_rotation_vector(UnitVector(Point2DF::new( 0.0, -1.0)));
+        rotation = Transform2DF::from_rotation_vector(UnitVector(Vector2F::new( 0.0, -1.0)));
         self.push_segment(&segment.transform(&rotation.post_mul(&transform)),
                           PushSegmentFlags::UPDATE_BOUNDS);
     }
@@ -460,9 +460,9 @@ impl Contour {
     }
 
     #[inline]
-    pub fn hull_segment_after(&self, prev_point_index: u32) -> LineSegmentF {
+    pub fn hull_segment_after(&self, prev_point_index: u32) -> LineSegment2F {
         let next_point_index = self.next_point_index_of(prev_point_index);
-        LineSegmentF::new(
+        LineSegment2F::new(
             self.points[prev_point_index as usize],
             self.points[next_point_index as usize],
         )
@@ -546,7 +546,7 @@ impl Contour {
         }
     }
 
-    pub fn dilate(&mut self, amount: Point2DF, orientation: Orientation) {
+    pub fn dilate(&mut self, amount: Vector2F, orientation: Orientation) {
         ContourDilator::new(self, amount, orientation).dilate();
         self.bounds = self.bounds.dilate(amount);
     }
@@ -600,7 +600,7 @@ impl Contour {
                 } else {
                     point_index
                 };
-                let baseline = LineSegmentF::new(
+                let baseline = LineSegment2F::new(
                     contour.points[last_endpoint_index as usize],
                     contour.points[position_index as usize],
                 );
@@ -616,7 +616,7 @@ impl Contour {
                     let first_ctrl_point_index = last_endpoint_index as usize + 1;
                     let ctrl_position_0 = &contour.points[first_ctrl_point_index + 0];
                     let ctrl_position_1 = &contour.points[first_ctrl_point_index + 1];
-                    let ctrl = LineSegmentF::new(*ctrl_position_0, *ctrl_position_1);
+                    let ctrl = LineSegment2F::new(*ctrl_position_0, *ctrl_position_1);
                     handle_cubic(self, &Segment::cubic(&baseline, &ctrl));
                 }
 
@@ -802,21 +802,21 @@ impl<'a> Iterator for ContourIter<'a> {
         if self.index == contour.len() {
             let point1 = contour.position_of(0);
             self.index += 1;
-            return Some(Segment::line(&LineSegmentF::new(point0, point1)));
+            return Some(Segment::line(&LineSegment2F::new(point0, point1)));
         }
 
         let point1_index = self.index;
         self.index += 1;
         let point1 = contour.position_of(point1_index);
         if contour.point_is_endpoint(point1_index) {
-            return Some(Segment::line(&LineSegmentF::new(point0, point1)));
+            return Some(Segment::line(&LineSegment2F::new(point0, point1)));
         }
 
         let point2_index = self.index;
         let point2 = contour.position_of(point2_index);
         self.index += 1;
         if contour.point_is_endpoint(point2_index) {
-            return Some(Segment::quadratic(&LineSegmentF::new(point0, point2), point1));
+            return Some(Segment::quadratic(&LineSegment2F::new(point0, point2), point1));
         }
 
         let point3_index = self.index;
@@ -824,8 +824,8 @@ impl<'a> Iterator for ContourIter<'a> {
         self.index += 1;
         debug_assert!(contour.point_is_endpoint(point3_index));
         return Some(Segment::cubic(
-            &LineSegmentF::new(point0, point3),
-            &LineSegmentF::new(point1, point2),
+            &LineSegment2F::new(point0, point3),
+            &LineSegment2F::new(point1, point2),
         ));
     }
 }
@@ -837,7 +837,7 @@ pub enum ArcDirection {
 }
 
 #[inline]
-pub(crate) fn union_rect(bounds: &mut RectF, new_point: Point2DF, first: bool) {
+pub(crate) fn union_rect(bounds: &mut RectF, new_point: Vector2F, first: bool) {
     if first {
         *bounds = RectF::from_points(new_point, new_point);
     } else {

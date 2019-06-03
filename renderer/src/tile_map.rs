@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 
 #[derive(Debug)]
@@ -43,7 +43,7 @@ impl<T> DenseTileMap<T> {
     }
 
     #[inline]
-    pub fn coords_to_index(&self, coords: Point2DI) -> Option<usize> {
+    pub fn coords_to_index(&self, coords: Vector2I) -> Option<usize> {
         // TODO(pcwalton): SIMD?
         if coords.x() < self.rect.min_x()
             || coords.x() >= self.rect.max_x()
@@ -56,14 +56,14 @@ impl<T> DenseTileMap<T> {
     }
 
     #[inline]
-    pub fn coords_to_index_unchecked(&self, coords: Point2DI) -> usize {
+    pub fn coords_to_index_unchecked(&self, coords: Vector2I) -> usize {
         (coords.y() - self.rect.min_y()) as usize * self.rect.size().x() as usize
             + (coords.x() - self.rect.min_x()) as usize
     }
 
     #[inline]
-    pub fn index_to_coords(&self, index: usize) -> Point2DI {
+    pub fn index_to_coords(&self, index: usize) -> Vector2I {
         let (width, index) = (self.rect.size().x(), index as i32);
-        self.rect.origin() + Point2DI::new(index % width, index / width)
+        self.rect.origin() + Vector2I::new(index % width, index / width)
     }
 }

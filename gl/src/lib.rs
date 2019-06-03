@@ -14,7 +14,7 @@
 extern crate log;
 
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
-use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
@@ -164,7 +164,7 @@ impl Device for GLDevice {
     type VertexArray = GLVertexArray;
     type VertexAttr = GLVertexAttr;
 
-    fn create_texture(&self, format: TextureFormat, size: Point2DI) -> GLTexture {
+    fn create_texture(&self, format: TextureFormat, size: Vector2I) -> GLTexture {
         let (gl_internal_format, gl_format, gl_type);
         match format {
             TextureFormat::R8 => {
@@ -203,7 +203,7 @@ impl Device for GLDevice {
         texture
     }
 
-    fn create_texture_from_data(&self, size: Point2DI, data: &[u8]) -> GLTexture {
+    fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> GLTexture {
         assert!(data.len() >= size.x() as usize * size.y() as usize);
 
         let mut texture = GLTexture { gl_texture: 0, size };
@@ -450,11 +450,11 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn texture_size(&self, texture: &Self::Texture) -> Point2DI {
+    fn texture_size(&self, texture: &Self::Texture) -> Vector2I {
         texture.size
     }
 
-    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI, data: &[u8]) {
+    fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]) {
         assert!(data.len() >= size.x() as usize * size.y() as usize * 4);
         unsafe {
             self.bind_texture(texture, 0);
@@ -472,7 +472,7 @@ impl Device for GLDevice {
         self.set_texture_parameters(texture);
     }
 
-    fn read_pixels_from_default_framebuffer(&self, size: Point2DI) -> Vec<u8> {
+    fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8> {
         let mut pixels = vec![0; size.x() as usize * size.y() as usize * 4];
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
@@ -799,7 +799,7 @@ impl Drop for GLShader {
 
 pub struct GLTexture {
     gl_texture: GLuint,
-    pub size: Point2DI,
+    pub size: Vector2I,
 }
 
 pub struct GLTimerQuery {

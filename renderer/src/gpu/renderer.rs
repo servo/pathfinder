@@ -13,7 +13,7 @@ use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
 use crate::tiles::{TILE_HEIGHT, TILE_WIDTH};
-use pathfinder_geometry::basic::point::{Point2DI, Point3DF};
+use pathfinder_geometry::basic::vector::{Vector2I, Vector4F};
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorF;
@@ -182,7 +182,7 @@ where
         );
 
         let mask_framebuffer_size =
-            Point2DI::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
+            Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
         let mask_framebuffer_texture =
             device.create_texture(TextureFormat::R16F, mask_framebuffer_size);
         let mask_framebuffer = device.create_framebuffer(mask_framebuffer_texture);
@@ -334,7 +334,7 @@ where
     }
 
     #[inline]
-    pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Point2DI) {
+    pub fn set_main_framebuffer_size(&mut self, new_framebuffer_size: Vector2I) {
         self.debug_ui_presenter.ui_presenter.set_framebuffer_size(new_framebuffer_size);
     }
 
@@ -715,7 +715,7 @@ where
         }
     }
 
-    fn draw_stencil(&self, quad_positions: &[Point3DF]) {
+    fn draw_stencil(&self, quad_positions: &[Vector4F]) {
         self.device.allocate_buffer(
             &self.stencil_vertex_array.vertex_buffer,
             BufferData::Memory(quad_positions),
@@ -876,8 +876,8 @@ where
                 defringing_kernel: Some(..),
                 ..
             } => {
-                let scale = Point2DI::new(3, 1);
-                RectI::new(Point2DI::default(), main_viewport.size().scale_xy(scale))
+                let scale = Vector2I::new(3, 1);
+                RectI::new(Vector2I::default(), main_viewport.size().scale_xy(scale))
             }
             _ => main_viewport,
         }
@@ -890,7 +890,7 @@ where
                 let size = self
                     .device
                     .texture_size(self.device.framebuffer_texture(framebuffer));
-                RectI::new(Point2DI::default(), size)
+                RectI::new(Vector2I::default(), size)
             }
         }
     }
@@ -1555,7 +1555,7 @@ where
 {
     Default {
         viewport: RectI,
-        window_size: Point2DI,
+        window_size: Vector2I,
     },
     Other(D::Framebuffer),
 }
@@ -1565,12 +1565,12 @@ where
     D: Device,
 {
     #[inline]
-    pub fn full_window(window_size: Point2DI) -> DestFramebuffer<D> {
-        let viewport = RectI::new(Point2DI::default(), window_size);
+    pub fn full_window(window_size: Vector2I) -> DestFramebuffer<D> {
+        let viewport = RectI::new(Vector2I::default(), window_size);
         DestFramebuffer::Default { viewport, window_size }
     }
 
-    fn window_size(&self, device: &D) -> Point2DI {
+    fn window_size(&self, device: &D) -> Vector2I {
         match *self {
             DestFramebuffer::Default { window_size, .. } => window_size,
             DestFramebuffer::Other(ref framebuffer) => {

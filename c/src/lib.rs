@@ -12,7 +12,7 @@
 
 use gl;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
-use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
+use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::color::ColorF;
 use pathfinder_geometry::stroke::LineCap;
@@ -49,24 +49,24 @@ pub type PFLineCap = u8;
 
 // `geometry`
 #[repr(C)]
-pub struct PFPoint2DF {
+pub struct PFVector2F {
     pub x: f32,
     pub y: f32,
 }
 #[repr(C)]
-pub struct PFPoint2DI {
+pub struct PFVector2I {
     pub x: i32,
     pub y: i32,
 }
 #[repr(C)]
 pub struct PFRectF {
-    pub origin: PFPoint2DF,
-    pub lower_right: PFPoint2DF,
+    pub origin: PFVector2F,
+    pub lower_right: PFVector2F,
 }
 #[repr(C)]
 pub struct PFRectI {
-    pub origin: PFPoint2DI,
-    pub lower_right: PFPoint2DI,
+    pub origin: PFVector2I,
+    pub lower_right: PFVector2I,
 }
 #[repr(C)]
 pub struct PFColorF {
@@ -110,7 +110,7 @@ pub struct PFRenderOptions {
 
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasCreate(font_context: PFCanvasFontContextRef,
-                                        size: *const PFPoint2DF)
+                                        size: *const PFVector2F)
                                         -> PFCanvasRef {
     Box::into_raw(Box::new(CanvasRenderingContext2D::new(*Box::from_raw(font_context),
                                                          (*size).to_rust())))
@@ -189,27 +189,27 @@ pub unsafe extern "C" fn PFPathClone(path: PFPathRef) -> PFPathRef {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFPathMoveTo(path: PFPathRef, to: *const PFPoint2DF) {
+pub unsafe extern "C" fn PFPathMoveTo(path: PFPathRef, to: *const PFVector2F) {
     (*path).move_to((*to).to_rust())
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFPathLineTo(path: PFPathRef, to: *const PFPoint2DF) {
+pub unsafe extern "C" fn PFPathLineTo(path: PFPathRef, to: *const PFVector2F) {
     (*path).line_to((*to).to_rust())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFPathQuadraticCurveTo(path: PFPathRef,
-                                                ctrl: *const PFPoint2DF,
-                                                to: *const PFPoint2DF) {
+                                                ctrl: *const PFVector2F,
+                                                to: *const PFVector2F) {
     (*path).quadratic_curve_to((*ctrl).to_rust(), (*to).to_rust())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn PFPathBezierCurveTo(path: PFPathRef,
-                                             ctrl0: *const PFPoint2DF,
-                                             ctrl1: *const PFPoint2DF,
-                                             to: *const PFPoint2DF) {
+                                             ctrl0: *const PFVector2F,
+                                             ctrl1: *const PFVector2F,
+                                             to: *const PFVector2F) {
     (*path).bezier_curve_to((*ctrl0).to_rust(), (*ctrl1).to_rust(), (*to).to_rust())
 }
 
@@ -258,7 +258,7 @@ pub unsafe extern "C" fn PFResourceLoaderDestroy(loader: PFResourceLoaderRef) {
 // `gpu`
 
 #[no_mangle]
-pub unsafe extern "C" fn PFGLDestFramebufferCreateFullWindow(window_size: *const PFPoint2DI)
+pub unsafe extern "C" fn PFGLDestFramebufferCreateFullWindow(window_size: *const PFVector2I)
                                                              -> PFGLDestFramebufferRef {
     Box::into_raw(Box::new(DestFramebuffer::full_window((*window_size).to_rust())))
 }
@@ -337,17 +337,17 @@ impl PFRectI {
     }
 }
 
-impl PFPoint2DF {
+impl PFVector2F {
     #[inline]
-    pub fn to_rust(&self) -> Point2DF {
-        Point2DF::new(self.x, self.y)
+    pub fn to_rust(&self) -> Vector2F {
+        Vector2F::new(self.x, self.y)
     }
 }
 
-impl PFPoint2DI {
+impl PFVector2I {
     #[inline]
-    pub fn to_rust(&self) -> Point2DI {
-        Point2DI::new(self.x, self.y)
+    pub fn to_rust(&self) -> Vector2I {
+        Vector2I::new(self.x, self.y)
     }
 }
 

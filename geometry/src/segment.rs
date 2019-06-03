@@ -10,8 +10,8 @@
 
 //! Line or curve segments, optimized with SIMD.
 
-use crate::basic::line_segment::LineSegmentF;
-use crate::basic::point::Point2DF;
+use crate::basic::line_segment::LineSegment2F;
+use crate::basic::vector::Vector2F;
 use crate::basic::transform2d::Transform2DF;
 use crate::util::{self, EPSILON};
 use pathfinder_simd::default::F32x4;
@@ -21,8 +21,8 @@ const MAX_NEWTON_ITERATIONS: u32 = 32;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Segment {
-    pub baseline: LineSegmentF,
-    pub ctrl: LineSegmentF,
+    pub baseline: LineSegment2F,
+    pub ctrl: LineSegment2F,
     pub kind: SegmentKind,
     pub flags: SegmentFlags,
 }
@@ -31,35 +31,35 @@ impl Segment {
     #[inline]
     pub fn none() -> Segment {
         Segment {
-            baseline: LineSegmentF::default(),
-            ctrl: LineSegmentF::default(),
+            baseline: LineSegment2F::default(),
+            ctrl: LineSegment2F::default(),
             kind: SegmentKind::None,
             flags: SegmentFlags::empty(),
         }
     }
 
     #[inline]
-    pub fn line(line: &LineSegmentF) -> Segment {
+    pub fn line(line: &LineSegment2F) -> Segment {
         Segment {
             baseline: *line,
-            ctrl: LineSegmentF::default(),
+            ctrl: LineSegment2F::default(),
             kind: SegmentKind::Line,
             flags: SegmentFlags::empty(),
         }
     }
 
     #[inline]
-    pub fn quadratic(baseline: &LineSegmentF, ctrl: Point2DF) -> Segment {
+    pub fn quadratic(baseline: &LineSegment2F, ctrl: Vector2F) -> Segment {
         Segment {
             baseline: *baseline,
-            ctrl: LineSegmentF::new(ctrl, Point2DF::default()),
+            ctrl: LineSegment2F::new(ctrl, Vector2F::default()),
             kind: SegmentKind::Quadratic,
             flags: SegmentFlags::empty(),
         }
     }
 
     #[inline]
-    pub fn cubic(baseline: &LineSegmentF, ctrl: &LineSegmentF) -> Segment {
+    pub fn cubic(baseline: &LineSegment2F, ctrl: &LineSegment2F) -> Segment {
         Segment {
             baseline: *baseline,
             ctrl: *ctrl,
@@ -91,20 +91,20 @@ impl Segment {
         let (p0x, p0y) = (p3p0.z(), p3p0.w());
         let (p1x, p1y) = (4.0 - p0x, (1.0 - p0x) * (3.0 - p0x) / p0y);
         let p2p1 = F32x4::new(p1x, -p1y, p1x, p1y) * F32x4::splat(1.0 / 3.0);
-        return Segment::cubic(&LineSegmentF(p3p0), &LineSegmentF(p2p1));
+        return Segment::cubic(&LineSegment2F(p3p0), &LineSegment2F(p2p1));
     }
 
     #[inline]
     pub fn quarter_circle_arc() -> Segment {
-        let p0 = Point2DF::splat(SQRT_2 * 0.5);
-        let p1 = Point2DF::new(-SQRT_2 / 6.0 + 4.0 / 3.0, 7.0 * SQRT_2 / 6.0 - 4.0 / 3.0);
-        let flip = Point2DF::new(1.0, -1.0);
+        let p0 = Vector2F::splat(SQRT_2 * 0.5);
+        let p1 = Vector2F::new(-SQRT_2 / 6.0 + 4.0 / 3.0, 7.0 * SQRT_2 / 6.0 - 4.0 / 3.0);
+        let flip = Vector2F::new(1.0, -1.0);
         let (p2, p3) = (p1.scale_xy(flip), p0.scale_xy(flip));
-        Segment::cubic(&LineSegmentF::new(p3, p0), &LineSegmentF::new(p2, p1))
+        Segment::cubic(&LineSegment2F::new(p3, p0), &LineSegment2F::new(p2, p1))
     }
 
     #[inline]
-    pub fn as_line_segment(&self) -> LineSegmentF {
+    pub fn as_line_segment(&self) -> LineSegment2F {
         debug_assert!(self.is_line());
         self.baseline
     }
@@ -146,7 +146,7 @@ impl Segment {
         let mut new_segment = *self;
         let p1_2 = self.ctrl.from() + self.ctrl.from();
         new_segment.ctrl =
-            LineSegmentF::new(self.baseline.from() + p1_2, p1_2 + self.baseline.to())
+            LineSegment2F::new(self.baseline.from() + p1_2, p1_2 + self.baseline.to())
                 .scale(1.0 / 3.0);
         new_segment.kind = SegmentKind::Cubic;
         new_segment
@@ -205,7 +205,7 @@ impl Segment {
     }
 
     #[inline]
-    pub fn sample(self, t: f32) -> Point2DF {
+    pub fn sample(self, t: f32) -> Vector2F {
         // FIXME(pcwalton): Don't degree elevate!
         if self.is_line() {
             self.as_line_segment().sample(t)
@@ -262,16 +262,16 @@ impl<'s> CubicSegment<'s> {
         let (baseline0, ctrl0, baseline1, ctrl1);
         if t <= 0.0 {
             let from = &self.0.baseline.from();
-            baseline0 = LineSegmentF::new(*from, *from);
-            ctrl0 = LineSegmentF::new(*from, *from);
+            baseline0 = LineSegment2F::new(*from, *from);
+            ctrl0 = LineSegment2F::new(*from, *from);
             baseline1 = self.0.baseline;
             ctrl1 = self.0.ctrl;
         } else if t >= 1.0 {
             let to = &self.0.baseline.to();
             baseline0 = self.0.baseline;
             ctrl0 = self.0.ctrl;
-            baseline1 = LineSegmentF::new(*to, *to);
-            ctrl1 = LineSegmentF::new(*to, *to);
+            baseline1 = LineSegment2F::new(*to, *to);
+            ctrl1 = LineSegment2F::new(*to, *to);
         } else {
             let tttt = F32x4::splat(t);
 
@@ -290,10 +290,10 @@ impl<'s> CubicSegment<'s> {
             // p0123 = lerp(p012, p123, t)
             let p0123 = p012p123 + tttt * (p123 - p012p123);
 
-            baseline0 = LineSegmentF(p0p3.concat_xy_xy(p0123));
-            ctrl0 = LineSegmentF(p01p12.concat_xy_xy(p012p123));
-            baseline1 = LineSegmentF(p0123.concat_xy_zw(p0p3));
-            ctrl1 = LineSegmentF(p012p123.concat_zw_zw(p12p23));
+            baseline0 = LineSegment2F(p0p3.concat_xy_xy(p0123));
+            ctrl0 = LineSegment2F(p01p12.concat_xy_xy(p012p123));
+            baseline1 = LineSegment2F(p0123.concat_xy_zw(p0p3));
+            ctrl1 = LineSegment2F(p012p123.concat_zw_zw(p12p23));
         }
 
         (
@@ -324,7 +324,7 @@ impl<'s> CubicSegment<'s> {
 
     // FIXME(pcwalton): Use Horner's method!
     #[inline]
-    pub fn sample(self, t: f32) -> Point2DF {
+    pub fn sample(self, t: f32) -> Vector2F {
         self.split(t).0.baseline.to()
     }
 

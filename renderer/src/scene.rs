@@ -16,7 +16,7 @@ use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
 use crate::options::{RenderCommandListener, RenderOptions};
 use crate::paint::{Paint, PaintId};
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::Point2DF;
+use pathfinder_geometry::basic::vector::Vector2F;
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
@@ -121,7 +121,7 @@ impl Scene {
                     };
                     if options.subpixel_aa_enabled {
                         transform = transform
-                            .post_mul(&Transform2DF::from_scale(Point2DF::new(3.0, 1.0)))
+                            .post_mul(&Transform2DF::from_scale(Vector2F::new(3.0, 1.0)))
                     }
                     outline.transform(&transform);
                 }
@@ -158,7 +158,7 @@ impl Scene {
     #[inline]
     pub(crate) fn effective_view_box(&self, render_options: &PreparedRenderOptions) -> RectF {
         if render_options.subpixel_aa_enabled {
-            self.view_box.scale_xy(Point2DF::new(3.0, 1.0))
+            self.view_box.scale_xy(Vector2F::new(3.0, 1.0))
         } else {
             self.view_box
         }

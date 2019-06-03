@@ -12,7 +12,7 @@
 
 use crate::resources::ResourceLoader;
 use image::ImageFormat;
-use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorF;
@@ -41,8 +41,8 @@ pub trait Device {
     type VertexArray;
     type VertexAttr;
 
-    fn create_texture(&self, format: TextureFormat, size: Point2DI) -> Self::Texture;
-    fn create_texture_from_data(&self, size: Point2DI, data: &[u8]) -> Self::Texture;
+    fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
+    fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> Self::Texture;
     fn create_shader_from_source(
         &self,
         resources: &dyn ResourceLoader,
@@ -74,9 +74,9 @@ pub trait Device {
         mode: BufferUploadMode,
     );
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
-    fn texture_size(&self, texture: &Self::Texture) -> Point2DI;
-    fn upload_to_texture(&self, texture: &Self::Texture, size: Point2DI, data: &[u8]);
-    fn read_pixels_from_default_framebuffer(&self, size: Point2DI) -> Vec<u8>;
+    fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
+    fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
+    fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8>;
     fn clear(&self, params: &ClearParams);
     fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
     fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
@@ -103,7 +103,7 @@ pub trait Device {
         let image = image::load_from_memory_with_format(&data, ImageFormat::PNG)
             .unwrap()
             .to_luma();
-        let size = Point2DI::new(image.width() as i32, image.height() as i32);
+        let size = Vector2I::new(image.width() as i32, image.height() as i32);
         self.create_texture_from_data(size, &image)
     }
 

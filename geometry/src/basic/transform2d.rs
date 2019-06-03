@@ -10,8 +10,8 @@
 
 //! 2D affine transforms.
 
-use crate::basic::line_segment::LineSegmentF;
-use crate::basic::point::Point2DF;
+use crate::basic::line_segment::LineSegment2F;
+use crate::basic::vector::Vector2F;
 use crate::basic::rect::RectF;
 use crate::basic::transform3d::Transform3DF;
 use crate::segment::Segment;
@@ -26,13 +26,13 @@ pub struct Matrix2x2F(pub F32x4);
 impl Default for Matrix2x2F {
     #[inline]
     fn default() -> Matrix2x2F {
-        Self::from_scale(Point2DF::splat(1.0))
+        Self::from_scale(Vector2F::splat(1.0))
     }
 }
 
 impl Matrix2x2F {
     #[inline]
-    pub fn from_scale(scale: Point2DF) -> Matrix2x2F {
+    pub fn from_scale(scale: Vector2F) -> Matrix2x2F {
         Matrix2x2F(F32x4::new(scale.x(), 0.0, 0.0, scale.y()))
     }
 
@@ -72,9 +72,9 @@ impl Matrix2x2F {
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Point2DF) -> Point2DF {
+    pub fn transform_point(&self, point: Vector2F) -> Vector2F {
         let halves = self.0 * point.0.xxyy();
-        Point2DF(halves + halves.zwzw())
+        Vector2F(halves + halves.zwzw())
     }
 
     #[inline]
@@ -118,22 +118,22 @@ impl Sub<Matrix2x2F> for Matrix2x2F {
 pub struct Transform2DF {
     // Row-major order.
     matrix: Matrix2x2F,
-    vector: Point2DF,
+    vector: Vector2F,
 }
 
 impl Default for Transform2DF {
     #[inline]
     fn default() -> Transform2DF {
-        Self::from_scale(Point2DF::splat(1.0))
+        Self::from_scale(Vector2F::splat(1.0))
     }
 }
 
 impl Transform2DF {
     #[inline]
-    pub fn from_scale(scale: Point2DF) -> Transform2DF {
+    pub fn from_scale(scale: Vector2F) -> Transform2DF {
         Transform2DF {
             matrix: Matrix2x2F::from_scale(scale),
-            vector: Point2DF::default(),
+            vector: Vector2F::default(),
         }
     }
 
@@ -141,7 +141,7 @@ impl Transform2DF {
     pub fn from_rotation(theta: f32) -> Transform2DF {
         Transform2DF {
             matrix: Matrix2x2F::from_rotation(theta),
-            vector: Point2DF::default(),
+            vector: Vector2F::default(),
         }
     }
 
@@ -149,20 +149,20 @@ impl Transform2DF {
     pub fn from_rotation_vector(vector: UnitVector) -> Transform2DF {
         Transform2DF {
             matrix: Matrix2x2F::from_rotation_vector(vector),
-            vector: Point2DF::default(),
+            vector: Vector2F::default(),
         }
     }
 
     #[inline]
-    pub fn from_translation(vector: Point2DF) -> Transform2DF {
+    pub fn from_translation(vector: Vector2F) -> Transform2DF {
         Transform2DF { matrix: Matrix2x2F::default(), vector }
     }
 
     #[inline]
     pub fn from_scale_rotation_translation(
-        scale: Point2DF,
+        scale: Vector2F,
         theta: f32,
-        translation: Point2DF,
+        translation: Vector2F,
     ) -> Transform2DF {
         let rotation = Transform2DF::from_rotation(theta);
         let translation = Transform2DF::from_translation(translation);
@@ -173,18 +173,18 @@ impl Transform2DF {
     pub fn row_major(m11: f32, m12: f32, m21: f32, m22: f32, m31: f32, m32: f32) -> Transform2DF {
         Transform2DF {
             matrix: Matrix2x2F::row_major(m11, m12, m21, m22),
-            vector: Point2DF::new(m31, m32),
+            vector: Vector2F::new(m31, m32),
         }
     }
 
     #[inline]
-    pub fn transform_point(&self, point: Point2DF) -> Point2DF {
+    pub fn transform_point(&self, point: Vector2F) -> Vector2F {
         self.matrix.transform_point(point) + self.vector
     }
 
     #[inline]
-    pub fn transform_line_segment(&self, line_segment: &LineSegmentF) -> LineSegmentF {
-        LineSegmentF::new(self.transform_point(line_segment.from()),
+    pub fn transform_line_segment(&self, line_segment: &LineSegment2F) -> LineSegment2F {
+        LineSegment2F::new(self.transform_point(line_segment.from()),
                             self.transform_point(line_segment.to()))
     }
 
@@ -257,7 +257,7 @@ impl Transform2DF {
     }
 
     #[inline]
-    pub fn post_translate(&self, vector: Point2DF) -> Transform2DF {
+    pub fn post_translate(&self, vector: Vector2F) -> Transform2DF {
         self.post_mul(&Transform2DF::from_translation(vector))
     }
 
@@ -267,7 +267,7 @@ impl Transform2DF {
     }
 
     #[inline]
-    pub fn post_scale(&self, scale: Point2DF) -> Transform2DF {
+    pub fn post_scale(&self, scale: Vector2F) -> Transform2DF {
         self.post_mul(&Transform2DF::from_scale(scale))
     }
 
@@ -275,7 +275,7 @@ impl Transform2DF {
     ///
     /// This decomposition assumes that scale, rotation, and translation are applied in that order.
     #[inline]
-    pub fn translation(&self) -> Point2DF {
+    pub fn translation(&self) -> Vector2F {
         self.vector
     }
 
@@ -292,7 +292,7 @@ impl Transform2DF {
     /// This decomposition assumes that scale, rotation, and translation are applied in that order.
     #[inline]
     pub fn scale_factor(&self) -> f32 {
-        Point2DF(self.matrix.0.zwxy()).length()
+        Vector2F(self.matrix.0.zwxy()).length()
     }
 }
 

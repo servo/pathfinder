@@ -10,8 +10,8 @@
 
 //! Utilities for converting path strokes to fills.
 
-use crate::basic::line_segment::LineSegmentF;
-use crate::basic::point::Point2DF;
+use crate::basic::line_segment::LineSegment2F;
+use crate::basic::vector::Vector2F;
 use crate::basic::rect::RectF;
 use crate::basic::transform2d::Transform2DF;
 use crate::outline::{ArcDirection, Contour, Outline, PushSegmentFlags};
@@ -100,7 +100,7 @@ impl<'a> OutlineStrokeToFill<'a> {
         // Add join if necessary.
         if closed && stroker.output.might_need_join(self.style.line_join) {
             let (p1, p0) = (stroker.output.position_of(1), stroker.output.position_of(0));
-            let final_segment = LineSegmentF::new(p1, p0);
+            let final_segment = LineSegment2F::new(p1, p0);
             stroker.output.add_join(self.style.line_width * 0.5,
                                     self.style.line_join,
                                     stroker.input.position_of(0),
@@ -127,7 +127,7 @@ impl<'a> OutlineStrokeToFill<'a> {
                 let offset = gradient.scale(width * 0.5);
 
                 let p2 = p1 + offset;
-                let p3 = p2 + gradient.yx().scale_xy(Point2DF::new(-width, width));
+                let p3 = p2 + gradient.yx().scale_xy(Vector2F::new(-width, width));
                 let p4 = p3 - offset;
 
                 contour.push_endpoint(p2);
@@ -136,12 +136,12 @@ impl<'a> OutlineStrokeToFill<'a> {
             }
 
             LineCap::Round => {
-                let scale = Point2DF::splat(width * 0.5);
-                let offset = gradient.yx().scale_xy(Point2DF::new(-1.0, 1.0));
+                let scale = Vector2F::splat(width * 0.5);
+                let offset = gradient.yx().scale_xy(Vector2F::new(-1.0, 1.0));
                 let mut transform = Transform2DF::from_scale(scale);
                 let translation = p1 + offset.scale(width * 0.5);
                 transform = transform.post_mul(&Transform2DF::from_translation(translation));
-                let chord = LineSegmentF::new(-offset, offset);
+                let chord = LineSegment2F::new(-offset, offset);
                 contour.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
             }
         }
@@ -191,7 +191,7 @@ trait Offset {
     fn add_to_contour(&self,
                       distance: f32,
                       join: LineJoin,
-                      join_point: Point2DF,
+                      join_point: Vector2F,
                       contour: &mut Contour);
     fn offset_once(&self, distance: f32) -> Self;
     fn error_is_within_tolerance(&self, other: &Segment, distance: f32) -> bool;
@@ -222,7 +222,7 @@ impl Offset for Segment {
     fn add_to_contour(&self,
                       distance: f32,
                       join: LineJoin,
-                      join_point: Point2DF,
+                      join_point: Vector2F,
                       contour: &mut Contour) {
         // Add join if necessary.
         if contour.might_need_join(join) {
@@ -235,7 +235,7 @@ impl Offset for Segment {
                 self.ctrl.from()
             };
 
-            contour.add_join(distance, join, join_point, &LineSegmentF::new(p4, p3));
+            contour.add_join(distance, join, join_point, &LineSegment2F::new(p4, p3));
         }
 
         // Push segment.
@@ -249,51 +249,51 @@ impl Offset for Segment {
         }
 
         if self.is_quadratic() {
-            let mut segment_0 = LineSegmentF::new(self.baseline.from(), self.ctrl.from());
-            let mut segment_1 = LineSegmentF::new(self.ctrl.from(), self.baseline.to());
+            let mut segment_0 = LineSegment2F::new(self.baseline.from(), self.ctrl.from());
+            let mut segment_1 = LineSegment2F::new(self.ctrl.from(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF::new(segment_0.from(), segment_1.to());
+            let baseline = LineSegment2F::new(segment_0.from(), segment_1.to());
             return Segment::quadratic(&baseline, ctrl);
         }
 
         debug_assert!(self.is_cubic());
 
         if self.baseline.from() == self.ctrl.from() {
-            let mut segment_0 = LineSegmentF::new(self.baseline.from(), self.ctrl.to());
-            let mut segment_1 = LineSegmentF::new(self.ctrl.to(), self.baseline.to());
+            let mut segment_0 = LineSegment2F::new(self.baseline.from(), self.ctrl.to());
+            let mut segment_1 = LineSegment2F::new(self.ctrl.to(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF::new(segment_0.from(), segment_1.to());
-            let ctrl = LineSegmentF::new(segment_0.from(), ctrl);
+            let baseline = LineSegment2F::new(segment_0.from(), segment_1.to());
+            let ctrl = LineSegment2F::new(segment_0.from(), ctrl);
             return Segment::cubic(&baseline, &ctrl);
         }
 
         if self.ctrl.to() == self.baseline.to() {
-            let mut segment_0 = LineSegmentF::new(self.baseline.from(), self.ctrl.from());
-            let mut segment_1 = LineSegmentF::new(self.ctrl.from(), self.baseline.to());
+            let mut segment_0 = LineSegment2F::new(self.baseline.from(), self.ctrl.from());
+            let mut segment_1 = LineSegment2F::new(self.ctrl.from(), self.baseline.to());
             segment_0 = segment_0.offset(distance);
             segment_1 = segment_1.offset(distance);
             let ctrl = match segment_0.intersection_t(&segment_1) {
                 Some(t) => segment_0.sample(t),
                 None => segment_0.to().lerp(segment_1.from(), 0.5),
             };
-            let baseline = LineSegmentF::new(segment_0.from(), segment_1.to());
-            let ctrl = LineSegmentF::new(ctrl, segment_1.to());
+            let baseline = LineSegment2F::new(segment_0.from(), segment_1.to());
+            let ctrl = LineSegment2F::new(ctrl, segment_1.to());
             return Segment::cubic(&baseline, &ctrl);
         }
 
-        let mut segment_0 = LineSegmentF::new(self.baseline.from(), self.ctrl.from());
-        let mut segment_1 = LineSegmentF::new(self.ctrl.from(), self.ctrl.to());
-        let mut segment_2 = LineSegmentF::new(self.ctrl.to(), self.baseline.to());
+        let mut segment_0 = LineSegment2F::new(self.baseline.from(), self.ctrl.from());
+        let mut segment_1 = LineSegment2F::new(self.ctrl.from(), self.ctrl.to());
+        let mut segment_2 = LineSegment2F::new(self.ctrl.to(), self.baseline.to());
         segment_0 = segment_0.offset(distance);
         segment_1 = segment_1.offset(distance);
         segment_2 = segment_2.offset(distance);
@@ -307,8 +307,8 @@ impl Offset for Segment {
                 segment_1.to().lerp(segment_2.from(), 0.5),
             ),
         };
-        let baseline = LineSegmentF::new(segment_0.from(), segment_2.to());
-        let ctrl = LineSegmentF::new(ctrl_0, ctrl_1);
+        let baseline = LineSegment2F::new(segment_0.from(), segment_2.to());
+        let ctrl = LineSegment2F::new(ctrl_0, ctrl_1);
         Segment::cubic(&baseline, &ctrl)
     }
 
@@ -356,10 +356,10 @@ impl Contour {
     fn add_join(&mut self,
                 distance: f32,
                 join: LineJoin,
-                join_point: Point2DF,
-                next_tangent: &LineSegmentF) {
+                join_point: Vector2F,
+                next_tangent: &LineSegment2F) {
         let (p0, p1) = (self.position_of_last(2), self.position_of_last(1));
-        let prev_tangent = LineSegmentF::new(p0, p1);
+        let prev_tangent = LineSegment2F::new(p0, p1);
 
         match join {
             LineJoin::Bevel => {}
@@ -373,12 +373,12 @@ impl Contour {
                 }
             }
             LineJoin::Round => {
-                let scale = Point2DF::splat(distance.abs());
+                let scale = Vector2F::splat(distance.abs());
                 let mut transform = Transform2DF::from_scale(scale);
                 transform = transform.post_mul(&Transform2DF::from_translation(join_point));
                 let chord_from = (prev_tangent.to() - join_point).normalize();
                 let chord_to = (next_tangent.to() - join_point).normalize();
-                let chord = LineSegmentF::new(chord_from, chord_to);
+                let chord = LineSegment2F::new(chord_from, chord_to);
                 self.push_arc_from_unit_chord(&transform, chord, ArcDirection::CW);
             }
         }

@@ -16,7 +16,7 @@ use jni::{JNIEnv, JavaVM};
 use pathfinder_demo::window::{Event, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::DemoApp;
 use pathfinder_demo::Options;
-use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -48,7 +48,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     width: i32,
     height: i32,
 ) {
-    let logical_size = Point2DI::new(width, height);
+    let logical_size = Vector2I::new(width, height);
     let window_size = WindowSize {
         logical_size,
         backing_scale_factor: 1.0,
@@ -119,7 +119,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
         .lock()
         .unwrap()
         .push(Event::WindowResized(WindowSize {
-            logical_size: Point2DI::new(width, height),
+            logical_size: Vector2I::new(width, height),
             backing_scale_factor: 1.0,
         }))
 }
@@ -134,7 +134,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     EVENT_QUEUE
         .lock()
         .unwrap()
-        .push(Event::MouseDown(Point2DI::new(x, y)))
+        .push(Event::MouseDown(Vector2I::new(x, y)))
 }
 
 #[no_mangle]
@@ -147,7 +147,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     EVENT_QUEUE
         .lock()
         .unwrap()
-        .push(Event::MouseDragged(Point2DI::new(x, y)))
+        .push(Event::MouseDragged(Vector2I::new(x, y)))
 }
 
 #[no_mangle]
@@ -161,7 +161,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
     EVENT_QUEUE
         .lock()
         .unwrap()
-        .push(Event::Zoom(factor, Point2DI::new(center_x, center_y)))
+        .push(Event::Zoom(factor, Vector2I::new(center_x, center_y)))
 }
 
 #[no_mangle]
@@ -188,7 +188,7 @@ pub unsafe extern "system" fn Java_graphics_pathfinder_pathfinderdemo_Pathfinder
 }
 
 struct WindowImpl {
-    size: Point2DI,
+    size: Vector2I,
 }
 
 impl Window for WindowImpl {
@@ -204,8 +204,8 @@ impl Window for WindowImpl {
             width = width / 2;
             offset_x = (index as i32) * width;
         }
-        let size = Point2DI::new(width, height);
-        let offset = Point2DI::new(offset_x, 0);
+        let size = Vector2I::new(width, height);
+        let offset = Vector2I::new(offset_x, 0);
         RectI::new(offset, size)
     }
 

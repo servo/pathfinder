@@ -13,7 +13,7 @@
 use crate::options::BoundingQuad;
 use crate::tile_map::DenseTileMap;
 use pathfinder_geometry::basic::line_segment::{LineSegmentU4, LineSegmentU8};
-use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectF;
 use std::fmt::{Debug, Formatter, Result as DebugResult};
 use std::time::Duration;
@@ -38,7 +38,7 @@ pub enum RenderCommand {
 
 #[derive(Clone, Debug)]
 pub struct PaintData {
-    pub size: Point2DI,
+    pub size: Vector2I,
     pub texels: Vec<u8>,
 }
 

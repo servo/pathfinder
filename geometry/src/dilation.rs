@@ -8,20 +8,20 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::basic::point::Point2DF;
+use crate::basic::vector::Vector2F;
 use crate::orientation::Orientation;
 use crate::outline::Contour;
 
 pub struct ContourDilator<'a> {
     contour: &'a mut Contour,
-    amount: Point2DF,
+    amount: Vector2F,
     orientation: Orientation,
 }
 
 impl<'a> ContourDilator<'a> {
     pub fn new(
         contour: &'a mut Contour,
-        amount: Point2DF,
+        amount: Vector2F,
         orientation: Orientation,
     ) -> ContourDilator<'a> {
         ContourDilator {
@@ -34,8 +34,8 @@ impl<'a> ContourDilator<'a> {
     pub fn dilate(&mut self) {
         // Determine orientation.
         let scale = self.amount.scale_xy(match self.orientation {
-            Orientation::Ccw => Point2DF::new(1.0, -1.0),
-            Orientation::Cw => Point2DF::new(-1.0, 1.0),
+            Orientation::Ccw => Vector2F::new(1.0, -1.0),
+            Orientation::Cw => Vector2F::new(-1.0, 1.0),
         });
 
         // Find the starting and previous positions.
@@ -84,7 +84,7 @@ impl<'a> ContourDilator<'a> {
             let bisector = prev_vector.yx() + next_vector.yx();
             let bisector_length = bisector.length();
             let scaled_bisector = if bisector_length == 0.0 {
-                Point2DF::default()
+                Vector2F::default()
             } else {
                 bisector.scale_xy(scale).scale(1.0 / bisector_length)
             };

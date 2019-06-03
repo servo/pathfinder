@@ -10,7 +10,7 @@
 
 use crate::gpu_data::PaintData;
 use crate::scene::Scene;
-use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::color::ColorU;
 
 const PAINT_TEXTURE_WIDTH: i32 = 256;
@@ -32,7 +32,7 @@ impl Paint {
 
 impl Scene {
     pub fn build_paint_data(&self) -> PaintData {
-        let size = Point2DI::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT);
+        let size = Vector2I::new(PAINT_TEXTURE_WIDTH, PAINT_TEXTURE_HEIGHT);
         let mut texels = vec![0; size.x() as usize * size.y() as usize * 4];
         for (paint_index, paint) in self.paints.iter().enumerate() {
             texels[paint_index * 4 + 0] = paint.color.r;
@@ -44,8 +44,8 @@ impl Scene {
     }
 }
 
-pub(crate) fn paint_id_to_tex_coords(paint_id: PaintId) -> Point2DI {
-    let tex_coords = Point2DI::new(paint_id.0 as i32 % PAINT_TEXTURE_WIDTH,
+pub(crate) fn paint_id_to_tex_coords(paint_id: PaintId) -> Vector2I {
+    let tex_coords = Vector2I::new(paint_id.0 as i32 % PAINT_TEXTURE_WIDTH,
                                      paint_id.0 as i32 / PAINT_TEXTURE_WIDTH);
-    tex_coords.scale(256) + Point2DI::new(128, 128)
+    tex_coords.scale(256) + Vector2I::new(128, 128)
 }

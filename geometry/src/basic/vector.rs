@@ -15,22 +15,22 @@ use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 /// 2D points with 32-bit floating point coordinates.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Point2DF(pub F32x4);
+pub struct Vector2F(pub F32x4);
 
-impl Point2DF {
+impl Vector2F {
     #[inline]
-    pub fn new(x: f32, y: f32) -> Point2DF {
-        Point2DF(F32x4::new(x, y, 0.0, 0.0))
+    pub fn new(x: f32, y: f32) -> Vector2F {
+        Vector2F(F32x4::new(x, y, 0.0, 0.0))
     }
 
     #[inline]
-    pub fn splat(value: f32) -> Point2DF {
-        Point2DF(F32x4::splat(value))
+    pub fn splat(value: f32) -> Vector2F {
+        Vector2F(F32x4::splat(value))
     }
 
     #[inline]
-    pub fn to_3d(self) -> Point3DF {
-        Point3DF(self.0.concat_xy_xy(F32x4::new(0.0, 1.0, 0.0, 0.0)))
+    pub fn to_3d(self) -> Vector4F {
+        Vector4F(self.0.concat_xy_xy(F32x4::new(0.0, 1.0, 0.0, 0.0)))
     }
 
     #[inline]
@@ -54,49 +54,49 @@ impl Point2DF {
     }
 
     #[inline]
-    pub fn min(&self, other: Point2DF) -> Point2DF {
-        Point2DF(self.0.min(other.0))
+    pub fn min(&self, other: Vector2F) -> Vector2F {
+        Vector2F(self.0.min(other.0))
     }
 
     #[inline]
-    pub fn max(&self, other: Point2DF) -> Point2DF {
-        Point2DF(self.0.max(other.0))
+    pub fn max(&self, other: Vector2F) -> Vector2F {
+        Vector2F(self.0.max(other.0))
     }
 
     #[inline]
-    pub fn clamp(&self, min_val: Point2DF, max_val: Point2DF) -> Point2DF {
+    pub fn clamp(&self, min_val: Vector2F, max_val: Vector2F) -> Vector2F {
         self.max(min_val).min(max_val)
     }
 
     #[inline]
-    pub fn det(&self, other: Point2DF) -> f32 {
+    pub fn det(&self, other: Vector2F) -> f32 {
         self.x() * other.y() - self.y() * other.x()
     }
 
     #[inline]
-    pub fn dot(&self, other: Point2DF) -> f32 {
+    pub fn dot(&self, other: Vector2F) -> f32 {
         let xy = self.0 * other.0;
         xy.x() + xy.y()
     }
 
     #[inline]
-    pub fn scale(&self, x: f32) -> Point2DF {
-        Point2DF(self.0 * F32x4::splat(x))
+    pub fn scale(&self, x: f32) -> Vector2F {
+        Vector2F(self.0 * F32x4::splat(x))
     }
 
     #[inline]
-    pub fn scale_xy(&self, factors: Point2DF) -> Point2DF {
-        Point2DF(self.0 * factors.0)
+    pub fn scale_xy(&self, factors: Vector2F) -> Vector2F {
+        Vector2F(self.0 * factors.0)
     }
 
     #[inline]
-    pub fn floor(&self) -> Point2DF {
-        Point2DF(self.0.floor())
+    pub fn floor(&self) -> Vector2F {
+        Vector2F(self.0.floor())
     }
 
     #[inline]
-    pub fn ceil(&self) -> Point2DF {
-        Point2DF(self.0.ceil())
+    pub fn ceil(&self) -> Vector2F {
+        Vector2F(self.0.ceil())
     }
 
     /// Treats this point as a vector and calculates its squared length.
@@ -114,85 +114,85 @@ impl Point2DF {
 
     /// Treats this point as a vector and normalizes it.
     #[inline]
-    pub fn normalize(&self) -> Point2DF {
+    pub fn normalize(&self) -> Vector2F {
         self.scale(1.0 / self.length())
     }
 
     /// Swaps y and x.
     #[inline]
-    pub fn yx(&self) -> Point2DF {
-        Point2DF(self.0.yxwz())
+    pub fn yx(&self) -> Vector2F {
+        Vector2F(self.0.yxwz())
     }
 
     #[inline]
     pub fn is_zero(&self) -> bool {
-        *self == Point2DF::default()
+        *self == Vector2F::default()
     }
 
     #[inline]
-    pub fn lerp(&self, other: Point2DF, t: f32) -> Point2DF {
+    pub fn lerp(&self, other: Vector2F, t: f32) -> Vector2F {
         *self + (other - *self).scale(t)
     }
 
     #[inline]
-    pub fn to_i32(&self) -> Point2DI {
-        Point2DI(self.0.to_i32x4())
+    pub fn to_i32(&self) -> Vector2I {
+        Vector2I(self.0.to_i32x4())
     }
 }
 
-impl PartialEq for Point2DF {
+impl PartialEq for Vector2F {
     #[inline]
-    fn eq(&self, other: &Point2DF) -> bool {
+    fn eq(&self, other: &Vector2F) -> bool {
         let results = self.0.packed_eq(other.0);
         results[0] != 0 && results[1] != 0
     }
 }
 
-impl Add<Point2DF> for Point2DF {
-    type Output = Point2DF;
+impl Add<Vector2F> for Vector2F {
+    type Output = Vector2F;
     #[inline]
-    fn add(self, other: Point2DF) -> Point2DF {
-        Point2DF(self.0 + other.0)
+    fn add(self, other: Vector2F) -> Vector2F {
+        Vector2F(self.0 + other.0)
     }
 }
 
-impl Sub<Point2DF> for Point2DF {
-    type Output = Point2DF;
+impl Sub<Vector2F> for Vector2F {
+    type Output = Vector2F;
     #[inline]
-    fn sub(self, other: Point2DF) -> Point2DF {
-        Point2DF(self.0 - other.0)
+    fn sub(self, other: Vector2F) -> Vector2F {
+        Vector2F(self.0 - other.0)
     }
 }
 
-impl Mul<Point2DF> for Point2DF {
-    type Output = Point2DF;
+impl Mul<Vector2F> for Vector2F {
+    type Output = Vector2F;
     #[inline]
-    fn mul(self, other: Point2DF) -> Point2DF {
-        Point2DF(self.0 * other.0)
+    fn mul(self, other: Vector2F) -> Vector2F {
+        Vector2F(self.0 * other.0)
     }
 }
 
-impl Neg for Point2DF {
-    type Output = Point2DF;
+impl Neg for Vector2F {
+    type Output = Vector2F;
     #[inline]
-    fn neg(self) -> Point2DF {
-        Point2DF(-self.0)
+    fn neg(self) -> Vector2F {
+        Vector2F(-self.0)
     }
 }
 
 /// 2D points with 32-bit signed integer coordinates.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct Point2DI(pub I32x4);
+pub struct Vector2I(pub I32x4);
 
-impl Point2DI {
+impl Vector2I {
     #[inline]
-    pub fn new(x: i32, y: i32) -> Point2DI {
-        Point2DI(I32x4::new(x, y, 0, 0))
+    pub fn new(x: i32, y: i32) -> Vector2I {
+        Vector2I(I32x4::new(x, y, 0, 0))
     }
 
     #[inline]
-    pub fn splat(value: i32) -> Point2DI {
-        Point2DI(I32x4::splat(value))
+    pub fn splat(value: i32) -> Vector2I {
+        Vector2I(I32x4::splat(value))
     }
 
     #[inline]
@@ -216,47 +216,47 @@ impl Point2DI {
     }
 
     #[inline]
-    pub fn scale(&self, factor: i32) -> Point2DI {
-        Point2DI(self.0 * I32x4::splat(factor))
+    pub fn scale(&self, factor: i32) -> Vector2I {
+        Vector2I(self.0 * I32x4::splat(factor))
     }
 
     #[inline]
-    pub fn scale_xy(&self, factors: Point2DI) -> Point2DI {
-        Point2DI(self.0 * factors.0)
+    pub fn scale_xy(&self, factors: Vector2I) -> Vector2I {
+        Vector2I(self.0 * factors.0)
     }
 
     #[inline]
-    pub fn to_f32(&self) -> Point2DF {
-        Point2DF(self.0.to_f32x4())
-    }
-}
-
-impl Add<Point2DI> for Point2DI {
-    type Output = Point2DI;
-    #[inline]
-    fn add(self, other: Point2DI) -> Point2DI {
-        Point2DI(self.0 + other.0)
+    pub fn to_f32(&self) -> Vector2F {
+        Vector2F(self.0.to_f32x4())
     }
 }
 
-impl AddAssign<Point2DI> for Point2DI {
+impl Add<Vector2I> for Vector2I {
+    type Output = Vector2I;
     #[inline]
-    fn add_assign(&mut self, other: Point2DI) {
+    fn add(self, other: Vector2I) -> Vector2I {
+        Vector2I(self.0 + other.0)
+    }
+}
+
+impl AddAssign<Vector2I> for Vector2I {
+    #[inline]
+    fn add_assign(&mut self, other: Vector2I) {
         self.0 += other.0
     }
 }
 
-impl Sub<Point2DI> for Point2DI {
-    type Output = Point2DI;
+impl Sub<Vector2I> for Vector2I {
+    type Output = Vector2I;
     #[inline]
-    fn sub(self, other: Point2DI) -> Point2DI {
-        Point2DI(self.0 - other.0)
+    fn sub(self, other: Vector2I) -> Vector2I {
+        Vector2I(self.0 - other.0)
     }
 }
 
-impl PartialEq for Point2DI {
+impl PartialEq for Vector2I {
     #[inline]
-    fn eq(&self, other: &Point2DI) -> bool {
+    fn eq(&self, other: &Vector2I) -> bool {
         let results = self.0.packed_eq(other.0);
         results[0] != 0 && results[1] != 0
     }
@@ -264,22 +264,22 @@ impl PartialEq for Point2DI {
 
 /// 3D homogeneous points.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Point3DF(pub F32x4);
+pub struct Vector4F(pub F32x4);
 
-impl Point3DF {
+impl Vector4F {
     #[inline]
-    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Point3DF {
-        Point3DF(F32x4::new(x, y, z, w))
+    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Vector4F {
+        Vector4F(F32x4::new(x, y, z, w))
     }
 
     #[inline]
-    pub fn splat(value: f32) -> Point3DF {
-        Point3DF(F32x4::splat(value))
+    pub fn splat(value: f32) -> Vector4F {
+        Vector4F(F32x4::splat(value))
     }
 
     #[inline]
-    pub fn to_2d(self) -> Point2DF {
-        Point2DF(self.0)
+    pub fn to_2d(self) -> Vector2F {
+        Vector2F(self.0)
     }
 
     #[inline]
@@ -303,10 +303,10 @@ impl Point3DF {
     }
 
     #[inline]
-    pub fn scale(&self, x: f32) -> Point3DF {
+    pub fn scale(&self, x: f32) -> Vector4F {
         let mut factors = F32x4::splat(x);
         factors[3] = 1.0;
-        Point3DF(self.0 * factors)
+        Vector4F(self.0 * factors)
     }
 
     #[inline]
@@ -330,12 +330,12 @@ impl Point3DF {
     }
 
     #[inline]
-    pub fn perspective_divide(self) -> Point3DF {
-        Point3DF(self.0 * F32x4::splat(1.0 / self.w()))
+    pub fn perspective_divide(self) -> Vector4F {
+        Vector4F(self.0 * F32x4::splat(1.0 / self.w()))
     }
 
     #[inline]
-    pub fn approx_eq(&self, other: &Point3DF, epsilon: f32) -> bool {
+    pub fn approx_eq(&self, other: &Vector4F, epsilon: f32) -> bool {
         self.0.approx_eq(other.0, epsilon)
     }
 
@@ -349,39 +349,39 @@ impl Point3DF {
     }
 
     #[inline]
-    pub fn lerp(self, other: Point3DF, t: f32) -> Point3DF {
-        Point3DF(self.0 + (other.0 - self.0) * F32x4::splat(t))
+    pub fn lerp(self, other: Vector4F, t: f32) -> Vector4F {
+        Vector4F(self.0 + (other.0 - self.0) * F32x4::splat(t))
     }
 }
 
-impl Add<Point3DF> for Point3DF {
-    type Output = Point3DF;
+impl Add<Vector4F> for Vector4F {
+    type Output = Vector4F;
     #[inline]
-    fn add(self, other: Point3DF) -> Point3DF {
-        Point3DF(self.0 + other.0)
+    fn add(self, other: Vector4F) -> Vector4F {
+        Vector4F(self.0 + other.0)
     }
 }
 
-impl AddAssign for Point3DF {
+impl AddAssign for Vector4F {
     #[inline]
-    fn add_assign(&mut self, other: Point3DF) {
+    fn add_assign(&mut self, other: Vector4F) {
         self.0 += other.0
     }
 }
 
-impl Mul<Point3DF> for Point3DF {
-    type Output = Point3DF;
+impl Mul<Vector4F> for Vector4F {
+    type Output = Vector4F;
     #[inline]
-    fn mul(self, other: Point3DF) -> Point3DF {
-        Point3DF(self.0 * other.0)
+    fn mul(self, other: Vector4F) -> Vector4F {
+        Vector4F(self.0 * other.0)
     }
 }
 
-impl Default for Point3DF {
+impl Default for Vector4F {
     #[inline]
-    fn default() -> Point3DF {
+    fn default() -> Vector4F {
         let mut point = F32x4::default();
         point.set_w(1.0);
-        Point3DF(point)
+        Vector4F(point)
     }
 }

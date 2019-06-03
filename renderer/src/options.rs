@@ -11,7 +11,7 @@
 //! Options that control how rendering is to be performed.
 
 use crate::gpu_data::RenderCommand;
-use pathfinder_geometry::basic::point::{Point2DF, Point3DF};
+use pathfinder_geometry::basic::vector::{Vector2F, Vector4F};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::basic::transform3d::Perspective;
@@ -34,7 +34,7 @@ where
 #[derive(Clone, Default)]
 pub struct RenderOptions {
     pub transform: RenderTransform,
-    pub dilation: Point2DF,
+    pub dilation: Vector2F,
     pub subpixel_aa_enabled: bool,
 }
 
@@ -121,7 +121,7 @@ impl RenderTransform {
 
 pub(crate) struct PreparedRenderOptions {
     pub(crate) transform: PreparedRenderTransform,
-    pub(crate) dilation: Point2DF,
+    pub(crate) dilation: Vector2F,
     pub(crate) subpixel_aa_enabled: bool,
 }
 
@@ -130,20 +130,20 @@ impl PreparedRenderOptions {
     pub(crate) fn bounding_quad(&self) -> BoundingQuad {
         match self.transform {
             PreparedRenderTransform::Perspective { quad, .. } => quad,
-            _ => [Point3DF::default(); 4],
+            _ => [Vector4F::default(); 4],
         }
     }
 }
 
-pub(crate) type BoundingQuad = [Point3DF; 4];
+pub(crate) type BoundingQuad = [Vector4F; 4];
 
 pub(crate) enum PreparedRenderTransform {
     None,
     Transform2D(Transform2DF),
     Perspective {
         perspective: Perspective,
-        clip_polygon: Vec<Point2DF>,
-        quad: [Point3DF; 4],
+        clip_polygon: Vec<Vector2F>,
+        quad: [Vector4F; 4],
     },
 }
 

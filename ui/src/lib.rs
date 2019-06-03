@@ -17,7 +17,7 @@
 extern crate serde_derive;
 
 use hashbrown::HashMap;
-use pathfinder_geometry::basic::point::{Point2DF, Point2DI};
+use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -66,9 +66,9 @@ static OUTLINE_RECT_LINE_INDICES: [u32; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
 
 pub struct UIPresenter<D> where D: Device {
     pub event_queue: UIEventQueue,
-    pub mouse_position: Point2DF,
+    pub mouse_position: Vector2F,
 
-    framebuffer_size: Point2DI,
+    framebuffer_size: Vector2I,
 
     texture_program: DebugTextureProgram<D>,
     texture_vertex_array: DebugTextureVertexArray<D>,
@@ -82,7 +82,7 @@ pub struct UIPresenter<D> where D: Device {
 }
 
 impl<D> UIPresenter<D> where D: Device {
-    pub fn new(device: &D, resources: &dyn ResourceLoader, framebuffer_size: Point2DI)
+    pub fn new(device: &D, resources: &dyn ResourceLoader, framebuffer_size: Vector2I)
                -> UIPresenter<D> {
         let texture_program = DebugTextureProgram::new(device, resources);
         let texture_vertex_array = DebugTextureVertexArray::new(device, &texture_program);
@@ -98,7 +98,7 @@ impl<D> UIPresenter<D> where D: Device {
 
         UIPresenter {
             event_queue: UIEventQueue::new(),
-            mouse_position: Point2DF::default(),
+            mouse_position: Vector2F::default(),
 
             framebuffer_size,
 
@@ -114,11 +114,11 @@ impl<D> UIPresenter<D> where D: Device {
         }
     }
 
-    pub fn framebuffer_size(&self) -> Point2DI {
+    pub fn framebuffer_size(&self) -> Vector2I {
         self.framebuffer_size
     }
 
-    pub fn set_framebuffer_size(&mut self, window_size: Point2DI) {
+    pub fn set_framebuffer_size(&mut self, window_size: Vector2I) {
         self.framebuffer_size = window_size;
     }
 
@@ -183,7 +183,7 @@ impl<D> UIPresenter<D> where D: Device {
         });
     }
 
-    pub fn draw_text(&self, device: &D, string: &str, origin: Point2DI, invert: bool) {
+    pub fn draw_text(&self, device: &D, string: &str, origin: Vector2I, invert: bool) {
         let mut next = origin;
         let char_count = string.chars().count();
         let mut vertex_data = Vec::with_capacity(char_count * 4);
@@ -195,10 +195,10 @@ impl<D> UIPresenter<D> where D: Device {
 
             let info = &self.font.characters[&character];
             let position_rect =
-                RectI::new(Point2DI::new(next.x() - info.origin_x, next.y() - info.origin_y),
-                             Point2DI::new(info.width as i32, info.height as i32));
-            let tex_coord_rect = RectI::new(Point2DI::new(info.x, info.y),
-                                              Point2DI::new(info.width, info.height));
+                RectI::new(Vector2I::new(next.x() - info.origin_x, next.y() - info.origin_y),
+                             Vector2I::new(info.width as i32, info.height as i32));
+            let tex_coord_rect = RectI::new(Vector2I::new(info.x, info.y),
+                                              Vector2I::new(info.width, info.height));
             let first_vertex_index = vertex_data.len();
             vertex_data.extend_from_slice(&[
                 DebugTextureVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
@@ -222,11 +222,11 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_texture(&self,
                         device: &D,
-                        origin: Point2DI,
+                        origin: Vector2I,
                         texture: &D::Texture,
                         color: ColorU) {
         let position_rect = RectI::new(origin, device.texture_size(&texture));
-        let tex_coord_rect = RectI::new(Point2DI::default(), position_rect.size());
+        let tex_coord_rect = RectI::new(Vector2I::default(), position_rect.size());
         let vertex_data = [
             DebugTextureVertex::new(position_rect.origin(),      tex_coord_rect.origin()),
             DebugTextureVertex::new(position_rect.upper_right(), tex_coord_rect.upper_right()),
@@ -316,7 +316,7 @@ impl<D> UIPresenter<D> where D: Device {
     }
 
     // TODO(pcwalton): `LineSegmentI32`.
-    fn draw_line(&self, device: &D, from: Point2DI, to: Point2DI, color: ColorU) {
+    fn draw_line(&self, device: &D, from: Vector2I, to: Vector2I, color: ColorU) {
         let vertex_data = vec![DebugSolidVertex::new(from), DebugSolidVertex::new(to)];
         self.draw_solid_rects_with_vertex_data(device, &vertex_data, &[0, 1], color, false);
 
@@ -328,7 +328,7 @@ impl<D> UIPresenter<D> where D: Device {
                                  texture: &D::Texture,
                                  corner_rects: &CornerRects) {
         let corner_size = device.texture_size(&texture);
-        let tex_coord_rect = RectI::new(Point2DI::default(), corner_size);
+        let tex_coord_rect = RectI::new(Vector2I::default(), corner_size);
 
         let vertex_data = vec![
             DebugTextureVertex::new(
@@ -412,12 +412,12 @@ impl<D> UIPresenter<D> where D: Device {
         });
     }
 
-    pub fn draw_button(&mut self, device: &D, origin: Point2DI, texture: &D::Texture) -> bool {
-        let button_rect = RectI::new(origin, Point2DI::new(BUTTON_WIDTH, BUTTON_HEIGHT));
+    pub fn draw_button(&mut self, device: &D, origin: Vector2I, texture: &D::Texture) -> bool {
+        let button_rect = RectI::new(origin, Vector2I::new(BUTTON_WIDTH, BUTTON_HEIGHT));
         self.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
         self.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
         self.draw_texture(device,
-                          origin + Point2DI::new(PADDING, PADDING),
+                          origin + Vector2I::new(PADDING, PADDING),
                           texture,
                           BUTTON_ICON_COLOR);
         self.event_queue.handle_mouse_down_in_rect(button_rect).is_some()
@@ -425,7 +425,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_text_switch(&mut self,
                             device: &D,
-                            mut origin: Point2DI,
+                            mut origin: Vector2I,
                             segment_labels: &[&str],
                             mut value: u8)
                             -> u8 {
@@ -436,15 +436,15 @@ impl<D> UIPresenter<D> where D: Device {
             value = new_value;
         }
 
-        origin = origin + Point2DI::new(0, BUTTON_TEXT_OFFSET);
+        origin = origin + Vector2I::new(0, BUTTON_TEXT_OFFSET);
         for (segment_index, segment_label) in segment_labels.iter().enumerate() {
             let label_width = self.measure_text(segment_label);
             let offset = SEGMENT_SIZE / 2 - label_width / 2;
             self.draw_text(device,
                            segment_label,
-                           origin + Point2DI::new(offset, 0),
+                           origin + Vector2I::new(offset, 0),
                            segment_index as u8 == value);
-            origin += Point2DI::new(SEGMENT_SIZE + 1, 0);
+            origin += Vector2I::new(SEGMENT_SIZE + 1, 0);
         }
 
         value
@@ -452,7 +452,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_image_segmented_control(&mut self,
                                         device: &D,
-                                        mut origin: Point2DI,
+                                        mut origin: Vector2I,
                                         segment_textures: &[&D::Texture],
                                         mut value: Option<u8>)
                                         -> Option<u8> {
@@ -469,7 +469,7 @@ impl<D> UIPresenter<D> where D: Device {
 
         for (segment_index, segment_texture) in segment_textures.iter().enumerate() {
             let texture_width = device.texture_size(segment_texture).x();
-            let offset = Point2DI::new(SEGMENT_SIZE / 2 - texture_width / 2, PADDING);
+            let offset = Vector2I::new(SEGMENT_SIZE / 2 - texture_width / 2, PADDING);
             let color = if Some(segment_index as u8) == value {
                 WINDOW_COLOR
             } else {
@@ -477,7 +477,7 @@ impl<D> UIPresenter<D> where D: Device {
             };
 
             self.draw_texture(device, origin + offset, segment_texture, color);
-            origin += Point2DI::new(SEGMENT_SIZE + 1, 0);
+            origin += Vector2I::new(SEGMENT_SIZE + 1, 0);
         }
 
         clicked_segment
@@ -485,12 +485,12 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_segmented_control(&mut self,
                               device: &D,
-                              origin: Point2DI,
+                              origin: Vector2I,
                               mut value: Option<u8>,
                               segment_count: u8)
                               -> Option<u8> {
         let widget_width = self.measure_segmented_control(segment_count);
-        let widget_rect = RectI::new(origin, Point2DI::new(widget_width, BUTTON_HEIGHT));
+        let widget_rect = RectI::new(origin, Vector2I::new(widget_width, BUTTON_HEIGHT));
 
         let mut clicked_segment = None;
         if let Some(position) = self.event_queue.handle_mouse_down_in_rect(widget_rect) {
@@ -505,15 +505,15 @@ impl<D> UIPresenter<D> where D: Device {
         self.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
 
         if let Some(value) = value {
-            let highlight_size = Point2DI::new(SEGMENT_SIZE, BUTTON_HEIGHT);
+            let highlight_size = Vector2I::new(SEGMENT_SIZE, BUTTON_HEIGHT);
             let x_offset = value as i32 * SEGMENT_SIZE + (value as i32 - 1);
             self.draw_solid_rounded_rect(device,
-                                        RectI::new(origin + Point2DI::new(x_offset, 0),
+                                        RectI::new(origin + Vector2I::new(x_offset, 0),
                                                     highlight_size),
                                         TEXT_COLOR);
         }
 
-        let mut segment_origin = origin + Point2DI::new(SEGMENT_SIZE + 1, 0);
+        let mut segment_origin = origin + Vector2I::new(SEGMENT_SIZE + 1, 0);
         for next_segment_index in 1..segment_count {
             let prev_segment_index = next_segment_index - 1;
             match value {
@@ -521,11 +521,11 @@ impl<D> UIPresenter<D> where D: Device {
                 _ => {
                     self.draw_line(device,
                                 segment_origin,
-                                segment_origin + Point2DI::new(0, BUTTON_HEIGHT),
+                                segment_origin + Vector2I::new(0, BUTTON_HEIGHT),
                                 TEXT_COLOR);
                 }
             }
-            segment_origin = segment_origin + Point2DI::new(SEGMENT_SIZE + 1, 0);
+            segment_origin = segment_origin + Vector2I::new(SEGMENT_SIZE + 1, 0);
         }
 
         clicked_segment
@@ -537,13 +537,13 @@ impl<D> UIPresenter<D> where D: Device {
         }
 
         let text_size = self.measure_text(string);
-        let window_size = Point2DI::new(text_size + PADDING * 2, TOOLTIP_HEIGHT);
-        let origin = rect.origin() - Point2DI::new(0, window_size.y() + PADDING);
+        let window_size = Vector2I::new(text_size + PADDING * 2, TOOLTIP_HEIGHT);
+        let origin = rect.origin() - Vector2I::new(0, window_size.y() + PADDING);
 
         self.draw_solid_rounded_rect(device, RectI::new(origin, window_size), WINDOW_COLOR);
         self.draw_text(device,
                        string,
-                       origin + Point2DI::new(PADDING, PADDING + FONT_ASCENT),
+                       origin + Vector2I::new(PADDING, PADDING + FONT_ASCENT),
                        false);
     }
 }
@@ -668,7 +668,7 @@ struct DebugTextureVertex {
 }
 
 impl DebugTextureVertex {
-    fn new(position: Point2DI, tex_coord: Point2DI) -> DebugTextureVertex {
+    fn new(position: Vector2I, tex_coord: Vector2I) -> DebugTextureVertex {
         DebugTextureVertex {
             position_x: position.x() as i16,
             position_y: position.y() as i16,
@@ -687,7 +687,7 @@ struct DebugSolidVertex {
 }
 
 impl DebugSolidVertex {
-    fn new(position: Point2DI) -> DebugSolidVertex {
+    fn new(position: Vector2I) -> DebugSolidVertex {
         DebugSolidVertex { position_x: position.x() as i16, position_y: position.y() as i16 }
     }
 }
@@ -704,8 +704,8 @@ impl CornerRects {
         let size = device.texture_size(texture);
         CornerRects {
             upper_left:  RectI::new(rect.origin(),                                     size),
-            upper_right: RectI::new(rect.upper_right() - Point2DI::new(size.x(), 0), size),
-            lower_left:  RectI::new(rect.lower_left()  - Point2DI::new(0, size.y()), size),
+            upper_right: RectI::new(rect.upper_right() - Vector2I::new(size.x(), 0), size),
+            lower_left:  RectI::new(rect.lower_left()  - Vector2I::new(0, size.y()), size),
             lower_right: RectI::new(rect.lower_right() - size,                         size),
         }
     }
@@ -739,7 +739,7 @@ impl UIEventQueue {
         mem::replace(&mut self.events, vec![])
     }
 
-    pub fn handle_mouse_down_in_rect(&mut self, rect: RectI) -> Option<Point2DI> {
+    pub fn handle_mouse_down_in_rect(&mut self, rect: RectI) -> Option<Vector2I> {
         let (mut remaining_events, mut result) = (vec![], None);
         for event in self.events.drain(..) {
             match event {
@@ -753,7 +753,7 @@ impl UIEventQueue {
         result
     }
 
-    pub fn handle_mouse_down_or_dragged_in_rect(&mut self, rect: RectI) -> Option<Point2DI> {
+    pub fn handle_mouse_down_or_dragged_in_rect(&mut self, rect: RectI) -> Option<Vector2I> {
         let (mut remaining_events, mut result) = (vec![], None);
         for event in self.events.drain(..) {
             match event {
@@ -771,8 +771,8 @@ impl UIEventQueue {
 
 #[derive(Clone, Copy)]
 pub struct MousePosition {
-    pub absolute: Point2DI,
-    pub relative: Point2DI,
+    pub absolute: Vector2I,
+    pub relative: Vector2I,
 }
 
 #[derive(Deserialize)]

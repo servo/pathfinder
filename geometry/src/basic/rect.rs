@@ -10,7 +10,7 @@
 
 //! 2D axis-aligned rectangles, optimized with SIMD.
 
-use crate::basic::point::{Point2DF, Point2DI};
+use crate::basic::vector::{Vector2F, Vector2I};
 use pathfinder_simd::default::{F32x4, I32x4};
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -18,42 +18,42 @@ pub struct RectF(pub F32x4);
 
 impl RectF {
     #[inline]
-    pub fn new(origin: Point2DF, size: Point2DF) -> RectF {
+    pub fn new(origin: Vector2F, size: Vector2F) -> RectF {
         RectF(origin.0.concat_xy_xy(origin.0 + size.0))
     }
 
     #[inline]
-    pub fn from_points(origin: Point2DF, lower_right: Point2DF) -> RectF {
+    pub fn from_points(origin: Vector2F, lower_right: Vector2F) -> RectF {
         RectF(origin.0.concat_xy_xy(lower_right.0))
     }
 
     #[inline]
-    pub fn origin(&self) -> Point2DF {
-        Point2DF(self.0)
+    pub fn origin(&self) -> Vector2F {
+        Vector2F(self.0)
     }
 
     #[inline]
-    pub fn size(&self) -> Point2DF {
-        Point2DF(self.0.zwxy() - self.0.xyxy())
+    pub fn size(&self) -> Vector2F {
+        Vector2F(self.0.zwxy() - self.0.xyxy())
     }
 
     #[inline]
-    pub fn upper_right(&self) -> Point2DF {
-        Point2DF(self.0.zyxw())
+    pub fn upper_right(&self) -> Vector2F {
+        Vector2F(self.0.zyxw())
     }
 
     #[inline]
-    pub fn lower_left(&self) -> Point2DF {
-        Point2DF(self.0.xwzy())
+    pub fn lower_left(&self) -> Vector2F {
+        Vector2F(self.0.xwzy())
     }
 
     #[inline]
-    pub fn lower_right(&self) -> Point2DF {
-        Point2DF(self.0.zwxy())
+    pub fn lower_right(&self) -> Vector2F {
+        Vector2F(self.0.zwxy())
     }
 
     #[inline]
-    pub fn contains_point(&self, point: Point2DF) -> bool {
+    pub fn contains_point(&self, point: Vector2F) -> bool {
         // self.origin <= point && point <= self.lower_right
         self.0
             .concat_xy_xy(point.0)
@@ -76,7 +76,7 @@ impl RectF {
     }
 
     #[inline]
-    pub fn union_point(&self, point: Point2DF) -> RectF {
+    pub fn union_point(&self, point: Vector2F) -> RectF {
         RectF::from_points(self.origin().min(point), self.lower_right().max(point))
     }
 
@@ -130,7 +130,7 @@ impl RectF {
     }
 
     #[inline]
-    pub fn scale_xy(self, factors: Point2DF) -> RectF {
+    pub fn scale_xy(self, factors: Vector2F) -> RectF {
         RectF(self.0 * factors.0.concat_xy_xy(factors.0))
     }
 
@@ -140,7 +140,7 @@ impl RectF {
     }
 
     #[inline]
-    pub fn dilate(self, amount: Point2DF) -> RectF {
+    pub fn dilate(self, amount: Vector2F) -> RectF {
         RectF::from_points(self.origin() - amount, self.lower_right() + amount)
     }
 
@@ -155,38 +155,38 @@ pub struct RectI(pub I32x4);
 
 impl RectI {
     #[inline]
-    pub fn new(origin: Point2DI, size: Point2DI) -> RectI {
+    pub fn new(origin: Vector2I, size: Vector2I) -> RectI {
         RectI(origin.0.concat_xy_xy(origin.0 + size.0))
     }
 
     #[inline]
-    pub fn from_points(origin: Point2DI, lower_right: Point2DI) -> RectI {
+    pub fn from_points(origin: Vector2I, lower_right: Vector2I) -> RectI {
         RectI(origin.0.concat_xy_xy(lower_right.0))
     }
 
     #[inline]
-    pub fn origin(&self) -> Point2DI {
-        Point2DI(self.0)
+    pub fn origin(&self) -> Vector2I {
+        Vector2I(self.0)
     }
 
     #[inline]
-    pub fn size(&self) -> Point2DI {
-        Point2DI(self.0.zwxy() - self.0.xyxy())
+    pub fn size(&self) -> Vector2I {
+        Vector2I(self.0.zwxy() - self.0.xyxy())
     }
 
     #[inline]
-    pub fn upper_right(&self) -> Point2DI {
-        Point2DI(self.0.zyxw())
+    pub fn upper_right(&self) -> Vector2I {
+        Vector2I(self.0.zyxw())
     }
 
     #[inline]
-    pub fn lower_left(&self) -> Point2DI {
-        Point2DI(self.0.xwzy())
+    pub fn lower_left(&self) -> Vector2I {
+        Vector2I(self.0.xwzy())
     }
 
     #[inline]
-    pub fn lower_right(&self) -> Point2DI {
-        Point2DI(self.0.zwxy())
+    pub fn lower_right(&self) -> Vector2I {
+        Vector2I(self.0.zwxy())
     }
 
     #[inline]
@@ -210,9 +210,9 @@ impl RectI {
     }
 
     #[inline]
-    pub fn contains_point(&self, point: Point2DI) -> bool {
+    pub fn contains_point(&self, point: Vector2I) -> bool {
         // self.origin <= point && point <= self.lower_right - 1
-        let lower_right = self.lower_right() - Point2DI::splat(1);
+        let lower_right = self.lower_right() - Vector2I::splat(1);
         self.0
             .concat_xy_xy(point.0)
             .packed_le(point.0.concat_xy_xy(lower_right.0))

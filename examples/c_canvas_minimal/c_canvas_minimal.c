@@ -55,7 +55,7 @@ int main(int argc, const char **argv) {
     // Create a Pathfinder renderer.
     PFGLLoadWith(LoadGLFunction, NULL);
     PFGLDestFramebufferRef dest_framebuffer =
-        PFGLDestFramebufferCreateFullWindow(&(PFPoint2DI){640, 480});
+        PFGLDestFramebufferCreateFullWindow(&(PFVector2I){640, 480});
     PFGLRendererRef renderer = PFGLRendererCreate(PFGLDeviceCreate(PF_GL_VERSION_GL3, 0),
                                                   PFFilesystemResourceLoaderLocate(),
                                                   dest_framebuffer);
@@ -67,7 +67,7 @@ int main(int argc, const char **argv) {
 
     // Make a canvas. We're going to draw a house.
     PFCanvasRef canvas = PFCanvasCreate(PFCanvasFontContextCreate(),
-                                        &(PFPoint2DF){640.0f, 480.0f});
+                                        &(PFVector2F){640.0f, 480.0f});
 
     // Set line width.
     PFCanvasSetLineWidth(canvas, 10.0f);
@@ -80,9 +80,9 @@ int main(int argc, const char **argv) {
 
     // Draw roof.
     PFPathRef path = PFPathCreate();
-    PFPathMoveTo(path, &(PFPoint2DF){50.0, 140.0});
-    PFPathLineTo(path, &(PFPoint2DF){150.0, 60.0});
-    PFPathLineTo(path, &(PFPoint2DF){250.0, 140.0});
+    PFPathMoveTo(path, &(PFVector2F){50.0, 140.0});
+    PFPathLineTo(path, &(PFVector2F){150.0, 60.0});
+    PFPathLineTo(path, &(PFVector2F){250.0, 140.0});
     PFPathClosePath(path);
     PFCanvasStrokePath(canvas, path);
 

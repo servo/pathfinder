@@ -163,7 +163,7 @@ impl F32x4 {
         unsafe { F32x4(x86_64::_mm_shuffle_ps(self.0, other.0, 0b0001_1011)) }
     }
 
-    // FIXME(pcwalton): Move to `Point3DF`!
+    // FIXME(pcwalton): Move to `Vector4F`!
     #[inline]
     pub fn cross(&self, other: F32x4) -> F32x4 {
         self.yzxw() * other.zxyw() - self.zxyw() * other.yzxw()

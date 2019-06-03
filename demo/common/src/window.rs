@@ -11,7 +11,7 @@
 //! A minimal cross-platform windowing layer.
 
 use gl::types::GLuint;
-use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
 use pathfinder_gl::GLVersion;
@@ -42,10 +42,10 @@ pub enum Event {
     WindowResized(WindowSize),
     KeyDown(Keycode),
     KeyUp(Keycode),
-    MouseDown(Point2DI),
-    MouseMoved(Point2DI),
-    MouseDragged(Point2DI),
-    Zoom(f32, Point2DI),
+    MouseDown(Vector2I),
+    MouseMoved(Vector2I),
+    MouseDragged(Vector2I),
+    Zoom(f32, Vector2I),
     Look {
         pitch: f32,
         yaw: f32,
@@ -67,13 +67,13 @@ pub enum Keycode {
 
 #[derive(Clone, Copy, Debug)]
 pub struct WindowSize {
-    pub logical_size: Point2DI,
+    pub logical_size: Vector2I,
     pub backing_scale_factor: f32,
 }
 
 impl WindowSize {
     #[inline]
-    pub fn device_size(&self) -> Point2DI {
+    pub fn device_size(&self) -> Vector2I {
         self.logical_size
             .to_f32()
             .scale(self.backing_scale_factor)

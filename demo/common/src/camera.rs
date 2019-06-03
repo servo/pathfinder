@@ -14,7 +14,7 @@
 // proper.
 
 use crate::window::{OcularTransform, View};
-use pathfinder_geometry::basic::point::{Point2DF, Point2DI, Point3DF};
+use pathfinder_geometry::basic::vector::{Vector2F, Vector2I, Vector4F};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
@@ -39,12 +39,12 @@ pub enum Camera {
         // The modelview transform from world coordinates to SVG coordinates
         modelview_transform: CameraTransform3D,
         // The camera's velocity (in world coordinates)
-        velocity: Point3DF,
+        velocity: Vector4F,
     },
 }
 
 impl Camera {
-    pub fn new(mode: Mode, view_box: RectF, viewport_size: Point2DI) -> Camera {
+    pub fn new(mode: Mode, view_box: RectF, viewport_size: Vector2I) -> Camera {
         if mode == Mode::TwoD {
             Camera::new_2d(view_box, viewport_size)
         } else {
@@ -52,14 +52,14 @@ impl Camera {
         }
     }
 
-    fn new_2d(view_box: RectF, viewport_size: Point2DI) -> Camera {
+    fn new_2d(view_box: RectF, viewport_size: Vector2I) -> Camera {
         let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32
             * scale_factor_for_view_box(view_box);
         let origin = viewport_size.to_f32().scale(0.5) - view_box.size().scale(scale * 0.5);
-        Camera::TwoD(Transform2DF::from_scale(Point2DF::splat(scale)).post_translate(origin))
+        Camera::TwoD(Transform2DF::from_scale(Vector2F::splat(scale)).post_translate(origin))
     }
 
-    fn new_3d(mode: Mode, view_box: RectF, viewport_size: Point2DI) -> Camera {
+    fn new_3d(mode: Mode, view_box: RectF, viewport_size: Vector2I) -> Camera {
         let viewport_count = mode.viewport_count();
 
         let fov_y = FRAC_PI_4;
@@ -96,7 +96,7 @@ impl Camera {
             scene_transform,
             eye_transforms,
             modelview_transform: CameraTransform3D::new(view_box),
-            velocity: Point3DF::default(),
+            velocity: Vector4F::default(),
         }
     }
 
@@ -120,7 +120,7 @@ impl Camera {
 
 #[derive(Clone, Copy, Debug)]
 pub struct CameraTransform3D {
-    position: Point3DF,
+    position: Vector4F,
     pub yaw: f32,
     pub pitch: f32,
     scale: f32,
@@ -130,7 +130,7 @@ impl CameraTransform3D {
     fn new(view_box: RectF) -> CameraTransform3D {
         let scale = scale_factor_for_view_box(view_box);
         CameraTransform3D {
-            position: Point3DF::new(
+            position: Vector4F::new(
                 0.5 * view_box.max_x(),
                 -0.5 * view_box.max_y(),
                 1.5 / scale,
@@ -142,7 +142,7 @@ impl CameraTransform3D {
         }
     }
 
-    pub fn offset(&mut self, vector: Point3DF) -> bool {
+    pub fn offset(&mut self, vector: Vector4F) -> bool {
         let update = !vector.is_zero();
         if update {
             let rotation = Transform3DF::from_rotation(-self.yaw, -self.pitch, 0.0);

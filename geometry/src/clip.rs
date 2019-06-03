@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::basic::line_segment::LineSegmentF;
-use crate::basic::point::{Point2DF, Point3DF};
+use crate::basic::line_segment::LineSegment2F;
+use crate::basic::vector::{Vector2F, Vector4F};
 use crate::basic::rect::RectF;
 use crate::outline::{Contour, PointFlags, PushSegmentFlags};
 use crate::segment::{CubicSegment, Segment};
@@ -20,17 +20,17 @@ use std::fmt::Debug;
 use std::mem;
 
 #[derive(Clone, Copy, Debug)]
-struct Edge(LineSegmentF);
+struct Edge(LineSegment2F);
 
 impl TEdge for Edge {
     #[inline]
-    fn point_is_inside(&self, point: &Point2DF) -> bool {
+    fn point_is_inside(&self, point: &Vector2F) -> bool {
         let area = (self.0.to() - self.0.from()).det(*point - self.0.from());
         debug!("point_is_inside({:?}, {:?}), area={}", self, point, area);
         area >= 0.0
     }
 
-    fn intersect_line_segment(&self, segment: &LineSegmentF) -> ArrayVec<[f32; 3]> {
+    fn intersect_line_segment(&self, segment: &LineSegment2F) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
         if let Some(t) = segment.intersection_t(&self.0) {
             if t >= 0.0 && t <= 1.0 {
@@ -51,7 +51,7 @@ enum AxisAlignedEdge {
 
 impl TEdge for AxisAlignedEdge {
     #[inline]
-    fn point_is_inside(&self, point: &Point2DF) -> bool {
+    fn point_is_inside(&self, point: &Vector2F) -> bool {
         match *self {
             AxisAlignedEdge::Left(x) => point.x() >= x,
             AxisAlignedEdge::Top(y) => point.y() >= y,
@@ -60,7 +60,7 @@ impl TEdge for AxisAlignedEdge {
         }
     }
 
-    fn intersect_line_segment(&self, segment: &LineSegmentF) -> ArrayVec<[f32; 3]> {
+    fn intersect_line_segment(&self, segment: &LineSegment2F) -> ArrayVec<[f32; 3]> {
         let mut results = ArrayVec::new();
         let t = match *self {
             AxisAlignedEdge::Left(x) | AxisAlignedEdge::Right(x) => segment.solve_t_for_x(x),
@@ -74,8 +74,8 @@ impl TEdge for AxisAlignedEdge {
 }
 
 trait TEdge: Debug {
-    fn point_is_inside(&self, point: &Point2DF) -> bool;
-    fn intersect_line_segment(&self, segment: &LineSegmentF) -> ArrayVec<[f32; 3]>;
+    fn point_is_inside(&self, point: &Vector2F) -> bool;
+    fn intersect_line_segment(&self, segment: &LineSegment2F) -> ArrayVec<[f32; 3]>;
 
     fn trivially_test_segment(&self, segment: &Segment) -> EdgeRelativeLocation {
         let from_inside = self.point_is_inside(&segment.baseline.from());
@@ -294,7 +294,7 @@ enum FastClipResult {
 // General convex polygon clipping in 2D
 
 pub(crate) struct ContourPolygonClipper {
-    clip_polygon: SmallVec<[Point2DF; 4]>,
+    clip_polygon: SmallVec<[Vector2F; 4]>,
     contour: Contour,
 }
 
@@ -309,7 +309,7 @@ impl ContourClipper for ContourPolygonClipper {
 
 impl ContourPolygonClipper {
     #[inline]
-    pub(crate) fn new(clip_polygon: &[Point2DF], contour: Contour) -> ContourPolygonClipper {
+    pub(crate) fn new(clip_polygon: &[Vector2F], contour: Contour) -> ContourPolygonClipper {
         ContourPolygonClipper {
             clip_polygon: SmallVec::from_slice(clip_polygon),
             contour,
@@ -325,7 +325,7 @@ impl ContourPolygonClipper {
             Some(prev) => *prev,
         };
         for &next in &clip_polygon {
-            self.clip_against(Edge(LineSegmentF::new(prev, next)));
+            self.clip_against(Edge(LineSegment2F::new(prev, next)));
             prev = next;
         }
 
@@ -379,16 +379,16 @@ impl ContourRectClipper {
 // 3D quad clipping
 
 pub struct PolygonClipper3D {
-    subject: Vec<Point3DF>,
+    subject: Vec<Vector4F>,
 }
 
 impl PolygonClipper3D {
     #[inline]
-    pub fn new(subject: Vec<Point3DF>) -> PolygonClipper3D {
+    pub fn new(subject: Vec<Vector4F>) -> PolygonClipper3D {
         PolygonClipper3D { subject }
     }
 
-    pub fn clip(mut self) -> Vec<Point3DF> {
+    pub fn clip(mut self) -> Vec<Vector4F> {
         // TODO(pcwalton): Fast path for completely contained polygon?
 
         debug!("before clipping against bottom: {:?}", self.subject);
@@ -440,7 +440,7 @@ enum Edge3D {
 
 impl Edge3D {
     #[inline]
-    fn point_is_inside(self, point: Point3DF) -> bool {
+    fn point_is_inside(self, point: Vector4F) -> bool {
         let w = point.w();
         match self {
             Edge3D::Left => point.x() >= -w,
@@ -453,7 +453,7 @@ impl Edge3D {
     }
 
     // Blinn & Newell, "Clipping using homogeneous coordinates", SIGGRAPH 1978.
-    fn line_intersection(self, prev: Point3DF, next: Point3DF) -> Point3DF {
+    fn line_intersection(self, prev: Vector4F, next: Vector4F) -> Vector4F {
         let (x0, x1) = match self {
             Edge3D::Left | Edge3D::Right => (prev.x(), next.x()),
             Edge3D::Bottom | Edge3D::Top => (prev.y(), next.y()),
@@ -472,7 +472,7 @@ impl Edge3D {
 /// Coarse collision detection
 
 // Separating axis theorem. Requires that the polygon be convex.
-pub(crate) fn rect_is_outside_polygon(rect: RectF, polygon_points: &[Point2DF]) -> bool {
+pub(crate) fn rect_is_outside_polygon(rect: RectF, polygon_points: &[Vector2F]) -> bool {
     let mut outcode = Outcode::all();
     for point in polygon_points {
         if point.x() > rect.min_x() {
@@ -519,7 +519,7 @@ pub(crate) fn rect_is_outside_polygon(rect: RectF, polygon_points: &[Point2DF]) 
 }
 
 // Edge equation method. Requires that the polygon be convex.
-pub(crate) fn rect_is_inside_polygon(rect: RectF, polygon_points: &[Point2DF]) -> bool {
+pub(crate) fn rect_is_inside_polygon(rect: RectF, polygon_points: &[Vector2F]) -> bool {
     // FIXME(pcwalton): Check winding!
     let rect_points = [
         rect.origin(),
