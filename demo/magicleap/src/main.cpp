@@ -228,7 +228,11 @@ int main() {
   }
 
   // Initialize pathfinder
+  ML_LOG(Info, "%s: Initializing demo.", application_name);
   void* app = magicleap_pathfinder_demo_init(graphics_context.egl_display, graphics_context.egl_context);
+  if (!app) {
+    ML_LOG(Error, "%s: Failed to initialize demo.", application_name);
+  }
 
   // let system know our app has started
   MLLifecycleCallbacks lifecycle_callbacks = {};

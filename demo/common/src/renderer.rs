@@ -149,6 +149,8 @@ impl<W> DemoApp<W> where W: Window {
         debug!("modelview transform={:?}", modelview_transform);
 
         let viewport = self.window.viewport(View::Stereo(render_scene_index));
+        self.window.make_current(View::Stereo(render_scene_index));
+
         self.renderer
             .replace_dest_framebuffer(DestFramebuffer::Default {
                 viewport,

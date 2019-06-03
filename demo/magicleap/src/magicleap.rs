@@ -43,18 +43,17 @@ use log;
 use log::debug;
 use log::info;
 
-use pathfinder_demo::window::CameraTransform;
 use pathfinder_demo::window::Event;
+use pathfinder_demo::window::OcularTransform;
 use pathfinder_demo::window::View;
 use pathfinder_demo::window::Window;
 use pathfinder_demo::window::WindowSize;
-use pathfinder_geometry::basic::point::Point2DI32;
-use pathfinder_geometry::basic::point::Point2DF32;
-use pathfinder_geometry::basic::rect::RectF32;
-use pathfinder_geometry::basic::rect::RectI32;
+use pathfinder_geometry::basic::vector::Vector2I;
+use pathfinder_geometry::basic::vector::Vector2F;
+use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::Perspective;
-use pathfinder_geometry::basic::transform3d::Transform3DF32;
-use pathfinder_geometry::distortion::BarrelDistortionCoefficients;
+use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::util;
 use pathfinder_gl::GLVersion;
 use pathfinder_gpu::resources::FilesystemResourceLoader;
@@ -76,12 +75,12 @@ use std::time::Duration;
 pub struct MagicLeapWindow {
     framebuffer_id: GLuint,
     graphics_client: MLHandle,
-    size: Point2DI32,
+    size: Vector2I,
     virtual_camera_array: MLGraphicsVirtualCameraInfoArray,
-    initial_camera_transform: Option<Transform3DF32>,
+    initial_camera_transform: Option<Transform3DF>,
     frame_handle: MLHandle,
     resource_loader: FilesystemResourceLoader,
-    pose_event: Option<Vec<CameraTransform>>,
+    pose_event: Option<Vec<OcularTransform>>,
     running: bool,
     in_frame: bool,
 }
@@ -103,10 +102,6 @@ impl Window for MagicLeapWindow {
         thread_pool_builder.start_handler(|id| unsafe { init_scene_thread(id) })
     }
 
-    fn mouse_position(&self) -> Point2DI32 {
-        Point2DI32::new(0, 0)
-    }
-
     fn create_user_event_id (&self) -> u32 {
         0
     }
@@ -121,12 +116,8 @@ impl Window for MagicLeapWindow {
         Err(())
     }
 
-    fn viewport(&self, _view: View) -> RectI32 {
-        RectI32::new(Point2DI32::default(), self.size)
-    }
-
-    fn barrel_distortion_coefficients(&self) -> BarrelDistortionCoefficients {
-        BarrelDistortionCoefficients { k0: 0.0, k1: 0.0 }
+    fn viewport(&self, _view: View) -> RectI {
+        RectI::new(Vector2I::default(), self.size)
     }
 
     fn make_current(&mut self, view: View) {
@@ -142,6 +133,7 @@ impl Window for MagicLeapWindow {
         let virtual_camera = self.virtual_camera_array.virtual_cameras[eye];
         let layer_id = virtual_camera.virtual_camera_name as i32;
         unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.framebuffer_id);
             gl::FramebufferTextureLayer(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, color_id, 0, layer_id);
             gl::FramebufferTextureLayer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, depth_id, 0, layer_id);
             gl::Viewport(viewport.x as i32, viewport.y as i32, viewport.w as i32, viewport.h as i32);
@@ -192,7 +184,7 @@ impl MagicLeapWindow {
         MagicLeapWindow {
             framebuffer_id,
             graphics_client,
-            size: Point2DI32::new(max_width, max_height),
+            size: Vector2I::new(max_width, max_height),
             frame_handle: ML_HANDLE_INVALID,
             virtual_camera_array,
             initial_camera_transform: None,
@@ -215,12 +207,12 @@ impl MagicLeapWindow {
     }
 
     pub fn try_get_event(&mut self) -> Option<Event> {
-        self.pose_event.take().map(Event::CameraTransforms)
+        self.pose_event.take().map(Event::SetEyeTransforms)
     }
 
     fn begin_frame(&mut self) {
         if !self.in_frame {
-             debug!("PF beginning frame");
+            debug!("PF beginning frame");
             let mut params = unsafe { mem::zeroed() };
             unsafe {
                 gl::BindFramebuffer(gl::FRAMEBUFFER, self.framebuffer_id);
@@ -242,22 +234,22 @@ impl MagicLeapWindow {
             }
             let virtual_camera_array = &self.virtual_camera_array;
             let initial_camera = self.initial_camera_transform.get_or_insert_with(|| {
-                let initial_offset = Transform3DF32::from_translation(0.0, 0.0, 1.0);
+                let initial_offset = Transform3DF::from_translation(0.0, 0.0, 1.0);
 	        let mut camera = virtual_camera_array.virtual_cameras[0].transform;
 		for i in 1..virtual_camera_array.num_virtual_cameras {
 		    let next = virtual_camera_array.virtual_cameras[i as usize].transform;
 		    camera = camera.lerp(next, 1.0 / (i as f32 + 1.0));
 		}
-		Transform3DF32::from(camera).post_mul(&initial_offset)
+		Transform3DF::from(camera).post_mul(&initial_offset)
             });
             let camera_transforms = (0..virtual_camera_array.num_virtual_cameras)
                 .map(|i| {
 		    let camera = &virtual_camera_array.virtual_cameras[i as usize];
-                    let projection = Transform3DF32::from(camera.projection);
-                    let size = RectI32::from(virtual_camera_array.viewport).size();
+                    let projection = Transform3DF::from(camera.projection);
+                    let size = RectI::from(virtual_camera_array.viewport).size();
                     let perspective = Perspective::new(&projection, size);
-                    let view = Transform3DF32::from(camera.transform).inverse().post_mul(initial_camera);
-                    CameraTransform { perspective, view }
+                    let modelview_to_eye = Transform3DF::from(camera.transform).inverse().post_mul(initial_camera);
+                    OcularTransform { perspective, modelview_to_eye }
                 })
                 .collect();
             self.in_frame = true;
@@ -363,41 +355,41 @@ impl MLTransform {
 
 // Impl pathfinder traits for c-api types
 
-impl From<MLTransform> for Transform3DF32 {
+impl From<MLTransform> for Transform3DF {
     fn from(mat: MLTransform) -> Self {
-        Transform3DF32::from(mat.rotation)
-           .pre_mul(&Transform3DF32::from(mat.position))
+        Transform3DF::from(mat.rotation)
+           .pre_mul(&Transform3DF::from(mat.position))
     }
 }
 
-impl From<MLVec3f> for Transform3DF32 {
+impl From<MLVec3f> for Transform3DF {
     fn from(v: MLVec3f) -> Self {
-        Transform3DF32::from_translation(v.x, v.y, v.z)
+        Transform3DF::from_translation(v.x, v.y, v.z)
     }
 }
 
-impl From<MLRectf> for RectF32 {
+impl From<MLRectf> for RectF {
     fn from(r: MLRectf) -> Self {
-        RectF32::new(Point2DF32::new(r.x, r.y), Point2DF32::new(r.w, r.h))
+        RectF::new(Vector2F::new(r.x, r.y), Vector2F::new(r.w, r.h))
     }
 }
 
-impl From<MLRectf> for RectI32 {
+impl From<MLRectf> for RectI {
     fn from(r: MLRectf) -> Self {
-        RectF32::from(r).to_i32()
+        RectF::from(r).to_i32()
     }
 }
 
-impl From<MLQuaternionf> for Transform3DF32 {
+impl From<MLQuaternionf> for Transform3DF {
     fn from(q: MLQuaternionf) -> Self {
-        Transform3DF32::from_rotation_quaternion(F32x4::new(q.x, q.y, q.z, q.w))
+        Transform3DF::from_rotation_quaternion(F32x4::new(q.x, q.y, q.z, q.w))
     }
 }
 
-impl From<MLMat4f> for Transform3DF32 {
+impl From<MLMat4f> for Transform3DF {
     fn from(mat: MLMat4f) -> Self {
         let a = mat.matrix_colmajor;
-        Transform3DF32::row_major(a[0], a[4], a[8],  a[12],
+        Transform3DF::row_major(a[0], a[4], a[8],  a[12],
                                   a[1], a[5], a[9],  a[13],
                                   a[2], a[6], a[10], a[14],
                                   a[3], a[7], a[11], a[15])

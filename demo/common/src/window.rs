@@ -34,7 +34,9 @@ pub trait Window {
     fn present_open_svg_dialog(&mut self);
     fn run_save_dialog(&self, extension: &str) -> Result<PathBuf, ()>;
 
-    fn adjust_thread_pool_settings(&self, _: &mut ThreadPoolBuilder) {}
+    fn adjust_thread_pool_settings(&self, builder: ThreadPoolBuilder) -> ThreadPoolBuilder {
+        builder
+    }
 }
 
 pub enum Event {
