@@ -223,6 +223,16 @@ impl Segment {
             flags: self.flags,
         }
     }
+
+    pub fn arc_length(&self) -> f32 {
+        // FIXME(pcwalton)
+        self.baseline.vector().length()
+    }
+
+    pub fn time_for_distance(&self, distance: f32) -> f32 {
+        // FIXME(pcwalton)
+        distance / self.arc_length()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

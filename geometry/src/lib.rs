@@ -20,6 +20,7 @@ extern crate log;
 pub mod basic;
 pub mod clip;
 pub mod color;
+pub mod dash;
 pub mod orientation;
 pub mod outline;
 pub mod segment;

@@ -19,6 +19,7 @@ use pathfinder_geometry::basic::vector::Vector2F;
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
+use pathfinder_geometry::dash::OutlineDash;
 use pathfinder_geometry::outline::{ArcDirection, Contour, Outline};
 use pathfinder_geometry::stroke::{LineCap, LineJoin as StrokeLineJoin};
 use pathfinder_geometry::stroke::{OutlineStrokeToFill, StrokeStyle};
@@ -151,13 +152,15 @@ impl CanvasRenderingContext2D {
     }
 
     #[inline]
-    pub fn set_fill_style(&mut self, new_fill_style: FillStyle) {
-        self.current_state.fill_paint = new_fill_style.to_paint();
-    }
+    pub fn set_line_dash(&mut self, mut new_line_dash: Vec<f32>) {
+        // Duplicate and concatenate if an odd number of dashes are present.
+        if new_line_dash.len() % 2 == 1 {
+            let mut real_line_dash = new_line_dash.clone();
+            real_line_dash.extend(new_line_dash.into_iter());
+            new_line_dash = real_line_dash;
+        }
 
-    #[inline]
-    pub fn set_stroke_style(&mut self, new_stroke_style: FillStyle) {
-        self.current_state.stroke_paint = new_stroke_style.to_paint();
+        self.current_state.line_dash = new_line_dash
     }
 
     // Text styles
@@ -170,6 +173,18 @@ impl CanvasRenderingContext2D {
     #[inline]
     pub fn set_text_align(&mut self, new_text_align: TextAlign) {
         self.current_state.text_align = new_text_align;
+    }
+
+    // Fill and stroke styles
+
+    #[inline]
+    pub fn set_fill_style(&mut self, new_fill_style: FillStyle) {
+        self.current_state.fill_paint = new_fill_style.to_paint();
+    }
+
+    #[inline]
+    pub fn set_stroke_style(&mut self, new_stroke_style: FillStyle) {
+        self.current_state.stroke_paint = new_stroke_style.to_paint();
     }
 
     // Drawing paths
@@ -193,10 +208,17 @@ impl CanvasRenderingContext2D {
         let mut stroke_style = self.current_state.resolve_stroke_style();
         stroke_style.line_width = f32::max(stroke_style.line_width, HAIRLINE_STROKE_WIDTH);
 
-        let outline = path.into_outline();
+        let mut outline = path.into_outline();
+        if !self.current_state.line_dash.is_empty() {
+            let mut dash = OutlineDash::new(&outline, &self.current_state.line_dash);
+            dash.dash();
+            outline = dash.into_outline();
+        }
+
         let mut stroke_to_fill = OutlineStrokeToFill::new(&outline, stroke_style);
         stroke_to_fill.offset();
-        let mut outline = stroke_to_fill.into_outline();
+        outline = stroke_to_fill.into_outline();
+
         outline.transform(&self.current_state.transform);
         self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
     }
@@ -250,13 +272,14 @@ struct State {
     transform: Transform2DF,
     font_collection: Arc<FontCollection>,
     font_size: f32,
-    text_align: TextAlign,
-    fill_paint: Paint,
-    stroke_paint: Paint,
     line_width: f32,
     line_cap: LineCap,
     line_join: LineJoin,
     miter_limit: f32,
+    line_dash: Vec<f32>,
+    fill_paint: Paint,
+    stroke_paint: Paint,
+    text_align: TextAlign,
     global_alpha: f32,
 }
 
@@ -266,13 +289,14 @@ impl State {
             transform: Transform2DF::default(),
             font_collection: default_font_collection,
             font_size: DEFAULT_FONT_SIZE,
-            text_align: TextAlign::Left,
-            fill_paint: Paint { color: ColorU::black() },
-            stroke_paint: Paint { color: ColorU::black() },
             line_width: 1.0,
             line_cap: LineCap::Butt,
             line_join: LineJoin::Miter,
             miter_limit: 10.0,
+            line_dash: vec![],
+            fill_paint: Paint { color: ColorU::black() },
+            stroke_paint: Paint { color: ColorU::black() },
+            text_align: TextAlign::Left,
             global_alpha: 1.0,
         }
     }
