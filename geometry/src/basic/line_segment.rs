@@ -220,17 +220,6 @@ impl LineSegment2F {
         dx * dx + dy * dy
     }
 
-    // Given a line equation of the form `ax + by + c = 0`, returns a vector of the form
-    // `[a, b, c, 0]`.
-    //
-    // TODO(pcwalton): Optimize.
-    #[inline]
-    pub fn line_coords(&self) -> F32x4 {
-        let from = F32x4::new(self.0[0], self.0[1], 1.0, 0.0);
-        let to = F32x4::new(self.0[2], self.0[3], 1.0, 0.0);
-        from.cross(to)
-    }
-
     #[inline]
     pub fn vector(&self) -> Vector2F {
         self.to() - self.from()

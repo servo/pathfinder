@@ -130,11 +130,6 @@ impl F32x4 {
     pub fn concat_wz_yx(self, other: F32x4) -> F32x4 {
         unsafe { F32x4(simd_shuffle4(self.0, other.0, [3, 2, 5, 4])) }
     }
-
-    #[inline]
-    pub fn cross(&self, other: F32x4) -> F32x4 {
-        unimplemented!()
-    }
 }
 
 impl Default for F32x4 {
