@@ -29,8 +29,8 @@ use pathfinder_demo::BackgroundColor;
 use pathfinder_demo::Mode;
 use pathfinder_demo::window::Event;
 use pathfinder_demo::window::SVGPath;
-use pathfinder_geometry::basic::point::Point2DF;
-use pathfinder_geometry::basic::point::Point2DI;
+use pathfinder_geometry::basic::vector::Vector2F;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorF;
@@ -190,10 +190,10 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
         let mut height = 0;
         egl::query_surface(options.display, options.surface, egl::EGL_WIDTH, &mut width);
         egl::query_surface(options.display, options.surface, egl::EGL_HEIGHT, &mut height);
-        let size = Point2DI::new(width, height);
+        let size = Vector2I::new(width, height);
 
-        let viewport_origin = Point2DI::new(options.viewport[0] as i32, options.viewport[1] as i32);
-        let viewport_size = Point2DI::new(options.viewport[2] as i32, options.viewport[3] as i32);
+        let viewport_origin = Vector2I::new(options.viewport[0] as i32, options.viewport[1] as i32);
+        let viewport_size = Vector2I::new(options.viewport[2] as i32, options.viewport[3] as i32);
         let viewport = RectI::new(viewport_origin, viewport_size);
 
         let bg_color = ColorF(F32x4::new(options.bg_color[0], options.bg_color[1], options.bg_color[2], options.bg_color[3]));
@@ -216,12 +216,12 @@ pub unsafe extern "C" fn magicleap_pathfinder_render(pf: *mut c_void, options: *
         let scale = i32::min(viewport_size.x(), viewport_size.y()) as f32 /
             f32::max(svg.scene.bounds().size().x(), svg.scene.bounds().size().y());
         let transform = Transform2DF::from_translation(svg.scene.bounds().size().scale(-0.5))
-            .post_mul(&Transform2DF::from_scale(Point2DF::splat(scale)))
+            .post_mul(&Transform2DF::from_scale(Vector2F::splat(scale)))
             .post_mul(&Transform2DF::from_translation(viewport_size.to_f32().scale(0.5)));
             
         let render_options = RenderOptions {
             transform: RenderTransform::Transform2D(transform),
-            dilation: Point2DF::default(),
+            dilation: Vector2F::default(),
             subpixel_aa_enabled: false,
         };
 

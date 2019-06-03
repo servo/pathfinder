@@ -48,8 +48,8 @@ use pathfinder_demo::window::OcularTransform;
 use pathfinder_demo::window::View;
 use pathfinder_demo::window::Window;
 use pathfinder_demo::window::WindowSize;
-use pathfinder_geometry::basic::point::Point2DI;
-use pathfinder_geometry::basic::point::Point2DF;
+use pathfinder_geometry::basic::vector::Vector2I;
+use pathfinder_geometry::basic::vector::Vector2F;
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::Perspective;
@@ -75,7 +75,7 @@ use std::time::Duration;
 pub struct MagicLeapWindow {
     framebuffer_id: GLuint,
     graphics_client: MLHandle,
-    size: Point2DI,
+    size: Vector2I,
     virtual_camera_array: MLGraphicsVirtualCameraInfoArray,
     initial_camera_transform: Option<Transform3DF>,
     frame_handle: MLHandle,
@@ -117,7 +117,7 @@ impl Window for MagicLeapWindow {
     }
 
     fn viewport(&self, _view: View) -> RectI {
-        RectI::new(Point2DI::default(), self.size)
+        RectI::new(Vector2I::default(), self.size)
     }
 
     fn make_current(&mut self, view: View) {
@@ -184,7 +184,7 @@ impl MagicLeapWindow {
         MagicLeapWindow {
             framebuffer_id,
             graphics_client,
-            size: Point2DI::new(max_width, max_height),
+            size: Vector2I::new(max_width, max_height),
             frame_handle: ML_HANDLE_INVALID,
             virtual_camera_array,
             initial_camera_transform: None,
@@ -370,7 +370,7 @@ impl From<MLVec3f> for Transform3DF {
 
 impl From<MLRectf> for RectF {
     fn from(r: MLRectf) -> Self {
-        RectF::new(Point2DF::new(r.x, r.y), Point2DF::new(r.w, r.h))
+        RectF::new(Vector2F::new(r.x, r.y), Vector2F::new(r.w, r.h))
     }
 }
 
