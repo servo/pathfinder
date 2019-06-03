@@ -13,7 +13,10 @@
 #[macro_use]
 extern crate log;
 
-use crate::camera::{Camera, Mode};
+// Mode is used in Options, so has to be public
+pub use crate::camera::Mode;
+
+use crate::camera::Camera;
 use crate::concurrent::DemoExecutor;
 use crate::device::{GroundProgram, GroundVertexArray};
 use crate::ui::{DemoUIModel, DemoUIPresenter, ScreenshotInfo, ScreenshotType, UIAction};
