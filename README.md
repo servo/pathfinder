@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/servo/pathfinder.svg?branch=master)](https://travis-ci.org/servo/pathfinder)
+
 # Pathfinder 3
 
 Pathfinder 3 is a fast, practical, GPU-based rasterizer for fonts and vector graphics using OpenGL
@@ -14,6 +16,10 @@ usage.
 
 This example app requires SDL 2; see the "Building" section below for information on getting it up
 and running.
+
+### Demos
+
+Demo app sources are available in [demo/](https://github.com/servo/pathfinder/tree/master/demo). A prebuilt package for Magic Leap can be found in [releases](https://github.com/servo/pathfinder/releases).
 
 ## Features
 
