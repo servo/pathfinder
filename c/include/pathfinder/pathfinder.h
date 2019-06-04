@@ -116,6 +116,7 @@ PFCanvasRef PFCanvasCreate(PFCanvasFontContextRef font_context, const PFVector2F
 void PFCanvasDestroy(PFCanvasRef canvas);
 PFCanvasFontContextRef PFCanvasFontContextCreate();
 void PFCanvasFontContextDestroy(PFCanvasFontContextRef font_context);
+PFCanvasFontContextRef PFCanvasFontContextClone(PFCanvasFontContextRef font_context);
 PFSceneRef PFCanvasCreateScene(PFCanvasRef canvas);
 void PFCanvasFillRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasStrokeRect(PFCanvasRef canvas, const PFRectF *rect);
