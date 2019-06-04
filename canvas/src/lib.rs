@@ -163,6 +163,11 @@ impl CanvasRenderingContext2D {
         self.current_state.line_dash = new_line_dash
     }
 
+    #[inline]
+    pub fn set_line_dash_offset(&mut self, new_line_dash_offset: f32) {
+        self.current_state.line_dash_offset = new_line_dash_offset
+    }
+
     // Text styles
 
     #[inline]
@@ -210,7 +215,9 @@ impl CanvasRenderingContext2D {
 
         let mut outline = path.into_outline();
         if !self.current_state.line_dash.is_empty() {
-            let mut dash = OutlineDash::new(&outline, &self.current_state.line_dash);
+            let mut dash = OutlineDash::new(&outline,
+                                            &self.current_state.line_dash,
+                                            self.current_state.line_dash_offset);
             dash.dash();
             outline = dash.into_outline();
         }
@@ -277,6 +284,7 @@ struct State {
     line_join: LineJoin,
     miter_limit: f32,
     line_dash: Vec<f32>,
+    line_dash_offset: f32,
     fill_paint: Paint,
     stroke_paint: Paint,
     text_align: TextAlign,
@@ -294,6 +302,7 @@ impl State {
             line_join: LineJoin::Miter,
             miter_limit: 10.0,
             line_dash: vec![],
+            line_dash_offset: 0.0,
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
             text_align: TextAlign::Left,

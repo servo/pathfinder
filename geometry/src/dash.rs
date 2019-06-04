@@ -13,6 +13,8 @@
 use crate::outline::{Contour, Outline, PushSegmentFlags};
 use std::mem;
 
+const EPSILON: f32 = 0.0001;
+
 pub struct OutlineDash<'a> {
     input: &'a Outline,
     output: Outline,
@@ -21,8 +23,8 @@ pub struct OutlineDash<'a> {
 
 impl<'a> OutlineDash<'a> {
     #[inline]
-    pub fn new(input: &'a Outline, dashes: &'a [f32]) -> OutlineDash<'a> {
-        OutlineDash { input, output: Outline::new(), state: DashState::new(dashes) }
+    pub fn new(input: &'a Outline, dashes: &'a [f32], offset: f32) -> OutlineDash<'a> {
+        OutlineDash { input, output: Outline::new(), state: DashState::new(dashes, offset) }
     }
 
     pub fn dash(&mut self) {
@@ -91,8 +93,6 @@ impl<'a, 'b, 'c> ContourDash<'a, 'b, 'c> {
                 self.state.distance_left = self.state.dashes[self.state.current_dash_index];
             }
         }
-
-        const EPSILON: f32 = 0.0001;
     }
 }
 
@@ -104,12 +104,25 @@ struct DashState<'a> {
 }
 
 impl<'a> DashState<'a> {
-    fn new(dashes: &'a [f32]) -> DashState<'a> {
+    fn new(dashes: &'a [f32], mut offset: f32) -> DashState<'a> {
+        let total: f32 = dashes.iter().cloned().sum();
+        offset %= total;
+
+        let mut current_dash_index = 0;
+        while current_dash_index < dashes.len() {
+            let dash = dashes[current_dash_index];
+            if offset < dash {
+                break;
+            }
+            offset -= dash;
+            current_dash_index += 1;
+        }
+
         DashState {
             output: Contour::new(),
             dashes,
-            current_dash_index: 0,
-            distance_left: dashes[0],
+            current_dash_index,
+            distance_left: offset,
         }
     }
 
