@@ -108,6 +108,7 @@ pub struct PFRenderOptions {
 
 // `canvas`
 
+/// Consumes the font context.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasCreate(font_context: PFCanvasFontContextRef,
                                         size: *const PFVector2F)
