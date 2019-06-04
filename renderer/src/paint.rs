@@ -25,8 +25,14 @@ pub struct Paint {
 pub struct PaintId(pub u16);
 
 impl Paint {
-    pub(crate) fn is_opaque(&self) -> bool {
+    #[inline]
+    pub fn is_opaque(&self) -> bool {
         self.color.a == 255
+    }
+
+    #[inline]
+    pub fn is_fully_transparent(&self) -> bool {
+        self.color.is_fully_transparent()
     }
 }
 

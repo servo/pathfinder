@@ -22,6 +22,11 @@ pub struct ColorU {
 
 impl ColorU {
     #[inline]
+    pub fn transparent_black() -> ColorU {
+        ColorU::from_u32(0)
+    }
+
+    #[inline]
     pub fn from_u32(rgba: u32) -> ColorU {
         ColorU {
             r: (rgba >> 24) as u8,
@@ -45,6 +50,11 @@ impl ColorU {
     pub fn to_f32(&self) -> ColorF {
         let color = F32x4::new(self.r as f32, self.g as f32, self.b as f32, self.a as f32);
         ColorF(color * F32x4::splat(1.0 / 255.0))
+    }
+
+    #[inline]
+    pub fn is_fully_transparent(&self) -> bool {
+        self.a == 0
     }
 }
 

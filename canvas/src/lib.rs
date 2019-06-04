@@ -192,6 +192,18 @@ impl CanvasRenderingContext2D {
         self.current_state.stroke_paint = new_stroke_style.to_paint();
     }
 
+    // Shadows
+
+    #[inline]
+    pub fn set_shadow_color(&mut self, new_shadow_color: ColorU) {
+        self.current_state.shadow_paint = Paint { color: new_shadow_color };
+    }
+
+    #[inline]
+    pub fn set_shadow_offset(&mut self, new_shadow_offset: Vector2F) {
+        self.current_state.shadow_offset = new_shadow_offset;
+    }
+
     // Drawing paths
 
     #[inline]
@@ -202,7 +214,7 @@ impl CanvasRenderingContext2D {
         let paint = self.current_state.resolve_paint(self.current_state.fill_paint);
         let paint_id = self.scene.push_paint(&paint);
 
-        self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
+        self.push_path(outline, paint_id);
     }
 
     #[inline]
@@ -227,6 +239,19 @@ impl CanvasRenderingContext2D {
         outline = stroke_to_fill.into_outline();
 
         outline.transform(&self.current_state.transform);
+        self.push_path(outline, paint_id);
+    }
+
+    fn push_path(&mut self, outline: Outline, paint_id: PaintId) {
+        if !self.current_state.shadow_paint.is_fully_transparent() {
+            let paint = self.current_state.resolve_paint(self.current_state.shadow_paint);
+            let paint_id = self.scene.push_paint(&paint);
+
+            let mut outline = outline.clone();
+            outline.transform(&Transform2DF::from_translation(self.current_state.shadow_offset));
+            self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
+        }
+
         self.scene.push_path(PathObject::new(outline, paint_id, String::new()))
     }
 
@@ -287,6 +312,8 @@ struct State {
     line_dash_offset: f32,
     fill_paint: Paint,
     stroke_paint: Paint,
+    shadow_paint: Paint,
+    shadow_offset: Vector2F,
     text_align: TextAlign,
     global_alpha: f32,
 }
@@ -305,6 +332,8 @@ impl State {
             line_dash_offset: 0.0,
             fill_paint: Paint { color: ColorU::black() },
             stroke_paint: Paint { color: ColorU::black() },
+            shadow_paint: Paint { color: ColorU::transparent_black() },
+            shadow_offset: Vector2F::default(),
             text_align: TextAlign::Left,
             global_alpha: 1.0,
         }
