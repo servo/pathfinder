@@ -6,6 +6,7 @@ members = [
     "demo/common",
     "demo/magicleap",
     "demo/native",
+    "examples/canvas_metal_minimal",
     "examples/canvas_minimal",
     "examples/canvas_moire",
     "examples/canvas_text",
