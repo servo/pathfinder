@@ -918,7 +918,7 @@ impl GLVersion {
 
 // Error checking
 
-#[cfg(debug)]
+#[cfg(debug_assertions)]
 fn ck() {
     unsafe {
         let err = gl::GetError();
@@ -928,7 +928,7 @@ fn ck() {
     }
 }
 
-#[cfg(not(debug))]
+#[cfg(not(debug_assertions))]
 fn ck() {}
 
 // Shader preprocessing
