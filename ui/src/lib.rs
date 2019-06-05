@@ -22,7 +22,7 @@ use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
-use pathfinder_gpu::{RenderState, UniformData, VertexAttrClass};
+use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
@@ -131,7 +131,11 @@ impl<D> UIPresenter<D> where D: Device {
         self.draw_rect(device, rect, color, false);
     }
 
-    fn draw_rect(&self, device: &D, rect: RectI, color: ColorU, filled: bool) {
+    fn draw_rect(&self,
+                 device: &D,
+                 rect: RectI,
+                 color: ColorU,
+                 filled: bool) {
         let vertex_data = [
             DebugSolidVertex::new(rect.origin()),
             DebugSolidVertex::new(rect.upper_right()),
@@ -160,8 +164,6 @@ impl<D> UIPresenter<D> where D: Device {
                                          index_data: &[u32],
                                          color: ColorU,
                                          filled: bool) {
-        device.bind_vertex_array(&self.solid_vertex_array.vertex_array);
-
         device.allocate_buffer(&self.solid_vertex_array.vertex_buffer,
                                BufferData::Memory(vertex_data),
                                BufferTarget::Vertex,
@@ -171,15 +173,23 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferTarget::Index,
                                BufferUploadMode::Dynamic);
 
-        device.use_program(&self.solid_program.program);
-        device.set_uniform(&self.solid_program.framebuffer_size_uniform,
-                           UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
-        set_color_uniform(device, &self.solid_program.color_uniform, color);
-
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
-        device.draw_elements(primitive, index_data.len() as u32, &RenderState {
-            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
-            ..RenderState::default()
+        device.draw_elements(index_data.len() as u32, &RenderState {
+            target: &RenderTarget::Default,
+            program: &self.solid_program.program,
+            vertex_array: &self.solid_vertex_array.vertex_array,
+            primitive,
+            uniforms: &[
+                (&self.solid_program.framebuffer_size_uniform,
+                 UniformData::Vec2(self.framebuffer_size.0.to_f32x4())),
+                (&self.solid_program.color_uniform, get_color_uniform(color)),
+            ],
+            textures: &[],
+            viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
+            options: RenderOptions {
+                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                ..RenderOptions::default()
+            },
         });
     }
 
@@ -396,19 +406,25 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferTarget::Index,
                                BufferUploadMode::Dynamic);
 
-        device.bind_vertex_array(&self.texture_vertex_array.vertex_array);
-        device.use_program(&self.texture_program.program);
-        device.set_uniform(&self.texture_program.framebuffer_size_uniform,
-                           UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
-        device.set_uniform(&self.texture_program.texture_size_uniform,
-                           UniformData::Vec2(device.texture_size(&texture).0.to_f32x4()));
-        set_color_uniform(device, &self.texture_program.color_uniform, color);
-        device.bind_texture(texture, 0);
-        device.set_uniform(&self.texture_program.texture_uniform, UniformData::TextureUnit(0));
-
-        device.draw_elements(Primitive::Triangles, index_data.len() as u32, &RenderState {
-            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
-            ..RenderState::default()
+        device.draw_elements(index_data.len() as u32, &RenderState {
+            target: &RenderTarget::Default,
+            program: &self.texture_program.program,
+            vertex_array: &self.texture_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            textures: &[&texture],
+            uniforms: &[
+                (&self.texture_program.framebuffer_size_uniform,
+                 UniformData::Vec2(self.framebuffer_size.0.to_f32x4())),
+                (&self.texture_program.color_uniform, get_color_uniform(color)),
+                (&self.texture_program.texture_uniform, UniformData::TextureUnit(0)),
+                (&self.texture_program.texture_size_uniform,
+                 UniformData::Vec2(device.texture_size(&texture).0.to_f32x4()))
+            ],
+            viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
+            options: RenderOptions {
+                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                ..RenderOptions::default()
+            },
         });
     }
 
@@ -508,9 +524,9 @@ impl<D> UIPresenter<D> where D: Device {
             let highlight_size = Vector2I::new(SEGMENT_SIZE, BUTTON_HEIGHT);
             let x_offset = value as i32 * SEGMENT_SIZE + (value as i32 - 1);
             self.draw_solid_rounded_rect(device,
-                                        RectI::new(origin + Vector2I::new(x_offset, 0),
+                                         RectI::new(origin + Vector2I::new(x_offset, 0),
                                                     highlight_size),
-                                        TEXT_COLOR);
+                                         TEXT_COLOR);
         }
 
         let mut segment_origin = origin + Vector2I::new(SEGMENT_SIZE + 1, 0);
@@ -520,9 +536,9 @@ impl<D> UIPresenter<D> where D: Device {
                 Some(value) if value == prev_segment_index || value == next_segment_index => {}
                 _ => {
                     self.draw_line(device,
-                                segment_origin,
-                                segment_origin + Vector2I::new(0, BUTTON_HEIGHT),
-                                TEXT_COLOR);
+                                   segment_origin,
+                                   segment_origin + Vector2I::new(0, BUTTON_HEIGHT),
+                                   TEXT_COLOR);
                 }
             }
             segment_origin = segment_origin + Vector2I::new(SEGMENT_SIZE + 1, 0);
@@ -590,25 +606,25 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord") 
                                    .unwrap();
 
-        device.bind_vertex_array(&vertex_array);
-        device.use_program(&debug_texture_program.program);
-        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.bind_buffer(&index_buffer, BufferTarget::Index);
-        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
+        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::U16,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
             stride: DEBUG_TEXTURE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.configure_vertex_attr(&tex_coord_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::U16,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
             stride: DEBUG_TEXTURE_VERTEX_SIZE,
             offset: 4,
             divisor: 0,
+            buffer_index: 0,
         });
 
         DebugTextureVertexArray { vertex_array, vertex_buffer, index_buffer }
@@ -626,19 +642,18 @@ impl<D> DebugSolidVertexArray<D> where D: Device {
         let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
         let vertex_array = device.create_vertex_array();
 
-        let position_attr = device.get_vertex_attr(&debug_solid_program.program, "Position")
-                                  .unwrap();
-        device.bind_vertex_array(&vertex_array);
-        device.use_program(&debug_solid_program.program);
-        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.bind_buffer(&index_buffer, BufferTarget::Index);
-        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+        let position_attr =
+            device.get_vertex_attr(&debug_solid_program.program, "Position").unwrap();
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
+        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::U16,
+            class: VertexAttrClass::Int,
+            attr_type: VertexAttrType::I16,
             stride: DEBUG_SOLID_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
 
         DebugSolidVertexArray { vertex_array, vertex_buffer, index_buffer }
@@ -714,9 +729,9 @@ impl CornerRects {
     }
 }
 
-fn set_color_uniform<D>(device: &D, uniform: &D::Uniform, color: ColorU) where D: Device {
+fn get_color_uniform(color: ColorU) -> UniformData {
     let color = F32x4::new(color.r as f32, color.g as f32, color.b as f32, color.a as f32);
-    device.set_uniform(uniform, UniformData::Vec4(color * F32x4::splat(1.0 / 255.0)));
+    UniformData::Vec4(color * F32x4::splat(1.0 / 255.0))
 }
 
 #[derive(Clone, Copy)]

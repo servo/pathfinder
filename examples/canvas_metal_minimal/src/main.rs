@@ -1,4 +1,4 @@
-// pathfinder/examples/canvas_minimal/src/main.rs
+// pathfinder/examples/canvas_metal_minimal/src/main.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,30 +8,29 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use foreign_types::ForeignTypeRef;
+use metal::{CAMetalLayer, CoreAnimationLayerRef};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
 use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::color::ColorF;
-use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
+use pathfinder_metal::MetalDevice;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use sdl2::event::Event;
+use sdl2::hint;
 use sdl2::keyboard::Keycode;
-use sdl2::video::GLProfile;
+use sdl2_sys::SDL_RenderGetMetalLayer;
 
 fn main() {
     // Set up SDL2.
+    assert!(hint::set("SDL_RENDER_DRIVER", "metal"));
     let sdl_context = sdl2::init().unwrap();
     let video = sdl_context.video().unwrap();
-
-    // Make sure we have at least a GL 3.0 context. Pathfinder requires this.
-    let gl_attributes = video.gl_attr();
-    gl_attributes.set_context_profile(GLProfile::Core);
-    gl_attributes.set_context_version(3, 3);
 
     // Open a window.
     let window_size = Vector2I::new(640, 480);
@@ -40,13 +39,14 @@ fn main() {
                       .build()
                       .unwrap();
 
-    // Create the GL context, and make it current.
-    let gl_context = window.gl_create_context().unwrap();
-    gl::load_with(|name| video.gl_get_proc_address(name) as *const _);
-    window.gl_make_current(&gl_context).unwrap();
+    // Create a Metal context.
+    let canvas = window.into_canvas().present_vsync().build().unwrap();
+    let metal_layer = unsafe {
+        CoreAnimationLayerRef::from_ptr(SDL_RenderGetMetalLayer(canvas.raw()) as *mut CAMetalLayer)
+    };
 
     // Create a Pathfinder renderer.
-    let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
+    let mut renderer = Renderer::new(MetalDevice::new(metal_layer),
                                      &FilesystemResourceLoader::locate(),
                                      DestFramebuffer::full_window(window_size),
                                      RendererOptions { background_color: Some(ColorF::white()) });
@@ -74,7 +74,7 @@ fn main() {
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
     scene.build_and_render(&mut renderer, BuildOptions::default());
-    window.gl_swap_window();
+    renderer.device.present_drawable();
 
     // Wait for a keypress.
     let mut event_pump = sdl_context.event_pump().unwrap();

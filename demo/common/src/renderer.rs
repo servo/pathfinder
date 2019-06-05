@@ -15,10 +15,13 @@ use crate::window::{View, Window};
 use crate::{BackgroundColor, DemoApp, UIVisibility};
 use image::ColorType;
 use pathfinder_geometry::color::{ColorF, ColorU};
-use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderState};
-use pathfinder_gpu::{TextureFormat, UniformData};
+use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
+use pathfinder_gpu::{RenderState, RenderTarget, TextureData, TextureFormat, UniformData};
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::Transform3DF;
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode};
+use pathfinder_geometry::basic::vector::Vector2I;
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::renderer::RenderMode;
 use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::options::RenderTransform;
 use pathfinder_renderer::post::DEFRINGING_KERNEL_CORE_GRAPHICS;
@@ -42,13 +45,14 @@ const GRIDLINE_COUNT: i32 = 10;
 
 impl<W> DemoApp<W> where W: Window {
     pub fn prepare_frame_rendering(&mut self) -> u32 {
-        // Make the GL context current.
+        // Make the context current.
         let view = self.ui_model.mode.view(0);
         self.window.make_current(view);
 
         // Set up framebuffers.
         let window_size = self.window_size.device_size();
-        let scene_count = match self.camera.mode() {
+        let mode = self.camera.mode();
+        let scene_count = match mode {
             Mode::VR => {
                 let viewport = self.window.viewport(View::Stereo(0));
                 if self.scene_framebuffer.is_none()
@@ -82,49 +86,47 @@ impl<W> DemoApp<W> where W: Window {
             }
         };
 
-        // Begin drawing the scene.
-        self.renderer.bind_dest_framebuffer();
-
         // Clear to the appropriate color.
-        let clear_color = if scene_count == 2 {
-            ColorF::transparent_black()
-        } else {
-            self.background_color().to_f32()
+        let clear_color = match mode {
+            Mode::TwoD => Some(self.background_color().to_f32()),
+            Mode::ThreeD => None,
+            Mode::VR => Some(ColorF::transparent_black()),
         };
-        self.renderer.device.clear(&ClearParams {
-            color: Some(clear_color),
-            depth: Some(1.0),
-            stencil: Some(0),
-            ..ClearParams::default()
-        });
+        self.renderer.set_options(RendererOptions { background_color: clear_color });
 
         scene_count
     }
 
     pub fn draw_scene(&mut self) {
+        self.renderer.device.begin_commands();
+
         let view = self.ui_model.mode.view(0);
         self.window.make_current(view);
 
         if self.camera.mode() != Mode::VR {
-            self.draw_environment();
+            self.draw_environment(0);
         }
+
+        self.renderer.device.end_commands();
 
         self.render_vector_scene();
 
         // Reattach default framebuffer.
-        if self.camera.mode() != Mode::VR {
-            return;
+        if self.camera.mode() == Mode::VR {
+            if let DestFramebuffer::Other(scene_framebuffer) =
+                self.renderer
+                    .replace_dest_framebuffer(DestFramebuffer::Default {
+                        viewport: self.window.viewport(View::Mono),
+                        window_size: self.window_size.device_size(),
+                    })
+            {
+                self.scene_framebuffer = Some(scene_framebuffer);
+            }
         }
+    }
 
-        if let DestFramebuffer::Other(scene_framebuffer) =
-            self.renderer
-                .replace_dest_framebuffer(DestFramebuffer::Default {
-                    viewport: self.window.viewport(View::Mono),
-                    window_size: self.window_size.device_size(),
-                })
-        {
-            self.scene_framebuffer = Some(scene_framebuffer);
-        }
+    pub fn begin_compositing(&mut self) {
+        self.renderer.device.begin_commands();
     }
 
     pub fn composite_scene(&mut self, render_scene_index: u32) {
@@ -151,21 +153,12 @@ impl<W> DemoApp<W> where W: Window {
         let viewport = self.window.viewport(View::Stereo(render_scene_index));
         self.window.make_current(View::Stereo(render_scene_index));
 
-        self.renderer
-            .replace_dest_framebuffer(DestFramebuffer::Default {
-                viewport,
-                window_size: self.window_size.device_size(),
-            });
-
-        self.renderer.bind_draw_framebuffer();
-        self.renderer.device.clear(&ClearParams {
-            color: Some(self.background_color().to_f32()),
-            depth: Some(1.0),
-            stencil: Some(0),
-            rect: Some(viewport),
+        self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
+            viewport,
+            window_size: self.window_size.device_size(),
         });
 
-        self.draw_environment();
+        self.draw_environment(render_scene_index);
 
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
@@ -207,7 +200,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     // Draws the ground, if applicable.
-    fn draw_environment(&self) {
+    fn draw_environment(&self, render_scene_index: u32) {
         let frame = &self.current_frame.as_ref().unwrap();
 
         let perspective = match frame.transform {
@@ -233,31 +226,35 @@ impl<W> DemoApp<W> where W: Window {
         transform =
             transform.post_mul(&Transform3DF::from_scale(ground_scale, 1.0, ground_scale));
 
-        let device = &self.renderer.device;
-        device.bind_vertex_array(&self.ground_vertex_array.vertex_array);
-        device.use_program(&self.ground_program.program);
-        device.set_uniform(
-            &self.ground_program.transform_uniform,
-            UniformData::from_transform_3d(&transform),
-        );
-        device.set_uniform(
-            &self.ground_program.ground_color_uniform,
-            UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0),
-        );
-        device.set_uniform(
-            &self.ground_program.gridline_color_uniform,
-            UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0),
-        );
-        device.set_uniform(&self.ground_program.gridline_count_uniform,
-                           UniformData::Int(GRIDLINE_COUNT));
-        device.draw_elements(
-            Primitive::Triangles,
-            6,
-            &RenderState {
+        // Don't clear the first scene after drawing it.
+        let clear_color = if render_scene_index == 0 {
+            Some(self.background_color().to_f32())
+        } else {
+            None
+        };
+
+        self.renderer.device.draw_elements(6, &RenderState {
+            target: &self.renderer.draw_render_target(),
+            program: &self.ground_program.program,
+            vertex_array: &self.ground_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            textures: &[],
+            uniforms: &[
+                (&self.ground_program.transform_uniform,
+                 UniformData::from_transform_3d(&transform)),
+                (&self.ground_program.ground_color_uniform,
+                 UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0)),
+                (&self.ground_program.gridline_color_uniform,
+                 UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0)),
+                (&self.ground_program.gridline_count_uniform, UniformData::Int(GRIDLINE_COUNT)),
+            ],
+            viewport: self.renderer.draw_viewport(),
+            options: RenderOptions {
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
-                ..RenderState::default()
+                clear_ops: ClearOps { color: clear_color, depth: Some(1.0), stencil: Some(0) },
+                ..RenderOptions::default()
             },
-        );
+        });
     }
 
     fn render_vector_scene(&mut self) {
@@ -305,10 +302,11 @@ impl<W> DemoApp<W> where W: Window {
 
     pub fn take_raster_screenshot(&mut self, path: PathBuf) {
         let drawable_size = self.window_size.device_size();
-        let pixels = self
-            .renderer
-            .device
-            .read_pixels_from_default_framebuffer(drawable_size);
+        let viewport = RectI::new(Vector2I::default(), drawable_size);
+        let pixels = match self.renderer.device.read_pixels(&RenderTarget::Default, viewport) {
+            TextureData::U8(pixels) => pixels,
+            TextureData::U16(_) => panic!("Unexpected pixel format for default framebuffer!"),
+        };
         image::save_buffer(
             path,
             &pixels,

@@ -11,4 +11,5 @@
 //! The GPU renderer for Pathfinder 3.
 
 pub mod debug;
+pub mod options;
 pub mod renderer;

@@ -30,12 +30,9 @@ extern "C" {
 #define PF_GL_VERSION_GL3   0
 #define PF_GL_VERSION_GLES3 1
 
-// `gpu`
+// `renderer`
 
-#define PF_CLEAR_FLAGS_HAS_COLOR    0x1
-#define PF_CLEAR_FLAGS_HAS_DEPTH    0x2
-#define PF_CLEAR_FLAGS_HAS_STENCIL  0x4
-#define PF_CLEAR_FLAGS_HAS_RECT     0x8
+#define PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR 0x1
 
 // Types
 
@@ -85,24 +82,21 @@ typedef uint32_t PFGLVersion;
 
 // `gpu`
 
-typedef uint8_t PFClearFlags;
-struct PFClearParams {
-    PFColorF color;
-    float depth;
-    uint8_t stencil;
-    PFRectI rect;
-    PFClearFlags flags;
-};
-typedef struct PFClearParams PFClearParams;
 struct PFResourceLoader;
 typedef struct PFResourceLoader *PFResourceLoaderRef;
 
 // `renderer`
 
-struct PFRenderOptions {
+typedef uint8_t PFRendererOptionsFlags;
+struct PFRendererOptions {
+    PFColorF background_color;
+    PFRendererOptionsFlags flags;
+};
+struct PFBuildOptions {
     uint32_t placeholder;
 };
-typedef struct PFRenderOptions PFRenderOptions;
+typedef struct PFRendererOptions PFRendererOptions;
+typedef struct PFBuildOptions PFBuildOptions;
 struct PFScene;
 typedef struct PFScene *PFSceneRef;
 struct PFSceneProxy;
@@ -142,17 +136,17 @@ PFGLDestFramebufferRef PFGLDestFramebufferCreateFullWindow(const PFVector2I *win
 void PFGLDestFramebufferDestroy(PFGLDestFramebufferRef dest_framebuffer);
 PFGLDeviceRef PFGLDeviceCreate(PFGLVersion version, uint32_t default_framebuffer);
 void PFGLDeviceDestroy(PFGLDeviceRef device);
-void PFGLDeviceClear(PFGLDeviceRef device, const PFClearParams *params);
 void PFGLLoadWith(PFGLFunctionLoader loader, void *userdata);
 PFGLRendererRef PFGLRendererCreate(PFGLDeviceRef device,
                                    PFResourceLoaderRef resources,
-                                   PFGLDestFramebufferRef dest_framebuffer);
+                                   PFGLDestFramebufferRef dest_framebuffer,
+                                   const PFRendererOptions *options);
 void PFGLRendererDestroy(PFGLRendererRef renderer);
 /// Returns a borrowed reference to the device.
 PFGLDeviceRef PFGLRendererGetDevice(PFGLRendererRef renderer);
 void PFSceneProxyBuildAndRenderGL(PFSceneProxyRef scene_proxy,
                                   PFGLRendererRef renderer,
-                                  const PFRenderOptions *options);
+                                  const PFBuildOptions *build_options);
 
 // `gpu`
 

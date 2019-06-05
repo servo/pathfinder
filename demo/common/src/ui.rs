@@ -500,9 +500,7 @@ where
             Vector2I::new(widget_x, slider_track_y),
             Vector2I::new(SLIDER_WIDTH, SLIDER_TRACK_HEIGHT),
         );
-        debug_ui_presenter
-            .ui_presenter
-            .draw_rect_outline(device, slider_track_rect, TEXT_COLOR);
+        debug_ui_presenter.ui_presenter.draw_rect_outline(device, slider_track_rect, TEXT_COLOR);
 
         let slider_knob_x = widget_x + model.rotation - SLIDER_KNOB_WIDTH / 2;
         let slider_knob_rect = RectI::new(
@@ -528,7 +526,11 @@ where
         let widget_origin = panel_position + Vector2I::new(0, widget_size.y() * index);
         let widget_rect = RectI::new(widget_origin, widget_size);
 
-        if self.draw_menu_item(device, debug_ui_presenter, &text, widget_rect, false) {
+        if self.draw_menu_item(device,
+                               debug_ui_presenter,
+                               &text,
+                               widget_rect,
+                               false) {
             // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
             // the contents of the file.
             if let Ok(path) = window.run_save_dialog(screenshot_type.extension()) {
@@ -554,7 +556,11 @@ where
         let widget_rect = RectI::new(widget_origin, widget_size);
 
         let selected = color == model.background_color;
-        if self.draw_menu_item(device, debug_ui_presenter, text, widget_rect, selected) {
+        if self.draw_menu_item(device,
+                               debug_ui_presenter,
+                               text,
+                               widget_rect,
+                               selected) {
             model.background_color = color;
             *action = UIAction::ModelChanged;
         }

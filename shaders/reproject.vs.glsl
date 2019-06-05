@@ -14,11 +14,17 @@ precision highp float;
 
 uniform mat4 uNewTransform;
 
-in vec2 aPosition;
+in ivec2 aPosition;
 
 out vec2 vTexCoord;
 
 void main() {
-    vTexCoord = aPosition;
-    gl_Position = uNewTransform * vec4(aPosition, 0.0, 1.0);
+    vec2 position = vec2(aPosition);
+    vTexCoord = position;
+
+#ifdef PF_ORIGIN_UPPER_LEFT
+    // FIXME(pcwalton): This is wrong.
+    position.y = 1.0 - position.y;
+#endif
+    gl_Position = uNewTransform * vec4(position, 0.0, 1.0);
 }
