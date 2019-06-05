@@ -921,9 +921,20 @@ impl GLVersion {
 #[cfg(debug_assertions)]
 fn ck() {
     unsafe {
+        // Note that ideally we should be calling gl::GetError() in a loop until it
+        // returns gl::NO_ERROR, but for now we'll just report the first one we find.
         let err = gl::GetError();
-        if err != 0 {
-            panic!("GL error: 0x{:x}", err);
+        if err != gl::NO_ERROR {
+            panic!("GL error: 0x{:x} ({})", err, match err {
+                gl::INVALID_ENUM => "INVALID_ENUM",
+                gl::INVALID_VALUE => "INVALID_VALUE",
+                gl::INVALID_OPERATION => "INVALID_OPERATION",
+                gl::INVALID_FRAMEBUFFER_OPERATION => "INVALID_FRAMEBUFFER_OPERATION",
+                gl::OUT_OF_MEMORY => "OUT_OF_MEMORY",
+                gl::STACK_UNDERFLOW => "STACK_UNDERFLOW",
+                gl::STACK_OVERFLOW => "STACK_OVERFLOW",
+                _ => "Unknown"
+            });
         }
     }
 }
