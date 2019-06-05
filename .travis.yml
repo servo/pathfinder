@@ -5,8 +5,7 @@ addons:
     - libegl1-mesa-dev
     - libgtk-3-dev
     - libsdl2-dev
+    - cmake
 script:
-  - cd demo/native
   - cargo build
-  - cd ../magicleap
-  - cargo build
+  # - cargo test # todo: fix tests
