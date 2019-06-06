@@ -21,15 +21,6 @@ use std::time::Duration;
 
 pub mod resources;
 
-static INCLUDES: [&str; 6] = [
-    "tile_alpha_vertex",
-    "tile_monochrome",
-    "tile_multicolor",
-    "tile_solid_vertex",
-    "post_convolve",
-    "post_gamma_correct",
-];
-
 pub trait Device {
     type Buffer;
     type Framebuffer;
@@ -43,14 +34,8 @@ pub trait Device {
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
     fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> Self::Texture;
-    fn create_shader_from_source(
-        &self,
-        resources: &dyn ResourceLoader,
-        name: &str,
-        source: &[u8],
-        kind: ShaderKind,
-        includes: &[&str],
-    ) -> Self::Shader;
+    fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
+                                 -> Self::Shader;
     fn create_vertex_array(&self) -> Self::VertexArray;
     fn create_program_from_shaders(
         &self,
@@ -117,8 +102,8 @@ pub trait Device {
             ShaderKind::Vertex => 'v',
             ShaderKind::Fragment => 'f',
         };
-        let source = resources.slurp(&format!("shaders/{}.{}s.glsl", name, suffix)).unwrap();
-        self.create_shader_from_source(resources, name, &source, kind, &INCLUDES)
+        let source = resources.slurp(&format!("shaders/gl3/{}.{}s.glsl", name, suffix)).unwrap();
+        self.create_shader_from_source(name, &source, kind)
     }
 
     fn create_program_from_shader_names(
@@ -136,10 +121,6 @@ pub trait Device {
 
     fn create_program(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Program {
         self.create_program_from_shader_names(resources, name, name, name)
-    }
-
-    fn load_shader_include(&self, resources: &dyn ResourceLoader, include_name: &str) -> Vec<u8> {
-        resources.slurp(&format!("shaders/{}.inc.glsl", include_name)).unwrap()
     }
 }
 

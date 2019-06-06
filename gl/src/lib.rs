@@ -225,18 +225,12 @@ impl Device for GLDevice {
         texture
     }
 
-    fn create_shader_from_source(&self,
-                                 resources: &dyn ResourceLoader,
-                                 name: &str,
-                                 source: &[u8],
-                                 kind: ShaderKind,
-                                 includes: &[&str])
-                                 -> GLShader {
+    fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind) -> GLShader {
         // FIXME(pcwalton): Do this once and cache it.
         let glsl_version_spec = self.version.to_glsl_version_spec();
 
         let mut output = vec![];
-        self.preprocess(&mut output, resources, source, includes, glsl_version_spec);
+        self.preprocess(&mut output, source, glsl_version_spec);
         let source = output;
 
         let gl_shader_kind = match kind {
@@ -650,12 +644,7 @@ impl Device for GLDevice {
 }
 
 impl GLDevice {
-    fn preprocess(&self,
-                  output: &mut Vec<u8>,
-                  resources: &dyn ResourceLoader,
-                  source: &[u8],
-                  includes: &[&str],
-                  version: &str) {
+    fn preprocess(&self, output: &mut Vec<u8>, source: &[u8], version: &str) {
         let mut index = 0;
         while index < source.len() {
             if source[index..].starts_with(b"{{") {
@@ -666,12 +655,6 @@ impl GLDevice {
                 let ident = String::from_utf8_lossy(&source[(index + 2)..end_index]);
                 if ident == "version" {
                     output.extend_from_slice(version.as_bytes());
-                } else if ident.starts_with("include_") {
-                    let include_name = &ident["include_".len()..];
-                    if includes.iter().any(|include| *include == include_name) {
-                        let include_source = self.load_shader_include(resources, include_name);
-                        self.preprocess(output, resources, &include_source, includes, version);
-                    }
                 } else {
                     panic!("unknown template variable: `{}`", ident);
                 }
