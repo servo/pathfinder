@@ -37,10 +37,17 @@ fn test_f32x4_accessors_and_mutators() {
 fn test_f32x4_basic_ops() {
     let a = F32x4::new(1.0, 3.0, 5.0, 7.0);
     let b = F32x4::new(2.0, 2.0, 6.0, 6.0);
+    assert_eq!(a.approx_recip(), F32x4::new(0.99975586, 0.33325195, 0.19995117, 0.14282227));
     assert_eq!(a.min(b), F32x4::new(1.0, 2.0, 5.0, 6.0));
     assert_eq!(a.max(b), F32x4::new(2.0, 3.0, 6.0, 7.0));
-    let c = F32x4::new(-1.0, 1.0, -20.0, 3.0);
-    assert_eq!(c.abs(), F32x4::new(1.0, 1.0, 20.0, 3.0));
+    let c = F32x4::new(-1.0, 1.3, -20.0, 3.6);
+    assert_eq!(c.clamp(a, b), F32x4::new(1.0, 2.0, 5.0, 6.0));
+    assert_eq!(c.abs(), F32x4::new(1.0, 1.3, 20.0, 3.6));
+    assert_eq!(c.floor(), F32x4::new(-1.0, 1.0, -20.0, 3.0));
+    assert_eq!(c.ceil(), F32x4::new(-1.0, 2.0, -20.0, 4.0));
+    assert_eq!(c.round(), F32x4::new(-1.0, 1.0, -20.0, 4.0));
+    let d = F32x4::new(1.0, 2.0, 3.0, 4.0);
+    assert_eq!(d.sqrt(), F32x4::new(1.0, 1.4142135, 1.7320508, 2.0));
 }
 
 #[test]
@@ -48,6 +55,8 @@ fn test_f32x4_packed_comparisons() {
     let a = F32x4::new(7.0, 3.0, 6.0, -2.0);
     let b = F32x4::new(10.0, 3.0, 5.0, -2.0);
     assert_eq!(a.packed_eq(b), U32x4::new(0, !0, 0, !0));
+    assert_eq!(a.packed_gt(b), U32x4::new(0, 0, !0, 0));
+    assert_eq!(a.packed_le(b), U32x4::new(!0, !0, 0, !0));
 }
 
 #[test]
@@ -361,6 +370,12 @@ fn test_f32x4_index_overloads() {
 fn test_f32x4_conversions() {
     let a = F32x4::new(48.0, -4.0, 200.0, 7.0);
     assert_eq!(a.to_i32x4(), I32x4::new(48, -4, 200, 7));
+}
+
+#[test]
+fn test_f32x4_debug() {
+    let a = F32x4::new(48.0, -4.0, 200.0, 7.0);
+    assert_eq!("<48, -4, 200, 7>", format!("{:?}", a));
 }
 
 // I32x4
