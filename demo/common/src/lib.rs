@@ -323,10 +323,13 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::SetEyeTransforms(new_eye_transforms) => {
                     if let Camera::ThreeD {
+                        ref mut scene_transform,
                         ref mut eye_transforms,
                         ..
                     } = self.camera
                     {
+		        // TODO: really we should lerp all the eye transforms to get the new scene transform
+                        *scene_transform = new_eye_transforms[0];
                         *eye_transforms = new_eye_transforms;
                     }
                 }
