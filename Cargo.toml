@@ -15,6 +15,7 @@ members = [
     "gl",
     "gpu",
     "lottie",
+    "metal",
     "renderer",
     "simd",
     "svg",

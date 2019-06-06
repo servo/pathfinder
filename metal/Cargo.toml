@@ -1,0 +1,15 @@
+[package]
+name = "metal"
+version = "0.1.0"
+authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+edition = "2018"
+
+[dependencies]
+metal = "0.14"
+objc = "0.2"
+
+[dependencies.pathfinder_geometry]
+path = "../geometry"
+
+[dependencies.pathfinder_gpu]
+path = "../gpu"

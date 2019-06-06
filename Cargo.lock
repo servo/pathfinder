@@ -1013,6 +1013,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "metal"
+version = "0.1.0"
+dependencies = [
+ "metal 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "objc 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_geometry 0.3.0",
+ "pathfinder_gpu 0.1.0",
+]
+
+[[package]]
+name = "metal"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
