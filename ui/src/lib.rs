@@ -123,15 +123,28 @@ impl<D> UIPresenter<D> where D: Device {
     }
 
 
-    pub fn draw_solid_rect(&self, device: &D, rect: RectI, color: ColorU) {
-        self.draw_rect(device, rect, color, true);
+    pub fn draw_solid_rect(&self,
+                           device: &D,
+                           command_queue: &D::CommandQueue,
+                           rect: RectI,
+                           color: ColorU) {
+        self.draw_rect(device, command_queue, rect, color, true);
     }
 
-    pub fn draw_rect_outline(&self, device: &D, rect: RectI, color: ColorU) {
-        self.draw_rect(device, rect, color, false);
+    pub fn draw_rect_outline(&self,
+                             device: &D,
+                             command_queue: &D::CommandQueue,
+                             rect: RectI,
+                             color: ColorU) {
+        self.draw_rect(device, command_queue, rect, color, false);
     }
 
-    fn draw_rect(&self, device: &D, rect: RectI, color: ColorU, filled: bool) {
+    fn draw_rect(&self,
+                 device: &D,
+                 command_queue: &D::CommandQueue,
+                 rect: RectI,
+                 color: ColorU,
+                 filled: bool) {
         let vertex_data = [
             DebugSolidVertex::new(rect.origin()),
             DebugSolidVertex::new(rect.upper_right()),
@@ -141,12 +154,14 @@ impl<D> UIPresenter<D> where D: Device {
 
         if filled {
             self.draw_solid_rects_with_vertex_data(device,
+                                                   command_queue,
                                                    &vertex_data,
                                                    &QUAD_INDICES,
                                                    color,
                                                    true);
         } else {
             self.draw_solid_rects_with_vertex_data(device,
+                                                   command_queue,
                                                    &vertex_data,
                                                    &RECT_LINE_INDICES,
                                                    color,
@@ -156,6 +171,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_solid_rects_with_vertex_data(&self,
                                          device: &D,
+                                         command_queue: &D::CommandQueue,
                                          vertex_data: &[DebugSolidVertex],
                                          index_data: &[u32],
                                          color: ColorU,
@@ -181,13 +197,18 @@ impl<D> UIPresenter<D> where D: Device {
                           color);
 
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
-        device.draw_elements(primitive, index_data.len() as u32, &RenderState {
+        device.draw_elements(command_queue, primitive, index_data.len() as u32, &RenderState {
             blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
             ..RenderState::default()
         });
     }
 
-    pub fn draw_text(&self, device: &D, string: &str, origin: Vector2I, invert: bool) {
+    pub fn draw_text(&self,
+                     device: &D,
+                     command_queue: &D::CommandQueue,
+                     string: &str,
+                     origin: Vector2I,
+                     invert: bool) {
         let mut next = origin;
         let char_count = string.chars().count();
         let mut vertex_data = Vec::with_capacity(char_count * 4);
@@ -218,6 +239,7 @@ impl<D> UIPresenter<D> where D: Device {
 
         let color = if invert { INVERTED_TEXT_COLOR } else { TEXT_COLOR };
         self.draw_texture_with_vertex_data(device,
+                                           command_queue,
                                            &vertex_data,
                                            &index_data,
                                            &self.font_texture,
@@ -226,6 +248,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_texture(&self,
                         device: &D,
+                        command_queue: &D::CommandQueue,
                         origin: Vector2I,
                         texture: &D::Texture,
                         color: ColorU) {
@@ -238,7 +261,12 @@ impl<D> UIPresenter<D> where D: Device {
             DebugTextureVertex::new(position_rect.lower_left(),  tex_coord_rect.lower_left()),
         ];
 
-        self.draw_texture_with_vertex_data(device, &vertex_data, &QUAD_INDICES, texture, color);
+        self.draw_texture_with_vertex_data(device,
+                                           command_queue,
+                                           &vertex_data,
+                                           &QUAD_INDICES,
+                                           texture,
+                                           color);
     }
 
     pub fn measure_text(&self, string: &str) -> i32 {
@@ -259,10 +287,18 @@ impl<D> UIPresenter<D> where D: Device {
         SEGMENT_SIZE * segment_count as i32 + (segment_count - 1) as i32
     }
 
-    pub fn draw_solid_rounded_rect(&self, device: &D, rect: RectI, color: ColorU) {
+    pub fn draw_solid_rounded_rect(&self,
+                                   device: &D,
+                                   command_queue: &D::CommandQueue,
+                                   rect: RectI,
+                                   color: ColorU) {
         let corner_texture = self.corner_texture(true);
         let corner_rects = CornerRects::new(device, rect, corner_texture);
-        self.draw_rounded_rect_corners(device, color, corner_texture, &corner_rects);
+        self.draw_rounded_rect_corners(device,
+                                       command_queue,
+                                       color,
+                                       corner_texture,
+                                       &corner_rects);
 
         let solid_rect_mid   = RectI::from_points(corner_rects.upper_left.upper_right(),
                                                     corner_rects.lower_right.lower_left());
@@ -293,16 +329,21 @@ impl<D> UIPresenter<D> where D: Device {
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 8));
 
         self.draw_solid_rects_with_vertex_data(device,
+                                               command_queue,
                                                &vertex_data,
                                                &index_data[0..18],
                                                color,
                                                true);
     }
 
-    pub fn draw_rounded_rect_outline(&self, device: &D, rect: RectI, color: ColorU) {
+    pub fn draw_rounded_rect_outline(&self,
+                                     device: &D,
+                                     command_queue: &D::CommandQueue,
+                                     rect: RectI,
+                                     color: ColorU) {
         let corner_texture = self.corner_texture(false);
         let corner_rects = CornerRects::new(device, rect, corner_texture);
-        self.draw_rounded_rect_corners(device, color, corner_texture, &corner_rects);
+        self.draw_rounded_rect_corners(device, command_queue, color, corner_texture, &corner_rects);
 
         let vertex_data = vec![
             DebugSolidVertex::new(corner_rects.upper_left.upper_right()),
@@ -316,18 +357,34 @@ impl<D> UIPresenter<D> where D: Device {
         ];
 
         let index_data = &OUTLINE_RECT_LINE_INDICES;
-        self.draw_solid_rects_with_vertex_data(device, &vertex_data, index_data, color, false);
+        self.draw_solid_rects_with_vertex_data(device,
+                                               command_queue,
+                                               &vertex_data,
+                                               index_data,
+                                               color,
+                                               false);
     }
 
     // TODO(pcwalton): `LineSegmentI32`.
-    fn draw_line(&self, device: &D, from: Vector2I, to: Vector2I, color: ColorU) {
+    fn draw_line(&self,
+                 device: &D,
+                 command_queue: &D::CommandQueue,
+                 from: Vector2I,
+                 to: Vector2I,
+                 color: ColorU) {
         let vertex_data = vec![DebugSolidVertex::new(from), DebugSolidVertex::new(to)];
-        self.draw_solid_rects_with_vertex_data(device, &vertex_data, &[0, 1], color, false);
+        self.draw_solid_rects_with_vertex_data(device,
+                                               command_queue,
+                                               &vertex_data,
+                                               &[0, 1],
+                                               color,
+                                               false);
 
     }
 
     fn draw_rounded_rect_corners(&self,
                                  device: &D,
+                                 command_queue: &D::CommandQueue,
                                  color: ColorU,
                                  texture: &D::Texture,
                                  corner_rects: &CornerRects) {
@@ -378,7 +435,12 @@ impl<D> UIPresenter<D> where D: Device {
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 8));
         index_data.extend(QUAD_INDICES.iter().map(|&index| index + 12));
 
-        self.draw_texture_with_vertex_data(device, &vertex_data, &index_data, texture, color);
+        self.draw_texture_with_vertex_data(device,
+                                           command_queue,
+                                           &vertex_data,
+                                           &index_data,
+                                           texture,
+                                           color);
     }
 
     fn corner_texture(&self, filled: bool) -> &D::Texture {
@@ -387,6 +449,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_texture_with_vertex_data(&self,
                                      device: &D,
+                                     command_queue: &D::CommandQueue,
                                      vertex_data: &[DebugTextureVertex],
                                      index_data: &[u32],
                                      texture: &D::Texture,
@@ -417,17 +480,25 @@ impl<D> UIPresenter<D> where D: Device {
                            &self.texture_program.texture_uniform,
                            UniformData::TextureUnit(0));
 
-        device.draw_elements(Primitive::Triangles, index_data.len() as u32, &RenderState {
-            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
-            ..RenderState::default()
-        });
+        device.draw_elements(command_queue,
+                             Primitive::Triangles,
+                             index_data.len() as u32,
+                             &RenderState {
+                                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                                ..RenderState::default()
+                             });
     }
 
-    pub fn draw_button(&mut self, device: &D, origin: Vector2I, texture: &D::Texture) -> bool {
+    pub fn draw_button(&mut self,
+                       device: &D,
+                       command_queue: &D::CommandQueue,
+                       origin: Vector2I,
+                       texture: &D::Texture) -> bool {
         let button_rect = RectI::new(origin, Vector2I::new(BUTTON_WIDTH, BUTTON_HEIGHT));
-        self.draw_solid_rounded_rect(device, button_rect, WINDOW_COLOR);
-        self.draw_rounded_rect_outline(device, button_rect, OUTLINE_COLOR);
+        self.draw_solid_rounded_rect(device, command_queue, button_rect, WINDOW_COLOR);
+        self.draw_rounded_rect_outline(device, command_queue, button_rect, OUTLINE_COLOR);
         self.draw_texture(device,
+                          command_queue,
                           origin + Vector2I::new(PADDING, PADDING),
                           texture,
                           BUTTON_ICON_COLOR);
@@ -436,11 +507,13 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_text_switch(&mut self,
                             device: &D,
+                            command_queue: &D::CommandQueue,
                             mut origin: Vector2I,
                             segment_labels: &[&str],
                             mut value: u8)
                             -> u8 {
         if let Some(new_value) = self.draw_segmented_control(device,
+                                                             command_queue,
                                                              origin,
                                                              Some(value),
                                                              segment_labels.len() as u8) {
@@ -452,6 +525,7 @@ impl<D> UIPresenter<D> where D: Device {
             let label_width = self.measure_text(segment_label);
             let offset = SEGMENT_SIZE / 2 - label_width / 2;
             self.draw_text(device,
+                           command_queue,
                            segment_label,
                            origin + Vector2I::new(offset, 0),
                            segment_index as u8 == value);
@@ -463,12 +537,14 @@ impl<D> UIPresenter<D> where D: Device {
 
     pub fn draw_image_segmented_control(&mut self,
                                         device: &D,
+                                        command_queue: &D::CommandQueue,
                                         mut origin: Vector2I,
                                         segment_textures: &[&D::Texture],
                                         mut value: Option<u8>)
                                         -> Option<u8> {
         let mut clicked_segment = None;
         if let Some(segment_index) = self.draw_segmented_control(device,
+                                                                 command_queue,
                                                                  origin,
                                                                  value,
                                                                  segment_textures.len() as u8) {
@@ -487,7 +563,7 @@ impl<D> UIPresenter<D> where D: Device {
                 TEXT_COLOR
             };
 
-            self.draw_texture(device, origin + offset, segment_texture, color);
+            self.draw_texture(device, command_queue, origin + offset, segment_texture, color);
             origin += Vector2I::new(SEGMENT_SIZE + 1, 0);
         }
 
@@ -496,6 +572,7 @@ impl<D> UIPresenter<D> where D: Device {
 
     fn draw_segmented_control(&mut self,
                               device: &D,
+                              command_queue: &D::CommandQueue,
                               origin: Vector2I,
                               mut value: Option<u8>,
                               segment_count: u8)
@@ -512,16 +589,17 @@ impl<D> UIPresenter<D> where D: Device {
             clicked_segment = Some(segment);
         }
 
-        self.draw_solid_rounded_rect(device, widget_rect, WINDOW_COLOR);
-        self.draw_rounded_rect_outline(device, widget_rect, OUTLINE_COLOR);
+        self.draw_solid_rounded_rect(device, command_queue, widget_rect, WINDOW_COLOR);
+        self.draw_rounded_rect_outline(device, command_queue, widget_rect, OUTLINE_COLOR);
 
         if let Some(value) = value {
             let highlight_size = Vector2I::new(SEGMENT_SIZE, BUTTON_HEIGHT);
             let x_offset = value as i32 * SEGMENT_SIZE + (value as i32 - 1);
             self.draw_solid_rounded_rect(device,
-                                        RectI::new(origin + Vector2I::new(x_offset, 0),
+                                         command_queue,
+                                         RectI::new(origin + Vector2I::new(x_offset, 0),
                                                     highlight_size),
-                                        TEXT_COLOR);
+                                         TEXT_COLOR);
         }
 
         let mut segment_origin = origin + Vector2I::new(SEGMENT_SIZE + 1, 0);
@@ -531,9 +609,10 @@ impl<D> UIPresenter<D> where D: Device {
                 Some(value) if value == prev_segment_index || value == next_segment_index => {}
                 _ => {
                     self.draw_line(device,
-                                segment_origin,
-                                segment_origin + Vector2I::new(0, BUTTON_HEIGHT),
-                                TEXT_COLOR);
+                                   command_queue,
+                                   segment_origin,
+                                   segment_origin + Vector2I::new(0, BUTTON_HEIGHT),
+                                   TEXT_COLOR);
                 }
             }
             segment_origin = segment_origin + Vector2I::new(SEGMENT_SIZE + 1, 0);
@@ -542,7 +621,11 @@ impl<D> UIPresenter<D> where D: Device {
         clicked_segment
     }
 
-    pub fn draw_tooltip(&self, device: &D, string: &str, rect: RectI) {
+    pub fn draw_tooltip(&self,
+                        device: &D,
+                        command_queue: &D::CommandQueue,
+                        string: &str,
+                        rect: RectI) {
         if !rect.to_f32().contains_point(self.mouse_position) {
             return;
         }
@@ -551,8 +634,12 @@ impl<D> UIPresenter<D> where D: Device {
         let window_size = Vector2I::new(text_size + PADDING * 2, TOOLTIP_HEIGHT);
         let origin = rect.origin() - Vector2I::new(0, window_size.y() + PADDING);
 
-        self.draw_solid_rounded_rect(device, RectI::new(origin, window_size), WINDOW_COLOR);
+        self.draw_solid_rounded_rect(device,
+                                     command_queue,
+                                     RectI::new(origin, window_size),
+                                     WINDOW_COLOR);
         self.draw_text(device,
+                       command_queue,
                        string,
                        origin + Vector2I::new(PADDING, PADDING + FONT_ASCENT),
                        false);

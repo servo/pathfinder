@@ -155,6 +155,7 @@ impl GLDevice {
 
 impl Device for GLDevice {
     type Buffer = GLBuffer;
+    type CommandQueue = GLCommandQueue;
     type Framebuffer = GLFramebuffer;
     type Program = GLProgram;
     type Shader = GLShader;
@@ -498,7 +499,17 @@ impl Device for GLDevice {
         pixels
     }
 
-    fn clear(&self, params: &ClearParams) {
+    fn create_command_queue(&self) -> GLCommandQueue {
+        GLCommandQueue
+    }
+
+    fn submit_command_queue(&self, _: GLCommandQueue) {
+        unsafe {
+            gl::Flush();
+        }
+    }
+
+    fn clear(&self, _: &GLCommandQueue, params: &ClearParams) {
         unsafe {
             if let Some(rect) = params.rect {
                 let (origin, size) = (rect.origin(), rect.size());
@@ -532,7 +543,11 @@ impl Device for GLDevice {
         }
     }
 
-    fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState) {
+    fn draw_arrays(&self,
+                   _: &GLCommandQueue,
+                   primitive: Primitive,
+                   index_count: u32,
+                   render_state: &RenderState) {
         self.set_render_state(render_state);
         unsafe {
             gl::DrawArrays(primitive.to_gl_primitive(), 0, index_count as GLsizei); ck();
@@ -540,7 +555,11 @@ impl Device for GLDevice {
         self.reset_render_state(render_state);
     }
 
-    fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState) {
+    fn draw_elements(&self,
+                     _: &GLCommandQueue,
+                     primitive: Primitive,
+                     index_count: u32,
+                     render_state: &RenderState) {
         self.set_render_state(render_state);
         unsafe {
             gl::DrawElements(primitive.to_gl_primitive(),
@@ -552,6 +571,7 @@ impl Device for GLDevice {
     }
 
     fn draw_elements_instanced(&self,
+                               _: &GLCommandQueue,
                                primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
@@ -759,6 +779,8 @@ impl Drop for GLBuffer {
         }
     }
 }
+
+pub struct GLCommandQueue;
 
 #[derive(Debug)]
 pub struct GLUniform {

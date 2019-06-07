@@ -442,9 +442,11 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     pub fn finish_drawing_frame(&mut self) {
+        let command_queue = self.renderer.device.create_command_queue();
+
         self.maybe_take_screenshot();
         self.update_stats();
-        self.draw_debug_ui();
+        self.draw_debug_ui(&command_queue);
 
         let frame = self.current_frame.take().unwrap();
         for ui_event in &frame.ui_events {
@@ -463,6 +465,7 @@ impl<W> DemoApp<W> where W: Window {
         if self.options.ui == UIVisibility::All {
             self.ui_presenter.update(
                 &self.renderer.device,
+                &command_queue,
                 &mut self.window,
                 &mut self.renderer.debug_ui_presenter,
                 &mut ui_action,
@@ -471,6 +474,8 @@ impl<W> DemoApp<W> where W: Window {
         }
 
         self.handle_ui_events(frame, &mut ui_action);
+
+        self.renderer.device.submit_command_queue(command_queue);
 
         self.window.present();
         self.frame_counter += 1;

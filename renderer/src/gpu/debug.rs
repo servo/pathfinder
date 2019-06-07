@@ -75,13 +75,16 @@ where
         }
     }
 
-    pub fn draw(&self, device: &D) {
+    pub fn draw(&self, device: &D, command_queue: &D::CommandQueue) {
         let mean_cpu_sample = self.cpu_samples.mean();
-        self.draw_stats_window(device, &mean_cpu_sample);
-        self.draw_performance_window(device, &mean_cpu_sample);
+        self.draw_stats_window(device, command_queue, &mean_cpu_sample);
+        self.draw_performance_window(device, command_queue, &mean_cpu_sample);
     }
 
-    fn draw_stats_window(&self, device: &D, mean_cpu_sample: &CPUSample) {
+    fn draw_stats_window(&self,
+                         device: &D,
+                         command_queue: &D::CommandQueue,
+                         mean_cpu_sample: &CPUSample) {
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
         let window_rect = RectI::new(
@@ -92,36 +95,46 @@ where
             Vector2I::new(STATS_WINDOW_WIDTH, STATS_WINDOW_HEIGHT),
         );
 
-        self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
+        self.ui_presenter.draw_solid_rounded_rect(device,
+                                                  command_queue,
+                                                  window_rect,
+                                                  WINDOW_COLOR);
 
         let origin = window_rect.origin() + Vector2I::new(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
+            command_queue,
             &format!("Paths: {}", mean_cpu_sample.stats.path_count),
             origin,
             false,
         );
         self.ui_presenter.draw_text(
             device,
+            command_queue,
             &format!("Solid Tiles: {}", mean_cpu_sample.stats.solid_tile_count),
             origin + Vector2I::new(0, LINE_HEIGHT * 1),
             false,
         );
         self.ui_presenter.draw_text(
             device,
+            command_queue,
             &format!("Alpha Tiles: {}", mean_cpu_sample.stats.alpha_tile_count),
             origin + Vector2I::new(0, LINE_HEIGHT * 2),
             false,
         );
         self.ui_presenter.draw_text(
             device,
+            command_queue,
             &format!("Fills: {}", mean_cpu_sample.stats.fill_count),
             origin + Vector2I::new(0, LINE_HEIGHT * 3),
             false,
         );
     }
 
-    fn draw_performance_window(&self, device: &D, mean_cpu_sample: &CPUSample) {
+    fn draw_performance_window(&self,
+                               device: &D,
+                               command_queue: &D::CommandQueue,
+                               mean_cpu_sample: &CPUSample) {
         let framebuffer_size = self.ui_presenter.framebuffer_size();
         let bottom = framebuffer_size.y() - PADDING;
         let window_rect = RectI::new(
@@ -132,11 +145,15 @@ where
             Vector2I::new(PERFORMANCE_WINDOW_WIDTH, PERFORMANCE_WINDOW_HEIGHT),
         );
 
-        self.ui_presenter.draw_solid_rounded_rect(device, window_rect, WINDOW_COLOR);
+        self.ui_presenter.draw_solid_rounded_rect(device,
+                                                  command_queue,
+                                                  window_rect,
+                                                  WINDOW_COLOR);
 
         let origin = window_rect.origin() + Vector2I::new(PADDING, PADDING + FONT_ASCENT);
         self.ui_presenter.draw_text(
             device,
+            command_queue,
             &format!(
                 "Stage 0 CPU: {:.3} ms",
                 duration_to_ms(mean_cpu_sample.elapsed)
@@ -148,6 +165,7 @@ where
         let mean_gpu_sample = self.gpu_samples.mean();
         self.ui_presenter.draw_text(
             device,
+            command_queue,
             &format!(
                 "Stage 0 GPU: {:.3} ms",
                 duration_to_ms(mean_gpu_sample.time.stage_0)
@@ -157,6 +175,7 @@ where
         );
         self.ui_presenter.draw_text(
             device,
+            command_queue,
             &format!(
                 "Stage 1 GPU: {:.3} ms",
                 duration_to_ms(mean_gpu_sample.time.stage_1)
@@ -170,6 +189,7 @@ where
             duration_to_ms(mean_gpu_sample.time.stage_1);
         self.ui_presenter.draw_text(
             device,
+            command_queue,
             &format!("Wallclock: {:.3} ms", wallclock_time),
             origin + Vector2I::new(0, LINE_HEIGHT * 3),
             false,

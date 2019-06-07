@@ -23,6 +23,7 @@ pub mod resources;
 
 pub trait Device {
     type Buffer;
+    type CommandQueue;
     type Framebuffer;
     type Program;
     type Shader;
@@ -65,10 +66,21 @@ pub trait Device {
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
     fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
     fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8>;
-    fn clear(&self, params: &ClearParams);
-    fn draw_arrays(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
-    fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState);
+    fn create_command_queue(&self) -> Self::CommandQueue;
+    fn submit_command_queue(&self, command_queue: Self::CommandQueue);
+    fn clear(&self, command_queue: &Self::CommandQueue, params: &ClearParams);
+    fn draw_arrays(&self,
+                   command_queue: &Self::CommandQueue,
+                   primitive: Primitive,
+                   index_count: u32,
+                   render_state: &RenderState);
+    fn draw_elements(&self,
+                     command_queue: &Self::CommandQueue,
+                     primitive: Primitive,
+                     index_count: u32,
+                     render_state: &RenderState);
     fn draw_elements_instanced(&self,
+                               command_queue: &Self::CommandQueue,
                                primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,

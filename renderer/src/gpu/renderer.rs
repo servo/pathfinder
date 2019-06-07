@@ -51,6 +51,9 @@ where
     // Device
     pub device: D,
 
+    // Command queue
+    pub command_queue: Option<D::CommandQueue>,
+
     // Core data
     dest_framebuffer: DestFramebuffer<D>,
     fill_program: FillProgram<D>,
@@ -193,6 +196,8 @@ where
         let renderer = Renderer {
             device,
 
+            command_queue: None,
+
             dest_framebuffer,
             fill_program,
             solid_monochrome_tile_program,
@@ -241,6 +246,8 @@ where
     }
 
     pub fn begin_scene(&mut self) {
+        self.command_queue = Some(self.device.create_command_queue());
+
         self.init_postprocessing_framebuffer();
 
         self.mask_framebuffer_cleared = false;
@@ -284,11 +291,13 @@ where
 
         self.end_composite_timer_query();
         self.pending_timers.push_back(mem::replace(&mut self.current_timers, RenderTimers::new()));
+
+        self.device.submit_command_queue(mem::replace(&mut self.command_queue, None).unwrap());
     }
 
-    pub fn draw_debug_ui(&self) {
+    pub fn draw_debug_ui(&self, command_queue: &D::CommandQueue) {
         self.bind_dest_framebuffer();
-        self.debug_ui_presenter.draw(&self.device);
+        self.debug_ui_presenter.draw(&self.device, command_queue);
     }
 
     pub fn shift_rendering_time(&mut self) -> Option<RenderTime> {
@@ -400,7 +409,7 @@ where
         self.device.bind_framebuffer(&self.mask_framebuffer);
 
         // TODO(pcwalton): Only clear the appropriate portion?
-        self.device.clear(&ClearParams {
+        self.device.clear(self.command_queue.as_ref().unwrap(), &ClearParams {
             color: Some(ColorF::transparent_black()),
             ..ClearParams::default()
         });
@@ -475,6 +484,7 @@ where
         };
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(
+            self.command_queue.as_ref().unwrap(),
             Primitive::Triangles,
             6,
             self.buffered_fills.len() as u32,
@@ -560,7 +570,11 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device.draw_elements_instanced(Primitive::Triangles, 6, count, &render_state);
+        self.device.draw_elements_instanced(self.command_queue.as_ref().unwrap(),
+                                            Primitive::Triangles,
+                                            6,
+                                            count,
+                                            &render_state);
     }
 
     fn draw_solid_tiles(&mut self, count: u32) {
@@ -628,7 +642,11 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device.draw_elements_instanced(Primitive::Triangles, 6, count, &render_state);
+        self.device.draw_elements_instanced(self.command_queue.as_ref().unwrap(),
+                                            Primitive::Triangles,
+                                            6,
+                                            count,
+                                            &render_state);
     }
 
     fn postprocess(&mut self) {
@@ -711,7 +729,10 @@ where
             &self.postprocess_program.gamma_correction_enabled_uniform,
             UniformData::Int(gamma_correction_enabled as i32),
         );
-        self.device.draw_arrays(Primitive::Triangles, 4, &RenderState::default());
+        self.device.draw_arrays(self.command_queue.as_ref().unwrap(),
+                                Primitive::Triangles,
+                                4,
+                                &RenderState::default());
     }
 
     fn solid_tile_program(&self) -> &SolidTileProgram<D> {
@@ -768,6 +789,7 @@ where
         self.device.bind_vertex_array(&self.stencil_vertex_array.vertex_array);
         self.device.use_program(&self.stencil_program.program);
         self.device.draw_elements(
+            self.command_queue.as_ref().unwrap(),
             Primitive::Triangles,
             indices.len() as u32,
             &RenderState {
@@ -790,6 +812,7 @@ where
 
     pub fn reproject_texture(
         &self,
+        command_queue: &D::CommandQueue,
         texture: &D::Texture,
         old_transform: &Transform3DF,
         new_transform: &Transform3DF,
@@ -815,6 +838,7 @@ where
             UniformData::TextureUnit(0),
         );
         self.device.draw_elements(
+            command_queue,
             Primitive::Triangles,
             6,
             &RenderState {
@@ -869,7 +893,7 @@ where
 
         self.device
             .bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
-        self.device.clear(&ClearParams {
+        self.device.clear(self.command_queue.as_ref().unwrap(), &ClearParams {
             color: Some(ColorF::transparent_black()),
             ..ClearParams::default()
         });

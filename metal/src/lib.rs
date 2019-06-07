@@ -14,14 +14,17 @@
 extern crate objc;
 
 use metal::{BufferRef, CompileOptions, CoreAnimationLayerRef, DeviceRef, FunctionRef, LibraryRef};
-use metal::{MTLOrigin, MTLPixelFormat, MTLRegion, MTLSize, MTLStorageMode, MTLTextureType};
-use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, TextureDescriptor};
-use metal::{TextureRef, VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
+use metal::{MTLOrigin, MTLPixelFormat, MTLRegion, MTLResourceOptions, MTLSize, MTLStorageMode};
+use metal::{MTLTextureType, MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction};
+use metal::{TextureDescriptor, TextureRef, VertexAttributeRef};
+use metal::{VertexDescriptor, VertexDescriptorRef};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{Device, ShaderKind, TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, ShaderKind};
+use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use std::cell::RefCell;
+use std::mem;
 use std::time::Duration;
 
 const FIRST_VERTEX_BUFFER_INDEX: u32 = 16;
@@ -40,6 +43,10 @@ pub struct MetalProgram {
 struct UniformBinding {
     name: MetalUniform,
     data: UniformData,
+}
+
+struct MetalBuffer {
+    buffer: RefCell<Option<BufferRef>>,
 }
 
 impl MetalDevice {
@@ -70,7 +77,7 @@ pub struct MetalVertexArray {
 }
 
 impl Device for MetalDevice {
-    type Buffer = BufferRef;
+    type Buffer = MetalBuffer;
     type Framebuffer = MetalFramebuffer;
     type Program = MetalProgram;
     type Shader = MetalShader;
@@ -222,6 +229,37 @@ impl Device for MetalDevice {
 
     fn create_framebuffer(&self, texture: TextureRef) -> MetalFramebuffer {
         MetalFramebuffer(texture)
+    }
+
+    fn create_buffer(&self) -> MetalBuffer {
+        MetalBuffer { buffer: RefCell::new(None) }
+    }
+
+    fn allocate_buffer<T>(&self,
+                          buffer: &MetalBuffer,
+                          data: BufferData<T>,
+                          target: BufferTarget,
+                          mode: BufferUploadMode) {
+        let mut options = match mode {
+            BufferUploadMode::Static => MTLResourceOptions::CPUCacheModeWriteCombined,
+            BufferUploadMode::Dynamic => MTLResourceOptions::CPUCacheModeDefaultCache,
+        };
+        options |= MTLResourceOptions::StorageModeManaged;
+
+        match data {
+            BufferData::Uninitialized(size) => {
+                let size = (size * mem::size_of::<T>()) as u64;
+                let new_buffer = self.device.new_buffer(size, options);
+                *buffer.buffer.borrow_mut() = Some(new_buffer);
+            }
+            BufferData::Memory(slice) => {
+                let size = (slice.len() * mem::size_of::<T>()) as u64;
+                let new_buffer = self.device.new_buffer_with_data(slice.as_ptr() as *const _,
+                                                                  size,
+                                                                  options);
+                *buffer.buffer.borrow_mut() = Some(new_buffer);
+            }
+        }
     }
 
     fn framebuffer_texture<'f>(&self, framebuffer: &'f MetalFramebuffer) -> &'f TextureRef {
