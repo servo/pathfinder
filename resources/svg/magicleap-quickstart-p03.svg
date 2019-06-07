@@ -36,8 +36,8 @@
      guidetolerance="10"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:window-width="1056"
-     inkscape:window-height="873"
+     inkscape:window-width="2049"
+     inkscape:window-height="838"
      id="namedview30747"
      showgrid="false"
      inkscape:zoom="0.5"
@@ -446,11 +446,11 @@
     </g>
   </defs>
   <rect
-     style="fill:#ffffff;stroke-width:0.75"
+     style="fill:#dbdbe3;stroke-width:0.77035707"
      id="rect34801"
-     width="785.19531"
+     width="828.39844"
      height="580.58203"
-     x="21"
+     x="0.296875"
      y="0" />
   <path
      inkscape:connector-curvature="0"
