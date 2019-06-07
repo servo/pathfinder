@@ -126,22 +126,22 @@ graphics_context_t::~graphics_context_t() {
 }
 
 // Callbacks
-static void onStop(void* app)
+static void onStop(void* app_handle)
 {
   ML_LOG(Info, "%s: On stop called.", application_name);
 }
 
-static void onPause(void* app)
+static void onPause(void* app_handle)
 {
   ML_LOG(Info, "%s: On pause called.", application_name);
 }
 
-static void onResume(void* app)
+static void onResume(void* app_handle)
 {
   ML_LOG(Info, "%s: On resume called.", application_name);
 }
 
-static void onNewInitArg(void* app)
+static void onNewInitArg(void* app_handle)
 {
   ML_LOG(Info, "%s: On new init arg called.", application_name);
 
@@ -188,6 +188,16 @@ static void onNewInitArg(void* app)
   }
 
   // Tell pathfinder to load the file
+  if (!app_handle) {
+    ML_LOG(Error, "%s: Init arg set before app is initialized.", application_name);
+    return;
+  }
+  void* app = *((void**)app_handle);
+  if (!app) {
+    ML_LOG(Error, "%s: Init arg set before app is initialized.", application_name);
+    return;
+  }
+
   magicleap_pathfinder_demo_load(app, file_name);
   MLLifecycleFreeInitArgList(&arg_list);
 }
@@ -201,6 +211,21 @@ extern "C" void logMessage(MLLogLevel lvl, char* msg) {
 int main() {
   // set up host-specific graphics surface
   graphics_context_t graphics_context;
+
+  // the app will go here once it's initialized
+  void* app = nullptr;
+
+  // let system know our app has started
+  MLLifecycleCallbacks lifecycle_callbacks = {};
+  lifecycle_callbacks.on_stop = onStop;
+  lifecycle_callbacks.on_pause = onPause;
+  lifecycle_callbacks.on_resume = onResume;
+  lifecycle_callbacks.on_new_initarg = onNewInitArg;
+
+  if (MLResult_Ok != MLLifecycleInit(&lifecycle_callbacks, &app)) {
+    ML_LOG(Error, "%s: Failed to initialize lifecycle.", application_name);
+    return -1;
+  }
 
   // Check privileges
   if (MLResult_Ok != MLPrivilegesStartup()) {
@@ -229,25 +254,13 @@ int main() {
 
   // Initialize pathfinder
   ML_LOG(Info, "%s: Initializing demo.", application_name);
-  void* app = magicleap_pathfinder_demo_init(graphics_context.egl_display, graphics_context.egl_context);
+  app = magicleap_pathfinder_demo_init(graphics_context.egl_display, graphics_context.egl_context);
   if (!app) {
     ML_LOG(Error, "%s: Failed to initialize demo.", application_name);
   }
 
-  // let system know our app has started
-  MLLifecycleCallbacks lifecycle_callbacks = {};
-  lifecycle_callbacks.on_stop = onStop;
-  lifecycle_callbacks.on_pause = onPause;
-  lifecycle_callbacks.on_resume = onResume;
-  lifecycle_callbacks.on_new_initarg = onNewInitArg;
-
-  if (MLResult_Ok != MLLifecycleInit(&lifecycle_callbacks, app)) {
-    ML_LOG(Error, "%s: Failed to initialize lifecycle.", application_name);
-    return -1;
-  }
-
   // Get the initial argument if there is one.
-  onNewInitArg(app);
+  onNewInitArg(&app);
 
   // Run the demo!
   ML_LOG(Info, "%s: Begin demo.", application_name);
