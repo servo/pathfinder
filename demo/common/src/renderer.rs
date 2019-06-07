@@ -15,7 +15,7 @@ use crate::window::{View, Window};
 use crate::{BackgroundColor, DemoApp, UIVisibility};
 use image::ColorType;
 use pathfinder_geometry::color::{ColorF, ColorU};
-use pathfinder_gl::GLCommandQueue;
+use pathfinder_gl::GLCommandBuffer;
 use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderState};
 use pathfinder_gpu::{TextureFormat, UniformData};
 use pathfinder_geometry::basic::transform3d::Transform3DF;
@@ -93,26 +93,26 @@ impl<W> DemoApp<W> where W: Window {
             self.background_color().to_f32()
         };
 
-        let command_queue = self.renderer.device.create_command_queue();
-        self.renderer.device.clear(&command_queue, &ClearParams {
+        let command_buffer = self.renderer.device.create_command_buffer();
+        self.renderer.device.clear(&command_buffer, &ClearParams {
             color: Some(clear_color),
             depth: Some(1.0),
             stencil: Some(0),
             ..ClearParams::default()
         });
-        self.renderer.device.submit_command_queue(command_queue);
+        self.renderer.device.submit_command_buffer(command_buffer);
 
         scene_count
     }
 
     pub fn draw_scene(&mut self) {
-        let command_queue = self.renderer.device.create_command_queue();
+        let command_buffer = self.renderer.device.create_command_buffer();
 
         let view = self.ui_model.mode.view(0);
         self.window.make_current(view);
 
         if self.camera.mode() != Mode::VR {
-            self.draw_environment(&command_queue);
+            self.draw_environment(&command_buffer);
         }
 
         self.render_vector_scene();
@@ -130,7 +130,7 @@ impl<W> DemoApp<W> where W: Window {
             }
         }
 
-        self.renderer.device.submit_command_queue(command_queue);
+        self.renderer.device.submit_command_buffer(command_buffer);
     }
 
     pub fn composite_scene(&mut self, render_scene_index: u32) {
@@ -157,7 +157,7 @@ impl<W> DemoApp<W> where W: Window {
         let viewport = self.window.viewport(View::Stereo(render_scene_index));
         self.window.make_current(View::Stereo(render_scene_index));
 
-        let command_queue = self.renderer.device.create_command_queue();
+        let command_buffer = self.renderer.device.create_command_buffer();
 
         self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
             viewport,
@@ -165,14 +165,14 @@ impl<W> DemoApp<W> where W: Window {
         });
 
         self.renderer.bind_draw_framebuffer();
-        self.renderer.device.clear(&command_queue, &ClearParams {
+        self.renderer.device.clear(&command_buffer, &ClearParams {
             color: Some(self.background_color().to_f32()),
             depth: Some(1.0),
             stencil: Some(0),
             rect: Some(viewport),
         });
 
-        self.draw_environment(&command_queue);
+        self.draw_environment(&command_buffer);
 
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
@@ -207,7 +207,7 @@ impl<W> DemoApp<W> where W: Window {
         debug!("---");
 
         self.renderer.reproject_texture(
-            &command_queue,
+            &command_buffer,
             scene_texture,
             &scene_transform_matrix.transform,
             &eye_transform_matrix.transform,
@@ -215,7 +215,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     // Draws the ground, if applicable.
-    fn draw_environment(&self, command_queue: &GLCommandQueue) {
+    fn draw_environment(&self, command_buffer: &GLCommandBuffer) {
         let frame = &self.current_frame.as_ref().unwrap();
 
         let perspective = match frame.transform {
@@ -263,7 +263,7 @@ impl<W> DemoApp<W> where W: Window {
                            &self.ground_program.gridline_count_uniform,
                            UniformData::Int(GRIDLINE_COUNT));
         device.draw_elements(
-            command_queue,
+            command_buffer,
             Primitive::Triangles,
             6,
             &RenderState {
@@ -332,7 +332,7 @@ impl<W> DemoApp<W> where W: Window {
         .unwrap();
     }
 
-    pub fn draw_debug_ui(&mut self, command_queue: &GLCommandQueue) {
+    pub fn draw_debug_ui(&mut self, command_buffer: &GLCommandBuffer) {
         if self.options.ui == UIVisibility::None {
             return;
         }
@@ -344,6 +344,6 @@ impl<W> DemoApp<W> where W: Window {
             window_size: self.window_size.device_size(),
         });
 
-        self.renderer.draw_debug_ui(command_queue);
+        self.renderer.draw_debug_ui(command_buffer);
     }
 }

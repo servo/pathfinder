@@ -155,7 +155,7 @@ impl GLDevice {
 
 impl Device for GLDevice {
     type Buffer = GLBuffer;
-    type CommandQueue = GLCommandQueue;
+    type CommandBuffer = GLCommandBuffer;
     type Framebuffer = GLFramebuffer;
     type Program = GLProgram;
     type Shader = GLShader;
@@ -499,17 +499,17 @@ impl Device for GLDevice {
         pixels
     }
 
-    fn create_command_queue(&self) -> GLCommandQueue {
-        GLCommandQueue
+    fn create_command_buffer(&self) -> GLCommandBuffer {
+        GLCommandBuffer
     }
 
-    fn submit_command_queue(&self, _: GLCommandQueue) {
+    fn submit_command_buffer(&self, _: GLCommandBuffer) {
         unsafe {
             gl::Flush();
         }
     }
 
-    fn clear(&self, _: &GLCommandQueue, params: &ClearParams) {
+    fn clear(&self, _: &GLCommandBuffer, params: &ClearParams) {
         unsafe {
             if let Some(rect) = params.rect {
                 let (origin, size) = (rect.origin(), rect.size());
@@ -544,7 +544,7 @@ impl Device for GLDevice {
     }
 
     fn draw_arrays(&self,
-                   _: &GLCommandQueue,
+                   _: &GLCommandBuffer,
                    primitive: Primitive,
                    index_count: u32,
                    render_state: &RenderState) {
@@ -556,7 +556,7 @@ impl Device for GLDevice {
     }
 
     fn draw_elements(&self,
-                     _: &GLCommandQueue,
+                     _: &GLCommandBuffer,
                      primitive: Primitive,
                      index_count: u32,
                      render_state: &RenderState) {
@@ -571,7 +571,7 @@ impl Device for GLDevice {
     }
 
     fn draw_elements_instanced(&self,
-                               _: &GLCommandQueue,
+                               _: &GLCommandBuffer,
                                primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
@@ -780,7 +780,7 @@ impl Drop for GLBuffer {
     }
 }
 
-pub struct GLCommandQueue;
+pub struct GLCommandBuffer;
 
 #[derive(Debug)]
 pub struct GLUniform {

@@ -62,7 +62,7 @@ fn main() {
     color_attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 1.0, 1.0));
     color_attachment.set_load_action(MTLLoadAction::Clear);
     color_attachment.set_store_action(MTLStoreAction::Store);
-    let queue = device.new_command_queue();
+    let queue = device.new_command_buffer();
     let command_buffer = queue.new_command_buffer();
     let encoder = command_buffer.new_render_command_encoder(render_pass_descriptor);
     encoder.end_encoding();

@@ -78,6 +78,7 @@ pub struct MetalVertexArray {
 
 impl Device for MetalDevice {
     type Buffer = MetalBuffer;
+    type CommandBuffer = 
     type Framebuffer = MetalFramebuffer;
     type Program = MetalProgram;
     type Shader = MetalShader;

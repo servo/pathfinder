@@ -52,7 +52,7 @@ where
     pub device: D,
 
     // Command queue
-    pub command_queue: Option<D::CommandQueue>,
+    pub command_buffer: Option<D::CommandBuffer>,
 
     // Core data
     dest_framebuffer: DestFramebuffer<D>,
@@ -196,7 +196,7 @@ where
         let renderer = Renderer {
             device,
 
-            command_queue: None,
+            command_buffer: None,
 
             dest_framebuffer,
             fill_program,
@@ -246,7 +246,7 @@ where
     }
 
     pub fn begin_scene(&mut self) {
-        self.command_queue = Some(self.device.create_command_queue());
+        self.command_buffer = Some(self.device.create_command_buffer());
 
         self.init_postprocessing_framebuffer();
 
@@ -292,12 +292,12 @@ where
         self.end_composite_timer_query();
         self.pending_timers.push_back(mem::replace(&mut self.current_timers, RenderTimers::new()));
 
-        self.device.submit_command_queue(mem::replace(&mut self.command_queue, None).unwrap());
+        self.device.submit_command_buffer(mem::replace(&mut self.command_buffer, None).unwrap());
     }
 
-    pub fn draw_debug_ui(&self, command_queue: &D::CommandQueue) {
+    pub fn draw_debug_ui(&self, command_buffer: &D::CommandBuffer) {
         self.bind_dest_framebuffer();
-        self.debug_ui_presenter.draw(&self.device, command_queue);
+        self.debug_ui_presenter.draw(&self.device, command_buffer);
     }
 
     pub fn shift_rendering_time(&mut self) -> Option<RenderTime> {
@@ -409,7 +409,7 @@ where
         self.device.bind_framebuffer(&self.mask_framebuffer);
 
         // TODO(pcwalton): Only clear the appropriate portion?
-        self.device.clear(self.command_queue.as_ref().unwrap(), &ClearParams {
+        self.device.clear(self.command_buffer.as_ref().unwrap(), &ClearParams {
             color: Some(ColorF::transparent_black()),
             ..ClearParams::default()
         });
@@ -484,7 +484,7 @@ where
         };
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(
-            self.command_queue.as_ref().unwrap(),
+            self.command_buffer.as_ref().unwrap(),
             Primitive::Triangles,
             6,
             self.buffered_fills.len() as u32,
@@ -570,7 +570,7 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device.draw_elements_instanced(self.command_queue.as_ref().unwrap(),
+        self.device.draw_elements_instanced(self.command_buffer.as_ref().unwrap(),
                                             Primitive::Triangles,
                                             6,
                                             count,
@@ -642,7 +642,7 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
-        self.device.draw_elements_instanced(self.command_queue.as_ref().unwrap(),
+        self.device.draw_elements_instanced(self.command_buffer.as_ref().unwrap(),
                                             Primitive::Triangles,
                                             6,
                                             count,
@@ -729,7 +729,7 @@ where
             &self.postprocess_program.gamma_correction_enabled_uniform,
             UniformData::Int(gamma_correction_enabled as i32),
         );
-        self.device.draw_arrays(self.command_queue.as_ref().unwrap(),
+        self.device.draw_arrays(self.command_buffer.as_ref().unwrap(),
                                 Primitive::Triangles,
                                 4,
                                 &RenderState::default());
@@ -789,7 +789,7 @@ where
         self.device.bind_vertex_array(&self.stencil_vertex_array.vertex_array);
         self.device.use_program(&self.stencil_program.program);
         self.device.draw_elements(
-            self.command_queue.as_ref().unwrap(),
+            self.command_buffer.as_ref().unwrap(),
             Primitive::Triangles,
             indices.len() as u32,
             &RenderState {
@@ -812,7 +812,7 @@ where
 
     pub fn reproject_texture(
         &self,
-        command_queue: &D::CommandQueue,
+        command_buffer: &D::CommandBuffer,
         texture: &D::Texture,
         old_transform: &Transform3DF,
         new_transform: &Transform3DF,
@@ -838,7 +838,7 @@ where
             UniformData::TextureUnit(0),
         );
         self.device.draw_elements(
-            command_queue,
+            command_buffer,
             Primitive::Triangles,
             6,
             &RenderState {
@@ -893,7 +893,7 @@ where
 
         self.device
             .bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
-        self.device.clear(self.command_queue.as_ref().unwrap(), &ClearParams {
+        self.device.clear(self.command_buffer.as_ref().unwrap(), &ClearParams {
             color: Some(ColorF::transparent_black()),
             ..ClearParams::default()
         });
