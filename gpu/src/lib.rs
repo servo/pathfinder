@@ -47,8 +47,11 @@ pub trait Device {
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Self::VertexAttr;
     fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
     fn use_program(&self, program: &Self::Program);
-    fn configure_vertex_attr(&self, attr: &Self::VertexAttr, descriptor: &VertexAttrDescriptor);
-    fn set_uniform(&self, uniform: &Self::Uniform, data: UniformData);
+    fn configure_vertex_attr(&self,
+                             vertex_array: &Self::VertexArray,
+                             attr: &Self::VertexAttr,
+                             descriptor: &VertexAttrDescriptor);
+    fn set_uniform(&self, program: &Self::Program, uniform: &Self::Uniform, data: UniformData);
     fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
     fn create_buffer(&self) -> Self::Buffer;
     fn allocate_buffer<T>(
@@ -78,7 +81,11 @@ pub trait Device {
 
     // TODO(pcwalton): Go bindless...
     fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
-    fn bind_buffer(&self, buffer: &Self::Buffer, target: BufferTarget);
+    fn bind_buffer(&self,
+                   vertex_array: &Self::VertexArray,
+                   buffer: &Self::Buffer,
+                   target: BufferTarget,
+                   index: u32);
     fn bind_default_framebuffer(&self, viewport: RectI);
     fn bind_framebuffer(&self, framebuffer: &Self::Framebuffer);
     fn bind_texture(&self, texture: &Self::Texture, unit: u32);
@@ -291,6 +298,7 @@ pub struct VertexAttrDescriptor {
     pub stride: usize,
     pub offset: usize,
     pub divisor: u32,
+    pub buffer_index: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

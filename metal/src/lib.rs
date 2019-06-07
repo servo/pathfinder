@@ -13,12 +13,18 @@
 #[macro_use]
 extern crate objc;
 
-use metal::{CompileOptions, CoreAnimationLayerRef, DeviceRef, FunctionRef, LibraryRef, MTLOrigin};
-use metal::{MTLPixelFormat, MTLRegion, MTLSize, MTLStorageMode, MTLTextureType, MTLTextureUsage};
-use metal::{TextureDescriptor, TextureRef, VertexAttributeRef};
+use metal::{BufferRef, CompileOptions, CoreAnimationLayerRef, DeviceRef, FunctionRef, LibraryRef};
+use metal::{MTLOrigin, MTLPixelFormat, MTLRegion, MTLSize, MTLStorageMode, MTLTextureType};
+use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, TextureDescriptor};
+use metal::{TextureRef, VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{Device, ShaderKind, TextureFormat};
+use pathfinder_gpu::{Device, ShaderKind, TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use std::cell::RefCell;
+use std::time::Duration;
+
+const FIRST_VERTEX_BUFFER_INDEX: u32 = 16;
 
 pub struct MetalDevice {
     device: DeviceRef,
@@ -28,6 +34,12 @@ pub struct MetalDevice {
 pub struct MetalProgram {
     vertex: MetalShader,
     fragment: MetalShader,
+    uniforms: RefCell<Vec<UniformBinding>>,
+}
+
+struct UniformBinding {
+    name: MetalUniform,
+    data: UniformData,
 }
 
 impl MetalDevice {
@@ -38,6 +50,8 @@ impl MetalDevice {
     }
 }
 
+pub struct MetalFramebuffer(TextureRef);
+
 pub struct MetalShader {
     library: LibraryRef,
     function: FunctionRef,
@@ -46,11 +60,25 @@ pub struct MetalShader {
 // TODO(pcwalton): Use `MTLEvent`s.
 pub struct MetalTimerQuery;
 
+// FIXME(pcwalton): This isn't great.
+#[derive(Clone)]
+pub struct MetalUniform(String);
+
+pub struct MetalVertexArray {
+    descriptor: VertexDescriptorRef,
+    buffers: Vec<BufferRef>,
+}
+
 impl Device for MetalDevice {
+    type Buffer = BufferRef;
+    type Framebuffer = MetalFramebuffer;
     type Program = MetalProgram;
     type Shader = MetalShader;
     type Texture = TextureRef;
     type TimerQuery = MetalTimerQuery;
+    type Uniform = MetalUniform;
+    type VertexArray = VertexDescriptorRef;
+    type VertexAttr = VertexAttributeRef;
 
     // TODO: Add texture usage hint.
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> TextureRef {
@@ -71,9 +99,7 @@ impl Device for MetalDevice {
     fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> TextureRef {
         assert!(data.len() >= size.x() as usize * size.y() as usize);
         let texture = self.create_texture(TextureFormat::R8, size);
-        let origin = MTLOrigin { x: 0, y: 0, z: 0 };
-        let size = MTLSize { width: size.x, height: size.y, depth: 1 };
-        texture.replace_region(MTLRegion { origin, size }, size.width, data.as_ptr());
+        self.upload_to_texture(&texture, size, data);
         texture
     }
 
@@ -83,13 +109,17 @@ impl Device for MetalDevice {
         MetalShader { library, function }
     }
 
+    fn create_vertex_array(&self) -> VertexDescriptorRef {
+        VertexDescriptor::new()
+    }
+
     fn create_program_from_shaders(&self,
                                    _: &dyn ResourceLoader,
                                    _: &str,
                                    vertex_shader: MetalShader,
                                    fragment_shader: MetalShader)
                                    -> MetalProgram {
-        MetalProgram { vertex_shader, fragment_shader }
+        MetalProgram { vertex_shader, fragment_shader, uniforms: vec![] }
     }
 
     fn get_vertex_attr(&self, program: &MetalProgram, name: &str) -> VertexAttributeRef {
@@ -103,7 +133,115 @@ impl Device for MetalDevice {
         panic!("No vertex attribute named `{}` found!", name);
     }
 
-    fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform {
+    fn get_uniform(&self, _: &Self::Program, name: &str) -> MetalUniform {
+        MetalUniform(name.to_owned())
+    }
+
+    fn configure_vertex_attr(&self,
+                             vertex_array: &VertexDescriptorRef,
+                             attr: &VertexAttributeRef,
+                             descriptor: &VertexAttrDescriptor) {
+        let attribute_index = attr.attribute_index();
+
+        let layout = vertex_array.layouts().object_at(attribute_index);
+        if descriptor.divisor == 0 {
+            layout.set_step_function(MTLVertexStepFunction::PerVertex);
+            layout.set_step_rate(1);
+        } else {
+            layout.set_step_function(MTLVertexStepFunction::PerInstance);
+            layout.set_step_rate(descriptor.divisor);
+        }
+        layout.set_stride(descriptor.stride);
+
+        let attr_info = vertex_array.attributes().object_at(attribute_index);
+        match (descriptor.class, descriptor.attr_type, descriptor.size) {
+            (VertexAttrClass::Int, VertexAttrType::I8, 2) => MTLVertexFormat::Char2,
+            (VertexAttrClass::Int, VertexAttrType::I8, 3) => MTLVertexFormat::Char3,
+            (VertexAttrClass::Int, VertexAttrType::I8, 4) => MTLVertexFormat::Char4,
+            (VertexAttrClass::FloatNorm, VertexAttrType::U8, 2) => {
+                MTLVertexFormat::UChar2Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::U8, 3) => {
+                MTLVertexFormat::UChar3Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::U8, 4) => {
+                MTLVertexFormat::UChar4Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::I8, 2) => {
+                MTLVertexFormat::Char2Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::I8, 3) => {
+                MTLVertexFormat::Char3Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::I8, 4) => {
+                MTLVertexFormat::Char4Normalized
+            }
+            (VertexAttrClass::Int, VertexAttrType::I16, 2) => MTLVertexFormat::Short2,
+            (VertexAttrClass::Int, VertexAttrType::I16, 3) => MTLVertexFormat::Short3,
+            (VertexAttrClass::Int, VertexAttrType::I16, 4) => MTLVertexFormat::Short4,
+            (VertexAttrClass::FloatNorm, VertexAttrType::U16, 2) => {
+                MTLVertexFormat::UShort2Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::U16, 3) => {
+                MTLVertexFormat::UShort3Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::U16, 4) => {
+                MTLVertexFormat::UShort4Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::I16, 2) => {
+                MTLVertexFormat::Short2Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::I16, 3) => {
+                MTLVertexFormat::Short3Normalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::I16, 4) => {
+                MTLVertexFormat::Short4Normalized
+            }
+            (VertexAttrClass::Float, VertexAttrType::F32, 1) => MTLVertexFormat::Float,
+            (VertexAttrClass::Float, VertexAttrType::F32, 2) => MTLVertexFormat::Float2,
+            (VertexAttrClass::Float, VertexAttrType::F32, 3) => MTLVertexFormat::Float3,
+            (VertexAttrClass::Float, VertexAttrType::F32, 4) => MTLVertexFormat::Float4,
+            (VertexAttrClass::Int, VertexAttrType::I8, 1) => MTLVertexFormat::Char,
+            (VertexAttrClass::FloatNorm, VertexAttrType::I8, 1) => MTLVertexFormat::CharNormalized,
+            (VertexAttrClass::Int, VertexAttrType::I16, 1) => MTLVertexFormat::Short,
+            (VertexAttrClass::FloatNorm, VertexAttrType::U16, 1) => {
+                MTLVertexFormat::UShortNormalized
+            }
+            (VertexAttrClass::FloatNorm, VertexAttrType::I16, 1) => {
+                MTLVertexFormat::ShortNormalized
+            }
+            (_, _, _) => panic!("Unsupported vertex class/type/size combination!"),
+        }
+        attr_info.set_offset(descriptor.offset);
+        attr_info.set_buffer_index(descriptor.buffer_index + FIRST_VERTEX_BUFFER_INDEX);
+    }
+
+    fn set_uniform(&self, program: &MetalProgram, uniform: &MetalUniform, data: UniformData) {
+        program.uniforms.borrow_mut().unwrap().push((*uniform).clone(), data);
+    }
+
+    fn create_framebuffer(&self, texture: TextureRef) -> MetalFramebuffer {
+        MetalFramebuffer(texture)
+    }
+
+    fn framebuffer_texture<'f>(&self, framebuffer: &'f MetalFramebuffer) -> &'f TextureRef {
+        &framebuffer.0
+    }
+
+    fn texture_size(&self, texture: &TextureRef) -> Vector2I {
+        Vector2I::new(texture.width(), texture.height())
+    }
+
+    fn upload_to_texture(&self, texture: &TextureRef, size: Vector2I, data: &[u8]) {
+        assert!(data.len() >= size.x() as usize * size.y() as usize);
+        let origin = MTLOrigin { x: 0, y: 0, z: 0 };
+        let size = MTLSize { width: size.x, height: size.y, depth: 1 };
+        texture.replace_region(MTLRegion { origin, size }, size.width, data.as_ptr());
+    }
+
+    fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8> {
+        // TODO(pcwalton)
+        vec![]
     }
 
     fn create_timer_query(&self) -> MetalTimerQuery { MetalTimerQuery }

@@ -67,16 +67,17 @@ where
 
         device.bind_vertex_array(&vertex_array);
         device.use_program(&ground_program.program);
-        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 1);
 
         GroundVertexArray { vertex_array }
     }

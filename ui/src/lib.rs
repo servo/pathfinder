@@ -172,9 +172,13 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferUploadMode::Dynamic);
 
         device.use_program(&self.solid_program.program);
-        device.set_uniform(&self.solid_program.framebuffer_size_uniform,
+        device.set_uniform(&self.solid_program.program,
+                           &self.solid_program.framebuffer_size_uniform,
                            UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
-        set_color_uniform(device, &self.solid_program.color_uniform, color);
+        set_color_uniform(device,
+                          &self.solid_program.program,
+                          &self.solid_program.color_uniform,
+                          color);
 
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
         device.draw_elements(primitive, index_data.len() as u32, &RenderState {
@@ -398,13 +402,20 @@ impl<D> UIPresenter<D> where D: Device {
 
         device.bind_vertex_array(&self.texture_vertex_array.vertex_array);
         device.use_program(&self.texture_program.program);
-        device.set_uniform(&self.texture_program.framebuffer_size_uniform,
+        device.set_uniform(&self.texture_program.program,
+                           &self.texture_program.framebuffer_size_uniform,
                            UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
-        device.set_uniform(&self.texture_program.texture_size_uniform,
+        device.set_uniform(&self.texture_program.program,
+                           &self.texture_program.texture_size_uniform,
                            UniformData::Vec2(device.texture_size(&texture).0.to_f32x4()));
-        set_color_uniform(device, &self.texture_program.color_uniform, color);
+        set_color_uniform(device,
+                          &self.texture_program.program,
+                          &self.texture_program.color_uniform,
+                          color);
         device.bind_texture(texture, 0);
-        device.set_uniform(&self.texture_program.texture_uniform, UniformData::TextureUnit(0));
+        device.set_uniform(&self.texture_program.program,
+                           &self.texture_program.texture_uniform,
+                           UniformData::TextureUnit(0));
 
         device.draw_elements(Primitive::Triangles, index_data.len() as u32, &RenderState {
             blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
@@ -590,23 +601,25 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
 
         device.bind_vertex_array(&vertex_array);
         device.use_program(&debug_texture_program.program);
-        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.bind_buffer(&index_buffer, BufferTarget::Index);
-        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index, 1);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U16,
             stride: DEBUG_TEXTURE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.configure_vertex_attr(&tex_coord_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U16,
             stride: DEBUG_TEXTURE_VERTEX_SIZE,
             offset: 4,
             divisor: 0,
+            buffer_index: 0,
         });
 
         DebugTextureVertexArray { vertex_array, vertex_buffer, index_buffer }
@@ -627,15 +640,16 @@ impl<D> DebugSolidVertexArray<D> where D: Device {
         let position_attr = device.get_vertex_attr(&debug_solid_program.program, "Position");
         device.bind_vertex_array(&vertex_array);
         device.use_program(&debug_solid_program.program);
-        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.bind_buffer(&index_buffer, BufferTarget::Index);
-        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index, 1);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U16,
             stride: DEBUG_SOLID_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
 
         DebugSolidVertexArray { vertex_array, vertex_buffer, index_buffer }
@@ -711,9 +725,10 @@ impl CornerRects {
     }
 }
 
-fn set_color_uniform<D>(device: &D, uniform: &D::Uniform, color: ColorU) where D: Device {
+fn set_color_uniform<D>(device: &D, program: &D::Program, uniform: &D::Uniform, color: ColorU)
+                        where D: Device {
     let color = F32x4::new(color.r as f32, color.g as f32, color.b as f32, color.a as f32);
-    device.set_uniform(uniform, UniformData::Vec4(color * F32x4::splat(1.0 / 255.0)));
+    device.set_uniform(program, uniform, UniformData::Vec4(color * F32x4::splat(1.0 / 255.0)));
 }
 
 #[derive(Clone, Copy)]

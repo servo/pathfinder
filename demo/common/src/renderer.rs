@@ -237,18 +237,22 @@ impl<W> DemoApp<W> where W: Window {
         device.bind_vertex_array(&self.ground_vertex_array.vertex_array);
         device.use_program(&self.ground_program.program);
         device.set_uniform(
+            &self.ground_program.program,
             &self.ground_program.transform_uniform,
             UniformData::from_transform_3d(&transform),
         );
         device.set_uniform(
+            &self.ground_program.program,
             &self.ground_program.ground_color_uniform,
             UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0),
         );
         device.set_uniform(
+            &self.ground_program.program,
             &self.ground_program.gridline_color_uniform,
             UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0),
         );
-        device.set_uniform(&self.ground_program.gridline_count_uniform,
+        device.set_uniform(&self.ground_program.program,
+                           &self.ground_program.gridline_count_uniform,
                            UniformData::Int(GRIDLINE_COUNT));
         device.draw_elements(
             Primitive::Triangles,

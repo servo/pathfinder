@@ -326,7 +326,12 @@ impl Device for GLDevice {
         }
     }
 
-    fn configure_vertex_attr(&self, attr: &GLVertexAttr, descriptor: &VertexAttrDescriptor) {
+    fn configure_vertex_attr(&self,
+                             vertex_array: &GLVertexArray,
+                             attr: &GLVertexAttr,
+                             descriptor: &VertexAttrDescriptor) {
+        self.bind_vertex_array(vertex_array);
+
         unsafe {
             let attr_type = descriptor.attr_type.to_gl_type();
             match descriptor.class {
@@ -357,7 +362,9 @@ impl Device for GLDevice {
         }
     }
 
-    fn set_uniform(&self, uniform: &Self::Uniform, data: UniformData) {
+    fn set_uniform(&self, program: &GLProgram, uniform: &Self::Uniform, data: UniformData) {
+        self.use_program(program);
+
         unsafe {
             match data {
                 UniformData::Int(value) => {
@@ -609,7 +616,13 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn bind_buffer(&self, buffer: &GLBuffer, target: BufferTarget) {
+    fn bind_buffer(&self,
+                   vertex_array: &GLVertexArray,
+                   buffer: &GLBuffer,
+                   target: BufferTarget,
+                   _buffer_index: u32) {
+        // FIXME(pcwalton): Use the buffer index!
+        self.bind_vertex_array(vertex_array);
         unsafe {
             gl::BindBuffer(target.to_gl_target(), buffer.gl_buffer); ck();
         }

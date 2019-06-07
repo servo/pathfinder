@@ -452,17 +452,20 @@ where
             .bind_vertex_array(&self.fill_vertex_array.vertex_array);
         self.device.use_program(&self.fill_program.program);
         self.device.set_uniform(
+            &self.fill_program.program,
             &self.fill_program.framebuffer_size_uniform,
             UniformData::Vec2(
                 I32x4::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT, 0, 0).to_f32x4(),
             ),
         );
         self.device.set_uniform(
+            &self.fill_program.program,
             &self.fill_program.tile_size_uniform,
             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
         );
         self.device.bind_texture(&self.area_lut_texture, 0);
         self.device.set_uniform(
+            &self.fill_program.program,
             &self.fill_program.area_lut_uniform,
             UniformData::TextureUnit(0),
         );
@@ -491,20 +494,24 @@ where
             .bind_vertex_array(&alpha_tile_vertex_array.vertex_array);
         self.device.use_program(&alpha_tile_program.program);
         self.device.set_uniform(
+            &alpha_tile_program.program,
             &alpha_tile_program.framebuffer_size_uniform,
             UniformData::Vec2(self.draw_viewport().size().to_f32().0),
         );
         self.device.set_uniform(
+            &alpha_tile_program.program,
             &alpha_tile_program.tile_size_uniform,
             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
         );
         self.device
             .bind_texture(self.device.framebuffer_texture(&self.mask_framebuffer), 0);
         self.device.set_uniform(
+            &alpha_tile_program.program,
             &alpha_tile_program.stencil_texture_uniform,
             UniformData::TextureUnit(0),
         );
         self.device.set_uniform(
+            &alpha_tile_program.program,
             &alpha_tile_program.stencil_texture_size_uniform,
             UniformData::Vec2(
                 I32x4::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT, 0, 0).to_f32x4(),
@@ -516,22 +523,26 @@ where
                 let paint_texture = self.paint_texture.as_ref().unwrap();
                 self.device.bind_texture(paint_texture, 1);
                 self.device.set_uniform(
+                    &self.alpha_multicolor_tile_program.alpha_tile_program.program,
                     &self.alpha_multicolor_tile_program.paint_texture_uniform,
                     UniformData::TextureUnit(1),
                 );
                 self.device.set_uniform(
+                    &self.alpha_multicolor_tile_program.alpha_tile_program.program,
                     &self.alpha_multicolor_tile_program.paint_texture_size_uniform,
                     UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x4())
                 );
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
                 self.device.set_uniform(
+                    &self.alpha_monochrome_tile_program.alpha_tile_program.program,
                     &self.alpha_monochrome_tile_program.color_uniform,
                     UniformData::Vec4(F32x4::splat(1.0)),
                 );
             }
             RenderMode::Monochrome { fg_color, .. } => {
                 self.device.set_uniform(
+                    &self.alpha_monochrome_tile_program.alpha_tile_program.program,
                     &self.alpha_monochrome_tile_program.color_uniform,
                     UniformData::Vec4(fg_color.0),
                 );
@@ -540,6 +551,7 @@ where
 
         // FIXME(pcwalton): Fill this in properly!
         self.device.set_uniform(
+            &alpha_tile_program.program,
             &alpha_tile_program.view_box_origin_uniform,
             UniformData::Vec2(F32x4::default()),
         );
@@ -561,10 +573,12 @@ where
             .bind_vertex_array(&solid_tile_vertex_array.vertex_array);
         self.device.use_program(&solid_tile_program.program);
         self.device.set_uniform(
+            &solid_tile_program.program,
             &solid_tile_program.framebuffer_size_uniform,
             UniformData::Vec2(self.draw_viewport().size().0.to_f32x4()),
         );
         self.device.set_uniform(
+            &solid_tile_program.program,
             &solid_tile_program.tile_size_uniform,
             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
         );
@@ -574,12 +588,14 @@ where
                 let paint_texture = self.paint_texture.as_ref().unwrap();
                 self.device.bind_texture(paint_texture, 0);
                 self.device.set_uniform(
+                    &self.solid_multicolor_tile_program.solid_tile_program.program,
                     &self
                         .solid_multicolor_tile_program
                         .paint_texture_uniform,
                     UniformData::TextureUnit(0),
                 );
                 self.device.set_uniform(
+                    &self.solid_multicolor_tile_program.solid_tile_program.program,
                     &self
                         .solid_multicolor_tile_program
                         .paint_texture_size_uniform,
@@ -588,12 +604,14 @@ where
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
                 self.device.set_uniform(
+                    &self.solid_monochrome_tile_program.solid_tile_program.program,
                     &self.solid_monochrome_tile_program.color_uniform,
                     UniformData::Vec4(F32x4::splat(1.0)),
                 );
             }
             RenderMode::Monochrome { fg_color, .. } => {
                 self.device.set_uniform(
+                    &self.solid_monochrome_tile_program.solid_tile_program.program,
                     &self.solid_monochrome_tile_program.color_uniform,
                     UniformData::Vec4(fg_color.0),
                 );
@@ -602,6 +620,7 @@ where
 
         // FIXME(pcwalton): Fill this in properly!
         self.device.set_uniform(
+            &solid_tile_program.program,
             &solid_tile_program.view_box_origin_uniform,
             UniformData::Vec2(F32x4::default()),
         );
@@ -631,22 +650,24 @@ where
 
         self.bind_dest_framebuffer();
 
-        self.device
-            .bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
+        self.device.bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
         self.device.use_program(&self.postprocess_program.program);
         self.device.set_uniform(
+            &self.postprocess_program.program,
             &self.postprocess_program.framebuffer_size_uniform,
             UniformData::Vec2(self.main_viewport().size().to_f32().0),
         );
         match defringing_kernel {
             Some(ref kernel) => {
                 self.device.set_uniform(
+                    &self.postprocess_program.program,
                     &self.postprocess_program.kernel_uniform,
                     UniformData::Vec4(F32x4::from_slice(&kernel.0)),
                 );
             }
             None => {
                 self.device.set_uniform(
+                    &self.postprocess_program.program,
                     &self.postprocess_program.kernel_uniform,
                     UniformData::Vec4(F32x4::default()),
                 );
@@ -660,27 +681,33 @@ where
         let source_texture_size = self.device.texture_size(source_texture);
         self.device.bind_texture(&source_texture, 0);
         self.device.set_uniform(
+            &self.postprocess_program.program,
             &self.postprocess_program.source_uniform,
             UniformData::TextureUnit(0),
         );
         self.device.set_uniform(
+            &self.postprocess_program.program,
             &self.postprocess_program.source_size_uniform,
             UniformData::Vec2(source_texture_size.0.to_f32x4()),
         );
         self.device.bind_texture(&self.gamma_lut_texture, 1);
         self.device.set_uniform(
+            &self.postprocess_program.program,
             &self.postprocess_program.gamma_lut_uniform,
             UniformData::TextureUnit(1),
         );
         self.device.set_uniform(
+            &self.postprocess_program.program,
             &self.postprocess_program.fg_color_uniform,
             UniformData::Vec4(fg_color.0),
         );
         self.device.set_uniform(
+            &self.postprocess_program.program,
             &self.postprocess_program.bg_color_uniform,
             UniformData::Vec4(bg_color.0),
         );
         self.device.set_uniform(
+            &self.postprocess_program.program,
             &self.postprocess_program.gamma_correction_enabled_uniform,
             UniformData::Int(gamma_correction_enabled as i32),
         );
@@ -772,15 +799,18 @@ where
         self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
         self.device.use_program(&self.reprojection_program.program);
         self.device.set_uniform(
+            &self.reprojection_program.program,
             &self.reprojection_program.old_transform_uniform,
             UniformData::from_transform_3d(old_transform),
         );
         self.device.set_uniform(
+            &self.reprojection_program.program,
             &self.reprojection_program.new_transform_uniform,
             UniformData::from_transform_3d(new_transform),
         );
         self.device.bind_texture(texture, 0);
         self.device.set_uniform(
+            &self.reprojection_program.program,
             &self.reprojection_program.texture_uniform,
             UniformData::TextureUnit(0),
         );
@@ -953,57 +983,63 @@ where
 
         device.bind_vertex_array(&vertex_array);
         device.use_program(&fill_program.program);
-        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&tess_coord_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&from_px_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 1);
+        device.configure_vertex_attr(&vertex_array, &from_px_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U8,
             stride: FILL_INSTANCE_SIZE,
             offset: 0,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.configure_vertex_attr(&to_px_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &to_px_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U8,
             stride: FILL_INSTANCE_SIZE,
             offset: 1,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.configure_vertex_attr(&from_subpx_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &from_subpx_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::FloatNorm,
             attr_type: VertexAttrType::U8,
             stride: FILL_INSTANCE_SIZE,
             offset: 2,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.configure_vertex_attr(&to_subpx_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &to_subpx_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::FloatNorm,
             attr_type: VertexAttrType::U8,
             stride: FILL_INSTANCE_SIZE,
             offset: 4,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.configure_vertex_attr(&tile_index_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &tile_index_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U16,
             stride: FILL_INSTANCE_SIZE,
             offset: 6,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 2);
 
         FillVertexArray { vertex_array, vertex_buffer }
     }
@@ -1040,49 +1076,54 @@ where
         // driver bug.
         device.bind_vertex_array(&vertex_array);
         device.use_program(&alpha_tile_program.program);
-        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&tess_coord_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&tile_origin_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 1);
+        device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
             size: 3,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U8,
             stride: MASK_TILE_INSTANCE_SIZE,
             offset: 0,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.configure_vertex_attr(&backdrop_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &backdrop_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I8,
             stride: MASK_TILE_INSTANCE_SIZE,
             offset: 3,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.configure_vertex_attr(&tile_index_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &tile_index_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
             stride: MASK_TILE_INSTANCE_SIZE,
             offset: 6,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.configure_vertex_attr(&color_tex_coord_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::FloatNorm,
             attr_type: VertexAttrType::U16,
             stride: MASK_TILE_INSTANCE_SIZE,
             offset: 8,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 2);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
     }
@@ -1117,33 +1158,36 @@ where
         // Radeon driver bug.
         device.bind_vertex_array(&vertex_array);
         device.use_program(&solid_tile_program.program);
-        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&tess_coord_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&tile_origin_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 1);
+        device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::I16,
             stride: SOLID_TILE_INSTANCE_SIZE,
             offset: 0,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.configure_vertex_attr(&color_tex_coord_attr, &VertexAttrDescriptor {
+        device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::FloatNorm,
             attr_type: VertexAttrType::U16,
             stride: SOLID_TILE_INSTANCE_SIZE,
             offset: 4,
             divisor: 1,
+            buffer_index: 1,
         });
-        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 2);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }
     }
@@ -1413,16 +1457,17 @@ where
 
         device.bind_vertex_array(&vertex_array);
         device.use_program(&postprocess_program.program);
-        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 1);
 
         PostprocessVertexArray { vertex_array }
     }
@@ -1466,16 +1511,17 @@ where
 
         device.bind_vertex_array(&vertex_array);
         device.use_program(&stencil_program.program);
-        device.bind_buffer(&vertex_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 0);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 3,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::F32,
             stride: 4 * 4,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.bind_buffer(&index_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index, 1);
 
         StencilVertexArray { vertex_array, vertex_buffer, index_buffer }
     }
@@ -1533,16 +1579,17 @@ where
 
         device.bind_vertex_array(&vertex_array);
         device.use_program(&reprojection_program.program);
-        device.bind_buffer(quad_vertex_positions_buffer, BufferTarget::Vertex);
-        device.configure_vertex_attr(&position_attr, &VertexAttrDescriptor {
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,
             divisor: 0,
+            buffer_index: 0,
         });
-        device.bind_buffer(quad_vertex_indices_buffer, BufferTarget::Index);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 1);
 
         ReprojectionVertexArray { vertex_array }
     }
