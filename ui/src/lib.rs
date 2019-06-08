@@ -21,8 +21,8 @@ use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
-use pathfinder_gpu::{RenderState, UniformData, VertexAttrClass};
+use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
+use pathfinder_gpu::{Primitive, RenderState, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
@@ -197,10 +197,14 @@ impl<D> UIPresenter<D> where D: Device {
                           color);
 
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
-        device.draw_elements(command_buffer, primitive, index_data.len() as u32, &RenderState {
-            blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
-            ..RenderState::default()
-        });
+        device.draw_elements(command_buffer,
+                             &self.attachment(),
+                             primitive,
+                             index_data.len() as u32,
+                             &RenderState {
+                                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                                ..RenderState::default()
+                             });
     }
 
     pub fn draw_text(&self,
@@ -481,6 +485,7 @@ impl<D> UIPresenter<D> where D: Device {
                            UniformData::TextureUnit(0));
 
         device.draw_elements(command_buffer,
+                             &self.attachment(),
                              Primitive::Triangles,
                              index_data.len() as u32,
                              &RenderState {
@@ -643,6 +648,10 @@ impl<D> UIPresenter<D> where D: Device {
                        string,
                        origin + Vector2I::new(PADDING, PADDING + FONT_ASCENT),
                        false);
+    }
+
+    fn attachment(&self) -> RenderTarget<D> {
+        RenderTarget::Default { viewport: RectI::new(Vector2I::default(), self.framebuffer_size) }
     }
 }
 

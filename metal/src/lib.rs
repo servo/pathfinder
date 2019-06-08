@@ -13,11 +13,11 @@
 #[macro_use]
 extern crate objc;
 
-use metal::{BufferRef, CompileOptions, CoreAnimationLayerRef, DeviceRef, FunctionRef, LibraryRef};
-use metal::{MTLOrigin, MTLPixelFormat, MTLRegion, MTLResourceOptions, MTLSize, MTLStorageMode};
-use metal::{MTLTextureType, MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction};
-use metal::{TextureDescriptor, TextureRef, VertexAttributeRef};
-use metal::{VertexDescriptor, VertexDescriptorRef};
+use metal::{BufferRef, CommandBufferRef, CommandQueueRef, CompileOptions, CoreAnimationLayerRef};
+use metal::{DeviceRef, FunctionRef, LibraryRef, MTLOrigin, MTLPixelFormat, MTLRegion};
+use metal::{MTLResourceOptions, MTLSize, MTLStorageMode, MTLTextureType, MTLTextureUsage};
+use metal::{MTLVertexFormat, MTLVertexStepFunction, TextureDescriptor, TextureRef};
+use metal::{VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, ShaderKind};
@@ -32,6 +32,7 @@ const FIRST_VERTEX_BUFFER_INDEX: u32 = 16;
 pub struct MetalDevice {
     device: DeviceRef,
     layer: CoreAnimationLayerRef,
+    command_queue: CommandQueueRef,
 }
 
 pub struct MetalProgram {
@@ -78,7 +79,7 @@ pub struct MetalVertexArray {
 
 impl Device for MetalDevice {
     type Buffer = MetalBuffer;
-    type CommandBuffer = 
+    type CommandBuffer = CommandBufferRef;
     type Framebuffer = MetalFramebuffer;
     type Program = MetalProgram;
     type Shader = MetalShader;
@@ -281,6 +282,17 @@ impl Device for MetalDevice {
     fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8> {
         // TODO(pcwalton)
         vec![]
+    }
+
+    fn create_command_buffer(&self) -> CommandBufferRef {
+        self.command_queue.new_command_buffer()
+    }
+
+    fn submit_command_buffer(&self, command_buffer: CommandBufferRef) {
+        command_buffer.commit();
+    }
+
+    fn clear(&self, command_buffer: &CommandBufferRef, params: &ClearParams) {
     }
 
     fn create_timer_query(&self) -> MetalTimerQuery { MetalTimerQuery }

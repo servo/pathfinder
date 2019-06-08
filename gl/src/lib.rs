@@ -17,9 +17,9 @@ use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, 
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
-use pathfinder_gpu::{DepthFunc, Device, Primitive, RenderState, ShaderKind, StencilFunc};
-use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
+use pathfinder_gpu::{ClearParams, DepthFunc, Device, Primitive, RenderState, ShaderKind};
+use pathfinder_gpu::{StencilFunc, TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
@@ -509,7 +509,9 @@ impl Device for GLDevice {
         }
     }
 
-    fn clear(&self, _: &GLCommandBuffer, params: &ClearParams) {
+    fn clear(&self, _: &GLCommandBuffer, attachment: &RenderTarget<GLDevice>, params: &ClearParams) {
+        self.bind_render_target(attachment);
+
         unsafe {
             if let Some(rect) = params.rect {
                 let (origin, size) = (rect.origin(), rect.size());
@@ -545,9 +547,11 @@ impl Device for GLDevice {
 
     fn draw_arrays(&self,
                    _: &GLCommandBuffer,
+                   render_target: &RenderTarget<Self>,
                    primitive: Primitive,
                    index_count: u32,
                    render_state: &RenderState) {
+        self.bind_render_target(render_target);
         self.set_render_state(render_state);
         unsafe {
             gl::DrawArrays(primitive.to_gl_primitive(), 0, index_count as GLsizei); ck();
@@ -557,9 +561,11 @@ impl Device for GLDevice {
 
     fn draw_elements(&self,
                      _: &GLCommandBuffer,
+                     render_target: &RenderTarget<Self>,
                      primitive: Primitive,
                      index_count: u32,
                      render_state: &RenderState) {
+        self.bind_render_target(render_target);
         self.set_render_state(render_state);
         unsafe {
             gl::DrawElements(primitive.to_gl_primitive(),
@@ -572,10 +578,12 @@ impl Device for GLDevice {
 
     fn draw_elements_instanced(&self,
                                _: &GLCommandBuffer,
+                               render_target: &RenderTarget<Self>,
                                primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
                                render_state: &RenderState) {
+        self.bind_render_target(render_target);
         self.set_render_state(render_state);
         unsafe {
             gl::DrawElementsInstanced(primitive.to_gl_primitive(),
@@ -649,6 +657,22 @@ impl Device for GLDevice {
     }
 
     #[inline]
+    fn bind_texture(&self, texture: &GLTexture, unit: u32) {
+        unsafe {
+            gl::ActiveTexture(gl::TEXTURE0 + unit); ck();
+            gl::BindTexture(gl::TEXTURE_2D, texture.gl_texture); ck();
+        }
+    }
+}
+
+impl GLDevice {
+    fn bind_render_target(&self, attachment: &RenderTarget<GLDevice>) {
+        match *attachment {
+            RenderTarget::Default { viewport } => self.bind_default_framebuffer(viewport),
+            RenderTarget::Framebuffer(framebuffer) => self.bind_framebuffer(framebuffer),
+        }
+    }
+
     fn bind_default_framebuffer(&self, viewport: RectI) {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
@@ -659,7 +683,6 @@ impl Device for GLDevice {
         }
     }
 
-    #[inline]
     fn bind_framebuffer(&self, framebuffer: &GLFramebuffer) {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer.gl_framebuffer); ck();
@@ -667,16 +690,6 @@ impl Device for GLDevice {
         }
     }
 
-    #[inline]
-    fn bind_texture(&self, texture: &GLTexture, unit: u32) {
-        unsafe {
-            gl::ActiveTexture(gl::TEXTURE0 + unit); ck();
-            gl::BindTexture(gl::TEXTURE_2D, texture.gl_texture); ck();
-        }
-    }
-}
-
-impl GLDevice {
     fn preprocess(&self, output: &mut Vec<u8>, source: &[u8], version: &str) {
         let mut index = 0;
         while index < source.len() {

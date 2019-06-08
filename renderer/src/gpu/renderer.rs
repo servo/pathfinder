@@ -19,8 +19,8 @@ use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
-use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, StencilFunc};
-use pathfinder_gpu::{StencilState, TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, RenderTarget};
+use pathfinder_gpu::{StencilFunc, StencilState, TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
@@ -193,7 +193,7 @@ where
         let window_size = dest_framebuffer.window_size(&device);
         let debug_ui_presenter = DebugUIPresenter::new(&device, resources, window_size);
 
-        let renderer = Renderer {
+        Renderer {
             device,
 
             command_buffer: None,
@@ -237,12 +237,7 @@ where
 
             render_mode: RenderMode::default(),
             use_depth: false,
-        };
-
-        // As a convenience, bind the destination framebuffer.
-        renderer.bind_dest_framebuffer();
-
-        renderer
+        }
     }
 
     pub fn begin_scene(&mut self) {
@@ -296,7 +291,6 @@ where
     }
 
     pub fn draw_debug_ui(&self, command_buffer: &D::CommandBuffer) {
-        self.bind_dest_framebuffer();
         self.debug_ui_presenter.draw(&self.device, command_buffer);
     }
 
@@ -406,13 +400,13 @@ where
     }
 
     fn clear_mask_framebuffer(&mut self) {
-        self.device.bind_framebuffer(&self.mask_framebuffer);
-
         // TODO(pcwalton): Only clear the appropriate portion?
-        self.device.clear(self.command_buffer.as_ref().unwrap(), &ClearParams {
-            color: Some(ColorF::transparent_black()),
-            ..ClearParams::default()
-        });
+        self.device.clear(self.command_buffer.as_ref().unwrap(),
+                          &RenderTarget::Framebuffer(&self.mask_framebuffer),
+                          &ClearParams {
+                            color: Some(ColorF::transparent_black()),
+                            ..ClearParams::default()
+                          });
     }
 
     fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
@@ -455,8 +449,6 @@ where
             self.mask_framebuffer_cleared = true;
         }
 
-        self.device.bind_framebuffer(&self.mask_framebuffer);
-
         self.device
             .bind_vertex_array(&self.fill_vertex_array.vertex_array);
         self.device.use_program(&self.fill_program.program);
@@ -485,6 +477,7 @@ where
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(
             self.command_buffer.as_ref().unwrap(),
+            &RenderTarget::Framebuffer(&self.mask_framebuffer),
             Primitive::Triangles,
             6,
             self.buffered_fills.len() as u32,
@@ -495,8 +488,6 @@ where
     }
 
     fn draw_alpha_tiles(&mut self, count: u32) {
-        self.bind_draw_framebuffer();
-
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
         let alpha_tile_program = self.alpha_tile_program();
 
@@ -571,6 +562,7 @@ where
             ..RenderState::default()
         };
         self.device.draw_elements_instanced(self.command_buffer.as_ref().unwrap(),
+                                            &self.draw_render_target(),
                                             Primitive::Triangles,
                                             6,
                                             count,
@@ -578,8 +570,6 @@ where
     }
 
     fn draw_solid_tiles(&mut self, count: u32) {
-        self.bind_draw_framebuffer();
-
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
         let solid_tile_program = self.solid_tile_program();
 
@@ -643,6 +633,7 @@ where
             ..RenderState::default()
         };
         self.device.draw_elements_instanced(self.command_buffer.as_ref().unwrap(),
+                                            &self.draw_render_target(),
                                             Primitive::Triangles,
                                             6,
                                             count,
@@ -665,8 +656,6 @@ where
                 gamma_correction_enabled = gamma_correction;
             }
         }
-
-        self.bind_dest_framebuffer();
 
         self.device.bind_vertex_array(&self.postprocess_vertex_array.vertex_array);
         self.device.use_program(&self.postprocess_program.program);
@@ -730,6 +719,7 @@ where
             UniformData::Int(gamma_correction_enabled as i32),
         );
         self.device.draw_arrays(self.command_buffer.as_ref().unwrap(),
+                                &self.dest_render_target(),
                                 Primitive::Triangles,
                                 4,
                                 &RenderState::default());
@@ -784,12 +774,11 @@ where
             BufferUploadMode::Dynamic,
         );
 
-        self.bind_draw_framebuffer();
-
         self.device.bind_vertex_array(&self.stencil_vertex_array.vertex_array);
         self.device.use_program(&self.stencil_program.program);
         self.device.draw_elements(
             self.command_buffer.as_ref().unwrap(),
+            &self.draw_render_target(),
             Primitive::Triangles,
             indices.len() as u32,
             &RenderState {
@@ -817,8 +806,6 @@ where
         old_transform: &Transform3DF,
         new_transform: &Transform3DF,
     ) {
-        self.bind_draw_framebuffer();
-
         self.device.bind_vertex_array(&self.reprojection_vertex_array.vertex_array);
         self.device.use_program(&self.reprojection_program.program);
         self.device.set_uniform(
@@ -839,6 +826,7 @@ where
         );
         self.device.draw_elements(
             command_buffer,
+            &self.draw_render_target(),
             Primitive::Triangles,
             6,
             &RenderState {
@@ -852,21 +840,18 @@ where
         );
     }
 
-    pub fn bind_draw_framebuffer(&self) {
+    pub fn draw_render_target(&self) -> RenderTarget<D> {
         if self.postprocessing_needed() {
-            self.device
-                .bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
+            RenderTarget::Framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap())
         } else {
-            self.bind_dest_framebuffer();
+            self.dest_render_target()
         }
     }
 
-    pub fn bind_dest_framebuffer(&self) {
+    pub fn dest_render_target(&self) -> RenderTarget<D> {
         match self.dest_framebuffer {
-            DestFramebuffer::Default { viewport, .. } => {
-                self.device.bind_default_framebuffer(viewport)
-            }
-            DestFramebuffer::Other(ref framebuffer) => self.device.bind_framebuffer(framebuffer),
+            DestFramebuffer::Default { viewport, .. } => RenderTarget::Default { viewport },
+            DestFramebuffer::Other(ref framebuffer) => RenderTarget::Framebuffer(framebuffer),
         }
     }
 
@@ -891,9 +876,11 @@ where
             }
         };
 
-        self.device
-            .bind_framebuffer(self.postprocess_source_framebuffer.as_ref().unwrap());
-        self.device.clear(self.command_buffer.as_ref().unwrap(), &ClearParams {
+        self.device.clear(self.command_buffer.as_ref().unwrap(),
+                          &RenderTarget::Framebuffer(self.postprocess_source_framebuffer
+                                                         .as_ref()
+                                                         .unwrap()),
+                          &ClearParams {
             color: Some(ColorF::transparent_black()),
             ..ClearParams::default()
         });

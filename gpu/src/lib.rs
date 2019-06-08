@@ -21,7 +21,7 @@ use std::time::Duration;
 
 pub mod resources;
 
-pub trait Device {
+pub trait Device: Sized {
     type Buffer;
     type CommandBuffer;
     type Framebuffer;
@@ -68,19 +68,25 @@ pub trait Device {
     fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8>;
     fn create_command_buffer(&self) -> Self::CommandBuffer;
     fn submit_command_buffer(&self, command_buffer: Self::CommandBuffer);
-    fn clear(&self, command_buffer: &Self::CommandBuffer, params: &ClearParams);
+    fn clear(&self,
+             command_buffer: &Self::CommandBuffer,
+             attachment: &RenderTarget<Self>,
+             params: &ClearParams);
     fn draw_arrays(&self,
                    command_buffer: &Self::CommandBuffer,
+                   attachment: &RenderTarget<Self>,
                    primitive: Primitive,
                    index_count: u32,
                    render_state: &RenderState);
     fn draw_elements(&self,
                      command_buffer: &Self::CommandBuffer,
+                     attachment: &RenderTarget<Self>,
                      primitive: Primitive,
                      index_count: u32,
                      render_state: &RenderState);
     fn draw_elements_instanced(&self,
                                command_buffer: &Self::CommandBuffer,
+                               attachment: &RenderTarget<Self>,
                                primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
@@ -98,8 +104,10 @@ pub trait Device {
                    buffer: &Self::Buffer,
                    target: BufferTarget,
                    index: u32);
+    /*
     fn bind_default_framebuffer(&self, viewport: RectI);
     fn bind_framebuffer(&self, framebuffer: &Self::Framebuffer);
+    */
     fn bind_texture(&self, texture: &Self::Texture, unit: u32);
 
     fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
@@ -213,6 +221,12 @@ pub struct RenderState {
     pub depth: Option<DepthState>,
     pub stencil: Option<StencilState>,
     pub color_mask: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum RenderTarget<'a, D> where D: Device {
+    Default { viewport: RectI },
+    Framebuffer(&'a D::Framebuffer),
 }
 
 #[derive(Clone, Copy, Debug)]

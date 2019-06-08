@@ -83,9 +83,6 @@ impl<W> DemoApp<W> where W: Window {
             }
         };
 
-        // Begin drawing the scene.
-        self.renderer.bind_dest_framebuffer();
-
         // Clear to the appropriate color.
         let clear_color = if scene_count == 2 {
             ColorF::transparent_black()
@@ -94,12 +91,14 @@ impl<W> DemoApp<W> where W: Window {
         };
 
         let command_buffer = self.renderer.device.create_command_buffer();
-        self.renderer.device.clear(&command_buffer, &ClearParams {
-            color: Some(clear_color),
-            depth: Some(1.0),
-            stencil: Some(0),
-            ..ClearParams::default()
-        });
+        self.renderer.device.clear(&command_buffer,
+                                   &self.renderer.dest_render_target(),
+                                   &ClearParams {
+                                    color: Some(clear_color),
+                                    depth: Some(1.0),
+                                    stencil: Some(0),
+                                    ..ClearParams::default()
+                                   });
         self.renderer.device.submit_command_buffer(command_buffer);
 
         scene_count
@@ -164,13 +163,14 @@ impl<W> DemoApp<W> where W: Window {
             window_size: self.window_size.device_size(),
         });
 
-        self.renderer.bind_draw_framebuffer();
-        self.renderer.device.clear(&command_buffer, &ClearParams {
-            color: Some(self.background_color().to_f32()),
-            depth: Some(1.0),
-            stencil: Some(0),
-            rect: Some(viewport),
-        });
+        self.renderer.device.clear(&command_buffer,
+                                   &self.renderer.draw_render_target(),
+                                   &ClearParams {
+                                    color: Some(self.background_color().to_f32()),
+                                    depth: Some(1.0),
+                                    stencil: Some(0),
+                                    rect: Some(viewport),
+                                   });
 
         self.draw_environment(&command_buffer);
 
@@ -264,6 +264,7 @@ impl<W> DemoApp<W> where W: Window {
                            UniformData::Int(GRIDLINE_COUNT));
         device.draw_elements(
             command_buffer,
+            &self.renderer.draw_render_target(),
             Primitive::Triangles,
             6,
             &RenderState {
