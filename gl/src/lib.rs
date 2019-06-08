@@ -305,18 +305,24 @@ impl Device for GLDevice {
     }
 
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> GLVertexAttr {
-        let name = CString::new(format!("a{}", name)).unwrap();
-        let attr = unsafe {
-            gl::GetAttribLocation(program.gl_program, name.as_ptr() as *const GLchar) as GLuint
+        let cname = CString::new(format!("a{}", name)).unwrap();
+        let attr_int = unsafe {
+            gl::GetAttribLocation(program.gl_program, cname.as_ptr() as *const GLchar)
         }; ck();
-        GLVertexAttr { attr }
+        if attr_int == -1 {
+            panic!("Vertex attribute '{}' does not exist in program", name);
+        }
+        GLVertexAttr { attr: attr_int as GLuint }
     }
 
     fn get_uniform(&self, program: &GLProgram, name: &str) -> GLUniform {
-        let name = CString::new(format!("u{}", name)).unwrap();
+        let cname = CString::new(format!("u{}", name)).unwrap();
         let location = unsafe {
-            gl::GetUniformLocation(program.gl_program, name.as_ptr() as *const GLchar)
+            gl::GetUniformLocation(program.gl_program, cname.as_ptr() as *const GLchar)
         }; ck();
+        if location == -1 {
+            panic!("Uniform '{}' does not exist in program", name);
+        }
         GLUniform { location }
     }
 
