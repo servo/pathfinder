@@ -545,10 +545,12 @@ impl Device for GLDevice {
 
     fn draw_arrays(&self,
                    render_target: &RenderTarget<Self>,
+                   vertex_array: &Self::VertexArray,
                    primitive: Primitive,
                    index_count: u32,
                    render_state: &RenderState) {
         self.bind_render_target(render_target);
+        self.bind_vertex_array(vertex_array);
         self.set_render_state(render_state);
         unsafe {
             gl::DrawArrays(primitive.to_gl_primitive(), 0, index_count as GLsizei); ck();
@@ -558,10 +560,12 @@ impl Device for GLDevice {
 
     fn draw_elements(&self,
                      render_target: &RenderTarget<Self>,
+                     vertex_array: &Self::VertexArray,
                      primitive: Primitive,
                      index_count: u32,
                      render_state: &RenderState) {
         self.bind_render_target(render_target);
+        self.bind_vertex_array(vertex_array);
         self.set_render_state(render_state);
         unsafe {
             gl::DrawElements(primitive.to_gl_primitive(),
@@ -574,11 +578,13 @@ impl Device for GLDevice {
 
     fn draw_elements_instanced(&self,
                                render_target: &RenderTarget<Self>,
+                               vertex_array: &Self::VertexArray,
                                primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
                                render_state: &RenderState) {
         self.bind_render_target(render_target);
+        self.bind_vertex_array(vertex_array);
         self.set_render_state(render_state);
         unsafe {
             gl::DrawElementsInstanced(primitive.to_gl_primitive(),
@@ -632,13 +638,6 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn bind_vertex_array(&self, vertex_array: &GLVertexArray) {
-        unsafe {
-            gl::BindVertexArray(vertex_array.gl_vertex_array); ck();
-        }
-    }
-
-    #[inline]
     fn bind_buffer(&self,
                    vertex_array: &GLVertexArray,
                    buffer: &GLBuffer,
@@ -665,6 +664,12 @@ impl GLDevice {
         match *attachment {
             RenderTarget::Default { viewport } => self.bind_default_framebuffer(viewport),
             RenderTarget::Framebuffer(framebuffer) => self.bind_framebuffer(framebuffer),
+        }
+    }
+
+    fn bind_vertex_array(&self, vertex_array: &GLVertexArray) {
+        unsafe {
+            gl::BindVertexArray(vertex_array.gl_vertex_array); ck();
         }
     }
 

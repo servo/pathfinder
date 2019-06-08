@@ -69,17 +69,20 @@ pub trait Device: Sized {
     fn end_commands(&self);
     fn clear(&self, attachment: &RenderTarget<Self>, params: &ClearParams);
     fn draw_arrays(&self,
-                   attachment: &RenderTarget<Self>,
+                   render_target: &RenderTarget<Self>,
+                   vertex_array: &Self::VertexArray,
                    primitive: Primitive,
                    index_count: u32,
                    render_state: &RenderState);
     fn draw_elements(&self,
-                     attachment: &RenderTarget<Self>,
+                     render_target: &RenderTarget<Self>,
+                     vertex_array: &Self::VertexArray,
                      primitive: Primitive,
                      index_count: u32,
                      render_state: &RenderState);
     fn draw_elements_instanced(&self,
-                               attachment: &RenderTarget<Self>,
+                               render_target: &RenderTarget<Self>,
+                               vertex_array: &Self::VertexArray,
                                primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
@@ -91,7 +94,7 @@ pub trait Device: Sized {
     fn get_timer_query(&self, query: &Self::TimerQuery) -> Duration;
 
     // TODO(pcwalton): Go bindless...
-    fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
+    //fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
     fn bind_buffer(&self,
                    vertex_array: &Self::VertexArray,
                    buffer: &Self::Buffer,
