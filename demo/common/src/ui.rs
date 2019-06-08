@@ -138,7 +138,6 @@ where
     pub fn update<W>(
         &mut self,
         device: &D,
-        command_buffer: &D::CommandBuffer,
         window: &mut W,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         action: &mut UIAction,
@@ -148,7 +147,7 @@ where
     {
         // Draw message text.
 
-        self.draw_message_text(device, command_buffer, debug_ui_presenter, model);
+        self.draw_message_text(device, debug_ui_presenter, model);
 
         // Draw button strip.
 
@@ -160,7 +159,6 @@ where
         // Draw text effects button.
         if self.show_text_effects {
             if debug_ui_presenter.ui_presenter.draw_button(device,
-                                                           command_buffer,
                                                            position,
                                                            &self.effects_texture) {
                 self.effects_panel_visible = !self.effects_panel_visible;
@@ -168,7 +166,6 @@ where
             if !self.effects_panel_visible {
                 debug_ui_presenter.ui_presenter.draw_tooltip(
                     device,
-                    command_buffer,
                     "Text Effects",
                     RectI::new(position, button_size),
                 );
@@ -177,23 +174,18 @@ where
         }
 
         // Draw open button.
-        if debug_ui_presenter.ui_presenter.draw_button(device,
-                                                       command_buffer,
-                                                       position,
-                                                       &self.open_texture) {
+        if debug_ui_presenter.ui_presenter.draw_button(device, position, &self.open_texture) {
             // FIXME(pcwalton): This is not sufficient for Android, where we will need to take in
             // the contents of the file.
             window.present_open_svg_dialog();
         }
         debug_ui_presenter.ui_presenter.draw_tooltip(device,
-                                                     command_buffer,
                                                      "Open SVG",
                                                      RectI::new(position, button_size));
         position += Vector2I::new(BUTTON_WIDTH + PADDING, 0);
 
         // Draw screenshot button.
         if debug_ui_presenter.ui_presenter.draw_button(device,
-                                                       command_buffer,
                                                        position,
                                                        &self.screenshot_texture) {
             self.screenshot_panel_visible = !self.screenshot_panel_visible;
@@ -201,24 +193,18 @@ where
         if !self.screenshot_panel_visible {
             debug_ui_presenter.ui_presenter.draw_tooltip(
                 device,
-                command_buffer,
                 "Take Screenshot",
                 RectI::new(position, button_size),
             );
         }
 
         // Draw screenshot panel, if necessary.
-        self.draw_screenshot_panel(device,
-                                   command_buffer,
-                                   window,
-                                   debug_ui_presenter,
-                                   position.x(), action);
+        self.draw_screenshot_panel(device, window, debug_ui_presenter, position.x(), action);
         position += Vector2I::new(button_size.x() + PADDING, 0);
 
         // Draw mode switch.
         let new_mode = debug_ui_presenter.ui_presenter.draw_text_switch(
             device,
-            command_buffer,
             position,
             &["2D", "3D", "VR"],
             model.mode as u8);
@@ -235,7 +221,6 @@ where
         let mode_switch_size = Vector2I::new(mode_switch_width, BUTTON_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_tooltip(
             device,
-            command_buffer,
             "2D/3D/VR Mode",
             RectI::new(position, mode_switch_size),
         );
@@ -243,7 +228,6 @@ where
 
         // Draw background switch.
         if debug_ui_presenter.ui_presenter.draw_button(device,
-                                                       command_buffer,
                                                        position,
                                                        &self.background_texture) {
             self.background_panel_visible = !self.background_panel_visible;
@@ -251,57 +235,41 @@ where
         if !self.background_panel_visible {
             debug_ui_presenter.ui_presenter.draw_tooltip(
                 device,
-                command_buffer,
                 "Background Color",
                 RectI::new(position, button_size),
             );
         }
 
         // Draw background panel, if necessary.
-        self.draw_background_panel(device,
-                                   command_buffer,
-                                   debug_ui_presenter,
-                                   position.x(),
-                                   action,
-                                   model);
+        self.draw_background_panel(device, debug_ui_presenter, position.x(), action, model);
         position += Vector2I::new(button_size.x() + PADDING, 0);
 
         // Draw effects panel, if necessary.
-        self.draw_effects_panel(device, command_buffer, debug_ui_presenter, model);
+        self.draw_effects_panel(device, debug_ui_presenter, model);
 
         // Draw rotate and zoom buttons, if applicable.
         if model.mode != Mode::TwoD {
             return;
         }
 
-        if debug_ui_presenter.ui_presenter.draw_button(device,
-                                                       command_buffer,
-                                                       position,
-                                                       &self.rotate_texture) {
+        if debug_ui_presenter.ui_presenter.draw_button(device, position, &self.rotate_texture) {
             self.rotate_panel_visible = !self.rotate_panel_visible;
         }
         if !self.rotate_panel_visible {
             debug_ui_presenter.ui_presenter.draw_tooltip(device,
-                                                         command_buffer,
                                                          "Rotate",
                                                          RectI::new(position, button_size));
         }
-        self.draw_rotate_panel(device,
-                               command_buffer,
-                               debug_ui_presenter,
-                               position.x(),
-                               action,
-                               model);
+        self.draw_rotate_panel(device, debug_ui_presenter, position.x(), action, model);
         position += Vector2I::new(BUTTON_WIDTH + PADDING, 0);
 
         // Draw zoom control.
-        self.draw_zoom_control(device, command_buffer, debug_ui_presenter, position, action);
+        self.draw_zoom_control(device, debug_ui_presenter, position, action);
     }
 
     fn draw_zoom_control(
         &mut self,
         device: &D,
-        command_buffer: &D::CommandBuffer,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         position: Vector2I,
         action: &mut UIAction,
@@ -310,10 +278,7 @@ where
             debug_ui_presenter.ui_presenter.measure_segmented_control(3);
         let zoom_segmented_control_rect =
             RectI::new(position, Vector2I::new(zoom_segmented_control_width, BUTTON_HEIGHT));
-        debug_ui_presenter.ui_presenter.draw_tooltip(device,
-                                                     command_buffer,
-                                                     "Zoom",
-                                                     zoom_segmented_control_rect);
+        debug_ui_presenter.ui_presenter.draw_tooltip(device, "Zoom", zoom_segmented_control_rect);
 
         let zoom_textures = &[
             &self.zoom_in_texture,
@@ -322,7 +287,6 @@ where
         ];
 
         match debug_ui_presenter.ui_presenter.draw_image_segmented_control(device,
-                                                                           command_buffer,
                                                                            position,
                                                                            zoom_textures,
                                                                            None) {
@@ -335,7 +299,6 @@ where
 
     fn draw_message_text(&mut self,
                          device: &D,
-                         command_buffer: &D::CommandBuffer,
                          debug_ui_presenter: &mut DebugUIPresenter<D>,
                          model: &mut DemoUIModel) {
         if model.message.is_empty() {
@@ -347,13 +310,11 @@ where
         let window_size = Vector2I::new(PADDING * 2 + message_size, TOOLTIP_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
-            command_buffer,
             RectI::new(window_origin, window_size),
             WINDOW_COLOR,
         );
         debug_ui_presenter.ui_presenter.draw_text(
             device,
-            command_buffer,
             &model.message,
             window_origin + Vector2I::new(PADDING, PADDING + FONT_ASCENT),
             false,
@@ -362,7 +323,6 @@ where
 
     fn draw_effects_panel(&mut self,
                           device: &D,
-                          command_buffer: &D::CommandBuffer,
                           debug_ui_presenter: &mut DebugUIPresenter<D>,
                           model: &mut DemoUIModel) {
         if !self.effects_panel_visible {
@@ -373,7 +333,6 @@ where
         let effects_panel_y = bottom - (BUTTON_HEIGHT + PADDING + EFFECTS_PANEL_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
-            command_buffer,
             RectI::new(
                 Vector2I::new(PADDING, effects_panel_y),
                 Vector2I::new(EFFECTS_PANEL_WIDTH, EFFECTS_PANEL_HEIGHT),
@@ -383,7 +342,6 @@ where
 
         model.gamma_correction_effect_enabled = self.draw_effects_switch(
             device,
-            command_buffer,
             debug_ui_presenter,
             "Gamma Correction",
             0,
@@ -392,7 +350,6 @@ where
         );
         model.stem_darkening_effect_enabled = self.draw_effects_switch(
             device,
-            command_buffer,
             debug_ui_presenter,
             "Stem Darkening",
             1,
@@ -401,7 +358,6 @@ where
         );
         model.subpixel_aa_effect_enabled = self.draw_effects_switch(
             device,
-            command_buffer,
             debug_ui_presenter,
             "Subpixel AA",
             2,
@@ -413,7 +369,6 @@ where
     fn draw_screenshot_panel<W>(
         &mut self,
         device: &D,
-        command_buffer: &D::CommandBuffer,
         window: &mut W,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         panel_x: i32,
@@ -428,7 +383,6 @@ where
         let panel_position = Vector2I::new(panel_x, panel_y);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
-            command_buffer,
             RectI::new(
                 panel_position,
                 Vector2I::new(SCREENSHOT_PANEL_WIDTH, SCREENSHOT_PANEL_HEIGHT),
@@ -438,7 +392,6 @@ where
 
         self.draw_screenshot_menu_item(
             device,
-            command_buffer,
             window,
             debug_ui_presenter,
             ScreenshotType::PNG,
@@ -447,7 +400,6 @@ where
         );
         self.draw_screenshot_menu_item(
             device,
-            command_buffer,
             window,
             debug_ui_presenter,
             ScreenshotType::SVG,
@@ -459,7 +411,6 @@ where
     fn draw_background_panel(
         &mut self,
         device: &D,
-        command_buffer: &D::CommandBuffer,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         panel_x: i32,
         action: &mut UIAction,
@@ -474,7 +425,6 @@ where
         let panel_position = Vector2I::new(panel_x, panel_y);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
-            command_buffer,
             RectI::new(
                 panel_position,
                 Vector2I::new(BACKGROUND_PANEL_WIDTH, BACKGROUND_PANEL_HEIGHT),
@@ -484,7 +434,6 @@ where
 
         self.draw_background_menu_item(
             device,
-            command_buffer,
             debug_ui_presenter,
             BackgroundColor::Light,
             panel_position,
@@ -493,7 +442,6 @@ where
         );
         self.draw_background_menu_item(
             device,
-            command_buffer,
             debug_ui_presenter,
             BackgroundColor::Dark,
             panel_position,
@@ -502,7 +450,6 @@ where
         );
         self.draw_background_menu_item(
             device,
-            command_buffer,
             debug_ui_presenter,
             BackgroundColor::Transparent,
             panel_position,
@@ -514,7 +461,6 @@ where
     fn draw_rotate_panel(
         &mut self,
         device: &D,
-        command_buffer: &D::CommandBuffer,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         rotate_panel_x: i32,
         action: &mut UIAction,
@@ -530,7 +476,6 @@ where
         let rotate_panel_size = Vector2I::new(ROTATE_PANEL_WIDTH, ROTATE_PANEL_HEIGHT);
         debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(
             device,
-            command_buffer,
             RectI::new(rotate_panel_origin, rotate_panel_size),
             WINDOW_COLOR,
         );
@@ -555,25 +500,19 @@ where
             Vector2I::new(widget_x, slider_track_y),
             Vector2I::new(SLIDER_WIDTH, SLIDER_TRACK_HEIGHT),
         );
-        debug_ui_presenter
-            .ui_presenter
-            .draw_rect_outline(device, command_buffer, slider_track_rect, TEXT_COLOR);
+        debug_ui_presenter.ui_presenter.draw_rect_outline(device, slider_track_rect, TEXT_COLOR);
 
         let slider_knob_x = widget_x + model.rotation - SLIDER_KNOB_WIDTH / 2;
         let slider_knob_rect = RectI::new(
             Vector2I::new(slider_knob_x, widget_y),
             Vector2I::new(SLIDER_KNOB_WIDTH, SLIDER_KNOB_HEIGHT),
         );
-        debug_ui_presenter.ui_presenter.draw_solid_rect(device,
-                                                        command_buffer,
-                                                        slider_knob_rect,
-                                                        TEXT_COLOR);
+        debug_ui_presenter.ui_presenter.draw_solid_rect(device, slider_knob_rect, TEXT_COLOR);
     }
 
     fn draw_screenshot_menu_item<W>(
         &mut self,
         device: &D,
-        command_buffer: &D::CommandBuffer,
         window: &mut W,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         screenshot_type: ScreenshotType,
@@ -588,7 +527,6 @@ where
         let widget_rect = RectI::new(widget_origin, widget_size);
 
         if self.draw_menu_item(device,
-                               command_buffer,
                                debug_ui_presenter,
                                &text,
                                widget_rect,
@@ -605,7 +543,6 @@ where
     fn draw_background_menu_item(
         &mut self,
         device: &D,
-        command_buffer: &D::CommandBuffer,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         color: BackgroundColor,
         panel_position: Vector2I,
@@ -620,7 +557,6 @@ where
 
         let selected = color == model.background_color;
         if self.draw_menu_item(device,
-                               command_buffer,
                                debug_ui_presenter,
                                text,
                                widget_rect,
@@ -632,7 +568,6 @@ where
 
     fn draw_menu_item(&self,
                       device: &D,
-                      command_buffer: &D::CommandBuffer,
                       debug_ui_presenter: &mut DebugUIPresenter<D>,
                       text: &str,
                       widget_rect: RectI,
@@ -640,18 +575,13 @@ where
                       -> bool {
         if selected {
             debug_ui_presenter.ui_presenter.draw_solid_rounded_rect(device,
-                                                                    command_buffer,
                                                                     widget_rect,
                                                                     TEXT_COLOR);
         }
 
         let (text_x, text_y) = (PADDING * 2, BUTTON_TEXT_OFFSET);
         let text_position = widget_rect.origin() + Vector2I::new(text_x, text_y);
-        debug_ui_presenter.ui_presenter.draw_text(device,
-                                                  command_buffer,
-                                                  text,
-                                                  text_position,
-                                                  selected);
+        debug_ui_presenter.ui_presenter.draw_text(device, text, text_position, selected);
 
         debug_ui_presenter.ui_presenter
                           .event_queue
@@ -662,7 +592,6 @@ where
     fn draw_effects_switch(
         &self,
         device: &D,
-        command_buffer: &D::CommandBuffer,
         debug_ui_presenter: &mut DebugUIPresenter<D>,
         text: &str,
         index: i32,
@@ -673,7 +602,7 @@ where
         let text_y = window_y + PADDING + BUTTON_TEXT_OFFSET + (BUTTON_HEIGHT + PADDING) * index;
         debug_ui_presenter
             .ui_presenter
-            .draw_text(device, command_buffer, text, Vector2I::new(text_x, text_y), false);
+            .draw_text(device, text, Vector2I::new(text_x, text_y), false);
 
         let switch_width = debug_ui_presenter.ui_presenter.measure_segmented_control(2);
         let switch_x = PADDING + EFFECTS_PANEL_WIDTH - (switch_width + PADDING);
@@ -681,7 +610,7 @@ where
         let switch_position = Vector2I::new(switch_x, switch_y);
         debug_ui_presenter
             .ui_presenter
-            .draw_text_switch(device, command_buffer, switch_position, &["Off", "On"], value as u8)
+            .draw_text_switch(device, switch_position, &["Off", "On"], value as u8)
             != 0
     }
 }

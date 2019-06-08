@@ -33,6 +33,7 @@ pub struct MetalDevice {
     device: DeviceRef,
     layer: CoreAnimationLayerRef,
     command_queue: CommandQueueRef,
+    command_buffer: RefCell<Option<CommandBufferRef>>,
 }
 
 pub struct MetalProgram {
@@ -79,7 +80,6 @@ pub struct MetalVertexArray {
 
 impl Device for MetalDevice {
     type Buffer = MetalBuffer;
-    type CommandBuffer = CommandBufferRef;
     type Framebuffer = MetalFramebuffer;
     type Program = MetalProgram;
     type Shader = MetalShader;
@@ -284,15 +284,20 @@ impl Device for MetalDevice {
         vec![]
     }
 
-    fn create_command_buffer(&self) -> CommandBufferRef {
-        self.command_queue.new_command_buffer()
+    fn begin_commands(&self) -> CommandBufferRef {
+        *self.command_buffer.borrow_mut() = Some(self.command_queue.new_command_buffer());
     }
 
-    fn submit_command_buffer(&self, command_buffer: CommandBufferRef) {
-        command_buffer.commit();
+    fn end_commands(&self) {
+        self.command_buffer.borrow_mut().take().unwrap().commit();
     }
 
-    fn clear(&self, command_buffer: &CommandBufferRef, params: &ClearParams) {
+    fn clear(&self, params: &ClearParams) {
+        let encoder = self.command_buffer
+                          .borrow()
+                          .unwrap()
+                          .new_render_command_encoder(render_pass_descriptor);
+        
     }
 
     fn create_timer_query(&self) -> MetalTimerQuery { MetalTimerQuery }

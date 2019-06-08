@@ -51,10 +51,9 @@ fn main() {
                                      DestFramebuffer::full_window(window_size));
 
     // Clear to white.
-    let command_buffer = renderer.device.create_command_buffer();
-    renderer.device.clear(&command_buffer,
-                          &ClearParams { color: Some(ColorF::white()), ..ClearParams::default() });
-    renderer.device.submit_command_buffer(command_buffer);
+    renderer.device.begin_commands();
+    renderer.device.clear(&ClearParams { color: Some(ColorF::white()), ..ClearParams::default() });
+    renderer.device.end_commands();
 
     // Make a canvas. We're going to draw a house.
     let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());

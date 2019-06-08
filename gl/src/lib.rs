@@ -155,7 +155,6 @@ impl GLDevice {
 
 impl Device for GLDevice {
     type Buffer = GLBuffer;
-    type CommandBuffer = GLCommandBuffer;
     type Framebuffer = GLFramebuffer;
     type Program = GLProgram;
     type Shader = GLShader;
@@ -499,17 +498,16 @@ impl Device for GLDevice {
         pixels
     }
 
-    fn create_command_buffer(&self) -> GLCommandBuffer {
-        GLCommandBuffer
+    fn begin_commands(&self) {
+        // TODO(pcwalton): Add some checks in debug mode to make sure render commands are bracketed
+        // by these?
     }
 
-    fn submit_command_buffer(&self, _: GLCommandBuffer) {
-        unsafe {
-            gl::Flush();
-        }
+    fn end_commands(&self) {
+        unsafe { gl::Flush(); }
     }
 
-    fn clear(&self, _: &GLCommandBuffer, attachment: &RenderTarget<GLDevice>, params: &ClearParams) {
+    fn clear(&self, attachment: &RenderTarget<GLDevice>, params: &ClearParams) {
         self.bind_render_target(attachment);
 
         unsafe {
@@ -546,7 +544,6 @@ impl Device for GLDevice {
     }
 
     fn draw_arrays(&self,
-                   _: &GLCommandBuffer,
                    render_target: &RenderTarget<Self>,
                    primitive: Primitive,
                    index_count: u32,
@@ -560,7 +557,6 @@ impl Device for GLDevice {
     }
 
     fn draw_elements(&self,
-                     _: &GLCommandBuffer,
                      render_target: &RenderTarget<Self>,
                      primitive: Primitive,
                      index_count: u32,
@@ -577,7 +573,6 @@ impl Device for GLDevice {
     }
 
     fn draw_elements_instanced(&self,
-                               _: &GLCommandBuffer,
                                render_target: &RenderTarget<Self>,
                                primitive: Primitive,
                                index_count: u32,
@@ -792,8 +787,6 @@ impl Drop for GLBuffer {
         }
     }
 }
-
-pub struct GLCommandBuffer;
 
 #[derive(Debug)]
 pub struct GLUniform {

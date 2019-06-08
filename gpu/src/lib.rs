@@ -23,7 +23,6 @@ pub mod resources;
 
 pub trait Device: Sized {
     type Buffer;
-    type CommandBuffer;
     type Framebuffer;
     type Program;
     type Shader;
@@ -66,26 +65,20 @@ pub trait Device: Sized {
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
     fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
     fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8>;
-    fn create_command_buffer(&self) -> Self::CommandBuffer;
-    fn submit_command_buffer(&self, command_buffer: Self::CommandBuffer);
-    fn clear(&self,
-             command_buffer: &Self::CommandBuffer,
-             attachment: &RenderTarget<Self>,
-             params: &ClearParams);
+    fn begin_commands(&self);
+    fn end_commands(&self);
+    fn clear(&self, attachment: &RenderTarget<Self>, params: &ClearParams);
     fn draw_arrays(&self,
-                   command_buffer: &Self::CommandBuffer,
                    attachment: &RenderTarget<Self>,
                    primitive: Primitive,
                    index_count: u32,
                    render_state: &RenderState);
     fn draw_elements(&self,
-                     command_buffer: &Self::CommandBuffer,
                      attachment: &RenderTarget<Self>,
                      primitive: Primitive,
                      index_count: u32,
                      render_state: &RenderState);
     fn draw_elements_instanced(&self,
-                               command_buffer: &Self::CommandBuffer,
                                attachment: &RenderTarget<Self>,
                                primitive: Primitive,
                                index_count: u32,
@@ -104,10 +97,6 @@ pub trait Device: Sized {
                    buffer: &Self::Buffer,
                    target: BufferTarget,
                    index: u32);
-    /*
-    fn bind_default_framebuffer(&self, viewport: RectI);
-    fn bind_framebuffer(&self, framebuffer: &Self::Framebuffer);
-    */
     fn bind_texture(&self, texture: &Self::Texture, unit: u32);
 
     fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
