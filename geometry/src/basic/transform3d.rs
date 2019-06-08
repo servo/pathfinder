@@ -176,6 +176,15 @@ impl Transform3DF {
         )
     }
 
+    /// Linearly interpolate between transforms
+    pub fn lerp(&self, weight: f32, other: &Transform3DF) -> Transform3DF {
+        let c0 = self.c0 * F32x4::splat(weight) + other.c0 * F32x4::splat(1.0 - weight);
+        let c1 = self.c1 * F32x4::splat(weight) + other.c1 * F32x4::splat(1.0 - weight);
+        let c2 = self.c2 * F32x4::splat(weight) + other.c2 * F32x4::splat(1.0 - weight);
+        let c3 = self.c3 * F32x4::splat(weight) + other.c3 * F32x4::splat(1.0 - weight);
+        Transform3DF { c0, c1, c2, c3 }
+    }
+
     /// Just like `gluPerspective()`.
     #[inline]
     pub fn from_perspective(fov_y: f32, aspect: f32, z_near: f32, z_far: f32) -> Transform3DF {

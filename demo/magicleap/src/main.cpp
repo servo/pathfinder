@@ -163,28 +163,36 @@ static void onNewInitArg(void* app_handle)
     return;
   }
 
-  if (arg_list_len) {
-    if (MLResult_Ok != MLLifecycleGetInitArgByIndex(arg_list, 0, &arg)) {
-      ML_LOG(Error, "%s: Failed to get init arg.", application_name);
+  if (!arg_list_len) {
       return;
-    }
-
-    if (MLResult_Ok != MLLifecycleGetFileInfoListLength(arg, &file_list_len)) {
-      ML_LOG(Error, "%s: Failed to get file list length.", application_name);
-      return;
-    }
   }
 
-  if (file_list_len) {
-    if (MLResult_Ok != MLLifecycleGetFileInfoByIndex(arg, 0, &file_info)) {
-      ML_LOG(Error, "%s: Failed to get file info.", application_name);
-      return;
-    }
+  if (MLResult_Ok != MLLifecycleGetInitArgByIndex(arg_list, 0, &arg)) {
+    ML_LOG(Error, "%s: Failed to get init arg.", application_name);
+  }
 
-    if (MLResult_Ok != MLFileInfoGetFileName(file_info, &file_name)) {
-      ML_LOG(Error, "%s: Failed to get file name.", application_name);
-      return;
-    }
+  if (MLResult_Ok != MLLifecycleGetFileInfoListLength(arg, &file_list_len)) {
+    ML_LOG(Error, "%s: Failed to get file list length.", application_name);
+    return;
+  }
+
+  if (!file_list_len) {
+    return;
+  }
+  
+  if (MLResult_Ok != MLLifecycleGetFileInfoByIndex(arg, 0, &file_info)) {
+    ML_LOG(Error, "%s: Failed to get file info.", application_name);
+    return;
+  }
+
+  if (MLResult_Ok != MLFileInfoGetFileName(file_info, &file_name)) {
+    ML_LOG(Error, "%s: Failed to get file name.", application_name);
+    return;
+  }
+
+  if (!file_name) {
+    ML_LOG(Error, "%s: File name is null.", application_name);
+    return;
   }
 
   // Tell pathfinder to load the file
@@ -198,6 +206,7 @@ static void onNewInitArg(void* app_handle)
     return;
   }
 
+  ML_LOG(Info, "%s: Loading %s.", application_name, file_name);
   magicleap_pathfinder_demo_load(app, file_name);
   MLLifecycleFreeInitArgList(&arg_list);
 }
