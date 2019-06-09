@@ -19,9 +19,9 @@ use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
-use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderState, RenderTarget};
-use pathfinder_gpu::{StencilFunc, StencilState, TextureFormat, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
+use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureFormat, UniformData};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
 use std::collections::VecDeque;
@@ -462,19 +462,16 @@ where
             &self.fill_program.area_lut_uniform,
             UniformData::TextureUnit(0),
         );
-        let render_state = RenderState {
-            blend: BlendState::RGBOneAlphaOne,
-            ..RenderState::default()
-        };
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
-        self.device.draw_elements_instanced(
-            &RenderTarget::Framebuffer(&self.mask_framebuffer),
-            &self.fill_vertex_array.vertex_array,
-            Primitive::Triangles,
-            6,
-            self.buffered_fills.len() as u32,
-            &render_state,
-        );
+        self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
+            target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
+            vertex_array: &self.fill_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            options: RenderOptions {
+                blend: BlendState::RGBOneAlphaOne,
+                ..RenderOptions::default()
+            },
+        });
 
         self.buffered_fills.clear()
     }
@@ -546,17 +543,16 @@ where
             &alpha_tile_program.view_box_origin_uniform,
             UniformData::Vec2(F32x4::default()),
         );
-        let render_state = RenderState {
-            blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
-            stencil: self.stencil_state(),
-            ..RenderState::default()
-        };
-        self.device.draw_elements_instanced(&self.draw_render_target(),
-                                            &alpha_tile_vertex_array.vertex_array,
-                                            Primitive::Triangles,
-                                            6,
-                                            count,
-                                            &render_state);
+        self.device.draw_elements_instanced(6, count, &RenderState {
+            target: &self.draw_render_target(),
+            vertex_array: &alpha_tile_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            options: RenderOptions {
+                blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
+                stencil: self.stencil_state(),
+                ..RenderOptions::default()
+            },
+        });
     }
 
     fn draw_solid_tiles(&mut self, count: u32) {
@@ -616,16 +612,12 @@ where
             &solid_tile_program.view_box_origin_uniform,
             UniformData::Vec2(F32x4::default()),
         );
-        let render_state = RenderState {
-            stencil: self.stencil_state(),
-            ..RenderState::default()
-        };
-        self.device.draw_elements_instanced(&self.draw_render_target(),
-                                            &solid_tile_vertex_array.vertex_array,
-                                            Primitive::Triangles,
-                                            6,
-                                            count,
-                                            &render_state);
+        self.device.draw_elements_instanced(6, count, &RenderState {
+            target: &self.draw_render_target(),
+            vertex_array: &solid_tile_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            options: RenderOptions { stencil: self.stencil_state(), ..RenderOptions::default() },
+        });
     }
 
     fn postprocess(&mut self) {
@@ -705,11 +697,12 @@ where
             &self.postprocess_program.gamma_correction_enabled_uniform,
             UniformData::Int(gamma_correction_enabled as i32),
         );
-        self.device.draw_arrays(&self.dest_render_target(),
-                                &self.postprocess_vertex_array.vertex_array,
-                                Primitive::Triangles,
-                                4,
-                                &RenderState::default());
+        self.device.draw_arrays(4, &RenderState {
+            target: &self.dest_render_target(),
+            vertex_array: &self.postprocess_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            options: RenderOptions::default(),
+        });
     }
 
     fn solid_tile_program(&self) -> &SolidTileProgram<D> {
@@ -762,17 +755,13 @@ where
         );
 
         self.device.use_program(&self.stencil_program.program);
-        self.device.draw_elements(
-            &self.draw_render_target(),
-            &self.stencil_vertex_array.vertex_array,
-            Primitive::Triangles,
-            indices.len() as u32,
-            &RenderState {
+        self.device.draw_elements(indices.len() as u32, &RenderState {
+            target: &self.draw_render_target(),
+            vertex_array: &self.stencil_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            options: RenderOptions {
                 // FIXME(pcwalton): Should we really write to the depth buffer?
-                depth: Some(DepthState {
-                    func: DepthFunc::Less,
-                    write: true,
-                }),
+                depth: Some(DepthState { func: DepthFunc::Less, write: true }),
                 stencil: Some(StencilState {
                     func: StencilFunc::Always,
                     reference: 1,
@@ -780,9 +769,9 @@ where
                     write: true,
                 }),
                 color_mask: false,
-                ..RenderState::default()
+                ..RenderOptions::default()
             },
-        )
+        });
     }
 
     pub fn reproject_texture(
@@ -808,20 +797,16 @@ where
             &self.reprojection_program.texture_uniform,
             UniformData::TextureUnit(0),
         );
-        self.device.draw_elements(
-            &self.draw_render_target(),
-            &self.reprojection_vertex_array.vertex_array,
-            Primitive::Triangles,
-            6,
-            &RenderState {
+        self.device.draw_elements(6, &RenderState {
+            target: &self.draw_render_target(),
+            vertex_array: &self.reprojection_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
-                depth: Some(DepthState {
-                    func: DepthFunc::Less,
-                    write: false,
-                }),
-                ..RenderState::default()
+                depth: Some(DepthState { func: DepthFunc::Less, write: false, }),
+                ..RenderOptions::default()
             },
-        );
+        });
     }
 
     pub fn draw_render_target(&self) -> RenderTarget<D> {

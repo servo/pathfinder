@@ -68,25 +68,12 @@ pub trait Device: Sized {
     fn begin_commands(&self);
     fn end_commands(&self);
     fn clear(&self, attachment: &RenderTarget<Self>, params: &ClearParams);
-    fn draw_arrays(&self,
-                   render_target: &RenderTarget<Self>,
-                   vertex_array: &Self::VertexArray,
-                   primitive: Primitive,
-                   index_count: u32,
-                   render_state: &RenderState);
-    fn draw_elements(&self,
-                     render_target: &RenderTarget<Self>,
-                     vertex_array: &Self::VertexArray,
-                     primitive: Primitive,
-                     index_count: u32,
-                     render_state: &RenderState);
+    fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>);
+    fn draw_elements(&self, index_count: u32, render_state: &RenderState<Self>);
     fn draw_elements_instanced(&self,
-                               render_target: &RenderTarget<Self>,
-                               vertex_array: &Self::VertexArray,
-                               primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
-                               render_state: &RenderState);
+                               render_state: &RenderState<Self>);
     fn create_timer_query(&self) -> Self::TimerQuery;
     fn begin_timer_query(&self, query: &Self::TimerQuery);
     fn end_timer_query(&self, query: &Self::TimerQuery);
@@ -94,7 +81,6 @@ pub trait Device: Sized {
     fn get_timer_query(&self, query: &Self::TimerQuery) -> Duration;
 
     // TODO(pcwalton): Go bindless...
-    //fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
     fn bind_buffer(&self,
                    vertex_array: &Self::VertexArray,
                    buffer: &Self::Buffer,
@@ -207,8 +193,16 @@ pub struct ClearParams {
     pub stencil: Option<u8>,
 }
 
+#[derive(Clone)]
+pub struct RenderState<'a, D> where D: Device {
+    pub target: &'a RenderTarget<'a, D>,
+    pub vertex_array: &'a D::VertexArray,
+    pub primitive: Primitive,
+    pub options: RenderOptions,
+}
+
 #[derive(Clone, Debug)]
-pub struct RenderState {
+pub struct RenderOptions {
     pub blend: BlendState,
     pub depth: Option<DepthState>,
     pub stencil: Option<StencilState>,
@@ -256,10 +250,10 @@ pub enum StencilFunc {
     NotEqual,
 }
 
-impl Default for RenderState {
+impl Default for RenderOptions {
     #[inline]
-    fn default() -> RenderState {
-        RenderState {
+    fn default() -> RenderOptions {
+        RenderOptions {
             blend: BlendState::default(),
             depth: None,
             stencil: None,

@@ -18,8 +18,8 @@ use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
-use pathfinder_gpu::{ClearParams, DepthFunc, Device, Primitive, RenderState, ShaderKind};
-use pathfinder_gpu::{StencilFunc, TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{ClearParams, DepthFunc, Device, Primitive, RenderOptions, RenderState};
+use pathfinder_gpu::{ShaderKind, StencilFunc, TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
@@ -60,10 +60,16 @@ impl GLDevice {
         }
     }
 
-    fn set_render_state(&self, render_state: &RenderState) {
+    fn set_render_state(&self, render_state: &RenderState<GLDevice>) {
+        self.bind_render_target(render_state.target);
+        self.bind_vertex_array(render_state.vertex_array);
+        self.set_render_options(&render_state.options);
+    }
+
+    fn set_render_options(&self, render_options: &RenderOptions) {
         unsafe {
             // Set blend.
-            match render_state.blend {
+            match render_options.blend {
                 BlendState::Off => {
                     gl::Disable(gl::BLEND); ck();
                 }
@@ -91,7 +97,7 @@ impl GLDevice {
             }
 
             // Set depth.
-            match render_state.depth {
+            match render_options.depth {
                 None => {
                     gl::Disable(gl::DEPTH_TEST); ck();
                 }
@@ -103,7 +109,7 @@ impl GLDevice {
             }
 
             // Set stencil.
-            match render_state.stencil {
+            match render_options.stencil {
                 None => {
                     gl::Disable(gl::STENCIL_TEST); ck();
                 }
@@ -123,14 +129,19 @@ impl GLDevice {
             }
 
             // Set color mask.
-            let color_mask = render_state.color_mask as GLboolean;
+            let color_mask = render_options.color_mask as GLboolean;
             gl::ColorMask(color_mask, color_mask, color_mask, color_mask); ck();
         }
     }
 
-    fn reset_render_state(&self, render_state: &RenderState) {
+    fn reset_render_state(&self, render_state: &RenderState<GLDevice>) {
+        self.reset_render_options(&render_state.options);
+        self.unbind_vertex_array();
+    }
+
+    fn reset_render_options(&self, render_options: &RenderOptions) {
         unsafe {
-            match render_state.blend {
+            match render_options.blend {
                 BlendState::Off => {}
                 BlendState::RGBOneAlphaOneMinusSrcAlpha |
                 BlendState::RGBOneAlphaOne |
@@ -139,11 +150,11 @@ impl GLDevice {
                 }
             }
 
-            if render_state.depth.is_some() {
+            if render_options.depth.is_some() {
                 gl::Disable(gl::DEPTH_TEST); ck();
             }
 
-            if render_state.stencil.is_some() {
+            if render_options.stencil.is_some() {
                 gl::StencilMask(!0); ck();
                 gl::Disable(gl::STENCIL_TEST); ck();
             }
@@ -545,60 +556,40 @@ impl Device for GLDevice {
         }
     }
 
-    fn draw_arrays(&self,
-                   render_target: &RenderTarget<Self>,
-                   vertex_array: &Self::VertexArray,
-                   primitive: Primitive,
-                   index_count: u32,
-                   render_state: &RenderState) {
-        self.bind_render_target(render_target);
-        self.bind_vertex_array(vertex_array);
+    fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>) {
         self.set_render_state(render_state);
         unsafe {
-            gl::DrawArrays(primitive.to_gl_primitive(), 0, index_count as GLsizei); ck();
+            gl::DrawArrays(render_state.primitive.to_gl_primitive(),
+                           0,
+                           index_count as GLsizei); ck();
         }
         self.reset_render_state(render_state);
-        self.unbind_vertex_array();
     }
 
-    fn draw_elements(&self,
-                     render_target: &RenderTarget<Self>,
-                     vertex_array: &Self::VertexArray,
-                     primitive: Primitive,
-                     index_count: u32,
-                     render_state: &RenderState) {
-        self.bind_render_target(render_target);
-        self.bind_vertex_array(vertex_array);
+    fn draw_elements(&self, index_count: u32, render_state: &RenderState<Self>) {
         self.set_render_state(render_state);
         unsafe {
-            gl::DrawElements(primitive.to_gl_primitive(),
+            gl::DrawElements(render_state.primitive.to_gl_primitive(),
                              index_count as GLsizei,
                              gl::UNSIGNED_INT,
                              ptr::null()); ck();
         }
         self.reset_render_state(render_state);
-        self.unbind_vertex_array();
     }
 
     fn draw_elements_instanced(&self,
-                               render_target: &RenderTarget<Self>,
-                               vertex_array: &Self::VertexArray,
-                               primitive: Primitive,
                                index_count: u32,
                                instance_count: u32,
-                               render_state: &RenderState) {
-        self.bind_render_target(render_target);
-        self.bind_vertex_array(vertex_array);
+                               render_state: &RenderState<Self>) {
         self.set_render_state(render_state);
         unsafe {
-            gl::DrawElementsInstanced(primitive.to_gl_primitive(),
+            gl::DrawElementsInstanced(render_state.primitive.to_gl_primitive(),
                                       index_count as GLsizei,
                                       gl::UNSIGNED_INT,
                                       ptr::null(),
                                       instance_count as GLsizei); ck();
         }
         self.reset_render_state(render_state);
-        self.unbind_vertex_array();
     }
 
     #[inline]

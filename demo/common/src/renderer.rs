@@ -15,8 +15,8 @@ use crate::window::{View, Window};
 use crate::{BackgroundColor, DemoApp, UIVisibility};
 use image::ColorType;
 use pathfinder_geometry::color::{ColorF, ColorU};
-use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderState};
-use pathfinder_gpu::{TextureFormat, UniformData};
+use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderOptions};
+use pathfinder_gpu::{RenderState, TextureFormat, UniformData};
 use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode};
 use pathfinder_renderer::gpu_data::RenderCommand;
@@ -257,16 +257,15 @@ impl<W> DemoApp<W> where W: Window {
         device.set_uniform(&self.ground_program.program,
                            &self.ground_program.gridline_count_uniform,
                            UniformData::Int(GRIDLINE_COUNT));
-        device.draw_elements(
-            &self.renderer.draw_render_target(),
-            &self.ground_vertex_array.vertex_array,
-            Primitive::Triangles,
-            6,
-            &RenderState {
+        device.draw_elements(6, &RenderState {
+            target: &self.renderer.draw_render_target(),
+            vertex_array: &self.ground_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            options: RenderOptions {
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
-                ..RenderState::default()
+                ..RenderOptions::default()
             },
-        );
+        });
     }
 
     fn render_vector_scene(&mut self) {

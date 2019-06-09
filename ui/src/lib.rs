@@ -21,8 +21,8 @@ use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode, Device};
-use pathfinder_gpu::{Primitive, RenderState, UniformData, VertexAttrClass};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
+use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
@@ -183,14 +183,15 @@ impl<D> UIPresenter<D> where D: Device {
                           color);
 
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
-        device.draw_elements(&self.attachment(),
-                             &self.solid_vertex_array.vertex_array,
-                             primitive,
-                             index_data.len() as u32,
-                             &RenderState {
-                                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
-                                ..RenderState::default()
-                             });
+        device.draw_elements(index_data.len() as u32, &RenderState {
+            target: &self.render_target(),
+            vertex_array: &self.solid_vertex_array.vertex_array,
+            primitive,
+            options: RenderOptions {
+                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                ..RenderOptions::default()
+            },
+        });
     }
 
     pub fn draw_text(&self, device: &D, string: &str, origin: Vector2I, invert: bool) {
@@ -422,14 +423,15 @@ impl<D> UIPresenter<D> where D: Device {
                            &self.texture_program.texture_uniform,
                            UniformData::TextureUnit(0));
 
-        device.draw_elements(&self.attachment(),
-                             &self.texture_vertex_array.vertex_array,
-                             Primitive::Triangles,
-                             index_data.len() as u32,
-                             &RenderState {
-                                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
-                                ..RenderState::default()
-                             });
+        device.draw_elements(index_data.len() as u32, &RenderState {
+            target: &self.render_target(),
+            vertex_array: &self.texture_vertex_array.vertex_array,
+            primitive: Primitive::Triangles,
+            options: RenderOptions {
+                blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
+                ..RenderOptions::default()
+            },
+        });
     }
 
     pub fn draw_button(&mut self, device: &D, origin: Vector2I, texture: &D::Texture) -> bool {
@@ -567,7 +569,7 @@ impl<D> UIPresenter<D> where D: Device {
                        false);
     }
 
-    fn attachment(&self) -> RenderTarget<D> {
+    fn render_target(&self) -> RenderTarget<D> {
         RenderTarget::Default { viewport: RectI::new(Vector2I::default(), self.framebuffer_size) }
     }
 }
