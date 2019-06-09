@@ -360,6 +360,8 @@ impl Device for GLDevice {
             gl::VertexAttribDivisor(attr.attr, descriptor.divisor); ck();
             gl::EnableVertexAttribArray(attr.attr); ck();
         }
+
+        self.unbind_vertex_array();
     }
 
     fn set_uniform(&self, program: &GLProgram, uniform: &Self::Uniform, data: UniformData) {
@@ -556,6 +558,7 @@ impl Device for GLDevice {
             gl::DrawArrays(primitive.to_gl_primitive(), 0, index_count as GLsizei); ck();
         }
         self.reset_render_state(render_state);
+        self.unbind_vertex_array();
     }
 
     fn draw_elements(&self,
@@ -574,6 +577,7 @@ impl Device for GLDevice {
                              ptr::null()); ck();
         }
         self.reset_render_state(render_state);
+        self.unbind_vertex_array();
     }
 
     fn draw_elements_instanced(&self,
@@ -594,6 +598,7 @@ impl Device for GLDevice {
                                       instance_count as GLsizei); ck();
         }
         self.reset_render_state(render_state);
+        self.unbind_vertex_array();
     }
 
     #[inline]
@@ -648,6 +653,7 @@ impl Device for GLDevice {
         unsafe {
             gl::BindBuffer(target.to_gl_target(), buffer.gl_buffer); ck();
         }
+        self.unbind_vertex_array();
     }
 
     #[inline]
@@ -670,6 +676,12 @@ impl GLDevice {
     fn bind_vertex_array(&self, vertex_array: &GLVertexArray) {
         unsafe {
             gl::BindVertexArray(vertex_array.gl_vertex_array); ck();
+        }
+    }
+
+    fn unbind_vertex_array(&self) {
+        unsafe {
+            gl::BindVertexArray(0); ck();
         }
     }
 
