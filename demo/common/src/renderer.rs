@@ -261,6 +261,7 @@ impl<W> DemoApp<W> where W: Window {
             target: &self.renderer.draw_render_target(),
             vertex_array: &self.ground_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
+            samplers: &[],
             options: RenderOptions {
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
                 ..RenderOptions::default()

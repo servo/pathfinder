@@ -86,7 +86,6 @@ pub trait Device: Sized {
                    buffer: &Self::Buffer,
                    target: BufferTarget,
                    index: u32);
-    fn bind_texture(&self, texture: &Self::Texture, unit: u32);
 
     fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
@@ -198,6 +197,7 @@ pub struct RenderState<'a, D> where D: Device {
     pub target: &'a RenderTarget<'a, D>,
     pub vertex_array: &'a D::VertexArray,
     pub primitive: Primitive,
+    pub samplers: &'a [&'a D::Texture],
     pub options: RenderOptions,
 }
 

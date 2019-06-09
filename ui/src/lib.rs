@@ -187,6 +187,7 @@ impl<D> UIPresenter<D> where D: Device {
             target: &self.render_target(),
             vertex_array: &self.solid_vertex_array.vertex_array,
             primitive,
+            samplers: &[],
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
                 ..RenderOptions::default()
@@ -418,7 +419,6 @@ impl<D> UIPresenter<D> where D: Device {
                           &self.texture_program.program,
                           &self.texture_program.color_uniform,
                           color);
-        device.bind_texture(texture, 0);
         device.set_uniform(&self.texture_program.program,
                            &self.texture_program.texture_uniform,
                            UniformData::TextureUnit(0));
@@ -427,6 +427,7 @@ impl<D> UIPresenter<D> where D: Device {
             target: &self.render_target(),
             vertex_array: &self.texture_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
+            samplers: &[&texture],
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
                 ..RenderOptions::default()

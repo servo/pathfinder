@@ -456,7 +456,6 @@ where
             &self.fill_program.tile_size_uniform,
             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
         );
-        self.device.bind_texture(&self.area_lut_texture, 0);
         self.device.set_uniform(
             &self.fill_program.program,
             &self.fill_program.area_lut_uniform,
@@ -467,6 +466,7 @@ where
             target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
             vertex_array: &self.fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
+            samplers: &[&self.area_lut_texture],
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOne,
                 ..RenderOptions::default()
@@ -491,8 +491,8 @@ where
             &alpha_tile_program.tile_size_uniform,
             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
         );
-        self.device
-            .bind_texture(self.device.framebuffer_texture(&self.mask_framebuffer), 0);
+
+        let mut samplers = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
         self.device.set_uniform(
             &alpha_tile_program.program,
             &alpha_tile_program.stencil_texture_uniform,
@@ -509,7 +509,7 @@ where
         match self.render_mode {
             RenderMode::Multicolor => {
                 let paint_texture = self.paint_texture.as_ref().unwrap();
-                self.device.bind_texture(paint_texture, 1);
+                samplers.push(paint_texture);
                 self.device.set_uniform(
                     &self.alpha_multicolor_tile_program.alpha_tile_program.program,
                     &self.alpha_multicolor_tile_program.paint_texture_uniform,
@@ -547,6 +547,7 @@ where
             target: &self.draw_render_target(),
             vertex_array: &alpha_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
+            samplers: &samplers,
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 stencil: self.stencil_state(),
@@ -571,10 +572,11 @@ where
             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
         );
 
+        let mut samplers = vec![];
         match self.render_mode {
             RenderMode::Multicolor => {
                 let paint_texture = self.paint_texture.as_ref().unwrap();
-                self.device.bind_texture(paint_texture, 0);
+                samplers.push(paint_texture);
                 self.device.set_uniform(
                     &self.solid_multicolor_tile_program.solid_tile_program.program,
                     &self
@@ -616,6 +618,7 @@ where
             target: &self.draw_render_target(),
             vertex_array: &solid_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
+            samplers: &samplers,
             options: RenderOptions { stencil: self.stencil_state(), ..RenderOptions::default() },
         });
     }
@@ -665,7 +668,6 @@ where
             .device
             .framebuffer_texture(postprocess_source_framebuffer);
         let source_texture_size = self.device.texture_size(source_texture);
-        self.device.bind_texture(&source_texture, 0);
         self.device.set_uniform(
             &self.postprocess_program.program,
             &self.postprocess_program.source_uniform,
@@ -676,7 +678,6 @@ where
             &self.postprocess_program.source_size_uniform,
             UniformData::Vec2(source_texture_size.0.to_f32x4()),
         );
-        self.device.bind_texture(&self.gamma_lut_texture, 1);
         self.device.set_uniform(
             &self.postprocess_program.program,
             &self.postprocess_program.gamma_lut_uniform,
@@ -701,6 +702,7 @@ where
             target: &self.dest_render_target(),
             vertex_array: &self.postprocess_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
+            samplers: &[&source_texture, &self.gamma_lut_texture],
             options: RenderOptions::default(),
         });
     }
@@ -759,6 +761,7 @@ where
             target: &self.draw_render_target(),
             vertex_array: &self.stencil_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
+            samplers: &[],
             options: RenderOptions {
                 // FIXME(pcwalton): Should we really write to the depth buffer?
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
@@ -791,7 +794,6 @@ where
             &self.reprojection_program.new_transform_uniform,
             UniformData::from_transform_3d(new_transform),
         );
-        self.device.bind_texture(texture, 0);
         self.device.set_uniform(
             &self.reprojection_program.program,
             &self.reprojection_program.texture_uniform,
@@ -801,6 +803,7 @@ where
             target: &self.draw_render_target(),
             vertex_array: &self.reprojection_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
+            samplers: &[texture],
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 depth: Some(DepthState { func: DepthFunc::Less, write: false, }),

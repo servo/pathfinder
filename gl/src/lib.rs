@@ -63,6 +63,9 @@ impl GLDevice {
     fn set_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.bind_render_target(render_state.target);
         self.bind_vertex_array(render_state.vertex_array);
+        for (texture_unit, sampler) in render_state.samplers.iter().enumerate() {
+            self.bind_texture(sampler, texture_unit as u32);
+        }
         self.set_render_options(&render_state.options);
     }
 
@@ -136,6 +139,9 @@ impl GLDevice {
 
     fn reset_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.reset_render_options(&render_state.options);
+        for texture_unit in 0..(render_state.samplers.len() as u32) {
+            self.unbind_texture(texture_unit);
+        }
         self.unbind_vertex_array();
     }
 
@@ -646,14 +652,6 @@ impl Device for GLDevice {
         }
         self.unbind_vertex_array();
     }
-
-    #[inline]
-    fn bind_texture(&self, texture: &GLTexture, unit: u32) {
-        unsafe {
-            gl::ActiveTexture(gl::TEXTURE0 + unit); ck();
-            gl::BindTexture(gl::TEXTURE_2D, texture.gl_texture); ck();
-        }
-    }
 }
 
 impl GLDevice {
@@ -673,6 +671,20 @@ impl GLDevice {
     fn unbind_vertex_array(&self) {
         unsafe {
             gl::BindVertexArray(0); ck();
+        }
+    }
+
+    fn bind_texture(&self, texture: &GLTexture, unit: u32) {
+        unsafe {
+            gl::ActiveTexture(gl::TEXTURE0 + unit); ck();
+            gl::BindTexture(gl::TEXTURE_2D, texture.gl_texture); ck();
+        }
+    }
+
+    fn unbind_texture(&self, unit: u32) {
+        unsafe {
+            gl::ActiveTexture(gl::TEXTURE0 + unit); ck();
+            gl::BindTexture(gl::TEXTURE_2D, 0); ck();
         }
     }
 
