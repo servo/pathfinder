@@ -657,12 +657,6 @@ impl Device for GLDevice {
             gl::BindTexture(gl::TEXTURE_2D, texture.gl_texture); ck();
         }
     }
-
-    fn bind_vertex_array(&self, vertex_array: &GLVertexArray) {
-        unsafe {
-            gl::BindVertexArray(vertex_array.gl_vertex_array); ck();
-        }
-    }
 }
 
 impl GLDevice {
@@ -670,6 +664,12 @@ impl GLDevice {
         match *attachment {
             RenderTarget::Default { viewport } => self.bind_default_framebuffer(viewport),
             RenderTarget::Framebuffer(framebuffer) => self.bind_framebuffer(framebuffer),
+        }
+    }
+
+    fn bind_vertex_array(&self, vertex_array: &GLVertexArray) {
+        unsafe {
+            gl::BindVertexArray(vertex_array.gl_vertex_array); ck();
         }
     }
 

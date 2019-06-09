@@ -94,7 +94,7 @@ pub trait Device: Sized {
     fn get_timer_query(&self, query: &Self::TimerQuery) -> Duration;
 
     // TODO(pcwalton): Go bindless...
-    fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
+    //fn bind_vertex_array(&self, vertex_array: &Self::VertexArray);
     fn bind_buffer(&self,
                    vertex_array: &Self::VertexArray,
                    buffer: &Self::Buffer,
