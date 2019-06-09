@@ -62,6 +62,7 @@ impl GLDevice {
 
     fn set_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.bind_render_target(render_state.target);
+        self.use_program(render_state.program);
         self.bind_vertex_array(render_state.vertex_array);
         for (texture_unit, sampler) in render_state.samplers.iter().enumerate() {
             self.bind_texture(sampler, texture_unit as u32);
@@ -142,6 +143,7 @@ impl GLDevice {
         for texture_unit in 0..(render_state.samplers.len() as u32) {
             self.unbind_texture(texture_unit);
         }
+        self.unuse_program();
         self.unbind_vertex_array();
     }
 
@@ -335,12 +337,6 @@ impl Device for GLDevice {
             gl::GetUniformLocation(program.gl_program, name.as_ptr() as *const GLchar)
         }; ck();
         GLUniform { location }
-    }
-
-    fn use_program(&self, program: &Self::Program) {
-        unsafe {
-            gl::UseProgram(program.gl_program); ck();
-        }
     }
 
     fn configure_vertex_attr(&self,
@@ -685,6 +681,18 @@ impl GLDevice {
         unsafe {
             gl::ActiveTexture(gl::TEXTURE0 + unit); ck();
             gl::BindTexture(gl::TEXTURE_2D, 0); ck();
+        }
+    }
+
+    fn use_program(&self, program: &GLProgram) {
+        unsafe {
+            gl::UseProgram(program.gl_program); ck();
+        }
+    }
+
+    fn unuse_program(&self) {
+        unsafe {
+            gl::UseProgram(0); ck();
         }
     }
 

@@ -65,7 +65,6 @@ where
 
         let position_attr = device.get_vertex_attr(&ground_program.program, "Position");
 
-        device.use_program(&ground_program.program);
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,

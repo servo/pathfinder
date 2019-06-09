@@ -173,7 +173,6 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferTarget::Index,
                                BufferUploadMode::Dynamic);
 
-        device.use_program(&self.solid_program.program);
         device.set_uniform(&self.solid_program.program,
                            &self.solid_program.framebuffer_size_uniform,
                            UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
@@ -185,6 +184,7 @@ impl<D> UIPresenter<D> where D: Device {
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
         device.draw_elements(index_data.len() as u32, &RenderState {
             target: &self.render_target(),
+            program: &self.solid_program.program,
             vertex_array: &self.solid_vertex_array.vertex_array,
             primitive,
             samplers: &[],
@@ -408,7 +408,6 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferTarget::Index,
                                BufferUploadMode::Dynamic);
 
-        device.use_program(&self.texture_program.program);
         device.set_uniform(&self.texture_program.program,
                            &self.texture_program.framebuffer_size_uniform,
                            UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
@@ -425,6 +424,7 @@ impl<D> UIPresenter<D> where D: Device {
 
         device.draw_elements(index_data.len() as u32, &RenderState {
             target: &self.render_target(),
+            program: &self.texture_program.program,
             vertex_array: &self.texture_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[&texture],
@@ -615,7 +615,6 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         let position_attr = device.get_vertex_attr(&debug_texture_program.program, "Position");
         let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord");
 
-        device.use_program(&debug_texture_program.program);
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 0);
         device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index, 1);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
@@ -653,7 +652,6 @@ impl<D> DebugSolidVertexArray<D> where D: Device {
         let vertex_array = device.create_vertex_array();
 
         let position_attr = device.get_vertex_attr(&debug_solid_program.program, "Position");
-        device.use_program(&debug_solid_program.program);
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 0);
         device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index, 1);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {

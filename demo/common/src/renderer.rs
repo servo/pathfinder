@@ -238,7 +238,6 @@ impl<W> DemoApp<W> where W: Window {
             transform.post_mul(&Transform3DF::from_scale(ground_scale, 1.0, ground_scale));
 
         let device = &self.renderer.device;
-        device.use_program(&self.ground_program.program);
         device.set_uniform(
             &self.ground_program.program,
             &self.ground_program.transform_uniform,
@@ -259,6 +258,7 @@ impl<W> DemoApp<W> where W: Window {
                            UniformData::Int(GRIDLINE_COUNT));
         device.draw_elements(6, &RenderState {
             target: &self.renderer.draw_render_target(),
+            program: &self.ground_program.program,
             vertex_array: &self.ground_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[],

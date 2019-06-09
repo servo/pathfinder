@@ -443,7 +443,6 @@ where
             self.mask_framebuffer_cleared = true;
         }
 
-        self.device.use_program(&self.fill_program.program);
         self.device.set_uniform(
             &self.fill_program.program,
             &self.fill_program.framebuffer_size_uniform,
@@ -464,6 +463,7 @@ where
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
             target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
+            program: &self.fill_program.program,
             vertex_array: &self.fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[&self.area_lut_texture],
@@ -480,7 +480,6 @@ where
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
         let alpha_tile_program = self.alpha_tile_program();
 
-        self.device.use_program(&alpha_tile_program.program);
         self.device.set_uniform(
             &alpha_tile_program.program,
             &alpha_tile_program.framebuffer_size_uniform,
@@ -545,6 +544,7 @@ where
         );
         self.device.draw_elements_instanced(6, count, &RenderState {
             target: &self.draw_render_target(),
+            program: &alpha_tile_program.program,
             vertex_array: &alpha_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &samplers,
@@ -560,7 +560,6 @@ where
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
         let solid_tile_program = self.solid_tile_program();
 
-        self.device.use_program(&solid_tile_program.program);
         self.device.set_uniform(
             &solid_tile_program.program,
             &solid_tile_program.framebuffer_size_uniform,
@@ -616,6 +615,7 @@ where
         );
         self.device.draw_elements_instanced(6, count, &RenderState {
             target: &self.draw_render_target(),
+            program: &solid_tile_program.program,
             vertex_array: &solid_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &samplers,
@@ -640,7 +640,6 @@ where
             }
         }
 
-        self.device.use_program(&self.postprocess_program.program);
         self.device.set_uniform(
             &self.postprocess_program.program,
             &self.postprocess_program.framebuffer_size_uniform,
@@ -700,6 +699,7 @@ where
         );
         self.device.draw_arrays(4, &RenderState {
             target: &self.dest_render_target(),
+            program: &self.postprocess_program.program,
             vertex_array: &self.postprocess_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[&source_texture, &self.gamma_lut_texture],
@@ -756,9 +756,9 @@ where
             BufferUploadMode::Dynamic,
         );
 
-        self.device.use_program(&self.stencil_program.program);
         self.device.draw_elements(indices.len() as u32, &RenderState {
             target: &self.draw_render_target(),
+            program: &self.stencil_program.program,
             vertex_array: &self.stencil_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[],
@@ -783,7 +783,6 @@ where
         old_transform: &Transform3DF,
         new_transform: &Transform3DF,
     ) {
-        self.device.use_program(&self.reprojection_program.program);
         self.device.set_uniform(
             &self.reprojection_program.program,
             &self.reprojection_program.old_transform_uniform,
@@ -801,6 +800,7 @@ where
         );
         self.device.draw_elements(6, &RenderState {
             target: &self.draw_render_target(),
+            program: &self.reprojection_program.program,
             vertex_array: &self.reprojection_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[texture],
@@ -963,7 +963,6 @@ where
         let to_subpx_attr = device.get_vertex_attr(&fill_program.program, "ToSubpx");
         let tile_index_attr = device.get_vertex_attr(&fill_program.program, "TileIndex");
 
-        device.use_program(&fill_program.program);
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
@@ -1055,7 +1054,6 @@ where
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
-        device.use_program(&alpha_tile_program.program);
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
@@ -1136,7 +1134,6 @@ where
 
         // NB: The object must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
-        device.use_program(&solid_tile_program.program);
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
@@ -1434,7 +1431,6 @@ where
         let vertex_array = device.create_vertex_array();
         let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position");
 
-        device.use_program(&postprocess_program.program);
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
@@ -1487,7 +1483,6 @@ where
 
         let position_attr = device.get_vertex_attr(&stencil_program.program, "Position");
 
-        device.use_program(&stencil_program.program);
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 0);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 3,
@@ -1554,7 +1549,6 @@ where
 
         let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position");
 
-        device.use_program(&reprojection_program.program);
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,

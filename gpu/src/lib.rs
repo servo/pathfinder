@@ -46,7 +46,7 @@ pub trait Device: Sized {
     ) -> Self::Program;
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Self::VertexAttr;
     fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
-    fn use_program(&self, program: &Self::Program);
+    //fn use_program(&self, program: &Self::Program);
     fn configure_vertex_attr(&self,
                              vertex_array: &Self::VertexArray,
                              attr: &Self::VertexAttr,
@@ -195,6 +195,7 @@ pub struct ClearParams {
 #[derive(Clone)]
 pub struct RenderState<'a, D> where D: Device {
     pub target: &'a RenderTarget<'a, D>,
+    pub program: &'a D::Program,
     pub vertex_array: &'a D::VertexArray,
     pub primitive: Primitive,
     pub samplers: &'a [&'a D::Texture],
