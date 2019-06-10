@@ -46,12 +46,15 @@ pub trait Device: Sized {
     ) -> Self::Program;
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Self::VertexAttr;
     fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
-    //fn use_program(&self, program: &Self::Program);
+    fn bind_buffer(&self,
+                   vertex_array: &Self::VertexArray,
+                   buffer: &Self::Buffer,
+                   target: BufferTarget,
+                   index: u32);
     fn configure_vertex_attr(&self,
                              vertex_array: &Self::VertexArray,
                              attr: &Self::VertexAttr,
                              descriptor: &VertexAttrDescriptor);
-    fn set_uniform(&self, program: &Self::Program, uniform: &Self::Uniform, data: UniformData);
     fn create_framebuffer(&self, texture: Self::Texture) -> Self::Framebuffer;
     fn create_buffer(&self) -> Self::Buffer;
     fn allocate_buffer<T>(
@@ -79,13 +82,6 @@ pub trait Device: Sized {
     fn end_timer_query(&self, query: &Self::TimerQuery);
     fn timer_query_is_available(&self, query: &Self::TimerQuery) -> bool;
     fn get_timer_query(&self, query: &Self::TimerQuery) -> Duration;
-
-    // TODO(pcwalton): Go bindless...
-    fn bind_buffer(&self,
-                   vertex_array: &Self::VertexArray,
-                   buffer: &Self::Buffer,
-                   target: BufferTarget,
-                   index: u32);
 
     fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();
@@ -198,6 +194,7 @@ pub struct RenderState<'a, D> where D: Device {
     pub program: &'a D::Program,
     pub vertex_array: &'a D::VertexArray,
     pub primitive: Primitive,
+    pub uniforms: &'a [(&'a D::Uniform, UniformData)],
     pub samplers: &'a [&'a D::Texture],
     pub options: RenderOptions,
 }

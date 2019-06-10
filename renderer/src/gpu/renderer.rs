@@ -443,23 +443,6 @@ where
             self.mask_framebuffer_cleared = true;
         }
 
-        self.device.set_uniform(
-            &self.fill_program.program,
-            &self.fill_program.framebuffer_size_uniform,
-            UniformData::Vec2(
-                I32x4::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT, 0, 0).to_f32x4(),
-            ),
-        );
-        self.device.set_uniform(
-            &self.fill_program.program,
-            &self.fill_program.tile_size_uniform,
-            UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
-        );
-        self.device.set_uniform(
-            &self.fill_program.program,
-            &self.fill_program.area_lut_uniform,
-            UniformData::TextureUnit(0),
-        );
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
             target: &RenderTarget::Framebuffer(&self.mask_framebuffer),
@@ -467,6 +450,19 @@ where
             vertex_array: &self.fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[&self.area_lut_texture],
+            uniforms: &[
+                (&self.fill_program.framebuffer_size_uniform,
+                 UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
+                                              MASK_FRAMEBUFFER_HEIGHT,
+                                              0,
+                                              0).to_f32x4())),
+                (&self.fill_program.tile_size_uniform,
+                 UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
+                                              TILE_HEIGHT as i32,
+                                              0,
+                                              0).to_f32x4())),
+                (&self.fill_program.area_lut_uniform, UniformData::TextureUnit(0)),
+            ],
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOne,
                 ..RenderOptions::default()
@@ -480,74 +476,54 @@ where
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
         let alpha_tile_program = self.alpha_tile_program();
 
-        self.device.set_uniform(
-            &alpha_tile_program.program,
-            &alpha_tile_program.framebuffer_size_uniform,
-            UniformData::Vec2(self.draw_viewport().size().to_f32().0),
-        );
-        self.device.set_uniform(
-            &alpha_tile_program.program,
-            &alpha_tile_program.tile_size_uniform,
-            UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
-        );
-
         let mut samplers = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
-        self.device.set_uniform(
-            &alpha_tile_program.program,
-            &alpha_tile_program.stencil_texture_uniform,
-            UniformData::TextureUnit(0),
-        );
-        self.device.set_uniform(
-            &alpha_tile_program.program,
-            &alpha_tile_program.stencil_texture_size_uniform,
-            UniformData::Vec2(
-                I32x4::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT, 0, 0).to_f32x4(),
-            ),
-        );
+        let mut uniforms = vec![
+            (&alpha_tile_program.framebuffer_size_uniform,
+             UniformData::Vec2(self.draw_viewport().size().to_f32().0)),
+            (&alpha_tile_program.tile_size_uniform,
+             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
+                                          TILE_HEIGHT as i32,
+                                          0,
+                                          0).to_f32x4())),
+            (&alpha_tile_program.stencil_texture_uniform, UniformData::TextureUnit(0)),
+            (&alpha_tile_program.stencil_texture_size_uniform,
+             UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
+                                          MASK_FRAMEBUFFER_HEIGHT,
+                                          0,
+                                          0).to_f32x4())),
+            // FIXME(pcwalton): Fill this in properly!
+            (&alpha_tile_program.view_box_origin_uniform, UniformData::Vec2(F32x4::default())),
+        ];
 
         match self.render_mode {
             RenderMode::Multicolor => {
                 let paint_texture = self.paint_texture.as_ref().unwrap();
                 samplers.push(paint_texture);
-                self.device.set_uniform(
-                    &self.alpha_multicolor_tile_program.alpha_tile_program.program,
-                    &self.alpha_multicolor_tile_program.paint_texture_uniform,
-                    UniformData::TextureUnit(1),
-                );
-                self.device.set_uniform(
-                    &self.alpha_multicolor_tile_program.alpha_tile_program.program,
-                    &self.alpha_multicolor_tile_program.paint_texture_size_uniform,
-                    UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x4())
-                );
+                uniforms.push((&self.alpha_multicolor_tile_program.paint_texture_uniform,
+                               UniformData::TextureUnit(1)));
+                uniforms.push((&self.alpha_multicolor_tile_program.paint_texture_size_uniform,
+                               UniformData::Vec2(self.device
+                                                     .texture_size(paint_texture)
+                                                     .0
+                                                     .to_f32x4())));
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
-                self.device.set_uniform(
-                    &self.alpha_monochrome_tile_program.alpha_tile_program.program,
-                    &self.alpha_monochrome_tile_program.color_uniform,
-                    UniformData::Vec4(F32x4::splat(1.0)),
-                );
+                uniforms.push((&self.alpha_monochrome_tile_program.color_uniform,
+                               UniformData::Vec4(F32x4::splat(1.0))));
             }
             RenderMode::Monochrome { fg_color, .. } => {
-                self.device.set_uniform(
-                    &self.alpha_monochrome_tile_program.alpha_tile_program.program,
-                    &self.alpha_monochrome_tile_program.color_uniform,
-                    UniformData::Vec4(fg_color.0),
-                );
+                uniforms.push((&self.alpha_monochrome_tile_program.color_uniform,
+                               UniformData::Vec4(fg_color.0)));
             }
         }
 
-        // FIXME(pcwalton): Fill this in properly!
-        self.device.set_uniform(
-            &alpha_tile_program.program,
-            &alpha_tile_program.view_box_origin_uniform,
-            UniformData::Vec2(F32x4::default()),
-        );
         self.device.draw_elements_instanced(6, count, &RenderState {
             target: &self.draw_render_target(),
             program: &alpha_tile_program.program,
             vertex_array: &alpha_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &samplers,
+            uniforms: &uniforms,
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 stencil: self.stencil_state(),
@@ -560,65 +536,48 @@ where
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
         let solid_tile_program = self.solid_tile_program();
 
-        self.device.set_uniform(
-            &solid_tile_program.program,
-            &solid_tile_program.framebuffer_size_uniform,
-            UniformData::Vec2(self.draw_viewport().size().0.to_f32x4()),
-        );
-        self.device.set_uniform(
-            &solid_tile_program.program,
-            &solid_tile_program.tile_size_uniform,
-            UniformData::Vec2(I32x4::new(TILE_WIDTH as i32, TILE_HEIGHT as i32, 0, 0).to_f32x4()),
-        );
-
         let mut samplers = vec![];
+        let mut uniforms = vec![
+            (&solid_tile_program.framebuffer_size_uniform,
+             UniformData::Vec2(self.draw_viewport().size().0.to_f32x4())),
+            (&solid_tile_program.tile_size_uniform,
+             UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
+                                          TILE_HEIGHT as i32,
+                                          0,
+                                          0).to_f32x4())),
+            // FIXME(pcwalton): Fill this in properly!
+            (&solid_tile_program.view_box_origin_uniform, UniformData::Vec2(F32x4::default())),
+        ];
+
         match self.render_mode {
             RenderMode::Multicolor => {
                 let paint_texture = self.paint_texture.as_ref().unwrap();
                 samplers.push(paint_texture);
-                self.device.set_uniform(
-                    &self.solid_multicolor_tile_program.solid_tile_program.program,
-                    &self
-                        .solid_multicolor_tile_program
-                        .paint_texture_uniform,
-                    UniformData::TextureUnit(0),
-                );
-                self.device.set_uniform(
-                    &self.solid_multicolor_tile_program.solid_tile_program.program,
-                    &self
-                        .solid_multicolor_tile_program
-                        .paint_texture_size_uniform,
-                    UniformData::Vec2(self.device.texture_size(paint_texture).0.to_f32x4())
-                );
+                uniforms.push((&self.solid_multicolor_tile_program.paint_texture_uniform,
+                               UniformData::TextureUnit(0)));
+                uniforms.push((&self.solid_multicolor_tile_program.paint_texture_size_uniform,
+                               UniformData::Vec2(self.device
+                                                     .texture_size(paint_texture)
+                                                     .0
+                                                     .to_f32x4())));
             }
             RenderMode::Monochrome { .. } if self.postprocessing_needed() => {
-                self.device.set_uniform(
-                    &self.solid_monochrome_tile_program.solid_tile_program.program,
-                    &self.solid_monochrome_tile_program.color_uniform,
-                    UniformData::Vec4(F32x4::splat(1.0)),
-                );
+                uniforms.push((&self.solid_monochrome_tile_program.color_uniform,
+                               UniformData::Vec4(F32x4::splat(1.0))));
             }
             RenderMode::Monochrome { fg_color, .. } => {
-                self.device.set_uniform(
-                    &self.solid_monochrome_tile_program.solid_tile_program.program,
-                    &self.solid_monochrome_tile_program.color_uniform,
-                    UniformData::Vec4(fg_color.0),
-                );
+                uniforms.push((&self.solid_monochrome_tile_program.color_uniform,
+                               UniformData::Vec4(fg_color.0)));
             }
         }
 
-        // FIXME(pcwalton): Fill this in properly!
-        self.device.set_uniform(
-            &solid_tile_program.program,
-            &solid_tile_program.view_box_origin_uniform,
-            UniformData::Vec2(F32x4::default()),
-        );
         self.device.draw_elements_instanced(6, count, &RenderState {
             target: &self.draw_render_target(),
             program: &solid_tile_program.program,
             vertex_array: &solid_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &samplers,
+            uniforms: &uniforms,
             options: RenderOptions { stencil: self.stencil_state(), ..RenderOptions::default() },
         });
     }
@@ -640,69 +599,43 @@ where
             }
         }
 
-        self.device.set_uniform(
-            &self.postprocess_program.program,
-            &self.postprocess_program.framebuffer_size_uniform,
-            UniformData::Vec2(self.main_viewport().size().to_f32().0),
-        );
-        match defringing_kernel {
-            Some(ref kernel) => {
-                self.device.set_uniform(
-                    &self.postprocess_program.program,
-                    &self.postprocess_program.kernel_uniform,
-                    UniformData::Vec4(F32x4::from_slice(&kernel.0)),
-                );
-            }
-            None => {
-                self.device.set_uniform(
-                    &self.postprocess_program.program,
-                    &self.postprocess_program.kernel_uniform,
-                    UniformData::Vec4(F32x4::default()),
-                );
-            }
-        }
-
         let postprocess_source_framebuffer = self.postprocess_source_framebuffer.as_ref().unwrap();
         let source_texture = self
             .device
             .framebuffer_texture(postprocess_source_framebuffer);
         let source_texture_size = self.device.texture_size(source_texture);
-        self.device.set_uniform(
-            &self.postprocess_program.program,
-            &self.postprocess_program.source_uniform,
-            UniformData::TextureUnit(0),
-        );
-        self.device.set_uniform(
-            &self.postprocess_program.program,
-            &self.postprocess_program.source_size_uniform,
-            UniformData::Vec2(source_texture_size.0.to_f32x4()),
-        );
-        self.device.set_uniform(
-            &self.postprocess_program.program,
-            &self.postprocess_program.gamma_lut_uniform,
-            UniformData::TextureUnit(1),
-        );
-        self.device.set_uniform(
-            &self.postprocess_program.program,
-            &self.postprocess_program.fg_color_uniform,
-            UniformData::Vec4(fg_color.0),
-        );
-        self.device.set_uniform(
-            &self.postprocess_program.program,
-            &self.postprocess_program.bg_color_uniform,
-            UniformData::Vec4(bg_color.0),
-        );
-        self.device.set_uniform(
-            &self.postprocess_program.program,
-            &self.postprocess_program.gamma_correction_enabled_uniform,
-            UniformData::Int(gamma_correction_enabled as i32),
-        );
+
+        let mut uniforms = vec![
+            (&self.postprocess_program.framebuffer_size_uniform,
+             UniformData::Vec2(self.main_viewport().size().to_f32().0)),
+            (&self.postprocess_program.source_uniform, UniformData::TextureUnit(0)),
+            (&self.postprocess_program.source_size_uniform,
+             UniformData::Vec2(source_texture_size.0.to_f32x4())),
+            (&self.postprocess_program.gamma_lut_uniform, UniformData::TextureUnit(1)),
+            (&self.postprocess_program.fg_color_uniform, UniformData::Vec4(fg_color.0)),
+            (&self.postprocess_program.bg_color_uniform, UniformData::Vec4(bg_color.0)),
+            (&self.postprocess_program.gamma_correction_enabled_uniform,
+             UniformData::Int(gamma_correction_enabled as i32)),
+        ];
+
+        match defringing_kernel {
+            Some(ref kernel) => {
+                uniforms.push((&self.postprocess_program.kernel_uniform,
+                               UniformData::Vec4(F32x4::from_slice(&kernel.0))));
+            }
+            None => {
+                uniforms.push((&self.postprocess_program.kernel_uniform,
+                               UniformData::Vec4(F32x4::default())));
+            }
+        }
+
         self.device.draw_arrays(4, &RenderState {
             target: &self.dest_render_target(),
             program: &self.postprocess_program.program,
             vertex_array: &self.postprocess_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[&source_texture, &self.gamma_lut_texture],
+            uniforms: &uniforms,
             options: RenderOptions::default(),
         });
     }
@@ -762,6 +695,7 @@ where
             vertex_array: &self.stencil_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[],
+            uniforms: &[],
             options: RenderOptions {
                 // FIXME(pcwalton): Should we really write to the depth buffer?
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
@@ -783,27 +717,19 @@ where
         old_transform: &Transform3DF,
         new_transform: &Transform3DF,
     ) {
-        self.device.set_uniform(
-            &self.reprojection_program.program,
-            &self.reprojection_program.old_transform_uniform,
-            UniformData::from_transform_3d(old_transform),
-        );
-        self.device.set_uniform(
-            &self.reprojection_program.program,
-            &self.reprojection_program.new_transform_uniform,
-            UniformData::from_transform_3d(new_transform),
-        );
-        self.device.set_uniform(
-            &self.reprojection_program.program,
-            &self.reprojection_program.texture_uniform,
-            UniformData::TextureUnit(0),
-        );
         self.device.draw_elements(6, &RenderState {
             target: &self.draw_render_target(),
             program: &self.reprojection_program.program,
             vertex_array: &self.reprojection_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[texture],
+            uniforms: &[
+                (&self.reprojection_program.old_transform_uniform,
+                 UniformData::from_transform_3d(old_transform)),
+                (&self.reprojection_program.new_transform_uniform,
+                 UniformData::from_transform_3d(new_transform)),
+                (&self.reprojection_program.texture_uniform, UniformData::TextureUnit(0)),
+            ],
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 depth: Some(DepthState { func: DepthFunc::Less, write: false, }),

@@ -237,31 +237,21 @@ impl<W> DemoApp<W> where W: Window {
         transform =
             transform.post_mul(&Transform3DF::from_scale(ground_scale, 1.0, ground_scale));
 
-        let device = &self.renderer.device;
-        device.set_uniform(
-            &self.ground_program.program,
-            &self.ground_program.transform_uniform,
-            UniformData::from_transform_3d(&transform),
-        );
-        device.set_uniform(
-            &self.ground_program.program,
-            &self.ground_program.ground_color_uniform,
-            UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0),
-        );
-        device.set_uniform(
-            &self.ground_program.program,
-            &self.ground_program.gridline_color_uniform,
-            UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0),
-        );
-        device.set_uniform(&self.ground_program.program,
-                           &self.ground_program.gridline_count_uniform,
-                           UniformData::Int(GRIDLINE_COUNT));
-        device.draw_elements(6, &RenderState {
+        self.renderer.device.draw_elements(6, &RenderState {
             target: &self.renderer.draw_render_target(),
             program: &self.ground_program.program,
             vertex_array: &self.ground_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[],
+            uniforms: &[
+                (&self.ground_program.transform_uniform,
+                 UniformData::from_transform_3d(&transform)),
+                (&self.ground_program.ground_color_uniform,
+                 UniformData::Vec4(GROUND_SOLID_COLOR.to_f32().0)),
+                (&self.ground_program.gridline_color_uniform,
+                 UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0)),
+                (&self.ground_program.gridline_count_uniform, UniformData::Int(GRIDLINE_COUNT)),
+            ],
             options: RenderOptions {
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
                 ..RenderOptions::default()

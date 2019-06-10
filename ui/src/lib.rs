@@ -173,20 +173,17 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferTarget::Index,
                                BufferUploadMode::Dynamic);
 
-        device.set_uniform(&self.solid_program.program,
-                           &self.solid_program.framebuffer_size_uniform,
-                           UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
-        set_color_uniform(device,
-                          &self.solid_program.program,
-                          &self.solid_program.color_uniform,
-                          color);
-
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
         device.draw_elements(index_data.len() as u32, &RenderState {
             target: &self.render_target(),
             program: &self.solid_program.program,
             vertex_array: &self.solid_vertex_array.vertex_array,
             primitive,
+            uniforms: &[
+                (&self.solid_program.framebuffer_size_uniform,
+                 UniformData::Vec2(self.framebuffer_size.0.to_f32x4())),
+                (&self.solid_program.color_uniform, get_color_uniform(color)),
+            ],
             samplers: &[],
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
@@ -408,26 +405,20 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferTarget::Index,
                                BufferUploadMode::Dynamic);
 
-        device.set_uniform(&self.texture_program.program,
-                           &self.texture_program.framebuffer_size_uniform,
-                           UniformData::Vec2(self.framebuffer_size.0.to_f32x4()));
-        device.set_uniform(&self.texture_program.program,
-                           &self.texture_program.texture_size_uniform,
-                           UniformData::Vec2(device.texture_size(&texture).0.to_f32x4()));
-        set_color_uniform(device,
-                          &self.texture_program.program,
-                          &self.texture_program.color_uniform,
-                          color);
-        device.set_uniform(&self.texture_program.program,
-                           &self.texture_program.texture_uniform,
-                           UniformData::TextureUnit(0));
-
         device.draw_elements(index_data.len() as u32, &RenderState {
             target: &self.render_target(),
             program: &self.texture_program.program,
             vertex_array: &self.texture_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
             samplers: &[&texture],
+            uniforms: &[
+                (&self.texture_program.framebuffer_size_uniform,
+                 UniformData::Vec2(self.framebuffer_size.0.to_f32x4())),
+                (&self.texture_program.color_uniform, get_color_uniform(color)),
+                (&self.texture_program.texture_uniform, UniformData::TextureUnit(0)),
+                (&self.texture_program.texture_size_uniform,
+                 UniformData::Vec2(device.texture_size(&texture).0.to_f32x4()))
+            ],
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
                 ..RenderOptions::default()
@@ -737,10 +728,9 @@ impl CornerRects {
     }
 }
 
-fn set_color_uniform<D>(device: &D, program: &D::Program, uniform: &D::Uniform, color: ColorU)
-                        where D: Device {
+fn get_color_uniform(color: ColorU) -> UniformData {
     let color = F32x4::new(color.r as f32, color.g as f32, color.b as f32, color.a as f32);
-    device.set_uniform(program, uniform, UniformData::Vec4(color * F32x4::splat(1.0 / 255.0)));
+    UniformData::Vec4(color * F32x4::splat(1.0 / 255.0))
 }
 
 #[derive(Clone, Copy)]

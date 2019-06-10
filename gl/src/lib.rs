@@ -67,6 +67,7 @@ impl GLDevice {
         for (texture_unit, sampler) in render_state.samplers.iter().enumerate() {
             self.bind_texture(sampler, texture_unit as u32);
         }
+        render_state.uniforms.iter().for_each(|(uniform, data)| self.set_uniform(uniform, data));
         self.set_render_options(&render_state.options);
     }
 
@@ -138,6 +139,41 @@ impl GLDevice {
         }
     }
 
+    fn set_uniform(&self, uniform: &GLUniform, data: &UniformData) {
+        unsafe {
+            match *data {
+                UniformData::Int(value) => {
+                    gl::Uniform1i(uniform.location, value); ck();
+                }
+                UniformData::Mat2(data) => {
+                    assert_eq!(mem::size_of::<F32x4>(), 4 * 4);
+                    let data_ptr: *const F32x4 = &data;
+                    gl::UniformMatrix2fv(uniform.location,
+                                         1,
+                                         gl::FALSE,
+                                         data_ptr as *const GLfloat);
+                }
+                UniformData::Mat4(data) => {
+                    assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
+                    let data_ptr: *const F32x4 = data.as_ptr();
+                    gl::UniformMatrix4fv(uniform.location,
+                                         1,
+                                         gl::FALSE,
+                                         data_ptr as *const GLfloat);
+                }
+                UniformData::Vec2(data) => {
+                    gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
+                }
+                UniformData::Vec4(data) => {
+                    gl::Uniform4f(uniform.location, data.x(), data.y(), data.z(), data.w()); ck();
+                }
+                UniformData::TextureUnit(unit) => {
+                    gl::Uniform1i(uniform.location, unit as GLint); ck();
+                }
+            }
+        }
+    }
+
     fn reset_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.reset_render_options(&render_state.options);
         for texture_unit in 0..(render_state.samplers.len() as u32) {
@@ -170,6 +206,7 @@ impl GLDevice {
             gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
         }
     }
+
 }
 
 impl Device for GLDevice {
@@ -375,43 +412,6 @@ impl Device for GLDevice {
         }
 
         self.unbind_vertex_array();
-    }
-
-    fn set_uniform(&self, program: &GLProgram, uniform: &Self::Uniform, data: UniformData) {
-        self.use_program(program);
-
-        unsafe {
-            match data {
-                UniformData::Int(value) => {
-                    gl::Uniform1i(uniform.location, value); ck();
-                }
-                UniformData::Mat2(data) => {
-                    assert_eq!(mem::size_of::<F32x4>(), 4 * 4);
-                    let data_ptr: *const F32x4 = &data;
-                    gl::UniformMatrix2fv(uniform.location,
-                                         1,
-                                         gl::FALSE,
-                                         data_ptr as *const GLfloat);
-                }
-                UniformData::Mat4(data) => {
-                    assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
-                    let data_ptr: *const F32x4 = data.as_ptr();
-                    gl::UniformMatrix4fv(uniform.location,
-                                         1,
-                                         gl::FALSE,
-                                         data_ptr as *const GLfloat);
-                }
-                UniformData::Vec2(data) => {
-                    gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
-                }
-                UniformData::Vec4(data) => {
-                    gl::Uniform4f(uniform.location, data.x(), data.y(), data.z(), data.w()); ck();
-                }
-                UniformData::TextureUnit(unit) => {
-                    gl::Uniform1i(uniform.location, unit as GLint); ck();
-                }
-            }
-        }
     }
 
     fn create_framebuffer(&self, texture: GLTexture) -> GLFramebuffer {
