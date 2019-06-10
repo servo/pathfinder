@@ -45,7 +45,8 @@ pub trait Device: Sized {
         fragment_shader: Self::Shader,
     ) -> Self::Program;
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Self::VertexAttr;
-    fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
+    fn get_uniform(&self, program: &Self::Program, name: &str, uniform_type: UniformType)
+                   -> Self::Uniform;
     fn bind_buffer(&self,
                    vertex_array: &Self::VertexArray,
                    buffer: &Self::Buffer,
@@ -70,7 +71,7 @@ pub trait Device: Sized {
     fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8>;
     fn begin_commands(&self);
     fn end_commands(&self);
-    fn clear(&self, attachment: &RenderTarget<Self>, params: &ClearParams);
+    fn clear(&self, target: &RenderTarget<Self>, params: &ClearParams);
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>);
     fn draw_elements(&self, index_count: u32, render_state: &RenderState<Self>);
     fn draw_elements_instanced(&self,
@@ -167,11 +168,19 @@ pub enum ShaderKind {
 #[derive(Clone, Copy)]
 pub enum UniformData {
     Int(i32),
-    Mat2(F32x4),
     Mat4([F32x4; 4]),
     Vec2(F32x4),
     Vec4(F32x4),
     TextureUnit(u32),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum UniformType {
+    Int,
+    Mat4,
+    Vec2,
+    Vec4,
+    Sampler,
 }
 
 #[derive(Clone, Copy)]

@@ -13,15 +13,16 @@
 #[macro_use]
 extern crate objc;
 
-use metal::{BufferRef, CommandBufferRef, CommandQueueRef, CompileOptions, CoreAnimationLayerRef};
-use metal::{DeviceRef, FunctionRef, LibraryRef, MTLOrigin, MTLPixelFormat, MTLRegion};
-use metal::{MTLResourceOptions, MTLSize, MTLStorageMode, MTLTextureType, MTLTextureUsage};
-use metal::{MTLVertexFormat, MTLVertexStepFunction, TextureDescriptor, TextureRef};
+use metal::{BufferRef, CommandBufferRef, CommandQueueRef, CompileOptions};
+use metal::{CoreAnimationDrawableRef, CoreAnimationLayerRef, DeviceRef, FunctionRef, LibraryRef};
+use metal::{MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLRegion, MTLResourceOptions, MTLSize};
+use metal::{MTLStorageMode, MTLStoreAction, MTLTextureType, MTLTextureUsage, MTLVertexFormat};
+use metal::{MTLVertexStepFunction, RenderPassDescriptor, TextureDescriptor, TextureRef};
 use metal::{VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, Device, ShaderKind};
-use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, ClearParams, Device};
+use pathfinder_gpu::{RenderTarget, ShaderKind, TextureFormat, UniformData, VertexAttrClass};
 use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use std::cell::RefCell;
 use std::mem;
@@ -32,6 +33,7 @@ const FIRST_VERTEX_BUFFER_INDEX: u32 = 16;
 pub struct MetalDevice {
     device: DeviceRef,
     layer: CoreAnimationLayerRef,
+    drawable: CoreAnimationDrawableRef,
     command_queue: CommandQueueRef,
     command_buffer: RefCell<Option<CommandBufferRef>>,
 }
@@ -39,12 +41,6 @@ pub struct MetalDevice {
 pub struct MetalProgram {
     vertex: MetalShader,
     fragment: MetalShader,
-    uniforms: RefCell<Vec<UniformBinding>>,
-}
-
-struct UniformBinding {
-    name: MetalUniform,
-    data: UniformData,
 }
 
 struct MetalBuffer {
@@ -71,7 +67,10 @@ pub struct MetalTimerQuery;
 
 // FIXME(pcwalton): This isn't great.
 #[derive(Clone)]
-pub struct MetalUniform(String);
+pub struct MetalUniform {
+    name: String,
+    buffer: Option<BufferRef>,
+}
 
 pub struct MetalVertexArray {
     descriptor: VertexDescriptorRef,
@@ -135,15 +134,17 @@ impl Device for MetalDevice {
         // TODO(pcwalton): Cache the function?
         let attributes = program.vertex.function.vertex_attributes();
         for attribute in attributes {
-            if attribute.name() == name {
+            let this_name = attribute.name();
+            if this_name[0] == b'a' && this_name[1..] == name {
                 return attribute
             }
         }
         panic!("No vertex attribute named `{}` found!", name);
     }
 
-    fn get_uniform(&self, _: &Self::Program, name: &str) -> MetalUniform {
-        MetalUniform(name.to_owned())
+    fn get_uniform(&self, _: &Self::Program, name: &str, uniform_type: UniformType)
+                   -> MetalUniform {
+        MetalUniform(format!("u{}", name))
     }
 
     fn configure_vertex_attr(&self,
@@ -225,10 +226,6 @@ impl Device for MetalDevice {
         attr_info.set_buffer_index(descriptor.buffer_index + FIRST_VERTEX_BUFFER_INDEX);
     }
 
-    fn set_uniform(&self, program: &MetalProgram, uniform: &MetalUniform, data: UniformData) {
-        program.uniforms.borrow_mut().unwrap().push((*uniform).clone(), data);
-    }
-
     fn create_framebuffer(&self, texture: TextureRef) -> MetalFramebuffer {
         MetalFramebuffer(texture)
     }
@@ -292,12 +289,19 @@ impl Device for MetalDevice {
         self.command_buffer.borrow_mut().take().unwrap().commit();
     }
 
-    fn clear(&self, params: &ClearParams) {
-        let encoder = self.command_buffer
-                          .borrow()
-                          .unwrap()
-                          .new_render_command_encoder(render_pass_descriptor);
-        
+    fn clear(&self, target: &RenderTarget<Self>, params: &ClearParams) {
+        // TODO(pcwalton): Specify rect, depth, and stencil!
+        let color = match params.color { Some(color) => color, None => return };
+        let render_pass_descriptor = self.create_render_pass_descriptor(target);
+        let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
+        color_attachment.set_clear_color(MTLClearColor::new(color.r, color.g, color.b, color.a));
+        color_attachment.set_load_action(MTLLoadAction::Clear);
+
+        self.command_buffer
+            .borrow()
+            .unwrap()
+            .new_render_command_encoder(render_pass_descriptor)
+            .end_encoding();
     }
 
     fn create_timer_query(&self) -> MetalTimerQuery { MetalTimerQuery }
@@ -305,4 +309,21 @@ impl Device for MetalDevice {
     fn end_timer_query(&self, query: &MetalTimerQuery) {}
     fn timer_query_is_available(&self, query: &MetalTimerQuery) -> bool { true }
     fn get_timer_query(&self, query: &MetalTimerQuery) -> Duration { Duration::from_secs(0) }
+}
+
+impl MetalDevice {
+    fn create_render_pass_descriptor(&self, target: &RenderTarget<MetalDevice>)
+                                     -> RenderPassDescriptor {
+        let render_pass_descriptor = RenderPassDescriptor::new();
+        let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
+        match *target {
+            RenderTarget::Default { viewport } => {
+                // TODO(pcwalton): Use the viewport!
+                // TODO(pcwalton): Depth and stencil!
+                color_attachment.set_texture(Some(self.drawable.texture()))
+            }
+            RenderTarget::Framebuffer { texture } => color_attachment.set_texture(Some(texture)),
+        }
+        color_attachment.set_store_action(MTLStoreAction::Store);
+    }
 }

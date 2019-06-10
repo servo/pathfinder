@@ -11,7 +11,8 @@
 //! GPU rendering code specifically for the demo.
 
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BufferTarget, Device, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{BufferTarget, Device, UniformType, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 
 pub struct GroundProgram<D>
 where
@@ -30,10 +31,14 @@ where
 {
     pub fn new(device: &D, resources: &dyn ResourceLoader) -> GroundProgram<D> {
         let program = device.create_program(resources, "demo_ground");
-        let transform_uniform = device.get_uniform(&program, "Transform");
-        let gridline_count_uniform = device.get_uniform(&program, "GridlineCount");
-        let ground_color_uniform = device.get_uniform(&program, "GroundColor");
-        let gridline_color_uniform = device.get_uniform(&program, "GridlineColor");
+        let transform_uniform = device.get_uniform(&program, "Transform", UniformType::Mat4);
+        let gridline_count_uniform = device.get_uniform(&program,
+                                                        "GridlineCount",
+                                                        UniformType::Int);
+        let ground_color_uniform = device.get_uniform(&program, "GroundColor", UniformType::Vec4);
+        let gridline_color_uniform = device.get_uniform(&program,
+                                                        "GridlineColor",
+                                                        UniformType::Vec4);
         GroundProgram {
             program,
             transform_uniform,

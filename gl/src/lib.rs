@@ -19,8 +19,8 @@ use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearParams, DepthFunc, Device, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{ShaderKind, StencilFunc, TextureFormat, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{ShaderKind, StencilFunc, TextureFormat, UniformData, UniformType};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::mem;
@@ -143,17 +143,11 @@ impl GLDevice {
         unsafe {
             match *data {
                 UniformData::Int(value) => {
+                    debug_assert_eq!(uniform.uniform_type, UniformType::Int);
                     gl::Uniform1i(uniform.location, value); ck();
                 }
-                UniformData::Mat2(data) => {
-                    assert_eq!(mem::size_of::<F32x4>(), 4 * 4);
-                    let data_ptr: *const F32x4 = &data;
-                    gl::UniformMatrix2fv(uniform.location,
-                                         1,
-                                         gl::FALSE,
-                                         data_ptr as *const GLfloat);
-                }
                 UniformData::Mat4(data) => {
+                    debug_assert_eq!(uniform.uniform_type, UniformType::Mat4);
                     assert_eq!(mem::size_of::<[F32x4; 4]>(), 4 * 4 * 4);
                     let data_ptr: *const F32x4 = data.as_ptr();
                     gl::UniformMatrix4fv(uniform.location,
@@ -162,12 +156,15 @@ impl GLDevice {
                                          data_ptr as *const GLfloat);
                 }
                 UniformData::Vec2(data) => {
+                    debug_assert_eq!(uniform.uniform_type, UniformType::Vec2);
                     gl::Uniform2f(uniform.location, data.x(), data.y()); ck();
                 }
                 UniformData::Vec4(data) => {
+                    debug_assert_eq!(uniform.uniform_type, UniformType::Vec4);
                     gl::Uniform4f(uniform.location, data.x(), data.y(), data.z(), data.w()); ck();
                 }
                 UniformData::TextureUnit(unit) => {
+                    debug_assert_eq!(uniform.uniform_type, UniformType::Sampler);
                     gl::Uniform1i(uniform.location, unit as GLint); ck();
                 }
             }
@@ -368,12 +365,13 @@ impl Device for GLDevice {
         GLVertexAttr { attr }
     }
 
-    fn get_uniform(&self, program: &GLProgram, name: &str) -> GLUniform {
+    fn get_uniform(&self, program: &GLProgram, name: &str, uniform_type: UniformType)
+                   -> GLUniform {
         let name = CString::new(format!("u{}", name)).unwrap();
         let location = unsafe {
             gl::GetUniformLocation(program.gl_program, name.as_ptr() as *const GLchar)
         }; ck();
-        GLUniform { location }
+        GLUniform { location, uniform_type }
     }
 
     fn configure_vertex_attr(&self,
@@ -818,7 +816,8 @@ impl Drop for GLBuffer {
 
 #[derive(Debug)]
 pub struct GLUniform {
-    pub location: GLint,
+    location: GLint,
+    uniform_type: UniformType,
 }
 
 pub struct GLProgram {
