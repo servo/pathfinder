@@ -9,6 +9,7 @@ addons:
 script:
   - cargo build
   - cargo test
+
 env:
   global:
     - HARFBUZZ_SYS_NO_PKG_CONFIG=true
