@@ -24,6 +24,7 @@ use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor
 use metal::{SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
 use metal::{TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
 use metal::{VertexDescriptor, VertexDescriptorRef};
+use objc::runtime::Object;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams, DepthFunc, Device};
@@ -32,6 +33,7 @@ use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::cell::RefCell;
 use std::mem;
+use std::os::raw::c_void;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
@@ -219,7 +221,7 @@ impl Device for MetalDevice {
 
     fn get_vertex_attr(&self, program: &MetalProgram, name: &str) -> VertexAttribute {
         // TODO(pcwalton): Cache the function?
-        let attributes: &ArrayRef<_> = &*program.vertex.function.vertex_attributes();
+        let attributes = program.vertex.function.real_vertex_attributes();
         for attribute_index in 0..attributes.len() {
             let attribute = attributes.object_at(attribute_index);
             let this_name = attribute.name().as_bytes();
@@ -316,7 +318,12 @@ impl Device for MetalDevice {
             (VertexAttrClass::FloatNorm, VertexAttrType::I16, 1) => {
                 MTLVertexFormat::ShortNormalized
             }
-            (_, _, _) => panic!("Unsupported vertex class/type/size combination!"),
+            (attr_class, attr_type, attr_size) => {
+                panic!("Unsupported vertex class/type/size combination: {:?}/{:?}/{}!",
+                       attr_class,
+                       attr_type,
+                       attr_size)
+            }
         };
         attr_info.set_format(format);
         attr_info.set_offset(descriptor.offset as u64);
@@ -754,18 +761,27 @@ impl UniformDataExt for UniformData {
     }
 }
 
-trait VertexAttributeArrayExt {
-    fn len(&self) -> u64;
-    fn object_at(&self, index: u64) -> &VertexAttributeRef;
+// Extra objects missing from `metal-rs`
+
+struct VertexAttributeArray(*mut Object);
+
+impl Drop for VertexAttributeArray {
+    fn drop(&mut self) {
+        unsafe { msg_send![self.0, release] }
+    }
 }
 
-impl VertexAttributeArrayExt for ArrayRef<VertexAttribute> {
+impl VertexAttributeArray {
+    unsafe fn from_ptr(object: *mut Object) -> VertexAttributeArray {
+        VertexAttributeArray(msg_send![object, retain])
+    }
+
     fn len(&self) -> u64 {
-        unsafe { msg_send![self.as_ptr(), count] }
+        unsafe { msg_send![self.0, count] }
     }
 
     fn object_at(&self, index: u64) -> &VertexAttributeRef {
-        unsafe { VertexAttributeRef::from_ptr(msg_send![self.as_ptr(), objectAtIndex:index]) }
+        unsafe { VertexAttributeRef::from_ptr(msg_send![self.0, objectAtIndex:index]) }
     }
 }
 
@@ -780,6 +796,19 @@ impl CoreAnimationLayerExt for CoreAnimationLayer {
         unsafe {
             let device: *mut MTLDevice = msg_send![self.as_ptr(), device];
             metal::Device::from_ptr(msg_send![device, retain])
+        }
+    }
+}
+
+trait FunctionExt {
+    // `vertex_attributes()` in `metal-rs` segfaults! This is a better definition.
+    fn real_vertex_attributes(&self) -> VertexAttributeArray;
+}
+
+impl FunctionExt for Function {
+    fn real_vertex_attributes(&self) -> VertexAttributeArray {
+        unsafe {
+            VertexAttributeArray::from_ptr(msg_send![(*self).as_ptr(), vertexAttributes])
         }
     }
 }
