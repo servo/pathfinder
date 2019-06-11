@@ -13,14 +13,14 @@
 #[macro_use]
 extern crate objc;
 
-use foreign_types::ForeignTypeRef;
-use metal::{ArrayRef, Buffer, CommandBufferRef, CommandQueue, CompileOptions};
-use metal::{CoreAnimationDrawableRef, CoreAnimationLayerRef, DepthStencilDescriptor, DeviceRef, Function, Library};
-use metal::{MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
+use foreign_types::{ForeignType, ForeignTypeRef};
+use metal::{self, ArrayRef, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
+use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, DeviceRef, Function, Library};
+use metal::{MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
 use metal::{MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
 use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType};
-use metal::{MTLTextureUsage, MTLVertexAttribute, MTLVertexFormat, MTLVertexStepFunction, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
-use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor, SamplerDescriptor, SamplerState, StencilDescriptor, TextureDescriptor, Texture, TextureRef, VertexAttributeRef};
+use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
+use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor, SamplerDescriptor, SamplerState, StencilDescriptor, TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
 use metal::{VertexDescriptor, VertexDescriptorRef};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -37,11 +37,11 @@ use std::time::Duration;
 const FIRST_VERTEX_BUFFER_INDEX: u64 = 16;
 
 pub struct MetalDevice {
-    device: DeviceRef,
-    layer: CoreAnimationLayerRef,
-    drawable: CoreAnimationDrawableRef,
+    device: metal::Device,
+    layer: CoreAnimationLayer,
+    drawable: CoreAnimationDrawable,
     command_queue: CommandQueue,
-    command_buffer: RefCell<Option<CommandBufferRef>>,
+    command_buffer: RefCell<Option<CommandBuffer>>,
     sampler: SamplerState,
 }
 
@@ -51,16 +51,16 @@ pub struct MetalProgram {
 }
 
 #[derive(Clone)]
-struct MetalBuffer {
+pub struct MetalBuffer {
     buffer: Rc<RefCell<Option<Buffer>>>,
 }
 
 impl MetalDevice {
     #[inline]
-    pub fn new(layer: CoreAnimationLayerRef) -> MetalDevice {
-        let device = unsafe { DeviceRef::from_ptr(msg_send![layer.as_ptr(), device]) };
-
-        let drawable = layer.next_drawable().unwrap();
+    pub fn new(layer: &CoreAnimationLayerRef) -> MetalDevice {
+        let layer = layer.retain();
+        let device = layer.device();
+        let drawable = layer.next_drawable().unwrap().retain();
         let command_queue = device.new_command_queue();
 
         let sampler_descriptor = SamplerDescriptor::new();
@@ -72,9 +72,9 @@ impl MetalDevice {
         let sampler = device.new_sampler(&sampler_descriptor);
 
         MetalDevice {
-            device: *device,
+            device,
             layer,
-            drawable: *drawable,
+            drawable,
             command_queue,
             command_buffer: RefCell::new(None),
             sampler,
@@ -85,6 +85,7 @@ impl MetalDevice {
 pub struct MetalFramebuffer(Texture);
 
 pub struct MetalShader {
+    #[allow(dead_code)]
     library: Library,
     function: Function,
 }
@@ -99,7 +100,7 @@ pub struct MetalUniform {
 }
 
 pub struct MetalVertexArray {
-    descriptor: VertexDescriptorRef,
+    descriptor: VertexDescriptor,
     vertex_buffers: RefCell<Vec<MetalBuffer>>,
     index_buffer: RefCell<Option<MetalBuffer>>,
 }
@@ -113,7 +114,7 @@ impl Device for MetalDevice {
     type TimerQuery = MetalTimerQuery;
     type Uniform = MetalUniform;
     type VertexArray = MetalVertexArray;
-    type VertexAttr = VertexAttributeRef;
+    type VertexAttr = VertexAttribute;
 
     // TODO: Add texture usage hint.
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Texture {
@@ -138,7 +139,7 @@ impl Device for MetalDevice {
         texture
     }
 
-    fn create_shader_from_source(&self, name: &str, source: &[u8], _: ShaderKind) -> MetalShader {
+    fn create_shader_from_source(&self, _name: &str, source: &[u8], _: ShaderKind) -> MetalShader {
         let source = String::from_utf8(source.to_vec()).expect("Source wasn't valid UTF-8!");
         let compile_options = CompileOptions::new();
         let library = self.device.new_library_with_source(&source, &compile_options).unwrap();
@@ -148,7 +149,7 @@ impl Device for MetalDevice {
 
     fn create_vertex_array(&self) -> MetalVertexArray {
         MetalVertexArray {
-            descriptor: *VertexDescriptor::new(),
+            descriptor: VertexDescriptor::new().retain(),
             vertex_buffers: RefCell::new(vec![]),
             index_buffer: RefCell::new(None),
         }
@@ -177,26 +178,20 @@ impl Device for MetalDevice {
         MetalProgram { vertex: vertex_shader, fragment: fragment_shader }
     }
 
-    fn get_vertex_attr(&self, program: &MetalProgram, name: &str) -> VertexAttributeRef {
+    fn get_vertex_attr(&self, program: &MetalProgram, name: &str) -> VertexAttribute {
         // TODO(pcwalton): Cache the function?
-        unsafe {
-            let name = name.as_bytes();
-            let attributes: &ArrayRef<_> = &*program.vertex.function.vertex_attributes();
-            for attribute_index in 0..msg_send![attributes, count] {
-                let attribute: *mut MTLVertexAttribute =
-                    msg_send![attributes, objectAtIndex:attribute_index];
-                let attribute = VertexAttributeRef::from_ptr(attribute);
-                let this_name = attribute.name().as_bytes();
-                if this_name[0] == b'a' && this_name[1..] == *name {
-                    return *attribute
-                }
+        let attributes: &ArrayRef<_> = &*program.vertex.function.vertex_attributes();
+        for attribute_index in 0..attributes.len() {
+            let attribute = attributes.object_at(attribute_index);
+            let this_name = attribute.name().as_bytes();
+            if this_name[0] == b'a' && this_name[1..] == *name.as_bytes() {
+                return attribute.retain()
             }
         }
         panic!("No vertex attribute named `{}` found!", name);
     }
 
-    fn get_uniform(&self, program: &Self::Program, name: &str, uniform_type: UniformType)
-                   -> MetalUniform {
+    fn get_uniform(&self, program: &Self::Program, name: &str, _: UniformType) -> MetalUniform {
         let name = format!("u{}", name);
         MetalUniform {
             vertex_index: self.get_uniform_index(&program.vertex, &name),
@@ -206,7 +201,7 @@ impl Device for MetalDevice {
 
     fn configure_vertex_attr(&self,
                              vertex_array: &MetalVertexArray,
-                             attr: &VertexAttributeRef,
+                             attr: &VertexAttribute,
                              descriptor: &VertexAttrDescriptor) {
         let attribute_index = attr.attribute_index();
 
@@ -301,7 +296,7 @@ impl Device for MetalDevice {
     fn allocate_buffer<T>(&self,
                           buffer: &MetalBuffer,
                           data: BufferData<T>,
-                          target: BufferTarget,
+                          _: BufferTarget,
                           mode: BufferUploadMode) {
         let mut options = match mode {
             BufferUploadMode::Static => MTLResourceOptions::CPUCacheModeWriteCombined,
@@ -347,7 +342,7 @@ impl Device for MetalDevice {
     }
 
     fn begin_commands(&self) {
-        *self.command_buffer.borrow_mut() = Some(*self.command_queue.new_command_buffer());
+        *self.command_buffer.borrow_mut() = Some(self.command_queue.new_command_buffer().retain());
     }
 
     fn end_commands(&self) {
@@ -368,6 +363,7 @@ impl Device for MetalDevice {
 
         self.command_buffer
             .borrow()
+            .as_ref()
             .unwrap()
             .new_render_command_encoder(&render_pass_descriptor)
             .end_encoding();
@@ -387,11 +383,11 @@ impl Device for MetalDevice {
         let index_count = index_count as u64;
         let index_buffer = render_state.vertex_array
                                        .index_buffer
-                                       .borrow()
-                                       .as_ref()
-                                       .expect("No index buffer bound to VAO!");
-        let index_buffer = index_buffer.buffer.borrow().expect("Index buffer not allocated!");
-        encoder.draw_indexed_primitives(primitive, index_count, index_type, &index_buffer, 0);
+                                       .borrow();
+        let index_buffer = index_buffer.as_ref().expect("No index buffer bound to VAO!");
+        let index_buffer = index_buffer.buffer.borrow();
+        let index_buffer = index_buffer.as_ref().expect("Index buffer not allocated!");
+        encoder.draw_indexed_primitives(primitive, index_count, index_type, index_buffer, 0);
         encoder.end_encoding();
     }
 
@@ -404,14 +400,14 @@ impl Device for MetalDevice {
         let index_type = MTLIndexType::UInt32;
         let index_buffer = render_state.vertex_array
                                        .index_buffer
-                                       .borrow()
-                                       .as_ref()
-                                       .expect("No index buffer bound to VAO!");
-        let index_buffer = index_buffer.buffer.borrow().expect("Index buffer not allocated!");
+                                       .borrow();
+        let index_buffer = index_buffer.as_ref().expect("No index buffer bound to VAO!");
+        let index_buffer = index_buffer.buffer.borrow();
+        let index_buffer = index_buffer.as_ref().expect("Index buffer not allocated!");
         encoder.draw_indexed_primitives_instanced(primitive,
                                                   index_count as u64,
                                                   index_type,
-                                                  &index_buffer,
+                                                  index_buffer,
                                                   0,
                                                   instance_count as u64);
         encoder.end_encoding();
@@ -427,36 +423,32 @@ impl Device for MetalDevice {
 impl MetalDevice {
     fn get_uniform_index(&self, shader: &MetalShader, name: &str) -> Option<u64> {
         // FIXME(pcwalton): Does this work for fragment attributes?
-        unsafe {
-            let attributes: &ArrayRef<_> = &*shader.function.vertex_attributes();
-            for attribute_array_index in 0..msg_send![attributes, count] {
-                let attribute: *mut MTLVertexAttribute =
-                    msg_send![attributes, objectAtIndex:attribute_array_index];
-                let attribute = VertexAttributeRef::from_ptr(attribute);
-                if attribute.name() == name {
-                    return Some(attribute.attribute_index())
-                }
+        let attributes: &ArrayRef<_> = &*shader.function.vertex_attributes();
+        for attribute_array_index in 0..attributes.len() {
+            let attribute = attributes.object_at(attribute_array_index);
+            if attribute.name() == name {
+                return Some(attribute.attribute_index())
             }
         }
         None
     }
 
     fn render_target_color_texture(&self, render_target: &RenderTarget<MetalDevice>)
-                                   -> TextureRef {
+                                   -> Texture {
         match *render_target {
-            RenderTarget::Default {..} => *self.drawable.texture(),
-            RenderTarget::Framebuffer(framebuffer) => *framebuffer.0.as_ref(),
+            RenderTarget::Default {..} => self.drawable.texture().retain(),
+            RenderTarget::Framebuffer(framebuffer) => framebuffer.0.retain(),
         }
     }
 
-    fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> RenderCommandEncoderRef {
+    fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> RenderCommandEncoder {
         let render_pass_descriptor = self.create_render_pass_descriptor(render_state.target,
                                                                         MTLLoadAction::Load);
 
-        let encoder = self.command_buffer
-                          .borrow()
-                          .unwrap()
-                          .new_render_command_encoder(&render_pass_descriptor);
+        let command_buffer = self.command_buffer.borrow();
+        let command_buffer = command_buffer.as_ref().unwrap();
+
+        let encoder = command_buffer.new_render_command_encoder(&render_pass_descriptor).retain();
 
         let render_pipeline_descriptor = RenderPipelineDescriptor::new();
         render_pipeline_descriptor.set_vertex_function(Some(&render_state.program   
@@ -474,11 +466,12 @@ impl MetalDevice {
                                                                 .iter()
                                                                 .enumerate() {
             let real_index = vertex_buffer_index as u64 + FIRST_VERTEX_BUFFER_INDEX;
-            let buffer = vertex_buffer.buffer.borrow().map(|buffer| buffer.as_ref());
+            let buffer = vertex_buffer.buffer.borrow();
+            let buffer = buffer.as_ref().map(|buffer| buffer.as_ref());
             encoder.set_vertex_buffer(real_index, buffer, 0);
         }
 
-        self.set_uniforms(encoder, render_state);
+        self.set_uniforms(&encoder, render_state);
 
         let pipeline_color_attachment = render_pipeline_descriptor.color_attachments()
                                                                   .object_at(0)
@@ -490,9 +483,9 @@ impl MetalDevice {
             self.device.new_render_pipeline_state(&render_pipeline_descriptor).unwrap();
         encoder.set_render_pipeline_state(&render_pipeline_state);
 
-        self.set_depth_stencil_state(encoder, render_state);
+        self.set_depth_stencil_state(&encoder, render_state);
 
-        *encoder
+        encoder
     }
 
     fn set_uniforms(&self,
@@ -556,7 +549,7 @@ impl MetalDevice {
                 pipeline_color_attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
                 pipeline_color_attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
             }
-            BlendState::RGBOneAlphaOneMinusSrcAlpha => {
+            BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha => {
                 pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::SourceAlpha);
                 pipeline_color_attachment.set_destination_rgb_blend_factor(
                     MTLBlendFactor::OneMinusSourceAlpha);
@@ -575,15 +568,15 @@ impl MetalDevice {
     fn create_render_pass_descriptor(&self,
                                      target: &RenderTarget<MetalDevice>,
                                      load_action: MTLLoadAction)
-                                     -> RenderPassDescriptorRef {
-        let render_pass_descriptor = RenderPassDescriptor::new();
+                                     -> RenderPassDescriptor {
+        let render_pass_descriptor = RenderPassDescriptor::new().retain();
         let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
         // TODO(pcwalton): Use the viewport!
         // TODO(pcwalton): Depth and stencil!
         color_attachment.set_texture(Some(&self.render_target_color_texture(target)));
         color_attachment.set_load_action(load_action);
         color_attachment.set_store_action(MTLStoreAction::Store);
-        *render_pass_descriptor
+        render_pass_descriptor
     }
 
     fn set_depth_stencil_state(&self,
@@ -629,6 +622,21 @@ impl MetalDevice {
 
         let depth_stencil_state = self.device.new_depth_stencil_state(&depth_stencil_descriptor);
         encoder.set_depth_stencil_state(&depth_stencil_state);
+    }
+}
+
+// Helpers
+
+trait CoreAnimationLayerExt {
+    fn device(&self) -> metal::Device;
+}
+
+impl CoreAnimationLayerExt for CoreAnimationLayer {
+    fn device(&self) -> metal::Device {
+        unsafe {
+            let device: *mut MTLDevice = msg_send![self.as_ptr(), device];
+            metal::Device::from_ptr(msg_send![device, retain])
+        }
     }
 }
 
@@ -694,5 +702,84 @@ impl UniformDataExt for UniformData {
                 }
             }
         }
+    }
+}
+
+trait VertexAttributeArrayExt {
+    fn len(&self) -> u64;
+    fn object_at(&self, index: u64) -> &VertexAttributeRef;
+}
+
+impl VertexAttributeArrayExt for ArrayRef<VertexAttribute> {
+    fn len(&self) -> u64 {
+        unsafe { msg_send![self.as_ptr(), count] }
+    }
+
+    fn object_at(&self, index: u64) -> &VertexAttributeRef {
+        unsafe { VertexAttributeRef::from_ptr(msg_send![self.as_ptr(), objectAtIndex:index]) }
+    }
+}
+
+
+// Memory management helpers
+
+trait Retain {
+    type Owned;
+    fn retain(&self) -> Self::Owned;
+}
+
+impl Retain for CommandBufferRef {
+    type Owned = CommandBuffer;
+    fn retain(&self) -> CommandBuffer {
+        unsafe { CommandBuffer::from_ptr(msg_send![self.as_ptr(), retain]) }
+    }
+}
+
+impl Retain for CoreAnimationDrawableRef {
+    type Owned = CoreAnimationDrawable;
+    fn retain(&self) -> CoreAnimationDrawable {
+        unsafe { CoreAnimationDrawable::from_ptr(msg_send![self.as_ptr(), retain]) }
+    }
+}
+
+impl Retain for CoreAnimationLayerRef {
+    type Owned = CoreAnimationLayer;
+    fn retain(&self) -> CoreAnimationLayer {
+        unsafe { CoreAnimationLayer::from_ptr(msg_send![self.as_ptr(), retain]) }
+    }
+}
+
+impl Retain for RenderCommandEncoderRef {
+    type Owned = RenderCommandEncoder;
+    fn retain(&self) -> RenderCommandEncoder {
+        unsafe { RenderCommandEncoder::from_ptr(msg_send![self.as_ptr(), retain]) }
+    }
+}
+
+impl Retain for RenderPassDescriptorRef {
+    type Owned = RenderPassDescriptor;
+    fn retain(&self) -> RenderPassDescriptor {
+        unsafe { RenderPassDescriptor::from_ptr(msg_send![self.as_ptr(), retain]) }
+    }
+}
+
+impl Retain for TextureRef {
+    type Owned = Texture;
+    fn retain(&self) -> Texture {
+        unsafe { Texture::from_ptr(msg_send![self.as_ptr(), retain]) }
+    }
+}
+
+impl Retain for VertexAttributeRef {
+    type Owned = VertexAttribute;
+    fn retain(&self) -> VertexAttribute {
+        unsafe { VertexAttribute::from_ptr(msg_send![self.as_ptr(), retain]) }
+    }
+}
+
+impl Retain for VertexDescriptorRef {
+    type Owned = VertexDescriptor;
+    fn retain(&self) -> VertexDescriptor {
+        unsafe { VertexDescriptor::from_ptr(msg_send![self.as_ptr(), retain]) }
     }
 }

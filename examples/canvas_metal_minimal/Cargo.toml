@@ -24,5 +24,8 @@ path = "../../gl"
 [dependencies.pathfinder_gpu]
 path = "../../gpu"
 
+[dependencies.pathfinder_metal]
+path = "../../metal"
+
 [dependencies.pathfinder_renderer]
 path = "../../renderer"

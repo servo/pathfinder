@@ -8,19 +8,15 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-#[macro_use]
-extern crate objc;
-
 use foreign_types::ForeignTypeRef;
-use metal::{CAMetalLayer, CoreAnimationLayerRef, DeviceRef, MTLClearColor, MTLDevice};
-use metal::{MTLLoadAction, MTLStoreAction, RenderPassDescriptor};
+use metal::{CAMetalLayer, CoreAnimationLayerRef};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
 use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::color::ColorF;
-use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_gpu::{ClearParams, Device};
+use pathfinder_gpu::{ClearParams, Device, RenderTarget};
+use pathfinder_metal::MetalDevice;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::renderer::{DestFramebuffer, Renderer};
@@ -28,8 +24,6 @@ use pathfinder_renderer::options::RenderOptions;
 use sdl2::event::Event;
 use sdl2::hint;
 use sdl2::keyboard::Keycode;
-use sdl2::render::Canvas;
-use sdl2::video::GLProfile;
 use sdl2_sys::SDL_RenderGetMetalLayer;
 
 fn main() {
@@ -47,27 +41,46 @@ fn main() {
 
     // Create a Metal context.
     let canvas = window.into_canvas().present_vsync().build().unwrap();
-    let (metal_layer, device, drawable);
-    unsafe {
-        metal_layer = CoreAnimationLayerRef::from_ptr(SDL_RenderGetMetalLayer(canvas.raw()) as
-                                                      *mut CAMetalLayer);
-        device = DeviceRef::from_ptr(msg_send![metal_layer.as_ptr(), device]);
-        drawable = metal_layer.next_drawable().unwrap();
-    }
+    let metal_layer = unsafe {
+        CoreAnimationLayerRef::from_ptr(SDL_RenderGetMetalLayer(canvas.raw()) as *mut CAMetalLayer)
+    };
+
+    // Create a Pathfinder renderer.
+    let mut renderer = Renderer::new(MetalDevice::new(metal_layer),
+                                     &FilesystemResourceLoader::locate(),
+                                     DestFramebuffer::full_window(window_size));
 
     // Clear to white.
-    let render_pass_descriptor = RenderPassDescriptor::new();
-    let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
-    color_attachment.set_texture(Some(drawable.texture()));
-    color_attachment.set_clear_color(MTLClearColor::new(0.0, 0.0, 1.0, 1.0));
-    color_attachment.set_load_action(MTLLoadAction::Clear);
-    color_attachment.set_store_action(MTLStoreAction::Store);
-    let queue = device.new_command_buffer();
-    let command_buffer = queue.new_command_buffer();
-    let encoder = command_buffer.new_render_command_encoder(render_pass_descriptor);
-    encoder.end_encoding();
-    command_buffer.present_drawable(drawable);
-    command_buffer.commit();
+    let viewport = RectI::new(Vector2I::default(), window_size);
+    let render_target = RenderTarget::Default { viewport };
+    let clear_params = ClearParams { color: Some(ColorF::white()), ..ClearParams::default() };
+    renderer.device.begin_commands();
+    renderer.device.clear(&render_target, &clear_params);
+    renderer.device.end_commands();
+
+    // Make a canvas. We're going to draw a house.
+    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());
+
+    // Set line width.
+    canvas.set_line_width(10.0);
+
+    // Draw walls.
+    canvas.stroke_rect(RectF::new(Vector2F::new(75.0, 140.0), Vector2F::new(150.0, 110.0)));
+
+    // Draw door.
+    canvas.fill_rect(RectF::new(Vector2F::new(130.0, 190.0), Vector2F::new(40.0, 60.0)));
+
+    // Draw roof.
+    let mut path = Path2D::new();
+    path.move_to(Vector2F::new(50.0, 140.0));
+    path.line_to(Vector2F::new(150.0, 60.0));
+    path.line_to(Vector2F::new(250.0, 140.0));
+    path.close_path();
+    canvas.stroke_path(path);
+
+    // Render the canvas to screen.
+    let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
+    scene.build_and_render(&mut renderer, RenderOptions::default());
 
     // Wait for a keypress.
     let mut event_pump = sdl_context.event_pump().unwrap();

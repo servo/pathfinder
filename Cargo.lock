@@ -160,6 +160,7 @@ dependencies = [
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
+ "pathfinder_metal 0.1.0",
  "pathfinder_renderer 0.1.0",
  "sdl2 0.32.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sdl2-sys 0.32.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1013,18 +1014,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "metal"
-version = "0.1.0"
-dependencies = [
- "foreign-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "metal 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "objc 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "pathfinder_geometry 0.3.0",
- "pathfinder_gpu 0.1.0",
- "pathfinder_simd 0.3.0",
-]
-
-[[package]]
-name = "metal"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
@@ -1338,6 +1327,18 @@ dependencies = [
  "rayon 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "smallvec 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "usvg 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pathfinder_metal"
+version = "0.1.0"
+dependencies = [
+ "foreign-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "metal 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "objc 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_geometry 0.3.0",
+ "pathfinder_gpu 0.1.0",
+ "pathfinder_simd 0.3.0",
 ]
 
 [[package]]
