@@ -34,6 +34,8 @@ pub trait Device: Sized {
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Self::Texture;
     fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> Self::Texture;
+    fn create_shader(&self, resources: &dyn ResourceLoader, name: &str, kind: ShaderKind)
+                     -> Self::Shader;
     fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
                                  -> Self::Shader;
     fn create_vertex_array(&self) -> Self::VertexArray;
@@ -90,20 +92,6 @@ pub trait Device: Sized {
             .to_luma();
         let size = Vector2I::new(image.width() as i32, image.height() as i32);
         self.create_texture_from_data(size, &image)
-    }
-
-    fn create_shader(
-        &self,
-        resources: &dyn ResourceLoader,
-        name: &str,
-        kind: ShaderKind,
-    ) -> Self::Shader {
-        let suffix = match kind {
-            ShaderKind::Vertex => 'v',
-            ShaderKind::Fragment => 'f',
-        };
-        let source = resources.slurp(&format!("shaders/gl3/{}.{}s.glsl", name, suffix)).unwrap();
-        self.create_shader_from_source(name, &source, kind)
     }
 
     fn create_program_from_shader_names(

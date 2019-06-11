@@ -418,6 +418,21 @@ impl Device for MetalDevice {
     fn end_timer_query(&self, query: &MetalTimerQuery) {}
     fn timer_query_is_available(&self, query: &MetalTimerQuery) -> bool { true }
     fn get_timer_query(&self, query: &MetalTimerQuery) -> Duration { Duration::from_secs(0) }
+
+    #[inline]
+    fn create_shader(
+        &self,
+        resources: &dyn ResourceLoader,
+        name: &str,
+        kind: ShaderKind,
+    ) -> Self::Shader {
+        let suffix = match kind {
+            ShaderKind::Vertex => 'v',
+            ShaderKind::Fragment => 'f',
+        };
+        let path = format!("shaders/metal/{}.{}s.metal", name, suffix);
+        self.create_shader_from_source(name, &resources.slurp(&path).unwrap(), kind)
+    }
 }
 
 impl MetalDevice {

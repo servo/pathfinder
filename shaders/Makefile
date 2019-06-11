@@ -42,7 +42,7 @@ OUT=\
 GLSL_VERSION=330
 GLSLANGFLAGS=--auto-map-locations -I.
 
-SPIRVCROSSFLAGS=--msl
+SPIRVCROSSFLAGS=--msl --msl-version 020100 --msl-argument-buffers
 
 SED_ARGS=-e "s/\#version 330/\#version \{\{version\}\}/" -e "s/\#line.*$$//"
 

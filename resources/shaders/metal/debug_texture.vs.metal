@@ -3,6 +3,12 @@
 
 using namespace metal;
 
+struct spvDescriptorSetBuffer0
+{
+    constant float2* uTextureSize [[id(0)]];
+    constant float2* uFramebufferSize [[id(1)]];
+};
+
 struct main0_out
 {
     float2 vTexCoord [[user(locn0)]];
@@ -15,11 +21,11 @@ struct main0_in
     float2 aTexCoord [[attribute(1)]];
 };
 
-vertex main0_out main0(main0_in in [[stage_in]], float2 uTextureSize [[buffer(0)]], float2 uFramebufferSize [[buffer(1)]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
+vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
 {
     main0_out out = {};
-    out.vTexCoord = in.aTexCoord / uTextureSize;
-    float2 position = ((in.aPosition / uFramebufferSize) * 2.0) - float2(1.0);
+    out.vTexCoord = in.aTexCoord / (*spvDescriptorSet0.uTextureSize);
+    float2 position = ((in.aPosition / (*spvDescriptorSet0.uFramebufferSize)) * 2.0) - float2(1.0);
     out.gl_Position = float4(position.x, -position.y, 0.0, 1.0);
     return out;
 }

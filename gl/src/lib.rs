@@ -203,7 +203,6 @@ impl GLDevice {
             gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
         }
     }
-
 }
 
 impl Device for GLDevice {
@@ -640,6 +639,21 @@ impl Device for GLDevice {
             gl::BindBuffer(target.to_gl_target(), buffer.gl_buffer); ck();
         }
         self.unbind_vertex_array();
+    }
+
+    #[inline]
+    fn create_shader(
+        &self,
+        resources: &dyn ResourceLoader,
+        name: &str,
+        kind: ShaderKind,
+    ) -> Self::Shader {
+        let suffix = match kind {
+            ShaderKind::Vertex => 'v',
+            ShaderKind::Fragment => 'f',
+        };
+        let path = format!("shaders/gl3/{}.{}s.glsl", name, suffix);
+        self.create_shader_from_source(name, &resources.slurp(&path).unwrap(), kind)
     }
 }
 

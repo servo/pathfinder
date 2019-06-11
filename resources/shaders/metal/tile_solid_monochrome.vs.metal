@@ -5,6 +5,14 @@
 
 using namespace metal;
 
+struct spvDescriptorSetBuffer0
+{
+    constant float2* uTileSize [[id(0)]];
+    constant float2* uViewBoxOrigin [[id(1)]];
+    constant float2* uFramebufferSize [[id(2)]];
+    constant float4* uColor [[id(3)]];
+};
+
 struct main0_out
 {
     float4 vColor [[user(locn0)]];
@@ -30,10 +38,10 @@ void computeVaryings(thread float2& aTileOrigin, thread float2& aTessCoord, thre
     gl_Position = float4(position, 0.0, 1.0);
 }
 
-vertex main0_out main0(main0_in in [[stage_in]], float2 uTileSize [[buffer(0)]], float2 uViewBoxOrigin [[buffer(1)]], float2 uFramebufferSize [[buffer(2)]], float4 uColor [[buffer(3)]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
+vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
 {
     main0_out out = {};
-    computeVaryings(in.aTileOrigin, in.aTessCoord, uTileSize, uViewBoxOrigin, uFramebufferSize, out.vColor, out.gl_Position, uColor);
+    computeVaryings(in.aTileOrigin, in.aTessCoord, (*spvDescriptorSet0.uTileSize), (*spvDescriptorSet0.uViewBoxOrigin), (*spvDescriptorSet0.uFramebufferSize), out.vColor, out.gl_Position, (*spvDescriptorSet0.uColor));
     return out;
 }
 

@@ -5,6 +5,12 @@
 
 using namespace metal;
 
+struct spvDescriptorSetBuffer0
+{
+    constant float2* uTileSize [[id(0)]];
+    constant float2* uFramebufferSize [[id(1)]];
+};
+
 struct main0_out
 {
     float2 vFrom [[user(locn0)]];
@@ -29,12 +35,12 @@ float2 computeTileOffset(thread const uint& tileIndex, thread const float& stenc
     return float2(tileOffset) * uTileSize;
 }
 
-vertex main0_out main0(main0_in in [[stage_in]], float2 uTileSize [[buffer(0)]], float2 uFramebufferSize [[buffer(1)]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
+vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
 {
     main0_out out = {};
     uint param = in.aTileIndex;
-    float param_1 = uFramebufferSize.x;
-    float2 tileOrigin = computeTileOffset(param, param_1, uTileSize, in.aTileIndex);
+    float param_1 = (*spvDescriptorSet0.uFramebufferSize).x;
+    float2 tileOrigin = computeTileOffset(param, param_1, (*spvDescriptorSet0.uTileSize), in.aTileIndex);
     float2 from = float2(float(in.aFromPx & 15u), float(in.aFromPx >> 4u)) + in.aFromSubpx;
     float2 to = float2(float(in.aToPx & 15u), float(in.aToPx >> 4u)) + in.aToSubpx;
     float2 position;
@@ -52,11 +58,11 @@ vertex main0_out main0(main0_in in [[stage_in]], float2 uTileSize [[buffer(0)]],
     }
     else
     {
-        position.y = uTileSize.y;
+        position.y = (*spvDescriptorSet0.uTileSize).y;
     }
     out.vFrom = from - position;
     out.vTo = to - position;
-    out.gl_Position = float4((((tileOrigin + position) / uFramebufferSize) * 2.0) - float2(1.0), 0.0, 1.0);
+    out.gl_Position = float4((((tileOrigin + position) / (*spvDescriptorSet0.uFramebufferSize)) * 2.0) - float2(1.0), 0.0, 1.0);
     return out;
 }
 
