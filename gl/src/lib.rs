@@ -927,7 +927,6 @@ impl StencilFuncExt for StencilFunc {
         match self {
             StencilFunc::Always => gl::ALWAYS,
             StencilFunc::Equal => gl::EQUAL,
-            StencilFunc::NotEqual => gl::NOTEQUAL,
         }
     }
 }

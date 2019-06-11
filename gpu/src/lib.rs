@@ -222,7 +222,7 @@ pub enum RenderTarget<'a, D> where D: Device {
     Framebuffer(&'a D::Framebuffer),
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BlendState {
     Off,
     RGBOneAlphaOne,
@@ -254,7 +254,6 @@ pub struct StencilState {
 pub enum StencilFunc {
     Always,
     Equal,
-    NotEqual,
 }
 
 impl Default for RenderOptions {

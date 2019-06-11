@@ -14,18 +14,21 @@
 extern crate objc;
 
 use metal::{BufferRef, CommandBufferRef, CommandQueueRef, CompileOptions};
-use metal::{CoreAnimationDrawableRef, CoreAnimationLayerRef, DeviceRef, FunctionRef, LibraryRef};
-use metal::{MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLRegion, MTLResourceOptions, MTLSize};
-use metal::{MTLStorageMode, MTLStoreAction, MTLTextureType, MTLTextureUsage, MTLVertexFormat};
-use metal::{MTLVertexStepFunction, RenderPassDescriptor, TextureDescriptor, TextureRef};
-use metal::{VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
+use metal::{CoreAnimationDrawableRef, CoreAnimationLayerRef, DepthStencilDescriptor, DeviceRef, FunctionRef, LibraryRef};
+use metal::{MTLClearColor, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLRegion};
+use metal::{MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
+use metal::{MTLStorageMode, MTLStoreAction, MTLTextureType};
+use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, RenderPassDescriptor};
+use metal::{SamplerDescriptor, SamplerStateRef, TextureDescriptor, TextureRef, VertexAttributeRef};
+use metal::{VertexDescriptor, VertexDescriptorRef};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BufferData, BufferTarget, BufferUploadMode, ClearParams, Device};
-use pathfinder_gpu::{RenderTarget, ShaderKind, TextureFormat, UniformData, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{RenderTarget, ShaderKind, TextureFormat, UniformData, UniformType};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use std::cell::RefCell;
 use std::mem;
+use std::rc::Rc;
 use std::time::Duration;
 
 const FIRST_VERTEX_BUFFER_INDEX: u32 = 16;
@@ -36,6 +39,7 @@ pub struct MetalDevice {
     drawable: CoreAnimationDrawableRef,
     command_queue: CommandQueueRef,
     command_buffer: RefCell<Option<CommandBufferRef>>,
+    sampler: SamplerStateRef,
 }
 
 pub struct MetalProgram {
@@ -43,15 +47,35 @@ pub struct MetalProgram {
     fragment: MetalShader,
 }
 
+#[derive(Clone)]
 struct MetalBuffer {
-    buffer: RefCell<Option<BufferRef>>,
+    buffer: Rc<RefCell<Option<BufferRef>>>,
 }
 
 impl MetalDevice {
     #[inline]
     pub fn new(layer: CoreAnimationLayerRef) -> MetalDevice {
         let device = unsafe { DeviceRef::from_ptr(msg_send![layer.as_ptr(), device]) };
-        MetalDevice { device, layer }
+
+        let drawable = layer.next_drawable().unwrap();
+        let command_queue = device.new_command_buffer();
+
+        let sampler_descriptor = SamplerDescriptor::new();
+        sampler_descriptor.set_normalized_coordinates(true);
+        sampler_descriptor.set_min_filter(MTLSamplerMinMagFilter::Linear);
+        sampler_descriptor.set_mag_filter(MTLSamplerMinMagFilter::Linear);
+        sampler_descriptor.set_address_mode_s(MTLSamplerAddressMode::ClampToEdge);
+        sampler_descriptor.set_address_mode_t(MTLSamplerAddressMode::ClampToEdge);
+        let sampler_state = device.new_sampler_state(sampler_descriptor);
+
+        MetalDevice {
+            device,
+            layer,
+            drawable,
+            command_queue,
+            command_buffer: RefCell::new(None),
+            sampler_state,
+        }
     }
 }
 
@@ -65,16 +89,16 @@ pub struct MetalShader {
 // TODO(pcwalton): Use `MTLEvent`s.
 pub struct MetalTimerQuery;
 
-// FIXME(pcwalton): This isn't great.
 #[derive(Clone)]
 pub struct MetalUniform {
-    name: String,
-    buffer: Option<BufferRef>,
+    vertex_index: Option<u64>,
+    fragment_index: Option<u64>,
 }
 
 pub struct MetalVertexArray {
     descriptor: VertexDescriptorRef,
-    buffers: Vec<BufferRef>,
+    vertex_buffers: RefCell<Vec<MetalBuffer>>,
+    index_buffer: RefCell<Option<MetalBuffer>>,
 }
 
 impl Device for MetalDevice {
@@ -121,6 +145,20 @@ impl Device for MetalDevice {
         VertexDescriptor::new()
     }
 
+    fn bind_buffer(&self,
+                   vertex_array: &VertexDescriptorRef,
+                   buffer: &MetalBuffer,
+                   target: BufferTarget) {
+        match target {
+            BufferTarget::Vertex => {
+                vertex_array.vertex_buffers.borrow_mut().unwrap().push((*buffer).clone())
+            }
+            BufferTarget::Index => {
+                *vertex_array.index_buffer.borrow_mut().unwrap() = Some((*buffer).clone())
+            }
+        }
+    }
+
     fn create_program_from_shaders(&self,
                                    _: &dyn ResourceLoader,
                                    _: &str,
@@ -142,9 +180,13 @@ impl Device for MetalDevice {
         panic!("No vertex attribute named `{}` found!", name);
     }
 
-    fn get_uniform(&self, _: &Self::Program, name: &str, uniform_type: UniformType)
+    fn get_uniform(&self, program: &Self::Program, name: &str, uniform_type: UniformType)
                    -> MetalUniform {
-        MetalUniform(format!("u{}", name))
+        let name = format!("u{}", name);
+        MetalUniform {
+            vertex_index: self.get_uniform_index(&program.vertex, &name),
+            fragment_index: self.get_uniform_index(&program.fragment, &name),
+        }
     }
 
     fn configure_vertex_attr(&self,
@@ -281,7 +323,7 @@ impl Device for MetalDevice {
         vec![]
     }
 
-    fn begin_commands(&self) -> CommandBufferRef {
+    fn begin_commands(&self) {
         *self.command_buffer.borrow_mut() = Some(self.command_queue.new_command_buffer());
     }
 
@@ -304,6 +346,46 @@ impl Device for MetalDevice {
             .end_encoding();
     }
 
+    fn draw_arrays(&self, index_count: u32, render_state: &RenderState<MetalDevice>) {
+        let encoder = self.prepare_to_draw(render_state);
+        encoder.draw_primitives(render_state.primitive.to_metal_primitive(), 0, index_count);
+        encoder.end_encoding();
+    }
+
+    fn draw_elements(&self, index_count: u32, render_state: &RenderState<MetalDevice>) {
+        let encoder = self.prepare_to_draw(render_state);
+        let primitive = render_state.primitive.to_metal_primitive();
+        let index_type = MTLIndexType::UInt32;
+        let index_buffer = render_state.vertex_array
+                                       .index_buffer
+                                       .as_ref()
+                                       .expect("No index buffer bound to VAO!");
+        let index_buffer = index_buffer.buffer.borrow().expect("Index buffer not allocated!");
+        encoder.draw_indexed_primitives(primitive, index_count, index_type, index_buffer, 0);
+        encoder.end_encoding();
+    }
+
+    fn draw_elements_instanced(&self,
+                               index_count: u32,
+                               instance_count: u32,
+                               render_state: &RenderState<MetalDevice>) {
+        let encoder = self.prepare_to_draw(render_state);
+        let primitive = render_state.primitive.to_metal_primitive();
+        let index_type = MTLIndexType::UInt32;
+        let index_buffer = render_state.vertex_array
+                                       .index_buffer
+                                       .as_ref()
+                                       .expect("No index buffer bound to VAO!");
+        let index_buffer = index_buffer.buffer.borrow().expect("Index buffer not allocated!");
+        encoder.draw_indexed_primitives(primitive,
+                                        index_count,
+                                        index_type,
+                                        index_buffer,
+                                        0,
+                                        instance_count);
+        encoder.end_encoding();
+    }
+
     fn create_timer_query(&self) -> MetalTimerQuery { MetalTimerQuery }
     fn begin_timer_query(&self, _: &MetalTimerQuery) {}
     fn end_timer_query(&self, query: &MetalTimerQuery) {}
@@ -312,7 +394,127 @@ impl Device for MetalDevice {
 }
 
 impl MetalDevice {
-    fn create_render_pass_descriptor(&self, target: &RenderTarget<MetalDevice>)
+    fn get_uniform_index(&self, shader: &MetalShader, name: &str) -> Option<u64> {
+        // FIXME(pcwalton): Does this work for fragment attributes?
+        for vertex_attribute in shader.function.vertex_attributes() {
+            if vertex_attribute.name() == name {
+                return Some(vertex_attribute.attribute_index)
+            }
+        }
+        None
+    }
+
+    fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> Encoder {
+        let render_pass_descriptor = self.create_render_pass_descriptor(render_state.target,
+                                                                        MTLLoadAction::Load);
+
+        let encoder = self.command_buffer
+                          .borrow()
+                          .unwrap()
+                          .new_render_command_encoder(render_pass_descriptor);
+
+        let render_pipeline_descriptor = RenderPipelineDescriptor::new();
+        render_pipeline_descriptor.set_vertex_function(render_state.program.vertex.function);
+        render_pipeline_descriptor.set_fragment_function(render_state.program.fragment.function);
+        render_pipeline_descriptor.set_vertex_descriptor(render_state.vertex_array.descriptor);
+
+        for (vertex_buffer_index, vertex_buffer) in render_state.vertex_array   
+                                                                .vertex_buffers
+                                                                .iter()
+                                                                .enumerate() {
+            encoder.set_vertex_buffer(vertex_buffer_index + FIRST_VERTEX_BUFFER_INDEX,
+                                      &*vertex_buffer.buffer.borrow(),
+                                      0);
+        }
+
+        self.set_uniforms(&encoder, render_state);
+
+        let pipeline_color_attachment = render_pipeline_descriptor.color_attachments()
+                                                                  .object_at(0)
+                                                                  .unwrap();
+        self.prepare_color_attachment_for_render(&pipeline_color_attachment, render_state);
+
+        let render_pipeline_state =
+            self.device.new_render_pipeline_state(render_pipeline_descriptor);
+        encoder.set_render_pipeline_state(render_pipeline_state);
+
+        self.set_depth_stencil_state(encoder, render_state);
+
+        encoder
+    }
+
+    fn set_uniforms(&self, encoder: &Encoder, render_state: &RenderState) {
+        for (uniform, uniform_data) in &render_state.uniforms {
+            if let Some(vertex_index) = uniform.vertex_index {
+                match uniform_data {
+                    UniformData::TextureUnit(unit) => {
+                        let texture = render_state.samplers[unit as usize];
+                        encoder.set_vertex_texture(texture, vertex_index);
+                        encoder.set_vertex_sampler_state(self.sampler, vertex_index);
+                    }
+                    _ => {
+                        let slice = uniform_data.as_bytes();
+                        encoder.set_vertex_bytes(slice.as_ptr(), slice.len(), vertex_index);
+                    }
+                }
+            }
+            if let Some(vertex_index) = uniform.fragment_index {
+                match uniform_data {
+                    UniformData::TextureUnit(unit) => {
+                        let texture = render_state.samplers[unit as usize];
+                        encoder.set_fragment_texture(texture, vertex_index);
+                        encoder.set_fragment_sampler_state(self.sampler, fragment_index);
+                    }
+                    _ => {
+                        let slice = uniform_data.as_bytes();
+                        encoder.set_fragment_bytes(slice.as_ptr(), slice.len(), fragment_index);
+                    }
+                }
+            }
+        }
+    }
+
+    fn prepare_color_attachment_for_render(&self,
+                                           color_attachment: &RenderPipelineAttachmentDescriptor,
+                                           render_state: &RenderState) {
+        pipeline_color_attachment.set_pixel_format(render_state.target.pixel_format());
+
+        let blending_enabled = render_state.options.blend != BlendState::Off;
+        pipeline_color_attachment.set_blending_enabled(blending_enabled);
+        match render_state.options.blend {
+            BlendState::Off => {}
+            BlendState::RGBOneAlphaOne => {
+                pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
+                pipeline_color_attachment.set_destination_rgb_blend_factor(MTLBlendFactor::One);
+                pipeline_color_attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
+                pipeline_color_attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
+            }
+            BlendState::RGBOneAlphaOneMinusSrcAlpha => {
+                pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::One);
+                pipeline_color_attachment.set_destination_rgb_blend_factor(
+                    MTLBlendFactor::OneMinusSourceAlpha);
+                pipeline_color_attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
+                pipeline_color_attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
+            }
+            BlendState::RGBOneAlphaOneMinusSrcAlpha => {
+                pipeline_color_attachment.set_source_rgb_blend_factor(MTLBlendFactor::SourceAlpha);
+                pipeline_color_attachment.set_destination_rgb_blend_factor(
+                    MTLBlendFactor::OneMinusSourceAlpha);
+                pipeline_color_attachment.set_source_alpha_blend_factor(MTLBlendFactor::One);
+                pipeline_color_attachment.set_destination_alpha_blend_factor(MTLBlendFactor::One);
+            }
+        }
+
+        if render_state.options.color_mask {
+            pipeline_color_attachment.set_write_mask(MTLColorWriteMask::All);
+        } else {
+            pipeline_color_attachment.set_write_mask(MTLColorWriteMask::None);
+        }
+    }
+
+    fn create_render_pass_descriptor(&self,
+                                     target: &RenderTarget<MetalDevice>,
+                                     load_action: MTLLoadAction)
                                      -> RenderPassDescriptor {
         let render_pass_descriptor = RenderPassDescriptor::new();
         let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
@@ -324,6 +526,89 @@ impl MetalDevice {
             }
             RenderTarget::Framebuffer { texture } => color_attachment.set_texture(Some(texture)),
         }
+        color_attachment.set_load_action(load_action);
         color_attachment.set_store_action(MTLStoreAction::Store);
+    }
+
+    fn set_depth_stencil_state(&self, encoder: &Encoder, render_state: &RenderState) {
+        let depth_stencil_descriptor = DepthStencilDescriptor::new();
+
+        match render_state.options.depth {
+            Some(depth_state) => {
+                let compare_function = depth_state.func.to_metal_compare_function();
+                depth_stencil_descriptor.set_depth_compare_function(compare_function);
+                depth_stencil_descriptor.set_depth_write_enabled(depth_state.write);
+            }
+            None => {
+                depth_stencil_descriptor.set_depth_compare_function(MTLCompareFunction::Always);
+                depth_stencil_descriptor.set_depth_write_enabled(false);
+            }
+        }
+
+        match render_state.options.stencil {
+            Some(stencil_state) => {
+                let stencil_descriptor = StencilDescriptor::new();
+                let compare_function = stencil_state.func.to_metal_compare_function();
+                let (pass_operation, write_mask) = if stencil_state.write {
+                    (MTLStencilOperation::Replace, stencil_state.mask)
+                } else {
+                    (MTLStencilOperation::Keep, 0)
+                };
+                stencil_descriptor.set_stencil_compare_function(compare_function);
+                stencil_descriptor.set_stencil_failure_operation(MTLCompareFunction::Keep);
+                stencil_descriptor.set_depth_failure_operation(MTLCompareFunction::Keep);
+                stencil_descriptor.set_depth_stencil_pass_operation(pass_operation);
+                stencil_descriptor.set_write_mask(write_mask);
+                depth_stencil_descriptor.set_front_face_stencil(Some(stencil_descriptor));
+                depth_stencil_descriptor.set_back_face_stencil(Some(stencil_descriptor));
+                encoder.set_stencil_reference_value(stencil_state.reference);
+            }
+            None => {
+                depth_stencil_descriptor.set_front_face_stencil(None);
+                depth_stencil_descriptor.set_back_face_stencil(None);
+            }
+        }
+
+        let depth_stencil_state = self.device.new_depth_stencil_state(depth_stencil_descriptor);
+        encoder.set_depth_stencil_state(depth_stencil_state);
+    }
+}
+
+trait DepthFuncExt {
+    fn to_metal_compare_function(self) -> MTLCompareFunction;
+}
+
+impl DepthFuncExt for DepthFunc {
+    fn to_metal_compare_function(self) -> MTLCompareFunction {
+        match self {
+            DepthFunc::Less => MTLCompareFunction::Less,
+            DepthFunc::Always => MTLCompareFunction::Always,
+        }
+    }
+}
+
+trait PrimitiveExt {
+    fn to_metal_primitive(self) -> MTLPrimitiveType;
+}
+
+impl PrimitiveExt for Primitive {
+    fn to_metal_primitive(self) -> MTLPrimitiveType {
+        match render_state.primitive {
+            Primitive::Triangles => MTLPrimitiveType::Triangle,
+            Primitive::Lines => MTLPrimitiveType::Line,
+        }
+    }
+}
+
+trait StencilFuncExt {
+    fn to_metal_compare_function(self) -> MTLCompareFunction;
+}
+
+impl StencilFuncExt for StencilFunc {
+    fn to_metal_compare_function(self) -> MTLCompareFunction {
+        match self {
+            StencilFunc::Always => MTLCompareFunction::Always,
+            StencilFunc::Equal => MTLCompareFunction::Equal,
+        }
     }
 }
