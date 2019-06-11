@@ -13,17 +13,17 @@ uniform vec2 uTileSize;
 uniform vec2 uViewBoxOrigin;
 
 in ivec2 aTessCoord;
-in vec2 aTileOrigin;
+in ivec2 aTileOrigin;
+in vec2 aColorTexCoord;
 
 out vec4 vColor;
 
 vec4 getColor();
 
 void computeVaryings() {
-    vec2 pixelPosition = (aTileOrigin + vec2(aTessCoord)) * uTileSize + uViewBoxOrigin;
+    vec2 pixelPosition = vec2(aTileOrigin + aTessCoord) * uTileSize + uViewBoxOrigin;
     vec2 position = (pixelPosition / uFramebufferSize * 2.0 - 1.0) * vec2(1.0, -1.0);
 
     vColor = getColor();
-    //vColor = vec4(1.0, 0.0, 0.0, 1.0);
     gl_Position = vec4(position, 0.0, 1.0);
 }

@@ -15,6 +15,7 @@ uniform vec2 uViewBoxOrigin;
 
 in ivec2 aTessCoord;
 in uvec3 aTileOrigin;
+in vec2 aColorTexCoord;
 in int aBackdrop;
 in uint aTileIndex;
 

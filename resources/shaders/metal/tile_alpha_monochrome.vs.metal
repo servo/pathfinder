@@ -26,8 +26,8 @@ struct main0_in
 {
     int2 aTessCoord [[attribute(0)]];
     uint3 aTileOrigin [[attribute(1)]];
-    int aBackdrop [[attribute(2)]];
-    uint aTileIndex [[attribute(3)]];
+    int aBackdrop [[attribute(3)]];
+    uint aTileIndex [[attribute(4)]];
 };
 
 float2 computeTileOffset(thread const uint& tileIndex, thread const float& stencilTextureWidth, thread float2 uTileSize)

@@ -32,6 +32,7 @@ uniform vec2 uViewBoxOrigin;
 
 in ivec2 aTessCoord;
 in uvec3 aTileOrigin;
+in vec2 aColorTexCoord;
 in int aBackdrop;
 in uint aTileIndex;
 
@@ -74,8 +75,6 @@ void computeVaryings(){
 
 uniform sampler2D uPaintTexture;
 uniform vec2 uPaintTextureSize;
-
-in vec2 aColorTexCoord;
 
 vec4 getColor(){
     return texture(uPaintTexture, aColorTexCoord);

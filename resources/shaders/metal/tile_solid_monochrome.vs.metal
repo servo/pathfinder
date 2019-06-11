@@ -22,7 +22,7 @@ struct main0_out
 struct main0_in
 {
     int2 aTessCoord [[attribute(0)]];
-    float2 aTileOrigin [[attribute(1)]];
+    int2 aTileOrigin [[attribute(1)]];
 };
 
 float4 getColor(thread float4 uColor)
@@ -30,9 +30,9 @@ float4 getColor(thread float4 uColor)
     return uColor;
 }
 
-void computeVaryings(thread float2& aTileOrigin, thread int2& aTessCoord, thread float2 uTileSize, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread float4& vColor, thread float4& gl_Position, thread float4 uColor)
+void computeVaryings(thread int2& aTileOrigin, thread int2& aTessCoord, thread float2 uTileSize, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread float4& vColor, thread float4& gl_Position, thread float4 uColor)
 {
-    float2 pixelPosition = ((aTileOrigin + float2(aTessCoord)) * uTileSize) + uViewBoxOrigin;
+    float2 pixelPosition = (float2(aTileOrigin + aTessCoord) * uTileSize) + uViewBoxOrigin;
     float2 position = (((pixelPosition / uFramebufferSize) * 2.0) - float2(1.0)) * float2(1.0, -1.0);
     vColor = getColor(uColor);
     gl_Position = float4(position, 0.0, 1.0);

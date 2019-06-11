@@ -1073,7 +1073,7 @@ where
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::I16,
             stride: SOLID_TILE_INSTANCE_SIZE,
             offset: 0,
