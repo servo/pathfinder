@@ -17,14 +17,14 @@ struct main0_out
 
 struct main0_in
 {
-    float2 aPosition [[attribute(0)]];
+    int2 aPosition [[attribute(0)]];
 };
 
 vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    out.vTexCoord = in.aPosition * float((*spvDescriptorSet0.uGridlineCount));
-    out.gl_Position = (*spvDescriptorSet0.uTransform) * float4(in.aPosition.x, 0.0, in.aPosition.y, 1.0);
+    out.vTexCoord = float2(in.aPosition * int2((*spvDescriptorSet0.uGridlineCount)));
+    out.gl_Position = (*spvDescriptorSet0.uTransform) * float4(int4(in.aPosition.x, 0, in.aPosition.y, 1));
     return out;
 }
 

@@ -11,14 +11,14 @@ struct main0_out
 
 struct main0_in
 {
-    float2 aPosition [[attribute(0)]];
+    int2 aPosition [[attribute(0)]];
 };
 
 vertex main0_out main0(main0_in in [[stage_in]])
 {
     main0_out out = {};
-    out.vTexCoord = in.aPosition;
-    out.gl_Position = float4((in.aPosition * 2.0) - float2(1.0), 0.0, 1.0);
+    out.vTexCoord = float2(in.aPosition);
+    out.gl_Position = float4((float2(in.aPosition) * 2.0) - float2(1.0), 0.0, 1.0);
     return out;
 }
 
