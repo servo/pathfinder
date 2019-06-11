@@ -1015,10 +1015,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "metal"
 version = "0.1.0"
 dependencies = [
+ "foreign-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "metal 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "objc 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gpu 0.1.0",
+ "pathfinder_simd 0.3.0",
 ]
 
 [[package]]

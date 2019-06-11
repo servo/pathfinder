@@ -5,6 +5,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 edition = "2018"
 
 [dependencies]
+foreign-types = "0.3"
 metal = "0.14"
 objc = "0.2"
 
@@ -13,3 +14,6 @@ path = "../geometry"
 
 [dependencies.pathfinder_gpu]
 path = "../gpu"
+
+[dependencies.pathfinder_simd]
+path = "../simd"
