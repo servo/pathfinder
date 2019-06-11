@@ -889,7 +889,7 @@ where
         let to_subpx_attr = device.get_vertex_attr(&fill_program.program, "ToSubpx");
         let tile_index_attr = device.get_vertex_attr(&fill_program.program, "TileIndex");
 
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
@@ -899,7 +899,7 @@ where
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 1);
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &from_px_attr, &VertexAttrDescriptor {
             size: 1,
             class: VertexAttrClass::Int,
@@ -945,7 +945,7 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 2);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         FillVertexArray { vertex_array, vertex_buffer }
     }
@@ -980,7 +980,7 @@ where
 
         // NB: The object must be of type `I16`, not `U16`, to work around a macOS Radeon
         // driver bug.
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
@@ -990,7 +990,7 @@ where
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 1);
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
             size: 3,
             class: VertexAttrClass::Int,
@@ -1027,7 +1027,7 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 2);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
     }
@@ -1060,7 +1060,7 @@ where
 
         // NB: The object must be of type short, not unsigned short, to work around a macOS
         // Radeon driver bug.
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
@@ -1070,7 +1070,7 @@ where
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 1);
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tile_origin_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
@@ -1089,7 +1089,7 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 2);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }
     }
@@ -1380,7 +1380,7 @@ where
         let vertex_array = device.create_vertex_array();
         let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position");
 
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
@@ -1390,7 +1390,7 @@ where
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 1);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         PostprocessVertexArray { vertex_array }
     }
@@ -1432,7 +1432,7 @@ where
 
         let position_attr = device.get_vertex_attr(&stencil_program.program, "Position");
 
-        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 3,
             class: VertexAttrClass::Float,
@@ -1442,7 +1442,7 @@ where
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index, 1);
+        device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
 
         StencilVertexArray { vertex_array, vertex_buffer, index_buffer }
     }
@@ -1502,7 +1502,7 @@ where
 
         let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position");
 
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
@@ -1512,7 +1512,7 @@ where
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 1);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         ReprojectionVertexArray { vertex_array }
     }

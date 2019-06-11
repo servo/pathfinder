@@ -50,8 +50,7 @@ pub trait Device: Sized {
     fn bind_buffer(&self,
                    vertex_array: &Self::VertexArray,
                    buffer: &Self::Buffer,
-                   target: BufferTarget,
-                   index: u32);
+                   target: BufferTarget);
     fn configure_vertex_attr(&self,
                              vertex_array: &Self::VertexArray,
                              attr: &Self::VertexAttr,

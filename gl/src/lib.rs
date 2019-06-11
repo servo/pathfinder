@@ -634,12 +634,7 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn bind_buffer(&self,
-                   vertex_array: &GLVertexArray,
-                   buffer: &GLBuffer,
-                   target: BufferTarget,
-                   _buffer_index: u32) {
-        // FIXME(pcwalton): Use the buffer index!
+    fn bind_buffer(&self, vertex_array: &GLVertexArray, buffer: &GLBuffer, target: BufferTarget) {
         self.bind_vertex_array(vertex_array);
         unsafe {
             gl::BindBuffer(target.to_gl_target(), buffer.gl_buffer); ck();

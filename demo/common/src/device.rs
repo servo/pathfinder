@@ -70,7 +70,7 @@ where
 
         let position_attr = device.get_vertex_attr(&ground_program.program, "Position");
 
-        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex, 0);
+        device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
@@ -80,7 +80,7 @@ where
             divisor: 0,
             buffer_index: 0,
         });
-        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index, 1);
+        device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         GroundVertexArray { vertex_array }
     }
