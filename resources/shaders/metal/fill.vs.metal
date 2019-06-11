@@ -20,7 +20,7 @@ struct main0_out
 
 struct main0_in
 {
-    float2 aTessCoord [[attribute(0)]];
+    int2 aTessCoord [[attribute(0)]];
     uint aFromPx [[attribute(1)]];
     uint aToPx [[attribute(2)]];
     float2 aFromSubpx [[attribute(3)]];
@@ -44,7 +44,7 @@ vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer
     float2 from = float2(float(in.aFromPx & 15u), float(in.aFromPx >> 4u)) + in.aFromSubpx;
     float2 to = float2(float(in.aToPx & 15u), float(in.aToPx >> 4u)) + in.aToSubpx;
     float2 position;
-    if (in.aTessCoord.x < 0.5)
+    if (in.aTessCoord.x == 0)
     {
         position.x = floor(fast::min(from.x, to.x));
     }
@@ -52,7 +52,7 @@ vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer
     {
         position.x = ceil(fast::max(from.x, to.x));
     }
-    if (in.aTessCoord.y < 0.5)
+    if (in.aTessCoord.y == 0)
     {
         position.y = floor(fast::min(from.y, to.y));
     }

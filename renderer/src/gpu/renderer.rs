@@ -39,7 +39,7 @@ const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
-const SOLID_TILE_INSTANCE_SIZE: usize = 10;
+const SOLID_TILE_INSTANCE_SIZE: usize = 12;
 const MASK_TILE_INSTANCE_SIZE: usize = 12;
 
 const MAX_FILLS_PER_BATCH: usize = 0x4000;
@@ -892,7 +892,7 @@ where
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,
@@ -983,7 +983,7 @@ where
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,
@@ -1063,7 +1063,7 @@ where
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U8,
             stride: 0,
             offset: 0,

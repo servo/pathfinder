@@ -91,6 +91,7 @@ impl SolidTileBatchPrimitive {
             object_index: object_index,
             origin_u: origin_uv.x() as u16,
             origin_v: origin_uv.y() as u16,
+            pad: 0,
         }
     }
 }

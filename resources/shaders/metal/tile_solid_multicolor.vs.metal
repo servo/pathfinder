@@ -22,7 +22,7 @@ struct main0_out
 
 struct main0_in
 {
-    float2 aTessCoord [[attribute(0)]];
+    int2 aTessCoord [[attribute(0)]];
     float2 aTileOrigin [[attribute(1)]];
     float2 aColorTexCoord [[attribute(2)]];
 };
@@ -32,9 +32,9 @@ float4 getColor(thread texture2d<float> uPaintTexture, thread const sampler uPai
     return uPaintTexture.sample(uPaintTextureSmplr, aColorTexCoord, level(0.0));
 }
 
-void computeVaryings(thread float2& aTileOrigin, thread float2& aTessCoord, thread float2 uTileSize, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread float4& vColor, thread float4& gl_Position, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
+void computeVaryings(thread float2& aTileOrigin, thread int2& aTessCoord, thread float2 uTileSize, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread float4& vColor, thread float4& gl_Position, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
 {
-    float2 pixelPosition = ((aTileOrigin + aTessCoord) * uTileSize) + uViewBoxOrigin;
+    float2 pixelPosition = ((aTileOrigin + float2(aTessCoord)) * uTileSize) + uViewBoxOrigin;
     float2 position = (((pixelPosition / uFramebufferSize) * 2.0) - float2(1.0)) * float2(1.0, -1.0);
     vColor = getColor(uPaintTexture, uPaintTextureSmplr, aColorTexCoord);
     gl_Position = float4(position, 0.0, 1.0);

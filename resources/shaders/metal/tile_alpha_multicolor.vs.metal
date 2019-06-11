@@ -25,7 +25,7 @@ struct main0_out
 
 struct main0_in
 {
-    float2 aTessCoord [[attribute(0)]];
+    int2 aTessCoord [[attribute(0)]];
     uint3 aTileOrigin [[attribute(1)]];
     int aBackdrop [[attribute(2)]];
     uint aTileIndex [[attribute(3)]];
@@ -44,15 +44,15 @@ float4 getColor(thread texture2d<float> uPaintTexture, thread const sampler uPai
     return uPaintTexture.sample(uPaintTextureSmplr, aColorTexCoord, level(0.0));
 }
 
-void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread float2& aTessCoord, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread uint& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
+void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread int2& aTessCoord, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread uint& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
 {
     float2 origin = float2(aTileOrigin.xy) + (float2(float(aTileOrigin.z & 15u), float(aTileOrigin.z >> 4u)) * 256.0);
-    float2 pixelPosition = ((origin + aTessCoord) * uTileSize) + uViewBoxOrigin;
+    float2 pixelPosition = ((origin + float2(aTessCoord)) * uTileSize) + uViewBoxOrigin;
     float2 position = (((pixelPosition / uFramebufferSize) * 2.0) - float2(1.0)) * float2(1.0, -1.0);
     uint param = aTileIndex;
     float param_1 = uStencilTextureSize.x;
     float2 maskTexCoordOrigin = computeTileOffset(param, param_1, uTileSize);
-    float2 maskTexCoord = maskTexCoordOrigin + (aTessCoord * uTileSize);
+    float2 maskTexCoord = maskTexCoordOrigin + (float2(aTessCoord) * uTileSize);
     vTexCoord = maskTexCoord / uStencilTextureSize;
     vBackdrop = float(aBackdrop);
     vColor = getColor(uPaintTexture, uPaintTextureSmplr, aColorTexCoord);

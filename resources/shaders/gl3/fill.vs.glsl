@@ -15,7 +15,7 @@ precision highp float;
 uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
 
-in vec2 aTessCoord;
+in ivec2 aTessCoord;
 in uint aFromPx;
 in uint aToPx;
 in vec2 aFromSubpx;
@@ -38,11 +38,11 @@ void main(){
     vec2 to = vec2(aToPx & 15u, aToPx >> 4u)+ aToSubpx;
 
     vec2 position;
-    if(aTessCoord . x < 0.5)
+    if(aTessCoord . x == 0)
         position . x = floor(min(from . x, to . x));
     else
         position . x = ceil(max(from . x, to . x));
-    if(aTessCoord . y < 0.5)
+    if(aTessCoord . y == 0)
         position . y = floor(min(from . y, to . y));
     else
         position . y = uTileSize . y;
