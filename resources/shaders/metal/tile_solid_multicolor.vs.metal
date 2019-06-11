@@ -8,10 +8,10 @@ using namespace metal;
 struct spvDescriptorSetBuffer0
 {
     constant float2* uTileSize [[id(0)]];
-    texture2d<float> uPaintTexture [[id(0)]];
-    constant float2* uViewBoxOrigin [[id(1)]];
-    sampler uPaintTextureSmplr [[id(1)]];
-    constant float2* uFramebufferSize [[id(2)]];
+    texture2d<float> uPaintTexture [[id(1)]];
+    constant float2* uViewBoxOrigin [[id(2)]];
+    sampler uPaintTextureSmplr [[id(3)]];
+    constant float2* uFramebufferSize [[id(4)]];
 };
 
 struct main0_out
@@ -40,7 +40,7 @@ void computeVaryings(thread float2& aTileOrigin, thread float2& aTessCoord, thre
     gl_Position = float4(position, 0.0, 1.0);
 }
 
-vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
+vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
     computeVaryings(in.aTileOrigin, in.aTessCoord, (*spvDescriptorSet0.uTileSize), (*spvDescriptorSet0.uViewBoxOrigin), (*spvDescriptorSet0.uFramebufferSize), out.vColor, out.gl_Position, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.aColorTexCoord);

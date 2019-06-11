@@ -14,13 +14,15 @@
 extern crate objc;
 
 use foreign_types::{ForeignType, ForeignTypeRef};
-use metal::{self, ArrayRef, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
+use metal::{self, Argument, ArgumentEncoder, ArrayRef, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
 use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, DeviceRef, Function, Library};
-use metal::{MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
+use metal::{MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
 use metal::{MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
 use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType};
 use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
-use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor, SamplerDescriptor, SamplerState, StencilDescriptor, TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
+use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor};
+use metal::{SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
+use metal::{TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
 use metal::{VertexDescriptor, VertexDescriptorRef};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -30,6 +32,7 @@ use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::cell::RefCell;
 use std::mem;
+use std::ptr;
 use std::rc::Rc;
 use std::slice;
 use std::time::Duration;
@@ -88,6 +91,9 @@ pub struct MetalShader {
     #[allow(dead_code)]
     library: Library,
     function: Function,
+    argument_encoder: ArgumentEncoder,
+    struct_type: StructType,
+    argument_buffer: Buffer,
 }
 
 // TODO(pcwalton): Use `MTLEvent`s.
@@ -144,7 +150,28 @@ impl Device for MetalDevice {
         let compile_options = CompileOptions::new();
         let library = self.device.new_library_with_source(&source, &compile_options).unwrap();
         let function = library.get_function("main0", None).unwrap();
-        MetalShader { library, function }
+        unsafe {
+            let mut reflection = ptr::null_mut();
+            let argument_encoder =
+                msg_send![function.as_ptr(), newArgumentEncoderWithBufferIndex:0
+                                                                    reflection:&mut reflection];
+            let argument_encoder = ArgumentEncoder::from_ptr(argument_encoder);
+
+            let argument = Argument::from_ptr(reflection);
+            match argument.buffer_data_type() {
+                MTLDataType::Struct => {}
+                _ => panic!("Unexpected data type for argument buffer!"),
+            }
+            let struct_type = argument.buffer_struct_type().retain();
+
+            let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
+                MTLResourceOptions::StorageModeManaged;
+            let argument_buffer = self.device.new_buffer(argument_encoder.encoded_length(),
+                                                         buffer_options);
+            argument_encoder.set_argument_buffer(&argument_buffer, 0);
+
+            MetalShader { library, function, argument_encoder, struct_type, argument_buffer }
+        }
     }
 
     fn create_vertex_array(&self) -> MetalVertexArray {
@@ -192,7 +219,6 @@ impl Device for MetalDevice {
     }
 
     fn get_uniform(&self, program: &Self::Program, name: &str, _: UniformType) -> MetalUniform {
-        let name = format!("u{}", name);
         MetalUniform {
             vertex_index: self.get_uniform_index(&program.vertex, &name),
             fragment_index: self.get_uniform_index(&program.fragment, &name),
@@ -437,15 +463,9 @@ impl Device for MetalDevice {
 
 impl MetalDevice {
     fn get_uniform_index(&self, shader: &MetalShader, name: &str) -> Option<u64> {
-        // FIXME(pcwalton): Does this work for fragment attributes?
-        let attributes: &ArrayRef<_> = &*shader.function.vertex_attributes();
-        for attribute_array_index in 0..attributes.len() {
-            let attribute = attributes.object_at(attribute_array_index);
-            if attribute.name() == name {
-                return Some(attribute.attribute_index())
-            }
-        }
-        None
+        shader.struct_type.member_from_name(&format!("u{}", name)).map(|member| {
+            member.argument_index()
+        })
     }
 
     fn render_target_color_texture(&self, render_target: &RenderTarget<MetalDevice>)
@@ -486,7 +506,10 @@ impl MetalDevice {
             encoder.set_vertex_buffer(real_index, buffer, 0);
         }
 
-        self.set_uniforms(&encoder, render_state);
+        self.set_uniforms(render_state);
+
+        encoder.set_vertex_buffer(0, Some(&render_state.program.vertex.argument_buffer), 0);
+        encoder.set_fragment_buffer(0, Some(&render_state.program.fragment.argument_buffer), 0);
 
         let pipeline_color_attachment = render_pipeline_descriptor.color_attachments()
                                                                   .object_at(0)
@@ -503,38 +526,36 @@ impl MetalDevice {
         encoder
     }
 
-    fn set_uniforms(&self,
-                    encoder: &RenderCommandEncoderRef,
-                    render_state: &RenderState<MetalDevice>) {
+    fn set_uniforms(&self, render_state: &RenderState<MetalDevice>) {
         for &(uniform, uniform_data) in render_state.uniforms.iter() {
             if let Some(vertex_index) = uniform.vertex_index {
-                match uniform_data {
-                    UniformData::TextureUnit(unit) => {
-                        let texture = render_state.samplers[unit as usize];
-                        encoder.set_vertex_texture(vertex_index, Some(texture));
-                        encoder.set_vertex_sampler_state(vertex_index, Some(&self.sampler));
-                    }
-                    _ => {
-                        let slice = uniform_data.as_bytes().unwrap();
-                        encoder.set_vertex_bytes(vertex_index,
-                                                 slice.len() as u64,
-                                                 slice.as_ptr() as *const _);
-                    }
-                }
+                let encoder = &render_state.program.vertex.argument_encoder;
+                self.set_uniform(vertex_index, encoder, &uniform_data, render_state);
             }
             if let Some(fragment_index) = uniform.fragment_index {
-                match uniform_data {
-                    UniformData::TextureUnit(unit) => {
-                        let texture = render_state.samplers[unit as usize];
-                        encoder.set_fragment_texture(fragment_index, Some(texture));
-                        encoder.set_fragment_sampler_state(fragment_index, Some(&self.sampler));
-                    }
-                    _ => {
-                        let slice = uniform_data.as_bytes().unwrap();
-                        encoder.set_fragment_bytes(fragment_index,
-                                                   slice.len() as u64,
-                                                   slice.as_ptr() as *const _);
-                    }
+                let encoder = &render_state.program.fragment.argument_encoder;
+                self.set_uniform(fragment_index, encoder, &uniform_data, render_state);
+            }
+        }
+    }
+
+    fn set_uniform(&self,
+                   argument_index: u64,
+                   encoder: &ArgumentEncoder,
+                   uniform_data: &UniformData,
+                   render_state: &RenderState<MetalDevice>) {
+        match *uniform_data {
+            UniformData::TextureUnit(unit) => {
+                let texture = render_state.samplers[unit as usize];
+                encoder.set_texture(texture, argument_index);
+                encoder.set_sampler_state(&self.sampler, argument_index);
+            }
+            _ => {
+                unsafe {
+                    // FIXME(pcwalton): Check sizes somehow!
+                    let slice = uniform_data.as_bytes().unwrap();
+                    let dest = encoder.constant_data(argument_index);
+                    ptr::copy_nonoverlapping(slice.as_ptr() as *const _, dest, slice.len());
                 }
             }
         }
@@ -640,20 +661,7 @@ impl MetalDevice {
     }
 }
 
-// Helpers
-
-trait CoreAnimationLayerExt {
-    fn device(&self) -> metal::Device;
-}
-
-impl CoreAnimationLayerExt for CoreAnimationLayer {
-    fn device(&self) -> metal::Device {
-        unsafe {
-            let device: *mut MTLDevice = msg_send![self.as_ptr(), device];
-            metal::Device::from_ptr(msg_send![device, retain])
-        }
-    }
-}
+// Conversion helpers
 
 trait DepthFuncExt {
     fn to_metal_compare_function(self) -> MTLCompareFunction;
@@ -735,6 +743,30 @@ impl VertexAttributeArrayExt for ArrayRef<VertexAttribute> {
     }
 }
 
+// Extra methods missing from `metal-rs`
+
+trait CoreAnimationLayerExt {
+    fn device(&self) -> metal::Device;
+}
+
+impl CoreAnimationLayerExt for CoreAnimationLayer {
+    fn device(&self) -> metal::Device {
+        unsafe {
+            let device: *mut MTLDevice = msg_send![self.as_ptr(), device];
+            metal::Device::from_ptr(msg_send![device, retain])
+        }
+    }
+}
+
+trait StructMemberExt {
+    fn argument_index(&self) -> u64;
+}
+
+impl StructMemberExt for StructMemberRef {
+    fn argument_index(&self) -> u64 {
+        unsafe { msg_send![self.as_ptr(), argumentIndex] }
+    }
+}
 
 // Memory management helpers
 
@@ -775,6 +807,13 @@ impl Retain for RenderPassDescriptorRef {
     type Owned = RenderPassDescriptor;
     fn retain(&self) -> RenderPassDescriptor {
         unsafe { RenderPassDescriptor::from_ptr(msg_send![self.as_ptr(), retain]) }
+    }
+}
+
+impl Retain for StructTypeRef {
+    type Owned = StructType;
+    fn retain(&self) -> StructType {
+        unsafe { StructType::from_ptr(msg_send![self.as_ptr(), retain]) }
     }
 }
 

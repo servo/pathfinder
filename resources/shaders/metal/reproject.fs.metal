@@ -6,8 +6,8 @@ using namespace metal;
 struct spvDescriptorSetBuffer0
 {
     constant float4x4* uOldTransform [[id(0)]];
-    texture2d<float> uTexture [[id(0)]];
-    sampler uTextureSmplr [[id(1)]];
+    texture2d<float> uTexture [[id(1)]];
+    sampler uTextureSmplr [[id(2)]];
 };
 
 struct main0_out

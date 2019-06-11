@@ -42,6 +42,7 @@ OUT=\
 GLSL_VERSION=330
 GLSLANGFLAGS=--auto-map-locations -I.
 
+SPIRVCROSS?=spirv-cross
 SPIRVCROSSFLAGS=--msl --msl-version 020100 --msl-argument-buffers
 
 SED_ARGS=-e "s/\#version 330/\#version \{\{version\}\}/" -e "s/\#line.*$$//"
@@ -66,4 +67,4 @@ $(TARGET_DIR)/gl3/%.vs.glsl:	%.vs.glsl $(INCLUDES)
 	mkdir -p $(TARGET_DIR)/gl3 && glslangValidator $(GLSLANGFLAGS) -S vert -E $< | sed $(SED_ARGS) > $@
 
 $(TARGET_DIR)/metal/%.metal:	$(TARGET_DIR)/spirv/%.spv
-	mkdir -p $(TARGET_DIR)/metal && spirv-cross $(SPIRVCROSSFLAGS) --output $@ $<
+	mkdir -p $(TARGET_DIR)/metal && $(SPIRVCROSS) $(SPIRVCROSSFLAGS) --output $@ $<

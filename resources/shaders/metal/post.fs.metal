@@ -8,14 +8,14 @@ using namespace metal;
 struct spvDescriptorSetBuffer0
 {
     constant float4* uKernel [[id(0)]];
-    texture2d<float> uGammaLUT [[id(0)]];
-    texture2d<float> uSource [[id(0)]];
-    constant float2* uSourceSize [[id(1)]];
-    sampler uSourceSmplr [[id(1)]];
-    sampler uGammaLUTSmplr [[id(1)]];
-    constant int* uGammaCorrectionEnabled [[id(2)]];
-    constant float4* uBGColor [[id(3)]];
-    constant float4* uFGColor [[id(4)]];
+    texture2d<float> uGammaLUT [[id(1)]];
+    texture2d<float> uSource [[id(2)]];
+    constant float2* uSourceSize [[id(3)]];
+    sampler uSourceSmplr [[id(4)]];
+    sampler uGammaLUTSmplr [[id(5)]];
+    constant int* uGammaCorrectionEnabled [[id(6)]];
+    constant float4* uBGColor [[id(7)]];
+    constant float4* uFGColor [[id(8)]];
 };
 
 struct main0_out
