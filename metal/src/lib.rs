@@ -16,7 +16,7 @@ extern crate objc;
 use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{self, Argument, ArgumentEncoder, ArrayRef, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
 use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, DeviceRef, Function, Library};
-use metal::{MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
+use metal::{MTLArgumentEncoder, MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
 use metal::{MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
 use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType};
 use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
@@ -91,9 +91,13 @@ pub struct MetalShader {
     #[allow(dead_code)]
     library: Library,
     function: Function,
-    argument_encoder: ArgumentEncoder,
+    uniforms: Option<ShaderUniforms>,
+}
+
+struct ShaderUniforms {
+    encoder: ArgumentEncoder,
     struct_type: StructType,
-    argument_buffer: Buffer,
+    buffer: Buffer,
 }
 
 // TODO(pcwalton): Use `MTLEvent`s.
@@ -145,32 +149,40 @@ impl Device for MetalDevice {
         texture
     }
 
-    fn create_shader_from_source(&self, _name: &str, source: &[u8], _: ShaderKind) -> MetalShader {
+    fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
+                                 -> MetalShader {
+        println!("create_shader_from_source({}, {:?})", name, kind);
         let source = String::from_utf8(source.to_vec()).expect("Source wasn't valid UTF-8!");
         let compile_options = CompileOptions::new();
         let library = self.device.new_library_with_source(&source, &compile_options).unwrap();
         let function = library.get_function("main0", None).unwrap();
+        let mut uniforms = None;
         unsafe {
             let mut reflection = ptr::null_mut();
-            let argument_encoder =
+            let encoder: *mut MTLArgumentEncoder =
                 msg_send![function.as_ptr(), newArgumentEncoderWithBufferIndex:0
                                                                     reflection:&mut reflection];
-            let argument_encoder = ArgumentEncoder::from_ptr(argument_encoder);
+            if !encoder.is_null() {
+                let encoder = ArgumentEncoder::from_ptr(encoder);
 
-            let argument = Argument::from_ptr(reflection);
-            match argument.buffer_data_type() {
-                MTLDataType::Struct => {}
-                _ => panic!("Unexpected data type for argument buffer!"),
+                let argument = Argument::from_ptr(reflection);
+                match argument.buffer_data_type() {
+                    MTLDataType::Struct => {}
+                    data_type => {
+                        panic!("Unexpected data type for argument buffer: {}!", data_type as u32)
+                    }
+                }
+                let struct_type = argument.buffer_struct_type().retain();
+
+                let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
+                    MTLResourceOptions::StorageModeManaged;
+                let buffer = self.device.new_buffer(encoder.encoded_length(), buffer_options);
+                encoder.set_argument_buffer(&buffer, 0);
+
+                uniforms = Some(ShaderUniforms { encoder, struct_type, buffer });
             }
-            let struct_type = argument.buffer_struct_type().retain();
 
-            let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
-                MTLResourceOptions::StorageModeManaged;
-            let argument_buffer = self.device.new_buffer(argument_encoder.encoded_length(),
-                                                         buffer_options);
-            argument_encoder.set_argument_buffer(&argument_buffer, 0);
-
-            MetalShader { library, function, argument_encoder, struct_type, argument_buffer }
+            MetalShader { library, function, uniforms }
         }
     }
 
@@ -463,9 +475,15 @@ impl Device for MetalDevice {
 
 impl MetalDevice {
     fn get_uniform_index(&self, shader: &MetalShader, name: &str) -> Option<u64> {
-        shader.struct_type.member_from_name(&format!("u{}", name)).map(|member| {
-            member.argument_index()
-        })
+        match shader.uniforms {
+            None => None,
+            Some(ref uniforms) => {
+                match uniforms.struct_type.member_from_name(&format!("u{}", name)) {
+                    None => None,
+                    Some(member) => Some(member.argument_index())
+                }
+            }
+        }
     }
 
     fn render_target_color_texture(&self, render_target: &RenderTarget<MetalDevice>)
@@ -508,8 +526,12 @@ impl MetalDevice {
 
         self.set_uniforms(render_state);
 
-        encoder.set_vertex_buffer(0, Some(&render_state.program.vertex.argument_buffer), 0);
-        encoder.set_fragment_buffer(0, Some(&render_state.program.fragment.argument_buffer), 0);
+        if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
+            encoder.set_vertex_buffer(0, Some(&vertex_uniforms.buffer), 0);
+        }
+        if let Some(ref fragment_uniforms) = render_state.program.fragment.uniforms {
+            encoder.set_fragment_buffer(0, Some(&fragment_uniforms.buffer), 0);
+        }
 
         let pipeline_color_attachment = render_pipeline_descriptor.color_attachments()
                                                                   .object_at(0)
@@ -529,12 +551,16 @@ impl MetalDevice {
     fn set_uniforms(&self, render_state: &RenderState<MetalDevice>) {
         for &(uniform, uniform_data) in render_state.uniforms.iter() {
             if let Some(vertex_index) = uniform.vertex_index {
-                let encoder = &render_state.program.vertex.argument_encoder;
-                self.set_uniform(vertex_index, encoder, &uniform_data, render_state);
+                if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
+                    let encoder = &vertex_uniforms.encoder;
+                    self.set_uniform(vertex_index, encoder, &uniform_data, render_state);
+                }
             }
             if let Some(fragment_index) = uniform.fragment_index {
-                let encoder = &render_state.program.fragment.argument_encoder;
-                self.set_uniform(fragment_index, encoder, &uniform_data, render_state);
+                if let Some(ref fragment_uniforms) = render_state.program.fragment.uniforms {
+                    let encoder = &fragment_uniforms.encoder;
+                    self.set_uniform(fragment_index, encoder, &uniform_data, render_state);
+                }
             }
         }
     }
