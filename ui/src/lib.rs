@@ -614,7 +614,7 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U16,
             stride: DEBUG_TEXTURE_VERTEX_SIZE,
             offset: 0,
@@ -623,7 +623,7 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         });
         device.configure_vertex_attr(&vertex_array, &tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U16,
             stride: DEBUG_TEXTURE_VERTEX_SIZE,
             offset: 4,
@@ -652,7 +652,7 @@ impl<D> DebugSolidVertexArray<D> where D: Device {
         device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U16,
             stride: DEBUG_SOLID_VERTEX_SIZE,
             offset: 0,
