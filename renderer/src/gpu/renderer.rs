@@ -882,12 +882,12 @@ where
             BufferUploadMode::Dynamic,
         );
 
-        let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord");
-        let from_px_attr = device.get_vertex_attr(&fill_program.program, "FromPx");
-        let to_px_attr = device.get_vertex_attr(&fill_program.program, "ToPx");
-        let from_subpx_attr = device.get_vertex_attr(&fill_program.program, "FromSubpx");
-        let to_subpx_attr = device.get_vertex_attr(&fill_program.program, "ToSubpx");
-        let tile_index_attr = device.get_vertex_attr(&fill_program.program, "TileIndex");
+        let tess_coord_attr = device.get_vertex_attr(&fill_program.program, "TessCoord").unwrap();
+        let from_px_attr = device.get_vertex_attr(&fill_program.program, "FromPx").unwrap();
+        let to_px_attr = device.get_vertex_attr(&fill_program.program, "ToPx").unwrap();
+        let from_subpx_attr = device.get_vertex_attr(&fill_program.program, "FromSubpx").unwrap();
+        let to_subpx_attr = device.get_vertex_attr(&fill_program.program, "ToSubpx").unwrap();
+        let tile_index_attr = device.get_vertex_attr(&fill_program.program, "TileIndex").unwrap();
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
@@ -971,10 +971,14 @@ where
     ) -> AlphaTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-        let tess_coord_attr = device.get_vertex_attr(&alpha_tile_program.program, "TessCoord");
-        let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin");
-        let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop");
-        let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex");
+        let tess_coord_attr = device.get_vertex_attr(&alpha_tile_program.program, "TessCoord")
+                                    .unwrap();
+        let tile_origin_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileOrigin")
+                                     .unwrap();
+        let backdrop_attr = device.get_vertex_attr(&alpha_tile_program.program, "Backdrop")
+                                  .unwrap();
+        let tile_index_attr = device.get_vertex_attr(&alpha_tile_program.program, "TileIndex")
+                                    .unwrap();
         let color_tex_coord_attr = device.get_vertex_attr(&alpha_tile_program.program,
                                                           "ColorTexCoord");
 
@@ -1018,15 +1022,19 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U16,
-            stride: MASK_TILE_INSTANCE_SIZE,
-            offset: 8,
-            divisor: 1,
-            buffer_index: 1,
-        });
+        if let Some(color_tex_coord_attr) = color_tex_coord_attr {
+            device.configure_vertex_attr(&vertex_array,
+                                         &color_tex_coord_attr,
+                                         &VertexAttrDescriptor {
+                                            size: 2,
+                                            class: VertexAttrClass::FloatNorm,
+                                            attr_type: VertexAttrType::U16,
+                                            stride: MASK_TILE_INSTANCE_SIZE,
+                                            offset: 8,
+                                            divisor: 1,
+                                            buffer_index: 1,
+                                         });
+        }
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         AlphaTileVertexArray { vertex_array, vertex_buffer }
@@ -1053,8 +1061,10 @@ where
     ) -> SolidTileVertexArray<D> {
         let (vertex_array, vertex_buffer) = (device.create_vertex_array(), device.create_buffer());
 
-        let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord");
-        let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin");
+        let tess_coord_attr = device.get_vertex_attr(&solid_tile_program.program, "TessCoord")
+                                    .unwrap();
+        let tile_origin_attr = device.get_vertex_attr(&solid_tile_program.program, "TileOrigin")
+                                     .unwrap();
         let color_tex_coord_attr = device.get_vertex_attr(&solid_tile_program.program,
                                                           "ColorTexCoord");
 
@@ -1080,15 +1090,19 @@ where
             divisor: 1,
             buffer_index: 1,
         });
-        device.configure_vertex_attr(&vertex_array, &color_tex_coord_attr, &VertexAttrDescriptor {
-            size: 2,
-            class: VertexAttrClass::FloatNorm,
-            attr_type: VertexAttrType::U16,
-            stride: SOLID_TILE_INSTANCE_SIZE,
-            offset: 4,
-            divisor: 1,
-            buffer_index: 1,
-        });
+        if let Some(color_tex_coord_attr) = color_tex_coord_attr {
+            device.configure_vertex_attr(&vertex_array,
+                                         &color_tex_coord_attr,
+                                         &VertexAttrDescriptor {
+                                            size: 2,
+                                            class: VertexAttrClass::FloatNorm,
+                                            attr_type: VertexAttrType::U16,
+                                            stride: SOLID_TILE_INSTANCE_SIZE,
+                                            offset: 4,
+                                            divisor: 1,
+                                            buffer_index: 1,
+                                         });
+        }
         device.bind_buffer(&vertex_array, quad_vertex_indices_buffer, BufferTarget::Index);
 
         SolidTileVertexArray { vertex_array, vertex_buffer }
@@ -1378,7 +1392,8 @@ where
         quad_vertex_indices_buffer: &D::Buffer,
     ) -> PostprocessVertexArray<D> {
         let vertex_array = device.create_vertex_array();
-        let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position");
+        let position_attr = device.get_vertex_attr(&postprocess_program.program, "Position")
+                                  .unwrap();
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
@@ -1430,7 +1445,7 @@ where
         let vertex_array = device.create_vertex_array();
         let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
 
-        let position_attr = device.get_vertex_attr(&stencil_program.program, "Position");
+        let position_attr = device.get_vertex_attr(&stencil_program.program, "Position").unwrap();
 
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
@@ -1499,8 +1514,8 @@ where
         quad_vertex_indices_buffer: &D::Buffer,
     ) -> ReprojectionVertexArray<D> {
         let vertex_array = device.create_vertex_array();
-
-        let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position");
+        let position_attr = device.get_vertex_attr(&reprojection_program.program, "Position")
+                                  .unwrap();
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {

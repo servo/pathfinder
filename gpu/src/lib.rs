@@ -46,7 +46,7 @@ pub trait Device: Sized {
         vertex_shader: Self::Shader,
         fragment_shader: Self::Shader,
     ) -> Self::Program;
-    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Self::VertexAttr;
+    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Option<Self::VertexAttr>;
     fn get_uniform(&self, program: &Self::Program, name: &str, uniform_type: UniformType)
                    -> Self::Uniform;
     fn bind_buffer(&self,

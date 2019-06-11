@@ -14,7 +14,6 @@ uniform vec2 uViewBoxOrigin;
 
 in ivec2 aTessCoord;
 in ivec2 aTileOrigin;
-in vec2 aColorTexCoord;
 
 out vec4 vColor;
 

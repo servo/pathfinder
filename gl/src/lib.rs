@@ -356,12 +356,16 @@ impl Device for GLDevice {
         }
     }
 
-    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> GLVertexAttr {
+    fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Option<GLVertexAttr> {
         let name = CString::new(format!("a{}", name)).unwrap();
         let attr = unsafe {
-            gl::GetAttribLocation(program.gl_program, name.as_ptr() as *const GLchar) as GLuint
+            gl::GetAttribLocation(program.gl_program, name.as_ptr() as *const GLchar)
         }; ck();
-        GLVertexAttr { attr }
+        if attr < 0 {
+            None
+        } else {
+            Some(GLVertexAttr { attr: attr as GLuint })
+        }
     }
 
     fn get_uniform(&self, program: &GLProgram, name: &str, uniform_type: UniformType)

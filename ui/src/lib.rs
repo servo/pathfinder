@@ -605,8 +605,10 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
         let vertex_array = device.create_vertex_array();
 
-        let position_attr = device.get_vertex_attr(&debug_texture_program.program, "Position");
-        let tex_coord_attr = device.get_vertex_attr(&debug_texture_program.program, "TexCoord");
+        let position_attr =
+            device.get_vertex_attr(&debug_texture_program.program, "Position").unwrap();
+        let tex_coord_attr =
+            device.get_vertex_attr(&debug_texture_program.program, "TexCoord").unwrap();
 
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
         device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
@@ -644,7 +646,8 @@ impl<D> DebugSolidVertexArray<D> where D: Device {
         let (vertex_buffer, index_buffer) = (device.create_buffer(), device.create_buffer());
         let vertex_array = device.create_vertex_array();
 
-        let position_attr = device.get_vertex_attr(&debug_solid_program.program, "Position");
+        let position_attr =
+            device.get_vertex_attr(&debug_solid_program.program, "Position").unwrap();
         device.bind_buffer(&vertex_array, &vertex_buffer, BufferTarget::Vertex);
         device.bind_buffer(&vertex_array, &index_buffer, BufferTarget::Index);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {

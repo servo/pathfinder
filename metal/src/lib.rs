@@ -219,17 +219,17 @@ impl Device for MetalDevice {
         MetalProgram { vertex: vertex_shader, fragment: fragment_shader }
     }
 
-    fn get_vertex_attr(&self, program: &MetalProgram, name: &str) -> VertexAttribute {
+    fn get_vertex_attr(&self, program: &MetalProgram, name: &str) -> Option<VertexAttribute> {
         // TODO(pcwalton): Cache the function?
         let attributes = program.vertex.function.real_vertex_attributes();
         for attribute_index in 0..attributes.len() {
             let attribute = attributes.object_at(attribute_index);
             let this_name = attribute.name().as_bytes();
             if this_name[0] == b'a' && this_name[1..] == *name.as_bytes() {
-                return attribute.retain()
+                return Some(attribute.retain())
             }
         }
-        panic!("No vertex attribute named `{}` found!", name);
+        None
     }
 
     fn get_uniform(&self, program: &Self::Program, name: &str, _: UniformType) -> MetalUniform {

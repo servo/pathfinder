@@ -68,7 +68,7 @@ where
     ) -> GroundVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
-        let position_attr = device.get_vertex_attr(&ground_program.program, "Position");
+        let position_attr = device.get_vertex_attr(&ground_program.program, "Position").unwrap();
 
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
