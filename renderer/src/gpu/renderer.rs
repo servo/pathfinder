@@ -30,7 +30,7 @@ use std::ops::{Add, Div};
 use std::time::Duration;
 use std::u32;
 
-static QUAD_VERTEX_POSITIONS: [u8; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
+static QUAD_VERTEX_POSITIONS: [u16; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
 // FIXME(pcwalton): Shrink this again!
@@ -893,8 +893,8 @@ where
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: 2,
+            attr_type: VertexAttrType::U16,
+            stride: 4,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
@@ -988,8 +988,8 @@ where
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: 2,
+            attr_type: VertexAttrType::U16,
+            stride: 4,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
@@ -1074,8 +1074,8 @@ where
         device.configure_vertex_attr(&vertex_array, &tess_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U8,
-            stride: 2,
+            attr_type: VertexAttrType::U16,
+            stride: 4,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
@@ -1399,8 +1399,8 @@ where
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::U8,
-            stride: 2,
+            attr_type: VertexAttrType::U16,
+            stride: 4,
             offset: 0,
             divisor: 0,
             buffer_index: 0,
@@ -1521,8 +1521,8 @@ where
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Float,
-            attr_type: VertexAttrType::U8,
-            stride: 2,
+            attr_type: VertexAttrType::U16,
+            stride: 4,
             offset: 0,
             divisor: 0,
             buffer_index: 0,

@@ -33,7 +33,6 @@ use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::cell::RefCell;
 use std::mem;
-use std::os::raw::c_void;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
