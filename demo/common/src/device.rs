@@ -73,9 +73,9 @@ where
         device.bind_buffer(&vertex_array, quad_vertex_positions_buffer, BufferTarget::Vertex);
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
-            class: VertexAttrClass::Float,
+            class: VertexAttrClass::Int,
             attr_type: VertexAttrType::U8,
-            stride: 0,
+            stride: 2,
             offset: 0,
             divisor: 0,
             buffer_index: 0,

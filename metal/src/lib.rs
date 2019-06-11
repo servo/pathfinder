@@ -243,6 +243,8 @@ impl Device for MetalDevice {
                              vertex_array: &MetalVertexArray,
                              attr: &VertexAttribute,
                              descriptor: &VertexAttrDescriptor) {
+        debug_assert_ne!(descriptor.stride, 0);
+
         let attribute_index = attr.attribute_index();
 
         let layout = vertex_array.descriptor

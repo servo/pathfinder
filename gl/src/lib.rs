@@ -381,6 +381,8 @@ impl Device for GLDevice {
                              vertex_array: &GLVertexArray,
                              attr: &GLVertexAttr,
                              descriptor: &VertexAttrDescriptor) {
+        debug_assert_ne!(descriptor.stride, 0);
+
         self.bind_vertex_array(vertex_array);
 
         unsafe {
