@@ -13,6 +13,7 @@
 #[macro_use]
 extern crate objc;
 
+use cocoa::foundation::NSRange;
 use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{self, Argument, ArgumentEncoder, ArrayRef, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
 use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, DeviceRef, Function, Library};
@@ -110,6 +111,7 @@ pub struct MetalTimerQuery;
 pub struct MetalUniform {
     vertex_index: Option<u64>,
     fragment_index: Option<u64>,
+    buffer: Option<Buffer>,
 }
 
 pub struct MetalVertexArray {
@@ -239,10 +241,23 @@ impl Device for MetalDevice {
         None
     }
 
-    fn get_uniform(&self, program: &Self::Program, name: &str, _: UniformType) -> MetalUniform {
+    fn get_uniform(&self, program: &Self::Program, name: &str, uniform_type: UniformType)
+                   -> MetalUniform {
+        let buffer_size = match uniform_type {
+            UniformType::Int => Some(4),
+            UniformType::Mat4 => Some(4 * 4 * 4),
+            UniformType::Vec2 => Some(4 * 2),
+            UniformType::Vec4 => Some(4 * 4),
+            UniformType::Sampler => None,
+        };
+        let buffer = buffer_size.map(|buffer_size| {
+            self.device.new_buffer(buffer_size, MTLResourceOptions::CPUCacheModeDefaultCache |
+                MTLResourceOptions::StorageModeManaged)
+        });
         MetalUniform {
             vertex_index: self.get_uniform_index(&program.vertex, &name),
             fragment_index: self.get_uniform_index(&program.fragment, &name),
+            buffer,
         }
     }
 
@@ -604,13 +619,13 @@ impl MetalDevice {
             if let Some(vertex_index) = uniform.vertex_index {
                 if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
                     let encoder = &vertex_uniforms.encoder;
-                    self.set_uniform(vertex_index, encoder, &uniform_data, render_state);
+                    self.set_uniform(vertex_index, encoder, uniform, &uniform_data, render_state);
                 }
             }
             if let Some(fragment_index) = uniform.fragment_index {
                 if let Some(ref fragment_uniforms) = render_state.program.fragment.uniforms {
                     let encoder = &fragment_uniforms.encoder;
-                    self.set_uniform(fragment_index, encoder, &uniform_data, render_state);
+                    self.set_uniform(fragment_index, encoder, uniform, &uniform_data, render_state);
                 }
             }
         }
@@ -619,6 +634,7 @@ impl MetalDevice {
     fn set_uniform(&self,
                    argument_index: u64,
                    encoder: &ArgumentEncoder,
+                   uniform: &MetalUniform,
                    uniform_data: &UniformData,
                    render_state: &RenderState<MetalDevice>) {
         match *uniform_data {
@@ -628,12 +644,17 @@ impl MetalDevice {
                 encoder.set_sampler_state(&self.sampler, argument_index);
             }
             _ => {
+                let buffer = uniform.buffer.as_ref().expect("No buffer allocated for uniform!");
+                let buffer_len = buffer.length();
+                let slice = uniform_data.as_bytes().unwrap();
+                assert_eq!(buffer_len as usize, slice.len());
                 unsafe {
-                    // FIXME(pcwalton): Check sizes somehow!
-                    let slice = uniform_data.as_bytes().unwrap();
-                    let dest = encoder.constant_data(argument_index);
-                    ptr::copy_nonoverlapping(slice.as_ptr() as *const _, dest, slice.len());
+                    ptr::copy_nonoverlapping(slice.as_ptr() as *const _,
+                                             buffer.contents(),
+                                             slice.len());
                 }
+                buffer.did_modify_range(NSRange::new(0, buffer_len));
+                encoder.set_buffer(buffer, 0, argument_index);
             }
         }
     }
