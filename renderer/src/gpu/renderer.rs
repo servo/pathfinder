@@ -464,6 +464,7 @@ where
                                               0).to_f32x4())),
                 (&self.fill_program.area_lut_uniform, UniformData::TextureUnit(0)),
             ],
+            viewport: self.mask_viewport(),
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOne,
                 ..RenderOptions::default()
@@ -477,10 +478,11 @@ where
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
         let alpha_tile_program = self.alpha_tile_program();
 
+        let draw_viewport = self.draw_viewport();
         let mut samplers = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
         let mut uniforms = vec![
             (&alpha_tile_program.framebuffer_size_uniform,
-             UniformData::Vec2(self.draw_viewport().size().to_f32().0)),
+             UniformData::Vec2(draw_viewport.size().to_f32().0)),
             (&alpha_tile_program.tile_size_uniform,
              UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
                                           TILE_HEIGHT as i32,
@@ -525,6 +527,7 @@ where
             primitive: Primitive::Triangles,
             samplers: &samplers,
             uniforms: &uniforms,
+            viewport: draw_viewport,
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 stencil: self.stencil_state(),
@@ -537,10 +540,11 @@ where
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
         let solid_tile_program = self.solid_tile_program();
 
+        let draw_viewport = self.draw_viewport();
         let mut samplers = vec![];
         let mut uniforms = vec![
             (&solid_tile_program.framebuffer_size_uniform,
-             UniformData::Vec2(self.draw_viewport().size().0.to_f32x4())),
+             UniformData::Vec2(draw_viewport.size().0.to_f32x4())),
             (&solid_tile_program.tile_size_uniform,
              UniformData::Vec2(I32x4::new(TILE_WIDTH as i32,
                                           TILE_HEIGHT as i32,
@@ -579,6 +583,7 @@ where
             primitive: Primitive::Triangles,
             samplers: &samplers,
             uniforms: &uniforms,
+            viewport: draw_viewport,
             options: RenderOptions { stencil: self.stencil_state(), ..RenderOptions::default() },
         });
     }
@@ -605,10 +610,11 @@ where
             .device
             .framebuffer_texture(postprocess_source_framebuffer);
         let source_texture_size = self.device.texture_size(source_texture);
+        let main_viewport = self.main_viewport();
 
         let mut uniforms = vec![
             (&self.postprocess_program.framebuffer_size_uniform,
-             UniformData::Vec2(self.main_viewport().size().to_f32().0)),
+             UniformData::Vec2(main_viewport.size().to_f32().0)),
             (&self.postprocess_program.source_uniform, UniformData::TextureUnit(0)),
             (&self.postprocess_program.source_size_uniform,
              UniformData::Vec2(source_texture_size.0.to_f32x4())),
@@ -637,6 +643,7 @@ where
             primitive: Primitive::Triangles,
             samplers: &[&source_texture, &self.gamma_lut_texture],
             uniforms: &uniforms,
+            viewport: main_viewport,
             options: RenderOptions::default(),
         });
     }
@@ -697,6 +704,7 @@ where
             primitive: Primitive::Triangles,
             samplers: &[],
             uniforms: &[],
+            viewport: self.draw_viewport(),
             options: RenderOptions {
                 // FIXME(pcwalton): Should we really write to the depth buffer?
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
@@ -731,6 +739,7 @@ where
                  UniformData::from_transform_3d(new_transform)),
                 (&self.reprojection_program.texture_uniform, UniformData::TextureUnit(0)),
             ],
+            viewport: self.draw_viewport(),
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 depth: Some(DepthState { func: DepthFunc::Less, write: false, }),
@@ -749,7 +758,7 @@ where
 
     pub fn dest_render_target(&self) -> RenderTarget<D> {
         match self.dest_framebuffer {
-            DestFramebuffer::Default { viewport, .. } => RenderTarget::Default { viewport },
+            DestFramebuffer::Default { .. } => RenderTarget::Default,
             DestFramebuffer::Other(ref framebuffer) => RenderTarget::Framebuffer(framebuffer),
         }
     }
@@ -808,7 +817,7 @@ where
         })
     }
 
-    fn draw_viewport(&self) -> RectI {
+    pub fn draw_viewport(&self) -> RectI {
         let main_viewport = self.main_viewport();
         match self.render_mode {
             RenderMode::Monochrome {
@@ -832,6 +841,11 @@ where
                 RectI::new(Vector2I::default(), size)
             }
         }
+    }
+
+    fn mask_viewport(&self) -> RectI {
+        let texture = self.device.framebuffer_texture(&self.mask_framebuffer);
+        RectI::new(Vector2I::default(), self.device.texture_size(texture))
     }
 
     fn allocate_timer_query(&mut self) -> D::TimerQuery {

@@ -192,6 +192,7 @@ pub struct RenderState<'a, D> where D: Device {
     pub primitive: Primitive,
     pub uniforms: &'a [(&'a D::Uniform, UniformData)],
     pub samplers: &'a [&'a D::Texture],
+    pub viewport: RectI,
     pub options: RenderOptions,
 }
 
@@ -205,7 +206,7 @@ pub struct RenderOptions {
 
 #[derive(Clone, Copy, Debug)]
 pub enum RenderTarget<'a, D> where D: Device {
-    Default { viewport: RectI },
+    Default,
     Framebuffer(&'a D::Framebuffer),
 }
 

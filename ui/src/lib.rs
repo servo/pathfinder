@@ -175,7 +175,7 @@ impl<D> UIPresenter<D> where D: Device {
 
         let primitive = if filled { Primitive::Triangles } else { Primitive::Lines };
         device.draw_elements(index_data.len() as u32, &RenderState {
-            target: &self.render_target(),
+            target: &RenderTarget::Default,
             program: &self.solid_program.program,
             vertex_array: &self.solid_vertex_array.vertex_array,
             primitive,
@@ -185,6 +185,7 @@ impl<D> UIPresenter<D> where D: Device {
                 (&self.solid_program.color_uniform, get_color_uniform(color)),
             ],
             samplers: &[],
+            viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
                 ..RenderOptions::default()
@@ -406,7 +407,7 @@ impl<D> UIPresenter<D> where D: Device {
                                BufferUploadMode::Dynamic);
 
         device.draw_elements(index_data.len() as u32, &RenderState {
-            target: &self.render_target(),
+            target: &RenderTarget::Default,
             program: &self.texture_program.program,
             vertex_array: &self.texture_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
@@ -419,6 +420,7 @@ impl<D> UIPresenter<D> where D: Device {
                 (&self.texture_program.texture_size_uniform,
                  UniformData::Vec2(device.texture_size(&texture).0.to_f32x4()))
             ],
+            viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
                 ..RenderOptions::default()
@@ -559,10 +561,6 @@ impl<D> UIPresenter<D> where D: Device {
                        string,
                        origin + Vector2I::new(PADDING, PADDING + FONT_ASCENT),
                        false);
-    }
-
-    fn render_target(&self) -> RenderTarget<D> {
-        RenderTarget::Default { viewport: RectI::new(Vector2I::default(), self.framebuffer_size) }
     }
 }
 

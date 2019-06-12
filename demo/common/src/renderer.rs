@@ -252,6 +252,7 @@ impl<W> DemoApp<W> where W: Window {
                  UniformData::Vec4(GROUND_LINE_COLOR.to_f32().0)),
                 (&self.ground_program.gridline_count_uniform, UniformData::Int(GRIDLINE_COUNT)),
             ],
+            viewport: self.renderer.draw_viewport(),
             options: RenderOptions {
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
                 ..RenderOptions::default()

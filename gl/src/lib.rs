@@ -15,7 +15,6 @@ extern crate log;
 
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
 use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearParams, DepthFunc, Device, Primitive, RenderOptions, RenderState};
@@ -62,11 +61,17 @@ impl GLDevice {
 
     fn set_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.bind_render_target(render_state.target);
+        unsafe {
+            let (origin, size) = (render_state.viewport.origin(), render_state.viewport.size());
+            gl::Viewport(origin.x(), origin.y(), size.x(), size.y());
+        }
+
         self.use_program(render_state.program);
         self.bind_vertex_array(render_state.vertex_array);
         for (texture_unit, sampler) in render_state.samplers.iter().enumerate() {
             self.bind_texture(sampler, texture_unit as u32);
         }
+
         render_state.uniforms.iter().for_each(|(uniform, data)| self.set_uniform(uniform, data));
         self.set_render_options(&render_state.options);
     }
@@ -666,7 +671,7 @@ impl Device for GLDevice {
 impl GLDevice {
     fn bind_render_target(&self, attachment: &RenderTarget<GLDevice>) {
         match *attachment {
-            RenderTarget::Default { viewport } => self.bind_default_framebuffer(viewport),
+            RenderTarget::Default => self.bind_default_framebuffer(),
             RenderTarget::Framebuffer(framebuffer) => self.bind_framebuffer(framebuffer),
         }
     }
@@ -709,20 +714,15 @@ impl GLDevice {
         }
     }
 
-    fn bind_default_framebuffer(&self, viewport: RectI) {
+    fn bind_default_framebuffer(&self) {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
-            gl::Viewport(viewport.origin().x(),
-                         viewport.origin().y(),
-                         viewport.size().x(),
-                         viewport.size().y()); ck();
         }
     }
 
     fn bind_framebuffer(&self, framebuffer: &GLFramebuffer) {
         unsafe {
             gl::BindFramebuffer(gl::FRAMEBUFFER, framebuffer.gl_framebuffer); ck();
-            gl::Viewport(0, 0, framebuffer.texture.size.x(), framebuffer.texture.size.y()); ck();
         }
     }
 
