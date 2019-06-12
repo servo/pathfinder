@@ -27,6 +27,7 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::mem;
 use std::ops::{Add, Div};
+use std::process;
 use std::time::Duration;
 use std::u32;
 
@@ -469,7 +470,7 @@ where
             },
         });
 
-        self.buffered_fills.clear()
+        self.buffered_fills.clear();
     }
 
     fn draw_alpha_tiles(&mut self, count: u32) {
@@ -847,8 +848,9 @@ where
     }
 
     fn end_composite_timer_query(&mut self) {
-        let query = self.current_timers.stage_1.as_ref().expect("No stage 1 timer query yet?!");
-        self.device.end_timer_query(&query);
+        if let Some(ref query) = self.current_timers.stage_1 {
+            self.device.end_timer_query(query);
+        }
     }
 }
 

@@ -67,7 +67,7 @@ impl SceneProxy {
     #[inline]
     pub fn build_with_stream(&self, options: RenderOptions) -> RenderCommandStream {
         let (sender, receiver) = mpsc::sync_channel(MAX_MESSAGES_IN_FLIGHT);
-        let listener = Box::new(move |command| sender.send(command).unwrap());
+        let listener = Box::new(move |command| drop(sender.send(command)));
         self.build_with_listener(options, listener);
         RenderCommandStream::new(receiver)
     }
@@ -84,8 +84,12 @@ impl SceneProxy {
     pub fn build_and_render<D>(&self, renderer: &mut Renderer<D>, options: RenderOptions)
                                where D: Device {
         renderer.begin_scene();
-        for command in self.build_with_stream(options) {
-            renderer.render_command(&command)
+        for (index, command) in self.build_with_stream(options).enumerate() {
+            println!("{}. {:?}", index, command);
+            renderer.render_command(&command);
+            if index == 5 {
+                break;
+            }
         }
         renderer.end_scene();
     }
