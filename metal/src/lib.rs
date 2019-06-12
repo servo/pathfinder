@@ -25,10 +25,11 @@ use metal::{SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef,
 use metal::{TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
 use metal::{VertexDescriptor, VertexDescriptorRef};
 use objc::runtime::Object;
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams, DepthFunc, Device};
-use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureFormat, UniformData, UniformType};
+use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData, TextureFormat, UniformData, UniformType};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::cell::RefCell;
@@ -391,9 +392,30 @@ impl Device for MetalDevice {
         texture.replace_region(region, 0, size.width, data.as_ptr() as *const _);
     }
 
-    fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8> {
-        // TODO(pcwalton)
-        vec![]
+    fn read_pixels(&self, target: &RenderTarget<MetalDevice>, viewport: RectI) -> TextureData {
+        let (origin, size) = (viewport.origin(), viewport.size());
+        let metal_origin = MTLOrigin { x: origin.x() as u64, y: origin.y() as u64, z: 0 };
+        let metal_size = MTLSize { width: size.x() as u64, height: size.y() as u64, depth: 1 };
+        let metal_region = MTLRegion { origin: metal_origin, size: metal_size };
+
+        let texture = self.render_target_color_texture(target);
+        let format = self.texture_format(&texture)
+                         .expect("Unexpected framebuffer texture format!");
+        match format {
+            TextureFormat::R8 | TextureFormat::RGBA8 => {
+                let channels = format.channels();
+                let stride = size.x() as usize * channels;
+                let mut pixels = vec![0; stride * size.y() as usize];
+                texture.get_bytes(pixels.as_mut_ptr() as *mut _, metal_region, 0, stride as u64);
+                TextureData::U8(pixels)
+            }
+            TextureFormat::R16F => {
+                let stride = size.x() as usize * 2;
+                let mut pixels = vec![0; stride * size.y() as usize];
+                texture.get_bytes(pixels.as_mut_ptr() as *mut _, metal_region, 0, stride as u64);
+                TextureData::U16(pixels)
+            }
+        }
     }
 
     fn begin_commands(&self) {
@@ -701,6 +723,15 @@ impl MetalDevice {
 
         let depth_stencil_state = self.device.new_depth_stencil_state(&depth_stencil_descriptor);
         encoder.set_depth_stencil_state(&depth_stencil_state);
+    }
+
+    fn texture_format(&self, texture: &Texture) -> Option<TextureFormat> {
+        match texture.pixel_format() {
+            MTLPixelFormat::R8Unorm => Some(TextureFormat::R8),
+            MTLPixelFormat::R16Float => Some(TextureFormat::R16F),
+            MTLPixelFormat::RGBA8Unorm => Some(TextureFormat::RGBA8),
+            _ => None,
+        }
     }
 }
 

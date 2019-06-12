@@ -952,20 +952,12 @@ impl StencilFuncExt for StencilFunc {
 }
 
 trait TextureFormatExt {
-    fn channels(self) -> usize;
     fn gl_internal_format(self) -> GLint;
     fn gl_format(self) -> GLuint;
     fn gl_type(self) -> GLuint;
 }
 
 impl TextureFormatExt for TextureFormat {
-    fn channels(self) -> usize {
-        match self {
-            TextureFormat::R8 | TextureFormat::R16F => 1,
-            TextureFormat::RGBA8 => 4,
-        }
-    }
-
     fn gl_internal_format(self) -> GLint {
         match self {
             TextureFormat::R8 => gl::R8 as GLint,

@@ -319,3 +319,13 @@ pub enum VertexAttrClass {
     FloatNorm,
     Int,
 }
+
+impl TextureFormat {
+    #[inline]
+    pub fn channels(self) -> usize {
+        match self {
+            TextureFormat::R8 | TextureFormat::R16F => 1,
+            TextureFormat::RGBA8 => 4,
+        }
+    }
+}
