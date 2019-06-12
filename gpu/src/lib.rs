@@ -69,7 +69,7 @@ pub trait Device: Sized {
     fn framebuffer_texture<'f>(&self, framebuffer: &'f Self::Framebuffer) -> &'f Self::Texture;
     fn texture_size(&self, texture: &Self::Texture) -> Vector2I;
     fn upload_to_texture(&self, texture: &Self::Texture, size: Vector2I, data: &[u8]);
-    fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8>;
+    fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
     fn begin_commands(&self);
     fn end_commands(&self);
     fn clear(&self, target: &RenderTarget<Self>, params: &ClearParams);
@@ -287,6 +287,12 @@ impl Default for StencilFunc {
     fn default() -> StencilFunc {
         StencilFunc::Always
     }
+}
+
+#[derive(Clone)]
+pub enum TextureData {
+    U8(Vec<u8>),
+    U16(Vec<u16>),
 }
 
 impl UniformData {

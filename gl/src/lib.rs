@@ -14,12 +14,13 @@
 extern crate log;
 
 use gl::types::{GLboolean, GLchar, GLenum, GLfloat, GLint, GLsizei, GLsizeiptr, GLuint, GLvoid};
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
 use pathfinder_gpu::{ClearParams, DepthFunc, Device, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{ShaderKind, StencilFunc, TextureFormat, UniformData, UniformType};
-use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureFormat, UniformData};
+use pathfinder_gpu::{UniformType, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::mem;
@@ -222,37 +223,18 @@ impl Device for GLDevice {
     type VertexAttr = GLVertexAttr;
 
     fn create_texture(&self, format: TextureFormat, size: Vector2I) -> GLTexture {
-        let (gl_internal_format, gl_format, gl_type);
-        match format {
-            TextureFormat::R8 => {
-                gl_internal_format = gl::R8 as GLint;
-                gl_format = gl::RED;
-                gl_type = gl::UNSIGNED_BYTE;
-            }
-            TextureFormat::R16F => {
-                gl_internal_format = gl::R16F as GLint;
-                gl_format = gl::RED;
-                gl_type = gl::HALF_FLOAT;
-            }
-            TextureFormat::RGBA8 => {
-                gl_internal_format = gl::RGBA as GLint;
-                gl_format = gl::RGBA;
-                gl_type = gl::UNSIGNED_BYTE;
-            }
-        }
-
-        let mut texture = GLTexture { gl_texture: 0, size };
+        let mut texture = GLTexture { gl_texture: 0, size, format };
         unsafe {
             gl::GenTextures(1, &mut texture.gl_texture); ck();
             self.bind_texture(&texture, 0);
             gl::TexImage2D(gl::TEXTURE_2D,
                            0,
-                           gl_internal_format,
+                           format.gl_internal_format(),
                            size.x() as GLsizei,
                            size.y() as GLsizei,
                            0,
-                           gl_format,
-                           gl_type,
+                           format.gl_format(),
+                           format.gl_type(),
                            ptr::null()); ck();
         }
 
@@ -263,7 +245,7 @@ impl Device for GLDevice {
     fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> GLTexture {
         assert!(data.len() >= size.x() as usize * size.y() as usize);
 
-        let mut texture = GLTexture { gl_texture: 0, size };
+        let mut texture = GLTexture { gl_texture: 0, size, format: TextureFormat::R8 };
         unsafe {
             gl::GenTextures(1, &mut texture.gl_texture); ck();
             self.bind_texture(&texture, 0);
@@ -496,29 +478,42 @@ impl Device for GLDevice {
         self.set_texture_parameters(texture);
     }
 
-    fn read_pixels_from_default_framebuffer(&self, size: Vector2I) -> Vec<u8> {
-        let mut pixels = vec![0; size.x() as usize * size.y() as usize * 4];
-        unsafe {
-            gl::BindFramebuffer(gl::FRAMEBUFFER, self.default_framebuffer); ck();
-            gl::ReadPixels(0,
-                           0,
-                           size.x() as GLsizei,
-                           size.y() as GLsizei,
-                           gl::RGBA,
-                           gl::UNSIGNED_BYTE,
-                           pixels.as_mut_ptr() as *mut GLvoid); ck();
-        }
+    fn read_pixels(&self, render_target: &RenderTarget<GLDevice>, viewport: RectI) -> TextureData {
+        let (origin, size) = (viewport.origin(), viewport.size());
+        let format = self.render_target_format(render_target);
+        self.bind_render_target(render_target);
 
-        // Flip right-side-up.
-        let stride = size.x() as usize * 4;
-        for y in 0..(size.y() as usize / 2) {
-            let (index_a, index_b) = (y * stride, (size.y() as usize - y - 1) * stride);
-            for offset in 0..stride {
-                pixels.swap(index_a + offset, index_b + offset);
+        match format {
+            TextureFormat::R8 | TextureFormat::RGBA8 => {
+                let channels = format.channels();
+                let mut pixels = vec![0; size.x() as usize * size.y() as usize * channels];
+                unsafe {
+                    gl::ReadPixels(origin.x(),
+                                   origin.y(),
+                                   size.x() as GLsizei,
+                                   size.y() as GLsizei,
+                                   format.gl_format(),
+                                   format.gl_type(),
+                                   pixels.as_mut_ptr() as *mut GLvoid); ck();
+                }
+                flip_y(&mut pixels, size, channels);
+                TextureData::U8(pixels)
+            }
+            TextureFormat::R16F => {
+                let mut pixels = vec![0; size.x() as usize * size.y() as usize];
+                unsafe {
+                    gl::ReadPixels(origin.x(),
+                                   origin.y(),
+                                   size.x() as GLsizei,
+                                   size.y() as GLsizei,
+                                   format.gl_format(),
+                                   format.gl_type(),
+                                   pixels.as_mut_ptr() as *mut GLvoid); ck();
+                }
+                flip_y(&mut pixels, size, 1);
+                TextureData::U16(pixels)
             }
         }
-
-        pixels
     }
 
     fn begin_commands(&self) {
@@ -747,6 +742,15 @@ impl GLDevice {
             }
         }
     }
+
+    fn render_target_format(&self, render_target: &RenderTarget<GLDevice>) -> TextureFormat {
+        match *render_target {
+            RenderTarget::Default => TextureFormat::RGBA8,
+            RenderTarget::Framebuffer(ref framebuffer) => {
+                self.framebuffer_texture(framebuffer).format
+            }
+        }
+    }
 }
 
 pub struct GLVertexArray {
@@ -866,6 +870,7 @@ impl Drop for GLShader {
 pub struct GLTexture {
     gl_texture: GLuint,
     pub size: Vector2I,
+    pub format: TextureFormat,
 }
 
 pub struct GLTimerQuery {
@@ -946,6 +951,44 @@ impl StencilFuncExt for StencilFunc {
     }
 }
 
+trait TextureFormatExt {
+    fn channels(self) -> usize;
+    fn gl_internal_format(self) -> GLint;
+    fn gl_format(self) -> GLuint;
+    fn gl_type(self) -> GLuint;
+}
+
+impl TextureFormatExt for TextureFormat {
+    fn channels(self) -> usize {
+        match self {
+            TextureFormat::R8 | TextureFormat::R16F => 1,
+            TextureFormat::RGBA8 => 4,
+        }
+    }
+
+    fn gl_internal_format(self) -> GLint {
+        match self {
+            TextureFormat::R8 => gl::R8 as GLint,
+            TextureFormat::R16F => gl::R16F as GLint,
+            TextureFormat::RGBA8 => gl::RGBA as GLint,
+        }
+    }
+
+    fn gl_format(self) -> GLuint {
+        match self {
+            TextureFormat::R8 | TextureFormat::R16F => gl::RED,
+            TextureFormat::RGBA8 => gl::RGBA,
+        }
+    }
+
+    fn gl_type(self) -> GLuint {
+        match self {
+            TextureFormat::R8 | TextureFormat::RGBA8 => gl::UNSIGNED_BYTE,
+            TextureFormat::R16F => gl::HALF_FLOAT,
+        }
+    }
+}
+
 trait VertexAttrTypeExt {
     fn to_gl_type(self) -> GLuint;
 }
@@ -996,4 +1039,15 @@ fn ck() {
 #[cfg(not(debug))]
 fn ck() {}
 
-// Shader preprocessing
+// Utilities
+
+// Flips a buffer of image data upside-down.
+fn flip_y<T>(pixels: &mut [T], size: Vector2I, channels: usize) {
+    let stride = size.x() as usize * channels;
+    for y in 0..(size.y() as usize / 2) {
+        let (index_a, index_b) = (y * stride, (size.y() as usize - y - 1) * stride);
+        for offset in 0..stride {
+            pixels.swap(index_a + offset, index_b + offset);
+        }
+    }
+}

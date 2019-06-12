@@ -16,8 +16,10 @@ use crate::{BackgroundColor, DemoApp, UIVisibility};
 use image::ColorType;
 use pathfinder_geometry::color::{ColorF, ColorU};
 use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderOptions};
-use pathfinder_gpu::{RenderState, TextureFormat, UniformData};
+use pathfinder_gpu::{RenderState, RenderTarget, TextureData, TextureFormat, UniformData};
+use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::Transform3DF;
+use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode};
 use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::options::RenderTransform;
@@ -305,10 +307,11 @@ impl<W> DemoApp<W> where W: Window {
 
     pub fn take_raster_screenshot(&mut self, path: PathBuf) {
         let drawable_size = self.window_size.device_size();
-        let pixels = self
-            .renderer
-            .device
-            .read_pixels_from_default_framebuffer(drawable_size);
+        let viewport = RectI::new(Vector2I::default(), drawable_size);
+        let pixels = match self.renderer.device.read_pixels(&RenderTarget::Default, viewport) {
+            TextureData::U8(pixels) => pixels,
+            TextureData::U16(_) => panic!("Unexpected pixel format for default framebuffer!"),
+        };
         image::save_buffer(
             path,
             &pixels,
