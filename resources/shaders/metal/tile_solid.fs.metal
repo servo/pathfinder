@@ -17,6 +17,7 @@ fragment main0_out main0(main0_in in [[stage_in]])
 {
     main0_out out = {};
     out.oFragColor = in.vColor;
+    //out.oFragColor = float4(1.0, 0.0, 0.0, 1.0);
     return out;
 }
 

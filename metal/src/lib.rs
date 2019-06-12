@@ -71,6 +71,7 @@ impl MetalDevice {
         let command_queue = device.new_command_queue();
 
         let sampler_descriptor = SamplerDescriptor::new();
+        sampler_descriptor.set_support_argument_buffers(true);
         sampler_descriptor.set_normalized_coordinates(true);
         sampler_descriptor.set_min_filter(MTLSamplerMinMagFilter::Linear);
         sampler_descriptor.set_mag_filter(MTLSamplerMinMagFilter::Linear);
@@ -86,6 +87,13 @@ impl MetalDevice {
             command_buffer: RefCell::new(None),
             sampler,
         }
+    }
+
+    pub fn present_drawable(&mut self) {
+        self.begin_commands();
+        self.command_buffer.borrow_mut().as_ref().unwrap().present_drawable(&self.drawable);
+        self.end_commands();
+        self.drawable = self.layer.next_drawable().unwrap().retain();
     }
 }
 
@@ -268,19 +276,7 @@ impl Device for MetalDevice {
         debug_assert_ne!(descriptor.stride, 0);
 
         let attribute_index = attr.attribute_index();
-
-        let layout = vertex_array.descriptor
-                                 .layouts()
-                                 .object_at(attribute_index as usize)
-                                 .unwrap();
-        if descriptor.divisor == 0 {
-            layout.set_step_function(MTLVertexStepFunction::PerVertex);
-            layout.set_step_rate(1);
-        } else {
-            layout.set_step_function(MTLVertexStepFunction::PerInstance);
-            layout.set_step_rate(descriptor.divisor as u64);
-        }
-        layout.set_stride(descriptor.stride as u64);
+        println!("configure_vertex_attr(attribute_index={})", attribute_index);
 
         let attr_info = vertex_array.descriptor
                                     .attributes()
@@ -359,7 +355,20 @@ impl Device for MetalDevice {
         };
         attr_info.set_format(format);
         attr_info.set_offset(descriptor.offset as u64);
-        attr_info.set_buffer_index(descriptor.buffer_index as u64 + FIRST_VERTEX_BUFFER_INDEX);
+        let buffer_index = descriptor.buffer_index as u64 + FIRST_VERTEX_BUFFER_INDEX;
+        attr_info.set_buffer_index(buffer_index);
+
+        // FIXME(pcwalton): Metal separates out per-buffer info from per-vertex info, while our
+        // GL-like API does not. So we end up setting this state over and over again. Not great.
+        let layout = vertex_array.descriptor.layouts().object_at(buffer_index as usize).unwrap();
+        if descriptor.divisor == 0 {
+            layout.set_step_function(MTLVertexStepFunction::PerVertex);
+            layout.set_step_rate(1);
+        } else {
+            layout.set_step_function(MTLVertexStepFunction::PerInstance);
+            layout.set_step_rate(descriptor.divisor as u64);
+        }
+        layout.set_stride(descriptor.stride as u64);
     }
 
     fn create_framebuffer(&self, texture: Texture) -> MetalFramebuffer {
@@ -641,7 +650,8 @@ impl MetalDevice {
             UniformData::TextureUnit(unit) => {
                 let texture = render_state.samplers[unit as usize];
                 encoder.set_texture(texture, argument_index);
-                encoder.set_sampler_state(&self.sampler, argument_index);
+                // FIXME(pcwalton): This is fragile!
+                encoder.set_sampler_state(&self.sampler, argument_index + 1);
             }
             _ => {
                 let buffer = uniform.buffer.as_ref().expect("No buffer allocated for uniform!");

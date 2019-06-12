@@ -80,6 +80,7 @@ fn main() {
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
     scene.build_and_render(&mut renderer, RenderOptions::default());
+    renderer.device.present_drawable();
 
     // Wait for a keypress.
     let mut event_pump = sdl_context.event_pump().unwrap();

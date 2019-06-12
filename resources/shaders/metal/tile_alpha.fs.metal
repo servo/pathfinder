@@ -26,6 +26,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
     main0_out out = {};
     float coverage = abs(spvDescriptorSet0.uStencilTexture.sample(spvDescriptorSet0.uStencilTextureSmplr, in.vTexCoord).x + in.vBackdrop);
     out.oFragColor = float4(in.vColor.xyz, in.vColor.w * coverage);
+    //out.oFragColor = float4(1.0, 0.0, 0.0, 1.0);
     return out;
 }
 
