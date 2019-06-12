@@ -20,8 +20,9 @@ use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureFormat, UniformData};
-use pathfinder_gpu::{UniformType, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureData, TextureFormat};
+use pathfinder_gpu::{UniformData, UniformType, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
 use std::collections::VecDeque;
@@ -260,6 +261,20 @@ where
                 self.draw_buffered_fills();
             }
             RenderCommand::SolidTile(ref solid_tiles) => {
+                self.device.end_commands();
+                let pixels =
+                    self.device.read_pixels(&RenderTarget::Framebuffer(&self.mask_framebuffer),
+                                            RectI::new(Vector2I::default(),
+                                                       Vector2I::new(MASK_FRAMEBUFFER_WIDTH,
+                                                                     MASK_FRAMEBUFFER_HEIGHT)));
+                match pixels {
+                    TextureData::U8(..) => panic!("U8?!"),
+                    TextureData::U16(pixels) => {
+                        assert!(!pixels.iter().all(|&x| x == 0));
+                    }
+                }
+                ::std::process::exit(0);
+
                 let count = solid_tiles.len();
                 self.stats.solid_tile_count += count;
                 self.upload_solid_tiles(solid_tiles);

@@ -156,16 +156,22 @@ impl Device for MetalDevice {
                                  -> MetalShader {
         println!("create_shader_from_source({}, {:?})", name, kind);
         let source = String::from_utf8(source.to_vec()).expect("Source wasn't valid UTF-8!");
+
+        // FIXME(pcwalton): This is terrible!! Let's wait until the state to do this properly!
+        let has_buffer = source.contains("[[buffer(0)]]");
+        println!("has_buffer={:?}", has_buffer);
+
         let compile_options = CompileOptions::new();
         let library = self.device.new_library_with_source(&source, &compile_options).unwrap();
         let function = library.get_function("main0", None).unwrap();
         let mut uniforms = None;
-        unsafe {
-            let mut reflection = ptr::null_mut();
-            let encoder: *mut MTLArgumentEncoder =
-                msg_send![function.as_ptr(), newArgumentEncoderWithBufferIndex:0
-                                                                    reflection:&mut reflection];
-            if !encoder.is_null() {
+
+        if has_buffer {
+            unsafe {
+                let mut reflection = ptr::null_mut();
+                let encoder: *mut MTLArgumentEncoder =
+                    msg_send![function.as_ptr(), newArgumentEncoderWithBufferIndex:0
+                                                                        reflection:&mut reflection];
                 let encoder = ArgumentEncoder::from_ptr(encoder);
 
                 let argument = Argument::from_ptr(reflection);
@@ -184,9 +190,9 @@ impl Device for MetalDevice {
 
                 uniforms = Some(ShaderUniforms { encoder, struct_type, buffer });
             }
-
-            MetalShader { library, function, uniforms }
         }
+
+        MetalShader { library, function, uniforms }
     }
 
     fn create_vertex_array(&self) -> MetalVertexArray {
@@ -386,10 +392,14 @@ impl Device for MetalDevice {
 
     fn upload_to_texture(&self, texture: &Texture, size: Vector2I, data: &[u8]) {
         assert!(data.len() >= size.x() as usize * size.y() as usize);
+        let format = self.texture_format(texture).expect("Unexpected texture format!");
+        assert!(format == TextureFormat::R8 || format == TextureFormat::RGBA8);
+
         let origin = MTLOrigin { x: 0, y: 0, z: 0 };
         let size = MTLSize { width: size.x() as u64, height: size.y() as u64, depth: 1 };
         let region = MTLRegion { origin, size };
-        texture.replace_region(region, 0, size.width, data.as_ptr() as *const _);
+        let stride = size.width * format.channels() as u64;
+        texture.replace_region(region, 0, stride, data.as_ptr() as *const _);
     }
 
     fn read_pixels(&self, target: &RenderTarget<MetalDevice>, viewport: RectI) -> TextureData {
@@ -423,7 +433,9 @@ impl Device for MetalDevice {
     }
 
     fn end_commands(&self) {
-        self.command_buffer.borrow_mut().take().unwrap().commit();
+        let command_buffer = self.command_buffer.borrow_mut().take().unwrap();
+        command_buffer.commit();
+        command_buffer.wait_until_completed();
     }
 
     fn clear(&self, target: &RenderTarget<Self>, params: &ClearParams) {

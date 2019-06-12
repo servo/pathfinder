@@ -112,7 +112,7 @@ pub trait Device: Sized {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TextureFormat {
     R8,
     R16F,
@@ -289,7 +289,7 @@ impl Default for StencilFunc {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TextureData {
     U8(Vec<u8>),
     U16(Vec<u16>),
