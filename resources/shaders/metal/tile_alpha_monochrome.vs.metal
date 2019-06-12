@@ -24,10 +24,10 @@ struct main0_out
 
 struct main0_in
 {
-    int2 aTessCoord [[attribute(0)]];
+    uint2 aTessCoord [[attribute(0)]];
     uint3 aTileOrigin [[attribute(1)]];
     int aBackdrop [[attribute(2)]];
-    uint aTileIndex [[attribute(3)]];
+    int aTileIndex [[attribute(3)]];
 };
 
 float2 computeTileOffset(thread const uint& tileIndex, thread const float& stencilTextureWidth, thread float2 uTileSize)
@@ -42,12 +42,12 @@ float4 getColor(thread float4 uColor)
     return uColor;
 }
 
-void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread int2& aTessCoord, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread uint& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread float4 uColor)
+void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread uint2& aTessCoord, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread int& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread float4 uColor)
 {
     float2 origin = float2(aTileOrigin.xy) + (float2(float(aTileOrigin.z & 15u), float(aTileOrigin.z >> 4u)) * 256.0);
     float2 pixelPosition = ((origin + float2(aTessCoord)) * uTileSize) + uViewBoxOrigin;
     float2 position = (((pixelPosition / uFramebufferSize) * 2.0) - float2(1.0)) * float2(1.0, -1.0);
-    uint param = aTileIndex;
+    uint param = uint(aTileIndex);
     float param_1 = uStencilTextureSize.x;
     float2 maskTexCoordOrigin = computeTileOffset(param, param_1, uTileSize);
     float2 maskTexCoord = maskTexCoordOrigin + (float2(aTessCoord) * uTileSize);

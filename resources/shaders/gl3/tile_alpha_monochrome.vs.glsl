@@ -30,10 +30,10 @@ uniform vec2 uTileSize;
 uniform vec2 uStencilTextureSize;
 uniform vec2 uViewBoxOrigin;
 
-in ivec2 aTessCoord;
+in uvec2 aTessCoord;
 in uvec3 aTileOrigin;
 in int aBackdrop;
-in uint aTileIndex;
+in int aTileIndex;
 
 out vec2 vTexCoord;
 out float vBackdrop;
@@ -51,7 +51,7 @@ void computeVaryings(){
     vec2 origin = vec2(aTileOrigin . xy)+ vec2(aTileOrigin . z & 15u, aTileOrigin . z >> 4u)* 256.0;
     vec2 pixelPosition =(origin + vec2(aTessCoord))* uTileSize + uViewBoxOrigin;
     vec2 position =(pixelPosition / uFramebufferSize * 2.0 - 1.0)* vec2(1.0, - 1.0);
-    vec2 maskTexCoordOrigin = computeTileOffset(aTileIndex, uStencilTextureSize . x);
+    vec2 maskTexCoordOrigin = computeTileOffset(uint(aTileIndex), uStencilTextureSize . x);
     vec2 maskTexCoord = maskTexCoordOrigin + aTessCoord * uTileSize;
 
     vTexCoord = maskTexCoord / uStencilTextureSize;

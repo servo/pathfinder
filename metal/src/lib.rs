@@ -38,7 +38,8 @@ use std::rc::Rc;
 use std::slice;
 use std::time::Duration;
 
-const FIRST_VERTEX_BUFFER_INDEX: u64 = 16;
+const ATTRIBUTE_BUFFER_INDEX: u64 = 0;
+const FIRST_VERTEX_BUFFER_INDEX: u64 = 1;
 
 pub struct MetalDevice {
     device: metal::Device,

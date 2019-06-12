@@ -15,7 +15,7 @@ precision highp float;
 uniform vec2 uFramebufferSize;
 uniform vec2 uTileSize;
 
-in ivec2 aTessCoord;
+in uvec2 aTessCoord;
 in uint aFromPx;
 in uint aToPx;
 in vec2 aFromSubpx;
@@ -27,7 +27,7 @@ out vec2 vTo;
 
 vec2 computeTileOffset(uint tileIndex, float stencilTextureWidth) {
     uint tilesPerRow = uint(stencilTextureWidth / uTileSize.x);
-    uvec2 tileOffset = uvec2(aTileIndex % tilesPerRow, aTileIndex / tilesPerRow);
+    uvec2 tileOffset = uvec2(tileIndex % tilesPerRow, tileIndex / tilesPerRow);
     return vec2(tileOffset) * uTileSize;
 }
 
@@ -38,11 +38,11 @@ void main() {
     vec2 to = vec2(aToPx & 15u, aToPx >> 4u) + aToSubpx;
 
     vec2 position;
-    if (aTessCoord.x == 0)
+    if (aTessCoord.x == 0u)
         position.x = floor(min(from.x, to.x));
     else
         position.x = ceil(max(from.x, to.x));
-    if (aTessCoord.y == 0)
+    if (aTessCoord.y == 0u)
         position.y = floor(min(from.y, to.y));
     else
         position.y = uTileSize.y;
