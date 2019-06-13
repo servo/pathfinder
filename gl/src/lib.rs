@@ -525,15 +525,13 @@ impl Device for GLDevice {
         unsafe { gl::Flush(); }
     }
 
-    fn clear(&self, attachment: &RenderTarget<GLDevice>, params: &ClearParams) {
+    fn clear(&self, attachment: &RenderTarget<GLDevice>, viewport: RectI, params: &ClearParams) {
         self.bind_render_target(attachment);
 
         unsafe {
-            if let Some(rect) = params.rect {
-                let (origin, size) = (rect.origin(), rect.size());
-                gl::Scissor(origin.x(), origin.y(), size.x(), size.y()); ck();
-                gl::Enable(gl::SCISSOR_TEST); ck();
-            }
+            let (origin, size) = (viewport.origin(), viewport.size());
+            gl::Scissor(origin.x(), origin.y(), size.x(), size.y()); ck();
+            gl::Enable(gl::SCISSOR_TEST); ck();
 
             let mut flags = 0;
             if let Some(color) = params.color {
@@ -555,9 +553,7 @@ impl Device for GLDevice {
                 gl::Clear(flags); ck();
             }
 
-            if params.rect.is_some() {
-                gl::Disable(gl::SCISSOR_TEST); ck();
-            }
+            gl::Disable(gl::SCISSOR_TEST); ck();
         }
     }
 

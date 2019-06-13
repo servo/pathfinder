@@ -1,4 +1,4 @@
-// pathfinder/gl/src/lib.rs
+// pathfinder/metal/src/lib.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -20,7 +20,7 @@ use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer,
 use metal::{MTLArgumentEncoder, MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
 use metal::{MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
 use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType};
-use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
+use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, MTLViewport, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
 use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor};
 use metal::{SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
 use metal::{TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
@@ -150,7 +150,11 @@ impl Device for MetalDevice {
         }
         descriptor.set_width(size.x() as u64);
         descriptor.set_height(size.y() as u64);
-        descriptor.set_storage_mode(MTLStorageMode::Managed);
+        if format == TextureFormat::R16F {
+            descriptor.set_storage_mode(MTLStorageMode::Private);
+        } else {
+            descriptor.set_storage_mode(MTLStorageMode::Managed);
+        }
         descriptor.set_usage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
         self.device.new_texture(&descriptor)
     }
@@ -462,8 +466,8 @@ impl Device for MetalDevice {
         command_buffer.wait_until_completed();
     }
 
-    fn clear(&self, target: &RenderTarget<Self>, params: &ClearParams) {
-        // TODO(pcwalton): Specify rect, depth, and stencil!
+    fn clear(&self, target: &RenderTarget<Self>, viewport: RectI, params: &ClearParams) {
+        // TODO(pcwalton): Specify depth and stencil!
         let color = match params.color { Some(color) => color, None => return };
         let render_pass_descriptor = self.create_render_pass_descriptor(target,
                                                                         MTLLoadAction::Clear);
@@ -474,12 +478,11 @@ impl Device for MetalDevice {
                                        color.a() as f64);
         color_attachment.set_clear_color(color);
 
-        self.command_buffer
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .new_render_command_encoder(&render_pass_descriptor)
-            .end_encoding();
+        let command_buffer = self.command_buffer.borrow();
+        let command_buffer = command_buffer.as_ref().unwrap();
+        let encoder = command_buffer.new_render_command_encoder(&render_pass_descriptor);
+        self.set_viewport(&encoder, &viewport);
+        encoder.end_encoding();
     }
 
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<MetalDevice>) {
@@ -577,6 +580,7 @@ impl MetalDevice {
         let command_buffer = command_buffer.as_ref().unwrap();
 
         let encoder = command_buffer.new_render_command_encoder(&render_pass_descriptor).retain();
+        self.set_viewport(&encoder, &render_state.viewport);
 
         let render_pipeline_descriptor = RenderPipelineDescriptor::new();
         render_pipeline_descriptor.set_vertex_function(Some(&render_state.program   
@@ -715,7 +719,6 @@ impl MetalDevice {
                                      -> RenderPassDescriptor {
         let render_pass_descriptor = RenderPassDescriptor::new().retain();
         let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
-        // TODO(pcwalton): Use the viewport!
         // TODO(pcwalton): Depth and stencil!
         color_attachment.set_texture(Some(&self.render_target_color_texture(target)));
         color_attachment.set_load_action(load_action);
@@ -775,6 +778,17 @@ impl MetalDevice {
             MTLPixelFormat::RGBA8Unorm => Some(TextureFormat::RGBA8),
             _ => None,
         }
+    }
+
+    fn set_viewport(&self, encoder: &RenderCommandEncoderRef, viewport: &RectI) {
+        encoder.set_viewport(MTLViewport {
+            originX: viewport.origin().x() as f64,
+            originY: viewport.origin().y() as f64,
+            width: viewport.size().x() as f64,
+            height: viewport.size().y() as f64,
+            znear: 0.0,
+            zfar: 1.0,
+        })
     }
 }
 

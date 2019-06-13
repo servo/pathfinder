@@ -72,7 +72,7 @@ pub trait Device: Sized {
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
     fn begin_commands(&self);
     fn end_commands(&self);
-    fn clear(&self, target: &RenderTarget<Self>, params: &ClearParams);
+    fn clear(&self, target: &RenderTarget<Self>, viewport: RectI, params: &ClearParams);
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>);
     fn draw_elements(&self, index_count: u32, render_state: &RenderState<Self>);
     fn draw_elements_instanced(&self,
@@ -179,7 +179,6 @@ pub enum Primitive {
 #[derive(Clone, Copy, Default)]
 pub struct ClearParams {
     pub color: Option<ColorF>,
-    pub rect: Option<RectI>,
     pub depth: Option<f32>,
     pub stencil: Option<u8>,
 }

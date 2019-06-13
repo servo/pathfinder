@@ -54,7 +54,7 @@ fn main() {
     let viewport = RectI::new(Vector2I::default(), window_size);
     let clear_params = ClearParams { color: Some(ColorF::white()), ..ClearParams::default() };
     renderer.device.begin_commands();
-    renderer.device.clear(&RenderTarget::Default, &clear_params);
+    renderer.device.clear(&RenderTarget::Default, viewport, &clear_params);
     renderer.device.end_commands();
 
     // Make a canvas. We're going to draw a house.

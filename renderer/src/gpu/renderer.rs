@@ -36,8 +36,8 @@ static QUAD_VERTEX_POSITIONS: [u16; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
 // FIXME(pcwalton): Shrink this again!
-const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
-const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
+const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 32;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 32;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
@@ -261,6 +261,7 @@ where
                 self.draw_buffered_fills();
             }
             RenderCommand::SolidTile(ref solid_tiles) => {
+                /*
                 let pixels =
                     self.device.read_pixels(&RenderTarget::Framebuffer(&self.mask_framebuffer),
                                             RectI::new(Vector2I::default(),
@@ -272,17 +273,22 @@ where
                         //assert!(!pixels.iter().all(|&x| x == 0));
                     }
                 }
+                */
 
+                /*
                 let count = solid_tiles.len();
                 self.stats.solid_tile_count += count;
                 self.upload_solid_tiles(solid_tiles);
                 self.draw_solid_tiles(count as u32);
+                */
             }
             RenderCommand::AlphaTile(ref alpha_tiles) => {
+                /*
                 let count = alpha_tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(alpha_tiles);
                 self.draw_alpha_tiles(count as u32);
+                */
             }
             RenderCommand::Finish { .. } => {}
         }
@@ -410,7 +416,9 @@ where
 
     fn clear_mask_framebuffer(&mut self) {
         // TODO(pcwalton): Only clear the appropriate portion?
+        let size = Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
         self.device.clear(&RenderTarget::Framebuffer(&self.mask_framebuffer),
+                          RectI::new(Vector2I::default(), size),
                           &ClearParams {
                             color: Some(ColorF::transparent_black()),
                             ..ClearParams::default()
@@ -800,10 +808,11 @@ where
         self.device.clear(&RenderTarget::Framebuffer(self.postprocess_source_framebuffer
                                                          .as_ref()
                                                          .unwrap()),
+                          RectI::new(Vector2I::default(), source_framebuffer_size),
                           &ClearParams {
-            color: Some(ColorF::transparent_black()),
-            ..ClearParams::default()
-        });
+                            color: Some(ColorF::transparent_black()),
+                            ..ClearParams::default()
+                          });
     }
 
     fn postprocessing_needed(&self) -> bool {
