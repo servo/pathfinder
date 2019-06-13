@@ -29,7 +29,7 @@ use objc::runtime::Object;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams, DepthFunc, Device};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc, Device};
 use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData, TextureFormat, UniformData, UniformType};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
@@ -466,25 +466,6 @@ impl Device for MetalDevice {
         command_buffer.wait_until_completed();
     }
 
-    fn clear(&self, target: &RenderTarget<Self>, viewport: RectI, params: &ClearParams) {
-        // TODO(pcwalton): Specify depth and stencil!
-        let color = match params.color { Some(color) => color, None => return };
-        let render_pass_descriptor = self.create_render_pass_descriptor(target,
-                                                                        MTLLoadAction::Clear);
-        let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
-        let color = MTLClearColor::new(color.r() as f64,
-                                       color.g() as f64,
-                                       color.b() as f64,
-                                       color.a() as f64);
-        color_attachment.set_clear_color(color);
-
-        let command_buffer = self.command_buffer.borrow();
-        let command_buffer = command_buffer.as_ref().unwrap();
-        let encoder = command_buffer.new_render_command_encoder(&render_pass_descriptor);
-        self.set_viewport(&encoder, &viewport);
-        encoder.end_encoding();
-    }
-
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<MetalDevice>) {
         let encoder = self.prepare_to_draw(render_state);
         let primitive = render_state.primitive.to_metal_primitive();
@@ -573,8 +554,7 @@ impl MetalDevice {
     }
 
     fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> RenderCommandEncoder {
-        let render_pass_descriptor = self.create_render_pass_descriptor(render_state.target,
-                                                                        MTLLoadAction::Load);
+        let render_pass_descriptor = self.create_render_pass_descriptor(render_state);
 
         let command_buffer = self.command_buffer.borrow();
         let command_buffer = command_buffer.as_ref().unwrap();
@@ -713,15 +693,25 @@ impl MetalDevice {
         }
     }
 
-    fn create_render_pass_descriptor(&self,
-                                     target: &RenderTarget<MetalDevice>,
-                                     load_action: MTLLoadAction)
+    fn create_render_pass_descriptor(&self, render_state: &RenderState<MetalDevice>)
                                      -> RenderPassDescriptor {
         let render_pass_descriptor = RenderPassDescriptor::new().retain();
         let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
+        color_attachment.set_texture(Some(&self.render_target_color_texture(render_state.target)));
+
         // TODO(pcwalton): Depth and stencil!
-        color_attachment.set_texture(Some(&self.render_target_color_texture(target)));
-        color_attachment.set_load_action(load_action);
+        match render_state.options.clear_ops.color {
+            Some(color) => {
+                let color = MTLClearColor::new(color.r() as f64,
+                                               color.g() as f64,
+                                               color.b() as f64,
+                                               color.a() as f64);
+                color_attachment.set_clear_color(color);
+                color_attachment.set_load_action(MTLLoadAction::Clear);
+            }
+            None => color_attachment.set_load_action(MTLLoadAction::Load),
+        }
+
         color_attachment.set_store_action(MTLStoreAction::Store);
         render_pass_descriptor
     }

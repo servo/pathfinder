@@ -102,7 +102,7 @@ pub type PFSceneRef = *mut Scene;
 pub type PFSceneProxyRef = *mut SceneProxy;
 // TODO(pcwalton)
 #[repr(C)]
-pub struct PFRenderOptions {
+pub struct PFBuildOptions {
     pub placeholder: u32,
 }
 
@@ -299,8 +299,8 @@ pub unsafe extern "C" fn PFGLRendererGetDevice(renderer: PFGLRendererRef) -> PFG
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderGL(scene_proxy: PFSceneProxyRef,
                                                       renderer: PFGLRendererRef,
-                                                      options: *const PFRenderOptions) {
-    (*scene_proxy).build_and_render(&mut *renderer, (*options).to_rust())
+                                                      build_options: *const PFBuildOptions) {
+    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).to_rust())
 }
 
 // `renderer`
@@ -389,8 +389,8 @@ impl PFClearParams {
 
 // Helpers for `renderer`
 
-impl PFRenderOptions {
-    pub fn to_rust(&self) -> RenderOptions {
-        RenderOptions::default()
+impl PFBuildOptions {
+    pub fn to_rust(&self) -> BuildOptions {
+        BuildOptions::default()
     }
 }

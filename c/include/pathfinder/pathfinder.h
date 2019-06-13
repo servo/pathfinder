@@ -99,10 +99,10 @@ typedef struct PFResourceLoader *PFResourceLoaderRef;
 
 // `renderer`
 
-struct PFRenderOptions {
+struct PFBuildOptions {
     uint32_t placeholder;
 };
-typedef struct PFRenderOptions PFRenderOptions;
+typedef struct PFBuildOptions PFBuildOptions;
 struct PFScene;
 typedef struct PFScene *PFSceneRef;
 struct PFSceneProxy;
@@ -152,7 +152,7 @@ void PFGLRendererDestroy(PFGLRendererRef renderer);
 PFGLDeviceRef PFGLRendererGetDevice(PFGLRendererRef renderer);
 void PFSceneProxyBuildAndRenderGL(PFSceneProxyRef scene_proxy,
                                   PFGLRendererRef renderer,
-                                  const PFRenderOptions *options);
+                                  const PFBuildOptions *build_options);
 
 // `gpu`
 

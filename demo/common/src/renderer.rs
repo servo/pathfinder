@@ -15,12 +15,13 @@ use crate::window::{View, Window};
 use crate::{BackgroundColor, DemoApp, UIVisibility};
 use image::ColorType;
 use pathfinder_geometry::color::{ColorF, ColorU};
-use pathfinder_gpu::{ClearParams, DepthFunc, DepthState, Device, Primitive, RenderOptions};
+use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, TextureData, TextureFormat, UniformData};
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderMode};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::renderer::RenderMode;
 use pathfinder_renderer::gpu_data::RenderCommand;
 use pathfinder_renderer::options::RenderTransform;
 use pathfinder_renderer::post::DEFRINGING_KERNEL_CORE_GRAPHICS;
@@ -91,15 +92,7 @@ impl<W> DemoApp<W> where W: Window {
             self.background_color().to_f32()
         };
 
-        self.renderer.device.begin_commands();
-        self.renderer.device.clear(&self.renderer.dest_render_target(),
-                                   &ClearParams {
-                                    color: Some(clear_color),
-                                    depth: Some(1.0),
-                                    stencil: Some(0),
-                                    ..ClearParams::default()
-                                   });
-        self.renderer.device.end_commands();
+        self.renderer.set_options(RendererOptions { background_color: Some(clear_color) });
 
         scene_count
     }
@@ -162,14 +155,6 @@ impl<W> DemoApp<W> where W: Window {
             viewport,
             window_size: self.window_size.device_size(),
         });
-
-        self.renderer.device.clear(&self.renderer.draw_render_target(),
-                                   &ClearParams {
-                                    color: Some(self.background_color().to_f32()),
-                                    depth: Some(1.0),
-                                    stencil: Some(0),
-                                    rect: Some(viewport),
-                                   });
 
         self.draw_environment();
 
@@ -257,6 +242,11 @@ impl<W> DemoApp<W> where W: Window {
             viewport: self.renderer.draw_viewport(),
             options: RenderOptions {
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
+                clear_ops: ClearOps {
+                    color: Some(self.background_color().to_f32()),
+                    depth: Some(1.0),
+                    stencil: Some(0),
+                },
                 ..RenderOptions::default()
             },
         });

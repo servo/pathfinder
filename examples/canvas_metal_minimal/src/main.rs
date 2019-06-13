@@ -12,15 +12,15 @@ use foreign_types::ForeignTypeRef;
 use metal::{CAMetalLayer, CoreAnimationLayerRef};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
 use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::basic::rect::{RectF, RectI};
+use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_gpu::{ClearParams, Device, RenderTarget};
 use pathfinder_metal::MetalDevice;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, Renderer};
-use pathfinder_renderer::options::RenderOptions;
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RenderOptions};
+use pathfinder_renderer::gpu::renderer::Renderer;
+use pathfinder_renderer::options::BuildOptions;
 use sdl2::event::Event;
 use sdl2::hint;
 use sdl2::keyboard::Keycode;
@@ -46,16 +46,13 @@ fn main() {
     };
 
     // Create a Pathfinder renderer.
+    let options = RenderOptions {
+        dest_framebuffer: DestFramebuffer::full_window(window_size),
+        background_color: Some(ColorF::white()),
+    };
     let mut renderer = Renderer::new(MetalDevice::new(metal_layer),
                                      &FilesystemResourceLoader::locate(),
-                                     DestFramebuffer::full_window(window_size));
-
-    // Clear to white.
-    let viewport = RectI::new(Vector2I::default(), window_size);
-    let clear_params = ClearParams { color: Some(ColorF::white()), ..ClearParams::default() };
-    renderer.device.begin_commands();
-    renderer.device.clear(&RenderTarget::Default, viewport, &clear_params);
-    renderer.device.end_commands();
+                                     options);
 
     // Make a canvas. We're going to draw a house.
     let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());
@@ -79,7 +76,7 @@ fn main() {
 
     // Render the canvas to screen.
     let scene = SceneProxy::from_scene(canvas.into_scene(), RayonExecutor);
-    scene.build_and_render(&mut renderer, RenderOptions::default());
+    scene.build_and_render(&mut renderer, BuildOptions::default());
     renderer.device.present_drawable();
 
     // Wait for a keypress.

@@ -12,8 +12,8 @@
 
 use crate::builder::SceneBuilder;
 use crate::concurrent::executor::Executor;
-use crate::options::{PreparedRenderOptions, PreparedRenderTransform};
-use crate::options::{RenderCommandListener, RenderOptions};
+use crate::options::{BuildOptions, PreparedBuildOptions};
+use crate::options::{PreparedRenderTransform, RenderCommandListener};
 use crate::paint::{Paint, PaintId};
 use hashbrown::HashMap;
 use pathfinder_geometry::basic::vector::Vector2F;
@@ -89,7 +89,7 @@ impl Scene {
     pub(crate) fn apply_render_options(
         &self,
         original_outline: &Outline,
-        options: &PreparedRenderOptions,
+        options: &PreparedBuildOptions,
     ) -> Outline {
         let effective_view_box = self.effective_view_box(options);
 
@@ -156,7 +156,7 @@ impl Scene {
     }
 
     #[inline]
-    pub(crate) fn effective_view_box(&self, render_options: &PreparedRenderOptions) -> RectF {
+    pub(crate) fn effective_view_box(&self, render_options: &PreparedBuildOptions) -> RectF {
         if render_options.subpixel_aa_enabled {
             self.view_box.scale_xy(Vector2F::new(3.0, 1.0))
         } else {
@@ -166,7 +166,7 @@ impl Scene {
 
     #[inline]
     pub fn build<E>(&self,
-                    options: RenderOptions,
+                    options: BuildOptions,
                     listener: Box<dyn RenderCommandListener>,
                     executor: &E)
                     where E: Executor {

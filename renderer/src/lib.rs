@@ -11,6 +11,8 @@
 //! The CPU portion of Pathfinder's renderer.
 
 #[macro_use]
+extern crate bitflags;
+#[macro_use]
 extern crate log;
 
 pub mod concurrent;

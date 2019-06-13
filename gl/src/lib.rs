@@ -18,7 +18,7 @@ use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{RenderTarget, BlendState, BufferData, BufferTarget, BufferUploadMode};
-use pathfinder_gpu::{ClearParams, DepthFunc, Device, Primitive, RenderOptions, RenderState};
+use pathfinder_gpu::{ClearOps, DepthFunc, Device, Primitive, RenderOptions, RenderState};
 use pathfinder_gpu::{ShaderKind, StencilFunc, TextureData, TextureFormat, UniformData};
 use pathfinder_gpu::{UniformType, VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
@@ -62,9 +62,14 @@ impl GLDevice {
 
     fn set_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.bind_render_target(render_state.target);
+
         unsafe {
             let (origin, size) = (render_state.viewport.origin(), render_state.viewport.size());
             gl::Viewport(origin.x(), origin.y(), size.x(), size.y());
+        }
+
+        if render_state.options.clear_ops.has_ops() {
+            self.clear(render_state.viewport, &render_state.options.clear_ops);
         }
 
         self.use_program(render_state.program);
@@ -525,38 +530,6 @@ impl Device for GLDevice {
         unsafe { gl::Flush(); }
     }
 
-    fn clear(&self, attachment: &RenderTarget<GLDevice>, viewport: RectI, params: &ClearParams) {
-        self.bind_render_target(attachment);
-
-        unsafe {
-            let (origin, size) = (viewport.origin(), viewport.size());
-            gl::Scissor(origin.x(), origin.y(), size.x(), size.y()); ck();
-            gl::Enable(gl::SCISSOR_TEST); ck();
-
-            let mut flags = 0;
-            if let Some(color) = params.color {
-                gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
-                gl::ClearColor(color.r(), color.g(), color.b(), color.a()); ck();
-                flags |= gl::COLOR_BUFFER_BIT;
-            }
-            if let Some(depth) = params.depth {
-                gl::DepthMask(gl::TRUE); ck();
-                gl::ClearDepthf(depth as _); ck(); // FIXME(pcwalton): GLES
-                flags |= gl::DEPTH_BUFFER_BIT;
-            }
-            if let Some(stencil) = params.stencil {
-                gl::StencilMask(!0); ck();
-                gl::ClearStencil(stencil as GLint); ck();
-                flags |= gl::STENCIL_BUFFER_BIT;
-            }
-            if flags != 0 {
-                gl::Clear(flags); ck();
-            }
-
-            gl::Disable(gl::SCISSOR_TEST); ck();
-        }
-    }
-
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>) {
         self.set_render_state(render_state);
         unsafe {
@@ -736,6 +709,36 @@ impl GLDevice {
                 output.push(source[index]);
                 index += 1;
             }
+        }
+    }
+
+    fn clear(&self, viewport: RectI, ops: &ClearOps) {
+        unsafe {
+            let (origin, size) = (viewport.origin(), viewport.size());
+            gl::Scissor(origin.x(), origin.y(), size.x(), size.y()); ck();
+            gl::Enable(gl::SCISSOR_TEST); ck();
+
+            let mut flags = 0;
+            if let Some(color) = ops.color {
+                gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
+                gl::ClearColor(color.r(), color.g(), color.b(), color.a()); ck();
+                flags |= gl::COLOR_BUFFER_BIT;
+            }
+            if let Some(depth) = ops.depth {
+                gl::DepthMask(gl::TRUE); ck();
+                gl::ClearDepthf(depth as _); ck(); // FIXME(pcwalton): GLES
+                flags |= gl::DEPTH_BUFFER_BIT;
+            }
+            if let Some(stencil) = ops.stencil {
+                gl::StencilMask(!0); ck();
+                gl::ClearStencil(stencil as GLint); ck();
+                flags |= gl::STENCIL_BUFFER_BIT;
+            }
+            if flags != 0 {
+                gl::Clear(flags); ck();
+            }
+
+            gl::Disable(gl::SCISSOR_TEST); ck();
         }
     }
 

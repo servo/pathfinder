@@ -9,6 +9,7 @@
 // except according to those terms.
 
 use crate::gpu::debug::DebugUIPresenter;
+use crate::gpu::options::{DestFramebuffer, RendererOptions};
 use crate::gpu_data::{AlphaTileBatchPrimitive, FillBatchPrimitive, PaintData};
 use crate::gpu_data::{RenderCommand, SolidTileBatchPrimitive};
 use crate::post::DefringingKernel;
@@ -18,7 +19,7 @@ use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearParams};
+use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
 use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureData, TextureFormat};
 use pathfinder_gpu::{UniformData, UniformType, VertexAttrClass};
@@ -36,8 +37,8 @@ static QUAD_VERTEX_POSITIONS: [u16; 8] = [0, 0, 1, 0, 1, 1, 0, 1];
 static QUAD_VERTEX_INDICES: [u32; 6] = [0, 1, 3, 1, 2, 3];
 
 // FIXME(pcwalton): Shrink this again!
-const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 32;
-const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 32;
+const MASK_FRAMEBUFFER_WIDTH: i32 = TILE_WIDTH as i32 * 256;
+const MASK_FRAMEBUFFER_HEIGHT: i32 = TILE_HEIGHT as i32 * 256;
 
 // TODO(pcwalton): Replace with `mem::size_of` calls?
 const FILL_INSTANCE_SIZE: usize = 8;
@@ -55,6 +56,7 @@ where
 
     // Core data
     dest_framebuffer: DestFramebuffer<D>,
+    options: RendererOptions,
     fill_program: FillProgram<D>,
     solid_multicolor_tile_program: SolidTileMulticolorProgram<D>,
     alpha_multicolor_tile_program: AlphaTileMulticolorProgram<D>,
@@ -86,7 +88,7 @@ where
     reprojection_vertex_array: ReprojectionVertexArray<D>,
 
     // Rendering state
-    mask_framebuffer_cleared: bool,
+    framebuffer_flags: FramebufferFlags,
     buffered_fills: Vec<FillBatchPrimitive>,
 
     // Debug
@@ -105,11 +107,11 @@ impl<D> Renderer<D>
 where
     D: Device,
 {
-    pub fn new(
-        device: D,
-        resources: &dyn ResourceLoader,
-        dest_framebuffer: DestFramebuffer<D>,
-    ) -> Renderer<D> {
+    pub fn new(device: D,
+               resources: &dyn ResourceLoader,
+               dest_framebuffer: DestFramebuffer<D>,
+               options: RendererOptions)
+               -> Renderer<D> {
         let fill_program = FillProgram::new(&device, resources);
 
         let solid_multicolor_tile_program = SolidTileMulticolorProgram::new(&device, resources);
@@ -196,6 +198,7 @@ where
             device,
 
             dest_framebuffer,
+            options,
             fill_program,
             solid_monochrome_tile_program,
             alpha_monochrome_tile_program,
@@ -229,7 +232,7 @@ where
             free_timer_queries: vec![],
             debug_ui_presenter,
 
-            mask_framebuffer_cleared: false,
+            framebuffer_flags: FramebufferFlags::empty(),
             buffered_fills: vec![],
 
             render_mode: RenderMode::default(),
@@ -238,11 +241,9 @@ where
     }
 
     pub fn begin_scene(&mut self) {
+        self.framebuffer_flags = FramebufferFlags::empty();
         self.device.begin_commands();
-
         self.init_postprocessing_framebuffer();
-
-        self.mask_framebuffer_cleared = false;
         self.stats = RenderStats::default();
     }
 
@@ -275,20 +276,16 @@ where
                 }
                 */
 
-                /*
                 let count = solid_tiles.len();
                 self.stats.solid_tile_count += count;
                 self.upload_solid_tiles(solid_tiles);
                 self.draw_solid_tiles(count as u32);
-                */
             }
             RenderCommand::AlphaTile(ref alpha_tiles) => {
-                /*
                 let count = alpha_tiles.len();
                 self.stats.alpha_tile_count += count;
                 self.upload_alpha_tiles(alpha_tiles);
                 self.draw_alpha_tiles(count as u32);
-                */
             }
             RenderCommand::Finish { .. } => {}
         }
@@ -349,6 +346,11 @@ where
         new_dest_framebuffer: DestFramebuffer<D>,
     ) -> DestFramebuffer<D> {
         mem::replace(&mut self.dest_framebuffer, new_dest_framebuffer)
+    }
+
+    #[inline]
+    pub fn set_options(&mut self, new_options: RendererOptions) {
+        self.options = new_options
     }
 
     #[inline]
@@ -414,17 +416,6 @@ where
         );
     }
 
-    fn clear_mask_framebuffer(&mut self) {
-        // TODO(pcwalton): Only clear the appropriate portion?
-        let size = Vector2I::new(MASK_FRAMEBUFFER_WIDTH, MASK_FRAMEBUFFER_HEIGHT);
-        self.device.clear(&RenderTarget::Framebuffer(&self.mask_framebuffer),
-                          RectI::new(Vector2I::default(), size),
-                          &ClearParams {
-                            color: Some(ColorF::transparent_black()),
-                            ..ClearParams::default()
-                          });
-    }
-
     fn add_fills(&mut self, mut fills: &[FillBatchPrimitive]) {
         if fills.is_empty() {
             return;
@@ -460,10 +451,11 @@ where
             BufferUploadMode::Dynamic,
         );
 
-        if !self.mask_framebuffer_cleared {
-            self.clear_mask_framebuffer();
-            self.mask_framebuffer_cleared = true;
-        }
+        let mut clear_color = None;
+        if !self.framebuffer_flags.contains(
+                FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS) {
+            clear_color = Some(ColorF::default());
+        };
 
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
@@ -488,14 +480,18 @@ where
             viewport: self.mask_viewport(),
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOne,
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
             },
         });
 
+        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
         self.buffered_fills.clear();
     }
 
     fn draw_alpha_tiles(&mut self, count: u32) {
+        let clear_color = self.clear_color_for_draw_operation();
+
         let alpha_tile_vertex_array = self.alpha_tile_vertex_array();
         let alpha_tile_program = self.alpha_tile_program();
 
@@ -552,12 +548,17 @@ where
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 stencil: self.stencil_state(),
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
             },
         });
+
+        self.preserve_draw_framebuffer();
     }
 
     fn draw_solid_tiles(&mut self, count: u32) {
+        let clear_color = self.clear_color_for_draw_operation();
+
         let solid_tile_vertex_array = self.solid_tile_vertex_array();
         let solid_tile_program = self.solid_tile_program();
 
@@ -605,11 +606,23 @@ where
             samplers: &samplers,
             uniforms: &uniforms,
             viewport: draw_viewport,
-            options: RenderOptions { stencil: self.stencil_state(), ..RenderOptions::default() },
+            options: RenderOptions {
+                stencil: self.stencil_state(),
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
+                ..RenderOptions::default()
+            },
         });
+
+        self.preserve_draw_framebuffer();
     }
 
     fn postprocess(&mut self) {
+        let mut clear_color = None;
+        if !self.framebuffer_flags
+                .contains(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS) {
+            clear_color = self.options.background_color;
+        }
+
         let (fg_color, bg_color, defringing_kernel, gamma_correction_enabled);
         match self.render_mode {
             RenderMode::Multicolor => return,
@@ -665,8 +678,13 @@ where
             samplers: &[&source_texture, &self.gamma_lut_texture],
             uniforms: &uniforms,
             viewport: main_viewport,
-            options: RenderOptions::default(),
+            options: RenderOptions {
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
+                ..RenderOptions::default()
+            },
         });
+
+        self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS);
     }
 
     fn solid_tile_program(&self) -> &SolidTileProgram<D> {
@@ -697,7 +715,7 @@ where
         }
     }
 
-    fn draw_stencil(&self, quad_positions: &[Vector4F]) {
+    fn draw_stencil(&mut self, quad_positions: &[Vector4F]) {
         self.device.allocate_buffer(
             &self.stencil_vertex_array.vertex_buffer,
             BufferData::Memory(quad_positions),
@@ -736,17 +754,20 @@ where
                     write: true,
                 }),
                 color_mask: false,
+                clear_ops: ClearOps { stencil: Some(0), ..ClearOps::default() },
                 ..RenderOptions::default()
             },
         });
     }
 
     pub fn reproject_texture(
-        &self,
+        &mut self,
         texture: &D::Texture,
         old_transform: &Transform3DF,
         new_transform: &Transform3DF,
     ) {
+        let clear_color = self.clear_color_for_draw_operation();
+
         self.device.draw_elements(6, &RenderState {
             target: &self.draw_render_target(),
             program: &self.reprojection_program.program,
@@ -764,9 +785,12 @@ where
             options: RenderOptions {
                 blend: BlendState::RGBSrcAlphaAlphaOneMinusSrcAlpha,
                 depth: Some(DepthState { func: DepthFunc::Less, write: false, }),
+                clear_ops: ClearOps { color: clear_color, ..ClearOps::default() },
                 ..RenderOptions::default()
             },
         });
+
+        self.preserve_draw_framebuffer();
     }
 
     pub fn draw_render_target(&self) -> RenderTarget<D> {
@@ -801,10 +825,12 @@ where
                 let texture = self
                     .device
                     .create_texture(TextureFormat::R8, source_framebuffer_size);
-                self.postprocess_source_framebuffer = Some(self.device.create_framebuffer(texture))
+                self.postprocess_source_framebuffer =
+                    Some(self.device.create_framebuffer(texture));
             }
         };
 
+        /*
         self.device.clear(&RenderTarget::Framebuffer(self.postprocess_source_framebuffer
                                                          .as_ref()
                                                          .unwrap()),
@@ -813,6 +839,7 @@ where
                             color: Some(ColorF::transparent_black()),
                             ..ClearParams::default()
                           });
+        */
     }
 
     fn postprocessing_needed(&self) -> bool {
@@ -837,6 +864,32 @@ where
             mask: 1,
             write: false,
         })
+    }
+
+    fn clear_color_for_draw_operation(&mut self) -> Option<ColorF> {
+        let postprocessing_needed = self.postprocessing_needed();
+        let flag = if postprocessing_needed {
+            FramebufferFlags::MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS
+        } else {
+            FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS
+        };
+
+        if self.framebuffer_flags.contains(flag) {
+            None
+        } else if !postprocessing_needed {
+            self.options.background_color
+        } else {
+            Some(ColorF::default())
+        }
+    }
+
+    fn preserve_draw_framebuffer(&mut self) {
+        let flag = if self.postprocessing_needed() {
+            FramebufferFlags::MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS
+        } else {
+            FramebufferFlags::MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS
+        };
+        self.framebuffer_flags.insert(flag);
     }
 
     pub fn draw_viewport(&self) -> RectI {
@@ -1571,38 +1624,6 @@ where
     }
 }
 
-#[derive(Clone)]
-pub enum DestFramebuffer<D>
-where
-    D: Device,
-{
-    Default {
-        viewport: RectI,
-        window_size: Vector2I,
-    },
-    Other(D::Framebuffer),
-}
-
-impl<D> DestFramebuffer<D>
-where
-    D: Device,
-{
-    #[inline]
-    pub fn full_window(window_size: Vector2I) -> DestFramebuffer<D> {
-        let viewport = RectI::new(Vector2I::default(), window_size);
-        DestFramebuffer::Default { viewport, window_size }
-    }
-
-    fn window_size(&self, device: &D) -> Vector2I {
-        match *self {
-            DestFramebuffer::Default { window_size, .. } => window_size,
-            DestFramebuffer::Other(ref framebuffer) => {
-                device.texture_size(device.framebuffer_texture(framebuffer))
-            }
-        }
-    }
-}
-
 #[derive(Clone, Copy)]
 pub enum RenderMode {
     Multicolor,
@@ -1686,5 +1707,13 @@ impl Add<RenderTime> for RenderTime {
             stage_0: self.stage_0 + other.stage_0,
             stage_1: self.stage_1 + other.stage_1,
         }
+    }
+}
+
+bitflags! {
+    struct FramebufferFlags: u8 {
+        const MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS = 0x01;
+        const MUST_PRESERVE_POSTPROCESS_FRAMEBUFFER_CONTENTS = 0x02;
+        const MUST_PRESERVE_DEST_FRAMEBUFFER_CONTENTS = 0x04;
     }
 }

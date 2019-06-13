@@ -72,7 +72,6 @@ pub trait Device: Sized {
     fn read_pixels(&self, target: &RenderTarget<Self>, viewport: RectI) -> TextureData;
     fn begin_commands(&self);
     fn end_commands(&self);
-    fn clear(&self, target: &RenderTarget<Self>, viewport: RectI, params: &ClearParams);
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<Self>);
     fn draw_elements(&self, index_count: u32, render_state: &RenderState<Self>);
     fn draw_elements_instanced(&self,
@@ -176,13 +175,6 @@ pub enum Primitive {
     Lines,
 }
 
-#[derive(Clone, Copy, Default)]
-pub struct ClearParams {
-    pub color: Option<ColorF>,
-    pub depth: Option<f32>,
-    pub stencil: Option<u8>,
-}
-
 #[derive(Clone)]
 pub struct RenderState<'a, D> where D: Device {
     pub target: &'a RenderTarget<'a, D>,
@@ -200,7 +192,15 @@ pub struct RenderOptions {
     pub blend: BlendState,
     pub depth: Option<DepthState>,
     pub stencil: Option<StencilState>,
+    pub clear_ops: ClearOps,
     pub color_mask: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ClearOps {
+    pub color: Option<ColorF>,
+    pub depth: Option<f32>,
+    pub stencil: Option<u8>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -250,6 +250,7 @@ impl Default for RenderOptions {
             blend: BlendState::default(),
             depth: None,
             stencil: None,
+            clear_ops: ClearOps::default(),
             color_mask: true,
         }
     }
@@ -326,5 +327,12 @@ impl TextureFormat {
             TextureFormat::R8 | TextureFormat::R16F => 1,
             TextureFormat::RGBA8 => 4,
         }
+    }
+}
+
+impl ClearOps {
+    #[inline]
+    pub fn has_ops(&self) -> bool {
+        self.color.is_some() || self.depth.is_some() || self.stencil.is_some()
     }
 }

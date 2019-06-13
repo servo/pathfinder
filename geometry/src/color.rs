@@ -75,13 +75,13 @@ impl Debug for ColorU {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct ColorF(pub F32x4);
 
 impl ColorF {
     #[inline]
     pub fn transparent_black() -> ColorF {
-        ColorF(F32x4::default())
+        ColorF::default()
     }
 
     #[inline]
@@ -118,5 +118,18 @@ impl ColorF {
     #[inline]
     pub fn a(&self) -> f32 {
         self.0[3]
+    }
+}
+
+impl Debug for ColorF {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "rgba({}, {}, {}, {})",
+            self.r() * 255.0,
+            self.g() * 255.0,
+            self.b() * 255.0,
+            self.a()
+        )
     }
 }
