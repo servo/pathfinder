@@ -432,16 +432,7 @@ impl Device for MetalDevice {
 
     fn read_pixels(&self, target: &RenderTarget<MetalDevice>, viewport: RectI) -> TextureData {
         let texture = self.render_target_color_texture(target);
-
-        // Synchronize.
-        {
-            let command_buffer = self.command_buffer.borrow();
-            let encoder = command_buffer.as_ref().unwrap().new_blit_command_encoder();
-            encoder.synchronize_resource(&texture);
-            encoder.end_encoding();
-        }
-        self.end_commands();
-        self.begin_commands();
+        self.synchronize_texture(&texture);
 
         let (origin, size) = (viewport.origin(), viewport.size());
         let metal_origin = MTLOrigin { x: origin.x() as u64, y: origin.y() as u64, z: 0 };
@@ -793,6 +784,18 @@ impl MetalDevice {
             znear: 0.0,
             zfar: 1.0,
         })
+    }
+
+    fn synchronize_texture(&self, texture: &Texture) {
+        {
+            let command_buffer = self.command_buffer.borrow();
+            let encoder = command_buffer.as_ref().unwrap().new_blit_command_encoder();
+            encoder.synchronize_resource(&texture);
+            encoder.end_encoding();
+        }
+
+        self.end_commands();
+        self.begin_commands();
     }
 }
 
