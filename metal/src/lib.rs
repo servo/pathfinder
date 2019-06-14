@@ -18,7 +18,7 @@ use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{self, Argument, ArgumentEncoder, ArrayRef, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
 use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, DeviceRef, Function, Library};
 use metal::{MTLArgumentEncoder, MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
-use metal::{MTLResourceOptions, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
+use metal::{MTLResourceOptions, MTLResourceUsage, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
 use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType};
 use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, MTLViewport, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
 use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor};
@@ -33,7 +33,7 @@ use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Dep
 use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData, TextureFormat, UniformData, UniformType};
 use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::mem;
 use std::ptr;
 use std::rc::Rc;
@@ -97,7 +97,7 @@ impl MetalDevice {
     }
 }
 
-pub struct MetalFramebuffer(Texture);
+pub struct MetalFramebuffer(MetalTexture);
 
 pub struct MetalShader {
     #[allow(dead_code)]
@@ -110,6 +110,11 @@ struct ShaderUniforms {
     encoder: ArgumentEncoder,
     struct_type: StructType,
     buffer: Buffer,
+}
+
+pub struct MetalTexture {
+    texture: Texture,
+    dirty: Cell<bool>,
 }
 
 // TODO(pcwalton): Use `MTLEvent`s.
@@ -133,14 +138,14 @@ impl Device for MetalDevice {
     type Framebuffer = MetalFramebuffer;
     type Program = MetalProgram;
     type Shader = MetalShader;
-    type Texture = Texture;
+    type Texture = MetalTexture;
     type TimerQuery = MetalTimerQuery;
     type Uniform = MetalUniform;
     type VertexArray = MetalVertexArray;
     type VertexAttr = VertexAttribute;
 
     // TODO: Add texture usage hint.
-    fn create_texture(&self, format: TextureFormat, size: Vector2I) -> Texture {
+    fn create_texture(&self, format: TextureFormat, size: Vector2I) -> MetalTexture {
         let descriptor = TextureDescriptor::new();
         descriptor.set_texture_type(MTLTextureType::D2);
         match format {
@@ -155,11 +160,12 @@ impl Device for MetalDevice {
         } else {*/
             descriptor.set_storage_mode(MTLStorageMode::Managed);
         //}
-        descriptor.set_usage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
-        self.device.new_texture(&descriptor)
+        //descriptor.set_usage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
+        descriptor.set_usage(MTLTextureUsage::Unknown);
+        MetalTexture { texture: self.device.new_texture(&descriptor), dirty: Cell::new(false) }
     }
 
-    fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> Texture {
+    fn create_texture_from_data(&self, size: Vector2I, data: &[u8]) -> MetalTexture {
         assert!(data.len() >= size.x() as usize * size.y() as usize);
         let texture = self.create_texture(TextureFormat::R8, size);
         self.upload_to_texture(&texture, size, data);
@@ -375,7 +381,7 @@ impl Device for MetalDevice {
         layout.set_stride(descriptor.stride as u64);
     }
 
-    fn create_framebuffer(&self, texture: Texture) -> MetalFramebuffer {
+    fn create_framebuffer(&self, texture: MetalTexture) -> MetalFramebuffer {
         MetalFramebuffer(texture)
     }
 
@@ -410,24 +416,26 @@ impl Device for MetalDevice {
         }
     }
 
-    fn framebuffer_texture<'f>(&self, framebuffer: &'f MetalFramebuffer) -> &'f Texture {
+    fn framebuffer_texture<'f>(&self, framebuffer: &'f MetalFramebuffer) -> &'f MetalTexture {
         &framebuffer.0
     }
 
-    fn texture_size(&self, texture: &Texture) -> Vector2I {
-        Vector2I::new(texture.width() as i32, texture.height() as i32)
+    fn texture_size(&self, texture: &MetalTexture) -> Vector2I {
+        Vector2I::new(texture.texture.width() as i32, texture.texture.height() as i32)
     }
 
-    fn upload_to_texture(&self, texture: &Texture, size: Vector2I, data: &[u8]) {
+    fn upload_to_texture(&self, texture: &MetalTexture, size: Vector2I, data: &[u8]) {
         assert!(data.len() >= size.x() as usize * size.y() as usize);
-        let format = self.texture_format(texture).expect("Unexpected texture format!");
+        let format = self.texture_format(&texture.texture).expect("Unexpected texture format!");
         assert!(format == TextureFormat::R8 || format == TextureFormat::RGBA8);
 
         let origin = MTLOrigin { x: 0, y: 0, z: 0 };
         let size = MTLSize { width: size.x() as u64, height: size.y() as u64, depth: 1 };
         let region = MTLRegion { origin, size };
         let stride = size.width * format.channels() as u64;
-        texture.replace_region(region, 0, stride, data.as_ptr() as *const _);
+        texture.texture.replace_region(region, 0, stride, data.as_ptr() as *const _);
+
+        texture.dirty.set(true);
     }
 
     fn read_pixels(&self, target: &RenderTarget<MetalDevice>, viewport: RectI) -> TextureData {
@@ -554,15 +562,31 @@ impl MetalDevice {
                                    -> Texture {
         match *render_target {
             RenderTarget::Default {..} => self.drawable.texture().retain(),
-            RenderTarget::Framebuffer(framebuffer) => framebuffer.0.retain(),
+            RenderTarget::Framebuffer(framebuffer) => framebuffer.0.texture.retain(),
         }
     }
 
     fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> RenderCommandEncoder {
-        let render_pass_descriptor = self.create_render_pass_descriptor(render_state);
-
         let command_buffer = self.command_buffer.borrow();
         let command_buffer = command_buffer.as_ref().unwrap();
+
+        let mut blit_command_encoder = None;
+        for texture in render_state.samplers {
+            if !texture.dirty.get() {
+                continue;
+            }
+            if blit_command_encoder.is_none() {
+                blit_command_encoder = Some(command_buffer.new_blit_command_encoder());
+            }
+            let blit_command_encoder = blit_command_encoder.as_ref().unwrap();
+            blit_command_encoder.synchronize_resource(&texture.texture);
+            texture.dirty.set(false);
+        }
+        if let Some(blit_command_encoder) = blit_command_encoder {
+            blit_command_encoder.end_encoding();
+        }
+
+        let render_pass_descriptor = self.create_render_pass_descriptor(render_state);
 
         let encoder = command_buffer.new_render_command_encoder(&render_pass_descriptor).retain();
         self.set_viewport(&encoder, &render_state.viewport);
@@ -584,17 +608,25 @@ impl MetalDevice {
                                                                 .enumerate() {
             let real_index = vertex_buffer_index as u64 + FIRST_VERTEX_BUFFER_INDEX;
             let buffer = vertex_buffer.buffer.borrow();
-            let buffer = buffer.as_ref().map(|buffer| buffer.as_ref());
-            encoder.set_vertex_buffer(real_index, buffer, 0);
+            let buffer = buffer.as_ref().map(|buffer| buffer.as_ref()).unwrap();
+            encoder.set_vertex_buffer(real_index, Some(buffer), 0);
+            encoder.use_resource(buffer, MTLResourceUsage::Read);
+        }
+
+        let texture_usage = MTLResourceUsage::Read | MTLResourceUsage::Sample;
+        for texture in render_state.samplers {
+            encoder.use_resource(&texture.texture, texture_usage);
         }
 
         self.set_uniforms(render_state);
 
         if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
             encoder.set_vertex_buffer(0, Some(&vertex_uniforms.buffer), 0);
+            encoder.use_resource(&vertex_uniforms.buffer, MTLResourceUsage::Read);
         }
         if let Some(ref fragment_uniforms) = render_state.program.fragment.uniforms {
             encoder.set_fragment_buffer(0, Some(&fragment_uniforms.buffer), 0);
+            encoder.use_resource(&fragment_uniforms.buffer, MTLResourceUsage::Read);
         }
 
         let pipeline_color_attachment = render_pipeline_descriptor.color_attachments()
@@ -638,7 +670,7 @@ impl MetalDevice {
         match *uniform_data {
             UniformData::TextureUnit(unit) => {
                 let texture = render_state.samplers[unit as usize];
-                encoder.set_texture(texture, argument_index);
+                encoder.set_texture(&texture.texture, argument_index);
                 // FIXME(pcwalton): This is fragile!
                 encoder.set_sampler_state(&self.sampler, argument_index + 1);
             }
