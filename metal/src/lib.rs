@@ -613,12 +613,7 @@ impl MetalDevice {
             encoder.use_resource(buffer, MTLResourceUsage::Read);
         }
 
-        let texture_usage = MTLResourceUsage::Read | MTLResourceUsage::Sample;
-        for texture in render_state.textures {
-            encoder.use_resource(&texture.texture, texture_usage);
-        }
-
-        self.set_uniforms(render_state);
+        self.set_uniforms(&encoder, render_state);
 
         if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
             encoder.set_vertex_buffer(0, Some(&vertex_uniforms.buffer), 0);
@@ -644,18 +639,20 @@ impl MetalDevice {
         encoder
     }
 
-    fn set_uniforms(&self, render_state: &RenderState<MetalDevice>) {
+    fn set_uniforms(&self,
+                    render_command_encoder: &RenderCommandEncoderRef,
+                    render_state: &RenderState<MetalDevice>) {
         for &(uniform, uniform_data) in render_state.uniforms.iter() {
             if let Some(vertex_index) = uniform.vertex_index {
                 if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
-                    let encoder = &vertex_uniforms.encoder;
-                    self.set_uniform(vertex_index, encoder, uniform, &uniform_data, render_state);
+                    let argument_encoder = &vertex_uniforms.encoder;
+                    self.set_uniform(vertex_index, argument_encoder, uniform, &uniform_data, render_command_encoder, render_state);
                 }
             }
             if let Some(fragment_index) = uniform.fragment_index {
                 if let Some(ref fragment_uniforms) = render_state.program.fragment.uniforms {
-                    let encoder = &fragment_uniforms.encoder;
-                    self.set_uniform(fragment_index, encoder, uniform, &uniform_data, render_state);
+                    let argument_encoder = &fragment_uniforms.encoder;
+                    self.set_uniform(fragment_index, argument_encoder, uniform, &uniform_data, render_command_encoder, render_state);
                 }
             }
         }
@@ -663,16 +660,19 @@ impl MetalDevice {
 
     fn set_uniform(&self,
                    argument_index: u64,
-                   encoder: &ArgumentEncoder,
+                   argument_encoder: &ArgumentEncoder,
                    uniform: &MetalUniform,
                    uniform_data: &UniformData,
+                   render_command_encoder: &RenderCommandEncoderRef,
                    render_state: &RenderState<MetalDevice>) {
         match *uniform_data {
             UniformData::TextureUnit(unit) => {
                 let texture = render_state.textures[unit as usize];
-                encoder.set_texture(&texture.texture, argument_index);
+                argument_encoder.set_texture(&texture.texture, argument_index);
                 // FIXME(pcwalton): This is fragile!
-                encoder.set_sampler_state(&self.sampler, argument_index + 1);
+                argument_encoder.set_sampler_state(&self.sampler, argument_index + 1);
+                render_command_encoder.use_resource(&texture.texture,
+                                     MTLResourceUsage::Read | MTLResourceUsage::Sample);
             }
             _ => {
                 let buffer = uniform.buffer.as_ref().expect("No buffer allocated for uniform!");
@@ -685,7 +685,8 @@ impl MetalDevice {
                                              slice.len());
                 }
                 buffer.did_modify_range(NSRange::new(0, buffer_len));
-                encoder.set_buffer(buffer, 0, argument_index);
+                argument_encoder.set_buffer(buffer, 0, argument_index);
+                render_command_encoder.use_resource(buffer, MTLResourceUsage::Read);
             }
         }
     }

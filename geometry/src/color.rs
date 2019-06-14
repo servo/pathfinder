@@ -80,6 +80,11 @@ pub struct ColorF(pub F32x4);
 
 impl ColorF {
     #[inline]
+    pub fn new(r: f32, g: f32, b: f32, a: f32) -> ColorF {
+        ColorF(F32x4::new(r, g, b, a))
+    }
+
+    #[inline]
     pub fn transparent_black() -> ColorF {
         ColorF::default()
     }

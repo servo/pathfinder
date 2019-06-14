@@ -59,10 +59,13 @@ void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread 
     gl_Position = float4(position, 0.0, 1.0);
 }
 
-vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
+vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]], uint vertexID [[vertex_id]])
 {
     main0_out out = {};
     computeVaryings((*spvDescriptorSet0.uTileSize), in.aTileOrigin, in.aTessCoord, (*spvDescriptorSet0.uViewBoxOrigin), (*spvDescriptorSet0.uFramebufferSize), in.aTileIndex, (*spvDescriptorSet0.uStencilTextureSize), out.vTexCoord, out.vBackdrop, in.aBackdrop, out.vColor, out.gl_Position, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.aColorTexCoord);
+    /*out.gl_Position.x = (vertexID == 0 || vertexID == 2) ? -1.0 : 1.0;
+    out.gl_Position.y = (vertexID == 0 || vertexID == 1) ? -1.0 : 1.0;
+    out.vColor = float4(1.0, 0.0, 0.0, 1.0);*/
     return out;
 }
 
