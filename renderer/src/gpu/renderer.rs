@@ -463,7 +463,7 @@ where
             program: &self.fill_program.program,
             vertex_array: &self.fill_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            samplers: &[&self.area_lut_texture],
+            textures: &[&self.area_lut_texture],
             uniforms: &[
                 (&self.fill_program.framebuffer_size_uniform,
                  UniformData::Vec2(I32x4::new(MASK_FRAMEBUFFER_WIDTH,
@@ -496,7 +496,7 @@ where
         let alpha_tile_program = self.alpha_tile_program();
 
         let draw_viewport = self.draw_viewport();
-        let mut samplers = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
+        let mut textures = vec![self.device.framebuffer_texture(&self.mask_framebuffer)];
         let mut uniforms = vec![
             (&alpha_tile_program.framebuffer_size_uniform,
              UniformData::Vec2(draw_viewport.size().to_f32().0)),
@@ -518,7 +518,7 @@ where
         match self.render_mode {
             RenderMode::Multicolor => {
                 let paint_texture = self.paint_texture.as_ref().unwrap();
-                samplers.push(paint_texture);
+                textures.push(paint_texture);
                 uniforms.push((&self.alpha_multicolor_tile_program.paint_texture_uniform,
                                UniformData::TextureUnit(1)));
                 uniforms.push((&self.alpha_multicolor_tile_program.paint_texture_size_uniform,
@@ -542,7 +542,7 @@ where
             program: &alpha_tile_program.program,
             vertex_array: &alpha_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            samplers: &samplers,
+            textures: &textures,
             uniforms: &uniforms,
             viewport: draw_viewport,
             options: RenderOptions {
@@ -563,7 +563,7 @@ where
         let solid_tile_program = self.solid_tile_program();
 
         let draw_viewport = self.draw_viewport();
-        let mut samplers = vec![];
+        let mut textures = vec![];
         let mut uniforms = vec![
             (&solid_tile_program.framebuffer_size_uniform,
              UniformData::Vec2(draw_viewport.size().0.to_f32x4())),
@@ -579,7 +579,7 @@ where
         match self.render_mode {
             RenderMode::Multicolor => {
                 let paint_texture = self.paint_texture.as_ref().unwrap();
-                samplers.push(paint_texture);
+                textures.push(paint_texture);
                 uniforms.push((&self.solid_multicolor_tile_program.paint_texture_uniform,
                                UniformData::TextureUnit(0)));
                 uniforms.push((&self.solid_multicolor_tile_program.paint_texture_size_uniform,
@@ -603,7 +603,7 @@ where
             program: &solid_tile_program.program,
             vertex_array: &solid_tile_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            samplers: &samplers,
+            textures: &textures,
             uniforms: &uniforms,
             viewport: draw_viewport,
             options: RenderOptions {
@@ -675,7 +675,7 @@ where
             program: &self.postprocess_program.program,
             vertex_array: &self.postprocess_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            samplers: &[&source_texture, &self.gamma_lut_texture],
+            textures: &[&source_texture, &self.gamma_lut_texture],
             uniforms: &uniforms,
             viewport: main_viewport,
             options: RenderOptions {
@@ -741,7 +741,7 @@ where
             program: &self.stencil_program.program,
             vertex_array: &self.stencil_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            samplers: &[],
+            textures: &[],
             uniforms: &[],
             viewport: self.draw_viewport(),
             options: RenderOptions {
@@ -773,7 +773,7 @@ where
             program: &self.reprojection_program.program,
             vertex_array: &self.reprojection_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            samplers: &[texture],
+            textures: &[texture],
             uniforms: &[
                 (&self.reprojection_program.old_transform_uniform,
                  UniformData::from_transform_3d(old_transform)),

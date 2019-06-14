@@ -26,7 +26,6 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
     float2 from = in.vFrom;
     float2 to = in.vTo;
 
-    /*
     bool2 _29 = bool2(from.x < to.x);
     float2 left = float2(_29.x ? from.x : to.x, _29.y ? from.y : to.y);
     bool2 _39 = bool2(from.x < to.x);
@@ -38,8 +37,8 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
     float d = (right.y - left.y) / (right.x - left.x);
     float dX = window.x - window.y;
     out.oFragColor = float4(spvDescriptorSet0.uAreaLUT.sample(spvDescriptorSet0.uAreaLUTSmplr, (float2(y + 8.0, abs(d * dX)) / float2(16.0))).x * dX);
-    */
 
+    /*
     float2 window = fast::clamp(float2(from.x, to.x), float2(-0.5), float2(0.5));
 
     float2 a = from.y + (window - from.x) * (to.y - from.y) / (to.x - from.x) + 0.5;
@@ -51,6 +50,8 @@ fragment main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuff
     float tex = (b - 0.5 * c * c - ymin + 0.5 * d * d) / (ymax - ymin);
     float dX = window.x - window.y;
     out.oFragColor = float4(tex * dX);
+    */
+
     return out;
 }
 

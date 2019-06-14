@@ -571,7 +571,7 @@ impl MetalDevice {
         let command_buffer = command_buffer.as_ref().unwrap();
 
         let mut blit_command_encoder = None;
-        for texture in render_state.samplers {
+        for texture in render_state.textures {
             if !texture.dirty.get() {
                 continue;
             }
@@ -614,7 +614,7 @@ impl MetalDevice {
         }
 
         let texture_usage = MTLResourceUsage::Read | MTLResourceUsage::Sample;
-        for texture in render_state.samplers {
+        for texture in render_state.textures {
             encoder.use_resource(&texture.texture, texture_usage);
         }
 
@@ -669,7 +669,7 @@ impl MetalDevice {
                    render_state: &RenderState<MetalDevice>) {
         match *uniform_data {
             UniformData::TextureUnit(unit) => {
-                let texture = render_state.samplers[unit as usize];
+                let texture = render_state.textures[unit as usize];
                 encoder.set_texture(&texture.texture, argument_index);
                 // FIXME(pcwalton): This is fragile!
                 encoder.set_sampler_state(&self.sampler, argument_index + 1);

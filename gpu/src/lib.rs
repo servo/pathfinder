@@ -182,7 +182,7 @@ pub struct RenderState<'a, D> where D: Device {
     pub vertex_array: &'a D::VertexArray,
     pub primitive: Primitive,
     pub uniforms: &'a [(&'a D::Uniform, UniformData)],
-    pub samplers: &'a [&'a D::Texture],
+    pub textures: &'a [&'a D::Texture],
     pub viewport: RectI,
     pub options: RenderOptions,
 }

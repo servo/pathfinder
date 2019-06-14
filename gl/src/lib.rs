@@ -74,8 +74,8 @@ impl GLDevice {
 
         self.use_program(render_state.program);
         self.bind_vertex_array(render_state.vertex_array);
-        for (texture_unit, sampler) in render_state.samplers.iter().enumerate() {
-            self.bind_texture(sampler, texture_unit as u32);
+        for (texture_unit, texture) in render_state.textures.iter().enumerate() {
+            self.bind_texture(texture, texture_unit as u32);
         }
 
         render_state.uniforms.iter().for_each(|(uniform, data)| self.set_uniform(uniform, data));
@@ -184,7 +184,7 @@ impl GLDevice {
 
     fn reset_render_state(&self, render_state: &RenderState<GLDevice>) {
         self.reset_render_options(&render_state.options);
-        for texture_unit in 0..(render_state.samplers.len() as u32) {
+        for texture_unit in 0..(render_state.textures.len() as u32) {
             self.unbind_texture(texture_unit);
         }
         self.unuse_program();

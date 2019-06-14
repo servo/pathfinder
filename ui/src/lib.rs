@@ -184,7 +184,7 @@ impl<D> UIPresenter<D> where D: Device {
                  UniformData::Vec2(self.framebuffer_size.0.to_f32x4())),
                 (&self.solid_program.color_uniform, get_color_uniform(color)),
             ],
-            samplers: &[],
+            textures: &[],
             viewport: RectI::new(Vector2I::default(), self.framebuffer_size),
             options: RenderOptions {
                 blend: BlendState::RGBOneAlphaOneMinusSrcAlpha,
@@ -411,7 +411,7 @@ impl<D> UIPresenter<D> where D: Device {
             program: &self.texture_program.program,
             vertex_array: &self.texture_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            samplers: &[&texture],
+            textures: &[&texture],
             uniforms: &[
                 (&self.texture_program.framebuffer_size_uniform,
                  UniformData::Vec2(self.framebuffer_size.0.to_f32x4())),
