@@ -262,7 +262,6 @@ where
                 self.draw_buffered_fills();
             }
             RenderCommand::SolidTile(ref solid_tiles) => {
-                /*
                 let pixels =
                     self.device.read_pixels(&RenderTarget::Framebuffer(&self.mask_framebuffer),
                                             RectI::new(Vector2I::default(),
@@ -271,10 +270,11 @@ where
                 match pixels {
                     TextureData::U8(..) => panic!("U8?!"),
                     TextureData::U16(pixels) => {
-                        //assert!(!pixels.iter().all(|&x| x == 0));
+                        if pixels.iter().all(|&x| x == 0) {
+                            println!("ERROR: all pixels zero!");
+                        }
                     }
                 }
-                */
 
                 let count = solid_tiles.len();
                 self.stats.solid_tile_count += count;

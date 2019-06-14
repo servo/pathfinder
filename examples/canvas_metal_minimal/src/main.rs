@@ -18,7 +18,7 @@ use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_metal::MetalDevice;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::options::{DestFramebuffer, RenderOptions};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
 use pathfinder_renderer::gpu::renderer::Renderer;
 use pathfinder_renderer::options::BuildOptions;
 use sdl2::event::Event;
@@ -46,13 +46,10 @@ fn main() {
     };
 
     // Create a Pathfinder renderer.
-    let options = RenderOptions {
-        dest_framebuffer: DestFramebuffer::full_window(window_size),
-        background_color: Some(ColorF::white()),
-    };
     let mut renderer = Renderer::new(MetalDevice::new(metal_layer),
                                      &FilesystemResourceLoader::locate(),
-                                     options);
+                                     DestFramebuffer::full_window(window_size),
+                                     RendererOptions { background_color: Some(ColorF::white()) });
 
     // Make a canvas. We're going to draw a house.
     let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());

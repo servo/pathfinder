@@ -150,11 +150,11 @@ impl Device for MetalDevice {
         }
         descriptor.set_width(size.x() as u64);
         descriptor.set_height(size.y() as u64);
-        if format == TextureFormat::R16F {
+        /*if format == TextureFormat::R16F {
             descriptor.set_storage_mode(MTLStorageMode::Private);
-        } else {
+        } else {*/
             descriptor.set_storage_mode(MTLStorageMode::Managed);
-        }
+        //}
         descriptor.set_usage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
         self.device.new_texture(&descriptor)
     }
@@ -431,12 +431,23 @@ impl Device for MetalDevice {
     }
 
     fn read_pixels(&self, target: &RenderTarget<MetalDevice>, viewport: RectI) -> TextureData {
+        let texture = self.render_target_color_texture(target);
+
+        // Synchronize.
+        {
+            let command_buffer = self.command_buffer.borrow();
+            let encoder = command_buffer.as_ref().unwrap().new_blit_command_encoder();
+            encoder.synchronize_resource(&texture);
+            encoder.end_encoding();
+        }
+        self.end_commands();
+        self.begin_commands();
+
         let (origin, size) = (viewport.origin(), viewport.size());
         let metal_origin = MTLOrigin { x: origin.x() as u64, y: origin.y() as u64, z: 0 };
         let metal_size = MTLSize { width: size.x() as u64, height: size.y() as u64, depth: 1 };
         let metal_region = MTLRegion { origin: metal_origin, size: metal_size };
 
-        let texture = self.render_target_color_texture(target);
         let format = self.texture_format(&texture)
                          .expect("Unexpected framebuffer texture format!");
         match format {
@@ -448,9 +459,12 @@ impl Device for MetalDevice {
                 TextureData::U8(pixels)
             }
             TextureFormat::R16F => {
-                let stride = size.x() as usize * 2;
+                let stride = size.x() as usize;
                 let mut pixels = vec![0; stride * size.y() as usize];
-                texture.get_bytes(pixels.as_mut_ptr() as *mut _, metal_region, 0, stride as u64);
+                texture.get_bytes(pixels.as_mut_ptr() as *mut _,
+                                  metal_region,
+                                  0,
+                                  stride as u64 * 2);
                 TextureData::U16(pixels)
             }
         }
