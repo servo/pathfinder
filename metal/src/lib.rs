@@ -122,9 +122,15 @@ pub struct MetalTimerQuery;
 
 #[derive(Clone)]
 pub struct MetalUniform {
-    vertex_index: Option<u64>,
-    fragment_index: Option<u64>,
+    vertex_index: Option<MetalUniformIndex>,
+    fragment_index: Option<MetalUniformIndex>,
     buffer: Option<Buffer>,
+}
+
+#[derive(Clone, Copy)]
+pub struct MetalUniformIndex {
+    main: u64,
+    sampler: Option<u64>,
 }
 
 pub struct MetalVertexArray {
@@ -546,16 +552,22 @@ impl Device for MetalDevice {
 }
 
 impl MetalDevice {
-    fn get_uniform_index(&self, shader: &MetalShader, name: &str) -> Option<u64> {
-        match shader.uniforms {
+    fn get_uniform_index(&self, shader: &MetalShader, name: &str) -> Option<MetalUniformIndex> {
+        let uniforms = match shader.uniforms {
+            None => return None,
+            Some(ref uniforms) => uniforms,
+        };
+        let main_member = match uniforms.struct_type.member_from_name(&format!("u{}", name)) {
+            None => return None,
+            Some(main_member) => main_member,
+        };
+        let main_index = main_member.argument_index();
+        let sampler_index = match uniforms.struct_type
+                                          .member_from_name(&format!("u{}Smplr", name)) {
             None => None,
-            Some(ref uniforms) => {
-                match uniforms.struct_type.member_from_name(&format!("u{}", name)) {
-                    None => None,
-                    Some(member) => Some(member.argument_index())
-                }
-            }
-        }
+            Some(sampler_member) => Some(sampler_member.argument_index()),
+        };
+        Some(MetalUniformIndex { main: main_index, sampler: sampler_index })
     }
 
     fn render_target_color_texture(&self, render_target: &RenderTarget<MetalDevice>)
@@ -646,20 +658,30 @@ impl MetalDevice {
             if let Some(vertex_index) = uniform.vertex_index {
                 if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
                     let argument_encoder = &vertex_uniforms.encoder;
-                    self.set_uniform(vertex_index, argument_encoder, uniform, &uniform_data, render_command_encoder, render_state);
+                    self.set_uniform(vertex_index,
+                                     argument_encoder,
+                                     uniform,
+                                     &uniform_data,
+                                     render_command_encoder,
+                                     render_state);
                 }
             }
             if let Some(fragment_index) = uniform.fragment_index {
                 if let Some(ref fragment_uniforms) = render_state.program.fragment.uniforms {
                     let argument_encoder = &fragment_uniforms.encoder;
-                    self.set_uniform(fragment_index, argument_encoder, uniform, &uniform_data, render_command_encoder, render_state);
+                    self.set_uniform(fragment_index,
+                                    argument_encoder,
+                                    uniform,
+                                    &uniform_data,
+                                    render_command_encoder,
+                                    render_state);
                 }
             }
         }
     }
 
     fn set_uniform(&self,
-                   argument_index: u64,
+                   argument_index: MetalUniformIndex,
                    argument_encoder: &ArgumentEncoder,
                    uniform: &MetalUniform,
                    uniform_data: &UniformData,
@@ -668,11 +690,13 @@ impl MetalDevice {
         match *uniform_data {
             UniformData::TextureUnit(unit) => {
                 let texture = render_state.textures[unit as usize];
-                argument_encoder.set_texture(&texture.texture, argument_index);
-                // FIXME(pcwalton): This is fragile!
-                argument_encoder.set_sampler_state(&self.sampler, argument_index + 1);
-                render_command_encoder.use_resource(&texture.texture,
-                                     MTLResourceUsage::Read | MTLResourceUsage::Sample);
+                argument_encoder.set_texture(&texture.texture, argument_index.main);
+                let mut resource_usage = MTLResourceUsage::Read;
+                if let Some(sampler_index) = argument_index.sampler {
+                    argument_encoder.set_sampler_state(&self.sampler, sampler_index);
+                    resource_usage |= MTLResourceUsage::Sample;
+                }
+                render_command_encoder.use_resource(&texture.texture, resource_usage);
             }
             _ => {
                 let buffer = uniform.buffer.as_ref().expect("No buffer allocated for uniform!");
@@ -685,7 +709,7 @@ impl MetalDevice {
                                              slice.len());
                 }
                 buffer.did_modify_range(NSRange::new(0, buffer_len));
-                argument_encoder.set_buffer(buffer, 0, argument_index);
+                argument_encoder.set_buffer(buffer, 0, argument_index.main);
                 render_command_encoder.use_resource(buffer, MTLResourceUsage::Read);
             }
         }
