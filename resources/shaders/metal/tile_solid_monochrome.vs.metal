@@ -1,3 +1,4 @@
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
 
 #include <metal_stdlib>

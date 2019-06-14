@@ -1,6 +1,6 @@
 #version 330
 
-// pathfinder/resources/fill.vs.glsl
+// pathfinder/shaders/fill.vs.glsl
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -50,5 +50,9 @@ void main() {
     vFrom = from - position;
     vTo = to - position;
 
-    gl_Position = vec4((tileOrigin + position) / uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
+    vec2 globalPosition = (tileOrigin + position) / uFramebufferSize * 2.0 - 1.0;
+#ifdef PF_ORIGIN_UPPER_LEFT
+    globalPosition.y = -globalPosition.y;
+#endif
+    gl_Position = vec4(globalPosition, 0.0, 1.0);
 }

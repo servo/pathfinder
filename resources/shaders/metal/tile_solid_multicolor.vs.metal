@@ -1,3 +1,4 @@
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
 
 #include <metal_stdlib>
@@ -9,8 +10,8 @@ struct spvDescriptorSetBuffer0
 {
     constant float2* uTileSize [[id(0)]];
     texture2d<float> uPaintTexture [[id(1)]];
-    sampler uPaintTextureSmplr [[id(2)]];
-    constant float2* uViewBoxOrigin [[id(3)]];
+    constant float2* uViewBoxOrigin [[id(2)]];
+    sampler uPaintTextureSmplr [[id(3)]];
     constant float2* uFramebufferSize [[id(4)]];
 };
 

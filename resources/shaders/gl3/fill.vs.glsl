@@ -1,4 +1,6 @@
 #version {{version}}
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
+
 
 
 
@@ -50,6 +52,10 @@ void main(){
     vFrom = from - position;
     vTo = to - position;
 
-    gl_Position = vec4((tileOrigin + position)/ uFramebufferSize * 2.0 - 1.0, 0.0, 1.0);
+    vec2 globalPosition =(tileOrigin + position)/ uFramebufferSize * 2.0 - 1.0;
+
+
+
+    gl_Position = vec4(globalPosition, 0.0, 1.0);
 }
 

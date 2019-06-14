@@ -1,3 +1,4 @@
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
 
 #include <metal_stdlib>
@@ -62,7 +63,9 @@ vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer
     }
     out.vFrom = from - position;
     out.vTo = to - position;
-    out.gl_Position = float4((((tileOrigin + position) / (*spvDescriptorSet0.uFramebufferSize)) * 2.0) - float2(1.0), 0.0, 1.0);
+    float2 globalPosition = (((tileOrigin + position) / (*spvDescriptorSet0.uFramebufferSize)) * 2.0) - float2(1.0);
+    globalPosition.y = -globalPosition.y;
+    out.gl_Position = float4(globalPosition, 0.0, 1.0);
     return out;
 }
 
