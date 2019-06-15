@@ -548,6 +548,7 @@ where
             stencil: self.stencil_state(),
             ..RenderState::default()
         };
+        self.device.bind_buffer(self.quad_vertex_indices_buffer(), BufferTarget::Index);
         self.device.draw_elements_instanced(Primitive::Triangles, 6, count, &render_state);
     }
 
