@@ -25,6 +25,7 @@ use clap::{App, Arg};
 use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
+use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gl::GLDevice;
 use pathfinder_gpu::Device;
@@ -52,6 +53,9 @@ const CAMERA_VELOCITY: f32 = 0.02;
 const CAMERA_SCALE_SPEED_2D: f32 = 6.0;
 // How much the scene is scaled when a zoom button is clicked.
 const CAMERA_ZOOM_AMOUNT_2D: f32 = 0.1;
+
+// Half of the eye separation distance.
+const DEFAULT_EYE_OFFSET: f32 = 0.025;
 
 const LIGHT_BG_COLOR: ColorU = ColorU {
     r: 248,
@@ -323,11 +327,23 @@ impl<W> DemoApp<W> where W: Window {
                 }
                 Event::SetEyeTransforms(new_eye_transforms) => {
                     if let Camera::ThreeD {
+                        ref mut scene_transform,
                         ref mut eye_transforms,
                         ..
                     } = self.camera
                     {
                         *eye_transforms = new_eye_transforms;
+                        // Calculate the new scene transform by lerp'ing the eye transforms.
+                        *scene_transform = eye_transforms[0];
+                        for (index, eye_transform) in eye_transforms.iter().enumerate().skip(1) {
+                            let weight = 1.0 / (index + 1) as f32;
+                            scene_transform.perspective.transform = scene_transform.perspective.transform.lerp(weight, &eye_transform.perspective.transform);
+                            scene_transform.modelview_to_eye = scene_transform.modelview_to_eye.lerp(weight, &eye_transform.modelview_to_eye);
+                         }
+                        // TODO: calculate the eye offset from the eye transforms?
+                        let z_offset = -DEFAULT_EYE_OFFSET * scene_transform.perspective.transform.c0.x();
+                        scene_transform.modelview_to_eye = scene_transform.modelview_to_eye
+                            .pre_mul(&Transform3DF::from_translation(0.0, 0.0, z_offset));
                     }
                 }
                 Event::KeyDown(Keycode::Alphanumeric(b'w')) => {
