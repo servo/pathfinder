@@ -1,0 +1,10 @@
+[package]
+name = "pathfinder_pdf"
+version = "0.1.0"
+authors = ["Sebastian Köln <sebk@rynx.org>"]
+edition = "2018"
+
+[dependencies]
+pathfinder_renderer = { path = "../renderer" }
+pathfinder_geometry = { path = "../geometry" }
+deflate = "*"
