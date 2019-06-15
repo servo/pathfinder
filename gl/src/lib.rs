@@ -539,6 +539,7 @@ impl Device for GLDevice {
 
     fn draw_elements(&self, primitive: Primitive, index_count: u32, render_state: &RenderState) {
         self.set_render_state(render_state);
+        assert_element_array_buffer_is_bound();
         unsafe {
             gl::DrawElements(primitive.to_gl_primitive(),
                              index_count as GLsizei,
@@ -554,6 +555,7 @@ impl Device for GLDevice {
                                instance_count: u32,
                                render_state: &RenderState) {
         self.set_render_state(render_state);
+        assert_element_array_buffer_is_bound();
         unsafe {
             gl::DrawElementsInstanced(primitive.to_gl_primitive(),
                                       index_count as GLsizei,
@@ -904,6 +906,20 @@ impl GLVersion {
 }
 
 // Error checking
+
+#[cfg(debug_assertions)]
+fn assert_element_array_buffer_is_bound() {
+    unsafe {
+        let mut buffer: GLint = 0;
+        gl::GetIntegerv(gl::ELEMENT_ARRAY_BUFFER_BINDING, &mut buffer); ck();
+        if buffer == 0 {
+            panic!("No buffer object is bound to the target GL_ELEMENT_ARRAY_BUFFER!");
+        }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn assert_element_array_buffer_is_bound() {}
 
 #[cfg(debug_assertions)]
 fn ck() {
