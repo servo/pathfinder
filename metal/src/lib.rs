@@ -682,29 +682,22 @@ impl MetalDevice {
             return;
         }
 
-        unsafe {
-            let mut reflection = ptr::null_mut();
-            let encoder: *mut MTLArgumentEncoder =
-                msg_send![shader.function.as_ptr(),
-                          newArgumentEncoderWithBufferIndex:0 reflection:&mut reflection];
-            let encoder = ArgumentEncoder::from_ptr(encoder);
+        let (encoder, argument) = shader.function.new_argument_encoder_with_reflection(0);
 
-            let argument = Argument::from_ptr(reflection);
-            match argument.buffer_data_type() {
-                MTLDataType::Struct => {}
-                data_type => {
-                    panic!("Unexpected data type for argument buffer: {}!", data_type as u32)
-                }
+        match argument.buffer_data_type() {
+            MTLDataType::Struct => {}
+            data_type => {
+                panic!("Unexpected data type for argument buffer: {}!", data_type as u32)
             }
-            let struct_type = argument.buffer_struct_type().retain();
-
-            let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
-                MTLResourceOptions::StorageModeManaged;
-            let buffer = self.device.new_buffer(encoder.encoded_length(), buffer_options);
-            encoder.set_argument_buffer(&buffer, 0);
-
-            *uniforms = ShaderUniforms::Uniforms { encoder, struct_type, buffer };
         }
+        let struct_type = argument.buffer_struct_type().retain();
+
+        let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
+            MTLResourceOptions::StorageModeManaged;
+        let buffer = self.device.new_buffer(encoder.encoded_length(), buffer_options);
+        encoder.set_argument_buffer(&buffer, 0);
+
+        *uniforms = ShaderUniforms::Uniforms { encoder, struct_type, buffer };
     }
 
     fn set_uniforms(&self,
@@ -1098,12 +1091,25 @@ impl DeviceExt for metal::Device {
 trait FunctionExt {
     // `vertex_attributes()` in `metal-rs` segfaults! This is a better definition.
     fn real_vertex_attributes(&self) -> VertexAttributeArray;
+    fn new_argument_encoder_with_reflection(&self, buffer_index: u64)
+                                            -> (ArgumentEncoder, Argument);
 }
 
 impl FunctionExt for Function {
     fn real_vertex_attributes(&self) -> VertexAttributeArray {
         unsafe {
             VertexAttributeArray::from_ptr(msg_send![(*self).as_ptr(), vertexAttributes])
+        }
+    }
+
+    fn new_argument_encoder_with_reflection(&self, buffer_index: u64)
+                                            -> (ArgumentEncoder, Argument) {
+        unsafe {
+            let mut reflection = ptr::null_mut();
+            let encoder: *mut MTLArgumentEncoder =
+                msg_send![self.as_ptr(), newArgumentEncoderWithBufferIndex:buffer_index
+                                                                reflection:&mut reflection];
+            (ArgumentEncoder::from_ptr(encoder), Argument::from_ptr(reflection))
         }
     }
 }
