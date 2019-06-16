@@ -10,19 +10,23 @@
 
 //! A Metal implementation of the device abstraction, for macOS and iOS.
 
+#![allow(non_upper_case_globals)]
+
+#[macro_use]
+extern crate bitflags;
 #[macro_use]
 extern crate objc;
 
-use cocoa::foundation::NSRange;
+use cocoa::foundation::{NSRange, NSUInteger};
 use foreign_types::{ForeignType, ForeignTypeRef};
-use metal::{self, Argument, ArgumentEncoder, ArrayRef, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
-use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, DeviceRef, Function, Library};
-use metal::{MTLArgumentEncoder, MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
-use metal::{MTLResourceOptions, MTLResourceUsage, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
+use metal::{self, Argument, ArgumentEncoder, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
+use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, Function, Library};
+use metal::{MTLArgument, MTLArgumentEncoder, MTLArgumentType, MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLFunctionType, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
+use metal::{MTLRenderPipelineReflection, MTLRenderPipelineState, MTLResourceOptions, MTLResourceUsage, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
 use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType};
 use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, MTLViewport, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
 use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor};
-use metal::{SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
+use metal::{RenderPipelineReflectionRef, RenderPipelineState, SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
 use metal::{TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
 use metal::{VertexDescriptor, VertexDescriptorRef};
 use objc::runtime::Object;
@@ -40,7 +44,6 @@ use std::rc::Rc;
 use std::slice;
 use std::time::Duration;
 
-const ATTRIBUTE_BUFFER_INDEX: u64 = 0;
 const FIRST_VERTEX_BUFFER_INDEX: u64 = 1;
 
 pub struct MetalDevice {
@@ -103,13 +106,17 @@ pub struct MetalShader {
     #[allow(dead_code)]
     library: Library,
     function: Function,
-    uniforms: Option<ShaderUniforms>,
+    uniforms: RefCell<ShaderUniforms>,
 }
 
-struct ShaderUniforms {
-    encoder: ArgumentEncoder,
-    struct_type: StructType,
-    buffer: Buffer,
+enum ShaderUniforms {
+    Unknown,
+    NoUniforms,
+    Uniforms {
+        encoder: ArgumentEncoder,
+        struct_type: StructType,
+        buffer: Buffer,
+    }
 }
 
 pub struct MetalTexture {
@@ -122,9 +129,15 @@ pub struct MetalTimerQuery;
 
 #[derive(Clone)]
 pub struct MetalUniform {
-    vertex_index: Option<MetalUniformIndex>,
-    fragment_index: Option<MetalUniformIndex>,
+    indices: RefCell<Option<MetalUniformIndices>>,
     buffer: Option<Buffer>,
+    name: String,
+}
+
+#[derive(Clone, Copy)]
+pub struct MetalUniformIndices {
+    vertex: Option<MetalUniformIndex>,
+    fragment: Option<MetalUniformIndex>,
 }
 
 #[derive(Clone, Copy)]
@@ -183,42 +196,11 @@ impl Device for MetalDevice {
         println!("create_shader_from_source({}, {:?})", name, kind);
         let source = String::from_utf8(source.to_vec()).expect("Source wasn't valid UTF-8!");
 
-        // FIXME(pcwalton): This is terrible!! Let's wait until the state to do this properly!
-        let has_buffer = source.contains("[[buffer(0)]]");
-        println!("has_buffer={:?}", has_buffer);
-
         let compile_options = CompileOptions::new();
         let library = self.device.new_library_with_source(&source, &compile_options).unwrap();
         let function = library.get_function("main0", None).unwrap();
-        let mut uniforms = None;
 
-        if has_buffer {
-            unsafe {
-                let mut reflection = ptr::null_mut();
-                let encoder: *mut MTLArgumentEncoder =
-                    msg_send![function.as_ptr(), newArgumentEncoderWithBufferIndex:0
-                                                                        reflection:&mut reflection];
-                let encoder = ArgumentEncoder::from_ptr(encoder);
-
-                let argument = Argument::from_ptr(reflection);
-                match argument.buffer_data_type() {
-                    MTLDataType::Struct => {}
-                    data_type => {
-                        panic!("Unexpected data type for argument buffer: {}!", data_type as u32)
-                    }
-                }
-                let struct_type = argument.buffer_struct_type().retain();
-
-                let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
-                    MTLResourceOptions::StorageModeManaged;
-                let buffer = self.device.new_buffer(encoder.encoded_length(), buffer_options);
-                encoder.set_argument_buffer(&buffer, 0);
-
-                uniforms = Some(ShaderUniforms { encoder, struct_type, buffer });
-            }
-        }
-
-        MetalShader { library, function, uniforms }
+        MetalShader { library, function, uniforms: RefCell::new(ShaderUniforms::Unknown) }
     }
 
     fn create_vertex_array(&self) -> MetalVertexArray {
@@ -265,7 +247,7 @@ impl Device for MetalDevice {
         None
     }
 
-    fn get_uniform(&self, program: &Self::Program, name: &str, uniform_type: UniformType)
+    fn get_uniform(&self, _: &Self::Program, name: &str, uniform_type: UniformType)
                    -> MetalUniform {
         let buffer_size = match uniform_type {
             UniformType::Int => Some(4),
@@ -278,11 +260,7 @@ impl Device for MetalDevice {
             self.device.new_buffer(buffer_size, MTLResourceOptions::CPUCacheModeDefaultCache |
                 MTLResourceOptions::StorageModeManaged)
         });
-        MetalUniform {
-            vertex_index: self.get_uniform_index(&program.vertex, &name),
-            fragment_index: self.get_uniform_index(&program.fragment, &name),
-            buffer,
-        }
+        MetalUniform { indices: RefCell::new(None), buffer, name: name.to_owned() }
     }
 
     fn configure_vertex_attr(&self,
@@ -553,21 +531,37 @@ impl Device for MetalDevice {
 
 impl MetalDevice {
     fn get_uniform_index(&self, shader: &MetalShader, name: &str) -> Option<MetalUniformIndex> {
-        let uniforms = match shader.uniforms {
-            None => return None,
-            Some(ref uniforms) => uniforms,
+        let uniforms = shader.uniforms.borrow();
+        let struct_type = match *uniforms {
+            ShaderUniforms::Unknown => panic!("get_uniform_index() called before reflection!"),
+            ShaderUniforms::NoUniforms => return None,
+            ShaderUniforms::Uniforms { ref struct_type, .. } => struct_type,
         };
-        let main_member = match uniforms.struct_type.member_from_name(&format!("u{}", name)) {
+        let main_member = match struct_type.member_from_name(&format!("u{}", name)) {
             None => return None,
             Some(main_member) => main_member,
         };
         let main_index = main_member.argument_index();
-        let sampler_index = match uniforms.struct_type
-                                          .member_from_name(&format!("u{}Smplr", name)) {
+        let sampler_index = match struct_type.member_from_name(&format!("u{}Smplr", name)) {
             None => None,
             Some(sampler_member) => Some(sampler_member.argument_index()),
         };
         Some(MetalUniformIndex { main: main_index, sampler: sampler_index })
+    }
+
+    fn populate_uniform_indices_if_necessary(&self,
+                                             uniform: &MetalUniform,
+                                             program: &MetalProgram) {
+                        
+        let mut indices = uniform.indices.borrow_mut();
+        if indices.is_some() {
+            return;
+        }
+
+        *indices = Some(MetalUniformIndices {
+            vertex: self.get_uniform_index(&program.vertex, &uniform.name),
+            fragment: self.get_uniform_index(&program.fragment, &uniform.name),
+        });
     }
 
     fn render_target_color_texture(&self, render_target: &RenderTarget<MetalDevice>)
@@ -613,6 +607,35 @@ impl MetalDevice {
         render_pipeline_descriptor.set_vertex_descriptor(Some(&render_state.vertex_array 
                                                                            .descriptor));
 
+        // Create render pipeline state.
+        let pipeline_color_attachment = render_pipeline_descriptor.color_attachments()
+                                                                  .object_at(0)
+                                                                  .unwrap();
+        self.prepare_pipeline_color_attachment_for_render(pipeline_color_attachment,
+                                                          render_state);
+
+        let (reflection, render_pipeline_state);
+        unsafe {
+            let mut reflection_ptr: *mut MTLRenderPipelineReflection = ptr::null_mut();
+            let mut error_ptr: *mut Object = ptr::null_mut();
+            let reflection_options = MTLPipelineOption::ArgumentInfo |
+                MTLPipelineOption::BufferTypeInfo;
+            let render_pipeline_state_ptr: *mut MTLRenderPipelineState =
+                msg_send![self.device.as_ptr(),
+                          newRenderPipelineStateWithDescriptor:render_pipeline_descriptor.as_ptr()
+                                                       options:reflection_options
+                                                    reflection:&mut reflection_ptr
+                                                         error:&mut error_ptr];
+            assert!(!render_pipeline_state_ptr.is_null());
+            assert!(!reflection_ptr.is_null());
+            assert!(error_ptr.is_null());
+            reflection = RenderPipelineReflectionRef::from_ptr(reflection_ptr);
+            render_pipeline_state = RenderPipelineState::from_ptr(render_pipeline_state_ptr);
+        }
+
+        self.populate_shader_uniforms_if_necessary(&render_state.program.vertex, &reflection);
+        self.populate_shader_uniforms_if_necessary(&render_state.program.fragment, &reflection);
+
         for (vertex_buffer_index, vertex_buffer) in render_state.vertex_array   
                                                                 .vertex_buffers
                                                                 .borrow()
@@ -627,23 +650,17 @@ impl MetalDevice {
 
         self.set_uniforms(&encoder, render_state);
 
-        if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
-            encoder.set_vertex_buffer(0, Some(&vertex_uniforms.buffer), 0);
-            encoder.use_resource(&vertex_uniforms.buffer, MTLResourceUsage::Read);
+        let vertex_uniforms = render_state.program.vertex.uniforms.borrow();
+        let fragment_uniforms = render_state.program.fragment.uniforms.borrow();
+        if let ShaderUniforms::Uniforms { ref buffer, .. } = *vertex_uniforms {
+            encoder.set_vertex_buffer(0, Some(buffer), 0);
+            encoder.use_resource(buffer, MTLResourceUsage::Read);
         }
-        if let Some(ref fragment_uniforms) = render_state.program.fragment.uniforms {
-            encoder.set_fragment_buffer(0, Some(&fragment_uniforms.buffer), 0);
-            encoder.use_resource(&fragment_uniforms.buffer, MTLResourceUsage::Read);
+        if let ShaderUniforms::Uniforms { ref buffer, .. } = *fragment_uniforms {
+            encoder.set_fragment_buffer(0, Some(buffer), 0);
+            encoder.use_resource(buffer, MTLResourceUsage::Read);
         }
 
-        let pipeline_color_attachment = render_pipeline_descriptor.color_attachments()
-                                                                  .object_at(0)
-                                                                  .unwrap();
-        self.prepare_pipeline_color_attachment_for_render(pipeline_color_attachment,
-                                                          render_state);
-
-        let render_pipeline_state =
-            self.device.new_render_pipeline_state(&render_pipeline_descriptor).unwrap();
         encoder.set_render_pipeline_state(&render_pipeline_state);
 
         self.set_depth_stencil_state(&encoder, render_state);
@@ -651,13 +668,78 @@ impl MetalDevice {
         encoder
     }
 
+    fn populate_shader_uniforms_if_necessary(&self,
+                                             shader: &MetalShader,
+                                             reflection: &RenderPipelineReflectionRef) {
+        let mut uniforms = shader.uniforms.borrow_mut();
+        match *uniforms {
+            ShaderUniforms::Unknown => {}
+            ShaderUniforms::NoUniforms | ShaderUniforms::Uniforms { .. } => return,
+        }
+
+        let arguments = match shader.function.function_type() {
+            MTLFunctionType::Vertex => {
+                unsafe { ArgumentArray::from_ptr(msg_send![reflection.as_ptr(), vertexArguments]) }
+            }
+            MTLFunctionType::Fragment => {
+                unsafe {
+                    ArgumentArray::from_ptr(msg_send![reflection.as_ptr(), fragmentArguments])
+                }
+            }
+            _ => panic!("Unexpected shader function type!"),
+        };
+
+        let mut has_buffer = false;
+        for argument_index in 0..arguments.len() {
+            if let MTLArgumentType::Buffer = arguments.object_at(argument_index).type_() {
+                has_buffer = true;
+                break;
+            }
+        }
+        if !has_buffer {
+            *uniforms = ShaderUniforms::NoUniforms;
+            return;
+        }
+
+        unsafe {
+            let mut reflection = ptr::null_mut();
+            let encoder: *mut MTLArgumentEncoder =
+                msg_send![shader.function.as_ptr(),
+                          newArgumentEncoderWithBufferIndex:0 reflection:&mut reflection];
+            let encoder = ArgumentEncoder::from_ptr(encoder);
+
+            let argument = Argument::from_ptr(reflection);
+            match argument.buffer_data_type() {
+                MTLDataType::Struct => {}
+                data_type => {
+                    panic!("Unexpected data type for argument buffer: {}!", data_type as u32)
+                }
+            }
+            let struct_type = argument.buffer_struct_type().retain();
+
+            let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
+                MTLResourceOptions::StorageModeManaged;
+            let buffer = self.device.new_buffer(encoder.encoded_length(), buffer_options);
+            encoder.set_argument_buffer(&buffer, 0);
+
+            *uniforms = ShaderUniforms::Uniforms { encoder, struct_type, buffer };
+        }
+    }
+
     fn set_uniforms(&self,
                     render_command_encoder: &RenderCommandEncoderRef,
                     render_state: &RenderState<MetalDevice>) {
+        let vertex_uniforms = render_state.program.vertex.uniforms.borrow();
+        let fragment_uniforms = render_state.program.fragment.uniforms.borrow();
         for &(uniform, uniform_data) in render_state.uniforms.iter() {
-            if let Some(vertex_index) = uniform.vertex_index {
-                if let Some(ref vertex_uniforms) = render_state.program.vertex.uniforms {
-                    let argument_encoder = &vertex_uniforms.encoder;
+            self.populate_uniform_indices_if_necessary(uniform, &render_state.program);
+            let indices = uniform.indices.borrow_mut();
+            let indices = indices.as_ref().unwrap();
+            if let Some(vertex_index) = indices.vertex {
+                if let ShaderUniforms::Uniforms {
+                    encoder: ref argument_encoder,
+                    ..
+                } = *vertex_uniforms {
                     self.set_uniform(vertex_index,
                                      argument_encoder,
                                      uniform,
@@ -666,9 +748,11 @@ impl MetalDevice {
                                      render_state);
                 }
             }
-            if let Some(fragment_index) = uniform.fragment_index {
-                if let Some(ref fragment_uniforms) = render_state.program.fragment.uniforms {
-                    let argument_encoder = &fragment_uniforms.encoder;
+            if let Some(fragment_index) = indices.fragment {
+                if let ShaderUniforms::Uniforms {
+                    encoder: ref argument_encoder,
+                    ..
+                } = *fragment_uniforms {
                     self.set_uniform(fragment_index,
                                     argument_encoder,
                                     uniform,
@@ -923,7 +1007,41 @@ impl UniformDataExt for UniformData {
     }
 }
 
+// Extra structs missing from `metal-rs`
+
+bitflags! {
+    struct MTLPipelineOption: NSUInteger {
+        const ArgumentInfo   = 1 << 0;
+        const BufferTypeInfo = 1 << 1;
+    }
+}
+
 // Extra objects missing from `metal-rs`
+
+struct ArgumentArray(*mut Object);
+
+impl Drop for ArgumentArray {
+    fn drop(&mut self) {
+        unsafe { msg_send![self.0, release] }
+    }
+}
+
+impl ArgumentArray {
+    unsafe fn from_ptr(object: *mut Object) -> ArgumentArray {
+        ArgumentArray(msg_send![object, retain])
+    }
+
+    fn len(&self) -> u64 {
+        unsafe { msg_send![self.0, count] }
+    }
+
+    fn object_at(&self, index: u64) -> Argument {
+        unsafe {
+            let argument: *mut MTLArgument = msg_send![self.0, objectAtIndex:index];
+            Argument::from_ptr(msg_send![argument, retain])
+        }
+    }
+}
 
 struct VertexAttributeArray(*mut Object);
 
