@@ -26,7 +26,7 @@ use metal::{MTLRenderPipelineReflection, MTLRenderPipelineState, MTLResourceOpti
 use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType};
 use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, MTLViewport, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
 use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor};
-use metal::{RenderPipelineReflectionRef, RenderPipelineState, SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
+use metal::{RenderPipelineReflection, RenderPipelineReflectionRef, RenderPipelineState, SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
 use metal::{TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
 use metal::{VertexDescriptor, VertexDescriptorRef};
 use objc::runtime::Object;
@@ -614,24 +614,11 @@ impl MetalDevice {
         self.prepare_pipeline_color_attachment_for_render(pipeline_color_attachment,
                                                           render_state);
 
-        let (reflection, render_pipeline_state);
-        unsafe {
-            let mut reflection_ptr: *mut MTLRenderPipelineReflection = ptr::null_mut();
-            let mut error_ptr: *mut Object = ptr::null_mut();
-            let reflection_options = MTLPipelineOption::ArgumentInfo |
-                MTLPipelineOption::BufferTypeInfo;
-            let render_pipeline_state_ptr: *mut MTLRenderPipelineState =
-                msg_send![self.device.as_ptr(),
-                          newRenderPipelineStateWithDescriptor:render_pipeline_descriptor.as_ptr()
-                                                       options:reflection_options
-                                                    reflection:&mut reflection_ptr
-                                                         error:&mut error_ptr];
-            assert!(!render_pipeline_state_ptr.is_null());
-            assert!(!reflection_ptr.is_null());
-            assert!(error_ptr.is_null());
-            reflection = RenderPipelineReflectionRef::from_ptr(reflection_ptr);
-            render_pipeline_state = RenderPipelineState::from_ptr(render_pipeline_state_ptr);
-        }
+        let reflection_options = MTLPipelineOption::ArgumentInfo |
+            MTLPipelineOption::BufferTypeInfo;
+        let (render_pipeline_state, reflection) =
+            self.device.real_new_render_pipeline_state_with_reflection(&render_pipeline_descriptor,
+                                                                       reflection_options);
 
         self.populate_shader_uniforms_if_necessary(&render_state.program.vertex, &reflection);
         self.populate_shader_uniforms_if_necessary(&render_state.program.fragment, &reflection);
@@ -1076,6 +1063,40 @@ impl CoreAnimationLayerExt for CoreAnimationLayer {
         unsafe {
             let device: *mut MTLDevice = msg_send![self.as_ptr(), device];
             metal::Device::from_ptr(msg_send![device, retain])
+        }
+    }
+}
+
+trait DeviceExt {
+    // `new_render_pipeline_state_with_reflection()` in `metal-rs` doesn't correctly initialize the
+    // `reflection` argument. This is a better definition.
+    fn real_new_render_pipeline_state_with_reflection(&self,
+                                                      descriptor: &RenderPipelineDescriptor,
+                                                      options: MTLPipelineOption)
+                                                      -> (RenderPipelineState,
+                                                          RenderPipelineReflection);
+}
+
+impl DeviceExt for metal::Device {
+    fn real_new_render_pipeline_state_with_reflection(&self,
+                                                      descriptor: &RenderPipelineDescriptor,
+                                                      options: MTLPipelineOption)
+                                                      -> (RenderPipelineState,
+                                                          RenderPipelineReflection) {
+        unsafe {
+            let mut reflection_ptr: *mut MTLRenderPipelineReflection = ptr::null_mut();
+            let mut error_ptr: *mut Object = ptr::null_mut();
+            let render_pipeline_state_ptr: *mut MTLRenderPipelineState =
+                msg_send![self.as_ptr(),
+                          newRenderPipelineStateWithDescriptor:descriptor.as_ptr()
+                                                       options:options
+                                                    reflection:&mut reflection_ptr
+                                                         error:&mut error_ptr];
+            assert!(!render_pipeline_state_ptr.is_null());
+            assert!(!reflection_ptr.is_null());
+            assert!(error_ptr.is_null());
+            (RenderPipelineState::from_ptr(render_pipeline_state_ptr),
+             RenderPipelineReflection::from_ptr(msg_send![reflection_ptr, retain]))
         }
     }
 }
