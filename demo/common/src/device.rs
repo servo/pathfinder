@@ -63,7 +63,7 @@ where
     ) -> GroundVertexArray<D> {
         let vertex_array = device.create_vertex_array();
 
-        let position_attr = device.get_vertex_attr(&ground_program.program, "Position");
+        let position_attr = device.get_vertex_attr(&ground_program.program, "Position").unwrap();
 
         device.bind_vertex_array(&vertex_array);
         device.use_program(&ground_program.program);
