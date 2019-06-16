@@ -665,14 +665,8 @@ impl MetalDevice {
         }
 
         let arguments = match shader.function.function_type() {
-            MTLFunctionType::Vertex => {
-                unsafe { ArgumentArray::from_ptr(msg_send![reflection.as_ptr(), vertexArguments]) }
-            }
-            MTLFunctionType::Fragment => {
-                unsafe {
-                    ArgumentArray::from_ptr(msg_send![reflection.as_ptr(), fragmentArguments])
-                }
-            }
+            MTLFunctionType::Vertex => reflection.real_vertex_arguments(),
+            MTLFunctionType::Fragment => reflection.real_fragment_arguments(),
             _ => panic!("Unexpected shader function type!"),
         };
 
@@ -1111,6 +1105,23 @@ impl FunctionExt for Function {
         unsafe {
             VertexAttributeArray::from_ptr(msg_send![(*self).as_ptr(), vertexAttributes])
         }
+    }
+}
+
+trait RenderPipelineReflectionExt {
+    // `vertex_arguments()` in `metal-rs` segfaults! This is a better definition.
+    fn real_vertex_arguments(&self) -> ArgumentArray;
+    // `fragment_arguments()` in `metal-rs` segfaults! This is a better definition.
+    fn real_fragment_arguments(&self) -> ArgumentArray;
+}
+
+impl RenderPipelineReflectionExt for RenderPipelineReflectionRef {
+    fn real_vertex_arguments(&self) -> ArgumentArray {
+        unsafe { ArgumentArray::from_ptr(msg_send![self.as_ptr(), vertexArguments]) }
+    }
+
+    fn real_fragment_arguments(&self) -> ArgumentArray {
+        unsafe { ArgumentArray::from_ptr(msg_send![self.as_ptr(), fragmentArguments]) }
     }
 }
 
