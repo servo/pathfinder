@@ -174,12 +174,7 @@ impl Device for MetalDevice {
         }
         descriptor.set_width(size.x() as u64);
         descriptor.set_height(size.y() as u64);
-        /*if format == TextureFormat::R16F {
-            descriptor.set_storage_mode(MTLStorageMode::Private);
-        } else {*/
-            descriptor.set_storage_mode(MTLStorageMode::Managed);
-        //}
-        //descriptor.set_usage(MTLTextureUsage::ShaderRead | MTLTextureUsage::RenderTarget);
+        descriptor.set_storage_mode(MTLStorageMode::Managed);
         descriptor.set_usage(MTLTextureUsage::Unknown);
         MetalTexture { texture: self.device.new_texture(&descriptor), dirty: Cell::new(false) }
     }
@@ -728,11 +723,11 @@ impl MetalDevice {
                     ..
                 } = *fragment_uniforms {
                     self.set_uniform(fragment_index,
-                                    argument_encoder,
-                                    uniform,
-                                    &uniform_data,
-                                    render_command_encoder,
-                                    render_state);
+                                     argument_encoder,
+                                     uniform,
+                                     &uniform_data,
+                                     render_command_encoder,
+                                     render_state);
                 }
             }
         }
