@@ -53,7 +53,7 @@ pub struct MetalDevice {
     layer: CoreAnimationLayer,
     drawable: CoreAnimationDrawable,
     command_queue: CommandQueue,
-    command_buffer: RefCell<Option<CommandBuffer>>,
+    command_buffers: RefCell<Vec<CommandBuffer>>,
     sampler: SamplerState,
     shared_event: SharedEvent,
     shared_event_listener: SharedEventListener,
@@ -94,7 +94,7 @@ impl MetalDevice {
             layer,
             drawable,
             command_queue,
-            command_buffer: RefCell::new(None),
+            command_buffers: RefCell::new(vec![]),
             sampler,
             shared_event,
             shared_event_listener: SharedEventListener::new(),
@@ -104,7 +104,7 @@ impl MetalDevice {
 
     pub fn present_drawable(&mut self) {
         self.begin_commands();
-        self.command_buffer.borrow_mut().as_ref().unwrap().present_drawable(&self.drawable);
+        self.command_buffers.borrow_mut().last().unwrap().present_drawable(&self.drawable);
         self.end_commands();
         self.drawable = self.layer.next_drawable().unwrap().retain();
     }
@@ -462,11 +462,11 @@ impl Device for MetalDevice {
     }
 
     fn begin_commands(&self) {
-        *self.command_buffer.borrow_mut() = Some(self.command_queue.new_command_buffer().retain());
+        self.command_buffers.borrow_mut().push(self.command_queue.new_command_buffer().retain());
     }
 
     fn end_commands(&self) {
-        let command_buffer = self.command_buffer.borrow_mut().take().unwrap();
+        let command_buffer = self.command_buffers.borrow_mut().pop().unwrap();
         command_buffer.commit();
         command_buffer.wait_until_completed();
     }
@@ -544,17 +544,17 @@ impl Device for MetalDevice {
     }
 
     fn begin_timer_query(&self, query: &Arc<MetalTimerQuery>) {
-        self.command_buffer
+        self.command_buffers
             .borrow_mut()
-            .as_ref()
+            .last()
             .unwrap()
             .encode_signal_event(&self.shared_event, query.event_value);
     }
 
     fn end_timer_query(&self, query: &Arc<MetalTimerQuery>) {
-        self.command_buffer
+        self.command_buffers
             .borrow_mut()
-            .as_ref()
+            .last()
             .unwrap()
             .encode_signal_event(&self.shared_event, query.event_value + 1);
     }
@@ -626,8 +626,8 @@ impl MetalDevice {
     }
 
     fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> RenderCommandEncoder {
-        let command_buffer = self.command_buffer.borrow();
-        let command_buffer = command_buffer.as_ref().unwrap();
+        let command_buffers = self.command_buffers.borrow();
+        let command_buffer = command_buffers.last().unwrap();
 
         let mut blit_command_encoder = None;
         for texture in render_state.textures {
@@ -956,8 +956,8 @@ impl MetalDevice {
 
     fn synchronize_texture(&self, texture: &Texture) {
         {
-            let command_buffer = self.command_buffer.borrow();
-            let encoder = command_buffer.as_ref().unwrap().new_blit_command_encoder();
+            let command_buffers = self.command_buffers.borrow();
+            let encoder = command_buffers.last().unwrap().new_blit_command_encoder();
             encoder.synchronize_resource(&texture);
             encoder.end_encoding();
         }

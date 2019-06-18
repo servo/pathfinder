@@ -10,20 +10,27 @@
 
 //! A demo app for Pathfinder using SDL 2.
 
+use foreign_types::ForeignTypeRef;
+use metal::{CAMetalLayer, CoreAnimationLayerRef};
 use nfd::Response;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::{DemoApp, Options};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_gl::GLVersion;
+use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
+use pathfinder_metal::MetalDevice;
 use sdl2::event::{Event as SDLEvent, WindowEvent};
+use sdl2::hint;
 use sdl2::keyboard::Keycode as SDLKeycode;
 use sdl2::video::{GLContext, GLProfile, Window as SDLWindow};
 use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
-use sdl2_sys::{SDL_Event, SDL_UserEvent};
+use sdl2_sys::{SDL_Event, SDL_RenderGetMetalLayer, SDL_UserEvent};
 use std::path::PathBuf;
 use std::ptr;
+
+#[cfg(target_os = "macos")]
+use sdl2::render::Canvas;
 
 #[cfg(not(windows))]
 use jemallocator;
@@ -69,22 +76,36 @@ thread_local! {
 }
 
 struct WindowImpl {
+    #[cfg(not(target_os = "macos"))]
     window: SDLWindow,
+    #[cfg(not(target_os = "macos"))]
+    gl_context: GLContext,
+
+    #[cfg(target_os = "macos")]
+    canvas: Canvas<SDLWindow>,
+    #[cfg(target_os = "macos")]
+    metal_layer: *mut CAMetalLayer,
+
     event_pump: EventPump,
     #[allow(dead_code)]
-    gl_context: GLContext,
     resource_loader: FilesystemResourceLoader,
     selected_file: Option<PathBuf>,
     open_svg_message_type: u32,
 }
 
 impl Window for WindowImpl {
+    #[cfg(not(target_os = "macos"))]
     fn gl_version(&self) -> GLVersion {
         GLVersion::GL3
     }
 
+    #[cfg(target_os = "macos")]
+    fn metal_layer(&self) -> &CoreAnimationLayerRef {
+        unsafe { CoreAnimationLayerRef::from_ptr(self.metal_layer) }
+    }
+
     fn viewport(&self, view: View) -> RectI {
-        let (width, height) = self.window.drawable_size();
+        let (width, height) = self.window().drawable_size();
         let mut width = width as i32;
         let height = height as i32;
         let mut x_offset = 0;
@@ -95,12 +116,22 @@ impl Window for WindowImpl {
         RectI::new(Vector2I::new(x_offset, 0), Vector2I::new(width, height))
     }
 
+    #[cfg(not(target_os = "macos"))]
     fn make_current(&mut self, _view: View) {
-        self.window.gl_make_current(&self.gl_context).unwrap();
+        self.window().gl_make_current(&self.gl_context).unwrap();
     }
 
-    fn present(&mut self) {
-        self.window.gl_swap_window();
+    #[cfg(target_os = "macos")]
+    fn make_current(&mut self, _: View) {}
+
+    #[cfg(not(target_os = "macos"))]
+    fn present(&mut self, device: &mut GLDevice) {
+        self.window().gl_swap_window();
+    }
+
+    #[cfg(target_os = "macos")]
+    fn present(&mut self, device: &mut MetalDevice) {
+        device.present_drawable();
     }
 
     fn resource_loader(&self) -> &dyn ResourceLoader {
@@ -141,6 +172,7 @@ impl Window for WindowImpl {
 }
 
 impl WindowImpl {
+    #[cfg(not(target_os = "macos"))]
     fn new() -> WindowImpl {
         SDL_VIDEO.with(|sdl_video| {
             SDL_EVENT.with(|sdl_event| {
@@ -185,9 +217,55 @@ impl WindowImpl {
         })
     }
 
+    #[cfg(target_os = "macos")]
+    fn new() -> WindowImpl {
+        assert!(hint::set("SDL_RENDER_DRIVER", "metal"));
+
+        SDL_VIDEO.with(|sdl_video| {
+            SDL_EVENT.with(|sdl_event| {
+                let window = sdl_video
+                    .window(
+                        "Pathfinder Demo",
+                        DEFAULT_WINDOW_WIDTH,
+                        DEFAULT_WINDOW_HEIGHT,
+                    )
+                    .opengl()
+                    .resizable()
+                    .allow_highdpi()
+                    .build()
+                    .unwrap();
+
+                let canvas = window.into_canvas().present_vsync().build().unwrap();
+                let metal_layer = unsafe {
+                    SDL_RenderGetMetalLayer(canvas.raw()) as *mut CAMetalLayer
+                };
+
+                let event_pump = SDL_CONTEXT.with(|sdl_context| sdl_context.event_pump().unwrap());
+
+                let resource_loader = FilesystemResourceLoader::locate();
+
+                let open_svg_message_type = unsafe { sdl_event.register_event().unwrap() };
+
+                WindowImpl {
+                    event_pump,
+                    canvas,
+                    metal_layer,
+                    resource_loader,
+                    open_svg_message_type,
+                    selected_file: None,
+                }
+            })
+        })
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn window(&self) -> &SDLWindow { &self.window }
+    #[cfg(target_os = "macos")]
+    fn window(&self) -> &SDLWindow { self.canvas.window() }
+
     fn size(&self) -> WindowSize {
-        let (logical_width, logical_height) = self.window.size();
-        let (drawable_width, _) = self.window.drawable_size();
+        let (logical_width, logical_height) = self.window().size();
+        let (drawable_width, _) = self.window().drawable_size();
         WindowSize {
             logical_size: Vector2I::new(logical_width as i32, logical_height as i32),
             backing_scale_factor: drawable_width as f32 / logical_width as f32,

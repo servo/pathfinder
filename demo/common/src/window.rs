@@ -14,20 +14,30 @@ use gl::types::GLuint;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
-use pathfinder_gl::GLVersion;
+use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_metal::MetalDevice;
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
 
-pub trait Window {
-    fn gl_version(&self) -> GLVersion;
-    fn gl_default_framebuffer(&self) -> GLuint {
-        0
-    }
+#[cfg(target_os = "macos")]
+use metal::CoreAnimationLayerRef;
 
-    fn viewport(&self, view: View) -> RectI;
+pub trait Window {
+    #[cfg(not(target_os = "macos"))]
+    fn gl_version(&self) -> GLVersion;
+    #[cfg(not(target_os = "macos"))]
+    fn gl_default_framebuffer(&self) -> GLuint { 0 }
+    #[cfg(not(target_os = "macos"))]
+    fn present(&mut self, device: &mut GLDevice);
+
+    #[cfg(target_os = "macos")]
+    fn metal_layer(&self) -> &CoreAnimationLayerRef;
+    #[cfg(target_os = "macos")]
+    fn present(&mut self, device: &mut MetalDevice);
+
     fn make_current(&mut self, view: View);
-    fn present(&mut self);
+    fn viewport(&self, view: View) -> RectI;
     fn resource_loader(&self) -> &dyn ResourceLoader;
     fn create_user_event_id(&self) -> u32;
     fn push_user_event(message_type: u32, message_data: u32);

@@ -45,7 +45,7 @@ const GRIDLINE_COUNT: i32 = 10;
 
 impl<W> DemoApp<W> where W: Window {
     pub fn prepare_frame_rendering(&mut self) -> u32 {
-        // Make the GL context current.
+        // Make the context current.
         let view = self.ui_model.mode.view(0);
         self.window.make_current(view);
 
@@ -229,7 +229,7 @@ impl<W> DemoApp<W> where W: Window {
             program: &self.ground_program.program,
             vertex_array: &self.ground_vertex_array.vertex_array,
             primitive: Primitive::Triangles,
-            samplers: &[],
+            textures: &[],
             uniforms: &[
                 (&self.ground_program.transform_uniform,
                  UniformData::from_transform_3d(&transform)),

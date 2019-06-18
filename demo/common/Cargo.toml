@@ -7,6 +7,7 @@ authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 [dependencies]
 clap = "2.32"
 gl = "0.6"
+metal = "0.14"
 rayon = "1.0"
 usvg = "0.4"
 
@@ -27,6 +28,9 @@ path = "../../gl"
 
 [dependencies.pathfinder_gpu]
 path = "../../gpu"
+
+[dependencies.pathfinder_metal]
+path = "../../metal"
 
 [dependencies.pathfinder_renderer]
 path = "../../renderer"

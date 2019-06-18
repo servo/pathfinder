@@ -26,7 +26,6 @@ use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::color::ColorU;
-use pathfinder_gl::GLDevice;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
@@ -43,6 +42,11 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use usvg::{Options as UsvgOptions, Tree};
+
+#[cfg(not(target_os = "macos"))]
+use pathfinder_gl::GLDevice as DeviceImpl;
+#[cfg(target_os = "macos")]
+use pathfinder_metal::MetalDevice as DeviceImpl;
 
 static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
 
@@ -109,22 +113,31 @@ pub struct DemoApp<W> where W: Window {
     build_time: Option<Duration>,
 
     ui_model: DemoUIModel,
-    ui_presenter: DemoUIPresenter<GLDevice>,
+    ui_presenter: DemoUIPresenter<DeviceImpl>,
 
     scene_proxy: SceneProxy,
-    renderer: Renderer<GLDevice>,
+    renderer: Renderer<DeviceImpl>,
 
-    scene_framebuffer: Option<<GLDevice as Device>::Framebuffer>,
+    scene_framebuffer: Option<<DeviceImpl as Device>::Framebuffer>,
 
-    ground_program: GroundProgram<GLDevice>,
-    ground_vertex_array: GroundVertexArray<GLDevice>,
+    ground_program: GroundProgram<DeviceImpl>,
+    ground_vertex_array: GroundVertexArray<DeviceImpl>,
 }
 
 impl<W> DemoApp<W> where W: Window {
     pub fn new(window: W, window_size: WindowSize, mut options: Options) -> DemoApp<W> {
         let expire_message_event_id = window.create_user_event_id();
 
-        let device = GLDevice::new(window.gl_version(), window.gl_default_framebuffer());
+        let device;
+        #[cfg(target_os = "macos")]
+        {
+            device = DeviceImpl::new(window.metal_layer());
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            device = DeviceImpl::new(window.gl_version(), window.gl_default_framebuffer());
+        }
+
         let resources = window.resource_loader();
 
         // Read command line options.
@@ -481,7 +494,7 @@ impl<W> DemoApp<W> where W: Window {
 
         self.renderer.device.end_commands();
 
-        self.window.present();
+        self.window.present(&mut self.renderer.device);
         self.frame_counter += 1;
     }
 
