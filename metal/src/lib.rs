@@ -19,6 +19,8 @@ extern crate objc;
 
 use block::{Block, ConcreteBlock, RcBlock};
 use cocoa::foundation::{NSRange, NSUInteger};
+use core_foundation::base::TCFType;
+use core_foundation::string::{CFString, CFStringRef};
 use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{self, Argument, ArgumentEncoder, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
 use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, Function, Library};
@@ -1201,9 +1203,13 @@ impl DeviceExt for metal::Device {
                                                        options:options
                                                     reflection:&mut reflection_ptr
                                                          error:&mut error_ptr];
+            if !error_ptr.is_null() {
+                let description: CFStringRef = msg_send![error_ptr, description];
+                panic!("Render pipeline state construction failed: {}",
+                       CFString::wrap_under_get_rule(description).to_string());
+            }
             assert!(!render_pipeline_state_ptr.is_null());
             assert!(!reflection_ptr.is_null());
-            assert!(error_ptr.is_null());
             (RenderPipelineState::from_ptr(render_pipeline_state_ptr),
              RenderPipelineReflection::from_ptr(msg_send![reflection_ptr, retain]))
         }

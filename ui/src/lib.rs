@@ -613,7 +613,7 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
+            attr_type: VertexAttrType::I16,
             stride: DEBUG_TEXTURE_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
@@ -622,7 +622,7 @@ impl<D> DebugTextureVertexArray<D> where D: Device {
         device.configure_vertex_attr(&vertex_array, &tex_coord_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
+            attr_type: VertexAttrType::I16,
             stride: DEBUG_TEXTURE_VERTEX_SIZE,
             offset: 4,
             divisor: 0,
@@ -651,7 +651,7 @@ impl<D> DebugSolidVertexArray<D> where D: Device {
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
+            attr_type: VertexAttrType::I16,
             stride: DEBUG_SOLID_VERTEX_SIZE,
             offset: 0,
             divisor: 0,
