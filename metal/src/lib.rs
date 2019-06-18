@@ -17,6 +17,7 @@ extern crate bitflags;
 #[macro_use]
 extern crate objc;
 
+use block::{Block, ConcreteBlock, RcBlock};
 use cocoa::foundation::{NSRange, NSUInteger};
 use foreign_types::{ForeignType, ForeignTypeRef};
 use metal::{self, Argument, ArgumentEncoder, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
@@ -29,7 +30,7 @@ use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor
 use metal::{RenderPipelineReflection, RenderPipelineReflectionRef, RenderPipelineState, SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
 use metal::{TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
 use metal::{VertexDescriptor, VertexDescriptorRef};
-use objc::runtime::Object;
+use objc::runtime::{Class, Object};
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
@@ -42,7 +43,8 @@ use std::mem;
 use std::ptr;
 use std::rc::Rc;
 use std::slice;
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 const FIRST_VERTEX_BUFFER_INDEX: u64 = 1;
 
@@ -53,6 +55,9 @@ pub struct MetalDevice {
     command_queue: CommandQueue,
     command_buffer: RefCell<Option<CommandBuffer>>,
     sampler: SamplerState,
+    shared_event: SharedEvent,
+    shared_event_listener: SharedEventListener,
+    next_timer_query_event_value: Cell<u64>,
 }
 
 pub struct MetalProgram {
@@ -82,6 +87,8 @@ impl MetalDevice {
         sampler_descriptor.set_address_mode_t(MTLSamplerAddressMode::ClampToEdge);
         let sampler = device.new_sampler(&sampler_descriptor);
 
+        let shared_event = device.new_shared_event();
+
         MetalDevice {
             device,
             layer,
@@ -89,6 +96,9 @@ impl MetalDevice {
             command_queue,
             command_buffer: RefCell::new(None),
             sampler,
+            shared_event,
+            shared_event_listener: SharedEventListener::new(),
+            next_timer_query_event_value: Cell::new(1),
         }
     }
 
@@ -124,8 +134,11 @@ pub struct MetalTexture {
     dirty: Cell<bool>,
 }
 
-// TODO(pcwalton): Use `MTLEvent`s.
-pub struct MetalTimerQuery;
+pub struct MetalTimerQuery {
+    event_value: u64,
+    start_time: Cell<Option<Instant>>,
+    end_time: Cell<Option<Instant>>,
+}
 
 #[derive(Clone)]
 pub struct MetalUniform {
@@ -158,7 +171,7 @@ impl Device for MetalDevice {
     type Program = MetalProgram;
     type Shader = MetalShader;
     type Texture = MetalTexture;
-    type TimerQuery = MetalTimerQuery;
+    type TimerQuery = Arc<MetalTimerQuery>;
     type Uniform = MetalUniform;
     type VertexArray = MetalVertexArray;
     type VertexAttr = VertexAttribute;
@@ -502,11 +515,56 @@ impl Device for MetalDevice {
         encoder.end_encoding();
     }
 
-    fn create_timer_query(&self) -> MetalTimerQuery { MetalTimerQuery }
-    fn begin_timer_query(&self, _: &MetalTimerQuery) {}
-    fn end_timer_query(&self, query: &MetalTimerQuery) {}
-    fn timer_query_is_available(&self, query: &MetalTimerQuery) -> bool { true }
-    fn get_timer_query(&self, query: &MetalTimerQuery) -> Duration { Duration::from_secs(0) }
+    fn create_timer_query(&self) -> Arc<MetalTimerQuery> {
+        let event_value = self.next_timer_query_event_value.get();
+        self.next_timer_query_event_value.set(event_value + 2);
+
+        let query = Arc::new(MetalTimerQuery {
+            event_value, 
+            start_time: Cell::new(None),
+            end_time: Cell::new(None),
+        });
+
+        let captured_query = query.clone();
+        let start_block = ConcreteBlock::new(move |_: *mut Object, _: u64| {
+            captured_query.start_time.set(Some(Instant::now()))
+        });
+        let captured_query = query.clone();
+        let end_block = ConcreteBlock::new(move |_: *mut Object, _: u64| {
+            captured_query.end_time.set(Some(Instant::now()))
+        });
+        self.shared_event.notify_listener_at_value(&self.shared_event_listener,
+                                                   event_value,
+                                                   start_block.copy());
+        self.shared_event.notify_listener_at_value(&self.shared_event_listener,
+                                                   event_value + 1,
+                                                   end_block.copy());
+
+        query
+    }
+
+    fn begin_timer_query(&self, query: &Arc<MetalTimerQuery>) {
+        self.command_buffer
+            .borrow_mut()
+            .as_ref()
+            .unwrap()
+            .encode_signal_event(&self.shared_event, query.event_value);
+    }
+
+    fn end_timer_query(&self, query: &Arc<MetalTimerQuery>) {
+        self.command_buffer
+            .borrow_mut()
+            .as_ref()
+            .unwrap()
+            .encode_signal_event(&self.shared_event, query.event_value + 1);
+    }
+
+    fn get_timer_query(&self, query: &Arc<MetalTimerQuery>) -> Option<Duration> {
+        match (query.start_time.get(), query.end_time.get()) {
+            (Some(start_time), Some(end_time)) => Some(end_time - start_time),
+            _ => None,
+        }
+    }
 
     #[inline]
     fn create_shader(
@@ -1012,6 +1070,62 @@ impl ArgumentArray {
     }
 }
 
+struct SharedEvent(*mut Object);
+
+impl Drop for SharedEvent {
+    fn drop(&mut self) {
+        unsafe { msg_send![self.0, release] }
+    }
+}
+
+impl SharedEvent {
+    fn notify_listener_at_value(&self,
+                                listener: &SharedEventListener,
+                                value: u64,
+                                block: RcBlock<(*mut Object, u64), ()>) {
+        unsafe {
+            // If the block doesn't have a signature, this segfaults.
+            let block = &*block as
+                *const Block<(*mut Object, u64), ()> as
+                *mut Block<(*mut Object, u64), ()> as
+                *mut BlockBase<(*mut Object, u64), ()>;
+            (*block).flags |= BLOCK_HAS_SIGNATURE | BLOCK_HAS_COPY_DISPOSE;
+            (*block).extra = &BLOCK_EXTRA;
+            msg_send![self.0, notifyListener:listener.0 atValue:value block:block];
+            mem::forget(block);
+        }
+
+        extern "C" fn dtor(_: *mut BlockBase<(*mut Object, u64), ()>) {}
+
+        static mut SIGNATURE: &[u8] = b"v16@?0Q8\0";
+        static mut SIGNATURE_PTR: *const i8 = unsafe { &SIGNATURE[0] as *const u8 as *const i8 };
+        static mut BLOCK_EXTRA: BlockExtra<(*mut Object, u64), ()> = BlockExtra {
+            unknown0: 0 as *mut i32,
+            unknown1: 0 as *mut i32,
+            unknown2: 0 as *mut i32,
+            dtor: dtor,
+            signature: unsafe { &SIGNATURE_PTR },
+        };
+    }
+}
+
+struct SharedEventListener(*mut Object);
+
+impl Drop for SharedEventListener {
+    fn drop(&mut self) {
+        unsafe { msg_send![self.0, release] }
+    }
+}
+
+impl SharedEventListener {
+    fn new() -> SharedEventListener {
+        unsafe {
+            let listener: *mut Object = msg_send![class!(MTLSharedEventListener), alloc];
+            SharedEventListener(msg_send![listener, init])
+        }
+    }
+}
+
 struct VertexAttributeArray(*mut Object);
 
 impl Drop for VertexAttributeArray {
@@ -1049,6 +1163,18 @@ impl CoreAnimationLayerExt for CoreAnimationLayer {
     }
 }
 
+trait CommandBufferExt {
+    fn encode_signal_event(&self, event: &SharedEvent, value: u64);
+}
+
+impl CommandBufferExt for CommandBuffer {
+    fn encode_signal_event(&self, event: &SharedEvent, value: u64) {
+        unsafe {
+            msg_send![self.as_ptr(), encodeSignalEvent:event.0 value:value]
+        }
+    }
+}
+
 trait DeviceExt {
     // `new_render_pipeline_state_with_reflection()` in `metal-rs` doesn't correctly initialize the
     // `reflection` argument. This is a better definition.
@@ -1057,6 +1183,7 @@ trait DeviceExt {
                                                       options: MTLPipelineOption)
                                                       -> (RenderPipelineState,
                                                           RenderPipelineReflection);
+    fn new_shared_event(&self) -> SharedEvent;
 }
 
 impl DeviceExt for metal::Device {
@@ -1080,6 +1207,10 @@ impl DeviceExt for metal::Device {
             (RenderPipelineState::from_ptr(render_pipeline_state_ptr),
              RenderPipelineReflection::from_ptr(msg_send![reflection_ptr, retain]))
         }
+    }
+
+    fn new_shared_event(&self) -> SharedEvent {
+        unsafe { SharedEvent(msg_send![self.as_ptr(), newSharedEvent]) }
     }
 }
 
@@ -1204,4 +1335,29 @@ impl Retain for VertexDescriptorRef {
     fn retain(&self) -> VertexDescriptor {
         unsafe { VertexDescriptor::from_ptr(msg_send![self.as_ptr(), retain]) }
     }
+}
+
+// Extra block stuff not supported by `block`
+
+const BLOCK_HAS_COPY_DISPOSE: i32 = 0x02000000;
+const BLOCK_HAS_SIGNATURE:    i32 = 0x40000000;
+
+#[repr(C)]
+struct BlockBase<A, R> {
+    isa: *const Class,                                      // 0x00
+    flags: i32,                                             // 0x08
+    _reserved: i32,                                         // 0x0c
+    invoke: unsafe extern fn(*mut Block<A, R>, ...) -> R,   // 0x10
+    extra: *const BlockExtra<A, R>,                         // 0x18
+}
+
+type BlockExtraDtor<A, R> = extern "C" fn(*mut BlockBase<A, R>);
+
+#[repr(C)]
+struct BlockExtra<A, R> {
+    unknown0: *mut i32,             // 0x00
+    unknown1: *mut i32,             // 0x08
+    unknown2: *mut i32,             // 0x10
+    dtor: BlockExtraDtor<A, R>,     // 0x18
+    signature: *const *const i8,    // 0x20
 }

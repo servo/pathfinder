@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 bitflags = "1.0"
+block = "0.1"
 cocoa = "0.18"
 foreign-types = "0.3"
 metal = "0.14"

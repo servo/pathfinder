@@ -81,8 +81,7 @@ pub trait Device: Sized {
     fn create_timer_query(&self) -> Self::TimerQuery;
     fn begin_timer_query(&self, query: &Self::TimerQuery);
     fn end_timer_query(&self, query: &Self::TimerQuery);
-    fn timer_query_is_available(&self, query: &Self::TimerQuery) -> bool;
-    fn get_timer_query(&self, query: &Self::TimerQuery) -> Duration;
+    fn get_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration>;
 
     fn create_texture_from_png(&self, resources: &dyn ResourceLoader, name: &str) -> Self::Texture {
         let data = resources.slurp(&format!("textures/{}.png", name)).unwrap();

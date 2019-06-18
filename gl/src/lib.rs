@@ -590,20 +590,16 @@ impl Device for GLDevice {
     }
 
     #[inline]
-    fn timer_query_is_available(&self, query: &Self::TimerQuery) -> bool {
+    fn get_timer_query(&self, query: &Self::TimerQuery) -> Option<Duration> {
         unsafe {
             let mut result = 0;
             gl::GetQueryObjectiv(query.gl_query, gl::QUERY_RESULT_AVAILABLE, &mut result); ck();
-            result != gl::FALSE as GLint
-        }
-    }
-
-    #[inline]
-    fn get_timer_query(&self, query: &Self::TimerQuery) -> Duration {
-        unsafe {
+            if result == gl::FALSE as GLint {
+                return None;
+            }
             let mut result = 0;
             gl::GetQueryObjectui64v(query.gl_query, gl::QUERY_RESULT, &mut result); ck();
-            Duration::from_nanos(result)
+            Some(Duration::from_nanos(result))
         }
     }
 
