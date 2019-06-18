@@ -470,7 +470,6 @@ impl Device for MetalDevice {
     fn end_commands(&self) {
         let command_buffer = self.command_buffers.borrow_mut().pop().unwrap();
         command_buffer.commit();
-        command_buffer.wait_until_completed();
     }
 
     fn draw_arrays(&self, index_count: u32, render_state: &RenderState<MetalDevice>) {

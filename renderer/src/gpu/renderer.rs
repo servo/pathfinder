@@ -262,6 +262,7 @@ where
                 self.draw_buffered_fills();
             }
             RenderCommand::SolidTile(ref solid_tiles) => {
+                /*
                 let pixels =
                     self.device.read_pixels(&RenderTarget::Framebuffer(&self.mask_framebuffer),
                                             RectI::new(Vector2I::default(),
@@ -275,6 +276,7 @@ where
                         }
                     }
                 }
+                */
 
                 let count = solid_tiles.len();
                 self.stats.solid_tile_count += count;
@@ -421,9 +423,6 @@ where
             return;
         }
 
-        let timer_query = self.allocate_timer_query();
-        self.device.begin_timer_query(&timer_query);
-
         self.stats.fill_count += fills.len();
 
         while !fills.is_empty() {
@@ -434,9 +433,6 @@ where
                 self.draw_buffered_fills();
             }
         }
-
-        self.device.end_timer_query(&timer_query);
-        self.current_timers.stage_0.push(timer_query);
     }
 
     fn draw_buffered_fills(&mut self) {
@@ -456,6 +452,9 @@ where
                 FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS) {
             clear_color = Some(ColorF::default());
         };
+
+        let timer_query = self.allocate_timer_query();
+        self.device.begin_timer_query(&timer_query);
 
         debug_assert!(self.buffered_fills.len() <= u32::MAX as usize);
         self.device.draw_elements_instanced(6, self.buffered_fills.len() as u32, &RenderState {
@@ -484,6 +483,9 @@ where
                 ..RenderOptions::default()
             },
         });
+
+        self.device.end_timer_query(&timer_query);
+        self.current_timers.stage_0.push(timer_query);
 
         self.framebuffer_flags.insert(FramebufferFlags::MUST_PRESERVE_MASK_FRAMEBUFFER_CONTENTS);
         self.buffered_fills.clear();
