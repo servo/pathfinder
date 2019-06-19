@@ -74,7 +74,7 @@ where
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
+            attr_type: VertexAttrType::I16,
             stride: 4,
             offset: 0,
             divisor: 0,

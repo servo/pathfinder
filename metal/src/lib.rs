@@ -708,20 +708,21 @@ impl MetalDevice {
             _ => panic!("Unexpected shader function type!"),
         };
 
-        let mut has_buffer = false;
+        let mut has_descriptor_set = false;
+        println!("argument count={}", arguments.len());
         for argument_index in 0..arguments.len() {
-            if let MTLArgumentType::Buffer = arguments.object_at(argument_index).type_() {
-                has_buffer = true;
+            let argument = arguments.object_at(argument_index);
+            if argument.name() == "spvDescriptorSet0" {
+                has_descriptor_set = true;
                 break;
             }
         }
-        if !has_buffer {
+        if !has_descriptor_set {
             *uniforms = ShaderUniforms::NoUniforms;
             return;
         }
 
         let (encoder, argument) = shader.function.new_argument_encoder_with_reflection(0);
-
         match argument.buffer_data_type() {
             MTLDataType::Struct => {}
             data_type => {
