@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 bitflags = "1.0"
+byteorder = "1.3"
 block = "0.1"
 cocoa = "0.18"
 core-foundation = "0.6"

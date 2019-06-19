@@ -18,6 +18,7 @@ extern crate bitflags;
 extern crate objc;
 
 use block::{Block, ConcreteBlock, RcBlock};
+use byteorder::{NativeEndian, WriteBytesExt};
 use cocoa::foundation::{NSRange, NSUInteger};
 use core_foundation::base::TCFType;
 use core_foundation::string::{CFString, CFStringRef};
@@ -124,11 +125,7 @@ pub struct MetalShader {
 enum ShaderUniforms {
     Unknown,
     NoUniforms,
-    Uniforms {
-        encoder: ArgumentEncoder,
-        struct_type: StructType,
-        buffer: Buffer,
-    }
+    Uniforms { encoder: ArgumentEncoder, struct_type: StructType }
 }
 
 pub struct MetalTexture {
@@ -145,7 +142,6 @@ pub struct MetalTimerQuery {
 #[derive(Clone)]
 pub struct MetalUniform {
     indices: RefCell<Option<MetalUniformIndices>>,
-    buffer: Option<Buffer>,
     name: String,
 }
 
@@ -259,6 +255,7 @@ impl Device for MetalDevice {
 
     fn get_uniform(&self, _: &Self::Program, name: &str, uniform_type: UniformType)
                    -> MetalUniform {
+        /*
         let buffer_size = match uniform_type {
             UniformType::Int => Some(4),
             UniformType::Mat4 => Some(4 * 4 * 4),
@@ -270,7 +267,8 @@ impl Device for MetalDevice {
             self.device.new_buffer(buffer_size, MTLResourceOptions::CPUCacheModeDefaultCache |
                 MTLResourceOptions::StorageModeManaged)
         });
-        MetalUniform { indices: RefCell::new(None), buffer, name: name.to_owned() }
+        */
+        MetalUniform { indices: RefCell::new(None), name: name.to_owned() }
     }
 
     fn configure_vertex_attr(&self,
@@ -690,22 +688,8 @@ impl MetalDevice {
         }
 
         self.set_uniforms(&encoder, render_state);
-
-        let vertex_uniforms = render_state.program.vertex.uniforms.borrow();
-        let fragment_uniforms = render_state.program.fragment.uniforms.borrow();
-        if let ShaderUniforms::Uniforms { ref buffer, .. } = *vertex_uniforms {
-            encoder.set_vertex_buffer(0, Some(buffer), 0);
-            encoder.use_resource(buffer, MTLResourceUsage::Read);
-        }
-        if let ShaderUniforms::Uniforms { ref buffer, .. } = *fragment_uniforms {
-            encoder.set_fragment_buffer(0, Some(buffer), 0);
-            encoder.use_resource(buffer, MTLResourceUsage::Read);
-        }
-
         encoder.set_render_pipeline_state(&render_pipeline_state);
-
         self.set_depth_stencil_state(&encoder, render_state);
-
         encoder
     }
 
@@ -745,21 +729,91 @@ impl MetalDevice {
             }
         }
         let struct_type = argument.buffer_struct_type().retain();
+        *uniforms = ShaderUniforms::Uniforms { encoder, struct_type };
+    }
+
+    fn create_argument_buffer(&self, shader: &MetalShader) -> Option<Buffer> {
+        let uniforms = shader.uniforms.borrow();
+        let encoder = match *uniforms {
+            ShaderUniforms::Unknown => unreachable!(),
+            ShaderUniforms::NoUniforms => return None,
+            ShaderUniforms::Uniforms { ref encoder, .. } => encoder,
+        };
 
         let buffer_options = MTLResourceOptions::CPUCacheModeDefaultCache |
             MTLResourceOptions::StorageModeManaged;
         let buffer = self.device.new_buffer(encoder.encoded_length(), buffer_options);
         encoder.set_argument_buffer(&buffer, 0);
-
-        *uniforms = ShaderUniforms::Uniforms { encoder, struct_type, buffer };
+        Some(buffer)
     }
 
     fn set_uniforms(&self,
                     render_command_encoder: &RenderCommandEncoderRef,
                     render_state: &RenderState<MetalDevice>) {
+        let vertex_argument_buffer = self.create_argument_buffer(&render_state.program.vertex);
+        let fragment_argument_buffer = self.create_argument_buffer(&render_state.program.fragment);
+
         let vertex_uniforms = render_state.program.vertex.uniforms.borrow();
         let fragment_uniforms = render_state.program.fragment.uniforms.borrow();
+
+        let (mut have_vertex_uniforms, mut have_fragment_uniforms) = (false, false);
+        if let ShaderUniforms::Uniforms { ref encoder, .. } = *vertex_uniforms {
+            have_vertex_uniforms = true;
+            let vertex_argument_buffer = vertex_argument_buffer.as_ref().unwrap();
+            render_command_encoder.use_resource(vertex_argument_buffer, MTLResourceUsage::Read);
+            render_command_encoder.set_vertex_buffer(0, Some(vertex_argument_buffer), 0);
+        }
+        if let ShaderUniforms::Uniforms { ref encoder, .. } = *fragment_uniforms {
+            have_fragment_uniforms = true;
+            let fragment_argument_buffer = fragment_argument_buffer.as_ref().unwrap();
+            render_command_encoder.use_resource(fragment_argument_buffer, MTLResourceUsage::Read);
+            render_command_encoder.set_fragment_buffer(0, Some(fragment_argument_buffer), 0);
+        }
+
+        if !have_vertex_uniforms && !have_fragment_uniforms {
+            return;
+        }
+
+        let (mut uniform_buffer_data, mut uniform_buffer_ranges) = (vec![], vec![]);
         for &(uniform, uniform_data) in render_state.uniforms.iter() {
+            let start_index = uniform_buffer_data.len();
+            match uniform_data {
+                UniformData::Int(value) => {
+                    uniform_buffer_data.write_i32::<NativeEndian>(value).unwrap()
+                }
+                UniformData::Mat4(matrix) => {
+                    for column in &matrix {
+                        uniform_buffer_data.write_f32::<NativeEndian>(column.x()).unwrap();
+                        uniform_buffer_data.write_f32::<NativeEndian>(column.y()).unwrap();
+                        uniform_buffer_data.write_f32::<NativeEndian>(column.z()).unwrap();
+                        uniform_buffer_data.write_f32::<NativeEndian>(column.w()).unwrap();
+                    }
+                }
+                UniformData::Vec2(vector) => {
+                    uniform_buffer_data.write_f32::<NativeEndian>(vector.x()).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(vector.y()).unwrap();
+                }
+                UniformData::Vec4(vector) => {
+                    uniform_buffer_data.write_f32::<NativeEndian>(vector.x()).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(vector.y()).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(vector.z()).unwrap();
+                    uniform_buffer_data.write_f32::<NativeEndian>(vector.w()).unwrap();
+                }
+                UniformData::TextureUnit(_) => {}
+            }
+            let end_index = uniform_buffer_data.len();
+            uniform_buffer_ranges.push(start_index..end_index);
+        }
+
+        let buffer_options = MTLResourceOptions::CPUCacheModeWriteCombined |
+            MTLResourceOptions::StorageModeManaged;
+        let data_buffer = self.device
+                              .new_buffer_with_data(uniform_buffer_data.as_ptr() as *const _,
+                                                    uniform_buffer_data.len() as u64,
+                                                    buffer_options);
+
+        for (&(uniform, ref uniform_data), buffer_range) in
+                render_state.uniforms.iter().zip(uniform_buffer_ranges.iter()) {
             self.populate_uniform_indices_if_necessary(uniform, &render_state.program);
             let indices = uniform.indices.borrow_mut();
             let indices = indices.as_ref().unwrap();
@@ -771,7 +825,9 @@ impl MetalDevice {
                     self.set_uniform(vertex_index,
                                      argument_encoder,
                                      uniform,
-                                     &uniform_data,
+                                     uniform_data,
+                                     &data_buffer,
+                                     buffer_range.start as u64,
                                      render_command_encoder,
                                      render_state);
                 }
@@ -784,12 +840,16 @@ impl MetalDevice {
                     self.set_uniform(fragment_index,
                                      argument_encoder,
                                      uniform,
-                                     &uniform_data,
+                                     uniform_data,
+                                     &data_buffer,
+                                     buffer_range.start as u64,
                                      render_command_encoder,
                                      render_state);
                 }
             }
         }
+
+        render_command_encoder.use_resource(&data_buffer, MTLResourceUsage::Read);
     }
 
     fn set_uniform(&self,
@@ -797,6 +857,8 @@ impl MetalDevice {
                    argument_encoder: &ArgumentEncoder,
                    uniform: &MetalUniform,
                    uniform_data: &UniformData,
+                   buffer: &Buffer,
+                   buffer_offset: u64,
                    render_command_encoder: &RenderCommandEncoderRef,
                    render_state: &RenderState<MetalDevice>) {
         match *uniform_data {
@@ -810,20 +872,7 @@ impl MetalDevice {
                 }
                 render_command_encoder.use_resource(&texture.texture, resource_usage);
             }
-            _ => {
-                let buffer = uniform.buffer.as_ref().expect("No buffer allocated for uniform!");
-                let buffer_len = buffer.length();
-                let slice = uniform_data.as_bytes().unwrap();
-                assert_eq!(buffer_len as usize, slice.len());
-                unsafe {
-                    ptr::copy_nonoverlapping(slice.as_ptr() as *const _,
-                                             buffer.contents(),
-                                             slice.len());
-                }
-                buffer.did_modify_range(NSRange::new(0, buffer_len));
-                argument_encoder.set_buffer(buffer, 0, argument_index.main);
-                render_command_encoder.use_resource(buffer, MTLResourceUsage::Read);
-            }
+            _ => argument_encoder.set_buffer(buffer, buffer_offset, argument_index.main),
         }
     }
 
