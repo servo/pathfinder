@@ -255,19 +255,6 @@ impl Device for MetalDevice {
 
     fn get_uniform(&self, _: &Self::Program, name: &str, uniform_type: UniformType)
                    -> MetalUniform {
-        /*
-        let buffer_size = match uniform_type {
-            UniformType::Int => Some(4),
-            UniformType::Mat4 => Some(4 * 4 * 4),
-            UniformType::Vec2 => Some(4 * 2),
-            UniformType::Vec4 => Some(4 * 4),
-            UniformType::Sampler => None,
-        };
-        let buffer = buffer_size.map(|buffer_size| {
-            self.device.new_buffer(buffer_size, MTLResourceOptions::CPUCacheModeDefaultCache |
-                MTLResourceOptions::StorageModeManaged)
-        });
-        */
         MetalUniform { indices: RefCell::new(None), name: name.to_owned() }
     }
 
@@ -851,6 +838,15 @@ impl MetalDevice {
         }
 
         render_command_encoder.use_resource(&data_buffer, MTLResourceUsage::Read);
+
+        if let Some(vertex_argument_buffer) = vertex_argument_buffer {
+            let range = NSRange::new(0, vertex_argument_buffer.length());
+            vertex_argument_buffer.did_modify_range(range);
+        }
+        if let Some(fragment_argument_buffer) = fragment_argument_buffer {
+            let range = NSRange::new(0, fragment_argument_buffer.length());
+            fragment_argument_buffer.did_modify_range(range);
+        }
     }
 
     fn set_uniform(&self,
