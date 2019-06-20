@@ -22,8 +22,8 @@ use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, Device, Primitive};
-use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, UniformData, UniformType};
-use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{RenderOptions, RenderState, RenderTarget, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use serde_json;
 use std::mem;
@@ -575,12 +575,10 @@ struct DebugTextureProgram<D> where D: Device {
 impl<D> DebugTextureProgram<D> where D: Device {
     fn new(device: &D, resources: &dyn ResourceLoader) -> DebugTextureProgram<D> {
         let program = device.create_program(resources, "debug_texture");
-        let framebuffer_size_uniform = device.get_uniform(&program,
-                                                          "FramebufferSize",
-                                                          UniformType::Vec2);
-        let texture_size_uniform = device.get_uniform(&program, "TextureSize", UniformType::Vec2);
-        let texture_uniform = device.get_uniform(&program, "Texture", UniformType::Sampler);
-        let color_uniform = device.get_uniform(&program, "Color", UniformType::Vec4);
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let texture_size_uniform = device.get_uniform(&program, "TextureSize");
+        let texture_uniform = device.get_uniform(&program, "Texture");
+        let color_uniform = device.get_uniform(&program, "Color");
         DebugTextureProgram {
             program,
             framebuffer_size_uniform,
@@ -671,10 +669,8 @@ struct DebugSolidProgram<D> where D: Device {
 impl<D> DebugSolidProgram<D> where D: Device {
     fn new(device: &D, resources: &dyn ResourceLoader) -> DebugSolidProgram<D> {
         let program = device.create_program(resources, "debug_solid");
-        let framebuffer_size_uniform = device.get_uniform(&program,
-                                                          "FramebufferSize",
-                                                          UniformType::Vec2);
-        let color_uniform = device.get_uniform(&program, "Color", UniformType::Vec4);
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let color_uniform = device.get_uniform(&program, "Color");
         DebugSolidProgram { program, framebuffer_size_uniform, color_uniform }
     }
 }

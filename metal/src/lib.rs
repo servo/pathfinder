@@ -23,23 +23,30 @@ use cocoa::foundation::{NSRange, NSUInteger};
 use core_foundation::base::TCFType;
 use core_foundation::string::{CFString, CFStringRef};
 use foreign_types::{ForeignType, ForeignTypeRef};
-use metal::{self, Argument, ArgumentEncoder, Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions};
-use metal::{CoreAnimationDrawable, CoreAnimationDrawableRef, CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, Function, Library};
-use metal::{MTLArgument, MTLArgumentEncoder, MTLArgumentType, MTLBlendFactor, MTLClearColor, MTLColorWriteMask, MTLCompareFunction, MTLDataType, MTLDevice, MTLFunctionType, MTLIndexType, MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
-use metal::{MTLRenderPipelineReflection, MTLRenderPipelineState, MTLResourceOptions, MTLResourceUsage, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
-use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType};
-use metal::{MTLTextureUsage, MTLVertexFormat, MTLVertexStepFunction, MTLViewport, RenderCommandEncoder, RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
+use metal::{self, Argument, ArgumentEncoder, Buffer, CommandBuffer, CommandBufferRef};
+use metal::{CommandQueue, CompileOptions, CoreAnimationDrawable, CoreAnimationDrawableRef};
+use metal::{CoreAnimationLayer, CoreAnimationLayerRef, DepthStencilDescriptor, Function, Library};
+use metal::{MTLArgument, MTLArgumentEncoder, MTLBlendFactor, MTLClearColor, MTLColorWriteMask};
+use metal::{MTLCompareFunction, MTLDataType, MTLDevice, MTLFunctionType, MTLIndexType};
+use metal::{MTLLoadAction, MTLOrigin, MTLPixelFormat, MTLPrimitiveType, MTLRegion};
+use metal::{MTLRenderPipelineReflection, MTLRenderPipelineState, MTLResourceOptions};
+use metal::{MTLResourceUsage, MTLSamplerAddressMode, MTLSamplerMinMagFilter, MTLSize};
+use metal::{MTLStencilOperation, MTLStorageMode, MTLStoreAction, MTLTextureType, MTLTextureUsage};
+use metal::{MTLVertexFormat, MTLVertexStepFunction, MTLViewport, RenderCommandEncoder};
+use metal::{RenderCommandEncoderRef, RenderPassDescriptor, RenderPassDescriptorRef};
 use metal::{RenderPipelineColorAttachmentDescriptorRef, RenderPipelineDescriptor};
-use metal::{RenderPipelineReflection, RenderPipelineReflectionRef, RenderPipelineState, SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType, StructTypeRef};
-use metal::{TextureDescriptor, Texture, TextureRef, VertexAttribute, VertexAttributeRef};
-use metal::{VertexDescriptor, VertexDescriptorRef};
+use metal::{RenderPipelineReflection, RenderPipelineReflectionRef, RenderPipelineState};
+use metal::{SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef, StructType};
+use metal::{StructTypeRef, TextureDescriptor, Texture, TextureRef, VertexAttribute};
+use metal::{VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
 use objc::runtime::{Class, Object};
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc, Device};
-use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData, TextureFormat, UniformData, UniformType};
-use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData};
+use pathfinder_gpu::{TextureFormat, UniformData, VertexAttrClass};
+use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::F32x4;
 use std::cell::{Cell, RefCell};
 use std::mem;
@@ -204,9 +211,7 @@ impl Device for MetalDevice {
         texture
     }
 
-    fn create_shader_from_source(&self, name: &str, source: &[u8], kind: ShaderKind)
-                                 -> MetalShader {
-        println!("create_shader_from_source({}, {:?})", name, kind);
+    fn create_shader_from_source(&self, _: &str, source: &[u8], _: ShaderKind) -> MetalShader {
         let source = String::from_utf8(source.to_vec()).expect("Source wasn't valid UTF-8!");
 
         let compile_options = CompileOptions::new();
@@ -260,8 +265,7 @@ impl Device for MetalDevice {
         None
     }
 
-    fn get_uniform(&self, _: &Self::Program, name: &str, uniform_type: UniformType)
-                   -> MetalUniform {
+    fn get_uniform(&self, _: &Self::Program, name: &str) -> MetalUniform {
         MetalUniform { indices: RefCell::new(None), name: name.to_owned() }
     }
 
@@ -272,7 +276,6 @@ impl Device for MetalDevice {
         debug_assert_ne!(descriptor.stride, 0);
 
         let attribute_index = attr.attribute_index();
-        println!("configure_vertex_attr(attribute_index={})", attribute_index);
 
         let attr_info = vertex_array.descriptor
                                     .attributes()
@@ -724,7 +727,6 @@ impl MetalDevice {
         };
 
         let mut has_descriptor_set = false;
-        println!("argument count={}", arguments.len());
         for argument_index in 0..arguments.len() {
             let argument = arguments.object_at(argument_index);
             if argument.name() == "spvDescriptorSet0" {
@@ -773,13 +775,13 @@ impl MetalDevice {
         let fragment_uniforms = render_state.program.fragment.uniforms.borrow();
 
         let (mut have_vertex_uniforms, mut have_fragment_uniforms) = (false, false);
-        if let ShaderUniforms::Uniforms { ref encoder, .. } = *vertex_uniforms {
+        if let ShaderUniforms::Uniforms { .. } = *vertex_uniforms {
             have_vertex_uniforms = true;
             let vertex_argument_buffer = vertex_argument_buffer.as_ref().unwrap();
             render_command_encoder.use_resource(vertex_argument_buffer, MTLResourceUsage::Read);
             render_command_encoder.set_vertex_buffer(0, Some(vertex_argument_buffer), 0);
         }
-        if let ShaderUniforms::Uniforms { ref encoder, .. } = *fragment_uniforms {
+        if let ShaderUniforms::Uniforms { .. } = *fragment_uniforms {
             have_fragment_uniforms = true;
             let fragment_argument_buffer = fragment_argument_buffer.as_ref().unwrap();
             render_command_encoder.use_resource(fragment_argument_buffer, MTLResourceUsage::Read);
@@ -791,7 +793,7 @@ impl MetalDevice {
         }
 
         let (mut uniform_buffer_data, mut uniform_buffer_ranges) = (vec![], vec![]);
-        for &(uniform, uniform_data) in render_state.uniforms.iter() {
+        for &(_, uniform_data) in render_state.uniforms.iter() {
             let start_index = uniform_buffer_data.len();
             match uniform_data {
                 UniformData::Int(value) => {
@@ -840,7 +842,6 @@ impl MetalDevice {
                 } = *vertex_uniforms {
                     self.set_uniform(vertex_index,
                                      argument_encoder,
-                                     uniform,
                                      uniform_data,
                                      &data_buffer,
                                      buffer_range.start as u64,
@@ -855,7 +856,6 @@ impl MetalDevice {
                 } = *fragment_uniforms {
                     self.set_uniform(fragment_index,
                                      argument_encoder,
-                                     uniform,
                                      uniform_data,
                                      &data_buffer,
                                      buffer_range.start as u64,
@@ -880,7 +880,6 @@ impl MetalDevice {
     fn set_uniform(&self,
                    argument_index: MetalUniformIndex,
                    argument_encoder: &ArgumentEncoder,
-                   uniform: &MetalUniform,
                    uniform_data: &UniformData,
                    buffer: &Buffer,
                    buffer_offset: u64,
@@ -997,8 +996,7 @@ impl MetalDevice {
         match render_state.options.depth {
             Some(depth_state) => {
                 let compare_function = depth_state.func.to_metal_compare_function();
-                //depth_stencil_descriptor.set_depth_compare_function(compare_function);
-                depth_stencil_descriptor.set_depth_compare_function(MTLCompareFunction::Always);
+                depth_stencil_descriptor.set_depth_compare_function(compare_function);
                 depth_stencil_descriptor.set_depth_write_enabled(depth_state.write);
             }
             None => {
@@ -1016,8 +1014,7 @@ impl MetalDevice {
                 } else {
                     (MTLStencilOperation::Keep, 0)
                 };
-                //stencil_descriptor.set_stencil_compare_function(compare_function);
-                stencil_descriptor.set_stencil_compare_function(MTLCompareFunction::Always);
+                stencil_descriptor.set_stencil_compare_function(compare_function);
                 stencil_descriptor.set_stencil_failure_operation(MTLStencilOperation::Keep);
                 stencil_descriptor.set_depth_failure_operation(MTLStencilOperation::Keep);
                 stencil_descriptor.set_depth_stencil_pass_operation(pass_operation);

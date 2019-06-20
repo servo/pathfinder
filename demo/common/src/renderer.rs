@@ -14,7 +14,7 @@ use crate::camera::{Camera, Mode};
 use crate::window::{View, Window};
 use crate::{BackgroundColor, DemoApp, UIVisibility};
 use image::ColorType;
-use pathfinder_geometry::color::{ColorF, ColorU};
+use pathfinder_geometry::color::ColorU;
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, TextureData, TextureFormat, UniformData};
 use pathfinder_geometry::basic::rect::RectI;

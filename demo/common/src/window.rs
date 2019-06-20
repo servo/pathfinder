@@ -10,11 +10,9 @@
 
 //! A minimal cross-platform windowing layer.
 
-use gl::types::GLuint;
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
-use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_metal::MetalDevice;
 use rayon::ThreadPoolBuilder;
@@ -22,6 +20,10 @@ use std::path::PathBuf;
 
 #[cfg(target_os = "macos")]
 use metal::CoreAnimationLayerRef;
+#[cfg(not(target_os = "macos"))]
+use gl::types::GLuint;
+#[cfg(not(target_os = "macos"))]
+use pathfinder_gl::{GLDevice, GLVersion};
 
 pub trait Window {
     #[cfg(not(target_os = "macos"))]

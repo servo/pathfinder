@@ -15,7 +15,6 @@ use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::basic::transform3d::Perspective;
 use pathfinder_geometry::basic::vector::{Vector2F, Vector4F};
-use pathfinder_geometry::color::ColorF;
 use pathfinder_geometry::clip::PolygonClipper3D;
 
 pub trait RenderCommandListener: Send + Sync {

@@ -21,15 +21,13 @@ use pathfinder_geometry::color::ColorF;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, ClearOps};
 use pathfinder_gpu::{DepthFunc, DepthState, Device, Primitive, RenderOptions, RenderState};
-use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureData, TextureFormat};
-use pathfinder_gpu::{UniformData, UniformType, VertexAttrClass};
-use pathfinder_gpu::{VertexAttrDescriptor, VertexAttrType};
+use pathfinder_gpu::{RenderTarget, StencilFunc, StencilState, TextureFormat, UniformData};
+use pathfinder_gpu::{VertexAttrClass, VertexAttrDescriptor, VertexAttrType};
 use pathfinder_simd::default::{F32x4, I32x4};
 use std::cmp;
 use std::collections::VecDeque;
 use std::mem;
 use std::ops::{Add, Div};
-use std::process;
 use std::time::Duration;
 use std::u32;
 
@@ -1202,11 +1200,9 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> FillProgram<D> {
         let program = device.create_program(resources, "fill");
-        let framebuffer_size_uniform = device.get_uniform(&program,
-                                                          "FramebufferSize",
-                                                          UniformType::Vec2);
-        let tile_size_uniform = device.get_uniform(&program, "TileSize", UniformType::Vec2);
-        let area_lut_uniform = device.get_uniform(&program, "AreaLUT", UniformType::Sampler);
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let area_lut_uniform = device.get_uniform(&program, "AreaLUT");
         FillProgram {
             program,
             framebuffer_size_uniform,
@@ -1237,13 +1233,9 @@ where
             program_name,
             "tile_solid",
         );
-        let framebuffer_size_uniform = device.get_uniform(&program,
-                                                          "FramebufferSize",
-                                                          UniformType::Vec2);
-        let tile_size_uniform = device.get_uniform(&program, "TileSize", UniformType::Vec2);
-        let view_box_origin_uniform = device.get_uniform(&program,
-                                                         "ViewBoxOrigin",
-                                                         UniformType::Vec2);
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
         SolidTileProgram {
             program,
             framebuffer_size_uniform,
@@ -1269,11 +1261,9 @@ where
     fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMulticolorProgram<D> {
         let solid_tile_program = SolidTileProgram::new(device, "tile_solid_multicolor", resources);
         let paint_texture_uniform = device.get_uniform(&solid_tile_program.program,
-                                                       "PaintTexture",
-                                                       UniformType::Sampler);
+                                                       "PaintTexture");
         let paint_texture_size_uniform = device.get_uniform(&solid_tile_program.program,
-                                                            "PaintTextureSize",
-                                                            UniformType::Vec2);
+                                                            "PaintTextureSize");
         SolidTileMulticolorProgram {
             solid_tile_program,
             paint_texture_uniform,
@@ -1296,9 +1286,7 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> SolidTileMonochromeProgram<D> {
         let solid_tile_program = SolidTileProgram::new(device, "tile_solid_monochrome", resources);
-        let color_uniform = device.get_uniform(&solid_tile_program.program,
-                                               "Color",
-                                               UniformType::Vec4);
+        let color_uniform = device.get_uniform(&solid_tile_program.program, "Color");
         SolidTileMonochromeProgram {
             solid_tile_program,
             color_uniform,
@@ -1329,19 +1317,11 @@ where
             program_name,
             "tile_alpha",
         );
-        let framebuffer_size_uniform = device.get_uniform(&program,
-                                                          "FramebufferSize",
-                                                          UniformType::Vec2);
-        let tile_size_uniform = device.get_uniform(&program, "TileSize", UniformType::Vec2);
-        let stencil_texture_uniform = device.get_uniform(&program,
-                                                         "StencilTexture",
-                                                         UniformType::Sampler);
-        let stencil_texture_size_uniform = device.get_uniform(&program,
-                                                              "StencilTextureSize",
-                                                              UniformType::Vec2);
-        let view_box_origin_uniform = device.get_uniform(&program,  
-                                                         "ViewBoxOrigin",
-                                                         UniformType::Vec2);
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let tile_size_uniform = device.get_uniform(&program, "TileSize");
+        let stencil_texture_uniform = device.get_uniform(&program, "StencilTexture");
+        let stencil_texture_size_uniform = device.get_uniform(&program, "StencilTextureSize");
+        let view_box_origin_uniform = device.get_uniform(&program, "ViewBoxOrigin");
         AlphaTileProgram {
             program,
             framebuffer_size_uniform,
@@ -1369,9 +1349,9 @@ where
     fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMulticolorProgram<D> {
         let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_multicolor", resources);
         let paint_texture_uniform =
-            device.get_uniform(&alpha_tile_program.program, "PaintTexture", UniformType::Sampler);
+            device.get_uniform(&alpha_tile_program.program, "PaintTexture");
         let paint_texture_size_uniform =
-            device.get_uniform(&alpha_tile_program.program, "PaintTextureSize", UniformType::Vec2);
+            device.get_uniform(&alpha_tile_program.program, "PaintTextureSize");
         AlphaTileMulticolorProgram {
             alpha_tile_program,
             paint_texture_uniform,
@@ -1394,9 +1374,7 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> AlphaTileMonochromeProgram<D> {
         let alpha_tile_program = AlphaTileProgram::new(device, "tile_alpha_monochrome", resources);
-        let color_uniform = device.get_uniform(&alpha_tile_program.program,
-                                               "Color",
-                                               UniformType::Vec4);
+        let color_uniform = device.get_uniform(&alpha_tile_program.program, "Color");
         AlphaTileMonochromeProgram {
             alpha_tile_program,
             color_uniform,
@@ -1425,18 +1403,15 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> PostprocessProgram<D> {
         let program = device.create_program(resources, "post");
-        let source_uniform = device.get_uniform(&program, "Source", UniformType::Sampler);
-        let source_size_uniform = device.get_uniform(&program, "SourceSize", UniformType::Vec2);
-        let framebuffer_size_uniform = device.get_uniform(&program,
-                                                          "FramebufferSize",
-                                                          UniformType::Vec2);
-        let kernel_uniform = device.get_uniform(&program, "Kernel", UniformType::Vec4);
-        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT", UniformType::Sampler);
+        let source_uniform = device.get_uniform(&program, "Source");
+        let source_size_uniform = device.get_uniform(&program, "SourceSize");
+        let framebuffer_size_uniform = device.get_uniform(&program, "FramebufferSize");
+        let kernel_uniform = device.get_uniform(&program, "Kernel");
+        let gamma_lut_uniform = device.get_uniform(&program, "GammaLUT");
         let gamma_correction_enabled_uniform = device.get_uniform(&program,
-                                                                  "GammaCorrectionEnabled",
-                                                                  UniformType::Int);
-        let fg_color_uniform = device.get_uniform(&program, "FGColor", UniformType::Vec4);
-        let bg_color_uniform = device.get_uniform(&program, "BGColor", UniformType::Vec4);
+                                                                  "GammaCorrectionEnabled");
+        let fg_color_uniform = device.get_uniform(&program, "FGColor");
+        let bg_color_uniform = device.get_uniform(&program, "BGColor");
         PostprocessProgram {
             program,
             source_uniform,
@@ -1556,13 +1531,9 @@ where
 {
     fn new(device: &D, resources: &dyn ResourceLoader) -> ReprojectionProgram<D> {
         let program = device.create_program(resources, "reproject");
-        let old_transform_uniform = device.get_uniform(&program,
-                                                       "OldTransform",
-                                                       UniformType::Mat4);
-        let new_transform_uniform = device.get_uniform(&program,
-                                                       "NewTransform",
-                                                       UniformType::Mat4);
-        let texture_uniform = device.get_uniform(&program, "Texture", UniformType::Sampler);
+        let old_transform_uniform = device.get_uniform(&program, "OldTransform");
+        let new_transform_uniform = device.get_uniform(&program, "NewTransform");
+        let texture_uniform = device.get_uniform(&program, "Texture");
 
         ReprojectionProgram {
             program,

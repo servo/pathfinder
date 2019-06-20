@@ -17,13 +17,12 @@ use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize}
 use pathfinder_demo::{DemoApp, Options};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use pathfinder_metal::MetalDevice;
 use sdl2::event::{Event as SDLEvent, WindowEvent};
 use sdl2::hint;
 use sdl2::keyboard::Keycode as SDLKeycode;
-use sdl2::video::{GLContext, GLProfile, Window as SDLWindow};
+use sdl2::video::Window as SDLWindow;
 use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
 use sdl2_sys::{SDL_Event, SDL_RenderGetMetalLayer, SDL_UserEvent};
 use std::path::PathBuf;
@@ -31,6 +30,10 @@ use std::ptr;
 
 #[cfg(target_os = "macos")]
 use sdl2::render::Canvas;
+#[cfg(not(target_os = "macos"))]
+use pathfinder_gl::{GLDevice, GLVersion};
+#[cfg(not(target_os = "macos"))]
+use sdl2::video::{GLContext, GLProfile};
 
 #[cfg(not(windows))]
 use jemallocator;

@@ -47,8 +47,7 @@ pub trait Device: Sized {
         fragment_shader: Self::Shader,
     ) -> Self::Program;
     fn get_vertex_attr(&self, program: &Self::Program, name: &str) -> Option<Self::VertexAttr>;
-    fn get_uniform(&self, program: &Self::Program, name: &str, uniform_type: UniformType)
-                   -> Self::Uniform;
+    fn get_uniform(&self, program: &Self::Program, name: &str) -> Self::Uniform;
     fn bind_buffer(&self,
                    vertex_array: &Self::VertexArray,
                    buffer: &Self::Buffer,
@@ -157,15 +156,6 @@ pub enum UniformData {
     Vec2(F32x4),
     Vec4(F32x4),
     TextureUnit(u32),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum UniformType {
-    Int,
-    Mat4,
-    Vec2,
-    Vec4,
-    Sampler,
 }
 
 #[derive(Clone, Copy)]
