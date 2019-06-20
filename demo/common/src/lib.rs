@@ -460,8 +460,6 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     pub fn finish_drawing_frame(&mut self) {
-        self.renderer.device.begin_commands();
-
         self.maybe_take_screenshot();
         self.update_stats();
         self.draw_debug_ui();

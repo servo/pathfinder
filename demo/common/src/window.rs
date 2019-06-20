@@ -14,12 +14,14 @@ use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
 use pathfinder_gpu::resources::ResourceLoader;
-use pathfinder_metal::MetalDevice;
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
 
 #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use metal::CoreAnimationLayerRef;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use pathfinder_metal::MetalDevice;
+
 #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use gl::types::GLuint;
 #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]

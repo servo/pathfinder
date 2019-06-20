@@ -113,6 +113,7 @@ pub unsafe extern "C" fn magicleap_pathfinder_demo_run(app: *mut c_void) {
             }
             let scene_count = app.demo.prepare_frame(events);
             app.demo.draw_scene();
+            app.demo.begin_compositing();
             for scene_index in 0..scene_count {
                 app.demo.composite_scene(scene_index);
             }

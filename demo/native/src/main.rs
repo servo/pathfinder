@@ -72,6 +72,7 @@ fn main() {
 
         let scene_count = app.prepare_frame(events);
         app.draw_scene();
+        app.begin_compositing();
         for scene_index in 0..scene_count {
             app.composite_scene(scene_index);
         }

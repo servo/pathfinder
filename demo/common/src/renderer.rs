@@ -124,6 +124,10 @@ impl<W> DemoApp<W> where W: Window {
         }
     }
 
+    pub fn begin_compositing(&mut self) {
+        self.renderer.device.begin_commands();
+    }
+
     pub fn composite_scene(&mut self, render_scene_index: u32) {
         let (eye_transforms, scene_transform, modelview_transform) = match self.camera {
             Camera::ThreeD {
@@ -147,8 +151,6 @@ impl<W> DemoApp<W> where W: Window {
 
         let viewport = self.window.viewport(View::Stereo(render_scene_index));
         self.window.make_current(View::Stereo(render_scene_index));
-
-        self.renderer.device.begin_commands();
 
         self.renderer.replace_dest_framebuffer(DestFramebuffer::Default {
             viewport,

@@ -460,9 +460,11 @@ impl Device for MetalDevice {
 
     fn begin_commands(&self) {
         self.command_buffers.borrow_mut().push(self.command_queue.new_command_buffer().retain());
+        println!("begin_commands({})", self.command_buffers.borrow().len());
     }
 
     fn end_commands(&self) {
+        println!("end_commands({})", self.command_buffers.borrow().len());
         let command_buffer = self.command_buffers.borrow_mut().pop().unwrap();
         command_buffer.commit();
     }
