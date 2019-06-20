@@ -527,7 +527,6 @@ fn find_matches(
         let mut found_match = false;
         for i in first_open_index..shapes.len() {
             let fragment = &mut shapes[i];
-            debug_assert!(!fragment.is_closed());
             if last.comes_after(fragment) {
                 // NOTE(jon): We do realloc quite a bit here, I wonder if it's worth trying
                 // to avoid that?  Could do it with another level of indirection, where an outline
