@@ -25,6 +25,10 @@ extern "C" {
 #define PF_LINE_CAP_SQUARE  1
 #define PF_LINE_CAP_ROUND   2
 
+#define PF_LINE_JOIN_MITER  0
+#define PF_LINE_JOIN_BEVEL  1
+#define PF_LINE_JOIN_ROUND  2
+
 // `gl`
 
 #define PF_GL_VERSION_GL3   0
@@ -45,6 +49,7 @@ typedef struct PFPath *PFPathRef;
 struct PFCanvasFontContext;
 typedef struct PFCanvasFontContext *PFCanvasFontContextRef;
 typedef uint8_t PFLineCap;
+typedef uint8_t PFLineJoin;
 
 // `geometry`
 
@@ -116,6 +121,12 @@ void PFCanvasFillRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasStrokeRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasSetLineWidth(PFCanvasRef canvas, float new_line_width);
 void PFCanvasSetLineCap(PFCanvasRef canvas, PFLineCap new_line_cap);
+void PFCanvasSetLineJoin(PFCanvasRef canvas, PFLineJoin new_line_join);
+void PFCanvasSetMiterLimit(PFCanvasRef canvas, float new_miter_limit);
+void PFCanvasSetLineDash(PFCanvasRef canvas,
+                         const float *new_line_dashes,
+                         size_t new_line_dash_count);
+void PFCanvasSetLineDashOffset(PFCanvasRef canvas, float offset);
 void PFCanvasFillPath(PFCanvasRef canvas, PFPathRef path);
 void PFCanvasStrokePath(PFCanvasRef canvas, PFPathRef path);
 PFPathRef PFPathCreate();

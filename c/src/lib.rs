@@ -11,7 +11,7 @@
 //! C bindings to Pathfinder.
 
 use gl;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin, Path2D};
 use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::color::ColorF;
@@ -27,13 +27,19 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
+use std::slice;
 
 // Constants
 
 // `canvas`
+
 pub const PF_LINE_CAP_BUTT:   u8 = 0;
 pub const PF_LINE_CAP_SQUARE: u8 = 1;
 pub const PF_LINE_CAP_ROUND:  u8 = 2;
+
+pub const PF_LINE_JOIN_MITER: u8 = 0;
+pub const PF_LINE_JOIN_BEVEL: u8 = 1;
+pub const PF_LINE_JOIN_ROUND: u8 = 2;
 
 // `renderer`
 pub const PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR: u8 = 0x1;
@@ -45,6 +51,7 @@ pub type PFCanvasRef = *mut CanvasRenderingContext2D;
 pub type PFPathRef = *mut Path2D;
 pub type PFCanvasFontContextRef = *mut CanvasFontContext;
 pub type PFLineCap = u8;
+pub type PFLineJoin = u8;
 
 // `geometry`
 #[repr(C)]
@@ -162,6 +169,32 @@ pub unsafe extern "C" fn PFCanvasSetLineCap(canvas: PFCanvasRef, new_line_cap: P
         PF_LINE_CAP_ROUND  => LineCap::Round,
         _                  => LineCap::Butt,
     });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetLineJoin(canvas: PFCanvasRef, new_line_join: PFLineJoin) {
+    (*canvas).set_line_join(match new_line_join {
+        PF_LINE_JOIN_BEVEL => LineJoin::Bevel,
+        PF_LINE_JOIN_ROUND => LineJoin::Round,
+        _                  => LineJoin::Miter,
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetMiterLimit(canvas: PFCanvasRef, new_miter_limit: f32) {
+    (*canvas).set_miter_limit(new_miter_limit);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetLineDash(canvas: PFCanvasRef,
+                                             new_line_dashes: *const f32,
+                                             new_line_dash_count: usize) {
+    (*canvas).set_line_dash(slice::from_raw_parts(new_line_dashes, new_line_dash_count).to_vec())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetLineDashOffset(canvas: PFCanvasRef, new_offset: f32) {
+    (*canvas).set_line_dash_offset(new_offset)
 }
 
 /// Consumes the path.
