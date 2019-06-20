@@ -103,7 +103,7 @@ impl<W> DemoApp<W> where W: Window {
         self.window.make_current(view);
 
         if self.camera.mode() != Mode::VR {
-            self.draw_environment();
+            self.draw_environment(0);
         }
 
         self.renderer.device.end_commands();
@@ -157,7 +157,7 @@ impl<W> DemoApp<W> where W: Window {
             window_size: self.window_size.device_size(),
         });
 
-        self.draw_environment();
+        self.draw_environment(render_scene_index);
 
         let scene_framebuffer = self.scene_framebuffer.as_ref().unwrap();
         let scene_texture = self.renderer.device.framebuffer_texture(scene_framebuffer);
@@ -199,7 +199,7 @@ impl<W> DemoApp<W> where W: Window {
     }
 
     // Draws the ground, if applicable.
-    fn draw_environment(&self) {
+    fn draw_environment(&self, render_scene_index: u32) {
         let frame = &self.current_frame.as_ref().unwrap();
 
         let perspective = match frame.transform {
@@ -225,6 +225,13 @@ impl<W> DemoApp<W> where W: Window {
         transform =
             transform.post_mul(&Transform3DF::from_scale(ground_scale, 1.0, ground_scale));
 
+        // Don't clear the first scene after drawing it.
+        let clear_color = if render_scene_index == 0 {
+            Some(self.background_color().to_f32())
+        } else {
+            None
+        };
+
         self.renderer.device.draw_elements(6, &RenderState {
             target: &self.renderer.draw_render_target(),
             program: &self.ground_program.program,
@@ -243,11 +250,7 @@ impl<W> DemoApp<W> where W: Window {
             viewport: self.renderer.draw_viewport(),
             options: RenderOptions {
                 depth: Some(DepthState { func: DepthFunc::Less, write: true }),
-                clear_ops: ClearOps {
-                    color: Some(self.background_color().to_f32()),
-                    depth: Some(1.0),
-                    stencil: Some(0),
-                },
+                clear_ops: ClearOps { color: clear_color, depth: Some(1.0), stencil: Some(0) },
                 ..RenderOptions::default()
             },
         });

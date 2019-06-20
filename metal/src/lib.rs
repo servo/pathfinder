@@ -642,6 +642,7 @@ impl MetalDevice {
         let command_buffers = self.command_buffers.borrow();
         let command_buffer = command_buffers.last().unwrap();
 
+        // FIXME(pcwalton): Is this necessary?
         let mut blit_command_encoder = None;
         for texture in render_state.textures {
             if !texture.dirty.get() {
@@ -1045,6 +1046,7 @@ impl MetalDevice {
     }
 
     fn set_viewport(&self, encoder: &RenderCommandEncoderRef, viewport: &RectI) {
+        println!("set_viewport({:?}", viewport);
         encoder.set_viewport(MTLViewport {
             originX: viewport.origin().x() as f64,
             originY: viewport.origin().y() as f64,

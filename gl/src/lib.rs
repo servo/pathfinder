@@ -69,7 +69,7 @@ impl GLDevice {
         }
 
         if render_state.options.clear_ops.has_ops() {
-            self.clear(render_state.viewport, &render_state.options.clear_ops);
+            self.clear(&render_state.options.clear_ops);
         }
 
         self.use_program(render_state.program);
@@ -702,12 +702,8 @@ impl GLDevice {
         }
     }
 
-    fn clear(&self, viewport: RectI, ops: &ClearOps) {
+    fn clear(&self, ops: &ClearOps) {
         unsafe {
-            let (origin, size) = (viewport.origin(), viewport.size());
-            gl::Scissor(origin.x(), origin.y(), size.x(), size.y()); ck();
-            gl::Enable(gl::SCISSOR_TEST); ck();
-
             let mut flags = 0;
             if let Some(color) = ops.color {
                 gl::ColorMask(gl::TRUE, gl::TRUE, gl::TRUE, gl::TRUE); ck();
@@ -727,8 +723,6 @@ impl GLDevice {
             if flags != 0 {
                 gl::Clear(flags); ck();
             }
-
-            gl::Disable(gl::SCISSOR_TEST); ck();
         }
     }
 
