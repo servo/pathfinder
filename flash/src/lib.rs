@@ -155,7 +155,6 @@ pub fn draw_paths_into_scene(library: &SymbolLibrary, scene: &mut Scene) {
         // NOTE: Right now symbols only contain graphics.
         if let Symbol::Graphic(graphic) = symbol {
             for style_layer in graphic.layers() {
-                debug_assert_ne!(style_layer.shapes().len(), 0);
                 let mut path = Outline::new();
                 let paint_id = scene.push_paint(&style_layer.fill());
 
