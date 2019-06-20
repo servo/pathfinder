@@ -5,13 +5,12 @@ edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
 [features]
+pf-gl = ["pathfinder_demo/pf-gl"]
 pf-no-simd = ["pathfinder_simd/pf-no-simd"]
 
 [dependencies]
 color-backtrace = "0.1"
-foreign-types = "0.3"
 gl = "0.6"
-metal = "0.14"
 nfd = "0.0.4"
 pretty_env_logger = "0.3"
 sdl2 = "0.32"
@@ -34,6 +33,10 @@ path = "../../metal"
 
 [dependencies.pathfinder_simd]
 path = "../../simd"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+foreign-types = "0.3"
+metal = "0.14"
 
 [target.'cfg(not(windows))'.dependencies]
 jemallocator = "0.1"

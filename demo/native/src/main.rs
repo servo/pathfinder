@@ -10,29 +10,36 @@
 
 //! A demo app for Pathfinder using SDL 2.
 
-use foreign_types::ForeignTypeRef;
-use metal::{CAMetalLayer, CoreAnimationLayerRef};
 use nfd::Response;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::{DemoApp, Options};
 use pathfinder_geometry::basic::vector::Vector2I;
 use pathfinder_geometry::basic::rect::RectI;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
-use pathfinder_metal::MetalDevice;
 use sdl2::event::{Event as SDLEvent, WindowEvent};
-use sdl2::hint;
 use sdl2::keyboard::Keycode as SDLKeycode;
 use sdl2::video::Window as SDLWindow;
 use sdl2::{EventPump, EventSubsystem, Sdl, VideoSubsystem};
-use sdl2_sys::{SDL_Event, SDL_RenderGetMetalLayer, SDL_UserEvent};
+use sdl2_sys::{SDL_Event, SDL_UserEvent};
 use std::path::PathBuf;
 use std::ptr;
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use foreign_types::ForeignTypeRef;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use metal::{CAMetalLayer, CoreAnimationLayerRef};
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use pathfinder_metal::MetalDevice;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use sdl2::hint;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use sdl2::render::Canvas;
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use sdl2_sys::SDL_RenderGetMetalLayer;
+
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use pathfinder_gl::{GLDevice, GLVersion};
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use sdl2::video::{GLContext, GLProfile};
 
 #[cfg(not(windows))]
@@ -79,14 +86,14 @@ thread_local! {
 }
 
 struct WindowImpl {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     window: SDLWindow,
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     gl_context: GLContext,
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     canvas: Canvas<SDLWindow>,
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     metal_layer: *mut CAMetalLayer,
 
     event_pump: EventPump,
@@ -97,12 +104,12 @@ struct WindowImpl {
 }
 
 impl Window for WindowImpl {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn gl_version(&self) -> GLVersion {
         GLVersion::GL3
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     fn metal_layer(&self) -> &CoreAnimationLayerRef {
         unsafe { CoreAnimationLayerRef::from_ptr(self.metal_layer) }
     }
@@ -119,20 +126,20 @@ impl Window for WindowImpl {
         RectI::new(Vector2I::new(x_offset, 0), Vector2I::new(width, height))
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn make_current(&mut self, _view: View) {
         self.window().gl_make_current(&self.gl_context).unwrap();
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     fn make_current(&mut self, _: View) {}
 
-    #[cfg(not(target_os = "macos"))]
-    fn present(&mut self, device: &mut GLDevice) {
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+    fn present(&mut self, _: &mut GLDevice) {
         self.window().gl_swap_window();
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     fn present(&mut self, device: &mut MetalDevice) {
         device.present_drawable();
     }
@@ -175,7 +182,7 @@ impl Window for WindowImpl {
 }
 
 impl WindowImpl {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn new() -> WindowImpl {
         SDL_VIDEO.with(|sdl_video| {
             SDL_EVENT.with(|sdl_event| {
@@ -220,7 +227,7 @@ impl WindowImpl {
         })
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     fn new() -> WindowImpl {
         assert!(hint::set("SDL_RENDER_DRIVER", "metal"));
 
@@ -261,9 +268,9 @@ impl WindowImpl {
         })
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn window(&self) -> &SDLWindow { &self.window }
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     fn window(&self) -> &SDLWindow { self.canvas.window() }
 
     fn size(&self) -> WindowSize {

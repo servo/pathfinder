@@ -43,9 +43,9 @@ use std::thread;
 use std::time::Duration;
 use usvg::{Options as UsvgOptions, Tree};
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use pathfinder_gl::GLDevice as DeviceImpl;
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use pathfinder_metal::MetalDevice as DeviceImpl;
 
 static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
@@ -129,11 +129,11 @@ impl<W> DemoApp<W> where W: Window {
         let expire_message_event_id = window.create_user_event_id();
 
         let device;
-        #[cfg(target_os = "macos")]
+        #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
         {
             device = DeviceImpl::new(window.metal_layer());
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
         {
             device = DeviceImpl::new(window.gl_version(), window.gl_default_framebuffer());
         }

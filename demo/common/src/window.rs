@@ -18,24 +18,24 @@ use pathfinder_metal::MetalDevice;
 use rayon::ThreadPoolBuilder;
 use std::path::PathBuf;
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
 use metal::CoreAnimationLayerRef;
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use gl::types::GLuint;
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
 use pathfinder_gl::{GLDevice, GLVersion};
 
 pub trait Window {
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn gl_version(&self) -> GLVersion;
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn gl_default_framebuffer(&self) -> GLuint { 0 }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
     fn present(&mut self, device: &mut GLDevice);
 
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     fn metal_layer(&self) -> &CoreAnimationLayerRef;
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
     fn present(&mut self, device: &mut MetalDevice);
 
     fn make_current(&mut self, view: View);
