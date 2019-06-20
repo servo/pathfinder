@@ -19,6 +19,11 @@ in ivec2 aPosition;
 out vec2 vTexCoord;
 
 void main() {
+#ifdef PF_ORIGIN_UPPER_LEFT
+    vTexCoord = vec2(aPosition.x, 1.0 - aPosition.y);
+#else
     vTexCoord = vec2(aPosition);
+#endif
+
     gl_Position = uNewTransform * vec4(ivec4(aPosition, 0, 1));
 }
