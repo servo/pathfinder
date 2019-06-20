@@ -12,11 +12,11 @@ use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::FilesystemResourceLoader;
-use pathfinder_gpu::{ClearParams, Device};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, Renderer};
-use pathfinder_renderer::options::{RenderOptions, RenderTransform};
+use pathfinder_renderer::gpu::renderer::Renderer;
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::options::{RenderTransform, BuildOptions};
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
@@ -50,7 +50,7 @@ fn main() {
         // a lot more geometry.  I think a more likely explanation for the choice is that it was
         // done to reduce overdraw in the software rasterizer running on late 90's era hardware?
         // Indeed, this mode gives pathfinders' occlusion culling pass nothing to do!
-        let default_tiger = include_bytes!("../swf/tiger-flat.swf");
+        //let default_tiger = include_bytes!("../swf/tiger-flat.swf");
 
         // NOTE(jon): This is a version of the same graphic cut and pasted into the Flash authoring
         // tool from the SVG version loaded in Illustrator. When layered graphics are pasted
@@ -58,7 +58,7 @@ fn main() {
         // They are still presented as being on a single timeline layer.
         // They will be drawn back to front in much the same way as the SVG version.
 
-        //let default_tiger = include_bytes!("../tiger.swf");
+        let default_tiger = include_bytes!("../swf/tiger.swf");
         swf_bytes = Vec::from(&default_tiger[..]);
     }
 
@@ -98,9 +98,12 @@ fn main() {
     window.gl_make_current(&gl_context).unwrap();
 
     // Create a Pathfinder renderer.
-    let mut renderer = Renderer::new(GLDevice::new(GLVersion::GL3, 0),
-                                     &FilesystemResourceLoader::locate(),
-                                     DestFramebuffer::full_window(pixel_size));
+    let mut renderer = Renderer::new(
+        GLDevice::new(GLVersion::GL3, 0),
+        &FilesystemResourceLoader::locate(),
+        DestFramebuffer::full_window(pixel_size),
+        RendererOptions { background_color: Some(stage.background_color()) }
+    );
     // Clear to swf stage background color.
     let mut scene = Scene::new();
     scene.set_view_box(RectF::new(
@@ -112,17 +115,13 @@ fn main() {
     draw_paths_into_scene(&library, &mut scene);
 
     // Render the canvas to screen.
-    renderer.device.clear(&ClearParams {
-        color: Some(stage.background_color()),
-        ..ClearParams::default()
-    });
     let scene = SceneProxy::from_scene(scene, RayonExecutor);
-    let mut render_options = RenderOptions::default();
+    let mut build_options = BuildOptions::default();
     let scale_transform = Transform2DF::from_scale(
         Vector2F::new(device_pixel_ratio, device_pixel_ratio)
     );
-    render_options.transform = RenderTransform::Transform2D(scale_transform);
-    scene.build_and_render(&mut renderer, render_options);
+    build_options.transform = RenderTransform::Transform2D(scale_transform);
+    scene.build_and_render(&mut renderer, build_options);
 
     window.gl_swap_window();
     // Wait for a keypress.
