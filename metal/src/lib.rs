@@ -55,6 +55,7 @@ pub struct MetalDevice {
     device: metal::Device,
     layer: CoreAnimationLayer,
     drawable: CoreAnimationDrawable,
+    main_depth_stencil_texture: Texture,
     command_queue: CommandQueue,
     command_buffers: RefCell<Vec<CommandBuffer>>,
     sampler: SamplerState,
@@ -90,12 +91,18 @@ impl MetalDevice {
         sampler_descriptor.set_address_mode_t(MTLSamplerAddressMode::ClampToEdge);
         let sampler = device.new_sampler(&sampler_descriptor);
 
+        let main_color_texture = drawable.texture();
+        let framebuffer_size = Vector2I::new(main_color_texture.width() as i32,
+                                             main_color_texture.height() as i32);
+        let main_depth_stencil_texture = device.create_depth_stencil_texture(framebuffer_size);
+
         let shared_event = device.new_shared_event();
 
         MetalDevice {
             device,
             layer,
             drawable,
+            main_depth_stencil_texture,
             command_queue,
             command_buffers: RefCell::new(vec![]),
             sampler,
@@ -611,6 +618,14 @@ impl MetalDevice {
         }
     }
 
+    fn render_target_depth_texture(&self, render_target: &RenderTarget<MetalDevice>)
+                                   -> Option<Texture> {
+        match *render_target {
+            RenderTarget::Default {..} => Some(self.main_depth_stencil_texture.retain()),
+            RenderTarget::Framebuffer(_) => None,
+        }
+    }
+
     fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> RenderCommandEncoder {
         let command_buffers = self.command_buffers.borrow();
         let command_buffer = command_buffers.last().unwrap();
@@ -652,6 +667,9 @@ impl MetalDevice {
                                                                   .unwrap();
         self.prepare_pipeline_color_attachment_for_render(pipeline_color_attachment,
                                                           render_state);
+        let depth_stencil_format = MTLPixelFormat::Depth32Float_Stencil8;
+        render_pipeline_descriptor.set_depth_attachment_pixel_format(depth_stencil_format);
+        render_pipeline_descriptor.set_stencil_attachment_pixel_format(depth_stencil_format);
 
         let reflection_options = MTLPipelineOption::ArgumentInfo |
             MTLPipelineOption::BufferTypeInfo;
@@ -919,7 +937,6 @@ impl MetalDevice {
         let color_attachment = render_pass_descriptor.color_attachments().object_at(0).unwrap();
         color_attachment.set_texture(Some(&self.render_target_color_texture(render_state.target)));
 
-        // TODO(pcwalton): Depth and stencil!
         match render_state.options.clear_ops.color {
             Some(color) => {
                 let color = MTLClearColor::new(color.r() as f64,
@@ -931,8 +948,34 @@ impl MetalDevice {
             }
             None => color_attachment.set_load_action(MTLLoadAction::Load),
         }
-
         color_attachment.set_store_action(MTLStoreAction::Store);
+
+        let depth_stencil_texture = self.render_target_depth_texture(render_state.target);
+        if let Some(depth_stencil_texture) = depth_stencil_texture {
+            let depth_attachment = render_pass_descriptor.depth_attachment().unwrap();
+            let stencil_attachment = render_pass_descriptor.stencil_attachment().unwrap();
+            depth_attachment.set_texture(Some(&depth_stencil_texture));
+            stencil_attachment.set_texture(Some(&depth_stencil_texture));
+
+            match render_state.options.clear_ops.depth {
+                Some(depth) => {
+                    depth_attachment.set_clear_depth(depth as f64);
+                    depth_attachment.set_load_action(MTLLoadAction::Clear);
+                }
+                None => depth_attachment.set_load_action(MTLLoadAction::Load),
+            }
+            depth_attachment.set_store_action(MTLStoreAction::Store);
+
+            match render_state.options.clear_ops.stencil {
+                Some(value) => {
+                    stencil_attachment.set_clear_stencil(value as u32);
+                    stencil_attachment.set_load_action(MTLLoadAction::Clear);
+                }
+                None => stencil_attachment.set_load_action(MTLLoadAction::Load),
+            }
+            stencil_attachment.set_store_action(MTLStoreAction::Store);
+        }
+
         render_pass_descriptor
     }
 
@@ -944,7 +987,8 @@ impl MetalDevice {
         match render_state.options.depth {
             Some(depth_state) => {
                 let compare_function = depth_state.func.to_metal_compare_function();
-                depth_stencil_descriptor.set_depth_compare_function(compare_function);
+                //depth_stencil_descriptor.set_depth_compare_function(compare_function);
+                depth_stencil_descriptor.set_depth_compare_function(MTLCompareFunction::Always);
                 depth_stencil_descriptor.set_depth_write_enabled(depth_state.write);
             }
             None => {
@@ -962,7 +1006,8 @@ impl MetalDevice {
                 } else {
                     (MTLStencilOperation::Keep, 0)
                 };
-                stencil_descriptor.set_stencil_compare_function(compare_function);
+                //stencil_descriptor.set_stencil_compare_function(compare_function);
+                stencil_descriptor.set_stencil_compare_function(MTLCompareFunction::Always);
                 stencil_descriptor.set_stencil_failure_operation(MTLStencilOperation::Keep);
                 stencil_descriptor.set_depth_failure_operation(MTLStencilOperation::Keep);
                 stencil_descriptor.set_depth_stencil_pass_operation(pass_operation);
@@ -1011,6 +1056,23 @@ impl MetalDevice {
 
         self.end_commands();
         self.begin_commands();
+    }
+}
+
+trait DeviceExtra {
+    fn create_depth_stencil_texture(&self, size: Vector2I) -> Texture;
+}
+
+impl DeviceExtra for metal::Device {
+    fn create_depth_stencil_texture(&self, size: Vector2I) -> Texture {
+        let descriptor = TextureDescriptor::new();
+        descriptor.set_texture_type(MTLTextureType::D2);
+        descriptor.set_pixel_format(MTLPixelFormat::Depth32Float_Stencil8);
+        descriptor.set_width(size.x() as u64);
+        descriptor.set_height(size.y() as u64);
+        descriptor.set_storage_mode(MTLStorageMode::Private);
+        descriptor.set_usage(MTLTextureUsage::Unknown);
+        self.new_texture(&descriptor)
     }
 }
 
