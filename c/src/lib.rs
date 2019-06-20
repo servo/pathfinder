@@ -11,7 +11,8 @@
 //! C bindings to Pathfinder.
 
 use gl;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin, Path2D};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin};
+use pathfinder_canvas::{Path2D, TextMetrics};
 use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::color::ColorF;
@@ -29,6 +30,7 @@ use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::slice;
+use std::str;
 
 // Constants
 
@@ -60,6 +62,10 @@ pub type PFCanvasFontContextRef = *mut CanvasFontContext;
 pub type PFLineCap = u8;
 pub type PFLineJoin = u8;
 pub type PFArcDirection = u8;
+#[repr(C)]
+pub struct PFTextMetrics {
+    pub width: f32,
+}
 
 // `geometry`
 #[repr(C)]
@@ -155,6 +161,8 @@ pub unsafe extern "C" fn PFCanvasCreateScene(canvas: PFCanvasRef) -> PFSceneRef 
     Box::into_raw(Box::new(Box::from_raw(canvas).into_scene()))
 }
 
+// Drawing rectangles
+
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasFillRect(canvas: PFCanvasRef, rect: *const PFRectF) {
     (*canvas).fill_rect((*rect).to_rust())
@@ -163,6 +171,33 @@ pub unsafe extern "C" fn PFCanvasFillRect(canvas: PFCanvasRef, rect: *const PFRe
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasStrokeRect(canvas: PFCanvasRef, rect: *const PFRectF) {
     (*canvas).stroke_rect((*rect).to_rust())
+}
+
+// Drawing text
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasFillText(canvas: PFCanvasRef,
+                                          string: *const c_char,
+                                          string_len: usize,
+                                          position: *const PFVector2F) {
+    (*canvas).fill_text(to_rust_string(&string, string_len), (*position).to_rust())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasStrokeText(canvas: PFCanvasRef,
+                                            string: *const c_char,
+                                            string_len: usize,
+                                            position: *const PFVector2F) {
+    (*canvas).stroke_text(to_rust_string(&string, string_len), (*position).to_rust())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasMeasureText(canvas: PFCanvasRef,
+                                             string: *const c_char,
+                                             string_len: usize,
+                                             out_text_metrics: *mut PFTextMetrics) {
+    debug_assert!(!out_text_metrics.is_null());
+    *out_text_metrics = (*canvas).measure_text(to_rust_string(&string, string_len)).to_c()
 }
 
 #[no_mangle]
@@ -387,6 +422,25 @@ pub unsafe extern "C" fn PFSceneProxyCreateFromSceneAndRayonExecutor(scene: PFSc
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyDestroy(scene_proxy: PFSceneProxyRef) {
     drop(Box::from_raw(scene_proxy))
+}
+
+// Helpers for `canvas`
+
+unsafe fn to_rust_string(ptr: &*const c_char, mut len: usize) -> &str {
+    if len == 0 {
+        len = libc::strlen(*ptr);
+    }
+    str::from_utf8(slice::from_raw_parts(*ptr as *const u8, len)).unwrap()
+}
+
+trait TextMetricsExt {
+    fn to_c(&self) -> PFTextMetrics;
+}
+
+impl TextMetricsExt for TextMetrics {
+    fn to_c(&self) -> PFTextMetrics {
+        PFTextMetrics { width: self.width }
+    }
 }
 
 // Helpers for `geometry`

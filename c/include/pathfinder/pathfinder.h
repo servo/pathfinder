@@ -56,6 +56,10 @@ typedef struct PFCanvasFontContext *PFCanvasFontContextRef;
 typedef uint8_t PFLineCap;
 typedef uint8_t PFLineJoin;
 typedef uint8_t PFArcDirection;
+struct PFTextMetrics {
+    float width;
+};
+typedef struct PFTextMetrics PFTextMetrics;
 
 // `geometry`
 
@@ -125,6 +129,18 @@ PFCanvasFontContextRef PFCanvasFontContextClone(PFCanvasFontContextRef font_cont
 PFSceneRef PFCanvasCreateScene(PFCanvasRef canvas);
 void PFCanvasFillRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasStrokeRect(PFCanvasRef canvas, const PFRectF *rect);
+void PFCanvasFillText(PFCanvasRef canvas,
+                      const char *string,
+                      size_t string_len,
+                      const PFVector2F *position);
+void PFCanvasStrokeText(PFCanvasRef canvas,
+                        const char *string,
+                        size_t string_len,
+                        const PFVector2F *position);
+void PFCanvasMeasureText(PFCanvasRef canvas,
+                         const char *string,
+                         size_t string_len,
+                         PFTextMetrics *out_text_metrics);
 void PFCanvasSetLineWidth(PFCanvasRef canvas, float new_line_width);
 void PFCanvasSetLineCap(PFCanvasRef canvas, PFLineCap new_line_cap);
 void PFCanvasSetLineJoin(PFCanvasRef canvas, PFLineJoin new_line_join);

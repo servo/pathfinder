@@ -1318,6 +1318,7 @@ name = "pathfinder_c"
 version = "0.1.0"
 dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.54 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_canvas 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",

@@ -9,6 +9,7 @@ crate-type = ["staticlib"]
 
 [dependencies]
 gl = "0.6"
+libc = "0.2"
 
 [dependencies.pathfinder_canvas]
 path = "../canvas"
