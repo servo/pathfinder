@@ -11,33 +11,45 @@
 //! C bindings to Pathfinder.
 
 use gl;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin, Path2D};
 use pathfinder_geometry::basic::rect::{RectF, RectI};
+use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::outline::ArcDirection;
 use pathfinder_geometry::stroke::LineCap;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
-use pathfinder_gpu::{ClearParams, Device};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, Renderer};
-use pathfinder_renderer::options::RenderOptions;
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::renderer::Renderer;
+use pathfinder_renderer::options::BuildOptions;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_simd::default::F32x4;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
+use std::slice;
 
 // Constants
+
+// `canvas`
 
 pub const PF_LINE_CAP_BUTT:   u8 = 0;
 pub const PF_LINE_CAP_SQUARE: u8 = 1;
 pub const PF_LINE_CAP_ROUND:  u8 = 2;
 
-pub const PF_CLEAR_FLAGS_HAS_COLOR:   u8 = 0x1;
-pub const PF_CLEAR_FLAGS_HAS_DEPTH:   u8 = 0x2;
-pub const PF_CLEAR_FLAGS_HAS_STENCIL: u8 = 0x4;
-pub const PF_CLEAR_FLAGS_HAS_RECT:    u8 = 0x8;
+pub const PF_LINE_JOIN_MITER: u8 = 0;
+pub const PF_LINE_JOIN_BEVEL: u8 = 1;
+pub const PF_LINE_JOIN_ROUND: u8 = 2;
+
+// `geometry`
+
+pub const PF_ARC_DIRECTION_CW:  u8 = 0;
+pub const PF_ARC_DIRECTION_CCW: u8 = 1;
+
+// `renderer`
+
+pub const PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR: u8 = 0x1;
 
 // Types
 
@@ -46,6 +58,8 @@ pub type PFCanvasRef = *mut CanvasRenderingContext2D;
 pub type PFPathRef = *mut Path2D;
 pub type PFCanvasFontContextRef = *mut CanvasFontContext;
 pub type PFLineCap = u8;
+pub type PFLineJoin = u8;
+pub type PFArcDirection = u8;
 
 // `geometry`
 #[repr(C)]
@@ -87,22 +101,19 @@ pub type PFGLRendererRef = *mut Renderer<GLDevice>;
 // FIXME(pcwalton): Double-boxing is unfortunate. Remove this when `std::raw::TraitObject` is
 // stable?
 pub type PFResourceLoaderRef = *mut Box<dyn ResourceLoader>;
-#[repr(C)]
-pub struct PFClearParams {
-    pub color: PFColorF,
-    pub depth: f32,
-    pub stencil: u8,
-    pub rect: PFRectI,
-    pub flags: PFClearFlags,
-}
-pub type PFClearFlags = u8;
 
 // `renderer`
 pub type PFSceneRef = *mut Scene;
 pub type PFSceneProxyRef = *mut SceneProxy;
+#[repr(C)]
+pub struct PFRendererOptions {
+    pub background_color: PFColorF,
+    pub flags: PFRendererOptionsFlags,
+}
+pub type PFRendererOptionsFlags = u8;
 // TODO(pcwalton)
 #[repr(C)]
-pub struct PFRenderOptions {
+pub struct PFBuildOptions {
     pub placeholder: u32,
 }
 
@@ -168,6 +179,32 @@ pub unsafe extern "C" fn PFCanvasSetLineCap(canvas: PFCanvasRef, new_line_cap: P
     });
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetLineJoin(canvas: PFCanvasRef, new_line_join: PFLineJoin) {
+    (*canvas).set_line_join(match new_line_join {
+        PF_LINE_JOIN_BEVEL => LineJoin::Bevel,
+        PF_LINE_JOIN_ROUND => LineJoin::Round,
+        _                  => LineJoin::Miter,
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetMiterLimit(canvas: PFCanvasRef, new_miter_limit: f32) {
+    (*canvas).set_miter_limit(new_miter_limit);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetLineDash(canvas: PFCanvasRef,
+                                             new_line_dashes: *const f32,
+                                             new_line_dash_count: usize) {
+    (*canvas).set_line_dash(slice::from_raw_parts(new_line_dashes, new_line_dash_count).to_vec())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetLineDashOffset(canvas: PFCanvasRef, new_offset: f32) {
+    (*canvas).set_line_dash_offset(new_offset)
+}
+
 /// Consumes the path.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasFillPath(canvas: PFCanvasRef, path: PFPathRef) {
@@ -221,6 +258,40 @@ pub unsafe extern "C" fn PFPathBezierCurveTo(path: PFPathRef,
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn PFPathArc(path: PFPathRef,
+                                   center: *const PFVector2F,
+                                   radius: f32,
+                                   start_angle: f32,
+                                   end_angle: f32,
+                                   direction: PFArcDirection) {
+    let direction = if direction == 0 { ArcDirection::CW } else { ArcDirection::CCW };
+    (*path).arc((*center).to_rust(), radius, start_angle, end_angle, direction)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFPathArcTo(path: PFPathRef,
+                                     ctrl: *const PFVector2F,
+                                     to: *const PFVector2F,
+                                     radius: f32) {
+    (*path).arc_to((*ctrl).to_rust(), (*to).to_rust(), radius)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFPathRect(path: PFPathRef, rect: *const PFRectF) {
+    (*path).rect((*rect).to_rust())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFPathEllipse(path: PFPathRef,
+                                       center: *const PFVector2F,
+                                       axes: *const PFVector2F,
+                                       rotation: f32,
+                                       start_angle: f32,
+                                       end_angle: f32) {
+    (*path).ellipse((*center).to_rust(), (*axes).to_rust(), rotation, start_angle, end_angle)
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn PFPathClosePath(path: PFPathRef) {
     (*path).close_path()
 }
@@ -253,11 +324,6 @@ pub unsafe extern "C" fn PFGLDeviceDestroy(device: PFGLDeviceRef) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFGLDeviceClear(device: PFGLDeviceRef, params: *const PFClearParams) {
-    (*device).clear(&(*params).to_rust())
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn PFResourceLoaderDestroy(loader: PFResourceLoaderRef) {
     drop(Box::from_raw(loader))
 }
@@ -279,11 +345,13 @@ pub unsafe extern "C" fn PFGLDestFramebufferDestroy(dest_framebuffer: PFGLDestFr
 #[no_mangle]
 pub unsafe extern "C" fn PFGLRendererCreate(device: PFGLDeviceRef,
                                             resources: PFResourceLoaderRef,
-                                            dest_framebuffer: PFGLDestFramebufferRef)
+                                            dest_framebuffer: PFGLDestFramebufferRef,
+                                            options: *const PFRendererOptions)
                                             -> PFGLRendererRef {
     Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
                                          &**resources,
-                                         *Box::from_raw(dest_framebuffer))))
+                                         *Box::from_raw(dest_framebuffer),
+                                         (*options).to_rust())))
 }
 
 #[no_mangle]
@@ -299,8 +367,8 @@ pub unsafe extern "C" fn PFGLRendererGetDevice(renderer: PFGLRendererRef) -> PFG
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderGL(scene_proxy: PFSceneProxyRef,
                                                       renderer: PFGLRendererRef,
-                                                      options: *const PFRenderOptions) {
-    (*scene_proxy).build_and_render(&mut *renderer, (*options).to_rust())
+                                                      build_options: *const PFBuildOptions) {
+    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).to_rust())
 }
 
 // `renderer`
@@ -358,28 +426,14 @@ impl PFVector2I {
     }
 }
 
-// Helpers for `gpu`
+// Helpers for `renderer`
 
-impl PFClearParams {
-    pub fn to_rust(&self) -> ClearParams {
-        ClearParams {
-            color: if (self.flags & PF_CLEAR_FLAGS_HAS_COLOR) != 0 {
-                Some(self.color.to_rust())
-            } else {
-                None
-            },
-            rect: if (self.flags & PF_CLEAR_FLAGS_HAS_RECT) != 0 {
-                Some(self.rect.to_rust())
-            } else {
-                None
-            },
-            depth: if (self.flags & PF_CLEAR_FLAGS_HAS_DEPTH) != 0 {
-                Some(self.depth)
-            } else {
-                None
-            },
-            stencil: if (self.flags & PF_CLEAR_FLAGS_HAS_STENCIL) != 0 {
-                Some(self.stencil)
+impl PFRendererOptions {
+    pub fn to_rust(&self) -> RendererOptions {
+        let has_background_color = self.flags & PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR;
+        RendererOptions {
+            background_color: if has_background_color != 0 {
+                Some(self.background_color.to_rust())
             } else {
                 None
             },
@@ -387,10 +441,8 @@ impl PFClearParams {
     }
 }
 
-// Helpers for `renderer`
-
-impl PFRenderOptions {
-    pub fn to_rust(&self) -> RenderOptions {
-        RenderOptions::default()
+impl PFBuildOptions {
+    pub fn to_rust(&self) -> BuildOptions {
+        BuildOptions::default()
     }
 }

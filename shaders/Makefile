@@ -37,14 +37,20 @@ INCLUDES=\
 OUT=\
 	$(SHADERS:%=$(TARGET_DIR)/gl3/%) \
 	$(SHADERS:%.glsl=$(TARGET_DIR)/metal/%.metal) \
+	$(SHADERS:%.glsl=build/metal/%.spv) \
 	$(EMPTY)
 
 GLSL_VERSION=330
 GLSLANGFLAGS=--auto-map-locations -I.
+GLSLANGFLAGS_METAL=$(GLSLANGFLAGS) -DPF_ORIGIN_UPPER_LEFT=1
 
-SPIRVCROSSFLAGS=--msl
+SPIRVCROSS?=spirv-cross
+SPIRVCROSSFLAGS=--msl --msl-version 020100 --msl-argument-buffers
 
-SED_ARGS=-e "s/\#version 330/\#version \{\{version\}\}/" -e "s/\#line.*$$//"
+GLSL_VERSION_HEADER="\#version {{version}}"
+HEADER="// Automatically generated from files in pathfinder/shaders/. Do not edit!"
+
+GLSL_SED_ARGS=-e "s/\#version 330//" -e "s/\#line.*$$//"
 
 all:	$(OUT)
 
@@ -53,17 +59,17 @@ all:	$(OUT)
 clean:
 	rm -f $(OUT)
 
-$(TARGET_DIR)/spirv/%.fs.spv:	%.fs.glsl $(INCLUDES)
-	mkdir -p $(TARGET_DIR)/spirv && glslangValidator $(GLSLANGFLAGS) -G$(GLSL_VERSION) -S frag -o $@ $<
+build/metal/%.fs.spv:	%.fs.glsl $(INCLUDES)
+	mkdir -p build/metal && glslangValidator $(GLSLANGFLAGS_METAL) -G$(GLSL_VERSION) -S frag -o $@ $<
 
 $(TARGET_DIR)/gl3/%.fs.glsl:	%.fs.glsl $(INCLUDES)
-	mkdir -p $(TARGET_DIR)/gl3 && glslangValidator $(GLSLANGFLAGS) -S frag -E $< | sed $(SED_ARGS) > $@
+	mkdir -p $(TARGET_DIR)/gl3 && echo $(GLSL_VERSION_HEADER) > $@ && echo $(HEADER) >> $@ && ( glslangValidator $(GLSLANGFLAGS) -S frag -E $< | sed $(GLSL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )
 
-$(TARGET_DIR)/spirv/%.vs.spv:	%.vs.glsl $(INCLUDES)
-	mkdir -p $(TARGET_DIR)/spirv && glslangValidator $(GLSLANGFLAGS) -G$(GLSL_VERSION) -S vert -o $@ $<
+build/metal/%.vs.spv:	%.vs.glsl $(INCLUDES)
+	mkdir -p build/metal && glslangValidator $(GLSLANGFLAGS_METAL) -G$(GLSL_VERSION) -S vert -o $@ $<
 
 $(TARGET_DIR)/gl3/%.vs.glsl:	%.vs.glsl $(INCLUDES)
-	mkdir -p $(TARGET_DIR)/gl3 && glslangValidator $(GLSLANGFLAGS) -S vert -E $< | sed $(SED_ARGS) > $@
+	mkdir -p $(TARGET_DIR)/gl3 && echo $(GLSL_VERSION_HEADER) > $@ && echo $(HEADER) >> $@ && ( glslangValidator $(GLSLANGFLAGS) -S vert -E $< | sed $(GLSL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )
 
-$(TARGET_DIR)/metal/%.metal:	$(TARGET_DIR)/spirv/%.spv
-	mkdir -p $(TARGET_DIR)/metal && spirv-cross $(SPIRVCROSSFLAGS) --output $@ $<
+$(TARGET_DIR)/metal/%.metal:	build/metal/%.spv
+	mkdir -p $(TARGET_DIR)/metal && echo $(HEADER) > $@ && ( $(SPIRVCROSS) $(SPIRVCROSSFLAGS) $< | sed $(METAL_SED_ARGS) >> $@ ) || ( rm $@ && exit 1 )

@@ -75,6 +75,7 @@ pub struct SolidTileBatchPrimitive {
     pub origin_u: u16,
     pub origin_v: u16,
     pub object_index: u16,
+    pub pad: u16,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

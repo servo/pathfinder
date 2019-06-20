@@ -27,12 +27,12 @@ use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::basic::transform3d::Transform3DF;
 use pathfinder_geometry::color::ColorU;
-use pathfinder_gl::GLDevice;
-use pathfinder_gpu::Device;
 use pathfinder_gpu::resources::ResourceLoader;
+use pathfinder_gpu::Device;
 use pathfinder_renderer::concurrent::scene_proxy::{RenderCommandStream, SceneProxy};
-use pathfinder_renderer::gpu::renderer::{DestFramebuffer, RenderStats, RenderTime, Renderer};
-use pathfinder_renderer::options::{RenderOptions, RenderTransform};
+use pathfinder_renderer::gpu::options::{DestFramebuffer, RendererOptions};
+use pathfinder_renderer::gpu::renderer::{RenderStats, RenderTime, Renderer};
+use pathfinder_renderer::options::{BuildOptions, RenderTransform};
 use pathfinder_renderer::post::STEM_DARKENING_FACTORS;
 use pathfinder_renderer::scene::Scene;
 use pathfinder_svg::BuiltSVG;
@@ -43,6 +43,11 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 use usvg::{Options as UsvgOptions, Tree};
+
+#[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+use pathfinder_gl::GLDevice as DeviceImpl;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use pathfinder_metal::MetalDevice as DeviceImpl;
 
 static DEFAULT_SVG_VIRTUAL_PATH: &'static str = "svg/Ghostscript_Tiger.svg";
 
@@ -112,22 +117,31 @@ pub struct DemoApp<W> where W: Window {
     build_time: Option<Duration>,
 
     ui_model: DemoUIModel,
-    ui_presenter: DemoUIPresenter<GLDevice>,
+    ui_presenter: DemoUIPresenter<DeviceImpl>,
 
     scene_proxy: SceneProxy,
-    renderer: Renderer<GLDevice>,
+    renderer: Renderer<DeviceImpl>,
 
-    scene_framebuffer: Option<<GLDevice as Device>::Framebuffer>,
+    scene_framebuffer: Option<<DeviceImpl as Device>::Framebuffer>,
 
-    ground_program: GroundProgram<GLDevice>,
-    ground_vertex_array: GroundVertexArray<GLDevice>,
+    ground_program: GroundProgram<DeviceImpl>,
+    ground_vertex_array: GroundVertexArray<DeviceImpl>,
 }
 
 impl<W> DemoApp<W> where W: Window {
     pub fn new(window: W, window_size: WindowSize, mut options: Options) -> DemoApp<W> {
         let expire_message_event_id = window.create_user_event_id();
 
-        let device = GLDevice::new(window.gl_version(), window.gl_default_framebuffer());
+        let device;
+        #[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+        {
+            device = DeviceImpl::new(window.metal_layer());
+        }
+        #[cfg(any(not(target_os = "macos"), feature = "pf-gl"))]
+        {
+            device = DeviceImpl::new(window.gl_version(), window.gl_default_framebuffer());
+        }
+
         let resources = window.resource_loader();
 
         // Read command line options.
@@ -144,8 +158,12 @@ impl<W> DemoApp<W> where W: Window {
             viewport,
             window_size: window_size.device_size(),
         };
+        // FIXME(pcwalton)
+        let render_options = RendererOptions {
+            background_color: None,
+        };
 
-        let renderer = Renderer::new(device, resources, dest_framebuffer);
+        let renderer = Renderer::new(device, resources, dest_framebuffer, render_options);
         let scene_metadata = SceneMetadata::new_clipping_view_box(&mut built_svg.scene,
                                                                   viewport.size());
         let camera = Camera::new(options.mode, scene_metadata.view_box, viewport.size());
@@ -246,7 +264,7 @@ impl<W> DemoApp<W> where W: Window {
             Camera::TwoD(transform) => Some(RenderTransform::Transform2D(transform)),
         };
 
-        let render_options = RenderOptions {
+        let build_options = BuildOptions {
             transform: self.render_transform.clone().unwrap(),
             dilation: if self.ui_model.stem_darkening_effect_enabled {
                 let font_size = APPROX_FONT_SIZE * self.window_size.backing_scale_factor;
@@ -258,7 +276,7 @@ impl<W> DemoApp<W> where W: Window {
             subpixel_aa_enabled: self.ui_model.subpixel_aa_effect_enabled,
         };
 
-        self.render_command_stream = Some(self.scene_proxy.build_with_stream(render_options));
+        self.render_command_stream = Some(self.scene_proxy.build_with_stream(build_options));
     }
 
     fn handle_events(&mut self, events: Vec<Event>) -> Vec<UIEvent> {
@@ -488,7 +506,9 @@ impl<W> DemoApp<W> where W: Window {
 
         self.handle_ui_events(frame, &mut ui_action);
 
-        self.window.present();
+        self.renderer.device.end_commands();
+
+        self.window.present(&mut self.renderer.device);
         self.frame_counter += 1;
     }
 

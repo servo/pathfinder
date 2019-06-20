@@ -11,10 +11,10 @@
 //! Options that control how rendering is to be performed.
 
 use crate::gpu_data::RenderCommand;
-use pathfinder_geometry::basic::vector::{Vector2F, Vector4F};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 use pathfinder_geometry::basic::transform3d::Perspective;
+use pathfinder_geometry::basic::vector::{Vector2F, Vector4F};
 use pathfinder_geometry::clip::PolygonClipper3D;
 
 pub trait RenderCommandListener: Send + Sync {
@@ -31,16 +31,17 @@ where
     }
 }
 
+/// Options that influence scene building.
 #[derive(Clone, Default)]
-pub struct RenderOptions {
+pub struct BuildOptions {
     pub transform: RenderTransform,
     pub dilation: Vector2F,
     pub subpixel_aa_enabled: bool,
 }
 
-impl RenderOptions {
-    pub(crate) fn prepare(self, bounds: RectF) -> PreparedRenderOptions {
-        PreparedRenderOptions {
+impl BuildOptions {
+    pub(crate) fn prepare(self, bounds: RectF) -> PreparedBuildOptions {
+        PreparedBuildOptions {
             transform: self.transform.prepare(bounds),
             dilation: self.dilation,
             subpixel_aa_enabled: self.subpixel_aa_enabled,
@@ -119,13 +120,13 @@ impl RenderTransform {
     }
 }
 
-pub(crate) struct PreparedRenderOptions {
+pub(crate) struct PreparedBuildOptions {
     pub(crate) transform: PreparedRenderTransform,
     pub(crate) dilation: Vector2F,
     pub(crate) subpixel_aa_enabled: bool,
 }
 
-impl PreparedRenderOptions {
+impl PreparedBuildOptions {
     #[inline]
     pub(crate) fn bounding_quad(&self) -> BoundingQuad {
         match self.transform {

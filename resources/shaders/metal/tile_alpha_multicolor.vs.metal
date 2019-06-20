@@ -1,9 +1,20 @@
+// Automatically generated from files in pathfinder/shaders/. Do not edit!
 #pragma clang diagnostic ignored "-Wmissing-prototypes"
 
 #include <metal_stdlib>
 #include <simd/simd.h>
 
 using namespace metal;
+
+struct spvDescriptorSetBuffer0
+{
+    constant float2* uTileSize [[id(0)]];
+    texture2d<float> uPaintTexture [[id(1)]];
+    constant float2* uViewBoxOrigin [[id(2)]];
+    sampler uPaintTextureSmplr [[id(3)]];
+    constant float2* uFramebufferSize [[id(4)]];
+    constant float2* uStencilTextureSize [[id(5)]];
+};
 
 struct main0_out
 {
@@ -15,10 +26,10 @@ struct main0_out
 
 struct main0_in
 {
-    float2 aTessCoord [[attribute(0)]];
+    uint2 aTessCoord [[attribute(0)]];
     uint3 aTileOrigin [[attribute(1)]];
     int aBackdrop [[attribute(2)]];
-    uint aTileIndex [[attribute(3)]];
+    int aTileIndex [[attribute(3)]];
     float2 aColorTexCoord [[attribute(4)]];
 };
 
@@ -34,25 +45,25 @@ float4 getColor(thread texture2d<float> uPaintTexture, thread const sampler uPai
     return uPaintTexture.sample(uPaintTextureSmplr, aColorTexCoord, level(0.0));
 }
 
-void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread float2& aTessCoord, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread uint& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
+void computeVaryings(thread float2 uTileSize, thread uint3& aTileOrigin, thread uint2& aTessCoord, thread float2 uViewBoxOrigin, thread float2 uFramebufferSize, thread int& aTileIndex, thread float2 uStencilTextureSize, thread float2& vTexCoord, thread float& vBackdrop, thread int& aBackdrop, thread float4& vColor, thread float4& gl_Position, thread texture2d<float> uPaintTexture, thread const sampler uPaintTextureSmplr, thread float2& aColorTexCoord)
 {
     float2 origin = float2(aTileOrigin.xy) + (float2(float(aTileOrigin.z & 15u), float(aTileOrigin.z >> 4u)) * 256.0);
-    float2 pixelPosition = ((origin + aTessCoord) * uTileSize) + uViewBoxOrigin;
+    float2 pixelPosition = ((origin + float2(aTessCoord)) * uTileSize) + uViewBoxOrigin;
     float2 position = (((pixelPosition / uFramebufferSize) * 2.0) - float2(1.0)) * float2(1.0, -1.0);
-    uint param = aTileIndex;
+    uint param = uint(aTileIndex);
     float param_1 = uStencilTextureSize.x;
     float2 maskTexCoordOrigin = computeTileOffset(param, param_1, uTileSize);
-    float2 maskTexCoord = maskTexCoordOrigin + (aTessCoord * uTileSize);
+    float2 maskTexCoord = maskTexCoordOrigin + (float2(aTessCoord) * uTileSize);
     vTexCoord = maskTexCoord / uStencilTextureSize;
     vBackdrop = float(aBackdrop);
     vColor = getColor(uPaintTexture, uPaintTextureSmplr, aColorTexCoord);
     gl_Position = float4(position, 0.0, 1.0);
 }
 
-vertex main0_out main0(main0_in in [[stage_in]], float2 uTileSize [[buffer(0)]], float2 uViewBoxOrigin [[buffer(1)]], float2 uFramebufferSize [[buffer(2)]], float2 uStencilTextureSize [[buffer(3)]], texture2d<float> uPaintTexture [[texture(0)]], sampler uPaintTextureSmplr [[sampler(0)]], uint gl_VertexID [[vertex_id]], uint gl_InstanceID [[instance_id]])
+vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    computeVaryings(uTileSize, in.aTileOrigin, in.aTessCoord, uViewBoxOrigin, uFramebufferSize, in.aTileIndex, uStencilTextureSize, out.vTexCoord, out.vBackdrop, in.aBackdrop, out.vColor, out.gl_Position, uPaintTexture, uPaintTextureSmplr, in.aColorTexCoord);
+    computeVaryings((*spvDescriptorSet0.uTileSize), in.aTileOrigin, in.aTessCoord, (*spvDescriptorSet0.uViewBoxOrigin), (*spvDescriptorSet0.uFramebufferSize), in.aTileIndex, (*spvDescriptorSet0.uStencilTextureSize), out.vTexCoord, out.vBackdrop, in.aBackdrop, out.vColor, out.gl_Position, spvDescriptorSet0.uPaintTexture, spvDescriptorSet0.uPaintTextureSmplr, in.aColorTexCoord);
     return out;
 }
 

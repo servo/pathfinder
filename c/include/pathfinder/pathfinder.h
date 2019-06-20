@@ -25,17 +25,23 @@ extern "C" {
 #define PF_LINE_CAP_SQUARE  1
 #define PF_LINE_CAP_ROUND   2
 
+#define PF_LINE_JOIN_MITER  0
+#define PF_LINE_JOIN_BEVEL  1
+#define PF_LINE_JOIN_ROUND  2
+
+// `geometry`
+
+#define PF_ARC_DIRECTION_CW     0
+#define PF_ARC_DIRECTION_CCW    1
+
 // `gl`
 
 #define PF_GL_VERSION_GL3   0
 #define PF_GL_VERSION_GLES3 1
 
-// `gpu`
+// `renderer`
 
-#define PF_CLEAR_FLAGS_HAS_COLOR    0x1
-#define PF_CLEAR_FLAGS_HAS_DEPTH    0x2
-#define PF_CLEAR_FLAGS_HAS_STENCIL  0x4
-#define PF_CLEAR_FLAGS_HAS_RECT     0x8
+#define PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR 0x1
 
 // Types
 
@@ -48,6 +54,8 @@ typedef struct PFPath *PFPathRef;
 struct PFCanvasFontContext;
 typedef struct PFCanvasFontContext *PFCanvasFontContextRef;
 typedef uint8_t PFLineCap;
+typedef uint8_t PFLineJoin;
+typedef uint8_t PFArcDirection;
 
 // `geometry`
 
@@ -85,24 +93,21 @@ typedef uint32_t PFGLVersion;
 
 // `gpu`
 
-typedef uint8_t PFClearFlags;
-struct PFClearParams {
-    PFColorF color;
-    float depth;
-    uint8_t stencil;
-    PFRectI rect;
-    PFClearFlags flags;
-};
-typedef struct PFClearParams PFClearParams;
 struct PFResourceLoader;
 typedef struct PFResourceLoader *PFResourceLoaderRef;
 
 // `renderer`
 
-struct PFRenderOptions {
+typedef uint8_t PFRendererOptionsFlags;
+struct PFRendererOptions {
+    PFColorF background_color;
+    PFRendererOptionsFlags flags;
+};
+struct PFBuildOptions {
     uint32_t placeholder;
 };
-typedef struct PFRenderOptions PFRenderOptions;
+typedef struct PFRendererOptions PFRendererOptions;
+typedef struct PFBuildOptions PFBuildOptions;
 struct PFScene;
 typedef struct PFScene *PFSceneRef;
 struct PFSceneProxy;
@@ -122,6 +127,12 @@ void PFCanvasFillRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasStrokeRect(PFCanvasRef canvas, const PFRectF *rect);
 void PFCanvasSetLineWidth(PFCanvasRef canvas, float new_line_width);
 void PFCanvasSetLineCap(PFCanvasRef canvas, PFLineCap new_line_cap);
+void PFCanvasSetLineJoin(PFCanvasRef canvas, PFLineJoin new_line_join);
+void PFCanvasSetMiterLimit(PFCanvasRef canvas, float new_miter_limit);
+void PFCanvasSetLineDash(PFCanvasRef canvas,
+                         const float *new_line_dashes,
+                         size_t new_line_dash_count);
+void PFCanvasSetLineDashOffset(PFCanvasRef canvas, float offset);
 void PFCanvasFillPath(PFCanvasRef canvas, PFPathRef path);
 void PFCanvasStrokePath(PFCanvasRef canvas, PFPathRef path);
 PFPathRef PFPathCreate();
@@ -134,6 +145,20 @@ void PFPathBezierCurveTo(PFPathRef path,
                          const PFVector2F *ctrl0,
                          const PFVector2F *ctrl1,
                          const PFVector2F *to);
+void PFPathArc(PFPathRef path,
+               const PFVector2F *center,
+               float radius,
+               float start_angle,
+               float end_angle,
+               PFArcDirection direction);
+void PFPathArcTo(PFPathRef path, const PFVector2F *ctrl, const PFVector2F *to, float radius);
+void PFPathRect(PFPathRef path, const PFRectF *rect);
+void PFPathEllipse(PFPathRef path,
+                   const PFVector2F *center,
+                   const PFVector2F *axes,
+                   float rotation,
+                   float start_angle,
+                   float end_angle);
 void PFPathClosePath(PFPathRef path);
 
 // `gl`
@@ -142,17 +167,17 @@ PFGLDestFramebufferRef PFGLDestFramebufferCreateFullWindow(const PFVector2I *win
 void PFGLDestFramebufferDestroy(PFGLDestFramebufferRef dest_framebuffer);
 PFGLDeviceRef PFGLDeviceCreate(PFGLVersion version, uint32_t default_framebuffer);
 void PFGLDeviceDestroy(PFGLDeviceRef device);
-void PFGLDeviceClear(PFGLDeviceRef device, const PFClearParams *params);
 void PFGLLoadWith(PFGLFunctionLoader loader, void *userdata);
 PFGLRendererRef PFGLRendererCreate(PFGLDeviceRef device,
                                    PFResourceLoaderRef resources,
-                                   PFGLDestFramebufferRef dest_framebuffer);
+                                   PFGLDestFramebufferRef dest_framebuffer,
+                                   const PFRendererOptions *options);
 void PFGLRendererDestroy(PFGLRendererRef renderer);
 /// Returns a borrowed reference to the device.
 PFGLDeviceRef PFGLRendererGetDevice(PFGLRendererRef renderer);
 void PFSceneProxyBuildAndRenderGL(PFSceneProxyRef scene_proxy,
                                   PFGLRendererRef renderer,
-                                  const PFRenderOptions *options);
+                                  const PFBuildOptions *build_options);
 
 // `gpu`
 

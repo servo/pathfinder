@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
 
+[features]
+pf-gl = []
+
 [dependencies]
 clap = "2.32"
 gl = "0.6"
@@ -39,3 +42,9 @@ path = "../../svg"
 
 [dependencies.pathfinder_ui]
 path = "../../ui"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.14"
+
+[target.'cfg(target_os = "macos")'.dependencies.pathfinder_metal]
+path = "../../metal"
