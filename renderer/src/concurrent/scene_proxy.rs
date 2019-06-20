@@ -85,11 +85,7 @@ impl SceneProxy {
                                where D: Device {
         renderer.begin_scene();
         for (index, command) in self.build_with_stream(build_options).enumerate() {
-            println!("{}. {:?}", index, command);
             renderer.render_command(&command);
-            /*if index == 5 {
-                break;
-            }*/
         }
         renderer.end_scene();
     }

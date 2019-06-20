@@ -19,11 +19,12 @@ in ivec2 aPosition;
 out vec2 vTexCoord;
 
 void main() {
-#ifdef PF_ORIGIN_UPPER_LEFT
-    vTexCoord = vec2(aPosition.x, 1.0 - aPosition.y);
-#else
-    vTexCoord = vec2(aPosition);
-#endif
+    vec2 position = vec2(aPosition);
+    vTexCoord = position;
 
-    gl_Position = uNewTransform * vec4(ivec4(aPosition, 0, 1));
+#ifdef PF_ORIGIN_UPPER_LEFT
+    // FIXME(pcwalton): This is wrong.
+    position.y = 1.0 - position.y;
+#endif
+    gl_Position = uNewTransform * vec4(position, 0.0, 1.0);
 }

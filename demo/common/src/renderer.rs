@@ -14,7 +14,7 @@ use crate::camera::{Camera, Mode};
 use crate::window::{View, Window};
 use crate::{BackgroundColor, DemoApp, UIVisibility};
 use image::ColorType;
-use pathfinder_geometry::color::ColorU;
+use pathfinder_geometry::color::{ColorF, ColorU};
 use pathfinder_gpu::{ClearOps, DepthFunc, DepthState, Device, Primitive, RenderOptions};
 use pathfinder_gpu::{RenderState, RenderTarget, TextureData, TextureFormat, UniformData};
 use pathfinder_geometry::basic::rect::RectI;
@@ -89,7 +89,8 @@ impl<W> DemoApp<W> where W: Window {
         // Clear to the appropriate color.
         let clear_color = match mode {
             Mode::TwoD => Some(self.background_color().to_f32()),
-            Mode::ThreeD | Mode::VR => None,
+            Mode::ThreeD => None,
+            Mode::VR => Some(ColorF::transparent_black()),
         };
         self.renderer.set_options(RendererOptions { background_color: clear_color });
 

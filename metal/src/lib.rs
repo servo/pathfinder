@@ -460,11 +460,9 @@ impl Device for MetalDevice {
 
     fn begin_commands(&self) {
         self.command_buffers.borrow_mut().push(self.command_queue.new_command_buffer().retain());
-        println!("begin_commands({})", self.command_buffers.borrow().len());
     }
 
     fn end_commands(&self) {
-        println!("end_commands({})", self.command_buffers.borrow().len());
         let command_buffer = self.command_buffers.borrow_mut().pop().unwrap();
         command_buffer.commit();
     }
@@ -1046,7 +1044,6 @@ impl MetalDevice {
     }
 
     fn set_viewport(&self, encoder: &RenderCommandEncoderRef, viewport: &RectI) {
-        println!("set_viewport({:?}", viewport);
         encoder.set_viewport(MTLViewport {
             originX: viewport.origin().x() as f64,
             originY: viewport.origin().y() as f64,

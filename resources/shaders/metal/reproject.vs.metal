@@ -23,8 +23,10 @@ struct main0_in
 vertex main0_out main0(main0_in in [[stage_in]], constant spvDescriptorSetBuffer0& spvDescriptorSet0 [[buffer(0)]])
 {
     main0_out out = {};
-    out.vTexCoord = float2(float(in.aPosition.x), 1.0 - float(in.aPosition.y));
-    out.gl_Position = (*spvDescriptorSet0.uNewTransform) * float4(int4(in.aPosition, 0, 1));
+    float2 position = float2(in.aPosition);
+    out.vTexCoord = position;
+    position.y = 1.0 - position.y;
+    out.gl_Position = (*spvDescriptorSet0.uNewTransform) * float4(position, 0.0, 1.0);
     return out;
 }
 

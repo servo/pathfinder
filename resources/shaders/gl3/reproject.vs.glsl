@@ -21,12 +21,12 @@ in ivec2 aPosition;
 out vec2 vTexCoord;
 
 void main(){
+    vec2 position = vec2(aPosition);
+    vTexCoord = position;
 
 
 
-    vTexCoord = vec2(aPosition);
 
-
-    gl_Position = uNewTransform * vec4(ivec4(aPosition, 0, 1));
+    gl_Position = uNewTransform * vec4(position, 0.0, 1.0);
 }
 
