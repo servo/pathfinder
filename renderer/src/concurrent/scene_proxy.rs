@@ -84,7 +84,7 @@ impl SceneProxy {
     pub fn build_and_render<D>(&self, renderer: &mut Renderer<D>, build_options: BuildOptions)
                                where D: Device {
         renderer.begin_scene();
-        for (index, command) in self.build_with_stream(build_options).enumerate() {
+        for command in self.build_with_stream(build_options) {
             renderer.render_command(&command);
         }
         renderer.end_scene();
