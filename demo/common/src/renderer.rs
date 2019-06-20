@@ -51,7 +51,8 @@ impl<W> DemoApp<W> where W: Window {
 
         // Set up framebuffers.
         let window_size = self.window_size.device_size();
-        let scene_count = match self.camera.mode() {
+        let mode = self.camera.mode();
+        let scene_count = match mode {
             Mode::VR => {
                 let viewport = self.window.viewport(View::Stereo(0));
                 if self.scene_framebuffer.is_none()
@@ -86,13 +87,11 @@ impl<W> DemoApp<W> where W: Window {
         };
 
         // Clear to the appropriate color.
-        let clear_color = if scene_count == 2 {
-            ColorF::transparent_black()
-        } else {
-            self.background_color().to_f32()
+        let clear_color = match mode {
+            Mode::TwoD => Some(self.background_color().to_f32()),
+            Mode::ThreeD | Mode::VR => None,
         };
-
-        self.renderer.set_options(RendererOptions { background_color: Some(clear_color) });
+        self.renderer.set_options(RendererOptions { background_color: clear_color });
 
         scene_count
     }
@@ -106,6 +105,8 @@ impl<W> DemoApp<W> where W: Window {
         if self.camera.mode() != Mode::VR {
             self.draw_environment();
         }
+
+        self.renderer.device.end_commands();
 
         self.render_vector_scene();
 
@@ -121,8 +122,6 @@ impl<W> DemoApp<W> where W: Window {
                 self.scene_framebuffer = Some(scene_framebuffer);
             }
         }
-
-        self.renderer.device.end_commands();
     }
 
     pub fn composite_scene(&mut self, render_scene_index: u32) {

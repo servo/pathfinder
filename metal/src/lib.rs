@@ -626,6 +626,13 @@ impl MetalDevice {
         }
     }
 
+    fn render_target_has_depth(&self, render_target: &RenderTarget<MetalDevice>) -> bool {
+        match *render_target {
+            RenderTarget::Default {..} => true,
+            RenderTarget::Framebuffer(_) => false,
+        }
+    }
+
     fn prepare_to_draw(&self, render_state: &RenderState<MetalDevice>) -> RenderCommandEncoder {
         let command_buffers = self.command_buffers.borrow();
         let command_buffer = command_buffers.last().unwrap();
@@ -667,9 +674,12 @@ impl MetalDevice {
                                                                   .unwrap();
         self.prepare_pipeline_color_attachment_for_render(pipeline_color_attachment,
                                                           render_state);
-        let depth_stencil_format = MTLPixelFormat::Depth32Float_Stencil8;
-        render_pipeline_descriptor.set_depth_attachment_pixel_format(depth_stencil_format);
-        render_pipeline_descriptor.set_stencil_attachment_pixel_format(depth_stencil_format);
+
+        if self.render_target_has_depth(render_state.target) {
+            let depth_stencil_format = MTLPixelFormat::Depth32Float_Stencil8;
+            render_pipeline_descriptor.set_depth_attachment_pixel_format(depth_stencil_format);
+            render_pipeline_descriptor.set_stencil_attachment_pixel_format(depth_stencil_format);
+        }
 
         let reflection_options = MTLPipelineOption::ArgumentInfo |
             MTLPipelineOption::BufferTypeInfo;
