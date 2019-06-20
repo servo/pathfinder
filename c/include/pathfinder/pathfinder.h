@@ -29,6 +29,11 @@ extern "C" {
 #define PF_LINE_JOIN_BEVEL  1
 #define PF_LINE_JOIN_ROUND  2
 
+// `geometry`
+
+#define PF_ARC_DIRECTION_CW     0
+#define PF_ARC_DIRECTION_CCW    1
+
 // `gl`
 
 #define PF_GL_VERSION_GL3   0
@@ -50,6 +55,7 @@ struct PFCanvasFontContext;
 typedef struct PFCanvasFontContext *PFCanvasFontContextRef;
 typedef uint8_t PFLineCap;
 typedef uint8_t PFLineJoin;
+typedef uint8_t PFArcDirection;
 
 // `geometry`
 
@@ -139,6 +145,20 @@ void PFPathBezierCurveTo(PFPathRef path,
                          const PFVector2F *ctrl0,
                          const PFVector2F *ctrl1,
                          const PFVector2F *to);
+void PFPathArc(PFPathRef path,
+               const PFVector2F *center,
+               float radius,
+               float start_angle,
+               float end_angle,
+               PFArcDirection direction);
+void PFPathArcTo(PFPathRef path, const PFVector2F *ctrl, const PFVector2F *to, float radius);
+void PFPathRect(PFPathRef path, const PFRectF *rect);
+void PFPathEllipse(PFPathRef path,
+                   const PFVector2F *center,
+                   const PFVector2F *axes,
+                   float rotation,
+                   float start_angle,
+                   float end_angle);
 void PFPathClosePath(PFPathRef path);
 
 // `gl`
