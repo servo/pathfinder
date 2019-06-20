@@ -53,6 +53,8 @@ struct PFPath;
 typedef struct PFPath *PFPathRef;
 struct PFCanvasFontContext;
 typedef struct PFCanvasFontContext *PFCanvasFontContextRef;
+struct PFFillStyle;
+typedef struct PFFillStyle *PFFillStyleRef;
 typedef uint8_t PFLineCap;
 typedef uint8_t PFLineJoin;
 typedef uint8_t PFArcDirection;
@@ -67,6 +69,10 @@ struct PFColorF {
     float r, g, b, a;
 };
 typedef struct PFColorF PFColorF;
+struct PFColorU {
+    uint8_t r, g, b, a;
+};
+typedef struct PFColorU PFColorU;
 struct PFVector2F {
     float x, y;
 };
@@ -149,6 +155,8 @@ void PFCanvasSetLineDash(PFCanvasRef canvas,
                          const float *new_line_dashes,
                          size_t new_line_dash_count);
 void PFCanvasSetLineDashOffset(PFCanvasRef canvas, float offset);
+void PFCanvasSetFillStyle(PFCanvasRef canvas, PFFillStyleRef fill_style);
+void PFCanvasSetStrokeStyle(PFCanvasRef canvas, PFFillStyleRef stroke_style);
 void PFCanvasFillPath(PFCanvasRef canvas, PFPathRef path);
 void PFCanvasStrokePath(PFCanvasRef canvas, PFPathRef path);
 PFPathRef PFPathCreate();
@@ -176,6 +184,8 @@ void PFPathEllipse(PFPathRef path,
                    float start_angle,
                    float end_angle);
 void PFPathClosePath(PFPathRef path);
+PFFillStyleRef PFFillStyleCreateColor(PFColorU color);
+void PFFillStyleDestroy(PFFillStyleRef fill_style);
 
 // `gl`
 

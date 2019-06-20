@@ -11,11 +11,11 @@
 //! C bindings to Pathfinder.
 
 use gl;
-use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, LineJoin};
+use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
 use pathfinder_canvas::{Path2D, TextMetrics};
 use pathfinder_geometry::basic::rect::{RectF, RectI};
 use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::color::ColorF;
+use pathfinder_geometry::color::{ColorF, ColorU};
 use pathfinder_geometry::outline::ArcDirection;
 use pathfinder_geometry::stroke::LineCap;
 use pathfinder_gl::{GLDevice, GLVersion};
@@ -59,6 +59,7 @@ pub const PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR: u8 = 0x1;
 pub type PFCanvasRef = *mut CanvasRenderingContext2D;
 pub type PFPathRef = *mut Path2D;
 pub type PFCanvasFontContextRef = *mut CanvasFontContext;
+pub type PFFillStyleRef = *mut FillStyle;
 pub type PFLineCap = u8;
 pub type PFLineJoin = u8;
 pub type PFArcDirection = u8;
@@ -94,6 +95,13 @@ pub struct PFColorF {
     pub g: f32,
     pub b: f32,
     pub a: f32,
+}
+#[repr(C)]
+pub struct PFColorU {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
 }
 
 // `gl`
@@ -240,6 +248,17 @@ pub unsafe extern "C" fn PFCanvasSetLineDashOffset(canvas: PFCanvasRef, new_offs
     (*canvas).set_line_dash_offset(new_offset)
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetFillStyle(canvas: PFCanvasRef, fill_style: PFFillStyleRef) {
+    (*canvas).set_fill_style(*fill_style)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetStrokeStyle(canvas: PFCanvasRef,
+                                                stroke_style: PFFillStyleRef) {
+    (*canvas).set_stroke_style(*stroke_style)
+}
+
 /// Consumes the path.
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasFillPath(canvas: PFCanvasRef, path: PFPathRef) {
@@ -329,6 +348,16 @@ pub unsafe extern "C" fn PFPathEllipse(path: PFPathRef,
 #[no_mangle]
 pub unsafe extern "C" fn PFPathClosePath(path: PFPathRef) {
     (*path).close_path()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFFillStyleCreateColor(color: *const PFColorU) -> PFFillStyleRef {
+    Box::into_raw(Box::new(FillStyle::Color((*color).to_rust())))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFFillStyleDestroy(fill_style: PFFillStyleRef) {
+    drop(Box::from_raw(fill_style))
 }
 
 // `gl`
@@ -449,6 +478,13 @@ impl PFColorF {
     #[inline]
     pub fn to_rust(&self) -> ColorF {
         ColorF(F32x4::new(self.r, self.g, self.b, self.a))
+    }
+}
+
+impl PFColorU {
+    #[inline]
+    pub fn to_rust(&self) -> ColorU {
+        ColorU { r: self.r, g: self.g, b: self.b, a: self.a }
     }
 }
 
