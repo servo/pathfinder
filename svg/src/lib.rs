@@ -104,10 +104,6 @@ impl BuiltSVG {
                     self.result_flags
                         .insert(BuildResultFlags::UNSUPPORTED_MASK_ATTR);
                 }
-                if group.opacity.is_some() {
-                    self.result_flags
-                        .insert(BuildResultFlags::UNSUPPORTED_OPACITY_ATTR);
-                }
 
                 for kid in node.children() {
                     self.process_node(&kid, &transform)
@@ -140,7 +136,7 @@ impl BuiltSVG {
                         line_width: f32::max(stroke.width.value() as f32, HAIRLINE_STROKE_WIDTH),
                         line_cap: LineCap::from_usvg_line_cap(stroke.linecap),
                         line_join: LineJoin::from_usvg_line_join(stroke.linejoin,
-                                                                 stroke.miterlimit as f32),
+                                                                 stroke.miterlimit.value() as f32),
                     };
 
                     let path = UsvgPathToSegments::new(path.segments.iter().cloned());
@@ -193,10 +189,6 @@ impl BuiltSVG {
             NodeKind::Svg(..) => {
                 self.result_flags
                     .insert(BuildResultFlags::UNSUPPORTED_NESTED_SVG_NODE);
-            }
-            NodeKind::Text(..) => {
-                self.result_flags
-                    .insert(BuildResultFlags::UNSUPPORTED_TEXT_NODE);
             }
         }
     }
@@ -268,8 +260,8 @@ impl PaintExt for Paint {
 
 fn usvg_rect_to_euclid_rect(rect: &UsvgRect) -> RectF {
     RectF::new(
-        Vector2F::new(rect.x as f32, rect.y as f32),
-        Vector2F::new(rect.width as f32, rect.height as f32),
+        Vector2F::new(rect.x() as f32, rect.y() as f32),
+        Vector2F::new(rect.width() as f32, rect.height() as f32),
     )
 }
 
