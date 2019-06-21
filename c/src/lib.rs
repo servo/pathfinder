@@ -10,6 +10,7 @@
 
 //! C bindings to Pathfinder.
 
+use font_kit::handle::Handle;
 use gl;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
 use pathfinder_canvas::{Path2D, TextMetrics};
@@ -54,6 +55,9 @@ pub const PF_ARC_DIRECTION_CCW: u8 = 1;
 pub const PF_RENDERER_OPTIONS_FLAGS_HAS_BACKGROUND_COLOR: u8 = 0x1;
 
 // Types
+
+// External: `font-kit`
+pub type FKHandleRef = *mut Handle;
 
 // `canvas`
 pub type PFCanvasRef = *mut CanvasRenderingContext2D;
@@ -155,6 +159,16 @@ pub unsafe extern "C" fn PFCanvasFontContextCreateWithSystemSource() -> PFCanvas
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn PFCanvasFontContextCreateWithFonts(fonts: *const FKHandleRef,
+                                                            font_count: usize)
+                                                            -> PFCanvasFontContextRef {
+    let fonts = slice::from_raw_parts(fonts, font_count);
+    Box::into_raw(Box::new(CanvasFontContext::from_fonts(fonts.into_iter().map(|font| {
+        (**font).clone()
+    }))))
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn PFCanvasFontContextDestroy(font_context: PFCanvasFontContextRef) {
     drop(Box::from_raw(font_context))
 }
@@ -248,6 +262,18 @@ pub unsafe extern "C" fn PFCanvasSetLineDash(canvas: PFCanvasRef,
 #[no_mangle]
 pub unsafe extern "C" fn PFCanvasSetLineDashOffset(canvas: PFCanvasRef, new_offset: f32) {
     (*canvas).set_line_dash_offset(new_offset)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetFontByPostScriptName(canvas: PFCanvasRef,
+                                                         postscript_name: *const c_char,
+                                                         postscript_name_len: usize) {
+    (*canvas).set_font_by_postscript_name(to_rust_string(&postscript_name, postscript_name_len))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn PFCanvasSetFontSize(canvas: PFCanvasRef, new_font_size: f32) {
+    (*canvas).set_font_size(new_font_size)
 }
 
 #[no_mangle]
