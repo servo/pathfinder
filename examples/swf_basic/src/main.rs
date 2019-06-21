@@ -11,7 +11,7 @@
 use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
 use pathfinder_geometry::basic::rect::RectF;
 use pathfinder_gl::{GLDevice, GLVersion};
-use pathfinder_gpu::resources::FilesystemResourceLoader;
+use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
 use pathfinder_renderer::concurrent::scene_proxy::SceneProxy;
 use pathfinder_renderer::gpu::renderer::Renderer;
@@ -27,6 +27,8 @@ use std::fs::read;
 use pathfinder_geometry::basic::transform2d::Transform2DF;
 
 fn main() {
+    let resource_loader = FilesystemResourceLoader::locate();
+
     let swf_bytes;
     if let Some(path) = env::args().skip(1).next() {
         match read(path) {
@@ -50,7 +52,6 @@ fn main() {
         // a lot more geometry.  I think a more likely explanation for the choice is that it was
         // done to reduce overdraw in the software rasterizer running on late 90's era hardware?
         // Indeed, this mode gives pathfinders' occlusion culling pass nothing to do!
-        //let default_tiger = include_bytes!("../swf/tiger-flat.swf");
 
         // NOTE(jon): This is a version of the same graphic cut and pasted into the Flash authoring
         // tool from the SVG version loaded in Illustrator. When layered graphics are pasted
@@ -58,7 +59,7 @@ fn main() {
         // They are still presented as being on a single timeline layer.
         // They will be drawn back to front in much the same way as the SVG version.
 
-        let default_tiger = include_bytes!("../swf/tiger.swf");
+        let default_tiger = resource_loader.slurp("swf/tiger.swf").unwrap();
         swf_bytes = Vec::from(&default_tiger[..]);
     }
 
@@ -100,7 +101,7 @@ fn main() {
     // Create a Pathfinder renderer.
     let mut renderer = Renderer::new(
         GLDevice::new(GLVersion::GL3, 0),
-        &FilesystemResourceLoader::locate(),
+        &resource_loader,
         DestFramebuffer::full_window(pixel_size),
         RendererOptions { background_color: Some(stage.background_color()) }
     );
