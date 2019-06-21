@@ -5,7 +5,7 @@ RUST_TARGET_DIR?=../../target
 RUST_SRC_DIR?=../../c
 RUSTFLAGS?=-C target-cpu=native
 
-CFLAGS?=-Wall -g -I../../c/include
+CFLAGS?=-Wall -g -I../../c/build/include
 LIBS?=-lpathfinder_c
 MKDIR?=mkdir -p
 RM?=rm
