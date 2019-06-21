@@ -13,11 +13,11 @@
 use gl;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
 use pathfinder_canvas::{Path2D, TextMetrics};
-use pathfinder_geometry::basic::rect::{RectF, RectI};
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::color::{ColorF, ColorU};
-use pathfinder_geometry::outline::ArcDirection;
-use pathfinder_geometry::stroke::LineCap;
+use pathfinder_content::color::{ColorF, ColorU};
+use pathfinder_content::outline::ArcDirection;
+use pathfinder_content::stroke::LineCap;
+use pathfinder_geometry::rect::{RectF, RectI};
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
@@ -44,7 +44,7 @@ pub const PF_LINE_JOIN_MITER: u8 = 0;
 pub const PF_LINE_JOIN_BEVEL: u8 = 1;
 pub const PF_LINE_JOIN_ROUND: u8 = 2;
 
-// `geometry`
+// `content`
 
 pub const PF_ARC_DIRECTION_CW:  u8 = 0;
 pub const PF_ARC_DIRECTION_CCW: u8 = 1;
@@ -68,6 +68,22 @@ pub struct PFTextMetrics {
     pub width: f32,
 }
 
+// `content`
+#[repr(C)]
+pub struct PFColorF {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+}
+#[repr(C)]
+pub struct PFColorU {
+    pub r: u8,
+    pub g: u8,
+    pub b: u8,
+    pub a: u8,
+}
+
 // `geometry`
 #[repr(C)]
 pub struct PFVector2F {
@@ -88,20 +104,6 @@ pub struct PFRectF {
 pub struct PFRectI {
     pub origin: PFVector2I,
     pub lower_right: PFVector2I,
-}
-#[repr(C)]
-pub struct PFColorF {
-    pub r: f32,
-    pub g: f32,
-    pub b: f32,
-    pub a: f32,
-}
-#[repr(C)]
-pub struct PFColorU {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
 }
 
 // `gl`
@@ -472,7 +474,7 @@ impl TextMetricsExt for TextMetrics {
     }
 }
 
-// Helpers for `geometry`
+// Helpers for `content`
 
 impl PFColorF {
     #[inline]
@@ -487,6 +489,8 @@ impl PFColorU {
         ColorU { r: self.r, g: self.g, b: self.b, a: self.a }
     }
 }
+
+// Helpers for `geometry`
 
 impl PFRectF {
     #[inline]

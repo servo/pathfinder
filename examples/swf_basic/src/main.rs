@@ -8,8 +8,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::rect::RectF;
 use pathfinder_gl::{GLDevice, GLVersion};
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;
@@ -24,7 +24,7 @@ use pathfinder_renderer::scene::Scene;
 use pathfinder_swf::{draw_paths_into_scene, process_swf_tags};
 use std::env;
 use std::fs::read;
-use pathfinder_geometry::basic::transform2d::Transform2DF;
+use pathfinder_geometry::transform2d::Transform2DF;
 
 fn main() {
     let resource_loader = FilesystemResourceLoader::locate();

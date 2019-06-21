@@ -1,18 +1,17 @@
 [package]
-name = "pathfinder_svg"
+name = "pathfinder_content"
 version = "0.1.0"
-edition = "2018"
 authors = ["Patrick Walton <pcwalton@mimiga.net>"]
+edition = "2018"
 
 [dependencies]
+arrayvec = "0.4"
 bitflags = "1.0"
-usvg = "0.7"
-
-[dependencies.pathfinder_content]
-path = "../content"
+log = "0.4"
+smallvec = "0.6"
 
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 
-[dependencies.pathfinder_renderer]
-path = "../renderer"
+[dependencies.pathfinder_simd]
+path = "../simd"

@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/segment.rs
+// pathfinder/content/src/segment.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -10,10 +10,10 @@
 
 //! Line or curve segments, optimized with SIMD.
 
-use crate::basic::line_segment::LineSegment2F;
-use crate::basic::vector::Vector2F;
-use crate::basic::transform2d::Transform2DF;
-use crate::util::{self, EPSILON};
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::util::{self, EPSILON};
+use pathfinder_geometry::vector::Vector2F;
 use pathfinder_simd::default::F32x4;
 use std::f32::consts::SQRT_2;
 

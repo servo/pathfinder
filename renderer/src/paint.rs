@@ -10,8 +10,8 @@
 
 use crate::gpu_data::PaintData;
 use crate::scene::Scene;
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::color::ColorU;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_content::color::ColorU;
 
 const PAINT_TEXTURE_WIDTH: i32 = 256;
 const PAINT_TEXTURE_HEIGHT: i32 = 256;

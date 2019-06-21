@@ -14,6 +14,9 @@ libc = "0.2"
 [dependencies.pathfinder_canvas]
 path = "../canvas"
 
+[dependencies.pathfinder_content]
+path = "../content"
+
 [dependencies.pathfinder_geometry]
 path = "../geometry"
 

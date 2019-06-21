@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/clip.rs
+// pathfinder/content/src/clip.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,13 +8,13 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::basic::line_segment::LineSegment2F;
-use crate::basic::vector::{Vector2F, Vector4F};
-use crate::basic::rect::RectF;
 use crate::outline::{Contour, PointFlags, PushSegmentFlags};
 use crate::segment::{CubicSegment, Segment};
-use crate::util::lerp;
 use arrayvec::ArrayVec;
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::util::lerp;
+use pathfinder_geometry::vector::{Vector2F, Vector4F};
 use smallvec::SmallVec;
 use std::fmt::Debug;
 use std::mem;

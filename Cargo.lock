@@ -159,6 +159,7 @@ dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "glutin 0.21.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_canvas 0.1.0",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -174,6 +175,7 @@ dependencies = [
  "metal 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "objc 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_canvas 0.1.0",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -189,6 +191,7 @@ version = "0.1.0"
 dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_canvas 0.1.0",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -203,6 +206,7 @@ version = "0.1.0"
 dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_canvas 0.1.0",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -218,6 +222,7 @@ dependencies = [
  "font-kit 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_canvas 0.1.0",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -1377,6 +1382,7 @@ dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.54 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_canvas 0.1.0",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -1389,10 +1395,23 @@ name = "pathfinder_canvas"
 version = "0.1.0"
 dependencies = [
  "font-kit 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_renderer 0.1.0",
  "pathfinder_text 0.1.0",
  "skribo 0.0.1 (git+https://github.com/linebender/skribo.git?rev=a2d683856ba1f2d0095b12dd7823d1602a87614e)",
+]
+
+[[package]]
+name = "pathfinder_content"
+version = "0.1.0"
+dependencies = [
+ "arrayvec 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bitflags 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_geometry 0.3.0",
+ "pathfinder_simd 0.3.0",
+ "smallvec 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1404,6 +1423,7 @@ dependencies = [
  "image 0.21.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "metal 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -1420,13 +1440,8 @@ dependencies = [
 name = "pathfinder_geometry"
 version = "0.3.0"
 dependencies = [
- "arrayvec 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "bitflags 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "pathfinder_simd 0.3.0",
- "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_derive 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",
- "smallvec 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1447,6 +1462,7 @@ name = "pathfinder_gpu"
 version = "0.1.0"
 dependencies = [
  "image 0.21.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_simd 0.3.0",
 ]
@@ -1468,6 +1484,7 @@ dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "glutin 0.19.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
  "pathfinder_demo 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
@@ -1507,6 +1524,7 @@ dependencies = [
  "fixedbitset 0.1.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "hashbrown 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gpu 0.1.0",
  "pathfinder_simd 0.3.0",
@@ -1530,6 +1548,7 @@ name = "pathfinder_svg"
 version = "0.1.0"
 dependencies = [
  "bitflags 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_renderer 0.1.0",
  "usvg 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1539,6 +1558,7 @@ dependencies = [
 name = "pathfinder_swf"
 version = "0.1.0"
 dependencies = [
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
@@ -1554,6 +1574,7 @@ dependencies = [
  "euclid 0.19.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "font-kit 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "lyon_path 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_renderer 0.1.0",
  "skribo 0.0.1 (git+https://github.com/linebender/skribo.git?rev=a2d683856ba1f2d0095b12dd7823d1602a87614e)",
@@ -1564,6 +1585,7 @@ name = "pathfinder_ui"
 version = "0.1.0"
 dependencies = [
  "hashbrown 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pathfinder_content 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gpu 0.1.0",
  "pathfinder_simd 0.3.0",

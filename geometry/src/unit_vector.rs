@@ -10,7 +10,7 @@
 
 //! A utility module that allows unit vectors to be treated like angles.
 
-use crate::basic::vector::Vector2F;
+use crate::vector::Vector2F;
 use pathfinder_simd::default::F32x4;
 
 #[derive(Clone, Copy, Debug)]

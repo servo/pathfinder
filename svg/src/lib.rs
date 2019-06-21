@@ -13,14 +13,15 @@
 #[macro_use]
 extern crate bitflags;
 
-use pathfinder_geometry::basic::line_segment::LineSegment2F;
-use pathfinder_geometry::basic::vector::Vector2F;
-use pathfinder_geometry::basic::rect::RectF;
-use pathfinder_geometry::basic::transform2d::{Transform2DF, Transform2DFPathIter};
-use pathfinder_geometry::color::ColorU;
-use pathfinder_geometry::outline::Outline;
-use pathfinder_geometry::segment::{Segment, SegmentFlags};
-use pathfinder_geometry::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
+use pathfinder_content::color::ColorU;
+use pathfinder_content::outline::Outline;
+use pathfinder_content::segment::{Segment, SegmentFlags};
+use pathfinder_content::stroke::{LineCap, LineJoin, OutlineStrokeToFill, StrokeStyle};
+use pathfinder_content::transform::Transform2DFPathIter;
+use pathfinder_geometry::line_segment::LineSegment2F;
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::vector::Vector2F;
 use pathfinder_renderer::paint::Paint;
 use pathfinder_renderer::scene::{PathObject, Scene};
 use std::fmt::{Display, Formatter, Result as FormatResult};

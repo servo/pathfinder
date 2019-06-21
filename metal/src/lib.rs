@@ -40,8 +40,8 @@ use metal::{SamplerDescriptor, SamplerState, StencilDescriptor, StructMemberRef,
 use metal::{StructTypeRef, TextureDescriptor, Texture, TextureRef, VertexAttribute};
 use metal::{VertexAttributeRef, VertexDescriptor, VertexDescriptorRef};
 use objc::runtime::{Class, Object};
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::basic::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
 use pathfinder_gpu::resources::ResourceLoader;
 use pathfinder_gpu::{BlendState, BufferData, BufferTarget, BufferUploadMode, DepthFunc, Device};
 use pathfinder_gpu::{Primitive, RenderState, RenderTarget, ShaderKind, StencilFunc, TextureData};

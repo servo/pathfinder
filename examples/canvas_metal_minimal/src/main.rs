@@ -11,9 +11,9 @@
 use foreign_types::ForeignTypeRef;
 use metal::{CAMetalLayer, CoreAnimationLayerRef};
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, Path2D};
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I};
-use pathfinder_geometry::basic::rect::RectF;
-use pathfinder_geometry::color::ColorF;
+use pathfinder_content::color::ColorF;
+use pathfinder_geometry::vector::{Vector2F, Vector2I};
+use pathfinder_geometry::rect::RectF;
 use pathfinder_gpu::resources::FilesystemResourceLoader;
 use pathfinder_metal::MetalDevice;
 use pathfinder_renderer::concurrent::rayon::RayonExecutor;

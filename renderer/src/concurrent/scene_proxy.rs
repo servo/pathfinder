@@ -24,7 +24,7 @@ use crate::gpu::renderer::Renderer;
 use crate::gpu_data::RenderCommand;
 use crate::options::{BuildOptions, RenderCommandListener};
 use crate::scene::Scene;
-use pathfinder_geometry::basic::rect::RectF;
+use pathfinder_geometry::rect::RectF;
 use pathfinder_gpu::Device;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;

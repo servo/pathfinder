@@ -1,4 +1,4 @@
-// pathfinder/geometry/src/dilation.rs
+// pathfinder/content/src/dilation.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //
@@ -8,9 +8,9 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
-use crate::basic::vector::Vector2F;
 use crate::orientation::Orientation;
 use crate::outline::Contour;
+use pathfinder_geometry::vector::Vector2F;
 
 pub struct ContourDilator<'a> {
     contour: &'a mut Contour,

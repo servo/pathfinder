@@ -10,10 +10,9 @@
 
 //! 3D transforms that can be applied to paths.
 
-use crate::basic::vector::{Vector2F, Vector2I, Vector4F};
-use crate::basic::rect::RectF;
-use crate::basic::transform2d::Matrix2x2F;
-use crate::segment::Segment;
+use crate::vector::{Vector2F, Vector2I, Vector4F};
+use crate::rect::RectF;
+use crate::transform2d::Matrix2x2F;
 use pathfinder_simd::default::F32x4;
 use std::ops::{Add, Neg};
 
@@ -372,65 +371,10 @@ impl Perspective {
     }
 }
 
-/// Transforms a path with a perspective projection.
-pub struct PerspectivePathIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    iter: I,
-    perspective: Perspective,
-}
-
-impl<I> Iterator for PerspectivePathIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    type Item = Segment;
-
-    #[inline]
-    fn next(&mut self) -> Option<Segment> {
-        let mut segment = self.iter.next()?;
-        if !segment.is_none() {
-            segment.baseline.set_from(
-                &self
-                    .perspective
-                    .transform_point_2d(&segment.baseline.from()),
-            );
-            segment
-                .baseline
-                .set_to(&self.perspective.transform_point_2d(&segment.baseline.to()));
-            if !segment.is_line() {
-                segment
-                    .ctrl
-                    .set_from(&self.perspective.transform_point_2d(&segment.ctrl.from()));
-                if !segment.is_quadratic() {
-                    segment
-                        .ctrl
-                        .set_to(&self.perspective.transform_point_2d(&segment.ctrl.to()));
-                }
-            }
-        }
-        Some(segment)
-    }
-}
-
-impl<I> PerspectivePathIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    #[inline]
-    pub fn new(iter: I, perspective: &Perspective) -> PerspectivePathIter<I> {
-        PerspectivePathIter {
-            iter,
-            perspective: *perspective,
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use crate::basic::vector::Vector4F;
-    use crate::basic::transform3d::Transform3DF;
+    use crate::vector::Vector4F;
+    use crate::transform3d::Transform3DF;
 
     #[test]
     fn test_post_mul() {

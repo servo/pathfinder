@@ -10,11 +10,10 @@
 
 //! 2D affine transforms.
 
-use crate::basic::line_segment::LineSegment2F;
-use crate::basic::vector::Vector2F;
-use crate::basic::rect::RectF;
-use crate::basic::transform3d::Transform3DF;
-use crate::segment::Segment;
+use crate::line_segment::LineSegment2F;
+use crate::vector::Vector2F;
+use crate::rect::RectF;
+use crate::transform3d::Transform3DF;
 use crate::unit_vector::UnitVector;
 use pathfinder_simd::default::F32x4;
 use std::ops::Sub;
@@ -293,59 +292,5 @@ impl Transform2DF {
     #[inline]
     pub fn scale_factor(&self) -> f32 {
         Vector2F(self.matrix.0.zwxy()).length()
-    }
-}
-
-/// Transforms a path with a SIMD 2D transform.
-pub struct Transform2DFPathIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    iter: I,
-    transform: Transform2DF,
-}
-
-impl<I> Iterator for Transform2DFPathIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    type Item = Segment;
-
-    #[inline]
-    fn next(&mut self) -> Option<Segment> {
-        // TODO(pcwalton): Can we go faster by transforming an entire line segment with SIMD?
-        let mut segment = self.iter.next()?;
-        if !segment.is_none() {
-            segment
-                .baseline
-                .set_from(&self.transform.transform_point(segment.baseline.from()));
-            segment
-                .baseline
-                .set_to(&self.transform.transform_point(segment.baseline.to()));
-            if !segment.is_line() {
-                segment
-                    .ctrl
-                    .set_from(&self.transform.transform_point(segment.ctrl.from()));
-                if !segment.is_quadratic() {
-                    segment
-                        .ctrl
-                        .set_to(&self.transform.transform_point(segment.ctrl.to()));
-                }
-            }
-        }
-        Some(segment)
-    }
-}
-
-impl<I> Transform2DFPathIter<I>
-where
-    I: Iterator<Item = Segment>,
-{
-    #[inline]
-    pub fn new(iter: I, transform: &Transform2DF) -> Transform2DFPathIter<I> {
-        Transform2DFPathIter {
-            iter,
-            transform: *transform,
-        }
     }
 }

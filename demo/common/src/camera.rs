@@ -14,10 +14,10 @@
 // proper.
 
 use crate::window::{OcularTransform, View};
-use pathfinder_geometry::basic::vector::{Vector2F, Vector2I, Vector4F};
-use pathfinder_geometry::basic::rect::RectF;
-use pathfinder_geometry::basic::transform2d::Transform2DF;
-use pathfinder_geometry::basic::transform3d::{Perspective, Transform3DF};
+use pathfinder_geometry::vector::{Vector2F, Vector2I, Vector4F};
+use pathfinder_geometry::rect::RectF;
+use pathfinder_geometry::transform2d::Transform2DF;
+use pathfinder_geometry::transform3d::{Perspective, Transform3DF};
 use std::f32::consts::FRAC_PI_4;
 
 const NEAR_CLIP_PLANE: f32 = 0.01;

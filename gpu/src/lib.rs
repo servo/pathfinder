@@ -12,10 +12,10 @@
 
 use crate::resources::ResourceLoader;
 use image::ImageFormat;
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
-use pathfinder_geometry::basic::transform3d::Transform3DF;
-use pathfinder_geometry::color::ColorF;
+use pathfinder_content::color::ColorF;
+use pathfinder_geometry::rect::RectI;
+use pathfinder_geometry::transform3d::Transform3DF;
+use pathfinder_geometry::vector::Vector2I;
 use pathfinder_simd::default::F32x4;
 use std::time::Duration;
 

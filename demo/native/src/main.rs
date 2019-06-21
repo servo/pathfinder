@@ -13,8 +13,8 @@
 use nfd::Response;
 use pathfinder_demo::window::{Event, Keycode, SVGPath, View, Window, WindowSize};
 use pathfinder_demo::{DemoApp, Options};
-use pathfinder_geometry::basic::vector::Vector2I;
-use pathfinder_geometry::basic::rect::RectI;
+use pathfinder_geometry::vector::Vector2I;
+use pathfinder_geometry::rect::RectI;
 use pathfinder_gpu::resources::{FilesystemResourceLoader, ResourceLoader};
 use sdl2::event::{Event as SDLEvent, WindowEvent};
 use sdl2::keyboard::Keycode as SDLKeycode;

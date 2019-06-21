@@ -9,7 +9,7 @@
 // except according to those terms.
 
 use pathfinder_renderer::paint::Paint;
-use pathfinder_geometry::stroke::{LineJoin, LineCap};
+use pathfinder_content::stroke::{LineJoin, LineCap};
 use crate::{Twips, Point2};
 use std::mem;
 use std::cmp::Ordering;
@@ -25,7 +25,7 @@ use swf_tree::{
     shape_records,
     Vector2D
 };
-use pathfinder_geometry::color::ColorU;
+use pathfinder_content::color::ColorU;
 use swf_tree::tags::DefineShape;
 
 #[derive(Clone, Copy, Debug)]
