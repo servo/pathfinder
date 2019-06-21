@@ -1,4 +1,4 @@
-// pathfinder/flash/src/lib.rs
+// pathfinder/swf/src/lib.rs
 //
 // Copyright © 2019 The Pathfinder Project Developers.
 //

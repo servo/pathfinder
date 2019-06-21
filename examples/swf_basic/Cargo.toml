@@ -12,9 +12,6 @@ sdl2-sys = "0.32"
 swf-parser = "0.7.0"
 swf-tree = "0.7.0"
 
-[dependencies.pathfinder_flash]
-path = "../../flash"
-
 [dependencies.pathfinder_geometry]
 path = "../../geometry"
 
@@ -26,3 +23,6 @@ path = "../../gpu"
 
 [dependencies.pathfinder_renderer]
 path = "../../renderer"
+
+[dependencies.pathfinder_swf]
+path = "../../swf"

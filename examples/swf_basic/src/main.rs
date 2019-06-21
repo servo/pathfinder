@@ -21,7 +21,7 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::video::GLProfile;
 use pathfinder_renderer::scene::Scene;
-use pathfinder_flash::{draw_paths_into_scene, process_swf_tags};
+use pathfinder_swf::{draw_paths_into_scene, process_swf_tags};
 use std::env;
 use std::fs::read;
 use pathfinder_geometry::basic::transform2d::Transform2DF;

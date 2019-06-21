@@ -1417,18 +1417,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pathfinder_flash"
-version = "0.1.0"
-dependencies = [
- "pathfinder_geometry 0.3.0",
- "pathfinder_gl 0.1.0",
- "pathfinder_gpu 0.1.0",
- "pathfinder_renderer 0.1.0",
- "swf-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "swf-tree 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "pathfinder_geometry"
 version = "0.3.0"
 dependencies = [
@@ -1545,6 +1533,18 @@ dependencies = [
  "pathfinder_geometry 0.3.0",
  "pathfinder_renderer 0.1.0",
  "usvg 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "pathfinder_swf"
+version = "0.1.0"
+dependencies = [
+ "pathfinder_geometry 0.3.0",
+ "pathfinder_gl 0.1.0",
+ "pathfinder_gpu 0.1.0",
+ "pathfinder_renderer 0.1.0",
+ "swf-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "swf-tree 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -2127,11 +2127,11 @@ name = "swf_basic"
 version = "0.1.0"
 dependencies = [
  "gl 0.6.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "pathfinder_flash 0.1.0",
  "pathfinder_geometry 0.3.0",
  "pathfinder_gl 0.1.0",
  "pathfinder_gpu 0.1.0",
  "pathfinder_renderer 0.1.0",
+ "pathfinder_swf 0.1.0",
  "sdl2 0.32.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "sdl2-sys 0.32.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "swf-parser 0.7.0 (registry+https://github.com/rust-lang/crates.io-index)",

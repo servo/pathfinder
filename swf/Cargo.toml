@@ -1,5 +1,5 @@
 [package]
-name = "pathfinder_flash"
+name = "pathfinder_swf"
 version = "0.1.0"
 authors = ["Jon Hardie <jon@hardiesoft.com>"]
 edition = "2018"
