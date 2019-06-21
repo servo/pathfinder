@@ -148,8 +148,8 @@ pub unsafe extern "C" fn PFCanvasDestroy(canvas: PFCanvasRef) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn PFCanvasFontContextCreate() -> PFCanvasFontContextRef {
-    Box::into_raw(Box::new(CanvasFontContext::new()))
+pub unsafe extern "C" fn PFCanvasFontContextCreateWithSystemSource() -> PFCanvasFontContextRef {
+    Box::into_raw(Box::new(CanvasFontContext::from_system_source()))
 }
 
 #[no_mangle]

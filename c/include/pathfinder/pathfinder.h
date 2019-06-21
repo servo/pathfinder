@@ -129,7 +129,7 @@ typedef struct PFSceneProxy *PFSceneProxyRef;
 
 PFCanvasRef PFCanvasCreate(PFCanvasFontContextRef font_context, const PFVector2F *size);
 void PFCanvasDestroy(PFCanvasRef canvas);
-PFCanvasFontContextRef PFCanvasFontContextCreate();
+PFCanvasFontContextRef PFCanvasFontContextCreateWithSystemSource();
 void PFCanvasFontContextDestroy(PFCanvasFontContextRef font_context);
 PFCanvasFontContextRef PFCanvasFontContextClone(PFCanvasFontContextRef font_context);
 PFSceneRef PFCanvasCreateScene(PFCanvasRef canvas);

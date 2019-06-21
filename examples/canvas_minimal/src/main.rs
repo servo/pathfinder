@@ -52,7 +52,8 @@ fn main() {
                                      RendererOptions { background_color: Some(ColorF::white()) });
 
     // Make a canvas. We're going to draw a house.
-    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::new(), window_size.to_f32());
+    let mut canvas = CanvasRenderingContext2D::new(CanvasFontContext::from_system_source(),
+                                                   window_size.to_f32());
 
     // Set line width.
     canvas.set_line_width(10.0);

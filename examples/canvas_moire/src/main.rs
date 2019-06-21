@@ -100,7 +100,7 @@ impl MoireRenderer {
            -> MoireRenderer {
         MoireRenderer {
             renderer,
-            font_context: CanvasFontContext::new(),
+            font_context: CanvasFontContext::from_system_source(),
             scene: SceneProxy::new(RayonExecutor),
             frame: 0,
             window_size,
