@@ -15,7 +15,7 @@ UNAME=$(shell uname -s)
 ifeq ($(UNAME),Darwin)
 	# FIXME(pcwalton): Don't link against HarfBuzz!!
 	LIBS+=-framework OpenGL -framework CoreFoundation -framework CoreGraphics -framework CoreText
-	LIBS+=-lharfbuzz
+	LIBS+=-framework Metal -lharfbuzz
 else
 	LIBS+=-lGL
 endif

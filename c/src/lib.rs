@@ -11,6 +11,7 @@
 //! C bindings to Pathfinder.
 
 use font_kit::handle::Handle;
+use foreign_types::ForeignTypeRef;
 use gl;
 use pathfinder_canvas::{CanvasFontContext, CanvasRenderingContext2D, FillStyle, LineJoin};
 use pathfinder_canvas::{Path2D, TextMetrics};
@@ -32,6 +33,11 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::slice;
 use std::str;
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use metal::{CAMetalLayer, CoreAnimationLayerRef};
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+use pathfinder_metal::MetalDevice;
 
 // Constants
 
@@ -118,9 +124,17 @@ pub type PFGLFunctionLoader = extern "C" fn(name: *const c_char, userdata: *mut 
 // `gpu`
 pub type PFGLDestFramebufferRef = *mut DestFramebuffer<GLDevice>;
 pub type PFGLRendererRef = *mut Renderer<GLDevice>;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+pub type PFMetalDestFramebufferRef = *mut DestFramebuffer<MetalDevice>;
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+pub type PFMetalRendererRef = *mut Renderer<MetalDevice>;
 // FIXME(pcwalton): Double-boxing is unfortunate. Remove this when `std::raw::TraitObject` is
 // stable?
 pub type PFResourceLoaderRef = *mut Box<dyn ResourceLoader>;
+
+// `metal`
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+pub type PFMetalDeviceRef = *mut MetalDevice;
 
 // `renderer`
 pub type PFSceneRef = *mut Scene;
@@ -456,11 +470,74 @@ pub unsafe extern "C" fn PFGLRendererGetDevice(renderer: PFGLRendererRef) -> PFG
     &mut (*renderer).device
 }
 
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDestFramebufferCreateFullWindow(window_size: *const PFVector2I)
+                                                                -> PFMetalDestFramebufferRef {
+    Box::into_raw(Box::new(DestFramebuffer::full_window((*window_size).to_rust())))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDestFramebufferDestroy(dest_framebuffer:
+                                                       PFMetalDestFramebufferRef) {
+    drop(Box::from_raw(dest_framebuffer))
+}
+
+/// Takes ownership of `device` and `dest_framebuffer`, but not `resources`.
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalRendererCreate(device: PFMetalDeviceRef,
+                                               resources: PFResourceLoaderRef,
+                                               dest_framebuffer: PFMetalDestFramebufferRef,
+                                               options: *const PFRendererOptions)
+                                               -> PFMetalRendererRef {
+    Box::into_raw(Box::new(Renderer::new(*Box::from_raw(device),
+                                         &**resources,
+                                         *Box::from_raw(dest_framebuffer),
+                                         (*options).to_rust())))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalRendererDestroy(renderer: PFMetalRendererRef) {
+    drop(Box::from_raw(renderer))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalRendererGetDevice(renderer: PFMetalRendererRef) -> PFMetalDeviceRef {
+    &mut (*renderer).device
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn PFSceneProxyBuildAndRenderGL(scene_proxy: PFSceneProxyRef,
                                                       renderer: PFGLRendererRef,
                                                       build_options: *const PFBuildOptions) {
     (*scene_proxy).build_and_render(&mut *renderer, (*build_options).to_rust())
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFSceneProxyBuildAndRenderMetal(scene_proxy: PFSceneProxyRef,
+                                                         renderer: PFMetalRendererRef,
+                                                         build_options: *const PFBuildOptions) {
+    (*scene_proxy).build_and_render(&mut *renderer, (*build_options).to_rust())
+}
+
+// `metal`
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceCreate(layer: *mut CAMetalLayer)
+                                             -> PFMetalDeviceRef {
+    Box::into_raw(Box::new(MetalDevice::new(CoreAnimationLayerRef::from_ptr(layer))))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "pf-gl")))]
+#[no_mangle]
+pub unsafe extern "C" fn PFMetalDeviceDestroy(device: PFMetalDeviceRef) {
+    drop(Box::from_raw(device))
 }
 
 // `renderer`
