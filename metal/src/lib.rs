@@ -1356,6 +1356,7 @@ impl FunctionExt for Function {
             let encoder: *mut MTLArgumentEncoder =
                 msg_send![self.as_ptr(), newArgumentEncoderWithBufferIndex:buffer_index
                                                                 reflection:&mut reflection];
+            msg_send![reflection, retain];
             (ArgumentEncoder::from_ptr(encoder), Argument::from_ptr(reflection))
         }
     }
