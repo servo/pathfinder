@@ -654,7 +654,7 @@ where
             }
         }
 
-        self.device.draw_arrays(4, &RenderState {
+        self.device.draw_elements(6, &RenderState {
             target: &self.dest_render_target(),
             program: &self.postprocess_program.program,
             vertex_array: &self.postprocess_vertex_array.vertex_array,
@@ -1451,7 +1451,7 @@ where
         device.configure_vertex_attr(&vertex_array, &position_attr, &VertexAttrDescriptor {
             size: 2,
             class: VertexAttrClass::Int,
-            attr_type: VertexAttrType::U16,
+            attr_type: VertexAttrType::I16,
             stride: 4,
             offset: 0,
             divisor: 0,
