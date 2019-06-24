@@ -2,18 +2,28 @@ language = "C"
 header = """\
 /* Generated code. Do not edit; instead run `cargo build` in `pathfinder_c`. */
 
+#ifdef __cplusplus
 extern \"C\" {
+#endif
 """
-trailer = "}"
+trailer = """\
+#ifdef __cplusplus
+}
+#endif
+"""
 include_guard = "PF_PATHFINDER_H"
 include_version = true
 
 [parse]
 parse_deps = true
 include = [
+    "font-kit",
+    "metal",
     "pathfinder_canvas",
     "pathfinder_content",
     "pathfinder_geometry",
     "pathfinder_gl",
+    "pathfinder_gpu",
+    "pathfinder_metal",
     "pathfinder_renderer",
 ]

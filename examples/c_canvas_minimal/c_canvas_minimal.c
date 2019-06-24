@@ -87,7 +87,7 @@ int main(int argc, const char **argv) {
     // Render the canvas to screen.
     PFSceneRef scene = PFCanvasCreateScene(canvas);
     PFSceneProxyRef scene_proxy = PFSceneProxyCreateFromSceneAndRayonExecutor(scene);
-    PFSceneProxyBuildAndRenderGL(scene_proxy, renderer, &(PFBuildOptions){0});
+    PFSceneProxyBuildAndRenderGL(scene_proxy, renderer, PFBuildOptionsCreate());
     SDL_GL_SwapWindow(window);
 
     // Wait for a keypress.

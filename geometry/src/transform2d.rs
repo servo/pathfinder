@@ -116,8 +116,8 @@ impl Sub<Matrix2x2F> for Matrix2x2F {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transform2DF {
     // Row-major order.
-    matrix: Matrix2x2F,
-    vector: Vector2F,
+    pub matrix: Matrix2x2F,
+    pub vector: Vector2F,
 }
 
 impl Default for Transform2DF {
