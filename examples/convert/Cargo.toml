@@ -1,5 +1,5 @@
 [package]
-name = "svg2pdf"
+name = "convert"
 version = "0.1.0"
 authors = ["Sebastian Köln <sebk@rynx.org>"]
 edition = "2018"

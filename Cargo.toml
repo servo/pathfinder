@@ -13,7 +13,7 @@ members = [
     "examples/canvas_moire",
     "examples/canvas_text",
     "examples/lottie_basic",
-    "examples/svg2pdf",
+    "examples/convert",
     "examples/swf_basic",
     "geometry",
     "gl",
