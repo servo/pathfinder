@@ -5,7 +5,7 @@ use pathfinder_svg::BuiltSVG;
 use pathfinder_pdf::make_pdf;
 use usvg::{Tree, Options};
 
-fn main() -> Result<(), Box<Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let mut args = std::env::args().skip(1);
     let input = args.next().expect("no input given");
     let output = args.next().expect("no output given");
